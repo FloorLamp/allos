@@ -3,7 +3,7 @@
 // action runs as a faithful login→profile pairing. NOT a test file (the config only
 // collects *.test.ts).
 
-import type { CurrentSession, Role } from "@/lib/auth";
+import type { Access, CurrentSession, Role } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { hashPasswordSync } from "@/lib/password";
 import type { WeightUnit, DistanceUnit } from "@/lib/settings";
@@ -74,7 +74,11 @@ export function createProfile(
 // Bind the mocked session: subsequent requireSession()/requireAdmin() calls inside
 // an action return this login acting as this profile. Mirrors the CurrentSession
 // shape auth.getCurrentSession() builds in prod.
-export function actAs(login: TestLogin, profile: TestProfile): CurrentSession {
+export function actAs(
+  login: TestLogin,
+  profile: TestProfile,
+  access: Access = "write"
+): CurrentSession {
   const session: CurrentSession = {
     login: { id: login.id, username: login.username, role: login.role },
     profile: {
@@ -83,6 +87,10 @@ export function actAs(login: TestLogin, profile: TestProfile): CurrentSession {
       photo_path: null,
       photo_version: 0,
     },
+    // Access level on the acting profile (issue #33). Defaults to 'write' so
+    // existing action tests are unaffected; a test can pass 'read' to assert a
+    // mutating action is blocked by requireWriteAccess().
+    access,
   };
   setActingSession(session);
   return session;

@@ -57,6 +57,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   // Count of integrations currently in a failed state — drives the header
   // "import review" badge (Data → Review). Self-clearing on the next good sync.
   const reviewCount = getImportReviewCount(profile.id);
+  // The caller holds only READ access on the active profile (issue #33) — a
+  // member with a read-only grant. Drives the "read-only" hint in the profile
+  // menu; every mutating action is independently gated server-side.
+  const readOnly = session.access === "read";
   return (
     <TimezoneProvider tz={timezone}>
       <WeekStartProvider weekStart={weekStart}>
@@ -79,6 +83,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                   isAdmin={isAdmin}
                   multiProfile={multiProfile}
                   reviewCount={reviewCount}
+                  readOnly={readOnly}
                 />
               </aside>
               {/* clip (not hidden) so it doesn't force overflow-y to auto, which
@@ -95,6 +100,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                   isAdmin={isAdmin}
                   multiProfile={multiProfile}
                   reviewCount={reviewCount}
+                  readOnly={readOnly}
                 />
                 {/* max(padding, safe-area inset) keeps content clear of the
               notch in landscape and the home indicator at the bottom now

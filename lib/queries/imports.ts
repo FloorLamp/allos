@@ -16,6 +16,14 @@ import {
   type DocumentProducedCounts,
 } from "../import-log";
 import {
+  mergeFeed,
+  syncEntry,
+  documentEntry,
+  jobEntry,
+  type FeedEntry,
+} from "../import-feed";
+import { getRecentSyncEvents } from "./integrations";
+import {
   emptySnapshot,
   recordRow,
   immunizationRow,
@@ -92,6 +100,19 @@ export function getImportLog(profileId: number): ImportLogRow[] {
     ...getImportLogDocuments(profileId),
     ...getImportLogJobs(profileId),
   ]);
+}
+
+// The unified "all my imported data" feed behind Data → Review: a profile's
+// background integration syncs + uploaded documents + paste/CSV jobs, merged
+// newest-first (issue #208 / #212). Composes the existing profile-scoped reads
+// (getRecentSyncEvents, getImportLogDocuments, getImportLogJobs) — so scoping is
+// inherited — and hands the merge/humanize to the pure lib/import-feed. Capped at
+// `limit` after the merge so one noisy stream can't crowd out the others.
+export function getImportFeed(profileId: number, limit = 40): FeedEntry[] {
+  const syncs = getRecentSyncEvents(profileId, limit).map(syncEntry);
+  const documents = getImportLogDocuments(profileId).map(documentEntry);
+  const jobs = getImportLogJobs(profileId).map(jobEntry);
+  return mergeFeed([...syncs, ...documents, ...jobs]).slice(0, limit);
 }
 
 // Read a single scalar COUNT(*) from a prepared statement result.

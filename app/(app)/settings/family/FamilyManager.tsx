@@ -6,6 +6,7 @@ import Avatar from "@/components/Avatar";
 import PhotoPicker from "@/components/PhotoPicker";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { membersLosingAllAccess } from "@/lib/family-deletion";
+import type { Access } from "@/lib/grants";
 import { uploadProfilePhoto, removeProfilePhoto } from "../photo-actions";
 import type { ProfileDataSummary } from "./page";
 import {
@@ -52,12 +53,14 @@ export default function FamilyManager({
   profiles,
   logins,
   grants,
+  access,
   summaries,
   sessionCounts,
 }: {
   profiles: Profile[];
   logins: Login[];
   grants: Record<number, number[]>;
+  access: Record<number, Record<number, Access>>;
   summaries: Record<number, ProfileDataSummary>;
   sessionCounts: Record<number, number>;
 }) {
@@ -70,7 +73,12 @@ export default function FamilyManager({
         summaries={summaries}
       />
       <LoginsCard logins={logins} sessionCounts={sessionCounts} />
-      <GrantsCard logins={logins} profiles={profiles} grants={grants} />
+      <GrantsCard
+        logins={logins}
+        profiles={profiles}
+        grants={grants}
+        access={access}
+      />
       <p className="text-xs text-slate-400 dark:text-slate-500">
         Deleting a profile permanently erases that person&apos;s entire health
         record and cannot be undone. Deleting a login removes the login only —
@@ -622,10 +630,12 @@ function GrantsCard({
   logins,
   profiles,
   grants,
+  access,
 }: {
   logins: Login[];
   profiles: Profile[];
   grants: Record<number, number[]>;
+  access: Record<number, Record<number, Access>>;
 }) {
   return (
     <div className="card space-y-4">
@@ -634,8 +644,10 @@ function GrantsCard({
           Access
         </h2>
         <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
-          Which profiles each member login can open. Admins have access to every
-          profile automatically.
+          Which profiles each member login can open, and at what level. A
+          <strong> read-only</strong> grant can view everything but can&apos;t
+          add, edit, upload, or delete. Admins have full access to every profile
+          automatically.
         </p>
       </div>
 
@@ -664,6 +676,7 @@ function GrantsCard({
                 login={a}
                 profiles={profiles}
                 granted={grants[a.id] ?? []}
+                access={access[a.id] ?? {}}
               />
             )
           )}
@@ -677,21 +690,36 @@ function GrantsRow({
   login,
   profiles,
   granted,
+  access,
 }: {
   login: Login;
   profiles: Profile[];
   granted: number[];
+  access: Record<number, Access>;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [result, setResult] = useState<FamilyResult | null>(null);
-  const [selected, setSelected] = useState<Set<number>>(new Set(granted));
+  // profile id → access level for each CURRENTLY-granted profile. Absence from
+  // the map means "not granted"; a grant defaults to 'write' when its level is
+  // unknown (matches the server's normalizeAccess).
+  const [selected, setSelected] = useState<Map<number, Access>>(
+    () => new Map(granted.map((id) => [id, access[id] ?? "write"]))
+  );
 
   function toggle(id: number) {
     setSelected((prev) => {
-      const next = new Set(prev);
+      const next = new Map(prev);
       if (next.has(id)) next.delete(id);
-      else next.add(id);
+      else next.set(id, "write");
+      return next;
+    });
+  }
+
+  function setLevel(id: number, level: Access) {
+    setSelected((prev) => {
+      const next = new Map(prev);
+      if (next.has(id)) next.set(id, level);
       return next;
     });
   }
@@ -699,7 +727,10 @@ function GrantsRow({
   function save() {
     const fd = new FormData();
     fd.set("loginId", String(login.id));
-    for (const id of selected) fd.append("profileId", String(id));
+    for (const [id, level] of selected) {
+      fd.append("profileId", String(id));
+      fd.set(`access_${id}`, level);
+    }
     start(async () => {
       const r = await setGrants(fd);
       setResult(r);
@@ -715,21 +746,39 @@ function GrantsRow({
       <div className="mb-2 font-medium text-slate-800 dark:text-slate-100">
         {login.username}
       </div>
-      <div className="flex flex-wrap gap-3">
-        {profiles.map((p) => (
-          <label
-            key={p.id}
-            className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200"
-          >
-            <input
-              type="checkbox"
-              checked={selected.has(p.id)}
-              onChange={() => toggle(p.id)}
-              className="h-4 w-4 accent-brand-600 focus:ring-brand-500"
-            />
-            {p.name}
-          </label>
-        ))}
+      <div className="space-y-2">
+        {profiles.map((p) => {
+          const isGranted = selected.has(p.id);
+          const level = selected.get(p.id) ?? "write";
+          return (
+            <div
+              key={p.id}
+              className="flex flex-wrap items-center gap-3"
+              data-testid={`grant-cell-${login.username}-${p.id}`}
+            >
+              <label className="flex min-w-[8rem] items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+                <input
+                  type="checkbox"
+                  checked={isGranted}
+                  onChange={() => toggle(p.id)}
+                  className="h-4 w-4 accent-brand-600 focus:ring-brand-500"
+                />
+                {p.name}
+              </label>
+              <select
+                aria-label={`Access level for ${p.name}`}
+                data-testid={`grant-access-${login.username}-${p.id}`}
+                value={level}
+                disabled={!isGranted}
+                onChange={(e) => setLevel(p.id, e.target.value as Access)}
+                className="input h-8 w-32 py-0 text-sm disabled:opacity-40"
+              >
+                <option value="write">Read &amp; write</option>
+                <option value="read">Read-only</option>
+              </select>
+            </div>
+          );
+        })}
       </div>
       <div className="mt-3 flex items-center gap-3">
         <button

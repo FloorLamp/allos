@@ -1,5 +1,5 @@
 "use server";
-import { requireSession } from "@/lib/auth";
+import { requireWriteAccess } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
@@ -27,7 +27,7 @@ function dateOrNull(raw: unknown): string | null {
 }
 
 export async function addProcedure(formData: FormData) {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const name = String(formData.get("name") ?? "").trim();
   if (!name) return;
   const providerId = resolveProviderIdByName(
@@ -50,7 +50,7 @@ export async function addProcedure(formData: FormData) {
 }
 
 export async function updateProcedure(formData: FormData) {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const id = Number(formData.get("id"));
   const name = String(formData.get("name") ?? "").trim();
   if (!id || !name) return;
@@ -75,7 +75,7 @@ export async function updateProcedure(formData: FormData) {
 }
 
 export async function deleteProcedure(formData: FormData) {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return;
   db.prepare("DELETE FROM procedures WHERE id = ? AND profile_id = ?").run(

@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireSession } from "@/lib/auth";
+import { requireWriteAccess } from "@/lib/auth";
 import {
   normalizeShareFields,
   expiresAtFor,
@@ -12,7 +12,7 @@ import { recordAudit } from "@/lib/audit";
 import { AUDIT_ACTIONS } from "@/lib/audit-actions";
 
 // Share-link management for the profile passport (issue #105). Every action is
-// gated by requireSession() and operates ONLY on the session's active profile
+// gated by requireWriteAccess() and operates ONLY on the session's active profile
 // (session.profile.id) — a login can only act as a profile it's authorized for
 // (admins: any; members: their granted ones), so this enforces the grant rule by
 // construction: there is no profile_id input to tamper with.
@@ -26,7 +26,7 @@ export type ShareResult =
 export async function createShareLinkAction(
   formData: FormData
 ): Promise<ShareResult> {
-  const { login, profile } = requireSession();
+  const { login, profile } = requireWriteAccess();
 
   const fields = normalizeShareFields(
     formData.getAll("field").map((v) => String(v))
@@ -58,7 +58,7 @@ export async function createShareLinkAction(
 export async function revokeShareLinkAction(
   formData: FormData
 ): Promise<ShareResult> {
-  const { login, profile } = requireSession();
+  const { login, profile } = requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return { ok: false, error: "Unknown link." };
 

@@ -158,3 +158,44 @@ insMerge.run(PROFILE_ID, MERGE_DATE, "Journal merge dupe", 42, null);
 console.log(
   "e2e: seeded integration_sync_events (strava failing) + a cross-source duplicate activity pair + a same-day manual-merge pair"
 );
+
+// ── Unified import-feed fixtures (issue #208 / #212) ──────────────────────────
+// The Data → Review feed merges background syncs with uploaded documents and
+// pasted/CSV jobs. Plant one of each so the feed proves it renders every stream,
+// not just integration syncs. Synthetic filenames/content only — no real PHI.
+// Clear prior e2e fixtures first so re-seeding stays idempotent.
+db.prepare(
+  `DELETE FROM medical_documents WHERE profile_id = ? AND filename IN ('e2e-labs.pdf', 'e2e-broken.txt')`
+).run(PROFILE_ID);
+db.prepare(
+  `DELETE FROM import_jobs WHERE profile_id = ? AND summary = 'e2e: 4 readings'`
+).run(PROFILE_ID);
+
+// A successfully-extracted document (7 records) — links to its /import/[id] detail.
+db.prepare(
+  `INSERT INTO medical_documents
+     (profile_id, filename, stored_path, mime_type, size_bytes, doc_type,
+      extraction_status, extracted_count, uploaded_at)
+   VALUES (?, 'e2e-labs.pdf', '', 'application/pdf', 4096, 'Lab report',
+           'done', 7, '2026-07-08 12:00:00')`
+).run(PROFILE_ID);
+// A rejected upload (issue #58 magic-byte / unsupported): inserted straight into a
+// terminal 'failed' state, so the feed must still surface it.
+db.prepare(
+  `INSERT INTO medical_documents
+     (profile_id, filename, stored_path, mime_type, size_bytes,
+      extraction_status, extraction_error, uploaded_at)
+   VALUES (?, 'e2e-broken.txt', '', 'text/plain', 12,
+           'failed', 'Unsupported file type.', '2026-07-08 11:30:00')`
+).run(PROFILE_ID);
+// A pasted/CSV import job awaiting review.
+db.prepare(
+  `INSERT INTO import_jobs
+     (profile_id, type, status, summary, created_at, updated_at)
+   VALUES (?, 'biomarkers', 'ready', 'e2e: 4 readings',
+           '2026-07-08 11:00:00', '2026-07-08 11:00:00')`
+).run(PROFILE_ID);
+
+console.log(
+  "e2e: seeded integration_sync_events (strava failing) + a cross-source duplicate activity pair + import-feed document/job fixtures"
+);

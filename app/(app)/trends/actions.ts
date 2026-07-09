@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { requireSession } from "@/lib/auth";
+import { requireWriteAccess } from "@/lib/auth";
 import { isTrainingRestricted } from "@/lib/age-gate";
 import {
   getTrendPins,
@@ -30,7 +30,7 @@ import { isRealIsoDate } from "@/lib/date";
 // The Trends page hides this tab entirely for age-restricted profiles, so the
 // generate form is only ever rendered for eligible profiles.
 export async function generateForDate(formData: FormData) {
-  const { login, profile } = requireSession();
+  const { login, profile } = requireWriteAccess();
   // Re-check the age gate on the write path: the Insights tab (and its generate
   // form) is spliced out of the UI for age-restricted profiles, but a direct
   // POST would otherwise still run the AI work. Bounce to the dashboard exactly
@@ -55,7 +55,7 @@ export async function generateForDate(formData: FormData) {
 // and resurfaces). Guarded to the digest namespace; profile-scoped via
 // dismissFinding.
 export async function dismissDigest(formData: FormData) {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const dedupeKey = String(formData.get("dedupe_key") ?? "").trim();
   if (!dedupeKey.startsWith("digest:")) return;
   dismissFinding(profile.id, dedupeKey);
@@ -67,7 +67,7 @@ export async function dismissDigest(formData: FormData) {
 // trajectory namespace (like dismissDigest) so this action can only ever silence a
 // trajectory key; profile-scoped via dismissFinding.
 export async function dismissTrajectory(formData: FormData) {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const dedupeKey = String(formData.get("dedupe_key") ?? "").trim();
   if (!dedupeKey.startsWith("trajectory:")) return;
   dismissFinding(profile.id, dedupeKey);
@@ -78,9 +78,9 @@ export async function dismissTrajectory(formData: FormData) {
 // The pin key ("metric:weight" | "bio:LDL Cholesterol") toggles in the per-profile
 // `trend_pins` list; pinned tiles render first on the Overview. profileId is
 // resolved from the session — any login acting as the profile may pin (it's
-// per-profile data), so this is requireSession, not requireAdmin.
+// per-profile data), so this is requireWriteAccess, not requireAdmin.
 export async function toggleTrendPin(formData: FormData) {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const key = String(formData.get("key") ?? "").trim();
   if (!key) return;
   setTrendPins(profile.id, togglePin(getTrendPins(profile.id), key));
@@ -109,10 +109,10 @@ function paramsFromForm(formData: FormData, pins: string[]): TrendViewParams {
 }
 
 // Saved views (issue #212, Phase 3). Save the current hub state under a name for
-// the active profile — per-profile data, so requireSession (any login acting as
+// the active profile — per-profile data, so requireWriteAccess (any login acting as
 // the profile may save), not requireAdmin. Re-saving the same name overwrites it.
 export async function saveTrendView(formData: FormData) {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const name = String(formData.get("name") ?? "").trim();
   if (!name) return;
   const params = paramsFromForm(formData, getTrendPins(profile.id));
@@ -125,7 +125,7 @@ export async function saveTrendView(formData: FormData) {
 
 // Delete a saved view by name.
 export async function deleteTrendView(formData: FormData) {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const name = String(formData.get("name") ?? "").trim();
   if (!name) return;
   setTrendViews(profile.id, deleteView(getTrendViews(profile.id), name));
@@ -137,7 +137,7 @@ export async function deleteTrendView(formData: FormData) {
 // vocabulary the DateRangeControl / CompareControls already read. Unknown name is a
 // no-op back to /trends.
 export async function applyTrendView(formData: FormData) {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const name = String(formData.get("name") ?? "").trim();
   const view = name ? findView(getTrendViews(profile.id), name) : null;
   if (!view) redirect("/trends");

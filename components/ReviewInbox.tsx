@@ -1,12 +1,13 @@
 import Link from "next/link";
-import { IconAlertTriangle, IconCircleCheck } from "@tabler/icons-react";
+import { IconAlertTriangle } from "@tabler/icons-react";
 import type { IntegrationSyncEvent, IntegrationId } from "@/lib/types";
 import type { UnitPrefs } from "@/lib/settings";
 import { getIntegration } from "@/lib/integrations/registry";
-import { formatWindow, formatSplitLabel } from "@/lib/integrations/sync-log";
+import type { FeedEntry } from "@/lib/import-feed";
 import RelativeTime from "@/components/RelativeTime";
 import RawPayloadViewer from "@/components/RawPayloadViewer";
 import DuplicateReview from "@/components/DuplicateReview";
+import ImportFeed from "@/components/ImportFeed";
 import type {
   ActivityDupRow,
   BodyMetricConflictRow,
@@ -16,12 +17,12 @@ import type {
   BodyMetricConflictPair,
 } from "@/lib/import-review/detect";
 
-// Data → Review: a per-profile inbox for background integration imports.
+// Data → Review: the single "all my imported data" surface for a profile.
 // Surfaces (a) integrations that are currently failing ("Needs attention"),
 // (b) DETECTED duplicate/conflict pairs with merge/keep-both/dismiss actions
-// (issue #10, Phase 2), and (c) a newest-first feed of recent syncs with their
-// written/skipped counts and data window. Server component — the page reads
-// everything via lib/queries and hands it in.
+// (issue #10, Phase 2), and (c) one newest-first feed (<ImportFeed>) that merges
+// every import stream — background syncs, uploaded documents, and paste/CSV jobs.
+// Server component — the page reads everything via lib/queries and hands it in.
 
 function providerName(id: string): string {
   return getIntegration(id as IntegrationId)?.name ?? id;
@@ -32,36 +33,20 @@ function providerHref(id: string): string | null {
   return getIntegration(id as IntegrationId) ? `/integrations/${id}` : null;
 }
 
-function CountBits({ ev }: { ev: IntegrationSyncEvent }) {
-  const { primary, muted } = formatSplitLabel(ev);
-  const skipped = ev.skipped ?? 0;
-  return (
-    <>
-      <span
-        className={muted ? "text-slate-400 dark:text-slate-500" : undefined}
-      >
-        {primary}
-      </span>
-      {skipped > 0 && (
-        <span className="text-amber-600 dark:text-amber-400">
-          {" "}
-          · {skipped} skipped
-        </span>
-      )}
-    </>
-  );
-}
-
 export default function ReviewInbox({
   issues,
-  recent,
+  feed,
+  knownNames,
   activityPairs = [],
   bodyMetricPairs = [],
   units,
   isAdmin = false,
 }: {
   issues: IntegrationSyncEvent[];
-  recent: IntegrationSyncEvent[];
+  // The unified import feed (syncs + documents + paste jobs), newest-first.
+  feed: FeedEntry[];
+  // The active profile's own name(s), for the document provenance-mismatch flag.
+  knownNames: (string | null | undefined)[];
   // Detected, still-unresolved duplicate/conflict pairs (issue #10).
   activityPairs?: ActivityDupPair<ActivityDupRow>[];
   bodyMetricPairs?: BodyMetricConflictPair<BodyMetricConflictRow>[];
@@ -128,57 +113,7 @@ export default function ReviewInbox({
         </div>
       )}
 
-      <div className="card">
-        <div className="mb-1">
-          <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-            Recent imports
-          </h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
-            What your connected devices and services have synced, newest first.
-          </p>
-        </div>
-        {recent.length === 0 ? (
-          <p className="py-6 text-center text-sm text-slate-500 dark:text-slate-400">
-            No imports yet. Connect a device or service on the Import tab to
-            sync data automatically.
-          </p>
-        ) : (
-          <ul className="mt-3 divide-y divide-black/5 dark:divide-white/5">
-            {recent.map((ev) => (
-              <li
-                key={ev.id}
-                className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5"
-              >
-                {ev.ok ? (
-                  <IconCircleCheck
-                    className="h-4 w-4 shrink-0 text-emerald-500"
-                    stroke={1.75}
-                  />
-                ) : (
-                  <IconAlertTriangle
-                    className="h-4 w-4 shrink-0 text-rose-500"
-                    stroke={1.75}
-                  />
-                )}
-                <span className="font-medium text-slate-800 dark:text-slate-100">
-                  {providerName(ev.provider)}
-                </span>
-                <span className="text-sm text-slate-500 dark:text-slate-400">
-                  <CountBits ev={ev} />
-                </span>
-                <span className="text-sm text-slate-400 dark:text-slate-500">
-                  {formatWindow(ev.window_start, ev.window_end)}
-                </span>
-                <RelativeTime
-                  value={ev.at}
-                  className="ml-auto text-xs text-slate-400 dark:text-slate-500"
-                />
-                {isAdmin && ev.raw_ref && <RawPayloadViewer id={ev.id} />}
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+      <ImportFeed feed={feed} knownNames={knownNames} isAdmin={isAdmin} />
     </div>
   );
 }

@@ -1,5 +1,5 @@
 "use server";
-import { requireSession } from "@/lib/auth";
+import { requireWriteAccess } from "@/lib/auth";
 
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
@@ -44,7 +44,7 @@ function upsertManualSample(
 }
 
 export async function addVitals(formData: FormData) {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const date = String(formData.get("date") ?? "").trim();
   if (!isRealIsoDate(date)) return;
 

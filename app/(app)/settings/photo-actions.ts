@@ -3,7 +3,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import { revalidatePath } from "next/cache";
-import { requireSession, canAccessProfile } from "@/lib/auth";
+import {
+  requireSession,
+  requireWriteAccess,
+  canAccessProfile,
+} from "@/lib/auth";
 import { db } from "@/lib/db";
 import { MAX_PHOTO_BYTES, MIME_TO_EXT, PHOTO_ROOT } from "@/lib/profile-photo";
 
@@ -51,6 +55,11 @@ function revalidatePhotoSurfaces() {
 export async function uploadProfilePhoto(
   formData: FormData
 ): Promise<PhotoResult> {
+  // A photo change is a write. requireWriteAccess() gates the caller's ACTIVE
+  // profile: a member may only ever target their own active profile (see
+  // resolveTargetProfile), so an active-profile write check is exactly right;
+  // admins bypass grants and may target any profile from the Family screen.
+  requireWriteAccess();
   const target = resolveTargetProfile(formData);
   if (!target.ok) return target;
   const profileId = target.profileId;
@@ -111,6 +120,8 @@ export async function uploadProfilePhoto(
 export async function removeProfilePhoto(
   formData: FormData
 ): Promise<PhotoResult> {
+  // A photo change is a write — same active-profile gate as the upload path.
+  requireWriteAccess();
   const target = resolveTargetProfile(formData);
   if (!target.ok) return target;
   const profileId = target.profileId;

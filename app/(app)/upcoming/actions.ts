@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireSession } from "@/lib/auth";
+import { requireWriteAccess } from "@/lib/auth";
 import { today } from "@/lib/db";
 import {
   markDoseTaken,
@@ -17,7 +17,7 @@ import { shiftDateStr } from "@/lib/date";
 // path the Telegram callback uses — so a dose confirmed here reflects everywhere.
 // Marking-only (never un-marks): a taken dose simply drops off the Upcoming list.
 export async function markTaken(formData: FormData) {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const doseId = Number(formData.get("dose_id"));
   if (!doseId) return;
   markDoseTaken(profile.id, doseId, null, today(profile.id));
@@ -35,7 +35,7 @@ const SNOOZE_MAX_DAYS = 3650;
 // (profile_id, signal_key) index so re-snoozing — or snoozing a previously-
 // dismissed item — just moves the date and clears any dismiss). Profile-scoped.
 export async function snoozeItem(formData: FormData) {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const signalKey = String(formData.get("signal_key") ?? "").trim();
   const days = Number(formData.get("days"));
   if (!signalKey || !Number.isFinite(days) || days < 1) return;
@@ -51,7 +51,7 @@ export async function snoozeItem(formData: FormData) {
 // Delegates to the shared writer (upserts, clearing any snooze so a dismiss always
 // wins). Profile-scoped.
 export async function dismissItem(formData: FormData) {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const signalKey = String(formData.get("signal_key") ?? "").trim();
   if (!signalKey) return;
   dismissFinding(profile.id, signalKey);
@@ -61,7 +61,7 @@ export async function dismissItem(formData: FormData) {
 // Restore a snoozed/dismissed item: drop its suppression row so it reappears on
 // Upcoming immediately. Profile-scoped.
 export async function restoreItem(formData: FormData) {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const signalKey = String(formData.get("signal_key") ?? "").trim();
   if (!signalKey) return;
   restoreFinding(profile.id, signalKey);

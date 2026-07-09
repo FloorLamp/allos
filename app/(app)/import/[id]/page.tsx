@@ -170,10 +170,10 @@ export default function ImportDetailPage({
       <ProviderDatalist names={getProviderNames()} />
 
       <Link
-        href="/data?section=import"
+        href="/data?section=review"
         className="mb-4 inline-flex items-center gap-1 text-sm text-brand-700 hover:underline dark:text-brand-400"
       >
-        <IconArrowLeft className="h-4 w-4" /> Back to import log
+        <IconArrowLeft className="h-4 w-4" /> Back to Review
       </Link>
 
       <PageHeader

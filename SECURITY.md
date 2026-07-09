@@ -60,7 +60,32 @@ The `detail` and `target` fields hold **identifiers only — never medical
 content**. Records are retained **90 days** by default and pruned by the hourly
 maintenance tick. The log spans every profile, so the viewer is **admin-only**;
 login/profile ids are kept even after the referent is deleted (no foreign key),
-so the trail survives account deletion.
+so the trail survives account deletion. A `grant.update` event's `detail` records
+the profile-id diff **including the access level** (e.g. `+2:read`, `~3:write`,
+`-4`), so a change from read-only to read/write is itself auditable.
+
+## Access control
+
+Access is enforced on the **server**, never by the UI. Two independent checks
+gate every request:
+
+- **Profile isolation.** Every profile-owned table carries a `profile_id`, and
+  every query filtering it is scoped to the acting profile — a member only ever
+  sees the profiles granted to them (admins see all). A pure source-scanning test
+  fails the build if an owned-table query omits `profile_id`.
+- **Grant level (read vs write).** Each `login_profiles` grant carries an
+  `access` level — `write` (read + edit — the default and historical behavior) or
+  `read` (view-only). A member acting on a read-only-granted profile may browse
+  everything but **cannot mutate**: every mutating Server Action calls
+  `requireWriteAccess()` (in `lib/auth.ts`), which resolves the session and
+  redirects a read-only grant before any write runs. Admins bypass grants and are
+  always read/write. Uploads and AI extraction are writes (blocked); creating a
+  share link or an outbound calendar/ingest token is a write (it mints new access,
+  so it is blocked); reads, exports, and prints are allowed. A source-scanning
+  test (`lib/__tests__/actions-write-access.test.ts`) fails the build if a
+  mutating action forgets the guard — the check can't silently regress as new
+  actions are added. Hidden edit affordances in the UI are a convenience only; the
+  server guard is the authority.
 
 ## Hardening posture
 

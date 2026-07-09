@@ -22,7 +22,7 @@
 - **Undo delete** — deleting an activity, body-metrics entry, biomarker record, or supplement/medication offers a one-tap **Undo** toast; the row (and its children) is held for 24 hours and restored intact if you undo, then purged
 - **AI activity log** — every AI call and failure recorded to a file and streamed live in Settings → AI logs
 - **Audit log** — a durable record of who accessed or modified which profile's data (logins in/out, profile switches, medical-file and share-link views, document uploads/deletes, and admin/family changes), reviewable with filters under **Settings → Audit** (admin only); identifiers only, never medical content, retained 90 days
-- **Data hub** — bring data in (upload documents, paste logs, connect a device or service) under **Data → Import**, review what background integrations synced under **Data → Review** (recent imports; **possible duplicates** — a Strava run and a manual/Health Connect run on the same day, two same-source imports of one workout (upstream double-feeding, e.g. Strava ingesting the same session from both Garmin and Health Connect), or two body-metric rows that would double-count, detected and resolved by **Merge**, **Keep both**, or **Dismiss**, with the decision remembered so a later re-sync won't undo it; plus any integration that's currently failing — all surfaced with a badge on the profile menu; admins can also expand a per-sync **View raw** to inspect the exact provider payload), then browse and export everything you've logged under **Data → Manage & Export**; integrations available today are **Google Health Connect** and **Strava** (Garmin planned)
+- **Data hub** — bring data in (upload documents, paste logs, connect a device or service) under **Data → Import**, then see everything that has ever imported in one place under **Data → Review**: a single chronological **feed** that merges uploaded documents, pasted/CSV jobs, and background integration syncs (each entry showing what it produced and linking to its detail/verify view), plus **possible duplicates** — a Strava run and a manual/Health Connect run on the same day, two same-source imports of one workout (upstream double-feeding, e.g. Strava ingesting the same session from both Garmin and Health Connect), or two body-metric rows that would double-count, detected across sources and resolved by **Merge**, **Keep both**, or **Dismiss**, with the decision remembered so a later re-sync won't undo it; plus any integration that's currently failing — all surfaced with a badge on the profile menu (admins can also expand a per-sync **View raw** to inspect the exact provider payload). Finally, browse and export everything you've logged under **Data → Manage & Export**; integrations available today are **Google Health Connect** and **Strava** (Garmin planned)
 
 ## Emergency card (offline)
 
@@ -94,6 +94,14 @@ rename profiles, create logins, reset passwords, and grant each member login
 access to specific profiles (admins see all automatically). Any login can
 change its own password under **Settings → Preferences**.
 
+Each grant carries an **access level**: **read & write** (the default — the
+member can view _and_ edit that profile) or **read-only** (view everything, but
+can't add, edit, upload, or delete). Pick the level per profile in the
+**Settings → Family** access matrix. A read-only member gets a "read-only" badge
+in the profile menu, and the boundary is enforced on the server — every mutating
+action is rejected for a read-only grant, not merely hidden in the UI. Admins
+always have full read/write on every profile.
+
 ## Configuration
 
 Configuration is read from environment variables. The easiest way is a
@@ -145,7 +153,9 @@ coaching analysis, then use **Trends → Insights → Generate analysis**.
 
 Uploaded medical documents (**Data → Import**) are extracted into
 structured records by the same API; without a key the file is still stored but
-extraction is skipped.
+extraction is skipped. Each upload then appears in the **Data → Review** feed —
+click through to verify what it produced, reprocess it, or see the extraction
+error.
 
 ### Local / self-hosted inference (zero external egress)
 

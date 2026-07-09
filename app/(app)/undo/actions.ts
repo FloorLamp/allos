@@ -1,6 +1,6 @@
 "use server";
 
-import { requireSession } from "@/lib/auth";
+import { requireWriteAccess } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { restoreDeletedRow } from "@/lib/undo-delete-db";
 
@@ -12,7 +12,7 @@ import { restoreDeletedRow } from "@/lib/undo-delete-db";
 // restore re-inserts with NEW ids, so a broad layout revalidate refreshes wherever
 // the row now belongs.
 export async function undoDelete(undoId: number): Promise<{ ok: boolean }> {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   if (!Number.isInteger(undoId) || undoId <= 0) return { ok: false };
   const ok = restoreDeletedRow(profile.id, undoId);
   if (ok) revalidatePath("/", "layout");
