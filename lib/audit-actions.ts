@@ -33,6 +33,12 @@ export const AUDIT_ACTIONS = {
   // a mint that kills the old token); detail says which.
   tokenMint: "token.mint",
   tokenRevoke: "token.revoke",
+  // Full-account data export (issue #18): a single portable bundle of the active
+  // profile's entire record (export.full), and the clinical-passport FHIR bundle
+  // download (export.fhir). Exporting everything is exactly what an audit log wants
+  // to capture; the target records how many rows/files/resources left the app.
+  exportFull: "export.full",
+  exportFhir: "export.fhir",
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
