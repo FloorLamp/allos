@@ -708,7 +708,10 @@ function GrantsRow({
   }
 
   return (
-    <div className="rounded-lg border border-black/10 p-3 dark:border-white/10">
+    <div
+      className="rounded-lg border border-black/10 p-3 dark:border-white/10"
+      data-testid={`grant-row-${login.username}`}
+    >
       <div className="mb-2 font-medium text-slate-800 dark:text-slate-100">
         {login.username}
       </div>

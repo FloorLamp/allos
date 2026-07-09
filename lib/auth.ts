@@ -3,6 +3,8 @@ import crypto from "node:crypto";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { db } from "./db";
+import { recordAudit } from "./audit";
+import { AUDIT_ACTIONS } from "./audit-actions";
 import { SESSION_COOKIE, SESSION_COOKIE_SECURE } from "./session-cookie";
 
 // Re-exported so existing importers (the login action, etc.) keep resolving the
@@ -339,4 +341,11 @@ export function setActiveProfile(profileId: number): void {
   db.prepare(
     "UPDATE sessions SET active_profile_id = ? WHERE token_hash = ?"
   ).run(profileId, hashToken(token));
+  // Audit the switch — the login now acts as `profileId` (the target).
+  recordAudit({
+    loginId: session.login.id,
+    profileId,
+    action: AUDIT_ACTIONS.profileSwitch,
+    target: String(profileId),
+  });
 }

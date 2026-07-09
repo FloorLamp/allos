@@ -8,6 +8,8 @@ import {
   type ShareField,
 } from "@/lib/share-links";
 import { createShareLink, revokeShareLink } from "@/lib/share-links-db";
+import { recordAudit } from "@/lib/audit";
+import { AUDIT_ACTIONS } from "@/lib/audit-actions";
 
 // Share-link management for the profile passport (issue #105). Every action is
 // gated by requireSession() and operates ONLY on the session's active profile
@@ -35,7 +37,19 @@ export async function createShareLinkAction(
   const ttl = String(formData.get("ttl") ?? "");
   const expiresAt = expiresAtFor(ttl, new Date());
 
-  const { token } = createShareLink(profile.id, login.id, fields, expiresAt);
+  const { id, token } = createShareLink(
+    profile.id,
+    login.id,
+    fields,
+    expiresAt
+  );
+  // Audit the creation by the link's id — NEVER the raw token (a live secret).
+  recordAudit({
+    loginId: login.id,
+    profileId: profile.id,
+    action: AUDIT_ACTIONS.shareLinkCreate,
+    target: String(id),
+  });
 
   revalidatePath("/profile");
   return { ok: true, path: `/share/${token}` };
@@ -44,13 +58,19 @@ export async function createShareLinkAction(
 export async function revokeShareLinkAction(
   formData: FormData
 ): Promise<ShareResult> {
-  const { profile } = requireSession();
+  const { login, profile } = requireSession();
   const id = Number(formData.get("id"));
   if (!id) return { ok: false, error: "Unknown link." };
 
   const revoked = revokeShareLink(profile.id, id);
   if (!revoked)
     return { ok: false, error: "Link not found or already revoked." };
+  recordAudit({
+    loginId: login.id,
+    profileId: profile.id,
+    action: AUDIT_ACTIONS.shareLinkRevoke,
+    target: String(id),
+  });
 
   revalidatePath("/profile");
   return { ok: true, message: "Link revoked." };

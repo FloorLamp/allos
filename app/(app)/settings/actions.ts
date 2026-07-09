@@ -51,6 +51,8 @@ import { normalizePublicUrl } from "@/lib/public-url";
 import { dispatch } from "@/lib/notifications";
 import { setWebhook, deleteWebhook } from "@/lib/notifications/telegram";
 import type { ReproductiveStatus, Sex } from "@/lib/types";
+import { recordAudit } from "@/lib/audit";
+import { AUDIT_ACTIONS } from "@/lib/audit-actions";
 import { createLogger } from "@/lib/log";
 
 const log = createLogger("settings");
@@ -222,6 +224,11 @@ export async function changeOwnPassword(
     login.id
   );
   destroyOtherSessionsForCurrent(login.id);
+  recordAudit({
+    loginId: login.id,
+    action: AUDIT_ACTIONS.passwordChange,
+    target: String(login.id),
+  });
   return { ok: true, message: "Password changed. Other devices signed out." };
 }
 
