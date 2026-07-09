@@ -28,3 +28,16 @@ for (const route of ROUTES) {
     await expect(page.getByText("Application error")).toHaveCount(0);
   });
 }
+
+// #38: a refill-tracked supplement (seed sets Magnesium Glycinate's on-hand
+// supply) shows an "≈N days left" estimate that names its basis — the actual
+// taken-log rate vs the scheduled-dose-count fallback. Asserts the rendered
+// days-left badge carries both the days text and the basis label.
+test("supplements page shows a refill days-left estimate with its basis (#38)", async ({
+  page,
+}) => {
+  await page.goto("/medicine");
+  const badge = page.getByTestId("refill-days-left").first();
+  await expect(badge).toContainText(/days?\s+left/);
+  await expect(badge).toContainText(/based on (your last 30 days|schedule)/);
+});

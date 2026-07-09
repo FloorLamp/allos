@@ -9,6 +9,66 @@
 // remains, leaving time to reorder a prescription before running out.
 export const DEFAULT_LOW_SUPPLY_DAYS = 10;
 
+// Consumption-rate estimation (issue #38). Doses/day was historically approximated
+// as the COUNT of scheduled dose rows, which treats a workout-only / situational
+// supplement as if it were taken daily and makes "≈N days left" run out (and the
+// refill nudge fire) far too early. Instead we prefer the ACTUAL taken-log rate:
+// confirmed doses over a trailing window ÷ the window length. We fall back to the
+// schedule count only when history is too thin to trust.
+export const RATE_WINDOW_DAYS = 30; // trailing window for the actual-rate average
+export const MIN_HISTORY_DAYS = 14; // need at least this much history to trust it
+
+// How a doses/day rate was derived: from the trailing taken-log window
+// ('history') or from the scheduled-dose-count fallback ('schedule').
+export type RateBasis = "history" | "schedule";
+
+export interface DoseRate {
+  dosesPerDay: number;
+  basis: RateBasis;
+}
+
+// Derive a consumption rate (doses/day) for one item from its actual intake
+// history, falling back to the scheduled-dose-count estimate when history is thin.
+// Pure — the caller gathers the DB inputs:
+//   - confirmedInWindow: confirmed (taken) doses logged in the trailing window
+//   - daysSinceFirstLog: whole days since the item's FIRST-ever log (null = none)
+//   - scheduleDosesPerDay: fallback rate ≈ number of scheduled dose rows
+// Fallback (basis 'schedule') when history is too thin to average meaningfully:
+// the item has logged for fewer than `minHistoryDays`, or has zero confirmations
+// in the window (e.g. paused, or all logs older than the window). Otherwise the
+// rate is confirmedInWindow over the EFFECTIVE window (basis 'history'): the
+// window capped at how long the item has actually been logged, so an item first
+// logged 15 days ago divides by 15, not 30. Dividing a young item's count by the
+// full window would halve its rate and overstate days-left, making the low-supply
+// nudge fire late (running out unwarned) — worse than the old too-early bias.
+export function consumptionRate(
+  confirmedInWindow: number,
+  daysSinceFirstLog: number | null,
+  scheduleDosesPerDay: number,
+  windowDays: number = RATE_WINDOW_DAYS,
+  minHistoryDays: number = MIN_HISTORY_DAYS
+): DoseRate {
+  const thinHistory =
+    daysSinceFirstLog == null ||
+    daysSinceFirstLog < minHistoryDays ||
+    confirmedInWindow <= 0 ||
+    !(windowDays > 0);
+  if (thinHistory) {
+    return { dosesPerDay: scheduleDosesPerDay, basis: "schedule" };
+  }
+  // +1: a first log `n` days ago spans n+1 calendar days of tracking.
+  const effectiveDays = Math.min(windowDays, daysSinceFirstLog + 1);
+  return { dosesPerDay: confirmedInWindow / effectiveDays, basis: "history" };
+}
+
+// Short, human-facing note explaining which basis a days-left estimate used, for
+// the "≈N days left" tooltip/label on the supplements page.
+export function refillBasisLabel(basis: RateBasis): string {
+  return basis === "history"
+    ? "based on your last 30 days"
+    : "based on schedule";
+}
+
 // Units consumed per day = doses/day × units/dose. Guards against nonsense inputs
 // (a non-positive rate means "can't estimate", surfaced as null upstream).
 export function unitsPerDay(dosesPerDay: number, qtyPerDose: number): number {

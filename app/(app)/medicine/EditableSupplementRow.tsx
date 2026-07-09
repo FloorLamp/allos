@@ -8,7 +8,12 @@ import {
   adherenceSummary,
   type AdherenceDot,
 } from "@/lib/supplement-adherence";
-import { daysOfSupplyLeft, isLowSupply } from "@/lib/refill";
+import {
+  daysOfSupplyLeft,
+  isLowSupply,
+  refillBasisLabel,
+  type DoseRate,
+} from "@/lib/refill";
 import SupplementForm from "./SupplementForm";
 import OverflowMenu, {
   MENU_ITEM,
@@ -35,6 +40,7 @@ export default function EditableSupplementRow({
   due,
   strip,
   trainingRestricted,
+  refillRate,
 }: {
   supplement: Supplement;
   dose: SupplementDose;
@@ -45,6 +51,7 @@ export default function EditableSupplementRow({
   due: boolean;
   strip: AdherenceDot[];
   trainingRestricted: boolean;
+  refillRate: DoseRate | null;
 }) {
   const [editing, setEditing] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -75,15 +82,19 @@ export default function EditableSupplementRow({
   // bottom of the card. The streak only surfaces once it's worth celebrating.
   const adherence = adherenceSummary(strip);
 
-  // Refill tracking (#103 Phase B): "≈N days left" from on-hand quantity, dosed
-  // roughly once per dose row per day. Only shown when the item opts into
-  // quantity tracking (quantity_on_hand set).
+  // Refill tracking (#103 Phase B): "≈N days left" from on-hand quantity. The
+  // doses/day rate comes from the shared refill estimate (#38) — the ACTUAL
+  // taken-log rate when the item has enough history, else the scheduled-dose-count
+  // estimate — with the basis surfaced in the badge's tooltip. Only shown when the
+  // item opts into quantity tracking (quantity_on_hand set).
+  const dosesPerDay = refillRate?.dosesPerDay ?? doses.length;
   const daysLeft = daysOfSupplyLeft(
     s.quantity_on_hand,
     s.qty_per_dose,
-    doses.length
+    dosesPerDay
   );
   const lowSupply = isLowSupply(daysLeft);
+  const refillBasis = refillBasisLabel(refillRate?.basis ?? "schedule");
 
   // Medication identity (#103 Phase C): the stricter affordances (Rx/PRN/escalate
   // badges above, prescriber/pharmacy/Rx line below).
@@ -177,15 +188,19 @@ export default function EditableSupplementRow({
             )}
             {daysLeft !== null && (
               <span
+                data-testid="refill-days-left"
                 className={`badge ${
                   lowSupply
                     ? "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
                     : "bg-slate-100 text-slate-500 dark:bg-ink-800 dark:text-slate-400"
                 }`}
-                title="Estimated days of supply remaining"
+                title={`Estimated days of supply remaining — ${refillBasis}`}
               >
                 {lowSupply ? "Low · " : ""}≈{daysLeft} day
                 {daysLeft === 1 ? "" : "s"} left
+                <span className="ml-1 font-normal opacity-70">
+                  · {refillBasis}
+                </span>
               </span>
             )}
             {isMed && (

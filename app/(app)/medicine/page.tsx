@@ -4,6 +4,7 @@ import {
   getTakenDoseIds,
   getSupplementLogsInRange,
   getSupplementPairs,
+  getRefillRates,
   getPendingSuggestions,
   getActivitiesByDate,
   getActivityDates,
@@ -209,6 +210,11 @@ export default function SupplementsPage() {
   const pairsFor = (suppId: number) =>
     pairs.filter((p) => p.a_id === suppId || p.b_id === suppId);
 
+  // Refill "≈N days left" rate per item (#38): the actual taken-log rate when the
+  // item has enough history, else the scheduled-dose-count estimate. Threaded to
+  // each row so the badge reflects real consumption and can name its basis.
+  const refillRates = getRefillRates(profile.id);
+
   const renderRow = (it: Item, due: boolean) => (
     <EditableSupplementRow
       key={it.dose.id}
@@ -221,6 +227,7 @@ export default function SupplementsPage() {
       due={due}
       strip={stripFor(it.supplement)}
       trainingRestricted={trainingRestricted}
+      refillRate={refillRates.get(it.supplement.id) ?? null}
     />
   );
 

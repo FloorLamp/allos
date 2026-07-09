@@ -36,7 +36,12 @@ import {
   getActiveSituations,
 } from "../settings";
 import type { UpcomingItem } from "../upcoming";
-import { getSupplements, getSupplementDoses, getTakenDoseIds } from "./intake";
+import {
+  getSupplements,
+  getSupplementDoses,
+  getTakenDoseIds,
+  getRefillRates,
+} from "./intake";
 import { getScheduledAppointments } from "./appointments";
 import {
   getActivitiesByDate,
@@ -94,24 +99,24 @@ function doseItems(profileId: number, today: string): UpcomingItem[] {
 }
 
 // Tracked meds/supplements running low on supply (reuses lib/refill's pure math;
-// doses/day ≈ the number of scheduled dose rows, matching the refill notifier).
-// The estimated run-out date (today + days-left) drives the band, so an item with
-// 0 days left lands in Today and a week of runway lands in This week.
+// doses/day comes from the shared getRefillRates — the ACTUAL taken-log rate when
+// history is thick enough, else the scheduled-dose-count estimate — matching the
+// supplements page and refill notifier). The estimated run-out date (today +
+// days-left) drives the band, so an item with 0 days left lands in Today and a
+// week of runway lands in This week.
 function refillItems(profileId: number, today: string): UpcomingItem[] {
   const tracked = getSupplements(profileId).filter(
     (s) => s.active && s.quantity_on_hand != null
   );
   if (tracked.length === 0) return [];
-  const doseCount = new Map<number, number>();
-  for (const d of getSupplementDoses(profileId))
-    doseCount.set(d.supplement_id, (doseCount.get(d.supplement_id) ?? 0) + 1);
+  const rates = getRefillRates(profileId);
 
   const items: UpcomingItem[] = [];
   for (const s of tracked) {
     const daysLeft = daysOfSupplyLeft(
       s.quantity_on_hand,
       s.qty_per_dose,
-      doseCount.get(s.id) ?? 0
+      rates.get(s.id)?.dosesPerDay ?? 0
     );
     if (!isLowSupply(daysLeft, DEFAULT_LOW_SUPPLY_DAYS) || daysLeft == null)
       continue;
