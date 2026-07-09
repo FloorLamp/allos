@@ -1,14 +1,21 @@
 // "What's trending" digest for the Trends hub (issue #212, Phase 2). Given a set
 // of windowed, date-keyed numeric series (body/training metrics and biomarkers),
 // auto-detect which ones are actually MOVING over the selected window — direction
-// + magnitude (first-vs-last) — and, for biomarkers carrying a canonical
-// reference range, whether the move crossed INTO or OUT OF range. Ranks by
-// significance and returns the top few with human labels ("Resting HR ↓ 6% over
-// 90d", "LDL ↑ into high range"). Pure and exhaustively unit-tested; range logic
-// reuses referenceStatus from lib/reference-range so it agrees with the biomarker
-// machinery. Flat / insufficient-data series are excluded, never errored.
+// + magnitude — and, for biomarkers carrying a canonical reference range, whether
+// the move crossed INTO or OUT OF range. Ranks by significance and returns the top
+// few with human labels ("Resting HR ↓ 6% over 90d", "LDL ↑ into high range").
+// Pure and exhaustively unit-tested; range logic reuses referenceStatus from
+// lib/reference-range so it agrees with the biomarker machinery. Flat /
+// insufficient-data series are excluded, never errored.
+//
+// Robustness (#37): the magnitude is measured between ROBUST endpoints — the
+// median of the first k and last k readings (k = min(3, floor(n/2))) — not the
+// literal first and last points, so a single noisy endpoint no longer defines the
+// whole trend. For 2–3 point series k collapses to 1, i.e. the exact old
+// first-vs-last behavior.
 
 import { daysBetween, referenceStatus } from "./reference-range";
+import { robustEndpoints } from "./robust-stats";
 import { round } from "./units";
 
 export interface DigestSeries {
@@ -20,9 +27,14 @@ export interface DigestSeries {
   // and in a single unit. Nulls should be filtered out by the caller.
   points: { date: string; value: number }[];
   // Optional plain [low, high] reference range in the SAME unit as `points`, so a
-  // first-vs-last move can be classified as crossing into/out of range. Omit for
-  // metrics without a clinical range (weight, volume, …).
+  // move can be classified as crossing into/out of range. Omit for metrics without
+  // a clinical range (weight, volume, …).
   range?: { low: number | null; high: number | null } | null;
+  // Optional per-series "trending" threshold (fraction), overriding the global
+  // DigestOptions.minPctChange for THIS series. Lets a caller pick a metric-aware
+  // bar — 2% is a real weight move but noise for step counts — instead of one
+  // threshold for everything. Falls back to the global option, then 0.05.
+  minPctChange?: number;
 }
 
 export type RangeShift = "into-range" | "out-of-range" | "through-range" | null;
@@ -31,6 +43,9 @@ export interface TrendItem {
   key: string;
   label: string;
   direction: "up" | "down";
+  // Robust endpoint VALUES (#37): the median of the first k / last k readings, not
+  // the literal first/last points. For 2–3 point series these are the raw
+  // first/last values.
   first: number;
   last: number;
   absChange: number;
@@ -52,7 +67,8 @@ export interface DigestOptions {
   // Max items returned (default 5).
   limit?: number;
   // A move must change by at least this fraction to count as "trending" (default
-  // 0.05 = 5%) — UNLESS it crossed a reference range, which always qualifies.
+  // 0.05 = 5%) — UNLESS it crossed a reference range, which always qualifies. A
+  // per-series DigestSeries.minPctChange overrides this for that series.
   minPctChange?: number;
 }
 
@@ -120,27 +136,34 @@ function buildText(item: Omit<TrendItem, "text">, unitSuffix: string): string {
 
 // Compute the ranked, human-labeled "what's trending" list. Series with fewer
 // than 2 points, or a net change of 0 (flat), are excluded. A move is kept when it
-// changed by at least `minPctChange` OR crossed a reference range. Ties break on
-// the ranking score, then the label for a stable order.
+// changed by at least its threshold (per-series minPctChange, else the global
+// option, else 0.05) OR crossed a reference range. Ties break on the ranking
+// score, then the label for a stable order. The move is measured between ROBUST
+// endpoints (median of first/last k readings) so a single noisy edge point can't
+// invent a trend (#37).
 export function summarizeTrends(
   series: readonly DigestSeries[],
   opts: DigestOptions = {}
 ): TrendItem[] {
   const limit = opts.limit ?? 5;
-  const minPct = opts.minPctChange ?? 0.05;
+  const globalMinPct = opts.minPctChange ?? 0.05;
 
   const items: TrendItem[] = [];
   for (const s of series) {
     const pts = s.points.filter((p) => Number.isFinite(p.value));
     if (pts.length < 2) continue; // insufficient data
-    const first = pts[0].value;
-    const last = pts[pts.length - 1].value;
+    // Robust endpoints: median of the first/last k readings. k = min(3, ⌊n/2⌋)
+    // guarantees the two clusters never overlap; for n = 2..3 it's 1, i.e. the
+    // literal first/last values (unchanged short-series behavior).
+    const k = Math.min(3, Math.floor(pts.length / 2));
+    const { first, last } = robustEndpoints(pts, k);
     const absChange = last - first;
     if (absChange === 0) continue; // flat
     const pctChange = first !== 0 ? absChange / Math.abs(first) : null;
     const { shift, lastStatus } = classifyShift(first, last, s.range);
 
     // Keep only meaningful moves: a big-enough relative change, or a range cross.
+    const minPct = s.minPctChange ?? globalMinPct;
     const relMag = pctChange == null ? 1 : Math.abs(pctChange);
     if (relMag < minPct && shift == null) continue;
 

@@ -53,6 +53,10 @@ export interface TrendSeries {
   // lets the digest classify a move as crossing into/out of range. null for
   // metrics and biomarkers without a resolvable range.
   range: { low: number | null; high: number | null } | null;
+  // Optional metric-aware "trending" threshold (fraction) for the digest (#37):
+  // 2% is a real weight move but noise for training volume. Read by summarizeTrends
+  // as DigestSeries.minPctChange; undefined falls back to the digest default.
+  minPctChange?: number;
 }
 
 export interface TrendOption {
@@ -87,6 +91,10 @@ interface MetricDef {
   href: string;
   decimals: number;
   restricted?: boolean; // a training surface (hidden for age-restricted profiles)
+  // Metric-aware digest "trending" threshold (#37); omitted → digest default
+  // (0.05). Weight barely moves in percent so a low bar is right; volume is
+  // spiky day-to-day so it needs a high one.
+  minPctChange?: number;
 }
 
 // The standard Overview metric tiles, in their default (unpinned) order.
@@ -98,6 +106,7 @@ const METRIC_DEFS: MetricDef[] = [
     color: "#16a34a",
     href: "/trends?tab=body",
     decimals: 1,
+    minPctChange: 0.02, // a 2% weight change is already meaningful
   },
   {
     id: "bodyfat",
@@ -106,6 +115,7 @@ const METRIC_DEFS: MetricDef[] = [
     color: "#a855f7",
     href: "/trends?tab=body",
     decimals: 1,
+    // default 0.05
   },
   {
     id: "resting_hr",
@@ -114,6 +124,7 @@ const METRIC_DEFS: MetricDef[] = [
     color: "#fb923c",
     href: "/trends?tab=body",
     decimals: 0,
+    minPctChange: 0.05, // resting HR is fairly stable; 5% is a genuine shift
   },
   {
     id: "volume",
@@ -123,6 +134,7 @@ const METRIC_DEFS: MetricDef[] = [
     href: "/training",
     decimals: 0,
     restricted: true,
+    minPctChange: 0.15, // training volume swings hugely session-to-session
   },
 ];
 
@@ -178,6 +190,7 @@ export function buildMetricSeries(
     decimals: d.decimals,
     points: filterSeriesByRange(pointsFor(d.id), range),
     range: null,
+    minPctChange: d.minPctChange,
   }));
 }
 

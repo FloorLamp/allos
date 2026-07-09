@@ -103,6 +103,66 @@ describe("projectGoal", () => {
   });
 });
 
+describe("projectGoal — robustness & confidence (#37)", () => {
+  // A clean, steady -1/week loss over six weeks: 90 → 85, last point 2026-02-05.
+  const CLEAN6: ProjectionPoint[] = [
+    { date: "2026-01-01", value: 90 },
+    { date: "2026-01-08", value: 89 },
+    { date: "2026-01-15", value: 88 },
+    { date: "2026-01-22", value: 87 },
+    { date: "2026-01-29", value: 86 },
+    { date: "2026-02-05", value: 85 },
+  ];
+
+  it("flags a short (sub-5-point) projection as low confidence", () => {
+    // LOSS has 4 points — a robust slope off so few readings is still shaky.
+    const p = projectGoal(LOSS, 85, null);
+    expect(p?.status).toBe("reaching");
+    expect(p?.confidence).toBe("low");
+  });
+
+  it("is confident on a longer, tight trend", () => {
+    const p = projectGoal(CLEAN6, 84, null);
+    expect(p?.status).toBe("reaching");
+    expect(p?.confidence).toBe("ok");
+  });
+
+  it("an outlier no longer bends the ETA (Theil–Sen vs old OLS)", () => {
+    // Same steady loss, but the 3rd reading spikes up to 95. OLS would flatten the
+    // slope and hand back a wrong (much later) ETA; Theil–Sen keeps the -1/week
+    // pace, so the projected reach date is identical to the clean series'.
+    const withOutlier: ProjectionPoint[] = [
+      { date: "2026-01-01", value: 90 },
+      { date: "2026-01-08", value: 89 },
+      { date: "2026-01-15", value: 95 }, // outlier spike
+      { date: "2026-01-22", value: 87 },
+      { date: "2026-01-29", value: 86 },
+      { date: "2026-02-05", value: 85 },
+    ];
+    const clean = projectGoal(CLEAN6, 84, null);
+    const outlier = projectGoal(withOutlier, 84, null);
+    expect(outlier?.slopePerDay).toBeCloseTo(clean!.slopePerDay, 6);
+    expect(outlier?.projectedDate).toBe(clean?.projectedDate);
+    expect(outlier?.projectedDate).toBe("2026-02-12");
+  });
+
+  it("flags a widely-scattered trend as low confidence", () => {
+    // Net downward (100 → 80) but the readings zig-zag hard, so the pairwise
+    // slopes scatter more than the median slope's magnitude — direction uncertain.
+    const scattered: ProjectionPoint[] = [
+      { date: "2026-01-01", value: 100 },
+      { date: "2026-01-08", value: 90 },
+      { date: "2026-01-15", value: 100 },
+      { date: "2026-01-22", value: 90 },
+      { date: "2026-01-29", value: 80 },
+    ];
+    const p = projectGoal(scattered, 70, null);
+    expect(p?.status).toBe("reaching");
+    // 5 points, so the "few points" rule doesn't apply — the scatter does.
+    expect(p?.confidence).toBe("low");
+  });
+});
+
 describe("describeEta", () => {
   it("reads as on track within the slack window", () => {
     expect(describeEta(0)).toBe("on track");
