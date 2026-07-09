@@ -551,6 +551,25 @@ export function migrate(db: Database.Database) {
       UNIQUE (profile_id, date)
     );
 
+    -- AI narrative layer (issue #20): weekly/monthly period recaps + lab-trend
+    -- interpretations, stored like daily insights so they persist and can be
+    -- re-read/regenerated. kind distinguishes them (week | month | labs);
+    -- period_end anchors the narrative (the recap end date, or the latest lab
+    -- date), and (profile_id, kind, period_end) is unique so regenerating for the
+    -- same anchor upserts in place rather than piling up rows. Born profile_id
+    -- NOT NULL -> in OWNED_TABLES, cleared by profile_id on profile deletion.
+    CREATE TABLE IF NOT EXISTS narratives (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      profile_id INTEGER NOT NULL REFERENCES profiles(id),
+      kind TEXT NOT NULL,
+      period_start TEXT,
+      period_end TEXT NOT NULL,
+      summary TEXT NOT NULL,
+      model TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE (profile_id, kind, period_end)
+    );
+
     -- Per-profile daily AI-operation counters (rate-limiting Fix 1: bound the
     -- per-profile cost of AI-backed document processing / insights). One row per
     -- (profile, local-day, kind); count is incremented BEFORE a Claude call is

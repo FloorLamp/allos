@@ -33,7 +33,14 @@ const MAX_BYTES = 5 * 1024 * 1024;
 const KEEP_LINES = 2000;
 
 export type AiFeature =
-  "extraction" | "suggestions" | "auto-suggest" | "insight";
+  | "extraction"
+  | "suggestions"
+  | "auto-suggest"
+  | "insight"
+  // A period recap narrative (weekly/monthly) or a lab-trend interpretation —
+  // the AI narrative layer (issue #20). Both narrate over already-gathered,
+  // structured findings, so they share one feature tag in the audit log.
+  | "narrative";
 export type AiStatus = "ok" | "skipped" | "failed";
 
 export interface AiEvent {

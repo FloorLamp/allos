@@ -32,13 +32,27 @@ export interface RecapWindow {
   prevEnd: string; // today - 7
 }
 
-export function recapWindow(today: string): RecapWindow {
+// The window ending on `today` (inclusive) spanning `days` days, plus the
+// immediately-preceding `days`-day comparison window. `days` defaults to 7 so
+// every existing caller keeps the trailing-seven-day behavior unchanged; a
+// monthly recap passes 30 (issue #20). The math is a plain day shift, so it's
+// independent of week-start/timezone-week boundaries for any period length.
+export function recapWindow(today: string, days = 7): RecapWindow {
   return {
-    start: shiftDateStr(today, -6),
+    start: shiftDateStr(today, -(days - 1)),
     end: today,
-    prevStart: shiftDateStr(today, -13),
-    prevEnd: shiftDateStr(today, -7),
+    prevStart: shiftDateStr(today, -(2 * days - 1)),
+    prevEnd: shiftDateStr(today, -days),
   };
+}
+
+// A short noun for the period length, used in the delta phrasing ("last week"
+// vs "last month"). 7 -> "week", 30/31 -> "month", anything else -> "period",
+// so the default (7) preserves the original "last week"/"this week" wording.
+export function periodNounFor(days: number): string {
+  if (days === 7) return "week";
+  if (days === 30 || days === 31) return "month";
+  return "period";
 }
 
 // Whether `date` (YYYY-MM-DD) falls within [start, end] inclusive — plain string
@@ -64,6 +78,10 @@ export interface RecapWeight {
 export interface RecapInput {
   today: string;
   weightUnit: WeightUnit;
+  // Length of the recap window in days. Defaults to 7 (trailing week) when
+  // omitted, so pre-#20 callers are unchanged; a monthly recap passes 30. Drives
+  // both the window math and the "last week"/"last month" delta wording.
+  periodDays?: number;
   // Workouts (one per activity) in the current and previous seven-day windows.
   workouts: RecapWorkout[];
   prevWorkouts: RecapWorkout[];
@@ -150,7 +168,9 @@ export function weightTrendKg(weights: RecapWeight[]): number | null {
 // counts and deltas, no exclamation, no score. Sections with nothing to say are
 // omitted entirely.
 export function buildWeeklyRecap(input: RecapInput): WeeklyRecap {
-  const win = recapWindow(input.today);
+  const days = input.periodDays ?? 7;
+  const win = recapWindow(input.today, days);
+  const noun = periodNounFor(days);
   const wu = input.weightUnit;
   const lines: RecapLine[] = [];
 
@@ -166,7 +186,7 @@ export function buildWeeklyRecap(input: RecapInput): WeeklyRecap {
       value: breakdown
         ? `${workoutCount} (${breakdown})`
         : String(workoutCount),
-      delta: `${prevCount} last week`,
+      delta: `${prevCount} last ${noun}`,
     });
   }
 
@@ -212,7 +232,7 @@ export function buildWeeklyRecap(input: RecapInput): WeeklyRecap {
     if (trend != null) {
       const dispDelta = kgTo(Math.abs(trend), wu);
       const arrow = trend > 0 ? "+" : trend < 0 ? "−" : "±";
-      delta = `${arrow}${dispDelta.toFixed(1)} ${wu} this week`;
+      delta = `${arrow}${dispDelta.toFixed(1)} ${wu} this ${noun}`;
     }
     lines.push({
       key: "weight",

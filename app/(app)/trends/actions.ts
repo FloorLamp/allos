@@ -19,8 +19,13 @@ import {
   type TrendViewParams,
 } from "@/lib/trend-views";
 import { generateInsight, saveInsight } from "@/lib/ai";
+import {
+  generateRecapNarrative,
+  generateLabTrendInterpretation,
+} from "@/lib/ai-narrative";
 import { withAiLogContext } from "@/lib/ai-log";
-import { dismissFinding } from "@/lib/queries";
+import { dismissFinding, saveNarrative } from "@/lib/queries";
+import type { NarrativePeriod } from "@/lib/recap-narrative";
 import { today } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
 
@@ -47,6 +52,53 @@ export async function generateForDate(formData: FormData) {
   saveInsight(profile.id, date, result);
   revalidatePath("/trends");
   revalidatePath("/");
+}
+
+// Generate (or regenerate) the AI weekly/monthly recap narrative and store it for
+// the active profile (issue #20). Like the daily insight, the Insights tab is
+// age-gated, so this re-checks the gate on the write path and bounces a direct
+// POST for a restricted profile. The narrative narrates over the same rule-based
+// recap the dashboard widget shows; without an API key it stores the offline
+// composition (still useful, still persisted).
+export async function generateRecap(formData: FormData) {
+  const { login, profile } = requireWriteAccess();
+  if (isTrainingRestricted(profile.id)) redirect("/");
+  const raw = String(formData.get("period") ?? "").trim();
+  const period: NarrativePeriod = raw === "month" ? "month" : "week";
+  const result = await withAiLogContext(
+    { loginId: login.id, profileId: profile.id },
+    () => generateRecapNarrative(profile.id, period, login.id)
+  );
+  saveNarrative(profile.id, {
+    kind: result.kind,
+    periodStart: result.periodStart,
+    periodEnd: result.periodEnd,
+    summary: result.summary,
+    model: result.model,
+  });
+  revalidatePath("/trends");
+  revalidatePath("/");
+}
+
+// Generate (or regenerate) the AI lab-trend interpretation and store it for the
+// active profile (issue #20). Surfaced on the Biomarkers tab, which is NOT age-
+// gated (unlike Insights), so no age check here — but still a write path, so
+// requireWriteAccess. The read is grounded in the biomarker trajectory findings +
+// medication timeline + conditions; degrades to the offline composition.
+export async function generateLabTrend() {
+  const { login, profile } = requireWriteAccess();
+  const result = await withAiLogContext(
+    { loginId: login.id, profileId: profile.id },
+    () => generateLabTrendInterpretation(profile.id)
+  );
+  saveNarrative(profile.id, {
+    kind: result.kind,
+    periodStart: result.periodStart,
+    periodEnd: result.periodEnd,
+    summary: result.summary,
+    model: result.model,
+  });
+  revalidatePath("/trends");
 }
 
 // Dismiss a "What's trending" digest chip (findings bus, #39): hide it through the
