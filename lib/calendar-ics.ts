@@ -289,6 +289,149 @@ export function selectFeedPreviewRows(
   );
 }
 
+// ---- Consolidated (multi-profile) feed -------------------------------------
+// The "family calendar": one merged feed spanning EVERY profile a login can
+// access. Each profile keeps its OWN detail level, timezone, and day boundary —
+// so a profile set to "minimal" still contributes only "Medical appointment" even
+// when it rides in a shared feed — and every entry is labeled with the profile
+// name so a subscriber can tell whose appointment it is. Pure: the caller resolves
+// the per-profile settings/appointments (from live grants) and passes them in.
+
+// One accessible profile's contribution to a consolidated feed.
+export interface ConsolidatedProfileFeed {
+  profileId: number;
+  profileName: string;
+  detail: IcsDetail; // this profile's own saved detail level
+  tz: string; // this profile's timezone
+  today: string; // this profile's "today" (for the past-window cutoff)
+  appts: readonly AppointmentLike[];
+}
+
+// Prefix a resolved summary with the profile name ("Ada: Medical appointment").
+// Only the profile NAME is added — never PHI: at minimal detail the base summary
+// is already the neutral "Medical appointment", and the subscribing login already
+// knows the names of the profiles it can access. An empty/blank name is a no-op.
+export function consolidatedSummary(
+  profileName: string,
+  summary: string
+): string {
+  const name = profileName.trim();
+  return name ? `${name}: ${summary}` : summary;
+}
+
+// Merge every profile's feed appointments into one chronological event list. Each
+// profile is projected through the SAME per-profile mapping (so its detail level +
+// timezone are honored exactly as its own feed would), then its summary is prefixed
+// with the profile name and its UID namespaced by profile id — so two profiles can
+// never collide on a shared appointment id AND the merged events stay distinct from
+// any per-profile feed the same client might also subscribe to.
+export function selectConsolidatedFeedEvents(
+  feeds: readonly ConsolidatedProfileFeed[],
+  opts: { pastWindowDays?: number; defaultDurationMin?: number } = {}
+): IcsEvent[] {
+  const events: IcsEvent[] = [];
+  for (const feed of feeds) {
+    const selected = selectFeedAppointments(feed.appts, {
+      today: feed.today,
+      pastWindowDays: opts.pastWindowDays,
+    });
+    for (const a of selected) {
+      const ev = appointmentToIcsEvent(a, {
+        tz: feed.tz,
+        detail: feed.detail,
+        defaultDurationMin: opts.defaultDurationMin,
+      });
+      events.push({
+        ...ev,
+        uid: `fam-${feed.profileId}-${ev.uid}`,
+        summary: consolidatedSummary(feed.profileName, ev.summary),
+      });
+    }
+  }
+  // Chronological merge so the serialized feed is deterministic (a calendar client
+  // re-sorts anyway, but stable output keeps tests + diffs sane). Tie-break on uid.
+  events.sort(
+    (x, y) =>
+      x.start.getTime() - y.start.getTime() || x.uid.localeCompare(y.uid)
+  );
+  return events;
+}
+
+// ---- Consolidated in-app preview -------------------------------------------
+
+// A preview row carrying the owning profile plus a groupable date key, so the
+// in-app family view can render a simple by-date list labeled per profile. Extends
+// the per-profile preview row (same summary/location/flags the feed emits) rather
+// than inventing a parallel shape.
+export interface ConsolidatedPreviewRow extends CalendarFeedPreviewRow {
+  profileId: number;
+  profileName: string;
+  dateKey: string; // "YYYY-MM-DD" for grouping/sorting
+}
+
+// Project every accessible profile's feed appointments to consolidated preview
+// rows, sorted chronologically. Mirrors selectConsolidatedFeedEvents so the in-app
+// preview can never diverge from what the family feed serves.
+export function selectConsolidatedPreviewRows(
+  feeds: readonly ConsolidatedProfileFeed[],
+  opts: { pastWindowDays?: number; defaultDurationMin?: number } = {}
+): ConsolidatedPreviewRow[] {
+  const rows: (ConsolidatedPreviewRow & { sortKey: string })[] = [];
+  for (const feed of feeds) {
+    const selected = selectFeedAppointments(feed.appts, {
+      today: feed.today,
+      pastWindowDays: opts.pastWindowDays,
+    });
+    for (const a of selected) {
+      const base = appointmentToPreviewRow(a, {
+        tz: feed.tz,
+        detail: feed.detail,
+        defaultDurationMin: opts.defaultDurationMin,
+      });
+      rows.push({
+        ...base,
+        uid: `fam-${feed.profileId}-${base.uid}`,
+        profileId: feed.profileId,
+        profileName: feed.profileName,
+        dateKey: a.scheduled_at.slice(0, 10),
+        sortKey: a.scheduled_at,
+      });
+    }
+  }
+  rows.sort(
+    (x, y) => x.sortKey.localeCompare(y.sortKey) || x.uid.localeCompare(y.uid)
+  );
+  // Drop the internal sort key from the public shape.
+  return rows.map(({ sortKey: _sortKey, ...r }) => r);
+}
+
+// A date bucket of consolidated preview rows (for the grouped by-date list).
+export interface ConsolidatedDateGroup {
+  dateKey: string; // "YYYY-MM-DD"
+  dateLabel: string; // "Fri, Jul 10, 2026"
+  rows: ConsolidatedPreviewRow[];
+}
+
+// Group already-sorted consolidated rows by calendar date, preserving order. Pure
+// and deterministic so the by-date rendering is unit-tested without a DOM.
+export function groupConsolidatedPreviewRows(
+  rows: readonly ConsolidatedPreviewRow[]
+): ConsolidatedDateGroup[] {
+  const groups: ConsolidatedDateGroup[] = [];
+  const byKey = new Map<string, ConsolidatedDateGroup>();
+  for (const r of rows) {
+    let g = byKey.get(r.dateKey);
+    if (!g) {
+      g = { dateKey: r.dateKey, dateLabel: r.dateLabel, rows: [] };
+      byKey.set(r.dateKey, g);
+      groups.push(g);
+    }
+    g.rows.push(r);
+  }
+  groups.sort((a, b) => a.dateKey.localeCompare(b.dateKey));
+  return groups;
+}
+
 // ---- RFC 5545 serialization ------------------------------------------------
 
 // Escape a TEXT value per RFC 5545 §3.3.11: backslash, semicolon, comma, and

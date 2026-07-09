@@ -294,6 +294,28 @@ export function getAccessibleProfiles(): SessionProfile[] {
   return accessibleProfiles(session.login.id, session.login.role);
 }
 
+// Session-free accessible-profiles resolver, keyed by login id — used by the
+// consolidated (per-login) calendar feed route, which authenticates via a token,
+// not a cookie. Resolves the login's CURRENT role + grants every call, so a revoked
+// grant (or demotion) is reflected immediately rather than frozen at token mint.
+// Returns [] for an unknown/deleted login.
+export function accessibleProfilesForLogin(loginId: number): SessionProfile[] {
+  const acct = db
+    .prepare("SELECT role FROM logins WHERE id = ?")
+    .get(loginId) as { role: Role } | undefined;
+  if (!acct) return [];
+  return accessibleProfiles(loginId, acct.role);
+}
+
+// Total number of profiles in the instance, regardless of the caller's grants.
+// The Household view is a cross-profile overview (admins see all profiles), so
+// the nav gates it on the instance-wide count, not the caller's accessible set.
+export function countProfiles(): number {
+  return (
+    db.prepare("SELECT COUNT(*) AS n FROM profiles").get() as { n: number }
+  ).n;
+}
+
 // Whether the given session may see a specific profile — the same rule as the
 // switcher/serve route: admins reach every profile, members only their granted
 // ones. Used by the profile-photo serve route to gate cross-profile fetches.

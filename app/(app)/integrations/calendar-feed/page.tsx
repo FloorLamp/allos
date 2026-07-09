@@ -3,14 +3,26 @@ import Link from "next/link";
 import { IconArrowLeft } from "@tabler/icons-react";
 import { PageHeader } from "@/components/ui";
 import { getIntegration } from "@/lib/integrations/registry";
-import { getCalendarFeed, getPublicUrl, getTimezone } from "@/lib/settings";
+import {
+  getCalendarFeed,
+  getConsolidatedCalendarFeed,
+  getPublicUrl,
+  getTimezone,
+} from "@/lib/settings";
 import { tokenLifecycleStatus } from "@/lib/token-lifecycle";
-import { requireSession } from "@/lib/auth";
+import { requireSession, getAccessibleProfiles } from "@/lib/auth";
 import { today } from "@/lib/db";
 import { getAppointments } from "@/lib/queries";
-import { selectFeedPreviewRows } from "@/lib/calendar-ics";
+import {
+  selectFeedPreviewRows,
+  selectConsolidatedPreviewRows,
+  groupConsolidatedPreviewRows,
+  type ConsolidatedProfileFeed,
+} from "@/lib/calendar-ics";
 import CalendarFeedConfig from "./CalendarFeedConfig";
 import CalendarFeedPreview from "./CalendarFeedPreview";
+import ConsolidatedFeedConfig from "./ConsolidatedFeedConfig";
+import ConsolidatedFeedPreview from "./ConsolidatedFeedPreview";
 
 export const dynamic = "force-dynamic";
 
@@ -29,7 +41,7 @@ function baseUrl(): string {
 }
 
 export default function CalendarFeedPage() {
-  const { profile } = requireSession();
+  const { profile, login } = requireSession();
   const def = getIntegration("calendar-feed")!;
   const feed = getCalendarFeed(profile.id);
 
@@ -44,6 +56,25 @@ export default function CalendarFeedPage() {
     tz: getTimezone(profile.id),
     detail: feed.detail,
   });
+
+  // Consolidated "family" feed: one merged view across EVERY profile this login can
+  // access (getAccessibleProfiles includes read-only grants — reading appointments
+  // is a read). Each profile contributes its own detail level + timezone + day
+  // boundary through the SAME pure selection the family feed route uses, so the
+  // preview can't drift from what the .ics serves. The feed token itself is
+  // login-scoped (login_settings), so its lifecycle is keyed by login.id.
+  const accessible = getAccessibleProfiles();
+  const familyFeed = getConsolidatedCalendarFeed(login.id);
+  const familyFeeds: ConsolidatedProfileFeed[] = accessible.map((p) => ({
+    profileId: p.id,
+    profileName: p.name,
+    detail: getCalendarFeed(p.id).detail,
+    tz: getTimezone(p.id),
+    today: today(p.id),
+    appts: getAppointments(p.id),
+  }));
+  const familyRows = selectConsolidatedPreviewRows(familyFeeds);
+  const familyGroups = groupConsolidatedPreviewRows(familyRows);
 
   return (
     <div>
@@ -101,6 +132,41 @@ export default function CalendarFeedPage() {
             link. By default the feed shows only &ldquo;Medical
             appointment&rdquo; with no provider or reason.
           </p>
+        </div>
+
+        <div className="mt-2 border-t border-black/5 pt-6 dark:border-white/5">
+          <h2 className="mb-1 text-lg font-semibold text-slate-900 dark:text-slate-50">
+            Family calendar
+          </h2>
+          <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">
+            One consolidated feed and preview across every profile you can
+            access — instead of subscribing to each profile&apos;s feed
+            separately.
+          </p>
+
+          <div className="grid gap-6">
+            <ConsolidatedFeedConfig
+              enabled={familyFeed.enabled}
+              baseUrl={baseUrl()}
+              status={tokenLifecycleStatus(
+                {
+                  hasToken: familyFeed.hasToken,
+                  createdAt: familyFeed.createdAt,
+                  expiresAt: familyFeed.expiresAt,
+                },
+                Date.now()
+              )}
+              createdAt={familyFeed.createdAt}
+              lastUsedAt={familyFeed.lastUsedAt}
+              expiresAt={familyFeed.expiresAt}
+              profileCount={accessible.length}
+            />
+
+            <ConsolidatedFeedPreview
+              groups={familyGroups}
+              totalRows={familyRows.length}
+            />
+          </div>
         </div>
       </div>
     </div>

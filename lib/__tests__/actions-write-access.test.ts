@@ -87,6 +87,16 @@ const ALLOW: { file: string; fn: string; why: string }[] = [
     fn: "sendTestPush",
     why: "login-scoped: sends a test push to the caller's own subscribed browsers",
   },
+  {
+    file: "app/(app)/integrations/calendar-feed/actions.ts",
+    fn: "enableConsolidatedCalendarFeedAction",
+    why: "login-scoped: mints the family .ics token keyed by login.id (like a push subscription); the feed only exposes appointments the login can already READ, so a read-only member may manage it",
+  },
+  {
+    file: "app/(app)/integrations/calendar-feed/actions.ts",
+    fn: "disableConsolidatedCalendarFeedAction",
+    why: "login-scoped: revokes the caller's own family .ics token (login.id), not profile-owned data",
+  },
   // --- Session / auth entry points (no profile-owned data mutation) ---
   {
     file: "app/(app)/user-actions.ts",

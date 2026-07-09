@@ -1,13 +1,15 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireWriteAccess } from "@/lib/auth";
+import { requireSession, requireWriteAccess } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { AUDIT_ACTIONS } from "@/lib/audit-actions";
 import {
   mintCalendarFeedToken,
   disableCalendarFeed,
   setCalendarFeedDetail,
+  mintConsolidatedCalendarFeedToken,
+  disableConsolidatedCalendarFeed,
   type CalendarFeedDetail,
 } from "@/lib/settings";
 import { upsertConnection } from "@/lib/integrations/connections";
@@ -77,4 +79,47 @@ export async function setCalendarFeedDetailAction(
   setCalendarFeedDetail(profile.id, detail);
   revalidatePath("/integrations/calendar-feed");
   return { ok: true, message: `Detail set to ${detail}.` };
+}
+
+// ---- Consolidated (per-login) "family" calendar feed -----------------------
+// These are LOGIN-SCOPED: they mint/revoke a token keyed by the caller's own
+// login.id (in login_settings), NOT a write to any profile-owned data. The feed
+// only ever exposes appointments the login can already READ (resolved at request
+// time from live grants), so a read-only member may manage it — hence requireSession()
+// rather than requireWriteAccess(), justified/allowlisted in the write-access test
+// exactly like the push-subscription actions (another login-scoped token surface).
+
+// Mint (or rotate) the family feed token and return its relative PATH once. The
+// consolidated feed spans every profile the login can access; each profile's own
+// detail level is honored, so no per-feed detail input exists here.
+export async function enableConsolidatedCalendarFeedAction(
+  expiry?: string
+): Promise<FeedResult> {
+  const { profile, login } = requireSession();
+  const choice = isValidExpiryChoice(expiry) ? expiry : "never";
+  const token = mintConsolidatedCalendarFeedToken(login.id, choice);
+  // Minting kills any prior token, so this covers both first mint and rotation.
+  recordAudit({
+    loginId: login.id,
+    profileId: profile.id,
+    action: AUDIT_ACTIONS.tokenMint,
+    target: "family-calendar-feed",
+    detail: `expiry:${choice}`,
+  });
+  revalidatePath("/integrations/calendar-feed");
+  return { ok: true, path: `/api/calendar/family/${token}.ics` };
+}
+
+// Disable the family feed: the token hash is dropped (URL dies) and the route 404s.
+export async function disableConsolidatedCalendarFeedAction(): Promise<FeedResult> {
+  const { profile, login } = requireSession();
+  disableConsolidatedCalendarFeed(login.id);
+  recordAudit({
+    loginId: login.id,
+    profileId: profile.id,
+    action: AUDIT_ACTIONS.tokenRevoke,
+    target: "family-calendar-feed",
+  });
+  revalidatePath("/integrations/calendar-feed");
+  return { ok: true, message: "Family feed disabled." };
 }

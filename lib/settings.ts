@@ -138,6 +138,13 @@ export function setLoginSetting(
   ).run(loginId, key, value);
 }
 
+export function deleteLoginSetting(loginId: number, key: string): void {
+  db.prepare("DELETE FROM login_settings WHERE login_id = ? AND key = ?").run(
+    loginId,
+    key
+  );
+}
+
 // ---- Unit display preferences (per login) ----
 // Wrapped in React `cache()` — a single render calls this many times (~4×/Training
 // view, and once per unit-formatting boundary elsewhere), all for the same login.
@@ -1054,4 +1061,116 @@ export function resolveProfileByCalendarToken(rawToken: string): number | null {
   // Successful resolve → stamp last-used (throttled).
   recordCalendarFeedUse(profileId);
   return profileId;
+}
+
+// ---- Consolidated (per-LOGIN) calendar feed --------------------------------
+// The "family calendar": a login-scoped .ics feed merging EVERY profile the login
+// can currently access. Same token machinery as the per-profile feed (mint/rotate/
+// disable/last-used/expiry via lib/token-lifecycle), but keyed by LOGIN in
+// login_settings — which has `ON DELETE CASCADE` on logins(id), so deleting the
+// login drops the token and the feed dies. Two deliberate differences from the
+// per-profile feed:
+//   1. NO detail level is stored here — the consolidated feed honors EACH profile's
+//      own `calendar_feed_detail`, so a profile set to minimal contributes only
+//      "Medical appointment" even inside the shared feed.
+//   2. The set of profiles is resolved AT REQUEST TIME from live grants (see the
+//      route), never frozen at mint — a revoked grant stops appearing immediately.
+// Keys (login_settings): consolidated_calendar_feed_{enabled,token_hash,
+//   token_created_at,token_last_used_at,token_expires_at}.
+
+const CCF_KEY = {
+  enabled: "consolidated_calendar_feed_enabled",
+  hash: "consolidated_calendar_feed_token_hash",
+  createdAt: "consolidated_calendar_feed_token_created_at",
+  lastUsedAt: "consolidated_calendar_feed_token_last_used_at",
+  expiresAt: "consolidated_calendar_feed_token_expires_at",
+} as const;
+
+export interface ConsolidatedCalendarFeed {
+  enabled: boolean;
+  hasToken: boolean;
+  createdAt: string | null;
+  lastUsedAt: string | null;
+  expiresAt: string | null;
+}
+
+export function getConsolidatedCalendarFeed(
+  loginId: number
+): ConsolidatedCalendarFeed {
+  return {
+    enabled: getLoginSetting(loginId, CCF_KEY.enabled) === "1",
+    hasToken: !!getLoginSetting(loginId, CCF_KEY.hash),
+    createdAt: getLoginSetting(loginId, CCF_KEY.createdAt) ?? null,
+    lastUsedAt: getLoginSetting(loginId, CCF_KEY.lastUsedAt) ?? null,
+    expiresAt: getLoginSetting(loginId, CCF_KEY.expiresAt) ?? null,
+  };
+}
+
+// Mint a fresh per-login token, store its hash, enable the feed, and return the RAW
+// token once (never stored — can't be shown again). Rotating = calling this again:
+// the previous URL immediately stops resolving. Mirrors mintCalendarFeedToken.
+export function mintConsolidatedCalendarFeedToken(
+  loginId: number,
+  expiry: TokenExpiryChoice = "never"
+): string {
+  const token = crypto.randomBytes(32).toString("hex");
+  const now = new Date();
+  const expiresAt = expiresAtFromChoice(expiry, now.getTime());
+  const write = db.transaction(() => {
+    setLoginSetting(loginId, CCF_KEY.hash, hashShareToken(token));
+    setLoginSetting(loginId, CCF_KEY.enabled, "1");
+    setLoginSetting(loginId, CCF_KEY.createdAt, now.toISOString());
+    if (expiresAt) setLoginSetting(loginId, CCF_KEY.expiresAt, expiresAt);
+    else deleteLoginSetting(loginId, CCF_KEY.expiresAt);
+    deleteLoginSetting(loginId, CCF_KEY.lastUsedAt);
+  });
+  write();
+  return token;
+}
+
+// Disable the feed (route then 404s) and drop the token hash so the URL is dead.
+// Also clears the lifecycle stamps so a later re-enable starts clean. Idempotent.
+export function disableConsolidatedCalendarFeed(loginId: number): void {
+  const write = db.transaction(() => {
+    setLoginSetting(loginId, CCF_KEY.enabled, "0");
+    deleteLoginSetting(loginId, CCF_KEY.hash);
+    deleteLoginSetting(loginId, CCF_KEY.createdAt);
+    deleteLoginSetting(loginId, CCF_KEY.expiresAt);
+    deleteLoginSetting(loginId, CCF_KEY.lastUsedAt);
+  });
+  write();
+}
+
+// Record a successful feed fetch, throttled to once an hour (mirrors the per-profile
+// feed + the session sliding-refresh write).
+export function recordConsolidatedCalendarFeedUse(loginId: number): void {
+  const last = getLoginSetting(loginId, CCF_KEY.lastUsedAt);
+  if (!shouldRecordUse(last, Date.now())) return;
+  setLoginSetting(loginId, CCF_KEY.lastUsedAt, new Date().toISOString());
+}
+
+// Resolve a raw token from the family feed URL to the owning LOGIN id, or null. The
+// unauthenticated seam (a calendar client has no session): hash the caller-supplied
+// token and match the stored hash across login_settings. Returns null unless a
+// matching row exists AND its feed is still enabled AND unexpired — a uniform null →
+// 404 with no oracle. login_settings is a settings tier (per-login, not
+// profile-owned data), so this query is intentionally not profile-scoped, mirroring
+// resolveProfileByCalendarToken. The returned login id drives request-time grant
+// resolution in the route (a revoked grant stops appearing).
+export function resolveLoginByConsolidatedCalendarToken(
+  rawToken: string
+): number | null {
+  if (!rawToken) return null;
+  const row = db
+    .prepare(
+      "SELECT login_id FROM login_settings WHERE key = 'consolidated_calendar_feed_token_hash' AND value = ?"
+    )
+    .get(hashShareToken(rawToken)) as { login_id?: number } | undefined;
+  const loginId = row?.login_id;
+  if (!loginId) return null;
+  if (getLoginSetting(loginId, CCF_KEY.enabled) !== "1") return null;
+  if (isTokenExpired(getLoginSetting(loginId, CCF_KEY.expiresAt), Date.now()))
+    return null;
+  recordConsolidatedCalendarFeedUse(loginId);
+  return loginId;
 }
