@@ -339,6 +339,26 @@ export function relaxBodyMetricsWeightKg(db: Database.Database) {
 // are dropped by name first, then recreated as profile_id-leading composites. The
 // external_id partial-unique indexes move from a global to a per-profile scope.
 export function swapProfileScopedIndexes(db: Database.Database) {
+  // Before creating the immunizations UNIQUE index, dedupe any pre-existing
+  // per-profile duplicate external_ids so the CREATE can't crash the boot (issue
+  // #90). Unlike activities/medical_records — which have always carried at least a
+  // GLOBAL unique index on external_id, so a per-profile duplicate is impossible —
+  // immunizations dedup was code-side only (INSERT OR IGNORE in import-persist)
+  // with NO constraint to fire on, so an old DB that re-imported the same SMART
+  // Health Card / FHIR bundle before this index existed could hold two rows with
+  // the same (profile_id, external_id). Keep the oldest (MIN(id)); NULL-external_id
+  // manual/document rows are untouched (the partial index skips them). Idempotent:
+  // a no-op once the unique index is in place.
+  db.exec(`
+    DELETE FROM immunizations
+    WHERE external_id IS NOT NULL
+      AND id NOT IN (
+        SELECT MIN(id) FROM immunizations
+        WHERE external_id IS NOT NULL
+        GROUP BY profile_id, external_id
+      );
+  `);
+
   db.exec(`
     DROP INDEX IF EXISTS idx_activities_date;
     DROP INDEX IF EXISTS idx_weigh_date;
@@ -356,6 +376,11 @@ export function swapProfileScopedIndexes(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_metric_samples_md ON metric_samples(profile_id, metric, date);
     CREATE INDEX IF NOT EXISTS idx_hr_minutes_day ON hr_minutes(profile_id, substr(ts,1,10));
 
+    -- Per-profile partial unique indexes (issue #90). These supersede the INTERIM
+    -- GLOBAL external_id-only indexes created in migrate() before profile_id
+    -- existed on these tables (dropped just above). The dedup key that ingest and
+    -- import upserts use is (profile_id, external_id), so two profiles recording
+    -- the same content-derived external_id no longer collide.
     CREATE UNIQUE INDEX IF NOT EXISTS idx_activities_external
       ON activities(profile_id, external_id) WHERE external_id IS NOT NULL;
     CREATE UNIQUE INDEX IF NOT EXISTS idx_medical_external
