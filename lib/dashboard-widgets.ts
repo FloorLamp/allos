@@ -132,6 +132,16 @@ export const DASHBOARD_WIDGETS: WidgetDef[] = [
     fitness: true,
     span: "third",
   },
+  {
+    id: "weekly-recap",
+    label: "Weekly recap",
+    description:
+      "Your last seven days — workouts, volume, PRs, adherence, weight, and streak.",
+    // Off by default so it stays quiet (issue #32); opt in from Customize.
+    defaultOn: false,
+    fitness: true,
+    span: "half",
+  },
 ];
 
 const WIDGETS_BY_ID = new Map(DASHBOARD_WIDGETS.map((w) => [w.id, w]));

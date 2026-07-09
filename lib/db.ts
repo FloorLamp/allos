@@ -833,6 +833,30 @@ export function migrate(db: Database.Database) {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_upcoming_dismissals_key
       ON upcoming_dismissals(profile_id, signal_key);
 
+    -- Fired milestone recognitions (issue #32). ONE row per crossed threshold
+    -- (Nth workout, streak length, completed goal, adherence run), inserted once by
+    -- the milestone engine when it first detects the crossing. This table is BOTH
+    -- the durable "fired" marker (a present key means "already recognized, never
+    -- re-fire") AND the timeline source (each row renders as a milestone timeline
+    -- entry on achieved_on). The key column is the pure engine's stable,
+    -- domain-prefixed id ("workouts:100", "streak:30", "goal:<id>", "adherence:7"),
+    -- unique per profile. Profile-scoped (in OWNED_TABLES), born profile_id NOT NULL,
+    -- so deleteProfile clears it by profile_id and it is NOT a backfill table.
+    -- Brand-new full table, so the migrate-upgrade path is a no-op.
+    CREATE TABLE IF NOT EXISTS milestones (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      profile_id INTEGER NOT NULL REFERENCES profiles(id),
+      key TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      threshold INTEGER NOT NULL,
+      title TEXT NOT NULL,
+      detail TEXT,
+      achieved_on TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_milestones_key
+      ON milestones(profile_id, key);
+
     -- Short-lived undo holding table (issue #30). A destructive row delete
     -- (activity, body metric, biomarker record, supplement/medication) first
     -- serializes the deleted row AND its cascade children into the payload column

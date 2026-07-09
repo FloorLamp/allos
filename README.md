@@ -10,7 +10,7 @@
 
 ## Features
 
-- **Timeline** — day-by-day health history across activity, body metrics, labs, medications, documents, visits, and goals
+- **Timeline** — day-by-day health history across activity, body metrics, labs, medications, documents, visits, goals, and milestones
 - **Training** — workout history, goals, strength analysis, cardio records, sport summaries, and per-exercise history; a workout's **⋯ → Merge with…** menu folds two of that day's activities into one for duplicates no auto-detector caught (undoable)
 - **Trends** — charts and analysis in one place, tab by tab: **Body** (weight, body fat %, resting heart rate, plus a **Log vitals** quick-add for blood pressure, glucose, SpO₂, temperature, sleep, and HRV — the same measures the Health Connect exporter syncs, so manual and synced readings share one home), **Fitness**, **Biomarkers** (including a **Trajectory watch** that warns before a reading crosses a line — a value projected to cross its reference/optimal boundary, a persistent non-optimal pattern, or a fast decline/rise), **Compare**, and Claude-powered **Insights** (daily analysis of your activity, metrics, and goals)
 - **Household** — for any login that can reach more than one profile (an admin, or a caregiver **member** granted several profiles), a cross-profile overview: one card per person showing today's **attention items** — supplement/medication doses due, low refills, and the next scheduled visit — alongside at-a-glance stats. **Confirm** a due dose for anyone straight from their card **without switching profiles** (the button shows only where you have write access; a read-only grant sees the card but no actions), or tap a card to open that profile. Hidden for single-profile logins.
@@ -348,6 +348,16 @@ Reminders (supplements due in a window, and a workout nudge when you're behind o
 weekly target) are delivered over two channels — **Telegram** and **Web Push** — that
 share the same schedule and per-day/slot dedup. Enable either, or both; a profile with
 both configured gets each reminder on both.
+
+Beyond reminders, two opt-in retention nudges ride the same channels: a **weekly recap**
+— a quiet once-a-week summary of your last seven days (workouts + volume, PRs, supplement
+adherence, a body-weight trend, and streak status), set the send day/hour under
+**Settings → Profile**; and **milestone alerts** — a brief note when you cross a
+milestone (your 10th/50th/100th/… workout, a 7/30/100/365-day streak, a completed goal, or
+a 7/30-day adherence run). Both are rule-based and work with **no AI configured**.
+Milestones are always recorded to your **Timeline** (under the **Milestone** filter)
+regardless of the alert toggle. The recap is also available as an off-by-default
+**Weekly recap** dashboard card (enable it from the dashboard's **Customize** control).
 
 ### Telegram
 

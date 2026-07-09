@@ -12,6 +12,7 @@ export const TIMELINE_CATEGORIES = [
   "visit",
   "goal",
   "insight",
+  "milestone",
 ] as const;
 
 export type TimelineCategory = (typeof TIMELINE_CATEGORIES)[number];
@@ -67,6 +68,8 @@ export function timelineCategoryLabel(category: TimelineCategory): string {
       return "Goal";
     case "insight":
       return "Insight";
+    case "milestone":
+      return "Milestone";
   }
 }
 
