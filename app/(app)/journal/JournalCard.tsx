@@ -3,6 +3,7 @@
 import { IconCheck, IconAlertTriangle } from "@tabler/icons-react";
 import { useActivityEditor } from "@/components/ActivityEditorProvider";
 import { ActivityTypeIcon, IntensityBadge } from "@/components/ui";
+import ActivityProvenance from "@/components/ActivityProvenance";
 import type { ActivityEditData } from "@/components/ActivityForm";
 import { SET_STATUS_TITLES, type SetStatus } from "@/lib/journal-format";
 
@@ -27,6 +28,7 @@ export default function JournalCard({
   metrics = [],
   parts,
   fault,
+  provenance,
   onSelectExercise,
   onSelectCardio,
   onSelectSport,
@@ -43,6 +45,12 @@ export default function JournalCard({
   // data), or null. Required so a new render site can't silently drop the
   // warning this exists to show.
   fault: string | null;
+  // Provenance chip ("Manual" / "Strava" / …) + created/updated timestamps.
+  provenance: {
+    label: string;
+    createdAt: string;
+    updatedAt: string | null;
+  };
   // When provided, a strength exercise name becomes a button that opens its
   // detail (progression/benchmarks/goals) in the history right column.
   onSelectExercise?: (exercise: string) => void;
@@ -232,6 +240,13 @@ export default function JournalCard({
           })}
         </div>
       )}
+
+      <ActivityProvenance
+        label={provenance.label}
+        createdAt={provenance.createdAt}
+        updatedAt={provenance.updatedAt}
+        className="mt-3"
+      />
     </div>
   );
 }

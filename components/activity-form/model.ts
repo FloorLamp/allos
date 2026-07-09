@@ -23,6 +23,14 @@ export interface ActivityEditData {
   end_time: string | null;
   components: string | null;
   notes: string | null;
+  // Provenance for the editor header (issue #11). Present on stored rows opened
+  // for edit; omitted when creating a new activity. `source` is the raw source
+  // id (null = manual), `edited` marks a hand-edited import, and created_at/
+  // updated_at are UTC datetimes (updated_at NULL until first edited).
+  source?: string | null;
+  edited?: number | null;
+  created_at?: string;
+  updated_at?: string | null;
   sets: {
     exercise: string;
     set_number: number;

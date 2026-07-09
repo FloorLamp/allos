@@ -3,6 +3,7 @@ import { requireWriteAccess } from "@/lib/auth";
 
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
+import { captureDelete } from "@/lib/undo-delete-db";
 import type { ActivityType } from "@/lib/types";
 import { getUnitPrefs } from "@/lib/settings";
 import { toKg, toKm } from "@/lib/units";
@@ -154,6 +155,9 @@ export async function saveActivity(formData: FormData) {
         `UPDATE activities
          SET date = ?, type = ?, title = ?, notes = ?, duration_min = ?, distance_km = ?,
              intensity = ?, start_time = ?, end_time = ?, components = ?,
+             -- Stamp last-edited (UTC, same form as created_at) so the Journal can
+             -- show "edited …" alongside "added …" (issue #11).
+             updated_at = datetime('now'),
              -- Mark integration-owned rows as hand-edited so re-ingest won't
              -- clobber this edit (no-op for manual rows: source/external_id null).
              edited = CASE WHEN source IS NOT NULL OR external_id IS NOT NULL
@@ -226,14 +230,17 @@ export async function logBodyweight(weight: number, date: string) {
   revalidatePath("/");
 }
 
-export async function deleteActivity(formData: FormData) {
+export async function deleteActivity(
+  formData: FormData
+): Promise<{ undoId: number | null }> {
   const { profile } = requireWriteAccess();
   const id = Number(formData.get("id"));
-  if (!id) return;
-  db.prepare("DELETE FROM activities WHERE id = ? AND profile_id = ?").run(
-    id,
-    profile.id
-  );
+  if (!id) return { undoId: null };
+  // Capture the activity + its exercise_sets into the undo holding table and
+  // delete it in one transaction (issue #30), so a mis-tap can be undone from the
+  // toast. children cascade; captureDelete returns the undo token.
+  const undoId = captureDelete("activity", profile.id, id);
   revalidatePath("/training");
   revalidatePath("/");
+  return { undoId };
 }

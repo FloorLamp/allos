@@ -8,6 +8,7 @@ import SortableHeader from "./SortableHeader";
 import RecordForm from "./RecordForm";
 import OverflowMenu, { MENU_ITEM, MENU_ITEM_DANGER } from "./OverflowMenu";
 import { useConfirm } from "./ConfirmDialog";
+import { useUndoableDelete } from "./useUndoableDelete";
 import { updateRecord, deleteRecord } from "@/app/(app)/medical/actions";
 import { groupContiguous } from "@/lib/table-sort";
 import {
@@ -178,6 +179,7 @@ function BiomarkerRow({
   const [editing, setEditing] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const confirm = useConfirm();
+  const undoable = useUndoableDelete();
 
   if (editing) {
     return (
@@ -283,7 +285,7 @@ function BiomarkerRow({
             open={menuOpen}
             onOpenChange={setMenuOpen}
           >
-            {({ close, runAction }) => (
+            {({ close }) => (
               <>
                 <button
                   type="button"
@@ -306,14 +308,17 @@ function BiomarkerRow({
                   onClick={async () => {
                     const ok = await confirm({
                       title: "Delete record",
-                      message: `Delete “${r.name}”? This can’t be undone.`,
+                      message: `Delete “${r.name}”? You can undo this.`,
                       confirmLabel: "Delete",
                       danger: true,
                     });
                     if (!ok) return;
+                    close();
                     const fd = new FormData();
                     fd.set("id", String(r.id));
-                    await runAction(deleteRecord, fd, "Record deleted");
+                    await undoable(deleteRecord, fd, {
+                      deletedMessage: "Record deleted.",
+                    });
                   }}
                 >
                   Delete

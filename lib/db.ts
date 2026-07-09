@@ -796,6 +796,59 @@ export function migrate(db: Database.Database) {
     );
     CREATE UNIQUE INDEX IF NOT EXISTS idx_upcoming_dismissals_key
       ON upcoming_dismissals(profile_id, signal_key);
+
+    -- Short-lived undo holding table (issue #30). A destructive row delete
+    -- (activity, body metric, biomarker record, supplement/medication) first
+    -- serializes the deleted row AND its cascade children into the payload column
+    -- (JSON) here, IN THE SAME TRANSACTION as the delete, so the user can Undo it
+    -- from a toast. The kind column selects the restore recipe (see
+    -- lib/undo-delete.ts). Restore re-inserts the rows with NEW ids and drops the
+    -- holding row; a sweep on the hourly notify tick purges rows older than 24h
+    -- (purged means purged). Payloads are PHI-adjacent but never leave this DB.
+    -- Profile-scoped (in OWNED_TABLES), born profile_id NOT NULL, so deleteProfile
+    -- clears it by profile_id and it's NOT a backfill table. Brand-new full table,
+    -- so the migrate-upgrade path is a no-op.
+    CREATE TABLE IF NOT EXISTS deleted_rows (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      profile_id INTEGER NOT NULL REFERENCES profiles(id),
+      kind TEXT NOT NULL,
+      -- Short, NON-PHI descriptor of the kind (e.g. "activity") for a future trash
+      -- view. The identifying content lives only in the payload column.
+      label TEXT,
+      payload TEXT NOT NULL,
+      deleted_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_deleted_rows_deleted_at
+      ON deleted_rows(deleted_at);
+
+    -- Durable record of the user's resolution of a detected import duplicate /
+    -- conflict pair (issue #10, Phase 2). One row per (profile, domain, pair):
+    -- pair_signature is the STABLE, order-independent signature from
+    -- lib/import-review/detect.pairSignature — built from each row's natural
+    -- identity (source+external_id for an integration/document row, else the row
+    -- id), so it re-derives identically after a MERGE deletes one row and the next
+    -- rolling-window re-sync re-inserts it under a fresh id. That is what keeps a
+    -- resolution from silently un-resolving (and the double-count from returning).
+    --
+    -- Why its OWN table rather than the snooze/dismiss findings bus
+    -- (upcoming_dismissals): a decision carries a KIND — 'merged' (a DESTRUCTIVE
+    -- resolution: one row deleted, its gap-filling fields folded into the keeper),
+    -- 'kept-both', or 'dismissed' — not a transient time-boxed suppression, and it
+    -- keys on a PAIR signature, not a single-signal key. Modeling that as a typed,
+    -- terminal decision (distinct from "hide this reminder until Tuesday") keeps the
+    -- concerns separate and leaves room to surface "you merged these" distinctly.
+    -- Brand-new full table (every column present at CREATE; the inline unique index
+    -- is upgrade-safe), so the migrate-upgrade path is a no-op.
+    CREATE TABLE IF NOT EXISTS import_pair_decisions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      profile_id INTEGER NOT NULL REFERENCES profiles(id),
+      domain TEXT NOT NULL,        -- 'activity' | 'body_metric'
+      pair_signature TEXT NOT NULL,
+      decision TEXT NOT NULL CHECK (decision IN ('merged','kept-both','dismissed')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_import_pair_decisions_key
+      ON import_pair_decisions(profile_id, domain, pair_signature);
   `);
 
   // First-run auth bootstrap: create the initial admin login + its profile so a
@@ -871,6 +924,10 @@ export function migrate(db: Database.Database) {
   // Marks a source-owned (integration-imported) activity the user has hand-edited,
   // so re-ingest of the rolling window won't clobber those edits. 0 = untouched.
   addColumnIfMissing(db, "activities", "edited", "INTEGER DEFAULT 0");
+  // Last-edited timestamp (issue #11). NULL on rows never updated since creation;
+  // saveActivity's UPDATE path stamps it (datetime('now'), UTC — same form as
+  // created_at) so the Journal can show "added …" and, when different, "edited …".
+  addColumnIfMissing(db, "activities", "updated_at", "TEXT");
 
   // Real insert/update/unchanged accounting for a sync (issue #273). The original
   // integration_sync_events CREATE only carried the flat `written` count, which

@@ -1,17 +1,27 @@
 import Link from "next/link";
 import { IconAlertTriangle, IconCircleCheck } from "@tabler/icons-react";
 import type { IntegrationSyncEvent, IntegrationId } from "@/lib/types";
+import type { UnitPrefs } from "@/lib/settings";
 import { getIntegration } from "@/lib/integrations/registry";
 import { formatWindow, formatSplitLabel } from "@/lib/integrations/sync-log";
 import RelativeTime from "@/components/RelativeTime";
 import RawPayloadViewer from "@/components/RawPayloadViewer";
+import DuplicateReview from "@/components/DuplicateReview";
+import type {
+  ActivityDupRow,
+  BodyMetricConflictRow,
+} from "@/lib/queries/integrations";
+import type {
+  ActivityDupPair,
+  BodyMetricConflictPair,
+} from "@/lib/import-review/detect";
 
-// Data → Review: a per-profile inbox for background integration imports. Phase 1
-// surfaces (a) integrations that are currently failing ("Needs attention") and
-// (b) a newest-first feed of recent syncs with their written/skipped counts and
-// data window. Server component — the page reads the events via lib/queries and
-// hands them in. (Duplicate/conflict detection + merge actions land in a later
-// phase.)
+// Data → Review: a per-profile inbox for background integration imports.
+// Surfaces (a) integrations that are currently failing ("Needs attention"),
+// (b) DETECTED duplicate/conflict pairs with merge/keep-both/dismiss actions
+// (issue #10, Phase 2), and (c) a newest-first feed of recent syncs with their
+// written/skipped counts and data window. Server component — the page reads
+// everything via lib/queries and hands it in.
 
 function providerName(id: string): string {
   return getIntegration(id as IntegrationId)?.name ?? id;
@@ -45,10 +55,17 @@ function CountBits({ ev }: { ev: IntegrationSyncEvent }) {
 export default function ReviewInbox({
   issues,
   recent,
+  activityPairs = [],
+  bodyMetricPairs = [],
+  units,
   isAdmin = false,
 }: {
   issues: IntegrationSyncEvent[];
   recent: IntegrationSyncEvent[];
+  // Detected, still-unresolved duplicate/conflict pairs (issue #10).
+  activityPairs?: ActivityDupPair<ActivityDupRow>[];
+  bodyMetricPairs?: BodyMetricConflictPair<BodyMetricConflictRow>[];
+  units: UnitPrefs;
   // Admins can inspect the raw provider payload captured per sync (issue #9). The
   // "View raw" affordance is only rendered for admins on events that carry a
   // raw_ref; the route it hits is itself admin-gated + profile-scoped.
@@ -56,6 +73,12 @@ export default function ReviewInbox({
 }) {
   return (
     <div className="space-y-6" data-testid="review-inbox">
+      <DuplicateReview
+        activityPairs={activityPairs}
+        bodyMetricPairs={bodyMetricPairs}
+        units={units}
+      />
+
       {issues.length > 0 && (
         <div className="card border-rose-200 dark:border-rose-900/50">
           <div className="mb-3 flex items-center gap-2">
