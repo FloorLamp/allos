@@ -24,6 +24,7 @@ import {
   relaxBodyMetricsWeightKg,
   swapProfileScopedIndexes,
 } from "./migrations/profile-scoping";
+import { reconcileEnumChecks } from "./migrations/enum-checks";
 
 // Single shared connection across hot-reloads in dev.
 const globalForDb = globalThis as unknown as { __healthDb?: Database.Database };
@@ -1426,6 +1427,15 @@ export function migrate(db: Database.Database) {
 
   // Move birthdate/age (properties of the tracked person) to profile 1.
   migrateProfileBirthdate(db);
+
+  // Reconcile inline enum CHECK constraints that have drifted (#91). CREATE TABLE
+  // IF NOT EXISTS no-ops on an existing DB, so an enum grown in source (e.g. a new
+  // medical_records.category) leaves upgraded DBs with the old, narrower CHECK and
+  // failing INSERTs at runtime. This detects drift against the ENUM_CHECKS registry
+  // and, only when a table has drifted, rebuilds it (row-preserving) with the
+  // current CHECK. Runs after every CREATE block + structural rebuild so it patches
+  // the final table shape; a normal (undrifted) boot does no work.
+  reconcileEnumChecks(db);
 
   // One-time legacy backfill: pre-value_num manual rows whose `value` is a plain
   // number become chartable. Numeric-only strings only; idempotent.
