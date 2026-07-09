@@ -26,8 +26,18 @@ export default function FitnessSection() {
         paramKey="ftab"
         tabs={[
           { id: "strength", label: "Strength", content: <StrengthSection /> },
-          { id: "cardio", label: "Cardio", content: <CardioSection /> },
-          { id: "sport", label: "Sport", content: <SportSection /> },
+          {
+            id: "cardio",
+            label: "Cardio",
+            content: <CardioSection />,
+            keepMounted: false,
+          },
+          {
+            id: "sport",
+            label: "Sport",
+            content: <SportSection />,
+            keepMounted: false,
+          },
         ]}
       />
     </div>

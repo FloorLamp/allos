@@ -1,5 +1,15 @@
+import * as React from "react";
 import crypto from "node:crypto";
 import { db, today, invalidateTimezoneMemo } from "./db";
+
+// React's per-request cache() only exists in the canary React that Next vendors
+// for server components. This module is also imported directly by tsx scripts
+// (scripts/notify.ts) that resolve the plain `react` package, which doesn't export
+// cache — importing the named binding there crashes at module load. Fall back to
+// identity in that context (those scripts run each read at most once per tick, so
+// per-request dedup is meaningless outside Next). Mirrors lib/queries/training.ts.
+const cache: typeof React.cache =
+  (React as { cache?: typeof React.cache }).cache ?? ((fn) => fn);
 import { ageFromBirthdate } from "./date";
 import { hashShareToken } from "./share-token";
 import { DEFAULT_TIMEZONE, isValidTimezone, resolveTimezone } from "./timezone";
@@ -94,14 +104,19 @@ export function deleteProfileSetting(profileId: number, key: string): void {
   ).run(profileId, key);
 }
 
-// Generic per-login key/value access (login_settings table).
+// Generic per-login key/value access (login_settings table). Statement hoisted to
+// module scope: getUnitPrefs (and others) read login settings on effectively
+// every request. NOT cache()-wrapped — a request may write via setLoginSetting
+// then re-read, so this must always hit the DB.
+const LOGIN_SETTING_GET_STMT = db.prepare(
+  "SELECT value FROM login_settings WHERE login_id = ? AND key = ?"
+);
 export function getLoginSetting(
   loginId: number,
   key: string
 ): string | undefined {
-  const row = db
-    .prepare("SELECT value FROM login_settings WHERE login_id = ? AND key = ?")
-    .get(loginId, key) as { value?: string } | undefined;
+  const row = LOGIN_SETTING_GET_STMT.get(loginId, key) as
+    { value?: string } | undefined;
   return row?.value;
 }
 
@@ -117,14 +132,21 @@ export function setLoginSetting(
 }
 
 // ---- Unit display preferences (per login) ----
-export function getUnitPrefs(loginId: number): UnitPrefs {
+// Wrapped in React `cache()` — a single render calls this many times (~4×/Training
+// view, and once per unit-formatting boundary elsewhere), all for the same login.
+// Request-scoped memoization collapses those to one pair of reads. Safe: the only
+// writer (setUnitPrefs / saveUnitPrefs) revalidates rather than re-reading in the
+// same request, and outside a request `cache()` degrades to a plain passthrough.
+export const getUnitPrefs = cache(function getUnitPrefs(
+  loginId: number
+): UnitPrefs {
   const weight = getLoginSetting(loginId, "weight_unit");
   const distance = getLoginSetting(loginId, "distance_unit");
   return {
     weightUnit: weight === "lb" ? "lb" : DEFAULTS.weightUnit,
     distanceUnit: distance === "mi" ? "mi" : DEFAULTS.distanceUnit,
   };
-}
+});
 
 export function setUnitPrefs(loginId: number, prefs: UnitPrefs) {
   const tx = db.transaction(() => {

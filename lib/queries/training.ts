@@ -857,7 +857,14 @@ export interface ExerciseStat {
   volume: { date: string; volumeKg: number }[];
 }
 
-export function getStrengthByExercise(profileId: number): ExerciseStat[] {
+// cache(): a single Training render aggregates every set 3–4× (Log, Overview,
+// Analyze, Strength sections all call this), and the dashboard coaching context
+// reads it again — cache() collapses the all-history scan to one per profile per
+// request. Safe: it's a pure read, and write actions revalidate rather than
+// re-reading in the same request.
+export const getStrengthByExercise = cache(function getStrengthByExercise(
+  profileId: number
+): ExerciseStat[] {
   const rows = db
     .prepare(
       `SELECT s.exercise, a.date, a.id AS activity_id,
@@ -1021,7 +1028,7 @@ export function getStrengthByExercise(profileId: number): ExerciseStat[] {
       };
     })
     .sort((a, b) => b.e1rmKg - a.e1rmKg);
-}
+});
 
 // One summarized recent cardio session for the cardio detail panel. `text` is
 // preformatted (units applied server-side) so the client panel needs no units.
@@ -1171,7 +1178,11 @@ function effortNameCounts(
   return [...counts.values()];
 }
 
-export function getCardioByActivity(
+// cache(): like getStrengthByExercise, a single Training render aggregates every
+// cardio effort several times (Overview, Analyze, Cardio, Log) and the dashboard
+// coaching context reads it again. All callers pass the same (profile, unit) and
+// omit recentLimit, so the request-scoped key is stable. Safe: pure read.
+export const getCardioByActivity = cache(function getCardioByActivity(
   profileId: number,
   unit: DistanceUnit,
   recentLimit = 10
@@ -1249,7 +1260,7 @@ export function getCardioByActivity(
     .sort(
       (a, b) => b.sessions - a.sessions || (a.activity < b.activity ? -1 : 1)
     );
-}
+});
 
 // Distinct, readable colors assigned to cardio activities in the weekly chart.
 const CARDIO_PALETTE = [

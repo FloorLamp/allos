@@ -145,7 +145,15 @@ export default function TrendsPage({
       bpanel: opts.panel,
     });
 
-  const tabs: { id: TrendsTab; label: string; content: React.ReactNode }[] = [
+  // Non-default panels use keepMounted:false so only the active section's DOM is
+  // mounted client-side (each reuses independent, self-contained section
+  // components/queries — no cross-panel dependency). Overview is the default tab.
+  const tabs: {
+    id: TrendsTab;
+    label: string;
+    content: React.ReactNode;
+    keepMounted?: boolean;
+  }[] = [
     {
       id: "overview",
       label: "Overview",
@@ -162,6 +170,7 @@ export default function TrendsPage({
           normalized={cmpNormalized}
         />
       ),
+      keepMounted: false,
     },
     {
       id: "biomarkers",
@@ -174,8 +183,14 @@ export default function TrendsPage({
           hrefFor={biomarkerHrefFor}
         />
       ),
+      keepMounted: false,
     },
-    { id: "body", label: "Body", content: <BodySection range={range} /> },
+    {
+      id: "body",
+      label: "Body",
+      content: <BodySection range={range} />,
+      keepMounted: false,
+    },
     // Fitness + Insights are age-gated surfaces — omitted entirely for
     // training-restricted profiles (matching the Journal/Training/Insights nav
     // gate), so they're never rendered or reachable via ?tab= for them.
@@ -186,11 +201,13 @@ export default function TrendsPage({
             id: "fitness" as const,
             label: "Fitness",
             content: <FitnessSection />,
+            keepMounted: false,
           },
           {
             id: "insights" as const,
             label: "Insights",
             content: <InsightsSection range={range} />,
+            keepMounted: false,
           },
         ]),
   ];
