@@ -12,7 +12,7 @@
 
 - **Timeline** — day-by-day health history across activity, body metrics, labs, medications, documents, visits, and goals
 - **Training** — workout history, goals, strength analysis, cardio records, sport summaries, and per-exercise history
-- **Trends** — charts and analysis in one place, tab by tab: **Body** (weight, body fat %, resting heart rate), **Fitness**, **Biomarkers**, **Compare**, and Claude-powered **Insights** (daily analysis of your activity, metrics, and goals)
+- **Trends** — charts and analysis in one place, tab by tab: **Body** (weight, body fat %, resting heart rate), **Fitness**, **Biomarkers** (including a **Trajectory watch** that warns before a reading crosses a line — a value projected to cross its reference/optimal boundary, a persistent non-optimal pattern, or a fast decline/rise), **Compare**, and Claude-powered **Insights** (daily analysis of your activity, metrics, and goals)
 - **Goals** — set targets, track progress bars, mark achieved/archived
 - **Benchmarks** — estimated 1-rep maxes (Epley) and strength standards relative to bodyweight
 - **Medical** — vitals, labs, genomics, biomarkers, conditions, allergies, procedures, family history, immunizations, visits, and a Passport summary

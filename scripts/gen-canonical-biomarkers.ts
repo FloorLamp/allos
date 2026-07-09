@@ -91,6 +91,14 @@ interface Biomarker {
   // default. NOT a flag input (absent from FLAG_RELEVANT_FIELDS), so it never
   // triggers a flag re-derivation.
   retest_days?: number | null;
+  // Curated per-analyte velocity threshold, in canonical UNITS PER YEAR, for the
+  // biomarker-trajectory velocity rule (issue #41). A sustained change-per-time in
+  // the analyte's "bad" direction (falling for higher_better, rising for
+  // lower_better) exceeding this magnitude is worth flagging even while the value
+  // is still in range. Curated CONSERVATIVELY in VELOCITY_PER_YEAR below (only
+  // eGFR + PSA today). NULL/absent = no velocity rule for the analyte. NOT a flag
+  // input (absent from FLAG_RELEVANT_FIELDS), so it never re-derives a flag.
+  velocity_per_year?: number | null;
   note: string | null;
 }
 
@@ -1040,6 +1048,23 @@ const RETEST_DAYS: Record<string, number> = {
   PSA: 365,
 };
 
+// Curated per-analyte velocity thresholds, in canonical UNITS PER YEAR, keyed by
+// exact canonical name (issue #41). A sustained change in the analyte's "bad"
+// direction (falling for a higher_better marker, rising for a lower_better one)
+// exceeding this magnitude is flagged by the biomarker-trajectory velocity rule
+// EVEN while the value is still in range — a slow drift a single-value flag never
+// catches. Curated CONSERVATIVELY: only the two markers where a per-year rate is
+// itself a recognized clinical signal. INFORMATIONAL, not medical advice.
+//  - eGFR ~5 mL/min/1.73m²/yr: a sustained decline faster than the ~1/yr of
+//    normal aging (KDIGO calls ">5/yr" rapid progression) warrants attention even
+//    above the 60 CKD threshold.
+//  - PSA ~0.75 ng/mL/yr: a PSA velocity above ~0.75/yr is a long-standing
+//    prostate-cancer-risk threshold, meaningful even with a total PSA under 4.
+const VELOCITY_PER_YEAR: Record<string, number> = {
+  eGFR: 5,
+  PSA: 0.75,
+};
+
 // Pure transform: return a copy of `biomarkers` with every CURATED_LABS entry
 // present (its canonical definition replacing any same-named row, so edits here
 // propagate), every AGE_BANDS override applied, and every RETEST_DAYS cadence
@@ -1061,6 +1086,10 @@ export function curateBiomarkers(biomarkers: Biomarker[]): Biomarker[] {
   for (const [name, days] of Object.entries(RETEST_DAYS)) {
     const row = byName.get(name.toLowerCase());
     if (row) row.retest_days = days;
+  }
+  for (const [name, vel] of Object.entries(VELOCITY_PER_YEAR)) {
+    const row = byName.get(name.toLowerCase());
+    if (row) row.velocity_per_year = vel;
   }
   return out;
 }
