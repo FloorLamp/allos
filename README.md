@@ -275,6 +275,18 @@ the same lifecycle controls — rotate the link, set an optional expiry, and see
 last fetch time. Rotating either token immediately invalidates the previous one,
 and an expired token is rejected exactly like an invalid one.
 
+**Customize what the feed contains** (per profile, right on the setup page): pick
+which categories become calendar events — medical **appointments** (the default),
+plus optional **doses due**, **refills running low**, **immunizations due**,
+**biomarker retests**, **goal deadlines**, and **training targets** — toggle the
+1-day/1-hour **reminders** on or off, and bound the **past window** and optional
+**future horizon**. A **minimal ↔ full** detail switch controls PHI for every
+category (minimal emits only a neutral label like "Medical appointment"; full sends
+the real name/provider/reason). The in-app **Preview** mirrors exactly what a
+subscribed calendar will receive at the current settings. Defaults preserve the
+historical behaviour (appointments only, reminders on, 30-day past window), so an
+existing subscription is unchanged until you opt in.
+
 The same page also offers a **Family calendar** — one consolidated `.ics` feed (and
 an in-app preview grouped by date) that merges the upcoming appointments of **every
 profile you can access** into a single calendar, each event labeled with the

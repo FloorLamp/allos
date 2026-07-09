@@ -9,6 +9,12 @@ import {
 } from "@tabler/icons-react";
 import type { CalendarFeedDetail } from "@/lib/settings";
 import {
+  FEED_CATEGORY_LABELS,
+  CONCRETE_FEED_CATEGORIES,
+  SUGGESTED_FEED_CATEGORIES,
+  type FeedCategory,
+} from "@/lib/calendar-ics";
+import {
   TOKEN_EXPIRY_CHOICES,
   type TokenExpiryChoice,
   type TokenLifecycleStatus,
@@ -18,7 +24,18 @@ import {
   enableCalendarFeedAction,
   disableCalendarFeedAction,
   setCalendarFeedDetailAction,
+  setCalendarFeedOptionsAction,
 } from "./actions";
+
+// Past-window presets (days). The default is 30 (historical behaviour).
+const PAST_WINDOW_CHOICES = [7, 30, 90, 365] as const;
+// Future-horizon presets; null = unbounded ("All upcoming", historical default).
+const FUTURE_WINDOW_CHOICES: { value: number | null; label: string }[] = [
+  { value: null, label: "All upcoming" },
+  { value: 30, label: "Next 30 days" },
+  { value: 90, label: "Next 90 days" },
+  { value: 365, label: "Next year" },
+];
 
 // Compose the absolute subscribe URL: prefer the server-provided base (the
 // configured public URL, reachable by an external calendar client), falling back
@@ -95,6 +112,10 @@ function CopyButton({ value }: { value: string }) {
 export default function CalendarFeedConfig({
   enabled,
   detail,
+  categories,
+  reminders,
+  pastWindowDays,
+  futureWindowDays,
   baseUrl,
   status,
   createdAt,
@@ -103,6 +124,10 @@ export default function CalendarFeedConfig({
 }: {
   enabled: boolean;
   detail: CalendarFeedDetail;
+  categories: FeedCategory[];
+  reminders: boolean;
+  pastWindowDays: number;
+  futureWindowDays: number | null;
   baseUrl: string;
   status: TokenLifecycleStatus;
   createdAt: string | null;
@@ -114,6 +139,43 @@ export default function CalendarFeedConfig({
   const [error, setError] = useState<string | null>(null);
   const [curDetail, setCurDetail] = useState<CalendarFeedDetail>(detail);
   const [expiry, setExpiry] = useState<TokenExpiryChoice>("never");
+
+  // Content/window customization (issue #12) — local state feeds a single "Save"
+  // that persists the whole set via setCalendarFeedOptionsAction. Detail keeps its
+  // own instant-apply control above (it carries the PHI warning).
+  const [cats, setCats] = useState<Set<FeedCategory>>(new Set(categories));
+  const [remind, setRemind] = useState(reminders);
+  const [pastDays, setPastDays] = useState(pastWindowDays);
+  const [futureDays, setFutureDays] = useState<number | null>(futureWindowDays);
+  const [optsSaved, setOptsSaved] = useState(false);
+
+  function toggleCat(cat: FeedCategory) {
+    setOptsSaved(false);
+    setCats((prev) => {
+      const next = new Set(prev);
+      if (next.has(cat)) next.delete(cat);
+      else next.add(cat);
+      return next;
+    });
+  }
+
+  async function onSaveOptions() {
+    setBusy(true);
+    setError(null);
+    setOptsSaved(false);
+    const fd = new FormData();
+    for (const c of cats) fd.append("category", c);
+    fd.set("reminders", remind ? "1" : "0");
+    fd.set("pastWindowDays", String(pastDays));
+    fd.set(
+      "futureWindowDays",
+      futureDays == null ? "none" : String(futureDays)
+    );
+    const res = await setCalendarFeedOptionsAction(fd);
+    setBusy(false);
+    if (res.ok) setOptsSaved(true);
+    else setError(res.error);
+  }
 
   async function onEnableOrRotate() {
     setBusy(true);
@@ -263,6 +325,138 @@ export default function CalendarFeedConfig({
               </span>
             </p>
           )}
+        </div>
+
+        <div className="space-y-4 border-t border-black/5 pt-4 dark:border-white/5">
+          <div>
+            <label className="label">What to include</label>
+            <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
+              By default the feed carries only your medical appointments. Add
+              any of the forward-looking reminders below.
+            </p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <fieldset className="space-y-1.5">
+                <legend className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Appointments &amp; due items
+                </legend>
+                {CONCRETE_FEED_CATEGORIES.map((c) => (
+                  <label
+                    key={c}
+                    className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200"
+                  >
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-black/20 dark:border-white/20"
+                      checked={cats.has(c)}
+                      disabled={busy}
+                      onChange={() => toggleCat(c)}
+                      data-testid={`calendar-category-${c}`}
+                    />
+                    {FEED_CATEGORY_LABELS[c]}
+                  </label>
+                ))}
+              </fieldset>
+              <fieldset className="space-y-1.5">
+                <legend className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Suggestions
+                </legend>
+                {SUGGESTED_FEED_CATEGORIES.map((c) => (
+                  <label
+                    key={c}
+                    className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200"
+                  >
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-black/20 dark:border-white/20"
+                      checked={cats.has(c)}
+                      disabled={busy}
+                      onChange={() => toggleCat(c)}
+                      data-testid={`calendar-category-${c}`}
+                    />
+                    {FEED_CATEGORY_LABELS[c]}
+                  </label>
+                ))}
+              </fieldset>
+            </div>
+          </div>
+
+          <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+            <input
+              type="checkbox"
+              className="h-4 w-4 rounded border-black/20 dark:border-white/20"
+              checked={remind}
+              disabled={busy}
+              onChange={(e) => {
+                setOptsSaved(false);
+                setRemind(e.target.checked);
+              }}
+              data-testid="calendar-feed-reminders"
+            />
+            Include reminders (1&nbsp;day &amp; 1&nbsp;hour before each event)
+          </label>
+
+          <div className="flex flex-wrap gap-4">
+            <label className="block">
+              <span className="label">Past window</span>
+              <select
+                value={pastDays}
+                disabled={busy}
+                onChange={(e) => {
+                  setOptsSaved(false);
+                  setPastDays(Number(e.target.value));
+                }}
+                className="input"
+                data-testid="calendar-past-window"
+              >
+                {PAST_WINDOW_CHOICES.map((d) => (
+                  <option key={d} value={d}>
+                    Last {d} days
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="label">Future horizon</span>
+              <select
+                value={futureDays == null ? "none" : String(futureDays)}
+                disabled={busy}
+                onChange={(e) => {
+                  setOptsSaved(false);
+                  setFutureDays(
+                    e.target.value === "none" ? null : Number(e.target.value)
+                  );
+                }}
+                className="input"
+                data-testid="calendar-future-window"
+              >
+                {FUTURE_WINDOW_CHOICES.map((c) => (
+                  <option
+                    key={c.label}
+                    value={c.value == null ? "none" : String(c.value)}
+                  >
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              className="btn"
+              disabled={busy}
+              onClick={onSaveOptions}
+              data-testid="calendar-feed-options-save"
+            >
+              {busy ? "Saving…" : "Save feed options"}
+            </button>
+            {optsSaved && (
+              <span className="inline-flex items-center gap-1 text-sm text-brand-600 dark:text-brand-400">
+                <IconCheck className="h-4 w-4" /> Saved
+              </span>
+            )}
+          </div>
         </div>
 
         <div className="flex flex-wrap items-end gap-3 border-t border-black/5 pt-4 dark:border-white/5">

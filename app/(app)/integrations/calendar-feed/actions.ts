@@ -8,6 +8,7 @@ import {
   mintCalendarFeedToken,
   disableCalendarFeed,
   setCalendarFeedDetail,
+  setCalendarFeedOptions,
   mintConsolidatedCalendarFeedToken,
   disableConsolidatedCalendarFeed,
   type CalendarFeedDetail,
@@ -79,6 +80,31 @@ export async function setCalendarFeedDetailAction(
   setCalendarFeedDetail(profile.id, detail);
   revalidatePath("/integrations/calendar-feed");
   return { ok: true, message: `Detail set to ${detail}.` };
+}
+
+// Save the content/window customization (issue #12): which categories the feed
+// includes, whether it emits reminders, and the past/future windows. Write-gated
+// on the active profile like the detail action; the settings helper validates the
+// category list and clamps the windows, so untrusted form input can't corrupt the
+// stored prefs. `futureWindowDays` empty/"none" means an unbounded horizon.
+export async function setCalendarFeedOptionsAction(
+  formData: FormData
+): Promise<FeedResult> {
+  const { profile } = requireWriteAccess();
+  const categories = formData.getAll("category").map(String);
+  const reminders = String(formData.get("reminders")) === "1";
+  const pastWindowDays = Number(formData.get("pastWindowDays"));
+  const futureRaw = String(formData.get("futureWindowDays") ?? "");
+  const futureWindowDays =
+    futureRaw === "" || futureRaw === "none" ? null : Number(futureRaw);
+  setCalendarFeedOptions(profile.id, {
+    categories,
+    reminders,
+    pastWindowDays,
+    futureWindowDays,
+  });
+  revalidatePath("/integrations/calendar-feed");
+  return { ok: true, message: "Feed options saved." };
 }
 
 // ---- Consolidated (per-login) "family" calendar feed -----------------------

@@ -12,9 +12,9 @@ import {
 import { tokenLifecycleStatus } from "@/lib/token-lifecycle";
 import { requireSession, getAccessibleProfiles } from "@/lib/auth";
 import { today } from "@/lib/db";
-import { getAppointments } from "@/lib/queries";
+import { getAppointments, collectUpcoming } from "@/lib/queries";
 import {
-  selectFeedPreviewRows,
+  composeFeedPreviewRows,
   selectConsolidatedPreviewRows,
   groupConsolidatedPreviewRows,
   type ConsolidatedProfileFeed,
@@ -46,15 +46,27 @@ export default function CalendarFeedPage() {
   const feed = getCalendarFeed(profile.id);
 
   // Build the preview from the SAME inputs the live feed route uses — the same
-  // profile-scoped query (getAppointments), the same `today`/timezone, and the
-  // saved detail level — through the shared pure selection + mapping, so the
-  // preview can't drift from what a subscribed calendar actually receives. This
-  // reflects the SAVED detail regardless of whether the feed is currently
-  // enabled, so the user can decide what to expose before turning it on.
-  const previewRows = selectFeedPreviewRows(getAppointments(profile.id), {
-    today: today(profile.id),
+  // profile-scoped reads (getAppointments + the Upcoming aggregation) and the same
+  // saved options (categories/detail/reminders/window) — through the shared pure
+  // composer, so the preview can't drift from what a subscribed calendar actually
+  // receives. It reflects the SAVED options regardless of whether the feed is
+  // currently enabled, so the user can decide what to expose before turning it on.
+  // The heavier Upcoming read only runs when a non-appointment category is enabled.
+  const profileToday = today(profile.id);
+  const wantsAppointments = feed.categories.includes("appointment");
+  const wantsSignals = feed.categories.some((c) => c !== "appointment");
+  const previewRows = composeFeedPreviewRows({
+    appointments: wantsAppointments ? getAppointments(profile.id) : [],
+    signals: wantsSignals ? collectUpcoming(profile.id, profileToday) : [],
+    today: profileToday,
     tz: getTimezone(profile.id),
-    detail: feed.detail,
+    options: {
+      categories: feed.categories,
+      detail: feed.detail,
+      reminders: feed.reminders,
+      pastWindowDays: feed.pastWindowDays,
+      futureWindowDays: feed.futureWindowDays,
+    },
   });
 
   // Consolidated "family" feed: one merged view across EVERY profile this login can
@@ -91,6 +103,10 @@ export default function CalendarFeedPage() {
         <CalendarFeedConfig
           enabled={feed.enabled}
           detail={feed.detail}
+          categories={feed.categories}
+          reminders={feed.reminders}
+          pastWindowDays={feed.pastWindowDays}
+          futureWindowDays={feed.futureWindowDays}
           baseUrl={baseUrl()}
           status={tokenLifecycleStatus(
             {
