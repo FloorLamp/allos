@@ -406,6 +406,25 @@ export function getBiomarkerSeries(
     .all(profileId, profileId, canonical) as MedicalRecord[];
 }
 
+// Every canonically-named reading for a profile in ONE deduped pass, ordered so
+// each analyte's rows are contiguous and oldest-first — the bulk companion to
+// getBiomarkerSeries for callers that need EVERY analyte's series (the trajectory
+// rules). Per-analyte getBiomarkerSeries calls re-run the dedup window over the
+// whole table each time, which is O(analytes × records) per request (#105);
+// grouping this one result by canonical name (lib/biomarker-group) yields the
+// same per-analyte series as N individual calls.
+export function getAllBiomarkerSeries(profileId: number): MedicalRecord[] {
+  return db
+    .prepare(
+      `WITH ${DEDUP_IDS_CTE}
+       SELECT * FROM medical_records
+       WHERE profile_id = ? AND canonical_name IS NOT NULL
+         AND TRIM(canonical_name) != '' AND ${IN_DEDUPED}
+       ORDER BY canonical_name COLLATE NOCASE, date ASC, id ASC`
+    )
+    .all(profileId, profileId) as MedicalRecord[];
+}
+
 // The content-identity of a reading — the tuple the read-layer de-dup groups on.
 // `nameKey` is the display/grouping name (canonical when present, else the raw
 // name), matching biomarkerNameKey().
