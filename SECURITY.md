@@ -115,3 +115,14 @@ The session cookie uses the `__Host-` name prefix in production
 `Path=/`, and has no `Domain` — hardening it against subdomain cookie injection.
 Over plain-HTTP dev the plain name (`ht_session`) is used, since the prefix
 requires Secure. The cookie stays `HttpOnly` + `SameSite=Lax`.
+
+### Upload content validation
+
+Uploaded medical files are validated by their **magic bytes**, not the
+client-declared `file.type` (`lib/file-sniff.ts`). On upload the server sniffs the
+content, stores a byte-derived `mime_type`, and rejects a file whose contents
+contradict its name/extension (a `.pdf` that isn't a PDF); text formats with no
+reliable magic (CSV/plain text) fall back to an attachment-only type. The
+file-serve route then echoes that trusted, byte-derived type as the Content-Type
+and only renders a small allowlist inline (alongside `X-Content-Type-Options:
+nosniff`), so a mislabeled upload can't be served as an inline, executable type.

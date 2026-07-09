@@ -12,7 +12,10 @@ const UPLOAD_ROOT = path.resolve(process.cwd(), "data", "uploads", "medical");
 
 // MIME types that are safe to render inline (they can't execute script in our
 // origin). Everything else — notably text/html and image/svg+xml — is forced to
-// download so a stored HTML/SVG file can't run in-origin.
+// download so a stored HTML/SVG file can't run in-origin. Newer uploads store a
+// SERVER-derived mime_type (sniffed from the magic bytes on upload — issue #27),
+// so the inline decision here is made against the file's real type rather than a
+// client-declared one; older rows keep whatever type they were stored with.
 const INLINE_OK = new Set([
   "application/pdf",
   "image/png",
