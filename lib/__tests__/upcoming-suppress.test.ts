@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { signalKey, isSuppressed } from "../upcoming-suppress";
+import { signalKey, findingKey, isSuppressed } from "../upcoming-suppress";
 import type { UpcomingItem } from "../upcoming";
 
 const item = (key: string): UpcomingItem => ({
@@ -16,6 +16,25 @@ describe("signalKey", () => {
     expect(signalKey(item("biomarker:ldl"))).toBe("biomarker:ldl");
     expect(signalKey(item("appointment:5"))).toBe("appointment:5");
     expect(signalKey(item("immunization:mmr"))).toBe("immunization:mmr");
+  });
+});
+
+describe("findingKey", () => {
+  it("is the finding's dedupeKey — the generalized suppression identity", () => {
+    expect(findingKey({ dedupeKey: "coaching:rest-sleep" })).toBe(
+      "coaching:rest-sleep"
+    );
+    expect(findingKey({ dedupeKey: "digest:bio:LDL:up" })).toBe(
+      "digest:bio:LDL:up"
+    );
+  });
+
+  it("matches signalKey for an upcoming item's key (old rows keep working)", () => {
+    // An UpcomingItem's key IS the dedupeKey upcomingToFinding produces, so a
+    // pre-#39 upcoming_dismissals row still resolves the same finding.
+    expect(findingKey({ dedupeKey: signalKey(item("dose:12")) })).toBe(
+      "dose:12"
+    );
   });
 });
 

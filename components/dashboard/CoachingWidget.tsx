@@ -1,5 +1,8 @@
 import Link from "next/link";
 import type { CoachingTone, Recommendation } from "@/lib/coaching";
+import { coachingDedupeKey } from "@/lib/findings";
+import SubmitButton from "@/components/SubmitButton";
+import { snoozeCoaching } from "@/app/(app)/actions";
 import WidgetHeader from "./WidgetHeader";
 
 // Small accent dot color per tone, so the card reads at a glance: caution (ease
@@ -46,13 +49,29 @@ export default function CoachingWidget({ recs }: { recs: Recommendation[] }) {
               )}
             </div>
           </div>
-          {top.actionHref && (
-            <div className="mt-3 pl-[18px]">
+          <div className="mt-3 flex items-center gap-2 pl-[18px]">
+            {top.actionHref && (
               <Link href={top.actionHref} className="btn-ghost">
                 {top.actionLabel ?? "Open"}
               </Link>
-            </div>
-          )}
+            )}
+            {/* Snooze the top recommendation until tomorrow (findings bus, #39),
+                surfacing the next-ranked one for the rest of the day. */}
+            <form action={snoozeCoaching}>
+              <input
+                type="hidden"
+                name="dedupe_key"
+                value={coachingDedupeKey(top.id)}
+              />
+              <SubmitButton
+                pendingLabel="…"
+                data-testid="coaching-not-today"
+                className="btn-ghost text-slate-500 dark:text-slate-400"
+              >
+                Not today
+              </SubmitButton>
+            </form>
+          </div>
           {secondary && (
             <p className="mt-3 border-t border-slate-100 pt-3 text-xs text-slate-400 dark:border-ink-800 dark:text-slate-500">
               <span className="font-medium">Next:</span> {secondary.title} —{" "}

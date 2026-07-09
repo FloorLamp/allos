@@ -1,10 +1,18 @@
 import Link from "next/link";
-import { IconArrowDownRight, IconArrowUpRight } from "@tabler/icons-react";
+import {
+  IconArrowDownRight,
+  IconArrowUpRight,
+  IconX,
+} from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
+import { today } from "@/lib/db";
 import { isTrainingRestricted } from "@/lib/age-gate";
 import { buildDigestSeries } from "@/lib/trends-series";
 import { summarizeTrends, type TrendItem } from "@/lib/trends-digest";
+import { getFindingSuppressions } from "@/lib/queries";
+import { activeByKey, digestDedupeKey } from "@/lib/findings";
 import type { DateRange } from "@/lib/timeline-format";
+import { dismissDigest } from "./actions";
 
 // "What's trending" digest for the Trends Overview (issue #212, Phase 2). Feeds
 // every candidate series (metrics + biomarkers, windowed to the shared range) to
@@ -15,7 +23,14 @@ export default function TrendingDigest({ range }: { range: DateRange }) {
   const { login, profile } = requireSession();
   const restricted = isTrainingRestricted(profile.id);
   const series = buildDigestSeries(profile.id, login.id, range, restricted);
-  const items = summarizeTrends(series, { limit: 6 });
+  // Drop chips the user has dismissed (findings bus, #39) — a dismissal keyed by
+  // series + direction sticks while that same-direction trend persists.
+  const items = activeByKey(
+    summarizeTrends(series, { limit: 6 }),
+    (it) => digestDedupeKey(it),
+    getFindingSuppressions(profile.id),
+    today(profile.id)
+  );
   if (items.length === 0) return null;
 
   const hrefFor = (item: TrendItem): string | null =>
@@ -56,12 +71,33 @@ export default function TrendingDigest({ range }: { range: DateRange }) {
               {item.text}
             </span>
           );
-          return href ? (
-            <Link key={item.key} href={href} className="hover:opacity-80">
-              {inner}
-            </Link>
-          ) : (
-            <span key={item.key}>{inner}</span>
+          return (
+            <span key={item.key} className="inline-flex items-center gap-1">
+              {href ? (
+                <Link href={href} className="hover:opacity-80">
+                  {inner}
+                </Link>
+              ) : (
+                inner
+              )}
+              {/* Dismiss this chip (findings bus, #39). */}
+              <form action={dismissDigest}>
+                <input
+                  type="hidden"
+                  name="dedupe_key"
+                  value={digestDedupeKey(item)}
+                />
+                <button
+                  type="submit"
+                  data-testid="digest-dismiss"
+                  aria-label={`Dismiss ${item.label} trend`}
+                  title="Dismiss"
+                  className="flex h-5 w-5 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-ink-750 dark:hover:text-slate-300"
+                >
+                  <IconX className="h-3.5 w-3.5" stroke={2} />
+                </button>
+              </form>
+            </span>
           );
         })}
       </div>

@@ -283,10 +283,16 @@ function rawUpcoming(profileId: number, today: string): UpcomingItem[] {
   ];
 }
 
-// The profile's snooze/dismiss rows, keyed by signal_key for O(1) lookup during
-// filtering. Profile-scoped (the WHERE filters profile_id — enforced by
-// lib/__tests__/profile-scoping.test.ts and lib/__db_tests__/upcoming.scoping).
-function suppressionMap(profileId: number): Map<string, SuppressionRecord> {
+// The profile's snooze/dismiss rows, keyed by signal_key (a Finding's dedupeKey)
+// for O(1) lookup during filtering. This is the shared read behind BOTH the
+// Upcoming filter and the generalized findings bus (coaching/digest, issue #39):
+// every engine's suppression lives in the one upcoming_dismissals store, so a
+// single map answers "is this key suppressed?" for all of them. Profile-scoped
+// (the WHERE filters profile_id — enforced by lib/__tests__/profile-scoping.test.ts
+// and lib/__db_tests__/upcoming.scoping).
+export function getFindingSuppressions(
+  profileId: number
+): Map<string, SuppressionRecord> {
   const rows = db
     .prepare(
       `SELECT signal_key, snooze_until, dismissed_at
@@ -304,6 +310,45 @@ function suppressionMap(profileId: number): Map<string, SuppressionRecord> {
       dismissed_at: r.dismissed_at,
     });
   return m;
+}
+
+// ---- Generalized suppression writers (issue #39) ----
+// The table-usage side of the findings bus: the Upcoming actions AND the coaching/
+// digest dismiss affordances all funnel through these, so there's one upsert/delete
+// on upcoming_dismissals rather than a copy per surface. Each is profile-scoped and
+// keyed by an arbitrary Finding dedupeKey (existing Upcoming keys unchanged).
+
+// Snooze a finding until `until` (YYYY-MM-DD), clearing any dismiss — upserts on
+// the (profile_id, signal_key) unique index so re-snoozing just moves the date.
+export function snoozeFinding(
+  profileId: number,
+  dedupeKey: string,
+  until: string
+): void {
+  db.prepare(
+    `INSERT INTO upcoming_dismissals (profile_id, signal_key, snooze_until, dismissed_at)
+       VALUES (?, ?, ?, NULL)
+     ON CONFLICT(profile_id, signal_key)
+       DO UPDATE SET snooze_until = excluded.snooze_until, dismissed_at = NULL`
+  ).run(profileId, dedupeKey, until);
+}
+
+// Dismiss a finding indefinitely (until restored), clearing any snooze so a
+// dismiss always wins.
+export function dismissFinding(profileId: number, dedupeKey: string): void {
+  db.prepare(
+    `INSERT INTO upcoming_dismissals (profile_id, signal_key, snooze_until, dismissed_at)
+       VALUES (?, ?, NULL, datetime('now'))
+     ON CONFLICT(profile_id, signal_key)
+       DO UPDATE SET dismissed_at = datetime('now'), snooze_until = NULL`
+  ).run(profileId, dedupeKey);
+}
+
+// Restore a finding: drop its suppression row so it reappears immediately.
+export function restoreFinding(profileId: number, dedupeKey: string): void {
+  db.prepare(
+    "DELETE FROM upcoming_dismissals WHERE profile_id = ? AND signal_key = ?"
+  ).run(profileId, dedupeKey);
 }
 
 // Whether an item is currently hidden by a snooze/dismiss row in `map`.
@@ -324,7 +369,7 @@ export function collectUpcoming(
   profileId: number,
   today: string
 ): UpcomingItem[] {
-  const map = suppressionMap(profileId);
+  const map = getFindingSuppressions(profileId);
   return rawUpcoming(profileId, today).filter(
     (item) => !isItemSuppressed(map, item, today)
   );
@@ -346,7 +391,7 @@ export function collectSuppressedUpcoming(
   profileId: number,
   today: string
 ): SuppressedUpcoming[] {
-  const map = suppressionMap(profileId);
+  const map = getFindingSuppressions(profileId);
   const out: SuppressedUpcoming[] = [];
   for (const item of rawUpcoming(profileId, today)) {
     const rec = map.get(signalKey(item));

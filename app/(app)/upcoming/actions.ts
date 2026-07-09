@@ -2,8 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { requireSession } from "@/lib/auth";
-import { db, today } from "@/lib/db";
-import { markDoseTaken } from "@/lib/queries";
+import { today } from "@/lib/db";
+import {
+  markDoseTaken,
+  snoozeFinding,
+  dismissFinding,
+  restoreFinding,
+} from "@/lib/queries";
 import { shiftDateStr } from "@/lib/date";
 
 // Inline "mark taken" for a due dose surfaced on the Upcoming page. Reuses the
@@ -26,9 +31,9 @@ export async function markTaken(formData: FormData) {
 const SNOOZE_MAX_DAYS = 3650;
 
 // Snooze a single due-item: hide it until `today + days`, after which it
-// reappears. Upserts on the (profile_id, signal_key) unique index so re-snoozing
-// (or snoozing a previously-dismissed item) just moves the date and clears any
-// dismiss. Profile-scoped; every statement filters profile_id.
+// reappears. Delegates to the shared findings-suppression writer (upserts on the
+// (profile_id, signal_key) index so re-snoozing — or snoozing a previously-
+// dismissed item — just moves the date and clears any dismiss). Profile-scoped.
 export async function snoozeItem(formData: FormData) {
   const { profile } = requireSession();
   const signalKey = String(formData.get("signal_key") ?? "").trim();
@@ -38,27 +43,18 @@ export async function snoozeItem(formData: FormData) {
     today(profile.id),
     Math.min(Math.floor(days), SNOOZE_MAX_DAYS)
   );
-  db.prepare(
-    `INSERT INTO upcoming_dismissals (profile_id, signal_key, snooze_until, dismissed_at)
-       VALUES (?, ?, ?, NULL)
-     ON CONFLICT(profile_id, signal_key)
-       DO UPDATE SET snooze_until = excluded.snooze_until, dismissed_at = NULL`
-  ).run(profile.id, signalKey, until);
+  snoozeFinding(profile.id, signalKey, until);
   revalidatePath("/upcoming");
 }
 
 // Dismiss a single due-item: hide it indefinitely until the user restores it.
-// Upserts, clearing any snooze so a dismiss always wins. Profile-scoped.
+// Delegates to the shared writer (upserts, clearing any snooze so a dismiss always
+// wins). Profile-scoped.
 export async function dismissItem(formData: FormData) {
   const { profile } = requireSession();
   const signalKey = String(formData.get("signal_key") ?? "").trim();
   if (!signalKey) return;
-  db.prepare(
-    `INSERT INTO upcoming_dismissals (profile_id, signal_key, snooze_until, dismissed_at)
-       VALUES (?, ?, NULL, datetime('now'))
-     ON CONFLICT(profile_id, signal_key)
-       DO UPDATE SET dismissed_at = datetime('now'), snooze_until = NULL`
-  ).run(profile.id, signalKey);
+  dismissFinding(profile.id, signalKey);
   revalidatePath("/upcoming");
 }
 
@@ -68,8 +64,6 @@ export async function restoreItem(formData: FormData) {
   const { profile } = requireSession();
   const signalKey = String(formData.get("signal_key") ?? "").trim();
   if (!signalKey) return;
-  db.prepare(
-    "DELETE FROM upcoming_dismissals WHERE profile_id = ? AND signal_key = ?"
-  ).run(profile.id, signalKey);
+  restoreFinding(profile.id, signalKey);
   revalidatePath("/upcoming");
 }

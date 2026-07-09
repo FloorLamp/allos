@@ -15,8 +15,10 @@ import {
   getImmunizations,
   getImmunityTiters,
   gatherCoachingInput,
+  getFindingSuppressions,
 } from "@/lib/queries";
 import { recommendCoaching } from "@/lib/coaching";
+import { activeByKey, coachingDedupeKey } from "@/lib/findings";
 import { requireSession } from "@/lib/auth";
 import { isTrainingRestricted } from "@/lib/age-gate";
 import {
@@ -127,9 +129,16 @@ export default function Dashboard() {
 
   // coaching: the ranked, rule-based recommendations (deterministic, no AI).
   // Fitness-gated in the registry, so restricted profiles never reach this.
+  // Snoozed recommendations (findings bus, #39) drop out here, so a "Not today"
+  // on the top rec surfaces the next-ranked one until the snooze expires.
   const coachingRecs = has("coaching")
-    ? recommendCoaching(
-        gatherCoachingInput(profile.id, units.weightUnit, units.distanceUnit)
+    ? activeByKey(
+        recommendCoaching(
+          gatherCoachingInput(profile.id, units.weightUnit, units.distanceUnit)
+        ),
+        (r) => coachingDedupeKey(r.id),
+        getFindingSuppressions(profile.id),
+        on
       )
     : [];
 
