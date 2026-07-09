@@ -464,6 +464,16 @@ const PANELS: Panel[] = [
     ref: "<50",
     values: [33, 30, 27, 24, 22, 20],
   },
+  // Kidney — creatinine drives the derived eGFR virtual biomarker (issue #40),
+  // computed at read time (CKD-EPI 2021) from these values + the profile's age/sex.
+  {
+    category: "lab",
+    name: "Creatinine",
+    canonical: "Creatinine",
+    unit: "mg/dL",
+    ref: "0.6-1.3",
+    values: [1.02, 1.0, 0.99, 0.97, 0.96, 0.94],
+  },
   {
     category: "biomarker",
     name: "Homocysteine",

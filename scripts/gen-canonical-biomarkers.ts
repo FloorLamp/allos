@@ -667,6 +667,26 @@ function applyAgeBandsInPlace(): void {
 //    Anion Gap, Reticulocytes: Mayo Clinic Laboratories & ARUP Consult adult
 //    reference intervals (MedlinePlus for corroboration).
 export const CURATED_LABS: Biomarker[] = [
+  // ── Derived clinical index (issue #40) ─────────────────────────────────────
+  // Triglyceride/HDL ratio — a simple, widely-cited surrogate for insulin
+  // resistance and small-dense-LDL burden, computed (not measured) from the lipid
+  // panel by lib/derived-biomarkers. The ratio is unit-SYSTEM specific: the cutoffs
+  // below are for the US mg/dL convention (a mmol/L ratio is numerically different —
+  // different molar masses), so the deriver converts both components to mg/dL first.
+  // Cutoffs (informational, not medical advice): <2 favorable, ≥3.5 flags likely
+  // insulin resistance. Sources: Salazar MR et al., Am J Cardiol 2012 (TG/HDL as an
+  // IR surrogate); McLaughlin T et al., Ann Intern Med 2003.
+  {
+    name: "Triglyceride/HDL Ratio",
+    category: "lab",
+    unit: "ratio",
+    ref_low: null,
+    ref_high: 3.5,
+    optimal_low: null,
+    optimal_high: 2,
+    direction: "lower_better",
+    note: "Derived from the lipid panel (Triglycerides ÷ HDL, both mg/dL). Surrogate for insulin resistance / small-dense LDL; <2 favorable, ≥3.5 suggests insulin resistance. mg/dL-based — a mmol/L ratio differs.",
+  },
   // ── CBC differential complements ──────────────────────────────────────────
   {
     name: "Neutrophils, Absolute",
@@ -1035,6 +1055,7 @@ const RETEST_DAYS: Record<string, number> = {
   "HDL Cholesterol": 365,
   Triglycerides: 365,
   "Non-HDL Cholesterol": 365,
+  "Triglyceride/HDL Ratio": 365,
   ApoB: 365,
   "Lipoprotein(a)": 1825,
   Ferritin: 365,

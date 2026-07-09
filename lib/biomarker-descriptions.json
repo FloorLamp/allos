@@ -777,6 +777,11 @@
       "abbreviation": "LH",
       "full_name": "Luteinizing Hormone",
       "description": "Luteinizing hormone is a pituitary hormone that triggers ovulation in women and testosterone production in men. It is used to evaluate reproductive and hormonal function."
+    },
+    "Triglyceride/HDL Ratio": {
+      "abbreviation": "TG/HDL",
+      "full_name": "Triglyceride to HDL Cholesterol Ratio",
+      "description": "This ratio divides triglycerides by HDL cholesterol (both in mg/dL) and is used as a simple surrogate marker of insulin resistance and small, dense LDL particles. Lower ratios are generally considered more favorable; it is calculated from the lipid panel rather than measured directly."
     }
   }
 }

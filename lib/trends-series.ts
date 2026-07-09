@@ -10,8 +10,8 @@ import {
   getWeights,
   getBodyMetricsWithSource,
   getVolumeByDate,
-  getBiomarkerSeries,
-  getUsedCanonicalNames,
+  getBiomarkerSeriesWithDerived,
+  getUsedCanonicalNamesWithDerived,
   getCanonicalBiomarker,
   getMedicationCourses,
   getSupplements,
@@ -205,7 +205,7 @@ export function buildBiomarkerSeries(
   canonical: string,
   range: DateRange
 ): TrendSeries | null {
-  const series = getBiomarkerSeries(profileId, canonical);
+  const series = getBiomarkerSeriesWithDerived(profileId, canonical);
   if (series.length === 0) return null;
   const cb = getCanonicalBiomarker(canonical);
   const sex = getUserSex(profileId);
@@ -299,11 +299,13 @@ export function listCompareOptions(
       kind: "metric" as const,
     })
   );
-  const biomarkers = getUsedCanonicalNames(profileId).map((name) => ({
-    key: bioPinKey(name),
-    label: name,
-    kind: "biomarker" as const,
-  }));
+  const biomarkers = getUsedCanonicalNamesWithDerived(profileId).map(
+    (name) => ({
+      key: bioPinKey(name),
+      label: name,
+      kind: "biomarker" as const,
+    })
+  );
   return { metrics, biomarkers };
 }
 
@@ -367,7 +369,7 @@ export function buildDigestSeries(
   restricted: boolean
 ): TrendSeries[] {
   const out = buildMetricSeries(profileId, loginId, range, restricted);
-  for (const name of getUsedCanonicalNames(profileId)) {
+  for (const name of getUsedCanonicalNamesWithDerived(profileId)) {
     const s = buildBiomarkerSeries(profileId, name, range);
     if (s) out.push(s);
   }
