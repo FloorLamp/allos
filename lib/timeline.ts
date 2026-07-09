@@ -1,0 +1,765 @@
+import { shiftDateStr } from "./date";
+import { db } from "./db";
+import { vaccineDisplayName } from "./immunization-catalog";
+import { medicationCourseEvents } from "./medication-history";
+import type { MedStopReason } from "./types";
+import { summarizeExercise, type SetRow } from "./journal-format";
+import { getTimezone, type UnitPrefs } from "./settings";
+import {
+  compactList,
+  countTone,
+  dateFromCreatedAt,
+  journalActivityHref,
+  medicalRecordHref,
+  parseDetailItems,
+  sortTimelineEvents,
+  timeFromCreatedAt,
+  type TimelineEvent,
+} from "./timeline-format";
+import { fmtDistance, fmtWeight } from "./units";
+
+export { TIMELINE_CATEGORIES, timelineCategoryLabel } from "./timeline-format";
+export type {
+  TimelineCategory,
+  TimelineDay,
+  TimelineEvent,
+} from "./timeline-format";
+
+export interface TimelineOptions {
+  category?: TimelineEvent["category"];
+  startDate?: string;
+  endDate?: string;
+  limit?: number;
+  units?: UnitPrefs;
+  includeTrainingEvents?: boolean;
+}
+
+export interface TimelinePage {
+  events: TimelineEvent[];
+  hasMore: boolean;
+}
+
+// Clamp the caller-supplied page size into a sane window.
+function clampLimit(limit: number | undefined): number {
+  return Math.min(Math.max(limit ?? 250, 25), 1000);
+}
+
+// Build a bindable `AND <col> >= ? [AND <col> <= ?]` fragment for the requested
+// date window, pushing the range into SQL so a bounded query returns the correct
+// rows regardless of history length (the dates are bound as params, never
+// concatenated). An open bound (undefined) is omitted, so the default/"All time"
+// view leaves the upper bound open and future-dated rows are returned. `col` is a
+// trusted, code-defined column/expression — never user input.
+function dateBounds(
+  col: string,
+  startDate: string | undefined,
+  endDate: string | undefined
+): { clause: string; params: string[] } {
+  const parts: string[] = [];
+  const params: string[] = [];
+  if (startDate) {
+    parts.push(`${col} >= ?`);
+    params.push(startDate);
+  }
+  if (endDate) {
+    parts.push(`${col} <= ?`);
+    params.push(endDate);
+  }
+  return { clause: parts.length ? ` AND ${parts.join(" AND ")}` : "", params };
+}
+
+function pushLimited(
+  events: TimelineEvent[],
+  event: TimelineEvent,
+  options: TimelineOptions
+) {
+  if (options.category && event.category !== options.category) return;
+  if (options.startDate && event.date < options.startDate) return;
+  if (options.endDate && event.date > options.endDate) return;
+  events.push(event);
+}
+
+function activitySetSummaries(
+  profileId: number,
+  activityIds: number[],
+  units: UnitPrefs
+): Map<number, { label: string; value: string }[]> {
+  if (activityIds.length === 0) return new Map();
+
+  const placeholders = activityIds.map(() => "?").join(",");
+  const rows = db
+    .prepare(
+      `SELECT s.activity_id, s.exercise, s.set_number, s.weight_kg, s.reps,
+              s.weight_kg_right, s.reps_right, s.duration_sec,
+              s.duration_sec_right, s.target_reps, s.to_failure
+         FROM exercise_sets s
+         JOIN activities a ON a.id = s.activity_id
+        WHERE a.profile_id = ? AND s.activity_id IN (${placeholders})
+        ORDER BY s.activity_id, lower(s.exercise), s.set_number`
+    )
+    .all(profileId, ...activityIds) as (SetRow & {
+    activity_id: number;
+    exercise: string;
+  })[];
+
+  const byActivity = new Map<number, Map<string, SetRow[]>>();
+  const labels = new Map<string, string>();
+  for (const row of rows) {
+    let exercises = byActivity.get(row.activity_id);
+    if (!exercises) {
+      exercises = new Map();
+      byActivity.set(row.activity_id, exercises);
+    }
+    const key = row.exercise.trim().toLowerCase();
+    labels.set(`${row.activity_id}:${key}`, row.exercise);
+    const sets = exercises.get(key) ?? [];
+    sets.push(row);
+    exercises.set(key, sets);
+  }
+
+  const out = new Map<number, { label: string; value: string }[]>();
+  for (const [activityId, exercises] of byActivity.entries()) {
+    out.set(
+      activityId,
+      Array.from(exercises.entries()).map(([key, sets]) => ({
+        label: labels.get(`${activityId}:${key}`) ?? key,
+        value: summarizeExercise(sets, units.weightUnit).text,
+      }))
+    );
+  }
+  return out;
+}
+
+// Collect + merge + sort every category's events for the profile. Each per-table
+// query pushes the requested date window into SQL AND caps at `perTableLimit`
+// most-recent in-range rows. Because the global top-N of the merge is a subset of
+// each table's own top-N, fetching perTableLimit per table and sorting the union
+// renders the top-N page correctly. Returns the FULL sorted union (unsliced) so a
+// caller can both slice a page and detect whether more history exists.
+function collectEvents(
+  profileId: number,
+  options: TimelineOptions,
+  perTableLimit: number
+): TimelineEvent[] {
+  const units = options.units ?? { weightUnit: "kg", distanceUnit: "km" };
+  const includeTrainingEvents = options.includeTrainingEvents ?? true;
+  const tz = getTimezone(profileId);
+  const events: TimelineEvent[] = [];
+
+  // Exact bounds for tables whose event date IS a stored calendar column.
+  const exact = (col: string) =>
+    dateBounds(col, options.startDate, options.endDate);
+  // Loose (±1 day) bounds for created-at-fallback tables: the event date is
+  // derived in the profile timezone (see dateFromCreatedAt), which can differ by a
+  // day from the raw UTC date the SQL compares — so widen the SQL window by a day
+  // and let pushLimited apply the precise, tz-correct final filter. Explicit
+  // user-supplied windows still resolve exactly at the JS boundary.
+  const looseStart = options.startDate
+    ? shiftDateStr(options.startDate, -1)
+    : undefined;
+  const looseEnd = options.endDate
+    ? shiftDateStr(options.endDate, 1)
+    : undefined;
+  const loose = (col: string) => dateBounds(col, looseStart, looseEnd);
+
+  if (includeTrainingEvents) {
+    const activityBounds = exact("date");
+    const activities = db
+      .prepare(
+        `SELECT id, date, type, title, duration_min, distance_km, intensity, start_time, notes, source
+           FROM activities
+          WHERE profile_id = ?${activityBounds.clause}
+          ORDER BY date DESC, id DESC
+          LIMIT ?`
+      )
+      .all(profileId, ...activityBounds.params, perTableLimit) as {
+      id: number;
+      date: string;
+      type: string;
+      title: string;
+      duration_min: number | null;
+      distance_km: number | null;
+      intensity: string | null;
+      start_time: string | null;
+      notes: string | null;
+      source: string | null;
+    }[];
+    const setSummaries = activitySetSummaries(
+      profileId,
+      activities.map((a) => a.id),
+      units
+    );
+    for (const a of activities) {
+      const meta = [
+        a.type,
+        a.duration_min != null ? `${a.duration_min} min` : null,
+        a.distance_km != null
+          ? fmtDistance(a.distance_km, units.distanceUnit)
+          : null,
+        a.intensity,
+      ].filter((x): x is string => !!x);
+      pushLimited(
+        events,
+        {
+          id: `activity:${a.id}`,
+          date: a.date,
+          category: "activity",
+          title: a.title,
+          subtitle: compactList(meta, 4),
+          detail: a.notes,
+          href: journalActivityHref(a.id),
+          sortTime: a.start_time,
+          meta: a.source ? [a.source] : undefined,
+          detailItems: setSummaries.get(a.id),
+          iconType: a.type,
+          iconTitle: a.title,
+        },
+        options
+      );
+    }
+  }
+
+  const bodyBounds = exact("date");
+  const bodyRows = db
+    .prepare(
+      `SELECT id, date, weight_kg, body_fat_pct, resting_hr, notes, source
+         FROM body_metrics
+        WHERE profile_id = ?${bodyBounds.clause}
+        ORDER BY date DESC, id DESC
+        LIMIT ?`
+    )
+    .all(profileId, ...bodyBounds.params, perTableLimit) as {
+    id: number;
+    date: string;
+    weight_kg: number | null;
+    body_fat_pct: number | null;
+    resting_hr: number | null;
+    notes: string | null;
+    source: string | null;
+  }[];
+  for (const b of bodyRows) {
+    const meta = [
+      b.weight_kg != null ? fmtWeight(b.weight_kg, units.weightUnit) : null,
+      b.body_fat_pct != null ? `${b.body_fat_pct}% body fat` : null,
+      b.resting_hr != null ? `${b.resting_hr} bpm resting` : null,
+    ].filter((x): x is string => !!x);
+    pushLimited(
+      events,
+      {
+        id: `body:${b.id}`,
+        date: b.date,
+        category: "body",
+        title: "Body metrics logged",
+        subtitle: compactList(meta, 3),
+        detail: b.notes,
+        href: "/trends?tab=body",
+        meta: b.source && b.source !== "manual" ? [b.source] : undefined,
+      },
+      options
+    );
+  }
+
+  const medicalBounds = exact("date");
+  const medicalGroups = db
+    .prepare(
+      `SELECT date, COALESCE(NULLIF(TRIM(panel), ''), category) AS panel,
+              COUNT(*) AS count,
+              SUM(CASE WHEN flag IN ('high','low','abnormal') THEN 1 ELSE 0 END) AS abnormal_count,
+              SUM(CASE WHEN flag LIKE 'non-optimal%' THEN 1 ELSE 0 END) AS nonoptimal_count,
+              GROUP_CONCAT(COALESCE(NULLIF(TRIM(canonical_name), ''), name), '||') AS names,
+              GROUP_CONCAT(
+                COALESCE(NULLIF(TRIM(canonical_name), ''), name) || '::' ||
+                TRIM(
+                  COALESCE(NULLIF(TRIM(value), ''), CAST(value_num AS TEXT), '')
+                ) || '::' ||
+                COALESCE(NULLIF(TRIM(unit), ''), '') || '::' ||
+                COALESCE(NULLIF(TRIM(flag), ''), ''),
+                '||'
+              ) AS result_details,
+              MAX(COALESCE(NULLIF(TRIM(canonical_name), ''), name)) AS first_name,
+              MAX(document_id) AS document_id,
+              MAX(source) AS source
+         FROM medical_records
+        WHERE profile_id = ?${medicalBounds.clause}
+        GROUP BY date, COALESCE(NULLIF(TRIM(panel), ''), category), document_id
+        ORDER BY date DESC
+        LIMIT ?`
+    )
+    .all(profileId, ...medicalBounds.params, perTableLimit) as {
+    date: string;
+    panel: string;
+    count: number;
+    abnormal_count: number;
+    nonoptimal_count: number;
+    names: string | null;
+    result_details: string | null;
+    first_name: string | null;
+    document_id: number | null;
+    source: string | null;
+  }[];
+  for (const m of medicalGroups) {
+    const abnormal = m.abnormal_count || 0;
+    const nonoptimal = m.nonoptimal_count || 0;
+    const names = (m.names ?? "").split("||").filter(Boolean);
+    pushLimited(
+      events,
+      {
+        id: `medical:${m.date}:${m.panel}:${m.document_id ?? "manual"}`,
+        date: m.date,
+        category: "medical",
+        title: `${m.panel} results`,
+        subtitle: `${m.count} result${m.count === 1 ? "" : "s"}${abnormal ? `, ${abnormal} out of range` : nonoptimal ? `, ${nonoptimal} non-optimal` : ""}`,
+        detail: compactList(names, 5),
+        href: medicalRecordHref(m.document_id, names, m.first_name),
+        tone: countTone(abnormal, nonoptimal),
+        detailItems: parseDetailItems(m.result_details),
+        meta: m.document_id
+          ? [`Document #${m.document_id}`]
+          : m.source && m.source !== "manual"
+            ? [m.source]
+            : undefined,
+      },
+      options
+    );
+  }
+
+  const docBounds = loose(
+    "COALESCE(document_date, substr(uploaded_at, 1, 10))"
+  );
+  const docs = db
+    .prepare(
+      `SELECT id, filename, doc_type, source, document_date, extraction_status, extracted_count, uploaded_at
+         FROM medical_documents
+        WHERE profile_id = ?${docBounds.clause}
+        ORDER BY COALESCE(document_date, substr(uploaded_at, 1, 10)) DESC, id DESC
+        LIMIT ?`
+    )
+    .all(profileId, ...docBounds.params, perTableLimit) as {
+    id: number;
+    filename: string;
+    doc_type: string | null;
+    source: string | null;
+    document_date: string | null;
+    extraction_status: string;
+    extracted_count: number;
+    uploaded_at: string;
+  }[];
+  for (const d of docs) {
+    pushLimited(
+      events,
+      {
+        id: `document:${d.id}`,
+        date: d.document_date ?? dateFromCreatedAt(d.uploaded_at, tz) ?? "",
+        category: "document",
+        title: d.filename,
+        subtitle: compactList(
+          [
+            d.doc_type ?? "document",
+            d.source ?? null,
+            d.extracted_count
+              ? `${d.extracted_count} extracted`
+              : d.extraction_status,
+          ].filter((x): x is string => !!x),
+          3
+        ),
+        href: `/import/${d.id}`,
+        sortTime: timeFromCreatedAt(d.uploaded_at, tz),
+        tone: d.extraction_status === "failed" ? "bad" : "default",
+        meta: [
+          ...(d.source ? [d.source] : []),
+          `Uploaded: ${dateFromCreatedAt(d.uploaded_at, tz) ?? d.uploaded_at}`,
+        ],
+      },
+      options
+    );
+  }
+
+  const intakeBounds = exact("l.date");
+  const intakeLogs = db
+    .prepare(
+      `SELECT l.date AS date, ii.kind AS kind, COUNT(*) AS count,
+              GROUP_CONCAT(DISTINCT ii.name) AS names,
+              GROUP_CONCAT(
+                ii.name || '::' || COALESCE(NULLIF(TRIM(d.amount), ''), 'Dose confirmed'),
+                '||'
+              ) AS dose_details
+         FROM intake_item_logs l
+         JOIN intake_items ii ON ii.id = l.supplement_id
+         LEFT JOIN intake_item_doses d ON d.id = l.dose_id
+        WHERE ii.profile_id = ?${intakeBounds.clause}
+        GROUP BY l.date, ii.kind
+        ORDER BY l.date DESC
+        LIMIT ?`
+    )
+    .all(profileId, ...intakeBounds.params, perTableLimit) as {
+    date: string;
+    kind: "supplement" | "medication";
+    count: number;
+    names: string | null;
+    dose_details: string | null;
+  }[];
+  for (const l of intakeLogs) {
+    pushLimited(
+      events,
+      {
+        id: `intake:${l.kind}:${l.date}`,
+        date: l.date,
+        category: "medication",
+        title:
+          l.kind === "medication"
+            ? "Medication doses confirmed"
+            : "Supplement doses confirmed",
+        subtitle: `${l.count} dose${l.count === 1 ? "" : "s"}`,
+        detail: compactList((l.names ?? "").split(","), 5),
+        href: "/medicine",
+        tone: "good",
+        detailItems: parseDetailItems(l.dose_details),
+      },
+      options
+    );
+  }
+
+  // Medication course start/stop events (#209). A child of intake_items, so
+  // scoped through the parent's profile_id. Each course yields up to two events
+  // (a "Started" on started_on and, when closed, a "Stopped" on stopped_on with
+  // its reason + any linked side effects); pushLimited applies the exact per-event
+  // date window. Ordered by most-recent activity so the per-table cap keeps the
+  // freshest courses. The pure shaping lives in medicationCourseEvents.
+  const courseRows = db
+    .prepare(
+      `SELECT c.id AS course_id, ii.name AS med_name,
+              c.started_on, c.stopped_on, c.stop_reason, c.notes,
+              (SELECT GROUP_CONCAT(se.effect, ', ')
+                 FROM intake_item_side_effects se
+                WHERE se.course_id = c.id) AS side_effects
+         FROM medication_courses c
+         JOIN intake_items ii ON ii.id = c.item_id
+        WHERE ii.profile_id = ?
+        ORDER BY COALESCE(c.stopped_on, c.started_on) DESC, c.id DESC
+        LIMIT ?`
+    )
+    .all(profileId, perTableLimit) as {
+    course_id: number;
+    med_name: string;
+    started_on: string | null;
+    stopped_on: string | null;
+    stop_reason: string | null;
+    notes: string | null;
+    side_effects: string | null;
+  }[];
+  for (const event of medicationCourseEvents(
+    courseRows.map((r) => ({
+      courseId: r.course_id,
+      medName: r.med_name,
+      startedOn: r.started_on,
+      stoppedOn: r.stopped_on,
+      stopReason: r.stop_reason as MedStopReason | null,
+      notes: r.notes,
+      sideEffectSummary: r.side_effects,
+    }))
+  )) {
+    pushLimited(events, event, options);
+  }
+
+  const immunizationBounds = exact("date");
+  const immunizations = db
+    .prepare(
+      `SELECT id, date, vaccine, dose_label, notes
+         FROM immunizations
+        WHERE profile_id = ?${immunizationBounds.clause}
+        ORDER BY date DESC, id DESC
+        LIMIT ?`
+    )
+    .all(profileId, ...immunizationBounds.params, perTableLimit) as {
+    id: number;
+    date: string;
+    vaccine: string;
+    dose_label: string | null;
+    notes: string | null;
+  }[];
+  for (const i of immunizations) {
+    pushLimited(
+      events,
+      {
+        id: `immunization:${i.id}`,
+        date: i.date,
+        category: "immunization",
+        title: vaccineDisplayName(i.vaccine),
+        subtitle: i.dose_label,
+        detail: i.notes,
+        href: `/immunizations/${i.vaccine}`,
+        tone: "good",
+      },
+      options
+    );
+  }
+
+  const conditionBounds = loose(
+    "COALESCE(resolved_date, onset_date, substr(created_at, 1, 10))"
+  );
+  const conditions = db
+    .prepare(
+      `SELECT id, name, status, onset_date, resolved_date, notes, created_at
+         FROM conditions
+        WHERE profile_id = ?${conditionBounds.clause}
+        ORDER BY COALESCE(resolved_date, onset_date, substr(created_at, 1, 10)) DESC, id DESC
+        LIMIT ?`
+    )
+    .all(profileId, ...conditionBounds.params, perTableLimit) as {
+    id: number;
+    name: string;
+    status: string;
+    onset_date: string | null;
+    resolved_date: string | null;
+    notes: string | null;
+    created_at: string;
+  }[];
+  for (const c of conditions) {
+    const resolved = c.resolved_date != null;
+    pushLimited(
+      events,
+      {
+        id: `condition:${c.id}`,
+        date:
+          c.resolved_date ??
+          c.onset_date ??
+          dateFromCreatedAt(c.created_at, tz) ??
+          "",
+        category: "condition",
+        title: c.name,
+        subtitle: resolved ? "Resolved condition" : `${c.status} condition`,
+        detail: c.notes,
+        href: "/conditions",
+        sortTime: timeFromCreatedAt(c.created_at, tz),
+        tone: resolved ? "good" : "default",
+      },
+      options
+    );
+  }
+
+  const allergyBounds = loose(
+    "COALESCE(onset_date, substr(created_at, 1, 10))"
+  );
+  const allergies = db
+    .prepare(
+      `SELECT id, substance, reaction, severity, status, onset_date, notes, created_at
+         FROM allergies
+        WHERE profile_id = ?${allergyBounds.clause}
+        ORDER BY COALESCE(onset_date, substr(created_at, 1, 10)) DESC, id DESC
+        LIMIT ?`
+    )
+    .all(profileId, ...allergyBounds.params, perTableLimit) as {
+    id: number;
+    substance: string;
+    reaction: string | null;
+    severity: string | null;
+    status: string;
+    onset_date: string | null;
+    notes: string | null;
+    created_at: string;
+  }[];
+  for (const a of allergies) {
+    pushLimited(
+      events,
+      {
+        id: `allergy:${a.id}`,
+        date: a.onset_date ?? dateFromCreatedAt(a.created_at, tz) ?? "",
+        category: "allergy",
+        title: a.substance,
+        subtitle: compactList(
+          [a.status, a.severity, a.reaction].filter((x): x is string => !!x),
+          3
+        ),
+        detail: a.notes,
+        href: "/allergies",
+        sortTime: timeFromCreatedAt(a.created_at, tz),
+        tone: a.status === "active" ? "warn" : "default",
+      },
+      options
+    );
+  }
+
+  const encounterBounds = exact("e.date");
+  const encounters = db
+    .prepare(
+      `SELECT e.id, e.date, e.type, e.reason, e.diagnoses, e.notes,
+              p.name AS provider_name, loc.name AS location_name
+         FROM encounters e
+         LEFT JOIN providers p ON p.id = e.provider_id
+         LEFT JOIN providers loc ON loc.id = e.location_provider_id
+        WHERE e.profile_id = ?${encounterBounds.clause}
+        ORDER BY e.date DESC, e.id DESC
+        LIMIT ?`
+    )
+    .all(profileId, ...encounterBounds.params, perTableLimit) as {
+    id: number;
+    date: string;
+    type: string | null;
+    reason: string | null;
+    diagnoses: string | null;
+    notes: string | null;
+    provider_name: string | null;
+    location_name: string | null;
+  }[];
+  for (const e of encounters) {
+    pushLimited(
+      events,
+      {
+        id: `visit:${e.id}`,
+        date: e.date,
+        category: "visit",
+        title: e.type ?? "Visit",
+        subtitle: compactList(
+          [e.provider_name, e.location_name, e.reason].filter(
+            (x): x is string => !!x
+          ),
+          3
+        ),
+        detail: e.diagnoses ?? e.notes,
+        href: "/encounters",
+      },
+      options
+    );
+  }
+
+  if (includeTrainingEvents) {
+    const goalBounds = loose(
+      "COALESCE(target_date, substr(created_at, 1, 10))"
+    );
+    const goals = db
+      .prepare(
+        `SELECT id, title, status, target_date, created_at
+           FROM goals
+          WHERE profile_id = ?${goalBounds.clause}
+          ORDER BY COALESCE(target_date, substr(created_at, 1, 10)) DESC, id DESC
+          LIMIT ?`
+      )
+      .all(profileId, ...goalBounds.params, perTableLimit) as {
+      id: number;
+      title: string;
+      status: string;
+      target_date: string | null;
+      created_at: string;
+    }[];
+    for (const g of goals) {
+      pushLimited(
+        events,
+        {
+          id: `goal:${g.id}`,
+          date: g.target_date ?? dateFromCreatedAt(g.created_at, tz) ?? "",
+          category: "goal",
+          title: g.title,
+          subtitle: g.target_date
+            ? `Target date, ${g.status}`
+            : `Created, ${g.status}`,
+          href: "/training?tab=goals",
+          sortTime: timeFromCreatedAt(g.created_at, tz),
+          tone: g.status === "achieved" ? "good" : "default",
+        },
+        options
+      );
+    }
+  }
+
+  const insightBounds = exact("date");
+  const insights = db
+    .prepare(
+      `SELECT id, date, summary, model, created_at
+         FROM insights
+        WHERE profile_id = ?${insightBounds.clause}
+        ORDER BY date DESC, id DESC
+        LIMIT ?`
+    )
+    .all(profileId, ...insightBounds.params, perTableLimit) as {
+    id: number;
+    date: string;
+    summary: string;
+    model: string | null;
+    created_at: string;
+  }[];
+  for (const i of insights) {
+    pushLimited(
+      events,
+      {
+        id: `insight:${i.id}`,
+        date: i.date,
+        category: "insight",
+        title: "AI insight",
+        subtitle: i.model,
+        detail: i.summary,
+        href: "/trends?tab=insights",
+        sortTime: timeFromCreatedAt(i.created_at, tz),
+      },
+      options
+    );
+  }
+
+  return sortTimelineEvents(events);
+}
+
+export function getTimelineEvents(
+  profileId: number,
+  options: TimelineOptions = {}
+): TimelineEvent[] {
+  const limit = clampLimit(options.limit);
+  return collectEvents(profileId, options, limit).slice(0, limit);
+}
+
+// Paginated variant used by the Timeline page: fetches one extra event per table
+// so it can report whether history extends beyond the current page (powering the
+// "Load more" control) without a second round of queries.
+export function getTimelinePage(
+  profileId: number,
+  options: TimelineOptions = {}
+): TimelinePage {
+  const limit = clampLimit(options.limit);
+  const all = collectEvents(profileId, options, limit + 1);
+  return { events: all.slice(0, limit), hasMore: all.length > limit };
+}
+
+export function getTimelineDates(
+  profileId: number,
+  options: Pick<TimelineOptions, "includeTrainingEvents"> = {}
+): string[] {
+  const includeTrainingEvents = options.includeTrainingEvents ?? true;
+  const trainingDateSelects = includeTrainingEvents
+    ? [
+        "SELECT date FROM activities WHERE profile_id = @profileId",
+        `SELECT COALESCE(target_date, substr(created_at, 1, 10)) AS date
+           FROM goals
+          WHERE profile_id = @profileId`,
+      ]
+    : [];
+  const sql = [
+    ...trainingDateSelects,
+    "SELECT date FROM body_metrics WHERE profile_id = @profileId",
+    "SELECT date FROM medical_records WHERE profile_id = @profileId",
+    `SELECT COALESCE(document_date, substr(uploaded_at, 1, 10)) AS date
+       FROM medical_documents
+      WHERE profile_id = @profileId`,
+    `SELECT l.date AS date
+       FROM intake_item_logs l
+       JOIN intake_items ii ON ii.id = l.supplement_id
+      WHERE ii.profile_id = @profileId`,
+    "SELECT date FROM immunizations WHERE profile_id = @profileId",
+    `SELECT COALESCE(resolved_date, onset_date, substr(created_at, 1, 10)) AS date
+       FROM conditions
+      WHERE profile_id = @profileId`,
+    `SELECT COALESCE(onset_date, substr(created_at, 1, 10)) AS date
+       FROM allergies
+      WHERE profile_id = @profileId`,
+    "SELECT date FROM encounters WHERE profile_id = @profileId",
+    "SELECT date FROM insights WHERE profile_id = @profileId",
+  ].join("\nUNION\n");
+
+  return (
+    db
+      .prepare(
+        `SELECT DISTINCT date
+           FROM (${sql})
+          WHERE date IS NOT NULL AND date != ''
+          ORDER BY date DESC`
+      )
+      .all({ profileId }) as { date: string }[]
+  ).map((r) => r.date);
+}

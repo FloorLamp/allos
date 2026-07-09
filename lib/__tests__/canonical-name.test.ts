@@ -1,0 +1,145 @@
+import { describe, it, expect } from "vitest";
+import {
+  normalizeCanonicalKey,
+  buildCanonicalIndex,
+  snapCanonicalName,
+  vitaminDIsoform,
+  distinguishVitaminDIsoform,
+} from "../canonical-name";
+
+describe("normalizeCanonicalKey", () => {
+  it("is case-, punctuation- and order-insensitive", () => {
+    expect(normalizeCanonicalKey("LDL Cholesterol")).toBe(
+      normalizeCanonicalKey("ldl  cholesterol")
+    );
+    expect(normalizeCanonicalKey("Creatinine, Urine")).toBe(
+      normalizeCanonicalKey("Urine Creatinine")
+    );
+  });
+
+  it("expands 25-OH to 25-hydroxy in its various spellings", () => {
+    const target = normalizeCanonicalKey("Vitamin D, 25-Hydroxy");
+    expect(normalizeCanonicalKey("25-OH Vitamin D")).toBe(target);
+    expect(normalizeCanonicalKey("25 OH Vitamin D")).toBe(target);
+    expect(normalizeCanonicalKey("25OH Vitamin D")).toBe(target);
+    expect(normalizeCanonicalKey("Vitamin D, 25-OH")).toBe(target);
+  });
+
+  it("keeps a different measurement distinct", () => {
+    // Specimen qualifier changes WHAT is measured -> different key.
+    expect(normalizeCanonicalKey("Creatinine")).not.toBe(
+      normalizeCanonicalKey("Creatinine, Urine")
+    );
+    // 1,25-dihydroxy is the active metabolite, distinct from 25-hydroxy.
+    expect(normalizeCanonicalKey("1,25-OH Vitamin D")).not.toBe(
+      normalizeCanonicalKey("25-OH Vitamin D")
+    );
+  });
+});
+
+describe("snapCanonicalName", () => {
+  const vocab = [
+    "Vitamin D, 25-Hydroxy",
+    "LDL Cholesterol",
+    "Creatinine",
+    "Creatinine, Urine",
+  ];
+
+  it("snaps a model spelling onto the matching vocabulary entry", () => {
+    expect(snapCanonicalName("25-OH Vitamin D", vocab)).toBe(
+      "Vitamin D, 25-Hydroxy"
+    );
+    // Case + comma-inversion of an existing entry.
+    expect(snapCanonicalName("cholesterol, ldl", vocab)).toBe(
+      "LDL Cholesterol"
+    );
+  });
+
+  it("leaves a genuinely new analyte unchanged", () => {
+    expect(snapCanonicalName("Lipoprotein(a)", vocab)).toBe("Lipoprotein(a)");
+  });
+
+  it("keeps a distinct specimen variant mapped to its own entry", () => {
+    expect(snapCanonicalName("Urine Creatinine", vocab)).toBe(
+      "Creatinine, Urine"
+    );
+  });
+
+  it("accepts a prebuilt index", () => {
+    const index = buildCanonicalIndex(vocab);
+    expect(snapCanonicalName("25 OH Vitamin D", index)).toBe(
+      "Vitamin D, 25-Hydroxy"
+    );
+  });
+});
+
+describe("vitaminDIsoform", () => {
+  it("reads D2/D3 in an explicit vitamin-D context", () => {
+    expect(vitaminDIsoform("25-OH Vitamin D2")).toBe("2");
+    expect(vitaminDIsoform("25-OH Vitamin D3")).toBe("3");
+    expect(vitaminDIsoform("Vitamin D 3, 25-Hydroxy")).toBe("3");
+    expect(vitaminDIsoform("Vit D2")).toBe("2");
+  });
+
+  it("reads the chemical names", () => {
+    expect(vitaminDIsoform("Ergocalciferol")).toBe("2");
+    expect(vitaminDIsoform("25-OH Vitamin D3 (Cholecalciferol)")).toBe("3");
+  });
+
+  it("returns null for a generic or total vitamin D", () => {
+    expect(vitaminDIsoform("Vitamin D, 25-Hydroxy")).toBeNull();
+    expect(vitaminDIsoform("25-OH Vitamin D")).toBeNull();
+    expect(vitaminDIsoform("1,25-Dihydroxy Vitamin D")).toBeNull();
+  });
+
+  it("does not misread an unrelated D2/D3 token", () => {
+    // The allergen panel's "(D2)" is not a vitamin-D isoform.
+    expect(vitaminDIsoform("Dermatophagoides Farinae (D2) IgE")).toBeNull();
+    expect(vitaminDIsoform("Complement C3")).toBeNull();
+  });
+});
+
+describe("distinguishVitaminDIsoform", () => {
+  it("keeps D2 and D3 apart when the model collapses both onto the generic name", () => {
+    // The model drops the D2/D3 suffix and reuses the generic vocab entry for
+    // both rows; the verbatim lab name recovers the metabolite.
+    const d2 = distinguishVitaminDIsoform(
+      "Vitamin D, 25-Hydroxy",
+      "25-OH Vitamin D2"
+    );
+    const d3 = distinguishVitaminDIsoform(
+      "Vitamin D, 25-Hydroxy",
+      "25-OH Vitamin D3"
+    );
+    expect(d2).toBe("Vitamin D2, 25-Hydroxy");
+    expect(d3).toBe("Vitamin D3, 25-Hydroxy");
+    expect(normalizeCanonicalKey(d2)).not.toBe(normalizeCanonicalKey(d3));
+  });
+
+  it("re-attaches the isoform to a plain/total generic name", () => {
+    expect(distinguishVitaminDIsoform("Vitamin D", "Vitamin D3")).toBe(
+      "Vitamin D3"
+    );
+    expect(
+      distinguishVitaminDIsoform("Vitamin D, Total", "Ergocalciferol")
+    ).toBe("Vitamin D2");
+  });
+
+  it("leaves an already isoform-specific canonical name unchanged", () => {
+    expect(
+      distinguishVitaminDIsoform("Vitamin D3, 25-Hydroxy", "25-OH Vitamin D3")
+    ).toBe("Vitamin D3, 25-Hydroxy");
+  });
+
+  it("leaves a generic total vitamin D alone", () => {
+    expect(
+      distinguishVitaminDIsoform("Vitamin D, 25-Hydroxy", "25-OH Vitamin D")
+    ).toBe("Vitamin D, 25-Hydroxy");
+  });
+
+  it("does not touch a non-vitamin-D name", () => {
+    expect(distinguishVitaminDIsoform("Creatinine", "Creatinine, Serum")).toBe(
+      "Creatinine"
+    );
+  });
+});

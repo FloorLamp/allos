@@ -1,0 +1,21 @@
+"use server";
+
+import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
+import { destroySession, requireSession, setActiveProfile } from "@/lib/auth";
+
+// Log out: revoke the session (deletes the row, clears the cookie) then send the
+// user to the login page.
+export async function logoutAction() {
+  destroySession();
+  redirect("/login");
+}
+
+// Switch the active profile on the current session, then refresh the app so the
+// new profile's data renders. Grant/admin is enforced inside setActiveProfile.
+export async function switchProfileAction(formData: FormData) {
+  requireSession();
+  const profileId = Number(formData.get("profileId"));
+  if (profileId) setActiveProfile(profileId);
+  revalidatePath("/", "layout");
+}

@@ -1,0 +1,5 @@
+npx lint-staged
+
+# PHI guard (#245): fail the commit if likely-real PHI is staged. Scans only
+# staged (added/modified) files so it stays fast; values are redacted in output.
+npm run --silent phi-scan -- --staged

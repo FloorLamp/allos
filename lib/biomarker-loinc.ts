@@ -1,0 +1,242 @@
+// Maps common LOINC codes to the app's canonical biomarker names (the ones
+// seeded from lib/canonical-biomarkers.json), so a vital sign / lab pulled out of
+// a CCD or SMART Health Card aggregates under the same identity — and picks up
+// the same reference band — as the rest of the app, instead of the portal's raw
+// display name (e.g. "Systolic blood pressure" vs the canonical "Blood Pressure
+// Systolic"). Only codes with a curated canonical entry are listed; an unmapped
+// code keeps its printed name. Pure + unit-tested; keyed by LOINC because that's
+// the stable, display-name-independent identifier both formats carry.
+
+export const LOINC_TO_CANONICAL: Record<string, string> = {
+  // Vital signs (canonical entries live under category "vitals").
+  "8480-6": "Blood Pressure Systolic", // Systolic blood pressure
+  "8462-4": "Blood Pressure Diastolic", // Diastolic blood pressure
+  "8867-4": "Resting Heart Rate", // Heart rate
+  "9279-1": "Respiratory Rate", // Respiratory rate
+  "2708-6": "Oxygen Saturation", // Oxygen saturation in Arterial blood
+  "59408-5": "Oxygen Saturation", // SpO2 by pulse oximetry
+  "8310-5": "Body Temperature", // Body temperature
+
+  // ── Complete Blood Count (CBC) ──────────────────────────────────────────────
+  // Indices. Each LOINC was confirmed against the LOINC identity (name +
+  // property/units) so the reading routes to the canonical entry sharing its unit
+  // (canonical units in parentheses); a same-day duplicate reported in an
+  // alternate unit still dedups by LOINC. Validated against a real Epic CCD.
+  "718-7": "Hemoglobin", // Hemoglobin [Mass/volume] in Blood (g/dL)
+  "789-8": "Red Blood Cell Count", // Erythrocytes [#/volume] in Blood by Automated count (10^6/uL)
+  "4544-3": "Hematocrit", // Hematocrit [Volume Fraction] of Blood by Automated count (%)
+  "787-2": "MCV", // MCV [Entitic volume] by Automated count (fL)
+  "785-6": "MCH", // MCH [Entitic mass] by Automated count (pg)
+  "786-4": "MCHC", // MCHC [Mass/volume] by Automated count (g/dL)
+  "788-0": "RDW", // Erythrocyte distribution width [Ratio] by Automated count (%)
+  "777-3": "Platelet Count", // Platelets [#/volume] in Blood by Automated count (10^3/uL)
+  "6690-2": "White Blood Cell Count", // Leukocytes [#/volume] in Blood by Automated count (10^3/uL)
+  "776-5": "MPV", // Platelet mean volume [Entitic volume] in Blood by Automated count (fL)
+
+  // WBC differential. The differential is reported in TWO complementary quantities
+  // — an absolute count (cells/uL) and a fraction of leukocytes (%) — which are
+  // NOT interconvertible without the WBC, so each LOINC form maps to the canonical
+  // entry carrying the MATCHING unit (never both forms onto one identity):
+  //   absolute-count LOINC  → the cells/uL canonical entry
+  //   /100-leukocytes LOINC → the "…, Relative" (%) canonical entry. The %-forms
+  //     are named "Relative", NOT "…, %": normalizeCanonicalKey strips "%", so
+  //     "Monocytes, %" would collide with the absolute "Monocytes" entry and never
+  //     route. Neutrophils/Lymphocytes have no absolute/percent name clash (the
+  //     base name is the % form; "…​, Absolute" is the count form).
+  "751-8": "Neutrophils, Absolute", // Neutrophils [#/volume] by Automated count (cells/uL)
+  "770-8": "Neutrophils", // Neutrophils/100 leukocytes by Automated count (%)
+  "731-0": "Lymphocytes, Absolute", // Lymphocytes [#/volume] by Automated count (cells/uL)
+  "736-9": "Lymphocytes", // Lymphocytes/100 leukocytes by Automated count (%)
+  "742-7": "Monocytes", // Monocytes [#/volume] by Automated count (cells/uL)
+  "5905-5": "Monocytes, Relative", // Monocytes/100 leukocytes by Automated count (%)
+  "711-2": "Eosinophils", // Eosinophils [#/volume] by Automated count (cells/uL)
+  "713-8": "Eosinophils, Relative", // Eosinophils/100 leukocytes by Automated count (%)
+  "704-7": "Basophils", // Basophils [#/volume] by Automated count (cells/uL)
+  "706-2": "Basophils, Relative", // Basophils/100 leukocytes by Automated count (%)
+
+  // ── Comprehensive Metabolic Panel (CMP) ─────────────────────────────────────
+  // All map to existing canonical entries (unit in parentheses). Serum/plasma
+  // codes; identities confirmed against LOINC.
+  "2345-7": "Glucose", // Glucose [Mass/volume] in Serum/Plasma (mg/dL). The
+  // whole-blood form (2339-0) is intentionally NOT mapped: whole blood runs ~10%
+  // below plasma, so mapping it to the serum range would false-flag normals low.
+  "3094-0": "BUN", // Urea nitrogen [Mass/volume] in Serum/Plasma (mg/dL)
+  "2160-0": "Creatinine", // Creatinine [Mass/volume] in Serum/Plasma (mg/dL)
+  "2951-2": "Sodium", // Sodium [Moles/volume] in Serum/Plasma (mmol/L)
+  "2823-3": "Potassium", // Potassium [Moles/volume] in Serum/Plasma (mmol/L)
+  "2075-0": "Chloride", // Chloride [Moles/volume] in Serum/Plasma (mmol/L)
+  "2028-9": "Carbon Dioxide", // Carbon dioxide, total [Moles/volume] in Serum/Plasma (mmol/L)
+  "17861-6": "Calcium", // Calcium [Mass/volume] in Serum/Plasma (mg/dL)
+  "1751-7": "Albumin", // Albumin [Mass/volume] in Serum/Plasma (g/dL)
+  "2885-2": "Total Protein", // Protein [Mass/volume] in Serum/Plasma (g/dL)
+  "1975-2": "Total Bilirubin", // Bilirubin.total [Mass/volume] in Serum/Plasma (mg/dL)
+  "1742-6": "ALT", // Alanine aminotransferase [Enzymatic activity/volume] (U/L)
+  "1920-8": "AST", // Aspartate aminotransferase [Enzymatic activity/volume] (U/L)
+  "6768-6": "Alkaline Phosphatase", // Alkaline phosphatase [Enzymatic activity/volume] (U/L)
+  // eGFR is fragmented across many LOINCs (formula + population variants); all
+  // resolve to the one canonical eGFR entry (mL/min/1.73m2).
+  "33914-3": "eGFR", // GFR/1.73 sq M.predicted by Creatinine-based formula (MDRD)
+  "98979-8": "eGFR", // GFR/1.73 sq M.predicted, Creatinine-based formula (CKD-EPI 2021)
+  "48642-3": "eGFR", // GFR/1.73 sq M.predicted among non-blacks (CKD-EPI/MDRD)
+  "48643-1": "eGFR", // GFR/1.73 sq M.predicted among blacks (CKD-EPI/MDRD)
+  "62238-1": "eGFR", // GFR/1.73 sq M.predicted by Creatinine-based formula (CKD-EPI)
+
+  // ── Lipid panel ─────────────────────────────────────────────────────────────
+  // All map to existing canonical entries (mg/dL, except ratio / Lp(a)).
+  "2093-3": "Total Cholesterol", // Cholesterol [Mass/volume] in Serum/Plasma
+  "2085-9": "HDL Cholesterol", // Cholesterol in HDL [Mass/volume] in Serum/Plasma
+  "13457-7": "LDL Cholesterol", // Cholesterol in LDL [Mass/volume], by calculation
+  "18262-6": "LDL Cholesterol", // Cholesterol in LDL [Mass/volume], by Direct assay
+  "2571-8": "Triglycerides", // Triglyceride [Mass/volume] in Serum/Plasma
+  "43396-1": "Non-HDL Cholesterol", // Cholesterol non HDL [Mass/volume] in Serum/Plasma
+  "13458-5": "VLDL Cholesterol", // Cholesterol in VLDL [Mass/volume], by calculation
+  "9830-1": "Cholesterol/HDL Ratio", // Cholesterol.total/Cholesterol in HDL [Mass Ratio]
+  "1884-6": "ApoB", // Apolipoprotein B [Mass/volume] in Serum/Plasma (mg/dL)
+  // Canonical Lp(a) is molar (nmol/L); map only the molar LOINC. The mass form
+  // (10835-7, mg/dL) has no fixed unit conversion (particle mass varies), so it is
+  // intentionally left unmapped rather than mis-scaled.
+  "43583-4": "Lipoprotein(a)", // Lipoprotein a [Moles/volume] in Serum/Plasma (nmol/L)
+
+  // ── Diabetes ────────────────────────────────────────────────────────────────
+  "4548-4": "Hemoglobin A1c", // Hemoglobin A1c/Hemoglobin.total in Blood (%)
+  "17856-6": "Hemoglobin A1c", // HbA1c in Blood by HPLC (%)
+  "4549-2": "Hemoglobin A1c", // HbA1c in Blood by Electrophoresis (%)
+  "20448-7": "Insulin", // Insulin [Units/volume] in Serum/Plasma (uIU/mL) — the
+  // arbitrary-units form matching the canonical uIU/mL, NOT the molar pmol/L code.
+  "1986-9": "C-Peptide", // C peptide [Mass/volume] in Serum/Plasma (ng/mL)
+
+  // ── Thyroid ─────────────────────────────────────────────────────────────────
+  "3016-3": "TSH", // Thyrotropin [Units/volume] in Serum/Plasma (uIU/mL)
+  "3024-7": "Free T4", // Thyroxine (T4) free [Mass/volume] in Serum/Plasma (ng/dL)
+  "3051-0": "Free T3", // Triiodothyronine (T3) free [Mass/volume] in Serum/Plasma (pg/mL)
+  "8099-4": "Thyroid Peroxidase Antibodies (TPOAb)", // Thyroperoxidase Ab [Units/volume] (IU/mL)
+  "8098-6": "Thyroglobulin Antibodies (TgAb)", // Thyroglobulin Ab [Units/volume] (IU/mL)
+  "3026-2": "Total T4", // Thyroxine (T4) [Mass/volume] in Serum/Plasma (ug/dL)
+  "3053-6": "Total T3", // Triiodothyronine (T3) [Mass/volume] in Serum/Plasma (ng/dL)
+
+  // ── Iron studies ────────────────────────────────────────────────────────────
+  "2276-4": "Ferritin", // Ferritin [Mass/volume] in Serum/Plasma (ng/mL)
+  "2498-4": "Iron", // Iron [Mass/volume] in Serum/Plasma (ug/dL)
+  "2500-7": "TIBC", // Iron binding capacity [Mass/volume] in Serum/Plasma (ug/dL)
+  "2502-3": "Transferrin Saturation", // Iron saturation [Mass Fraction] in Serum/Plasma (%)
+
+  // ── Vitamins ────────────────────────────────────────────────────────────────
+  "62292-8": "Vitamin D, 25-Hydroxy", // 25-OH-D3+D2 [Mass/volume] (total; ng/mL)
+  "2132-9": "Vitamin B12", // Cobalamin (Vitamin B12) [Mass/volume] (pg/mL)
+  "2284-8": "Folate", // Folate [Mass/volume] in Serum/Plasma (ng/mL)
+  "2283-0": "Folate, RBC", // Folate [Mass/volume] in Red Blood Cells (ng/mL).
+  // (NOT 2285-5, which is Follitropin in Semen — a wrong-analyte trap.)
+  "2923-1": "Vitamin A (Retinol)", // Retinol [Mass/volume] in Serum/Plasma (ug/dL)
+  "1823-4": "Vitamin E (Alpha-Tocopherol)", // Alpha tocopherol [Mass/volume] (mg/L)
+
+  // ── Inflammatory ────────────────────────────────────────────────────────────
+  "30522-7": "hs-CRP", // C reactive protein by High sensitivity method (mg/L)
+  "4537-7": "Erythrocyte Sedimentation Rate (ESR)", // ESR by Westergren (mm/h)
+  "30341-2": "Erythrocyte Sedimentation Rate (ESR)", // ESR in Blood (method-less; mm/h)
+
+  // ── Liver / pancreas ────────────────────────────────────────────────────────
+  "2324-2": "GGT", // Gamma glutamyl transferase [Enzymatic activity/volume] (U/L)
+  "10834-0": "Globulin", // Globulin [Mass/volume] in Serum by calculation (g/dL)
+  "1759-0": "Albumin/Globulin Ratio", // Albumin/Globulin [Mass Ratio] in Serum/Plasma
+  "1798-8": "Amylase", // Amylase [Enzymatic activity/volume] in Serum/Plasma (U/L)
+  "3040-3": "Lipase", // Lipase [Enzymatic activity/volume] in Serum/Plasma (U/L)
+  "1968-7": "Direct Bilirubin", // Bilirubin.direct [Mass/volume] in Serum/Plasma (mg/dL)
+  "2532-0": "Lactate Dehydrogenase (LDH)", // Lactate dehydrogenase [Enzymatic activity/volume] (U/L)
+  "14804-9": "Lactate Dehydrogenase (LDH)", // LDH by Lactate→pyruvate reaction (U/L)
+  "2157-6": "Creatine Kinase (CK)", // Creatine kinase [Enzymatic activity/volume] (U/L)
+
+  // ── Chemistry extras ────────────────────────────────────────────────────────
+  "19123-9": "Magnesium", // Magnesium [Mass/volume] in Serum/Plasma (mg/dL) — the
+  // mass form matching the canonical mg/dL, NOT the molar mmol/L code (2601-3).
+  "2777-1": "Phosphorus", // Phosphate [Mass/volume] in Serum/Plasma (mg/dL)
+  "3084-1": "Uric Acid", // Urate [Mass/volume] in Serum/Plasma (mg/dL)
+  "33037-3": "Anion Gap", // Anion gap in Serum/Plasma by calculation (mmol/L)
+  "1863-0": "Anion Gap", // Anion gap 4 in Serum/Plasma (mmol/L)
+
+  // ── Renal ───────────────────────────────────────────────────────────────────
+  "33863-2": "Cystatin C", // Cystatin C [Mass/volume] in Serum/Plasma (mg/L)
+
+  // ── Hormones (several are sex-specific — canonical entries carry sex ranges) ─
+  "2986-8": "Testosterone, Total", // Testosterone [Mass/volume] in Serum/Plasma (ng/dL)
+  "2991-8": "Testosterone, Free", // Testosterone Free [Mass/volume] in Serum/Plasma (pg/mL)
+  "2243-4": "Estradiol", // Estradiol (E2) [Mass/volume] in Serum/Plasma (pg/mL)
+  "2143-6": "Cortisol", // Cortisol [Mass/volume] in Serum/Plasma (ug/dL)
+  "15067-2": "Follicle Stimulating Hormone (FSH)", // Follitropin [Units/volume] (mIU/mL)
+  "10501-5": "Luteinizing Hormone (LH)", // Lutropin [Units/volume] (mIU/mL)
+  "2191-5": "DHEA-Sulfate", // DHEA-S [Mass/volume] in Serum/Plasma (ug/dL)
+  "13967-5": "Sex Hormone Binding Globulin (SHBG)", // SHBG [Moles/volume] (nmol/L)
+  "2842-3": "Prolactin", // Prolactin [Mass/volume] in Serum/Plasma (ng/mL)
+  "2484-4": "IGF-1", // Insulin-like growth factor-I [Mass/volume] (ng/mL)
+
+  // ── Tumor markers ───────────────────────────────────────────────────────────
+  "2857-1": "PSA", // Prostate specific Ag [Mass/volume] in Serum/Plasma (ng/mL)
+  "12841-3": "Prostate Specific Antigen (PSA), Free %", // free/total PSA [Mass Fraction] (%).
+  // (NOT 10886-0, which is free-PSA absolute in ng/mL, a different quantity.)
+
+  // ── Metabolic ───────────────────────────────────────────────────────────────
+  "13965-9": "Homocysteine", // Homocysteine [Moles/volume] in Serum/Plasma (umol/L)
+  "13964-2": "Methylmalonic Acid (MMA)", // Methylmalonate [Moles/volume] in Serum/Plasma
+  // (nmol/L). NOT 25130-6, which is a urine Pyridinoline/Creatinine ratio.
+
+  // ── Hematology (reticulocytes) ──────────────────────────────────────────────
+  "17849-1": "Reticulocytes", // Reticulocytes/Erythrocytes in Blood by Automated count (%)
+  "4679-7": "Reticulocytes", // Reticulocytes/Erythrocytes in Blood (method-less; %)
+  "60474-4": "Reticulocytes, Absolute", // Reticulocytes [#/volume] in Blood (10^3/uL)
+};
+
+// The canonical biomarker name for a LOINC code, or null when unmapped.
+export function canonicalBiomarkerForLoinc(
+  loinc: string | null | undefined
+): string | null {
+  if (!loinc) return null;
+  return LOINC_TO_CANONICAL[loinc] ?? null;
+}
+
+// LOINC codes that denote vital signs (as opposed to lab results). A FHIR
+// Observation carries no section context, so this is how the FHIR path decides
+// category "vitals" vs "lab" — matching the CDA path, which reads the section.
+// Keep in sync with the vitals block of LOINC_TO_CANONICAL above.
+const VITAL_LOINCS = new Set([
+  "8480-6", // Systolic blood pressure
+  "8462-4", // Diastolic blood pressure
+  "8867-4", // Heart rate
+  "9279-1", // Respiratory rate
+  "2708-6", // Oxygen saturation (arterial)
+  "59408-5", // SpO2 by pulse oximetry
+  "8310-5", // Body temperature
+  // Body height/length is an anthropometric vital (not a lab), so it routes to
+  // the vitals category and stays out of the biomarker vocabulary. It is projected
+  // into metric_samples by the height recognizer — see lib/height-extract
+  // (HEIGHT_LOINCS). Keep these two lists in sync.
+  "8302-2", // Body height
+  "3137-7", // Body height, Measured
+  "8306-3", // Body height, Lying (length)
+  "8308-9", // Body height, Standing
+  // Head (occipital-frontal) circumference is likewise an anthropometric vital,
+  // projected into metric_samples ('head_circumference_cm') by the head-circ
+  // recognizer — see lib/head-circ-extract (HEADCIRC_LOINCS). Keep these two lists
+  // in sync. The percentile code 8289-1 is intentionally NOT here (it's a derived
+  // percentile, not a measurement). (#182)
+  "8287-5", // Head Occipital-frontal circumference by Tape measure
+  "9843-4", // Head circumference (alias)
+]);
+
+export function isVitalLoinc(loinc: string | null | undefined): boolean {
+  return loinc != null && VITAL_LOINCS.has(loinc);
+}
+
+// A lab observation LOINC that imported but has NO canonical mapping (and isn't a
+// vital) — so it lands under its raw printed name with no biomarker grouping /
+// reference band. The import debugger surfaces these (issue: unmapped-LOINC
+// visibility) so a maintainer can see which codes to add to LOINC_TO_CANONICAL. A
+// vital LOINC (routed by isVitalLoinc, e.g. a BP component or a height) is NOT
+// "unmapped" for this purpose — it's intentionally kept out of the biomarker
+// vocabulary — so it's excluded here.
+export function isUnmappedLabLoinc(loinc: string | null | undefined): boolean {
+  return (
+    loinc != null &&
+    loinc !== "" &&
+    !isVitalLoinc(loinc) &&
+    canonicalBiomarkerForLoinc(loinc) == null
+  );
+}

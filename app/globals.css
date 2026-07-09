@@ -1,0 +1,210 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+:root.dark {
+  color-scheme: dark;
+}
+
+body {
+  @apply text-slate-800 antialiased dark:text-slate-200;
+  /* Suppress the gray flash mobile browsers paint on tap; interactive elements
+     already carry their own hover/active styles. */
+  -webkit-tap-highlight-color: transparent;
+  /* Vitals light page: airy off-white with a soft green glow up top + a faint
+     vertical gradient, so the canvas isn't flat. */
+  background:
+    radial-gradient(
+      1000px 480px at 82% -12%,
+      rgba(34, 197, 94, 0.14),
+      transparent 60%
+    ),
+    linear-gradient(180deg, #e4ece6 0%, #cdd9d1 100%);
+  background-attachment: fixed;
+  min-height: 100vh;
+}
+
+/* Vitals dark page: de-blued near-black with a soft green glow up top. */
+:root.dark body {
+  background:
+    radial-gradient(
+      1100px 520px at 80% -10%,
+      rgba(34, 197, 94, 0.06),
+      transparent 60%
+    ),
+    #090c0b;
+  background-attachment: fixed;
+  min-height: 100vh;
+}
+
+/* Dotted texture on the page background, BEHIND content. The frosted cards'
+   backdrop-blur smooths it out where they sit, so the dots read only on the
+   bare background — never on the cards. A spaced polka-dot grid (cheap tiled
+   radial-gradient; no SVG filter). */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image: radial-gradient(
+    circle,
+    rgba(20, 30, 24, 0.1) 1.5px,
+    transparent 1.6px
+  );
+  background-size: 22px 22px;
+  /* Fade the dots in from top (transparent) to bottom (full). */
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 100%);
+  mask-image: linear-gradient(to bottom, transparent 0%, #000 100%);
+}
+:root.dark body::before {
+  background-image: radial-gradient(
+    circle,
+    rgba(255, 255, 255, 0.07) 1.5px,
+    transparent 1.6px
+  );
+}
+
+@layer components {
+  /* Frosted glass: translucent surface + backdrop blur lets the page glow
+     diffuse through; soft shadow for elevation, hairline border for the edge. */
+  .card {
+    @apply rounded-xl border border-white/60 bg-white/55 p-5 shadow-lg shadow-slate-300/40 backdrop-blur-2xl backdrop-saturate-150 dark:border-white/10 dark:bg-ink-800/45 dark:shadow-black/30;
+  }
+  .input {
+    @apply w-full rounded-lg border border-black/10 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 dark:border-white/10 dark:bg-ink-950 dark:text-slate-100 dark:placeholder:text-slate-500;
+  }
+  /* Native <select> draws its dropdown caret hard against the right edge. Swap
+     it for a custom chevron with breathing room, and reserve right padding so
+     the option text never slides under it. */
+  select.input {
+    @apply appearance-none bg-no-repeat pr-9;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-position: right 0.75rem center;
+    background-size: 1rem;
+  }
+  :root.dark select.input {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  }
+  /* Compact, borderless <select> for the calendar month/year pickers. Drops the
+     native menulist chrome but keeps a small custom caret (appearance-none alone
+     leaves no dropdown affordance), and pins the option colors in dark mode — a
+     transparent-background select otherwise makes Chromium render the OPEN option
+     list in a light theme, leaving light text on a white popup. */
+  select.select-bare {
+    @apply cursor-pointer appearance-none rounded bg-transparent bg-no-repeat pr-4 font-semibold text-slate-700 outline-none hover:bg-slate-100 focus:ring-1 focus:ring-brand-400 dark:text-slate-200 dark:hover:bg-ink-800;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-position: right 0.125rem center;
+    background-size: 0.7rem;
+  }
+  :root.dark select.select-bare {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  }
+  :root.dark select.select-bare option {
+    /* ink-900 to match the calendar surface; slate-200 text for legibility. */
+    background-color: #0c100e;
+    color: #e2e8f0;
+  }
+  .label {
+    @apply mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-gradient-to-b from-brand-500 to-brand-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:from-brand-600 hover:to-brand-700 disabled:opacity-50;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-black/10 bg-white/70 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-white dark:border-white/10 dark:bg-ink-850 dark:text-slate-200 dark:hover:bg-ink-750;
+  }
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-rose-700 disabled:opacity-50;
+  }
+  .badge {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
+  }
+  /* Slightly tighter cell padding on phones so wide tables fit more columns. */
+  .th {
+    @apply px-2 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 sm:px-3 dark:text-slate-400;
+  }
+  .td {
+    @apply px-2 py-2 text-sm text-slate-700 sm:px-3 dark:text-slate-300;
+  }
+}
+
+/* Native <input type="time"> (ActivityForm start/end) keeps browser-drawn chrome
+   even inside .input: the picker-indicator paints a hover background box, and the
+   focused hh/mm segment gets an OS highlight — both look wrong against the dark
+   theme. color-scheme already tints the glyphs; these rules just tame the stray
+   backgrounds so the control reads consistently in both themes. */
+input[type="time"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  border-radius: 0.25rem;
+  opacity: 0.55;
+  transition: opacity 0.15s;
+}
+input[type="time"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+  background: transparent;
+}
+input[type="time"]::-webkit-datetime-edit-hour-field:focus,
+input[type="time"]::-webkit-datetime-edit-minute-field:focus,
+input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
+  background-color: rgba(34, 197, 94, 0.18);
+  color: inherit;
+  border-radius: 0.25rem;
+  outline: none;
+}
+
+/* Icon-only action buttons render compact (e.g. h-8 w-8 = 32px) for desktop
+   density, which is below the ~44px touch-target guideline. On coarse-pointer
+   (touch) devices only, extend the clickable area with an invisible pseudo
+   element so the tap target reaches 44px without changing the visual size or
+   affecting mouse layouts. */
+@media (pointer: coarse) {
+  .tap-target {
+    position: relative;
+  }
+  .tap-target::after {
+    content: "";
+    position: absolute;
+    inset: -6px;
+  }
+}
+
+/* iOS Safari auto-zooms the page when a focused form control's font-size is
+   under 16px, in any orientation. Enforce the floor on touch devices only —
+   desktop keeps its compact text — keyed on the device (pointer) rather than
+   viewport width so landscape phones are covered. !important lets this beat
+   compact utility classes (text-xs/text-sm) on individual controls. */
+@media (pointer: coarse) {
+  input,
+  select,
+  textarea {
+    font-size: max(16px, 1em) !important;
+  }
+}
+
+/* Print: produce a clean one/two-page "medical passport" (issue #105). Chrome
+   (nav, buttons) opts out with Tailwind's `print:hidden`; here we set page
+   margins, flatten the frosted-glass surfaces to plain bordered cards, and force
+   backgrounds/flag colors to actually render (browsers drop them by default). */
+@media print {
+  @page {
+    margin: 14mm;
+  }
+  html,
+  body {
+    background: #fff !important;
+  }
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .card {
+    background: #fff !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+  }
+}

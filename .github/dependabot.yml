@@ -1,0 +1,27 @@
+# Dependabot keeps dependencies patched with a bounded, low-noise PR stream.
+# Minor + patch bumps are grouped into a single PR per ecosystem so routine
+# updates don't spam the queue; major bumps stay as individual PRs so their
+# breaking-change risk is reviewed one at a time. PRs target the default branch.
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      npm-minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      github-actions:
+        update-types:
+          - "minor"
+          - "patch"

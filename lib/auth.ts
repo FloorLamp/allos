@@ -1,0 +1,318 @@
+import crypto from "node:crypto";
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
+import { db } from "./db";
+
+// Session/auth layer for the single-tenant → multi-user conversion (issue #67,
+// Phase 1). The cookie holds a random 256-bit token; the DB stores only its
+// SHA-256, so a DB leak can't be replayed as a live cookie. The active profile
+// lives server-side on the session row, never in the cookie.
+//
+// CSRF: no separate token is needed. State-changing requests go through Server
+// Actions (Next 14 enforces an Origin/Host match on POST) or through
+// token-authenticated API handlers (Health Connect ingest, Telegram webhook);
+// the only cookie-authenticated handlers are GET-only downloads/streams, which a
+// cross-site form can't meaningfully forge. The cookie is httpOnly + SameSite=Lax.
+
+export const SESSION_COOKIE = "ht_session";
+const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+const SESSION_TTL_SEC = SESSION_TTL_MS / 1000;
+
+export type Role = "admin" | "member";
+export interface SessionLogin {
+  id: number;
+  username: string;
+  role: Role;
+}
+export interface SessionProfile {
+  id: number;
+  name: string;
+  // Optional avatar: relative on-disk path (null = no photo) and a version that
+  // bumps on every change, used as the ?v= cache-buster on the serve URL.
+  photo_path: string | null;
+  photo_version: number;
+}
+export interface CurrentSession {
+  login: SessionLogin;
+  profile: SessionProfile;
+}
+
+function hashToken(token: string): string {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
+
+// Cookie attributes shared by the login action and the middleware refresh, so
+// the sliding re-set can't drift from the original. `secure` only in prod so the
+// cookie still works over plain HTTP in local dev.
+export function sessionCookieOptions(maxAgeSec: number = SESSION_TTL_SEC) {
+  return {
+    httpOnly: true,
+    sameSite: "lax" as const,
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: maxAgeSec,
+  };
+}
+
+// The profiles a login may act as: admins see every profile; members see only
+// their granted ones. Ordered by id so "first accessible" is stable.
+function accessibleProfiles(loginId: number, role: Role): SessionProfile[] {
+  if (role === "admin") {
+    return db
+      .prepare(
+        "SELECT id, name, photo_path, photo_version FROM profiles ORDER BY id"
+      )
+      .all() as SessionProfile[];
+  }
+  return db
+    .prepare(
+      `SELECT p.id, p.name, p.photo_path, p.photo_version FROM profiles p
+         JOIN login_profiles ap ON ap.profile_id = p.id
+        WHERE ap.login_id = ?
+        ORDER BY p.id`
+    )
+    .all(loginId) as SessionProfile[];
+}
+
+// Delete every expired session. Called opportunistically at login so the table
+// doesn't accumulate dead rows.
+export function purgeExpiredSessions(): void {
+  db.prepare("DELETE FROM sessions WHERE expires_at <= datetime('now')").run();
+}
+
+// Mint a session for a login and return the raw token (the caller sets it as
+// the cookie — Server Actions can, Server Components can't). The initial active
+// profile is the login's first accessible one. `userAgent` (already truncated by
+// the caller) is stored so the active-sessions view can label the device.
+export function createSession(
+  loginId: number,
+  userAgent: string | null = null
+): {
+  token: string;
+  maxAgeSec: number;
+} {
+  const acct = db
+    .prepare("SELECT id, role FROM logins WHERE id = ?")
+    .get(loginId) as { id: number; role: Role } | undefined;
+  if (!acct) throw new Error(`createSession: no login ${loginId}`);
+  const first = accessibleProfiles(acct.id, acct.role)[0];
+  const token = crypto.randomBytes(32).toString("hex");
+  db.prepare(
+    `INSERT INTO sessions
+       (token_hash, login_id, active_profile_id, user_agent, created_at, expires_at, last_used_at)
+     VALUES (?, ?, ?, ?, datetime('now'), datetime('now', '+30 days'), datetime('now'))`
+  ).run(hashToken(token), loginId, first?.id ?? null, userAgent);
+  return { token, maxAgeSec: SESSION_TTL_SEC };
+}
+
+// Revoke the current session (logout): delete the DB row and clear the cookie.
+// Safe to call from a Server Action, where cookie mutation is allowed.
+export function destroySession(): void {
+  const token = cookies().get(SESSION_COOKIE)?.value;
+  if (token) {
+    db.prepare("DELETE FROM sessions WHERE token_hash = ?").run(
+      hashToken(token)
+    );
+  }
+  cookies().delete(SESSION_COOKIE);
+}
+
+// Resolve the caller's session from the cookie, or null. Validates expiry,
+// re-derives the active profile against current grants (so a revoked grant can't
+// keep a login on a profile it lost), and throttles the last_used_at write to
+// once an hour. Sync DB reads are fine under better-sqlite3.
+export function getCurrentSession(): CurrentSession | null {
+  const token = cookies().get(SESSION_COOKIE)?.value;
+  if (!token) return null;
+  const tokenHash = hashToken(token);
+
+  const row = db
+    .prepare(
+      `SELECT s.login_id AS loginId, s.active_profile_id AS activeProfileId,
+              a.username, a.role
+         FROM sessions s JOIN logins a ON a.id = s.login_id
+        WHERE s.token_hash = ? AND s.expires_at > datetime('now')`
+    )
+    .get(tokenHash) as
+    | {
+        loginId: number;
+        activeProfileId: number | null;
+        username: string;
+        role: Role;
+      }
+    | undefined;
+  if (!row) return null;
+
+  const profiles = accessibleProfiles(row.loginId, row.role);
+  if (profiles.length === 0) return null; // login with no usable profile
+
+  let profile = profiles.find((p) => p.id === row.activeProfileId);
+  if (!profile) {
+    // Stored active profile is missing or no longer granted — snap to the first
+    // accessible one and persist the correction.
+    profile = profiles[0];
+    db.prepare(
+      "UPDATE sessions SET active_profile_id = ? WHERE token_hash = ?"
+    ).run(profile.id, tokenHash);
+  }
+
+  // Sliding refresh, throttled: the WHERE only matches when >1h stale, so a
+  // busy session isn't written on every request. Extending expires_at here (not
+  // just the cookie's max-age in middleware) is what makes the 30-day expiry
+  // truly sliding — otherwise an active user is hard-logged-out 30 days after
+  // login no matter how recently they used the app.
+  db.prepare(
+    `UPDATE sessions
+        SET last_used_at = datetime('now'),
+            expires_at = datetime('now', '+30 days')
+      WHERE token_hash = ? AND last_used_at < datetime('now', '-1 hour')`
+  ).run(tokenHash);
+
+  return {
+    login: { id: row.loginId, username: row.username, role: row.role },
+    profile,
+  };
+}
+
+// Guard for Server Components / Server Actions: returns the session or redirects
+// to /login. redirect() throws (NEXT_REDIRECT), which is the intended control
+// flow inside actions too.
+export function requireSession(): CurrentSession {
+  const session = getCurrentSession();
+  if (!session) redirect("/login");
+  return session;
+}
+
+// Admin-only guard. Members are bounced to the app root. (No admin-only surface
+// ships in Phase 1; provided for the Phase 4 admin UI.)
+export function requireAdmin(): CurrentSession {
+  const session = requireSession();
+  if (session.login.role !== "admin") redirect("/");
+  return session;
+}
+
+// The profiles the current login may switch to (for the header switcher).
+export function getAccessibleProfiles(): SessionProfile[] {
+  const session = getCurrentSession();
+  if (!session) return [];
+  return accessibleProfiles(session.login.id, session.login.role);
+}
+
+// Total number of profiles in the instance, regardless of the caller's grants.
+// The Household view is a cross-profile overview (admins see all profiles), so
+// the nav gates it on the instance-wide count, not the caller's accessible set.
+export function countProfiles(): number {
+  return (
+    db.prepare("SELECT COUNT(*) AS n FROM profiles").get() as { n: number }
+  ).n;
+}
+
+// Whether the given session may see a specific profile — the same rule as the
+// switcher/serve route: admins reach every profile, members only their granted
+// ones. Used by the profile-photo serve route to gate cross-profile fetches.
+export function canAccessProfile(
+  session: CurrentSession,
+  profileId: number
+): boolean {
+  return accessibleProfiles(session.login.id, session.login.role).some(
+    (p) => p.id === profileId
+  );
+}
+
+// Delete every session belonging to a login — used when an admin resets a
+// login's password (all its live cookies must stop working). Optionally spare
+// one token's session, which change-own-password uses to keep the caller logged
+// in while logging out every other device.
+export function destroyLoginSessions(
+  loginId: number,
+  keepTokenHash?: string
+): void {
+  if (keepTokenHash) {
+    db.prepare(
+      "DELETE FROM sessions WHERE login_id = ? AND token_hash != ?"
+    ).run(loginId, keepTokenHash);
+  } else {
+    db.prepare("DELETE FROM sessions WHERE login_id = ?").run(loginId);
+  }
+}
+
+// Change-own-password helper: drop every session for this login EXCEPT the
+// caller's current one (identified by the live cookie). Returns silently if
+// there's no cookie (nothing to keep — caller handles the full destroy).
+export function destroyOtherSessionsForCurrent(loginId: number): void {
+  const token = cookies().get(SESSION_COOKIE)?.value;
+  destroyLoginSessions(loginId, token ? hashToken(token) : undefined);
+}
+
+// A live session as shown on Settings → Preferences (issue #132, Phase B). `id`
+// is the SHA-256 token_hash — safe to hand to the client: it can't be reversed
+// into the cookie token, and revokeSession scopes deletion to the owning login,
+// so it only ever revokes the caller's own sessions. `current` marks the session
+// making this request.
+export interface SessionSummary {
+  id: string;
+  createdAt: string;
+  lastSeenAt: string;
+  userAgent: string | null;
+  current: boolean;
+}
+
+// The SHA-256 of the caller's current cookie token, or null when there's no
+// cookie — used to flag the current row in the sessions list.
+function currentTokenHash(): string | null {
+  const token = cookies().get(SESSION_COOKIE)?.value;
+  return token ? hashToken(token) : null;
+}
+
+// Every live session for a login, newest-seen first, for the active-sessions
+// view. Expired rows are excluded (they're already dead to getCurrentSession).
+export function listLoginSessions(loginId: number): SessionSummary[] {
+  const currentHash = currentTokenHash();
+  const rows = db
+    .prepare(
+      `SELECT token_hash AS id, created_at AS createdAt,
+              last_used_at AS lastSeenAt, user_agent AS userAgent
+         FROM sessions
+        WHERE login_id = ? AND expires_at > datetime('now')
+        ORDER BY last_used_at DESC`
+    )
+    .all(loginId) as Omit<SessionSummary, "current">[];
+  return rows.map((r) => ({ ...r, current: r.id === currentHash }));
+}
+
+// Revoke one session by its token_hash, scoped to the owning login so a login
+// can only ever end its own sessions. Revoking the current session logs the
+// caller out on their next request (getCurrentSession finds no row).
+export function revokeSession(loginId: number, sessionId: string): void {
+  db.prepare("DELETE FROM sessions WHERE token_hash = ? AND login_id = ?").run(
+    sessionId,
+    loginId
+  );
+}
+
+// How many admin logins exist — the guard rail against locking the instance
+// out of its admin surface (no action may drop this to zero).
+export function adminLoginCount(): number {
+  return (
+    db
+      .prepare("SELECT COUNT(*) AS c FROM logins WHERE role = 'admin'")
+      .get() as { c: number }
+  ).c;
+}
+
+// Switch the active profile on the current session row, after verifying the
+// login may act as it (granted, or admin). No-op-safe: an inaccessible target
+// is rejected.
+export function setActiveProfile(profileId: number): void {
+  const token = cookies().get(SESSION_COOKIE)?.value;
+  if (!token) return;
+  const session = getCurrentSession();
+  if (!session) return;
+  const allowed = accessibleProfiles(session.login.id, session.login.role).some(
+    (p) => p.id === profileId
+  );
+  if (!allowed) return;
+  db.prepare(
+    "UPDATE sessions SET active_profile_id = ? WHERE token_hash = ?"
+  ).run(profileId, hashToken(token));
+}

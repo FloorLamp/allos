@@ -1,0 +1,496 @@
+import { db } from "@/lib/db";
+import type { ActivityType } from "@/lib/types";
+import {
+  hasBodyMetric,
+  mergeBodyMetric,
+  type BodyMetricValues,
+} from "@/lib/body-metric-extract";
+import { emptyCounts, rowsEqual } from "./sync-log";
+import type { UpsertCounts } from "./sync-log";
+
+// Provider-agnostic record shapes. Every integration parses its own payload into
+// these, then calls the shared upserts below — so a new provider (Strava, Garmin)
+// reuses all of the DB mapping and idempotency logic.
+
+// Per-day body metrics. weight_kg may be undefined (e.g. a body-fat-only day).
+export interface NormBodyMetric {
+  date: string; // YYYY-MM-DD (local)
+  weight_kg?: number;
+  body_fat_pct?: number;
+  resting_hr?: number;
+}
+
+export interface NormMetricSample {
+  metric: string; // 'steps','distance_km','active_kcal','total_kcal','hrv_ms'
+  date: string; // YYYY-MM-DD (local)
+  start_time: string; // ISO; point records set start == end
+  end_time: string;
+  value: number;
+}
+
+// A pre-aggregated 1-minute heart-rate bucket from the incoming batch.
+export interface NormHrMinute {
+  ts: string; // 'YYYY-MM-DDTHH:MM' (local)
+  bpm: number; // average of this batch's samples in the minute
+  bpm_min: number;
+  bpm_max: number;
+  n: number; // sample count in this batch
+}
+
+export interface NormActivity {
+  external_id: string; // dedup key, e.g. 'health-connect:<start ISO>'
+  date: string; // YYYY-MM-DD (local)
+  type: ActivityType;
+  title: string;
+  duration_min: number | null;
+  distance_km: number | null;
+  start_time: string | null; // HH:MM
+  end_time: string | null; // HH:MM
+  // Richer per-activity metrics (Strava). All optional — a provider that omits a
+  // field leaves the column null. Power/cadence/kilojoules are cycling-only,
+  // avg_temp_c is outdoor-only, workout_type is a label (see strava.ts).
+  avg_hr?: number | null;
+  max_hr?: number | null;
+  elevation_m?: number | null;
+  avg_speed_kmh?: number | null;
+  max_speed_kmh?: number | null;
+  relative_effort?: number | null;
+  avg_power_w?: number | null;
+  max_power_w?: number | null;
+  weighted_avg_power_w?: number | null;
+  avg_cadence?: number | null;
+  avg_temp_c?: number | null;
+  kilojoules?: number | null;
+  workout_type?: string | null;
+}
+
+// The extra metric columns NormActivity carries beyond the base fields, in a
+// fixed order shared by the INSERT/UPDATE statements below. Kept in one place so
+// the column list, placeholders, and bound values can't drift apart.
+const ACTIVITY_METRIC_COLS = [
+  "avg_hr",
+  "max_hr",
+  "elevation_m",
+  "avg_speed_kmh",
+  "max_speed_kmh",
+  "relative_effort",
+  "avg_power_w",
+  "max_power_w",
+  "weighted_avg_power_w",
+  "avg_cadence",
+  "avg_temp_c",
+  "kilojoules",
+  "workout_type",
+] as const;
+
+function activityMetricValues(r: NormActivity): (number | string | null)[] {
+  return ACTIVITY_METRIC_COLS.map((c) => r[c] ?? null);
+}
+
+// A clinical vital / biomarker reading → medical_records. canonical groups it with
+// the same analyte from manual entry / documents; external_id dedups re-syncs.
+export interface NormVital {
+  external_id: string; // 'health-connect:<canonical>:<time>'
+  date: string; // YYYY-MM-DD (local)
+  category: "vitals" | "biomarker";
+  name: string;
+  canonical: string;
+  value_num: number;
+  unit: string;
+}
+
+export interface IngestCounts {
+  bodyMetrics: number;
+  samples: number;
+  hrMinutes: number;
+  activities: number;
+  vitals: number;
+}
+
+// Upsert one imported body-metrics row per day, keyed by date + source. Only ever
+// touches the row this source created — manually-entered rows (and rows from other
+// sources) are never read or modified. Weight, body fat, and resting HR all live
+// here now (#120); a row may carry any subset (weight_kg is nullable). On update
+// the incoming reading is folded into the stored row by mergeBodyMetric (pure,
+// tested): a later sync window with only some of the three fills the gaps without
+// blanking a value an earlier window stored, while a fresh non-null value (e.g. a
+// corrected weight) still overwrites.
+export function upsertBodyMetrics(
+  profileId: number,
+  rows: NormBodyMetric[],
+  source: string
+): UpsertCounts {
+  const find = db.prepare(
+    "SELECT id, weight_kg, body_fat_pct, resting_hr FROM body_metrics WHERE profile_id = ? AND date = ? AND source IS ? ORDER BY id LIMIT 1"
+  );
+  const insert = db.prepare(
+    `INSERT INTO body_metrics (profile_id, date, weight_kg, body_fat_pct, resting_hr, source)
+     VALUES (?, ?, ?, ?, ?, ?)`
+  );
+  // Which non-null value wins is decided by mergeBodyMetric; the UPDATE just
+  // writes the resolved triple.
+  const update = db.prepare(
+    `UPDATE body_metrics SET weight_kg = ?, body_fat_pct = ?, resting_hr = ? WHERE id = ?`
+  );
+
+  const counts = emptyCounts();
+  for (const r of rows) {
+    const incoming: BodyMetricValues = {
+      weight_kg: r.weight_kg ?? null,
+      body_fat_pct: r.body_fat_pct ?? null,
+      resting_hr: r.resting_hr ?? null,
+    };
+    if (!hasBodyMetric(incoming)) continue; // nothing to store
+    const mine = find.get(profileId, r.date, source) as
+      (BodyMetricValues & { id: number }) | undefined;
+    if (mine) {
+      // Compare the pre-image (mine) to the resolved post-image (the merge). A
+      // window that only re-states values mergeBodyMetric already stored is a
+      // no-op → unchanged; anything that fills a gap or corrects a value → updated.
+      const m = mergeBodyMetric(mine, incoming);
+      if (
+        rowsEqual(
+          BODY_METRIC_COMPARE_COLS,
+          mine as unknown as Record<string, unknown>,
+          m as unknown as Record<string, unknown>
+        )
+      ) {
+        counts.unchanged++;
+      } else {
+        update.run(m.weight_kg, m.body_fat_pct, m.resting_hr, mine.id);
+        counts.updated++;
+      }
+    } else {
+      insert.run(
+        profileId,
+        r.date,
+        incoming.weight_kg,
+        incoming.body_fat_pct,
+        incoming.resting_hr,
+        source
+      );
+      counts.inserted++;
+    }
+  }
+  return counts;
+}
+
+const BODY_METRIC_COMPARE_COLS: string[] = [
+  "weight_kg",
+  "body_fat_pct",
+  "resting_hr",
+];
+
+// Body-metric measures that live in body_metrics (weight_kg/body_fat_pct/
+// resting_hr), NOT in metric_samples. A #120 one-time fold moved body fat / resting
+// HR out of metric_samples into body_metrics so every source of them shares one
+// home; parsers route these to upsertBodyMetrics. This set is the guard (below)
+// that keeps a future path from re-splitting them back into metric_samples, whose
+// `metric` is free text. Kept as a plain array so callers/tests can reuse it.
+export const BODY_METRIC_SAMPLE_MEASURES = [
+  "body_fat_pct",
+  "resting_hr",
+] as const;
+
+// Idempotent on (profile_id, metric, source, start_time, end_time): a resent
+// record from the SAME source overwrites itself, but two DIFFERENT sources
+// reporting the same metric for the same window each keep their own row (#128) —
+// `source` is part of the unique key, so they no longer clobber each other.
+//
+// Guard (#120 follow-up): body fat % and resting HR belong in body_metrics, not
+// here — see BODY_METRIC_SAMPLE_MEASURES. A row whose metric is one of those is a
+// programming error (a parser mis-routing a body metric into the samples path), so
+// it is skipped and NOT counted rather than re-splitting the measure across two
+// tables.
+export function upsertMetricSamples(
+  profileId: number,
+  rows: NormMetricSample[],
+  source: string
+): UpsertCounts {
+  // Pre-image on the natural key the ON CONFLICT below merges on, so a re-send of
+  // the rolling window that lands the same value/date is counted unchanged rather
+  // than a write (info.changes can't see that the values matched).
+  const find = db.prepare(
+    "SELECT value, date FROM metric_samples WHERE profile_id = ? AND metric = ? AND source = ? AND start_time = ? AND end_time = ?"
+  );
+  const stmt = db.prepare(
+    `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(profile_id, metric, source, start_time, end_time) DO UPDATE SET
+       value = excluded.value, date = excluded.date`
+  );
+  const counts = emptyCounts();
+  for (const r of rows) {
+    if ((BODY_METRIC_SAMPLE_MEASURES as readonly string[]).includes(r.metric)) {
+      // These belong in body_metrics (via upsertBodyMetrics); never let them land
+      // in metric_samples and re-split the measure across two tables.
+      continue;
+    }
+    const found = find.get(
+      profileId,
+      r.metric,
+      source,
+      r.start_time,
+      r.end_time
+    ) as { value: number; date: string } | undefined;
+    stmt.run(
+      profileId,
+      source,
+      r.metric,
+      r.date,
+      r.start_time,
+      r.end_time,
+      r.value
+    );
+    if (!found) counts.inserted++;
+    else if (found.value === r.value && found.date === r.date)
+      counts.unchanged++;
+    else counts.updated++;
+  }
+  return counts;
+}
+
+// Replace the minute bucket for each `ts` outright. Each exporter push recomputes
+// every 1-minute aggregate from that batch's raw samples, so the incoming row is
+// already the authoritative value for its minute — merging by count-weighted
+// average would double `n` (and freeze the average) on every resend of the rolling
+// 48h window. REPLACE-by-key keeps re-ingest idempotent.
+export function upsertHrMinutes(
+  profileId: number,
+  rows: NormHrMinute[],
+  source: string
+): UpsertCounts {
+  // Pre-image on (profile_id, ts): the exporter recomputes each minute bucket from
+  // that batch's raw samples and replaces the row outright, so a resend of an
+  // identical minute (same bpm/min/max/n/source) is unchanged, not a write.
+  const find = db.prepare(
+    "SELECT bpm, bpm_min, bpm_max, n, source FROM hr_minutes WHERE profile_id = ? AND ts = ?"
+  );
+  const stmt = db.prepare(
+    `INSERT INTO hr_minutes (profile_id, ts, bpm, bpm_min, bpm_max, n, source)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(profile_id, ts) DO UPDATE SET
+       bpm = excluded.bpm, bpm_min = excluded.bpm_min, bpm_max = excluded.bpm_max,
+       n = excluded.n, source = excluded.source`
+  );
+  const counts = emptyCounts();
+  for (const r of rows) {
+    const found = find.get(profileId, r.ts) as
+      | {
+          bpm: number;
+          bpm_min: number;
+          bpm_max: number;
+          n: number;
+          source: string;
+        }
+      | undefined;
+    stmt.run(profileId, r.ts, r.bpm, r.bpm_min, r.bpm_max, r.n, source);
+    if (!found) counts.inserted++;
+    else if (
+      found.bpm === r.bpm &&
+      found.bpm_min === r.bpm_min &&
+      found.bpm_max === r.bpm_max &&
+      found.n === r.n &&
+      found.source === source
+    )
+      counts.unchanged++;
+    else counts.updated++;
+  }
+  return counts;
+}
+
+// Insert or update a vital/biomarker reading into medical_records, deduped on
+// external_id. Only ever touches rows this source created (external_id is NULL for
+// manual + document-extracted rows). Returns the affected row ids so the caller can
+// run reconcileFlags() to set out-of-range flags. `value` mirrors value_num as text
+// (the medical UI shows `value`).
+const VITAL_COMPARE_COLS: string[] = [
+  "date",
+  "category",
+  "name",
+  "value",
+  "value_num",
+  "unit",
+  "canonical_name",
+];
+
+export function upsertVitals(
+  profileId: number,
+  rows: NormVital[],
+  source: string
+): { ids: number[]; counts: UpsertCounts } {
+  const find = db.prepare(
+    `SELECT id, date, category, name, value, value_num, unit, canonical_name
+       FROM medical_records WHERE profile_id = ? AND external_id = ?`
+  );
+  const insert = db.prepare(
+    `INSERT INTO medical_records
+       (profile_id, date, category, name, value, value_num, unit, canonical_name, source, external_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  );
+  const update = db.prepare(
+    `UPDATE medical_records
+       SET date = ?, category = ?, name = ?, value = ?, value_num = ?, unit = ?,
+           canonical_name = ?
+     WHERE id = ?`
+  );
+  const ids: number[] = [];
+  const counts = emptyCounts();
+  for (const r of rows) {
+    const valueStr = String(r.value_num);
+    const found = find.get(profileId, r.external_id) as
+      (Record<string, unknown> & { id: number }) | undefined;
+    if (found) {
+      // Resolved post-image (note the incoming `canonical` maps to the stored
+      // `canonical_name` column). The `flag` column isn't compared: it's set out
+      // of band by reconcileFlags, not by this write.
+      const post = {
+        date: r.date,
+        category: r.category,
+        name: r.name,
+        value: valueStr,
+        value_num: r.value_num,
+        unit: r.unit,
+        canonical_name: r.canonical,
+      };
+      if (rowsEqual(VITAL_COMPARE_COLS, found, post)) {
+        counts.unchanged++;
+      } else {
+        update.run(
+          r.date,
+          r.category,
+          r.name,
+          valueStr,
+          r.value_num,
+          r.unit,
+          r.canonical,
+          found.id
+        );
+        counts.updated++;
+      }
+      ids.push(found.id);
+    } else {
+      const info = insert.run(
+        profileId,
+        r.date,
+        r.category,
+        r.name,
+        valueStr,
+        r.value_num,
+        r.unit,
+        r.canonical,
+        source,
+        r.external_id
+      );
+      ids.push(Number(info.lastInsertRowid));
+      counts.inserted++;
+    }
+  }
+  return { ids, counts };
+}
+
+// Insert or update an activity, deduped on external_id (synthesized from the
+// session start). Preserves the activity's id (and its notes/components) on update.
+// The base (non-metric) columns the activity upsert writes, compared alongside
+// ACTIVITY_METRIC_COLS to decide unchanged-vs-updated on re-ingest.
+const ACTIVITY_BASE_COLS = [
+  "date",
+  "type",
+  "title",
+  "duration_min",
+  "distance_km",
+  "start_time",
+  "end_time",
+  "source",
+];
+
+export function upsertActivities(
+  profileId: number,
+  rows: NormActivity[],
+  source: string
+): UpsertCounts {
+  const metricCols = ACTIVITY_METRIC_COLS.join(", ");
+  const metricSet = ACTIVITY_METRIC_COLS.map((c) => `${c} = ?`).join(", ");
+  const metricPlaceholders = ACTIVITY_METRIC_COLS.map(() => "?").join(", ");
+  const compareCols = [...ACTIVITY_BASE_COLS, ...ACTIVITY_METRIC_COLS];
+  const find = db.prepare(
+    `SELECT id, edited, date, type, title, duration_min, distance_km,
+            start_time, end_time, source, ${metricCols}
+       FROM activities WHERE profile_id = ? AND external_id = ?`
+  );
+  const insert = db.prepare(
+    `INSERT INTO activities
+       (profile_id, date, type, title, duration_min, distance_km, start_time, end_time, ${metricCols}, source, external_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ${metricPlaceholders}, ?, ?)`
+  );
+  const update = db.prepare(
+    `UPDATE activities
+       SET date = ?, type = ?, title = ?, duration_min = ?, distance_km = ?,
+           start_time = ?, end_time = ?, ${metricSet}, source = ?
+     WHERE id = ?`
+  );
+  const counts = emptyCounts();
+  for (const r of rows) {
+    const metrics = activityMetricValues(r);
+    const found = find.get(profileId, r.external_id) as
+      | (Record<string, unknown> & { id: number; edited: number | null })
+      | undefined;
+    // A source-owned row the user has hand-edited is left alone on re-ingest, so
+    // the rolling 48h/re-scan window never clobbers those edits. Counts as
+    // unchanged — we deliberately persist nothing.
+    if (found && found.edited) {
+      counts.unchanged++;
+      continue;
+    }
+    if (found) {
+      // Resolved post-image over the same columns the UPDATE writes (metric fields
+      // reuse activityMetricValues so the compare and the write can't drift).
+      const post: Record<string, unknown> = {
+        date: r.date,
+        type: r.type,
+        title: r.title,
+        duration_min: r.duration_min,
+        distance_km: r.distance_km,
+        start_time: r.start_time,
+        end_time: r.end_time,
+        source,
+      };
+      ACTIVITY_METRIC_COLS.forEach((c, i) => {
+        post[c] = metrics[i];
+      });
+      if (rowsEqual(compareCols, found, post)) {
+        counts.unchanged++;
+      } else {
+        update.run(
+          r.date,
+          r.type,
+          r.title,
+          r.duration_min,
+          r.distance_km,
+          r.start_time,
+          r.end_time,
+          ...metrics,
+          source,
+          found.id
+        );
+        counts.updated++;
+      }
+    } else {
+      insert.run(
+        profileId,
+        r.date,
+        r.type,
+        r.title,
+        r.duration_min,
+        r.distance_km,
+        r.start_time,
+        r.end_time,
+        ...metrics,
+        source,
+        r.external_id
+      );
+      counts.inserted++;
+    }
+  }
+  return counts;
+}

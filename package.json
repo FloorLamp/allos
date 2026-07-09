@@ -1,0 +1,63 @@
+{
+  "name": "allos",
+  "version": "0.1.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:db": "vitest run --config vitest.db.config.ts",
+    "test:e2e": "playwright test",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "phi-scan": "tsx scripts/phi-scan.ts",
+    "seed": "tsx scripts/seed.ts",
+    "notify": "tsx scripts/notify.ts",
+    "backfill:canonical": "tsx scripts/backfill-canonical-names.ts",
+    "gen:biomarkers": "tsx scripts/gen-canonical-biomarkers.ts",
+    "gen:growth": "tsx scripts/gen-growth-charts.ts",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*.{js,jsx,ts,tsx,json,css,scss,md,yml,yaml}": "prettier --write --ignore-unknown"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.105.0",
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
+    "@tabler/icons-react": "^3.44.0",
+    "better-sqlite3": "^11.3.0",
+    "exceljs": "^4.4.0",
+    "fast-xml-parser": "^5.9.3",
+    "next": "^14.2.33",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "recharts": "^2.12.7"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1",
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/node": "^20.14.0",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitest/coverage-v8": "^2.1.8",
+    "autoprefixer": "^10.4.19",
+    "eslint": "^8.57.0",
+    "eslint-config-next": "^14.2.33",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.8",
+    "postcss": "^8.4.39",
+    "prettier": "^3.3.3",
+    "tailwindcss": "^3.4.6",
+    "tsx": "^4.16.2",
+    "typescript": "^5.5.3",
+    "vitest": "^2.1.8"
+  }
+}

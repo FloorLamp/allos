@@ -1,0 +1,16 @@
+# Normalize all text files to LF in the repo. This box edits files from both
+# Windows and WSL; without this, Windows-side edits introduce CRLF and produce
+# whole-file phantom diffs (and broke an in-progress branch checkout once).
+# The app builds and deploys on Linux, so LF is the canonical ending.
+* text=auto eol=lf
+
+# Binary files: never touch line endings.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.db binary

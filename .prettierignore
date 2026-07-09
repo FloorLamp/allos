@@ -1,0 +1,5 @@
+.next/
+node_modules/
+data/
+package-lock.json
+lib/canonical-biomarkers.json

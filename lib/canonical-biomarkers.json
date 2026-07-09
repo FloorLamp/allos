@@ -1,0 +1,2822 @@
+{
+  "$comment": "Canonical biomarker reference dataset. Committed and HUMAN-REVIEWABLE. Seeded into the canonical_biomarkers table (source='seed') and used as (1) the controlled vocabulary the AI reuses when canonicalizing names, and (2) the reference/optimal bands drawn on biomarker charts. Ranges are general adult values for an unconverted canonical unit. direction: 'higher_better' | 'lower_better' | 'in_range'. ref_* is a lab's standard reference range; optimal_* reflects general longevity literature for adults. Any field may be null (one-sided ranges are fine). Each entry may include 'conversions' (alternate-unit -> factor, where value_in_alt * factor = value in the canonical unit). Regenerate with `npm run gen:biomarkers`. INFORMATIONAL, NOT MEDICAL ADVICE — ranges may be inaccurate and often vary by sex/age.",
+  "biomarkers": [
+    {
+      "name": "Total Cholesterol",
+      "category": "lab",
+      "unit": "mg/dL",
+      "ref_low": 125,
+      "ref_high": 200,
+      "optimal_low": null,
+      "optimal_high": 180,
+      "direction": "lower_better",
+      "note": "Interpret alongside LDL, HDL, and ApoB",
+      "conversions": {
+        "mmol/L": 38.67
+      },
+      "retest_days": 365
+    },
+    {
+      "name": "LDL Cholesterol",
+      "category": "lab",
+      "unit": "mg/dL",
+      "ref_low": null,
+      "ref_high": 100,
+      "optimal_low": null,
+      "optimal_high": 70,
+      "direction": "lower_better",
+      "note": "Lower is better; primary atherogenic target",
+      "conversions": {
+        "mmol/L": 38.67
+      },
+      "retest_days": 365
+    },
+    {
+      "name": "HDL Cholesterol",
+      "category": "lab",
+      "unit": "mg/dL",
+      "ref_low": 40,
+      "ref_high": null,
+      "optimal_low": 60,
+      "optimal_high": null,
+      "direction": "higher_better",
+      "note": "Optimal threshold differs by sex",
+      "conversions": {
+        "mmol/L": 38.67
+      },
+      "retest_days": 365
+    },
+    {
+      "name": "Triglycerides",
+      "category": "lab",
+      "unit": "mg/dL",
+      "ref_low": null,
+      "ref_high": 150,
+      "optimal_low": null,
+      "optimal_high": 80,
+      "direction": "lower_better",
+      "note": "Fasting; sensitive to recent carbohydrate intake",
+      "conversions": {
+        "mmol/L": 88.57
+      },
+      "retest_days": 365
+    },
+    {
+      "name": "VLDL Cholesterol",
+      "category": "lab",
+      "unit": "mg/dL",
+      "ref_low": 5,
+      "ref_high": 40,
+      "optimal_low": null,
+      "optimal_high": 20,
+      "direction": "lower_better",
+      "note": null,
+      "conversions": {
+        "mmol/L": 38.67
+      }
+    },
+    {
+      "name": "Non-HDL Cholesterol",
+      "category": "lab",
+      "unit": "mg/dL",
+      "ref_low": null,
+      "ref_high": 130,
+      "optimal_low": null,
+      "optimal_high": 100,
+      "direction": "lower_better",
+      "note": null,
+      "conversions": {
+        "mmol/L": 38.67
+      },
+      "retest_days": 365
+    },
+    {
+      "name": "ApoB",
+      "category": "lab",
+      "unit": "mg/dL",
+      "ref_low": null,
+      "ref_high": 90,
+      "optimal_low": null,
+      "optimal_high": 60,
+      "direction": "lower_better",
+      "note": "Particle count; strong cardiovascular risk marker",
+      "retest_days": 365
+    },
+    {
+      "name": "Lipoprotein(a)",
+      "category": "lab",
+      "unit": "nmol/L",
+      "ref_low": null,
+      "ref_high": 75,
+      "optimal_low": null,
+      "optimal_high": 30,
+      "direction": "lower_better",
+      "note": "Largely genetic; measure once",
+      "retest_days": 1825
+    },
+    {
+      "name": "Cholesterol/HDL Ratio",
+      "category": "lab",
+      "unit": "ratio",
+      "ref_low": null,
+      "ref_high": 5,
+      "optimal_low": null,
+      "optimal_high": 3.5,
+      "direction": "lower_better",
+      "note": null
+    },
+    {
+      "name": "Glucose",
+      "category": "lab",
+      "unit": "mg/dL",
+      "ref_low": 65,
+      "ref_high": 99,
+      "optimal_low": 70,
+      "optimal_high": 85,
+      "direction": "in_range",
+      "note": "Fasting",
+      "conversions": {
+        "mmol/L": 18.02
+      },
+      "retest_days": 180
+    },
+    {
+      "name": "Hemoglobin A1c",
+      "category": "lab",
+      "unit": "%",
+      "ref_low": null,
+      "ref_high": 5.7,
+      "optimal_low": null,
+      "optimal_high": 5.3,
+      "direction": "lower_better",
+      "note": "~3-month average glucose",
+      "retest_days": 90
+    },
+    {
+      "name": "Insulin",
+      "category": "lab",
+      "unit": "uIU/mL",
+      "ref_low": null,
+      "ref_high": 18.4,
+      "optimal_low": 2,
+      "optimal_high": 5,
+      "direction": "lower_better",
+      "note": "Fasting",
+      "conversions": {
+        "pmol/L": 0.1439
+      },
+      "retest_days": 180
+    },
+    {
+      "name": "HOMA-IR",
+      "category": "lab",
+      "unit": "index",
+      "ref_low": null,
+      "ref_high": 2,
+      "optimal_low": null,
+      "optimal_high": 1,
+      "direction": "lower_better",
+      "note": "Insulin resistance index",
+      "retest_days": 180
+    },
+    {
+      "name": "C-Peptide",
+      "category": "lab",
+      "unit": "ng/mL",
+      "ref_low": 0.8,
+      "ref_high": 3.9,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": null,
+      "conversions": {
+        "nmol/L": 3.02
+      },
+      "retest_days": 180
+    },
+    {
+      "name": "hs-CRP",
+      "category": "lab",
+      "unit": "mg/L",
+      "ref_low": null,
+      "ref_high": 3,
+      "optimal_low": null,
+      "optimal_high": 1,
+      "direction": "lower_better",
+      "note": "Inflammation; avoid testing during acute illness",
+      "conversions": {
+        "mg/dL": 10
+      },
+      "retest_days": 180
+    },
+    {
+      "name": "Homocysteine",
+      "category": "lab",
+      "unit": "umol/L",
+      "ref_low": null,
+      "ref_high": 15,
+      "optimal_low": null,
+      "optimal_high": 8,
+      "direction": "lower_better",
+      "note": "Elevated by low B vitamins",
+      "conversions": {
+        "mg/L": 7.4
+      },
+      "retest_days": 365
+    },
+    {
+      "name": "Uric Acid",
+      "category": "lab",
+      "unit": "mg/dL",
+      "ref_low": 3.5,
+      "ref_high": 7.2,
+      "optimal_low": null,
+      "optimal_high": null,
+      "optimal_low_male": 4,
+      "optimal_high_male": 5.5,
+      "optimal_low_female": 3.5,
+      "optimal_high_female": 5,
+      "direction": "in_range",
+      "note": null,
+      "conversions": {
+        "umol/L": 0.0168
+      },
+      "retest_days": 365
+    },
+    {
+      "name": "GGT",
+      "category": "lab",
+      "unit": "U/L",
+      "ref_low": null,
+      "ref_high": 50,
+      "optimal_low": null,
+      "optimal_high": 25,
+      "direction": "lower_better",
+      "note": "Liver/oxidative-stress marker"
+    },
+    {
+      "name": "ALT",
+      "category": "lab",
+      "unit": "U/L",
+      "ref_low": null,
+      "ref_high": 44,
+      "optimal_low": null,
+      "optimal_high": 25,
+      "direction": "lower_better",
+      "note": "Liver enzyme",
+      "ranges_by_age": [
+        {
+          "min_age": 0,
+          "max_age": 1,
+          "ref_low": null,
+          "ref_high": 55
+        }
+      ]
+    },
+    {
+      "name": "AST",
+      "category": "lab",
+      "unit": "U/L",
+      "ref_low": null,
+      "ref_high": 40,
+      "optimal_low": null,
+      "optimal_high": 25,
+      "direction": "lower_better",
+      "note": "Liver enzyme",
+      "ranges_by_age": [
+        {
+          "min_age": 0,
+          "max_age": 1,
+          "ref_low": null,
+          "ref_high": 80
+        },
+        {
+          "min_age": 1,
+          "max_age": 3,
+          "ref_low": null,
+          "ref_high": 60
+        },
+        {
+          "min_age": 3,
+          "max_age": 12,
+          "ref_low": null,
+          "ref_high": 50
+        }
+      ]
+    },
+    {
+      "name": "Alkaline Phosphatase",
+      "category": "lab",
+      "unit": "U/L",
+      "ref_low": 40,
+      "ref_high": 129,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": null,
+      "ranges_by_age": [
+        {
+          "min_age": 0,
+          "max_age": 1,
+          "ref_low": 80,
+          "ref_high": 450
+        },
+        {
+          "min_age": 1,
+          "max_age": 10,
+          "ref_low": 140,
+          "ref_high": 420
+        },
+        {
+          "min_age": 10,
+          "max_age": 13,
+          "ref_low": 130,
+          "ref_high": 560
+        },
+        {
+          "min_age": 13,
+          "max_age": 15,
+          "ref_low": 57,
+          "ref_high": 468,
+          "ref_low_male": 116,
+          "ref_high_male": 468,
+          "ref_low_female": 57,
+          "ref_high_female": 254,
+          "note": "Pubertal growth-spurt peak; falls earlier in girls."
+        },
+        {
+          "min_age": 15,
+          "max_age": 17,
+          "ref_low": 50,
+          "ref_high": 387,
+          "ref_low_male": 68,
+          "ref_high_male": 387,
+          "ref_low_female": 50,
+          "ref_high_female": 162
+        },
+        {
+          "min_age": 17,
+          "max_age": 19,
+          "ref_low": 45,
+          "ref_high": 150
+        }
+      ]
+    },
+    {
+      "name": "Total Bilirubin",
+      "category": "lab",
+      "unit": "mg/dL",
+      "ref_low": 0.2,
+      "ref_high": 1.2,
+      "optimal_low": 0.58,
+      "optimal_high": 1.2,
+      "direction": "in_range",
+      "note": null,
+      "conversions": {
+        "umol/L": 0.0585
+      },
+      "ranges_by_age": [
+        {
+          "min_age": 0,
+          "max_age": 1,
+          "ref_low": 0,
+          "ref_high": 12,
+          "note": "Neonatal physiologic jaundice peaks in the first week then falls; a whole-year band is coarse (it can UNDER-flag a genuinely high bilirubin later in infancy) — interpret against age in days for a neonate. Conjugated/direct bilirubin is NOT raised here (direct hyperbilirubinemia is always pathologic)."
+        }
+      ]
+    },
+    {
+      "name": "Albumin",
+      "category": "lab",
+      "unit": "g/dL",
+      "ref_low": 3.5,
+      "ref_high": 5,
+      "optimal_low": 4.4,
+      "optimal_high": 5,
+      "direction": "higher_better",
+      "note": null,
+      "ranges_by_age": [
+        {
+          "min_age": 0,
+          "max_age": 1,
+          "ref_low": 2.8,
+          "ref_high": 4.4
+        }
+      ]
+    },
+    {
+      "name": "Total Protein",
+      "category": "lab",
+      "unit": "g/dL",
+      "ref_low": 6,
+      "ref_high": 8.3,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": null,
+      "ranges_by_age": [
+        {
+          "min_age": 0,
+          "max_age": 1,
+          "ref_low": 4.6,
+          "ref_high": 7.4
+        },
+        {
+          "min_age": 1,
+          "max_age": 3,
+          "ref_low": 5.5,
+          "ref_high": 7.5
+        },
+        {
+          "min_age": 3,
+          "max_age": 8,
+          "ref_low": 6,
+          "ref_high": 8
+        }
+      ]
+    },
+    {
+      "name": "Sodium",
+      "category": "lab",
+      "unit": "mmol/L",
+      "ref_low": 135,
+      "ref_high": 145,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": null,
+      "conversions": {
+        "mEq/L": 1
+      }
+    },
+    {
+      "name": "Potassium",
+      "category": "lab",
+      "unit": "mmol/L",
+      "ref_low": 3.5,
+      "ref_high": 5.1,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": null,
+      "conversions": {
+        "mEq/L": 1
+      },
+      "ranges_by_age": [
+        {
+          "min_age": 0,
+          "max_age": 1,
+          "ref_low": 3.7,
+          "ref_high": 6
+        }
+      ]
+    },
+    {
+      "name": "Chloride",
+      "category": "lab",
+      "unit": "mmol/L",
+      "ref_low": 98,
+      "ref_high": 107,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": null,
+      "conversions": {
+        "mEq/L": 1
+      }
+    },
+    {
+      "name": "Carbon Dioxide",
+      "category": "lab",
+      "unit": "mmol/L",
+      "ref_low": 22,
+      "ref_high": 29,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": "Bicarbonate/total CO2; mEq/L and mmol/L are equivalent for this monovalent anion",
+      "conversions": {
+        "mEq/L": 1
+      }
+    },
+    {
+      "name": "Calcium",
+      "category": "lab",
+      "unit": "mg/dL",
+      "ref_low": 8.6,
+      "ref_high": 10.2,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": null,
+      "conversions": {
+        "mmol/L": 4
+      },
+      "ranges_by_age": [
+        {
+          "min_age": 0,
+          "max_age": 1,
+          "ref_low": 8.7,
+          "ref_high": 11
+        },
+        {
+          "min_age": 1,
+          "max_age": 18,
+          "ref_low": 8.8,
+          "ref_high": 10.8
+        }
+      ]
+    },
+    {
+      "name": "Magnesium",
+      "category": "lab",
+      "unit": "mg/dL",
+      "ref_low": 1.7,
+      "ref_high": 2.2,
+      "optimal_low": 2,
+      "optimal_high": 2.2,
+      "direction": "higher_better",
+      "note": "RBC magnesium is more sensitive",
+      "conversions": {
+        "mmol/L": 2.43,
+        "mEq/L": 1.215
+      }
+    },
+    {
+      "name": "Phosphorus",
+      "category": "lab",
+      "unit": "mg/dL",
+      "ref_low": 2.5,
+      "ref_high": 4.5,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": null,
+      "conversions": {
+        "mmol/L": 3.097
+      },
+      "ranges_by_age": [
+        {
+          "min_age": 0,
+          "max_age": 1,
+          "ref_low": 4.5,
+          "ref_high": 7.5
+        },
+        {
+          "min_age": 1,
+          "max_age": 5,
+          "ref_low": 4.3,
+          "ref_high": 6.8
+        },
+        {
+          "min_age": 5,
+          "max_age": 12,
+          "ref_low": 3.7,
+          "ref_high": 6
+        },
+        {
+          "min_age": 12,
+          "max_age": 16,
+          "ref_low": 2.9,
+          "ref_high": 5.4
+        }
+      ]
+    },
+    {
+      "name": "BUN",
+      "category": "lab",
+      "unit": "mg/dL",
+      "ref_low": 7,
+      "ref_high": 20,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": null,
+      "conversions": {
+        "mmol/L": 2.8
+      },
+      "ranges_by_age": [
+        {
+          "min_age": 0,
+          "max_age": 1,
+          "ref_low": 3,
+          "ref_high": 15
+        },
+        {
+          "min_age": 1,
+          "max_age": 18,
+          "ref_low": 5,
+          "ref_high": 18
+        }
+      ]
+    },
+    {
+      "name": "Creatinine",
+      "category": "lab",
+      "unit": "mg/dL",
+      "ref_low": 0.6,
+      "ref_high": 1.3,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": "Varies with muscle mass; interpret with eGFR",
+      "conversions": {
+        "umol/L": 0.0113
+      },
+      "retest_days": 365,
+      "ranges_by_age": [
+        {
+          "min_age": 0,
+          "max_age": 1,
+          "ref_low": 0.2,
+          "ref_high": 0.5,
+          "note": "Infant creatinine is low and month-dependent (a birth value reflecting maternal creatinine falls within days); a whole-year band is coarse."
+        },
+        {
+          "min_age": 1,
+          "max_age": 3,
+          "ref_low": 0.2,
+          "ref_high": 0.5
+        },
+        {
+          "min_age": 3,
+          "max_age": 5,
+          "ref_low": 0.3,
+          "ref_high": 0.6
+        },
+        {
+          "min_age": 5,
+          "max_age": 12,
+          "ref_low": 0.3,
+          "ref_high": 0.7
+        },
+        {
+          "min_age": 12,
+          "max_age": 15,
+          "ref_low": 0.5,
+          "ref_high": 1
+        },
+        {
+          "min_age": 15,
+          "max_age": 18,
+          "ref_low": 0.5,
+          "ref_high": 1.1,
+          "ref_low_male": 0.6,
+          "ref_high_male": 1.1,
+          "ref_low_female": 0.5,
+          "ref_high_female": 1
+        }
+      ]
+    },
+    {
+      "name": "eGFR",
+      "category": "lab",
+      "unit": "mL/min/1.73m2",
+      "ref_low": 60,
+      "ref_high": null,
+      "optimal_low": 90,
+      "optimal_high": 120,
+      "direction": "higher_better",
+      "note": "Kidney filtration",
+      "retest_days": 365
+    },
+    {
+      "name": "Cystatin C",
+      "category": "lab",
+      "unit": "mg/L",
+      "ref_low": 0.5,
+      "ref_high": 1,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "lower_better",
+      "note": "Muscle-independent kidney marker"
+    },
+    {
+      "name": "Hemoglobin",
+      "category": "lab",
+      "unit": "g/dL",
+      "ref_low": 12,
+      "ref_high": 17.5,
+      "ref_low_male": 13.5,
+      "ref_high_male": 17.5,
+      "ref_low_female": 12,
+      "ref_high_female": 15.5,
+      "optimal_low": null,
+      "optimal_high": null,
+      "optimal_low_male": null,
+      "optimal_high_male": null,
+      "optimal_low_female": null,
+      "optimal_high_female": null,
+      "direction": "in_range",
+      "note": "Reference range differs by sex",
+      "conversions": {
+        "g/L": 0.1,
+        "mmol/L": 1.611
+      },
+      "ranges_by_age": [
+        {
+          "min_age": 0,
+          "max_age": 1,
+          "ref_low": 9.5,
+          "ref_high": 18,
+          "note": "Infant Hb varies widely by month (birth peak, ~2-month nadir); a whole-year band is coarse."
+        },
+        {
+          "min_age": 1,
+          "max_age": 2,
+          "ref_low": 10.5,
+          "ref_high": 13.5
+        },
+        {
+          "min_age": 2,
+          "max_age": 6,
+          "ref_low": 11.5,
+          "ref_high": 13.5
+        },
+        {
+          "min_age": 6,
+          "max_age": 12,
+          "ref_low": 11.5,
+          "ref_high": 15.5
+        },
+        {
+          "min_age": 12,
+          "max_age": 18,
+          "ref_low": 12,
+          "ref_high": 16,
+          "ref_low_male": 13,
+          "ref_high_male": 16,
+          "ref_low_female": 12,
+          "ref_high_female": 16
+        }
+      ]
+    },
+    {
+      "name": "Hematocrit",
+      "category": "lab",
+      "unit": "%",
+      "ref_low": 34.9,
+      "ref_high": 50,
+      "ref_low_male": 38.8,
+      "ref_high_male": 50,
+      "ref_low_female": 34.9,
+      "ref_high_female": 44.5,
+      "optimal_low": null,
+      "optimal_high": null,
+      "optimal_low_male": 40,
+      "optimal_high_male": 45,
+      "optimal_low_female": 36,
+      "optimal_high_female": 44,
+      "direction": "in_range",
+      "note": "Reference range differs by sex",
+      "ranges_by_age": [
+        {
+          "min_age": 0,
+          "max_age": 1,
+          "ref_low": 28,
+          "ref_high": 54,
+          "note": "Infant Hct varies widely by month (birth polycythemia, ~2-month nadir); a whole-year band is coarse."
+        },
+        {
+          "min_age": 1,
+          "max_age": 2,
+          "ref_low": 33,
+          "ref_high": 40
+        },
+        {
+          "min_age": 2,
+          "max_age": 6,
+          "ref_low": 34,
+          "ref_high": 40
+        },
+        {
+          "min_age": 6,
+          "max_age": 12,
+          "ref_low": 34,
+          "ref_high": 45
+        },
+        {
+          "min_age": 12,
+          "max_age": 18,
+          "ref_low": 36,
+          "ref_high": 49,
+          "ref_low_male": 39,
+          "ref_high_male": 49,
+          "ref_low_female": 36,
+          "ref_high_female": 46
+        }
+      ]
+    },
+    {
+      "name": "White Blood Cell Count",
+      "category": "lab",
+      "unit": "10^3/uL",
+      "ref_low": 3.4,
+      "ref_high": 10.8,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": null,
+      "ranges_by_age": [
+        {
+          "min_age": 0,
+          "max_age": 1,
+          "ref_low": 6,
+          "ref_high": 17.5
+        },
+        {
+          "min_age": 1,
+          "max_age": 6,
+          "ref_low": 5,
+          "ref_high": 15.5
+        },
+        {
+          "min_age": 6,
+          "max_age": 12,
+          "ref_low": 4.5,
+          "ref_high": 13.5
+        },
+        {
+          "min_age": 12,
+          "max_age": 18,
+          "ref_low": 4.5,
+          "ref_high": 11.5
+        }
+      ]
+    },
+    {
+      "name": "Red Blood Cell Count",
+      "category": "lab",
+      "unit": "10^6/uL",
+      "ref_low": 3.92,
+      "ref_high": 5.65,
+      "ref_low_male": 4.35,
+      "ref_high_male": 5.65,
+      "ref_low_female": 3.92,
+      "ref_high_female": 5.13,
+      "optimal_low": null,
+      "optimal_high": null,
+      "optimal_low_male": null,
+      "optimal_high_male": null,
+      "optimal_low_female": null,
+      "optimal_high_female": null,
+      "direction": "in_range",
+      "note": "Reference range differs by sex",
+      "ranges_by_age": [
+        {
+          "min_age": 0,
+          "max_age": 1,
+          "ref_low": 3,
+          "ref_high": 5.4,
+          "note": "Infant RBC varies widely by month (birth high, ~2-month nadir); a whole-year band is coarse."
+        },
+        {
+          "min_age": 1,
+          "max_age": 6,
+          "ref_low": 3.9,
+          "ref_high": 5.3
+        },
+        {
+          "min_age": 6,
+          "max_age": 12,
+          "ref_low": 4,
+          "ref_high": 5.2
+        }
+      ]
+    },
+    {
+      "name": "Platelet Count",
+      "category": "lab",
+      "unit": "10^3/uL",
+      "ref_low": 150,
+      "ref_high": 400,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": null,
+      "ranges_by_age": [
+        {
+          "min_age": 0,
+          "max_age": 1,
+          "ref_low": 150,
+          "ref_high": 500
+        },
+        {
+          "min_age": 1,
+          "max_age": 6,
+          "ref_low": 150,
+          "ref_high": 450
+        }
+      ]
+    },
+    {
+      "name": "MCV",
+      "category": "lab",
+      "unit": "fL",
+      "ref_low": 80,
+      "ref_high": 100,
+      "optimal_low": 85,
+      "optimal_high": 95,
+      "direction": "in_range",
+      "note": null,
+      "ranges_by_age": [
+        {
+          "min_age": 0,
+          "max_age": 1,
+          "ref_low": 85,
+          "ref_high": 115,
+          "note": "Neonatal macrocytosis at birth falls sharply over the first months; a whole-year band is coarse."
+        },
+        {
+          "min_age": 1,
+          "max_age": 5,
+          "ref_low": 70,
+          "ref_high": 86
+        },
+        {
+          "min_age": 5,
+          "max_age": 12,
+          "ref_low": 75,
+          "ref_high": 90
+        },
+        {
+          "min_age": 12,
+          "max_age": 18,
+          "ref_low": 78,
+          "ref_high": 98
+        }
+      ]
+    },
+    {
+      "name": "RDW",
+      "category": "lab",
+      "unit": "%",
+      "ref_low": 11.5,
+      "ref_high": 14.5,
+      "optimal_low": null,
+      "optimal_high": 13,
+      "direction": "lower_better",
+      "note": "Higher values associated with mortality risk"
+    },
+    {
+      "name": "Neutrophils",
+      "category": "lab",
+      "unit": "%",
+      "ref_low": 40,
+      "ref_high": 75,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": null,
+      "ranges_by_age": [
+        {
+          "min_age": 0,
+          "max_age": 1,
+          "ref_low": 15,
+          "ref_high": 45
+        },
+        {
+          "min_age": 1,
+          "max_age": 4,
+          "ref_low": 25,
+          "ref_high": 55
+        },
+        {
+          "min_age": 4,
+          "max_age": 10,
+          "ref_low": 35,
+          "ref_high": 65
+        },
+        {
+          "min_age": 10,
+          "max_age": 18,
+          "ref_low": 38,
+          "ref_high": 72
+        }
+      ]
+    },
+    {
+      "name": "Lymphocytes",
+      "category": "lab",
+      "unit": "%",
+      "ref_low": 20,
+      "ref_high": 45,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": null,
+      "ranges_by_age": [
+        {
+          "min_age": 0,
+          "max_age": 1,
+          "ref_low": 40,
+          "ref_high": 75
+        },
+        {
+          "min_age": 1,
+          "max_age": 4,
+          "ref_low": 35,
+          "ref_high": 65
+        },
+        {
+          "min_age": 4,
+          "max_age": 10,
+          "ref_low": 30,
+          "ref_high": 55
+        },
+        {
+          "min_age": 10,
+          "max_age": 18,
+          "ref_low": 25,
+          "ref_high": 50
+        }
+      ]
+    },
+    {
+      "name": "Ferritin",
+      "category": "lab",
+      "unit": "ng/mL",
+      "ref_low": 30,
+      "ref_high": 400,
+      "optimal_low": null,
+      "optimal_high": null,
+      "optimal_low_male": 100,
+      "optimal_high_male": 300,
+      "optimal_low_female": 45,
+      "optimal_high_female": 150,
+      "direction": "in_range",
+      "note": "Acute-phase reactant; rises with inflammation",
+      "conversions": {
+        "ug/L": 1
+      },
+      "ranges_by_age": [
+        {
+          "min_age": 0,
+          "max_age": 1,
+          "ref_low": 25,
+          "ref_high": 200
+        },
+        {
+          "min_age": 1,
+          "max_age": 10,
+          "ref_low": 10,
+          "ref_high": 140
+        },
+        {
+          "min_age": 10,
+          "max_age": 18,
+          "ref_low": 15,
+          "ref_high": 120
+        }
+      ],
+      "retest_days": 365
+    },
+    {
+      "name": "Iron",
+      "category": "lab",
+      "unit": "ug/dL",
+      "ref_low": 50,
+      "ref_high": 170,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": null,
+      "conversions": {
+        "umol/L": 5.587
+      }
+    },
+    {
+      "name": "TIBC",
+      "category": "lab",
+      "unit": "ug/dL",
+      "ref_low": 250,
+      "ref_high": 450,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": null,
+      "conversions": {
+        "umol/L": 5.587
+      }
+    },
+    {
+      "name": "Transferrin Saturation",
+      "category": "lab",
+      "unit": "%",
+      "ref_low": 20,
+      "ref_high": 50,
+      "optimal_low": 25,
+      "optimal_high": 35,
+      "direction": "in_range",
+      "note": null
+    },
+    {
+      "name": "TSH",
+      "category": "lab",
+      "unit": "uIU/mL",
+      "ref_low": 0.4,
+      "ref_high": 4.5,
+      "optimal_low": 0.5,
+      "optimal_high": 2.5,
+      "direction": "in_range",
+      "note": "Thyroid-stimulating hormone",
+      "conversions": {
+        "mIU/L": 1
+      },
+      "ranges_by_age": [
+        {
+          "min_age": 0,
+          "max_age": 1,
+          "ref_low": 1,
+          "ref_high": 8
+        },
+        {
+          "min_age": 1,
+          "max_age": 6,
+          "ref_low": 0.7,
+          "ref_high": 6
+        },
+        {
+          "min_age": 6,
+          "max_age": 12,
+          "ref_low": 0.6,
+          "ref_high": 5.5
+        },
+        {
+          "min_age": 12,
+          "max_age": 18,
+          "ref_low": 0.5,
+          "ref_high": 4.9
+        }
+      ],
+      "retest_days": 180
+    },
+    {
+      "name": "Free T4",
+      "category": "lab",
+      "unit": "ng/dL",
+      "ref_low": 0.8,
+      "ref_high": 1.8,
+      "optimal_low": 1,
+      "optimal_high": 1.5,
+      "direction": "in_range",
+      "note": null,
+      "conversions": {
+        "pmol/L": 0.0777
+      },
+      "retest_days": 180
+    },
+    {
+      "name": "Free T3",
+      "category": "lab",
+      "unit": "pg/mL",
+      "ref_low": 2.3,
+      "ref_high": 4.4,
+      "optimal_low": 3,
+      "optimal_high": 4.4,
+      "direction": "in_range",
+      "note": null,
+      "conversions": {
+        "pmol/L": 0.651
+      },
+      "retest_days": 180
+    },
+    {
+      "name": "Vitamin D, 25-Hydroxy",
+      "category": "lab",
+      "unit": "ng/mL",
+      "ref_low": 30,
+      "ref_high": 100,
+      "optimal_low": 40,
+      "optimal_high": 60,
+      "direction": "in_range",
+      "note": null,
+      "conversions": {
+        "nmol/L": 0.4006
+      },
+      "retest_days": 180,
+      "ranges_by_age": [
+        {
+          "min_age": 0,
+          "max_age": 18,
+          "ref_low": 20,
+          "ref_high": 100,
+          "note": "Pediatric sufficiency threshold (AAP / Pediatric Endocrine Society) is ≥20 ng/mL, below the adult 30 ng/mL floor."
+        }
+      ]
+    },
+    {
+      "name": "Vitamin B12",
+      "category": "lab",
+      "unit": "pg/mL",
+      "ref_low": 200,
+      "ref_high": 1100,
+      "optimal_low": 500,
+      "optimal_high": 700,
+      "direction": "in_range",
+      "note": null,
+      "conversions": {
+        "pmol/L": 1.355
+      },
+      "retest_days": 365
+    },
+    {
+      "name": "Folate",
+      "category": "lab",
+      "unit": "ng/mL",
+      "ref_low": 3,
+      "ref_high": 20,
+      "optimal_low": 10,
+      "optimal_high": null,
+      "direction": "higher_better",
+      "note": null,
+      "conversions": {
+        "nmol/L": 0.4416
+      }
+    },
+    {
+      "name": "Testosterone, Total",
+      "category": "lab",
+      "unit": "ng/dL",
+      "ref_low": null,
+      "ref_high": null,
+      "ref_low_male": 264,
+      "ref_high_male": 1000,
+      "ref_low_female": 8,
+      "ref_high_female": 60,
+      "optimal_low": null,
+      "optimal_high": null,
+      "optimal_low_male": 500,
+      "optimal_high_male": 1000,
+      "optimal_low_female": 8,
+      "optimal_high_female": 60,
+      "direction": "in_range",
+      "note": "Reference and optimal differ greatly by sex; no meaningful combined range",
+      "conversions": {
+        "nmol/L": 28.84
+      },
+      "retest_days": 365
+    },
+    {
+      "name": "Testosterone, Free",
+      "category": "lab",
+      "unit": "pg/mL",
+      "ref_low": null,
+      "ref_high": null,
+      "ref_low_male": 35,
+      "ref_high_male": 155,
+      "ref_low_female": 0.2,
+      "ref_high_female": 6.4,
+      "optimal_low": null,
+      "optimal_high": null,
+      "optimal_low_male": null,
+      "optimal_high_male": null,
+      "optimal_low_female": null,
+      "optimal_high_female": null,
+      "direction": "in_range",
+      "note": "Highly assay-dependent; differs greatly by sex. Optimal targets removed pending review",
+      "conversions": {
+        "pmol/L": 0.288
+      },
+      "retest_days": 365
+    },
+    {
+      "name": "DHEA-Sulfate",
+      "category": "lab",
+      "unit": "ug/dL",
+      "ref_low": 15,
+      "ref_high": 560,
+      "ref_low_male": 80,
+      "ref_high_male": 560,
+      "ref_low_female": 15,
+      "ref_high_female": 430,
+      "optimal_low": null,
+      "optimal_high": null,
+      "optimal_low_male": 93,
+      "optimal_high_male": 415,
+      "optimal_low_female": 15,
+      "optimal_high_female": 170,
+      "direction": "in_range",
+      "note": "Declines with age",
+      "conversions": {
+        "umol/L": 36.85
+      }
+    },
+    {
+      "name": "Cortisol",
+      "category": "lab",
+      "unit": "ug/dL",
+      "ref_low": 6,
+      "ref_high": 18,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": "Morning draw; strong diurnal variation",
+      "conversions": {
+        "nmol/L": 0.03625
+      }
+    },
+    {
+      "name": "IGF-1",
+      "category": "lab",
+      "unit": "ng/mL",
+      "ref_low": 88,
+      "ref_high": 240,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": "Age-dependent",
+      "conversions": {
+        "nmol/L": 7.649
+      }
+    },
+    {
+      "name": "PSA",
+      "category": "lab",
+      "unit": "ng/mL",
+      "ref_low": null,
+      "ref_high": 4,
+      "optimal_low": null,
+      "optimal_high": 1,
+      "direction": "lower_better",
+      "note": "Prostate marker; age-dependent",
+      "conversions": {
+        "ug/L": 1
+      },
+      "retest_days": 365
+    },
+    {
+      "name": "Blood Pressure Systolic",
+      "category": "vitals",
+      "unit": "mmHg",
+      "ref_low": 90,
+      "ref_high": 120,
+      "optimal_low": null,
+      "optimal_high": 115,
+      "direction": "lower_better",
+      "note": null
+    },
+    {
+      "name": "Blood Pressure Diastolic",
+      "category": "vitals",
+      "unit": "mmHg",
+      "ref_low": 60,
+      "ref_high": 80,
+      "optimal_low": null,
+      "optimal_high": 75,
+      "direction": "lower_better",
+      "note": null
+    },
+    {
+      "name": "Oxygen Saturation",
+      "category": "vitals",
+      "unit": "%",
+      "ref_low": 95,
+      "ref_high": 100,
+      "optimal_low": 95,
+      "optimal_high": 100,
+      "direction": "higher_better",
+      "note": "SpO2"
+    },
+    {
+      "name": "Respiratory Rate",
+      "category": "vitals",
+      "unit": "breaths/min",
+      "ref_low": 12,
+      "ref_high": 20,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": null
+    },
+    {
+      "name": "Resting Heart Rate",
+      "category": "vitals",
+      "unit": "bpm",
+      "ref_low": 50,
+      "ref_high": 100,
+      "optimal_low": 50,
+      "optimal_high": 65,
+      "direction": "lower_better",
+      "note": "Lower in trained individuals",
+      "ranges_by_age": [
+        {
+          "min_age": 0,
+          "max_age": 1,
+          "ref_low": 90,
+          "ref_high": 160
+        },
+        {
+          "min_age": 1,
+          "max_age": 3,
+          "ref_low": 80,
+          "ref_high": 150
+        },
+        {
+          "min_age": 3,
+          "max_age": 6,
+          "ref_low": 70,
+          "ref_high": 140
+        },
+        {
+          "min_age": 6,
+          "max_age": 12,
+          "ref_low": 65,
+          "ref_high": 120
+        },
+        {
+          "min_age": 12,
+          "max_age": 18,
+          "ref_low": 55,
+          "ref_high": 100
+        }
+      ]
+    },
+    {
+      "name": "Body Temperature",
+      "category": "vitals",
+      "unit": "degF",
+      "ref_low": 97,
+      "ref_high": 99,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": null
+    },
+    {
+      "name": "Body Fat Percentage",
+      "category": "scan",
+      "unit": "%",
+      "ref_low": null,
+      "ref_high": null,
+      "optimal_low": 10,
+      "optimal_high": 20,
+      "direction": "in_range",
+      "note": "Male-oriented optimal; differs by sex"
+    },
+    {
+      "name": "Bone Mineral Density T-Score",
+      "category": "scan",
+      "unit": "SD",
+      "ref_low": -1,
+      "ref_high": null,
+      "optimal_low": 0,
+      "optimal_high": null,
+      "direction": "higher_better",
+      "note": "T-score >= -1 is normal; < -2.5 is osteoporosis"
+    },
+    {
+      "name": "Visceral Adipose Tissue",
+      "category": "scan",
+      "unit": "lb",
+      "ref_low": null,
+      "ref_high": 2,
+      "optimal_low": null,
+      "optimal_high": 1,
+      "direction": "lower_better",
+      "note": "DEXA VAT mass; units vary by scanner"
+    },
+    {
+      "name": "Appendicular Lean Mass Index",
+      "category": "scan",
+      "unit": "kg/m2",
+      "ref_low": 7,
+      "ref_high": null,
+      "optimal_low": 8,
+      "optimal_high": null,
+      "direction": "higher_better",
+      "note": "Sarcopenia marker; differs by sex"
+    },
+    {
+      "name": "VO2 Max",
+      "category": "vitals",
+      "unit": "mL/kg/min",
+      "ref_low": null,
+      "ref_high": null,
+      "optimal_low": 45,
+      "optimal_high": null,
+      "direction": "higher_better",
+      "note": "Cardiorespiratory fitness; strongly age/sex dependent"
+    },
+    {
+      "name": "Alternaria Alternata (M6) IgE",
+      "category": "lab",
+      "unit": "kU/L",
+      "ref_low": null,
+      "ref_high": 0.1,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "lower_better",
+      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)"
+    },
+    {
+      "name": "Aspergillus Fumigatus (M3) IgE",
+      "category": "lab",
+      "unit": "kU/L",
+      "ref_low": null,
+      "ref_high": 0.1,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "lower_better",
+      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)"
+    },
+    {
+      "name": "Bermuda Grass (G2) IgE",
+      "category": "lab",
+      "unit": "kU/L",
+      "ref_low": null,
+      "ref_high": 0.1,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "lower_better",
+      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)"
+    },
+    {
+      "name": "Birch (T3) IgE",
+      "category": "lab",
+      "unit": "kU/L",
+      "ref_low": null,
+      "ref_high": 0.1,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "lower_better",
+      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)"
+    },
+    {
+      "name": "Cat Dander (E1) IgE",
+      "category": "lab",
+      "unit": "kU/L",
+      "ref_low": null,
+      "ref_high": 0.1,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "lower_better",
+      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)"
+    },
+    {
+      "name": "Cladosporium Herbarum (M2) IgE",
+      "category": "lab",
+      "unit": "kU/L",
+      "ref_low": null,
+      "ref_high": 0.1,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "lower_better",
+      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)"
+    },
+    {
+      "name": "Cockroach (I6) IgE",
+      "category": "lab",
+      "unit": "kU/L",
+      "ref_low": null,
+      "ref_high": 0.1,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "lower_better",
+      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)"
+    },
+    {
+      "name": "Common Ragweed (Short) (W1) IgE",
+      "category": "lab",
+      "unit": "kU/L",
+      "ref_low": null,
+      "ref_high": 0.1,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "lower_better",
+      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)"
+    },
+    {
+      "name": "Cottonwood (T14) IgE",
+      "category": "lab",
+      "unit": "kU/L",
+      "ref_low": null,
+      "ref_high": 0.1,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "lower_better",
+      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)"
+    },
+    {
+      "name": "Dermatophagoides Farinae (D2) IgE",
+      "category": "lab",
+      "unit": "kU/L",
+      "ref_low": null,
+      "ref_high": 0.1,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "lower_better",
+      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)"
+    },
+    {
+      "name": "Dermatophagoides Pteronyssinus (D1) IgE",
+      "category": "lab",
+      "unit": "kU/L",
+      "ref_low": null,
+      "ref_high": 0.1,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "lower_better",
+      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)"
+    },
+    {
+      "name": "Dog Dander (E5) IgE",
+      "category": "lab",
+      "unit": "kU/L",
+      "ref_low": null,
+      "ref_high": 0.1,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "lower_better",
+      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)"
+    },
+    {
+      "name": "Elm (T8) IgE",
+      "category": "lab",
+      "unit": "kU/L",
+      "ref_low": null,
+      "ref_high": 0.1,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "lower_better",
+      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)"
+    },
+    {
+      "name": "Maple (Box Elder) (T1) IgE",
+      "category": "lab",
+      "unit": "kU/L",
+      "ref_low": null,
+      "ref_high": 0.1,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "lower_better",
+      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)"
+    },
+    {
+      "name": "Mountain Cedar (T6) IgE",
+      "category": "lab",
+      "unit": "kU/L",
+      "ref_low": null,
+      "ref_high": 0.1,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "lower_better",
+      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)"
+    },
+    {
+      "name": "Mouse Urine Proteins (E72) IgE",
+      "category": "lab",
+      "unit": "kU/L",
+      "ref_low": null,
+      "ref_high": 0.1,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "lower_better",
+      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)"
+    },
+    {
+      "name": "Mugwort (W6) IgE",
+      "category": "lab",
+      "unit": "kU/L",
+      "ref_low": null,
+      "ref_high": 0.1,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "lower_better",
+      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)"
+    },
+    {
+      "name": "Oak (T7) IgE",
+      "category": "lab",
+      "unit": "kU/L",
+      "ref_low": null,
+      "ref_high": 0.1,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "lower_better",
+      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)"
+    },
+    {
+      "name": "Penicillium Notatum (M1) IgE",
+      "category": "lab",
+      "unit": "kU/L",
+      "ref_low": null,
+      "ref_high": 0.1,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "lower_better",
+      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)"
+    },
+    {
+      "name": "Rough Pigweed (W14) IgE",
+      "category": "lab",
+      "unit": "kU/L",
+      "ref_low": null,
+      "ref_high": 0.1,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "lower_better",
+      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)"
+    },
+    {
+      "name": "Sheep Sorrel (W18) IgE",
+      "category": "lab",
+      "unit": "kU/L",
+      "ref_low": null,
+      "ref_high": 0.1,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "lower_better",
+      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)"
+    },
+    {
+      "name": "Sycamore (T11) IgE",
+      "category": "lab",
+      "unit": "kU/L",
+      "ref_low": null,
+      "ref_high": 0.1,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "lower_better",
+      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)"
+    },
+    {
+      "name": "Timothy Grass (G6) IgE",
+      "category": "lab",
+      "unit": "kU/L",
+      "ref_low": null,
+      "ref_high": 0.1,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "lower_better",
+      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)"
+    },
+    {
+      "name": "Walnut Tree (T10) IgE",
+      "category": "lab",
+      "unit": "kU/L",
+      "ref_low": null,
+      "ref_high": 0.1,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "lower_better",
+      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)"
+    },
+    {
+      "name": "White Ash (T15) IgE",
+      "category": "lab",
+      "unit": "kU/L",
+      "ref_low": null,
+      "ref_high": 0.1,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "lower_better",
+      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)"
+    },
+    {
+      "name": "White Mulberry (T70) IgE",
+      "category": "lab",
+      "unit": "kU/L",
+      "ref_low": null,
+      "ref_high": 0.1,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "lower_better",
+      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)"
+    },
+    {
+      "name": "PFAS - Branched PFOA Isomers",
+      "category": "lab",
+      "unit": "ng/mL",
+      "ref_low": null,
+      "ref_high": 0.1,
+      "optimal_low": null,
+      "optimal_high": 0.05,
+      "direction": "lower_better",
+      "note": "Persistent 'forever chemical'; ideally undetectable"
+    },
+    {
+      "name": "PFAS - Branched PFOS Isomers",
+      "category": "lab",
+      "unit": "ng/mL",
+      "ref_low": null,
+      "ref_high": 0.1,
+      "optimal_low": null,
+      "optimal_high": 0.05,
+      "direction": "lower_better",
+      "note": "Persistent 'forever chemical'; ideally undetectable"
+    },
+    {
+      "name": "PFAS - Linear PFOA Isomers",
+      "category": "lab",
+      "unit": "ng/mL",
+      "ref_low": null,
+      "ref_high": 0.1,
+      "optimal_low": null,
+      "optimal_high": 0.05,
+      "direction": "lower_better",
+      "note": "Persistent 'forever chemical'; ideally undetectable"
+    },
+    {
+      "name": "PFAS - Linear PFOS Isomers",
+      "category": "lab",
+      "unit": "ng/mL",
+      "ref_low": null,
+      "ref_high": 0.1,
+      "optimal_low": null,
+      "optimal_high": 0.05,
+      "direction": "lower_better",
+      "note": "Persistent 'forever chemical'; ideally undetectable"
+    },
+    {
+      "name": "PFAS - MeFOSAA",
+      "category": "lab",
+      "unit": "ng/mL",
+      "ref_low": null,
+      "ref_high": 0.1,
+      "optimal_low": null,
+      "optimal_high": 0.05,
+      "direction": "lower_better",
+      "note": "Persistent 'forever chemical'; ideally undetectable"
+    },
+    {
+      "name": "PFAS - PFDA",
+      "category": "lab",
+      "unit": "ng/mL",
+      "ref_low": null,
+      "ref_high": 0.1,
+      "optimal_low": null,
+      "optimal_high": 0.05,
+      "direction": "lower_better",
+      "note": "Persistent 'forever chemical'; ideally undetectable"
+    },
+    {
+      "name": "PFAS - PFHxS",
+      "category": "lab",
+      "unit": "ng/mL",
+      "ref_low": null,
+      "ref_high": 0.1,
+      "optimal_low": null,
+      "optimal_high": 0.05,
+      "direction": "lower_better",
+      "note": "Persistent 'forever chemical'; ideally undetectable"
+    },
+    {
+      "name": "PFAS - PFNA",
+      "category": "lab",
+      "unit": "ng/mL",
+      "ref_low": null,
+      "ref_high": 0.1,
+      "optimal_low": null,
+      "optimal_high": 0.05,
+      "direction": "lower_better",
+      "note": "Persistent 'forever chemical'; ideally undetectable"
+    },
+    {
+      "name": "PFAS - PFUnDA",
+      "category": "lab",
+      "unit": "ng/mL",
+      "ref_low": null,
+      "ref_high": 0.1,
+      "optimal_low": null,
+      "optimal_high": 0.05,
+      "direction": "lower_better",
+      "note": "Persistent 'forever chemical'; ideally undetectable"
+    },
+    {
+      "name": "PFAS - NASEM Recommended Summation",
+      "category": "lab",
+      "unit": "ng/mL",
+      "ref_low": null,
+      "ref_high": 20,
+      "optimal_low": null,
+      "optimal_high": 2,
+      "direction": "lower_better",
+      "note": "Sum of NASEM-listed PFAS; >20 ng/mL prompts clinical follow-up"
+    },
+    {
+      "name": "Aluminum",
+      "category": "lab",
+      "unit": "ug/L",
+      "ref_low": null,
+      "ref_high": 20,
+      "optimal_low": null,
+      "optimal_high": 10,
+      "direction": "lower_better",
+      "note": "Toxic metal; ideally undetectable"
+    },
+    {
+      "name": "Arsenic",
+      "category": "lab",
+      "unit": "ug/L",
+      "ref_low": null,
+      "ref_high": 23,
+      "optimal_low": null,
+      "optimal_high": 10,
+      "direction": "lower_better",
+      "note": "Toxic metal; ideally undetectable"
+    },
+    {
+      "name": "Lead",
+      "category": "lab",
+      "unit": "ug/dL",
+      "ref_low": null,
+      "ref_high": 3.5,
+      "optimal_low": null,
+      "optimal_high": 1,
+      "direction": "lower_better",
+      "note": "Toxic metal; no safe level, ideally undetectable"
+    },
+    {
+      "name": "Mercury",
+      "category": "lab",
+      "unit": "ug/L",
+      "ref_low": null,
+      "ref_high": 10,
+      "optimal_low": null,
+      "optimal_high": 5,
+      "direction": "lower_better",
+      "note": "Toxic metal; ideally undetectable"
+    },
+    {
+      "name": "Chromium",
+      "category": "lab",
+      "unit": "ug/L",
+      "ref_low": null,
+      "ref_high": 1.2,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "lower_better",
+      "note": "Trace metal flagged on excess"
+    },
+    {
+      "name": "Molybdenum",
+      "category": "lab",
+      "unit": "ug/L",
+      "ref_low": null,
+      "ref_high": 2.2,
+      "optimal_low": 0.44,
+      "optimal_high": 1.78,
+      "direction": "in_range",
+      "note": "Essential trace mineral"
+    },
+    {
+      "name": "Copper",
+      "category": "lab",
+      "unit": "ug/dL",
+      "ref_low": 80,
+      "ref_high": 180,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": null,
+      "conversions": {
+        "umol/L": 6.355
+      }
+    },
+    {
+      "name": "Selenium",
+      "category": "lab",
+      "unit": "ug/L",
+      "ref_low": 63,
+      "ref_high": 160,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": null
+    },
+    {
+      "name": "Zinc",
+      "category": "lab",
+      "unit": "ug/dL",
+      "ref_low": 60,
+      "ref_high": 130,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": null,
+      "conversions": {
+        "umol/L": 6.538
+      }
+    },
+    {
+      "name": "Iodine",
+      "category": "lab",
+      "unit": "ug/L",
+      "ref_low": 52,
+      "ref_high": 109,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": null
+    },
+    {
+      "name": "Amylase",
+      "category": "lab",
+      "unit": "U/L",
+      "ref_low": 21,
+      "ref_high": 101,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": "Pancreatic/salivary"
+    },
+    {
+      "name": "Lipase",
+      "category": "lab",
+      "unit": "U/L",
+      "ref_low": 7,
+      "ref_high": 60,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": "Pancreatic"
+    },
+    {
+      "name": "Globulin",
+      "category": "lab",
+      "unit": "g/dL",
+      "ref_low": 1.9,
+      "ref_high": 3.7,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": null
+    },
+    {
+      "name": "Albumin/Globulin Ratio",
+      "category": "lab",
+      "unit": "ratio",
+      "ref_low": 1,
+      "ref_high": 2.5,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": null
+    },
+    {
+      "name": "Basophils",
+      "category": "lab",
+      "unit": "cells/uL",
+      "ref_low": 0,
+      "ref_high": 200,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": null
+    },
+    {
+      "name": "Eosinophils",
+      "category": "lab",
+      "unit": "cells/uL",
+      "ref_low": 15,
+      "ref_high": 500,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": null
+    },
+    {
+      "name": "Monocytes",
+      "category": "lab",
+      "unit": "cells/uL",
+      "ref_low": 200,
+      "ref_high": 950,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": null
+    },
+    {
+      "name": "MCH",
+      "category": "lab",
+      "unit": "pg",
+      "ref_low": 27,
+      "ref_high": 33,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": "Mean corpuscular hemoglobin"
+    },
+    {
+      "name": "MCHC",
+      "category": "lab",
+      "unit": "g/dL",
+      "ref_low": 31.6,
+      "ref_high": 35.4,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": "Mean corpuscular hemoglobin concentration"
+    },
+    {
+      "name": "MPV",
+      "category": "lab",
+      "unit": "fL",
+      "ref_low": 7.5,
+      "ref_high": 12.5,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": "Mean platelet volume"
+    },
+    {
+      "name": "Magnesium, RBC",
+      "category": "lab",
+      "unit": "mg/dL",
+      "ref_low": 4,
+      "ref_high": 6.4,
+      "optimal_low": 5,
+      "optimal_high": 6.4,
+      "direction": "in_range",
+      "note": "RBC (intracellular) magnesium — a distinct test from serum Magnesium, with a different scale",
+      "conversions": {
+        "mmol/L": 2.43,
+        "mEq/L": 1.215
+      }
+    },
+    {
+      "name": "Folate, RBC",
+      "category": "lab",
+      "unit": "ng/mL",
+      "ref_low": 280,
+      "ref_high": null,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "higher_better",
+      "note": "RBC folate (longer-term status) — distinct from serum Folate",
+      "conversions": {
+        "nmol/L": 0.4416
+      }
+    },
+    {
+      "name": "Methylmalonic Acid (MMA)",
+      "category": "lab",
+      "unit": "nmol/L",
+      "ref_low": 55,
+      "ref_high": 335,
+      "optimal_low": null,
+      "optimal_high": 250,
+      "direction": "lower_better",
+      "note": "Elevated MMA suggests functional B12 deficiency"
+    },
+    {
+      "name": "Sex Hormone Binding Globulin (SHBG)",
+      "category": "lab",
+      "unit": "nmol/L",
+      "ref_low": 10,
+      "ref_high": 50,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": null
+    },
+    {
+      "name": "Prolactin",
+      "category": "lab",
+      "unit": "ng/mL",
+      "ref_low": 2,
+      "ref_high": 18,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": "Sex-dependent"
+    },
+    {
+      "name": "Thyroglobulin Antibodies (TgAb)",
+      "category": "lab",
+      "unit": "IU/mL",
+      "ref_low": null,
+      "ref_high": 2,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "lower_better",
+      "note": "Thyroid autoantibody"
+    },
+    {
+      "name": "Thyroid Peroxidase Antibodies (TPOAb)",
+      "category": "lab",
+      "unit": "IU/mL",
+      "ref_low": null,
+      "ref_high": 9,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "lower_better",
+      "note": "Thyroid autoantibody"
+    },
+    {
+      "name": "Rheumatoid Factor (RF)",
+      "category": "lab",
+      "unit": "IU/mL",
+      "ref_low": null,
+      "ref_high": 14,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "lower_better",
+      "note": "Autoantibody"
+    },
+    {
+      "name": "Immunoglobulin E (Total)",
+      "category": "lab",
+      "unit": "kU/L",
+      "ref_low": null,
+      "ref_high": 114,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "lower_better",
+      "note": "Total IgE"
+    },
+    {
+      "name": "Vitamin A (Retinol)",
+      "category": "lab",
+      "unit": "ug/dL",
+      "ref_low": 38,
+      "ref_high": 98,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": null,
+      "conversions": {
+        "umol/L": 28.645
+      }
+    },
+    {
+      "name": "Vitamin E (Alpha-Tocopherol)",
+      "category": "lab",
+      "unit": "mg/L",
+      "ref_low": 5.7,
+      "ref_high": 19.9,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": null,
+      "conversions": {
+        "umol/L": 0.4307
+      }
+    },
+    {
+      "name": "Vitamin E (Beta/Gamma-Tocopherol)",
+      "category": "lab",
+      "unit": "mg/L",
+      "ref_low": null,
+      "ref_high": 4.3,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "lower_better",
+      "note": null
+    },
+    {
+      "name": "Coenzyme Q10",
+      "category": "lab",
+      "unit": "ug/mL",
+      "ref_low": 0.35,
+      "ref_high": null,
+      "optimal_low": 2,
+      "optimal_high": null,
+      "direction": "higher_better",
+      "note": null
+    },
+    {
+      "name": "Omega-3 Total (OmegaCheck)",
+      "category": "lab",
+      "unit": "% by wt",
+      "ref_low": 5.4,
+      "ref_high": null,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "higher_better",
+      "note": "Omega-3 index"
+    },
+    {
+      "name": "Omega-3 DHA",
+      "category": "lab",
+      "unit": "% by wt",
+      "ref_low": 1.4,
+      "ref_high": 5.1,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "higher_better",
+      "note": null
+    },
+    {
+      "name": "Omega-3 DPA",
+      "category": "lab",
+      "unit": "% by wt",
+      "ref_low": 0.8,
+      "ref_high": 1.8,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "higher_better",
+      "note": null
+    },
+    {
+      "name": "Omega-3 EPA",
+      "category": "lab",
+      "unit": "% by wt",
+      "ref_low": 0.2,
+      "ref_high": 2.3,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "higher_better",
+      "note": null
+    },
+    {
+      "name": "Omega-6 Arachidonic Acid",
+      "category": "lab",
+      "unit": "% by wt",
+      "ref_low": 8.6,
+      "ref_high": 15.6,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": null
+    },
+    {
+      "name": "Omega-6 Linoleic Acid",
+      "category": "lab",
+      "unit": "% by wt",
+      "ref_low": 18.6,
+      "ref_high": 29.5,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": null
+    },
+    {
+      "name": "Omega-6/Omega-3 Ratio",
+      "category": "lab",
+      "unit": "ratio",
+      "ref_low": 2,
+      "ref_high": 14.4,
+      "optimal_low": 2,
+      "optimal_high": 4,
+      "direction": "lower_better",
+      "note": null
+    },
+    {
+      "name": "Arachidonic Acid/EPA Ratio",
+      "category": "lab",
+      "unit": "ratio",
+      "ref_low": 3.7,
+      "ref_high": 40.7,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "lower_better",
+      "note": "Lower ratio = less inflammatory balance"
+    },
+    {
+      "name": "LDL Particle Number",
+      "category": "lab",
+      "unit": "nmol/L",
+      "ref_low": null,
+      "ref_high": 1138,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "lower_better",
+      "note": "LDL-P; atherogenic particle count"
+    },
+    {
+      "name": "LDL Small",
+      "category": "lab",
+      "unit": "nmol/L",
+      "ref_low": null,
+      "ref_high": 142,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "lower_better",
+      "note": "Small dense LDL"
+    },
+    {
+      "name": "LDL Medium",
+      "category": "lab",
+      "unit": "nmol/L",
+      "ref_low": null,
+      "ref_high": 215,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "lower_better",
+      "note": null
+    },
+    {
+      "name": "LDL Peak Size",
+      "category": "lab",
+      "unit": "Angstrom",
+      "ref_low": 222.9,
+      "ref_high": null,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "higher_better",
+      "note": "Larger LDL is less atherogenic"
+    },
+    {
+      "name": "LDL Pattern",
+      "category": "lab",
+      "unit": "pattern",
+      "ref_low": null,
+      "ref_high": null,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": "Pattern A (large, buoyant) favorable; Pattern B atherogenic"
+    },
+    {
+      "name": "HDL Large",
+      "category": "lab",
+      "unit": "nmol/L",
+      "ref_low": 6729,
+      "ref_high": null,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "higher_better",
+      "note": "Large HDL particles"
+    },
+    {
+      "name": "Prostate Specific Antigen (PSA), Free %",
+      "category": "lab",
+      "unit": "%",
+      "ref_low": 25,
+      "ref_high": null,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "higher_better",
+      "note": "Higher free fraction lowers cancer suspicion"
+    },
+    {
+      "name": "Urine pH",
+      "category": "lab",
+      "unit": null,
+      "ref_low": 5,
+      "ref_high": 8,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": null
+    },
+    {
+      "name": "Urine Specific Gravity",
+      "category": "lab",
+      "unit": null,
+      "ref_low": 1.001,
+      "ref_high": 1.035,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": null
+    },
+    {
+      "name": "Red Blood Cells, Urine",
+      "category": "lab",
+      "unit": "/HPF",
+      "ref_low": null,
+      "ref_high": 2,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "lower_better",
+      "note": null
+    },
+    {
+      "name": "White Blood Cells, Urine",
+      "category": "lab",
+      "unit": "/HPF",
+      "ref_low": null,
+      "ref_high": 5,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "lower_better",
+      "note": null
+    },
+    {
+      "name": "Squamous Epithelial Cells, Urine",
+      "category": "lab",
+      "unit": "/HPF",
+      "ref_low": null,
+      "ref_high": 5,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "lower_better",
+      "note": null
+    },
+    {
+      "name": "Biological Age",
+      "category": "biomarker",
+      "unit": "Years",
+      "ref_low": null,
+      "ref_high": 35.7,
+      "optimal_low": null,
+      "optimal_high": 35.7,
+      "direction": "lower_better",
+      "note": "Estimated biological age; lower than chronological is favorable"
+    },
+    {
+      "name": "Neutrophils, Absolute",
+      "category": "lab",
+      "unit": "cells/uL",
+      "ref_low": 1500,
+      "ref_high": 8000,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": "Absolute neutrophil count (ANC). Adult ~1.5–8.0 ×10^3/uL; varies by age (see age bands).",
+      "ranges_by_age": [
+        {
+          "min_age": 0,
+          "max_age": 1,
+          "ref_low": 1000,
+          "ref_high": 8500
+        },
+        {
+          "min_age": 1,
+          "max_age": 4,
+          "ref_low": 1000,
+          "ref_high": 8500
+        },
+        {
+          "min_age": 4,
+          "max_age": 10,
+          "ref_low": 1500,
+          "ref_high": 8000
+        },
+        {
+          "min_age": 10,
+          "max_age": 18,
+          "ref_low": 1500,
+          "ref_high": 8000
+        }
+      ]
+    },
+    {
+      "name": "Lymphocytes, Absolute",
+      "category": "lab",
+      "unit": "cells/uL",
+      "ref_low": 1000,
+      "ref_high": 4800,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": "Absolute lymphocyte count (ALC). Adult ~1.0–4.8 ×10^3/uL; much higher in infancy/childhood (see age bands).",
+      "ranges_by_age": [
+        {
+          "min_age": 0,
+          "max_age": 1,
+          "ref_low": 4000,
+          "ref_high": 13500
+        },
+        {
+          "min_age": 1,
+          "max_age": 4,
+          "ref_low": 3000,
+          "ref_high": 9500
+        },
+        {
+          "min_age": 4,
+          "max_age": 10,
+          "ref_low": 1500,
+          "ref_high": 7000
+        },
+        {
+          "min_age": 10,
+          "max_age": 18,
+          "ref_low": 1200,
+          "ref_high": 5200
+        }
+      ]
+    },
+    {
+      "name": "Monocytes, Relative",
+      "category": "lab",
+      "unit": "%",
+      "ref_low": 0,
+      "ref_high": 10,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": "Monocytes as a fraction of leukocytes (relative count). Companion to the absolute 'Monocytes' (cells/uL) entry."
+    },
+    {
+      "name": "Eosinophils, Relative",
+      "category": "lab",
+      "unit": "%",
+      "ref_low": 0,
+      "ref_high": 6,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": "Eosinophils as a fraction of leukocytes (relative count). Companion to the absolute 'Eosinophils' (cells/uL) entry."
+    },
+    {
+      "name": "Basophils, Relative",
+      "category": "lab",
+      "unit": "%",
+      "ref_low": 0,
+      "ref_high": 2,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": "Basophils as a fraction of leukocytes (relative count). Companion to the absolute 'Basophils' (cells/uL) entry."
+    },
+    {
+      "name": "Total T4",
+      "category": "lab",
+      "unit": "ug/dL",
+      "ref_low": 4.5,
+      "ref_high": 12,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": "Total thyroxine. Elevated by high thyroxine-binding globulin (pregnancy, estrogen); Free T4 is more specific."
+    },
+    {
+      "name": "Total T3",
+      "category": "lab",
+      "unit": "ng/dL",
+      "ref_low": 80,
+      "ref_high": 200,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": "Total triiodothyronine."
+    },
+    {
+      "name": "Direct Bilirubin",
+      "category": "lab",
+      "unit": "mg/dL",
+      "ref_low": 0,
+      "ref_high": 0.3,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": "Conjugated bilirubin."
+    },
+    {
+      "name": "Lactate Dehydrogenase (LDH)",
+      "category": "lab",
+      "unit": "U/L",
+      "ref_low": 120,
+      "ref_high": 246,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": "Assay-dependent; hemolyzed specimens read falsely high."
+    },
+    {
+      "name": "Creatine Kinase (CK)",
+      "category": "lab",
+      "unit": "U/L",
+      "ref_low": 26,
+      "ref_high": 308,
+      "ref_low_male": 39,
+      "ref_high_male": 308,
+      "ref_low_female": 26,
+      "ref_high_female": 192,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": "Higher in males; transiently elevated by exercise/muscle injury and higher with greater muscle mass and in some ancestries."
+    },
+    {
+      "name": "Erythrocyte Sedimentation Rate (ESR)",
+      "category": "lab",
+      "unit": "mm/h",
+      "ref_low": 0,
+      "ref_high": 30,
+      "ref_low_male": 0,
+      "ref_high_male": 20,
+      "ref_low_female": 0,
+      "ref_high_female": 30,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": "Upper limit rises with age (roughly age/2 for men, (age+10)/2 for women), so this deliberately broad adult cutoff under-flags young adults rather than over-flag older ones."
+    },
+    {
+      "name": "Anion Gap",
+      "category": "lab",
+      "unit": "mmol/L",
+      "ref_low": 4,
+      "ref_high": 16,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": "Varies widely by analyzer (direct-ISE methods run lower) and whether K+ is included in the calculation; range is intentionally broad."
+    },
+    {
+      "name": "Reticulocytes",
+      "category": "lab",
+      "unit": "%",
+      "ref_low": 0.5,
+      "ref_high": 2.5,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": "Reticulocytes as a fraction of erythrocytes."
+    },
+    {
+      "name": "Reticulocytes, Absolute",
+      "category": "lab",
+      "unit": "10^3/uL",
+      "ref_low": 25,
+      "ref_high": 75,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": "Absolute reticulocyte count (~25–75 ×10^3/uL; equivalently 25–75 ×10^9/L). Assay-dependent."
+    },
+    {
+      "name": "Estradiol",
+      "category": "lab",
+      "unit": "pg/mL",
+      "ref_low": null,
+      "ref_high": 400,
+      "ref_low_male": 10,
+      "ref_high_male": 40,
+      "ref_low_female": null,
+      "ref_high_female": 400,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": "Sex- and cycle-dependent (pg/mL). Female = reproductive-age, spanning follicular→mid-cycle peak→luteal (the app can't know cycle phase), with no low bound so early-follicular / post-menopausal lows never false-flag; the lower post-menopausal range is already covered, so no age band. Male ~10–40. Replaces a prior male-ish single range that false-flagged normal female physiology. When the profile's reproductive_status is set, ranges_by_status overrides this (#202).",
+      "ranges_by_status": {
+        "premenopausal": {
+          "ref_low": null,
+          "ref_high": 400,
+          "note": "Reproductive-age envelope (follicular→mid-cycle→luteal); open low bound so early-follicular lows never false-flag."
+        },
+        "postmenopausal": {
+          "ref_low": null,
+          "ref_high": 30,
+          "note": "Postmenopausal E2 ≤~30 pg/mL; open low bound (HRT/atrophy lows aren't flagged). Lets a post-menopausal HIGH estradiol flag."
+        }
+      },
+      "conversions": {
+        "pmol/L": 0.2724
+      }
+    },
+    {
+      "name": "Follicle Stimulating Hormone (FSH)",
+      "category": "lab",
+      "unit": "mIU/mL",
+      "ref_low": null,
+      "ref_high": 21,
+      "ref_low_male": 1,
+      "ref_high_male": 12.5,
+      "ref_low_female": 1,
+      "ref_high_female": 21,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": "Sex- and life-stage-dependent (mIU/mL). Female reproductive-age spans luteal→mid-cycle (the app can't know cycle phase); post-menopausal FSH is many-fold higher and is resolved via the 51+ age band so it isn't false-flagged 'high'. When the profile's reproductive_status is set, ranges_by_status overrides the age proxy (#202).",
+      "ranges_by_age": [
+        {
+          "min_age": 51,
+          "max_age": null,
+          "ref_low": null,
+          "ref_high": 135,
+          "ref_low_male": 1,
+          "ref_high_male": 20,
+          "ref_low_female": 1,
+          "ref_high_female": 135,
+          "note": "Post-menopausal (age ≥51, median menopause): FSH rises to ~27–133 mIU/mL; the low bound stays broad so HRT-suppressed values aren't false-flagged 'low'. Male ceiling widened for the age-related rise."
+        }
+      ],
+      "ranges_by_status": {
+        "premenopausal": {
+          "ref_low": 1,
+          "ref_high": 21,
+          "note": "Reproductive-age FSH (luteal→mid-cycle peak)."
+        },
+        "postmenopausal": {
+          "ref_low": null,
+          "ref_high": 134.8,
+          "note": "Postmenopausal FSH up to ~134.8 mIU/mL (Mayo/ARUP); open low bound so HRT-suppressed values aren't false-flagged 'low'."
+        }
+      }
+    },
+    {
+      "name": "Luteinizing Hormone (LH)",
+      "category": "lab",
+      "unit": "mIU/mL",
+      "ref_low": null,
+      "ref_high": 100,
+      "ref_low_male": 1.5,
+      "ref_high_male": 9.5,
+      "ref_low_female": 1,
+      "ref_high_female": 100,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": "Sex-dependent (mIU/mL). Female reproductive-age spans the luteal low → ovulatory LH surge (~95; the app can't know cycle phase) — an envelope that already contains the post-menopausal range (~8–59), so LH needs no age band. Male ~1.5–9.5. When the profile's reproductive_status is set, ranges_by_status refines this (#202).",
+      "ranges_by_status": {
+        "premenopausal": {
+          "ref_low": 1,
+          "ref_high": 100,
+          "note": "Reproductive-age LH (luteal low → ovulatory surge)."
+        },
+        "postmenopausal": {
+          "ref_low": null,
+          "ref_high": 58.5,
+          "note": "Postmenopausal LH up to ~58.5 mIU/mL (Mayo/endocrine); open low bound so HRT-suppressed values aren't false-flagged 'low'."
+        }
+      }
+    }
+  ]
+}

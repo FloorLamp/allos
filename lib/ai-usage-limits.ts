@@ -1,0 +1,70 @@
+// PURE decision + limit logic for the per-profile daily AI cap (rate-limiting
+// Fix 1). Split out of lib/ai-usage.ts (the DB wrapper) so it imports NOTHING —
+// no db, no network — and can be unit-tested in the pure suite
+// (lib/__tests__/ai-usage.test.ts) without opening SQLite. lib/ai-usage.ts
+// re-exports everything here, so callers can import from either place.
+
+// Kinds tracked today: document extraction vs insight/suggestion generation.
+// Insights and supplement suggestions share the "insight" bucket — both are
+// coaching-style generations distinct from document extraction.
+export type AiUsageKind = "extraction" | "insight";
+
+// Defaults are generous for a real single user across a day, but tight enough to
+// bound abuse. Overridable per deploy via env; the default stays the source of
+// truth in code (these are plain integers — never a model identifier).
+export const DEFAULT_DAILY_EXTRACTION_LIMIT = 50;
+export const DEFAULT_DAILY_INSIGHT_LIMIT = 100;
+
+// Parse a non-negative integer env override, falling back to the code default when
+// unset/blank/invalid (so a typo can't silently disable the cap — only a
+// deliberate, valid integer changes it).
+function envLimit(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw.trim() === "") return fallback;
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 0 ? n : fallback;
+}
+
+export function extractionDailyLimit(): number {
+  return envLimit("AI_DAILY_EXTRACTION_LIMIT", DEFAULT_DAILY_EXTRACTION_LIMIT);
+}
+
+export function insightDailyLimit(): number {
+  return envLimit("AI_DAILY_INSIGHT_LIMIT", DEFAULT_DAILY_INSIGHT_LIMIT);
+}
+
+// Resolve the daily limit for a kind from env/defaults.
+export function dailyLimitFor(kind: AiUsageKind): number {
+  return kind === "extraction" ? extractionDailyLimit() : insightDailyLimit();
+}
+
+export interface AiUsageDecision {
+  allowed: boolean;
+  // The count AFTER this call: current + 1 when allowed, unchanged when denied.
+  nextCount: number;
+  // How many calls remain in the window after this one (0 when denied).
+  remaining: number;
+}
+
+// PURE decision: given the profile's current count for the day/kind and the limit,
+// decide whether one more call is allowed and what the stored count becomes. A
+// non-finite/negative current is treated as 0 (defensive). A limit <= 0 denies
+// everything (a deploy that sets the limit to 0 disables that AI operation).
+export function decideAiUsage(current: number, limit: number): AiUsageDecision {
+  const safeCurrent =
+    Number.isFinite(current) && current > 0 ? Math.floor(current) : 0;
+  if (safeCurrent < limit) {
+    const nextCount = safeCurrent + 1;
+    return {
+      allowed: true,
+      nextCount,
+      remaining: Math.max(0, limit - nextCount),
+    };
+  }
+  return { allowed: false, nextCount: safeCurrent, remaining: 0 };
+}
+
+export interface AiUsageResult {
+  allowed: boolean;
+  remaining: number;
+}

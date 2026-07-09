@@ -1,0 +1,101 @@
+name: CI
+
+# PR-time checks the deploy pipeline doesn't provide. deploy.yml only runs on
+# push to main (gated by `next build`), so without this nothing validates a PR.
+# Safe to run on pull_request: it touches no secrets and does no deploy.
+on:
+  pull_request:
+  push:
+    branches-ignore: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      # Surfaces high/critical advisories in the CI log. Intentionally
+      # NON-BLOCKING (continue-on-error) so an unfixable transitive advisory
+      # can't wedge CI and block merges/deploys — enforcement is the Dependabot
+      # PRs; this step is visibility only. Flip continue-on-error to false to
+      # make it blocking once the advisory surface is under control.
+      - name: Audit dependencies
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
+      # PHI guard (#245): scan the whole tree for likely-real NPIs/phones/SSNs
+      # using the pure detector in lib/phi-scan.ts. High-signal structural checks
+      # only (Luhn-valid NPIs, dialable non-555 phones, valid-shaped SSNs), so
+      # synthetic fixtures pass. Fails the PR instead of relying on a reviewer.
+      - name: PHI scan
+        run: npm run phi-scan
+
+      - name: Format check
+        run: npm run format:check
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      # Pure unit suite AND the coverage regression floor in one pass. This runs
+      # the same test set as `npm test` (vitest.config.ts include: lib/**), just
+      # under v8 coverage, so it doubles as the correctness gate — a separate
+      # `npm test` step would only re-run the identical suite. Fails the job if
+      # lib/** coverage drops below the thresholds in vitest.config.ts (a tripwire
+      # a few points under the current baseline). app/** and components/** are
+      # intentionally not gated.
+      - name: Test + coverage
+        run: npm run test:coverage
+
+      # DB integration tier: exercises migrate() on both a fresh and an existing
+      # ("upgrade") database. Separate from the pure unit suite above; catches
+      # boot-crash-on-upgrade regressions like #157 that fresh-only tests miss.
+      - name: Test (DB)
+        run: npm run test:db
+
+  # Browser end-to-end tier: boots the real Next app against an isolated seeded
+  # SQLite DB and drives it in Chromium (Playwright). Separate job so it runs in
+  # parallel with `check` and its slower browser/build steps don't gate the fast
+  # lint/type/unit feedback. No secrets; no ANTHROPIC_API_KEY, so AI features
+  # degrade gracefully (the flows under test don't need them).
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      # Install only Chromium (+ its OS deps). Cached by setup-node's npm cache
+      # miss otherwise; the browser binary download is the bulk of the cost.
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      # CI runs production-like: build once, then the Playwright webServer boots
+      # `next start` against the built app (see playwright.config.ts).
+      - name: Build
+        run: npm run build
+
+      - name: E2E (Playwright)
+        run: npm run test:e2e
+
+      - name: Upload Playwright report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7

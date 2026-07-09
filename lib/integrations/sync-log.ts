@@ -1,0 +1,173 @@
+// PURE shaping/summarizing helpers for the integration sync-event debug log
+// (integration_sync_events). Kept free of any `@/lib/db` import so it stays in the
+// pure unit tier (lib/__tests__) — the impure event WRITER lives in
+// lib/integrations/connections.ts (recordSyncEvent) and the READER in
+// lib/queries/integrations.ts. Both call into this module for the count/window math.
+
+export interface SyncCounts {
+  received: number;
+  written: number;
+  skipped: number;
+}
+
+// Real insert/update/unchanged accounting for a sync batch (issue #273). Unlike
+// SyncCounts (which only knows how many rows were persisted), this distinguishes
+// a brand-new row (inserted) from a value-changing overwrite (updated) from a
+// no-op re-send of the rolling window (unchanged). "unchanged" is ONLY detectable
+// by reading the pre-image row and comparing it to the resolved post-image —
+// better-sqlite3's `info.changes` counts a matched row even when no value differs,
+// so a no-op UPDATE would look like a write. Each upsert does that SELECT-compare
+// and folds a per-type UpsertCounts up into the sync event.
+export interface UpsertCounts {
+  inserted: number;
+  updated: number;
+  unchanged: number;
+}
+
+export function emptyCounts(): UpsertCounts {
+  return { inserted: 0, updated: 0, unchanged: 0 };
+}
+
+// Field-wise sum of several per-type UpsertCounts into one batch total. Pure.
+export function foldCounts(parts: UpsertCounts[]): UpsertCounts {
+  const out = emptyCounts();
+  for (const p of parts) {
+    out.inserted += p.inserted;
+    out.updated += p.updated;
+    out.unchanged += p.unchanged;
+  }
+  return out;
+}
+
+// The full received-side split of a batch: the insert/update/unchanged accounting
+// plus the parser's `skipped` drops. `received` is everything the source handed us
+// (inserted + updated + unchanged + skipped). Pure → unit-testable.
+export interface SyncSplit extends UpsertCounts {
+  skipped: number;
+  received: number;
+}
+
+export function summarizeSplit(
+  counts: UpsertCounts,
+  skipped: number
+): SyncSplit {
+  const inserted = Math.max(0, Math.round(counts.inserted));
+  const updated = Math.max(0, Math.round(counts.updated));
+  const unchanged = Math.max(0, Math.round(counts.unchanged));
+  const s = Math.max(0, Math.round(skipped));
+  return {
+    inserted,
+    updated,
+    unchanged,
+    skipped: s,
+    received: inserted + updated + unchanged + s,
+  };
+}
+
+// Compare two rows on a fixed column set, normalizing null/undefined so a missing
+// incoming field and a stored NULL are equal. Values are pre-rounded before they
+// reach the upserts, so exact === is correct here. Pure → unit-testable; used by
+// the upserts to decide unchanged-vs-updated on the pre-image/post-image pair.
+export function rowsEqual(
+  cols: string[],
+  a: Record<string, unknown>,
+  b: Record<string, unknown>
+): boolean {
+  for (const c of cols) {
+    const av = a[c] ?? null;
+    const bv = b[c] ?? null;
+    if (av !== bv) return false;
+  }
+  return true;
+}
+
+// The human label for a sync event's count split, for the Data → Review feed.
+// When the split columns are present it reads "N new · N changed · N unchanged"
+// (zero segments omitted); when nothing was inserted or updated it collapses to a
+// muted "nothing new"; and when the split columns are all null (a legacy event
+// recorded before #273) it falls back to the flat `written` count. Pure.
+export function formatSplitLabel(ev: {
+  inserted: number | null;
+  updated: number | null;
+  unchanged: number | null;
+  written: number | null;
+}): { primary: string; muted: boolean } {
+  const { inserted, updated, unchanged } = ev;
+  if (inserted === null && updated === null && unchanged === null) {
+    const w = ev.written ?? 0;
+    return { primary: `${w} ${w === 1 ? "record" : "records"}`, muted: false };
+  }
+  const ins = inserted ?? 0;
+  const upd = updated ?? 0;
+  const unch = unchanged ?? 0;
+  if (ins + upd === 0) {
+    return { primary: "nothing new", muted: true };
+  }
+  const segs: string[] = [];
+  if (ins > 0) segs.push(`${ins} new`);
+  if (upd > 0) segs.push(`${upd} changed`);
+  if (unch > 0) segs.push(`${unch} unchanged`);
+  return { primary: segs.join(" · "), muted: false };
+}
+
+// Derive the {received, written, skipped} triple for a sync batch from the two
+// numbers the ingest already computes: `written` = normalized rows the idempotent
+// upserts persisted (a resend of the rolling window overwrites its row IN PLACE
+// rather than duplicating, which is what keeps ingest idempotent), and `skipped` =
+// rows received from the source that were NOT persisted — the parser's drops
+// (malformed / unmappable / duplicate-in-batch). So `received` = written + skipped.
+// NOTE: this is deliberately NOT a natural-key idempotent-dedup count — the upserts
+// count an in-place UPDATE as `written`, so distinguishing new-vs-existing rows
+// would mean threading an insert/update split through every heterogeneous upsert
+// (hr_minutes has no autoincrement id; body_metrics merges) — too invasive for a
+// debug panel. `skipped` honestly reflects what is measured. Pure → unit-testable.
+export function summarizeSync(written: number, skipped: number): SyncCounts {
+  const w = Math.max(0, Math.round(written));
+  const s = Math.max(0, Math.round(skipped));
+  return { received: w + s, written: w, skipped: s };
+}
+
+// The data window a batch covered, as [min, max] of the supplied date/time strings
+// (nulls when the batch carried none). Blanks are ignored; comparison is
+// lexicographic, which is correct for the zero-padded ISO/`YYYY-MM-DD` forms the
+// normalizers emit. Pure.
+export function dateWindow(dates: (string | null | undefined)[]): {
+  start: string | null;
+  end: string | null;
+} {
+  let start: string | null = null;
+  let end: string | null = null;
+  for (const d of dates) {
+    if (!d) continue;
+    if (start === null || d < start) start = d;
+    if (end === null || d > end) end = d;
+  }
+  return { start, end };
+}
+
+// A tidy human label for a batch's data window ("no data", one date, or a range).
+// Pure; used by the debug panel table.
+export function formatWindow(start: string | null, end: string | null): string {
+  if (!start && !end) return "—";
+  if (start && end && start !== end) return `${start} → ${end}`;
+  return (start ?? end) as string;
+}
+
+// Given sync events ordered NEWEST-FIRST (as the queries return them), keep only
+// the most recent event per provider whose latest outcome is a failure — i.e. the
+// integrations that are *currently* broken. A later successful sync drops a
+// provider off automatically, so this is self-clearing and safe to drive a
+// "needs attention" badge/count from. Pure → unit-testable; structurally typed so
+// it doesn't drag @/lib/db or the full row type into the pure tier.
+export function currentlyFailingProviders<
+  T extends { provider: string; ok: number },
+>(eventsNewestFirst: T[]): T[] {
+  const seen = new Set<string>();
+  const failing: T[] = [];
+  for (const e of eventsNewestFirst) {
+    if (seen.has(e.provider)) continue; // a newer event already decided this provider
+    seen.add(e.provider);
+    if (!e.ok) failing.push(e);
+  }
+  return failing;
+}

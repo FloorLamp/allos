@@ -1,0 +1,284 @@
+// Pure scheduling helpers for supplements (no DB access), shared by the
+// supplements page, the dashboard widget, and any future notifier. Keeping the
+// "is this due today?" / time-bucket / priority logic here (not inline in the
+// page) means an alerting layer can reuse it directly.
+
+import type {
+  FoodTiming,
+  Supplement,
+  SupplementCondition,
+  SupplementPriority,
+} from "./types";
+
+export type TimeBucket =
+  "Morning" | "Midday" | "Evening" | "Before sleep" | "Anytime";
+
+export const TIME_BUCKETS: TimeBucket[] = [
+  "Morning",
+  "Midday",
+  "Evening",
+  "Before sleep",
+  "Anytime",
+];
+
+// Normalize a free-text time_of_day into one of the buckets. Existing free-text
+// values ("with dinner", "post-workout", "am") map at render time, so no data
+// migration is needed.
+export function timeBucket(timeOfDay: string | null): TimeBucket {
+  const t = (timeOfDay || "").toLowerCase();
+  if (/\b(morning|am|breakfast|wake|sunrise|early)\b/.test(t)) return "Morning";
+  if (/\b(noon|lunch|midday|afternoon)\b/.test(t)) return "Midday";
+  if (/\b(before\s+sleep|bed(?:time)?|sleep|overnight)\b/.test(t))
+    return "Before sleep";
+  if (/\b(evening|night|dinner|dusk|pm|supper)\b/.test(t)) return "Evening";
+  return "Anytime";
+}
+
+export const CONDITION_LABELS: Record<SupplementCondition, string> = {
+  daily: "Daily",
+  pre_workout: "Pre-workout",
+  post_workout: "Post-workout",
+  rest_day: "Rest day",
+  situational: "Situational",
+};
+
+export const CONDITIONS = Object.keys(
+  CONDITION_LABELS
+) as SupplementCondition[];
+
+// Conditions whose meaning depends on fitness/training tracking (workout vs rest
+// day). They're hidden from the schedule dropdown when training is restricted for
+// the profile, mirroring how the Journal/Training surfaces vanish (see age-gate.ts).
+export const WORKOUT_CONDITIONS: SupplementCondition[] = [
+  "pre_workout",
+  "post_workout",
+  "rest_day",
+];
+
+// Conditions offered in the add/edit form. When training is restricted the
+// workout/rest-day options are dropped (meaningless without fitness tracking),
+// except one already stored on the item being edited (`keep`), so its select
+// value stays valid rather than silently blanking.
+export function availableConditions(
+  trainingRestricted: boolean,
+  keep?: SupplementCondition | null
+): SupplementCondition[] {
+  if (!trainingRestricted) return CONDITIONS;
+  return CONDITIONS.filter(
+    (c) => !WORKOUT_CONDITIONS.includes(c) || c === keep
+  );
+}
+
+// Whether a supplement applies given today's context: workout vs rest day (from
+// the journal) and the set of currently-active situations. An as-needed (PRN)
+// medication is never scheduled-due — it's taken on demand, so it generates no
+// reminders/escalation/adherence-due and can never be "missed" (#103 Phase C).
+export function isDueOn(
+  supp: Pick<Supplement, "condition" | "situation"> & { as_needed?: number },
+  ctx: { isWorkoutDay: boolean; activeSituations: Set<string> }
+): boolean {
+  if (supp.as_needed) return false;
+  switch (supp.condition) {
+    case "daily":
+      return true;
+    case "pre_workout":
+    case "post_workout":
+      return ctx.isWorkoutDay;
+    case "rest_day":
+      return !ctx.isWorkoutDay;
+    case "situational":
+      return supp.situation != null && ctx.activeSituations.has(supp.situation);
+    default:
+      return true;
+  }
+}
+
+// Suggested situation labels for the form; free text is still allowed.
+export const SUGGESTED_SITUATIONS = [
+  "Illness",
+  "Travel",
+  "High stress",
+  "Poor sleep",
+];
+
+export const PRIORITY_ORDER: Record<SupplementPriority, number> = {
+  mandatory: 0,
+  high: 1,
+  low: 2,
+};
+
+export const PRIORITY_LABELS: Record<SupplementPriority, string> = {
+  mandatory: "Mandatory",
+  high: "High",
+  low: "Low",
+};
+
+export const PRIORITIES = Object.keys(PRIORITY_ORDER) as SupplementPriority[];
+
+// Tailwind accent for the priority badge / row accent.
+export function priorityClass(priority: SupplementPriority): string {
+  if (priority === "mandatory")
+    return "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300";
+  if (priority === "high")
+    return "bg-brand-100 text-brand-700 dark:bg-brand-950 dark:text-brand-300";
+  return "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400";
+}
+
+// ---- Food timing ----
+
+export const FOOD_TIMINGS: FoodTiming[] = [
+  "any",
+  "with_food",
+  "with_fat",
+  "before_meal",
+  "empty_stomach",
+];
+
+// Single source of truth for food-timing copy: `label` for selects, `hint` for
+// the one-line guidance on the schedule row (empty hint = nothing to show).
+const FOOD_TIMING_META: Record<FoodTiming, { label: string; hint: string }> = {
+  any: { label: "With or without food", hint: "" },
+  with_food: { label: "With food", hint: "Take with food" },
+  with_fat: { label: "With fat", hint: "Take with a fat-containing meal" },
+  before_meal: { label: "Before meal", hint: "Take before a meal" },
+  empty_stomach: { label: "Empty stomach", hint: "Take on an empty stomach" },
+};
+
+export const FOOD_TIMING_LABELS = Object.fromEntries(
+  FOOD_TIMINGS.map((ft) => [ft, FOOD_TIMING_META[ft].label])
+) as Record<FoodTiming, string>;
+
+export const FOOD_TIMING_HINTS = Object.fromEntries(
+  FOOD_TIMINGS.map((ft) => [ft, FOOD_TIMING_META[ft].hint])
+) as Record<FoodTiming, string>;
+
+// Substances best absorbed with dietary fat — used to default food timing when a
+// catalogued supplement doesn't specify one.
+const FAT_SOLUBLE = [
+  "vitamin d",
+  "vitamin a",
+  "vitamin e",
+  "vitamin k",
+  "d3",
+  "k2",
+  "omega",
+  "fish oil",
+  "krill",
+  "coq10",
+  "coenzyme q10",
+  "ubiquinol",
+  "curcumin",
+  "turmeric",
+  "astaxanthin",
+  "lutein",
+];
+
+// Best-effort default food timing for a supplement name (catalog entries can
+// override). Returns "any" when nothing clearly applies.
+export function defaultFoodTiming(
+  name: string,
+  explicit?: FoodTiming | null
+): FoodTiming {
+  if (explicit) return explicit;
+  const n = name.toLowerCase();
+  if (FAT_SOLUBLE.some((k) => n.includes(k))) return "with_fat";
+  return "any";
+}
+
+// ---- Dosage parsing ----
+
+export interface ParsedDosage {
+  amount: string | null; // quantity per intake, e.g. "5–10 g"
+  perDay: number; // number of intakes per day
+  timeOfDay: TimeBucket | null; // inferred from embedded timing words
+}
+
+// Frequency phrases → intakes per day (each intake is the stated amount).
+const FREQ_PATTERNS: [RegExp, number][] = [
+  [/\b(twice|2\s*(?:x|times))\b/i, 2],
+  [/\b(thrice|three\s*times|3\s*(?:x|times)|tid)\b/i, 3],
+  [/\b(four\s*times|4\s*(?:x|times)|qid)\b/i, 4],
+  [/\b(once|1\s*(?:x|time)|qd|od)\b/i, 1],
+];
+
+// Frequency / timing / food phrases stripped out to leave just the amount.
+const STRIP_PATTERNS: RegExp[] = [
+  /\b(once|twice|thrice|three times|four times)\b/gi,
+  /\b\d+\s*(?:x|times)\b/gi,
+  /\b(per|a|each|every)\s*day\b/gi,
+  /\bdaily\b/gi,
+  /\/\s*day\b/gi,
+  /\b(qd|bid|tid|qid|od)\b/gi,
+  /\b(split|divided)\b(\s+(in(?:to)?|across))?(\s+\d+\s*[a-z]*)?/gi,
+  /\bacross\s+\d+\s*[a-z]+/gi,
+  /\bwith\s+(food|meals?|a meal|fat|water|breakfast|lunch|dinner)\b/gi,
+  /\b(on\s+an?\s+)?empty\s+stomach\b/gi,
+  /\bbefore\s+(a\s+)?(meals?|bed(time)?)\b/gi,
+  /\bin\s+the\s+(morning|afternoon|evening)\b/gi,
+  /\bat\s+(night|bedtime)\b/gi,
+];
+
+// Earliest marker after which the text is frequency/timing/separation prose
+// rather than the amount, e.g. "once daily", "2-3 times daily", "taken 2+ hours
+// away from…", "with food", "before bed". The amount is everything before it.
+const CUT_RE =
+  /\b(?:\d+\s*(?:[–-]\s*\d+)?\s*(?:x|times)|once|twice|thrice|three\s+times|four\s+times|every\s+day|per\s+day|a\s+day|daily|each\s+day|with\s|without\s|before\b|after\b|on\s+an?\s+empty|empty\s+stomach|taken\b|away\s+from|apart\s+from|split\b|divided\b|across\b|\d+\s*\+?\s*hours?|at\s+night|at\s+bedtime|in\s+the\s+(?:morning|afternoon|evening))/i;
+
+// Split a free-text dosage ("5–10 g once daily", "500mg 2-3 times daily",
+// "500–1000 mg, taken 2+ hours away from other supplements") into a clean
+// per-intake amount, how many intakes per day, and any embedded time of day.
+// "split/divided/across" describe a total to divide, so they don't multiply the
+// intake count; a frequency range ("2-3 times") takes the lower bound.
+export function parseDosage(text: string | null): ParsedDosage {
+  if (!text) return { amount: null, perDay: 1, timeOfDay: null };
+  const raw = text.trim();
+  const lower = raw.toLowerCase();
+
+  let perDay = 1;
+  const nx = lower.match(/(\d+)\s*(?:[–-]\s*\d+)?\s*(?:x|times)\b/);
+  if (nx)
+    perDay = Number(nx[1]) || 1; // lower bound of any range
+  else
+    for (const [re, n] of FREQ_PATTERNS)
+      if (re.test(lower)) {
+        perDay = n;
+        break;
+      }
+  if (/\b(split|divided|across)\b/i.test(lower)) perDay = 1;
+
+  const tb = timeBucket(raw);
+  const timeOfDay = tb === "Anytime" ? null : tb;
+
+  // Amount = text before the first frequency/timing/separation marker.
+  const cut = raw.match(CUT_RE);
+  let amount = (cut ? raw.slice(0, cut.index) : raw)
+    .replace(/[,;]+\s*$/, "")
+    .replace(/\s*[–-]\s*$/, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  // Fallback: if the marker sat at the very start, strip-clean the whole string.
+  if (!amount) {
+    amount = raw;
+    for (const re of STRIP_PATTERNS) amount = amount.replace(re, " ");
+    amount = amount
+      .replace(/[(),;]+/g, " ")
+      .replace(/\s{2,}/g, " ")
+      .trim();
+  }
+
+  return { amount: amount || null, perDay, timeOfDay };
+}
+
+// Spread N intakes across sensible time buckets (falling back to `fallback`).
+export function spreadDoseTimes(
+  n: number,
+  fallback: string | null
+): (string | null)[] {
+  if (n <= 1) return [fallback];
+  const presets: Record<number, TimeBucket[]> = {
+    2: ["Morning", "Evening"],
+    3: ["Morning", "Midday", "Evening"],
+    4: ["Morning", "Midday", "Evening", "Evening"],
+  };
+  return presets[n] ?? Array(n).fill(fallback ?? "Anytime");
+}

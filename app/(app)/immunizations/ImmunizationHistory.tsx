@@ -1,0 +1,95 @@
+"use client";
+
+import ImmunizationForm from "./ImmunizationForm";
+import { updateImmunization, deleteImmunization } from "./actions";
+import RecordTable, { type RecordColumn } from "@/components/RecordTable";
+import RecordProvenance from "@/components/RecordProvenance";
+import { vaccineDisplayName } from "@/lib/immunization-catalog";
+import { resolveDoseLabelsByVaccine } from "@/lib/immunization-status";
+import { sourceLabel } from "@/lib/record-format";
+import type { Immunization } from "@/lib/types";
+
+// Sortable history table on the shared RecordTable. Click a header to sort
+// (toggling asc/desc); each row edits in place (expands the shared form) or
+// deletes. Defaults to date-descending; equal keys tie-break on date desc.
+export default function ImmunizationHistory({
+  items,
+  defaultDate,
+}: {
+  items: Immunization[];
+  defaultDate: string;
+}) {
+  // Auto "Dose N [of M]" labels, numbered within each stored vaccine's own
+  // chronological sequence; a user's explicit dose_label wins (pure helper).
+  const doseLabels = resolveDoseLabelsByVaccine(items);
+  const doseLabel = (im: Immunization): string => doseLabels.get(im.id) ?? "—";
+
+  const columns: RecordColumn<Immunization>[] = [
+    {
+      header: "Vaccine",
+      cellClassName: "font-medium text-slate-800 dark:text-slate-100",
+      sort: { value: (im) => vaccineDisplayName(im.vaccine).toLowerCase() },
+      cell: (im) => (
+        <>
+          {vaccineDisplayName(im.vaccine)}
+          {im.notes ? (
+            <span className="ml-2 text-xs font-normal text-slate-400">
+              {im.notes}
+            </span>
+          ) : null}
+        </>
+      ),
+    },
+    {
+      header: "Date",
+      cellClassName: "whitespace-nowrap text-slate-600 dark:text-slate-300",
+      sort: { value: (im) => im.date, initialDir: "desc" },
+      cell: (im) => im.date,
+    },
+    {
+      header: "Dose",
+      cellClassName: "text-slate-600 dark:text-slate-300",
+      sort: { value: (im) => doseLabel(im).toLowerCase() },
+      cell: (im) => doseLabel(im),
+    },
+    {
+      header: "Administered by",
+      cellClassName: "text-slate-600 dark:text-slate-300",
+      sort: { value: (im) => (im.provider_name ?? "").toLowerCase() },
+      cell: (im) => im.provider_name ?? "—",
+    },
+    {
+      header: "Source",
+      cellClassName: "whitespace-nowrap",
+      sort: { value: (im) => sourceLabel(im.source).toLowerCase() },
+      cell: (im) => <RecordProvenance source={im.source} />,
+    },
+  ];
+
+  return (
+    <RecordTable
+      items={items}
+      columns={columns}
+      emptyMessage="No immunizations recorded yet. Add one, or import a MyChart export."
+      defaultSort={{ index: 1, dir: "desc" }}
+      tieBreak={(a, b) => b.date.localeCompare(a.date)}
+      renderEditForm={(im, done) => (
+        <ImmunizationForm
+          action={updateImmunization}
+          immunization={im}
+          onDone={done}
+          defaultDate={defaultDate}
+        />
+      )}
+      confirmDelete={(im) => ({
+        title: "Delete immunization",
+        message: `Delete the ${vaccineDisplayName(im.vaccine)} record from ${im.date}? This can’t be undone.`,
+      })}
+      onDelete={async (im) => {
+        const fd = new FormData();
+        fd.set("id", String(im.id));
+        await deleteImmunization(fd);
+      }}
+    />
+  );
+}

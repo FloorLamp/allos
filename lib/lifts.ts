@@ -1,0 +1,704 @@
+export type MuscleRegion =
+  "Chest" | "Back" | "Shoulders" | "Arms" | "Legs" | "Glutes" | "Core";
+
+// Movement pattern, used to suggest "Push day" / "Pull day" / "Leg day".
+export type MovementPattern = "push" | "pull" | "legs" | "core";
+
+export interface LiftDef {
+  name: string;
+  muscle: string; // specific muscle worked, e.g. "Side delts"
+  region: MuscleRegion;
+  pattern: MovementPattern;
+  // Trained one side at a time, so left/right can carry different load/reps.
+  // Enables the "Track sides separately" toggle in the activity form.
+  unilateral?: boolean;
+  // An isometric hold measured by time, not reps (planks, dead hangs). The set
+  // input captures a duration instead of reps.
+  timed?: boolean;
+  // The body itself is the load (pull ups, chin ups, dips). Any logged weight is
+  // ADDED to bodyweight; with no logged weight the load is just bodyweight. Used
+  // to fold the user's bodyweight into volume / strength stats.
+  bodyweight?: boolean;
+}
+
+// Equipment a variant lift can be done with. Stored variant names are
+// "<Equipment> <Base>", e.g. "Dumbbell Curl".
+export type Equipment = "Barbell" | "Dumbbell" | "Cable" | "Machine";
+
+// A base lift that can be performed with different equipment. Each (equipment,
+// base) pair expands into a concrete lift named "<Equipment> <Base>" so it is
+// tracked as its own exercise (separate 1RM/history) while the picker groups
+// them under the base.
+export interface VariantGroup {
+  name: string; // base lift name, e.g. "Curl"
+  muscle: string;
+  region: MuscleRegion;
+  pattern: MovementPattern;
+  equipment: Equipment[];
+  // Equipment for which the variant is trained one side at a time.
+  unilateralEquipment?: Equipment[];
+}
+
+const VARIANT_GROUPS: VariantGroup[] = [
+  {
+    name: "Curl",
+    muscle: "Biceps",
+    region: "Arms",
+    pattern: "pull",
+    equipment: ["Barbell", "Dumbbell", "Cable", "Machine"],
+    unilateralEquipment: ["Dumbbell", "Cable"],
+  },
+  {
+    name: "Row",
+    muscle: "Mid back",
+    region: "Back",
+    pattern: "pull",
+    equipment: ["Barbell", "Dumbbell", "Cable", "Machine"],
+    unilateralEquipment: ["Dumbbell", "Cable"],
+  },
+  {
+    // Barbell and dumbbell are both pressed with two hands, so no unilateral.
+    name: "Bench Press",
+    muscle: "Chest",
+    region: "Chest",
+    pattern: "push",
+    equipment: ["Barbell", "Dumbbell"],
+  },
+  {
+    name: "Overhead Press",
+    muscle: "Front delts",
+    region: "Shoulders",
+    pattern: "push",
+    equipment: ["Barbell", "Dumbbell"],
+    unilateralEquipment: ["Dumbbell"],
+  },
+  {
+    // No barbell — lateral raises are loaded with dumbbells, a cable, or a
+    // machine. Dumbbell and (single-arm) cable can be tracked per side.
+    name: "Lateral Raise",
+    muscle: "Side delts",
+    region: "Shoulders",
+    pattern: "push",
+    equipment: ["Dumbbell", "Cable", "Machine"],
+    unilateralEquipment: ["Dumbbell", "Cable"],
+  },
+  {
+    name: "Rear Delt Fly",
+    muscle: "Rear delts",
+    region: "Shoulders",
+    pattern: "pull",
+    // Bent-over with dumbbells, or one arm at a time on a cable.
+    equipment: ["Dumbbell", "Cable"],
+    unilateralEquipment: ["Dumbbell", "Cable"],
+  },
+];
+
+// Stand-alone lifts (no equipment variants). Variant lifts — barbell/dumbbell/
+// cable/machine curls and rows — are generated from VARIANT_GROUPS below, so
+// "Barbell Row"/"Dumbbell Row" etc. are not listed here.
+const PLAIN_DEFS: LiftDef[] = [
+  { name: "Back Squat", muscle: "Quads", region: "Legs", pattern: "legs" },
+  { name: "Front Squat", muscle: "Quads", region: "Legs", pattern: "legs" },
+  {
+    name: "Incline Bench Press",
+    muscle: "Upper chest",
+    region: "Chest",
+    pattern: "push",
+  },
+  {
+    name: "Push Press",
+    muscle: "Front delts",
+    region: "Shoulders",
+    pattern: "push",
+  },
+  {
+    name: "Deadlift",
+    muscle: "Posterior chain",
+    region: "Back",
+    pattern: "pull",
+  },
+  {
+    name: "Romanian Deadlift",
+    muscle: "Hamstrings",
+    region: "Legs",
+    pattern: "pull",
+  },
+  {
+    name: "Sumo Deadlift",
+    muscle: "Posterior chain",
+    region: "Back",
+    pattern: "pull",
+  },
+  { name: "Pendlay Row", muscle: "Mid back", region: "Back", pattern: "pull" },
+  {
+    name: "Pull Up",
+    muscle: "Lats",
+    region: "Back",
+    pattern: "pull",
+    bodyweight: true,
+  },
+  {
+    name: "Chin Up",
+    muscle: "Lats & biceps",
+    region: "Back",
+    pattern: "pull",
+    bodyweight: true,
+  },
+  {
+    name: "Lat Pulldown",
+    muscle: "Lats",
+    region: "Back",
+    pattern: "pull",
+    unilateral: true,
+  },
+  {
+    name: "Hammer Curl",
+    muscle: "Biceps & brachialis",
+    region: "Arms",
+    pattern: "pull",
+    unilateral: true,
+  },
+  {
+    name: "Tricep Extension",
+    muscle: "Triceps",
+    region: "Arms",
+    pattern: "push",
+  },
+  {
+    name: "Tricep Pushdown",
+    muscle: "Triceps",
+    region: "Arms",
+    pattern: "push",
+  },
+  { name: "Leg Press", muscle: "Quads", region: "Legs", pattern: "legs" },
+  { name: "Leg Curl", muscle: "Hamstrings", region: "Legs", pattern: "legs" },
+  { name: "Leg Extension", muscle: "Quads", region: "Legs", pattern: "legs" },
+  { name: "Calf Raise", muscle: "Calves", region: "Legs", pattern: "legs" },
+  { name: "Hip Thrust", muscle: "Glutes", region: "Glutes", pattern: "legs" },
+  {
+    name: "Lunge",
+    muscle: "Quads & glutes",
+    region: "Legs",
+    pattern: "legs",
+    unilateral: true,
+  },
+  {
+    name: "Bulgarian Split Squat",
+    muscle: "Quads & glutes",
+    region: "Legs",
+    pattern: "legs",
+    unilateral: true,
+  },
+  {
+    name: "Dip",
+    muscle: "Chest & triceps",
+    region: "Chest",
+    pattern: "push",
+    bodyweight: true,
+  },
+  {
+    name: "Face Pull",
+    muscle: "Rear delts",
+    region: "Shoulders",
+    pattern: "pull",
+  },
+  { name: "Cable Fly", muscle: "Chest", region: "Chest", pattern: "push" },
+  { name: "Shrug", muscle: "Traps", region: "Back", pattern: "pull" },
+  // Chest
+  {
+    name: "Decline Bench Press",
+    muscle: "Lower chest",
+    region: "Chest",
+    pattern: "push",
+  },
+  {
+    name: "Close-Grip Bench Press",
+    muscle: "Triceps",
+    region: "Chest",
+    pattern: "push",
+  },
+  { name: "Pec Deck", muscle: "Chest", region: "Chest", pattern: "push" },
+  // Shoulders
+  {
+    name: "Arnold Press",
+    muscle: "Front delts",
+    region: "Shoulders",
+    pattern: "push",
+  },
+  {
+    name: "Upright Row",
+    muscle: "Side delts",
+    region: "Shoulders",
+    pattern: "pull",
+  },
+  // Back
+  { name: "T-Bar Row", muscle: "Mid back", region: "Back", pattern: "pull" },
+  {
+    name: "Straight-Arm Pulldown",
+    muscle: "Lats",
+    region: "Back",
+    pattern: "pull",
+  },
+  {
+    name: "Trap Bar Deadlift",
+    muscle: "Posterior chain",
+    region: "Back",
+    pattern: "pull",
+  },
+  {
+    name: "Back Extension",
+    muscle: "Lower back",
+    region: "Back",
+    pattern: "pull",
+    bodyweight: true,
+  },
+  {
+    name: "Farmers Carry",
+    muscle: "Grip & traps",
+    region: "Back",
+    pattern: "pull",
+  },
+  // Arms
+  {
+    name: "Preacher Curl",
+    muscle: "Biceps",
+    region: "Arms",
+    pattern: "pull",
+    unilateral: true,
+  },
+  {
+    name: "Concentration Curl",
+    muscle: "Biceps",
+    region: "Arms",
+    pattern: "pull",
+    unilateral: true,
+  },
+  { name: "Skullcrusher", muscle: "Triceps", region: "Arms", pattern: "push" },
+  {
+    name: "Reverse Curl",
+    muscle: "Forearms",
+    region: "Arms",
+    pattern: "pull",
+    unilateral: true,
+  },
+  { name: "Wrist Curl", muscle: "Forearms", region: "Arms", pattern: "pull" },
+  // Legs
+  { name: "Goblet Squat", muscle: "Quads", region: "Legs", pattern: "legs" },
+  { name: "Hack Squat", muscle: "Quads", region: "Legs", pattern: "legs" },
+  {
+    name: "Good Morning",
+    muscle: "Hamstrings",
+    region: "Legs",
+    pattern: "pull",
+  },
+  {
+    name: "Nordic Curl",
+    muscle: "Hamstrings",
+    region: "Legs",
+    pattern: "legs",
+    bodyweight: true,
+  },
+  {
+    name: "Glute Ham Raise",
+    muscle: "Hamstrings & glutes",
+    region: "Legs",
+    pattern: "legs",
+    bodyweight: true,
+  },
+  {
+    name: "Step Up",
+    muscle: "Quads & glutes",
+    region: "Legs",
+    pattern: "legs",
+    unilateral: true,
+  },
+  {
+    name: "Seated Calf Raise",
+    muscle: "Calves",
+    region: "Legs",
+    pattern: "legs",
+  },
+  {
+    name: "Hip Adduction",
+    muscle: "Adductors",
+    region: "Legs",
+    pattern: "legs",
+  },
+  // Glutes
+  {
+    name: "Hip Abduction",
+    muscle: "Abductors",
+    region: "Glutes",
+    pattern: "legs",
+  },
+  {
+    name: "Glute Bridge",
+    muscle: "Glutes",
+    region: "Glutes",
+    pattern: "legs",
+    bodyweight: true,
+  },
+  {
+    name: "Cable Kickback",
+    muscle: "Glutes",
+    region: "Glutes",
+    pattern: "legs",
+    unilateral: true,
+  },
+  // Core
+  {
+    name: "Hanging Leg Raise",
+    muscle: "Core",
+    region: "Core",
+    pattern: "core",
+    bodyweight: true,
+  },
+  { name: "Cable Crunch", muscle: "Core", region: "Core", pattern: "core" },
+  {
+    name: "Crunch",
+    muscle: "Core",
+    region: "Core",
+    pattern: "core",
+    bodyweight: true,
+  },
+  {
+    name: "Russian Twist",
+    muscle: "Obliques",
+    region: "Core",
+    pattern: "core",
+    bodyweight: true,
+  },
+  {
+    name: "Ab Wheel Rollout",
+    muscle: "Core",
+    region: "Core",
+    pattern: "core",
+    bodyweight: true,
+  },
+  {
+    name: "Side Plank",
+    muscle: "Obliques",
+    region: "Core",
+    pattern: "core",
+    unilateral: true,
+    timed: true,
+  },
+  // Olympic
+  { name: "Power Clean", muscle: "Full body", region: "Back", pattern: "pull" },
+  { name: "Hang Clean", muscle: "Full body", region: "Back", pattern: "pull" },
+  { name: "Snatch", muscle: "Full body", region: "Back", pattern: "pull" },
+  {
+    name: "Plank",
+    muscle: "Core",
+    region: "Core",
+    pattern: "core",
+    timed: true,
+  },
+  {
+    name: "Hollow Hold",
+    muscle: "Core",
+    region: "Core",
+    pattern: "core",
+    timed: true,
+  },
+  {
+    name: "L-Sit",
+    muscle: "Core",
+    region: "Core",
+    pattern: "core",
+    timed: true,
+  },
+  {
+    name: "Wall Sit",
+    muscle: "Quads",
+    region: "Legs",
+    pattern: "legs",
+    timed: true,
+  },
+  {
+    name: "Dead Hang",
+    muscle: "Grip & forearms",
+    region: "Back",
+    pattern: "pull",
+    timed: true,
+  },
+];
+
+/** Compose the stored exercise name for a variant, e.g. ("Curl","Dumbbell") -> "Dumbbell Curl". */
+export function composeVariant(
+  group: VariantGroup,
+  equipment: Equipment
+): string {
+  return `${equipment} ${group.name}`;
+}
+
+// Expand each variant group into a bare base lift plus one concrete lift per
+// equipment, so muscle/region/unilateral resolve for every stored variant name.
+const VARIANT_DEFS: LiftDef[] = VARIANT_GROUPS.flatMap((g) => [
+  { name: g.name, muscle: g.muscle, region: g.region, pattern: g.pattern },
+  ...g.equipment.map((eq) => ({
+    name: composeVariant(g, eq),
+    muscle: g.muscle,
+    region: g.region,
+    pattern: g.pattern,
+    unilateral: g.unilateralEquipment?.includes(eq) || undefined,
+  })),
+]);
+
+const DEFS: LiftDef[] = [...PLAIN_DEFS, ...VARIANT_DEFS];
+
+// Picker options: stand-alone lifts plus the base name of each variant group
+// (the concrete variants are reached via equipment chips, not listed here).
+export const LIFT_OPTIONS = [
+  ...PLAIN_DEFS.map((d) => d.name),
+  ...VARIANT_GROUPS.map((g) => g.name),
+];
+
+// Every concrete catalog name, including the composed equipment variants
+// ("Dumbbell Curl", "Cable Row", …). Used as extraction vocabulary so an
+// importer can map a recognized variant to its exact name.
+export const ALL_LIFT_NAMES = DEFS.map((d) => d.name);
+
+const MAP = new Map(DEFS.map((d) => [d.name.toLowerCase(), d]));
+
+// Lookups for variant resolution: composed name -> {group, equipment}, and
+// base name -> group.
+const COMPOSED = new Map<
+  string,
+  { group: VariantGroup; equipment: Equipment }
+>();
+const BASES = new Map<string, VariantGroup>();
+for (const g of VARIANT_GROUPS) {
+  BASES.set(g.name.toLowerCase(), g);
+  for (const eq of g.equipment) {
+    COMPOSED.set(composeVariant(g, eq).toLowerCase(), {
+      group: g,
+      equipment: eq,
+    });
+  }
+}
+
+/**
+ * Resolve a lift name to its variant group and chosen equipment:
+ *  - a composed name ("Dumbbell Curl") -> { group, equipment: "Dumbbell" }
+ *  - a bare base ("Curl")              -> { group, equipment: null }
+ *  - anything else                      -> null
+ */
+export function variantOf(
+  name: string
+): { group: VariantGroup; equipment: Equipment | null } | null {
+  const key = name.trim().toLowerCase();
+  const composed = COMPOSED.get(key);
+  if (composed) return { group: composed.group, equipment: composed.equipment };
+  const base = BASES.get(key);
+  if (base) return { group: base, equipment: null };
+  return null;
+}
+
+/** Collapse a composed variant name to its base ("Dumbbell Curl" -> "Curl"); other names pass through. */
+export function baseLiftName(name: string): string {
+  return COMPOSED.get(name.trim().toLowerCase())?.group.name ?? name;
+}
+
+/** Look up a lift by name (case-insensitive, with a loose contains fallback). */
+export function liftInfo(name: string): LiftDef | undefined {
+  const key = name.trim().toLowerCase();
+  if (!key) return undefined;
+  const exact = MAP.get(key);
+  if (exact) return exact;
+  for (const d of DEFS) {
+    const dn = d.name.toLowerCase();
+    if (key.includes(dn) || dn.includes(key)) return d;
+  }
+  return undefined;
+}
+
+export function muscleFor(name: string): string | null {
+  return liftInfo(name)?.muscle ?? null;
+}
+
+/** Whether a lift is trained one side at a time (offers per-side tracking). */
+export function isUnilateral(name: string): boolean {
+  return liftInfo(name)?.unilateral === true;
+}
+
+/** Whether a lift is an isometric hold measured by time instead of reps. */
+export function isTimed(name: string): boolean {
+  return liftInfo(name)?.timed === true;
+}
+
+/** Whether a lift is loaded by the body itself (logged weight is ADDED to it). */
+export function isBodyweight(name: string): boolean {
+  return liftInfo(name)?.bodyweight === true;
+}
+
+// Plain (non-variant) lifts performed on a plate-loaded barbell. Variant lifts
+// (Curl/Row/Bench Press/Overhead Press) are detected via their "Barbell" chip.
+const BARBELL_LIFTS = new Set(
+  [
+    "Back Squat",
+    "Front Squat",
+    "Incline Bench Press",
+    "Decline Bench Press",
+    "Close-Grip Bench Press",
+    "Push Press",
+    "Deadlift",
+    "Romanian Deadlift",
+    "Sumo Deadlift",
+    "Trap Bar Deadlift",
+    "Pendlay Row",
+    "T-Bar Row",
+    "Good Morning",
+    "Hip Thrust",
+    "Shrug",
+    "Upright Row",
+    "Power Clean",
+    "Hang Clean",
+    "Snatch",
+  ].map((n) => n.toLowerCase())
+);
+
+/** Whether a lift is loaded on a plate barbell (so the plate builder applies). */
+export function isBarbellLift(name: string): boolean {
+  if (variantOf(name)?.equipment === "Barbell") return true;
+  const info = liftInfo(name);
+  return info ? BARBELL_LIFTS.has(info.name.toLowerCase()) : false;
+}
+
+// Default implement for plain (non-variant) lifts that aren't barbell/bodyweight,
+// so the UI can show what they're normally performed with. Best-effort defaults.
+const set = (...names: string[]) => new Set(names.map((n) => n.toLowerCase()));
+const MACHINE_LIFTS = set(
+  "Leg Press",
+  "Leg Curl",
+  "Leg Extension",
+  "Calf Raise",
+  "Seated Calf Raise",
+  "Pec Deck",
+  "Hack Squat",
+  "Hip Adduction",
+  "Hip Abduction"
+);
+const CABLE_LIFTS = set(
+  "Lat Pulldown",
+  "Tricep Pushdown",
+  "Face Pull",
+  "Cable Fly",
+  "Straight-Arm Pulldown",
+  "Cable Kickback",
+  "Cable Crunch",
+  "Tricep Extension"
+);
+const DUMBBELL_LIFTS = set(
+  "Hammer Curl",
+  "Arnold Press",
+  "Concentration Curl",
+  "Lunge",
+  "Bulgarian Split Squat",
+  "Step Up",
+  "Goblet Squat",
+  "Farmers Carry",
+  "Preacher Curl",
+  "Reverse Curl",
+  "Wrist Curl",
+  "Skullcrusher"
+);
+// Rep-based bodyweight lifts (Crunch, Nordic Curl, …) carry `bodyweight: true`
+// on their LiftDef instead, so defaultEquipment resolves them via isBodyweight
+// above. This set only needs the timed holds, which are flagged `timed` rather
+// than `bodyweight`.
+const BODYWEIGHT_LIFTS = set(
+  "Plank",
+  "Hollow Hold",
+  "L-Sit",
+  "Wall Sit",
+  "Dead Hang",
+  "Side Plank"
+);
+
+/**
+ * The implement a lift is normally performed with ("Barbell"/"Dumbbell"/"Cable"/
+ * "Machine"/"Bodyweight"), or null when unknown or when the lift already offers a
+ * selectable equipment variant. Informational — the actual load is what's logged.
+ */
+export function defaultEquipment(name: string): string | null {
+  if (isBodyweight(name)) return "Bodyweight";
+  if (isBarbellLift(name)) return "Barbell";
+  const info = liftInfo(name);
+  if (!info) return null;
+  const k = info.name.toLowerCase();
+  if (MACHINE_LIFTS.has(k)) return "Machine";
+  if (CABLE_LIFTS.has(k)) return "Cable";
+  if (DUMBBELL_LIFTS.has(k)) return "Dumbbell";
+  if (BODYWEIGHT_LIFTS.has(k)) return "Bodyweight";
+  return null;
+}
+
+/** The muscle region a logged exercise trains, or null if unknown. */
+export function regionForExercise(name: string): MuscleRegion | null {
+  return liftInfo(name)?.region ?? null;
+}
+
+// Coarse body groups for weekly frequency targets.
+export type BodyGroup = "Upper" | "Lower" | "Core" | "Full";
+
+const GROUP_REGIONS: Record<BodyGroup, MuscleRegion[]> = {
+  Upper: ["Chest", "Back", "Shoulders", "Arms"],
+  Lower: ["Legs", "Glutes"],
+  Core: ["Core"],
+  Full: ["Chest", "Back", "Shoulders", "Arms", "Legs", "Glutes", "Core"],
+};
+
+/** The muscle regions covered by a body group. */
+export function regionsForGroup(group: BodyGroup): MuscleRegion[] {
+  return GROUP_REGIONS[group] ?? [];
+}
+
+// Selectable scope values for the frequency-target UI / validation.
+export const REGION_SCOPES: MuscleRegion[] = [
+  "Chest",
+  "Back",
+  "Shoulders",
+  "Arms",
+  "Legs",
+  "Glutes",
+  "Core",
+];
+export const GROUP_SCOPES: BodyGroup[] = ["Upper", "Lower", "Core", "Full"];
+export const TYPE_SCOPES = ["strength", "cardio", "sport"] as const;
+
+const PATTERN_TITLES: Record<MovementPattern, string> = {
+  push: "Push day",
+  pull: "Pull day",
+  legs: "Leg day",
+  core: "Core day",
+};
+
+/**
+ * Suggest a workout title from the exercises performed:
+ * - all one body region  -> "Chest workout"
+ * - all one movement      -> "Push day" / "Pull day" / "Leg day"
+ * - a region dominates     -> "{Region} workout"
+ * - otherwise              -> "Full body workout"
+ */
+export function suggestTitle(exerciseNames: string[]): string {
+  const infos = exerciseNames
+    .map((n) => liftInfo(n))
+    .filter((i): i is LiftDef => !!i);
+  if (infos.length === 0) return "Strength session";
+
+  const regions = new Set(infos.map((i) => i.region));
+  if (regions.size === 1) return `${[...regions][0]} workout`;
+
+  const patterns = new Set(infos.map((i) => i.pattern));
+  if (patterns.size === 1) return PATTERN_TITLES[[...patterns][0]];
+
+  const counts = new Map<MuscleRegion, number>();
+  for (const i of infos) counts.set(i.region, (counts.get(i.region) ?? 0) + 1);
+  const [topRegion, topCount] = [...counts.entries()].sort(
+    (a, b) => b[1] - a[1]
+  )[0];
+  if (topCount / infos.length >= 0.6) return `${topRegion} workout`;
+
+  return "Full body workout";
+}

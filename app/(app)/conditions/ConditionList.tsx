@@ -1,0 +1,92 @@
+"use client";
+
+import ConditionForm from "./ConditionForm";
+import { updateCondition, deleteCondition } from "./actions";
+import RecordTable, { type RecordColumn } from "@/components/RecordTable";
+import RecordProvenance from "@/components/RecordProvenance";
+import type { Condition } from "@/lib/types";
+
+const STATUS_BADGE: Record<string, string> = {
+  active: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300",
+  inactive: "bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300",
+  resolved:
+    "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300",
+};
+
+const COLUMNS: RecordColumn<Condition>[] = [
+  {
+    header: "Condition",
+    cellClassName: "font-medium text-slate-800 dark:text-slate-100",
+    cell: (c) => (
+      <>
+        {c.name}
+        {c.notes ? (
+          <span className="ml-2 text-xs font-normal text-slate-400">
+            {c.notes}
+          </span>
+        ) : null}
+      </>
+    ),
+  },
+  {
+    header: "Code",
+    headerClassName: "hidden sm:table-cell",
+    cellClassName:
+      "hidden whitespace-nowrap text-slate-500 sm:table-cell dark:text-slate-400",
+    cell: (c) =>
+      c.code ? (
+        <>
+          {c.code}
+          {c.code_system ? (
+            <span className="ml-1 text-xs text-slate-400">{c.code_system}</span>
+          ) : null}
+        </>
+      ) : (
+        "—"
+      ),
+  },
+  {
+    header: "Status",
+    cell: (c) => (
+      <span className={`badge capitalize ${STATUS_BADGE[c.status] ?? ""}`}>
+        {c.status}
+      </span>
+    ),
+  },
+  {
+    header: "Onset",
+    headerClassName: "hidden md:table-cell",
+    cellClassName:
+      "hidden whitespace-nowrap text-slate-600 md:table-cell dark:text-slate-300",
+    cell: (c) => c.onset_date ?? "—",
+  },
+  {
+    header: "Source",
+    headerClassName: "hidden sm:table-cell",
+    cellClassName: "hidden whitespace-nowrap sm:table-cell",
+    cell: (c) => <RecordProvenance source={c.source} />,
+  },
+];
+
+// Manage stored condition rows: edit in place or delete, on the shared RecordTable.
+export default function ConditionList({ items }: { items: Condition[] }) {
+  return (
+    <RecordTable
+      items={items}
+      columns={COLUMNS}
+      emptyMessage="No conditions match this filter."
+      renderEditForm={(c, done) => (
+        <ConditionForm action={updateCondition} condition={c} onDone={done} />
+      )}
+      confirmDelete={(c) => ({
+        title: "Delete condition",
+        message: `Delete “${c.name}”? This can’t be undone.`,
+      })}
+      onDelete={async (c) => {
+        const fd = new FormData();
+        fd.set("id", String(c.id));
+        await deleteCondition(fd);
+      }}
+    />
+  );
+}

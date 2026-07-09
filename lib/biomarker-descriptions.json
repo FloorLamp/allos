@@ -1,0 +1,782 @@
+{
+  "$comment": "Plain-language educational descriptions for every canonical biomarker in lib/canonical-biomarkers.json, keyed by EXACT canonical name. Each entry: { abbreviation?, full_name, description }. full_name expands the abbreviation; description is 1-3 neutral sentences explaining what the marker measures and why it generally matters. INFORMATIONAL, NOT MEDICAL ADVICE — general educational content, not personal interpretation, dosing, or diagnosis. A coverage test (lib/__tests__/biomarker-descriptions.test.ts) fails the build if a canonical biomarker is added without a description here.",
+  "descriptions": {
+    "Total Cholesterol": {
+      "abbreviation": "TC",
+      "full_name": "Total Cholesterol",
+      "description": "Total cholesterol is the combined amount of all cholesterol carried in the blood, including LDL, HDL, and other lipoproteins. It gives a broad snapshot of blood lipids, though the individual fractions matter more; higher levels are generally associated with increased cardiovascular risk."
+    },
+    "LDL Cholesterol": {
+      "abbreviation": "LDL-C",
+      "full_name": "Low-Density Lipoprotein Cholesterol",
+      "description": "LDL cholesterol is carried by low-density lipoproteins and is the main type that can build up in artery walls. Elevated LDL is one of the strongest lipid-related risk factors for heart disease, which is why it is often called \"bad\" cholesterol."
+    },
+    "HDL Cholesterol": {
+      "abbreviation": "HDL-C",
+      "full_name": "High-Density Lipoprotein Cholesterol",
+      "description": "HDL cholesterol is carried by high-density lipoproteins, which help remove excess cholesterol from tissues and return it to the liver. Higher HDL is generally associated with lower cardiovascular risk, so it is often called \"good\" cholesterol."
+    },
+    "Triglycerides": {
+      "full_name": "Triglycerides",
+      "description": "Triglycerides are the most common type of fat circulating in the blood, used for energy storage and transport. Elevated fasting triglycerides are associated with metabolic problems and higher cardiovascular risk."
+    },
+    "VLDL Cholesterol": {
+      "abbreviation": "VLDL-C",
+      "full_name": "Very-Low-Density Lipoprotein Cholesterol",
+      "description": "VLDL cholesterol is carried by very-low-density lipoproteins, which mainly transport triglycerides from the liver. It is usually estimated from triglyceride levels, and higher values are associated with increased cardiovascular risk."
+    },
+    "Non-HDL Cholesterol": {
+      "full_name": "Non-HDL Cholesterol",
+      "description": "Non-HDL cholesterol is total cholesterol minus HDL, capturing all the cholesterol carried by potentially artery-clogging particles. It is considered a strong overall marker of cardiovascular risk."
+    },
+    "ApoB": {
+      "abbreviation": "ApoB",
+      "full_name": "Apolipoprotein B",
+      "description": "Apolipoprotein B is a protein found on LDL and other atherogenic particles, with one molecule per particle, so it reflects the total number of cholesterol-carrying particles that can enter artery walls. Higher ApoB is closely linked to cardiovascular risk."
+    },
+    "Lipoprotein(a)": {
+      "abbreviation": "Lp(a)",
+      "full_name": "Lipoprotein(a)",
+      "description": "Lipoprotein(a) is an LDL-like particle whose blood level is largely determined by genetics. Elevated levels are an independent risk factor for heart disease and stroke."
+    },
+    "Cholesterol/HDL Ratio": {
+      "full_name": "Total Cholesterol to HDL Ratio",
+      "description": "This ratio compares total cholesterol to HDL cholesterol and is used as a summary measure of lipid-related cardiovascular risk. Lower ratios are generally considered more favorable."
+    },
+    "Glucose": {
+      "full_name": "Blood Glucose",
+      "description": "Glucose is the main sugar in the blood and the body's primary immediate energy source. Fasting glucose is used to screen for and monitor diabetes and blood-sugar regulation; persistently high levels are associated with diabetes."
+    },
+    "Hemoglobin A1c": {
+      "abbreviation": "HbA1c",
+      "full_name": "Hemoglobin A1c",
+      "description": "Hemoglobin A1c reflects the average blood glucose over roughly the past two to three months by measuring the fraction of hemoglobin with glucose attached. It is a standard test for diagnosing and monitoring diabetes."
+    },
+    "Insulin": {
+      "full_name": "Fasting Insulin",
+      "description": "Insulin is the hormone that allows cells to take up glucose from the blood. Fasting insulin levels help assess insulin resistance; elevated levels can indicate the body is working harder to keep blood sugar controlled."
+    },
+    "HOMA-IR": {
+      "abbreviation": "HOMA-IR",
+      "full_name": "Homeostatic Model Assessment of Insulin Resistance",
+      "description": "HOMA-IR is a calculated index that combines fasting glucose and fasting insulin to estimate insulin resistance. Higher values suggest the body's cells are responding less effectively to insulin."
+    },
+    "C-Peptide": {
+      "full_name": "C-Peptide",
+      "description": "C-peptide is released in equal amounts to insulin when the pancreas makes insulin, so it serves as a marker of how much insulin the body is producing. It helps distinguish between different causes of blood-sugar problems."
+    },
+    "hs-CRP": {
+      "abbreviation": "hs-CRP",
+      "full_name": "High-Sensitivity C-Reactive Protein",
+      "description": "High-sensitivity C-reactive protein is a marker of low-grade inflammation in the body, measured with a sensitive assay. Elevated levels are associated with increased cardiovascular risk and active inflammation."
+    },
+    "Homocysteine": {
+      "full_name": "Homocysteine",
+      "description": "Homocysteine is an amino acid in the blood that is processed with the help of B vitamins such as B12, B6, and folate. Elevated levels can indicate a vitamin deficiency and are associated with cardiovascular risk."
+    },
+    "Uric Acid": {
+      "full_name": "Uric Acid",
+      "description": "Uric acid is a waste product formed when the body breaks down purines from food and cells. High levels can crystallize in joints and are associated with gout and kidney stones."
+    },
+    "GGT": {
+      "abbreviation": "GGT",
+      "full_name": "Gamma-Glutamyl Transferase",
+      "description": "GGT is an enzyme found mainly in the liver and bile ducts. Elevated levels can indicate liver or bile-duct issues and are often associated with alcohol use."
+    },
+    "ALT": {
+      "abbreviation": "ALT",
+      "full_name": "Alanine Aminotransferase",
+      "description": "ALT is an enzyme concentrated in liver cells that is released into the blood when they are damaged. It is a widely used marker of liver health, with elevations suggesting liver stress or injury."
+    },
+    "AST": {
+      "abbreviation": "AST",
+      "full_name": "Aspartate Aminotransferase",
+      "description": "AST is an enzyme found in the liver, heart, and muscles that rises when those tissues are damaged. It is commonly measured alongside ALT to assess liver health."
+    },
+    "Alkaline Phosphatase": {
+      "abbreviation": "ALP",
+      "full_name": "Alkaline Phosphatase",
+      "description": "Alkaline phosphatase is an enzyme found mainly in the liver, bile ducts, and bone. Elevated levels can point to liver or bile-duct problems or to increased bone activity."
+    },
+    "Total Bilirubin": {
+      "full_name": "Total Bilirubin",
+      "description": "Bilirubin is a yellow pigment produced when the body breaks down old red blood cells and is processed by the liver. Elevated total bilirubin can cause jaundice and may indicate liver or bile-duct issues or increased red-cell breakdown."
+    },
+    "Albumin": {
+      "full_name": "Albumin",
+      "description": "Albumin is the most abundant protein in blood, made by the liver, that helps maintain fluid balance and transports many substances. Low levels can reflect liver disease, kidney loss, or poor nutrition."
+    },
+    "Total Protein": {
+      "full_name": "Total Protein",
+      "description": "Total protein measures the combined amount of albumin and globulins in the blood. It gives a general picture of nutrition, liver and kidney function, and immune activity."
+    },
+    "Sodium": {
+      "full_name": "Sodium",
+      "description": "Sodium is an electrolyte that regulates fluid balance, nerve function, and blood pressure. Levels outside the normal range can reflect hydration status or kidney and hormonal issues."
+    },
+    "Potassium": {
+      "full_name": "Potassium",
+      "description": "Potassium is an electrolyte essential for nerve signaling, muscle contraction, and normal heart rhythm. Both high and low levels can affect the heart, so it is carefully monitored."
+    },
+    "Chloride": {
+      "full_name": "Chloride",
+      "description": "Chloride is an electrolyte that works with sodium to maintain fluid balance and the body's acid-base status. Abnormal levels often accompany hydration or acid-base disturbances."
+    },
+    "Carbon Dioxide": {
+      "abbreviation": "CO2",
+      "full_name": "Carbon Dioxide (Bicarbonate)",
+      "description": "This test measures the amount of carbon dioxide, mostly as bicarbonate, in the blood and reflects the body's acid-base balance. Abnormal levels can indicate metabolic or respiratory problems."
+    },
+    "Calcium": {
+      "full_name": "Calcium",
+      "description": "Calcium in the blood is essential for bones, nerve signaling, muscle function, and blood clotting. Levels are tightly regulated by hormones, and abnormal values can reflect parathyroid, bone, kidney, or vitamin D issues."
+    },
+    "Magnesium": {
+      "full_name": "Magnesium",
+      "description": "Magnesium is a mineral involved in hundreds of enzyme reactions, including muscle and nerve function, blood sugar control, and energy production. Low levels can cause muscle cramps and affect heart rhythm."
+    },
+    "Phosphorus": {
+      "full_name": "Phosphorus",
+      "description": "Phosphorus is a mineral that works with calcium to build bones and is central to energy metabolism. Levels are regulated by the kidneys and hormones, and abnormal values can reflect kidney or parathyroid issues."
+    },
+    "BUN": {
+      "abbreviation": "BUN",
+      "full_name": "Blood Urea Nitrogen",
+      "description": "Blood urea nitrogen measures the amount of urea, a waste product of protein breakdown, that the kidneys filter from the blood. It is used to assess kidney function and hydration."
+    },
+    "Creatinine": {
+      "full_name": "Creatinine",
+      "description": "Creatinine is a waste product from normal muscle activity that the kidneys filter out of the blood. Blood levels are a key indicator of kidney function, with higher levels suggesting reduced filtering."
+    },
+    "eGFR": {
+      "abbreviation": "eGFR",
+      "full_name": "Estimated Glomerular Filtration Rate",
+      "description": "eGFR is a calculated estimate of how much blood the kidneys filter each minute, based on creatinine along with age and sex. It is the main measure used to stage kidney function, with lower values indicating reduced function."
+    },
+    "Cystatin C": {
+      "full_name": "Cystatin C",
+      "description": "Cystatin C is a protein filtered by the kidneys that is used as an alternative marker of kidney function, sometimes more reliable than creatinine. Higher levels suggest reduced kidney filtration."
+    },
+    "Hemoglobin": {
+      "abbreviation": "Hgb",
+      "full_name": "Hemoglobin",
+      "description": "Hemoglobin is the iron-containing protein in red blood cells that carries oxygen from the lungs to the body. Low levels indicate anemia, while high levels can reflect dehydration or other conditions."
+    },
+    "Hematocrit": {
+      "abbreviation": "Hct",
+      "full_name": "Hematocrit",
+      "description": "Hematocrit is the proportion of blood volume made up of red blood cells. Low values suggest anemia and high values can indicate dehydration or increased red-cell production."
+    },
+    "White Blood Cell Count": {
+      "abbreviation": "WBC",
+      "full_name": "White Blood Cell Count",
+      "description": "The white blood cell count measures the number of immune cells in the blood that defend against infection. Elevated counts often signal infection or inflammation, while low counts can reflect immune suppression."
+    },
+    "Red Blood Cell Count": {
+      "abbreviation": "RBC",
+      "full_name": "Red Blood Cell Count",
+      "description": "The red blood cell count measures the number of oxygen-carrying cells in the blood. Abnormal counts can indicate anemia, dehydration, or increased red-cell production."
+    },
+    "Platelet Count": {
+      "abbreviation": "PLT",
+      "full_name": "Platelet Count",
+      "description": "Platelets are small blood cells that clump together to form clots and stop bleeding. Low counts can increase bleeding risk, while high counts can increase clotting risk."
+    },
+    "MCV": {
+      "abbreviation": "MCV",
+      "full_name": "Mean Corpuscular Volume",
+      "description": "MCV measures the average size of red blood cells. It helps classify types of anemia, with small cells often seen in iron deficiency and large cells in B12 or folate deficiency."
+    },
+    "RDW": {
+      "abbreviation": "RDW",
+      "full_name": "Red Cell Distribution Width",
+      "description": "RDW measures how much red blood cells vary in size. A higher RDW means greater size variation and can be an early clue to certain anemias or nutritional deficiencies."
+    },
+    "Neutrophils": {
+      "full_name": "Neutrophils",
+      "description": "Neutrophils are the most common type of white blood cell and the body's first responders to bacterial infection. Elevated levels often indicate infection or inflammation."
+    },
+    "Lymphocytes": {
+      "full_name": "Lymphocytes",
+      "description": "Lymphocytes are white blood cells, including T and B cells, that drive the immune system's targeted defenses. Changes in their numbers can reflect viral infections, immune conditions, or immune suppression."
+    },
+    "Ferritin": {
+      "full_name": "Ferritin",
+      "description": "Ferritin is a protein that stores iron, and its blood level reflects the body's iron reserves. Low ferritin indicates depleted iron stores, while high ferritin can reflect inflammation or iron overload."
+    },
+    "Iron": {
+      "full_name": "Serum Iron",
+      "description": "Serum iron measures the amount of iron circulating in the blood bound to transport proteins. It is interpreted alongside other iron tests to assess iron deficiency or overload."
+    },
+    "TIBC": {
+      "abbreviation": "TIBC",
+      "full_name": "Total Iron-Binding Capacity",
+      "description": "TIBC measures the blood's total capacity to bind and transport iron, reflecting the amount of transferrin available. It rises in iron deficiency and helps evaluate iron status."
+    },
+    "Transferrin Saturation": {
+      "full_name": "Transferrin Saturation",
+      "description": "Transferrin saturation is the percentage of iron-transport protein that is actually carrying iron. It helps assess iron status, being low in deficiency and high in iron overload."
+    },
+    "TSH": {
+      "abbreviation": "TSH",
+      "full_name": "Thyroid-Stimulating Hormone",
+      "description": "TSH is a pituitary hormone that signals the thyroid to make thyroid hormones. It is the primary screening test for thyroid function, with high levels suggesting an underactive thyroid and low levels an overactive one."
+    },
+    "Free T4": {
+      "full_name": "Free Thyroxine",
+      "description": "Free T4 measures the unbound, active form of the thyroid hormone thyroxine available to tissues. It is used with TSH to assess thyroid function."
+    },
+    "Free T3": {
+      "full_name": "Free Triiodothyronine",
+      "description": "Free T3 measures the unbound, active form of triiodothyronine, the more potent thyroid hormone. It helps evaluate thyroid function, particularly in overactive-thyroid conditions."
+    },
+    "Vitamin D, 25-Hydroxy": {
+      "full_name": "25-Hydroxyvitamin D",
+      "description": "This is the main storage form of vitamin D and the best measure of overall vitamin D status. Adequate levels support bone health, immune function, and calcium balance; low levels indicate deficiency."
+    },
+    "Vitamin B12": {
+      "full_name": "Vitamin B12 (Cobalamin)",
+      "description": "Vitamin B12 is essential for red blood cell formation, nerve function, and DNA synthesis. Deficiency can cause anemia and neurological symptoms."
+    },
+    "Folate": {
+      "full_name": "Folate (Vitamin B9)",
+      "description": "Folate is a B vitamin needed for making DNA and red blood cells and is especially important in pregnancy. Deficiency can cause a type of anemia."
+    },
+    "Testosterone, Total": {
+      "full_name": "Total Testosterone",
+      "description": "Total testosterone measures all the testosterone in the blood, both bound and free. It is the main sex hormone in men and also important in women, influencing muscle, bone, libido, and energy."
+    },
+    "Testosterone, Free": {
+      "full_name": "Free Testosterone",
+      "description": "Free testosterone is the small fraction of testosterone not bound to proteins and available for the body to use. It can give a more accurate picture of active hormone levels than total testosterone alone."
+    },
+    "DHEA-Sulfate": {
+      "abbreviation": "DHEA-S",
+      "full_name": "Dehydroepiandrosterone Sulfate",
+      "description": "DHEA-sulfate is a hormone made mainly by the adrenal glands and serves as a building block for other sex hormones. Levels naturally decline with age and can reflect adrenal function."
+    },
+    "Cortisol": {
+      "full_name": "Cortisol",
+      "description": "Cortisol is the body's main stress hormone, made by the adrenal glands, and it regulates metabolism, blood sugar, and the stress response. Levels follow a daily rhythm, and abnormal values can indicate adrenal or pituitary problems."
+    },
+    "IGF-1": {
+      "abbreviation": "IGF-1",
+      "full_name": "Insulin-Like Growth Factor 1",
+      "description": "IGF-1 is a hormone produced mainly by the liver in response to growth hormone and mediates many of its growth-promoting effects. It is used to assess growth hormone activity."
+    },
+    "PSA": {
+      "abbreviation": "PSA",
+      "full_name": "Prostate-Specific Antigen",
+      "description": "PSA is a protein made by the prostate gland that circulates in the blood. It is used to screen for and monitor prostate conditions, with elevated levels warranting further evaluation."
+    },
+    "Blood Pressure Systolic": {
+      "full_name": "Systolic Blood Pressure",
+      "description": "Systolic blood pressure is the higher number in a reading, measuring the pressure in the arteries when the heart beats. Persistently high values indicate hypertension, a major cardiovascular risk factor."
+    },
+    "Blood Pressure Diastolic": {
+      "full_name": "Diastolic Blood Pressure",
+      "description": "Diastolic blood pressure is the lower number in a reading, measuring arterial pressure when the heart rests between beats. Elevated values contribute to the diagnosis of high blood pressure."
+    },
+    "Oxygen Saturation": {
+      "abbreviation": "SpO2",
+      "full_name": "Oxygen Saturation",
+      "description": "Oxygen saturation is the percentage of hemoglobin in the blood that is carrying oxygen, often measured with a fingertip sensor. Low values indicate the blood is not carrying enough oxygen."
+    },
+    "Respiratory Rate": {
+      "full_name": "Respiratory Rate",
+      "description": "Respiratory rate is the number of breaths taken per minute. It is a basic vital sign, and abnormal rates can signal respiratory, cardiac, or metabolic problems."
+    },
+    "Resting Heart Rate": {
+      "abbreviation": "RHR",
+      "full_name": "Resting Heart Rate",
+      "description": "Resting heart rate is the number of heartbeats per minute while at rest. A lower resting rate often reflects better cardiovascular fitness, while a persistently high rate can be a sign of stress or reduced fitness."
+    },
+    "Body Temperature": {
+      "full_name": "Body Temperature",
+      "description": "Body temperature reflects the balance between the heat the body produces and loses. Fever or an abnormally low temperature can signal infection or other conditions."
+    },
+    "Body Fat Percentage": {
+      "full_name": "Body Fat Percentage",
+      "description": "Body fat percentage is the proportion of total body weight that is fat tissue. It offers a more complete picture of body composition than weight alone."
+    },
+    "Bone Mineral Density T-Score": {
+      "abbreviation": "BMD T-Score",
+      "full_name": "Bone Mineral Density T-Score",
+      "description": "The bone mineral density T-score compares a person's bone density to that of a healthy young adult. Lower scores indicate weaker bones and higher risk of osteoporosis and fractures."
+    },
+    "Visceral Adipose Tissue": {
+      "abbreviation": "VAT",
+      "full_name": "Visceral Adipose Tissue",
+      "description": "Visceral adipose tissue is the fat stored deep in the abdomen around internal organs. Higher amounts are more strongly linked to metabolic and cardiovascular risk than fat stored just under the skin."
+    },
+    "Appendicular Lean Mass Index": {
+      "abbreviation": "ALMI",
+      "full_name": "Appendicular Lean Mass Index",
+      "description": "The appendicular lean mass index estimates muscle mass in the arms and legs relative to height. It is used to assess muscle adequacy, with low values associated with reduced strength and frailty."
+    },
+    "VO2 Max": {
+      "abbreviation": "VO2 Max",
+      "full_name": "Maximal Oxygen Uptake",
+      "description": "VO2 max is the maximum rate at which the body can use oxygen during intense exercise and is a key measure of cardiorespiratory fitness. Higher values reflect greater aerobic capacity and are associated with better long-term health."
+    },
+    "Alternaria Alternata (M6) IgE": {
+      "full_name": "Alternaria Alternata (M6) IgE Antibody",
+      "description": "This test measures IgE antibodies specific to Alternaria alternata, a common outdoor mold. Elevated levels indicate sensitization and a possible allergy to this mold, which can trigger respiratory symptoms."
+    },
+    "Aspergillus Fumigatus (M3) IgE": {
+      "full_name": "Aspergillus Fumigatus (M3) IgE Antibody",
+      "description": "This test measures IgE antibodies to Aspergillus fumigatus, a widespread mold found indoors and outdoors. Elevated levels indicate sensitization that can contribute to allergic respiratory symptoms."
+    },
+    "Bermuda Grass (G2) IgE": {
+      "full_name": "Bermuda Grass (G2) IgE Antibody",
+      "description": "This test measures IgE antibodies to Bermuda grass pollen, a common cause of seasonal grass-pollen allergy. Elevated levels indicate sensitization to this grass."
+    },
+    "Birch (T3) IgE": {
+      "full_name": "Birch (T3) IgE Antibody",
+      "description": "This test measures IgE antibodies to birch tree pollen, a frequent cause of springtime allergies. Elevated levels indicate sensitization to birch pollen."
+    },
+    "Cat Dander (E1) IgE": {
+      "full_name": "Cat Dander (E1) IgE Antibody",
+      "description": "This test measures IgE antibodies to cat dander. Elevated levels indicate sensitization and a possible allergy to cats."
+    },
+    "Cladosporium Herbarum (M2) IgE": {
+      "full_name": "Cladosporium Herbarum (M2) IgE Antibody",
+      "description": "This test measures IgE antibodies to Cladosporium herbarum, one of the most common outdoor molds. Elevated levels indicate sensitization that can trigger respiratory allergy symptoms."
+    },
+    "Cockroach (I6) IgE": {
+      "full_name": "Cockroach (I6) IgE Antibody",
+      "description": "This test measures IgE antibodies to cockroach allergens, a common indoor trigger especially in urban environments. Elevated levels indicate sensitization associated with asthma and allergy symptoms."
+    },
+    "Common Ragweed (Short) (W1) IgE": {
+      "full_name": "Short Ragweed (W1) IgE Antibody",
+      "description": "This test measures IgE antibodies to short ragweed pollen, a leading cause of late-summer and fall hay fever. Elevated levels indicate sensitization to ragweed."
+    },
+    "Cottonwood (T14) IgE": {
+      "full_name": "Cottonwood (T14) IgE Antibody",
+      "description": "This test measures IgE antibodies to cottonwood tree pollen. Elevated levels indicate sensitization to this common springtime tree pollen."
+    },
+    "Dermatophagoides Farinae (D2) IgE": {
+      "full_name": "American House Dust Mite (D2) IgE Antibody",
+      "description": "This test measures IgE antibodies to the American house dust mite (Dermatophagoides farinae). Elevated levels indicate sensitization to dust mites, a common year-round indoor allergy trigger."
+    },
+    "Dermatophagoides Pteronyssinus (D1) IgE": {
+      "full_name": "European House Dust Mite (D1) IgE Antibody",
+      "description": "This test measures IgE antibodies to the European house dust mite (Dermatophagoides pteronyssinus). Elevated levels indicate sensitization to dust mites, a common indoor allergen."
+    },
+    "Dog Dander (E5) IgE": {
+      "full_name": "Dog Dander (E5) IgE Antibody",
+      "description": "This test measures IgE antibodies to dog dander. Elevated levels indicate sensitization and a possible allergy to dogs."
+    },
+    "Elm (T8) IgE": {
+      "full_name": "Elm (T8) IgE Antibody",
+      "description": "This test measures IgE antibodies to elm tree pollen. Elevated levels indicate sensitization to this tree pollen."
+    },
+    "Maple (Box Elder) (T1) IgE": {
+      "full_name": "Maple / Box Elder (T1) IgE Antibody",
+      "description": "This test measures IgE antibodies to maple and box elder tree pollen. Elevated levels indicate sensitization to this common tree pollen."
+    },
+    "Mountain Cedar (T6) IgE": {
+      "full_name": "Mountain Cedar (T6) IgE Antibody",
+      "description": "This test measures IgE antibodies to mountain cedar pollen, a major cause of winter allergy in some regions. Elevated levels indicate sensitization to cedar pollen."
+    },
+    "Mouse Urine Proteins (E72) IgE": {
+      "full_name": "Mouse Urine Proteins (E72) IgE Antibody",
+      "description": "This test measures IgE antibodies to proteins found in mouse urine, an indoor allergen relevant in some homes and workplaces. Elevated levels indicate sensitization."
+    },
+    "Mugwort (W6) IgE": {
+      "full_name": "Mugwort (W6) IgE Antibody",
+      "description": "This test measures IgE antibodies to mugwort pollen, a common weed that causes fall allergy symptoms. Elevated levels indicate sensitization to mugwort."
+    },
+    "Oak (T7) IgE": {
+      "full_name": "Oak (T7) IgE Antibody",
+      "description": "This test measures IgE antibodies to oak tree pollen, a common spring allergen. Elevated levels indicate sensitization to oak pollen."
+    },
+    "Penicillium Notatum (M1) IgE": {
+      "full_name": "Penicillium Notatum (M1) IgE Antibody",
+      "description": "This test measures IgE antibodies to Penicillium notatum, a common indoor and outdoor mold. Elevated levels indicate mold sensitization that can contribute to respiratory allergy symptoms, and are distinct from a penicillin drug allergy."
+    },
+    "Rough Pigweed (W14) IgE": {
+      "full_name": "Rough Pigweed (W14) IgE Antibody",
+      "description": "This test measures IgE antibodies to rough pigweed pollen, a weed that contributes to seasonal allergy. Elevated levels indicate sensitization."
+    },
+    "Sheep Sorrel (W18) IgE": {
+      "full_name": "Sheep Sorrel (W18) IgE Antibody",
+      "description": "This test measures IgE antibodies to sheep sorrel pollen, a weed allergen. Elevated levels indicate sensitization."
+    },
+    "Sycamore (T11) IgE": {
+      "full_name": "Sycamore (T11) IgE Antibody",
+      "description": "This test measures IgE antibodies to sycamore tree pollen. Elevated levels indicate sensitization to this tree pollen."
+    },
+    "Timothy Grass (G6) IgE": {
+      "full_name": "Timothy Grass (G6) IgE Antibody",
+      "description": "This test measures IgE antibodies to timothy grass pollen, one of the most common causes of grass-pollen allergy. Elevated levels indicate sensitization."
+    },
+    "Walnut Tree (T10) IgE": {
+      "full_name": "Walnut Tree (T10) IgE Antibody",
+      "description": "This test measures IgE antibodies to walnut tree pollen. Elevated levels indicate sensitization to this tree pollen."
+    },
+    "White Ash (T15) IgE": {
+      "full_name": "White Ash (T15) IgE Antibody",
+      "description": "This test measures IgE antibodies to white ash tree pollen. Elevated levels indicate sensitization to this spring tree pollen."
+    },
+    "White Mulberry (T70) IgE": {
+      "full_name": "White Mulberry (T70) IgE Antibody",
+      "description": "This test measures IgE antibodies to white mulberry tree pollen. Elevated levels indicate sensitization to this tree pollen."
+    },
+    "PFAS - Branched PFOA Isomers": {
+      "full_name": "Branched Perfluorooctanoic Acid Isomers",
+      "description": "This measures branched isomers of perfluorooctanoic acid (PFOA), one of the \"forever chemicals\" that accumulate in the body. Higher blood levels reflect greater environmental exposure and are being studied for potential health effects."
+    },
+    "PFAS - Branched PFOS Isomers": {
+      "full_name": "Branched Perfluorooctane Sulfonate Isomers",
+      "description": "This measures branched isomers of perfluorooctane sulfonate (PFOS), a persistent \"forever chemical.\" Higher levels reflect greater cumulative environmental exposure."
+    },
+    "PFAS - Linear PFOA Isomers": {
+      "full_name": "Linear Perfluorooctanoic Acid Isomers",
+      "description": "This measures the linear form of perfluorooctanoic acid (PFOA), a long-lasting industrial chemical. Higher blood levels reflect greater exposure to this contaminant."
+    },
+    "PFAS - Linear PFOS Isomers": {
+      "full_name": "Linear Perfluorooctane Sulfonate Isomers",
+      "description": "This measures the linear form of perfluorooctane sulfonate (PFOS), a persistent environmental pollutant. Higher levels indicate greater cumulative exposure."
+    },
+    "PFAS - MeFOSAA": {
+      "abbreviation": "MeFOSAA",
+      "full_name": "2-N-Methyl-Perfluorooctane Sulfonamido Acetic Acid",
+      "description": "This measures MeFOSAA, a PFAS compound that forms as other \"forever chemicals\" break down. Its level reflects exposure to this class of persistent contaminants."
+    },
+    "PFAS - PFDA": {
+      "abbreviation": "PFDA",
+      "full_name": "Perfluorodecanoic Acid",
+      "description": "This measures perfluorodecanoic acid (PFDA), a long-chain PFAS \"forever chemical.\" Higher levels reflect greater environmental exposure."
+    },
+    "PFAS - PFHxS": {
+      "abbreviation": "PFHxS",
+      "full_name": "Perfluorohexane Sulfonic Acid",
+      "description": "This measures perfluorohexane sulfonic acid (PFHxS), a persistent PFAS compound. Higher blood levels indicate greater cumulative exposure."
+    },
+    "PFAS - PFNA": {
+      "abbreviation": "PFNA",
+      "full_name": "Perfluorononanoic Acid",
+      "description": "This measures perfluorononanoic acid (PFNA), a long-chain PFAS \"forever chemical.\" Its level reflects exposure to this class of contaminants."
+    },
+    "PFAS - PFUnDA": {
+      "abbreviation": "PFUnDA",
+      "full_name": "Perfluoroundecanoic Acid",
+      "description": "This measures perfluoroundecanoic acid (PFUnDA), a long-chain PFAS compound. Higher levels reflect greater environmental exposure."
+    },
+    "PFAS - NASEM Recommended Summation": {
+      "full_name": "NASEM Recommended PFAS Summation",
+      "description": "This is the sum of several PFAS compounds as recommended by the National Academies (NASEM) to gauge total PFAS body burden. It is used to interpret overall exposure and guide follow-up."
+    },
+    "Aluminum": {
+      "full_name": "Aluminum",
+      "description": "Aluminum is a metal the body does not need; blood testing checks for elevated exposure. High levels can be a concern, particularly for people with reduced kidney function."
+    },
+    "Arsenic": {
+      "full_name": "Arsenic",
+      "description": "Arsenic is a toxic element found in some water, food, and industrial sources. Elevated blood or urine levels indicate recent exposure, which over time can affect multiple organ systems."
+    },
+    "Lead": {
+      "full_name": "Lead",
+      "description": "Lead is a toxic heavy metal with no safe level; testing measures recent and ongoing exposure. Elevated levels can affect the nervous system, kidneys, and blood, and are especially harmful to children."
+    },
+    "Mercury": {
+      "full_name": "Mercury",
+      "description": "Mercury is a toxic metal encountered through sources such as certain fish and industrial exposure. Elevated levels can affect the nervous system and kidneys."
+    },
+    "Chromium": {
+      "full_name": "Chromium",
+      "description": "Chromium is a trace element; small amounts play a role in metabolism, but testing usually screens for excess exposure, such as from certain metal implants. Very high levels can indicate unwanted exposure."
+    },
+    "Molybdenum": {
+      "full_name": "Molybdenum",
+      "description": "Molybdenum is an essential trace mineral that supports several enzymes. Testing can assess deficiency or excess, though imbalances are uncommon."
+    },
+    "Copper": {
+      "full_name": "Copper",
+      "description": "Copper is an essential trace mineral needed for iron metabolism, connective tissue, and nerve function. Both deficiency and excess can cause health problems."
+    },
+    "Selenium": {
+      "full_name": "Selenium",
+      "description": "Selenium is an essential trace mineral with antioxidant functions and a role in thyroid metabolism. Both low and high levels can affect health."
+    },
+    "Zinc": {
+      "full_name": "Zinc",
+      "description": "Zinc is an essential mineral important for immune function, wound healing, and enzyme activity. Deficiency can impair immunity and healing."
+    },
+    "Iodine": {
+      "full_name": "Iodine",
+      "description": "Iodine is an essential mineral the thyroid uses to make thyroid hormones. Both deficiency and excess can disturb thyroid function."
+    },
+    "Amylase": {
+      "full_name": "Amylase",
+      "description": "Amylase is an enzyme, made mainly by the pancreas and salivary glands, that helps digest carbohydrates. Elevated blood levels often indicate pancreatic inflammation."
+    },
+    "Lipase": {
+      "full_name": "Lipase",
+      "description": "Lipase is a digestive enzyme made by the pancreas that breaks down fats. Elevated blood levels are a sensitive marker of pancreatic inflammation."
+    },
+    "Globulin": {
+      "full_name": "Globulin",
+      "description": "Globulins are a group of blood proteins that include antibodies and transport proteins. Levels are interpreted alongside albumin to assess immune activity, liver function, and inflammation."
+    },
+    "Albumin/Globulin Ratio": {
+      "abbreviation": "A/G Ratio",
+      "full_name": "Albumin to Globulin Ratio",
+      "description": "This ratio compares albumin to globulin proteins in the blood. An abnormal ratio can point to liver disease, kidney problems, immune conditions, or inflammation."
+    },
+    "Basophils": {
+      "full_name": "Basophils",
+      "description": "Basophils are the least common type of white blood cell and are involved in allergic and inflammatory responses. Elevated levels can occur with allergies or certain blood conditions."
+    },
+    "Eosinophils": {
+      "full_name": "Eosinophils",
+      "description": "Eosinophils are white blood cells that respond to parasites and allergic reactions. Elevated levels often accompany allergies, asthma, or parasitic infections."
+    },
+    "Monocytes": {
+      "full_name": "Monocytes",
+      "description": "Monocytes are white blood cells that engulf pathogens and debris and help coordinate immune responses. Elevated levels can accompany infection, inflammation, or recovery from illness."
+    },
+    "MCH": {
+      "abbreviation": "MCH",
+      "full_name": "Mean Corpuscular Hemoglobin",
+      "description": "MCH measures the average amount of hemoglobin in each red blood cell. It is used with other red-cell indices to classify types of anemia."
+    },
+    "MCHC": {
+      "abbreviation": "MCHC",
+      "full_name": "Mean Corpuscular Hemoglobin Concentration",
+      "description": "MCHC measures the average concentration of hemoglobin within red blood cells. It helps characterize anemias and distinguish among their causes."
+    },
+    "MPV": {
+      "abbreviation": "MPV",
+      "full_name": "Mean Platelet Volume",
+      "description": "MPV measures the average size of platelets. Larger platelets tend to be younger and more active, and the value can offer clues about platelet production and turnover."
+    },
+    "Magnesium, RBC": {
+      "full_name": "Red Blood Cell Magnesium",
+      "description": "This test measures magnesium inside red blood cells, which some consider a better reflection of the body's magnesium stores than the standard serum test. Low levels suggest depleted magnesium."
+    },
+    "Folate, RBC": {
+      "full_name": "Red Blood Cell Folate",
+      "description": "This measures folate stored within red blood cells and reflects longer-term folate status than serum folate. Low levels indicate folate deficiency."
+    },
+    "Methylmalonic Acid (MMA)": {
+      "abbreviation": "MMA",
+      "full_name": "Methylmalonic Acid",
+      "description": "Methylmalonic acid accumulates when vitamin B12 is lacking, making it a sensitive marker of B12 deficiency. Elevated levels can reveal a deficiency even when B12 blood levels look borderline."
+    },
+    "Sex Hormone Binding Globulin (SHBG)": {
+      "abbreviation": "SHBG",
+      "full_name": "Sex Hormone Binding Globulin",
+      "description": "Sex hormone binding globulin is a protein that binds sex hormones such as testosterone and estrogen, controlling how much is freely available. Its level affects the interpretation of hormone tests."
+    },
+    "Prolactin": {
+      "full_name": "Prolactin",
+      "description": "Prolactin is a pituitary hormone best known for stimulating milk production. Elevated levels outside of pregnancy or breastfeeding can affect menstrual cycles, fertility, and libido."
+    },
+    "Thyroglobulin Antibodies (TgAb)": {
+      "abbreviation": "TgAb",
+      "full_name": "Thyroglobulin Antibodies",
+      "description": "These are antibodies against thyroglobulin, a protein in the thyroid. Their presence can indicate autoimmune thyroid disease."
+    },
+    "Thyroid Peroxidase Antibodies (TPOAb)": {
+      "abbreviation": "TPOAb",
+      "full_name": "Thyroid Peroxidase Antibodies",
+      "description": "These are antibodies against thyroid peroxidase, an enzyme in the thyroid. Elevated levels are a marker of autoimmune thyroid conditions such as Hashimoto's thyroiditis."
+    },
+    "Rheumatoid Factor (RF)": {
+      "abbreviation": "RF",
+      "full_name": "Rheumatoid Factor",
+      "description": "Rheumatoid factor is an antibody found in the blood of many people with rheumatoid arthritis and some other autoimmune or inflammatory conditions. A positive result supports, but does not by itself confirm, such a diagnosis."
+    },
+    "Immunoglobulin E (Total)": {
+      "abbreviation": "Total IgE",
+      "full_name": "Total Immunoglobulin E",
+      "description": "Total IgE measures the overall level of immunoglobulin E, the antibody class involved in allergic reactions. Elevated levels can reflect allergies or parasitic infection."
+    },
+    "Vitamin A (Retinol)": {
+      "full_name": "Vitamin A (Retinol)",
+      "description": "Vitamin A, measured as retinol, is a fat-soluble vitamin important for vision, immune function, and skin health. Both deficiency and excess can cause problems."
+    },
+    "Vitamin E (Alpha-Tocopherol)": {
+      "full_name": "Vitamin E (Alpha-Tocopherol)",
+      "description": "Alpha-tocopherol is the main active form of vitamin E, a fat-soluble antioxidant that protects cells from damage. Low levels are uncommon but can affect nerve and muscle health."
+    },
+    "Vitamin E (Beta/Gamma-Tocopherol)": {
+      "full_name": "Vitamin E (Beta/Gamma-Tocopherol)",
+      "description": "These are additional forms of vitamin E measured alongside alpha-tocopherol. They contribute to the body's antioxidant defenses and give a fuller picture of vitamin E status."
+    },
+    "Coenzyme Q10": {
+      "abbreviation": "CoQ10",
+      "full_name": "Coenzyme Q10",
+      "description": "Coenzyme Q10 is a compound cells use to produce energy and that also acts as an antioxidant. Levels can be reduced by age and by certain medications."
+    },
+    "Omega-3 Total (OmegaCheck)": {
+      "full_name": "Total Omega-3 Fatty Acids",
+      "description": "This measures the total level of omega-3 fatty acids in the blood. Higher levels are generally associated with cardiovascular and overall health benefits."
+    },
+    "Omega-3 DHA": {
+      "abbreviation": "DHA",
+      "full_name": "Docosahexaenoic Acid",
+      "description": "DHA is an omega-3 fatty acid especially important for the brain, eyes, and nervous system. It is obtained mainly from fatty fish and reflects dietary omega-3 intake."
+    },
+    "Omega-3 DPA": {
+      "abbreviation": "DPA",
+      "full_name": "Docosapentaenoic Acid",
+      "description": "DPA is an omega-3 fatty acid that serves as an intermediate between EPA and DHA. It contributes to the body's overall omega-3 status."
+    },
+    "Omega-3 EPA": {
+      "abbreviation": "EPA",
+      "full_name": "Eicosapentaenoic Acid",
+      "description": "EPA is an omega-3 fatty acid with anti-inflammatory properties, obtained mainly from fish. Higher levels are associated with cardiovascular benefits."
+    },
+    "Omega-6 Arachidonic Acid": {
+      "abbreviation": "AA",
+      "full_name": "Arachidonic Acid",
+      "description": "Arachidonic acid is an omega-6 fatty acid involved in inflammation and cell signaling. Its balance relative to omega-3 fatty acids is often considered when assessing inflammation."
+    },
+    "Omega-6 Linoleic Acid": {
+      "abbreviation": "LA",
+      "full_name": "Linoleic Acid",
+      "description": "Linoleic acid is the most common omega-6 fatty acid in the diet and an essential fat the body cannot make. It is measured as part of the overall fatty-acid balance."
+    },
+    "Omega-6/Omega-3 Ratio": {
+      "full_name": "Omega-6 to Omega-3 Ratio",
+      "description": "This ratio compares omega-6 to omega-3 fatty acids in the blood. A lower ratio is often considered more favorable for inflammation and cardiovascular health."
+    },
+    "Arachidonic Acid/EPA Ratio": {
+      "abbreviation": "AA/EPA Ratio",
+      "full_name": "Arachidonic Acid to EPA Ratio",
+      "description": "This ratio compares the omega-6 fatty acid arachidonic acid to the omega-3 EPA and is used as a marker of the body's inflammatory balance. Lower ratios are generally considered more favorable."
+    },
+    "LDL Particle Number": {
+      "abbreviation": "LDL-P",
+      "full_name": "LDL Particle Number",
+      "description": "LDL particle number counts the actual number of LDL particles rather than the cholesterol they carry. Because particle number can differ from LDL cholesterol, it offers an additional view of cardiovascular risk."
+    },
+    "LDL Small": {
+      "full_name": "Small LDL Particles",
+      "description": "This measures small, dense LDL particles, which are considered more likely to penetrate artery walls than larger ones. Higher levels are associated with increased cardiovascular risk."
+    },
+    "LDL Medium": {
+      "full_name": "Medium LDL Particles",
+      "description": "This measures medium-sized LDL particles as part of a detailed lipoprotein analysis. It contributes to a fuller picture of cardiovascular risk beyond standard cholesterol."
+    },
+    "LDL Peak Size": {
+      "full_name": "LDL Peak Particle Size",
+      "description": "This measures the predominant size of LDL particles. Larger, more buoyant particles are generally considered less atherogenic than smaller, denser ones."
+    },
+    "LDL Pattern": {
+      "full_name": "LDL Particle Pattern",
+      "description": "LDL pattern classifies whether a person's LDL particles are predominantly large (pattern A) or small and dense (pattern B). Pattern B is associated with higher cardiovascular risk."
+    },
+    "HDL Large": {
+      "full_name": "Large HDL Particles",
+      "description": "This measures large HDL particles, which are thought to be particularly effective at removing cholesterol from tissues. It adds detail to standard HDL cholesterol."
+    },
+    "Prostate Specific Antigen (PSA), Free %": {
+      "full_name": "Free PSA Percentage",
+      "description": "This measures the percentage of PSA in the blood that circulates unbound. It is used alongside total PSA to help refine prostate risk assessment."
+    },
+    "Urine pH": {
+      "full_name": "Urine pH",
+      "description": "Urine pH measures how acidic or alkaline the urine is. It can reflect diet, hydration, and kidney function and is relevant to kidney-stone and metabolic assessment."
+    },
+    "Urine Specific Gravity": {
+      "full_name": "Urine Specific Gravity",
+      "description": "Urine specific gravity measures how concentrated the urine is compared with water. It reflects hydration status and the kidneys' ability to concentrate urine."
+    },
+    "Red Blood Cells, Urine": {
+      "full_name": "Red Blood Cells in Urine",
+      "description": "This test detects red blood cells in the urine. Their presence can indicate urinary-tract irritation, infection, stones, or other conditions warranting evaluation."
+    },
+    "White Blood Cells, Urine": {
+      "full_name": "White Blood Cells in Urine",
+      "description": "This test detects white blood cells in the urine, which often signal infection or inflammation in the urinary tract."
+    },
+    "Squamous Epithelial Cells, Urine": {
+      "full_name": "Squamous Epithelial Cells in Urine",
+      "description": "This measures squamous epithelial cells in the urine, which usually come from the skin or urethra. High numbers often suggest the sample was contaminated during collection."
+    },
+    "Biological Age": {
+      "full_name": "Biological Age",
+      "description": "Biological age is an estimate of how old the body seems based on health biomarkers, rather than years since birth. A biological age lower than chronological age is generally considered favorable."
+    },
+    "Neutrophils, Absolute": {
+      "abbreviation": "ANC",
+      "full_name": "Absolute Neutrophil Count",
+      "description": "This is the actual number of neutrophils, the main infection-fighting white cells, per volume of blood. Low counts increase infection risk, while high counts often signal infection or inflammation."
+    },
+    "Lymphocytes, Absolute": {
+      "abbreviation": "ALC",
+      "full_name": "Absolute Lymphocyte Count",
+      "description": "This is the actual number of lymphocytes, the immune cells that drive targeted defenses, per volume of blood. Abnormal counts can reflect infection, immune conditions, or immune suppression."
+    },
+    "Monocytes, Relative": {
+      "full_name": "Monocyte Percentage",
+      "description": "This is the percentage of white blood cells that are monocytes. It is interpreted alongside the absolute count to assess immune status."
+    },
+    "Eosinophils, Relative": {
+      "full_name": "Eosinophil Percentage",
+      "description": "This is the percentage of white blood cells that are eosinophils. Elevated percentages can accompany allergies, asthma, or parasitic infections."
+    },
+    "Basophils, Relative": {
+      "full_name": "Basophil Percentage",
+      "description": "This is the percentage of white blood cells that are basophils. It is interpreted with the absolute count and can be elevated in allergic or certain blood conditions."
+    },
+    "Total T4": {
+      "full_name": "Total Thyroxine",
+      "description": "Total T4 measures all thyroxine in the blood, both bound and free. It is one of the tests used to evaluate thyroid function."
+    },
+    "Total T3": {
+      "full_name": "Total Triiodothyronine",
+      "description": "Total T3 measures all triiodothyronine in the blood. It is used, often with other thyroid tests, to evaluate thyroid function, particularly overactive-thyroid states."
+    },
+    "Direct Bilirubin": {
+      "full_name": "Direct (Conjugated) Bilirubin",
+      "description": "Direct bilirubin is the water-soluble, liver-processed form of bilirubin. Elevated levels point toward problems with the liver or bile ducts."
+    },
+    "Lactate Dehydrogenase (LDH)": {
+      "abbreviation": "LDH",
+      "full_name": "Lactate Dehydrogenase",
+      "description": "Lactate dehydrogenase is an enzyme found in many tissues and released when cells are damaged. Elevated levels are a nonspecific marker of tissue injury or cell turnover."
+    },
+    "Creatine Kinase (CK)": {
+      "abbreviation": "CK",
+      "full_name": "Creatine Kinase",
+      "description": "Creatine kinase is an enzyme found mainly in muscle, including the heart, that is released when muscle is damaged. Elevated levels can follow intense exercise, muscle injury, or heart muscle damage."
+    },
+    "Erythrocyte Sedimentation Rate (ESR)": {
+      "abbreviation": "ESR",
+      "full_name": "Erythrocyte Sedimentation Rate",
+      "description": "The erythrocyte sedimentation rate measures how quickly red blood cells settle in a tube, which increases with inflammation. It is a nonspecific marker of inflammation in the body."
+    },
+    "Anion Gap": {
+      "full_name": "Anion Gap",
+      "description": "The anion gap is a value calculated from electrolyte results that reflects the balance of charged particles in the blood. An abnormal gap can indicate acid-base disturbances."
+    },
+    "Reticulocytes": {
+      "full_name": "Reticulocytes",
+      "description": "Reticulocytes are newly made, immature red blood cells. Their level shows how actively the bone marrow is producing red cells, which helps evaluate anemia."
+    },
+    "Reticulocytes, Absolute": {
+      "full_name": "Absolute Reticulocyte Count",
+      "description": "This is the actual number of young red blood cells per volume of blood. It indicates how well the bone marrow is responding to the body's need for red cells."
+    },
+    "Estradiol": {
+      "abbreviation": "E2",
+      "full_name": "Estradiol",
+      "description": "Estradiol is the main form of estrogen and an important sex hormone in both women and men. It influences the menstrual cycle, bone health, and reproductive function."
+    },
+    "Follicle Stimulating Hormone (FSH)": {
+      "abbreviation": "FSH",
+      "full_name": "Follicle-Stimulating Hormone",
+      "description": "Follicle-stimulating hormone is a pituitary hormone that regulates reproductive processes, including egg and sperm development. Its level helps assess fertility and menopausal status."
+    },
+    "Luteinizing Hormone (LH)": {
+      "abbreviation": "LH",
+      "full_name": "Luteinizing Hormone",
+      "description": "Luteinizing hormone is a pituitary hormone that triggers ovulation in women and testosterone production in men. It is used to evaluate reproductive and hormonal function."
+    }
+  }
+}

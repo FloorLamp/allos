@@ -1,0 +1,91 @@
+"use server";
+import { requireSession } from "@/lib/auth";
+import { revalidatePath } from "next/cache";
+import { db } from "@/lib/db";
+import { isRealIsoDate } from "@/lib/date";
+import { resolveProviderIdByName } from "@/lib/providers-db";
+
+// Care-plan writes. Session-scoped; every mutation is `WHERE id = ? AND
+// profile_id = ?` and the INSERT carries profile_id. Manual rows carry a NULL
+// source/document_id/external_id (like procedures/conditions), so the per-document
+// import delete-set never touches them; editing an imported row leaves its
+// provenance columns intact. The ordering clinician is resolved through the shared
+// GLOBAL providers registry via a create-on-type name.
+
+function revalidateCarePlan() {
+  revalidatePath("/care-plan");
+  revalidatePath("/");
+}
+
+const str = (formData: FormData, key: string): string | null =>
+  String(formData.get(key) ?? "").trim() || null;
+
+function dateOrNull(raw: unknown): string | null {
+  const v = String(raw ?? "").trim();
+  return isRealIsoDate(v) ? v : null;
+}
+
+export async function addCarePlanItem(formData: FormData) {
+  const { profile } = requireSession();
+  const description = String(formData.get("description") ?? "").trim();
+  if (!description) return;
+  const providerId = resolveProviderIdByName(
+    String(formData.get("provider") ?? "")
+  );
+  db.prepare(
+    `INSERT INTO care_plan_items
+       (description, code, code_system, category, planned_date, status,
+        provider_id, notes, source, profile_id)
+     VALUES (?,?,?,?,?,?,?,?,NULL,?)`
+  ).run(
+    description,
+    str(formData, "code"),
+    str(formData, "code_system"),
+    str(formData, "category"),
+    dateOrNull(formData.get("planned_date")),
+    str(formData, "status"),
+    providerId,
+    str(formData, "notes"),
+    profile.id
+  );
+  revalidateCarePlan();
+}
+
+export async function updateCarePlanItem(formData: FormData) {
+  const { profile } = requireSession();
+  const id = Number(formData.get("id"));
+  const description = String(formData.get("description") ?? "").trim();
+  if (!id || !description) return;
+  const providerId = resolveProviderIdByName(
+    String(formData.get("provider") ?? "")
+  );
+  db.prepare(
+    `UPDATE care_plan_items
+       SET description = ?, code = ?, code_system = ?, category = ?,
+           planned_date = ?, status = ?, provider_id = ?, notes = ?
+     WHERE id = ? AND profile_id = ?`
+  ).run(
+    description,
+    str(formData, "code"),
+    str(formData, "code_system"),
+    str(formData, "category"),
+    dateOrNull(formData.get("planned_date")),
+    str(formData, "status"),
+    providerId,
+    str(formData, "notes"),
+    id,
+    profile.id
+  );
+  revalidateCarePlan();
+}
+
+export async function deleteCarePlanItem(formData: FormData) {
+  const { profile } = requireSession();
+  const id = Number(formData.get("id"));
+  if (!id) return;
+  db.prepare("DELETE FROM care_plan_items WHERE id = ? AND profile_id = ?").run(
+    id,
+    profile.id
+  );
+  revalidateCarePlan();
+}

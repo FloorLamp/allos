@@ -1,0 +1,77 @@
+services:
+  allos:
+    # Pin the container name instead of the default <project>-<service>-<index>,
+    # so it shows up as exactly "allos" in `docker ps` / logs. (Rules out
+    # scaling this service to >1 replica, which we never do.)
+    container_name: allos
+    # Pre-built image pulled from a registry (built & pushed by CI). The deploy
+    # box never builds — it just pulls. IMAGE is normally pinned to a commit SHA
+    # by the CD workflow; it defaults to :latest for manual `docker compose pull`.
+    # To build locally instead, add the override: `-f docker-compose.build.yml`.
+    image: ${IMAGE:-ghcr.io/floorlamp/allos:latest}
+    ports:
+      - "${PORT:-3000}:3000"
+    # Secrets / config come from .env (copy .env.example → .env).
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      # Timezone is set in the app (Settings → Timezone) and stored in the DB, so
+      # it's shared by the notify sidecar and survives restarts. No TZ env needed;
+      # it defaults to UTC until you choose one.
+    # Persist the SQLite DB, uploads, and the AI log. DATA_DIR is bind-mounted so
+    # these are directly readable on the host (e.g. `tail -f $DATA_DIR/logs/ai.jsonl`).
+    #
+    # ⚠️ For the self-hosted-runner CD setup, DATA_DIR MUST be an ABSOLUTE path
+    # OUTSIDE the repo working tree (e.g. /srv/allos/data) — the runner's
+    # `actions/checkout` runs `git clean -ffdx`, which would wipe an in-repo ./data.
+    # No manual chown needed: the container starts as root, the entrypoint chowns
+    # this dir to the app user (uid 1000), then drops privileges via gosu.
+    #
+    # Prefer the named-volume alternative if you don't need direct host file access:
+    #   volumes: [ "allos-data:/app/data" ]   (and add the top-level `volumes:` block)
+    volumes:
+      - "${DATA_DIR:-./data}:/app/data"
+    restart: unless-stopped
+    healthcheck:
+      # Cheap liveness check via the dedicated /api/health route (no DB/AI work).
+      # Node 24 has global fetch, so no curl/wget needed in the slim image.
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # Notification scheduler — the built-in replacement for an external hourly cron.
+  # Same image and data dir as the app; runs the tick (node dist/notify.cjs) once
+  # at the top of every hour, plus the Telegram button-tap poller (getUpdates)
+  # for setups without a public URL. Decides what's due itself and dedupes per
+  # day/slot, so it's safe to restart. Shares the SQLite DB via the same bind mount (WAL
+  # mode handles the concurrent access). Reminders still send only once you've
+  # configured a channel in Settings → Notifications. Remove this service if you'd
+  # rather drive the tick from a host crontab instead.
+  allos-notify:
+    container_name: allos-notify
+    image: ${IMAGE:-ghcr.io/floorlamp/allos:latest}
+    command: ["docker-notify.sh"]
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      # Timezone comes from the DB setting (shared with the app via the bind mount),
+      # so the sidecar fires reminders on the user's clock without a TZ env.
+    volumes:
+      - "${DATA_DIR:-./data}:/app/data"
+    depends_on:
+      - allos
+    restart: unless-stopped
+
+# Uncomment to use a managed named volume instead of a host bind mount:
+# volumes:
+#   allos-data:

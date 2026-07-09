@@ -1,0 +1,44 @@
+// Pure snooze/dismiss decision layer for the Upcoming page (issue #213, Phase 3).
+// NO DB/network: the query layer (lib/queries/upcoming.ts) reads the profile's
+// upcoming_dismissals rows and the actions write them; this module only derives
+// the STABLE per-signal key and decides whether a given suppression currently
+// hides its item. Keeping the boundaries here (not inline) means they're
+// unit-tested in lib/__tests__.
+
+import type { UpcomingItem } from "./upcoming";
+
+// A suppression row as stored (the two nullable state columns). A row is either a
+// SNOOZE (snooze_until set, dismissed_at null) or a DISMISS (dismissed_at set,
+// snooze_until null); restoring an item DELETEs the row entirely.
+export interface SuppressionRecord {
+  snooze_until: string | null;
+  dismissed_at: string | null;
+}
+
+// The stable key that ties a suppression to a due-signal across time. Every
+// UpcomingItem already carries a stable, domain-prefixed `key` (e.g. 'dose:12',
+// 'biomarker:ldl', 'appointment:5', 'immunization:mmr', 'goal:3', 'refill:7'),
+// derived from the underlying row's id / canonical name — exactly the identity a
+// snooze/dismiss must follow — so the signal key IS that key. Centralized here so
+// the contract has a single, testable source of truth.
+export function signalKey(item: Pick<UpcomingItem, "key">): string {
+  return item.key;
+}
+
+// Whether a suppression record hides its item right now (`today` = the profile-
+// local YYYY-MM-DD). Semantics:
+//   - Dismissed → hidden indefinitely (until the user restores it, which removes
+//     the row so no record reaches here).
+//   - Snoozed → hidden while today < snooze_until; on/after that date the snooze
+//     has expired and the item reappears.
+//   - Neither field set → not hidden (a defensive no-op; such a row shouldn't
+//     exist).
+// Dismiss takes precedence over any lingering snooze_until on the same row.
+export function isSuppressed(
+  record: SuppressionRecord,
+  today: string
+): boolean {
+  if (record.dismissed_at) return true;
+  if (record.snooze_until) return today < record.snooze_until;
+  return false;
+}

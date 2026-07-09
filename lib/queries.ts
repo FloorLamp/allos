@@ -1,0 +1,22 @@
+// Re-export barrel for the read/derive layer. The implementation is split into
+// domain modules under lib/queries/*; this file preserves the historical
+// `@/lib/queries` import surface so callers don't care where a query now lives.
+// Every export below keeps its original name and signature.
+//
+// The profile-scoping guard (lib/__tests__/profile-scoping.test.ts) walks all of
+// lib/, so the split submodules are still scanned — its per-file allowlist points
+// at the new lib/queries/*.ts paths where the moved statements now live.
+export * from "./queries/metrics";
+export * from "./queries/training";
+export * from "./queries/coaching";
+export * from "./queries/medical";
+export * from "./queries/appointments";
+export * from "./queries/intake";
+export * from "./queries/clinical";
+export * from "./queries/search";
+export * from "./queries/imports";
+export * from "./queries/upcoming";
+export * from "./queries/integrations";
+// The shared, GLOBAL providers registry (issue #178) — not profile-scoped, but
+// re-exported here so pages read it through the familiar @/lib/queries surface.
+export * from "./providers-db";

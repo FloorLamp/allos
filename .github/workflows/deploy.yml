@@ -1,0 +1,138 @@
+name: Deploy
+
+# Build the image on a GitHub-hosted runner, push it to GHCR, then have a
+# self-hosted runner on the target box pull and restart. Splitting build from
+# deploy keeps the box light (no build toolchain / source checkout for building)
+# and makes deploys deterministic: it runs the exact image CI produced.
+#
+# The self-hosted runner polls GitHub (outbound only), so no inbound access to
+# the box is required. Triggered on merges to main, plus a manual "Run workflow".
+#
+# Security: only `push` (main) and `workflow_dispatch` — never `pull_request`,
+# so fork PRs can't push images or execute on the box.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+# Don't let two deploys run on top of each other.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+env:
+  # ghcr.io/<owner>/<package>. Hardcoded lowercase (GHCR requires it) and the
+  # package is the brand name "allos", not the repo name — so it's spelled out
+  # here rather than derived from `github.repository`. The package is created
+  # under the owner on first push and linked to this repo for token access.
+  IMAGE: ghcr.io/floorlamp/allos
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # push to GHCR with the built-in GITHUB_TOKEN
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Capture commit message
+        run: echo "COMMIT_MESSAGE=$(git log -1 --pretty=%s)" >> "$GITHUB_ENV"
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Build once and push two tags: an immutable :<sha> the deploy job pins to,
+      # and :latest for manual `docker compose pull`. The in-image `next build`
+      # (which runs tsc) is the CI gate — a type error fails the build and nothing
+      # is pushed or deployed.
+      - name: Build & push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.sha }}
+          # Baked into the image so the UI can show which commit is running.
+          build-args: |
+            COMMIT_SHA=${{ github.sha }}
+            COMMIT_MESSAGE=${{ env.COMMIT_MESSAGE }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Every deploy pushes a fresh :<sha> version to GHCR, so old ones pile up
+      # forever. Keep only the most recent handful and delete the rest. The
+      # newest version always carries :latest (it's re-tagged onto each build),
+      # so min-versions-to-keep protects it — no risk of nuking the live tag.
+      - name: Prune old GHCR image versions
+        uses: actions/delete-package-versions@v5
+        with:
+          package-name: allos
+          package-type: container
+          min-versions-to-keep: 3
+          # Our old versions are :<sha>-tagged, not untagged, so we must opt in
+          # to deleting tagged versions (this input defaults to true = untagged
+          # only). min-versions-to-keep still shields the newest N (incl :latest).
+          delete-only-untagged-versions: "false"
+
+  deploy:
+    needs: build
+    runs-on: self-hosted
+    permissions:
+      contents: read
+      packages: read # pull from GHCR
+    steps:
+      - uses: actions/checkout@v7
+
+      # Recreate the gitignored env file from a secret. `actions/checkout` cleans
+      # untracked files each run, so the box can't just keep a stray .env — the
+      # DOTENV secret is the source of truth. It must include ANTHROPIC_API_KEY,
+      # TZ, and an ABSOLUTE DATA_DIR outside this workspace (so deploys don't wipe
+      # the database — see docker-compose.yml).
+      - name: Write .env from secret
+        env:
+          DOTENV: ${{ secrets.DOTENV }}
+        run: printf '%s' "$DOTENV" > .env
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Optional safety net: back up the SQLite DB before a (possibly migrating)
+      # restart. No-op on first deploy.
+      - name: Back up database
+        run: |
+          set -a; . ./.env; set +a
+          DB="${DATA_DIR:-./data}/allos.db"
+          [ -f "$DB" ] && cp "$DB" "$DB.bak" || true
+
+      # Pull the exact image this run built (pinned by SHA) and restart. No build
+      # happens on the box. --wait blocks until the container reports healthy (or
+      # fails), so a broken DB / unwritable data dir fails the deploy instead of
+      # silently serving 500s. On failure, dump logs to aid debugging.
+      - name: Pull & restart
+        env:
+          IMAGE: ${{ env.IMAGE }}:${{ github.sha }}
+        run: |
+          docker compose up -d --pull always --remove-orphans --wait --wait-timeout 120 \
+            || { docker compose logs --tail 100 allos; exit 1; }
+
+      # Each deploy pulls a new :<sha> image onto the box, so old ones accumulate
+      # on disk. `prune -f` alone only drops *dangling* (untagged) layers and
+      # leaves the old :<sha>-tagged images behind — so we pass -a to also remove
+      # tagged images that no running container references. The allos and
+      # allos-notify containers both run the just-pulled :<sha> image (see the
+      # IMAGE env above / docker-compose.yml), so that image is in-use and safe;
+      # only the superseded ones get reclaimed.
+      - name: Prune old images
+        run: docker image prune -af

@@ -1,0 +1,826 @@
+import { describe, expect, it } from "vitest";
+import {
+  isIsolation,
+  repRangeFor,
+  weightIncrementKg,
+  weightIncrementLb,
+  suggestNextSet,
+  sessionBestSet,
+  nextSetText,
+  lastSessionPR,
+  recentPRs,
+  speedKmh,
+  recentCardioPRs,
+  recommendCoaching,
+  restRecommendation,
+  consecutiveTrainingDays,
+  activeDaysInWindow,
+  DEFAULT_COACHING_THRESHOLDS,
+  type ExerciseSummary,
+  type CardioSummary,
+  type CoachingInput,
+  type RoutineTargetProgress,
+  type StrengthRecent,
+  type CardioRecent,
+} from "@/lib/coaching";
+import { kgTo, toKg } from "@/lib/units";
+
+// ExerciseSummary factory with sensible defaults; override per test.
+function ex(over: Partial<ExerciseSummary> = {}): ExerciseSummary {
+  return {
+    exercise: "Bench Press",
+    sessions: 3,
+    bodyweight: false,
+    e1rmKg: 100,
+    bestWeightKg: 90,
+    bestReps: 5,
+    bestDate: "2026-06-20",
+    topWeightKg: 90,
+    topWeightDate: "2026-06-20",
+    lastDate: "2026-06-20",
+    lastSessionBest: { weightKg: 80, reps: 6 },
+    ...over,
+  };
+}
+
+describe("isIsolation", () => {
+  it("treats Arms-region and single-joint movements as isolation", () => {
+    expect(isIsolation("Dumbbell Curl")).toBe(true);
+    expect(isIsolation("Lateral Raise")).toBe(true);
+    expect(isIsolation("Leg Extension")).toBe(true);
+  });
+  it("treats compounds as not isolation", () => {
+    expect(isIsolation("Bench Press")).toBe(false);
+    expect(isIsolation("Back Squat")).toBe(false);
+  });
+});
+
+describe("repRangeFor", () => {
+  it("uses 5–8 for compounds, 8–12 for isolation", () => {
+    expect(repRangeFor("Bench Press")).toEqual({ low: 5, high: 8 });
+    expect(repRangeFor("Dumbbell Curl")).toEqual({ low: 8, high: 12 });
+  });
+});
+
+describe("weightIncrementKg", () => {
+  it("is 5 kg for big lower-body compounds", () => {
+    expect(weightIncrementKg("Back Squat")).toBe(5);
+    expect(weightIncrementKg("Deadlift")).toBe(5);
+    expect(weightIncrementKg("Leg Press")).toBe(5);
+  });
+  it("is 2.5 kg for upper-body and isolation", () => {
+    expect(weightIncrementKg("Bench Press")).toBe(2.5);
+    expect(weightIncrementKg("Dumbbell Curl")).toBe(2.5);
+    expect(weightIncrementKg("Leg Extension")).toBe(2.5); // isolation wins over Legs
+  });
+  it("is 5 kg for Legs/Glutes-region lifts the name shortcut misses", () => {
+    expect(weightIncrementKg("Lunge")).toBe(5); // Legs region
+    expect(weightIncrementKg("Glute Bridge")).toBe(5); // Glutes region
+  });
+});
+
+describe("weightIncrementLb", () => {
+  it("mirrors the kg tiers with native 10/5 lb jumps", () => {
+    expect(weightIncrementLb("Back Squat")).toBe(10);
+    expect(weightIncrementLb("Bench Press")).toBe(5);
+    expect(weightIncrementLb("Dumbbell Curl")).toBe(5);
+  });
+});
+
+describe("suggestNextSet", () => {
+  it("chases one more rep within the range", () => {
+    const ns = suggestNextSet(
+      ex({ lastSessionBest: { weightKg: 80, reps: 6 } })
+    );
+    expect(ns).toMatchObject({ weightKg: 80, reps: 7, bodyweight: false });
+  });
+
+  it("adds weight and resets reps at the top of the range", () => {
+    // Bench: range 5–8, increment 2.5. 8 reps → +2.5 kg, reset to 5.
+    const ns = suggestNextSet(
+      ex({ lastSessionBest: { weightKg: 80, reps: 8 } })
+    );
+    expect(ns).toMatchObject({ weightKg: 82.5, reps: 5, bodyweight: false });
+  });
+
+  it("builds back to the range bottom when below it", () => {
+    const ns = suggestNextSet(
+      ex({ lastSessionBest: { weightKg: 80, reps: 3 } })
+    );
+    expect(ns).toMatchObject({ weightKg: 80, reps: 5, bodyweight: false });
+  });
+
+  it("names the weight jump in the user's unit in the rationale", () => {
+    // Bench: +2.5 kg jump for kg users, a native +5 lb jump for lb users.
+    expect(
+      suggestNextSet(ex({ lastSessionBest: { weightKg: 80, reps: 8 } }))!
+        .rationale
+    ).toContain("add 2.5 kg");
+    expect(
+      suggestNextSet(ex({ lastSessionBest: { weightKg: 80, reps: 8 } }), "lb")!
+        .rationale
+    ).toContain("add 5 lb");
+  });
+
+  it("targets a multiple of 5 lb when adding weight for an lb user", () => {
+    // 175 lb bench × 8 → +5 lb → exactly 180 lb.
+    const bench = suggestNextSet(
+      ex({ lastSessionBest: { weightKg: toKg(175, "lb"), reps: 8 } }),
+      "lb"
+    )!;
+    expect(kgTo(bench.weightKg, "lb")).toBeCloseTo(180, 6);
+    expect(bench.reps).toBe(5);
+
+    // 225 lb squat × 8 → +10 lb → 235 lb.
+    const squat = suggestNextSet(
+      ex({
+        exercise: "Back Squat",
+        lastSessionBest: { weightKg: toKg(225, "lb"), reps: 8 },
+      }),
+      "lb"
+    )!;
+    expect(kgTo(squat.weightKg, "lb")).toBeCloseTo(235, 6);
+
+    // A kg-entered weight (80 kg ≈ 176.4 lb) still snaps to a multiple of 5:
+    // 176.4 + 5 = 181.4 → 180 lb, not 181.9.
+    const mixed = suggestNextSet(
+      ex({ lastSessionBest: { weightKg: 80, reps: 8 } }),
+      "lb"
+    )!;
+    expect(kgTo(mixed.weightKg, "lb")).toBeCloseTo(180, 6);
+  });
+
+  it("progresses bodyweight movements by reps", () => {
+    const ns = suggestNextSet(
+      ex({
+        exercise: "Pull Up",
+        bodyweight: true,
+        lastSessionBest: { weightKg: 75, reps: 8 },
+      })
+    );
+    expect(ns).toMatchObject({ weightKg: 0, reps: 9, bodyweight: true });
+  });
+
+  it("returns null for timed holds and missing history", () => {
+    expect(suggestNextSet(ex({ exercise: "Plank" }))).toBeNull();
+    expect(suggestNextSet(ex({ lastSessionBest: null }))).toBeNull();
+  });
+
+  it("adds weight and keeps the rep target once a declared target is hit", () => {
+    // Heavy triple by design: 3 reps is below the heuristic 5–8 range, but the
+    // set declared a 3-rep target and hit it → progress, stay at 3.
+    const ns = suggestNextSet(
+      ex({ lastSessionBest: { weightKg: 100, reps: 3, targetReps: 3 } })
+    )!;
+    expect(ns).toMatchObject({ weightKg: 102.5, reps: 3, bodyweight: false });
+    expect(ns.rationale).toContain("3-rep target");
+  });
+
+  it("holds weight and aims for a declared target that was missed", () => {
+    // 3×10 scheme on a compound: 8 reps would trigger the heuristic add-weight
+    // branch, but the 10-rep target was missed → hold and build to 10.
+    const ns = suggestNextSet(
+      ex({ lastSessionBest: { weightKg: 80, reps: 8, targetReps: 10 } })
+    )!;
+    expect(ns).toMatchObject({ weightKg: 80, reps: 10, bodyweight: false });
+    expect(ns.rationale).toContain("10-rep target");
+  });
+
+  it("snaps a target-driven weight jump to a multiple of 5 lb for lb users", () => {
+    const ns = suggestNextSet(
+      ex({
+        lastSessionBest: { weightKg: toKg(175, "lb"), reps: 5, targetReps: 5 },
+      }),
+      "lb"
+    )!;
+    expect(kgTo(ns.weightKg, "lb")).toBeCloseTo(180, 6);
+    expect(ns.reps).toBe(5);
+  });
+
+  it("ignores intent on to-failure sets and falls back to the heuristic", () => {
+    // AMRAP that died at 8: its count is an outcome, not a plan, so the
+    // heuristic range applies (8 = range top → add weight, reset to 5).
+    const ns = suggestNextSet(
+      ex({ lastSessionBest: { weightKg: 80, reps: 8, toFailure: true } })
+    )!;
+    expect(ns).toMatchObject({ weightKg: 82.5, reps: 5 });
+  });
+
+  it("aims a bodyweight movement at a missed rep target", () => {
+    const ns = suggestNextSet(
+      ex({
+        exercise: "Pull Up",
+        bodyweight: true,
+        lastSessionBest: { weightKg: 75, reps: 6, targetReps: 10 },
+      })
+    )!;
+    expect(ns).toMatchObject({ weightKg: 0, reps: 10, bodyweight: true });
+    // Target met → back to beating the achieved count.
+    const met = suggestNextSet(
+      ex({
+        exercise: "Pull Up",
+        bodyweight: true,
+        lastSessionBest: { weightKg: 75, reps: 10, targetReps: 10 },
+      })
+    )!;
+    expect(met).toMatchObject({ weightKg: 0, reps: 11, bodyweight: true });
+  });
+
+  it("carries a declared target on the suggestion, null for heuristics", () => {
+    // Target-driven suggestions expose the target so a logger can re-declare
+    // it (keeping the scheme going); heuristic ones declare nothing.
+    expect(
+      suggestNextSet(
+        ex({ lastSessionBest: { weightKg: 100, reps: 3, targetReps: 3 } })
+      )!.targetReps
+    ).toBe(3);
+    expect(
+      suggestNextSet(
+        ex({ lastSessionBest: { weightKg: 80, reps: 8, targetReps: 10 } })
+      )!.targetReps
+    ).toBe(10);
+    expect(
+      suggestNextSet(ex({ lastSessionBest: { weightKg: 80, reps: 6 } }))!
+        .targetReps
+    ).toBeNull();
+    expect(
+      suggestNextSet(
+        ex({ lastSessionBest: { weightKg: 80, reps: 8, toFailure: true } })
+      )!.targetReps
+    ).toBeNull();
+  });
+});
+
+// A RecentSession-shaped set with everything null unless overridden.
+function set(
+  over: Partial<Parameters<typeof sessionBestSet>[0][number]> = {}
+): Parameters<typeof sessionBestSet>[0][number] {
+  return {
+    weight_kg: null,
+    reps: null,
+    weight_kg_right: null,
+    reps_right: null,
+    ...over,
+  };
+}
+
+describe("sessionBestSet", () => {
+  it("picks the set with the highest estimated 1RM", () => {
+    const best = sessionBestSet([
+      set({ weight_kg: 100, reps: 5 }), // e1RM ≈ 116.7
+      set({ weight_kg: 110, reps: 3 }), // e1RM = 121 ← best
+      set({ weight_kg: 60, reps: 12 }),
+    ]);
+    expect(best).toMatchObject({ weightKg: 110, reps: 3 });
+  });
+
+  it("breaks ties by reps (bodyweight sets all estimate to the base)", () => {
+    const best = sessionBestSet([
+      set({ reps: 8 }),
+      set({ reps: 11 }),
+      set({ reps: 9 }),
+    ]);
+    expect(best).toMatchObject({ weightKg: 0, reps: 11 });
+  });
+
+  it("treats each side of a per-side set as its own candidate", () => {
+    const best = sessionBestSet([
+      set({ weight_kg: 20, reps: 8, weight_kg_right: 25, reps_right: 8 }),
+    ]);
+    expect(best).toMatchObject({ weightKg: 25, reps: 8 });
+    // A right side with reps but no logged weight is still a (base-load) candidate.
+    expect(sessionBestSet([set({ reps_right: 10 })])).toMatchObject({
+      weightKg: 0,
+      reps: 10,
+    });
+  });
+
+  it("carries the chosen set's declared intent", () => {
+    const best = sessionBestSet([
+      set({ weight_kg: 100, reps: 5, target_reps: 5 }),
+      set({ weight_kg: 80, reps: 10, to_failure: 1 }),
+    ]);
+    expect(best).toMatchObject({ weightKg: 100, reps: 5, targetReps: 5 });
+    expect(best!.toFailure).toBe(false);
+  });
+
+  it("folds a bodyweight base into the load and ignores rep-less sets", () => {
+    // Weighted pull-ups: with an 80 kg base, +20×5 (e1RM 116.7) beats +10×8
+    // (e1RM 114) — the unweighted ranking would flip that.
+    const best = sessionBestSet(
+      [set({ weight_kg: 10, reps: 8 }), set({ weight_kg: 20, reps: 5 })],
+      80
+    );
+    expect(best).toMatchObject({ weightKg: 100, reps: 5 });
+    // No usable (rep-bearing) sets → no seed.
+    expect(sessionBestSet([set({ weight_kg: 50 })])).toBeNull();
+  });
+});
+
+describe("nextSetText", () => {
+  it("formats weighted suggestions in the user's unit and bodyweight as BW", () => {
+    const ns = suggestNextSet(
+      ex({ lastSessionBest: { weightKg: 80, reps: 6 } })
+    )!;
+    expect(nextSetText(ns, "kg")).toBe("80 kg × 7");
+    const bw = suggestNextSet(
+      ex({
+        exercise: "Pull Up",
+        bodyweight: true,
+        lastSessionBest: { weightKg: 75, reps: 12 },
+      })
+    )!;
+    expect(nextSetText(bw, "kg")).toBe("BW × 13");
+  });
+});
+
+describe("lastSessionPR", () => {
+  it("flags a fresh 1RM when the best is on the most recent date", () => {
+    expect(
+      lastSessionPR(ex({ bestDate: "2026-06-20", lastDate: "2026-06-20" }))
+    ).toEqual({
+      e1rm: true,
+      weight: true,
+    });
+  });
+
+  it("never flags a single-session exercise", () => {
+    expect(lastSessionPR(ex({ sessions: 1 }))).toEqual({
+      e1rm: false,
+      weight: false,
+    });
+  });
+
+  it("suppresses the weight PR for bodyweight lifts", () => {
+    const pr = lastSessionPR(
+      ex({ bodyweight: true, bestDate: "2026-06-20", lastDate: "2026-06-20" })
+    );
+    expect(pr).toEqual({ e1rm: true, weight: false });
+  });
+});
+
+describe("recentPRs", () => {
+  const today = "2026-06-29";
+  const stats: ExerciseSummary[] = [
+    ex({
+      exercise: "Bench Press",
+      sessions: 3,
+      bestDate: "2026-06-20",
+      topWeightKg: 100,
+      topWeightDate: "2026-06-25",
+    }),
+    ex({ exercise: "Row", sessions: 1, bestDate: "2026-06-28" }), // first-ever — excluded
+    ex({
+      exercise: "Old Lift",
+      sessions: 2,
+      bestDate: "2026-01-01",
+      topWeightDate: "2026-01-01",
+    }), // stale
+    ex({
+      exercise: "Pull Up",
+      sessions: 2,
+      bodyweight: true,
+      bestDate: "2026-06-28",
+      topWeightKg: 0,
+    }),
+  ];
+
+  it("includes both 1RM and top-weight PRs, newest first, with exclusions", () => {
+    const prs = recentPRs(stats, today, 30);
+    expect(prs.map((p) => `${p.exercise}:${p.kind}:${p.date}`)).toEqual([
+      "Pull Up:1rm:2026-06-28",
+      "Bench Press:weight:2026-06-25",
+      "Bench Press:1rm:2026-06-20",
+    ]);
+  });
+
+  it("flags the bodyweight PR so it renders as BW, not an absolute weight", () => {
+    const prs = recentPRs(stats, today, 30);
+    expect(prs.find((p) => p.exercise === "Pull Up")?.bodyweight).toBe(true);
+    expect(
+      prs.find((p) => p.exercise === "Bench Press" && p.kind === "1rm")
+        ?.bodyweight
+    ).toBe(false);
+  });
+
+  it("respects the window", () => {
+    // 3-day window: only Pull Up's 1RM (06-28) qualifies; Bench's 06-25/06-20 fall outside.
+    expect(recentPRs(stats, today, 3)).toEqual([
+      expect.objectContaining({ exercise: "Pull Up", kind: "1rm" }),
+    ]);
+  });
+
+  it("excludes records with unparseable dates instead of throwing", () => {
+    expect(
+      recentPRs(
+        [ex({ sessions: 3, bestDate: "garbage", topWeightDate: "garbage" })],
+        today,
+        30
+      )
+    ).toEqual([]);
+  });
+
+  it("keeps same-day records adjacent (sort tie)", () => {
+    const prs = recentPRs(
+      [
+        ex({
+          exercise: "Bench Press",
+          bestDate: "2026-06-28",
+          topWeightDate: "2026-06-28",
+        }),
+        ex({
+          exercise: "Row",
+          bestDate: "2026-06-28",
+          topWeightDate: "2026-06-28",
+        }),
+      ],
+      today,
+      30
+    );
+    expect(prs.map((p) => p.exercise)).toEqual(["Bench Press", "Row"]);
+  });
+});
+
+describe("speedKmh", () => {
+  it("computes km/h", () => {
+    expect(speedKmh(10, 30)).toBe(20); // 10 km in 30 min
+  });
+  it("returns null without a usable distance and duration", () => {
+    expect(speedKmh(0, 30)).toBeNull();
+    expect(speedKmh(10, 0)).toBeNull();
+    expect(speedKmh(null, 30)).toBeNull();
+    expect(speedKmh(10, -5)).toBeNull();
+  });
+});
+
+describe("recentCardioPRs", () => {
+  const today = "2026-06-29";
+  function cardio(over: Partial<CardioSummary> = {}): CardioSummary {
+    return {
+      activity: "Running",
+      sessions: 3,
+      hasDistance: true,
+      longestDistanceKm: 10,
+      longestDistanceDate: "2026-06-27",
+      fastestKmh: 12,
+      fastestKmhDate: "2026-06-26",
+      longestDurationMin: 60,
+      longestDurationDate: "2026-06-20",
+      ...over,
+    };
+  }
+
+  it("emits distance, speed, and duration PRs for a distance activity", () => {
+    const prs = recentCardioPRs([cardio()], today, 30);
+    expect(prs.map((p) => `${p.kind}:${p.date}`)).toEqual([
+      "distance:2026-06-27",
+      "speed:2026-06-26",
+      "duration:2026-06-20",
+    ]);
+  });
+
+  it("emits only a duration PR when there's no distance", () => {
+    const prs = recentCardioPRs(
+      [
+        cardio({
+          activity: "HIIT",
+          hasDistance: false,
+          longestDurationDate: "2026-06-28",
+        }),
+      ],
+      today,
+      30
+    );
+    expect(prs).toHaveLength(1);
+    expect(prs[0]).toMatchObject({ activity: "HIIT", kind: "duration" });
+  });
+
+  it("excludes first-ever sessions and out-of-window records", () => {
+    expect(recentCardioPRs([cardio({ sessions: 1 })], today, 30)).toEqual([]);
+    expect(recentCardioPRs([cardio()], today, 1)).toEqual([]); // nearest record is 2 days ago
+  });
+});
+
+// ---- Rule-based coaching engine ----
+
+const TODAY = "2026-07-08";
+
+function input(over: Partial<CoachingInput> = {}): CoachingInput {
+  return {
+    today: TODAY,
+    routine: [],
+    strength: [],
+    cardio: [],
+    trainingDates: [],
+    sleep: null,
+    restingHr: null,
+    weightUnit: "kg",
+    ...over,
+  };
+}
+
+function tgt(over: Partial<RoutineTargetProgress> = {}): RoutineTargetProgress {
+  return {
+    target: { scope_kind: "type", scope_value: "strength" },
+    count: 0,
+    per_week: 3,
+    met: false,
+    ...over,
+  };
+}
+
+function sRec(over: Partial<StrengthRecent> = {}): StrengthRecent {
+  return {
+    exercise: "Bench Press",
+    bodyweight: false,
+    lastSessionBest: {
+      weightKg: 60,
+      reps: 5,
+      targetReps: null,
+      toFailure: false,
+    },
+    lastDate: "2026-07-01",
+    ...over,
+  };
+}
+
+function cRec(over: Partial<CardioRecent> = {}): CardioRecent {
+  return { activity: "Running", lastDate: "2026-07-01", ...over };
+}
+
+// N consecutive dates ending at (and including) `end`, newest first.
+function consecutiveDates(end: string, n: number): string[] {
+  const out: string[] = [];
+  const [y, m, d] = end.split("-").map(Number);
+  for (let i = 0; i < n; i++) {
+    const dt = new Date(Date.UTC(y, m - 1, d - i));
+    out.push(dt.toISOString().slice(0, 10));
+  }
+  return out;
+}
+
+describe("consecutiveTrainingDays", () => {
+  it("counts a run ending today", () => {
+    expect(consecutiveTrainingDays(consecutiveDates(TODAY, 4), TODAY)).toBe(4);
+  });
+  it("anchors on yesterday when today is untrained", () => {
+    expect(consecutiveTrainingDays(["2026-07-07", "2026-07-06"], TODAY)).toBe(
+      2
+    );
+  });
+  it("is 0 with no recent training", () => {
+    expect(consecutiveTrainingDays(["2026-07-01"], TODAY)).toBe(0);
+    expect(consecutiveTrainingDays([], TODAY)).toBe(0);
+  });
+});
+
+describe("activeDaysInWindow", () => {
+  it("counts distinct days inside the trailing window (inclusive of today)", () => {
+    const dates = ["2026-07-08", "2026-07-06", "2026-07-02", "2026-07-01"];
+    expect(activeDaysInWindow(dates, TODAY, 7)).toBe(3); // 07-01 is 7 days ago → excluded
+  });
+});
+
+describe("restRecommendation", () => {
+  const th = DEFAULT_COACHING_THRESHOLDS;
+
+  it("fires on sleep below the baseline deficit and names the reason", () => {
+    // baseline 10h, deficit 90m → threshold 510m; 510 fires (<=), well above floor.
+    const rest = restRecommendation(
+      input({ sleep: { lastNightMin: 510, baselineMin: 600 } }),
+      th
+    );
+    expect(rest?.kind).toBe("rest");
+    expect(rest?.id).toBe("rest-sleep");
+    expect(rest?.tone).toBe("caution");
+    expect(rest?.detail).toContain("8.5h");
+    expect(rest?.detail).toContain("10.0h");
+    expect(rest?.target).toBeUndefined();
+    expect(rest?.actionHref).toBeUndefined();
+  });
+
+  it("does not fire one minute above the sleep deficit threshold", () => {
+    expect(
+      restRecommendation(
+        input({ sleep: { lastNightMin: 511, baselineMin: 600 } }),
+        th
+      )
+    ).toBeNull();
+  });
+
+  it("fires on sleep below the absolute floor even with a modest baseline", () => {
+    const rest = restRecommendation(
+      input({ sleep: { lastNightMin: 359, baselineMin: 400 } }),
+      th
+    );
+    expect(rest?.id).toBe("rest-sleep");
+    expect(rest?.detail).toContain("6.0h");
+  });
+
+  it("never fires on sleep when there is no sleep data", () => {
+    expect(restRecommendation(input({ sleep: null }), th)).toBeNull();
+  });
+
+  it("fires on elevated resting HR at/above the jump, not below", () => {
+    expect(
+      restRecommendation(input({ restingHr: { recent: 62, baseline: 55 } }), th)
+        ?.id
+    ).toBe("rest-rhr");
+    expect(
+      restRecommendation(input({ restingHr: { recent: 61, baseline: 55 } }), th)
+    ).toBeNull();
+  });
+
+  it("fires on a consecutive-day streak at the threshold", () => {
+    const rest = restRecommendation(
+      input({ trainingDates: consecutiveDates(TODAY, 4) }),
+      th
+    );
+    expect(rest?.id).toBe("rest-overtraining");
+    expect(rest?.detail).toContain("4 days in a row");
+  });
+
+  it("fires on a heavy trailing window without a long streak", () => {
+    // 6 of the last 7 days, but no 4-in-a-row (today then gaps).
+    const dates = [
+      "2026-07-08",
+      "2026-07-06",
+      "2026-07-05",
+      "2026-07-04",
+      "2026-07-03",
+      "2026-07-02",
+    ];
+    const rest = restRecommendation(input({ trainingDates: dates }), th);
+    expect(rest?.id).toBe("rest-load");
+    expect(rest?.detail).toContain("6 of the last 7");
+  });
+
+  it("stays quiet with light training and no recovery data", () => {
+    expect(
+      restRecommendation(input({ trainingDates: ["2026-07-08"] }), th)
+    ).toBeNull();
+  });
+});
+
+describe("recommendCoaching", () => {
+  it("returns a friendly empty state when there is no data at all", () => {
+    const [top, ...rest] = recommendCoaching(input());
+    expect(rest).toHaveLength(0);
+    expect(top.kind).toBe("setup");
+    expect(top.actionHref).toBe("/training");
+  });
+
+  it("adds a cardio session when behind a cardio target", () => {
+    const [top] = recommendCoaching(
+      input({
+        routine: [
+          tgt({
+            target: { scope_kind: "type", scope_value: "cardio" },
+            count: 0,
+            per_week: 2,
+          }),
+        ],
+      })
+    );
+    expect(top.kind).toBe("cardio");
+    expect(top.title).toBe("Add a cardio session");
+    expect(top.detail).toContain("0 of 2");
+  });
+
+  it("suggests a strength lift with a next-set target when behind", () => {
+    const [top] = recommendCoaching(
+      input({
+        routine: [tgt()], // type=strength, 0 of 3
+        strength: [sRec()],
+      })
+    );
+    expect(top.kind).toBe("strength");
+    expect(top.title).toBe("Train Bench Press");
+    expect(top.target).toMatch(/×/);
+    expect(top.actionHref).toContain("kind=strength");
+  });
+
+  it("falls back to a generic strength nudge when no exercise matches", () => {
+    const [top] = recommendCoaching(input({ routine: [tgt()], strength: [] }));
+    expect(top.kind).toBe("strength");
+    expect(top.title).toBe("Train Strength");
+    expect(top.target).toBeUndefined();
+  });
+
+  it("ranks the cardio gap ahead of the strength gap", () => {
+    const recs = recommendCoaching(
+      input({
+        routine: [
+          tgt({
+            target: { scope_kind: "type", scope_value: "cardio" },
+            count: 0,
+            per_week: 2,
+          }),
+          tgt(), // strength, 0 of 3
+        ],
+        strength: [sRec()],
+      })
+    );
+    expect(recs.map((r) => r.kind)).toEqual(["cardio", "strength"]);
+  });
+
+  it("celebrates being on track when every target is met", () => {
+    const [top, ...rest] = recommendCoaching(
+      input({ routine: [tgt({ count: 3, met: true })] })
+    );
+    expect(top.kind).toBe("ontrack");
+    expect(rest).toHaveLength(0);
+  });
+
+  it("lets a recovery signal override and demote the training nudge", () => {
+    const recs = recommendCoaching(
+      input({
+        routine: [
+          tgt({
+            target: { scope_kind: "type", scope_value: "cardio" },
+            count: 0,
+            per_week: 2,
+          }),
+        ],
+        sleep: { lastNightMin: 300, baselineMin: 445 },
+      })
+    );
+    expect(recs[0].kind).toBe("rest");
+    expect(recs[1].kind).toBe("cardio"); // kept as secondary
+  });
+
+  it("drops the redundant on-track note when a rest signal fires", () => {
+    const recs = recommendCoaching(
+      input({
+        routine: [tgt({ count: 3, met: true })],
+        restingHr: { recent: 70, baseline: 55 },
+      })
+    );
+    expect(recs).toHaveLength(1);
+    expect(recs[0].kind).toBe("rest");
+  });
+
+  it("uses habit history when there is no routine set", () => {
+    const [top] = recommendCoaching(
+      input({ strength: [sRec({ lastDate: "2026-06-01" })] })
+    );
+    expect(top.kind).toBe("strength");
+    expect(top.detail).toContain("Last trained");
+  });
+
+  it("recognizes training already logged today (no routine)", () => {
+    const [top] = recommendCoaching(
+      input({
+        strength: [sRec({ lastDate: TODAY })],
+        trainingDates: [TODAY],
+      })
+    );
+    expect(top.kind).toBe("ontrack");
+    expect(top.title).toBe("Nice work today");
+  });
+
+  it("suggests a cardio activity when only cardio history exists (no routine)", () => {
+    const [top] = recommendCoaching(
+      input({ cardio: [cRec({ activity: "Cycling", lastDate: "2026-06-20" })] })
+    );
+    expect(top.kind).toBe("cardio");
+    expect(top.title).toBe("Add a Cycling session");
+  });
+
+  it("works without any recovery data — routine rules still fire", () => {
+    const [top] = recommendCoaching(
+      input({
+        routine: [tgt()],
+        strength: [sRec()],
+        sleep: null,
+        restingHr: null,
+      })
+    );
+    expect(top.kind).toBe("strength");
+  });
+
+  it("does not fire rest when recovery signals are within normal range", () => {
+    const recs = recommendCoaching(
+      input({
+        routine: [tgt()],
+        strength: [sRec()],
+        sleep: { lastNightMin: 450, baselineMin: 460 },
+        restingHr: { recent: 55, baseline: 54 },
+        trainingDates: ["2026-07-08"],
+      })
+    );
+    expect(recs[0].kind).toBe("strength");
+  });
+
+  it("honors overridden thresholds", () => {
+    // Tighten the RHR jump so a small elevation now triggers rest.
+    const recs = recommendCoaching(
+      input({
+        strength: [sRec()],
+        restingHr: { recent: 57, baseline: 55 },
+        thresholds: { restingHrJumpBpm: 2 },
+      })
+    );
+    expect(recs[0].kind).toBe("rest");
+  });
+});
