@@ -27,6 +27,13 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 const SESSION_TTL_SEC = SESSION_TTL_MS / 1000;
 
 export type Role = "admin" | "member";
+// The access LEVEL a login holds on the profile it is currently acting as
+// (issue #33). 'write' is the historical all-or-nothing behavior (read + edit);
+// 'read' is view-only, enforced server-side by requireWriteAccess(). Admins are
+// always 'write' (they bypass grants). Any stored value other than 'read' reads
+// back as 'write', so a NULL/legacy grant defaults to the permissive historical
+// behavior — never accidentally locking a member out.
+export type Access = "read" | "write";
 export interface SessionLogin {
   id: number;
   username: string;
@@ -43,6 +50,9 @@ export interface SessionProfile {
 export interface CurrentSession {
   login: SessionLogin;
   profile: SessionProfile;
+  // The caller's access level on `profile` — 'write' unless the active profile is
+  // shared with this member as a read-only grant. Admins are always 'write'.
+  access: Access;
 }
 
 function hashToken(token: string): string {
@@ -85,6 +95,28 @@ function accessibleProfiles(loginId: number, role: Role): SessionProfile[] {
     return PROFILES_ALL_STMT.all() as SessionProfile[];
   }
   return PROFILES_FOR_LOGIN_STMT.all(loginId) as SessionProfile[];
+}
+
+const GRANT_ACCESS_STMT = db.prepare(
+  "SELECT access FROM login_profiles WHERE login_id = ? AND profile_id = ?"
+);
+
+// The access level a login holds on a specific profile. Admins are implicit
+// all-write, so they always resolve to 'write' (no grant row needed). For a
+// member the value comes from the grant row; anything other than the exact
+// string 'read' — a missing row, a NULL, a legacy/unknown value — reads as
+// 'write', so a grant can only ever be RESTRICTED by an explicit 'read', never
+// silently by data drift. Callers must have already confirmed the profile is
+// accessible (getCurrentSession does).
+export function accessForProfile(
+  loginId: number,
+  role: Role,
+  profileId: number
+): Access {
+  if (role === "admin") return "write";
+  const row = GRANT_ACCESS_STMT.get(loginId, profileId) as
+    { access: string | null } | undefined;
+  return row?.access === "read" ? "read" : "write";
 }
 
 // Delete every expired session. Called opportunistically at login so the table
@@ -196,6 +228,7 @@ export const getCurrentSession = cache(
     return {
       login: { id: row.loginId, username: row.username, role: row.role },
       profile,
+      access: accessForProfile(row.loginId, row.role, profile.id),
     };
   }
 );
@@ -214,6 +247,21 @@ export function requireSession(): CurrentSession {
 export function requireAdmin(): CurrentSession {
   const session = requireSession();
   if (session.login.role !== "admin") redirect("/");
+  return session;
+}
+
+// Write guard (issue #33): the gate every MUTATING Server Action must call in
+// place of a bare requireSession(). It resolves the session, then asserts the
+// caller holds WRITE access on the profile it is acting as — admins always pass;
+// a member acting as a read-only-granted profile is bounced to the app root
+// (redirect() throws NEXT_REDIRECT, so a forged POST that reaches the action
+// aborts before any mutation runs). This is the AUTHORITATIVE boundary; hidden
+// UI affordances are only a convenience. A source-scanning test
+// (lib/__tests__/actions-write-access.test.ts) fails the build if a mutating
+// action forgets to call this.
+export function requireWriteAccess(): CurrentSession {
+  const session = requireSession();
+  if (session.access !== "write") redirect("/");
   return session;
 }
 

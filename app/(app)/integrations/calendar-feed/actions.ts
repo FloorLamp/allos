@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireSession } from "@/lib/auth";
+import { requireWriteAccess } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { AUDIT_ACTIONS } from "@/lib/audit-actions";
 import {
@@ -14,7 +14,7 @@ import { upsertConnection } from "@/lib/integrations/connections";
 import { isValidExpiryChoice } from "@/lib/token-lifecycle";
 
 // Server Actions for the calendar subscribe feed. Every action is gated by
-// requireSession() and operates ONLY on the session's active profile
+// requireWriteAccess() and operates ONLY on the session's active profile
 // (session.profile.id) — there is no profile_id input to tamper with, so a login
 // can only manage the feed of a profile it's authorized to act as. The raw feed
 // token is returned exactly once (on enable/regenerate) and never stored — only
@@ -33,7 +33,7 @@ export type FeedResult =
 export async function enableCalendarFeedAction(
   expiry?: string
 ): Promise<FeedResult> {
-  const { profile, login } = requireSession();
+  const { profile, login } = requireWriteAccess();
   const choice = isValidExpiryChoice(expiry) ? expiry : "never";
   const token = mintCalendarFeedToken(profile.id, choice);
   upsertConnection(profile.id, PROVIDER, { status: "connected" });
@@ -52,7 +52,7 @@ export async function enableCalendarFeedAction(
 
 // Disable the feed: the token hash is dropped (URL dies) and the route 404s.
 export async function disableCalendarFeedAction(): Promise<FeedResult> {
-  const { profile, login } = requireSession();
+  const { profile, login } = requireWriteAccess();
   disableCalendarFeed(profile.id);
   upsertConnection(profile.id, PROVIDER, { status: "disconnected" });
   recordAudit({
@@ -71,7 +71,7 @@ export async function disableCalendarFeedAction(): Promise<FeedResult> {
 export async function setCalendarFeedDetailAction(
   formData: FormData
 ): Promise<FeedResult> {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const detail: CalendarFeedDetail =
     String(formData.get("detail")) === "full" ? "full" : "minimal";
   setCalendarFeedDetail(profile.id, detail);

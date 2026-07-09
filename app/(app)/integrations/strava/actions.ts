@@ -1,5 +1,5 @@
 "use server";
-import { requireSession } from "@/lib/auth";
+import { requireWriteAccess } from "@/lib/auth";
 
 import crypto from "node:crypto";
 import { revalidatePath } from "next/cache";
@@ -20,7 +20,7 @@ const log = createLogger("strava");
 
 // Save the app-registration credentials (client id/secret) entered in the UI.
 export async function saveStravaCredentials(formData: FormData) {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const clientId = String(formData.get("clientId") ?? "").trim();
   const clientSecretInput = String(formData.get("clientSecret") ?? "").trim();
   // The secret field is never pre-filled (it isn't sent to the browser), so a
@@ -36,7 +36,7 @@ export async function saveStravaCredentials(formData: FormData) {
 // Begin the OAuth flow: store a single-use CSRF state, then redirect to Strava's
 // authorize page. activity:read_all covers private activities.
 export async function connectStrava() {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   if (!hasStravaCredentials(profile.id)) {
     redirect("/integrations/strava?error=missing_credentials");
   }
@@ -66,7 +66,7 @@ export async function connectStrava() {
 // is persisted by runStravaSync (recordSync) and shown via the revalidated
 // last-sync summary, so this returns void to satisfy the form-action signature.
 export async function syncStravaAction() {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   // runStravaSync returns { error } for graceful failures and can throw on an
   // unexpected network error; catch both so neither becomes an unhandled error
   // page, and surface the failure to the page via the ?error= param.
@@ -88,7 +88,7 @@ export async function syncStravaAction() {
 }
 
 export async function disconnectStravaAction() {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   disconnectStrava(profile.id);
   revalidatePath("/integrations/strava");
   // The connect-card grid (status) now lives on the Data hub's Import tab.

@@ -1,5 +1,5 @@
 "use server";
-import { requireSession } from "@/lib/auth";
+import { requireWriteAccess } from "@/lib/auth";
 
 import { revalidatePath } from "next/cache";
 import { db, today } from "@/lib/db";
@@ -216,7 +216,7 @@ function reconcilePairs(suppId: number, pairs: PairInput[], profileId: number) {
 }
 
 export async function addSupplement(formData: FormData) {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const name = String(formData.get("name") ?? "").trim();
   if (!name) return;
   const f = fields(formData);
@@ -275,7 +275,7 @@ export async function addSupplement(formData: FormData) {
 }
 
 export async function updateSupplement(formData: FormData) {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return;
   const name = String(formData.get("name") ?? "").trim();
@@ -367,7 +367,7 @@ export async function updateSupplement(formData: FormData) {
 
 // Toggle a single dose's log for today.
 export async function toggleTaken(formData: FormData) {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const doseId = Number(formData.get("dose_id"));
   if (!doseId) return;
   // Verify the dose belongs to a supplement this profile owns, and use the
@@ -402,7 +402,7 @@ export async function toggleTaken(formData: FormData) {
 }
 
 export async function toggleActive(formData: FormData) {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return;
   const row = db
@@ -432,7 +432,7 @@ export async function toggleActive(formData: FormData) {
 // Stop a medication: close its open course (reason + note) and clear `active`;
 // optionally capture a side effect at stop time.
 export async function stopMedication(formData: FormData) {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return;
   stopMedicationCourses(profile.id, id, {
@@ -448,7 +448,7 @@ export async function stopMedication(formData: FormData) {
 
 // Restart a medication: open a NEW course dated today and set `active` back on.
 export async function restartMedication(formData: FormData) {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return;
   restartMedicationCourse(profile.id, id, today(profile.id));
@@ -457,7 +457,7 @@ export async function restartMedication(formData: FormData) {
 }
 
 export async function addSideEffect(formData: FormData) {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const id = Number(formData.get("id")); // the medication (item) id
   const effect = strOrNull(formData.get("effect"));
   if (!id || !effect) return;
@@ -475,7 +475,7 @@ export async function addSideEffect(formData: FormData) {
 }
 
 export async function updateSideEffect(formData: FormData) {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const id = Number(formData.get("id"));
   const effect = strOrNull(formData.get("effect"));
   if (!id || !effect) return;
@@ -495,7 +495,7 @@ export async function updateSideEffect(formData: FormData) {
 }
 
 export async function toggleSideEffectResolved(formData: FormData) {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return;
   toggleMedicationSideEffectResolved(profile.id, id);
@@ -504,7 +504,7 @@ export async function toggleSideEffectResolved(formData: FormData) {
 }
 
 export async function deleteSideEffect(formData: FormData) {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return;
   deleteMedicationSideEffect(profile.id, id);
@@ -515,7 +515,7 @@ export async function deleteSideEffect(formData: FormData) {
 // Promote a medication side effect into a manual allergies/intolerance row (#183
 // path). The side effect is kept (marked resolved) for the medication's history.
 export async function promoteSideEffectToIntolerance(formData: FormData) {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return;
   promoteMedicationSideEffect(profile.id, id, today(profile.id));
@@ -527,7 +527,7 @@ export async function promoteSideEffectToIntolerance(formData: FormData) {
 export async function deleteSupplement(
   formData: FormData
 ): Promise<{ undoId: number | null }> {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return { undoId: null };
   // Capture the intake item + its whole cascade (doses, pairs, adherence logs,
@@ -542,7 +542,7 @@ export async function deleteSupplement(
 }
 
 export async function toggleSituation(formData: FormData) {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const situation = String(formData.get("situation") ?? "").trim();
   if (!situation) return;
   const active = new Set(getActiveSituations(profile.id));
@@ -564,7 +564,7 @@ export async function generateSuggestions(
   _prev: SuggestState | null,
   formData: FormData
 ): Promise<SuggestState> {
-  const { login, profile } = requireSession();
+  const { login, profile } = requireWriteAccess();
   const feedback = String(formData.get("feedback") ?? "").trim() || undefined;
   const { inserted, note } = await withAiLogContext(
     { loginId: login.id, profileId: profile.id },
@@ -582,7 +582,7 @@ export async function generateSuggestions(
 }
 
 export async function acceptSuggestion(formData: FormData) {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return;
   const s = db
@@ -647,7 +647,7 @@ export async function acceptSuggestion(formData: FormData) {
 }
 
 export async function dismissSuggestion(formData: FormData) {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return;
   db.prepare(

@@ -1,5 +1,5 @@
 "use server";
-import { requireSession } from "@/lib/auth";
+import { requireWriteAccess } from "@/lib/auth";
 
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
@@ -16,7 +16,7 @@ function isValidScope(kind: FrequencyScopeKind, value: string): boolean {
 }
 
 export async function createFrequencyTarget(formData: FormData) {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const id = Number(formData.get("id")) || null;
   const kind = String(formData.get("scope_kind") ?? "") as FrequencyScopeKind;
   const value = String(formData.get("scope_value") ?? "").trim();
@@ -59,7 +59,7 @@ export async function createFrequencyTarget(formData: FormData) {
 }
 
 export async function deleteFrequencyTarget(formData: FormData) {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return;
   db.prepare(

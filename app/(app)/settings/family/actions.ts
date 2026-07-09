@@ -14,7 +14,13 @@ import {
 import { db } from "@/lib/db";
 import { hashPassword } from "@/lib/password";
 import { getSetting, isValidTimezone, setProfileSetting } from "@/lib/settings";
-import { normalizeGrantSelection, diffGrants } from "@/lib/grants";
+import {
+  normalizeGrantInputs,
+  diffGrantAccess,
+  normalizeAccess,
+  formatGrantDiff,
+  type GrantInput,
+} from "@/lib/grants";
 import { canDeleteLogin, canDeleteProfile } from "@/lib/family-deletion";
 import { OWNED_TABLES } from "@/lib/owned-tables";
 import { PHOTO_ROOT } from "@/lib/profile-photo";
@@ -379,9 +385,11 @@ export async function revokeLoginSessions(
 
 // ---- Access grants (login × profile) ----
 
-// Replace a member login's granted profiles with the submitted set. Admins are
-// implicit-all and never have login_profiles rows managed here — editing an
-// admin's grants is rejected. profileIds arrives as repeated form fields.
+// Replace a member login's granted profiles (and their access LEVELS) with the
+// submitted set. Admins are implicit-all and never have login_profiles rows
+// managed here — editing an admin's grants is rejected. Each granted profile
+// arrives as a repeated `profileId` field plus an `access_<id>` field carrying
+// 'read' | 'write' (issue #33); a missing/garbled access defaults to 'write'.
 export async function setGrants(formData: FormData): Promise<FamilyResult> {
   const admin = requireAdmin();
   const loginId = Number(formData.get("loginId"));
@@ -400,43 +408,55 @@ export async function setGrants(formData: FormData): Promise<FamilyResult> {
   const validIds = (
     db.prepare("SELECT id FROM profiles").all() as { id: number }[]
   ).map((r) => r.id);
-  const submitted = formData
+  const submitted: GrantInput[] = formData
     .getAll("profileId")
     .map((v) => Number(v))
-    .filter((n) => Number.isFinite(n));
-  const desired = normalizeGrantSelection(submitted, validIds);
+    .filter((n) => Number.isFinite(n))
+    .map((profileId) => ({
+      profileId,
+      access: normalizeAccess(formData.get(`access_${profileId}`)),
+    }));
+  const desired = normalizeGrantInputs(submitted, validIds);
 
-  const current = (
+  const current: GrantInput[] = (
     db
-      .prepare("SELECT profile_id FROM login_profiles WHERE login_id = ?")
-      .all(loginId) as { profile_id: number }[]
-  ).map((r) => r.profile_id);
+      .prepare(
+        "SELECT profile_id AS profileId, access FROM login_profiles WHERE login_id = ?"
+      )
+      .all(loginId) as { profileId: number; access: string | null }[]
+  ).map((r) => ({ profileId: r.profileId, access: normalizeAccess(r.access) }));
 
-  const { add, remove } = diffGrants(current, desired);
-  if (add.length === 0 && remove.length === 0)
+  const diff = diffGrantAccess(current, desired);
+  if (
+    diff.add.length === 0 &&
+    diff.update.length === 0 &&
+    diff.remove.length === 0
+  )
     return { ok: true, message: "No changes." };
 
   const apply = db.transaction(() => {
     const ins = db.prepare(
-      "INSERT OR IGNORE INTO login_profiles (login_id, profile_id) VALUES (?, ?)"
+      "INSERT OR IGNORE INTO login_profiles (login_id, profile_id, access) VALUES (?, ?, ?)"
+    );
+    const upd = db.prepare(
+      "UPDATE login_profiles SET access = ? WHERE login_id = ? AND profile_id = ?"
     );
     const del = db.prepare(
       "DELETE FROM login_profiles WHERE login_id = ? AND profile_id = ?"
     );
-    for (const pid of add) ins.run(loginId, pid);
-    for (const pid of remove) del.run(loginId, pid);
+    for (const g of diff.add) ins.run(loginId, g.profileId, g.access);
+    for (const g of diff.update) upd.run(g.access, loginId, g.profileId);
+    for (const pid of diff.remove) del.run(loginId, pid);
   });
   apply();
-  // Detail is a compact grant diff by profile id (identifiers only).
-  const diff = [...add.map((p) => `+${p}`), ...remove.map((p) => `-${p}`)].join(
-    ","
-  );
+  // Detail is a compact grant diff by profile id + access level (identifiers
+  // only — never PHI). e.g. "+2:read,~3:write,-4".
   recordAudit({
     loginId: admin.login.id,
     profileId: admin.profile.id,
     action: AUDIT_ACTIONS.grantUpdate,
     target: String(loginId),
-    detail: diff,
+    detail: formatGrantDiff(diff),
   });
 
   revalidatePath("/settings/family");

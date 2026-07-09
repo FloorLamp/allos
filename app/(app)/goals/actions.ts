@@ -1,5 +1,5 @@
 "use server";
-import { requireSession } from "@/lib/auth";
+import { requireWriteAccess } from "@/lib/auth";
 
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
@@ -169,7 +169,7 @@ function goalValues(c: GoalCols) {
 }
 
 export async function createGoal(formData: FormData) {
-  const { login, profile } = requireSession();
+  const { login, profile } = requireWriteAccess();
   const c = goalColsFromForm(formData, login.id);
   if (!c) return;
   // Body goals capture the metric's current value as the baseline, so progress
@@ -186,7 +186,7 @@ export async function createGoal(formData: FormData) {
 }
 
 export async function updateGoal(formData: FormData) {
-  const { login, profile } = requireSession();
+  const { login, profile } = requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return;
   const c = goalColsFromForm(formData, login.id);
@@ -205,7 +205,7 @@ export async function updateGoal(formData: FormData) {
 }
 
 export async function updateProgress(formData: FormData) {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const id = Number(formData.get("id"));
   const current = formData.get("current_value");
   if (!id || current == null) return;
@@ -221,7 +221,7 @@ export async function updateProgress(formData: FormData) {
 }
 
 export async function setStatus(formData: FormData) {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const id = Number(formData.get("id"));
   const status = String(formData.get("status")) as GoalStatus;
   if (!id || (status !== "active" && status !== "achieved")) return;
@@ -236,7 +236,7 @@ export async function setStatus(formData: FormData) {
 
 // Archiving is independent of status, so an achieved goal stays achieved.
 export async function setArchived(formData: FormData) {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return;
   const archived = String(formData.get("archived")) === "1" ? 1 : 0;
@@ -248,7 +248,7 @@ export async function setArchived(formData: FormData) {
 }
 
 export async function deleteGoal(formData: FormData) {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return;
   db.prepare("DELETE FROM goals WHERE id = ? AND profile_id = ?").run(

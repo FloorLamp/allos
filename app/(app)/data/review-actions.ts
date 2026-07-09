@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireSession } from "@/lib/auth";
+import { requireWriteAccess } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { recordPairDecision } from "@/lib/queries";
 import {
@@ -38,7 +38,7 @@ function revalidateBodyMetricSurfaces() {
 // user-edit-wins lock — same convention saveActivity uses). Both ids are verified
 // to belong to the acting profile before anything is touched.
 export async function mergeActivityPair(formData: FormData) {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const keepId = Number(formData.get("keep_id"));
   const dropId = Number(formData.get("drop_id"));
   const signature = String(formData.get("signature") ?? "").trim();
@@ -105,7 +105,7 @@ export async function mergeActivityPair(formData: FormData) {
 // row only fills gaps (mergeBodyMetric with the keeper as `incoming`), then delete
 // the discarded row. Profile-scoped + transactional.
 export async function mergeBodyMetricPair(formData: FormData) {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const keepId = Number(formData.get("keep_id"));
   const dropId = Number(formData.get("drop_id"));
   const signature = String(formData.get("signature") ?? "").trim();
@@ -166,7 +166,7 @@ export async function mergeBodyMetricPair(formData: FormData) {
 // two rows are genuinely distinct; `dismissed` hides a false positive. Generic over
 // domain since neither has a side effect beyond the recorded decision.
 export async function resolvePair(formData: FormData) {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const domain = String(formData.get("domain") ?? "");
   const decision = String(formData.get("decision") ?? "");
   const signature = String(formData.get("signature") ?? "").trim();

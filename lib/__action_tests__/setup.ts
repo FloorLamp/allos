@@ -62,8 +62,31 @@ vi.mock("@/lib/auth", async () => {
   };
   return {
     requireSession: () => getActingSession(),
+    // Faithful to the prod guard (issue #33): a read-only acting session is
+    // rejected (prod redirects; here we throw, which surfaces as a loud failure
+    // exactly like the "no session" case). Every existing actAs() defaults to
+    // 'write', so this is transparent unless a test opts into a read grant.
+    requireWriteAccess: () => {
+      const s = getActingSession();
+      if (s.access === "read") {
+        throw new Error("requireWriteAccess: acting session is read-only");
+      }
+      return s;
+    },
     requireAdmin: () => getActingSession(),
     getCurrentSession: () => getActingSession(),
     getAccessibleProfiles,
+    // Faithful to prod accessForProfile: admins are implicit all-write; a member
+    // resolves the REAL grant row from the temp DB, with anything other than an
+    // explicit 'read' reading as 'write' (the permissive legacy default).
+    accessForProfile: (loginId: number, role: string, profileId: number) => {
+      if (role === "admin") return "write";
+      const row = db
+        .prepare(
+          "SELECT access FROM login_profiles WHERE login_id = ? AND profile_id = ?"
+        )
+        .get(loginId, profileId) as { access: string | null } | undefined;
+      return row?.access === "read" ? "read" : "write";
+    },
   };
 });
