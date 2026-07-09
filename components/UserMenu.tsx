@@ -5,6 +5,7 @@ import Link from "next/link";
 import { IconChevronDown, IconLogout, IconInbox } from "@tabler/icons-react";
 import type { SessionProfile } from "@/lib/auth";
 import Avatar from "@/components/Avatar";
+import { clearEmergencyPayload } from "@/components/emergency-offline";
 import { logoutAction, switchProfileAction } from "@/app/(app)/user-actions";
 
 // Active-profile display + profile switcher + logout, rendered in the layout
@@ -93,7 +94,14 @@ export default function UserMenu({
                 <button
                   type="submit"
                   aria-current={isActive ? "true" : undefined}
-                  onClick={() => setOpen(false)}
+                  onClick={() => {
+                    // Switching profiles must not leak the previous profile's
+                    // offline emergency card; drop it before the switch action
+                    // navigates (#42). The new profile re-caches on its next
+                    // /emergency visit.
+                    clearEmergencyPayload();
+                    setOpen(false);
+                  }}
                   className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm font-medium transition ${
                     isActive
                       ? "bg-gradient-to-r from-brand-500 to-brand-600 text-white shadow-sm"
@@ -125,6 +133,7 @@ export default function UserMenu({
         <form action={logoutAction}>
           <button
             type="submit"
+            onClick={() => clearEmergencyPayload()}
             className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm font-medium text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-ink-750 dark:hover:text-slate-200"
           >
             <IconLogout className="h-4 w-4 shrink-0" stroke={1.75} />
