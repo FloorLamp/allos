@@ -43,13 +43,17 @@ test.describe("Data → Review import inbox", () => {
     await expect(review.getByText(/"Steps"/)).toBeVisible();
   });
 
-  test("shows the failing-integration count on the profile badge", async ({
-    page,
-  }) => {
+  test("shows a review count on the profile badge", async ({ page }) => {
     await page.goto("/");
     const badge = page.getByTestId("review-badge").first();
     await expect(badge).toBeVisible();
-    await expect(badge).toHaveText("1");
+    // The badge sums currently-failing integrations (Strava, always present) and
+    // any unresolved detected duplicate pairs (issue #10). The exact count depends
+    // on whether the dedup spec has merged its fixture yet (shared seeded DB), so
+    // assert only that the always-present failing integration keeps it >= 1; the
+    // exact 2 -> 1 transition is asserted in import-dedup.spec, which owns that
+    // fixture's lifecycle.
+    expect(Number(await badge.textContent())).toBeGreaterThanOrEqual(1);
   });
 
   test("the tab is reachable from the profile menu link", async ({ page }) => {

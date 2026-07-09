@@ -76,6 +76,7 @@ export const OWNED_TABLES = [
   "integration_sync_events",
   "profile_share_links",
   "upcoming_dismissals",
+  "import_pair_decisions",
   "ai_usage_counters",
   "deleted_rows",
 ] as const;
