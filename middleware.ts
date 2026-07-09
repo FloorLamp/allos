@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { SESSION_COOKIE, SESSION_COOKIE_SECURE } from "./lib/session-cookie";
 
 // Coarse, non-authoritative auth gate. The Edge runtime can't open SQLite, so
 // this only checks for the *presence* of a session cookie: it bounces obviously
@@ -9,9 +10,10 @@ import { NextResponse, type NextRequest } from "next/server";
 // auth-bypass in CVE-2025-29927 (the app is separately patched to Next ≥14.2.25),
 // since bypassing middleware only skips a redirect, never the authoritative check.
 //
-// NOTE: cookie name/attributes are duplicated from lib/auth.ts on purpose — that
-// module pulls in better-sqlite3 and can't load on Edge. Keep them in sync.
-const SESSION_COOKIE = "ht_session";
+// NOTE: the cookie NAME + Secure flag come from lib/session-cookie.ts, a
+// dependency-free module that both this Edge middleware and the Node auth layer
+// (lib/auth.ts) import, so the `__Host-` prefix decision can never drift between
+// the two. Only the TTL is duplicated here (a trivial constant).
 const SESSION_TTL_SEC = 30 * 24 * 60 * 60;
 
 // Reachable without a session. Everything else requires the cookie.
@@ -71,7 +73,7 @@ function withSlidingCookie(res: NextResponse, token: string): NextResponse {
   res.cookies.set(SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: SESSION_COOKIE_SECURE,
     path: "/",
     maxAge: SESSION_TTL_SEC,
   });

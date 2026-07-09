@@ -25,6 +25,7 @@ import {
   IconSettings,
   IconId,
   IconReportMedical,
+  IconEmergencyBed,
   IconChevronRight,
   type TablerIcon,
 } from "@tabler/icons-react";
@@ -81,6 +82,7 @@ const RECORDS: Group = {
     { href: "/encounters", label: "Visits", icon: IconCalendarEvent },
     { href: "/appointments", label: "Appointments", icon: IconCalendarPlus },
     { href: "/profile", label: "Passport", icon: IconId },
+    { href: "/emergency", label: "Emergency Card", icon: IconEmergencyBed },
   ],
 };
 

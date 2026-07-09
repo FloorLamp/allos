@@ -3,6 +3,12 @@ import crypto from "node:crypto";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { db } from "./db";
+import { SESSION_COOKIE, SESSION_COOKIE_SECURE } from "./session-cookie";
+
+// Re-exported so existing importers (the login action, etc.) keep resolving the
+// cookie name from lib/auth. The single source of truth is lib/session-cookie.ts,
+// which is dependency-free so the Edge middleware can import it too (issue #21).
+export { SESSION_COOKIE };
 
 // Session/auth layer for the single-tenant → multi-user conversion (issue #67,
 // Phase 1). The cookie holds a random 256-bit token; the DB stores only its
@@ -15,7 +21,6 @@ import { db } from "./db";
 // the only cookie-authenticated handlers are GET-only downloads/streams, which a
 // cross-site form can't meaningfully forge. The cookie is httpOnly + SameSite=Lax.
 
-export const SESSION_COOKIE = "ht_session";
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 const SESSION_TTL_SEC = SESSION_TTL_MS / 1000;
 
@@ -44,12 +49,15 @@ function hashToken(token: string): string {
 
 // Cookie attributes shared by the login action and the middleware refresh, so
 // the sliding re-set can't drift from the original. `secure` only in prod so the
-// cookie still works over plain HTTP in local dev.
+// cookie still works over plain HTTP in local dev — and it's the SAME flag that
+// picks the `__Host-` cookie name (SESSION_COOKIE_SECURE in lib/session-cookie),
+// so the name never disagrees with the Secure attribute the prefix requires. The
+// `__Host-` prefix additionally mandates Path=/ and no Domain, both satisfied here.
 export function sessionCookieOptions(maxAgeSec: number = SESSION_TTL_SEC) {
   return {
     httpOnly: true,
     sameSite: "lax" as const,
-    secure: process.env.NODE_ENV === "production",
+    secure: SESSION_COOKIE_SECURE,
     path: "/",
     maxAge: maxAgeSec,
   };
