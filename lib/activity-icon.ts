@@ -119,8 +119,10 @@ function srcMatches(src: string, m: Matcher): boolean {
  * Resolve the icon key for an activity. Strength is always the barbell. For
  * cardio/sport, the structured component/sport names (e.g. Strava's canonical
  * "Cycling") are matched BEFORE the free-text title, then the title, then a
- * per-type fallback. Rule order is the priority; a rule wins as soon as any
- * source matches it.
+ * per-type fallback. Source order is the priority — the first source with ANY
+ * rule match decides, so a structured "Running" outranks every title keyword (a
+ * run titled "Skate park loop" must not icon as skating). Rule order breaks
+ * ties within one source ("table tennis" before "tennis").
  */
 export function pickActivityIconKey(
   type: string,
@@ -131,8 +133,8 @@ export function pickActivityIconKey(
   const sources = [...(sportNames ?? []), title ?? ""]
     .filter((s) => s)
     .map((s) => s.toLowerCase());
-  for (const [keys, icon] of KEYWORD_ICONS) {
-    for (const src of sources) {
+  for (const src of sources) {
+    for (const [keys, icon] of KEYWORD_ICONS) {
       if (keys.some((k) => srcMatches(src, k))) return icon;
     }
   }

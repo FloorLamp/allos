@@ -43,6 +43,11 @@ describe("pickActivityIconKey", () => {
     expect(pickActivityIconKey("cardio", "Run Club Ride", ["Cycling"])).toBe(
       "bike"
     );
+    // Source priority beats rule priority: the skate rule is ordered BEFORE the
+    // run rule, but the structured sport must still decide over the title.
+    expect(pickActivityIconKey("cardio", "Skate park loop", ["Running"])).toBe(
+      "run"
+    );
   });
 
   it('"ride" (word boundary) rescues a component-less ride title', () => {
