@@ -10,7 +10,12 @@ import SportSection from "../training/SportSection";
 // aren't windowed by the shared range — the note makes that explicit. The whole
 // section is hidden by the hub for age-restricted profiles (isTrainingRestricted),
 // the same gate the Journal/Training nav uses, so it's never rendered for them.
-export default function FitnessSection() {
+// Like the hub's own tab strip, only the ACTIVE inner tab's section is
+// constructed (#105): the training sections run full-history aggregations, so
+// building the hidden ones would execute their queries on every request. ftab is
+// the ?ftab= param threaded down from the page, matching the inner Tabs paramKey.
+export default function FitnessSection({ ftab }: { ftab?: string }) {
+  const active = ftab === "cardio" || ftab === "sport" ? ftab : "strength";
   return (
     <div className="space-y-4">
       <p className="text-sm text-slate-500 dark:text-slate-400">
@@ -25,17 +30,21 @@ export default function FitnessSection() {
       <Tabs
         paramKey="ftab"
         tabs={[
-          { id: "strength", label: "Strength", content: <StrengthSection /> },
+          {
+            id: "strength",
+            label: "Strength",
+            content: active === "strength" ? <StrengthSection /> : null,
+          },
           {
             id: "cardio",
             label: "Cardio",
-            content: <CardioSection />,
+            content: active === "cardio" ? <CardioSection /> : null,
             keepMounted: false,
           },
           {
             id: "sport",
             label: "Sport",
-            content: <SportSection />,
+            content: active === "sport" ? <SportSection /> : null,
             keepMounted: false,
           },
         ]}

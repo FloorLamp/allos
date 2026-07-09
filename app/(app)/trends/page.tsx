@@ -61,6 +61,7 @@ export default function TrendsPage({
 }: {
   searchParams: {
     tab?: string | string[];
+    ftab?: string | string[];
     from?: string | string[];
     to?: string | string[];
     bflag?: string | string[];
@@ -145,50 +146,67 @@ export default function TrendsPage({
       bpanel: opts.panel,
     });
 
-  // Non-default panels use keepMounted:false so only the active section's DOM is
-  // mounted client-side (each reuses independent, self-contained section
-  // components/queries — no cross-panel dependency). Overview is the default tab.
+  // Only the ACTIVE tab's section element is constructed. Server Components
+  // passed as props to the client Tabs shell render on the server whether or not
+  // the client shows them, so building all six here would run every section's
+  // queries (and ship their payload) on every request — keepMounted:false alone
+  // only skips the client DOM, not the server work (#105). Hidden tabs get null
+  // content; a tab click is a router.replace navigation, so the newly selected
+  // tab's content arrives with that round trip.
+  const section = (id: TrendsTab): React.ReactNode => {
+    if (id !== activeTab) return null;
+    switch (id) {
+      case "overview":
+        return <OverviewSection range={range} />;
+      case "compare":
+        return (
+          <CompareSection
+            range={range}
+            a={cmpA}
+            b={cmpB}
+            normalized={cmpNormalized}
+          />
+        );
+      case "biomarkers":
+        return (
+          <BiomarkersSection
+            range={range}
+            flag={bflag}
+            panel={bpanel}
+            hrefFor={biomarkerHrefFor}
+          />
+        );
+      case "body":
+        return <BodySection range={range} />;
+      case "fitness":
+        return <FitnessSection ftab={firstParam(searchParams.ftab)} />;
+      case "insights":
+        return <InsightsSection range={range} />;
+    }
+  };
   const tabs: {
     id: TrendsTab;
     label: string;
     content: React.ReactNode;
     keepMounted?: boolean;
   }[] = [
-    {
-      id: "overview",
-      label: "Overview",
-      content: <OverviewSection range={range} />,
-    },
+    { id: "overview", label: "Overview", content: section("overview") },
     {
       id: "compare",
       label: "Compare",
-      content: (
-        <CompareSection
-          range={range}
-          a={cmpA}
-          b={cmpB}
-          normalized={cmpNormalized}
-        />
-      ),
+      content: section("compare"),
       keepMounted: false,
     },
     {
       id: "biomarkers",
       label: "Biomarkers",
-      content: (
-        <BiomarkersSection
-          range={range}
-          flag={bflag}
-          panel={bpanel}
-          hrefFor={biomarkerHrefFor}
-        />
-      ),
+      content: section("biomarkers"),
       keepMounted: false,
     },
     {
       id: "body",
       label: "Body",
-      content: <BodySection range={range} />,
+      content: section("body"),
       keepMounted: false,
     },
     // Fitness + Insights are age-gated surfaces — omitted entirely for
@@ -200,13 +218,13 @@ export default function TrendsPage({
           {
             id: "fitness" as const,
             label: "Fitness",
-            content: <FitnessSection />,
+            content: section("fitness"),
             keepMounted: false,
           },
           {
             id: "insights" as const,
             label: "Insights",
-            content: <InsightsSection range={range} />,
+            content: section("insights"),
             keepMounted: false,
           },
         ]),

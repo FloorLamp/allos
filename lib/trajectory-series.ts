@@ -14,6 +14,7 @@
 import {
   getUsedCanonicalNames,
   getBiomarkerSeries,
+  getAllBiomarkerSeries,
   getCanonicalBiomarker,
 } from "./queries";
 import {
@@ -21,6 +22,8 @@ import {
   getUserAgeOn,
   getUserReproductiveStatus,
 } from "./settings";
+import { canonicalGroupKey, groupByCanonicalName } from "./biomarker-group";
+import type { MedicalRecord, ReproductiveStatus, Sex } from "./types";
 import {
   referenceRange,
   optimalBand,
@@ -47,13 +50,32 @@ export function buildTrajectoryInput(
   canonical: string,
   today: string
 ): TrajectoryInput | null {
-  const series = getBiomarkerSeries(profileId, canonical);
+  return buildInputFromSeries(
+    profileId,
+    canonical,
+    getBiomarkerSeries(profileId, canonical),
+    today,
+    getUserSex(profileId),
+    getUserReproductiveStatus(profileId)
+  );
+}
+
+// The per-analyte assembly, with the series and the profile-constant demographics
+// passed in so the all-analytes caller (buildTrajectoryFindings) fetches each of
+// them once instead of once per analyte (#105). Age stays per-analyte: it's the
+// age AT the analyte's latest reading.
+function buildInputFromSeries(
+  profileId: number,
+  canonical: string,
+  series: MedicalRecord[],
+  today: string,
+  sex: Sex | null,
+  status: ReproductiveStatus | null
+): TrajectoryInput | null {
   if (series.length === 0) return null;
   const cb = getCanonicalBiomarker(canonical);
-  const sex = getUserSex(profileId);
   const latestDate = series[series.length - 1]?.date ?? null;
   const age = getUserAgeOn(profileId, latestDate);
-  const status = getUserReproductiveStatus(profileId);
 
   // Exact value_num, or an inexact-but-bounded reading plotted at its limit.
   const plottable = series.flatMap((r) => {
@@ -117,13 +139,28 @@ export function buildTrajectoryInput(
 // run the pure engine. Not suppression-filtered — the caller applies the shared
 // findings-bus filter (getFindingSuppressions + activeByKey) so an expired
 // dismissal reveals a finding exactly as on the other surfaces.
+//
+// All analytes' series come from ONE deduped query (getAllBiomarkerSeries),
+// grouped in JS — a per-analyte getBiomarkerSeries here re-runs the dedup window
+// over the profile's whole lab history once per analyte, O(analytes × records)
+// per request (#105). Sex/reproductive status are profile constants, read once.
 export function buildTrajectoryFindings(
   profileId: number,
   today: string
 ): TrajectoryFinding[] {
+  const grouped = groupByCanonicalName(getAllBiomarkerSeries(profileId));
+  const sex = getUserSex(profileId);
+  const status = getUserReproductiveStatus(profileId);
   const inputs: TrajectoryInput[] = [];
   for (const name of getUsedCanonicalNames(profileId)) {
-    const input = buildTrajectoryInput(profileId, name, today);
+    const input = buildInputFromSeries(
+      profileId,
+      name,
+      grouped.get(canonicalGroupKey(name)) ?? [],
+      today,
+      sex,
+      status
+    );
     if (input) inputs.push(input);
   }
   return trajectoryFindings(inputs);
