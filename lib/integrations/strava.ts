@@ -86,6 +86,50 @@ function classify(sportType: unknown, fallbackType: unknown): ActivityType {
   return "sport";
 }
 
+// ---- canonical sport name (for structured grouping) ----
+//
+// Strava rows keep the athlete's freeform `name` as the activity title (e.g. "new
+// bike day") — desired. But cardio/sport summaries group by structured `components`
+// (see effortEntries/getCardioByActivity), falling back to `title` only when a row
+// has none; without a component every uniquely-titled ride would fragment into its
+// own group. So we attach ONE component named by the canonical sport, which groups
+// all rides under "Cycling" while the title stays the athlete's name.
+
+// Split a PascalCase/camelCase Strava sport_type into Title Case words, e.g.
+// "AlpineSki" → "Alpine Ski", "EBikeRide" → "E Bike Ride". Used as the fallback for
+// any sport_type not in STRAVA_SPORT_NAMES below.
+export function splitCamelCase(s: string): string {
+  return s
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+    .trim();
+}
+
+// sport_type → canonical activity name (prefers lib/activities-catalog.ts names).
+const STRAVA_SPORT_NAMES: Record<string, string> = {
+  Ride: "Cycling",
+  GravelRide: "Cycling",
+  EBikeRide: "Cycling",
+  VirtualRide: "Cycling",
+  MountainBikeRide: "Mountain Biking",
+  Run: "Running",
+  VirtualRun: "Running",
+  TrailRun: "Trail Run",
+  Walk: "Walking",
+  Hike: "Hiking",
+  Swim: "Swimming",
+  Rowing: "Rowing",
+  WeightTraining: "Weight Training",
+  Workout: "Workout",
+};
+
+// Map a Strava sport_type to a canonical sport name used for the activity's grouping
+// component. Unknown types fall back to the camelCase-split of the raw type.
+export function stravaSportName(sportType: unknown): string {
+  const raw = str(sportType) ?? "Activity";
+  return STRAVA_SPORT_NAMES[raw] ?? splitCamelCase(raw);
+}
+
 // Cycling sport types (outdoor + virtual). A trainer ride is sport_type 'Ride'
 // with trainer:true, so it's covered here too. Power/cadence/kilojoules apply to
 // all of these.
@@ -156,14 +200,29 @@ export function mapStravaActivity(
     return m == null ? null : Math.round(m * 3.6 * 10) / 10; // m/s → km/h
   };
 
+  const durationMin = movingSec != null ? Math.round(movingSec / 60) : null;
+  const distanceKm =
+    meters != null ? Math.round((meters / 1000) * 100) / 100 : null;
+
   const activity: NormActivity = {
     external_id: `${STRAVA_ID}:${id}`,
     date: p.date,
     type,
+    // Keep the athlete's freeform Strava name as the title (issue #15). Grouping is
+    // handled by the structured component below, not the title.
     title: str(rec.name) ?? "Activity",
-    duration_min: movingSec != null ? Math.round(movingSec / 60) : null,
-    distance_km:
-      meters != null ? Math.round((meters / 1000) * 100) / 100 : null,
+    duration_min: durationMin,
+    distance_km: distanceKm,
+    // One canonical-sport component so cardio/sport summaries group this ride under
+    // e.g. "Cycling" instead of fragmenting by its unique freeform title.
+    components: [
+      {
+        name: stravaSportName(sportType),
+        type,
+        distance_km: distanceKm,
+        duration_min: durationMin,
+      },
+    ],
     start_time: p.hhmm,
     end_time: endHhmm,
     avg_hr: hasHr ? roundOrNull(num(rec.average_heartrate)) : null,

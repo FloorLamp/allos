@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import type { ActivityType } from "@/lib/types";
+import type { ActivityType, ActivityComponent } from "@/lib/types";
 import {
   hasBodyMetric,
   mergeBodyMetric,
@@ -62,6 +62,12 @@ export interface NormActivity {
   avg_temp_c?: number | null;
   kilojoules?: number | null;
   workout_type?: string | null;
+  // Structured components (e.g. a single canonical-sport entry for a Strava ride)
+  // persisted to the activities.components JSON column. Cardio/sport summaries group
+  // by component name (see effortEntries/getCardioByActivity), so a Strava row with a
+  // "Cycling" component groups under Cycling even though its title is the athlete's
+  // freeform name. Omitted/null for providers (Health Connect) that don't set it.
+  components?: ActivityComponent[] | null;
 }
 
 // The extra metric columns NormActivity carries beyond the base fields, in a
@@ -412,26 +418,37 @@ export function upsertActivities(
   const metricCols = ACTIVITY_METRIC_COLS.join(", ");
   const metricSet = ACTIVITY_METRIC_COLS.map((c) => `${c} = ?`).join(", ");
   const metricPlaceholders = ACTIVITY_METRIC_COLS.map(() => "?").join(", ");
-  const compareCols = [...ACTIVITY_BASE_COLS, ...ACTIVITY_METRIC_COLS];
+  // `components` is a JSON string column, compared alongside the base/metric cols so
+  // a components change → updated and an identical re-sync (same serialized JSON) →
+  // unchanged. Providers that omit components store/compare null on both sides.
+  const compareCols = [
+    ...ACTIVITY_BASE_COLS,
+    ...ACTIVITY_METRIC_COLS,
+    "components",
+  ];
   const find = db.prepare(
     `SELECT id, edited, date, type, title, duration_min, distance_km,
-            start_time, end_time, source, ${metricCols}
+            start_time, end_time, source, components, ${metricCols}
        FROM activities WHERE profile_id = ? AND external_id = ?`
   );
   const insert = db.prepare(
     `INSERT INTO activities
-       (profile_id, date, type, title, duration_min, distance_km, start_time, end_time, ${metricCols}, source, external_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ${metricPlaceholders}, ?, ?)`
+       (profile_id, date, type, title, duration_min, distance_km, start_time, end_time, ${metricCols}, components, source, external_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ${metricPlaceholders}, ?, ?, ?)`
   );
   const update = db.prepare(
     `UPDATE activities
        SET date = ?, type = ?, title = ?, duration_min = ?, distance_km = ?,
-           start_time = ?, end_time = ?, ${metricSet}, source = ?
+           start_time = ?, end_time = ?, ${metricSet}, components = ?, source = ?
      WHERE id = ?`
   );
   const counts = emptyCounts();
   for (const r of rows) {
     const metrics = activityMetricValues(r);
+    // Serialize components to the JSON string actually stored, so the pre-image
+    // compare below matches the column value byte-for-byte on an identical re-sync.
+    const componentsJson =
+      r.components && r.components.length ? JSON.stringify(r.components) : null;
     const found = find.get(profileId, r.external_id) as
       | (Record<string, unknown> & { id: number; edited: number | null })
       | undefined;
@@ -454,6 +471,7 @@ export function upsertActivities(
         start_time: r.start_time,
         end_time: r.end_time,
         source,
+        components: componentsJson,
       };
       ACTIVITY_METRIC_COLS.forEach((c, i) => {
         post[c] = metrics[i];
@@ -470,6 +488,7 @@ export function upsertActivities(
           r.start_time,
           r.end_time,
           ...metrics,
+          componentsJson,
           source,
           found.id
         );
@@ -486,6 +505,7 @@ export function upsertActivities(
         r.start_time,
         r.end_time,
         ...metrics,
+        componentsJson,
         source,
         r.external_id
       );
