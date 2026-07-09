@@ -7,12 +7,12 @@ import { readZip } from "../lib/zip";
 // the FHIR passport, and the per-dataset JSON/CSV files. The companion "Clinical
 // passport (FHIR)" link downloads a parseable FHIR Bundle. Both routes are session-
 // gated and scoped to the active (seeded) profile.
-// Open the Data page's "Manage & Export" tab. The tab content is only mounted when
-// active (keepMounted:false), so click the tab rather than relying on the initial
-// ?section= paint to have hydrated.
+// Open the Data page's "Manage & Export" section. It's a NavTabs section rendered
+// server-side from ?section=, so the direct navigation already paints it; clicking
+// the tab (role=tab) confirms it's the selected section.
 async function openManageTab(page: import("@playwright/test").Page) {
   await page.goto("/data?section=manage");
-  await page.getByRole("button", { name: "Manage & Export" }).click();
+  await page.getByRole("tab", { name: "Manage & Export" }).click();
 }
 
 test.describe("Full-account export", () => {
@@ -77,5 +77,39 @@ test.describe("Full-account export", () => {
     expect(bundle.resourceType).toBe("Bundle");
     expect(bundle.type).toBe("collection");
     expect(Array.isArray(bundle.entry)).toBe(true);
+  });
+});
+
+// Issue #113: the Manage tables now read one page at a time (SQL LIMIT/OFFSET) and
+// page via a per-dataset URL param, instead of shipping every row and slicing in
+// the browser. The seeded medical_records dataset has well over one page, so it
+// proves the pager renders and navigating advances the server-read page.
+test.describe("Data manage pagination (#113)", () => {
+  test("dataset table paginates via the URL and renders each page", async ({
+    page,
+  }) => {
+    await openManageTab(page);
+
+    // Scope to the biomarkers/records dataset card (seeded with ~200 rows).
+    const card = page.getByTestId("dataset-medical_records");
+    await expect(card).toBeVisible();
+
+    // First page: 25 rows shown, pager present starting on page 1.
+    await expect(card.getByText(/^Showing 1–25 of \d+$/)).toBeVisible();
+    await expect(card.getByText(/^Page 1 of \d+$/)).toBeVisible();
+    // Only the current page is materialized in the DOM (header count + 25 body rows).
+    await expect(card.locator("tbody tr")).toHaveCount(25);
+
+    // Next advances to page 2 and updates this dataset's URL param; the server
+    // re-reads the next page (rows 26–50).
+    await card.getByRole("button", { name: "Next" }).click();
+    await expect(page).toHaveURL(/p_medical_records=2/);
+    await expect(card.getByText(/^Showing 26–50 of \d+$/)).toBeVisible();
+    await expect(card.getByText(/^Page 2 of \d+$/)).toBeVisible();
+    await expect(card.locator("tbody tr")).toHaveCount(25);
+
+    // Prev returns to page 1.
+    await card.getByRole("button", { name: "Prev" }).click();
+    await expect(card.getByText(/^Showing 1–25 of \d+$/)).toBeVisible();
   });
 });
