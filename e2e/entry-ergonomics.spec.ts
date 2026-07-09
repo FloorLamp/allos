@@ -30,10 +30,14 @@ test("command palette 'weight 84.3' logs a body metric (#29)", async ({
   await input.press("Enter");
   await expect(page.getByText("Logged weight 84.3 kg.")).toBeVisible();
 
-  // …and it's visible on the Body tab's history (kg, so the value shows as-is);
-  // widen the window so today's entry is in range regardless of the default.
-  await page.goto("/trends?tab=body&from=2000-01-01&to=2100-01-01");
-  await expect(page.getByText("84.3").first()).toBeVisible();
+  // …and it lands in the Body tab's History table (kg, so the value shows
+  // as-is). Assert against the weight cell's stable testid — rows are date-desc,
+  // so today's just-logged entry is the first one — rather than free text, which
+  // also matches the (visually hidden) chart axis/point labels.
+  await page.goto("/trends?tab=body");
+  await expect(page.getByTestId("body-weight-cell").first()).toContainText(
+    "84.3"
+  );
 });
 
 test("'Log again' pre-fills a create form that saves a new activity (#29)", async ({
@@ -63,6 +67,20 @@ test("'Log again' pre-fills a create form that saves a new activity (#29)", asyn
   // The prefilled, complete session auto-saves as a NEW row (dated today), so a
   // second card with the same title appears on the feed.
   await expect(titleCards).toHaveCount(before + 1);
+
+  // Clean up the row this test just created: the editor is still open on it, so
+  // delete it from there. The e2e DB is shared across specs (the harness seeds
+  // once), and a lingering today-dated activity would (a) collide with the
+  // journal-merge fixture's "Journal merge keeper" title and (b) add a new "Today"
+  // day-group that shifts the journal's visible-day window, throwing off the
+  // absolute card counts in journal-merge / undo-delete. Restoring the seed state
+  // here keeps those specs order-independent.
+  await page.getByRole("button", { name: "Delete", exact: true }).click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Delete", exact: true })
+    .click();
+  await expect(titleCards).toHaveCount(before);
 });
 
 test("bulk-delete rows in Data → Manage, then Undo restores them (#29)", async ({
