@@ -55,14 +55,12 @@ test.describe("Web Push subscribe UI", () => {
           get: () => Promise.resolve(registration),
         });
         // Force a supported + granted environment.
-        // @ts-expect-error test shim
         window.PushManager = window.PushManager || function () {};
         Object.defineProperty(Notification, "permission", {
           configurable: true,
           get: () => "granted",
         });
         // Notification.requestPermission may not exist / prompt in headless.
-        // @ts-expect-error test shim
         Notification.requestPermission = async () => "granted";
       },
       { endpoint: FAKE_ENDPOINT }
