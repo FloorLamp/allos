@@ -100,13 +100,23 @@ export interface BodyMetricConflictRow extends BodyMetricConflictInput {
 }
 
 // The candidate set for activity dedup, PRE-FILTERED in SQL to only the
-// (date, type) buckets that contain rows from more than one source — the only
-// buckets the pure detector can ever pair (it flags CROSS-SOURCE pairs). This
-// matters because the profile-menu badge runs detection on every app-page render
-// (getImportReviewCount is threaded through the layout): without the pre-filter
-// a years-deep Health Connect history would be loaded and bucketed in JS on
-// every navigation. Most days have a single source, so this typically returns a
-// handful of rows.
+// (date, type) buckets the pure detector could ever pair. This matters because the
+// profile-menu badge runs detection on every app-page render (getImportReviewCount
+// is threaded through the layout): without the pre-filter a years-deep Health
+// Connect history would be loaded and bucketed in JS on every navigation. Most days
+// have a single row, so this typically returns a handful of rows.
+//
+// The detector pairs a bucket when EITHER:
+//   (a) it spans ≥2 provenances (a CROSS-SOURCE pair — manual vs an integration, or
+//       two different integrations), OR
+//   (b) since issue #64, ≥2 rows share ONE non-manual provenance (a SAME-SOURCE
+//       pair — e.g. two `strava` rows from upstream double-feeding).
+// (a) is `COUNT(DISTINCT COALESCE(source,'manual')) > 1`. (b) is expressed without
+// re-counting manual rows: among NON-NULL-source rows, if the row count exceeds the
+// number of distinct non-null sources then some non-manual source repeats
+// (COUNT(DISTINCT source) ignores NULLs). This deliberately does NOT fire for a
+// bucket whose only repeat is two MANUAL rows — those pairs are excluded by design
+// (sameSourceDuplicate / crossSource), so loading them would be pure waste.
 function loadActivityDupRows(profileId: number): ActivityDupRow[] {
   return db
     .prepare(
@@ -116,7 +126,9 @@ function loadActivityDupRows(profileId: number): ActivityDupRow[] {
          JOIN (SELECT date, type FROM activities
                 WHERE profile_id = ?
                 GROUP BY date, type
-               HAVING COUNT(DISTINCT COALESCE(source, 'manual')) > 1) m
+               HAVING COUNT(DISTINCT COALESCE(source, 'manual')) > 1
+                   OR SUM(CASE WHEN source IS NOT NULL THEN 1 ELSE 0 END)
+                        > COUNT(DISTINCT source)) m
            ON m.date = a.date AND m.type = a.type
         WHERE a.profile_id = ?`
     )

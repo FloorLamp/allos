@@ -5,6 +5,7 @@ import {
   windowsOverlap,
   proximityMatch,
   crossSource,
+  sameSourceDuplicate,
   activityToken,
   pairSignature,
   findActivityDuplicates,
@@ -154,6 +155,49 @@ describe("crossSource", () => {
   });
 });
 
+describe("sameSourceDuplicate", () => {
+  it("flags two rows of the same non-manual source with different external_ids", () => {
+    expect(
+      sameSourceDuplicate(
+        { source: "strava", external_id: "strava:1" },
+        { source: "strava", external_id: "strava:2" }
+      )
+    ).toBe(true);
+  });
+  it("rejects a same-external_id re-sync (never pairs a row with itself)", () => {
+    expect(
+      sameSourceDuplicate(
+        { source: "strava", external_id: "strava:1" },
+        { source: "strava", external_id: "strava:1" }
+      )
+    ).toBe(false);
+  });
+  it("rejects two manual rows (a deliberate user act)", () => {
+    expect(
+      sameSourceDuplicate(
+        { source: null, external_id: null },
+        { source: null, external_id: null }
+      )
+    ).toBe(false);
+  });
+  it("rejects different sources (that is the cross-source path)", () => {
+    expect(
+      sameSourceDuplicate(
+        { source: "strava", external_id: "strava:1" },
+        { source: "health-connect", external_id: "hc:1" }
+      )
+    ).toBe(false);
+  });
+  it("rejects a same-source pair when either external_id is missing", () => {
+    expect(
+      sameSourceDuplicate(
+        { source: "strava", external_id: "strava:1" },
+        { source: "strava", external_id: null }
+      )
+    ).toBe(false);
+  });
+});
+
 describe("activityToken + pairSignature stability", () => {
   it("uses external_id when present, id otherwise", () => {
     expect(activityToken({ id: 5, external_id: "strava:123" })).toBe(
@@ -202,6 +246,140 @@ describe("findActivityDuplicates", () => {
     expect(pairs[0].b.id).toBe(1);
   });
 
+  it("flags a high-confidence SAME-SOURCE pair by overlapping times (issue #64)", () => {
+    // Upstream double-feed: Strava ingested one workout twice (different external_ids).
+    const rows = [
+      act({
+        id: 1,
+        source: "strava",
+        external_id: "strava:garmin-1",
+        start_time: "08:00",
+        end_time: "08:45",
+      }),
+      act({
+        id: 2,
+        source: "strava",
+        external_id: "strava:hc-1",
+        start_time: "08:05",
+        end_time: "08:50",
+      }),
+    ];
+    const pairs = findActivityDuplicates(rows);
+    expect(pairs).toHaveLength(1);
+    expect(pairs[0].confidence).toBe("high");
+    expect(pairs[0].reason).toMatch(/one source/);
+  });
+
+  it("does NOT flag a same-source pair at disjoint times", () => {
+    const rows = [
+      act({
+        id: 1,
+        source: "strava",
+        external_id: "strava:1",
+        start_time: "06:00",
+        end_time: "06:30",
+      }),
+      act({
+        id: 2,
+        source: "strava",
+        external_id: "strava:2",
+        start_time: "18:00",
+        end_time: "18:30",
+      }),
+    ];
+    expect(findActivityDuplicates(rows)).toHaveLength(0);
+  });
+
+  it("does NOT apply the proximity fallback to same-source pairs (no clock times)", () => {
+    // Two similar same-day sessions from one source with no windows are usually
+    // legitimate — proximity alone must NOT flag them (contrast cross-source).
+    const rows = [
+      act({
+        id: 1,
+        source: "strava",
+        external_id: "strava:1",
+        duration_min: 30,
+        distance_km: 5,
+      }),
+      act({
+        id: 2,
+        source: "strava",
+        external_id: "strava:2",
+        duration_min: 31,
+        distance_km: 5.1,
+      }),
+    ];
+    expect(findActivityDuplicates(rows)).toHaveLength(0);
+  });
+
+  it("does NOT flag two same-source rows sharing an external_id (a re-sync)", () => {
+    const rows = [
+      act({
+        id: 1,
+        source: "strava",
+        external_id: "strava:1",
+        start_time: "08:00",
+        end_time: "08:45",
+      }),
+      act({
+        id: 2,
+        source: "strava",
+        external_id: "strava:1",
+        start_time: "08:00",
+        end_time: "08:45",
+      }),
+    ];
+    expect(findActivityDuplicates(rows)).toHaveLength(0);
+  });
+
+  it("does NOT flag two overlapping MANUAL rows (a deliberate user act)", () => {
+    const rows = [
+      act({ id: 1, source: null, start_time: "08:00", end_time: "08:45" }),
+      act({ id: 2, source: null, start_time: "08:10", end_time: "08:55" }),
+    ];
+    expect(findActivityDuplicates(rows)).toHaveLength(0);
+  });
+
+  it("keeps a same-source pair's signature stable across a re-sync (issue #64)", () => {
+    const before = findActivityDuplicates([
+      act({
+        id: 1,
+        source: "strava",
+        external_id: "strava:a",
+        start_time: "08:00",
+        end_time: "08:45",
+      }),
+      act({
+        id: 2,
+        source: "strava",
+        external_id: "strava:b",
+        start_time: "08:05",
+        end_time: "08:50",
+      }),
+    ]);
+    // Both rows re-inserted under fresh ids on the next rolling-window sync; their
+    // external_ids (hence tokens, hence signature) are unchanged.
+    const after = findActivityDuplicates([
+      act({
+        id: 91,
+        source: "strava",
+        external_id: "strava:a",
+        start_time: "08:00",
+        end_time: "08:45",
+      }),
+      act({
+        id: 92,
+        source: "strava",
+        external_id: "strava:b",
+        start_time: "08:05",
+        end_time: "08:50",
+      }),
+    ]);
+    expect(before).toHaveLength(1);
+    expect(after).toHaveLength(1);
+    expect(after[0].signature).toBe(before[0].signature);
+  });
+
   it("does NOT flag two timed sessions at disjoint times", () => {
     const rows = [
       act({ id: 1, source: null, start_time: "06:00", end_time: "06:30" }),
@@ -232,9 +410,10 @@ describe("findActivityDuplicates", () => {
     expect(pairs[0].confidence).toBe("medium");
   });
 
-  it("ignores same-source and same-day-different-type pairs", () => {
+  it("ignores same-external_id re-syncs and same-day-different-type pairs", () => {
     const rows = [
-      // Two strava rows (same source) — already deduped by external_id.
+      // Two strava rows sharing an external_id — a re-sync, already deduped by the
+      // unique index; NOT a same-source duplicate (issue #64 needs distinct ids).
       act({
         id: 1,
         source: "strava",
@@ -245,7 +424,7 @@ describe("findActivityDuplicates", () => {
       act({
         id: 2,
         source: "strava",
-        external_id: "strava:2",
+        external_id: "strava:1",
         start_time: "08:00",
         end_time: "08:30",
       }),

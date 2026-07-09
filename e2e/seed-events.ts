@@ -138,6 +138,23 @@ insActivity.run(
   "strava:e2e-run-1"
 );
 
+// ── Manual pair-merge fixture (issue #64) ─────────────────────────────────────
+// Two same-day MANUAL cardio activities the Journal's manual merge test folds
+// together — the "duplicate no heuristic catches" case (two manual rows, no clock
+// windows, so detection deliberately ignores them). Distinct date + titles so this
+// fixture never collides with the cross-source dedup pair above. Synthetic only.
+const MERGE_DATE = "2026-07-05";
+db.prepare(
+  `DELETE FROM activities WHERE profile_id = ? AND date = ? AND title IN ('Journal merge keeper', 'Journal merge dupe')`
+).run(PROFILE_ID, MERGE_DATE);
+const insMerge = db.prepare(
+  `INSERT INTO activities
+     (profile_id, date, type, title, duration_min, distance_km, source, external_id, edited)
+   VALUES (?, ?, 'cardio', ?, ?, ?, NULL, NULL, 0)`
+);
+insMerge.run(PROFILE_ID, MERGE_DATE, "Journal merge keeper", 40, 6);
+insMerge.run(PROFILE_ID, MERGE_DATE, "Journal merge dupe", 42, null);
+
 console.log(
-  "e2e: seeded integration_sync_events (strava failing) + a cross-source duplicate activity pair"
+  "e2e: seeded integration_sync_events (strava failing) + a cross-source duplicate activity pair + a same-day manual-merge pair"
 );
