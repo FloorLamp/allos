@@ -22,15 +22,15 @@ export interface NormBodyMetric {
 
 export interface NormMetricSample {
   metric: string; // 'steps','distance_km','active_kcal','total_kcal','hrv_ms'
-  date: string; // YYYY-MM-DD (local)
-  start_time: string; // ISO; point records set start == end
+  date: string; // YYYY-MM-DD in the profile timezone at ingest (#94); start_time is the natural key
+  start_time: string; // absolute ISO instant; point records set start == end
   end_time: string;
   value: number;
 }
 
 // A pre-aggregated 1-minute heart-rate bucket from the incoming batch.
 export interface NormHrMinute {
-  ts: string; // 'YYYY-MM-DDTHH:MM' (local)
+  ts: string; // 'YYYY-MM-DDTHH:MM' profile-local at ingest, no zone stored (#94)
   bpm: number; // average of this batch's samples in the minute
   bpm_min: number;
   bpm_max: number;

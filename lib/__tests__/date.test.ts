@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   dateStrInTz,
+  zonedDateParts,
+  zonedMinuteStr,
   shiftDateStr,
   lastNDates,
   weekdayInTz,
@@ -38,6 +40,60 @@ describe("dateStrInTz", () => {
   it("zero-pads month and day", () => {
     expect(dateStrInTz("UTC", new Date("2026-01-05T12:00:00Z"))).toBe(
       "2026-01-05"
+    );
+  });
+});
+
+// The instant→profile-day / instant→profile-minute conversions that attribute a
+// Health Connect sample's absolute timestamp to metric_samples.date and the
+// hr_minutes.ts bucket in the PROFILE's timezone at ingest (issue #94). The three
+// scenarios that used to bucket to the wrong day on a multi-zone deploy: a profile
+// AHEAD of a UTC server, a profile BEHIND it, and a sample landing right at local
+// midnight so the calendar day flips relative to UTC.
+describe("zonedDateParts / zonedMinuteStr — profile-tz attribution", () => {
+  // 23:30Z on Jun 15: evening in the west, already the next morning in the east.
+  const evening = new Date("2026-06-15T23:30:00Z");
+
+  it("profile ahead of the server rolls forward to the next local day", () => {
+    // Asia/Tokyo is UTC+9 → 08:30 on the 16th.
+    expect(zonedDateParts("Asia/Tokyo", evening)).toEqual({
+      date: "2026-06-16",
+      hhmm: "08:30",
+    });
+    expect(zonedMinuteStr("Asia/Tokyo", evening)).toBe("2026-06-16T08:30");
+  });
+
+  it("profile behind the server keeps the earlier local day", () => {
+    // America/New_York is UTC-4 in June → still 19:30 on the 15th.
+    expect(zonedDateParts("America/New_York", evening)).toEqual({
+      date: "2026-06-15",
+      hhmm: "19:30",
+    });
+    expect(zonedMinuteStr("America/New_York", evening)).toBe(
+      "2026-06-15T19:30"
+    );
+  });
+
+  it("attributes a sample crossing local midnight to the day each zone is on", () => {
+    // 03:59Z on Jun 16 straddles midnight across zones from the same instant:
+    //   New York (-4) → 23:59 on the 15th (previous local day)
+    //   UTC          → 03:59 on the 16th
+    //   Tokyo  (+9)  → 12:59 on the 16th
+    const nearMidnight = new Date("2026-06-16T03:59:00Z");
+    expect(zonedMinuteStr("America/New_York", nearMidnight)).toBe(
+      "2026-06-15T23:59"
+    );
+    expect(zonedMinuteStr("UTC", nearMidnight)).toBe("2026-06-16T03:59");
+    expect(zonedMinuteStr("Asia/Tokyo", nearMidnight)).toBe("2026-06-16T12:59");
+
+    // Exactly local midnight folds to 00:00 (not "24:00") and belongs to the new day.
+    const localMidnight = new Date("2026-06-16T04:00:00Z"); // 00:00 in New York
+    expect(zonedDateParts("America/New_York", localMidnight)).toEqual({
+      date: "2026-06-16",
+      hhmm: "00:00",
+    });
+    expect(zonedMinuteStr("America/New_York", localMidnight)).toBe(
+      "2026-06-16T00:00"
     );
   });
 });

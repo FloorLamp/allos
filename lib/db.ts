@@ -819,19 +819,32 @@ export function migrate(db: Database.Database) {
       profile_id INTEGER NOT NULL REFERENCES profiles(id),
       source TEXT NOT NULL,                             -- integration id (provenance)
       metric TEXT NOT NULL,                             -- 'steps','distance_km','active_kcal','total_kcal','hrv_ms'
-      date TEXT NOT NULL,                               -- YYYY-MM-DD of start (server-local)
-      start_time TEXT NOT NULL,
-      end_time TEXT NOT NULL,
+      date TEXT NOT NULL,                               -- YYYY-MM-DD calendar day of start_time in the PROFILE's timezone at ingest (issue #94)
+      start_time TEXT NOT NULL,                         -- absolute ISO instant (zone-independent) — the natural-key anchor
+      end_time TEXT NOT NULL,                           -- absolute ISO instant
       value REAL NOT NULL,
+      -- Natural key is the absolute time window, NOT date. Ingest derives date from
+      -- the profile timezone (see integrations/health-connect.parts), so a rolling-
+      -- 48h re-push of the same sample matches this key regardless of the derived day
+      -- and the ON CONFLICT re-writes date in place — no duplicate row. A profile-
+      -- timezone change thus self-heals recent rows on their next re-push; rows older
+      -- than the re-push window keep their originally-derived day (a one-time
+      -- historical skew accepted rather than backfilled — issue #94).
       UNIQUE (profile_id, metric, source, start_time, end_time)
     );
 
     -- Continuous heart-rate samples bucketed to 1-minute averages (a watch can emit
     -- tens of thousands of raw samples/day; ≤1440 minute buckets keeps the intraday
-    -- shape tractable). Re-syncs merge by count-weighted average.
+    -- shape tractable). Re-syncs replace each minute bucket by key. Contract (#94):
+    -- ts is the profile-local minute derived at ingest (integrations/health-connect
+    -- via date.zonedMinuteStr) and carries NO zone of its own, so a later profile-
+    -- timezone change re-interprets historical intraday rows (new pushes land at the
+    -- new-zone minute; old rows keep their stamp). Accepted as cheap for a personal
+    -- tracker — no schema rebuild / UTC-store / backfill (would pair with #14's
+    -- source-in-key rebuild if ever done).
     CREATE TABLE IF NOT EXISTS hr_minutes (
       profile_id INTEGER NOT NULL REFERENCES profiles(id),
-      ts TEXT NOT NULL,                                 -- 'YYYY-MM-DDTHH:MM' (local)
+      ts TEXT NOT NULL,                                 -- YYYY-MM-DDTHH:MM profile-local at ingest (no zone stored — see #94 note above)
       bpm REAL NOT NULL,                                -- count-weighted average
       bpm_min REAL,
       bpm_max REAL,

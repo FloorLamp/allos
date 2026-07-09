@@ -1,5 +1,5 @@
 import type { ActivityType } from "@/lib/types";
-import { zonedDateParts } from "@/lib/date";
+import { zonedDateParts, zonedMinuteStr } from "@/lib/date";
 import type {
   NormActivity,
   NormHrMinute,
@@ -26,10 +26,14 @@ export interface ParsedPayload {
   skipped: number;
 }
 
-// ---- local time helpers (day/minute attribution in the app's IANA timezone) ----
-// The exporter sends absolute timestamps (with a Z/offset); we attribute each to a
-// calendar day and minute in the app-configured zone, NOT the process TZ — so an
-// evening event lands on the right local day even though production Docker runs UTC.
+// ---- local time helpers (day/minute attribution in the PROFILE's IANA timezone) ----
+// The exporter sends absolute timestamps (with a Z/offset); the ingest route resolves
+// the pushing profile from its token and passes that profile's timezone (the same
+// resolution as today(profileId)), so we attribute each instant to a calendar day
+// and minute in the PROFILE's zone, NOT the process TZ — an evening event lands on
+// the right local day even though production Docker runs UTC, and steps/calories/
+// sleep bucket to the same day as activities/doses/digests (issue #94). `date` feeds
+// metric_samples.date; `minute` is the hr_minutes.ts bucket key (see zonedMinuteStr).
 
 function parts(
   iso: unknown,
@@ -39,7 +43,7 @@ function parts(
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
   const { date, hhmm } = zonedDateParts(tz, d);
-  return { date, minute: `${date}T${hhmm}`, hhmm };
+  return { date, minute: zonedMinuteStr(tz, d), hhmm };
 }
 
 function num(...vals: unknown[]): number | null {
