@@ -649,6 +649,28 @@ export function migrate(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_login_attempts_user ON login_attempts(username, created_at);
     CREATE INDEX IF NOT EXISTS idx_login_attempts_created ON login_attempts(created_at);
 
+    -- Audit log (issue #22): who accessed/modified whose data. A durable, GLOBAL
+    -- record like sessions/login_attempts — deliberately NOT profile-scoped (a
+    -- token-authed ingest or a failed login has no acting profile), so it's
+    -- excluded from the profile-scoping leak test (its column is active_profile_id,
+    -- not profile_id, so the scanner never treats it as an owned table). login_id
+    -- and active_profile_id are nullable and carry NO foreign key ON PURPOSE: an
+    -- audit record must OUTLIVE the login/profile it names (deleting a login must
+    -- not erase the trail of what it did), so the raw ids are kept and the viewer
+    -- LEFT JOINs for the current name. The detail column holds IDENTIFIERS ONLY,
+    -- never PHI content.
+    CREATE TABLE IF NOT EXISTS audit_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ts TEXT NOT NULL DEFAULT (datetime('now')),
+      login_id INTEGER,
+      active_profile_id INTEGER,
+      action TEXT NOT NULL,
+      target TEXT,
+      detail TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_audit_events_ts ON audit_events(ts);
+    CREATE INDEX IF NOT EXISTS idx_audit_events_login_ts ON audit_events(login_id, ts);
+
     -- Per-profile and per-login key/value settings. Created now; the actual
     -- migration of existing settings keys onto them is Phase 2 (do not move keys yet).
     CREATE TABLE IF NOT EXISTS profile_settings (

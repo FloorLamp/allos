@@ -18,6 +18,8 @@ import {
   type LockoutInput,
 } from "@/lib/login-lockout";
 import { createLogger } from "@/lib/log";
+import { recordAudit } from "@/lib/audit";
+import { AUDIT_ACTIONS } from "@/lib/audit-actions";
 
 const log = createLogger("login");
 
@@ -146,6 +148,8 @@ export async function login(
   const globalDecision = evaluateLockout(globalAttempts(), GLOBAL_LOCKOUT);
   if (userDecision.lockedOut || globalDecision.lockedOut) {
     recordFailure(usernameKey, ip);
+    // Audit the throttle (username only — NEVER the password).
+    recordAudit({ action: AUDIT_ACTIONS.loginThrottled, detail: usernameKey });
     log.warn("login throttled", {
       username: usernameKey,
       ip,
@@ -172,6 +176,8 @@ export async function login(
   );
   if (!loginRow || !ok) {
     recordFailure(usernameKey, ip);
+    // Audit the failed attempt (username only — NEVER the password).
+    recordAudit({ action: AUDIT_ACTIONS.loginFailure, detail: usernameKey });
     return { error: INVALID_CREDENTIALS };
   }
 
@@ -181,6 +187,11 @@ export async function login(
   const userAgent = truncateUserAgent(headers().get("user-agent"));
   const { token, maxAgeSec } = createSession(loginRow.id, userAgent);
   cookies().set(SESSION_COOKIE, token, sessionCookieOptions(maxAgeSec));
+  recordAudit({
+    loginId: loginRow.id,
+    action: AUDIT_ACTIONS.loginSuccess,
+    detail: usernameKey,
+  });
 
   redirect(next);
 }

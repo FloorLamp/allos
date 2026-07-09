@@ -18,6 +18,8 @@ import { normalizeGrantSelection, diffGrants } from "@/lib/grants";
 import { canDeleteLogin, canDeleteProfile } from "@/lib/family-deletion";
 import { OWNED_TABLES } from "@/lib/owned-tables";
 import { PHOTO_ROOT } from "@/lib/profile-photo";
+import { recordAudit } from "@/lib/audit";
+import { AUDIT_ACTIONS } from "@/lib/audit-actions";
 import { createLogger } from "@/lib/log";
 
 const log = createLogger("family");
@@ -73,7 +75,7 @@ const USERNAME_RE = /^[a-zA-Z0-9._-]{3,32}$/;
 // ---- Profiles ----
 
 export async function createProfile(formData: FormData): Promise<FamilyResult> {
-  requireAdmin();
+  const admin = requireAdmin();
   const name = String(formData.get("name") ?? "").trim();
   if (!name) return { ok: false, error: "Enter a name." };
   if (name.length > 60) return { ok: false, error: "Name is too long." };
@@ -87,7 +89,13 @@ export async function createProfile(formData: FormData): Promise<FamilyResult> {
     if (tz && isValidTimezone(tz)) setProfileSetting(id, "timezone", tz);
     return id;
   });
-  create();
+  const newId = create();
+  recordAudit({
+    loginId: admin.login.id,
+    profileId: admin.profile.id,
+    action: AUDIT_ACTIONS.profileCreate,
+    target: String(newId),
+  });
 
   revalidatePath("/settings/family");
   revalidatePath("/", "layout"); // profile switcher lists the new profile
@@ -122,7 +130,7 @@ export async function renameProfile(formData: FormData): Promise<FamilyResult> {
 // any parked session to its first accessible profile. Files are removed on disk
 // after the transaction commits.
 export async function deleteProfile(formData: FormData): Promise<FamilyResult> {
-  requireAdmin();
+  const admin = requireAdmin();
   const id = Number(formData.get("id"));
   if (!id) return { ok: false, error: "Unknown profile." };
 
@@ -184,6 +192,13 @@ export async function deleteProfile(formData: FormData): Promise<FamilyResult> {
     db.prepare("DELETE FROM profiles WHERE id = ?").run(id);
   });
   remove();
+  recordAudit({
+    loginId: admin.login.id,
+    profileId: admin.profile.id,
+    action: AUDIT_ACTIONS.profileDelete,
+    target: String(id),
+    detail: prof.name,
+  });
 
   // Best-effort file cleanup after the DB change is durable.
   deleteFilesUnderRoot(MEDICAL_UPLOAD_ROOT, docPaths);
@@ -200,7 +215,7 @@ export async function deleteProfile(formData: FormData): Promise<FamilyResult> {
 // ---- Logins ----
 
 export async function createLogin(formData: FormData): Promise<FamilyResult> {
-  requireAdmin();
+  const admin = requireAdmin();
   const username = String(formData.get("username") ?? "").trim();
   const password = String(formData.get("password") ?? "");
   const roleRaw = String(formData.get("role") ?? "member");
@@ -220,9 +235,18 @@ export async function createLogin(formData: FormData): Promise<FamilyResult> {
 
   const passwordHash = await hashPassword(password);
   try {
-    db.prepare(
-      "INSERT INTO logins (username, password_hash, role) VALUES (?, ?, ?)"
-    ).run(username, passwordHash, role);
+    const info = db
+      .prepare(
+        "INSERT INTO logins (username, password_hash, role) VALUES (?, ?, ?)"
+      )
+      .run(username, passwordHash, role);
+    recordAudit({
+      loginId: admin.login.id,
+      profileId: admin.profile.id,
+      action: AUDIT_ACTIONS.loginCreate,
+      target: String(Number(info.lastInsertRowid)),
+      detail: `${username} (${role})`,
+    });
   } catch (err) {
     // Surface the case-insensitive unique-username constraint as a friendly
     // message instead of a 500.
@@ -246,7 +270,7 @@ export async function createLogin(formData: FormData): Promise<FamilyResult> {
 }
 
 export async function resetPassword(formData: FormData): Promise<FamilyResult> {
-  requireAdmin();
+  const admin = requireAdmin();
   const id = Number(formData.get("id"));
   const password = String(formData.get("password") ?? "");
   if (!id) return { ok: false, error: "Unknown login." };
@@ -268,6 +292,12 @@ export async function resetPassword(formData: FormData): Promise<FamilyResult> {
   // Every existing session for the login is invalidated — a reset must lock out
   // whoever held the old password (including on other devices).
   destroyLoginSessions(id);
+  recordAudit({
+    loginId: admin.login.id,
+    profileId: admin.profile.id,
+    action: AUDIT_ACTIONS.passwordReset,
+    target: String(id),
+  });
 
   revalidatePath("/settings/family");
   return {
@@ -307,6 +337,13 @@ export async function deleteLogin(formData: FormData): Promise<FamilyResult> {
     db.prepare("DELETE FROM logins WHERE id = ?").run(id);
   });
   remove();
+  recordAudit({
+    loginId: session.login.id,
+    profileId: session.profile.id,
+    action: AUDIT_ACTIONS.loginDelete,
+    target: String(id),
+    detail: acct.username,
+  });
 
   if (isSelf) {
     // We just deleted our own login. Clear the cookie and bounce to /login;
@@ -346,7 +383,7 @@ export async function revokeLoginSessions(
 // implicit-all and never have login_profiles rows managed here — editing an
 // admin's grants is rejected. profileIds arrives as repeated form fields.
 export async function setGrants(formData: FormData): Promise<FamilyResult> {
-  requireAdmin();
+  const admin = requireAdmin();
   const loginId = Number(formData.get("loginId"));
   if (!loginId) return { ok: false, error: "Unknown login." };
 
@@ -390,6 +427,17 @@ export async function setGrants(formData: FormData): Promise<FamilyResult> {
     for (const pid of remove) del.run(loginId, pid);
   });
   apply();
+  // Detail is a compact grant diff by profile id (identifiers only).
+  const diff = [...add.map((p) => `+${p}`), ...remove.map((p) => `-${p}`)].join(
+    ","
+  );
+  recordAudit({
+    loginId: admin.login.id,
+    profileId: admin.profile.id,
+    action: AUDIT_ACTIONS.grantUpdate,
+    target: String(loginId),
+    detail: diff,
+  });
 
   revalidatePath("/settings/family");
   revalidatePath("/", "layout"); // the member's switcher reflects new access

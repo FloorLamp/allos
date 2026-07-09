@@ -48,6 +48,8 @@ import {
   type ImportDiff,
 } from "@/lib/import-diff";
 import { canReassignDocument } from "@/lib/import-reassign";
+import { recordAudit } from "@/lib/audit";
+import { AUDIT_ACTIONS } from "@/lib/audit-actions";
 import { createLogger } from "@/lib/log";
 
 const log = createLogger("medical");
@@ -421,6 +423,14 @@ export async function uploadMedicalDocument(formData: FormData) {
   // 1. The placeholder row (status 'processing') was reserved in the transaction
   //    above, so it already shows immediately.
   const docId = reserved.docId;
+
+  // Audit the new-document upload (the document id only — never its contents).
+  recordAudit({
+    loginId: login.id,
+    profileId: profile.id,
+    action: AUDIT_ACTIONS.medicalDocUpload,
+    target: String(docId),
+  });
 
   // 2. Persist the original file to disk, under a per-profile subdirectory so one
   //    profile's uploads never share a folder with another's. stored_path is
@@ -1183,7 +1193,7 @@ export async function getExtractionStates(): Promise<ExtractionState[]> {
 }
 
 export async function deleteMedicalDocument(formData: FormData) {
-  const { profile } = requireSession();
+  const { login, profile } = requireSession();
   const id = Number(formData.get("id"));
   if (!id) return;
   const doc = db
@@ -1191,6 +1201,13 @@ export async function deleteMedicalDocument(formData: FormData) {
       "SELECT stored_path FROM medical_documents WHERE id = ? AND profile_id = ?"
     )
     .get(id, profile.id) as { stored_path: string } | undefined;
+  if (doc)
+    recordAudit({
+      loginId: login.id,
+      profileId: profile.id,
+      action: AUDIT_ACTIONS.medicalDocDelete,
+      target: String(id),
+    });
 
   const removeAll = db.transaction(() => {
     // Delete every row this document imported — medical_records, extracted
