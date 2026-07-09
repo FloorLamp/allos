@@ -9,7 +9,7 @@ import {
 } from "@/lib/timeline-format";
 import { rangeSummaryLabel } from "@/lib/trends";
 import { PageHeader } from "@/components/ui";
-import Tabs from "@/components/Tabs";
+import NavTabs from "@/components/NavTabs";
 import DateRangeControl from "@/components/DateRangeControl";
 import SavedViewsBar from "@/components/SavedViewsBar";
 import OverviewSection from "./OverviewSection";
@@ -61,6 +61,7 @@ export default function TrendsPage({
 }: {
   searchParams: {
     tab?: string | string[];
+    ftab?: string | string[];
     from?: string | string[];
     to?: string | string[];
     bflag?: string | string[];
@@ -95,6 +96,10 @@ export default function TrendsPage({
   const cmpA = firstParam(searchParams.cmpA);
   const cmpB = firstParam(searchParams.cmpB);
   const cmpNormalized = firstParam(searchParams.cmpn) === "1";
+  // The Fitness section's nested strip (Strength/Cardio/Sport) is also driven by
+  // the URL (?ftab=), so — like the top-level tab — only the active nested
+  // section is built server-side. FitnessSection validates/defaults this.
+  const ftab = firstParam(searchParams.ftab);
 
   // Build a /trends URL, preserving the active tab + window unless overridden.
   // Overview is the default tab, so it's dropped from the query string.
@@ -145,72 +150,60 @@ export default function TrendsPage({
       bpanel: opts.panel,
     });
 
-  // Non-default panels use keepMounted:false so only the active section's DOM is
-  // mounted client-side (each reuses independent, self-contained section
-  // components/queries — no cross-panel dependency). Overview is the default tab.
-  const tabs: {
-    id: TrendsTab;
-    label: string;
-    content: React.ReactNode;
-    keepMounted?: boolean;
-  }[] = [
-    {
-      id: "overview",
-      label: "Overview",
-      content: <OverviewSection range={range} />,
-    },
-    {
-      id: "compare",
-      label: "Compare",
-      content: (
-        <CompareSection
-          range={range}
-          a={cmpA}
-          b={cmpB}
-          normalized={cmpNormalized}
-        />
-      ),
-      keepMounted: false,
-    },
-    {
-      id: "biomarkers",
-      label: "Biomarkers",
-      content: (
-        <BiomarkersSection
-          range={range}
-          flag={bflag}
-          panel={bpanel}
-          hrefFor={biomarkerHrefFor}
-        />
-      ),
-      keepMounted: false,
-    },
-    {
-      id: "body",
-      label: "Body",
-      content: <BodySection range={range} />,
-      keepMounted: false,
-    },
-    // Fitness + Insights are age-gated surfaces — omitted entirely for
-    // training-restricted profiles (matching the Journal/Training/Insights nav
-    // gate), so they're never rendered or reachable via ?tab= for them.
+  // Tab-strip spec: labels only. Fitness + Insights are age-gated surfaces —
+  // omitted entirely for training-restricted profiles (matching the
+  // Journal/Training/Insights nav gate), so they're never in the strip or
+  // reachable via ?tab= for them (the activeTab fallback above enforces the
+  // latter).
+  const tabStrip: { id: TrendsTab; label: string }[] = [
+    { id: "overview", label: "Overview" },
+    { id: "compare", label: "Compare" },
+    { id: "biomarkers", label: "Biomarkers" },
+    { id: "body", label: "Body" },
     ...(restricted
       ? []
-      : [
-          {
-            id: "fitness" as const,
-            label: "Fitness",
-            content: <FitnessSection />,
-            keepMounted: false,
-          },
-          {
-            id: "insights" as const,
-            label: "Insights",
-            content: <InsightsSection range={range} />,
-            keepMounted: false,
-          },
-        ]),
+      : ([
+          { id: "fitness", label: "Fitness" },
+          { id: "insights", label: "Insights" },
+        ] as const)),
   ];
+
+  // #105: build ONLY the active section server-side. Passing every section as a
+  // prop rendered (and ran the queries for) all six on every request — the
+  // client `keepMounted` flag only gated DOM, not the RSC pass. Each tab switch
+  // is already a URL navigation (NavTabs → router.replace), so this makes every
+  // Trends request compute one tab instead of six, at no extra round-trips.
+  const activeSection: React.ReactNode = (() => {
+    switch (activeTab) {
+      case "compare":
+        return (
+          <CompareSection
+            range={range}
+            a={cmpA}
+            b={cmpB}
+            normalized={cmpNormalized}
+          />
+        );
+      case "biomarkers":
+        return (
+          <BiomarkersSection
+            range={range}
+            flag={bflag}
+            panel={bpanel}
+            hrefFor={biomarkerHrefFor}
+          />
+        );
+      case "body":
+        return <BodySection range={range} />;
+      case "fitness":
+        return <FitnessSection ftab={ftab} />;
+      case "insights":
+        return <InsightsSection range={range} />;
+      case "overview":
+      default:
+        return <OverviewSection range={range} />;
+    }
+  })();
 
   return (
     <div>
@@ -243,7 +236,9 @@ export default function TrendsPage({
         <SavedViewsBar views={savedViews} />
       </div>
 
-      <Tabs paramKey="tab" tabs={tabs} />
+      <NavTabs paramKey="tab" tabs={tabStrip}>
+        {activeSection}
+      </NavTabs>
     </div>
   );
 }
