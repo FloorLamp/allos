@@ -4,17 +4,18 @@ import { IconRefresh } from "@tabler/icons-react";
 import { reprocessAllDocuments } from "@/app/(app)/medical/actions";
 import { useConfirmedAction } from "@/components/useConfirmedAction";
 
-// Re-runs AI extraction on every uploaded document and replaces its imported
-// records with fresh results. Destructive — overwrites manual edits — so it
-// confirms first. Rendered as an icon action in the documents header. Unlike the
-// single-document reprocess, this awaits the full sequential run and shows a
+// Re-extracts every uploaded document and replaces its imported records with
+// fresh results — deterministic re-import for health records, AI extraction for
+// scans/PDFs (see reprocessAllDocuments). Destructive for edits made to imported
+// records, so it confirms first. Rendered in the Review feed header (#65). Unlike
+// the single-document reprocess, this awaits the full sequential run and shows a
 // summary of the outcome.
 export default function ReprocessButton() {
   const { pending, result, run } = useConfirmedAction(
     {
       title: "Reprocess all documents",
       message:
-        "Re-run AI extraction on every uploaded document — useful after improving extraction or to regroup biomarkers consistently. This replaces each document’s imported records and discards manual edits.",
+        "Re-extract every uploaded document: health records (MyChart CCD/XDM, SMART Health Cards, FHIR) re-import deterministically, and scans/PDFs re-run AI extraction. Each document’s imported records are replaced and any manual edits to them are discarded — records you added by hand are untouched.",
       confirmLabel: "Reprocess all",
     },
     reprocessAllDocuments
