@@ -9,6 +9,7 @@ import { db, today } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
 import type { MedicalCategory } from "@/lib/types";
 import { extractMedicalDocument, isSupportedFile } from "@/lib/medical-extract";
+import { sniffUploadType } from "@/lib/file-sniff";
 import { aiConfigured } from "@/lib/ai-client";
 import { withAiLogContext } from "@/lib/ai-log";
 import { checkAndIncrementAiUsage, extractionDailyLimit } from "@/lib/ai-usage";
@@ -330,6 +331,29 @@ export async function uploadMedicalDocument(formData: FormData) {
     return;
   }
 
+  // Verify the CONTENT against its declared type/extension (issue #27). The
+  // client-declared file.type is untrusted; derive a server-trusted MIME from the
+  // magic bytes so the value we store (and later echo as Content-Type when serving)
+  // reflects what the file actually is. A file whose bytes contradict its declared
+  // type — a ".pdf" that isn't a PDF — is rejected here rather than stored under a
+  // lie. Health records are exempt from rejection (detectHealthRecord/parse already
+  // validated their structure); we still derive a trustworthy stored MIME for them.
+  const typed = sniffUploadType({
+    filename: file.name,
+    declaredMime: mime,
+    buffer,
+    isHealthRecord: !!healthKind,
+  });
+  if (!typed.ok) {
+    insertFailedDoc(profile.id, file.name, mime, buffer.length, typed.reason);
+    revalidatePath("/data");
+    return;
+  }
+  // The byte-derived MIME is what we persist and pass onward. CSV/plain text carry
+  // no reliable magic, so this falls back to a benign attachment-only type
+  // (text/csv, text/plain) that is never in the serve route's INLINE_OK set.
+  const storedMime = typed.mime;
+
   // Reject an identical file (same bytes) even if the filename differs. We hash
   // the contents and look for an existing document with the same hash. Prefer the
   // earliest one that still has its stored file (later skipped-duplicate rows
@@ -366,7 +390,7 @@ export async function uploadMedicalDocument(formData: FormData) {
       const info = insertRow.run(
         file.name,
         "",
-        mime,
+        storedMime,
         buffer.length,
         contentHash,
         profile.id
@@ -398,7 +422,7 @@ export async function uploadMedicalDocument(formData: FormData) {
           profile.id,
           existing.id,
           buffer,
-          mime,
+          storedMime,
           existing.filename
         );
         revalidatePath("/data");
@@ -468,7 +492,14 @@ export async function uploadMedicalDocument(formData: FormData) {
     runHealthImport(profile.id, docId, buffer);
     return;
   }
-  dispatchExtraction(login.id, profile.id, docId, buffer, mime, file.name);
+  dispatchExtraction(
+    login.id,
+    profile.id,
+    docId,
+    buffer,
+    storedMime,
+    file.name
+  );
 
   // The doc row (status 'processing') is now visible; the page polls from here.
   revalidatePath("/data");

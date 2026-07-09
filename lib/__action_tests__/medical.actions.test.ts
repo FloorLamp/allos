@@ -11,6 +11,7 @@ import {
   addRecord,
   updateRecord,
   deleteRecord,
+  uploadMedicalDocument,
 } from "@/app/(app)/medical/actions";
 import {
   getMedicalRecords,
@@ -186,6 +187,58 @@ describe("manual record (no document_id) round-trips edit + delete", () => {
     actAs(login, profileA);
     await deleteRecord(fd({ id: row.id }));
     expect(recordRows(profileA.id)).toHaveLength(0);
+  });
+});
+
+describe("uploadMedicalDocument content sniffing (issue #27)", () => {
+  function docRows(profileId: number) {
+    return db
+      .prepare(
+        "SELECT filename, stored_path, mime_type, extraction_status AS status, extraction_error AS error FROM medical_documents WHERE profile_id = ? ORDER BY id"
+      )
+      .all(profileId) as {
+      filename: string;
+      stored_path: string | null;
+      mime_type: string | null;
+      status: string;
+      error: string | null;
+    }[];
+  }
+
+  function uploadForm(bytes: Buffer, name: string, type: string): FormData {
+    const form = new FormData();
+    form.set("file", new File([new Uint8Array(bytes)], name, { type }));
+    return form;
+  }
+
+  it("rejects a file whose bytes contradict its declared type without storing it", async () => {
+    const { profile } = seedActor();
+    // PNG magic bytes but named/declared as a PDF → a content contradiction. The
+    // action records a 'failed' row (no file on disk) instead of trusting file.type.
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    await uploadMedicalDocument(
+      uploadForm(png, "report.pdf", "application/pdf")
+    );
+
+    const rows = docRows(profile.id);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].status).toBe("failed");
+    // Nothing was persisted to disk — the row carries no stored_path.
+    expect(rows[0].stored_path ?? "").toBe("");
+    expect(rows[0].error).toMatch(/named like a PDF/i);
+    expect(rows[0].error).toMatch(/PNG image/i);
+  });
+
+  it("rejects a .png whose contents carry no image magic (mislabeled HTML)", async () => {
+    const { profile } = seedActor();
+    const html = Buffer.from("<html><script>alert(1)</script></html>");
+    await uploadMedicalDocument(uploadForm(html, "evil.png", "image/png"));
+
+    const rows = docRows(profile.id);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].status).toBe("failed");
+    expect(rows[0].stored_path ?? "").toBe("");
+    expect(rows[0].error).toMatch(/named like an image/i);
   });
 });
 
