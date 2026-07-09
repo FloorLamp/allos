@@ -27,8 +27,10 @@ export {
   dailyLimitFor,
   extractionDailyLimit,
   insightDailyLimit,
+  narrativeDailyLimit,
   DEFAULT_DAILY_EXTRACTION_LIMIT,
   DEFAULT_DAILY_INSIGHT_LIMIT,
+  DEFAULT_DAILY_NARRATIVE_LIMIT,
 } from "./ai-usage-limits";
 export type {
   AiUsageKind,

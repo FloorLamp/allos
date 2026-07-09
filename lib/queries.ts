@@ -13,6 +13,7 @@ export * from "./queries/medical";
 export * from "./queries/derived";
 export * from "./queries/appointments";
 export * from "./queries/intake";
+export * from "./queries/narratives";
 export * from "./queries/clinical";
 export * from "./queries/search";
 export * from "./queries/imports";

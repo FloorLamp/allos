@@ -12,7 +12,7 @@
 
 - **Timeline** — day-by-day health history across activity, body metrics, labs, medications, documents, visits, goals, and milestones
 - **Training** — workout history, goals, strength analysis, cardio records, sport summaries, and per-exercise history; a workout's **⋯ → Merge with…** menu folds two of that day's activities into one for duplicates no auto-detector caught (undoable)
-- **Trends** — charts and analysis in one place, tab by tab: **Body** (weight, body fat %, resting heart rate, plus a **Log vitals** quick-add for blood pressure, glucose, SpO₂, temperature, sleep, and HRV — the same measures the Health Connect exporter syncs, so manual and synced readings share one home), **Fitness**, **Biomarkers** (including a **Trajectory watch** that warns before a reading crosses a line — a value projected to cross its reference/optimal boundary, a persistent non-optimal pattern, or a fast decline/rise), **Compare**, and Claude-powered **Insights** (daily analysis of your activity, metrics, and goals)
+- **Trends** — charts and analysis in one place, tab by tab: **Body** (weight, body fat %, resting heart rate, plus a **Log vitals** quick-add for blood pressure, glucose, SpO₂, temperature, sleep, and HRV — the same measures the Health Connect exporter syncs, so manual and synced readings share one home), **Fitness**, **Biomarkers** (including a **Trajectory watch** that warns before a reading crosses a line — a value projected to cross its reference/optimal boundary, a persistent non-optimal pattern, or a fast decline/rise, plus an optional AI **lab-trend interpretation** that reads recent movements against your medications and conditions), **Compare**, and Claude-powered **Insights** (a daily analysis of your activity, metrics, and goals, plus **weekly/monthly recap** narratives)
 - **Household** — for any login that can reach more than one profile (an admin, or a caregiver **member** granted several profiles), a cross-profile overview: one card per person showing today's **attention items** — supplement/medication doses due, low refills, and the next scheduled visit — alongside at-a-glance stats. **Confirm** a due dose for anyone straight from their card **without switching profiles** (the button shows only where you have write access; a read-only grant sees the card but no actions), or tap a card to open that profile. Hidden for single-profile logins.
 - **Goals** — set targets, track progress bars, mark achieved/archived
 - **Benchmarks** — estimated 1-rep maxes (Epley) and strength standards relative to bodyweight
@@ -189,6 +189,21 @@ one through an admin-gated route — members never see the affordance or the dat
 Insight generation works out of the box with a built-in offline summary. Set
 `ANTHROPIC_API_KEY` (see **Configuration**) to enable **Claude-powered**
 coaching analysis, then use **Trends → Insights → Generate analysis**.
+
+Beyond the single-day insight, two AI **narratives** read across your history:
+
+- **Weekly / monthly recap** (**Trends → Insights**) — a narrative of your
+  training, adherence, and body-metric trends over the last week or month,
+  grounded in the same recap facts the dashboard **Weekly recap** card shows.
+- **Lab-trend interpretation** (**Trends → Biomarkers**) — an optional read of
+  your recent biomarker movements _in context_ (medication start/stop dates and
+  conditions), so a change reads as "LDL up since the statin was stopped" rather
+  than a bare number. Observations, not diagnoses — it points you at what to
+  raise with a clinician.
+
+Both are stored (like daily insights) and regenerate on demand. Without a key
+they fall back to a deterministic offline summary. Their per-profile daily cap is
+`AI_DAILY_NARRATIVE_LIMIT` (default 30).
 
 Uploaded medical documents (**Data → Import**) are extracted into
 structured records by the same API; without a key the file is still stored but

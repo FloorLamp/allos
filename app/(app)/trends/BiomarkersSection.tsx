@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
-import { getMedicalRecords } from "@/lib/queries";
+import { getMedicalRecords, getRecentNarratives } from "@/lib/queries";
 import {
   isBiomarkerStale,
   daysBetween,
@@ -9,10 +9,13 @@ import {
 } from "@/lib/reference-range";
 import { groupContiguous } from "@/lib/table-sort";
 import { filterSeriesByRange } from "@/lib/trends";
+import { formatLongDate } from "@/lib/format-date";
 import type { DateRange } from "@/lib/timeline-format";
 import { EmptyState, MedicalValue } from "@/components/ui";
+import SubmitButton from "@/components/SubmitButton";
 import StarredBiomarkers from "@/components/StarredBiomarkers";
 import TrajectoryFindings from "./TrajectoryFindings";
+import { generateLabTrend } from "./actions";
 
 export type BiomarkerFlagFilter = "oor" | "nonoptimal";
 
@@ -39,6 +42,9 @@ export default function BiomarkersSection({
     getMedicalRecords(profile.id, { range: flag, panel, sort: "name" }),
     range
   );
+  // The latest stored AI lab-trend interpretation (issue #20), if any. Not date-
+  // windowed — it's a standing read of the analytes' full history.
+  const labTrend = getRecentNarratives(profile.id, ["labs"], 1)[0];
 
   const flagChips: { label: string; value?: BiomarkerFlagFilter }[] = [
     { label: "All" },
@@ -59,6 +65,48 @@ export default function BiomarkersSection({
           Independent of the flag/panel filters and the date window — a trajectory
           is a property of the analyte's full history. */}
       <TrajectoryFindings />
+
+      {/* AI lab-trend interpretation (issue #20): an optional AI read of the
+          biomarker deltas in context — medication timeline + conditions —
+          grounded in the same structured history the trajectory rules use.
+          Degrades to a deterministic offline summary without an API key. */}
+      <div
+        data-testid="lab-trend-interpretation"
+        className="card space-y-3 border-brand-100 dark:border-brand-950"
+      >
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h3 className="font-semibold text-slate-800 dark:text-slate-100">
+              ✦ Lab-trend interpretation
+            </h3>
+            <p className="max-w-lg text-xs text-slate-400 dark:text-slate-500">
+              An AI read of your recent lab movements in the context of your
+              medications and conditions. Observations, not diagnoses — raise
+              anything concerning with a clinician.
+            </p>
+          </div>
+          <form action={generateLabTrend}>
+            <SubmitButton pendingLabel="Interpreting…">
+              {labTrend ? "Refresh" : "Interpret trends"}
+            </SubmitButton>
+          </form>
+        </div>
+        {labTrend && (
+          <div className="border-t border-black/5 pt-3 dark:border-white/10">
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <span className="text-xs text-slate-400 dark:text-slate-500">
+                As of {formatLongDate(labTrend.period_end)}
+              </span>
+              <span className="badge bg-slate-100 text-slate-500 dark:bg-ink-800 dark:text-slate-400">
+                {labTrend.model ?? "n/a"}
+              </span>
+            </div>
+            <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700 dark:text-slate-200">
+              {labTrend.summary}
+            </p>
+          </div>
+        )}
+      </div>
 
       <StarredBiomarkers />
 

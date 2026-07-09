@@ -4,16 +4,23 @@
 // (lib/__tests__/ai-usage.test.ts) without opening SQLite. lib/ai-usage.ts
 // re-exports everything here, so callers can import from either place.
 
-// Kinds tracked today: document extraction vs insight/suggestion generation.
+// Kinds tracked today: document extraction, insight/suggestion generation, and
+// the AI narrative layer (weekly/monthly recap + lab-trend interpretation, #20).
 // Insights and supplement suggestions share the "insight" bucket — both are
-// coaching-style generations distinct from document extraction.
-export type AiUsageKind = "extraction" | "insight";
+// coaching-style generations distinct from document extraction. Narratives get
+// their OWN bucket because they're heavier, on-demand generations whose cap
+// should tune independently of the per-day insight cap.
+export type AiUsageKind = "extraction" | "insight" | "narrative";
 
 // Defaults are generous for a real single user across a day, but tight enough to
 // bound abuse. Overridable per deploy via env; the default stays the source of
 // truth in code (these are plain integers — never a model identifier).
 export const DEFAULT_DAILY_EXTRACTION_LIMIT = 50;
 export const DEFAULT_DAILY_INSIGHT_LIMIT = 100;
+// Period recaps + lab-trend reads are heavier and more deliberate than a daily
+// insight, so a lower default cap is plenty for a real user while still bounding
+// a runaway loop.
+export const DEFAULT_DAILY_NARRATIVE_LIMIT = 30;
 
 // Parse a non-negative integer env override, falling back to the code default when
 // unset/blank/invalid (so a typo can't silently disable the cap — only a
@@ -33,9 +40,15 @@ export function insightDailyLimit(): number {
   return envLimit("AI_DAILY_INSIGHT_LIMIT", DEFAULT_DAILY_INSIGHT_LIMIT);
 }
 
+export function narrativeDailyLimit(): number {
+  return envLimit("AI_DAILY_NARRATIVE_LIMIT", DEFAULT_DAILY_NARRATIVE_LIMIT);
+}
+
 // Resolve the daily limit for a kind from env/defaults.
 export function dailyLimitFor(kind: AiUsageKind): number {
-  return kind === "extraction" ? extractionDailyLimit() : insightDailyLimit();
+  if (kind === "extraction") return extractionDailyLimit();
+  if (kind === "narrative") return narrativeDailyLimit();
+  return insightDailyLimit();
 }
 
 export interface AiUsageDecision {

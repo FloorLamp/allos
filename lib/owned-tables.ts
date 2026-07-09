@@ -70,6 +70,7 @@ export const OWNED_TABLES = [
   "equipment",
   "hr_minutes",
   "insights",
+  "narratives",
   "metric_samples",
   "starred_biomarkers",
   "integration_connections",
