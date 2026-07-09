@@ -62,6 +62,18 @@ export async function dismissDigest(formData: FormData) {
   revalidatePath("/trends");
 }
 
+// Dismiss a biomarker trajectory finding (issue #41): hide it through the shared
+// suppression store keyed by "trajectory:<analyte>:<rule>". Guarded to the
+// trajectory namespace (like dismissDigest) so this action can only ever silence a
+// trajectory key; profile-scoped via dismissFinding.
+export async function dismissTrajectory(formData: FormData) {
+  const { profile } = requireSession();
+  const dedupeKey = String(formData.get("dedupe_key") ?? "").trim();
+  if (!dedupeKey.startsWith("trajectory:")) return;
+  dismissFinding(profile.id, dedupeKey);
+  revalidatePath("/trends");
+}
+
 // Pin / unpin a Trends-Overview tile for the active profile (issue #212, Phase 2).
 // The pin key ("metric:weight" | "bio:LDL Cholesterol") toggles in the per-profile
 // `trend_pins` list; pinned tiles render first on the Overview. profileId is

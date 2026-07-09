@@ -482,6 +482,19 @@ const PANELS: Panel[] = [
     ref: "<15",
     values: [11.2, 10.1, 9.2, 8.4, 7.8, 7.1],
   },
+  // Kidney — a slow, sustained eGFR decline that STAYS in range (above the 60 CKD
+  // floor) the whole time, so a single-value flag never fires — but the trajectory
+  // rules (#41) do: the ~7 mL/min/1.73m²/yr fall beats the curated >5/yr velocity
+  // threshold, and every reading sits below the 90 optimal floor (persistent
+  // below-optimal). A worked example for the "Trajectory watch" card.
+  {
+    category: "lab",
+    name: "eGFR",
+    canonical: "eGFR",
+    unit: "mL/min/1.73m2",
+    ref: ">60",
+    values: [88, 84, 80, 76, 72, 68],
+  },
   // Thyroid.
   {
     category: "lab",

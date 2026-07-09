@@ -678,7 +678,8 @@
       "optimal_high": 120,
       "direction": "higher_better",
       "note": "Kidney filtration",
-      "retest_days": 365
+      "retest_days": 365,
+      "velocity_per_year": 5
     },
     {
       "name": "Cystatin C",
@@ -1343,7 +1344,8 @@
       "conversions": {
         "ug/L": 1
       },
-      "retest_days": 365
+      "retest_days": 365,
+      "velocity_per_year": 0.75
     },
     {
       "name": "Blood Pressure Systolic",
