@@ -4,6 +4,7 @@ import type { IntegrationSyncEvent, IntegrationId } from "@/lib/types";
 import { getIntegration } from "@/lib/integrations/registry";
 import { formatWindow, formatSplitLabel } from "@/lib/integrations/sync-log";
 import RelativeTime from "@/components/RelativeTime";
+import RawPayloadViewer from "@/components/RawPayloadViewer";
 
 // Data → Review: a per-profile inbox for background integration imports. Phase 1
 // surfaces (a) integrations that are currently failing ("Needs attention") and
@@ -44,9 +45,14 @@ function CountBits({ ev }: { ev: IntegrationSyncEvent }) {
 export default function ReviewInbox({
   issues,
   recent,
+  isAdmin = false,
 }: {
   issues: IntegrationSyncEvent[];
   recent: IntegrationSyncEvent[];
+  // Admins can inspect the raw provider payload captured per sync (issue #9). The
+  // "View raw" affordance is only rendered for admins on events that carry a
+  // raw_ref; the route it hits is itself admin-gated + profile-scoped.
+  isAdmin?: boolean;
 }) {
   return (
     <div className="space-y-6" data-testid="review-inbox">
@@ -91,6 +97,7 @@ export default function ReviewInbox({
                       Check {providerName(ev.provider)} settings →
                     </Link>
                   )}
+                  {isAdmin && ev.raw_ref && <RawPayloadViewer id={ev.id} />}
                 </li>
               );
             })}
@@ -143,6 +150,7 @@ export default function ReviewInbox({
                   value={ev.at}
                   className="ml-auto text-xs text-slate-400 dark:text-slate-500"
                 />
+                {isAdmin && ev.raw_ref && <RawPayloadViewer id={ev.id} />}
               </li>
             ))}
           </ul>

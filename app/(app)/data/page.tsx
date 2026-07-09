@@ -112,7 +112,13 @@ export default async function DataPage({
               importIssues.length > 0
                 ? `Review (${importIssues.length})`
                 : "Review",
-            content: <ReviewInbox issues={importIssues} recent={recentSyncs} />,
+            content: (
+              <ReviewInbox
+                issues={importIssues}
+                recent={recentSyncs}
+                isAdmin={login.role === "admin"}
+              />
+            ),
           },
           {
             id: "manage",

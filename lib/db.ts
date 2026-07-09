@@ -826,6 +826,11 @@ export function migrate(db: Database.Database) {
   addColumnIfMissing(db, "integration_sync_events", "updated", "INTEGER");
   addColumnIfMissing(db, "integration_sync_events", "unchanged", "INTEGER");
 
+  // Optional pointer to the captured raw provider payload for a sync (issue #9):
+  // the bare filename under data/integration-payloads/<profileId>/, read back by
+  // the admin-only raw viewer. NULL when capture was off/failed or on legacy rows.
+  addColumnIfMissing(db, "integration_sync_events", "raw_ref", "TEXT");
+
   // Lets integration ingest keep one imported body-metrics row per day without
   // touching manually-entered rows. (Fresh DBs already have it via CREATE TABLE;
   // this covers DBs upgraded from before the column existed.)

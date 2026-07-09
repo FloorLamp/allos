@@ -31,6 +31,16 @@ test.describe("Data → Review import inbox", () => {
     // Strava re-scan collapses to "nothing new".
     await expect(review.getByText("30 new · 10 changed")).toBeVisible();
     await expect(review.getByText("nothing new")).toBeVisible();
+
+    // Admin-only raw payload viewer (#9): the seeded Health Connect sync carries a
+    // raw_ref, so the admin (the seed logs in as admin) sees a "View raw"
+    // affordance. Expanding it lazily fetches the admin-gated, profile-scoped raw
+    // route, which returns the captured provider JSON.
+    const viewRaw = review.getByText("View raw").first();
+    await expect(viewRaw).toBeVisible();
+    await viewRaw.click();
+    await expect(review.getByText(/"records"/)).toBeVisible();
+    await expect(review.getByText(/"Steps"/)).toBeVisible();
   });
 
   test("shows the failing-integration count on the profile badge", async ({

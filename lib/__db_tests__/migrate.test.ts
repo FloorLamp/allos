@@ -68,6 +68,10 @@ describe("migrate() — fresh boot", () => {
     expect(columnNames(db, "intake_items").has("document_id")).toBe(true);
     expect(columnNames(db, "activities").has("source")).toBe(true);
     expect(columnNames(db, "medical_records").has("canonical_name")).toBe(true);
+    // Issue #9's raw-payload pointer column.
+    expect(columnNames(db, "integration_sync_events").has("raw_ref")).toBe(
+      true
+    );
 
     db.close();
   });
@@ -175,6 +179,13 @@ describe("migrate() — upgrade path (existing DB)", () => {
         `expected ${key} to be re-added by migrate()`
       ).toBe(true);
     }
+
+    // Issue #9's raw_ref is a plain additive TEXT column (no dependent index), so
+    // it must be part of the stripped set and re-added by the upgrade boot.
+    expect(stripped.has("integration_sync_events.raw_ref")).toBe(true);
+    expect(columnNames(db, "integration_sync_events").has("raw_ref")).toBe(
+      true
+    );
 
     db.close();
   });

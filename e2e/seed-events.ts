@@ -7,6 +7,7 @@ import { loadEnvConfig } from "@next/env";
 loadEnvConfig(process.cwd());
 
 import { db } from "../lib/db";
+import { writeRawPayload } from "../lib/integrations/raw-log";
 
 const PROFILE_ID = 1;
 
@@ -14,11 +15,30 @@ db.prepare(
   `DELETE FROM integration_sync_events WHERE profile_id = ? AND provider IN ('strava','health-connect')`
 ).run(PROFILE_ID);
 
+// Capture a raw payload file for the healthy Health Connect sync so the admin-only
+// "View raw" affordance (#9) has something to fetch. Synthetic fixture content —
+// no real PHI. writeRawPayload writes under data/integration-payloads/<profile>/
+// (the same dir the raw route reads), returning the bare ref stored on the event.
+const hcRawRef = writeRawPayload(
+  PROFILE_ID,
+  "health-connect",
+  JSON.stringify(
+    {
+      records: [
+        { type: "Steps", count: 8000, startTime: "2026-07-08T00:00:00Z" },
+        { type: "HeartRate", bpm: 61, time: "2026-07-08T06:30:00Z" },
+      ],
+    },
+    null,
+    2
+  )
+);
+
 const ins = db.prepare(
   `INSERT INTO integration_sync_events
      (profile_id, provider, at, ok, window_start, window_end,
-      received, written, inserted, updated, unchanged, skipped, error)
-   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      received, written, inserted, updated, unchanged, skipped, raw_ref, error)
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 );
 
 // Two clean syncs, then a newer Strava failure — so Strava is "currently failing"
@@ -38,6 +58,7 @@ ins.run(
   10, // updated
   0, // unchanged
   2, // skipped
+  hcRawRef, // raw_ref → drives the admin "View raw" affordance (#9)
   null
 );
 ins.run(
@@ -53,6 +74,7 @@ ins.run(
   0, // updated
   6, // unchanged → "nothing new"
   0, // skipped
+  null, // raw_ref
   null
 );
 ins.run(
@@ -68,6 +90,7 @@ ins.run(
   null,
   null,
   null,
+  null, // raw_ref
   "Strava token refresh failed (401): unauthorized"
 );
 
