@@ -548,6 +548,18 @@ export const DEFAULT_COACHING_THRESHOLDS: CoachingThresholds = {
   variabilitySpreadMultiplier: 2, // ~2× the personal spread
 };
 
+// A run of consecutive days a rest/take-it-easy nudge has fired — the persisted
+// marker that gives the recommendation continuity across days (#44 item 3b), so
+// day 2 reads "second easy day" instead of a fresh alert. Stored per-profile
+// (JSON in profile_settings), maintained the way the refill nudge dedups an
+// episode: opened when a rest rec first fires, carried forward while it keeps
+// firing on consecutive days, cleared the moment no rest rec fires.
+export interface RestEpisode {
+  startDate: string; // first day of the current consecutive rest run (YYYY-MM-DD)
+  lastDate: string; // most recent day a rest rec fired — for consecutive-day detection
+  reasonId: string; // the rest rec id that last (re)marked the episode
+}
+
 export interface CoachingInput {
   today: string; // profile-tz YYYY-MM-DD
   routine: RoutineTargetProgress[];
@@ -558,6 +570,11 @@ export interface CoachingInput {
   trainingDates: string[];
   sleep: SleepSignal | null;
   restingHr: RestingHrSignal | null;
+  // The persisted rest episode as of the last reconcile (null when none is open).
+  // Used only to PHRASE a continuing rest nudge — it never changes whether rest
+  // fires, only how it reads. Absent ⇒ every rest nudge is phrased fresh (prior
+  // behavior).
+  restEpisode?: RestEpisode | null;
   weightUnit?: WeightUnit; // for the next-set target text; default "kg"
   thresholds?: Partial<CoachingThresholds>;
 }
@@ -731,6 +748,80 @@ export function restRecommendation(
   return null;
 }
 
+// ---- Rest-episode continuity (#44 item 3b) ----
+//
+// A rest nudge that fires several days running should read as one continuing
+// easy stretch ("second easy day"), not a fresh alarm each morning. That needs a
+// tiny bit of memory — the persisted RestEpisode — reconciled the same way the
+// refill nudge dedups a low-supply episode: a rest rec (re)marks it, a day with
+// no rest rec clears it. These pure functions own the state machine and the
+// phrasing; the DB read/write lives in lib/queries/coaching.ts + the notify tick.
+
+// The episode to persist given the prior one and today's rest recommendation (or
+// null). An episode CONTINUES when a rest rec fires today and the prior episode
+// was last seen today (idempotent re-run) or yesterday (consecutive day); a rest
+// rec after a gap (or with no prior episode) OPENS a fresh one; no rest rec today
+// CLEARS it (returns null). Pure — callers persist the result.
+export function nextRestEpisode(
+  prev: RestEpisode | null,
+  rec: Recommendation | null,
+  today: string
+): RestEpisode | null {
+  if (!rec || rec.kind !== "rest") return null;
+  const yesterday = shiftDateStr(today, -1);
+  const continues =
+    prev != null && (prev.lastDate === today || prev.lastDate === yesterday);
+  return {
+    startDate: continues ? prev.startDate : today,
+    lastDate: today,
+    reasonId: rec.id,
+  };
+}
+
+// The 1-based day number of an episode as of `today` (start day = 1). Clamped to
+// at least 1 so a marker with a future/garbled start never reads as day 0.
+export function restEpisodeDay(ep: RestEpisode, today: string): number {
+  return Math.max(1, daysSince(ep.startDate, today) + 1);
+}
+
+// Small ordinal words for the continuity phrasing; falls back to "Nth" past the
+// table, which realistically never shows (an easy stretch this long is rare).
+const ORDINAL_WORDS = [
+  "zeroth",
+  "first",
+  "second",
+  "third",
+  "fourth",
+  "fifth",
+  "sixth",
+  "seventh",
+  "eighth",
+  "ninth",
+  "tenth",
+];
+
+function ordinalWord(n: number): string {
+  return ORDINAL_WORDS[n] ?? `${n}th`;
+}
+
+// Re-phrase a rest recommendation as day N (N ≥ 2) of a continuing easy stretch:
+// the title names the day ("Second easy day") instead of a fresh "Rest or take it
+// easy today", and the underlying reason is kept but tagged as ongoing so it no
+// longer reads as a new alert. id/kind/tone are preserved, so snooze dedup and
+// the caution styling are unchanged.
+export function withRestContinuity(
+  rec: Recommendation,
+  day: number
+): Recommendation {
+  const word = ordinalWord(day);
+  const Word = word.charAt(0).toUpperCase() + word.slice(1);
+  return {
+    ...rec,
+    title: `${Word} easy day`,
+    detail: `${rec.detail} This is your ${word} easy day in a row — keep it light and let recovery catch up.`,
+  };
+}
+
 // A strength recommendation seeded off an exercise's next-set suggestion. Title
 // is the exercise; `target` carries the next-set text; detail leads with the
 // progression rationale, then the routine/last-trained reason.
@@ -851,7 +942,17 @@ export function recommendCoaching(input: CoachingInput): Recommendation[] {
 
   const ranked: Recommendation[] = [];
   if (rest) {
-    ranked.push(rest);
+    // Episode continuity (#44 item 3b): if this rest run continues a prior one,
+    // phrase it as "second/third easy day" rather than a fresh alert. Derived
+    // purely from the persisted marker + today, so it's robust even if the marker
+    // hasn't been advanced yet today (the notify tick owns the write).
+    const episode = nextRestEpisode(
+      input.restEpisode ?? null,
+      rest,
+      input.today
+    );
+    const day = episode ? restEpisodeDay(episode, input.today) : 1;
+    ranked.push(day >= 2 ? withRestContinuity(rest, day) : rest);
     // Keep the "what to do once recovered" nudge as secondary context, but drop
     // a redundant on-track note (rest already implies rest is fine).
     for (const r of training) if (r.kind !== "ontrack") ranked.push(r);

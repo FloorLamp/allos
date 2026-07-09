@@ -6,9 +6,10 @@
 import { loadEnvConfig } from "@next/env";
 loadEnvConfig(process.cwd());
 
-import { db } from "../lib/db";
+import { db, today } from "../lib/db";
+import { shiftDateStr } from "../lib/date";
 import { writeRawPayload } from "../lib/integrations/raw-log";
-import { setDashboardLayout } from "../lib/settings";
+import { setDashboardLayout, setProfileSetting } from "../lib/settings";
 
 const PROFILE_ID = 1;
 
@@ -322,4 +323,46 @@ db.prepare(
 
 console.log(
   "e2e: seeded weekly-recap dashboard layout + a milestone timeline entry for profile 1"
+);
+
+// ── Coaching rest-episode continuity fixtures (#44 item 3b) ───────────────────
+// Force a rest nudge for profile 1 today (a short night, below the 6h floor) and
+// pre-seed a rest episode that started YESTERDAY, so the Training → Overview
+// "Next workout" card reads "Second easy day" (a continuing easy stretch) rather
+// than a fresh "Rest or take it easy today" alert. Dates follow the app timezone
+// via today()/shiftDateStr so this is deterministic regardless of the host TZ.
+// Synthetic values only — no real PHI.
+const COACH_TODAY = today(PROFILE_ID);
+const COACH_YESTERDAY = shiftDateStr(COACH_TODAY, -1);
+
+// A single low sleep_min sample for last night → getSleepSignal trips the
+// absolute floor and restRecommendation fires a rest nudge. Clear any prior
+// fixture row first so re-seeding stays idempotent.
+db.prepare(
+  `DELETE FROM metric_samples WHERE profile_id = ? AND metric = 'sleep_min' AND date = ?`
+).run(PROFILE_ID, COACH_TODAY);
+db.prepare(
+  `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+   VALUES (?, 'manual', 'sleep_min', ?, ?, ?, 300)`
+).run(
+  PROFILE_ID,
+  COACH_TODAY,
+  `${COACH_YESTERDAY}T23:00`,
+  `${COACH_TODAY}T04:00`
+);
+
+// The persisted episode marker (mirrors the refill nudge's dedup marker). Started
+// yesterday and last seen yesterday → today's rest rec continues it into day 2.
+setProfileSetting(
+  PROFILE_ID,
+  "coaching_rest_episode",
+  JSON.stringify({
+    startDate: COACH_YESTERDAY,
+    lastDate: COACH_YESTERDAY,
+    reasonId: "rest-sleep",
+  })
+);
+
+console.log(
+  `e2e: seeded a low-sleep sample + a day-2 rest episode for profile 1 (${COACH_YESTERDAY} → ${COACH_TODAY})`
 );

@@ -6,8 +6,22 @@ import {
   getFrequencyTargetProgress,
   getStrengthByExercise,
 } from "./training";
-import type { CoachingInput, RestingHrSignal, SleepSignal } from "../coaching";
-import type { DistanceUnit, WeightUnit } from "../settings";
+import {
+  nextRestEpisode,
+  recommendCoaching,
+  type CoachingInput,
+  type Recommendation,
+  type RestEpisode,
+  type RestingHrSignal,
+  type SleepSignal,
+} from "../coaching";
+import {
+  deleteProfileSetting,
+  getProfileSetting,
+  setProfileSetting,
+  type DistanceUnit,
+  type WeightUnit,
+} from "../settings";
 
 // How many recent nights / days to average for a recovery baseline. Long enough
 // to be a stable personal norm, short enough to reflect the current block.
@@ -93,6 +107,73 @@ export function gatherCoachingInput(
     trainingDates: getActivityDates(profileId),
     sleep: getSleepSignal(profileId),
     restingHr: getRestingHrSignal(profileId),
+    restEpisode: getRestEpisode(profileId),
     weightUnit,
   };
+}
+
+// ---- Rest-episode continuity persistence (#44 item 3b) ----
+//
+// The rest nudge's cross-day memory lives in one per-profile profile_settings row
+// (JSON), mirroring the refill nudge's `notify_last_refill_<id>` marker. The pure
+// state machine is lib/coaching's nextRestEpisode; this layer just reads/writes
+// the marker. Reads feed gatherCoachingInput so the rendered nudge can phrase a
+// continuing stretch; the write is owned by the notify tick (reconcileRestEpisode)
+// so the episode advances day-over-day even on days the dashboard isn't opened.
+const REST_EPISODE_KEY = "coaching_rest_episode";
+
+// The stored episode marker for a profile, or null when none is open / unparseable.
+export function getRestEpisode(profileId: number): RestEpisode | null {
+  const raw = getProfileSetting(profileId, REST_EPISODE_KEY);
+  if (!raw) return null;
+  try {
+    const p = JSON.parse(raw) as Partial<RestEpisode>;
+    if (
+      p &&
+      typeof p.startDate === "string" &&
+      typeof p.lastDate === "string" &&
+      typeof p.reasonId === "string"
+    ) {
+      return {
+        startDate: p.startDate,
+        lastDate: p.lastDate,
+        reasonId: p.reasonId,
+      };
+    }
+  } catch {
+    // Corrupt marker → treat as no episode; the next reconcile overwrites it.
+  }
+  return null;
+}
+
+function saveRestEpisode(profileId: number, ep: RestEpisode | null): void {
+  if (ep) setProfileSetting(profileId, REST_EPISODE_KEY, JSON.stringify(ep));
+  else deleteProfileSetting(profileId, REST_EPISODE_KEY);
+}
+
+// Advance or clear the persisted rest episode from today's ranked recommendations,
+// mirroring the refill nudge's episode dedup: a rest rec (re)marks the episode; a
+// day with no rest rec ends it. Idempotent within a day (re-running yields the
+// same marker, so no needless write). Returns the reconciled episode. Called by
+// the notify tick per profile so the marker tracks the CONDITION daily, not just
+// on days the user views a coaching surface.
+export function reconcileRestEpisode(
+  profileId: number,
+  recs: Recommendation[],
+  todayStr: string
+): RestEpisode | null {
+  const prev = getRestEpisode(profileId);
+  const rest = recs.find((r) => r.kind === "rest") ?? null;
+  const next = nextRestEpisode(prev, rest, todayStr);
+  if (JSON.stringify(prev) !== JSON.stringify(next))
+    saveRestEpisode(profileId, next);
+  return next;
+}
+
+// Convenience for the notify tick: gather this profile's coaching input, rank it,
+// and reconcile the rest episode. Units don't affect the rest decision, so plain
+// canonical defaults are fine here. Returns the reconciled episode.
+export function runCoachingEpisode(profileId: number): RestEpisode | null {
+  const recs = recommendCoaching(gatherCoachingInput(profileId, "kg", "km"));
+  return reconcileRestEpisode(profileId, recs, today(profileId));
 }

@@ -51,7 +51,7 @@ import { runMilestones } from "../lib/milestones-db";
 import { runScheduledBackup } from "../lib/backup";
 import { pruneAuditEvents } from "../lib/audit";
 import { sweepDeletedRows } from "../lib/undo-delete-db";
-import { inferWorkoutSchedule } from "../lib/queries";
+import { inferWorkoutSchedule, runCoachingEpisode } from "../lib/queries";
 import { slotDue } from "../lib/notifications/schedule";
 import { db, today } from "../lib/db";
 import { hourInTz, weekdayInTz } from "../lib/date";
@@ -278,6 +278,20 @@ async function tickProfile(
       err: e instanceof Error ? e : String(e),
     });
     anyFailed = true;
+  }
+
+  // Coaching rest-episode continuity (#44 item 3b): advance/clear the persisted
+  // rest-nudge marker each hour so a multi-day easy stretch reads as "second easy
+  // day" on the dashboard/Training surfaces instead of a fresh alert. No send —
+  // it only maintains the marker (mirrors the refill nudge's episode dedup) so the
+  // condition is tracked daily even when the user doesn't open a coaching surface.
+  try {
+    runCoachingEpisode(profile.id);
+  } catch (e) {
+    log.error("coaching episode reconcile failed", {
+      profile: profile.id,
+      err: e instanceof Error ? e : String(e),
+    });
   }
 
   // Morning digest (#135): one summary per profile per day at digest_hour (this

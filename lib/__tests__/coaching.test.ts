@@ -15,10 +15,15 @@ import {
   restRecommendation,
   consecutiveTrainingDays,
   activeDaysInWindow,
+  nextRestEpisode,
+  restEpisodeDay,
+  withRestContinuity,
   DEFAULT_COACHING_THRESHOLDS,
   type ExerciseSummary,
   type CardioSummary,
   type CoachingInput,
+  type RestEpisode,
+  type Recommendation,
   type RoutineTargetProgress,
   type StrengthRecent,
   type CardioRecent,
@@ -879,5 +884,157 @@ describe("recommendCoaching", () => {
       })
     );
     expect(recs[0].kind).toBe("rest");
+  });
+});
+
+// ---- Rest-episode continuity (#44 item 3b) ----
+
+const YESTERDAY = "2026-07-07";
+
+// A rest recommendation stand-in for the pure episode helpers.
+function restRec(id = "rest-sleep"): Recommendation {
+  return {
+    id,
+    kind: "rest",
+    title: "Rest or take it easy today",
+    detail: "You slept 5.0h last night — consider a rest or light day.",
+    tone: "caution",
+  };
+}
+
+function episode(over: Partial<RestEpisode> = {}): RestEpisode {
+  return {
+    startDate: YESTERDAY,
+    lastDate: YESTERDAY,
+    reasonId: "rest-sleep",
+    ...over,
+  };
+}
+
+describe("nextRestEpisode", () => {
+  it("opens a fresh episode when a rest rec fires with no prior marker", () => {
+    expect(nextRestEpisode(null, restRec(), TODAY)).toEqual({
+      startDate: TODAY,
+      lastDate: TODAY,
+      reasonId: "rest-sleep",
+    });
+  });
+
+  it("continues an episode last seen yesterday (consecutive day)", () => {
+    const next = nextRestEpisode(episode(), restRec(), TODAY);
+    expect(next).toEqual({
+      startDate: YESTERDAY, // start carried forward
+      lastDate: TODAY, // advanced to today
+      reasonId: "rest-sleep",
+    });
+  });
+
+  it("is idempotent when already reconciled today", () => {
+    const already = episode({ startDate: YESTERDAY, lastDate: TODAY });
+    expect(nextRestEpisode(already, restRec(), TODAY)).toEqual(already);
+  });
+
+  it("carries the start across a shifted reason (still one condition)", () => {
+    const next = nextRestEpisode(episode(), restRec("rest-rhr"), TODAY);
+    expect(next).toEqual({
+      startDate: YESTERDAY,
+      lastDate: TODAY,
+      reasonId: "rest-rhr", // latest reason recorded
+    });
+  });
+
+  it("opens a fresh episode after a gap (prior run not seen yesterday)", () => {
+    const stale = episode({ startDate: "2026-07-01", lastDate: "2026-07-05" });
+    expect(nextRestEpisode(stale, restRec(), TODAY)).toEqual({
+      startDate: TODAY,
+      lastDate: TODAY,
+      reasonId: "rest-sleep",
+    });
+  });
+
+  it("clears the episode when no rest rec fires", () => {
+    expect(nextRestEpisode(episode(), null, TODAY)).toBeNull();
+    const strength: Recommendation = {
+      id: "strength-x",
+      kind: "strength",
+      title: "Train X",
+      detail: "",
+      tone: "action",
+    };
+    expect(nextRestEpisode(episode(), strength, TODAY)).toBeNull();
+  });
+});
+
+describe("restEpisodeDay", () => {
+  it("is day 1 on the start date", () => {
+    expect(restEpisodeDay(episode({ startDate: TODAY }), TODAY)).toBe(1);
+  });
+  it("counts consecutive days from the start (1-based)", () => {
+    expect(restEpisodeDay(episode({ startDate: YESTERDAY }), TODAY)).toBe(2);
+    expect(restEpisodeDay(episode({ startDate: "2026-07-05" }), TODAY)).toBe(4);
+  });
+  it("clamps a future/garbled start to at least day 1", () => {
+    expect(restEpisodeDay(episode({ startDate: "2026-07-20" }), TODAY)).toBe(1);
+  });
+});
+
+describe("withRestContinuity", () => {
+  it("re-titles as the ordinal easy day and keeps id/kind/tone", () => {
+    const cont = withRestContinuity(restRec(), 2);
+    expect(cont.title).toBe("Second easy day");
+    expect(cont.id).toBe("rest-sleep"); // snooze dedup unchanged
+    expect(cont.kind).toBe("rest");
+    expect(cont.tone).toBe("caution");
+    expect(cont.detail).toContain("second easy day in a row");
+    // The underlying reason is preserved, not discarded.
+    expect(cont.detail).toContain("slept 5.0h");
+  });
+  it("phrases day 3+ with the matching ordinal", () => {
+    expect(withRestContinuity(restRec(), 3).title).toBe("Third easy day");
+    expect(withRestContinuity(restRec(), 4).title).toBe("Fourth easy day");
+  });
+  it("falls back to Nth past the word table", () => {
+    expect(withRestContinuity(restRec(), 12).title).toBe("12th easy day");
+  });
+});
+
+describe("recommendCoaching rest continuity", () => {
+  // A short night that clears the absolute floor → a fresh rest-sleep nudge.
+  const poorSleep = { lastNightMin: 300, baselineMin: 300 };
+  // A minimal training context so the engine evaluates recovery (rest is only
+  // considered once there's any activity/routine to coach against).
+  const ctx = { strength: [sRec()] };
+
+  it("phrases a fresh rest nudge normally without an episode", () => {
+    const [top] = recommendCoaching(input({ ...ctx, sleep: poorSleep }));
+    expect(top.kind).toBe("rest");
+    expect(top.title).toBe("Rest or take it easy today");
+  });
+
+  it("phrases a rest nudge as a continuing day when the episode continues", () => {
+    const [top] = recommendCoaching(
+      input({
+        ...ctx,
+        sleep: poorSleep,
+        restEpisode: episode({ startDate: YESTERDAY, lastDate: YESTERDAY }),
+      })
+    );
+    expect(top.kind).toBe("rest");
+    expect(top.title).toBe("Second easy day");
+    expect(top.detail).toContain("second easy day in a row");
+  });
+
+  it("does not apply continuity to a stale (gapped) episode", () => {
+    const [top] = recommendCoaching(
+      input({
+        ...ctx,
+        sleep: poorSleep,
+        restEpisode: episode({
+          startDate: "2026-07-01",
+          lastDate: "2026-07-04",
+        }),
+      })
+    );
+    expect(top.title).toBe("Rest or take it easy today");
   });
 });
