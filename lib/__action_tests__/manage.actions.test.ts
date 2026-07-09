@@ -49,7 +49,8 @@ describe("deleteDatasetRows — immunizations (regression: missing DELETE_POLICY
     expect(immCount(profile.id)).toBe(2);
 
     const res = await deleteDatasetRows("immunizations", [id1]);
-    expect(res).toEqual({ ok: true, deleted: 1 });
+    // immunizations has no undo kind, so its bulk delete is non-undoable.
+    expect(res).toEqual({ ok: true, deleted: 1, undoIds: [] });
     expect(immCount(profile.id)).toBe(1);
     // The remaining row is the untouched one.
     expect(
@@ -67,7 +68,7 @@ describe("deleteDatasetRows — immunizations (regression: missing DELETE_POLICY
 
     // Acting as A, try to delete B's row id — the profile_id filter blocks it.
     const res = await deleteDatasetRows("immunizations", [idB]);
-    expect(res).toEqual({ ok: true, deleted: 0 });
+    expect(res).toEqual({ ok: true, deleted: 0, undoIds: [] });
     expect(immCount(profileB.id)).toBe(1);
   });
 
@@ -79,9 +80,49 @@ describe("deleteDatasetRows — immunizations (regression: missing DELETE_POLICY
     addImmunizationRow(profileB.id, "hpv");
 
     const res = await deleteAllDatasetRows("immunizations");
-    expect(res).toEqual({ ok: true, deleted: 2 });
+    // "Delete all" is intentionally not undoable.
+    expect(res).toEqual({ ok: true, deleted: 2, undoIds: [] });
     expect(immCount(profileA.id)).toBe(0);
     expect(immCount(profileB.id)).toBe(1);
+  });
+});
+
+describe("deleteDatasetRows — undoable datasets capture each row", () => {
+  function addBodyMetric(profileId: number, weightKg: number): number {
+    return Number(
+      db
+        .prepare(
+          "INSERT INTO body_metrics (profile_id, date, weight_kg) VALUES (?, '2026-01-02', ?)"
+        )
+        .run(profileId, weightKg).lastInsertRowid
+    );
+  }
+  function bmCount(profileId: number): number {
+    return (
+      db
+        .prepare("SELECT COUNT(*) AS c FROM body_metrics WHERE profile_id = ?")
+        .get(profileId) as { c: number }
+    ).c;
+  }
+
+  it("returns one undo token per captured row for body_metrics", async () => {
+    const { profile } = seedActor();
+    const id1 = addBodyMetric(profile.id, 80);
+    const id2 = addBodyMetric(profile.id, 81);
+    expect(bmCount(profile.id)).toBe(2);
+
+    const res = await deleteDatasetRows("body_metrics", [id1, id2]);
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.deleted).toBe(2);
+    expect(res.undoIds).toHaveLength(2);
+    expect(bmCount(profile.id)).toBe(0);
+
+    // Each token restores its row (issue #29 bulk undo → restoreDeletedRow).
+    const { restoreDeletedRow } = await import("@/lib/undo-delete-db");
+    for (const token of res.undoIds)
+      expect(restoreDeletedRow(profile.id, token)).toBe(true);
+    expect(bmCount(profile.id)).toBe(2);
   });
 });
 

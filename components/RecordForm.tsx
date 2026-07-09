@@ -4,6 +4,7 @@ import { useRef } from "react";
 import DateField from "./DateField";
 import SubmitButton from "./SubmitButton";
 import { useToast } from "./Toast";
+import { useFocusFormOnParam } from "./useFocusFormOnParam";
 import { MEDICAL_CATEGORIES } from "@/lib/medical-categories";
 import type { MedicalRecord } from "@/lib/types";
 
@@ -48,6 +49,10 @@ export default function RecordForm({
   const formRef = useRef<HTMLFormElement>(null);
   const editing = mode === "edit";
   const uid = record?.id ?? "new";
+
+  // The add form focuses itself when reached from the palette's "Add biomarker
+  // record" (issue #29); the inline row editors (edit mode) opt out.
+  useFocusFormOnParam(formRef, "new", undefined, mode === "add");
 
   async function handle(formData: FormData) {
     await action(formData);

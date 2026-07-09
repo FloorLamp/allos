@@ -18,3 +18,20 @@ export async function undoDelete(undoId: number): Promise<{ ok: boolean }> {
   if (ok) revalidatePath("/", "layout");
   return { ok };
 }
+
+// Restore a whole batch of deleted rows from their undo tokens — the single
+// "Deleted N · Undo" toast a bulk table delete offers (issue #29). Each token is
+// restored independently (a token already swept/restored just no-ops), and the
+// layout is revalidated once. Returns how many were actually restored.
+export async function undoDeletes(
+  undoIds: number[]
+): Promise<{ restored: number }> {
+  const { profile } = requireWriteAccess();
+  const ids = (Array.isArray(undoIds) ? undoIds : []).filter(
+    (n) => Number.isInteger(n) && n > 0
+  );
+  let restored = 0;
+  for (const id of ids) if (restoreDeletedRow(profile.id, id)) restored += 1;
+  if (restored > 0) revalidatePath("/", "layout");
+  return { restored };
+}

@@ -86,6 +86,7 @@ export default function ActivityForm({
   equipment,
   bodyweightKg,
   editData,
+  prefill = null,
   onClose,
   stickyFooter = false,
 }: {
@@ -95,6 +96,11 @@ export default function ActivityForm({
   equipment: Equipment[];
   bodyweightKg: number | null;
   editData: ActivityEditData | null;
+  // "Log again" / "Repeat last" seed (issue #29): pre-fills the form's initial
+  // state (title, exercises, sets) exactly like editData, but the form still
+  // treats it as a CREATE — saves insert a new activity, and the prefilled
+  // content auto-saves on open. Ignored when editData is present.
+  prefill?: ActivityEditData | null;
   onClose: () => void;
   // In the overlay the (often taller-than-viewport) form scrolls, so the action
   // row pins to the bottom of the screen and gains a Done button — otherwise
@@ -120,6 +126,11 @@ export default function ActivityForm({
   const createdIdRef = useRef<number | null>(null);
   const savableId = () => editData?.id ?? createdIdRef.current;
   const hasRow = !!editData || createdId != null;
+  // The row the form's initial state is reconstructed from: a stored row being
+  // edited, or a "Log again"/"Repeat last" prefill. In prefill mode this only
+  // seeds state — editData stays null, so isEdit/savableId/hasRow all keep their
+  // create semantics and the first save inserts a new activity.
+  const seed = editData ?? prefill;
 
   // Bodyweight lifts fold the user's bodyweight into their volume/strength stats.
   // If none is on record, prompt for it inline (saved as a body-metrics entry).
@@ -182,17 +193,18 @@ export default function ActivityForm({
 
   // Lazy initializers: the fallbacks format dates, no need to redo that work on
   // every render just to discard it.
-  const [date, setDate] = useState(() => editData?.date ?? todayStr(tz));
+  const [date, setDate] = useState(() => seed?.date ?? todayStr(tz));
   const [startTime, setStartTime] = useState(() =>
     editData ? (editData.start_time ?? "") : nowHHMM(tz)
   );
   const [endTime, setEndTime] = useState(editData?.end_time ?? "");
-  const [intensity, setIntensity] = useState(editData?.intensity ?? "");
-  const [notes, setNotes] = useState(editData?.notes ?? "");
+  const [intensity, setIntensity] = useState(seed?.intensity ?? "");
+  const [notes, setNotes] = useState(seed?.notes ?? "");
   // Editable activity name. For new activities it tracks the auto-generated
-  // title until the user types their own; for edits it keeps the saved title.
-  const [title, setTitle] = useState(editData?.title ?? "");
-  const [titleEdited, setTitleEdited] = useState(!!editData);
+  // title until the user types their own; for edits (and repeat prefills) it
+  // keeps the seeded title.
+  const [title, setTitle] = useState(seed?.title ?? "");
+  const [titleEdited, setTitleEdited] = useState(!!seed);
   const [notesOpen, setNotesOpen] = useState<boolean>(() => {
     if (editData?.notes) return true;
     if (typeof window !== "undefined")
@@ -201,11 +213,11 @@ export default function ActivityForm({
   });
 
   const [parts, setParts] = useState<PartEntry[]>(() => {
-    if (!editData) return [blankPart()];
-    if (editData.components) {
+    if (!seed) return [blankPart()];
+    if (seed.components) {
       try {
-        const comps: ActivityComponent[] = JSON.parse(editData.components);
-        const grouped = groupEditSets(editData.sets, units.weightUnit);
+        const comps: ActivityComponent[] = JSON.parse(seed.components);
+        const grouped = groupEditSets(seed.sets, units.weightUnit);
         return comps.map((c) => {
           if (c.type === "strength") {
             const g = grouped.find(
@@ -237,8 +249,8 @@ export default function ActivityForm({
         // fall through to legacy handling
       }
     }
-    if (editData.type === "strength") {
-      const g = groupEditSets(editData.sets, units.weightUnit);
+    if (seed.type === "strength") {
+      const g = groupEditSets(seed.sets, units.weightUnit);
       return (g.length ? g : [blankPart()]).map((e) => ({
         ...blankPart(),
         ...e,
@@ -248,20 +260,19 @@ export default function ActivityForm({
     // from the freeform title (see legacyActivityName); a non-curated one
     // loads as a custom part typed by the row — editable instead of
     // permanently blocked.
-    const name = legacyActivityName(editData.title, isKnown);
+    const name = legacyActivityName(seed.title, isKnown);
     const custom = !isCuratedActivity(name);
     return [
       {
         ...blankPart(),
         name,
         custom,
-        customType: custom ? editData.type : null,
+        customType: custom ? seed.type : null,
         distance:
-          editData.distance_km != null
-            ? String(round(kmTo(editData.distance_km, units.distanceUnit), 2))
+          seed.distance_km != null
+            ? String(round(kmTo(seed.distance_km, units.distanceUnit), 2))
             : "",
-        durationMin:
-          editData.duration_min != null ? String(editData.duration_min) : "",
+        durationMin: seed.duration_min != null ? String(seed.duration_min) : "",
       },
     ];
   });
@@ -762,7 +773,10 @@ export default function ActivityForm({
   );
   // The state we last persisted (or loaded). Starts equal to the initial state
   // so loading existing data — or opening a blank create form — saves nothing.
-  const savedSigRef = useRef<string>(formSig);
+  // A "Log again"/"Repeat last" prefill is the exception: it starts DIFFERENT
+  // (an empty sentinel) so the seeded, already-complete activity auto-saves as a
+  // new row on open without needing an edit first.
+  const savedSigRef = useRef<string>(prefill && !editData ? "" : formSig);
   // Keep the latest persist available to the unmount flush without re-running it.
   const persistRef = useRef<() => void>(() => {});
   // Serialize saves: only one in flight at a time, so concurrent debounces can't

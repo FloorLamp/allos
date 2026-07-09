@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
+import { useFocusFormOnParam } from "@/components/useFocusFormOnParam";
 import type { Appointment } from "@/lib/types";
 
 // Shared add/edit form for a scheduled visit. Add mode: no `appointment`. Edit
@@ -36,6 +37,10 @@ export default function AppointmentForm({
   const formRef = useRef<HTMLFormElement>(null);
   const editing = !!appointment;
   const [error, setError] = useState<string | null>(null);
+
+  // The primary create form (not editing, not a follow-up prefill) focuses
+  // itself when reached from the command palette's "Add appointment" (issue #29).
+  useFocusFormOnParam(formRef, "new", undefined, !editing && !prefill);
 
   // Split any stored "YYYY-MM-DD HH:MM" back into its date + time parts for edit.
   const storedDate = appointment?.scheduled_at?.slice(0, 10) ?? defaultDate;
