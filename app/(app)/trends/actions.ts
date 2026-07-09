@@ -42,7 +42,7 @@ export async function generateForDate(formData: FormData) {
   const date = isRealIsoDate(raw) ? raw : today(profile.id);
   const result = await withAiLogContext(
     { loginId: login.id, profileId: profile.id },
-    () => generateInsight(profile.id, date)
+    () => generateInsight(profile.id, date, login.id)
   );
   saveInsight(profile.id, date, result);
   revalidatePath("/trends");

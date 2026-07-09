@@ -34,8 +34,11 @@ import {
   daysUntilDue,
   bandForDays,
 } from "./upcoming";
-import type { CoachingTone, Recommendation } from "./coaching";
+import type { CoachingTone, Recommendation, PR, CardioPR } from "./coaching";
 import type { TrendItem } from "./trends-digest";
+import type { WeightUnit, DistanceUnit } from "./settings";
+import { fmtWeight, fmtDistance, fmtKmh } from "./units";
+import { formatMinutes } from "./duration";
 import { isSuppressed, type SuppressionRecord } from "./upcoming-suppress";
 
 // Visual/semantic tone, doubling as a coarse severity signal. A superset of
@@ -182,6 +185,51 @@ export function trendItemToFinding(item: TrendItem): Finding {
         : item.rangeShift === "into-range"
           ? "positive"
           : "neutral",
+  };
+}
+
+// Strength PR (lib/coaching) → Finding. A celebratory ("positive") finding whose
+// detail is a self-contained clause ("Back Squat at 120 kg × 5") so a narrator can
+// splice it straight into a sentence. The load is rendered in the reader's weight
+// unit here (the envelope stays display-formatted, like TrendItem.text). dedupeKey
+// is domain-prefixed by exercise + record kind, and dueDate carries the PR's date.
+export function prToFinding(pr: PR, weightUnit: WeightUnit): Finding {
+  const clause =
+    pr.kind === "weight"
+      ? `${pr.exercise} top set at ${fmtWeight(pr.weightKg, weightUnit)}`
+      : pr.bodyweight
+        ? `${pr.exercise} at bodyweight × ${pr.reps}`
+        : `${pr.exercise} at ${fmtWeight(pr.weightKg, weightUnit)} × ${pr.reps}`;
+  return {
+    domain: "pr",
+    dedupeKey: `pr:strength:${pr.exercise}:${pr.kind}`,
+    title: pr.exercise,
+    detail: clause,
+    tone: "positive",
+    dueDate: pr.date,
+  };
+}
+
+// Cardio PR (lib/coaching) → Finding. As prToFinding, but the clause names the
+// record dimension (longest/fastest/longest-duration) and renders distance/speed
+// in the reader's distance unit; the duration record uses formatMinutes.
+export function cardioPrToFinding(
+  pr: CardioPR,
+  distanceUnit: DistanceUnit
+): Finding {
+  const clause =
+    pr.kind === "distance"
+      ? `longest ${pr.activity} at ${fmtDistance(pr.distanceKm, distanceUnit)}`
+      : pr.kind === "speed"
+        ? `fastest ${pr.activity} at ${fmtKmh(pr.speedKmh, distanceUnit)}`
+        : `longest ${pr.activity} at ${formatMinutes(pr.durationMin)}`;
+  return {
+    domain: "pr",
+    dedupeKey: `pr:cardio:${pr.activity}:${pr.kind}`,
+    title: pr.activity,
+    detail: clause,
+    tone: "positive",
+    dueDate: pr.date,
   };
 }
 
