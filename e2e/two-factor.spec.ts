@@ -7,24 +7,19 @@ import { totp } from "../lib/totp";
 // less contexts so it never touches the shared admin session the other specs
 // reuse (enabling/using 2FA here can't log anyone else out).
 
-// Submit computed TOTP codes until the login completes. The replay guard rejects a
-// code whose step was already spent (e.g. the enrollment step, if login lands in
-// the same 30s window), so on a miss we wait for the next step and recompute.
+// Complete the second-factor step with a code for the NEXT 30s step. The replay
+// guard rejects any step at or before the last spent one (enrollment spends the
+// current step when login lands in the same window), and the verifier accepts a
+// ±1-step window — so the next step's code is BOTH always fresh (monotonically
+// greater than enrollment's) and always in-window. Deterministic: no sleeping
+// through step boundaries (a 31s wait blew the 30s test timeout in CI).
 async function completeTotpLogin(page: Page, secret: string): Promise<void> {
-  for (let attempt = 0; attempt < 3; attempt++) {
-    await page.getByTestId("totp-code").fill(totp(secret)!);
-    await page.getByRole("button", { name: "Verify" }).click();
-    try {
-      await page.waitForURL((u) => !u.pathname.startsWith("/login"), {
-        timeout: 5_000,
-      });
-      return;
-    } catch {
-      // Same-window replay or a step-boundary miss — advance past the step and retry.
-      await page.waitForTimeout(31_000);
-    }
-  }
-  throw new Error("TOTP login did not complete");
+  const nextStepCode = totp(secret, { timeMs: Date.now() + 30_000 })!;
+  await page.getByTestId("totp-code").fill(nextStepCode);
+  await page.getByRole("button", { name: "Verify" }).click();
+  await page.waitForURL((u) => !u.pathname.startsWith("/login"), {
+    timeout: 10_000,
+  });
 }
 
 test("2FA: enroll, then second-factor login with code and recovery code (#23)", async ({
@@ -91,7 +86,8 @@ test("2FA: enroll, then second-factor login with code and recovery code (#23)", 
 
   await p.getByTestId("totp-code").fill("000000");
   await p.getByRole("button", { name: "Verify" }).click();
-  await expect(p.getByRole("alert")).toBeVisible();
+  // Next's route announcer is also role=alert — assert the actual error text.
+  await expect(p.getByText("Incorrect or expired code.")).toBeVisible();
 
   await completeTotpLogin(p, secret);
   await loginCtx.close();
