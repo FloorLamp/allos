@@ -32,6 +32,7 @@ import GrowthChartsCard, {
   type GrowthMetricView,
 } from "@/components/GrowthChartsCard";
 import BodyQuickAdd from "./BodyQuickAdd";
+import VitalsQuickAdd from "./VitalsQuickAdd";
 import DeleteBodyMetricButton from "./DeleteBodyMetricButton";
 
 // The Trends hub's Body section: the full Body Metrics surface (absorbed here in
@@ -296,6 +297,8 @@ export default function BodySection({ range }: { range: DateRange }) {
   return (
     <div className="space-y-6">
       <BodyQuickAdd weightUnit={wu} defaultDate={today(profile.id)} />
+
+      <VitalsQuickAdd defaultDate={today(profile.id)} />
 
       <p className="text-sm text-slate-500 dark:text-slate-400">
         Body-composition trends over the selected window.
