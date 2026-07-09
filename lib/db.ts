@@ -790,6 +790,35 @@ export function migrate(db: Database.Database) {
     );
     CREATE UNIQUE INDEX IF NOT EXISTS idx_upcoming_dismissals_key
       ON upcoming_dismissals(profile_id, signal_key);
+
+    -- Durable record of the user's resolution of a detected import duplicate /
+    -- conflict pair (issue #10, Phase 2). One row per (profile, domain, pair):
+    -- pair_signature is the STABLE, order-independent signature from
+    -- lib/import-review/detect.pairSignature — built from each row's natural
+    -- identity (source+external_id for an integration/document row, else the row
+    -- id), so it re-derives identically after a MERGE deletes one row and the next
+    -- rolling-window re-sync re-inserts it under a fresh id. That is what keeps a
+    -- resolution from silently un-resolving (and the double-count from returning).
+    --
+    -- Why its OWN table rather than the snooze/dismiss findings bus
+    -- (upcoming_dismissals): a decision carries a KIND — 'merged' (a DESTRUCTIVE
+    -- resolution: one row deleted, its gap-filling fields folded into the keeper),
+    -- 'kept-both', or 'dismissed' — not a transient time-boxed suppression, and it
+    -- keys on a PAIR signature, not a single-signal key. Modeling that as a typed,
+    -- terminal decision (distinct from "hide this reminder until Tuesday") keeps the
+    -- concerns separate and leaves room to surface "you merged these" distinctly.
+    -- Brand-new full table (every column present at CREATE; the inline unique index
+    -- is upgrade-safe), so the migrate-upgrade path is a no-op.
+    CREATE TABLE IF NOT EXISTS import_pair_decisions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      profile_id INTEGER NOT NULL REFERENCES profiles(id),
+      domain TEXT NOT NULL,        -- 'activity' | 'body_metric'
+      pair_signature TEXT NOT NULL,
+      decision TEXT NOT NULL CHECK (decision IN ('merged','kept-both','dismissed')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_import_pair_decisions_key
+      ON import_pair_decisions(profile_id, domain, pair_signature);
   `);
 
   // First-run auth bootstrap: create the initial admin login + its profile so a

@@ -9,7 +9,12 @@ import ImportLog from "@/components/ImportLog";
 import DataExport from "@/components/DataExport";
 import ReviewInbox from "@/components/ReviewInbox";
 import { getImportJobs } from "@/app/(app)/data/actions";
-import { getRecentSyncEvents, getImportIssues } from "@/lib/queries";
+import {
+  getRecentSyncEvents,
+  getImportIssues,
+  getActivityDuplicates,
+  getBodyMetricConflicts,
+} from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +36,10 @@ export default async function DataPage({
   const importJobs = await getImportJobs();
   const recentSyncs = getRecentSyncEvents(profile.id);
   const importIssues = getImportIssues(profile.id);
+  // Detected, still-unresolved duplicate/conflict pairs (issue #10, Phase 2).
+  const activityPairs = getActivityDuplicates(profile.id);
+  const bodyMetricPairs = getBodyMetricConflicts(profile.id);
+  const reviewPairCount = activityPairs.length + bodyMetricPairs.length;
   // The profile's own name(s), for the document provenance-mismatch flag.
   const knownNames = [getUserFullName(profile.id), profile.name];
 
@@ -109,13 +118,16 @@ export default async function DataPage({
           {
             id: "review",
             label:
-              importIssues.length > 0
-                ? `Review (${importIssues.length})`
+              importIssues.length + reviewPairCount > 0
+                ? `Review (${importIssues.length + reviewPairCount})`
                 : "Review",
             content: (
               <ReviewInbox
                 issues={importIssues}
                 recent={recentSyncs}
+                activityPairs={activityPairs}
+                bodyMetricPairs={bodyMetricPairs}
+                units={units}
                 isAdmin={login.role === "admin"}
               />
             ),

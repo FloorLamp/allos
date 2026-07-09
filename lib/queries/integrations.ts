@@ -1,6 +1,18 @@
 import { db } from "@/lib/db";
 import type { IntegrationSyncEvent } from "@/lib/types";
 import { currentlyFailingProviders } from "@/lib/integrations/sync-log";
+import {
+  findActivityDuplicates,
+  findBodyMetricConflicts,
+  undecidedPairs,
+  ACTIVITY_DOMAIN,
+  BODY_METRIC_DOMAIN,
+  type ActivityDupInput,
+  type ActivityDupPair,
+  type BodyMetricConflictInput,
+  type BodyMetricConflictPair,
+  type PairDecision,
+} from "@/lib/import-review/detect";
 
 // Read side of the integration sync-event debug log. Every statement here is
 // PROFILE-SCOPED (WHERE profile_id = ? AND provider = ?): the setup-page panels and
@@ -58,12 +70,131 @@ export function getRecentSyncEvents(
     .all(profileId, limit) as IntegrationSyncEvent[];
 }
 
-// How many integrations are CURRENTLY in a failed state (their most recent sync
-// failed) — the count behind the header "import review" badge. Self-clearing: a
-// later successful sync for a provider removes it. Cheap; providers are few, so a
-// bounded recent-events scan always contains each provider's latest event.
+// How many items the Data → Review inbox wants the user's attention on — the count
+// behind the profile-menu badge. Two contributions (issue #10): integrations
+// CURRENTLY in a failed state (self-clearing on the next good sync) PLUS unresolved
+// detected duplicate/conflict pairs. Both are profile-scoped.
 export function getImportReviewCount(profileId: number): number {
-  return currentlyFailingProviders(getRecentSyncEvents(profileId, 100)).length;
+  return (
+    currentlyFailingProviders(getRecentSyncEvents(profileId, 100)).length +
+    getReviewPairCount(profileId)
+  );
+}
+
+// ── Duplicate/conflict detection + durable decisions (issue #10, Phase 2) ──────
+//
+// The detection MATH is pure (lib/import-review/detect); this layer only (a) loads
+// the profile's own rows, (b) runs the detectors, and (c) filters out pairs the
+// user has already resolved via a durable decision. Every statement is
+// PROFILE-SCOPED (WHERE profile_id = ?).
+
+// A detected activity row with the display field (title) the UI shows alongside the
+// detection fields. Extra fields flow through the generic detectors untouched.
+export interface ActivityDupRow extends ActivityDupInput {
+  title: string;
+}
+
+// A detected body-metrics row plus its notes for display.
+export interface BodyMetricConflictRow extends BodyMetricConflictInput {
+  notes: string | null;
+}
+
+// The full candidate set for activity dedup: every activity for the profile (the
+// pure detector buckets by date+type and only pairs same-day rows, so passing the
+// whole set is correct and keeps the query trivial + index-friendly).
+function loadActivityDupRows(profileId: number): ActivityDupRow[] {
+  return db
+    .prepare(
+      `SELECT id, date, type, title, source, external_id,
+              duration_min, distance_km, start_time, end_time
+         FROM activities
+        WHERE profile_id = ?`
+    )
+    .all(profileId) as ActivityDupRow[];
+}
+
+function loadBodyMetricConflictRows(
+  profileId: number
+): BodyMetricConflictRow[] {
+  return db
+    .prepare(
+      `SELECT id, date, weight_kg, body_fat_pct, resting_hr, source, notes
+         FROM body_metrics
+        WHERE profile_id = ?`
+    )
+    .all(profileId) as BodyMetricConflictRow[];
+}
+
+// The profile's recorded decisions for a domain, as signature → decision. Used to
+// suppress already-resolved pairs and (in the actions) to keep a re-decision an
+// upsert rather than a duplicate row.
+export function getPairDecisions(
+  profileId: number,
+  domain: string
+): Map<string, PairDecision> {
+  const rows = db
+    .prepare(
+      `SELECT pair_signature, decision
+         FROM import_pair_decisions
+        WHERE profile_id = ? AND domain = ?`
+    )
+    .all(profileId, domain) as {
+    pair_signature: string;
+    decision: PairDecision;
+  }[];
+  return new Map(rows.map((r) => [r.pair_signature, r.decision]));
+}
+
+// Record (or re-record) the user's terminal decision on a pair. Upserts on the
+// stable (profile_id, domain, pair_signature) key, so re-deciding a pair — or the
+// same pair resurfacing after a re-sync — just overwrites the row rather than
+// stacking. Profile-scoped.
+export function recordPairDecision(
+  profileId: number,
+  domain: string,
+  signature: string,
+  decision: PairDecision
+): void {
+  db.prepare(
+    `INSERT INTO import_pair_decisions (profile_id, domain, pair_signature, decision)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(profile_id, domain, pair_signature)
+       DO UPDATE SET decision = excluded.decision, created_at = datetime('now')`
+  ).run(profileId, domain, signature, decision);
+}
+
+// Undecided detected duplicate activity pairs for the Review inbox, newest/highest-
+// confidence first (ordering is the pure detector's). Profile-scoped.
+export function getActivityDuplicates(
+  profileId: number
+): ActivityDupPair<ActivityDupRow>[] {
+  const decided = new Set(getPairDecisions(profileId, ACTIVITY_DOMAIN).keys());
+  return undecidedPairs(
+    findActivityDuplicates(loadActivityDupRows(profileId)),
+    decided
+  );
+}
+
+// Undecided body-metric conflict pairs for the Review inbox. Profile-scoped.
+export function getBodyMetricConflicts(
+  profileId: number
+): BodyMetricConflictPair<BodyMetricConflictRow>[] {
+  const decided = new Set(
+    getPairDecisions(profileId, BODY_METRIC_DOMAIN).keys()
+  );
+  return undecidedPairs(
+    findBodyMetricConflicts(loadBodyMetricConflictRows(profileId)),
+    decided
+  );
+}
+
+// Total unresolved detected pairs (activities + body metrics) — the detection half
+// of the review badge count. Profile-scoped.
+export function getReviewPairCount(profileId: number): number {
+  return (
+    getActivityDuplicates(profileId).length +
+    getBodyMetricConflicts(profileId).length
+  );
 }
 
 // The failing-integration events (most recent per currently-broken provider), for
