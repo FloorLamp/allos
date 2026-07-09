@@ -1,11 +1,13 @@
 import { getUnitPrefs } from "@/lib/settings";
 import { requireSession, listLoginSessions } from "@/lib/auth";
+import { getLoginTotpState, countUnusedRecoveryCodes } from "@/lib/two-factor";
 import { isTrainingRestricted } from "@/lib/age-gate";
 import { PageHeader } from "@/components/ui";
 import AppVersion from "@/components/AppVersion";
 import SettingsTabs from "./SettingsTabs";
 import UnitPrefsForm from "./UnitPrefsForm";
 import ChangePasswordSettings from "./ChangePasswordSettings";
+import TwoFactorSettings from "./TwoFactorSettings";
 import ActiveSessions from "./ActiveSessions";
 import PushNotificationSettings from "./PushNotificationSettings";
 
@@ -17,6 +19,10 @@ export default function SettingsPage() {
   const prefs = getUnitPrefs(login.id);
   const hideEquipment = isTrainingRestricted(profile.id);
   const sessions = listLoginSessions(login.id);
+  const twofaEnabled = getLoginTotpState(login.id).enabled;
+  const recoveryRemaining = twofaEnabled
+    ? countUnusedRecoveryCodes(login.id)
+    : 0;
 
   return (
     <div>
@@ -28,6 +34,10 @@ export default function SettingsPage() {
       <UnitPrefsForm prefs={prefs} />
       <PushNotificationSettings />
       <ChangePasswordSettings username={login.username} />
+      <TwoFactorSettings
+        enabled={twofaEnabled}
+        recoveryRemaining={recoveryRemaining}
+      />
       <ActiveSessions sessions={sessions} />
       <footer className="mt-10 border-t border-black/10 pt-4 text-xs text-slate-400 dark:border-white/10 dark:text-slate-500">
         Version <AppVersion />

@@ -691,6 +691,40 @@ export function migrate(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_login_attempts_user ON login_attempts(username, created_at);
     CREATE INDEX IF NOT EXISTS idx_login_attempts_created ON login_attempts(created_at);
 
+    -- One-time TOTP recovery codes (issue #23). GLOBAL, like sessions/logins (a
+    -- recovery code belongs to a LOGIN, not a profile), so it's excluded from the
+    -- profile-scoping leak test. code_hash is the SHA-256 of the normalized code
+    -- (high-entropy random token → SHA-256 is sufficient, same reasoning as session
+    -- tokens); used_at is set the first time a code is redeemed so it can never be
+    -- used twice. Rows are replaced wholesale on (re)generation and cascade-deleted
+    -- with the login.
+    CREATE TABLE IF NOT EXISTS login_recovery_codes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      login_id INTEGER NOT NULL REFERENCES logins(id) ON DELETE CASCADE,
+      code_hash TEXT NOT NULL,
+      used_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_recovery_codes_login ON login_recovery_codes(login_id);
+
+    -- Second-factor login challenges (issue #23). When a password verifies but the
+    -- login has 2FA on, NO session is minted; instead a short-lived challenge row is
+    -- created (this is deliberately NOT a half-authenticated session) and the raw
+    -- token is set as a separate, short-lived cookie. The second-factor step reads
+    -- the cookie, looks the row up by SHA-256, checks it hasn't expired, verifies the
+    -- TOTP/recovery code (rate-limited via login_attempts), and only THEN mints the
+    -- real session and deletes the challenge. GLOBAL (login-owned), so excluded from
+    -- the profile-scoping test. Pruned by expiry opportunistically at login.
+    CREATE TABLE IF NOT EXISTS login_totp_challenges (
+      token_hash TEXT PRIMARY KEY,
+      login_id INTEGER NOT NULL REFERENCES logins(id) ON DELETE CASCADE,
+      username TEXT NOT NULL,
+      next_path TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      expires_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_totp_challenges_expires ON login_totp_challenges(expires_at);
+
     -- Audit log (issue #22): who accessed/modified whose data. A durable, GLOBAL
     -- record like sessions/login_attempts — deliberately NOT profile-scoped (a
     -- token-authed ingest or a failed login has no acting profile), so it's
@@ -908,6 +942,25 @@ export function migrate(db: Database.Database) {
   // and any created without a UA header stay NULL ("Unknown device"). last_used_at
   // (updated at most hourly in getCurrentSession) doubles as the "last seen" time.
   addColumnIfMissing(db, "sessions", "user_agent", "TEXT");
+
+  // Optional TOTP 2FA per login (issue #23). All three are additive so an
+  // upgraded DB simply has 2FA off for everyone until they enroll:
+  //   totp_secret     — base32 shared secret. Present once generated (during
+  //                     enrollment, before activation) and while enabled; NULL
+  //                     when the login has no 2FA.
+  //   totp_enabled    — 0 until the enrollment code is verified, then 1. A row
+  //                     with a secret but enabled=0 is a half-finished enrollment
+  //                     (never enforced at login).
+  //   totp_last_step  — the last accepted TOTP step, the monotonic replay guard
+  //                     (a code can't be reused within its ±1 window once spent).
+  addColumnIfMissing(db, "logins", "totp_secret", "TEXT");
+  addColumnIfMissing(
+    db,
+    "logins",
+    "totp_enabled",
+    "INTEGER NOT NULL DEFAULT 0"
+  );
+  addColumnIfMissing(db, "logins", "totp_last_step", "INTEGER");
 
   // Per-grant access level (issue #33): 'read' | 'write'. Added additively so
   // grants on an upgraded DB default to 'write' — the historical behavior — and

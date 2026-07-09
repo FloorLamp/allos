@@ -16,6 +16,16 @@ export const AUDIT_ACTIONS = {
   logout: "login.logout",
   passwordChange: "login.password-change",
   passwordReset: "login.password-reset",
+  // Optional TOTP 2FA (issue #23). enable/disable are the enrollment lifecycle;
+  // twofaFailure is a wrong/expired second-factor code at login (username only,
+  // never the code); twofaRecoveryUsed marks a one-time recovery code being
+  // redeemed; twofaBypass is the loud, audited env-var override
+  // (ALLOS_DISABLE_2FA) that lets a locked-out admin back in without a code.
+  twofaEnable: "login.2fa-enable",
+  twofaDisable: "login.2fa-disable",
+  twofaFailure: "login.2fa-failure",
+  twofaRecoveryUsed: "login.2fa-recovery-used",
+  twofaBypass: "login.2fa-bypass",
   loginCreate: "login.create",
   loginDelete: "login.delete",
   profileSwitch: "profile.switch",

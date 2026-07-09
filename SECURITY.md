@@ -44,13 +44,17 @@ event stores a timestamp, the acting login (null for unauthenticated events such
 as a failed login or a public share-link view), the active profile being acted
 on, an action (e.g. `login.success`, `profile.switch`, `medical-file.view`,
 `medical-document.upload`/`delete`, `share-link.create`/`revoke`/`view`,
-`grant.update`, `login.create`/`delete`, `login.password-reset`), and short
-coarse identifiers (record/file/login ids, a username, a grant diff).
+`grant.update`, `login.create`/`delete`, `login.password-reset`,
+`login.2fa-enable`/`2fa-disable`/`2fa-failure`/`2fa-recovery-used`/`2fa-bypass`),
+and short coarse identifiers (record/file/login ids, a username, a grant diff).
 
 What is recorded:
 
 - **Authentication** — login success/failure/throttle (username only, **never**
   the password), logout, own-password change, and admin password resets.
+- **Two-factor (2FA)** — enrolling/disabling TOTP, a failed second-factor code at
+  login (username only, **never** the code), a one-time recovery code being
+  redeemed, and any `ALLOS_DISABLE_2FA` bootstrap-recovery bypass.
 - **PHI access** — medical-file downloads and public share-link views (by file
   or link **id**, never the file contents or the raw share token).
 - **Admin/family changes** — profile create/delete, login create/delete, and
@@ -140,6 +144,61 @@ The session cookie uses the `__Host-` name prefix in production
 `Path=/`, and has no `Domain` — hardening it against subdomain cookie injection.
 Over plain-HTTP dev the plain name (`ht_session`) is used, since the prefix
 requires Secure. The cookie stays `HttpOnly` + `SameSite=Lax`.
+
+### Two-factor authentication (TOTP)
+
+Each login may optionally enable **TOTP two-factor authentication** (RFC 6238:
+30-second step, 6 digits, SHA-1) under **Settings → Preferences**. Enrollment
+generates a secret shown as an `otpauth://` URI + manual base32 key; the login
+must verify one code to activate, at which point **8 one-time recovery codes** are
+shown **once**. 2FA is strongly recommended for admins.
+
+- **Login flow.** When a password verifies for a 2FA-enabled login, **no session
+  is created**. Instead a short-lived (5-minute) server-side _challenge_ row is
+  written and its random token set as a separate, `__Host-`-hardened cookie — this
+  is deliberately **not** a half-authenticated session. The second-factor step
+  reads that cookie, verifies a TOTP (or a recovery code) — **rate-limited through
+  the same lockout machinery as passwords** — and only then mints the real session
+  and deletes the challenge.
+- **Replay guard.** The last accepted TOTP step is stored per login; a code (or an
+  older code still inside the ±1 verification window) cannot be reused once spent.
+- **Storage.** The TOTP secret lives on the `logins` row. Recovery codes are stored
+  only as their **SHA-256** (they are high-entropy random tokens, like session /
+  share-link tokens, so a fast hash is appropriate — scrypt buys nothing for
+  non-guessable secrets) and each is single-use.
+- **Disabling** 2FA requires the current password **and** a valid code, so a
+  walked-up open session alone can't strip the second factor off.
+- **Bootstrap recovery.** If an admin loses their authenticator (and their recovery
+  codes), the operator can set the env var **`ALLOS_DISABLE_2FA=<username>`**
+  (comma-separated for several). At the next login that username's second-factor
+  step is **skipped**; the bypass is logged loudly and written to the audit log
+  (`login.2fa-bypass`). Remove the env var and re-enroll once access is restored.
+  This is the documented escape hatch that prevents a permanent lock-out.
+
+### Absolute session lifetime
+
+Sessions use a **30-day sliding** expiry (each use re-extends it), so an active
+session never expired on its own. On top of that there is now a hard **90-day
+absolute ceiling** measured from `created_at`: regardless of how recently a session
+was used, once it is 90 days old it stops resolving (enforced in the session lookup
+and the purge) and the user must re-authenticate (password + 2FA). This bounds the
+lifetime of a stolen-but-active session cookie.
+
+### Password strength
+
+Passwords must be at least **10 characters** and use at least **two character
+classes** (lower / upper / digit / symbol), and may not contain the username. The
+check (`lib/password-strength.ts`) is pure, offline, and dependency-free (no
+`zxcvbn`, no network egress — suitable for an air-gapped self-host), and is applied
+everywhere a password is set: admin create/reset and self-service change.
+
+### Deferred: step-up re-auth for admin family actions
+
+A **step-up re-auth** (a fresh 2FA code) on sensitive Family admin actions — grant
+changes, login create/delete, password resets — is **not yet implemented**. Those
+actions are already gated by `requireAdmin()` and, for a 2FA-enabled admin, sit
+behind the full second-factor login. Threading a per-action fresh-code challenge
+through the Family UI is tracked as a follow-up; see the PR for issue #23.
 
 ### Upload content validation
 

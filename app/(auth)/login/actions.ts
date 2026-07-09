@@ -11,12 +11,22 @@ import {
   SESSION_COOKIE,
 } from "@/lib/auth";
 import { safeNextPath, truncateUserAgent } from "@/lib/login-security";
+import { TWO_FACTOR_COOKIE } from "@/lib/session-cookie";
 import {
   evaluateLockout,
   USERNAME_LOCKOUT,
   GLOBAL_LOCKOUT,
   type LockoutInput,
 } from "@/lib/login-lockout";
+import {
+  isTotpEnabled,
+  is2faBypassed,
+  createTotpChallenge,
+  getTotpChallenge,
+  deleteTotpChallenge,
+  purgeExpiredTotpChallenges,
+  verifyLoginSecondFactor,
+} from "@/lib/two-factor";
 import { createLogger } from "@/lib/log";
 import { recordAudit } from "@/lib/audit";
 import { AUDIT_ACTIONS } from "@/lib/audit-actions";
@@ -25,7 +35,15 @@ const log = createLogger("login");
 
 export interface LoginState {
   error?: string;
+  // Set when the password was correct but the login has 2FA on: the form swaps to
+  // the second-factor step. The intermediate state lives server-side (a challenge
+  // row + short-lived cookie), NOT in a half-authenticated session.
+  needsTotp?: boolean;
 }
+
+// Shared message for a failed/expired second factor — as opaque as the password
+// one, so a prober learns nothing.
+const INVALID_CODE = "Incorrect or expired code.";
 
 // One message for every credential outcome — wrong password, unknown user, or
 // throttled — so a prober learns nothing from the response. (The empty-field
@@ -181,6 +199,41 @@ export async function login(
     return { error: INVALID_CREDENTIALS };
   }
 
+  // Password OK. If the login has 2FA enabled, DON'T mint a session yet — go to
+  // the second-factor step (unless the operator has bypassed this username via the
+  // ALLOS_DISABLE_2FA env var, the documented bootstrap-recovery escape hatch).
+  if (isTotpEnabled(loginRow.id)) {
+    if (is2faBypassed(username)) {
+      // Loud + audited: an admin explicitly disabled 2FA for this login to recover
+      // access. Never silent.
+      log.warn("2FA bypassed via ALLOS_DISABLE_2FA env override", {
+        username: usernameKey,
+      });
+      recordAudit({
+        loginId: loginRow.id,
+        action: AUDIT_ACTIONS.twofaBypass,
+        detail: usernameKey,
+      });
+      // fall through to mint the session below
+    } else {
+      // Correct password consumed the prior failures? No — hold the throttle open
+      // across the 2FA window. Create the challenge, set the short-lived cookie, and
+      // hand the form off to the second-factor step. No session exists yet.
+      purgeExpiredTotpChallenges();
+      const { token: chalToken, maxAgeSec } = createTotpChallenge(
+        loginRow.id,
+        usernameKey,
+        next
+      );
+      cookies().set(
+        TWO_FACTOR_COOKIE,
+        chalToken,
+        sessionCookieOptions(maxAgeSec)
+      );
+      return { needsTotp: true };
+    }
+  }
+
   // Success: forget this username's failures and mint the session.
   clearAttempts(usernameKey);
   purgeExpiredSessions();
@@ -194,4 +247,82 @@ export async function login(
   });
 
   redirect(next);
+}
+
+// Second-factor step (issue #23): completes a login that stopped at the 2FA gate.
+// Reads the short-lived challenge cookie set by login(), verifies the submitted
+// TOTP (or a one-time recovery code) — rate-limited through the SAME lockout
+// machinery as passwords — and only then mints the real session. A missing/expired
+// challenge sends the user back to the password step.
+export async function verifyLoginTotp(
+  _prev: LoginState,
+  formData: FormData
+): Promise<LoginState> {
+  const code = String(formData.get("code") ?? "").trim();
+  const rawChallenge = cookies().get(TWO_FACTOR_COOKIE)?.value;
+  if (!rawChallenge) {
+    // No challenge in flight — bounce back to the password form.
+    return { error: "Your sign-in session expired. Please start again." };
+  }
+  const challenge = getTotpChallenge(rawChallenge);
+  if (!challenge) {
+    cookies().delete(TWO_FACTOR_COOKIE);
+    return { error: "Your sign-in session expired. Please start again." };
+  }
+
+  const usernameKey = clampAttemptField(challenge.username.toLowerCase());
+  const ip = clampAttemptField(clientIp());
+  pruneOldAttempts();
+
+  // Reuse the password throttle so brute-forcing a 6-digit code is bounded (and a
+  // throttled attempt still records, extending its own backoff).
+  const userDecision = evaluateLockout(
+    usernameAttempts(usernameKey),
+    USERNAME_LOCKOUT
+  );
+  const globalDecision = evaluateLockout(globalAttempts(), GLOBAL_LOCKOUT);
+  if (userDecision.lockedOut || globalDecision.lockedOut) {
+    recordFailure(usernameKey, ip);
+    recordAudit({ action: AUDIT_ACTIONS.loginThrottled, detail: usernameKey });
+    return { error: INVALID_CODE, needsTotp: true };
+  }
+
+  if (!code)
+    return { error: "Enter your authenticator code.", needsTotp: true };
+
+  const outcome = verifyLoginSecondFactor(challenge.loginId, code);
+  if (!outcome.ok) {
+    recordFailure(usernameKey, ip);
+    recordAudit({
+      loginId: challenge.loginId,
+      action: AUDIT_ACTIONS.twofaFailure,
+      detail: usernameKey,
+    });
+    return { error: INVALID_CODE, needsTotp: true };
+  }
+
+  // Second factor passed — tear down the challenge, clear its cookie, mint the
+  // session, and audit (recovery-code use is recorded distinctly so a spent code
+  // is visible in the trail).
+  deleteTotpChallenge(rawChallenge);
+  cookies().delete(TWO_FACTOR_COOKIE);
+  clearAttempts(usernameKey);
+  purgeExpiredSessions();
+  const userAgent = truncateUserAgent(headers().get("user-agent"));
+  const { token, maxAgeSec } = createSession(challenge.loginId, userAgent);
+  cookies().set(SESSION_COOKIE, token, sessionCookieOptions(maxAgeSec));
+  if (outcome.viaRecovery) {
+    recordAudit({
+      loginId: challenge.loginId,
+      action: AUDIT_ACTIONS.twofaRecoveryUsed,
+      detail: usernameKey,
+    });
+  }
+  recordAudit({
+    loginId: challenge.loginId,
+    action: AUDIT_ACTIONS.loginSuccess,
+    detail: usernameKey,
+  });
+
+  redirect(safeNextPath(challenge.nextPath));
 }
