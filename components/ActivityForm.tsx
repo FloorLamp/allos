@@ -47,6 +47,7 @@ import { isRealIsoDate } from "@/lib/date";
 import { useTimezone } from "@/components/TimezoneProvider";
 import { useToast } from "@/components/Toast";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { useUndoableDelete } from "@/components/useUndoableDelete";
 import SaveStatus from "@/components/SaveStatus";
 import {
   type ActivityEditData,
@@ -106,6 +107,7 @@ export default function ActivityForm({
   // Kept for the unmount-flush failure path: the toast outlives the form.
   const toast = useToast();
   const confirm = useConfirm();
+  const undoable = useUndoableDelete();
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">(
     "idle"
@@ -841,7 +843,7 @@ export default function ActivityForm({
     }
     const ok = await confirm({
       title: "Delete activity",
-      message: `Delete “${editData?.title ?? liveTitle}” (${date})? This can’t be undone.`,
+      message: `Delete “${editData?.title ?? liveTitle}” (${date})? You can undo this.`,
       confirmLabel: "Delete",
       danger: true,
     });
@@ -850,12 +852,15 @@ export default function ActivityForm({
     try {
       const fd = new FormData();
       fd.set("id", String(id));
-      await deleteActivity(fd);
       // Don't let the unmount flush re-create the row we just deleted.
       savedSigRef.current = formSig;
       createdIdRef.current = null;
+      // Capture-and-delete with an Undo toast (issue #30). undoable() runs the
+      // action and surfaces the toast; closing the modal + refresh reflect it.
+      await undoable(deleteActivity, fd, {
+        deletedMessage: "Activity deleted.",
+      });
       onClose();
-      router.refresh();
     } finally {
       setSaving(false);
     }

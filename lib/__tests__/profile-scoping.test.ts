@@ -133,6 +133,11 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     why: "getConditions: where[] always begins with 'profile_id = ?'",
   },
   {
+    file: "lib/undo-delete-db.ts",
+    includes: "DELETE FROM deleted_rows WHERE deleted_at < datetime('now', ?)",
+    why: "sweepDeletedRows: the 24h undo-holding purge is GLOBAL by design (one call per hourly tick clears every profile's expired rows), so it is intentionally profile-agnostic",
+  },
+  {
     file: "lib/share-links-db.ts",
     includes: "FROM profile_share_links WHERE token_hash = ?",
     why: "getShareLinkByToken: the ONLY entry point for the unauthenticated public share route — the caller has no profile context yet; the lookup is by the unguessable 256-bit token's SHA-256, and the returned row's profile_id then scopes every downstream read",

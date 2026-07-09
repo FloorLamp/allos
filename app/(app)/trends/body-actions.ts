@@ -3,6 +3,7 @@ import { requireSession } from "@/lib/auth";
 
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
+import { captureDelete } from "@/lib/undo-delete-db";
 import { isRealIsoDate } from "@/lib/date";
 import { getUnitPrefs } from "@/lib/settings";
 import { toKg } from "@/lib/units";
@@ -55,14 +56,16 @@ export async function addBodyMetric(formData: FormData) {
 // Note: document-sourced rows (source 'document:<id>') are a projection of
 // that document's extraction — reprocessing the document re-creates them.
 // Deleting the document removes them permanently.
-export async function deleteBodyMetric(formData: FormData) {
+export async function deleteBodyMetric(
+  formData: FormData
+): Promise<{ undoId: number | null }> {
   const { profile } = requireSession();
   const id = Number(formData.get("id"));
-  if (!id) return;
-  db.prepare("DELETE FROM body_metrics WHERE id = ? AND profile_id = ?").run(
-    id,
-    profile.id
-  );
+  if (!id) return { undoId: null };
+  // Capture into the undo holding table and delete in one transaction (issue #30)
+  // so the entry can be restored from the toast.
+  const undoId = captureDelete("body-metric", profile.id, id);
   revalidatePath("/trends");
   revalidatePath("/");
+  return { undoId };
 }

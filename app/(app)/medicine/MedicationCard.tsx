@@ -29,6 +29,7 @@ import OverflowMenu, {
   MENU_ITEM_DANGER,
 } from "@/components/OverflowMenu";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { useUndoableDelete } from "@/components/useUndoableDelete";
 import {
   updateSupplement,
   toggleTaken,
@@ -75,6 +76,7 @@ export default function MedicationCard({
   const [addingEffect, setAddingEffect] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const confirm = useConfirm();
+  const undoable = useUndoableDelete();
 
   // Current/Past keys off the authoritative active flag (see isMedicationCurrent),
   // so the card can never contradict scheduling; `open` still comes from the
@@ -191,7 +193,7 @@ export default function MedicationCard({
             open={menuOpen}
             onOpenChange={setMenuOpen}
           >
-            {({ close, runAction }) => (
+            {({ close }) => (
               <>
                 <button
                   type="button"
@@ -211,14 +213,17 @@ export default function MedicationCard({
                   onClick={async () => {
                     const ok = await confirm({
                       title: "Delete medication",
-                      message: `Delete “${s.name}” and its whole history? This can’t be undone.`,
+                      message: `Delete “${s.name}” and its whole history? You can undo this.`,
                       confirmLabel: "Delete",
                       danger: true,
                     });
                     if (!ok) return;
+                    close();
                     const fd = new FormData();
                     fd.set("id", String(s.id));
-                    await runAction(deleteSupplement, fd, "Medication deleted");
+                    await undoable(deleteSupplement, fd, {
+                      deletedMessage: "Medication deleted.",
+                    });
                   }}
                 >
                   Delete

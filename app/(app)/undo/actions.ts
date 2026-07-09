@@ -1,0 +1,20 @@
+"use server";
+
+import { requireSession } from "@/lib/auth";
+import { revalidatePath } from "next/cache";
+import { restoreDeletedRow } from "@/lib/undo-delete-db";
+
+// Restore a previously-deleted row from its undo token (a deleted_rows id), issued
+// by the delete actions and offered as an "Undo" toast (issue #30). Scoped to the
+// acting profile: restoreDeletedRow only touches a holding row whose profile_id
+// matches, so a token can't be replayed across profiles. Returns ok=false when the
+// token is gone (already restored, swept after 24h, or another profile's). The
+// restore re-inserts with NEW ids, so a broad layout revalidate refreshes wherever
+// the row now belongs.
+export async function undoDelete(undoId: number): Promise<{ ok: boolean }> {
+  const { profile } = requireSession();
+  if (!Number.isInteger(undoId) || undoId <= 0) return { ok: false };
+  const ok = restoreDeletedRow(profile.id, undoId);
+  if (ok) revalidatePath("/", "layout");
+  return { ok };
+}
