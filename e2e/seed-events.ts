@@ -239,6 +239,29 @@ if (
   ).run(Number(supp.lastInsertRowid));
 }
 
+// A SECOND due dose dedicated to the read-only-member spec. The write-member
+// spec CONFIRMS the Vitamin D dose above, so a later test asserting a still-due
+// row needs its own item — sharing one fixture made the read-only test order-
+// dependent (it failed whenever the confirm test ran first).
+const HOUSEHOLD_RO_SUPP_NAME = "Household Magnesium";
+if (
+  !db
+    .prepare("SELECT 1 FROM intake_items WHERE profile_id = ? AND name = ?")
+    .get(HOUSEHOLD_PROFILE_ID, HOUSEHOLD_RO_SUPP_NAME)
+) {
+  const roSupp = db
+    .prepare(
+      `INSERT INTO intake_items
+         (profile_id, name, condition, priority, active, source)
+       VALUES (?, ?, 'daily', 'high', 1, 'manual')`
+    )
+    .run(HOUSEHOLD_PROFILE_ID, HOUSEHOLD_RO_SUPP_NAME);
+  db.prepare(
+    `INSERT INTO intake_item_doses (supplement_id, amount, time_of_day, food_timing, sort)
+     VALUES (?, '200 mg', '20:00', 'any', 0)`
+  ).run(Number(roSupp.lastInsertRowid));
+}
+
 console.log(
-  `e2e: seeded household profile ${HOUSEHOLD_PROFILE_ID} (${HOUSEHOLD_PROFILE_NAME}) with a due-today supplement dose`
+  `e2e: seeded household profile ${HOUSEHOLD_PROFILE_ID} (${HOUSEHOLD_PROFILE_NAME}) with two due-today supplement doses`
 );

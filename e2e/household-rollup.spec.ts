@@ -15,6 +15,9 @@ import { test, expect, type Browser, type Page } from "@playwright/test";
 
 const SEEDED_PROFILE_2 = "2"; // "Sam Rivers"
 const HOUSEHOLD_DUE_DOSE = "Household Vitamin D";
+// Dedicated to the read-only spec: the write-member spec confirms (consumes) the
+// Vitamin D dose, so the read-only assertions use their own never-consumed item.
+const HOUSEHOLD_RO_DUE_DOSE = "Household Magnesium";
 
 // Create a member login and grant it the given profiles at the given access
 // levels, driving Settings → Family exactly as an admin would. Returns creds.
@@ -168,7 +171,7 @@ test.describe("Household view for members (issue #31)", () => {
     await expect(
       p2Card
         .getByTestId("household-due-dose")
-        .filter({ hasText: HOUSEHOLD_DUE_DOSE })
+        .filter({ hasText: HOUSEHOLD_RO_DUE_DOSE })
     ).toBeVisible();
 
     // …but a read-only caregiver gets NO quick-action buttons, on any card.
