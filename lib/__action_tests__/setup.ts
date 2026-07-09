@@ -76,5 +76,17 @@ vi.mock("@/lib/auth", async () => {
     requireAdmin: () => getActingSession(),
     getCurrentSession: () => getActingSession(),
     getAccessibleProfiles,
+    // Faithful to prod accessForProfile: admins are implicit all-write; a member
+    // resolves the REAL grant row from the temp DB, with anything other than an
+    // explicit 'read' reading as 'write' (the permissive legacy default).
+    accessForProfile: (loginId: number, role: string, profileId: number) => {
+      if (role === "admin") return "write";
+      const row = db
+        .prepare(
+          "SELECT access FROM login_profiles WHERE login_id = ? AND profile_id = ?"
+        )
+        .get(loginId, profileId) as { access: string | null } | undefined;
+      return row?.access === "read" ? "read" : "write";
+    },
   };
 });

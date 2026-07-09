@@ -3,6 +3,7 @@ import {
   requireSession,
   requireWriteAccess,
   getAccessibleProfiles,
+  accessForProfile,
 } from "@/lib/auth";
 
 import crypto from "node:crypto";
@@ -1102,6 +1103,19 @@ export async function reassignDocument(
     accessibleProfileIds,
   });
   if (!decision.ok) return { status: "error", message: decision.reason };
+
+  // Reassigning WRITES to the destination profile, so a write grant on the
+  // source alone isn't enough — a member holding profile B read-only must not be
+  // able to push documents into B from a writable A (issue #33). Admins resolve
+  // to 'write' implicitly.
+  if (
+    accessForProfile(session.login.id, session.login.role, dest) !== "write"
+  ) {
+    return {
+      status: "error",
+      message: "You have view-only access to that profile.",
+    };
+  }
 
   const source = documentSource(id);
   // Re-point every owned row from the source profile to the destination, scoped to
