@@ -58,20 +58,40 @@ function staleBadge() {
   );
 }
 
+// A small slate badge marking a read-time DERIVED index (issue #40) — computed
+// from other readings, not measured. The formula (with the component values) is the
+// hover title so the derivation is inspectable.
+function derivedBadge(formula?: string) {
+  return (
+    <span
+      data-testid="derived-badge"
+      className="ml-2 rounded-full bg-slate-100 px-1.5 py-0.5 align-middle text-[10px] font-medium uppercase tracking-wide text-slate-600 dark:bg-slate-700 dark:text-slate-300"
+      title={formula ? `Derived: ${formula}` : "Computed from other readings"}
+    >
+      Derived
+    </span>
+  );
+}
+
 // Show the canonical name (the grouping identity) when present, linking to the
 // biomarker detail page; fall back to the raw provided name otherwise. Flags the
-// group with a Stale badge when its latest reading is overdue.
+// group with a Stale badge when its latest reading is overdue, and a Derived badge
+// when the reading is a computed index.
 function nameCell(r: {
   name: string;
   canonical_name: string | null;
   stale?: boolean;
+  derived?: boolean;
+  derived_formula?: string;
 }) {
   const stale = r.stale ? staleBadge() : null;
+  const derived = r.derived ? derivedBadge(r.derived_formula) : null;
   if (!r.canonical_name)
     return (
       <span>
         <span className="font-medium">{r.name}</span>
         {stale}
+        {derived}
       </span>
     );
   return (
@@ -84,6 +104,7 @@ function nameCell(r: {
         {r.canonical_name}
       </Link>
       {stale}
+      {derived}
     </span>
   );
 }
@@ -175,6 +196,37 @@ function BiomarkerRow({
   }
 
   const { category, panel, range, q, sort, dir, current } = filters;
+  // A derived index is a computed, read-only virtual row: no source document, no
+  // panel/category filter links, and no edit/delete (there's no stored row to
+  // mutate). Its formula shows in the Notes column so the derivation is visible.
+  if (r.derived) {
+    return (
+      <tr
+        className={isEnd ? "border-b border-black/5 dark:border-white/10" : ""}
+      >
+        <td className="td">{isStart ? nameCell({ ...r, stale }) : null}</td>
+        <td className="td hidden md:table-cell">
+          <span className="text-slate-300 dark:text-slate-600">—</span>
+        </td>
+        <td className="td">
+          <MedicalValue value={r.value} unit={r.unit} flag={r.flag} />
+        </td>
+        <td className="td hidden text-slate-500 sm:table-cell dark:text-slate-400">
+          —
+        </td>
+        <td className="td hidden text-slate-500 md:table-cell dark:text-slate-400">
+          {r.derived_formula ?? ""}
+        </td>
+        <td className="td hidden md:table-cell">
+          <Tag value={r.category} />
+        </td>
+        <td className="td">{dateCell(r, now, !!r.is_latest)}</td>
+        <td className="td text-right text-xs text-slate-400 dark:text-slate-500">
+          Computed
+        </td>
+      </tr>
+    );
+  }
   return (
     <tr className={isEnd ? "border-b border-black/5 dark:border-white/10" : ""}>
       <td className="td">{isStart ? nameCell({ ...r, stale }) : null}</td>

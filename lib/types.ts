@@ -249,6 +249,13 @@ export interface MedicalRecord {
   // unlinked.
   provider_id: number | null;
   provider_name?: string | null;
+  // Set on VIRTUAL records computed at read time from other readings (issue #40 —
+  // derived clinical indices like Non-HDL, HOMA-IR, eGFR). These are never stored:
+  // they carry a synthetic negative `id`, no `document_id`, and are read-only in the
+  // UI. `derived_formula` is the human formula with the component values substituted
+  // (shown as the "derived" tooltip/subtitle). Absent on real stored rows.
+  derived?: boolean;
+  derived_formula?: string;
 }
 
 // "higher is better", "lower is better", or "best inside a range" — governs how

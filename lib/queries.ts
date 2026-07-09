@@ -10,6 +10,7 @@ export * from "./queries/metrics";
 export * from "./queries/training";
 export * from "./queries/coaching";
 export * from "./queries/medical";
+export * from "./queries/derived";
 export * from "./queries/appointments";
 export * from "./queries/intake";
 export * from "./queries/clinical";

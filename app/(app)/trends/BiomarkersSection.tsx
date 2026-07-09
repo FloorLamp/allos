@@ -12,6 +12,7 @@ import { filterSeriesByRange } from "@/lib/trends";
 import type { DateRange } from "@/lib/timeline-format";
 import { EmptyState, MedicalValue } from "@/components/ui";
 import StarredBiomarkers from "@/components/StarredBiomarkers";
+import TrajectoryFindings from "./TrajectoryFindings";
 
 export type BiomarkerFlagFilter = "oor" | "nonoptimal";
 
@@ -54,6 +55,11 @@ export default function BiomarkersSection({
 
   return (
     <div className="space-y-6">
+      {/* Forward-looking trajectory rules (#41): warn BEFORE a range crossing.
+          Independent of the flag/panel filters and the date window — a trajectory
+          is a property of the analyte's full history. */}
+      <TrajectoryFindings />
+
       <StarredBiomarkers />
 
       <div className="flex flex-wrap items-center gap-2">

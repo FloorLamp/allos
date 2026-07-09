@@ -464,6 +464,16 @@ const PANELS: Panel[] = [
     ref: "<50",
     values: [33, 30, 27, 24, 22, 20],
   },
+  // Kidney — creatinine drives the derived eGFR virtual biomarker (issue #40),
+  // computed at read time (CKD-EPI 2021) from these values + the profile's age/sex.
+  {
+    category: "lab",
+    name: "Creatinine",
+    canonical: "Creatinine",
+    unit: "mg/dL",
+    ref: "0.6-1.3",
+    values: [1.02, 1.0, 0.99, 0.97, 0.96, 0.94],
+  },
   {
     category: "biomarker",
     name: "Homocysteine",
@@ -471,6 +481,19 @@ const PANELS: Panel[] = [
     unit: "umol/L",
     ref: "<15",
     values: [11.2, 10.1, 9.2, 8.4, 7.8, 7.1],
+  },
+  // Kidney — a slow, sustained eGFR decline that STAYS in range (above the 60 CKD
+  // floor) the whole time, so a single-value flag never fires — but the trajectory
+  // rules (#41) do: the ~7 mL/min/1.73m²/yr fall beats the curated >5/yr velocity
+  // threshold, and every reading sits below the 90 optimal floor (persistent
+  // below-optimal). A worked example for the "Trajectory watch" card.
+  {
+    category: "lab",
+    name: "eGFR",
+    canonical: "eGFR",
+    unit: "mL/min/1.73m2",
+    ref: ">60",
+    values: [88, 84, 80, 76, 72, 68],
   },
   // Thyroid.
   {

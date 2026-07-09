@@ -12,10 +12,10 @@
 
 - **Timeline** — day-by-day health history across activity, body metrics, labs, medications, documents, visits, and goals
 - **Training** — workout history, goals, strength analysis, cardio records, sport summaries, and per-exercise history
-- **Trends** — charts and analysis in one place, tab by tab: **Body** (weight, body fat %, resting heart rate), **Fitness**, **Biomarkers**, **Compare**, and Claude-powered **Insights** (daily analysis of your activity, metrics, and goals)
+- **Trends** — charts and analysis in one place, tab by tab: **Body** (weight, body fat %, resting heart rate), **Fitness**, **Biomarkers** (including a **Trajectory watch** that warns before a reading crosses a line — a value projected to cross its reference/optimal boundary, a persistent non-optimal pattern, or a fast decline/rise), **Compare**, and Claude-powered **Insights** (daily analysis of your activity, metrics, and goals)
 - **Goals** — set targets, track progress bars, mark achieved/archived
 - **Benchmarks** — estimated 1-rep maxes (Epley) and strength standards relative to bodyweight
-- **Medical** — vitals, labs, genomics, biomarkers, conditions, allergies, procedures, family history, immunizations, visits, a Passport summary, and an offline **Emergency Card**
+- **Medical** — vitals, labs, genomics, biomarkers, conditions, allergies, procedures, family history, immunizations, visits, a Passport summary, and an offline **Emergency Card**. Standard **derived indices** (Non-HDL cholesterol, triglyceride/HDL ratio, HOMA-IR, and race-free CKD-EPI 2021 eGFR) are computed from your existing labs and shown alongside them, marked "derived" with their formula (eGFR/HOMA-IR only appear when the needed labs and age/sex are on file)
 - **Immunizations** — record vaccines and doses, track them against the CDC schedule (due / overdue / up to date), and see immunity titers pulled from your labs
 - **Health-record import** — pull immunizations, labs, and vitals straight from a MyChart “Download Summary” (CCD/XDM), a SMART Health Card, or an Epic / Apple Health FHIR bundle
 - **Supplements & medications** — schedule intake and check it off each day, with adherence and refill tracking

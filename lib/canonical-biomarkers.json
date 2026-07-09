@@ -678,7 +678,8 @@
       "optimal_high": 120,
       "direction": "higher_better",
       "note": "Kidney filtration",
-      "retest_days": 365
+      "retest_days": 365,
+      "velocity_per_year": 5
     },
     {
       "name": "Cystatin C",
@@ -1343,7 +1344,8 @@
       "conversions": {
         "ug/L": 1
       },
-      "retest_days": 365
+      "retest_days": 365,
+      "velocity_per_year": 0.75
     },
     {
       "name": "Blood Pressure Systolic",
@@ -2506,6 +2508,18 @@
       "optimal_high": 35.7,
       "direction": "lower_better",
       "note": "Estimated biological age; lower than chronological is favorable"
+    },
+    {
+      "name": "Triglyceride/HDL Ratio",
+      "category": "lab",
+      "unit": "ratio",
+      "ref_low": null,
+      "ref_high": 3.5,
+      "optimal_low": null,
+      "optimal_high": 2,
+      "direction": "lower_better",
+      "note": "Derived from the lipid panel (Triglycerides ÷ HDL, both mg/dL). Surrogate for insulin resistance / small-dense LDL; <2 favorable, ≥3.5 suggests insulin resistance. mg/dL-based — a mmol/L ratio differs.",
+      "retest_days": 365
     },
     {
       "name": "Neutrophils, Absolute",

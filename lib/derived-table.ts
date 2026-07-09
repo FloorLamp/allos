@@ -1,0 +1,141 @@
+// Pure helpers for merging read-time DERIVED records (issue #40) into the
+// Biomarkers table alongside the stored rows. The biomarkers page reads stored
+// rows via the SQL getMedicalRecords (which applies its filters + ORDER BY in the
+// database) and the derived virtual rows via getDerivedBiomarkerReadings; this
+// module folds the two into one list the table renders, re-deriving the
+// "current reading per biomarker" marker and the sort over the COMBINED set so a
+// derived analyte groups, sorts, and flags-as-latest exactly like a stored one.
+//
+// Kept pure (no DB) so the merge/sort/latest logic is unit-tested in isolation.
+
+import type { MedicalRecord } from "./types";
+import type { MedicalSortColumn, SortDirection } from "./queries/medical";
+import type { RangeFilter } from "./queries/medical";
+
+// Display/grouping identity: canonical name when present, else the raw name —
+// mirrors biomarkerNameKey() in the SQL layer so a merged row groups with its kin.
+export function tableNameKey(r: {
+  name: string;
+  canonical_name: string | null;
+}): string {
+  return r.canonical_name?.trim() || r.name;
+}
+
+// Case-insensitive compare (NOCASE-equivalent) for the name/panel sort keys.
+function nocase(a: string, b: string): number {
+  return a.localeCompare(b, undefined, { sensitivity: "base" });
+}
+
+// Which derived rows survive the table's active filters — the JS mirror of the SQL
+// WHERE getMedicalRecords applies to stored rows, so derived analytes honor the
+// same category/panel/range/free-text filters. (The `current` filter is applied
+// later, over the COMBINED set, by prepareTableRecords.) Derived rows are always
+// category 'lab' with a null panel, so a category!=lab or any panel filter excludes
+// them by construction.
+export function filterDerivedForTable(
+  derived: MedicalRecord[],
+  filters: {
+    category?: string;
+    excludeCategories?: string[];
+    panel?: string;
+    range?: RangeFilter;
+    q?: string;
+  }
+): MedicalRecord[] {
+  const q = filters.q?.trim().toLowerCase();
+  return derived.filter((r) => {
+    if (filters.category && r.category !== filters.category) return false;
+    if (filters.excludeCategories?.includes(r.category)) return false;
+    if (filters.panel) return false; // derived rows carry no panel
+    if (filters.range === "oor") {
+      if (!(r.flag === "high" || r.flag === "low" || r.flag === "abnormal"))
+        return false;
+    } else if (filters.range === "nonoptimal") {
+      const ok =
+        r.flag === "high" ||
+        r.flag === "low" ||
+        r.flag === "abnormal" ||
+        r.flag === "non-optimal" ||
+        r.flag === "non-optimal-high" ||
+        r.flag === "non-optimal-low";
+      if (!ok) return false;
+    }
+    if (q) {
+      const hay = `${r.name} ${r.panel ?? ""}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+}
+
+// Comparator matching medicalOrderBy() (lib/queries/medical) for the whitelisted
+// sort columns, so the merged list orders identically to the SQL-only list. Every
+// non-name sort tie-breaks on the name ascending then id, like the SQL.
+function comparator(
+  sort: MedicalSortColumn | undefined,
+  dir: SortDirection
+): (a: MedicalRecord, b: MedicalRecord) => number {
+  const d = dir === "desc" ? -1 : 1;
+  const nameOf = (r: MedicalRecord) => tableNameKey(r);
+  if (sort === "name") {
+    return (a, b) =>
+      d * nocase(nameOf(a), nameOf(b)) ||
+      -nocase(a.date, b.date) || // date DESC
+      b.id - a.id;
+  }
+  if (sort === "panel") {
+    return (a, b) => {
+      const pa = a.panel,
+        pb = b.panel;
+      if ((pa == null) !== (pb == null)) return pa == null ? 1 : -1; // nulls last
+      if (pa != null && pb != null) {
+        const c = d * nocase(pa, pb);
+        if (c) return c;
+      }
+      return nocase(nameOf(a), nameOf(b)) || a.id - b.id;
+    };
+  }
+  if (sort === "date") {
+    return (a, b) =>
+      d * nocase(a.date, b.date) || nocase(nameOf(a), nameOf(b)) || a.id - b.id;
+  }
+  // Fallback (no explicit sort): date DESC, id DESC — matches getMedicalRecords.
+  return (a, b) => -nocase(a.date, b.date) || b.id - a.id;
+}
+
+// The id of the current (newest) reading per name group, over the COMBINED set:
+// newest date wins, id descending as tie-break (mirrors the SQL LATEST_IDS_CTE
+// ORDER BY date DESC, id DESC). Derived ids are negative, so among same-date rows a
+// stored (positive id) reading is preferred as "latest" over a derived one.
+function latestIdByName(records: MedicalRecord[]): Map<string, number> {
+  const best = new Map<string, MedicalRecord>();
+  for (const r of records) {
+    const key = tableNameKey(r).toLowerCase();
+    const cur = best.get(key);
+    if (!cur || r.date > cur.date || (r.date === cur.date && r.id > cur.id))
+      best.set(key, r);
+  }
+  return new Map([...best].map(([k, r]) => [k, r.id]));
+}
+
+// Merge stored + derived rows into the final table list. Recomputes is_latest per
+// name over the combined set (so a derived analyte's newest reading is flagged
+// current and stale-badged like a stored one); when `current` is set, keeps only
+// that current reading per name; then sorts by the active column to match the
+// SQL-only ordering. Pure.
+export function prepareTableRecords(
+  stored: MedicalRecord[],
+  derived: MedicalRecord[],
+  opts: { sort?: MedicalSortColumn; dir?: SortDirection; current?: boolean }
+): MedicalRecord[] {
+  const combined = [...stored, ...derived];
+  const latest = latestIdByName(combined);
+  const withLatest = combined.map((r) => ({
+    ...r,
+    is_latest: latest.get(tableNameKey(r).toLowerCase()) === r.id ? 1 : 0,
+  }));
+  const filtered = opts.current
+    ? withLatest.filter((r) => r.is_latest === 1)
+    : withLatest;
+  return filtered.sort(comparator(opts.sort, opts.dir ?? "asc"));
+}
