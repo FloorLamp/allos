@@ -5,10 +5,15 @@ import {
   selectFeedAppointments,
   appointmentToPreviewRow,
   selectFeedPreviewRows,
+  consolidatedSummary,
+  selectConsolidatedFeedEvents,
+  selectConsolidatedPreviewRows,
+  groupConsolidatedPreviewRows,
   escapeIcsText,
   zonedWallTimeToUtc,
   type AppointmentLike,
   type IcsEvent,
+  type ConsolidatedProfileFeed,
 } from "@/lib/calendar-ics";
 
 const DTSTAMP = new Date("2026-07-08T12:00:00Z");
@@ -441,5 +446,135 @@ describe("selectFeedPreviewRows — selection + projection composed", () => {
     expect(rows[0].uid).toBe("appt-1@allos");
     expect(rows[0].timeLabel).toBe("9:00 AM");
     expect(rows[0].summary).toBe("Medical appointment");
+  });
+});
+
+// ---- Consolidated (multi-profile "family") feed ----------------------------
+
+describe("consolidatedSummary — profile-name prefixing", () => {
+  it("prefixes the summary with the profile name", () => {
+    expect(consolidatedSummary("Ada", "Medical appointment")).toBe(
+      "Ada: Medical appointment"
+    );
+  });
+  it("is a no-op for a blank name", () => {
+    expect(consolidatedSummary("", "Medical appointment")).toBe(
+      "Medical appointment"
+    );
+    expect(consolidatedSummary("   ", "X")).toBe("X");
+  });
+});
+
+// Two profiles' feeds, each with its own detail level + timezone. Ada is "full"
+// (provider/reason leak), Leo is "minimal" (neutral label only).
+function familyFixture(): ConsolidatedProfileFeed[] {
+  return [
+    {
+      profileId: 7,
+      profileName: "Ada",
+      detail: "full",
+      tz: "UTC",
+      today: "2026-07-08",
+      appts: [
+        {
+          id: 1,
+          scheduled_at: "2026-07-10 14:30",
+          status: "scheduled",
+          title: "Cardiology follow-up",
+          location: "Heart Center",
+          provider_name: "Dr. Lee",
+          notes: null,
+        },
+      ],
+    },
+    {
+      profileId: 9,
+      profileName: "Leo",
+      detail: "minimal",
+      tz: "UTC",
+      today: "2026-07-08",
+      appts: [
+        {
+          id: 1, // same appointment id as Ada's — must NOT collide
+          scheduled_at: "2026-07-09 09:00",
+          status: "scheduled",
+          title: "Dermatology",
+          location: null,
+          provider_name: "Dr. Skin",
+          notes: null,
+        },
+        {
+          id: 2,
+          scheduled_at: "2026-06-20",
+          status: "completed", // history — dropped by the selector
+          title: null,
+          location: null,
+          provider_name: null,
+          notes: null,
+        },
+      ],
+    },
+  ];
+}
+
+describe("selectConsolidatedFeedEvents — multi-profile merge", () => {
+  it("merges profiles, honors per-profile detail, and sorts chronologically", () => {
+    const events = selectConsolidatedFeedEvents(familyFixture());
+    // Leo's completed row is dropped; two scheduled events remain.
+    expect(events).toHaveLength(2);
+    // Sorted by start: Leo (Jul 9) before Ada (Jul 10).
+    expect(events[0].summary).toBe("Leo: Medical appointment"); // minimal → neutral
+    expect(events[1].summary).toBe("Ada: Cardiology follow-up"); // full → real title
+  });
+
+  it("namespaces UIDs by profile so a shared appointment id can't collide", () => {
+    const events = selectConsolidatedFeedEvents(familyFixture());
+    const uids = events.map((e) => e.uid);
+    expect(uids).toContain("fam-9-appt-1@allos");
+    expect(uids).toContain("fam-7-appt-1@allos");
+    expect(new Set(uids).size).toBe(uids.length); // all distinct
+  });
+
+  it("minimal profiles leak no provider/reason into the merged feed", () => {
+    const ics = buildAppointmentIcs(
+      selectConsolidatedFeedEvents(familyFixture()),
+      { dtstamp: DTSTAMP }
+    );
+    expect(ics).toContain("SUMMARY:Leo: Medical appointment");
+    expect(ics).not.toContain("Dr. Skin");
+    expect(ics).not.toContain("Dermatology");
+    // Ada is full detail, so her provider/title DO appear.
+    expect(ics).toContain("SUMMARY:Ada: Cardiology follow-up");
+  });
+
+  it("returns an empty list when no profiles are accessible", () => {
+    expect(selectConsolidatedFeedEvents([])).toEqual([]);
+  });
+});
+
+describe("selectConsolidatedPreviewRows + grouping", () => {
+  it("labels each row with its profile and groups by date in order", () => {
+    const rows = selectConsolidatedPreviewRows(familyFixture());
+    expect(rows).toHaveLength(2);
+    expect(rows[0].profileName).toBe("Leo");
+    expect(rows[0].summary).toBe("Medical appointment"); // preview label is unprefixed
+    expect(rows[1].profileName).toBe("Ada");
+
+    const groups = groupConsolidatedPreviewRows(rows);
+    expect(groups.map((g) => g.dateKey)).toEqual(["2026-07-09", "2026-07-10"]);
+    expect(groups[0].rows[0].profileName).toBe("Leo");
+    expect(groups[1].rows[0].profileName).toBe("Ada");
+  });
+
+  it("puts two same-day profiles in one date group", () => {
+    const feeds = familyFixture();
+    feeds[0].appts = [
+      { ...feeds[0].appts[0], scheduled_at: "2026-07-09 16:00" },
+    ];
+    const groups = groupConsolidatedPreviewRows(
+      selectConsolidatedPreviewRows(feeds)
+    );
+    expect(groups).toHaveLength(1);
+    expect(groups[0].rows.map((r) => r.profileName)).toEqual(["Leo", "Ada"]);
   });
 });

@@ -265,3 +265,36 @@ if (
 console.log(
   `e2e: seeded household profile ${HOUSEHOLD_PROFILE_ID} (${HOUSEHOLD_PROFILE_NAME}) with two due-today supplement doses`
 );
+
+// ── Consolidated "family" calendar fixtures ───────────────────────────────────
+// A SECOND profile with its own upcoming appointment so the family-calendar feed +
+// preview have two profiles' data to merge. The e2e login is the bootstrap admin,
+// who can access every profile without an explicit grant. Synthetic name/provider
+// only — no real PHI. Idempotent: reuse the profile if a prior run created it, and
+// clear its fixture appointment before re-inserting.
+const CHILD_NAME = "Test Child";
+let childId = (
+  db.prepare("SELECT id FROM profiles WHERE name = ?").get(CHILD_NAME) as
+    { id: number } | undefined
+)?.id;
+if (!childId) {
+  childId = Number(
+    db.prepare("INSERT INTO profiles (name) VALUES (?)").run(CHILD_NAME)
+      .lastInsertRowid
+  );
+}
+// A clearly-future date so the appointment always lands in the feed's forward window.
+const soon = new Date();
+soon.setDate(soon.getDate() + 5);
+const soonDate = soon.toISOString().slice(0, 10);
+db.prepare(
+  "DELETE FROM appointments WHERE profile_id = ? AND title = 'Pediatric checkup'"
+).run(childId);
+db.prepare(
+  `INSERT INTO appointments (profile_id, scheduled_at, title, location, status)
+   VALUES (?, ?, 'Pediatric checkup', 'Springfield Pediatrics', 'scheduled')`
+).run(childId, `${soonDate} 10:00`);
+
+console.log(
+  `e2e: seeded a second profile (${CHILD_NAME}, id=${childId}) with an upcoming appointment for the family-calendar feed`
+);

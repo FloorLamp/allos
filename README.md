@@ -237,6 +237,16 @@ the same lifecycle controls — rotate the link, set an optional expiry, and see
 last fetch time. Rotating either token immediately invalidates the previous one,
 and an expired token is rejected exactly like an invalid one.
 
+The same page also offers a **Family calendar** — one consolidated `.ics` feed (and
+an in-app preview grouped by date) that merges the upcoming appointments of **every
+profile you can access** into a single calendar, each event labeled with the
+profile's name. Its token is per **login** (not per profile), so it rides the same
+rotate/expiry/last-used lifecycle, and the set of profiles it exposes is resolved
+**live on each fetch** from your current grants — losing access to a profile removes
+it from the feed at once, and deleting the login kills the feed. Each profile keeps
+its **own** detail level, so a profile set to minimal still shows only "Medical
+appointment" even inside the shared feed.
+
 ### Strava
 
 Connect once with OAuth and your runs, rides, and other activities sync
