@@ -1,8 +1,17 @@
 import Link from "next/link";
-import Tabs from "@/components/Tabs";
+import NavTabs from "@/components/NavTabs";
 import StrengthSection from "../training/StrengthSection";
 import CardioSection from "../training/CardioSection";
 import SportSection from "../training/SportSection";
+
+const FTABS = ["strength", "cardio", "sport"] as const;
+type FitnessTab = (typeof FTABS)[number];
+
+function parseFtab(value: string | undefined): FitnessTab {
+  return FTABS.includes(value as FitnessTab)
+    ? (value as FitnessTab)
+    : "strength";
+}
 
 // The Trends hub's Fitness section. Reuses the Training page's Strength / Cardio /
 // Sport section components verbatim (est. 1RM per lift, cardio records, weekly
@@ -10,12 +19,20 @@ import SportSection from "../training/SportSection";
 // aren't windowed by the shared range — the note makes that explicit. The whole
 // section is hidden by the hub for age-restricted profiles (isTrainingRestricted),
 // the same gate the Journal/Training nav uses, so it's never rendered for them.
-// Like the hub's own tab strip, only the ACTIVE inner tab's section is
-// constructed (#105): the training sections run full-history aggregations, so
-// building the hidden ones would execute their queries on every request. ftab is
-// the ?ftab= param threaded down from the page, matching the inner Tabs paramKey.
+//
+// #105: the nested strip is URL-driven (?ftab=), and only the active nested
+// section is built server-side — the page reads `ftab` and threads it down so
+// the full-history training aggregations don't all run on every Fitness view.
 export default function FitnessSection({ ftab }: { ftab?: string }) {
-  const active = ftab === "cardio" || ftab === "sport" ? ftab : "strength";
+  const active = parseFtab(ftab);
+  const section =
+    active === "cardio" ? (
+      <CardioSection />
+    ) : active === "sport" ? (
+      <SportSection />
+    ) : (
+      <StrengthSection />
+    );
   return (
     <div className="space-y-4">
       <p className="text-sm text-slate-500 dark:text-slate-400">
@@ -27,28 +44,16 @@ export default function FitnessSection({ ftab }: { ftab?: string }) {
           Full Training →
         </Link>
       </p>
-      <Tabs
+      <NavTabs
         paramKey="ftab"
         tabs={[
-          {
-            id: "strength",
-            label: "Strength",
-            content: active === "strength" ? <StrengthSection /> : null,
-          },
-          {
-            id: "cardio",
-            label: "Cardio",
-            content: active === "cardio" ? <CardioSection /> : null,
-            keepMounted: false,
-          },
-          {
-            id: "sport",
-            label: "Sport",
-            content: active === "sport" ? <SportSection /> : null,
-            keepMounted: false,
-          },
+          { id: "strength", label: "Strength" },
+          { id: "cardio", label: "Cardio" },
+          { id: "sport", label: "Sport" },
         ]}
-      />
+      >
+        {section}
+      </NavTabs>
     </div>
   );
 }

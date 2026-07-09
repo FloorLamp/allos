@@ -9,7 +9,7 @@ import {
 } from "@/lib/timeline-format";
 import { rangeSummaryLabel } from "@/lib/trends";
 import { PageHeader } from "@/components/ui";
-import Tabs from "@/components/Tabs";
+import NavTabs from "@/components/NavTabs";
 import DateRangeControl from "@/components/DateRangeControl";
 import SavedViewsBar from "@/components/SavedViewsBar";
 import OverviewSection from "./OverviewSection";
@@ -96,6 +96,10 @@ export default function TrendsPage({
   const cmpA = firstParam(searchParams.cmpA);
   const cmpB = firstParam(searchParams.cmpB);
   const cmpNormalized = firstParam(searchParams.cmpn) === "1";
+  // The Fitness section's nested strip (Strength/Cardio/Sport) is also driven by
+  // the URL (?ftab=), so — like the top-level tab — only the active nested
+  // section is built server-side. FitnessSection validates/defaults this.
+  const ftab = firstParam(searchParams.ftab);
 
   // Build a /trends URL, preserving the active tab + window unless overridden.
   // Overview is the default tab, so it's dropped from the query string.
@@ -146,18 +150,31 @@ export default function TrendsPage({
       bpanel: opts.panel,
     });
 
-  // Only the ACTIVE tab's section element is constructed. Server Components
-  // passed as props to the client Tabs shell render on the server whether or not
-  // the client shows them, so building all six here would run every section's
-  // queries (and ship their payload) on every request — keepMounted:false alone
-  // only skips the client DOM, not the server work (#105). Hidden tabs get null
-  // content; a tab click is a router.replace navigation, so the newly selected
-  // tab's content arrives with that round trip.
-  const section = (id: TrendsTab): React.ReactNode => {
-    if (id !== activeTab) return null;
-    switch (id) {
-      case "overview":
-        return <OverviewSection range={range} />;
+  // Tab-strip spec: labels only. Fitness + Insights are age-gated surfaces —
+  // omitted entirely for training-restricted profiles (matching the
+  // Journal/Training/Insights nav gate), so they're never in the strip or
+  // reachable via ?tab= for them (the activeTab fallback above enforces the
+  // latter).
+  const tabStrip: { id: TrendsTab; label: string }[] = [
+    { id: "overview", label: "Overview" },
+    { id: "compare", label: "Compare" },
+    { id: "biomarkers", label: "Biomarkers" },
+    { id: "body", label: "Body" },
+    ...(restricted
+      ? []
+      : ([
+          { id: "fitness", label: "Fitness" },
+          { id: "insights", label: "Insights" },
+        ] as const)),
+  ];
+
+  // #105: build ONLY the active section server-side. Passing every section as a
+  // prop rendered (and ran the queries for) all six on every request — the
+  // client `keepMounted` flag only gated DOM, not the RSC pass. Each tab switch
+  // is already a URL navigation (NavTabs → router.replace), so this makes every
+  // Trends request compute one tab instead of six, at no extra round-trips.
+  const activeSection: React.ReactNode = (() => {
+    switch (activeTab) {
       case "compare":
         return (
           <CompareSection
@@ -179,56 +196,14 @@ export default function TrendsPage({
       case "body":
         return <BodySection range={range} />;
       case "fitness":
-        return <FitnessSection ftab={firstParam(searchParams.ftab)} />;
+        return <FitnessSection ftab={ftab} />;
       case "insights":
         return <InsightsSection range={range} />;
+      case "overview":
+      default:
+        return <OverviewSection range={range} />;
     }
-  };
-  const tabs: {
-    id: TrendsTab;
-    label: string;
-    content: React.ReactNode;
-    keepMounted?: boolean;
-  }[] = [
-    { id: "overview", label: "Overview", content: section("overview") },
-    {
-      id: "compare",
-      label: "Compare",
-      content: section("compare"),
-      keepMounted: false,
-    },
-    {
-      id: "biomarkers",
-      label: "Biomarkers",
-      content: section("biomarkers"),
-      keepMounted: false,
-    },
-    {
-      id: "body",
-      label: "Body",
-      content: section("body"),
-      keepMounted: false,
-    },
-    // Fitness + Insights are age-gated surfaces — omitted entirely for
-    // training-restricted profiles (matching the Journal/Training/Insights nav
-    // gate), so they're never rendered or reachable via ?tab= for them.
-    ...(restricted
-      ? []
-      : [
-          {
-            id: "fitness" as const,
-            label: "Fitness",
-            content: section("fitness"),
-            keepMounted: false,
-          },
-          {
-            id: "insights" as const,
-            label: "Insights",
-            content: section("insights"),
-            keepMounted: false,
-          },
-        ]),
-  ];
+  })();
 
   return (
     <div>
@@ -261,7 +236,9 @@ export default function TrendsPage({
         <SavedViewsBar views={savedViews} />
       </div>
 
-      <Tabs paramKey="tab" tabs={tabs} />
+      <NavTabs paramKey="tab" tabs={tabStrip}>
+        {activeSection}
+      </NavTabs>
     </div>
   );
 }

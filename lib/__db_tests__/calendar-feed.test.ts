@@ -14,6 +14,7 @@ import {
   mintCalendarFeedToken,
   disableCalendarFeed,
   setCalendarFeedDetail,
+  setCalendarFeedOptions,
   resolveProfileByCalendarToken,
 } from "@/lib/settings";
 import { shiftDateStr } from "@/lib/date";
@@ -159,5 +160,85 @@ describe("calendar feed — token resolution + cross-profile isolation", () => {
     const { status, body } = await fetchFeed("not-a-real-token");
     expect(status).toBe(404);
     expect(body).not.toContain("BEGIN:VCALENDAR");
+  });
+});
+
+// ---- Category / reminder / window customization (issue #12) ----------------
+// Proves the route honors the stored feed options end-to-end: enabling a
+// non-appointment category surfaces that category's events (from the Upcoming
+// aggregation, PHI-neutral at minimal detail), the reminder toggle strips VALARMs,
+// and appointments-only remains the untouched default.
+describe("calendar feed — content customization", () => {
+  let pid: number;
+  let now: string;
+  let token: string;
+
+  beforeAll(() => {
+    pid = newProfile("CAL-OPT");
+    now = today(pid);
+    // A scheduled appointment (default category) ...
+    addAppointment(
+      pid,
+      `${shiftDateStr(now, 2)} 10:00`,
+      "OPT Visit",
+      "Clinic X"
+    );
+    // ... and an active goal with a future target date (the "goal" category).
+    db.prepare(
+      `INSERT INTO goals (profile_id, title, status, archived, target_date)
+       VALUES (?, ?, 'active', 0, ?)`
+    ).run(pid, "OPT Marathon plan", shiftDateStr(now, 5));
+    token = mintCalendarFeedToken(pid);
+  });
+
+  it("appointments-only default excludes the goal signal", async () => {
+    const { body } = await fetchFeed(token);
+    expect(body).toContain("SUMMARY:Medical appointment");
+    expect(body).not.toContain("Goal deadline");
+    expect(body).not.toContain("Marathon");
+  });
+
+  it("enabling the goal category surfaces a PHI-neutral goal event", async () => {
+    setCalendarFeedOptions(pid, {
+      categories: ["appointment", "goal"],
+      reminders: true,
+      pastWindowDays: 30,
+      futureWindowDays: null,
+    });
+    const { body } = await fetchFeed(token);
+    // Minimal detail (default): neutral label, no goal title leaks.
+    expect(body).toContain("SUMMARY:Goal deadline");
+    expect(body).not.toContain("Marathon");
+  });
+
+  it("the reminder toggle strips VALARM blocks from every event", async () => {
+    setCalendarFeedOptions(pid, {
+      categories: ["appointment", "goal"],
+      reminders: false,
+      pastWindowDays: 30,
+      futureWindowDays: null,
+    });
+    const { body } = await fetchFeed(token);
+    expect(body).toContain("BEGIN:VEVENT");
+    expect(body).not.toContain("BEGIN:VALARM");
+  });
+
+  it("a zero future horizon drops events beyond today", async () => {
+    setCalendarFeedOptions(pid, {
+      categories: ["appointment", "goal"],
+      reminders: true,
+      pastWindowDays: 30,
+      futureWindowDays: 0, // only today
+    });
+    const { body } = await fetchFeed(token);
+    // The appointment (+2d) and goal (+5d) are both beyond today → no events.
+    expect(body).not.toContain("BEGIN:VEVENT");
+    // Restore defaults so later shared-state assertions are unaffected.
+    setCalendarFeedOptions(pid, {
+      categories: ["appointment"],
+      reminders: true,
+      pastWindowDays: 30,
+      futureWindowDays: null,
+    });
   });
 });

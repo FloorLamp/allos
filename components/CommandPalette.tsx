@@ -1,20 +1,23 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   IconAlertTriangle,
   IconArrowRight,
   IconBarbell,
+  IconBolt,
   IconCalendarEvent,
   IconCalendarPlus,
   IconChartLine,
   IconClipboardList,
   IconCornerDownLeft,
   IconFileText,
+  IconHeartbeat,
   IconHeartHandshake,
   IconMedicalCross,
   IconPill,
+  IconScale,
   IconSearch,
   IconStethoscope,
   IconTarget,
@@ -22,19 +25,27 @@ import {
 } from "@tabler/icons-react";
 import ModalShell from "@/components/ModalShell";
 import { useLockBodyScroll } from "@/components/useLockBodyScroll";
+import { useToast } from "@/components/Toast";
+import { useActivityEditor } from "@/components/ActivityEditorProvider";
 import { runGlobalSearch } from "@/app/(app)/search-actions";
+import { paletteQuickLog } from "@/app/(app)/palette-actions";
 import {
   flattenHits,
   type SearchDomain,
   type SearchGroup,
+  type SearchHit,
 } from "@/lib/search-rank";
+import { matchPaletteActions, type PaletteAction } from "@/lib/palette-actions";
+import { parseQuickLog, type QuickLogWeight } from "@/lib/palette-quick-log";
+import type { WeightUnit } from "@/lib/settings";
 
-// Global command palette (issue #133). Mounted once from the app layout; renders
-// nothing until opened by Cmd/Ctrl-K or the SEARCH_OPEN_EVENT dispatched by the
-// sidebar's search trigger. A single input drives a debounced fetch of the
-// read-only search action (active profile only), results are grouped by domain,
-// and arrows + Enter navigate. Esc closes (handled by ModalShell). v1 is
-// navigation-only — selecting a result just routes to it.
+// Global command palette (issue #133, extended for create actions in #29).
+// Mounted once from the app layout; renders nothing until opened by Cmd/Ctrl-K or
+// the SEARCH_OPEN_EVENT dispatched by the sidebar's search trigger. A single input
+// drives (1) inline quick-log parsing (`weight 82.5` → a body-metrics entry Enter
+// commits directly), (2) create ACTIONS that open the right form, and (3) a
+// debounced fetch of the read-only search action (active profile only). Arrows +
+// Enter walk one flat list across all three; Esc closes (handled by ModalShell).
 
 // Custom event the shared sidebar's search button fires to open the palette,
 // so the trigger and the listener stay decoupled (no shared context provider).
@@ -65,21 +76,62 @@ const DOMAIN_ICONS: Record<
   page: (p) => <IconArrowRight {...p} />,
 };
 
+const ACTION_ICONS: Record<
+  PaletteAction["icon"],
+  (props: { className?: string }) => React.ReactNode
+> = {
+  barbell: (p) => <IconBarbell {...p} />,
+  scale: (p) => <IconScale {...p} />,
+  heart: (p) => <IconHeartbeat {...p} />,
+  calendar: (p) => <IconCalendarPlus {...p} />,
+  chart: (p) => <IconChartLine {...p} />,
+};
+
+// The palette's flat, navigable item model — quick-log preview, then create
+// actions, then search hits. `highlight` indexes into the array these produce.
+type PaletteItem =
+  | { kind: "quicklog"; log: QuickLogWeight }
+  | { kind: "action"; action: PaletteAction }
+  | { kind: "hit"; hit: SearchHit };
+
 export default function CommandPalette({
   profileName,
+  weightUnit,
 }: {
   profileName: string;
+  weightUnit: WeightUnit;
 }) {
   const router = useRouter();
+  const toast = useToast();
+  const { openCreate } = useActivityEditor();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [groups, setGroups] = useState<SearchGroup[]>([]);
   const [loading, setLoading] = useState(false);
+  const [committing, setCommitting] = useState(false);
   const [highlight, setHighlight] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
-  const flat = flattenHits(groups);
+  const q = query.trim();
+
+  // Derived synchronously from the query: the quick-log preview (or null) and the
+  // matching create actions. An empty query shows all actions as a resting menu.
+  const quickLog = useMemo(
+    () => (q ? parseQuickLog(query, weightUnit) : null),
+    [query, q, weightUnit]
+  );
+  const actions = useMemo(() => matchPaletteActions(query), [query]);
+  const hits = useMemo(() => flattenHits(groups), [groups]);
+
+  // The flat item list arrows/Enter walk, in render order.
+  const items = useMemo<PaletteItem[]>(() => {
+    const out: PaletteItem[] = [];
+    if (quickLog) out.push({ kind: "quicklog", log: quickLog });
+    for (const action of actions) out.push({ kind: "action", action });
+    for (const hit of hits) out.push({ kind: "hit", hit });
+    return out;
+  }, [quickLog, actions, hits]);
 
   // Open on Cmd/Ctrl-K anywhere, and on the sidebar trigger's custom event.
   useEffect(() => {
@@ -107,6 +159,7 @@ export default function CommandPalette({
       setGroups([]);
       setHighlight(0);
       setLoading(false);
+      setCommitting(false);
     }
   }, [open]);
 
@@ -114,7 +167,6 @@ export default function CommandPalette({
   // query can't overwrite a newer one's results.
   useEffect(() => {
     if (!open) return;
-    const q = query.trim();
     if (q === "") {
       setGroups([]);
       setLoading(false);
@@ -127,7 +179,6 @@ export default function CommandPalette({
         const res = await runGlobalSearch(q);
         if (!cancelled) {
           setGroups(res);
-          setHighlight(0);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -137,7 +188,12 @@ export default function CommandPalette({
       cancelled = true;
       clearTimeout(t);
     };
-  }, [query, open]);
+  }, [q, open]);
+
+  // Keep the highlight in range as the item list changes (typing shrinks/grows it).
+  useEffect(() => {
+    setHighlight((h) => Math.min(h, Math.max(items.length - 1, 0)));
+  }, [items.length]);
 
   // Keep the highlighted row scrolled into view as the arrows walk the list.
   useEffect(() => {
@@ -147,39 +203,91 @@ export default function CommandPalette({
     el?.scrollIntoView({ block: "nearest" });
   }, [highlight]);
 
+  const close = useCallback(() => setOpen(false), []);
+
   const go = useCallback(
     (href: string) => {
-      setOpen(false);
+      close();
       router.push(href);
     },
-    [router]
+    [router, close]
+  );
+
+  const runAction = useCallback(
+    (action: PaletteAction) => {
+      if (action.target.kind === "activity") {
+        close();
+        openCreate();
+      } else {
+        go(action.target.href);
+      }
+    },
+    [close, openCreate, go]
+  );
+
+  const commitQuickLog = useCallback(
+    async (log: QuickLogWeight) => {
+      if (log.error || committing) return;
+      setCommitting(true);
+      try {
+        const res = await paletteQuickLog(query);
+        toast(res.message, { tone: res.ok ? "success" : "error" });
+        if (res.ok) {
+          close();
+          router.refresh();
+        }
+      } finally {
+        setCommitting(false);
+      }
+    },
+    [query, committing, toast, close, router]
+  );
+
+  const runItem = useCallback(
+    (item: PaletteItem | undefined) => {
+      if (!item) return;
+      if (item.kind === "quicklog") void commitQuickLog(item.log);
+      else if (item.kind === "action") runAction(item.action);
+      else go(item.hit.href);
+    },
+    [commitQuickLog, runAction, go]
   );
 
   function onInputKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      setHighlight((h) => Math.min(h + 1, Math.max(flat.length - 1, 0)));
+      setHighlight((h) => Math.min(h + 1, Math.max(items.length - 1, 0)));
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       setHighlight((h) => Math.max(h - 1, 0));
     } else if (e.key === "Enter") {
-      const hit = flat[highlight];
-      if (hit) {
+      const item = items[highlight];
+      if (item) {
         e.preventDefault();
-        go(hit.href);
+        runItem(item);
       }
     }
   }
 
   if (!open) return null;
 
-  const q = query.trim();
-  let flatIndex = -1;
+  // Running index across the three sections so arrows/Enter and the highlight
+  // ring stay in sync with `items`.
+  let idx = -1;
+  const quickLogIdx = quickLog ? (idx += 1) : -1;
+  const actionStart = idx + 1;
+
+  const rowClass = (active: boolean) =>
+    `flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left ${
+      active
+        ? "bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300"
+        : "text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-ink-800"
+    }`;
 
   return (
     <ModalShell
       title="Search"
-      onClose={() => setOpen(false)}
+      onClose={close}
       initialFocusRef={inputRef}
       className="mt-4 flex max-h-[80vh] w-full max-w-2xl flex-col rounded-xl bg-white p-4 shadow-xl outline-none sm:mt-8 sm:p-5 dark:bg-ink-900"
     >
@@ -196,10 +304,10 @@ export default function CommandPalette({
             aria-expanded
             aria-controls="command-palette-results"
             aria-autocomplete="list"
-            aria-label="Search all data"
+            aria-label="Search or run a command"
             autoComplete="off"
             value={query}
-            placeholder="Search biomarkers, documents, activities…"
+            placeholder="Search, or try “weight 82.5”, “log workout”…"
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={onInputKeyDown}
             className="input w-full pl-10"
@@ -210,75 +318,178 @@ export default function CommandPalette({
           <span className="font-medium text-slate-700 dark:text-slate-300">
             {profileName}
           </span>
-          ’s data · arrows to move, Enter to open
+          ’s data · arrows to move, Enter to run
         </p>
 
         <div
           id="command-palette-results"
           ref={listRef}
           role="listbox"
-          aria-label="Search results"
+          aria-label="Results"
           className="mt-3 min-h-0 flex-1 overflow-y-auto"
         >
-          {q === "" ? (
-            <p className="px-1 py-6 text-center text-sm text-slate-400 dark:text-slate-500">
-              Type to search across every domain.
-            </p>
-          ) : groups.length === 0 ? (
-            <p className="px-1 py-6 text-center text-sm text-slate-400 dark:text-slate-500">
-              {loading ? "Searching…" : `No matches for “${q}”.`}
-            </p>
-          ) : (
-            groups.map((group) => (
-              <div key={group.domain} className="mb-2">
-                <div className="px-2 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
-                  {group.label}
-                </div>
-                <ul>
-                  {group.hits.map((hit) => {
-                    flatIndex += 1;
-                    const idx = flatIndex;
-                    const active = idx === highlight;
-                    const Icon = DOMAIN_ICONS[hit.domain];
-                    return (
-                      <li key={hit.key}>
-                        <button
-                          type="button"
-                          role="option"
-                          aria-selected={active}
-                          data-idx={idx}
-                          onMouseEnter={() => setHighlight(idx)}
-                          onClick={() => go(hit.href)}
-                          className={`flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left ${
-                            active
-                              ? "bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300"
-                              : "text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-ink-800"
-                          }`}
-                        >
-                          <Icon className="h-4 w-4 shrink-0 opacity-70" />
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate text-sm font-medium">
-                              {hit.title}
-                            </span>
-                            {hit.subtitle && (
-                              <span className="block truncate text-xs text-slate-400 dark:text-slate-500">
-                                {hit.subtitle}
-                              </span>
-                            )}
-                          </span>
-                          {active && (
-                            <IconCornerDownLeft className="h-4 w-4 shrink-0 opacity-60" />
-                          )}
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
+          {/* Quick log — the inline `weight 82.5` fast path. */}
+          {quickLog && (
+            <div className="mb-2">
+              <div className="px-2 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                Quick log
               </div>
-            ))
+              <button
+                type="button"
+                role="option"
+                aria-selected={highlight === quickLogIdx}
+                data-idx={quickLogIdx}
+                data-testid="palette-quicklog"
+                disabled={!!quickLog.error || committing}
+                onMouseEnter={() => setHighlight(quickLogIdx)}
+                onClick={() => void commitQuickLog(quickLog)}
+                className={`${rowClass(highlight === quickLogIdx)} disabled:cursor-not-allowed`}
+              >
+                <IconBolt className="h-4 w-4 shrink-0 opacity-70" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium">
+                    {quickLog.error ?? quickLog.label}
+                  </span>
+                  <span className="block truncate text-xs text-slate-400 dark:text-slate-500">
+                    {quickLog.error
+                      ? "Fix the value to log it"
+                      : committing
+                        ? "Saving…"
+                        : "Enter to save"}
+                  </span>
+                </span>
+                {highlight === quickLogIdx && !quickLog.error && (
+                  <IconCornerDownLeft className="h-4 w-4 shrink-0 opacity-60" />
+                )}
+              </button>
+            </div>
           )}
+
+          {/* Create actions. */}
+          {actions.length > 0 && (
+            <div className="mb-2">
+              <div className="px-2 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                Actions
+              </div>
+              <ul>
+                {actions.map((action, i) => {
+                  const itemIdx = actionStart + i;
+                  const active = itemIdx === highlight;
+                  const Icon = ACTION_ICONS[action.icon];
+                  return (
+                    <li key={action.id}>
+                      <button
+                        type="button"
+                        role="option"
+                        aria-selected={active}
+                        data-idx={itemIdx}
+                        data-testid={`palette-action-${action.id}`}
+                        onMouseEnter={() => setHighlight(itemIdx)}
+                        onClick={() => runAction(action)}
+                        className={rowClass(active)}
+                      >
+                        <Icon className="h-4 w-4 shrink-0 opacity-70" />
+                        <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                          {action.label}
+                        </span>
+                        {active && (
+                          <IconCornerDownLeft className="h-4 w-4 shrink-0 opacity-60" />
+                        )}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
+
+          {/* Search results. */}
+          {q !== "" &&
+            (groups.length === 0 ? (
+              // Only show "no matches" once nothing else stands in for a result.
+              actions.length === 0 &&
+              !quickLog && (
+                <p className="px-1 py-6 text-center text-sm text-slate-400 dark:text-slate-500">
+                  {loading ? "Searching…" : `No matches for “${q}”.`}
+                </p>
+              )
+            ) : (
+              <SearchResults
+                groups={groups}
+                base={actionStart + actions.length}
+                highlight={highlight}
+                setHighlight={setHighlight}
+                onPick={go}
+                rowClass={rowClass}
+              />
+            ))}
         </div>
       </div>
     </ModalShell>
+  );
+}
+
+function SearchResults({
+  groups,
+  base,
+  highlight,
+  setHighlight,
+  onPick,
+  rowClass,
+}: {
+  groups: SearchGroup[];
+  base: number;
+  highlight: number;
+  setHighlight: (i: number) => void;
+  onPick: (href: string) => void;
+  rowClass: (active: boolean) => string;
+}) {
+  let flatIndex = base - 1;
+  return (
+    <>
+      {groups.map((group) => (
+        <div key={group.domain} className="mb-2">
+          <div className="px-2 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+            {group.label}
+          </div>
+          <ul>
+            {group.hits.map((hit) => {
+              flatIndex += 1;
+              const itemIdx = flatIndex;
+              const active = itemIdx === highlight;
+              const Icon = DOMAIN_ICONS[hit.domain];
+              return (
+                <li key={hit.key}>
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={active}
+                    data-idx={itemIdx}
+                    onMouseEnter={() => setHighlight(itemIdx)}
+                    onClick={() => onPick(hit.href)}
+                    className={rowClass(active)}
+                  >
+                    <Icon className="h-4 w-4 shrink-0 opacity-70" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium">
+                        {hit.title}
+                      </span>
+                      {hit.subtitle && (
+                        <span className="block truncate text-xs text-slate-400 dark:text-slate-500">
+                          {hit.subtitle}
+                        </span>
+                      )}
+                    </span>
+                    {active && (
+                      <IconCornerDownLeft className="h-4 w-4 shrink-0 opacity-60" />
+                    )}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ))}
+    </>
   );
 }

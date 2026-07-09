@@ -107,8 +107,14 @@ export default function JournalView({
   // Profile sex, so the exercise detail's strength standards use the right chart.
   sex?: Sex | null;
 }) {
-  const { open, openCreate, close, registerDock } = useActivityEditor();
+  const { open, openCreate, openRepeat, close, registerDock } =
+    useActivityEditor();
   const dockRef = useRef<HTMLDivElement | null>(null);
+
+  // The most recent logged activity (groups arrive newest-first, cards ordered
+  // within a day) — the source for the header's one-tap "Repeat last" (issue
+  // #29). null when nothing's been logged yet, which hides the button.
+  const lastActivity = groups[0]?.cards[0]?.activity ?? null;
 
   // The dock is a desktop concept: it exists so the editor can live beside the
   // feed in the two-column layout. Below lg there is no second column — the
@@ -561,13 +567,26 @@ export default function JournalView({
               scroll when the content (e.g. a long editor) overflows. The header
               keeps the first card aligned with the feed's dated cards. */}
           <div className="sticky top-8 max-h-[calc(100vh-3rem)] overflow-y-auto pr-1">
-            <div className="mb-2 flex h-9 items-center justify-between gap-2">
+            <div className="mb-2 flex min-h-9 items-center justify-between gap-2">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                 {open ? "Activity" : "Details"}
               </h2>
-              <button type="button" onClick={openCreate} className="btn">
-                New activity
-              </button>
+              <div className="flex items-center gap-2">
+                {lastActivity && (
+                  <button
+                    type="button"
+                    onClick={() => openRepeat(lastActivity)}
+                    data-testid="repeat-last"
+                    title={`Log again: ${lastActivity.title}`}
+                    className="btn-ghost"
+                  >
+                    Repeat last
+                  </button>
+                )}
+                <button type="button" onClick={openCreate} className="btn">
+                  New activity
+                </button>
+              </div>
             </div>
             {/* The provider portals the auto-saving editor here when open. */}
             <div ref={dockRef} className={open ? "card" : ""} />

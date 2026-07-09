@@ -24,6 +24,7 @@ import {
   relaxBodyMetricsWeightKg,
   swapProfileScopedIndexes,
 } from "./migrations/profile-scoping";
+import { reconcileEnumChecks } from "./migrations/enum-checks";
 
 // Single shared connection across hot-reloads in dev.
 const globalForDb = globalThis as unknown as { __healthDb?: Database.Database };
@@ -819,19 +820,32 @@ export function migrate(db: Database.Database) {
       profile_id INTEGER NOT NULL REFERENCES profiles(id),
       source TEXT NOT NULL,                             -- integration id (provenance)
       metric TEXT NOT NULL,                             -- 'steps','distance_km','active_kcal','total_kcal','hrv_ms'
-      date TEXT NOT NULL,                               -- YYYY-MM-DD of start (server-local)
-      start_time TEXT NOT NULL,
-      end_time TEXT NOT NULL,
+      date TEXT NOT NULL,                               -- YYYY-MM-DD calendar day of start_time in the PROFILE's timezone at ingest (issue #94)
+      start_time TEXT NOT NULL,                         -- absolute ISO instant (zone-independent) — the natural-key anchor
+      end_time TEXT NOT NULL,                           -- absolute ISO instant
       value REAL NOT NULL,
+      -- Natural key is the absolute time window, NOT date. Ingest derives date from
+      -- the profile timezone (see integrations/health-connect.parts), so a rolling-
+      -- 48h re-push of the same sample matches this key regardless of the derived day
+      -- and the ON CONFLICT re-writes date in place — no duplicate row. A profile-
+      -- timezone change thus self-heals recent rows on their next re-push; rows older
+      -- than the re-push window keep their originally-derived day (a one-time
+      -- historical skew accepted rather than backfilled — issue #94).
       UNIQUE (profile_id, metric, source, start_time, end_time)
     );
 
     -- Continuous heart-rate samples bucketed to 1-minute averages (a watch can emit
     -- tens of thousands of raw samples/day; ≤1440 minute buckets keeps the intraday
-    -- shape tractable). Re-syncs merge by count-weighted average.
+    -- shape tractable). Re-syncs replace each minute bucket by key. Contract (#94):
+    -- ts is the profile-local minute derived at ingest (integrations/health-connect
+    -- via date.zonedMinuteStr) and carries NO zone of its own, so a later profile-
+    -- timezone change re-interprets historical intraday rows (new pushes land at the
+    -- new-zone minute; old rows keep their stamp). Accepted as cheap for a personal
+    -- tracker — no schema rebuild / UTC-store / backfill (would pair with #14's
+    -- source-in-key rebuild if ever done).
     CREATE TABLE IF NOT EXISTS hr_minutes (
       profile_id INTEGER NOT NULL REFERENCES profiles(id),
-      ts TEXT NOT NULL,                                 -- 'YYYY-MM-DDTHH:MM' (local)
+      ts TEXT NOT NULL,                                 -- YYYY-MM-DDTHH:MM profile-local at ingest (no zone stored — see #94 note above)
       bpm REAL NOT NULL,                                -- count-weighted average
       bpm_min REAL,
       bpm_max REAL,
@@ -1006,6 +1020,17 @@ export function migrate(db: Database.Database) {
   // record id, so external_id is synthesized as '<source>:<start_time>'.
   addColumnIfMissing(db, "activities", "source", "TEXT");
   addColumnIfMissing(db, "activities", "external_id", "TEXT");
+  // INTERIM GLOBAL index. The dedup key is per-profile — ingest upserts read/write
+  // scoped by (profile_id, external_id) (lib/integrations/normalize.ts) and Health
+  // Connect external ids are content-derived, so the enforced constraint MUST be
+  // (profile_id, external_id) or two profiles recording the same timestamp collide
+  // (issue #90). That scoped index can't be created HERE, though: on a pre-#67
+  // upgrade profile_id doesn't exist on this table until the backfill loop below
+  // (BACKFILL_OWNED_TABLES). So this creates a temporary external_id-only index,
+  // which swapProfileScopedIndexes() (called after profile_id exists) DROPs and
+  // recreates as the per-profile scoped unique index. The final runtime constraint
+  // is per-profile; do not "fix" this line by scoping it — it would crash the
+  // pre-#67 upgrade boot.
   db.exec(
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_activities_external ON activities(external_id) WHERE external_id IS NOT NULL;"
   );
@@ -1067,6 +1092,10 @@ export function migrate(db: Database.Database) {
   // synthesized as '<source>:<canonical>:<time>'.
   addColumnIfMissing(db, "medical_records", "source", "TEXT");
   addColumnIfMissing(db, "medical_records", "external_id", "TEXT");
+  // INTERIM GLOBAL index — same rationale as idx_activities_external above (issue
+  // #90): the enforced dedup key is per-profile, but profile_id isn't on this table
+  // yet on a pre-#67 upgrade, so swapProfileScopedIndexes() re-scopes this to
+  // (profile_id, external_id) after the backfill. Don't scope it here.
   db.exec(
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_medical_external ON medical_records(external_id) WHERE external_id IS NOT NULL;"
   );
@@ -1074,7 +1103,9 @@ export function migrate(db: Database.Database) {
   // Idempotent dedup for immunizations imported from an integration / SMART
   // Health Card. NULL for manual and document-extracted rows; set (e.g.
   // 'smart-health-card:<code>:<date>' or 'epic:<Immunization.id>') for synced
-  // rows so re-import updates in place instead of duplicating.
+  // rows so re-import updates in place instead of duplicating. The per-profile
+  // partial unique index that backs this (idx_immunizations_external) is created in
+  // swapProfileScopedIndexes() after profile_id exists — see issue #90.
   addColumnIfMissing(db, "immunizations", "external_id", "TEXT");
 
   // Nullable provider_id FK linking a profile-owned row to the shared, GLOBAL
@@ -1426,6 +1457,15 @@ export function migrate(db: Database.Database) {
 
   // Move birthdate/age (properties of the tracked person) to profile 1.
   migrateProfileBirthdate(db);
+
+  // Reconcile inline enum CHECK constraints that have drifted (#91). CREATE TABLE
+  // IF NOT EXISTS no-ops on an existing DB, so an enum grown in source (e.g. a new
+  // medical_records.category) leaves upgraded DBs with the old, narrower CHECK and
+  // failing INSERTs at runtime. This detects drift against the ENUM_CHECKS registry
+  // and, only when a table has drifted, rebuilds it (row-preserving) with the
+  // current CHECK. Runs after every CREATE block + structural rebuild so it patches
+  // the final table shape; a normal (undrifted) boot does no work.
+  reconcileEnumChecks(db);
 
   // One-time legacy backfill: pre-value_num manual rows whose `value` is a plain
   // number become chartable. Numeric-only strings only; idempotent.

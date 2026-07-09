@@ -21,7 +21,6 @@
     "notify": "tsx scripts/notify.ts",
     "backup": "tsx scripts/backup.ts",
     "restore": "tsx scripts/restore.ts",
-    "backfill:canonical": "tsx scripts/backfill-canonical-names.ts",
     "gen:biomarkers": "tsx scripts/gen-canonical-biomarkers.ts",
     "gen:growth": "tsx scripts/gen-growth-charts.ts",
     "prepare": "husky"

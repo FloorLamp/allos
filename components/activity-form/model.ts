@@ -47,6 +47,35 @@ export interface ActivityEditData {
   }[];
 }
 
+// Build a create-prefill from a stored activity for "Log again" / "Repeat last"
+// (issue #29). Keeps the title, component structure, and every set, but resets
+// the identity and session context: no id/provenance (the form treats it as a
+// brand-new row), the date is today, and the start/end times + notes start
+// clean. Pure so it's unit-tested. The form seeds its initial state from this
+// exactly as it does from editData, but — because it arrives as `prefill`, not
+// `editData` — saves create a new activity instead of updating the source.
+export function buildRepeatPrefill(
+  source: ActivityEditData,
+  todayDate: string
+): ActivityEditData {
+  return {
+    ...source,
+    // id is retained only so the editor can key a fresh remount off it; the form
+    // ignores it in prefill mode (savableId reads editData/createdId, not this).
+    date: todayDate,
+    start_time: null,
+    end_time: null,
+    notes: null,
+    source: null,
+    edited: null,
+    created_at: undefined,
+    updated_at: null,
+    // Deep-copy the sets so the prefill can't alias (and later mutate) the
+    // source row's array.
+    sets: source.sets.map((s) => ({ ...s })),
+  };
+}
+
 export interface SetEntry {
   weight: string;
   reps: string;

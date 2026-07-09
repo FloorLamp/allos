@@ -579,7 +579,10 @@ export default function BodySection({ range }: { range: DateRange }) {
                     <td className="td whitespace-nowrap">
                       {formatLongDate(w.date)}
                     </td>
-                    <td className="td font-medium">
+                    <td
+                      className="td font-medium"
+                      data-testid="body-weight-cell"
+                    >
                       {fmtWeight(w.weight_kg, wu)}
                     </td>
                     <td className="td">

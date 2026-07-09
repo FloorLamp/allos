@@ -126,6 +126,7 @@ function EventCard({
       <ActivityIcon
         type={event.iconType ?? "activity"}
         title={event.iconTitle ?? event.title}
+        sportNames={event.iconSportNames ?? undefined}
         className="h-4 w-4"
         stroke={1.75}
       />

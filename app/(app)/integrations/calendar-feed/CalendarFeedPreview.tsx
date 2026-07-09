@@ -1,19 +1,19 @@
 import { IconBell, IconMapPin, IconCalendarEvent } from "@tabler/icons-react";
-import type { CalendarFeedPreviewRow } from "@/lib/calendar-ics";
+import { FEED_CATEGORY_LABELS, type FeedPreviewRow } from "@/lib/calendar-ics";
 import type { CalendarFeedDetail } from "@/lib/settings";
 
 // Presentational preview of what a subscribed calendar client would show for this
 // profile, rendered at the saved detail level. It's a faithful mirror: the rows
-// come from the SAME selection + mapping the live feed route uses (see the page),
-// so what's shown here is exactly what leaves the app — including, at "full", the
-// provider/reason PHI. Read-only; no writes, no client interactivity.
+// come from the SAME composition the live feed route uses (see the page), so what's
+// shown here is exactly what leaves the app across every enabled category —
+// including, at "full", the provider/reason PHI. Read-only; no client interactivity.
 const MAX_VISIBLE = 10;
 
 export default function CalendarFeedPreview({
   rows,
   detail,
 }: {
-  rows: CalendarFeedPreviewRow[];
+  rows: FeedPreviewRow[];
   detail: CalendarFeedDetail;
 }) {
   const visible = rows.slice(0, MAX_VISIBLE);
@@ -28,26 +28,32 @@ export default function CalendarFeedPreview({
         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           {detail === "full" ? (
             <>
-              At <strong>full</strong> detail each event shows the provider and
-              reason of the visit — this is the PHI that leaves the app.
+              At <strong>full</strong> detail each event shows the real name and
+              context of the item — this is the PHI that leaves the app.
             </>
           ) : (
             <>
-              At <strong>minimal</strong> detail each event shows only
-              &ldquo;Medical appointment&rdquo; (plus location) — no provider or
-              reason leaves the app.
+              At <strong>minimal</strong> detail each event shows only a neutral
+              label (e.g. &ldquo;Medical appointment&rdquo;) — no names,
+              provider, or reason leave the app.
             </>
           )}
         </p>
       </div>
 
       {visible.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-black/10 px-4 py-6 text-center text-sm text-slate-500 dark:border-white/10 dark:text-slate-400">
-          No upcoming appointments — add one under Appointments and it&apos;ll
-          appear here.
+        <p
+          className="rounded-lg border border-dashed border-black/10 px-4 py-6 text-center text-sm text-slate-500 dark:border-white/10 dark:text-slate-400"
+          data-testid="calendar-preview-empty"
+        >
+          Nothing in the feed yet — enable more categories above, or add
+          appointments and reminders and they&apos;ll appear here.
         </p>
       ) : (
-        <ul className="divide-y divide-black/5 dark:divide-white/5">
+        <ul
+          className="divide-y divide-black/5 dark:divide-white/5"
+          data-testid="calendar-preview-list"
+        >
           {visible.map((r) => (
             <li
               key={r.uid}
@@ -67,6 +73,9 @@ export default function CalendarFeedPreview({
                     }`}
                   >
                     {r.summary}
+                  </span>
+                  <span className="badge bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300">
+                    {FEED_CATEGORY_LABELS[r.category]}
                   </span>
                   {r.cancelled && (
                     <span className="badge bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300">
@@ -103,8 +112,7 @@ export default function CalendarFeedPreview({
 
       {overflow > 0 && (
         <p className="text-xs text-slate-400 dark:text-slate-500">
-          + {overflow} more {overflow === 1 ? "appointment" : "appointments"} in
-          the feed
+          + {overflow} more {overflow === 1 ? "event" : "events"} in the feed
         </p>
       )}
     </div>

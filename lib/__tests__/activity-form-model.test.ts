@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   blankPart,
+  buildRepeatPrefill,
   partIntent,
   partTotal,
   groupEditSets,
@@ -28,6 +29,59 @@ const storedSet = (
 });
 
 const part = (o: Partial<PartEntry>): PartEntry => ({ ...blankPart(), ...o });
+
+describe("buildRepeatPrefill", () => {
+  const source: ActivityEditData = {
+    id: 42,
+    type: "strength",
+    title: "Morning Push",
+    date: "2026-06-01",
+    duration_min: 45,
+    distance_km: null,
+    intensity: "hard",
+    start_time: "07:30",
+    end_time: "08:15",
+    components: '[{"name":"Bench Press","type":"strength"}]',
+    notes: "felt strong",
+    source: "strava",
+    edited: 1,
+    created_at: "2026-06-01 07:30:00",
+    updated_at: "2026-06-02 09:00:00",
+    sets: [
+      storedSet({
+        set_number: 1,
+        exercise: "Bench Press",
+        weight_kg: 80,
+        reps: 5,
+      }),
+    ],
+  };
+
+  it("keeps the title, components, and sets", () => {
+    const p = buildRepeatPrefill(source, "2026-07-09");
+    expect(p.title).toBe("Morning Push");
+    expect(p.components).toBe(source.components);
+    expect(p.sets).toEqual(source.sets);
+  });
+
+  it("resets the date to today and clears session context + provenance", () => {
+    const p = buildRepeatPrefill(source, "2026-07-09");
+    expect(p.date).toBe("2026-07-09");
+    expect(p.start_time).toBeNull();
+    expect(p.end_time).toBeNull();
+    expect(p.notes).toBeNull();
+    expect(p.source).toBeNull();
+    expect(p.edited).toBeNull();
+    expect(p.created_at).toBeUndefined();
+    expect(p.updated_at).toBeNull();
+  });
+
+  it("deep-copies sets so mutating the prefill can't touch the source", () => {
+    const p = buildRepeatPrefill(source, "2026-07-09");
+    p.sets[0].weight_kg = 999;
+    expect(source.sets[0].weight_kg).toBe(80);
+  });
+});
 
 describe("partIntent", () => {
   it("applies to a rep-based bilateral part and reads its target", () => {

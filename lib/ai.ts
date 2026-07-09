@@ -8,12 +8,32 @@ import {
   getSupplementLogsForDate,
   getSupplements,
   getBodyMetrics,
+  getStrengthByExercise,
+  getCardioByActivity,
+  collectUpcoming,
 } from "./queries";
 
 import { formatSeconds } from "./duration";
 import { AI_MODEL as MODEL, aiConfigured, createAiClient } from "./ai-client";
 import { recordAiEvent, capDetail, LOG_PROMPTS } from "./ai-log";
 import { checkAndIncrementAiUsage, insightDailyLimit } from "./ai-usage";
+import { recentPRs, recentCardioPRs } from "./coaching";
+import {
+  prToFinding,
+  cardioPrToFinding,
+  upcomingToFinding,
+  trendItemToFinding,
+  groupFindings,
+} from "./findings";
+import { buildDigestSeries } from "./trends-series";
+import { summarizeTrends } from "./trends-digest";
+import { isTrainingRestricted } from "./age-gate";
+import { getUnitPrefs } from "./settings";
+import { quickRanges } from "./timeline-format";
+import {
+  composeOfflineNarrative,
+  type NarrativeInput,
+} from "./offline-narrative";
 
 export interface InsightResult {
   summary: string;
@@ -129,55 +149,93 @@ Structure it as:
 3. One concrete suggestion for tomorrow.
 Be specific and reference the actual numbers. Do not give medical diagnoses; for concerning lab values, suggest consulting a clinician. Use a warm, motivating tone.`;
 
+// Gather the day's findings for the offline narrative — profile-scoped reads via
+// the existing query layer + the findings-bus adapters, handed to the pure
+// composeOfflineNarrative. loginId (when present) resolves the reader's display
+// units so PR loads/distances and trend deltas read in kg/lb / km/mi correctly;
+// background/notify contexts without a login fall back to canonical units.
+function gatherNarrativeInput(
+  profileId: number,
+  date: string,
+  loginId?: number
+): NarrativeInput {
+  const units =
+    loginId != null
+      ? getUnitPrefs(loginId)
+      : { weightUnit: "kg" as const, distanceUnit: "km" as const };
+
+  const activities = getActivitiesByDate(profileId, date);
+
+  // PRs set ON the day (withinDays = 0), as celebratory findings.
+  const strengthPrs = recentPRs(getStrengthByExercise(profileId), date, 0).map(
+    (pr) => prToFinding(pr, units.weightUnit)
+  );
+  const cardioPrs = recentCardioPRs(
+    getCardioByActivity(profileId, units.distanceUnit),
+    date,
+    0
+  ).map((pr) => cardioPrToFinding(pr, units.distanceUnit));
+
+  // "What's trending" digest over the trailing 90-day window, adapted to findings.
+  const restricted = isTrainingRestricted(profileId);
+  const range = quickRanges(date)[2]; // 90D window (label/from/to)
+  const series = buildDigestSeries(profileId, loginId ?? 0, range, restricted);
+  const trends = summarizeTrends(series, { limit: 5 }).map(trendItemToFinding);
+
+  // Supplement/med adherence for the day.
+  const activeIntake = getSupplements(profileId).filter((s) => s.active);
+  const takenToday = getSupplementLogsForDate(profileId, date);
+  const adherence =
+    activeIntake.length > 0
+      ? { taken: takenToday.size, total: activeIntake.length }
+      : null;
+
+  // Forward-looking Upcoming items (already snooze/dismiss-filtered), banded and
+  // flattened soonest-first so the composer can name the nearest one.
+  const upcoming = groupFindings(
+    collectUpcoming(profileId, date).map(upcomingToFinding),
+    date
+  ).flatMap((g) => g.items);
+
+  const goalCount = getGoals(profileId).filter(
+    (g) => g.status === "active" && !g.archived
+  ).length;
+
+  return {
+    date,
+    activity: {
+      count: activities.length,
+      types: activities.map((a) => a.type),
+    },
+    prs: [...strengthPrs, ...cardioPrs],
+    trends,
+    adherence,
+    upcoming,
+    goalCount,
+  };
+}
+
+// The offline daily summary: a coherent narrative composed from the day's actual
+// findings (PRs, trending metrics/biomarkers, adherence, upcoming), used whenever
+// the AI path is unavailable (no key / disabled / rate-limited / failed).
 function fallbackInsight(
   profileId: number,
   date: string,
-  context: string
+  loginId?: number
 ): string {
-  const activities = getActivitiesByDate(profileId, date);
-  const goals = getGoals(profileId).filter(
-    (g) => g.status === "active" && !g.archived
-  );
-  const supplements = getSupplements(profileId).filter((s) => s.active);
-  const taken = getSupplementLogsForDate(profileId, date);
-
-  const parts: string[] = [];
-  if (activities.length === 0) {
-    parts.push(
-      `No activities logged for ${date} — a rest day, or one to fill in. Even a short walk keeps momentum going.`
-    );
-  } else {
-    const types = [...new Set(activities.map((a) => a.type))].join(", ");
-    parts.push(
-      `You logged ${activities.length} ${activities.length === 1 ? "activity" : "activities"} (${types}) on ${date} — nice work staying consistent.`
-    );
-  }
-  if (supplements.length) {
-    parts.push(
-      `Supplements: ${taken.size}/${supplements.length} taken${
-        taken.size < supplements.length
-          ? " — try to close the gap tomorrow."
-          : " — full adherence, great."
-      }`
-    );
-  }
-  if (goals.length) {
-    parts.push(
-      `You have ${goals.length} active goal${goals.length === 1 ? "" : "s"}. Keep logging consistently so progress stays visible.`
-    );
-  }
-  parts.push(
-    "Tomorrow: pick one small, measurable action that moves a goal forward."
+  const narrative = composeOfflineNarrative(
+    gatherNarrativeInput(profileId, date, loginId)
   );
   return (
-    parts.join(" ") +
+    narrative +
     "\n\n(Generated offline — set ANTHROPIC_API_KEY for AI-powered coaching analysis.)"
   );
 }
 
 export async function generateInsight(
   profileId: number,
-  date: string
+  date: string,
+  loginId?: number
 ): Promise<InsightResult> {
   const context = buildContext(profileId, date);
 
@@ -188,7 +246,7 @@ export async function generateInsight(
       detail: `${date} — AI not configured`,
     });
     return {
-      summary: fallbackInsight(profileId, date, context),
+      summary: fallbackInsight(profileId, date, loginId),
       model: "offline-fallback",
     };
   }
@@ -206,7 +264,7 @@ export async function generateInsight(
       detail: `${date} — daily AI insight limit reached`,
     });
     return {
-      summary: fallbackInsight(profileId, date, context),
+      summary: fallbackInsight(profileId, date, loginId),
       model: "offline-fallback",
     };
   }
@@ -242,7 +300,7 @@ export async function generateInsight(
         error: "Truncated at the output limit (600 tokens).",
       });
       return {
-        summary: fallbackInsight(profileId, date, context),
+        summary: fallbackInsight(profileId, date, loginId),
         model: "offline-fallback",
       };
     }
@@ -254,7 +312,7 @@ export async function generateInsight(
       detail: capDetail(`${date}` + (LOG_PROMPTS ? `\n${text}` : "")),
     });
     return {
-      summary: text || fallbackInsight(profileId, date, context),
+      summary: text || fallbackInsight(profileId, date, loginId),
       model: MODEL,
     };
   } catch (err) {
@@ -268,7 +326,7 @@ export async function generateInsight(
     });
     return {
       summary:
-        fallbackInsight(profileId, date, context) +
+        fallbackInsight(profileId, date, loginId) +
         `\n\n(AI request failed: ${err instanceof Error ? err.message : "unknown error"})`,
       model: "offline-fallback",
     };

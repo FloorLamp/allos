@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ActivityTypeIcon } from "@/components/ui";
 import { formatRelativeDate } from "@/lib/format-date";
+import { activityComponentSportNames } from "@/lib/activity-icon";
 import type { Activity } from "@/lib/types";
 import WidgetHeader from "./WidgetHeader";
 
@@ -32,7 +33,11 @@ export default function RecentActivityWidget({
                 className="-mx-2 flex items-center justify-between gap-3 rounded-md px-2 py-2 transition hover:bg-slate-50 dark:hover:bg-ink-900"
               >
                 <div className="flex min-w-0 items-center gap-3">
-                  <ActivityTypeIcon type={a.type} title={a.title} />
+                  <ActivityTypeIcon
+                    type={a.type}
+                    title={a.title}
+                    sportNames={activityComponentSportNames(a.components)}
+                  />
                   <span className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">
                     {a.title}
                   </span>

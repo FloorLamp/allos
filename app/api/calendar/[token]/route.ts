@@ -4,12 +4,8 @@ import {
   getCalendarFeed,
   getTimezone,
 } from "@/lib/settings";
-import { getAppointments } from "@/lib/queries";
-import {
-  buildAppointmentIcs,
-  appointmentToIcsEvent,
-  selectFeedAppointments,
-} from "@/lib/calendar-ics";
+import { getAppointments, collectUpcoming } from "@/lib/queries";
+import { buildAppointmentIcs, composeFeedEvents } from "@/lib/calendar-ics";
 import { checkRateLimit } from "@/lib/rate-limit";
 
 // A subscribed calendar client refetches on the order of hours; 30 requests/min
@@ -53,15 +49,32 @@ export async function GET(
     return new Response("Not found", { status: 404 });
   }
 
-  const { detail } = getCalendarFeed(profileId);
+  const feed = getCalendarFeed(profileId);
   const tz = getTimezone(profileId);
   const todayStr = today(profileId);
 
-  // Profile-scoped read; the pure selector drops history and bounds the window.
-  const appts = selectFeedAppointments(getAppointments(profileId), {
+  // Appointments flow through the rich mapping (timed/cancelled/provider handling).
+  // The other enabled categories reuse the profile-scoped, suppression-aware
+  // Upcoming aggregation — collected ONLY when at least one such category is on, so
+  // the default appointments-only feed never pays for that heavier read. Both reads
+  // are profile-scoped (getAppointments filters profile_id; collectUpcoming's fan-out
+  // is enforced by the profile-scoping test), and the pure composer applies the
+  // enabled-set, detail, reminder, and window customization (issue #12).
+  const wantsAppointments = feed.categories.includes("appointment");
+  const wantsSignals = feed.categories.some((c) => c !== "appointment");
+  const events = composeFeedEvents({
+    appointments: wantsAppointments ? getAppointments(profileId) : [],
+    signals: wantsSignals ? collectUpcoming(profileId, todayStr) : [],
     today: todayStr,
+    tz,
+    options: {
+      categories: feed.categories,
+      detail: feed.detail,
+      reminders: feed.reminders,
+      pastWindowDays: feed.pastWindowDays,
+      futureWindowDays: feed.futureWindowDays,
+    },
   });
-  const events = appts.map((a) => appointmentToIcsEvent(a, { tz, detail }));
   const ics = buildAppointmentIcs(events, { dtstamp: new Date() });
 
   return new Response(ics, {
