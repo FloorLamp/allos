@@ -211,6 +211,38 @@ describe("encounters extraction (#178 Phase B)", () => {
     });
   });
 
+  it("captures the encounter's free-text notes from a nested Comment Activity", () => {
+    // A Comment Activity (template 4.64) under the encounter carries the visit
+    // summary; its narrative resolves via a #ref into the section text.
+    const withComment = `
+      <section>
+        <code code="46240-8" codeSystem="2.16.840.1.113883.6.1"/>
+        <text><table><tbody>
+          <tr><td ID="note1">Patient advised to rest and hydrate; follow up in two weeks.</td></tr>
+        </tbody></table></text>
+        <entry><encounter classCode="ENC" moodCode="EVN">
+          <templateId root="2.16.840.1.113883.10.20.22.4.49"/>
+          <id root="1.2.3" extension="ENC-NOTE-1"/>
+          <code code="99213" codeSystem="2.16.840.1.113883.6.12" displayName="Office Visit"/>
+          <effectiveTime><low value="20260610"/></effectiveTime>
+          <entryRelationship typeCode="SUBJ"><act classCode="ACT" moodCode="EVN">
+            <templateId root="2.16.840.1.113883.10.20.22.4.64"/>
+            <code code="48767-8" codeSystem="2.16.840.1.113883.6.1" displayName="Annotation Comment"/>
+            <text><reference value="#note1"/></text>
+          </act></entryRelationship>
+        </encounter></entry>
+      </section>`;
+    const r = extractFromCcda(doc(withComment));
+    expect(r.encounters).toHaveLength(1);
+    expect(r.encounters![0].notes).toBe(
+      "Patient advised to rest and hydrate; follow up in two weeks."
+    );
+  });
+
+  it("leaves notes null when the encounter carries no comment", () => {
+    expect(extractFromCcda(doc(ENCOUNTERS)).encounters![0].notes).toBeNull();
+  });
+
   it("drops an encounter with no usable date", () => {
     const undated = `
       <section>

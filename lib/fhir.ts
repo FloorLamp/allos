@@ -868,6 +868,10 @@ export function mapEncounterResource(
     diagnoses,
     provider,
     location,
+    // FHIR R4/R5 Encounter carries no plain free-text note field, so there is no
+    // reliable visit summary to surface here (the CDA path fills this from a nested
+    // Comment Activity).
+    notes: null,
     external_id,
   };
 }

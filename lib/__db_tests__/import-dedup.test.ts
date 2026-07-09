@@ -15,8 +15,10 @@ import {
   getBiomarkerSeries,
   getImmunizations,
   getEncounters,
+  getEncounter,
   findRecordsByContentIdentity,
 } from "@/lib/queries";
+import { getTimelineEvents } from "@/lib/timeline";
 import {
   persistDocumentImport,
   clearImportedDocumentRows,
@@ -94,6 +96,7 @@ function glucoseInput(overrides?: {
         diagnoses: ["Hypertension"],
         provider: null,
         location: null,
+        notes: null,
         external_id: "encounter:1",
       },
     ],
@@ -271,6 +274,56 @@ describe("cross-source read-layer de-duplication", () => {
     expect(getEncounters(profileId)).toHaveLength(1);
     clearImportedDocumentRows(profileId, docA);
     expect(getEncounters(profileId)).toHaveLength(1);
+  });
+
+  it("de-dups the same encounter on the TIMELINE (the user-visible bug)", () => {
+    // Two overlapping CCDs each carry the same visit → two physical rows (storage
+    // stays per-document so a delete never orphans the other doc's copy)…
+    const docA = newDocument(profileId, "A.ccd");
+    const docB = newDocument(profileId, "B.ccd");
+    persistDocumentImport(profileId, docA, glucoseInput());
+    persistDocumentImport(profileId, docB, glucoseInput());
+    const physical = db
+      .prepare("SELECT COUNT(*) AS n FROM encounters WHERE profile_id = ?")
+      .get(profileId) as { n: number };
+    expect(physical.n).toBe(2);
+
+    // …but the timeline shows the visit exactly ONCE (the bug was that it didn't),
+    // deep-linked to its detail page — the same collapse the Visits list applies.
+    const visits = getTimelineEvents(profileId).filter(
+      (e) => e.category === "visit"
+    );
+    expect(visits).toHaveLength(1);
+    expect(visits[0].href).toMatch(/^\/encounters\/\d+$/);
+
+    // Deleting one contributor keeps the visit visible via the survivor.
+    clearImportedDocumentRows(profileId, docA);
+    expect(
+      getTimelineEvents(profileId).filter((e) => e.category === "visit")
+    ).toHaveLength(1);
+  });
+
+  it("persists the encounter's imported notes and reads them back by id (scoped)", () => {
+    const doc = newDocument(profileId, "notes.ccd");
+    const input = glucoseInput();
+    input.encounters = [
+      {
+        ...input.encounters[0],
+        notes: "Patient advised to rest and hydrate.",
+        external_id: "encounter:notes",
+      },
+    ];
+    persistDocumentImport(profileId, doc, input);
+
+    const [enc] = getEncounters(profileId);
+    expect(enc.notes).toBe("Patient advised to rest and hydrate.");
+
+    // getEncounter is scoped on BOTH id AND profile_id.
+    expect(getEncounter(profileId, enc.id)?.notes).toBe(
+      "Patient advised to rest and hydrate."
+    );
+    const other = newProfile("DEDUP-SCOPE");
+    expect(getEncounter(other, enc.id)).toBeNull();
   });
 
   it("findRecordsByContentIdentity returns all physical rows behind a content-identity, profile-scoped", () => {

@@ -1298,13 +1298,54 @@ function encounterDiagnoses(enc: any, ids: Record<string, string>): string[] {
   return names;
 }
 
+// The C-CDA Comment Activity template — the standard home for a free-text note
+// attached to an entry (a visit summary / clinician comment on an encounter).
+const COMMENT_ACT_TEMPLATE = "2.16.840.1.113883.10.20.22.4.64";
+
+// The encounter's free-text narrative / visit summary, from a nested Comment
+// Activity (template 4.64) under the encounter's entryRelationships. Prefers the
+// printed narrative (resolving a #ref into the section text). Dedups and joins
+// multiple comments; returns null when none is present. Kept separate from the
+// coded diagnoses walk so a comment never leaks into the diagnoses chips.
+function encounterNotes(enc: any, ids: Record<string, string>): string | null {
+  const notes: string[] = [];
+  const seen = new Set<string>();
+  const walk = (node: any): void => {
+    if (node == null || typeof node !== "object") return;
+    if (Array.isArray(node)) {
+      node.forEach(walk);
+      return;
+    }
+    const tids = asArray(node?.templateId)
+      .map((t: any) => t?.["@_root"])
+      .filter(Boolean);
+    if (tids.includes(COMMENT_ACT_TEMPLATE)) {
+      const text = resolveNarrativeText(node?.text, ids);
+      if (text) {
+        const key = text.toLowerCase();
+        if (!seen.has(key)) {
+          seen.add(key);
+          notes.push(text);
+        }
+      }
+      return; // captured — don't recurse into the comment's own children
+    }
+    for (const [k, v] of Object.entries(node)) {
+      if (k.startsWith("@_")) continue;
+      walk(v);
+    }
+  };
+  walk(enc?.entryRelationship);
+  return notes.length ? notes.join("\n") : null;
+}
+
 // Map one <encounter> (an Encounter Activity, template 4.49) to an
 // ImportedEncounter, or null when it carries no usable date. Type display resolves
 // the CPT/local code's displayName / narrative originalText ("Office Visit"); the
 // class is the ActEncounterCode translation (AMB). The performer is the attending
 // clinician (prefer the named individual); the location is the facility. Reason is
 // filled at the document level (see chiefComplaintsFromSections) when the encounter
-// carries none of its own.
+// carries none of its own; notes come from a nested Comment Activity.
 function mapEncounter(
   enc: any,
   ids: Record<string, string>,
@@ -1319,6 +1360,7 @@ function mapEncounter(
   const provider = providerFromPerformer(enc, "individual");
   const location = encounterLocation(enc);
   const diagnoses = encounterDiagnoses(enc, ids);
+  const notes = encounterNotes(enc, ids);
   const idExt = firstEncounterId(enc);
   // With a source <id> the key is stable + shared across documents (so the same
   // visit collapses). Without one, fold in the class AND the entry's position in
@@ -1337,6 +1379,7 @@ function mapEncounter(
     diagnoses,
     provider,
     location,
+    notes,
     external_id,
   };
 }

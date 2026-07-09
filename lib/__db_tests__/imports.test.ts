@@ -120,6 +120,7 @@ function makeInput(): PersistInput {
         diagnoses: ["Hypertension"],
         provider: null,
         location: null,
+        notes: null,
         external_id: "encounter:1",
       },
     ],

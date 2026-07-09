@@ -151,6 +151,7 @@ function makeInput(opts: InputOpts = {}): PersistInput {
         diagnoses: ["Hypertension"],
         provider: null,
         location: null,
+        notes: null,
         external_id: "ccda:encounter:1",
       },
     ],

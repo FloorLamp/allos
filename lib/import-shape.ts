@@ -113,6 +113,7 @@ export interface PersistEncounter {
   diagnoses: string[];
   provider: ImportedProvider | null;
   location: ImportedProvider | null;
+  notes: string | null;
   external_id: string | null;
 }
 
@@ -489,6 +490,7 @@ export function healthRecordToPersistInput(
       diagnoses: e.diagnoses,
       provider: e.provider ?? null,
       location: e.location ?? null,
+      notes: e.notes ?? null,
       external_id: e.external_id,
     })),
     procedures: (parsed.procedures ?? []).map((p) => ({

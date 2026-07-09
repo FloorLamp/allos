@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { IconBuildingHospital } from "@tabler/icons-react";
 import EncounterForm from "./EncounterForm";
 import { updateEncounter, deleteEncounter } from "./actions";
@@ -39,7 +40,12 @@ const COLUMNS: RecordColumn<Encounter>[] = [
     cell: (e) => (
       <>
         <div className="flex flex-wrap items-center gap-2">
-          <span>{e.type || "Visit"}</span>
+          <Link
+            href={`/encounters/${e.id}`}
+            className="transition hover:text-brand-700 hover:underline dark:hover:text-brand-300"
+          >
+            {e.type || "Visit"}
+          </Link>
           {e.class_code ? (
             <span className="badge bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300">
               {e.class_code}

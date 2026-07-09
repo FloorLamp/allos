@@ -124,6 +124,7 @@ export interface ImportedEncounter {
   diagnoses: string[]; // visit diagnosis display names (may be empty)
   provider: ImportedProvider | null; // attending / performing clinician
   location: ImportedProvider | null; // facility / performing organization
+  notes: string | null; // the encounter's free-text narrative / visit summary
   external_id: string; // stable dedup key ("ccda:encounter:<id>")
 }
 

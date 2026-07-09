@@ -436,6 +436,7 @@ describe("healthRecordToPersistInput (deterministic path)", () => {
             phone: null,
             address: null,
           },
+          notes: null,
           external_id: "ccda:encounter:100000001",
         },
       ],
