@@ -2,7 +2,7 @@ import Link from "next/link";
 import { IconArrowLeft } from "@tabler/icons-react";
 import {
   documentLabel,
-  getBiomarkerSeries,
+  getBiomarkerSeriesWithDerived,
   getCanonicalBiomarker,
   getMedicalDocumentsByIds,
   isBiomarkerStarred,
@@ -61,7 +61,9 @@ export default function BiomarkerDetailPage({
 }) {
   const { profile } = requireSession();
   const canonical = searchParams.name?.trim();
-  const series = canonical ? getBiomarkerSeries(profile.id, canonical) : [];
+  const series = canonical
+    ? getBiomarkerSeriesWithDerived(profile.id, canonical)
+    : [];
 
   if (!canonical || series.length === 0) {
     return (
@@ -86,6 +88,10 @@ export default function BiomarkerDetailPage({
 
   const cb: CanonicalBiomarker | undefined = getCanonicalBiomarker(canonical);
   const info = getBiomarkerInfo(canonical);
+  // A read-time DERIVED index (issue #40): its readings are computed from other
+  // labs, not measured. Surface the formula so the value is transparent. Newest
+  // derived reading carries the most representative substituted formula.
+  const derivedReading = [...series].reverse().find((r) => r.derived);
   const starred = isBiomarkerStarred(profile.id, canonical);
   // Effective reference range and optimal band for the user's sex + age
   // (age band, then sex-specific override, else the generic band). Drive the chart
@@ -312,6 +318,19 @@ export default function BiomarkerDetailPage({
         action={<StarButton canonicalName={canonical} starred={starred} />}
       />
 
+      {derivedReading && (
+        <div
+          data-testid="derived-note"
+          className="mb-6 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-300"
+        >
+          <span className="font-semibold">Derived index.</span> These values are
+          computed from your other lab readings on the same draw date, not
+          measured directly.{" "}
+          <span className="font-medium">{derivedReading.derived_formula}</span>.
+          Informational, not a diagnosis.
+        </div>
+      )}
+
       {stale && (
         <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300">
           <span className="font-semibold">These results are stale.</span> The
@@ -452,7 +471,14 @@ export default function BiomarkerDetailPage({
                     {r.reference_range ?? "—"}
                   </td>
                   <td className="td">
-                    {r.document_id ? (
+                    {r.derived ? (
+                      <span
+                        className="text-slate-400 dark:text-slate-500"
+                        title={r.derived_formula}
+                      >
+                        Computed
+                      </span>
+                    ) : r.document_id ? (
                       <Link
                         href={`/import/${r.document_id}`}
                         className="text-brand-700 hover:underline dark:text-brand-400"

@@ -1,5 +1,6 @@
 import {
   getMedicalRecords,
+  getDerivedBiomarkerReadings,
   getCanonicalAutocomplete,
   getProviderNames,
 } from "@/lib/queries";
@@ -8,6 +9,10 @@ import { requireSession } from "@/lib/auth";
 import { PageHeader, EmptyState } from "@/components/ui";
 import MedicalFilters from "@/components/MedicalFilters";
 import { parseSortColumn, parseSortDir } from "@/lib/table-sort";
+import {
+  filterDerivedForTable,
+  prepareTableRecords,
+} from "@/lib/derived-table";
 import StarredBiomarkers from "@/components/StarredBiomarkers";
 import BiomarkersTable from "@/components/BiomarkersTable";
 import RecordForm from "@/components/RecordForm";
@@ -53,12 +58,24 @@ export default function BiomarkersPage({
   );
   const dir = parseSortDir(searchParams.dir);
   const current = searchParams.current === "1";
-  const records = getMedicalRecords(profile.id, {
+  const storedRecords = getMedicalRecords(profile.id, {
     category: active,
     excludeCategories: ["prescription"],
     panel,
     range,
     q,
+    sort,
+    dir,
+    current,
+  });
+  // Read-time derived clinical indices (Non-HDL, TG/HDL, HOMA-IR, eGFR — issue #40)
+  // are folded in as read-only virtual rows, filtered by the same active filters and
+  // sorted/marked-latest over the combined set so they behave like stored analytes.
+  const derivedRecords = filterDerivedForTable(
+    getDerivedBiomarkerReadings(profile.id),
+    { category: active, excludeCategories: ["prescription"], panel, range, q }
+  );
+  const records = prepareTableRecords(storedRecords, derivedRecords, {
     sort,
     dir,
     current,

@@ -52,6 +52,28 @@ test("dashboard coaching 'Not today' snoozes the top recommendation (#39)", asyn
   await expect(card.getByText(original!, { exact: true })).toHaveCount(0);
 });
 
+// #40: derived clinical indices are computed at read time from the seeded lipid /
+// metabolic / kidney panels and surfaced on the Biomarkers page like normal
+// analytes — Non-HDL Cholesterol (Total − HDL) appears with a "Derived" badge, and
+// its detail page explains the derivation instead of a source document.
+test("biomarkers page surfaces a derived clinical index (#40)", async ({
+  page,
+}) => {
+  await page.goto("/biomarkers");
+  // At least one derived index (Non-HDL, TG/HDL, eGFR) renders its Derived badge.
+  await expect(page.getByTestId("derived-badge").first()).toBeVisible();
+
+  // Non-HDL Cholesterol is derived from the seeded Total + HDL readings.
+  const link = page.getByRole("link", { name: "Non-HDL Cholesterol" }).first();
+  await expect(link).toBeVisible();
+  await link.click();
+
+  const note = page.getByTestId("derived-note");
+  await expect(note).toBeVisible();
+  await expect(note).toContainText("Derived index");
+  await expect(note).toContainText("Total Cholesterol − HDL");
+});
+
 // #38: a refill-tracked supplement (seed sets Magnesium Glycinate's on-hand
 // supply) shows an "≈N days left" estimate that names its basis — the actual
 // taken-log rate vs the scheduled-dose-count fallback. Asserts the rendered
