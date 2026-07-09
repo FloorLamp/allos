@@ -699,7 +699,29 @@ describe("upcomingSignalToIcsEvent", () => {
     expect(ev.allDay).toBe(true);
     expect(ev.start).toEqual(new Date("2026-07-09T00:00:00Z"));
     expect(ev.end).toEqual(new Date("2026-07-10T00:00:00Z"));
-    expect(ev.uid).toBe("up-dose-12@allos");
+    // UID is a stable HASH of the key (raw keys can embed names, which must
+    // not ride into the feed at any detail level).
+    expect(ev.uid).toMatch(/^up-[0-9a-f]{16}@allos$/);
+    const again = upcomingSignalToIcsEvent(signal(), {
+      today: TODAY,
+      detail: "minimal",
+      reminders: true,
+    });
+    expect(again.uid).toBe(ev.uid); // deterministic across fetches
+  });
+
+  it("the UID never leaks a key-embedded name, even at full detail (#12)", () => {
+    const ev = upcomingSignalToIcsEvent(
+      signal({ key: "biomarker:psa", domain: "biomarker" }),
+      { today: TODAY, detail: "full", reminders: true }
+    );
+    expect(ev.uid).toMatch(/^up-[0-9a-f]{16}@allos$/);
+    expect(ev.uid).not.toContain("psa");
+    const other = upcomingSignalToIcsEvent(
+      signal({ key: "biomarker:ldl", domain: "biomarker" }),
+      { today: TODAY, detail: "full", reminders: true }
+    );
+    expect(other.uid).not.toBe(ev.uid); // distinct keys → distinct UIDs
   });
 
   it("minimal detail emits a neutral category label (no PHI name)", () => {
@@ -770,8 +792,11 @@ describe("composeFeedEvents", () => {
     });
     const uids = evs.map((e) => e.uid);
     expect(uids).toContain("appt-5@allos");
-    expect(uids).toContain("up-dose-1@allos");
-    expect(uids).not.toContain("up-goal-2@allos");
+    // dose kept, goal filtered: exactly one hashed signal UID alongside the appt.
+    expect(uids).toHaveLength(2);
+    expect(uids.filter((u) => /^up-[0-9a-f]{16}@allos$/.test(u))).toHaveLength(
+      1
+    );
   });
 
   it("never double-counts an appointment-domain signal", () => {
@@ -814,7 +839,8 @@ describe("composeFeedEvents", () => {
       }),
     });
     // doseSig (07-10) in range; goalSig (07-12) out.
-    expect(evs.map((e) => e.uid)).toEqual(["up-dose-1@allos"]);
+    expect(evs.map((e) => e.uid)).toHaveLength(1);
+    expect(evs[0].uid).toMatch(/^up-[0-9a-f]{16}@allos$/);
   });
 
   it("is chronologically sorted", () => {

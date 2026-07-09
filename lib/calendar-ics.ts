@@ -446,12 +446,32 @@ export interface UpcomingSignalLike {
   dueDate: string | null; // "YYYY-MM-DD", or null for a "due today" signal
 }
 
+// Stable 64-bit FNV-1a hash of a string, as 16 hex chars. Used to derive signal
+// UIDs from their keys WITHOUT embedding the key text: some keys carry a name
+// ("biomarker:psa"), and a UID rides in the serialized feed at every detail
+// level, so the raw key would leak the analyte even when the summary is the
+// neutral minimal label. Deterministic (same key → same UID across fetches, so a
+// re-fetch still UPDATES the same event) and dependency-free to keep this module
+// pure.
+function fnv1a64Hex(s: string): string {
+  // Two independent 32-bit FNV-1a passes (offset basis varied) → 64 bits.
+  let h1 = 0x811c9dc5;
+  let h2 = 0xcbf29ce4;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 0x01000193) >>> 0;
+    h2 = Math.imul(h2 ^ c, 0x01000193) >>> 0;
+  }
+  return h1.toString(16).padStart(8, "0") + h2.toString(16).padStart(8, "0");
+}
+
 // Map one non-appointment due-signal to an all-day ICS event. A null due date
 // (a "due today" signal like a scheduled dose or training pace) anchors to today.
 // At minimal detail the summary is the neutral category label (no name leaves the
 // app); at full detail the real title rides along plus its context line. The UID
-// is namespaced by the signal key so it stays stable across fetches (a re-fetch
-// UPDATES the same event) and never collides with an appointment UID.
+// is a HASH of the signal key — stable across fetches (a re-fetch UPDATES the
+// same event), never colliding with an appointment UID, and never leaking a
+// key-embedded name into the serialized feed.
 export function upcomingSignalToIcsEvent(
   item: UpcomingSignalLike,
   opts: { today: string; detail: IcsDetail; reminders: boolean }
@@ -468,7 +488,7 @@ export function upcomingSignalToIcsEvent(
     opts.detail === "full" ? (title ?? minimalLabel) : minimalLabel;
   const description = opts.detail === "full" ? trimOrNull(item.detail) : null;
   return {
-    uid: `up-${item.key.replace(/[^A-Za-z0-9_.-]/g, "-")}@allos`,
+    uid: `up-${fnv1a64Hex(item.key)}@allos`,
     status: "CONFIRMED",
     sequence: 0,
     summary,
