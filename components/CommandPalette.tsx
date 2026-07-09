@@ -3,13 +3,20 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  IconAlertTriangle,
   IconArrowRight,
   IconBarbell,
+  IconCalendarEvent,
+  IconCalendarPlus,
   IconChartLine,
+  IconClipboardList,
   IconCornerDownLeft,
   IconFileText,
+  IconHeartHandshake,
+  IconMedicalCross,
   IconPill,
   IconSearch,
+  IconStethoscope,
   IconTarget,
   IconVaccine,
 } from "@tabler/icons-react";
@@ -43,9 +50,17 @@ const DOMAIN_ICONS: Record<
 > = {
   biomarker: (p) => <IconChartLine {...p} />,
   document: (p) => <IconFileText {...p} />,
+  condition: (p) => <IconStethoscope {...p} />,
+  allergy: (p) => <IconAlertTriangle {...p} />,
+  procedure: (p) => <IconMedicalCross {...p} />,
+  immunization: (p) => <IconVaccine {...p} />,
+  encounter: (p) => <IconCalendarEvent {...p} />,
+  appointment: (p) => <IconCalendarPlus {...p} />,
   activity: (p) => <IconBarbell {...p} />,
   supplement: (p) => <IconPill {...p} />,
-  immunization: (p) => <IconVaccine {...p} />,
+  "family-history": (p) => <IconHeartHandshake {...p} />,
+  "care-plan": (p) => <IconClipboardList {...p} />,
+  "care-goal": (p) => <IconTarget {...p} />,
   goal: (p) => <IconTarget {...p} />,
   page: (p) => <IconArrowRight {...p} />,
 };

@@ -222,6 +222,274 @@ function goalHits(profileId: number, like: string): SearchHit[] {
   }));
 }
 
+// ── Clinical passport domains (#19) ──────────────────────────────────────────
+// The passport tables were absent from the fan-out, so "penicillin" (an allergy)
+// or a condition/procedure/visit name never surfaced in Cmd-K. Each helper below
+// mirrors the existing per-domain pattern: a capped, PROFILE-SCOPED LIKE scan over
+// the columns a user would search, mapped to a hit that links to the domain's list
+// page (these passport surfaces are list pages, like /immunizations — there is no
+// per-row detail route). Provider matches (encounters/appointments) LEFT JOIN the
+// GLOBAL providers registry; the row itself is still scoped by its parent's
+// profile_id, so the scoping rule holds.
+
+function conditionHits(profileId: number, like: string): SearchHit[] {
+  const rows = db
+    .prepare(
+      `SELECT id, name, status, onset_date
+         FROM conditions
+        WHERE profile_id = ?
+          AND (name LIKE ? ESCAPE '\\' OR notes LIKE ? ESCAPE '\\')
+        ORDER BY COALESCE(onset_date, created_at) DESC
+        LIMIT ?`
+    )
+    .all(profileId, like, like, CANDIDATE_LIMIT) as {
+    id: number;
+    name: string;
+    status: string;
+    onset_date: string | null;
+  }[];
+  return rows.map((r) => ({
+    domain: "condition",
+    key: `condition:${r.id}`,
+    title: r.name,
+    subtitle: r.onset_date
+      ? `${r.status} · ${isoDate(r.onset_date)}`
+      : r.status,
+    href: "/conditions",
+    date: isoDate(r.onset_date),
+  }));
+}
+
+// Documented, stored allergy records only. The derived-IgE allergies view
+// (lib/allergy-ige.ts buildAllergiesView) re-runs a lab derivation the /allergies
+// page renders, but running it per keystroke would be wasteful; those derived
+// entries are surfaced on the allergies page itself. We match the substance AND
+// the reaction text so "hives" finds the allergy it's a reaction to.
+function allergyHits(profileId: number, like: string): SearchHit[] {
+  const rows = db
+    .prepare(
+      `SELECT id, substance, reaction, severity, status, onset_date
+         FROM allergies
+        WHERE profile_id = ?
+          AND (substance LIKE ? ESCAPE '\\'
+               OR reaction LIKE ? ESCAPE '\\'
+               OR notes LIKE ? ESCAPE '\\')
+        ORDER BY (status = 'active') DESC, substance
+        LIMIT ?`
+    )
+    .all(profileId, like, like, like, CANDIDATE_LIMIT) as {
+    id: number;
+    substance: string;
+    reaction: string | null;
+    severity: string | null;
+    status: string;
+    onset_date: string | null;
+  }[];
+  return rows.map((r) => ({
+    domain: "allergy",
+    key: `allergy:${r.id}`,
+    title: r.substance,
+    subtitle:
+      [r.reaction, r.severity].filter(Boolean).join(" · ").trim() || r.status,
+    href: "/allergies",
+    date: isoDate(r.onset_date),
+  }));
+}
+
+function procedureHits(profileId: number, like: string): SearchHit[] {
+  const rows = db
+    .prepare(
+      `SELECT id, name, code, date
+         FROM procedures
+        WHERE profile_id = ?
+          AND (name LIKE ? ESCAPE '\\' OR notes LIKE ? ESCAPE '\\')
+        ORDER BY date DESC
+        LIMIT ?`
+    )
+    .all(profileId, like, like, CANDIDATE_LIMIT) as {
+    id: number;
+    name: string;
+    code: string | null;
+    date: string | null;
+  }[];
+  return rows.map((r) => ({
+    domain: "procedure",
+    key: `procedure:${r.id}`,
+    title: r.name,
+    subtitle: isoDate(r.date) ?? r.code,
+    href: "/procedures",
+    date: isoDate(r.date),
+  }));
+}
+
+function encounterHits(profileId: number, like: string): SearchHit[] {
+  // Match the visit type/reason/diagnoses/notes and the attending provider's name.
+  const rows = db
+    .prepare(
+      `SELECT e.id, e.type, e.reason, e.date, p.name AS provider
+         FROM encounters e
+         LEFT JOIN providers p ON p.id = e.provider_id
+        WHERE e.profile_id = ?
+          AND (e.type LIKE ? ESCAPE '\\'
+               OR e.reason LIKE ? ESCAPE '\\'
+               OR e.diagnoses LIKE ? ESCAPE '\\'
+               OR e.notes LIKE ? ESCAPE '\\'
+               OR p.name LIKE ? ESCAPE '\\')
+        ORDER BY e.date DESC
+        LIMIT ?`
+    )
+    .all(profileId, like, like, like, like, like, CANDIDATE_LIMIT) as {
+    id: number;
+    type: string | null;
+    reason: string | null;
+    date: string;
+    provider: string | null;
+  }[];
+  return rows.map((r) => {
+    const title = r.type || r.reason || "Visit";
+    const subtitle =
+      [title !== r.reason ? r.reason : null, r.provider, isoDate(r.date)]
+        .filter(Boolean)
+        .join(" · ") || null;
+    return {
+      domain: "encounter" as const,
+      key: `encounter:${r.id}`,
+      title,
+      subtitle,
+      href: "/encounters",
+      date: isoDate(r.date),
+    };
+  });
+}
+
+function appointmentHits(profileId: number, like: string): SearchHit[] {
+  // Match the appointment title/location/notes and the provider's name.
+  const rows = db
+    .prepare(
+      `SELECT a.id, a.title, a.location, a.scheduled_at, a.status, p.name AS provider
+         FROM appointments a
+         LEFT JOIN providers p ON p.id = a.provider_id
+        WHERE a.profile_id = ?
+          AND (a.title LIKE ? ESCAPE '\\'
+               OR a.location LIKE ? ESCAPE '\\'
+               OR a.notes LIKE ? ESCAPE '\\'
+               OR p.name LIKE ? ESCAPE '\\')
+        ORDER BY a.scheduled_at DESC
+        LIMIT ?`
+    )
+    .all(profileId, like, like, like, like, CANDIDATE_LIMIT) as {
+    id: number;
+    title: string | null;
+    location: string | null;
+    scheduled_at: string;
+    status: string;
+    provider: string | null;
+  }[];
+  return rows.map((r) => {
+    const title = r.title || r.provider || "Appointment";
+    const subtitle =
+      [
+        r.provider !== title ? r.provider : null,
+        r.location,
+        isoDate(r.scheduled_at),
+      ]
+        .filter(Boolean)
+        .join(" · ") || r.status;
+    return {
+      domain: "appointment" as const,
+      key: `appointment:${r.id}`,
+      title,
+      subtitle,
+      href: "/appointments",
+      date: isoDate(r.scheduled_at),
+    };
+  });
+}
+
+function familyHistoryHits(profileId: number, like: string): SearchHit[] {
+  const rows = db
+    .prepare(
+      `SELECT id, relation, condition
+         FROM family_history
+        WHERE profile_id = ?
+          AND (condition LIKE ? ESCAPE '\\'
+               OR relation LIKE ? ESCAPE '\\'
+               OR notes LIKE ? ESCAPE '\\')
+        ORDER BY condition
+        LIMIT ?`
+    )
+    .all(profileId, like, like, like, CANDIDATE_LIMIT) as {
+    id: number;
+    relation: string | null;
+    condition: string;
+  }[];
+  return rows.map((r) => ({
+    domain: "family-history" as const,
+    key: `family-history:${r.id}`,
+    title: r.condition,
+    subtitle: r.relation,
+    href: "/family-history",
+    date: null,
+  }));
+}
+
+function carePlanHits(profileId: number, like: string): SearchHit[] {
+  const rows = db
+    .prepare(
+      `SELECT id, description, category, status, planned_date
+         FROM care_plan_items
+        WHERE profile_id = ?
+          AND (description LIKE ? ESCAPE '\\' OR notes LIKE ? ESCAPE '\\')
+        ORDER BY COALESCE(planned_date, created_at) DESC
+        LIMIT ?`
+    )
+    .all(profileId, like, like, CANDIDATE_LIMIT) as {
+    id: number;
+    description: string;
+    category: string | null;
+    status: string | null;
+    planned_date: string | null;
+  }[];
+  return rows.map((r) => ({
+    domain: "care-plan" as const,
+    key: `care-plan:${r.id}`,
+    title: r.description,
+    subtitle:
+      [r.category, r.status, isoDate(r.planned_date)]
+        .filter(Boolean)
+        .join(" · ") || null,
+    href: "/care-plan",
+    date: isoDate(r.planned_date),
+  }));
+}
+
+function careGoalHits(profileId: number, like: string): SearchHit[] {
+  const rows = db
+    .prepare(
+      `SELECT id, description, status, target_date
+         FROM care_goals
+        WHERE profile_id = ?
+          AND (description LIKE ? ESCAPE '\\' OR notes LIKE ? ESCAPE '\\')
+        ORDER BY COALESCE(target_date, created_at) DESC
+        LIMIT ?`
+    )
+    .all(profileId, like, like, CANDIDATE_LIMIT) as {
+    id: number;
+    description: string;
+    status: string | null;
+    target_date: string | null;
+  }[];
+  return rows.map((r) => ({
+    domain: "care-goal" as const,
+    key: `care-goal:${r.id}`,
+    title: r.description,
+    subtitle:
+      [r.status, isoDate(r.target_date)].filter(Boolean).join(" · ") || null,
+    href: "/care-goals",
+    date: isoDate(r.target_date),
+  }));
+}
+
 // Static navigation destinations, so the palette doubles as a jump-to-page bar.
 // `restricted` entries are hidden for age-restricted profiles (see age-gate.ts /
 // Nav's RESTRICTED_HREFS).
@@ -364,8 +632,16 @@ export function searchAll(profileId: number, rawQuery: string): SearchGroup[] {
   const hits: SearchHit[] = [
     ...biomarkerHits(profileId, like),
     ...documentHits(profileId, like),
-    ...supplementHits(profileId, like),
+    ...conditionHits(profileId, like),
+    ...allergyHits(profileId, like),
+    ...procedureHits(profileId, like),
     ...immunizationHits(profileId, query),
+    ...encounterHits(profileId, like),
+    ...appointmentHits(profileId, like),
+    ...supplementHits(profileId, like),
+    ...familyHistoryHits(profileId, like),
+    ...carePlanHits(profileId, like),
+    ...careGoalHits(profileId, like),
     ...pageHits(query, restricted),
   ];
   // Training history/goals live behind the age-gated Training page; skip their

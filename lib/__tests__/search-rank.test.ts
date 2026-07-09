@@ -5,6 +5,8 @@ import {
   rankAndGroup,
   flattenHits,
   SEARCH_DOMAIN_ORDER,
+  SEARCH_DOMAIN_LABELS,
+  type SearchDomain,
   type SearchHit,
 } from "@/lib/search-rank";
 
@@ -121,6 +123,78 @@ describe("rankAndGroup", () => {
       ""
     );
     expect(groups[0].label).toBe("Documents");
+  });
+});
+
+// #19: the clinical passport domains (conditions, allergies, procedures,
+// encounters/visits, appointments, family history, care plan, care goals) joined
+// the fan-out. They must be first-class in the ranker: labelled, ordered, and
+// ranked with the same exact > prefix > substring quality as biomarkers so an
+// exact clinical name (e.g. "Penicillin") tops its group.
+describe("clinical passport domains (#19)", () => {
+  const CLINICAL: SearchDomain[] = [
+    "condition",
+    "allergy",
+    "procedure",
+    "encounter",
+    "appointment",
+    "family-history",
+    "care-plan",
+    "care-goal",
+  ];
+
+  it("every domain is ordered and labelled", () => {
+    for (const d of CLINICAL) {
+      expect(SEARCH_DOMAIN_ORDER).toContain(d);
+      expect(SEARCH_DOMAIN_LABELS[d]).toBeTruthy();
+    }
+  });
+
+  it("ranks an exact clinical name above a substring one (like biomarkers)", () => {
+    const out = sortHits(
+      [
+        hit({ domain: "allergy", title: "Penicillin V", key: "a-prefix" }), // prefix (2)
+        hit({ domain: "allergy", title: "Penicillin", key: "a-exact" }), // exact (3)
+        hit({
+          domain: "allergy",
+          title: "Amoxicillin (penicillin)",
+          key: "a-sub",
+        }), // substring (1)
+      ],
+      "penicillin"
+    );
+    expect(out.map((h) => h.key)).toEqual(["a-exact", "a-prefix", "a-sub"]);
+  });
+
+  it("groups clinical hits into their own domains in canonical order", () => {
+    const groups = rankAndGroup(
+      [
+        hit({ domain: "care-goal", title: "Lower A1c", key: "cg1" }),
+        hit({ domain: "allergy", title: "Penicillin", key: "al1" }),
+        hit({ domain: "condition", title: "Hypertension", key: "co1" }),
+        hit({ domain: "encounter", title: "Office Visit", key: "en1" }),
+      ],
+      ""
+    );
+    // Emitted in SEARCH_DOMAIN_ORDER: condition < allergy < encounter < care-goal.
+    expect(groups.map((g) => g.domain)).toEqual([
+      "condition",
+      "allergy",
+      "encounter",
+      "care-goal",
+    ]);
+    const idx = (d: string) => SEARCH_DOMAIN_ORDER.indexOf(d as never);
+    for (let i = 1; i < groups.length; i++) {
+      expect(idx(groups[i].domain)).toBeGreaterThan(idx(groups[i - 1].domain));
+    }
+  });
+
+  it("labels the family-history group with a human name", () => {
+    const groups = rankAndGroup(
+      [hit({ domain: "family-history", title: "Diabetes" })],
+      ""
+    );
+    expect(groups[0].label).toBe("Family History");
   });
 });
 

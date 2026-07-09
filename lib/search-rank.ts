@@ -8,9 +8,17 @@
 export type SearchDomain =
   | "biomarker"
   | "document"
+  | "condition"
+  | "allergy"
+  | "procedure"
+  | "immunization"
+  | "encounter"
+  | "appointment"
   | "activity"
   | "supplement"
-  | "immunization"
+  | "family-history"
+  | "care-plan"
+  | "care-goal"
   | "goal"
   | "page";
 
@@ -36,12 +44,22 @@ export interface SearchGroup {
 }
 
 // The order result groups appear in the palette (mirrors the issue's list).
+// The clinical passport domains (#19) are grouped with the medical domains they
+// live beside in the nav, keeping biomarker first and goal/page last.
 export const SEARCH_DOMAIN_ORDER: SearchDomain[] = [
   "biomarker",
   "document",
+  "condition",
+  "allergy",
+  "procedure",
+  "immunization",
+  "encounter",
+  "appointment",
   "activity",
   "supplement",
-  "immunization",
+  "family-history",
+  "care-plan",
+  "care-goal",
   "goal",
   "page",
 ];
@@ -49,9 +67,17 @@ export const SEARCH_DOMAIN_ORDER: SearchDomain[] = [
 export const SEARCH_DOMAIN_LABELS: Record<SearchDomain, string> = {
   biomarker: "Biomarkers",
   document: "Documents",
+  condition: "Conditions",
+  allergy: "Allergies",
+  procedure: "Procedures",
+  immunization: "Immunizations",
+  encounter: "Visits",
+  appointment: "Appointments",
   activity: "Activities",
   supplement: "Supplements",
-  immunization: "Immunizations",
+  "family-history": "Family History",
+  "care-plan": "Care Plan",
+  "care-goal": "Care Goals",
   goal: "Goals",
   page: "Pages",
 };
