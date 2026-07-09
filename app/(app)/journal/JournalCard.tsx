@@ -6,6 +6,7 @@ import { ActivityTypeIcon, IntensityBadge } from "@/components/ui";
 import ActivityProvenance from "@/components/ActivityProvenance";
 import type { ActivityEditData } from "@/components/ActivityForm";
 import { SET_STATUS_TITLES, type SetStatus } from "@/lib/journal-format";
+import { activityComponentSportNames } from "@/lib/activity-icon";
 import MergeActivityMenu from "./MergeActivityMenu";
 
 export type DisplayPart =
@@ -82,7 +83,11 @@ export default function JournalCard({
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-start gap-3">
-          <ActivityTypeIcon type={activity.type} title={activity.title} />
+          <ActivityTypeIcon
+            type={activity.type}
+            title={activity.title}
+            sportNames={activityComponentSportNames(activity.components)}
+          />
           <div className="min-w-0">
             <button
               type="button"

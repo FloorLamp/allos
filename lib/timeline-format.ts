@@ -37,6 +37,9 @@ export interface TimelineEvent {
   }[];
   iconType?: string | null;
   iconTitle?: string | null;
+  // Structured component/sport names (e.g. Strava's canonical "Cycling"),
+  // matched before iconTitle so an imported ride icons as a bike.
+  iconSportNames?: string[] | null;
 }
 
 export interface TimelineDay {
