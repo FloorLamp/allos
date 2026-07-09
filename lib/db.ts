@@ -523,6 +523,23 @@ export function migrate(db: Database.Database) {
       UNIQUE (supplement_id, date)
     );
 
+    -- Idempotency ledger for the offline write queue (issue #28). The PWA queues a
+    -- small set of quick-log intents in IndexedDB while offline and replays them via
+    -- /api/offline-replay on reconnect; each intent carries a client-generated uuid
+    -- (client_key). Before performing a replayed write the route records the key here
+    -- (in the SAME transaction as the write), and a replay whose key is already
+    -- present is treated as an already-applied no-op. This gives the replay endpoint
+    -- exactly-once semantics ON TOP OF the per-table natural-key dedups (dose logs'
+    -- per-(dose,date) UNIQUE, metric_samples' upsert key), so a double flush — from
+    -- the online event, the on-load flush, and Background Sync all racing — can never
+    -- double-log. profile_id keeps it profile-scoped (cleared on profile deletion).
+    CREATE TABLE IF NOT EXISTS replayed_keys (
+      client_key TEXT PRIMARY KEY,
+      profile_id INTEGER NOT NULL REFERENCES profiles(id),
+      flow TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
     CREATE TABLE IF NOT EXISTS insights (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       profile_id INTEGER NOT NULL REFERENCES profiles(id),

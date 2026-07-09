@@ -23,6 +23,7 @@ import {
 import { formatLongDate } from "@/lib/format-date";
 import { getMedicationInfo } from "@/lib/medication-info";
 import SupplementForm from "./SupplementForm";
+import DoseToggleButton from "@/components/DoseToggleButton";
 import SubmitButton from "@/components/SubmitButton";
 import OverflowMenu, {
   MENU_ITEM,
@@ -32,7 +33,6 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import { useUndoableDelete } from "@/components/useUndoableDelete";
 import {
   updateSupplement,
-  toggleTaken,
   deleteSupplement,
   stopMedication,
   restartMedication,
@@ -240,21 +240,23 @@ export default function MedicationCard({
           {doses.map((dose) => {
             const isTaken = takenDoseIds.has(dose.id);
             return (
-              <form action={toggleTaken} key={dose.id}>
-                <input type="hidden" name="dose_id" value={dose.id} />
-                <input type="hidden" name="supplement_id" value={s.id} />
-                <button
-                  className={`flex items-center gap-2 rounded-full border px-3 py-1 text-sm transition ${
-                    isTaken
+              <DoseToggleButton
+                key={dose.id}
+                doseId={dose.id}
+                supplementId={s.id}
+                taken={isTaken}
+                ariaLabel={(t) => (t ? "Mark not taken" : "Mark taken")}
+                className={(t) =>
+                  `flex items-center gap-2 rounded-full border px-3 py-1 text-sm transition ${
+                    t
                       ? "border-brand-600 bg-brand-600 text-white"
                       : "border-black/10 text-slate-600 hover:border-brand-400 dark:border-white/10 dark:text-slate-300"
-                  }`}
-                  aria-label={isTaken ? "Mark not taken" : "Mark taken"}
-                >
-                  <IconCheck className="h-3.5 w-3.5" stroke={2.5} />
-                  {dose.amount || dose.time_of_day || "Dose"}
-                </button>
-              </form>
+                  }`
+                }
+              >
+                <IconCheck className="h-3.5 w-3.5" stroke={2.5} />
+                {dose.amount || dose.time_of_day || "Dose"}
+              </DoseToggleButton>
             );
           })}
         </div>

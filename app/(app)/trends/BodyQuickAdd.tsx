@@ -6,7 +6,9 @@ import type { WeightUnit } from "@/lib/settings";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
+import { useOfflineQueue } from "@/components/OfflineQueueProvider";
 import { validateBodyMetricInput } from "@/lib/body-metric-input";
+import { shouldQueueOffline } from "@/lib/offline/queue";
 import { addBodyMetric } from "./body-actions";
 
 // Compact body-metrics quick-add for the Trends "Body" tab (sidebar
@@ -23,6 +25,7 @@ export default function BodyQuickAdd({
 }) {
   const router = useRouter();
   const toast = useToast();
+  const { enqueue } = useOfflineQueue();
   const formRef = useRef<HTMLFormElement>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -40,9 +43,37 @@ export default function BodyQuickAdd({
       setError(rangeError);
       return;
     }
+    const date = String(formData.get("date") ?? "").trim();
+    const str = (k: string) => {
+      const v = formData.get(k);
+      return v === null || String(v).trim() === "" ? null : String(v);
+    };
+    // Queue the raw fields (with the current weight unit) to replay on reconnect,
+    // landing on the entered date — don't fail the log (issue #28).
+    const queueOffline = async () => {
+      await enqueue("body-metric", date, {
+        weight: String(formData.get("weight") ?? ""),
+        weightUnit,
+        bodyFatPct: str("body_fat_pct"),
+        restingHr: str("resting_hr"),
+        notes: str("notes"),
+      });
+      toast("Saved offline — will sync when you reconnect.");
+      formRef.current?.reset();
+    };
+
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      await queueOffline();
+      return;
+    }
     try {
       await addBodyMetric(formData);
-    } catch {
+    } catch (err) {
+      // Connection dropped mid-submit — queue instead of showing a false failure.
+      if (shouldQueueOffline(navigator.onLine !== false, err)) {
+        await queueOffline();
+        return;
+      }
       setError("Couldn't save this entry. Please try again.");
       return;
     }

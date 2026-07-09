@@ -107,6 +107,109 @@ self.addEventListener("fetch", (event) => {
   // dynamic data) is left to the network and never cached.
 });
 
+// Background Sync for the offline write queue (issue #28) — a PROGRESSIVE
+// ENHANCEMENT layered on top of the client's online/on-load flush
+// (components/OfflineQueueProvider). The Background Sync API is Chromium/Android-
+// only (no Firefox or Safari support as of 2026), so this is bonus reliability: it
+// lets the browser replay a pending queue after connectivity returns even if no tab
+// is open. The client registers the "allos-offline-replay" tag when it enqueues.
+//
+// The handler reads the same IndexedDB store the client writes (name/store/version
+// mirror lib/offline/queue-db.ts), POSTs the intents to /api/offline-replay (the
+// session cookie rides along automatically for a same-origin fetch), deletes the
+// settled entries, and pokes any open tab to refresh. The server's replayed_keys
+// ledger makes this idempotent even when it races the client's own flush.
+const OFFLINE_SYNC_TAG = "allos-offline-replay";
+const OFFLINE_DB = "allos-offline";
+const OFFLINE_STORE = "intents";
+const OFFLINE_DB_VERSION = 1;
+
+function openOfflineDb() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(OFFLINE_DB, OFFLINE_DB_VERSION);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(OFFLINE_STORE)) {
+        db.createObjectStore(OFFLINE_STORE, { keyPath: "key" });
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+function offlineGetAll(db) {
+  return new Promise((resolve, reject) => {
+    const req = db
+      .transaction(OFFLINE_STORE, "readonly")
+      .objectStore(OFFLINE_STORE)
+      .getAll();
+    req.onsuccess = () => resolve(req.result || []);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+function offlineDelete(db, keys) {
+  return new Promise((resolve, reject) => {
+    if (!keys.length) return resolve();
+    const t = db.transaction(OFFLINE_STORE, "readwrite");
+    const store = t.objectStore(OFFLINE_STORE);
+    for (const k of keys) store.delete(k);
+    t.oncomplete = () => resolve();
+    t.onerror = () => reject(t.error);
+    t.onabort = () => reject(t.error);
+  });
+}
+
+async function replayOfflineQueue() {
+  const db = await openOfflineDb();
+  const intents = await offlineGetAll(db);
+  if (!intents.length) {
+    db.close();
+    return;
+  }
+  const res = await fetch("/api/offline-replay", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ intents }),
+    credentials: "same-origin",
+  });
+  // Auth failure (401/403) or any non-OK: keep the queue for the next attempt; a
+  // logged-out user is prompted to sign in the next time a tab flushes.
+  if (!res.ok) {
+    db.close();
+    return;
+  }
+  const data = await res.json().catch(() => ({ results: [] }));
+  const settled = (data.results || [])
+    .filter(
+      (r) =>
+        r.status === "done" ||
+        r.status === "duplicate" ||
+        r.status === "rejected"
+    )
+    .map((r) => r.key);
+  await offlineDelete(db, settled);
+  db.close();
+  // Nudge any open tab to refresh its badge / view.
+  const clients = await self.clients.matchAll({ includeUncontrolled: true });
+  for (const client of clients) {
+    client.postMessage({ type: "allos-flush-queue" });
+  }
+}
+
+self.addEventListener("sync", (event) => {
+  if (IS_DEV) return;
+  if (event.tag === OFFLINE_SYNC_TAG) {
+    event.waitUntil(
+      replayOfflineQueue().catch(() => {
+        // A rejected replay leaves the queue intact; the browser retries the tag
+        // (Background Sync) and the client flush is the safety net.
+      })
+    );
+  }
+});
+
 // Web Push (issue #17). The server (lib/notifications/push.ts) sends a tiny JSON
 // blob { title, body, url } — deliberately terse and no more revealing than the
 // Telegram message, since it lands on the user's own device. We only ever SHOW a
