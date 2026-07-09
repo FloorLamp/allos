@@ -223,34 +223,19 @@ the container starts as root, the entrypoint chowns the data dir to the app user
 Prefer a managed **named volume** if you don't need direct host access — see the
 commented block in `docker-compose.yml`.
 
-### Continuous deploy (self-hosted runner)
+### Published images
 
-`.github/workflows/deploy.yml` redeploys on every push to `main` (and via a
-manual **Run workflow**) in two stages:
+`.github/workflows/deploy.yml` builds the image on every push to `main` (and via
+a manual **Run workflow**) and pushes it to GHCR as `ghcr.io/<owner>/<repo>`,
+tagged with both `:latest` and the commit `:<sha>`, authenticating with the
+built-in `GITHUB_TOKEN` (no extra registry secret). The in-image `next build`
+(which runs tsc) is the CI gate: a type error fails the job and nothing is
+pushed, so the published `:latest` always builds cleanly.
 
-- **`build`** (GitHub-hosted runner): builds the image and pushes it to GHCR as
-  `ghcr.io/<owner>/<repo>` tagged with both `:latest` and the commit `:<sha>`,
-  authenticating with the built-in `GITHUB_TOKEN` (no extra registry secret).
-- **`deploy`** (self-hosted runner on the box): pulls the exact `:<sha>` image
-  and restarts. The box never builds — no source build toolchain required.
-
-Setup:
-
-1. Install Docker + Compose on the box and add your user to the `docker` group.
-2. Register a runner: repo → **Settings → Actions → Runners → New self-hosted
-   runner**, and install it **as a service** so it survives reboots.
-3. Add a repository (or Environment) **secret named `DOTENV`** containing your
-   full env-file contents — including `ANTHROPIC_API_KEY` and an
-   **absolute** `DATA_DIR` **outside the repo** (e.g. `/srv/allos/data`).
-
-   > ⚠️ `DATA_DIR` must be outside the checkout. The runner's `actions/checkout`
-   > runs `git clean -ffdx`, which would delete an in-repo `./data` (DB, uploads,
-   > logs) on every deploy.
-
-The in-image `next build` (which runs tsc) is the CI gate: a type error fails the
-`build` job, so nothing is pushed or deployed and the running container stays up.
-The GHCR package inherits repo visibility; if it's private, the deploy job's
-`packages: read` token handles the pull automatically.
+Deploying is up to you: on the box, `docker compose pull && docker compose up -d`
+picks up the new `:latest` (pin a `:<sha>` tag instead for a fixed version). Run
+it by hand or from a host cron/systemd timer. If the GHCR package is private,
+`docker login ghcr.io` with a token that has `read:packages` first.
 
 ## Notifications
 

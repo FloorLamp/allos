@@ -22,9 +22,9 @@ services:
     # Persist the SQLite DB, uploads, and the AI log. DATA_DIR is bind-mounted so
     # these are directly readable on the host (e.g. `tail -f $DATA_DIR/logs/ai.jsonl`).
     #
-    # ⚠️ For the self-hosted-runner CD setup, DATA_DIR MUST be an ABSOLUTE path
-    # OUTSIDE the repo working tree (e.g. /srv/allos/data) — the runner's
-    # `actions/checkout` runs `git clean -ffdx`, which would wipe an in-repo ./data.
+    # ⚠️ Prefer an ABSOLUTE DATA_DIR OUTSIDE the repo working tree (e.g.
+    # /srv/allos/data): anything that cleans the checkout (a `git clean -ffdx`,
+    # a re-clone) would wipe an in-repo ./data.
     # No manual chown needed: the container starts as root, the entrypoint chowns
     # this dir to the app user (uid 1000), then drops privileges via gosu.
     #
