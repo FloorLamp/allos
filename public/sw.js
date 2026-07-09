@@ -162,6 +162,21 @@ function offlineDelete(db, keys) {
 }
 
 async function replayOfflineQueue() {
+  // When a tab is open, DELEGATE to it instead of replaying here: the tab's
+  // flush owns user feedback (the "Synced N" toast + badge + view refresh), and
+  // two concurrent replayers (worker + tab) made the reconnect UX a race — the
+  // loser saw "duplicate" results or an already-empty queue and the user got no
+  // confirmation. Background Sync's unique value is replaying when NO tab is
+  // open (e.g. the user logged offline and closed the app), so only that case
+  // replays from the worker. The server's replayed_keys ledger keeps any
+  // residual overlap idempotent.
+  const openTabs = await self.clients.matchAll({ includeUncontrolled: true });
+  if (openTabs.length > 0) {
+    for (const client of openTabs) {
+      client.postMessage({ type: "allos-flush-queue", synced: 0 });
+    }
+    return;
+  }
   const db = await openOfflineDb();
   const intents = await offlineGetAll(db);
   if (!intents.length) {
@@ -194,7 +209,10 @@ async function replayOfflineQueue() {
   // Nudge any open tab to refresh its badge / view.
   const clients = await self.clients.matchAll({ includeUncontrolled: true });
   for (const client of clients) {
-    client.postMessage({ type: "allos-flush-queue" });
+    // Tell tabs HOW MANY entries this replay settled — the page uses it to show
+    // the "Synced N" confirmation when the worker (not the tab) won the replay
+    // race and the tab's own flush finds an already-empty queue.
+    client.postMessage({ type: "allos-flush-queue", synced: settled.length });
   }
 }
 

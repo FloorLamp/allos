@@ -1,5 +1,5 @@
 import { IconDownload, IconFileExport } from "@tabler/icons-react";
-import { DATASETS } from "@/lib/export";
+import { DATASETS, PAGE_SIZE } from "@/lib/export";
 import { requireSession } from "@/lib/auth";
 import { isTrainingRestricted } from "@/lib/age-gate";
 import DataTableManager from "@/components/DataTableManager";
@@ -8,10 +8,25 @@ import DataTableManager from "@/components/DataTableManager";
 // here for restricted profiles to match the rest of the UI (see lib/age-gate.ts).
 const RESTRICTED_DATASETS = new Set(["activities", "goals"]);
 
+function firstParam(value: string | string[] | undefined): string | undefined {
+  const first = Array.isArray(value) ? value[0] : value;
+  const trimmed = first?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
 // Data → Manage tab: one card per dataset with a row count, a CSV download, and
 // a paginated table. Each card has an edit mode (in DataTableManager) for
 // selecting and deleting rows. The CSV download always contains every row.
-export default function DataExport() {
+//
+// Issue #113: each table reads only the current page (LIMIT/OFFSET) plus a
+// COUNT(*) for the pager — NOT the whole dataset. Page position is per-dataset in
+// the URL (`p_<key>`), so a visit ships ~25 rows/table instead of every row (the
+// old path serialized 22.5 MB / 183k hr_minutes rows just to display 25).
+export default function DataExport({
+  searchParams,
+}: {
+  searchParams: Record<string, string | string[] | undefined>;
+}) {
   const { profile } = requireSession();
   const datasets = isTrainingRestricted(profile.id)
     ? DATASETS.filter((ds) => !RESTRICTED_DATASETS.has(ds.key))
@@ -53,19 +68,34 @@ export default function DataExport() {
         </div>
       </div>
 
-      {datasets.map((ds) => (
-        <DataTableManager
-          key={ds.key}
-          dataset={{
-            key: ds.key,
-            label: ds.label,
-            columns: ds.columns,
-            // Undefined defaults to deletable (the original six datasets).
-            deletable: ds.deletable !== false,
-          }}
-          rows={ds.rows(profile.id)}
-        />
-      ))}
+      {datasets.map((ds) => {
+        const total = ds.count(profile.id);
+        const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+        // Per-dataset page position (`p_<key>`), 1-based, clamped to what exists.
+        const requested = Number(firstParam(searchParams[`p_${ds.key}`]));
+        const page =
+          Number.isInteger(requested) && requested >= 1
+            ? Math.min(requested, pageCount)
+            : 1;
+        const offset = (page - 1) * PAGE_SIZE;
+        return (
+          <DataTableManager
+            key={ds.key}
+            dataset={{
+              key: ds.key,
+              label: ds.label,
+              columns: ds.columns,
+              // Undefined defaults to deletable (the original six datasets).
+              deletable: ds.deletable !== false,
+            }}
+            rows={total > 0 ? ds.page(profile.id, PAGE_SIZE, offset) : []}
+            total={total}
+            page={page}
+            pageSize={PAGE_SIZE}
+            pageParam={`p_${ds.key}`}
+          />
+        );
+      })}
     </div>
   );
 }

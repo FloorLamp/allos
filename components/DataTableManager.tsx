@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { IconDownload, IconPencil, IconTrash } from "@tabler/icons-react";
 import { useToast } from "@/components/Toast";
 import ScrollFade from "@/components/ScrollFade";
@@ -24,42 +24,57 @@ interface Dataset {
   deletable?: boolean;
 }
 
-const PAGE_SIZE = 25;
-
 // One managed dataset table on the Data → Manage tab: a paginated view with a
 // CSV download, plus an edit mode that reveals per-row checkboxes for deleting
-// the selected rows, or every row in the table. Receives the dataset's full rows
-// (each carries a hidden `id`) and paginates them client-side; selection is kept
-// by id, so it survives paging and lets you delete rows from any page at once.
+// the selected rows, or every row in the table.
+//
+// Issue #113: `rows` is now ONLY the current page (already LIMIT/OFFSET'd on the
+// server), `total` is the full COUNT, and paging is a URL navigation (the server
+// re-reads the next page) instead of slicing a full in-memory array — so the page
+// no longer ships every row. Selection is kept by id in client state, which
+// survives the soft navigation between pages, so you can still select rows across
+// pages and delete them in one action.
 export default function DataTableManager({
   dataset,
   rows,
+  total,
+  page,
+  pageSize,
+  pageParam,
 }: {
   dataset: Dataset;
+  // The current page's rows only (each carries a hidden `id`).
   rows: Record<string, unknown>[];
+  // Total row count across all pages (drives the pager + the header count).
+  total: number;
+  // Current page, 1-based (already clamped server-side).
+  page: number;
+  pageSize: number;
+  // The URL query param that drives this table's page position (`p_<key>`).
+  pageParam: string;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const toast = useToast();
   const [editing, setEditing] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [pending, setPending] = useState<null | "selected" | "all">(null);
   const [confirm, setConfirm] = useState<null | "selected" | "all">(null);
-  const [page, setPage] = useState(0);
 
-  const total = rows.length;
-  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  // Clamp: a delete can shrink the list below the current page.
-  const currentPage = Math.min(page, pageCount - 1);
-  // Reconcile the stored page down once the row set shrinks, so a later growth
-  // (e.g. an import refresh) doesn't snap the user back to a stale high page.
-  useEffect(() => {
-    if (page > pageCount - 1) setPage(pageCount - 1);
-  }, [page, pageCount]);
-  const start = currentPage * PAGE_SIZE;
-  const pageRows = useMemo(
-    () => rows.slice(start, start + PAGE_SIZE),
-    [rows, start]
-  );
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const currentPage = Math.min(Math.max(page, 1), pageCount);
+  const start = (currentPage - 1) * pageSize;
+  const pageRows = rows;
+
+  // Navigate to another page by updating this table's URL param; the server reads
+  // the new page. `replace` (not push) avoids stacking history on every click and
+  // keeps scroll position; other tables' page params are preserved.
+  function goToPage(p: number) {
+    const params = new URLSearchParams(Array.from(searchParams.entries()));
+    params.set(pageParam, String(p));
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  }
 
   const visibleIds = useMemo(
     () => pageRows.map((r) => Number(r.id)).filter((n) => Number.isInteger(n)),
@@ -153,7 +168,7 @@ export default function DataTableManager({
   const canDelete = dataset.deletable !== false;
 
   return (
-    <div className="card">
+    <div className="card" data-testid={`dataset-${dataset.key}`}>
       <div className="mb-3 flex items-center justify-between gap-3">
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           {dataset.label}{" "}
@@ -304,19 +319,19 @@ export default function DataTableManager({
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setPage(currentPage - 1)}
-                  disabled={currentPage === 0}
+                  onClick={() => goToPage(currentPage - 1)}
+                  disabled={currentPage <= 1}
                   className="btn-ghost text-sm disabled:opacity-40"
                 >
                   Prev
                 </button>
                 <span className="text-slate-500 dark:text-slate-400">
-                  Page {currentPage + 1} of {pageCount}
+                  Page {currentPage} of {pageCount}
                 </span>
                 <button
                   type="button"
-                  onClick={() => setPage(currentPage + 1)}
-                  disabled={currentPage >= pageCount - 1}
+                  onClick={() => goToPage(currentPage + 1)}
+                  disabled={currentPage >= pageCount}
                   className="btn-ghost text-sm disabled:opacity-40"
                 >
                   Next
