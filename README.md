@@ -49,6 +49,31 @@ refreshes on your next online visit so a medication or allergy change propagates
 Set your blood type and emergency contact on **Settings → Profile → Emergency
 card** (the blood type there overrides one derived from lab records).
 
+## Offline quick-log queue
+
+Logging often happens exactly where the signal doesn't: a set at a gym with dead
+reception, a dose on a flight, a weigh-in during an outage. For a small set of
+**idempotent quick-logs** — confirming a **dose taken** (Supplements & Meds), a
+**body-metric** weigh-in (Trends → Body), and a **vitals** entry (Trends → Body) —
+the app no longer fails when you're offline: it **queues the entry on your device**
+(in this browser's IndexedDB) and shows a "Saved offline — will sync when you
+reconnect" confirmation plus a **pending badge** counting the queued writes.
+
+On reconnect the queue **replays automatically** — on the browser's `online` event,
+on the next page load, and (on Chromium/Android, where it's supported) via the
+Background Sync API even if the tab was closed. Each queued write carries a
+client-generated key and the **date you captured it**, so a late sync lands on the
+right day and can never double-log: replays are applied exactly once and build on
+the existing per-dose/day and per-metric dedup. If your session expired while you
+were away, the queue is **kept** and you're prompted to log back in — nothing is
+silently dropped. As with the emergency card, the queue is cleared on logout and
+profile switch.
+
+Everything else still needs connectivity: this is a queue for a few one-tap logs,
+not a general offline mode. Forms with server-derived state (anything that reads or
+computes against your existing data) stay online-only, and page navigation while
+offline still shows the reconnect screen.
+
 ## Requirements
 
 - **Node.js ≥ 24** (Next.js 14 requires ≥ 18.17; this repo is pinned to Node 24 via `.nvmrc`)

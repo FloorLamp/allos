@@ -2,53 +2,33 @@
 import { requireWriteAccess } from "@/lib/auth";
 
 import { revalidatePath } from "next/cache";
-import { db } from "@/lib/db";
 import { captureDelete } from "@/lib/undo-delete-db";
-import { isRealIsoDate } from "@/lib/date";
 import { getUnitPrefs } from "@/lib/settings";
-import { toKg } from "@/lib/units";
+import { insertBodyMetric } from "@/lib/offline/writes";
 
 // Body-metrics write path. Moved here from the former standalone /body-metrics
 // page when Body Metrics was absorbed into the Trends "Body" tab (sidebar
-// consolidation) — the logic (canonical-kg conversion, input rejection,
-// profile-scoped writes) is unchanged; only the revalidate target moved to
-// /trends, where the data is now surfaced.
-
-// Parse an optional numeric form field: null when absent/blank, and null (not
-// NaN) when present but non-numeric — so a garbage value is skipped, never
-// persisted as NaN.
-function optionalNumber(raw: FormDataEntryValue | null): number | null {
-  if (raw === null || String(raw).trim() === "") return null;
-  const n = Number(raw);
-  return Number.isFinite(n) ? n : null;
+// consolidation). The insert (canonical-kg conversion, input rejection,
+// profile-scoped write) now lives in lib/offline/writes.ts::insertBodyMetric so the
+// offline replay route (issue #28) runs the SAME validation; this action just
+// resolves the session, converts using the login's unit pref, and revalidates.
+function strOrNull(raw: FormDataEntryValue | null): string | null {
+  return raw === null ? null : String(raw);
 }
 
 export async function addBodyMetric(formData: FormData) {
   const { login, profile } = requireWriteAccess();
-  const date = String(formData.get("date") ?? "").trim();
-  const weightRaw = formData.get("weight"); // in user's preferred weight unit
-  // Reject a non-ISO date or a missing/non-finite weight rather than writing a
-  // bad row (a NaN weight_kg or an impossible date).
-  if (
-    !isRealIsoDate(date) ||
-    weightRaw === null ||
-    String(weightRaw).trim() === ""
-  )
-    return;
-  const weight = Number(weightRaw);
-  if (!Number.isFinite(weight)) return;
   const prefs = getUnitPrefs(login.id);
-  db.prepare(
-    `INSERT INTO body_metrics (date, weight_kg, body_fat_pct, resting_hr, notes, profile_id)
-     VALUES (?,?,?,?,?,?)`
-  ).run(
-    date,
-    toKg(weight, prefs.weightUnit),
-    optionalNumber(formData.get("body_fat_pct")),
-    optionalNumber(formData.get("resting_hr")),
-    (formData.get("notes") as string)?.trim() || null,
-    profile.id
-  );
+  const wrote = insertBodyMetric(profile.id, {
+    date: String(formData.get("date") ?? "").trim(),
+    weight: String(formData.get("weight") ?? ""), // in the login's weight unit
+    weightUnit: prefs.weightUnit,
+    bodyFatPct: strOrNull(formData.get("body_fat_pct")),
+    restingHr: strOrNull(formData.get("resting_hr")),
+    notes: strOrNull(formData.get("notes")),
+  });
+  // Only revalidate when a row actually landed — a rejected input is a no-op.
+  if (!wrote) return;
   revalidatePath("/trends");
   revalidatePath("/");
 }

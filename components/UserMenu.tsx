@@ -6,6 +6,7 @@ import { IconChevronDown, IconLogout, IconInbox } from "@tabler/icons-react";
 import type { SessionProfile } from "@/lib/auth";
 import Avatar from "@/components/Avatar";
 import { clearEmergencyPayload } from "@/components/emergency-offline";
+import { clearQueue } from "@/lib/offline/queue-db";
 import { logoutAction, switchProfileAction } from "@/app/(app)/user-actions";
 
 // Active-profile display + profile switcher + logout, rendered in the layout
@@ -119,8 +120,10 @@ export default function UserMenu({
                     // Switching profiles must not leak the previous profile's
                     // offline emergency card; drop it before the switch action
                     // navigates (#42). The new profile re-caches on its next
-                    // /emergency visit.
+                    // /emergency visit. Same for any queued offline writes (#28) —
+                    // they belong to the outgoing profile, so clear them too.
                     clearEmergencyPayload();
+                    void clearQueue();
                     setOpen(false);
                   }}
                   className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm font-medium transition ${
@@ -154,7 +157,12 @@ export default function UserMenu({
         <form action={logoutAction}>
           <button
             type="submit"
-            onClick={() => clearEmergencyPayload()}
+            onClick={() => {
+              // Wipe offline PHI on logout: the emergency card copy (#42) and any
+              // queued offline writes (#28) — never leave them for the next login.
+              clearEmergencyPayload();
+              void clearQueue();
+            }}
             className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm font-medium text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-ink-750 dark:hover:text-slate-200"
           >
             <IconLogout className="h-4 w-4 shrink-0" stroke={1.75} />

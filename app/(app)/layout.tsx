@@ -6,6 +6,7 @@ import ExtractionToaster from "@/components/ExtractionToaster";
 import ImportJobsToaster from "@/components/ImportJobsToaster";
 import VersionWatcher from "@/components/VersionWatcher";
 import { ConfirmProvider } from "@/components/ConfirmDialog";
+import OfflineQueueProvider from "@/components/OfflineQueueProvider";
 import { getAppVersion } from "@/lib/version";
 import { TimezoneProvider } from "@/components/TimezoneProvider";
 import { WeekStartProvider } from "@/components/WeekStartProvider";
@@ -62,56 +63,58 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     <TimezoneProvider tz={timezone}>
       <WeekStartProvider weekStart={weekStart}>
         <ConfirmProvider>
-          <ActivityEditorProvider
-            units={units}
-            suggestions={suggestions}
-            history={exerciseHistory}
-            equipment={equipment}
-            bodyweightKg={bodyweightKg}
-          >
-            <div className="flex min-h-screen">
-              <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col gap-4 overflow-y-auto border-r border-black/10 bg-white/70 p-4 backdrop-blur-xl md:flex print:hidden dark:border-white/5 dark:bg-ink-950/70">
-                <SidebarContent
-                  activityDates={timelineDates}
-                  version={version}
-                  active={session.profile}
-                  profiles={profiles}
-                  restricted={restricted}
-                  isAdmin={isAdmin}
-                  multiProfile={multiProfile}
-                  reviewCount={reviewCount}
-                  readOnly={readOnly}
-                />
-              </aside>
-              {/* clip (not hidden) so it doesn't force overflow-y to auto, which
+          <OfflineQueueProvider>
+            <ActivityEditorProvider
+              units={units}
+              suggestions={suggestions}
+              history={exerciseHistory}
+              equipment={equipment}
+              bodyweightKg={bodyweightKg}
+            >
+              <div className="flex min-h-screen">
+                <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col gap-4 overflow-y-auto border-r border-black/10 bg-white/70 p-4 backdrop-blur-xl md:flex print:hidden dark:border-white/5 dark:bg-ink-950/70">
+                  <SidebarContent
+                    activityDates={timelineDates}
+                    version={version}
+                    active={session.profile}
+                    profiles={profiles}
+                    restricted={restricted}
+                    isAdmin={isAdmin}
+                    multiProfile={multiProfile}
+                    reviewCount={reviewCount}
+                    readOnly={readOnly}
+                  />
+                </aside>
+                {/* clip (not hidden) so it doesn't force overflow-y to auto, which
             turns <main> into a scroll container and breaks position:sticky inside it.
             min-w-0 lets this flex item shrink below its content's intrinsic width —
             without it, wide tables/rows blow the whole page out horizontally. */}
-              <main className="min-w-0 flex-1 overflow-x-clip">
-                <MobileNav
-                  activityDates={timelineDates}
-                  version={version}
-                  active={session.profile}
-                  profiles={profiles}
-                  restricted={restricted}
-                  isAdmin={isAdmin}
-                  multiProfile={multiProfile}
-                  reviewCount={reviewCount}
-                  readOnly={readOnly}
-                />
-                {/* max(padding, safe-area inset) keeps content clear of the
+                <main className="min-w-0 flex-1 overflow-x-clip">
+                  <MobileNav
+                    activityDates={timelineDates}
+                    version={version}
+                    active={session.profile}
+                    profiles={profiles}
+                    restricted={restricted}
+                    isAdmin={isAdmin}
+                    multiProfile={multiProfile}
+                    reviewCount={reviewCount}
+                    readOnly={readOnly}
+                  />
+                  {/* max(padding, safe-area inset) keeps content clear of the
               notch in landscape and the home indicator at the bottom now
               that the viewport paints edge-to-edge (viewportFit cover). */}
-                <div className="mx-auto max-w-6xl pt-8 pb-[max(2rem,env(safe-area-inset-bottom))] pl-[max(1.25rem,env(safe-area-inset-left))] pr-[max(1.25rem,env(safe-area-inset-right))] 2xl:max-w-7xl 3xl:max-w-[110rem]">
-                  {children}
-                </div>
-              </main>
-            </div>
-            <CommandPalette profileName={session.profile.name} />
-            <ExtractionToaster />
-            <ImportJobsToaster />
-            <VersionWatcher current={version.sha} />
-          </ActivityEditorProvider>
+                  <div className="mx-auto max-w-6xl pt-8 pb-[max(2rem,env(safe-area-inset-bottom))] pl-[max(1.25rem,env(safe-area-inset-left))] pr-[max(1.25rem,env(safe-area-inset-right))] 2xl:max-w-7xl 3xl:max-w-[110rem]">
+                    {children}
+                  </div>
+                </main>
+              </div>
+              <CommandPalette profileName={session.profile.name} />
+              <ExtractionToaster />
+              <ImportJobsToaster />
+              <VersionWatcher current={version.sha} />
+            </ActivityEditorProvider>
+          </OfflineQueueProvider>
         </ConfirmProvider>
       </WeekStartProvider>
     </TimezoneProvider>

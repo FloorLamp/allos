@@ -15,18 +15,14 @@ import {
   type DoseRate,
 } from "@/lib/refill";
 import SupplementForm from "./SupplementForm";
+import DoseToggleButton from "@/components/DoseToggleButton";
 import OverflowMenu, {
   MENU_ITEM,
   MENU_ITEM_DANGER,
 } from "@/components/OverflowMenu";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useUndoableDelete } from "@/components/useUndoableDelete";
-import {
-  updateSupplement,
-  toggleTaken,
-  toggleActive,
-  deleteSupplement,
-} from "./actions";
+import { updateSupplement, toggleActive, deleteSupplement } from "./actions";
 
 // One scheduled dose of a supplement, as it appears in a time bucket. A
 // supplement with multiple doses renders one of these per dose. Editing opens
@@ -127,20 +123,21 @@ export default function EditableSupplementRow({
     >
       <div className="flex min-w-0 flex-1 items-start gap-4">
         {!!s.active && due && (
-          <form action={toggleTaken}>
-            <input type="hidden" name="dose_id" value={dose.id} />
-            <input type="hidden" name="supplement_id" value={s.id} />
-            <button
-              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 text-sm transition ${
-                isTaken
+          <DoseToggleButton
+            doseId={dose.id}
+            supplementId={s.id}
+            taken={isTaken}
+            ariaLabel={(t) => (t ? "Mark not taken" : "Mark taken")}
+            className={(t) =>
+              `flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 text-sm transition ${
+                t
                   ? "border-brand-600 bg-brand-600 text-white"
                   : "border-black/10 text-transparent hover:border-brand-400 dark:border-white/10"
-              }`}
-              aria-label={isTaken ? "Mark not taken" : "Mark taken"}
-            >
-              <IconCheck className="h-4 w-4" stroke={2.5} />
-            </button>
-          </form>
+              }`
+            }
+          >
+            <IconCheck className="h-4 w-4" stroke={2.5} />
+          </DoseToggleButton>
         )}
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">

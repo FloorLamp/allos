@@ -5,7 +5,9 @@ import { useRouter } from "next/navigation";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
+import { useOfflineQueue } from "@/components/OfflineQueueProvider";
 import { validateVitalsInput } from "@/lib/vitals-input";
+import { shouldQueueOffline } from "@/lib/offline/queue";
 import { addVitals } from "./vitals-actions";
 
 // Manual "Log vitals" quick-add (issue #16) — a sibling of BodyQuickAdd on the
@@ -24,29 +26,52 @@ export default function VitalsQuickAdd({
 }) {
   const router = useRouter();
   const toast = useToast();
+  const { enqueue } = useOfflineQueue();
   const formRef = useRef<HTMLFormElement>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function handle(formData: FormData) {
     setError(null);
-    const validationError = validateVitalsInput({
-      systolic: formData.get("systolic") as string | null,
-      diastolic: formData.get("diastolic") as string | null,
-      glucose: formData.get("glucose") as string | null,
-      glucoseUnit: formData.get("glucose_unit") as string | null,
-      spo2: formData.get("spo2") as string | null,
-      temperature: formData.get("temperature") as string | null,
-      tempUnit: formData.get("temp_unit") as string | null,
-      sleepHours: formData.get("sleep_hours") as string | null,
-      hrv: formData.get("hrv") as string | null,
-    });
+    const s = (k: string) => {
+      const v = formData.get(k);
+      return v === null || String(v).trim() === "" ? null : String(v);
+    };
+    const raw = {
+      systolic: s("systolic"),
+      diastolic: s("diastolic"),
+      glucose: s("glucose"),
+      glucoseUnit: s("glucose_unit"),
+      spo2: s("spo2"),
+      temperature: s("temperature"),
+      tempUnit: s("temp_unit"),
+      sleepHours: s("sleep_hours"),
+      hrv: s("hrv"),
+    };
+    const validationError = validateVitalsInput(raw);
     if (validationError) {
       setError(validationError);
       return;
     }
+    const date = String(formData.get("date") ?? "").trim();
+    // Queue the raw fields to replay on reconnect, landing on the entered date
+    // (issue #28) — the server re-runs the same normalizeVitalsInput on replay.
+    const queueOffline = async () => {
+      await enqueue("vitals", date, raw);
+      toast("Saved offline — will sync when you reconnect.");
+      formRef.current?.reset();
+    };
+
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      await queueOffline();
+      return;
+    }
     try {
       await addVitals(formData);
-    } catch {
+    } catch (err) {
+      if (shouldQueueOffline(navigator.onLine !== false, err)) {
+        await queueOffline();
+        return;
+      }
       setError("Couldn't save these vitals. Please try again.");
       return;
     }
