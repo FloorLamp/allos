@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { IconX } from "@tabler/icons-react";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { useUndoableDelete } from "@/components/useUndoableDelete";
 import { deleteBodyMetric } from "./body-actions";
 
 // Delete control for a body-metrics history row on the Trends "Body" tab. A plain
@@ -16,12 +17,13 @@ export default function DeleteBodyMetricButton({
   label: string;
 }) {
   const confirm = useConfirm();
+  const undoable = useUndoableDelete();
   const [busy, setBusy] = useState(false);
 
   async function onDelete() {
     const ok = await confirm({
       title: "Delete entry",
-      message: `Delete the body-metrics entry from ${label}? This can’t be undone.`,
+      message: `Delete the body-metrics entry from ${label}? You can undo this.`,
       confirmLabel: "Delete",
       danger: true,
     });
@@ -30,7 +32,9 @@ export default function DeleteBodyMetricButton({
     fd.set("id", String(id));
     setBusy(true);
     try {
-      await deleteBodyMetric(fd);
+      await undoable(deleteBodyMetric, fd, {
+        deletedMessage: "Body-metrics entry deleted.",
+      });
     } finally {
       setBusy(false);
     }

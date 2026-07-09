@@ -6,6 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { revalidatePath } from "next/cache";
 import { db, today } from "@/lib/db";
+import { captureDelete } from "@/lib/undo-delete-db";
 import { isRealIsoDate } from "@/lib/date";
 import type { MedicalCategory } from "@/lib/types";
 import { extractMedicalDocument, isSupportedFile } from "@/lib/medical-extract";
@@ -212,18 +213,22 @@ export async function updateRecord(formData: FormData) {
   revalidateMedical();
 }
 
-export async function deleteRecord(formData: FormData) {
+export async function deleteRecord(
+  formData: FormData
+): Promise<{ undoId: number | null }> {
   const { profile } = requireSession();
   const id = Number(formData.get("id"));
-  if (!id) return;
-  db.prepare("DELETE FROM medical_records WHERE id = ? AND profile_id = ?").run(
-    id,
-    profile.id
-  );
+  if (!id) return { undoId: null };
+  // Capture into the undo holding table and delete in one transaction (issue #30)
+  // so the record can be restored from the toast.
+  const undoId = captureDelete("biomarker-record", profile.id, id);
   // Deleting the last reading for a starred biomarker would leave the star
   // pointing at nothing (an empty pinned tile) — drop any now-orphaned stars.
+  // NOTE (consciously scoped out of undo): a star orphan-cleaned here is NOT
+  // re-created on Undo — the reading returns but the pinned-tile star stays gone.
   cleanupOrphanStars(profile.id);
   revalidateMedical();
+  return { undoId };
 }
 
 // Surfaced (as the document's extraction_error) when the profile's daily AI

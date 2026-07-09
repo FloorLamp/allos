@@ -3,6 +3,7 @@ import { requireSession } from "@/lib/auth";
 
 import { revalidatePath } from "next/cache";
 import { db, today } from "@/lib/db";
+import { captureDelete } from "@/lib/undo-delete-db";
 import { getActiveSituations, setActiveSituations } from "@/lib/settings";
 import { generateAndStoreSuggestions } from "@/lib/supplement-suggest";
 import {
@@ -523,16 +524,21 @@ export async function promoteSideEffectToIntolerance(formData: FormData) {
   revalidatePath("/");
 }
 
-export async function deleteSupplement(formData: FormData) {
+export async function deleteSupplement(
+  formData: FormData
+): Promise<{ undoId: number | null }> {
   const { profile } = requireSession();
   const id = Number(formData.get("id"));
-  if (!id) return;
-  db.prepare("DELETE FROM intake_items WHERE id = ? AND profile_id = ?").run(
-    id,
-    profile.id
-  );
+  if (!id) return { undoId: null };
+  // Capture the intake item + its whole cascade (doses, pairs, adherence logs,
+  // medication courses, side effects) into the undo holding table and delete it in
+  // one transaction (issue #30), so a mis-tapped supplement/med can be restored
+  // from the toast. NOTE: refill supply decrements are NOT recomputed on Undo — the
+  // item's quantity_on_hand is restored verbatim as it stood at delete time.
+  const undoId = captureDelete("intake-item", profile.id, id);
   revalidatePath("/medicine");
   revalidatePath("/");
+  return { undoId };
 }
 
 export async function toggleSituation(formData: FormData) {

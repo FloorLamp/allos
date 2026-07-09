@@ -48,6 +48,7 @@ import { runDigest } from "../lib/notifications/digest-data";
 import { runUpcomingDigest } from "../lib/notifications/upcoming-digest-data";
 import { runScheduledBackup } from "../lib/backup";
 import { pruneAuditEvents } from "../lib/audit";
+import { sweepDeletedRows } from "../lib/undo-delete-db";
 import { inferWorkoutSchedule } from "../lib/queries";
 import { slotDue } from "../lib/notifications/schedule";
 import { db, today } from "../lib/db";
@@ -357,6 +358,12 @@ async function tick() {
   // must never affect the notification flow or the exit code.
   const pruned = pruneAuditEvents();
   if (pruned > 0) log.info("pruned audit events", { pruned });
+
+  // Undo-window sweep (#30): global, once per tick. Purges undo holding rows older
+  // than 24h so a deleted row is genuinely gone after the window. Best-effort
+  // (sweepDeletedRows never throws); never affects the notification flow/exit code.
+  const swept = sweepDeletedRows();
+  if (swept > 0) log.info("swept expired undo rows", { swept });
 
   process.exit(anyFailed ? 1 : 0);
 }

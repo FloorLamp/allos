@@ -20,6 +20,7 @@ import OverflowMenu, {
   MENU_ITEM_DANGER,
 } from "@/components/OverflowMenu";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { useUndoableDelete } from "@/components/useUndoableDelete";
 import {
   updateSupplement,
   toggleTaken,
@@ -56,6 +57,7 @@ export default function EditableSupplementRow({
   const [editing, setEditing] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const confirm = useConfirm();
+  const undoable = useUndoableDelete();
   const s = supplement;
 
   if (editing) {
@@ -306,14 +308,17 @@ export default function EditableSupplementRow({
                 onClick={async () => {
                   const ok = await confirm({
                     title: "Delete supplement",
-                    message: `Delete “${s.name}”? This can’t be undone.`,
+                    message: `Delete “${s.name}”? You can undo this.`,
                     confirmLabel: "Delete",
                     danger: true,
                   });
                   if (!ok) return;
+                  close();
                   const fd = new FormData();
                   fd.set("id", String(s.id));
-                  await runAction(deleteSupplement, fd, "Supplement deleted");
+                  await undoable(deleteSupplement, fd, {
+                    deletedMessage: "Supplement deleted.",
+                  });
                 }}
               >
                 Delete
