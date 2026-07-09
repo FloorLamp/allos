@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { requireSession } from "@/lib/auth";
+import { recordAudit } from "@/lib/audit";
+import { AUDIT_ACTIONS } from "@/lib/audit-actions";
 import {
   mintCalendarFeedToken,
   disableCalendarFeed,
@@ -31,10 +33,18 @@ export type FeedResult =
 export async function enableCalendarFeedAction(
   expiry?: string
 ): Promise<FeedResult> {
-  const { profile } = requireSession();
+  const { profile, login } = requireSession();
   const choice = isValidExpiryChoice(expiry) ? expiry : "never";
   const token = mintCalendarFeedToken(profile.id, choice);
   upsertConnection(profile.id, PROVIDER, { status: "connected" });
+  // Minting kills any prior token, so this covers both first mint and rotation.
+  recordAudit({
+    loginId: login.id,
+    profileId: profile.id,
+    action: AUDIT_ACTIONS.tokenMint,
+    target: "calendar-feed",
+    detail: `expiry:${choice}`,
+  });
   revalidatePath("/integrations/calendar-feed");
   revalidatePath("/data");
   return { ok: true, path: `/api/calendar/${token}.ics` };
@@ -42,9 +52,15 @@ export async function enableCalendarFeedAction(
 
 // Disable the feed: the token hash is dropped (URL dies) and the route 404s.
 export async function disableCalendarFeedAction(): Promise<FeedResult> {
-  const { profile } = requireSession();
+  const { profile, login } = requireSession();
   disableCalendarFeed(profile.id);
   upsertConnection(profile.id, PROVIDER, { status: "disconnected" });
+  recordAudit({
+    loginId: login.id,
+    profileId: profile.id,
+    action: AUDIT_ACTIONS.tokenRevoke,
+    target: "calendar-feed",
+  });
   revalidatePath("/integrations/calendar-feed");
   revalidatePath("/data");
   return { ok: true, message: "Feed disabled." };
