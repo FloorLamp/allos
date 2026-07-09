@@ -22,3 +22,13 @@ export const SESSION_COOKIE_SECURE = process.env.NODE_ENV === "production";
 export const SESSION_COOKIE = SESSION_COOKIE_SECURE
   ? "__Host-ht_session"
   : "ht_session";
+
+// Second-factor challenge cookie (issue #23). Between a correct password and a
+// correct TOTP code the login is NOT authenticated — no session exists. This
+// short-lived cookie carries only the random challenge token (the DB row it maps
+// to holds the login id + expiry); it is never a session. Same __Host- hardening
+// and Secure-gated naming as the session cookie so the two never drift on the
+// Secure attribute.
+export const TWO_FACTOR_COOKIE = SESSION_COOKIE_SECURE
+  ? "__Host-ht_2fa"
+  : "ht_2fa";

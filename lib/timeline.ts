@@ -699,6 +699,42 @@ function collectEvents(
     );
   }
 
+  // Milestone recognitions (#32). One event per fired milestone on its achieved_on
+  // date. Not training-gated — adherence/goal milestones are relevant to every
+  // profile — so it renders regardless of includeTrainingEvents.
+  const milestoneBounds = exact("achieved_on");
+  const milestones = db
+    .prepare(
+      `SELECT id, title, detail, achieved_on, created_at
+         FROM milestones
+        WHERE profile_id = ?${milestoneBounds.clause}
+        ORDER BY achieved_on DESC, id DESC
+        LIMIT ?`
+    )
+    .all(profileId, ...milestoneBounds.params, perTableLimit) as {
+    id: number;
+    title: string;
+    detail: string | null;
+    achieved_on: string;
+    created_at: string;
+  }[];
+  for (const m of milestones) {
+    pushLimited(
+      events,
+      {
+        id: `milestone:${m.id}`,
+        date: m.achieved_on,
+        category: "milestone",
+        title: m.title,
+        detail: m.detail,
+        href: "/timeline?category=milestone",
+        sortTime: timeFromCreatedAt(m.created_at, tz),
+        tone: "good",
+      },
+      options
+    );
+  }
+
   return sortTimelineEvents(events);
 }
 
@@ -755,6 +791,7 @@ export function getTimelineDates(
       WHERE profile_id = @profileId`,
     "SELECT date FROM encounters WHERE profile_id = @profileId",
     "SELECT date FROM insights WHERE profile_id = @profileId",
+    "SELECT achieved_on AS date FROM milestones WHERE profile_id = @profileId",
   ].join("\nUNION\n");
 
   return (

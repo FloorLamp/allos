@@ -80,6 +80,7 @@ export const OWNED_TABLES = [
   "ai_usage_counters",
   "deleted_rows",
   "replayed_keys",
+  "milestones",
 ] as const;
 
 export type OwnedTable = (typeof OWNED_TABLES)[number];

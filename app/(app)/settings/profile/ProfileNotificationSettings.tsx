@@ -28,6 +28,11 @@ export default function ProfileNotificationSettings({
   const [suppHours, setSuppHours] = useState(schedule.supplementHours);
   const [workoutEnabled, setWorkoutEnabled] = useState(schedule.workoutEnabled);
   const [digestHour, setDigestHour] = useState(schedule.digestHour);
+  const [recapDay, setRecapDay] = useState(schedule.weeklyRecapDay);
+  const [recapHour, setRecapHour] = useState(schedule.weeklyRecapHour ?? 9);
+  const [milestonesEnabled, setMilestonesEnabled] = useState(
+    schedule.milestonesEnabled
+  );
   const [pending, startTransition] = useTransition();
   const [savedAt, setSavedAt] = useState(0);
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(
@@ -56,6 +61,9 @@ export default function ProfileNotificationSettings({
     );
     fd.set("workout_enabled", workoutEnabled ? "1" : "0");
     fd.set("digest_hour", digestHour == null ? "" : String(digestHour));
+    fd.set("recap_day", recapDay == null ? "" : String(recapDay));
+    fd.set("recap_hour", String(recapHour));
+    fd.set("milestones_enabled", milestonesEnabled ? "1" : "0");
     return fd;
   }
 
@@ -202,6 +210,77 @@ export default function ProfileNotificationSettings({
                 </option>
               ))}
             </select>
+          </div>
+
+          {/* Weekly recap — a once-a-week summary of the last seven days
+              (workouts, volume, PRs, adherence, weight, streak). */}
+          <div className="border-t border-slate-100 pt-5 dark:border-slate-800">
+            <label className="label">Weekly recap</label>
+            <p className="mb-2 text-xs text-slate-400 dark:text-slate-500">
+              A once-a-week summary of your last seven days, on the day and hour
+              below (this profile’s timezone). Skips weeks with nothing to
+              report.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <select
+                value={recapDay == null ? "" : String(recapDay)}
+                onChange={(e) =>
+                  setRecapDay(
+                    e.target.value === "" ? null : Number(e.target.value)
+                  )
+                }
+                className="input sm:w-40"
+                aria-label="Weekly recap day"
+              >
+                <option value="">Off</option>
+                {[
+                  "Sunday",
+                  "Monday",
+                  "Tuesday",
+                  "Wednesday",
+                  "Thursday",
+                  "Friday",
+                  "Saturday",
+                ].map((d, i) => (
+                  <option key={d} value={i}>
+                    {d}
+                  </option>
+                ))}
+              </select>
+              {recapDay != null && (
+                <select
+                  value={String(recapHour)}
+                  onChange={(e) => setRecapHour(Number(e.target.value))}
+                  className="input sm:w-32"
+                  aria-label="Weekly recap hour"
+                >
+                  {Array.from({ length: 24 }, (_, i) => (
+                    <option key={i} value={i}>
+                      {String(i).padStart(2, "0")}:00
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+          </div>
+
+          {/* Milestone alerts — a quiet notification when a milestone fires
+              (Nth workout, streak length, goal reached, adherence run). They
+              are always recorded to the Timeline regardless of this toggle. */}
+          <div className="border-t border-slate-100 pt-5 dark:border-slate-800">
+            <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
+              <input
+                type="checkbox"
+                checked={milestonesEnabled}
+                onChange={(e) => setMilestonesEnabled(e.target.checked)}
+                className="h-4 w-4 accent-brand-600"
+              />
+              Milestone alerts
+            </label>
+            <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+              A quiet note when you hit a milestone. Milestones always appear on
+              your Timeline either way.
+            </p>
           </div>
         </>
       )}

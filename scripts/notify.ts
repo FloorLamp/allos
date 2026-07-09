@@ -46,6 +46,8 @@ import { runEscalations } from "../lib/notifications/escalate";
 import { runRefills } from "../lib/notifications/refill";
 import { runDigest } from "../lib/notifications/digest-data";
 import { runUpcomingDigest } from "../lib/notifications/upcoming-digest-data";
+import { runWeeklyRecap } from "../lib/notifications/weekly-recap-data";
+import { runMilestones } from "../lib/milestones-db";
 import { runScheduledBackup } from "../lib/backup";
 import { pruneAuditEvents } from "../lib/audit";
 import { sweepDeletedRows } from "../lib/undo-delete-db";
@@ -316,6 +318,43 @@ async function tickProfile(
       });
       anyFailed = true;
     }
+  }
+
+  // Weekly recap (#32): once a week, on the chosen weekday at weeklyRecapHour
+  // (this profile's timezone). Own per-profile/day dedup key — the recap only
+  // triggers on its weekday, and the same-day marker prevents a double send, so
+  // next week's same weekday (a new date) fires again.
+  if (
+    sched.weeklyRecapDay != null &&
+    weekday === sched.weeklyRecapDay &&
+    slotDue(sched.weeklyRecapHour ?? 9, hour) &&
+    getProfileSetting(profile.id, "notify_last_weekly_recap") !== date
+  ) {
+    try {
+      const wr = await runWeeklyRecap(profile.id, profile.name, date);
+      if (wr.failed) anyFailed = true;
+    } catch (e) {
+      log.error("weekly recap failed", {
+        profile: profile.id,
+        err: e instanceof Error ? e : String(e),
+      });
+      anyFailed = true;
+    }
+  }
+
+  // Milestones (#32): runs every hour like the refill/escalation checks. The
+  // milestones table IS the once-only fired marker, so re-running is idempotent —
+  // an already-recorded milestone never re-fires; a newly-crossed one is recorded
+  // to the timeline and (unless the profile opted out) announced once.
+  try {
+    const ms = await runMilestones(profile.id, profile.name, date);
+    if (ms.failed) anyFailed = true;
+  } catch (e) {
+    log.error("milestone check failed", {
+      profile: profile.id,
+      err: e instanceof Error ? e : String(e),
+    });
+    anyFailed = true;
   }
 
   return anyFailed;

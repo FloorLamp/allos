@@ -88,6 +88,26 @@ const ALLOW: { file: string; fn: string; why: string }[] = [
     why: "login-scoped: sends a test push to the caller's own subscribed browsers",
   },
   {
+    file: "app/(app)/settings/actions.ts",
+    fn: "begin2fa",
+    why: "login-scoped: starts 2FA enrollment for the caller's OWN login (mints a pending TOTP secret), not profile-owned data",
+  },
+  {
+    file: "app/(app)/settings/actions.ts",
+    fn: "activate2fa",
+    why: "login-scoped: verifies a code and enables 2FA on the caller's OWN login (like change-own-password)",
+  },
+  {
+    file: "app/(app)/settings/actions.ts",
+    fn: "disable2fa",
+    why: "login-scoped: turns 2FA off on the caller's OWN login after re-auth (password + code)",
+  },
+  {
+    file: "app/(app)/settings/actions.ts",
+    fn: "regenerate2faRecoveryCodes",
+    why: "login-scoped: rotates the caller's OWN one-time recovery codes after a valid code",
+  },
+  {
     file: "app/(app)/integrations/calendar-feed/actions.ts",
     fn: "enableConsolidatedCalendarFeedAction",
     why: "login-scoped: mints the family .ics token keyed by login.id (like a push subscription); the feed only exposes appointments the login can already READ, so a read-only member may manage it",
@@ -112,6 +132,11 @@ const ALLOW: { file: string; fn: string; why: string }[] = [
     file: "app/(auth)/login/actions.ts",
     fn: "login",
     why: "public auth entry point; runs before any session/profile exists",
+  },
+  {
+    file: "app/(auth)/login/actions.ts",
+    fn: "verifyLoginTotp",
+    why: "public auth entry point (issue #23 second-factor step); completes a pre-session 2FA challenge, mints the session — no profile-owned data",
   },
   // --- Thin wrappers that delegate to a gated helper ---
   {

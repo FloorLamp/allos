@@ -10,9 +10,8 @@
 
 ## Features
 
-- **Timeline** — day-by-day health history across activity, body metrics, labs, medications, documents, visits, and goals
-- **Command palette** (**Cmd/Ctrl-K**) — search every domain, jump to create surfaces (**Log workout**, **Log weight**, **Log vitals**, **Add appointment**, **Add biomarker record**), and log the common one inline: type **`weight 82.5`** (aliases `wt`/`bw`; an optional trailing `kg`/`lb` overrides your unit) and press Enter to record a weigh-in without leaving the palette
-- **Training** — workout history, goals, strength analysis, cardio records, sport summaries, and per-exercise history; a card's **⋯** menu offers **Log again** (repeat a session — pre-fills a new entry from it, dated today) and **Merge with…** (fold two of that day's activities into one for duplicates no auto-detector caught, undoable), and the feed header has a one-tap **Repeat last**
+- **Timeline** — day-by-day health history across activity, body metrics, labs, medications, documents, visits, goals, and milestones
+- **Training** — workout history, goals, strength analysis, cardio records, sport summaries, and per-exercise history; a workout's **⋯ → Merge with…** menu folds two of that day's activities into one for duplicates no auto-detector caught (undoable)
 - **Trends** — charts and analysis in one place, tab by tab: **Body** (weight, body fat %, resting heart rate, plus a **Log vitals** quick-add for blood pressure, glucose, SpO₂, temperature, sleep, and HRV — the same measures the Health Connect exporter syncs, so manual and synced readings share one home), **Fitness**, **Biomarkers** (including a **Trajectory watch** that warns before a reading crosses a line — a value projected to cross its reference/optimal boundary, a persistent non-optimal pattern, or a fast decline/rise), **Compare**, and Claude-powered **Insights** (daily analysis of your activity, metrics, and goals)
 - **Household** — for any login that can reach more than one profile (an admin, or a caregiver **member** granted several profiles), a cross-profile overview: one card per person showing today's **attention items** — supplement/medication doses due, low refills, and the next scheduled visit — alongside at-a-glance stats. **Confirm** a due dose for anyone straight from their card **without switching profiles** (the button shows only where you have write access; a read-only grant sees the card but no actions), or tap a card to open that profile. Hidden for single-profile logins.
 - **Goals** — set targets, track progress bars, mark achieved/archived
@@ -21,7 +20,7 @@
 - **Immunizations** — record vaccines and doses, track them against the CDC schedule (due / overdue / up to date), and see immunity titers pulled from your labs
 - **Health-record import** — pull immunizations, labs, and vitals straight from a MyChart “Download Summary” (CCD/XDM), a SMART Health Card, or an Epic / Apple Health FHIR bundle
 - **Supplements & medications** — schedule intake and check it off each day, with adherence and refill tracking
-- **Undo delete** — deleting an activity, body-metrics entry, biomarker record, or supplement/medication offers a one-tap **Undo** toast; the row (and its children) is held for 24 hours and restored intact if you undo, then purged. **Data → Manage & Export** multi-select bulk delete of those same datasets is undoable the same way — one **Undo** restores the whole batch
+- **Undo delete** — deleting an activity, body-metrics entry, biomarker record, or supplement/medication offers a one-tap **Undo** toast; the row (and its children) is held for 24 hours and restored intact if you undo, then purged
 - **AI activity log** — every AI call and failure recorded to a file and streamed live in Settings → AI logs
 - **Audit log** — a durable record of who accessed or modified which profile's data (logins in/out, profile switches, medical-file and share-link views, document uploads/deletes, and admin/family changes), reviewable with filters under **Settings → Audit** (admin only); identifiers only, never medical content, retained 90 days
 - **Data hub** — bring data in (upload documents, paste logs, connect a device or service) under **Data → Import**, then see everything that has ever imported in one place under **Data → Review**: a single chronological **feed** that merges uploaded documents, pasted/CSV jobs, and background integration syncs (each entry showing what it produced and linking to its detail/verify view), plus **possible duplicates** — a Strava run and a manual/Health Connect run on the same day, two same-source imports of one workout (upstream double-feeding, e.g. Strava ingesting the same session from both Garmin and Health Connect), or two body-metric rows that would double-count, detected across sources and resolved by **Merge**, **Keep both**, or **Dismiss**, with the decision remembered so a later re-sync won't undo it; plus any integration that's currently failing — all surfaced with a badge on the profile menu (admins can also expand a per-sync **View raw** to inspect the exact provider payload). Finally, browse and export everything you've logged under **Data → Manage & Export**; integrations available today are **Google Health Connect** and **Strava** (Garmin planned)
@@ -119,7 +118,19 @@ Two concepts:
 Once signed in as an admin, manage everyone under **Settings → Family**: add or
 rename profiles, create logins, reset passwords, and grant each member login
 access to specific profiles (admins see all automatically). Any login can
-change its own password under **Settings → Preferences**.
+change its own password and turn on **two-factor authentication (2FA)** under
+**Settings → Preferences**.
+
+**Two-factor authentication (TOTP).** Any login can add a time-based one-time
+code from an authenticator app (Google Authenticator, Authy, 1Password, …) as a
+second step at sign-in — strongly recommended for admins. Enrolling shows an
+`otpauth://` URI + manual key and, after you verify one code, **8 one-time
+recovery codes** shown once (save them). At sign-in, a correct password then
+prompts for a code before any session is created. Passwords must be at least 10
+characters with a mix of character classes. If an admin is ever locked out (lost
+authenticator **and** recovery codes), the operator can set `ALLOS_DISABLE_2FA`
+(below) to bypass 2FA for that username at the next login — logged loudly and
+audited.
 
 Each grant carries an **access level**: **read & write** (the default — the
 member can view _and_ edit that profile) or **read-only** (view everything, but
@@ -139,20 +150,21 @@ the app and the `npm run seed` script, and is gitignored:
 cp .env.example .env.local   # then edit in your values
 ```
 
-| Variable               | Description                                                                                                                                                                                 |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ADMIN_USERNAME`       | Optional. Username for the bootstrap admin login created on first boot (default `admin`). Read only when no login exists yet.                                                               |
-| `ADMIN_PASSWORD`       | Password for the bootstrap admin login. If unset on first boot, a random one is generated and printed to the log **once** — capture it. Read only when no login exists yet.                 |
-| `ANTHROPIC_API_KEY`    | Enables Claude-powered insights and medical-document extraction. Optional when `AI_BASE_URL` points at a local server that ignores keys.                                                    |
-| `AI_BASE_URL`          | Optional. Point the app at a self-hosted / local inference server exposing an Anthropic-compatible API (Ollama, a proxy, …) for zero external egress. Set alone, or with a key it forwards. |
-| `HEALTH_AI_MODEL`      | Optional. Override the AI model (defaults to `claude-sonnet-4-6`).                                                                                                                          |
-| `HEALTH_AI_MAX_TOKENS` | Optional. Max output tokens for document extraction (default `16000`).                                                                                                                      |
-| `LOG_LEVEL`            | Optional. `debug`/`info`/`warn`/`error` (default `info`).                                                                                                                                   |
-| `LOG_FORMAT`           | Optional. `text` or `json`. Defaults to `text` in dev, `json` in prod.                                                                                                                      |
-| `AI_LOG_PROMPTS`       | Optional. Set `0` to keep prompts/responses out of the AI activity log.                                                                                                                     |
-| `PORT`                 | Optional (Docker). Host port to expose (container listens on `3000`).                                                                                                                       |
-| `TZ`                   | Optional. Timezone is DB-backed — the instance default under **Settings → Server**, per-profile under **Settings → Profile**; a `TZ` env only seeds the instance default on first boot.     |
-| `DATA_DIR`             | Optional (Docker). Host path for persistent data — see **Deploy with Docker**.                                                                                                              |
+| Variable               | Description                                                                                                                                                                                                                                                                                                          |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ADMIN_USERNAME`       | Optional. Username for the bootstrap admin login created on first boot (default `admin`). Read only when no login exists yet.                                                                                                                                                                                        |
+| `ADMIN_PASSWORD`       | Password for the bootstrap admin login. If unset on first boot, a random one is generated and printed to the log **once** — capture it. Read only when no login exists yet.                                                                                                                                          |
+| `ALLOS_DISABLE_2FA`    | Optional bootstrap-recovery escape hatch. Comma-separated username(s) whose TOTP second factor is **skipped** at login (for an admin locked out after losing their authenticator + recovery codes). Every bypass is logged loudly and audited (`login.2fa-bypass`). Remove it and re-enroll once access is restored. |
+| `ANTHROPIC_API_KEY`    | Enables Claude-powered insights and medical-document extraction. Optional when `AI_BASE_URL` points at a local server that ignores keys.                                                                                                                                                                             |
+| `AI_BASE_URL`          | Optional. Point the app at a self-hosted / local inference server exposing an Anthropic-compatible API (Ollama, a proxy, …) for zero external egress. Set alone, or with a key it forwards.                                                                                                                          |
+| `HEALTH_AI_MODEL`      | Optional. Override the AI model (defaults to `claude-sonnet-4-6`).                                                                                                                                                                                                                                                   |
+| `HEALTH_AI_MAX_TOKENS` | Optional. Max output tokens for document extraction (default `16000`).                                                                                                                                                                                                                                               |
+| `LOG_LEVEL`            | Optional. `debug`/`info`/`warn`/`error` (default `info`).                                                                                                                                                                                                                                                            |
+| `LOG_FORMAT`           | Optional. `text` or `json`. Defaults to `text` in dev, `json` in prod.                                                                                                                                                                                                                                               |
+| `AI_LOG_PROMPTS`       | Optional. Set `0` to keep prompts/responses out of the AI activity log.                                                                                                                                                                                                                                              |
+| `PORT`                 | Optional (Docker). Host port to expose (container listens on `3000`).                                                                                                                                                                                                                                                |
+| `TZ`                   | Optional. Timezone is DB-backed — the instance default under **Settings → Server**, per-profile under **Settings → Profile**; a `TZ` env only seeds the instance default on first boot.                                                                                                                              |
+| `DATA_DIR`             | Optional (Docker). Host path for persistent data — see **Deploy with Docker**.                                                                                                                                                                                                                                       |
 
 You can also `export` these directly instead of using a file.
 
@@ -349,6 +361,16 @@ Reminders (supplements due in a window, and a workout nudge when you're behind o
 weekly target) are delivered over two channels — **Telegram** and **Web Push** — that
 share the same schedule and per-day/slot dedup. Enable either, or both; a profile with
 both configured gets each reminder on both.
+
+Beyond reminders, two opt-in retention nudges ride the same channels: a **weekly recap**
+— a quiet once-a-week summary of your last seven days (workouts + volume, PRs, supplement
+adherence, a body-weight trend, and streak status), set the send day/hour under
+**Settings → Profile**; and **milestone alerts** — a brief note when you cross a
+milestone (your 10th/50th/100th/… workout, a 7/30/100/365-day streak, a completed goal, or
+a 7/30-day adherence run). Both are rule-based and work with **no AI configured**.
+Milestones are always recorded to your **Timeline** (under the **Milestone** filter)
+regardless of the alert toggle. The recap is also available as an off-by-default
+**Weekly recap** dashboard card (enable it from the dashboard's **Customize** control).
 
 ### Telegram
 
