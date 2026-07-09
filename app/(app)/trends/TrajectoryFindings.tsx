@@ -43,7 +43,11 @@ export default function TrajectoryFindings() {
           <li
             key={f.dedupeKey}
             data-testid="trajectory-finding"
-            className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50/60 p-3 dark:border-amber-900/60 dark:bg-amber-950/30"
+            className={`flex items-start gap-3 rounded-xl border p-3 ${
+              f.tone === "info"
+                ? "border-slate-200 bg-slate-50/60 dark:border-ink-750 dark:bg-ink-850/40"
+                : "border-amber-200 bg-amber-50/60 dark:border-amber-900/60 dark:bg-amber-950/30"
+            }`}
           >
             <div className="min-w-0 flex-1">
               <p className="font-medium text-slate-800 dark:text-slate-100">

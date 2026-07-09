@@ -146,6 +146,7 @@ describe("rule 1 — approaching boundary", () => {
     expect(f.actionHref).toBeUndefined(); // no href supplied
     expect(f.evidenceData.boundary).toBe(60);
     expect(f.evidenceData.boundaryKind).toBe("reference");
+    expect(f.tone).toBe("caution");
     expect(f.evidenceData.projectedDays).toBe(60);
   });
 
@@ -193,6 +194,8 @@ describe("rule 1 — approaching boundary", () => {
     expect(app!.evidenceData.boundary).toBe(1);
     expect(app!.evidenceData.boundaryKind).toBe("optimal");
     expect(app!.title).toContain("high");
+    // An optimal-edge approach is the mildest signal — informational, not caution.
+    expect(app!.tone).toBe("info");
   });
 });
 

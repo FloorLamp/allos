@@ -254,6 +254,10 @@ function approachingBoundary(
 
   return {
     ...baseFinding(input, "approaching"),
+    // Approaching a mere OPTIMAL edge (still optimal, still in reference range)
+    // is the mildest signal here — tone it as informational so the amber
+    // "caution" treatment stays reserved for reference-boundary approaches.
+    ...(target.kind === "optimal" ? { tone: "info" as const } : {}),
     rule: "approaching",
     title,
     detail,
