@@ -25,6 +25,17 @@ export default function ImportJobsToaster() {
     let timer: ReturnType<typeof setTimeout>;
 
     const poll = async () => {
+      // Skip polling while the tab is hidden, but only after prev.current is seeded
+      // (see ExtractionToaster) — a job that finishes while hidden is still caught
+      // as a `before === undefined` terminal on the next visible poll.
+      if (
+        prev.current !== null &&
+        typeof document !== "undefined" &&
+        document.hidden
+      ) {
+        timer = setTimeout(poll, 6000);
+        return;
+      }
       let jobs: Awaited<ReturnType<typeof getImportJobStates>>;
       try {
         jobs = await getImportJobStates();
@@ -64,7 +75,8 @@ export default function ImportJobsToaster() {
                 duration: null,
                 action: {
                   label: "Review",
-                  onClick: () => router.push("/import#paste-import"),
+                  onClick: () =>
+                    router.push("/data?section=import#paste-import"),
                 },
               }
             );

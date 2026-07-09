@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { IconArrowRight } from "@tabler/icons-react";
 import { getUnitPrefs, getUserFullName } from "@/lib/settings";
 import { requireSession } from "@/lib/auth";
 import { PageHeader } from "@/components/ui";
@@ -5,12 +7,11 @@ import Tabs from "@/components/Tabs";
 import UploadForm from "@/components/UploadForm";
 import ImportClient, { ImportJobList } from "@/components/ImportClient";
 import IntegrationsGrid from "@/components/IntegrationsGrid";
-import ImportLog from "@/components/ImportLog";
 import DataExport from "@/components/DataExport";
 import ReviewInbox from "@/components/ReviewInbox";
 import { getImportJobs } from "@/app/(app)/data/actions";
 import {
-  getRecentSyncEvents,
+  getImportFeed,
   getImportIssues,
   getActivityDuplicates,
   getBodyMetricConflicts,
@@ -26,15 +27,12 @@ export const dynamic = "force-dynamic";
 // standalone Data page content) browses and exports everything you've logged,
 // with per-dataset CSV download and row edit/delete. The active tab is
 // deep-linkable via ?section= (import | manage); /import redirects here.
-export default async function DataPage({
-  searchParams,
-}: {
-  searchParams: { status?: string; kind?: string; section?: string };
-}) {
+export default async function DataPage() {
   const { login, profile } = requireSession();
   const units = getUnitPrefs(login.id);
   const importJobs = await getImportJobs();
-  const recentSyncs = getRecentSyncEvents(profile.id);
+  // The unified import feed (syncs + documents + paste jobs) behind Review.
+  const importFeed = getImportFeed(profile.id);
   const importIssues = getImportIssues(profile.id);
   // Detected, still-unresolved duplicate/conflict pairs (issue #10, Phase 2).
   const activityPairs = getActivityDuplicates(profile.id);
@@ -94,13 +92,24 @@ export default async function DataPage({
         <IntegrationsGrid profileId={profile.id} />
       </div>
 
-      {/* Unified import log */}
-      <ImportLog
-        profileId={profile.id}
-        knownNames={knownNames}
-        status={searchParams.status}
-        kind={searchParams.kind}
-      />
+      {/* The import history now lives in one place — the Review tab's unified
+          feed — so there's a single source of truth for everything imported
+          (documents, pastes, and background syncs), not two competing logs. */}
+      <Link
+        href="/data?section=review"
+        className="card flex items-center justify-between gap-3 transition hover:border-brand-300 dark:hover:border-brand-800"
+      >
+        <div>
+          <h2 className="font-semibold text-slate-800 dark:text-slate-100">
+            Import history &amp; review
+          </h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            See everything you&apos;ve uploaded, pasted, or synced — and resolve
+            duplicates — in the Review tab.
+          </p>
+        </div>
+        <IconArrowRight className="h-5 w-5 shrink-0 text-brand-600 dark:text-brand-400" />
+      </Link>
     </div>
   );
 
@@ -124,7 +133,8 @@ export default async function DataPage({
             content: (
               <ReviewInbox
                 issues={importIssues}
-                recent={recentSyncs}
+                feed={importFeed}
+                knownNames={knownNames}
                 activityPairs={activityPairs}
                 bodyMetricPairs={bodyMetricPairs}
                 units={units}

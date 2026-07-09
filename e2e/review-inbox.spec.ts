@@ -43,6 +43,36 @@ test.describe("Data → Review import inbox", () => {
     await expect(review.getByText(/"Steps"/)).toBeVisible();
   });
 
+  test("the feed merges uploaded documents and paste jobs, not just syncs", async ({
+    page,
+  }) => {
+    await page.goto("/data?section=review");
+    const feed = page.getByTestId("import-feed");
+
+    // The successfully-extracted document appears with its produced-record count
+    // and links to its /import/[id] verify/detail view.
+    const docLink = feed.getByRole("link", { name: "e2e-labs.pdf" });
+    await expect(docLink).toBeVisible();
+    await expect(docLink).toHaveAttribute("href", /\/import\/\d+/);
+    await expect(feed.getByText("7 records", { exact: true })).toBeVisible();
+
+    // A rejected upload (inserted straight into a terminal 'failed' state — the
+    // path the toast bug missed) still surfaces in the feed.
+    await expect(feed.getByText("e2e-broken.txt")).toBeVisible();
+    await expect(feed.getByText("import failed")).toBeVisible();
+
+    // A pasted/CSV job shows in the same feed and points back to the importer.
+    await expect(feed.getByText("Pasted labs")).toBeVisible();
+    await expect(feed.getByText(/review to save/)).toBeVisible();
+
+    // Following the document link lands on its import-detail page.
+    await docLink.click();
+    await expect(page).toHaveURL(/\/import\/\d+/);
+    await expect(
+      page.getByRole("link", { name: "Back to Review" })
+    ).toBeVisible();
+  });
+
   test("shows a review count on the profile badge", async ({ page }) => {
     await page.goto("/");
     const badge = page.getByTestId("review-badge").first();
