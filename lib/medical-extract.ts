@@ -5,7 +5,7 @@ import Anthropic, {
 } from "@anthropic-ai/sdk";
 import ExcelJS from "exceljs";
 import type { MedicalCategory, MedicalFlag, Sex } from "./types";
-import { AI_MODEL } from "./ai-client";
+import { AI_MODEL, aiConfigured, createAiClient } from "./ai-client";
 import { createLogger } from "./log";
 import { recordAiEvent, capDetail, LOG_PROMPTS } from "./ai-log";
 import { strOrNull } from "./parse";
@@ -32,7 +32,7 @@ export function describeError(err: unknown): string {
   if (err instanceof APIError) {
     const s = err.status;
     if (s === 401 || s === 403)
-      return "AI authentication failed — check that ANTHROPIC_API_KEY is set and valid.";
+      return "AI authentication failed — check that ANTHROPIC_API_KEY (or the AI_BASE_URL endpoint's credentials) is set and valid.";
     if (s === 413)
       return "The document is too large for a single AI request. Try a smaller file or split it.";
     if (s === 429)
@@ -505,18 +505,17 @@ export async function extractMedicalDocument(
   filename: string,
   knownCanonical: string[] = []
 ): Promise<ExtractionResult> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    log.info("skipped (no ANTHROPIC_API_KEY)", { filename });
+  if (!aiConfigured()) {
+    log.info("skipped (AI not configured)", { filename });
     recordAiEvent({
       feature: "extraction",
       status: "skipped",
-      detail: `${filename} — no ANTHROPIC_API_KEY`,
+      detail: `${filename} — AI not configured`,
     });
     return {
       status: "skipped",
       message:
-        "ANTHROPIC_API_KEY not set — file stored but not extracted. Set the key and re-upload to import results.",
+        "AI not configured — file stored but not extracted. Set ANTHROPIC_API_KEY (or AI_BASE_URL for a local inference server) and re-upload to import results.",
     };
   }
 
@@ -546,7 +545,7 @@ export async function extractMedicalDocument(
   });
 
   try {
-    const client = new Anthropic({ apiKey });
+    const client = createAiClient();
     // Stream the request (then await the assembled message). Extraction of a
     // large document can run for minutes; a non-streaming request sends no
     // bytes during generation, so the connection is prone to being dropped

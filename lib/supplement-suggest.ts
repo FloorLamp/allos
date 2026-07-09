@@ -21,7 +21,7 @@ import {
 } from "./supplement-schedule";
 import { isNonOptimal } from "./reference-range";
 import { getAiPrefs } from "./settings";
-import { AI_MODEL } from "./ai-client";
+import { AI_MODEL, aiConfigured, createAiClient } from "./ai-client";
 import { createLogger } from "./log";
 import { recordAiEvent, capDetail, LOG_PROMPTS } from "./ai-log";
 import { checkAndIncrementAiUsage, insightDailyLimit } from "./ai-usage";
@@ -219,17 +219,16 @@ async function runModel(
   context: { text: string; lowLabNames: string[] },
   feature: "suggestions" | "auto-suggest" = "suggestions"
 ): Promise<SuggestResult> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
+  if (!aiConfigured()) {
     recordAiEvent({
       feature,
       status: "skipped",
-      detail: "no ANTHROPIC_API_KEY",
+      detail: "AI not configured",
     });
     return {
       suggestions: [],
       model: "offline",
-      note: "ANTHROPIC_API_KEY not set — set the key to get AI supplement suggestions.",
+      note: "AI not configured — set ANTHROPIC_API_KEY (or AI_BASE_URL) to get AI supplement suggestions.",
     };
   }
   // Per-profile daily AI cap (rate-limiting Fix 1). A key is present, so a real
@@ -252,7 +251,7 @@ async function runModel(
   }
   const startedAt = Date.now();
   try {
-    const client = new Anthropic({ apiKey });
+    const client = createAiClient();
     const msg = await client.messages
       .stream({
         model: MODEL,
@@ -404,7 +403,7 @@ export async function autoSuggestFromBiomarkers(
   profileId: number,
   recordIds: number[]
 ): Promise<number> {
-  if (!process.env.ANTHROPIC_API_KEY || recordIds.length === 0) return 0;
+  if (!aiConfigured() || recordIds.length === 0) return 0;
   if (!getAiPrefs().autoSupplementSuggestions) {
     // Leave a trace in the AI log so "why no suggestions after import?" is
     // answerable from Settings → AI logs.

@@ -380,7 +380,8 @@ export default function SupplementsPage() {
         {suggestions.length === 0 ? (
           <p className="mt-3 text-sm text-slate-400 dark:text-slate-500">
             No pending suggestions. Generate some from your recent labs or a
-            note above. Requires ANTHROPIC_API_KEY.
+            note above. Requires AI to be configured (ANTHROPIC_API_KEY or
+            AI_BASE_URL).
           </p>
         ) : (
           <div className="mt-4 space-y-3">

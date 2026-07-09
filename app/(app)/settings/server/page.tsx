@@ -6,6 +6,7 @@ import {
   getBackupSettings,
 } from "@/lib/settings";
 import { getLastBackup, getLastBackupError } from "@/lib/backup";
+import { aiEndpointInfo } from "@/lib/ai-client";
 import { formatBytes } from "@/lib/format-bytes";
 import { requireAdmin } from "@/lib/auth";
 import { isTrainingRestricted, minTrainingAge } from "@/lib/age-gate";
@@ -40,7 +41,7 @@ export default function ServerSettingsPage() {
         config={getTelegramBotConfig()}
         publicUrl={publicUrl}
       />
-      <AiSettings prefs={getAiPrefs()} />
+      <AiSettings prefs={getAiPrefs()} endpoint={aiEndpointInfo()} />
       <InstanceTimezoneSettings timezone={getInstanceTimezone()} />
       <BackupSettings
         settings={getBackupSettings()}

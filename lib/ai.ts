@@ -11,7 +11,7 @@ import {
 } from "./queries";
 
 import { formatSeconds } from "./duration";
-import { AI_MODEL as MODEL } from "./ai-client";
+import { AI_MODEL as MODEL, aiConfigured, createAiClient } from "./ai-client";
 import { recordAiEvent, capDetail, LOG_PROMPTS } from "./ai-log";
 import { checkAndIncrementAiUsage, insightDailyLimit } from "./ai-usage";
 
@@ -180,13 +180,12 @@ export async function generateInsight(
   date: string
 ): Promise<InsightResult> {
   const context = buildContext(profileId, date);
-  const apiKey = process.env.ANTHROPIC_API_KEY;
 
-  if (!apiKey) {
+  if (!aiConfigured()) {
     recordAiEvent({
       feature: "insight",
       status: "skipped",
-      detail: `${date} — no ANTHROPIC_API_KEY`,
+      detail: `${date} — AI not configured`,
     });
     return {
       summary: fallbackInsight(profileId, date, context),
@@ -214,7 +213,7 @@ export async function generateInsight(
 
   const startedAt = Date.now();
   try {
-    const client = new Anthropic({ apiKey });
+    const client = createAiClient();
     const msg = await client.messages.create({
       model: MODEL,
       max_tokens: 600,

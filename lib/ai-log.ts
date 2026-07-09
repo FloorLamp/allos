@@ -13,6 +13,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createLogger } from "./log";
+import { endpointHost } from "./ai-client";
 
 const log = createLogger("ai");
 
@@ -41,6 +42,9 @@ export interface AiEvent {
   feature: AiFeature;
   status: AiStatus;
   model?: string;
+  // The backend that produced the event: host only (issue #43). Undefined for
+  // the default Anthropic endpoint. Never a full URL/path/query — no secrets.
+  baseUrl?: string;
   durationMs?: number;
   detail?: string;
   error?: string;
@@ -103,6 +107,9 @@ export function recordAiEvent(e: Omit<AiEvent, "id" | "time">): AiEvent {
     id: nextId(),
     time: new Date().toISOString(),
     ...e,
+    // Stamp the active backend host (issue #43) unless the caller set it, so an
+    // admin can tell which endpoint produced the event. Undefined = default API.
+    baseUrl: e.baseUrl ?? endpointHost(process.env),
     loginId: e.loginId ?? ctx?.loginId ?? null,
     profileId: e.profileId ?? ctx?.profileId ?? null,
   };
@@ -117,6 +124,7 @@ export function recordAiEvent(e: Omit<AiEvent, "id" | "time">): AiEvent {
     feature: event.feature,
     status: event.status,
     model: event.model,
+    baseUrl: event.baseUrl,
     durationMs: event.durationMs,
     detail: event.detail,
     error: event.error,

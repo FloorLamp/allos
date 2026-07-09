@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { AI_MODEL } from "./ai-client";
+import { AI_MODEL, aiConfigured, createAiClient } from "./ai-client";
 import { describeError } from "./medical-extract";
 import { createLogger } from "./log";
 import { recordAiEvent, capDetail, LOG_PROMPTS } from "./ai-log";
@@ -254,16 +254,16 @@ async function extractChunk(
   knownLifts: string[] = [],
   knownEquipment: string[] = []
 ): Promise<WorkoutExtractionResult> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
+  if (!aiConfigured()) {
     recordAiEvent({
       feature: "extraction",
       status: "skipped",
-      detail: "workouts — no ANTHROPIC_API_KEY",
+      detail: "workouts — AI not configured",
     });
     return {
       status: "skipped",
-      message: "ANTHROPIC_API_KEY not set — set the key to extract workouts.",
+      message:
+        "AI not configured — set ANTHROPIC_API_KEY (or AI_BASE_URL) to extract workouts.",
     };
   }
   if (!text.trim()) {
@@ -302,7 +302,7 @@ async function extractChunk(
   const startedAt = Date.now();
   log.info("extraction started", { bytes: text.length, model: MODEL });
   try {
-    const client = new Anthropic({ apiKey });
+    const client = createAiClient();
     const msg = await client.messages
       .stream({
         model: MODEL,
