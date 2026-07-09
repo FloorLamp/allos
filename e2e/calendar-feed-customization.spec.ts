@@ -47,5 +47,18 @@ test.describe("Calendar feed customization", () => {
     await page.reload();
     await expect(page.getByTestId("calendar-feed-reminders")).not.toBeChecked();
     await expect(page.getByTestId("calendar-category-goal")).toBeChecked();
+
+    // Clean up: restore the default options and DISABLE the feed. The e2e DB is
+    // shared across specs, and calendar-feed-token.spec.ts (which sorts after
+    // this file) starts by clicking "Enable feed" — leaving the feed enabled
+    // here strands that spec waiting on a button that never renders.
+    await page.getByTestId("calendar-feed-reminders").check();
+    await page.getByTestId("calendar-category-goal").uncheck();
+    await page.getByTestId("calendar-feed-options-save").click();
+    await expect(page.getByText("Saved")).toBeVisible();
+    await page.getByRole("button", { name: "Disable feed" }).click();
+    await expect(
+      page.getByRole("button", { name: "Enable feed" })
+    ).toBeVisible();
   });
 });
