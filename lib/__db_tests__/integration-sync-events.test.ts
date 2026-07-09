@@ -12,6 +12,7 @@ import {
   getIntegrationSyncEvents,
   getLastSuccessfulSyncAt,
   getLatestSyncEvent,
+  getSyncEventRawRef,
 } from "@/lib/queries";
 import { upsertMetricSamples } from "@/lib/integrations/normalize";
 import { summarizeSplit, dateWindow } from "@/lib/integrations/sync-log";
@@ -197,5 +198,31 @@ describe("integration_sync_events: simulated Health Connect ingest path", () => 
 
     // getConnection stays independent of the event log.
     expect(getConnection(profileA, "health-connect")).toBeUndefined();
+  });
+});
+
+describe("integration_sync_events: raw_ref capture + profile-scoped read (#9)", () => {
+  it("stores raw_ref and reads it back scoped to the owning profile", () => {
+    recordSyncEvent(profileA, "strava", {
+      ok: true,
+      raw_ref: "strava-fixture-ref.json",
+    });
+    const ev = getLatestSyncEvent(profileA, "strava")!;
+    expect(ev.raw_ref).toBe("strava-fixture-ref.json");
+    // The profile-scoped reader resolves the ref for the owning profile...
+    expect(getSyncEventRawRef(profileA, ev.id)).toBe("strava-fixture-ref.json");
+    // ...but NEVER for another profile querying the same event id.
+    expect(getSyncEventRawRef(profileB, ev.id)).toBeNull();
+  });
+
+  it("returns null for events recorded without a raw_ref", () => {
+    recordSyncEvent(profileB, "strava", { ok: true });
+    const ev = getLatestSyncEvent(profileB, "strava")!;
+    expect(ev.raw_ref).toBeNull();
+    expect(getSyncEventRawRef(profileB, ev.id)).toBeNull();
+  });
+
+  it("returns null for a non-existent event id", () => {
+    expect(getSyncEventRawRef(profileA, 9_999_999)).toBeNull();
   });
 });

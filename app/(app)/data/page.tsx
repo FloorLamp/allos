@@ -112,12 +112,22 @@ export default async function DataPage({
               importIssues.length > 0
                 ? `Review (${importIssues.length})`
                 : "Review",
-            content: <ReviewInbox issues={importIssues} recent={recentSyncs} />,
+            content: (
+              <ReviewInbox
+                issues={importIssues}
+                recent={recentSyncs}
+                isAdmin={login.role === "admin"}
+              />
+            ),
           },
           {
             id: "manage",
             label: "Manage & Export",
             content: <DataExport />,
+            // The heaviest panel (serializes every dataset for browse/export);
+            // only mount it client-side when its tab is active. It reads its own
+            // data and holds no state another tab depends on.
+            keepMounted: false,
           },
         ]}
       />

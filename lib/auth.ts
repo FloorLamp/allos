@@ -1,3 +1,4 @@
+import { cache } from "react";
 import crypto from "node:crypto";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -54,24 +55,26 @@ export function sessionCookieOptions(maxAgeSec: number = SESSION_TTL_SEC) {
   };
 }
 
+// Prepared statements hoisted to module scope — these run on effectively every
+// request (getCurrentSession → accessibleProfiles), so prepare them once. `db` is
+// created + migrated eagerly at import (lib/db.ts), so it's ready here.
+const PROFILES_ALL_STMT = db.prepare(
+  "SELECT id, name, photo_path, photo_version FROM profiles ORDER BY id"
+);
+const PROFILES_FOR_LOGIN_STMT = db.prepare(
+  `SELECT p.id, p.name, p.photo_path, p.photo_version FROM profiles p
+     JOIN login_profiles ap ON ap.profile_id = p.id
+    WHERE ap.login_id = ?
+    ORDER BY p.id`
+);
+
 // The profiles a login may act as: admins see every profile; members see only
 // their granted ones. Ordered by id so "first accessible" is stable.
 function accessibleProfiles(loginId: number, role: Role): SessionProfile[] {
   if (role === "admin") {
-    return db
-      .prepare(
-        "SELECT id, name, photo_path, photo_version FROM profiles ORDER BY id"
-      )
-      .all() as SessionProfile[];
+    return PROFILES_ALL_STMT.all() as SessionProfile[];
   }
-  return db
-    .prepare(
-      `SELECT p.id, p.name, p.photo_path, p.photo_version FROM profiles p
-         JOIN login_profiles ap ON ap.profile_id = p.id
-        WHERE ap.login_id = ?
-        ORDER BY p.id`
-    )
-    .all(loginId) as SessionProfile[];
+  return PROFILES_FOR_LOGIN_STMT.all(loginId) as SessionProfile[];
 }
 
 // Delete every expired session. Called opportunistically at login so the table
@@ -117,62 +120,75 @@ export function destroySession(): void {
   cookies().delete(SESSION_COOKIE);
 }
 
+const SESSION_LOOKUP_STMT = db.prepare(
+  `SELECT s.login_id AS loginId, s.active_profile_id AS activeProfileId,
+          a.username, a.role
+     FROM sessions s JOIN logins a ON a.id = s.login_id
+    WHERE s.token_hash = ? AND s.expires_at > datetime('now')`
+);
+const SESSION_FIX_PROFILE_STMT = db.prepare(
+  "UPDATE sessions SET active_profile_id = ? WHERE token_hash = ?"
+);
+const SESSION_TOUCH_STMT = db.prepare(
+  `UPDATE sessions
+      SET last_used_at = datetime('now'),
+          expires_at = datetime('now', '+30 days')
+    WHERE token_hash = ? AND last_used_at < datetime('now', '-1 hour')`
+);
+
 // Resolve the caller's session from the cookie, or null. Validates expiry,
 // re-derives the active profile against current grants (so a revoked grant can't
 // keep a login on a profile it lost), and throttles the last_used_at write to
 // once an hour. Sync DB reads are fine under better-sqlite3.
-export function getCurrentSession(): CurrentSession | null {
-  const token = cookies().get(SESSION_COOKIE)?.value;
-  if (!token) return null;
-  const tokenHash = hashToken(token);
+//
+// Wrapped in React `cache()` so it runs at most ONCE per server request even
+// though requireSession/requireAdmin/getAccessibleProfiles/etc. each call it —
+// the throttled sliding-refresh write also collapses to one. `cache()` is scoped
+// to a React server request; outside one (there is none here — it reads cookies()
+// which itself requires a request) it degrades to a plain passthrough, so no
+// stale value can outlive a request. Safe because no request mutates the session
+// and then re-reads it expecting the change within the same render (the switch-
+// profile action revalidates, producing a fresh request with a fresh cache).
+export const getCurrentSession = cache(
+  function getCurrentSession(): CurrentSession | null {
+    const token = cookies().get(SESSION_COOKIE)?.value;
+    if (!token) return null;
+    const tokenHash = hashToken(token);
 
-  const row = db
-    .prepare(
-      `SELECT s.login_id AS loginId, s.active_profile_id AS activeProfileId,
-              a.username, a.role
-         FROM sessions s JOIN logins a ON a.id = s.login_id
-        WHERE s.token_hash = ? AND s.expires_at > datetime('now')`
-    )
-    .get(tokenHash) as
-    | {
-        loginId: number;
-        activeProfileId: number | null;
-        username: string;
-        role: Role;
-      }
-    | undefined;
-  if (!row) return null;
+    const row = SESSION_LOOKUP_STMT.get(tokenHash) as
+      | {
+          loginId: number;
+          activeProfileId: number | null;
+          username: string;
+          role: Role;
+        }
+      | undefined;
+    if (!row) return null;
 
-  const profiles = accessibleProfiles(row.loginId, row.role);
-  if (profiles.length === 0) return null; // login with no usable profile
+    const profiles = accessibleProfiles(row.loginId, row.role);
+    if (profiles.length === 0) return null; // login with no usable profile
 
-  let profile = profiles.find((p) => p.id === row.activeProfileId);
-  if (!profile) {
-    // Stored active profile is missing or no longer granted — snap to the first
-    // accessible one and persist the correction.
-    profile = profiles[0];
-    db.prepare(
-      "UPDATE sessions SET active_profile_id = ? WHERE token_hash = ?"
-    ).run(profile.id, tokenHash);
+    let profile = profiles.find((p) => p.id === row.activeProfileId);
+    if (!profile) {
+      // Stored active profile is missing or no longer granted — snap to the first
+      // accessible one and persist the correction.
+      profile = profiles[0];
+      SESSION_FIX_PROFILE_STMT.run(profile.id, tokenHash);
+    }
+
+    // Sliding refresh, throttled: the WHERE only matches when >1h stale, so a
+    // busy session isn't written on every request. Extending expires_at here (not
+    // just the cookie's max-age in middleware) is what makes the 30-day expiry
+    // truly sliding — otherwise an active user is hard-logged-out 30 days after
+    // login no matter how recently they used the app.
+    SESSION_TOUCH_STMT.run(tokenHash);
+
+    return {
+      login: { id: row.loginId, username: row.username, role: row.role },
+      profile,
+    };
   }
-
-  // Sliding refresh, throttled: the WHERE only matches when >1h stale, so a
-  // busy session isn't written on every request. Extending expires_at here (not
-  // just the cookie's max-age in middleware) is what makes the 30-day expiry
-  // truly sliding — otherwise an active user is hard-logged-out 30 days after
-  // login no matter how recently they used the app.
-  db.prepare(
-    `UPDATE sessions
-        SET last_used_at = datetime('now'),
-            expires_at = datetime('now', '+30 days')
-      WHERE token_hash = ? AND last_used_at < datetime('now', '-1 hour')`
-  ).run(tokenHash);
-
-  return {
-    login: { id: row.loginId, username: row.username, role: row.role },
-    profile,
-  };
-}
+);
 
 // Guard for Server Components / Server Actions: returns the session or redirects
 // to /login. redirect() throws (NEXT_REDIRECT), which is the intended control

@@ -29,6 +29,10 @@ env:
 
 jobs:
   build:
+    # Only the canonical repo builds/pushes to FloorLamp's GHCR package. A fork
+    # has no access to that package (nor the deploy runner/secret below), so skip
+    # the whole pipeline there rather than failing every push.
+    if: github.repository == 'FloorLamp/allos'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -84,6 +88,10 @@ jobs:
 
   deploy:
     needs: build
+    # Belt-and-suspenders with `needs: build` (which is already guarded): never
+    # target the self-hosted box from a fork. Requires the runner + DOTENV secret
+    # to be registered on THIS repo (see README "Deploy with Docker").
+    if: github.repository == 'FloorLamp/allos'
     runs-on: self-hosted
     permissions:
       contents: read

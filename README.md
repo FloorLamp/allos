@@ -20,7 +20,7 @@
 - **Health-record import** — pull immunizations, labs, and vitals straight from a MyChart “Download Summary” (CCD/XDM), a SMART Health Card, or an Epic / Apple Health FHIR bundle
 - **Supplements & medications** — schedule intake and check it off each day, with adherence and refill tracking
 - **AI activity log** — every AI call and failure recorded to a file and streamed live in Settings → AI logs
-- **Data hub** — bring data in (upload documents, paste logs, connect a device or service) under **Data → Import**, review what background integrations synced under **Data → Review** (recent imports, plus any integration that's currently failing — surfaced with a badge on the profile menu), then browse and export everything you've logged under **Data → Manage & Export**; integrations available today are **Google Health Connect** and **Strava** (Garmin planned)
+- **Data hub** — bring data in (upload documents, paste logs, connect a device or service) under **Data → Import**, review what background integrations synced under **Data → Review** (recent imports, plus any integration that's currently failing — surfaced with a badge on the profile menu; admins can also expand a per-sync **View raw** to inspect the exact provider payload), then browse and export everything you've logged under **Data → Manage & Export**; integrations available today are **Google Health Connect** and **Strava** (Garmin planned)
 
 ## Requirements
 
@@ -102,6 +102,13 @@ suggestions, insights) and its outcome is also appended to
 `data/logs/ai.jsonl` — readable directly on the host and streamed live in
 **Settings → AI logs**. Failures surface there (and inline where you triggered
 them), not just in the console.
+
+For debugging integration syncs, each sync can capture the raw provider payload
+(the Health Connect POST body, the Strava activity JSON) under
+`data/integration-payloads/<profileId>/`. These are byte-capped, retained
+newest-N per provider, and gitignored (part of `/data`). They're **admin-only**
+and profile-scoped: expand **View raw** on a sync in **Data → Review** to fetch
+one through an admin-gated route — members never see the affordance or the data.
 
 ## AI Insights
 
@@ -297,9 +304,10 @@ time/size (plus any failure) with a **Back up now** button.
 Snapshots live under `DATA_DIR` (the Docker bind mount, outside the checkout) and are
 **never served by any route** — they contain multi-profile health data.
 
-> **Uploads caveat:** uploaded medical files live on disk under `data/uploads/`, _not_ in
-> the database, so the snapshot does **not** include them. For a complete backup, copy the
-> whole `DATA_DIR` (database + `uploads/`).
+> **Uploads caveat:** uploaded medical files (`data/uploads/`) and captured integration
+> payloads (`data/integration-payloads/`) live on disk, _not_ in the database, so the
+> snapshot does **not** include them. For a complete backup, copy the whole `DATA_DIR`
+> (database + `uploads/` + `integration-payloads/`).
 
 **Restore (manual):** stop the container, replace `data/allos.db` with a snapshot
 (`cp data/backups/allos-<stamp>.db data/allos.db`), and start it again. Restore

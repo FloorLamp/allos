@@ -29,6 +29,7 @@ import {
 } from "@/lib/integrations/normalize";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { readBodyCapped } from "@/lib/request-body";
+import { writeRawPayload } from "@/lib/integrations/raw-log";
 
 // A rolling-48h phone export batch is small (a few days of samples/activities as
 // JSON); 2MB is comfortably above any legitimate payload, so a larger body is
@@ -115,6 +116,16 @@ export async function POST(req: Request) {
     return Response.json({ error: "payload too large" }, { status: 413 });
   }
 
+  // Capture the raw POST body for the admin-only raw viewer (issue #9), best-effort
+  // — writeRawPayload never throws and returns null on any fs error, so it can't
+  // affect ingest. The same ref is attached to whichever event this request records
+  // (parse-failure, write-failure, or success).
+  const rawRef = writeRawPayload(
+    INGEST_PROFILE_ID,
+    HEALTH_CONNECT_ID,
+    capped.text
+  );
+
   let body: unknown;
   try {
     body = JSON.parse(capped.text);
@@ -123,6 +134,7 @@ export async function POST(req: Request) {
     // attributable — record it best-effort for the debug panel, then reject.
     recordSyncEvent(INGEST_PROFILE_ID, HEALTH_CONNECT_ID, {
       ok: false,
+      raw_ref: rawRef,
       error: "Invalid JSON body.",
     });
     return Response.json(
@@ -207,6 +219,7 @@ export async function POST(req: Request) {
       ok: false,
       windowStart: win.start,
       windowEnd: win.end,
+      raw_ref: rawRef,
       error: message,
     });
     return Response.json({ ok: false, error: message }, { status: 500 });
@@ -230,6 +243,7 @@ export async function POST(req: Request) {
     updated: tally.updated,
     unchanged: tally.unchanged,
     skipped: tally.skipped,
+    raw_ref: rawRef,
   });
   log.info("health-connect ingest", summary);
 

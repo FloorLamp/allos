@@ -52,6 +52,14 @@ function createDb(): Database.Database {
   const db = new Database(dbPath);
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
+  // synchronous=NORMAL is the recommended companion to WAL: commits no longer
+  // fsync on every transaction (only at checkpoint), removing a per-commit fsync
+  // stall on this single-threaded, synchronous better-sqlite3 process. It stays
+  // crash-safe under WAL — a power loss can lose the last few committed
+  // transactions but never corrupts the database. temp_store=MEMORY keeps
+  // transient sorters / temp b-trees off disk.
+  db.pragma("synchronous = NORMAL");
+  db.pragma("temp_store = MEMORY");
   // Parallel `next build` workers each open the DB and run migrate() at once; a
   // generous busy timeout lets a writer wait out another's write lock instead of
   // failing an IMMEDIATE transaction with SQLITE_BUSY (see rebuildTable).
@@ -825,6 +833,11 @@ export function migrate(db: Database.Database) {
   addColumnIfMissing(db, "integration_sync_events", "inserted", "INTEGER");
   addColumnIfMissing(db, "integration_sync_events", "updated", "INTEGER");
   addColumnIfMissing(db, "integration_sync_events", "unchanged", "INTEGER");
+
+  // Optional pointer to the captured raw provider payload for a sync (issue #9):
+  // the bare filename under data/integration-payloads/<profileId>/, read back by
+  // the admin-only raw viewer. NULL when capture was off/failed or on legacy rows.
+  addColumnIfMissing(db, "integration_sync_events", "raw_ref", "TEXT");
 
   // Lets integration ingest keep one imported body-metrics row per day without
   // touching manually-entered rows. (Fresh DBs already have it via CREATE TABLE;

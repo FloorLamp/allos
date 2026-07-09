@@ -88,3 +88,20 @@ export function getLatestSyncEvent(
     .get(profileId, provider) as IntegrationSyncEvent | undefined;
   return row ?? null;
 }
+
+// The captured raw-payload ref for one sync event, scoped to the profile — powers
+// the admin-only raw viewer route (app/api/integrations/raw/[id]). Profile-scoped
+// (id AND profile_id) so one profile can never resolve another's payload by id;
+// the route additionally requires the acting login to be an admin.
+export function getSyncEventRawRef(
+  profileId: number,
+  id: number
+): string | null {
+  const row = db
+    .prepare(
+      `SELECT raw_ref FROM integration_sync_events
+        WHERE id = ? AND profile_id = ?`
+    )
+    .get(id, profileId) as { raw_ref: string | null } | undefined;
+  return row?.raw_ref ?? null;
+}

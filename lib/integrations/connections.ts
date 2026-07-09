@@ -75,6 +75,9 @@ export interface SyncEventInput {
   updated?: number | null;
   unchanged?: number | null;
   skipped?: number | null;
+  // Bare filename of the raw provider payload captured for this sync (issue #9),
+  // written by lib/integrations/raw-log.ts. Null when capture was off/failed.
+  raw_ref?: string | null;
   error?: string | null;
 }
 
@@ -95,8 +98,8 @@ export function recordSyncEvent(
     db.prepare(
       `INSERT INTO integration_sync_events
          (profile_id, provider, at, ok, window_start, window_end,
-          received, written, inserted, updated, unchanged, skipped, error)
-       VALUES (?, ?, datetime('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          received, written, inserted, updated, unchanged, skipped, raw_ref, error)
+       VALUES (?, ?, datetime('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       profileId,
       provider,
@@ -109,6 +112,7 @@ export function recordSyncEvent(
       ev.updated ?? null,
       ev.unchanged ?? null,
       ev.skipped ?? null,
+      ev.raw_ref ?? null,
       ev.error ? ev.error.slice(0, 500) : null
     );
   } catch (err) {

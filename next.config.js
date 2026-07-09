@@ -1,6 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   experimental: {
+    // Tree-shake barrel imports: only the icon/chart pieces actually used are
+    // pulled into each route's bundle (Next rewrites `import { X } from "pkg"`
+    // to deep per-module imports), shrinking the client JS on analytics routes.
+    optimizePackageImports: ["recharts", "@tabler/icons-react"],
     // better-sqlite3 is a native module; keep it external to the server bundle.
     serverComponentsExternalPackages: ["better-sqlite3"],
     serverActions: {
