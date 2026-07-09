@@ -83,6 +83,34 @@ test("'Log again' pre-fills a create form that saves a new activity (#29)", asyn
   await expect(titleCards).toHaveCount(before);
 });
 
+test("'Repeat last' button is not clipped by the editor pane's scroll container (#103)", async ({
+  page,
+}) => {
+  await page.goto("/training"); // default "Log" tab renders the Journal feed
+
+  // The button lives in the desktop editor aside's header row, which sits inside
+  // a `sticky … overflow-y-auto` scroll container. Issue #103: the header's fixed
+  // height was shorter than the bordered ghost button, so `items-center` pushed
+  // the button's top above the row and the scroll container clipped it.
+  const button = page.getByTestId("repeat-last");
+  await expect(button).toBeVisible();
+
+  // Regression: the button's top edge must not sit above its scrolling ancestor's
+  // top edge (that overflow is exactly what got clipped).
+  const container = button.locator(
+    'xpath=ancestor::div[contains(@class,"overflow-y-auto")][1]'
+  );
+  const btnBox = await button.boundingBox();
+  const containerBox = await container.boundingBox();
+  expect(btnBox).not.toBeNull();
+  expect(containerBox).not.toBeNull();
+  expect(btnBox!.y).toBeGreaterThanOrEqual(containerBox!.y - 0.5);
+
+  // And it stays fully within the viewport and remains clickable.
+  expect(btnBox!.y).toBeGreaterThanOrEqual(0);
+  await expect(button).toBeEnabled();
+});
+
 test("bulk-delete rows in Data → Manage, then Undo restores them (#29)", async ({
   page,
 }) => {
