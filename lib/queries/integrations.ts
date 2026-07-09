@@ -99,30 +99,48 @@ export interface BodyMetricConflictRow extends BodyMetricConflictInput {
   notes: string | null;
 }
 
-// The full candidate set for activity dedup: every activity for the profile (the
-// pure detector buckets by date+type and only pairs same-day rows, so passing the
-// whole set is correct and keeps the query trivial + index-friendly).
+// The candidate set for activity dedup, PRE-FILTERED in SQL to only the
+// (date, type) buckets that contain rows from more than one source — the only
+// buckets the pure detector can ever pair (it flags CROSS-SOURCE pairs). This
+// matters because the profile-menu badge runs detection on every app-page render
+// (getImportReviewCount is threaded through the layout): without the pre-filter
+// a years-deep Health Connect history would be loaded and bucketed in JS on
+// every navigation. Most days have a single source, so this typically returns a
+// handful of rows.
 function loadActivityDupRows(profileId: number): ActivityDupRow[] {
   return db
     .prepare(
-      `SELECT id, date, type, title, source, external_id,
-              duration_min, distance_km, start_time, end_time
-         FROM activities
-        WHERE profile_id = ?`
+      `SELECT a.id, a.date, a.type, a.title, a.source, a.external_id,
+              a.duration_min, a.distance_km, a.start_time, a.end_time
+         FROM activities a
+         JOIN (SELECT date, type FROM activities
+                WHERE profile_id = ?
+                GROUP BY date, type
+               HAVING COUNT(DISTINCT COALESCE(source, 'manual')) > 1) m
+           ON m.date = a.date AND m.type = a.type
+        WHERE a.profile_id = ?`
     )
-    .all(profileId) as ActivityDupRow[];
+    .all(profileId, profileId) as ActivityDupRow[];
 }
 
+// Body-metric conflicts include duplicate MANUAL rows (same date, same source),
+// so the pre-filter keeps any date carrying more than one row at all — still a
+// tiny set (one row per day is the norm; body_metrics keys on (date, source)).
 function loadBodyMetricConflictRows(
   profileId: number
 ): BodyMetricConflictRow[] {
   return db
     .prepare(
-      `SELECT id, date, weight_kg, body_fat_pct, resting_hr, source, notes
-         FROM body_metrics
-        WHERE profile_id = ?`
+      `SELECT b.id, b.date, b.weight_kg, b.body_fat_pct, b.resting_hr, b.source, b.notes
+         FROM body_metrics b
+         JOIN (SELECT date FROM body_metrics
+                WHERE profile_id = ?
+                GROUP BY date
+               HAVING COUNT(*) > 1) m
+           ON m.date = b.date
+        WHERE b.profile_id = ?`
     )
-    .all(profileId) as BodyMetricConflictRow[];
+    .all(profileId, profileId) as BodyMetricConflictRow[];
 }
 
 // The profile's recorded decisions for a domain, as signature → decision. Used to
