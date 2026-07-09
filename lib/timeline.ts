@@ -1,3 +1,4 @@
+import { activityComponentSportNames } from "./activity-icon";
 import { shiftDateStr } from "./date";
 import { db } from "./db";
 import { vaccineDisplayName } from "./immunization-catalog";
@@ -167,7 +168,7 @@ function collectEvents(
     const activityBounds = exact("date");
     const activities = db
       .prepare(
-        `SELECT id, date, type, title, duration_min, distance_km, intensity, start_time, notes, source
+        `SELECT id, date, type, title, duration_min, distance_km, intensity, start_time, notes, source, components
            FROM activities
           WHERE profile_id = ?${activityBounds.clause}
           ORDER BY date DESC, id DESC
@@ -184,6 +185,7 @@ function collectEvents(
       start_time: string | null;
       notes: string | null;
       source: string | null;
+      components: string | null;
     }[];
     const setSummaries = activitySetSummaries(
       profileId,
@@ -214,6 +216,7 @@ function collectEvents(
           detailItems: setSummaries.get(a.id),
           iconType: a.type,
           iconTitle: a.title,
+          iconSportNames: activityComponentSportNames(a.components),
         },
         options
       );
