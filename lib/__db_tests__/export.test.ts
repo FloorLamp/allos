@@ -45,6 +45,70 @@ beforeAll(() => {
 
 const rowsFor = (key: string, profileId: number) =>
   getDataset(key)!.rows(profileId);
+const countFor = (key: string, profileId: number) =>
+  getDataset(key)!.count(profileId);
+const pageFor = (
+  key: string,
+  profileId: number,
+  limit: number,
+  offset: number
+) => getDataset(key)!.page(profileId, limit, offset);
+
+// Issue #113: the Data page reads bounded pages (count + page) instead of the full
+// dataset. These assert the bounded readers agree with the full rows() (same order,
+// same shape, incl. the folded activities/supplements JS), stay profile-scoped, and
+// that count() equals the true row total — the contract DataExport relies on.
+describe("bounded count()/page() readers (issue #113)", () => {
+  it("count() equals the full row total, per profile, incl. JOIN datasets", () => {
+    for (const key of [
+      "medical_records",
+      "activities",
+      "supplements",
+      "intake_log",
+      "hr_minutes",
+      "allergies",
+    ]) {
+      expect(countFor(key, a.profileId)).toBe(rowsFor(key, a.profileId).length);
+      expect(countFor(key, b.profileId)).toBe(rowsFor(key, b.profileId).length);
+    }
+  });
+
+  it("page() returns the same window (order + shape) as slicing rows()", () => {
+    for (const key of ["medical_records", "activities", "supplements"]) {
+      const all = rowsFor(key, a.profileId);
+      // A window that straddles the data (offset 1, small limit).
+      const window = pageFor(key, a.profileId, 2, 1);
+      expect(window).toEqual(all.slice(1, 3));
+    }
+  });
+
+  it("the activities page folds exercise sets like the full export", () => {
+    // shapeActivities must run for the bounded page too (not just rows()).
+    const all = rowsFor("activities", a.profileId);
+    const first = pageFor("activities", a.profileId, 1, 0);
+    expect(first).toHaveLength(1);
+    expect(first[0]).toEqual(all[0]);
+    expect(first[0]).toHaveProperty("exercises");
+  });
+
+  it("the supplements page folds the dose schedule like the full export", () => {
+    const page = pageFor("supplements", a.profileId, 50, 0);
+    const vitD = page.find((r) => String(r.name) === "EXPA Vitamin D")!;
+    expect(vitD).toBeDefined();
+    expect(String(vitD.schedule)).toContain("morning");
+    // Never leaks the other profile's items into this profile's page.
+    expect(page.some((r) => String(r.name).startsWith("EXPB"))).toBe(false);
+  });
+
+  it("page() is profile-scoped (no cross-profile rows in a large window)", () => {
+    const idsB = new Set(
+      rowsFor("medical_records", b.profileId).map((r) => r.id)
+    );
+    const pageA = pageFor("medical_records", a.profileId, 1000, 0);
+    expect(pageA.length).toBeGreaterThan(0);
+    expect(pageA.some((r) => idsB.has(r.id))).toBe(false);
+  });
+});
 
 describe("export datasets are profile-scoped", () => {
   it("metric_samples returns only the querying profile's samples", () => {
