@@ -99,6 +99,7 @@ function makeInput(over: Partial<PersistInput> = {}): PersistInput {
         diagnoses: ["Hypertension"],
         provider: null,
         location: null,
+        notes: null,
         external_id: "enc:1",
       },
     ],

@@ -238,10 +238,10 @@ export function persistDocumentImport(
   // the resolved shared-registry ids for the attending clinician + facility.
   const insEncounter = db.prepare(
     `INSERT OR IGNORE INTO encounters
-       (date, end_date, type, class_code, reason, diagnoses,
+       (date, end_date, type, class_code, reason, diagnoses, notes,
         provider_id, location_provider_id, source, document_id, external_id,
         profile_id)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
   );
   // Procedures + family history. Same idempotency as records/conditions: the
   // per-document delete-set (above) clears this document's prior rows, then INSERT
@@ -456,6 +456,7 @@ export function persistDocumentImport(
         e.class_code,
         e.reason,
         e.diagnoses.length ? e.diagnoses.join("; ") : null,
+        e.notes,
         providerIdFor(e.provider),
         providerIdFor(e.location),
         docSource,

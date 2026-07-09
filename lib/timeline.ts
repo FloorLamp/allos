@@ -2,6 +2,7 @@ import { shiftDateStr } from "./date";
 import { db } from "./db";
 import { vaccineDisplayName } from "./immunization-catalog";
 import { medicationCourseEvents } from "./medication-history";
+import { ENCOUNTER_REPRESENTATIVE_IDS } from "./queries/medical";
 import type { MedStopReason } from "./types";
 import { summarizeExercise, type SetRow } from "./journal-format";
 import { getTimezone, type UnitPrefs } from "./settings";
@@ -580,6 +581,9 @@ function collectEvents(
   }
 
   const encounterBounds = exact("e.date");
+  // De-duplicate the per-document encounter rows two overlapping CCDs produce so the
+  // timeline shows each visit ONCE — the same collapse the Visits list applies, via
+  // the shared representative-id subquery (the profile_id bind for it comes first).
   const encounters = db
     .prepare(
       `SELECT e.id, e.date, e.type, e.reason, e.diagnoses, e.notes,
@@ -587,11 +591,12 @@ function collectEvents(
          FROM encounters e
          LEFT JOIN providers p ON p.id = e.provider_id
          LEFT JOIN providers loc ON loc.id = e.location_provider_id
-        WHERE e.profile_id = ?${encounterBounds.clause}
+        WHERE e.profile_id = ?
+          AND e.id IN (${ENCOUNTER_REPRESENTATIVE_IDS})${encounterBounds.clause}
         ORDER BY e.date DESC, e.id DESC
         LIMIT ?`
     )
-    .all(profileId, ...encounterBounds.params, perTableLimit) as {
+    .all(profileId, profileId, ...encounterBounds.params, perTableLimit) as {
     id: number;
     date: string;
     type: string | null;
@@ -616,7 +621,7 @@ function collectEvents(
           3
         ),
         detail: e.diagnoses ?? e.notes,
-        href: "/encounters",
+        href: `/encounters/${e.id}`,
       },
       options
     );

@@ -743,40 +743,76 @@ export function reconcileFlags(profileId: number, ids?: number[]): number {
 
 // ---- Encounters / visits (#178 Phase B) ----
 
+// The id of the representative encounter for each distinct visit, collapsing the
+// per-document duplicates two overlapping CCDs produce (each portal export carries
+// the full history, so the same visit is stored once PER uploaded document — see
+// import-persist's source-scoped external_id, which keeps a per-document delete from
+// orphaning another document's copy). This is the SINGLE source of truth for that
+// collapse, shared by the Visits list, the Timeline, and Search so every read
+// surface hides the duplicates identically (the timeline/search once did NOT — the
+// user-visible "duplicate visits" bug).
+//
+// Identity prefers the CCD's own encounter id: the stored external_id is
+// source-scoped as "<document:N>|<ccda:encounter:...>", so stripping the "<source>|"
+// prefix recovers the doc-independent key and the same visit from two uploads
+// collapses even when one copy is thinner (reason/diagnoses filled in only one). A
+// row with no external_id (a manual entry) falls back to a conservative content key
+// (date/end_date/type/class_code/reason), so two genuinely distinct visits on one
+// day stay visible while identical re-imports collapse. Representative prefers a
+// MANUAL row (document_id IS NULL), then the most recent id. Takes one profile_id
+// bind param; storage / per-document delete are untouched.
+export const ENCOUNTER_REPRESENTATIVE_IDS = `
+  SELECT id FROM (
+    SELECT id, ROW_NUMBER() OVER (
+      PARTITION BY profile_id, COALESCE(
+        CASE WHEN external_id IS NOT NULL
+             THEN substr(external_id, instr(external_id, '|') + 1) END,
+        date || '|' || COALESCE(end_date, '') || '|' || COALESCE(type, '')
+             || '|' || COALESCE(class_code, '') || '|' || COALESCE(reason, '')
+      )
+      ORDER BY (document_id IS NULL) DESC, id DESC
+    ) AS rn
+    FROM encounters WHERE profile_id = ?
+  ) WHERE rn = 1`;
+
 // The profile's visit history, newest first. Joins the shared providers registry
 // for the attending clinician + facility display names (LEFT JOINs so an
-// unlinked/absent provider just shows blank). Profile-scoped on the encounters row.
-// De-duplicated across sources: the same visit described by two documents (a
-// comprehensive CCD after the per-visit one) appears ONCE. Content-identity is
-// conservative — (profile_id, date, end_date, type, class_code, reason) — so two
-// genuinely distinct visits on one day (differing type/reason) both stay visible,
-// while identical re-imports collapse. Representative prefers a MANUAL encounter
-// (document_id IS NULL) over an imported twin, then the most recent id. Storage /
-// per-document delete are untouched (each row keeps its own document_id). The
-// deduped CTE binds profile_id first, then the main WHERE binds it again.
+// unlinked/absent provider just shows blank). Profile-scoped on the encounters row,
+// de-duplicated across documents via ENCOUNTER_REPRESENTATIVE_IDS. The deduped
+// subquery binds profile_id first, then the main WHERE binds it again.
 export function getEncounters(profileId: number): Encounter[] {
   return db
     .prepare(
-      `WITH enc_deduped AS (
-         SELECT id FROM (
-           SELECT id, ROW_NUMBER() OVER (
-             PARTITION BY profile_id, date, COALESCE(end_date, ''),
-                          COALESCE(type, ''), COALESCE(class_code, ''),
-                          COALESCE(reason, '')
-             ORDER BY (document_id IS NULL) DESC, id DESC
-           ) AS rn
-           FROM encounters WHERE profile_id = ?
-         ) WHERE rn = 1
-       )
-       SELECT e.id, e.date, e.end_date, e.type, e.class_code, e.reason,
+      `SELECT e.id, e.date, e.end_date, e.type, e.class_code, e.reason,
               e.diagnoses, e.provider_id, p.name AS provider_name,
               e.location_provider_id, l.name AS location_name,
               e.notes, e.source, e.document_id, e.external_id, e.created_at
          FROM encounters e
          LEFT JOIN providers p ON p.id = e.provider_id
          LEFT JOIN providers l ON l.id = e.location_provider_id
-        WHERE e.profile_id = ? AND e.id IN (SELECT id FROM enc_deduped)
+        WHERE e.profile_id = ? AND e.id IN (${ENCOUNTER_REPRESENTATIVE_IDS})
         ORDER BY e.date DESC, e.id DESC`
     )
     .all(profileId, profileId) as Encounter[];
+}
+
+// A single visit for the detail page (/encounters/[id]). Profile-scoped on BOTH id
+// AND profile_id, so a member can never open another profile's visit by guessing an
+// id. Not deduped — a detail page shows exactly the requested row. Returns null when
+// the id doesn't belong to the profile.
+export function getEncounter(profileId: number, id: number): Encounter | null {
+  return (
+    (db
+      .prepare(
+        `SELECT e.id, e.date, e.end_date, e.type, e.class_code, e.reason,
+                e.diagnoses, e.provider_id, p.name AS provider_name,
+                e.location_provider_id, l.name AS location_name,
+                e.notes, e.source, e.document_id, e.external_id, e.created_at
+           FROM encounters e
+           LEFT JOIN providers p ON p.id = e.provider_id
+           LEFT JOIN providers l ON l.id = e.location_provider_id
+          WHERE e.id = ? AND e.profile_id = ?`
+      )
+      .get(id, profileId) as Encounter | undefined) ?? null
+  );
 }

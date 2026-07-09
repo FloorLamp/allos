@@ -7,6 +7,7 @@ import {
   type SearchGroup,
   type SearchHit,
 } from "../search-rank";
+import { ENCOUNTER_REPRESENTATIVE_IDS } from "./medical";
 
 // Global (Cmd-K) search fan-out (issue #133). One entry point, searchAll(),
 // runs a small capped LIKE query per domain — each PROFILE-SCOPED (every
@@ -324,12 +325,15 @@ function procedureHits(profileId: number, like: string): SearchHit[] {
 
 function encounterHits(profileId: number, like: string): SearchHit[] {
   // Match the visit type/reason/diagnoses/notes and the attending provider's name.
+  // Constrained to representative rows so the per-document duplicates two overlapping
+  // CCDs produce collapse to ONE hit (its profile_id bind comes first).
   const rows = db
     .prepare(
       `SELECT e.id, e.type, e.reason, e.date, p.name AS provider
          FROM encounters e
          LEFT JOIN providers p ON p.id = e.provider_id
         WHERE e.profile_id = ?
+          AND e.id IN (${ENCOUNTER_REPRESENTATIVE_IDS})
           AND (e.type LIKE ? ESCAPE '\\'
                OR e.reason LIKE ? ESCAPE '\\'
                OR e.diagnoses LIKE ? ESCAPE '\\'
@@ -338,7 +342,16 @@ function encounterHits(profileId: number, like: string): SearchHit[] {
         ORDER BY e.date DESC
         LIMIT ?`
     )
-    .all(profileId, like, like, like, like, like, CANDIDATE_LIMIT) as {
+    .all(
+      profileId,
+      profileId,
+      like,
+      like,
+      like,
+      like,
+      like,
+      CANDIDATE_LIMIT
+    ) as {
     id: number;
     type: string | null;
     reason: string | null;
@@ -356,7 +369,7 @@ function encounterHits(profileId: number, like: string): SearchHit[] {
       key: `encounter:${r.id}`,
       title,
       subtitle,
-      href: "/encounters",
+      href: `/encounters/${r.id}`,
       date: isoDate(r.date),
     };
   });
