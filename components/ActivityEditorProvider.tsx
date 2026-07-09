@@ -15,10 +15,15 @@ import type { ActivitySuggestions, ExerciseHistoryMap } from "@/lib/queries";
 import type { Equipment } from "@/lib/types";
 import ActivityOverlay from "./ActivityOverlay";
 import ActivityForm, { type ActivityEditData } from "./ActivityForm";
+import { buildRepeatPrefill, todayStr } from "./activity-form/model";
+import { useTimezone } from "./TimezoneProvider";
 
 interface ActivityEditorApi {
   openCreate: () => void;
   openEdit: (data: ActivityEditData) => void;
+  // "Log again" / "Repeat last": open a CREATE form pre-filled from a stored
+  // activity (title, exercises, sets) with the date reset to today (issue #29).
+  openRepeat: (data: ActivityEditData) => void;
   close: () => void;
   // Whether an editor is currently open, and what it's editing — so a page can
   // hand the editor a column to dock into and react to it being active.
@@ -55,8 +60,13 @@ export default function ActivityEditorProvider({
   bodyweightKg: number | null;
   children: React.ReactNode;
 }) {
+  const tz = useTimezone();
   const [open, setOpen] = useState(false);
   const [editData, setEditData] = useState<ActivityEditData | null>(null);
+  // Repeat-last prefill: seeds a create form. Bumped `repeatNonce` forces a fresh
+  // remount so tapping "Log again" twice on the same source re-seeds cleanly.
+  const [prefill, setPrefill] = useState<ActivityEditData | null>(null);
+  const [repeatNonce, setRepeatNonce] = useState(0);
   const [dockEl, setDockEl] = useState<HTMLElement | null>(null);
   // Whether the currently-open editor should render into the dock. Captured
   // when the editor opens (from whether a dock existed then) and held for that
@@ -88,11 +98,20 @@ export default function ActivityEditorProvider({
     () => ({
       openCreate: () => {
         setEditData(null);
+        setPrefill(null);
         setDocked(dockElRef.current != null);
         setOpen(true);
       },
       openEdit: (data) => {
         setEditData(data);
+        setPrefill(null);
+        setDocked(dockElRef.current != null);
+        setOpen(true);
+      },
+      openRepeat: (data) => {
+        setEditData(null);
+        setPrefill(buildRepeatPrefill(data, todayStr(tz)));
+        setRepeatNonce((n) => n + 1);
         setDocked(dockElRef.current != null);
         setOpen(true);
       },
@@ -101,7 +120,7 @@ export default function ActivityEditorProvider({
       editData,
       registerDock,
     }),
-    [open, editData, registerDock]
+    [open, editData, registerDock, tz]
   );
 
   // The editor renders into the dock only when it was opened with one present
@@ -120,8 +139,13 @@ export default function ActivityEditorProvider({
     () => !window.matchMedia("(min-width: 640px)").matches
   );
 
-  // Remount fresh each time so state initializes from editData.
-  const formKey = editData ? `edit-${editData.id}` : "create";
+  // Remount fresh each time so state initializes from editData/prefill. The
+  // nonce keeps repeated "Log again" taps from reusing a stale mount.
+  const formKey = editData
+    ? `edit-${editData.id}`
+    : prefill
+      ? `repeat-${repeatNonce}`
+      : "create";
 
   return (
     <Ctx.Provider value={api}>
@@ -137,6 +161,7 @@ export default function ActivityEditorProvider({
               equipment={equipment}
               bodyweightKg={bodyweightKg}
               editData={editData}
+              prefill={prefill}
               onClose={() => setOpen(false)}
             />,
             dockEl
@@ -150,6 +175,7 @@ export default function ActivityEditorProvider({
             equipment={equipment}
             bodyweightKg={bodyweightKg}
             editData={editData}
+            prefill={prefill}
             onClose={() => setOpen(false)}
           />
         ))}

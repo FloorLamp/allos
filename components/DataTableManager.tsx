@@ -9,6 +9,11 @@ import {
   deleteDatasetRows,
   deleteAllDatasetRows,
 } from "@/app/(app)/data/manage-actions";
+import { undoDeletes } from "@/app/(app)/undo/actions";
+
+// How long the bulk-delete "Undo" toast stays up (ms) — the holding rows live
+// ~24h, but the toast is the only affordance, so it lingers past a normal toast.
+const UNDO_TOAST_MS = 15000;
 
 interface Dataset {
   key: string;
@@ -107,9 +112,35 @@ export default function DataTableManager({
         toast(res.error, { tone: "error", duration: null });
         return;
       }
-      toast(
-        `Deleted ${res.deleted} row${res.deleted === 1 ? "" : "s"} from ${dataset.label}.`
-      );
+      const msg = `Deleted ${res.deleted} row${res.deleted === 1 ? "" : "s"} from ${dataset.label}.`;
+      // Undoable datasets return one holding-token per captured row; offer a
+      // single toast that restores the whole batch (issue #29).
+      if (res.undoIds.length > 0) {
+        const undoIds = res.undoIds;
+        toast(msg, {
+          duration: UNDO_TOAST_MS,
+          action: {
+            label: "Undo",
+            onClick: () => {
+              void (async () => {
+                const { restored } = await undoDeletes(undoIds);
+                if (restored > 0) {
+                  toast(
+                    `Restored ${restored} row${restored === 1 ? "" : "s"}.`
+                  );
+                  router.refresh();
+                } else {
+                  toast("Couldn’t undo — it may have expired.", {
+                    tone: "error",
+                  });
+                }
+              })();
+            },
+          },
+        });
+      } else {
+        toast(msg);
+      }
       reset();
       router.refresh();
     } finally {

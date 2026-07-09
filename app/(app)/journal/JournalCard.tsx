@@ -6,7 +6,7 @@ import { ActivityTypeIcon, IntensityBadge } from "@/components/ui";
 import ActivityProvenance from "@/components/ActivityProvenance";
 import type { ActivityEditData } from "@/components/ActivityForm";
 import { SET_STATUS_TITLES, type SetStatus } from "@/lib/journal-format";
-import MergeActivityMenu from "./MergeActivityMenu";
+import ActivityCardMenu from "./ActivityCardMenu";
 
 export type DisplayPart =
   | {
@@ -112,7 +112,7 @@ export default function JournalCard({
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
           {activity.intensity && <IntensityBadge value={activity.intensity} />}
-          <MergeActivityMenu keepId={activity.id} siblings={mergeSiblings} />
+          <ActivityCardMenu activity={activity} siblings={mergeSiblings} />
         </div>
       </div>
 

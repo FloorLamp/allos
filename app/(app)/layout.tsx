@@ -109,7 +109,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                   </div>
                 </main>
               </div>
-              <CommandPalette profileName={session.profile.name} />
+              <CommandPalette
+                profileName={session.profile.name}
+                weightUnit={units.weightUnit}
+              />
               <ExtractionToaster />
               <ImportJobsToaster />
               <VersionWatcher current={version.sha} />

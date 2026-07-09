@@ -9,6 +9,8 @@ import {
   type DatasetDeletePolicy,
 } from "@/lib/export";
 import { cleanupOrphanStars } from "@/lib/queries";
+import { undoKindForDataset } from "@/lib/dataset-undo";
+import { captureDelete } from "@/lib/undo-delete-db";
 
 // The per-dataset deletion policy (which pages to revalidate, whether to clean up
 // orphaned biomarker stars) lives beside DATASETS in lib/export as pure data —
@@ -47,7 +49,10 @@ function afterDelete(
 export async function deleteDatasetRows(
   key: string,
   ids: number[]
-): Promise<{ ok: true; deleted: number } | { ok: false; error: string }> {
+): Promise<
+  | { ok: true; deleted: number; undoIds: number[] }
+  | { ok: false; error: string }
+> {
   const { profile } = requireWriteAccess();
   const resolved = resolve(key);
   if (!resolved) return { ok: false, error: "Unknown dataset." };
@@ -61,6 +66,22 @@ export async function deleteDatasetRows(
   ];
   if (clean.length === 0) return { ok: false, error: "No rows selected." };
 
+  // Datasets whose table is an undoable root (activities, body metrics, biomarker
+  // records, supplements/meds) capture EACH row into the undo holding table so the
+  // whole batch is restorable from one "Deleted N · Undo" toast (issue #29/#30).
+  // captureDelete already scopes to this profile and cascades children; a row that
+  // isn't this profile's returns null and is skipped.
+  const kind = undoKindForDataset(key);
+  if (kind) {
+    const undoIds: number[] = [];
+    for (const id of clean) {
+      const token = captureDelete(kind, profile.id, id);
+      if (token != null) undoIds.push(token);
+    }
+    afterDelete(key, resolved.policy, profile.id);
+    return { ok: true, deleted: undoIds.length, undoIds };
+  }
+
   const placeholders = clean.map(() => "?").join(",");
   // Scope the delete to this profile's rows — the whitelisted tables are all
   // profile-owned, so an id belonging to another profile must not be touched.
@@ -71,24 +92,28 @@ export async function deleteDatasetRows(
     .run(...clean, profile.id);
 
   afterDelete(key, resolved.policy, profile.id);
-  return { ok: true, deleted: info.changes };
+  return { ok: true, deleted: info.changes, undoIds: [] };
 }
 
 // Delete every row in a dataset's table (the "delete all" action). Same table
 // whitelisting as above.
 export async function deleteAllDatasetRows(
   key: string
-): Promise<{ ok: true; deleted: number } | { ok: false; error: string }> {
+): Promise<
+  | { ok: true; deleted: number; undoIds: number[] }
+  | { ok: false; error: string }
+> {
   const { profile } = requireWriteAccess();
   const resolved = resolve(key);
   if (!resolved) return { ok: false, error: "Unknown dataset." };
 
   // "Delete all" is still scoped to this profile — never wipe another profile's
-  // rows from the shared table.
+  // rows from the shared table. It is intentionally NOT undoable (the confirm
+  // says so): capturing an entire table into the holding store could be huge.
   const info = db
     .prepare(`DELETE FROM ${resolved.table} WHERE profile_id = ?`)
     .run(profile.id);
 
   afterDelete(key, resolved.policy, profile.id);
-  return { ok: true, deleted: info.changes };
+  return { ok: true, deleted: info.changes, undoIds: [] };
 }

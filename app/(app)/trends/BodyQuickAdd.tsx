@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { WeightUnit } from "@/lib/settings";
 import DateField from "@/components/DateField";
@@ -28,6 +28,17 @@ export default function BodyQuickAdd({
   const { enqueue } = useOfflineQueue();
   const formRef = useRef<HTMLFormElement>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Opened from a command-palette create action (issue #29): `new=weight` /
+  // `new=vitals` scrolls this form into view and focuses the relevant field.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const target = new URLSearchParams(window.location.search).get("new");
+    if (target !== "weight" && target !== "vitals") return;
+    formRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    const id = target === "vitals" ? "bm-resting-hr" : "bm-weight";
+    document.getElementById(id)?.focus();
+  }, []);
 
   async function handle(formData: FormData) {
     setError(null);
