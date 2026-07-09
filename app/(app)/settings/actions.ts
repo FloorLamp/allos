@@ -1,6 +1,7 @@
 "use server";
 import {
   requireSession,
+  requireWriteAccess,
   requireAdmin,
   destroyOtherSessionsForCurrent,
   revokeSession,
@@ -80,7 +81,7 @@ export async function saveUnitPrefs(formData: FormData) {
 // person, so they're keyed by profile.id. Any login acting as the profile may
 // edit them (members included).
 export async function saveProfileSettings(formData: FormData) {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
 
   // Biological sex: drives sex-specific optimal biomarker bands. When it
   // changes, re-derive the stored non-optimal flags so the records table and
@@ -177,7 +178,7 @@ export async function saveProfileSettings(formData: FormData) {
 // profile may edit them). setBloodType normalizes/validates the value; a blank or
 // unrecognized blood type clears it.
 export async function saveEmergencyCardSettings(formData: FormData) {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const enabledRaw = formData.get("emergency_enabled");
   setEmergencyCardEnabled(
     profile.id,
@@ -368,7 +369,7 @@ export async function saveMinTrainingAge(formData: FormData) {
 // profile, the chat they're sent to, and the send schedule. The global bot
 // credentials are set separately (admin-only, see saveTelegramBotConfig).
 export async function saveNotificationPrefs(formData: FormData) {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const enabledRaw = formData.get("telegram_enabled");
   setProfileTelegram(profile.id, {
     telegramEnabled: enabledRaw === "on" || enabledRaw === "1",
@@ -402,7 +403,7 @@ export async function sendTestNotification(): Promise<{
   ok: boolean;
   message: string;
 }> {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const results = await dispatch(profile.id, {
     title: "Test notification",
     body: "Notifications are working ✅",

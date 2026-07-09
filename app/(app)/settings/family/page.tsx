@@ -48,13 +48,19 @@ export default function FamilySettingsPage() {
     .all() as { login_id: number; c: number }[];
   const sessionCounts: Record<number, number> = {};
   for (const r of sessionCountRows) sessionCounts[r.login_id] = r.c;
-  // Member grants only (admins are implicit-all and shown as such).
+  // Member grants only (admins are implicit-all and shown as such). Each grant
+  // carries its access LEVEL (issue #33); `grants` keeps the flat id list the
+  // deletion warnings rely on, while `access` maps login → profile → level for
+  // the read/write toggle.
   const grantRows = db
-    .prepare("SELECT login_id, profile_id FROM login_profiles")
-    .all() as { login_id: number; profile_id: number }[];
+    .prepare("SELECT login_id, profile_id, access FROM login_profiles")
+    .all() as { login_id: number; profile_id: number; access: string | null }[];
   const grants: Record<number, number[]> = {};
+  const access: Record<number, Record<number, "read" | "write">> = {};
   for (const g of grantRows) {
     (grants[g.login_id] ??= []).push(g.profile_id);
+    (access[g.login_id] ??= {})[g.profile_id] =
+      g.access === "read" ? "read" : "write";
   }
 
   // A small per-profile data summary, shown in the delete-profile confirmation so
@@ -87,6 +93,7 @@ export default function FamilySettingsPage() {
         profiles={profiles}
         logins={logins}
         grants={grants}
+        access={access}
         summaries={summaries}
         sessionCounts={sessionCounts}
       />

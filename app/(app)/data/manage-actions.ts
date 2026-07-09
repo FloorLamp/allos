@@ -1,5 +1,5 @@
 "use server";
-import { requireSession } from "@/lib/auth";
+import { requireWriteAccess } from "@/lib/auth";
 
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
@@ -48,7 +48,7 @@ export async function deleteDatasetRows(
   key: string,
   ids: number[]
 ): Promise<{ ok: true; deleted: number } | { ok: false; error: string }> {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const resolved = resolve(key);
   if (!resolved) return { ok: false, error: "Unknown dataset." };
 
@@ -79,7 +79,7 @@ export async function deleteDatasetRows(
 export async function deleteAllDatasetRows(
   key: string
 ): Promise<{ ok: true; deleted: number } | { ok: false; error: string }> {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const resolved = resolve(key);
   if (!resolved) return { ok: false, error: "Unknown dataset." };
 

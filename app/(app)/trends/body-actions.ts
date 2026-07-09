@@ -1,5 +1,5 @@
 "use server";
-import { requireSession } from "@/lib/auth";
+import { requireWriteAccess } from "@/lib/auth";
 
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
@@ -23,7 +23,7 @@ function optionalNumber(raw: FormDataEntryValue | null): number | null {
 }
 
 export async function addBodyMetric(formData: FormData) {
-  const { login, profile } = requireSession();
+  const { login, profile } = requireWriteAccess();
   const date = String(formData.get("date") ?? "").trim();
   const weightRaw = formData.get("weight"); // in user's preferred weight unit
   // Reject a non-ISO date or a missing/non-finite weight rather than writing a
@@ -56,7 +56,7 @@ export async function addBodyMetric(formData: FormData) {
 // that document's extraction — reprocessing the document re-creates them.
 // Deleting the document removes them permanently.
 export async function deleteBodyMetric(formData: FormData) {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return;
   db.prepare("DELETE FROM body_metrics WHERE id = ? AND profile_id = ?").run(

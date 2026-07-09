@@ -93,6 +93,14 @@ rename profiles, create logins, reset passwords, and grant each member login
 access to specific profiles (admins see all automatically). Any login can
 change its own password under **Settings → Preferences**.
 
+Each grant carries an **access level**: **read & write** (the default — the
+member can view _and_ edit that profile) or **read-only** (view everything, but
+can't add, edit, upload, or delete). Pick the level per profile in the
+**Settings → Family** access matrix. A read-only member gets a "read-only" badge
+in the profile menu, and the boundary is enforced on the server — every mutating
+action is rejected for a read-only grant, not merely hidden in the UI. Admins
+always have full read/write on every profile.
+
 ## Configuration
 
 Configuration is read from environment variables. The easiest way is a

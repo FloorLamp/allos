@@ -1,0 +1,234 @@
+import { describe, expect, it } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+// Write-access enforcement scanner (issue #33). The mirror of the profile-scoping
+// leak test: it reads the repo's own Server Actions as TEXT (no DB, no network,
+// so it stays "pure" in the vitest sense), extracts every EXPORTED async function
+// from `app/**/*actions.ts`, and fails the build if a mutating action forgets to
+// gate itself.
+//
+// THE RULE: an exported Server Action is authorized to mutate a profile's data
+// only if its body calls `requireWriteAccess()` (write-gated: admins pass, a
+// read-only-granted member is bounced) OR `requireAdmin()` (admins are implicit
+// all-write, so an admin-only action is inherently write-authorized). Everything
+// else — reads, login-scoped prefs, session/auth entry points, and thin wrappers
+// that delegate to a gated helper — must be on the SHORT allowlist below, each
+// with a one-line justification. A NEW action that forgets the check matches
+// neither and fails here, which is the entire point: enforcement can't silently
+// regress as the surface grows.
+
+const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
+
+// Allowlisted exported actions that legitimately do NOT call requireWriteAccess()
+// / requireAdmin(), keyed by the file they live in (so an unrelated file can't
+// ride the exemption) and the function name. Keep this list SHORT and justified.
+const ALLOW: { file: string; fn: string; why: string }[] = [
+  // --- Read-only actions (return data, mutate nothing) ---
+  {
+    file: "app/(app)/data/actions.ts",
+    fn: "getImportJobs",
+    why: "read-only: lists the profile's import jobs for the review UI",
+  },
+  {
+    file: "app/(app)/data/actions.ts",
+    fn: "getImportJobStates",
+    why: "read-only: status snapshot the client poller reads on an interval",
+  },
+  {
+    file: "app/(app)/medical/actions.ts",
+    fn: "getExtractionStates",
+    why: "read-only: per-document extraction status snapshot",
+  },
+  {
+    file: "app/(app)/search-actions.ts",
+    fn: "runGlobalSearch",
+    why: "read-only: cross-domain search of the active profile",
+  },
+  // --- Login-scoped actions (operate on the LOGIN, not profile-owned data) ---
+  {
+    file: "app/(app)/settings/actions.ts",
+    fn: "saveUnitPrefs",
+    why: "login-scoped: unit display prefs keyed by login.id, not profile data",
+  },
+  {
+    file: "app/(app)/settings/actions.ts",
+    fn: "changeOwnPassword",
+    why: "login-scoped: changes the caller's own password",
+  },
+  {
+    file: "app/(app)/settings/actions.ts",
+    fn: "revokeSessionAction",
+    why: "login-scoped: revokes one of the caller's own sessions",
+  },
+  {
+    file: "app/(app)/settings/actions.ts",
+    fn: "signOutOtherSessions",
+    why: "login-scoped: signs out the caller's other sessions",
+  },
+  // --- Session / auth entry points (no profile-owned data mutation) ---
+  {
+    file: "app/(app)/user-actions.ts",
+    fn: "logoutAction",
+    why: "session teardown; touches only the session, no profile-owned data",
+  },
+  {
+    file: "app/(app)/user-actions.ts",
+    fn: "switchProfileAction",
+    why: "moves the session's active-profile pointer (setActiveProfile re-checks accessibility); not a write to profile-owned data, and read-only members must still be able to switch profiles",
+  },
+  {
+    file: "app/(auth)/login/actions.ts",
+    fn: "login",
+    why: "public auth entry point; runs before any session/profile exists",
+  },
+  // --- Thin wrappers that delegate to a gated helper ---
+  {
+    file: "app/(app)/appointments/actions.ts",
+    fn: "completeAppointment",
+    why: "delegates to setStatus(), which calls requireWriteAccess()",
+  },
+  {
+    file: "app/(app)/appointments/actions.ts",
+    fn: "cancelAppointment",
+    why: "delegates to setStatus(), which calls requireWriteAccess()",
+  },
+  {
+    file: "app/(app)/appointments/actions.ts",
+    fn: "reopenAppointment",
+    why: "delegates to setStatus(), which calls requireWriteAccess()",
+  },
+];
+
+function walk(dir: string, out: string[]) {
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) {
+      if (e.name === "node_modules" || e.name === ".next") continue;
+      walk(p, out);
+    } else if (e.isFile()) {
+      out.push(p);
+    }
+  }
+}
+
+// Every Server-Action module: any file whose name ends in `actions.ts`
+// (`actions.ts` and the `*-actions.ts` variants), minus tests.
+function actionFiles(): string[] {
+  const all: string[] = [];
+  walk(path.join(REPO, "app"), all);
+  return all.filter((f) => {
+    if (!f.endsWith("actions.ts")) return false;
+    if (f.endsWith(".test.ts")) return false;
+    return true;
+  });
+}
+
+// Strip comments so a stray mention of the guard name in prose can't satisfy the
+// check — only a real call in code counts. Block comments first, then whole-line
+// `//` comments (the only place these files park explanatory text). Leaves string
+// literals intact; the token we scan for (`requireWriteAccess(`) never appears in
+// a user-facing string.
+function stripComments(src: string): string {
+  return src
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .split("\n")
+    .map((line) => (/^\s*\/\//.test(line) ? "" : line))
+    .join("\n");
+}
+
+// Extract every exported async function as { name, body }. Balanced-brace scan
+// from the function's opening `{` to its matching `}`.
+function exportedAsyncFunctions(src: string): { name: string; body: string }[] {
+  const out: { name: string; body: string }[] = [];
+  const re = /export\s+async\s+function\s+([A-Za-z0-9_]+)\s*\(/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(src))) {
+    const name = m[1];
+    // Walk to the end of the parameter list, then to the body's opening brace.
+    let i = m.index + m[0].length;
+    let depth = 1; // we're just past the '('
+    while (i < src.length && depth > 0) {
+      const c = src[i];
+      if (c === "(") depth++;
+      else if (c === ")") depth--;
+      i++;
+    }
+    // Skip a return-type annotation up to the body's opening '{', ignoring any
+    // '{' nested inside a <...> generic — e.g. `: Promise<{ ok: true }>`, whose
+    // object brace must NOT be mistaken for the function body.
+    let angle = 0;
+    while (i < src.length) {
+      const c = src[i];
+      if (c === "<") angle++;
+      else if (c === ">") {
+        if (angle > 0) angle--;
+      } else if (c === "{" && angle === 0) break;
+      i++;
+    }
+    if (src[i] !== "{") continue;
+    let bdepth = 1;
+    let j = i + 1;
+    let body = "";
+    while (j < src.length && bdepth > 0) {
+      const c = src[j];
+      if (c === "{") bdepth++;
+      else if (c === "}") {
+        bdepth--;
+        if (bdepth === 0) break;
+      }
+      body += c;
+      j++;
+    }
+    out.push({ name, body });
+    re.lastIndex = j + 1;
+  }
+  return out;
+}
+
+const GATE_RE = /\b(requireWriteAccess|requireAdmin)\s*\(/;
+
+describe("write-access enforcement: every mutating Server Action is gated", () => {
+  const files = actionFiles();
+
+  it("scans a meaningful number of action files", () => {
+    // Guards against a broken glob silently passing the whole suite.
+    expect(files.length).toBeGreaterThan(25);
+  });
+
+  it("every exported action calls requireWriteAccess()/requireAdmin() or is allowlisted", () => {
+    const violations: string[] = [];
+    const matchedAllow = new Set<string>();
+    let scanned = 0;
+
+    for (const file of files) {
+      const rel = path.relative(REPO, file).split(path.sep).join("/");
+      const src = stripComments(fs.readFileSync(file, "utf8"));
+      for (const { name, body } of exportedAsyncFunctions(src)) {
+        scanned++;
+        if (GATE_RE.test(body)) continue; // write-gated (or admin-gated)
+        const allow = ALLOW.find((a) => a.file === rel && a.fn === name);
+        if (allow) {
+          matchedAllow.add(`${allow.file}#${allow.fn}`);
+          continue;
+        }
+        violations.push(
+          `${rel}#${name}: mutating action missing requireWriteAccess() — add the guard, or allowlist it with a justification if it is a read/login-scoped/admin/delegating action`
+        );
+      }
+    }
+
+    // The scan must actually see the whole action surface.
+    expect(scanned).toBeGreaterThan(70);
+    expect(violations, `\n${violations.join("\n")}\n`).toEqual([]);
+
+    // No stale allowlist entries: every exemption must correspond to a real
+    // exported action still present (a renamed/removed action must drop its entry
+    // so the list can't rot into a silent hole).
+    const stale = ALLOW.filter(
+      (a) => !matchedAllow.has(`${a.file}#${a.fn}`)
+    ).map((a) => `${a.file}#${a.fn}`);
+    expect(stale, `stale allowlist entries: ${stale.join(", ")}`).toEqual([]);
+  });
+});

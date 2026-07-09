@@ -26,6 +26,7 @@ export default function MobileNav({
   isAdmin = false,
   multiProfile = false,
   reviewCount = 0,
+  readOnly = false,
 }: {
   activityDates: string[];
   // Resolved on the server (git/env) and passed in — this client component
@@ -45,6 +46,8 @@ export default function MobileNav({
   // Integrations-needing-attention count for the profile-menu badge (Data →
   // Review). Resolved on the server and threaded through the shared sidebar.
   reviewCount?: number;
+  // Active profile shared read-only with this login (issue #33) — badge hint.
+  readOnly?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
@@ -114,6 +117,7 @@ export default function MobileNav({
               isAdmin={isAdmin}
               multiProfile={multiProfile}
               reviewCount={reviewCount}
+              readOnly={readOnly}
               onNavigate={() => setOpen(false)}
               onClose={() => setOpen(false)}
             />

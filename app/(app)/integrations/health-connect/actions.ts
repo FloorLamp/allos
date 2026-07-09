@@ -1,5 +1,5 @@
 "use server";
-import { requireSession } from "@/lib/auth";
+import { requireWriteAccess } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { AUDIT_ACTIONS } from "@/lib/audit-actions";
 
@@ -14,7 +14,7 @@ import { isValidExpiryChoice } from "@/lib/token-lifecycle";
 // optional `expiry` form field (issue #24) sets a mint-time expiry; anything but
 // the three known choices falls back to "never" to preserve behaviour.
 export async function connectHealthConnect(formData?: FormData) {
-  const { profile, login } = requireSession();
+  const { profile, login } = requireWriteAccess();
   const raw = formData?.get("expiry");
   const expiry = isValidExpiryChoice(raw) ? raw : "never";
   generateHealthConnectToken(profile.id, expiry);
@@ -33,7 +33,7 @@ export async function connectHealthConnect(formData?: FormData) {
 
 // Disconnect: clear the token and status. The endpoint then rejects all requests.
 export async function disconnect() {
-  const { profile, login } = requireSession();
+  const { profile, login } = requireWriteAccess();
   disconnectHealthConnect(profile.id);
   recordAudit({
     loginId: login.id,

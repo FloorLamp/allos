@@ -1,13 +1,13 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireSession } from "@/lib/auth";
+import { requireWriteAccess } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { resolveProviderIdByName } from "@/lib/providers-db";
 import type { AppointmentStatus } from "@/lib/types";
 
 // CRUD for scheduled medical visits (issue #213, Phase 2). Every write is
-// profile-scoped (profileId from requireSession) and revalidates the surfaces an
+// profile-scoped (profileId from requireWriteAccess) and revalidates the surfaces an
 // appointment shows on. The optional provider is resolved through the shared,
 // GLOBAL registry via a create-on-type name (like the immunizations form).
 
@@ -23,7 +23,7 @@ function revalidate() {
 }
 
 export async function createAppointment(formData: FormData) {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const scheduledAt = str(formData, "scheduled_at");
   if (!scheduledAt) return; // a visit with no date can't be scheduled
   const providerId = resolveProviderIdByName(
@@ -45,7 +45,7 @@ export async function createAppointment(formData: FormData) {
 }
 
 export async function updateAppointment(formData: FormData) {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const id = Number(formData.get("id"));
   const scheduledAt = str(formData, "scheduled_at");
   if (!id || !scheduledAt) return;
@@ -71,7 +71,7 @@ export async function updateAppointment(formData: FormData) {
 // Set the lifecycle status. 'completed'/'cancelled' drop the row off Upcoming;
 // 'scheduled' returns it. Guarded to the known values.
 async function setStatus(formData: FormData, status: AppointmentStatus) {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return;
   db.prepare(
@@ -93,7 +93,7 @@ export async function reopenAppointment(formData: FormData) {
 }
 
 export async function deleteAppointment(formData: FormData) {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return;
   db.prepare("DELETE FROM appointments WHERE id = ? AND profile_id = ?").run(

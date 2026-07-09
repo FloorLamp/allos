@@ -596,9 +596,15 @@ export function migrate(db: Database.Database) {
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
+    -- A grant links a member login to a profile it may act as. The access column
+    -- is the grant LEVEL (issue #33): 'write' (the historical all-or-nothing
+    -- behavior — read + edit) or 'read' (view-only; every mutating Server Action
+    -- is blocked by requireWriteAccess). Default 'write' so existing grants are
+    -- unchanged. Admins bypass grants entirely and are always implicit-all-write.
     CREATE TABLE IF NOT EXISTS login_profiles (
       login_id INTEGER NOT NULL REFERENCES logins(id) ON DELETE CASCADE,
       profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+      access TEXT NOT NULL DEFAULT 'write',
       PRIMARY KEY (login_id, profile_id)
     );
 
@@ -813,6 +819,16 @@ export function migrate(db: Database.Database) {
   // and any created without a UA header stay NULL ("Unknown device"). last_used_at
   // (updated at most hourly in getCurrentSession) doubles as the "last seen" time.
   addColumnIfMissing(db, "sessions", "user_agent", "TEXT");
+
+  // Per-grant access level (issue #33): 'read' | 'write'. Added additively so
+  // grants on an upgraded DB default to 'write' — the historical behavior — and
+  // no existing member loses access. Validated in code (lib/auth.ts / lib/grants).
+  addColumnIfMissing(
+    db,
+    "login_profiles",
+    "access",
+    "TEXT NOT NULL DEFAULT 'write'"
+  );
 
   // Incremental column additions for existing databases.
   addColumnIfMissing(db, "activities", "start_time", "TEXT");

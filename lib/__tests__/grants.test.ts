@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { normalizeGrantSelection, diffGrants } from "../grants";
+import {
+  normalizeGrantSelection,
+  diffGrants,
+  normalizeAccess,
+  normalizeGrantInputs,
+  diffGrantAccess,
+  formatGrantDiff,
+} from "../grants";
 
 describe("normalizeGrantSelection", () => {
   it("keeps only valid, positive, integer, existing ids", () => {
@@ -40,5 +47,150 @@ describe("diffGrants", () => {
 
   it("removes all when clearing", () => {
     expect(diffGrants([1, 2], [])).toEqual({ add: [], remove: [1, 2] });
+  });
+});
+
+// ---- Access-level grants (issue #33) ----
+
+describe("normalizeAccess", () => {
+  it("passes through 'read'", () => {
+    expect(normalizeAccess("read")).toBe("read");
+  });
+
+  it("defaults anything else to 'write'", () => {
+    expect(normalizeAccess("write")).toBe("write");
+    expect(normalizeAccess("")).toBe("write");
+    expect(normalizeAccess(null)).toBe("write");
+    expect(normalizeAccess(undefined)).toBe("write");
+    expect(normalizeAccess("READ")).toBe("write"); // exact match only
+    expect(normalizeAccess("bogus")).toBe("write");
+  });
+});
+
+describe("normalizeGrantInputs", () => {
+  it("keeps valid grants, coercing access and dropping unknown profiles", () => {
+    expect(
+      normalizeGrantInputs(
+        [
+          { profileId: 1, access: "read" },
+          { profileId: 2, access: "write" },
+          { profileId: 99, access: "read" },
+        ],
+        [1, 2, 3]
+      )
+    ).toEqual([
+      { profileId: 1, access: "read" },
+      { profileId: 2, access: "write" },
+    ]);
+  });
+
+  it("dedupes on profileId (last write wins) and sorts", () => {
+    expect(
+      normalizeGrantInputs(
+        [
+          { profileId: 3, access: "read" },
+          { profileId: 1, access: "read" },
+          { profileId: 3, access: "write" },
+        ],
+        [1, 2, 3]
+      )
+    ).toEqual([
+      { profileId: 1, access: "read" },
+      { profileId: 3, access: "write" },
+    ]);
+  });
+
+  it("rejects zero, negative, and non-integer ids", () => {
+    expect(
+      normalizeGrantInputs(
+        [
+          { profileId: 0, access: "read" },
+          { profileId: -1, access: "write" },
+          { profileId: 1.5, access: "read" },
+          { profileId: 2, access: "read" },
+        ],
+        [1, 2, 3]
+      )
+    ).toEqual([{ profileId: 2, access: "read" }]);
+  });
+
+  it("coerces a garbled access to 'write'", () => {
+    expect(
+      normalizeGrantInputs(
+        [{ profileId: 1, access: "sudo" as unknown as "read" }],
+        [1]
+      )
+    ).toEqual([{ profileId: 1, access: "write" }]);
+  });
+});
+
+describe("diffGrantAccess", () => {
+  it("classifies adds, level changes, and removals", () => {
+    const current = [
+      { profileId: 1, access: "write" as const }, // level change → update
+      { profileId: 2, access: "read" as const }, // unchanged
+      { profileId: 3, access: "write" as const }, // removed
+    ];
+    const desired = [
+      { profileId: 1, access: "read" as const },
+      { profileId: 2, access: "read" as const },
+      { profileId: 4, access: "write" as const }, // added
+    ];
+    expect(diffGrantAccess(current, desired)).toEqual({
+      add: [{ profileId: 4, access: "write" }],
+      update: [{ profileId: 1, access: "read" }],
+      remove: [3],
+    });
+  });
+
+  it("is a no-op when the matrix is unchanged (order-independent)", () => {
+    const current = [
+      { profileId: 2, access: "read" as const },
+      { profileId: 1, access: "write" as const },
+    ];
+    const desired = [
+      { profileId: 1, access: "write" as const },
+      { profileId: 2, access: "read" as const },
+    ];
+    expect(diffGrantAccess(current, desired)).toEqual({
+      add: [],
+      update: [],
+      remove: [],
+    });
+  });
+
+  it("adds all (with levels) when starting from none", () => {
+    expect(
+      diffGrantAccess(
+        [],
+        [
+          { profileId: 1, access: "read" },
+          { profileId: 2, access: "write" },
+        ]
+      )
+    ).toEqual({
+      add: [
+        { profileId: 1, access: "read" },
+        { profileId: 2, access: "write" },
+      ],
+      update: [],
+      remove: [],
+    });
+  });
+});
+
+describe("formatGrantDiff", () => {
+  it("renders a compact, id-only diff string", () => {
+    expect(
+      formatGrantDiff({
+        add: [{ profileId: 4, access: "write" }],
+        update: [{ profileId: 1, access: "read" }],
+        remove: [3],
+      })
+    ).toBe("+4:write,~1:read,-3");
+  });
+
+  it("is empty for a no-op diff", () => {
+    expect(formatGrantDiff({ add: [], update: [], remove: [] })).toBe("");
   });
 });

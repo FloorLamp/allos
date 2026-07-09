@@ -1,5 +1,5 @@
 "use server";
-import { requireSession } from "@/lib/auth";
+import { requireWriteAccess } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
@@ -28,7 +28,7 @@ function dateOrNull(raw: unknown): string | null {
 }
 
 export async function addEncounter(formData: FormData) {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const date = dateOrNull(formData.get("date"));
   if (!date) return; // the visit date is required (NOT NULL) and must be real
   const endDate = dateOrNull(formData.get("end_date"));
@@ -58,7 +58,7 @@ export async function addEncounter(formData: FormData) {
 }
 
 export async function updateEncounter(formData: FormData) {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const id = Number(formData.get("id"));
   const date = dateOrNull(formData.get("date"));
   if (!id || !date) return;
@@ -90,7 +90,7 @@ export async function updateEncounter(formData: FormData) {
 }
 
 export async function deleteEncounter(formData: FormData) {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return;
   db.prepare("DELETE FROM encounters WHERE id = ? AND profile_id = ?").run(

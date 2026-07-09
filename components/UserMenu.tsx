@@ -19,6 +19,7 @@ export default function UserMenu({
   active,
   profiles,
   reviewCount = 0,
+  readOnly = false,
   onNavigate,
 }: {
   active: SessionProfile;
@@ -26,6 +27,11 @@ export default function UserMenu({
   // Integrations needing attention (failed syncs); rendered as a badge on the
   // pill and beside the "Import review" link. Resolved server-side (Data → Review).
   reviewCount?: number;
+  // The caller holds only READ access on the active profile (issue #33). Shows a
+  // "read-only" badge on the pill + a note in the overlay so the missing edit
+  // affordances read as intentional. Server-side requireWriteAccess() is the real
+  // boundary — this is purely a hint.
+  readOnly?: boolean;
   // Closes the mobile drawer after tapping a link that navigates within it.
   onNavigate?: () => void;
 }) {
@@ -59,6 +65,15 @@ export default function UserMenu({
       >
         <Avatar profile={active} size="sm" />
         <span className="min-w-0 flex-1 truncate text-left">{active.name}</span>
+        {readOnly && (
+          <span
+            data-testid="read-only-badge"
+            aria-label={`Viewing ${active.name} — read-only`}
+            className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:bg-amber-950 dark:text-amber-300"
+          >
+            Read-only
+          </span>
+        )}
         {reviewCount > 0 && (
           <span
             data-testid="review-badge"
@@ -85,6 +100,12 @@ export default function UserMenu({
           open ? "flex" : "hidden"
         } flex-col gap-1 rounded-lg border border-black/10 bg-white p-2 shadow-xl dark:border-white/10 dark:bg-ink-850`}
       >
+        {readOnly && (
+          <p className="px-2 py-1 text-xs text-amber-700 dark:text-amber-300">
+            Viewing <span className="font-semibold">{active.name}</span> —
+            read-only. You can browse everything but can&apos;t make changes.
+          </p>
+        )}
         {profiles.length > 1 &&
           profiles.map((p) => {
             const isActive = p.id === active.id;

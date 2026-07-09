@@ -1,5 +1,5 @@
 "use server";
-import { requireSession } from "@/lib/auth";
+import { requireWriteAccess } from "@/lib/auth";
 
 import { revalidatePath } from "next/cache";
 import {
@@ -40,7 +40,7 @@ function refresh() {
 export async function createEquipmentAction(
   input: EquipmentFormInput
 ): Promise<{ ok: true; equipment: Equipment } | { ok: false; error: string }> {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const c = clean(input);
   if (!c.name) return { ok: false, error: "Give the equipment a name." };
   if (equipmentNameExists(profile.id, c.name))
@@ -57,7 +57,7 @@ export async function updateEquipmentAction(
   id: number,
   input: EquipmentFormInput
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const c = clean(input);
   if (!c.name) return { ok: false, error: "Give the equipment a name." };
   if (equipmentNameExists(profile.id, c.name, id))
@@ -71,7 +71,7 @@ export async function updateEquipmentAction(
 }
 
 export async function deleteEquipmentAction(id: number): Promise<{ ok: true }> {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   deleteEquipment(profile.id, id);
   refresh();
   return { ok: true };

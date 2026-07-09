@@ -38,6 +38,7 @@ export default function SidebarContent({
   isAdmin = false,
   multiProfile = false,
   reviewCount = 0,
+  readOnly = false,
   onNavigate,
   onClose,
 }: {
@@ -55,6 +56,9 @@ export default function SidebarContent({
   // Count of integrations currently needing attention (failed syncs) — shown as
   // a badge on the profile menu, linking to Data → Review. Resolved server-side.
   reviewCount?: number;
+  // The active profile is shared with this login as READ-ONLY (issue #33); shows
+  // a "read-only" badge in the profile menu. Server-side enforcement is authority.
+  readOnly?: boolean;
   onNavigate?: () => void;
   onClose?: () => void;
 }) {
@@ -107,6 +111,7 @@ export default function SidebarContent({
           active={active}
           profiles={profiles}
           reviewCount={reviewCount}
+          readOnly={readOnly}
           onNavigate={onNavigate}
         />
         <div className="grid grid-cols-2 rounded-lg border border-black/10 bg-white/70 p-1 dark:border-white/10 dark:bg-ink-850">

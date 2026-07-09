@@ -1,5 +1,5 @@
 "use server";
-import { requireSession } from "@/lib/auth";
+import { requireWriteAccess } from "@/lib/auth";
 
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
@@ -29,7 +29,7 @@ function codeFor(raw: string): string {
 }
 
 export async function addImmunization(formData: FormData) {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const date = String(formData.get("date") ?? "").trim();
   const vaccineRaw = String(formData.get("vaccine") ?? "").trim();
   if (!isRealIsoDate(date) || !vaccineRaw) return;
@@ -56,7 +56,7 @@ export async function addImmunization(formData: FormData) {
 }
 
 export async function updateImmunization(formData: FormData) {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const id = Number(formData.get("id"));
   const date = String(formData.get("date") ?? "").trim();
   const vaccineRaw = String(formData.get("vaccine") ?? "").trim();
@@ -82,7 +82,7 @@ export async function updateImmunization(formData: FormData) {
 }
 
 export async function deleteImmunization(formData: FormData) {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return;
   db.prepare("DELETE FROM immunizations WHERE id = ? AND profile_id = ?").run(
@@ -98,7 +98,7 @@ export async function deleteImmunization(formData: FormData) {
 // needs-attention. Upsert on (profile_id, vaccine) so re-setting flips the kind.
 
 export async function setImmunizationOverride(formData: FormData) {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const vaccine = String(formData.get("vaccine") ?? "").trim();
   const kind = String(formData.get("kind") ?? "");
   if (!vaccine || (kind !== "immune" && kind !== "declined")) return;
@@ -118,7 +118,7 @@ export async function setImmunizationOverride(formData: FormData) {
 }
 
 export async function clearImmunizationOverride(formData: FormData) {
-  const { profile } = requireSession();
+  const { profile } = requireWriteAccess();
   const vaccine = String(formData.get("vaccine") ?? "").trim();
   if (!vaccine) return;
   db.prepare(
