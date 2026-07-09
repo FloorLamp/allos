@@ -631,6 +631,63 @@ describe("restRecommendation", () => {
     ).toBeNull();
   });
 
+  it("widens the sleep deficit for a variable sleeper (variance-aware)", () => {
+    // Fixed deficit 90m fires at <=510m. With a personal spread of 60m the
+    // effective deficit becomes 2×60=120m (>90), so the same 510m night — a
+    // normal off-night for a noisy sleeper — no longer trips a rest nudge.
+    expect(
+      restRecommendation(
+        input({
+          sleep: { lastNightMin: 510, baselineMin: 600, baselineSpreadMin: 60 },
+        }),
+        th
+      )
+    ).toBeNull();
+    // A genuinely short night (below baseline − 2×spread = 480m) still fires.
+    expect(
+      restRecommendation(
+        input({
+          sleep: { lastNightMin: 480, baselineMin: 600, baselineSpreadMin: 60 },
+        }),
+        th
+      )?.id
+    ).toBe("rest-sleep");
+  });
+
+  it("keeps the fixed sleep deficit when the spread is small (backward compatible)", () => {
+    // 2×30=60 < the fixed 90m floor, so the threshold stays at 90m and the 510m
+    // night fires exactly as it does with no spread supplied.
+    expect(
+      restRecommendation(
+        input({
+          sleep: { lastNightMin: 510, baselineMin: 600, baselineSpreadMin: 30 },
+        }),
+        th
+      )?.id
+    ).toBe("rest-sleep");
+  });
+
+  it("widens the resting-HR jump for a variable baseline (variance-aware)", () => {
+    // Fixed jump 7 fires at >=62. Spread 5 → effective jump max(7, 2×5)=10, so a
+    // +7 bump (recent 62) no longer fires but a +10 bump (recent 65) does.
+    expect(
+      restRecommendation(
+        input({
+          restingHr: { recent: 62, baseline: 55, baselineSpreadBpm: 5 },
+        }),
+        th
+      )
+    ).toBeNull();
+    expect(
+      restRecommendation(
+        input({
+          restingHr: { recent: 65, baseline: 55, baselineSpreadBpm: 5 },
+        }),
+        th
+      )?.id
+    ).toBe("rest-rhr");
+  });
+
   it("fires on a consecutive-day streak at the threshold", () => {
     const rest = restRecommendation(
       input({ trainingDates: consecutiveDates(TODAY, 4) }),

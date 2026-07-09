@@ -1,9 +1,18 @@
 import { IconFlame } from "@tabler/icons-react";
 import WidgetHeader from "./WidgetHeader";
 
-// Activity streak (NEW, issue #156, fitness) — consecutive active days ending
-// today or yesterday (lib/streak.currentStreak). Off by default.
-export default function StreakWidget({ streak }: { streak: number }) {
+// Activity streak (NEW, issue #156, fitness). The headline is the rest-tolerant
+// "flexible" streak (lib/streak.flexibleStreak) — active days in the current run,
+// tolerating the odd rest day — so a healthy training rhythm isn't reset by a
+// single day off. The strict consecutive-days streak (currentStreak) is kept as
+// a secondary line (#44 item 2). Off by default.
+export default function StreakWidget({
+  streak,
+  strictStreak = 0,
+}: {
+  streak: number;
+  strictStreak?: number;
+}) {
   return (
     <div className="card">
       <WidgetHeader
@@ -19,7 +28,8 @@ export default function StreakWidget({ streak }: { streak: number }) {
               {streak}
             </div>
             <div className="text-xs text-slate-400 dark:text-slate-500">
-              day{streak === 1 ? "" : "s"} in a row
+              active day{streak === 1 ? "" : "s"}
+              {strictStreak > 0 && <> · {strictStreak}-day streak</>}
             </div>
           </div>
         </div>

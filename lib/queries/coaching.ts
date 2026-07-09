@@ -18,6 +18,16 @@ function mean(values: number[]): number {
   return values.reduce((s, v) => s + v, 0) / values.length;
 }
 
+// Population standard deviation of the baseline window, used as the personal
+// variability the coaching engine widens its rest-nudge thresholds by (#44 item
+// 3a). Needs at least two points to mean anything; returns undefined otherwise so
+// the caller omits the field and the engine falls back to its fixed threshold.
+function spread(values: number[]): number | undefined {
+  if (values.length < 2) return undefined;
+  const m = mean(values);
+  return Math.sqrt(mean(values.map((v) => (v - m) ** 2)));
+}
+
 // Last night's total sleep (minutes) and the recent baseline, or null when no
 // sleep has been synced. Reads the per-night `sleep_min` totals from
 // metric_samples (profile-scoped in getMetricDailyTotals). Baseline is the mean
@@ -31,8 +41,14 @@ export function getSleepSignal(profileId: number): SleepSignal | null {
   if (nights.length === 0) return null;
   const lastNightMin = nights[nights.length - 1].value;
   const prior = nights.slice(0, -1);
-  const baselineMin = mean((prior.length ? prior : nights).map((n) => n.value));
-  return { lastNightMin, baselineMin };
+  const baseNights = prior.length ? prior : nights;
+  const baselineMin = mean(baseNights.map((n) => n.value));
+  const baselineSpreadMin = spread(prior.map((n) => n.value));
+  return {
+    lastNightMin,
+    baselineMin,
+    ...(baselineSpreadMin != null ? { baselineSpreadMin } : {}),
+  };
 }
 
 // The most recent resting HR (bpm) and the recent baseline, or null when none is
@@ -51,7 +67,12 @@ export function getRestingHrSignal(profileId: number): RestingHrSignal | null {
   const recent = rows[0].v;
   const prior = rows.slice(1);
   const baseline = mean((prior.length ? prior : rows).map((r) => r.v));
-  return { recent, baseline };
+  const baselineSpreadBpm = spread(prior.map((r) => r.v));
+  return {
+    recent,
+    baseline,
+    ...(baselineSpreadBpm != null ? { baselineSpreadBpm } : {}),
+  };
 }
 
 // Assemble the full coaching input from profile-scoped reads. Used by the

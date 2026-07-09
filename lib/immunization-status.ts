@@ -252,17 +252,64 @@ export function filterCategoryFor(a: VaccineAssessment): ImmunizationFilter {
   }
 }
 
+// Count how many of the (ascending) dose dates count as SEPARATE doses given a
+// minimum spacing: the first dose always counts, and each later dose counts only
+// if it's at least `minIntervalDays` after the previously credited dose. Doses
+// logged closer than that (a duplicate entry, a same-visit re-record, or a dose
+// given too early to "count") collapse into the prior one. Pure; used so two
+// same-week entries don't read as a finished 2-dose series (#44 item 5).
+export function creditedDoseCount(
+  sortedDates: string[],
+  minIntervalDays: number
+): number {
+  let credited = 0;
+  let lastCredited: string | null = null;
+  for (const d of sortedDates) {
+    if (lastCredited == null) {
+      credited++;
+      lastCredited = d;
+      continue;
+    }
+    const gap = daysBetweenDateStr(lastCredited, d);
+    if (gap != null && gap >= minIntervalDays) {
+      credited++;
+      lastCredited = d;
+    }
+  }
+  return credited;
+}
+
 function assessOne(entry: VaccineEntry, ctx: Ctx): VaccineAssessment {
   const dates = (ctx.datesByCode.get(entry.code) ?? [])
     .slice()
     .sort((a, b) => a.localeCompare(b));
-  const dosesReceived = dates.length;
-  const lastDate = dosesReceived ? dates[dosesReceived - 1] : null;
+  const rawCount = dates.length;
+  const lastDate = rawCount ? dates[rawCount - 1] : null;
   const hasImmuneTiter = entry.antibodyMarkers.some(
     (m) => ctx.titerByMarker.get(m.toLowerCase()) === "immune"
   );
   const ageM = ctx.ageMonths;
   const sch = entry.schedule;
+
+  // Minimum dose spacing (series / multi-dose one_time only). When set, credit
+  // doses spaced closer than the minimum as ONE, and note the collapse gently.
+  const minIntervalDays =
+    sch.kind === "series" || sch.kind === "one_time"
+      ? sch.minIntervalDays
+      : undefined;
+  const dosesReceived =
+    minIntervalDays != null
+      ? creditedDoseCount(dates, minIntervalDays)
+      : rawCount;
+  const collapsed = rawCount - dosesReceived;
+  const mergedNote =
+    collapsed > 0
+      ? ` · ${collapsed} dose${collapsed > 1 ? "s" : ""} logged too close together, counted once`
+      : "";
+  // Append the gentle spacing note to an assessment's detail line (no-op when
+  // nothing was collapsed).
+  const note = (a: VaccineAssessment): VaccineAssessment =>
+    mergedNote ? { ...a, detail: a.detail + mergedNote } : a;
 
   if (sch.kind === "series") {
     const required = sch.doses.length;
@@ -278,29 +325,33 @@ function assessOne(entry: VaccineEntry, ctx: Ctx): VaccineAssessment {
         null
       );
     if (dosesReceived >= required)
-      return base(
-        entry,
-        dosesReceived,
-        required,
-        lastDate,
-        false,
-        "complete",
-        `${required}-dose series complete`,
-        null
+      return note(
+        base(
+          entry,
+          dosesReceived,
+          required,
+          lastDate,
+          false,
+          "complete",
+          `${required}-dose series complete`,
+          null
+        )
       );
     const next = sch.doses[dosesReceived];
     if (ageM == null)
-      return base(
-        entry,
-        dosesReceived,
-        required,
-        lastDate,
-        false,
-        dosesReceived > 0 ? "up_to_date" : "unknown",
-        dosesReceived > 0
-          ? `${dosesReceived} of ${required} doses`
-          : "No record",
-        `Next dose: ${next.label}`
+      return note(
+        base(
+          entry,
+          dosesReceived,
+          required,
+          lastDate,
+          false,
+          dosesReceived > 0 ? "up_to_date" : "unknown",
+          dosesReceived > 0
+            ? `${dosesReceived} of ${required} doses`
+            : "No record",
+          `Next dose: ${next.label}`
+        )
       );
     // Never dosed: an ADULT with no childhood record is genuinely "unknown" (we
     // can't tell if they were vaccinated); a child/adolescent past a dose age is
@@ -318,26 +369,30 @@ function assessOne(entry: VaccineEntry, ctx: Ctx): VaccineAssessment {
         null
       );
     if (ageM < next.minMonths)
-      return base(
+      return note(
+        base(
+          entry,
+          dosesReceived,
+          required,
+          lastDate,
+          false,
+          "up_to_date",
+          `${dosesReceived} of ${required} doses`,
+          `Next dose: ${next.label}`
+        )
+      );
+    const overdue = ageM >= next.recommendedMonths + 3;
+    return note(
+      base(
         entry,
         dosesReceived,
         required,
         lastDate,
         false,
-        "up_to_date",
+        overdue ? "overdue" : "due",
         `${dosesReceived} of ${required} doses`,
-        `Next dose: ${next.label}`
-      );
-    const overdue = ageM >= next.recommendedMonths + 3;
-    return base(
-      entry,
-      dosesReceived,
-      required,
-      lastDate,
-      false,
-      overdue ? "overdue" : "due",
-      `${dosesReceived} of ${required} doses`,
-      `Dose ${dosesReceived + 1} ${overdue ? "overdue" : "due"} (${next.label})`
+        `Dose ${dosesReceived + 1} ${overdue ? "overdue" : "due"} (${next.label})`
+      )
     );
   }
 
@@ -496,42 +551,48 @@ function assessOne(entry: VaccineEntry, ctx: Ctx): VaccineAssessment {
         null
       );
     if (dosesReceived >= sch.doses)
-      return base(
-        entry,
-        dosesReceived,
-        sch.doses,
-        lastDate,
-        hasImmuneTiter,
-        "complete",
-        sch.doses > 1 ? `${sch.doses} doses complete` : "Received",
-        null
+      return note(
+        base(
+          entry,
+          dosesReceived,
+          sch.doses,
+          lastDate,
+          hasImmuneTiter,
+          "complete",
+          sch.doses > 1 ? `${sch.doses} doses complete` : "Received",
+          null
+        )
       );
     // Past the routine catch-up window (e.g. HPV after 26): no longer routinely
     // recommended, so don't nag it as "due" — whether or not a partial series
     // was started (an incomplete HPV series at 40 isn't routinely completed).
     if (sch.endAgeYears != null && ageM != null && ageM > sch.endAgeYears * 12)
-      return base(
-        entry,
-        dosesReceived,
-        sch.doses,
-        lastDate,
-        hasImmuneTiter,
-        "not_recommended",
-        dosesReceived > 0
-          ? `${dosesReceived} of ${sch.doses} doses · routine through age ${sch.endAgeYears}`
-          : `Routine through age ${sch.endAgeYears}`,
-        null
+      return note(
+        base(
+          entry,
+          dosesReceived,
+          sch.doses,
+          lastDate,
+          hasImmuneTiter,
+          "not_recommended",
+          dosesReceived > 0
+            ? `${dosesReceived} of ${sch.doses} doses · routine through age ${sch.endAgeYears}`
+            : `Routine through age ${sch.endAgeYears}`,
+          null
+        )
       );
     if (dosesReceived > 0)
-      return base(
-        entry,
-        dosesReceived,
-        sch.doses,
-        lastDate,
-        hasImmuneTiter,
-        "due",
-        `${dosesReceived} of ${sch.doses} doses`,
-        `Dose ${dosesReceived + 1} due`
+      return note(
+        base(
+          entry,
+          dosesReceived,
+          sch.doses,
+          lastDate,
+          hasImmuneTiter,
+          "due",
+          `${dosesReceived} of ${sch.doses} doses`,
+          `Dose ${dosesReceived + 1} due`
+        )
       );
     if (ageM == null)
       return base(

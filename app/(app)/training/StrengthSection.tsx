@@ -6,7 +6,7 @@ import {
   getGoals,
   getGoalProgressMap,
 } from "@/lib/queries";
-import { getUnitPrefs } from "@/lib/settings";
+import { getUnitPrefs, getUserSex } from "@/lib/settings";
 import { requireSession } from "@/lib/auth";
 import { dispWeight, fmtWeight } from "@/lib/units";
 import { today } from "@/lib/db";
@@ -90,6 +90,7 @@ export default function StrengthSection() {
         recentByExercise={recentByExercise}
         goals={goals}
         goalProgress={goalProgress}
+        sex={getUserSex(profile.id)}
       />
     </section>
   );

@@ -13,7 +13,7 @@ import {
 } from "@/lib/queries";
 import { today as todayFn, yesterday as yesterdayFn } from "@/lib/db";
 import { frequencyScopeLabel } from "@/lib/goals";
-import { getUnitPrefs, type DistanceUnit } from "@/lib/settings";
+import { getUnitPrefs, getUserSex, type DistanceUnit } from "@/lib/settings";
 import { requireSession } from "@/lib/auth";
 import { fmtDistance, fmtSpeed } from "@/lib/units";
 import { muscleFor } from "@/lib/lifts";
@@ -245,6 +245,7 @@ export default function HistorySection() {
         targets,
       }}
       showHeader={false}
+      sex={getUserSex(profile.id)}
     />
   );
 }

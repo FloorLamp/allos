@@ -30,7 +30,7 @@ import { ageInMonthsFromBirthdate } from "@/lib/date";
 import { assessSchedule } from "@/lib/immunization-status";
 import { dispWeight } from "@/lib/units";
 import { formatLongDate } from "@/lib/format-date";
-import { currentStreak } from "@/lib/streak";
+import { currentStreak, flexibleStreak } from "@/lib/streak";
 import { daysOfSupplyLeft, isLowSupply } from "@/lib/refill";
 import { buildDigest } from "@/lib/notifications/digest";
 import { gatherDigestInput } from "@/lib/notifications/digest-data";
@@ -160,10 +160,11 @@ export default function Dashboard() {
       .sort((a, b) => a.daysLeft - b.daysLeft);
   }
 
-  // streak
-  const streak = has("streak")
-    ? currentStreak(on, getActivityDates(profile.id))
-    : 0;
+  // streak — headline is the rest-tolerant flexible streak; the strict
+  // consecutive-days streak rides along as secondary context.
+  const streakDates = has("streak") ? getActivityDates(profile.id) : [];
+  const streak = has("streak") ? flexibleStreak(on, streakDates) : 0;
+  const strictStreak = has("streak") ? currentStreak(on, streakDates) : 0;
 
   // immunizations: next-due / overdue against the schedule. Age comes from the
   // birthdate, or the stored whole-year age fallback when no DOB is set. Skip the
@@ -234,7 +235,7 @@ export default function Dashboard() {
       case "low-supply":
         return <LowSupplyWidget items={lowSupplyItems} />;
       case "streak":
-        return <StreakWidget streak={streak} />;
+        return <StreakWidget streak={streak} strictStreak={strictStreak} />;
       default:
         return null;
     }

@@ -1,19 +1,23 @@
 import {
-  DISPLAYED_STANDARDS,
+  displayedStandards,
   STANDARD_LEVELS,
   type Standard,
 } from "@/lib/strength";
+import type { Sex } from "@/lib/types";
 import ScrollFade from "@/components/ScrollFade";
 
 // Reference table: estimated 1RM as a multiple of bodyweight for each level, so
 // users can see what the per-exercise "Level" labels mean. Optionally highlights
 // the row for the lift the user clicked and the cell for its current level.
+// `sex` selects the sex-appropriate standards column (defaults to male/unspecified).
 export default function StrengthStandards({
   highlightStandard,
   highlightLevel,
+  sex,
 }: {
   highlightStandard?: Standard;
   highlightLevel?: string;
+  sex?: Sex | null;
 }) {
   return (
     <div>
@@ -30,7 +34,7 @@ export default function StrengthStandards({
             </tr>
           </thead>
           <tbody>
-            {DISPLAYED_STANDARDS.map(({ lift, standard }) => {
+            {displayedStandards(sex).map(({ lift, standard }) => {
               const isRow =
                 !!highlightStandard && standard === highlightStandard;
               return (

@@ -15,7 +15,8 @@ import {
   type SportStat,
 } from "@/lib/queries";
 import { requireSession } from "@/lib/auth";
-import { getUnitPrefs } from "@/lib/settings";
+import { getUnitPrefs, getUserSex } from "@/lib/settings";
+import type { Sex } from "@/lib/types";
 import { today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import {
@@ -95,6 +96,7 @@ export default function AnalyzeSection({
   const goalProgress = Object.fromEntries(
     getGoalProgressMap(profile.id, goals)
   );
+  const sex = getUserSex(profile.id);
 
   if (strength.length === 0 && cardio.length === 0 && sports.length === 0) {
     return (
@@ -171,6 +173,7 @@ export default function AnalyzeSection({
             recentByExercise,
             goals,
             goalProgress,
+            sex,
           });
 
   const currentItem = view.name;
@@ -326,6 +329,7 @@ function strengthView({
   recentByExercise,
   goals,
   goalProgress,
+  sex,
 }: {
   stat: ReturnType<typeof getStrengthByExercise>[number];
   profileId: number;
@@ -336,6 +340,7 @@ function strengthView({
   recentByExercise: ReturnType<typeof getRecentByExercise>;
   goals: ReturnType<typeof getGoals>;
   goalProgress: Record<number, GoalProgress>;
+  sex: Sex | null;
 }): AnalyzeView {
   const activeMetric = coerceStrengthMetric(metric);
   const sessions = rangeFilter(
@@ -344,7 +349,7 @@ function strengthView({
   );
   const newest = [...sessions].sort(newestFirst);
   const chartMetric = STRENGTH_METRICS.find((m) => m.id === activeMetric)!;
-  const benchmark = standardFor(stat.exercise);
+  const benchmark = standardFor(stat.exercise, sex);
   return {
     name: stat.exercise,
     metric: activeMetric,
@@ -381,6 +386,7 @@ function strengthView({
             showTrend={false}
             showRecent={false}
             showLevel={false}
+            sex={sex}
           />
         </div>
         {benchmark && (

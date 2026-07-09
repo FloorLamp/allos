@@ -332,6 +332,10 @@ export function getGoalProgressMap(
   const exGoals = goals.filter((g) => g.exercise && g.metric);
   if (exGoals.length === 0) return out;
 
+  // "Today" in the profile's timezone anchors the trailing recent-form window
+  // computeGoalProgress uses to derive `current` (vs the lifetime PR).
+  const t = today(profileId);
+
   // Resolve which exercise NAMES satisfy some goal from the cheap distinct-name
   // list (goal→set matching folds equipment variants to their base — see
   // goalMatchesExercise — which SQL can't express), then load only those sets
@@ -351,12 +355,12 @@ export function getGoalProgressMap(
   );
   if (matchingNames.length === 0) {
     // Every exGoal still gets an entry (empty progress), matching the old loop.
-    for (const g of exGoals) out.set(g.id, computeGoalProgress(g, []));
+    for (const g of exGoals) out.set(g.id, computeGoalProgress(g, [], t));
     return out;
   }
   const rows = db
     .prepare(
-      `SELECT a.id AS activity_id, s.exercise AS exercise,
+      `SELECT a.id AS activity_id, a.date AS date, s.exercise AS exercise,
               s.weight_kg, s.reps, s.weight_kg_right, s.reps_right,
               s.duration_sec, s.duration_sec_right
        FROM exercise_sets s JOIN activities a ON a.id = s.activity_id
@@ -386,7 +390,7 @@ export function getGoalProgressMap(
       const arr = byExercise.get(k);
       if (arr) matched.push(...arr);
     }
-    out.set(g.id, computeGoalProgress(g, matched));
+    out.set(g.id, computeGoalProgress(g, matched, t));
   }
   return out;
 }

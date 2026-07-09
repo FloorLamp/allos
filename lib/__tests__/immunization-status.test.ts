@@ -11,6 +11,7 @@ import {
   filterCategoryFor,
   titerImmuneStatus,
   immuneThresholdFor,
+  creditedDoseCount,
   datesByCodeFromRecords,
   seriesLengthForCode,
   doseNumberLabel,
@@ -266,6 +267,29 @@ describe("assessSchedule", () => {
     ).toBe("due");
   });
 
+  it("credits two same-week HPV doses as ONE, so the series isn't 'complete'", () => {
+    // The exact bug: two doses logged days apart shouldn't finish a 2-dose series.
+    const close: ImmunizationRecordLite[] = [
+      { vaccine: "hpv", date: "2025-06-01" },
+      { vaccine: "hpv", date: "2025-06-05" },
+    ];
+    const a = statusFor("hpv", assessSchedule(close, 20 * 12, null, on));
+    expect(a.status).toBe("due");
+    expect(a.dosesReceived).toBe(1); // second dose collapsed
+    expect(a.detail).toContain("counted once");
+  });
+
+  it("credits properly-spaced HPV doses (>=5 months) as a complete series", () => {
+    const spaced: ImmunizationRecordLite[] = [
+      { vaccine: "hpv", date: "2025-01-01" },
+      { vaccine: "hpv", date: "2025-07-01" }, // ~6 months later
+    ];
+    const a = statusFor("hpv", assessSchedule(spaced, 20 * 12, null, on));
+    expect(a.status).toBe("complete");
+    expect(a.dosesReceived).toBe(2);
+    expect(a.detail).not.toContain("counted once");
+  });
+
   it("flags an adolescent overdue for a missing Tdap booster, adult unknown", () => {
     // Regression: a 12-year-old (tracked since birth) missing the adolescent
     // Tdap is a real gap → overdue, not "no record".
@@ -471,5 +495,34 @@ describe("resolveDoseLabelsByVaccine", () => {
     expect(labels.get(2)).toBe("Dose 2 of 2"); // mmr, later
     expect(labels.get(3)).toBe("Dose 1 of 3"); // hepb
     expect(labels.get(4)).toBe("Dose 1"); // combo, unknown length
+  });
+});
+
+describe("creditedDoseCount", () => {
+  it("always credits the first dose", () => {
+    expect(creditedDoseCount(["2025-01-01"], 28)).toBe(1);
+    expect(creditedDoseCount([], 28)).toBe(0);
+  });
+
+  it("collapses doses spaced closer than the minimum into one", () => {
+    // Three doses within a week, min 28 days → one credited dose.
+    expect(
+      creditedDoseCount(["2025-01-01", "2025-01-03", "2025-01-06"], 28)
+    ).toBe(1);
+  });
+
+  it("credits doses at or beyond the minimum interval", () => {
+    // Exactly 28 days apart counts (>=), and a third far out counts too.
+    expect(
+      creditedDoseCount(["2025-01-01", "2025-01-29", "2025-06-01"], 28)
+    ).toBe(3);
+  });
+
+  it("measures spacing from the last CREDITED dose, not the raw previous one", () => {
+    // 2nd dose collapses into the 1st; the 3rd is measured from the 1st (28d),
+    // so it still counts — the collapsed dose doesn't reset the clock.
+    expect(
+      creditedDoseCount(["2025-01-01", "2025-01-10", "2025-01-29"], 28)
+    ).toBe(2);
   });
 });

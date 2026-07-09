@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import type { UnitPrefs } from "@/lib/settings";
 import type { ExerciseStat, GoalProgress } from "@/lib/queries";
-import type { Goal } from "@/lib/types";
+import type { Goal, Sex } from "@/lib/types";
 import { dispWeight, fmtWeight } from "@/lib/units";
 import { liftInfo } from "@/lib/lifts";
 import { standardFor, levelFor } from "@/lib/strength";
@@ -61,10 +61,13 @@ export default function ExerciseDetailPanel({
   showTrend = true,
   showRecent = true,
   showLevel = true,
+  sex,
 }: {
   stat: ExerciseStat;
   bodyweightKg: number | null;
   units: UnitPrefs;
+  // Profile sex, so strength standards/levels use the sex-appropriate chart.
+  sex?: Sex | null;
   goals?: Goal[];
   // Auto-derived progress keyed by goal id (plain object — crosses the
   // server/client boundary, unlike a Map).
@@ -92,7 +95,7 @@ export default function ExerciseDetailPanel({
   const todayStr = dateStrInTz(useTimezone());
   const wu = units.weightUnit;
   const info = liftInfo(stat.exercise);
-  const std = standardFor(stat.exercise);
+  const std = standardFor(stat.exercise, sex);
   const ratio = bodyweightKg ? stat.e1rmKg / bodyweightKg : null;
   const lvl = showLevel && std && ratio ? levelFor(ratio, std) : null;
   const matchedGoals = goals
@@ -152,6 +155,7 @@ export default function ExerciseDetailPanel({
                 label={lvl.label}
                 color={lvl.color}
                 exercise={stat.exercise}
+                sex={sex}
               />
             )}
             {headerRight}
