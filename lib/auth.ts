@@ -26,6 +26,15 @@ export { SESSION_COOKIE };
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 const SESSION_TTL_SEC = SESSION_TTL_MS / 1000;
 
+// Absolute session ceiling (issue #23). The 30-day expiry is SLIDING — every use
+// re-extends expires_at — so an active session otherwise never dies. This is the
+// hard cap measured from created_at: regardless of how recently the session was
+// used, once it is this old it stops resolving and the user must re-authenticate
+// (password + 2FA). Enforced in the session lookup and the purge, so a session
+// past the cap is dead everywhere at once.
+const SESSION_ABSOLUTE_MAX_DAYS = 90;
+const SESSION_ABSOLUTE_MAX_MODIFIER = `-${SESSION_ABSOLUTE_MAX_DAYS} days`;
+
 export type Role = "admin" | "member";
 // The access LEVEL a login holds on the profile it is currently acting as
 // (issue #33). 'write' is the historical all-or-nothing behavior (read + edit);
@@ -122,7 +131,13 @@ export function accessForProfile(
 // Delete every expired session. Called opportunistically at login so the table
 // doesn't accumulate dead rows.
 export function purgeExpiredSessions(): void {
-  db.prepare("DELETE FROM sessions WHERE expires_at <= datetime('now')").run();
+  // Drop both sliding-expired rows AND any past the absolute created_at ceiling,
+  // so the ceiling can't be defeated by a session that keeps sliding expires_at.
+  db.prepare(
+    `DELETE FROM sessions
+       WHERE expires_at <= datetime('now')
+          OR created_at <= datetime('now', ?)`
+  ).run(SESSION_ABSOLUTE_MAX_MODIFIER);
 }
 
 // Mint a session for a login and return the raw token (the caller sets it as
@@ -162,11 +177,17 @@ export function destroySession(): void {
   cookies().delete(SESSION_COOKIE);
 }
 
+// The absolute-max modifier is a trusted internal constant (never user input), so
+// interpolating it into the prepared SQL is safe and keeps the single-bound-param
+// call sites unchanged. A session past created_at + 90 days simply doesn't match,
+// so getCurrentSession() returns null and the user must re-authenticate.
 const SESSION_LOOKUP_STMT = db.prepare(
   `SELECT s.login_id AS loginId, s.active_profile_id AS activeProfileId,
           a.username, a.role
      FROM sessions s JOIN logins a ON a.id = s.login_id
-    WHERE s.token_hash = ? AND s.expires_at > datetime('now')`
+    WHERE s.token_hash = ?
+      AND s.expires_at > datetime('now')
+      AND s.created_at > datetime('now', '${SESSION_ABSOLUTE_MAX_MODIFIER}')`
 );
 const SESSION_FIX_PROFILE_STMT = db.prepare(
   "UPDATE sessions SET active_profile_id = ? WHERE token_hash = ?"
@@ -383,6 +404,7 @@ export function listLoginSessions(loginId: number): SessionSummary[] {
               last_used_at AS lastSeenAt, user_agent AS userAgent
          FROM sessions
         WHERE login_id = ? AND expires_at > datetime('now')
+          AND created_at > datetime('now', '${SESSION_ABSOLUTE_MAX_MODIFIER}')
         ORDER BY last_used_at DESC`
     )
     .all(loginId) as Omit<SessionSummary, "current">[];

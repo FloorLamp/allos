@@ -13,6 +13,7 @@ import {
 } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { hashPassword } from "@/lib/password";
+import { checkPasswordStrength } from "@/lib/password-strength";
 import { getSetting, isValidTimezone, setProfileSetting } from "@/lib/settings";
 import {
   normalizeGrantInputs,
@@ -71,8 +72,6 @@ export type FamilyResult =
       ok: false;
       error: string;
     };
-
-const MIN_PASSWORD = 8;
 
 // A username is stored UNIQUE COLLATE NOCASE; keep the accepted shape simple and
 // predictable (letters/digits/._-), 3–32 chars, so it reads cleanly in the UI.
@@ -233,11 +232,8 @@ export async function createLogin(formData: FormData): Promise<FamilyResult> {
       error:
         "Username must be 3–32 characters, letters/digits/dot/dash/underscore.",
     };
-  if (password.length < MIN_PASSWORD)
-    return {
-      ok: false,
-      error: `Password must be at least ${MIN_PASSWORD} characters.`,
-    };
+  const strength = checkPasswordStrength(password, { username });
+  if (!strength.ok) return { ok: false, error: strength.error };
 
   const passwordHash = await hashPassword(password);
   try {
@@ -280,15 +276,13 @@ export async function resetPassword(formData: FormData): Promise<FamilyResult> {
   const id = Number(formData.get("id"));
   const password = String(formData.get("password") ?? "");
   if (!id) return { ok: false, error: "Unknown login." };
-  if (password.length < MIN_PASSWORD)
-    return {
-      ok: false,
-      error: `Password must be at least ${MIN_PASSWORD} characters.`,
-    };
 
-  const acct = db.prepare("SELECT id FROM logins WHERE id = ?").get(id) as
-    { id: number } | undefined;
+  const acct = db
+    .prepare("SELECT id, username FROM logins WHERE id = ?")
+    .get(id) as { id: number; username: string } | undefined;
   if (!acct) return { ok: false, error: "Login not found." };
+  const strength = checkPasswordStrength(password, { username: acct.username });
+  if (!strength.ok) return { ok: false, error: strength.error };
 
   const passwordHash = await hashPassword(password);
   db.prepare("UPDATE logins SET password_hash = ? WHERE id = ?").run(

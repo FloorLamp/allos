@@ -6,6 +6,15 @@ import {
   destroyOtherSessionsForCurrent,
   revokeSession,
 } from "@/lib/auth";
+import { checkPasswordStrength } from "@/lib/password-strength";
+import {
+  getLoginTotpState,
+  beginTotpEnrollment,
+  activateTotp,
+  disableTotp,
+  regenerateRecoveryCodes,
+  verifyLoginSecondFactor,
+} from "@/lib/two-factor";
 
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
@@ -213,11 +222,10 @@ export async function changeOwnPassword(
   const { login } = requireSession();
   const current = String(formData.get("current_password") ?? "");
   const next = String(formData.get("new_password") ?? "");
-  if (next.length < 8)
-    return {
-      ok: false,
-      error: "New password must be at least 8 characters.",
-    };
+  // Strength gate (issue #23): raised minimum + class-diversity + no-username,
+  // applied everywhere a password is set.
+  const strength = checkPasswordStrength(next, { username: login.username });
+  if (!strength.ok) return { ok: false, error: strength.error };
 
   const row = db
     .prepare("SELECT password_hash FROM logins WHERE id = ?")
@@ -577,4 +585,102 @@ export async function registerTelegramWebhook(): Promise<{
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : String(e) };
   }
+}
+
+// ---- Two-factor authentication (login scope, issue #23) ----
+//
+// All four actions operate on the CALLER's OWN login (like change-own-password),
+// so they gate on requireSession() and are allowlisted in the write-access
+// enforcement test on that basis — they touch login-owned auth state, never
+// profile-owned data. Enabling requires verifying a code (proving the secret was
+// imported); disabling requires the current password AND a valid code, so a
+// walk-up attacker with an open session can't strip 2FA off.
+
+// Step 1 of enrollment: mint a pending secret and hand back the otpauth:// URI +
+// the manual base32 key. No code is required yet; the secret isn't enforced until
+// activate2fa verifies a code. Refuses if 2FA is already active.
+export async function begin2fa(): Promise<
+  | { ok: true; secret: string; otpauthUrl: string }
+  | { ok: false; error: string }
+> {
+  const { login } = requireSession();
+  if (getLoginTotpState(login.id).enabled)
+    return { ok: false, error: "Two-factor authentication is already on." };
+  const { secret, otpauthUrl } = beginTotpEnrollment(login.id, login.username);
+  return { ok: true, secret, otpauthUrl };
+}
+
+// Step 2 of enrollment: verify one code against the pending secret, flip 2FA on,
+// and return the one-time recovery codes to show ONCE. A wrong code leaves the
+// pending secret in place so the user can retry.
+export async function activate2fa(
+  formData: FormData
+): Promise<
+  { ok: true; recoveryCodes: string[] } | { ok: false; error: string }
+> {
+  const { login } = requireSession();
+  if (getLoginTotpState(login.id).enabled)
+    return { ok: false, error: "Two-factor authentication is already on." };
+  const code = String(formData.get("code") ?? "").trim();
+  if (!code) return { ok: false, error: "Enter the 6-digit code." };
+  if (!activateTotp(login.id, code))
+    return {
+      ok: false,
+      error: "That code didn't match. Check the time on your device and retry.",
+    };
+  const recoveryCodes = regenerateRecoveryCodes(login.id);
+  recordAudit({
+    loginId: login.id,
+    action: AUDIT_ACTIONS.twofaEnable,
+    target: String(login.id),
+  });
+  revalidatePath("/settings");
+  return { ok: true, recoveryCodes };
+}
+
+// Turn 2FA off. Requires the current password AND a valid TOTP/recovery code so a
+// hijacked live session alone can't remove the second factor.
+export async function disable2fa(
+  formData: FormData
+): Promise<{ ok: true; message: string } | { ok: false; error: string }> {
+  const { login } = requireSession();
+  if (!getLoginTotpState(login.id).enabled)
+    return { ok: false, error: "Two-factor authentication isn't on." };
+  const password = String(formData.get("current_password") ?? "");
+  const code = String(formData.get("code") ?? "").trim();
+  const row = db
+    .prepare("SELECT password_hash FROM logins WHERE id = ?")
+    .get(login.id) as { password_hash: string } | undefined;
+  if (!row) return { ok: false, error: "Login not found." };
+  if (!(await verifyPassword(password, row.password_hash)))
+    return { ok: false, error: "Current password is incorrect." };
+  if (!verifyLoginSecondFactor(login.id, code).ok)
+    return { ok: false, error: "That code didn't match." };
+  disableTotp(login.id);
+  recordAudit({
+    loginId: login.id,
+    action: AUDIT_ACTIONS.twofaDisable,
+    target: String(login.id),
+  });
+  revalidatePath("/settings");
+  return { ok: true, message: "Two-factor authentication turned off." };
+}
+
+// Regenerate recovery codes (invalidates the old set). Requires a valid current
+// code so only someone holding the authenticator (or a remaining recovery code)
+// can rotate them. Returns the fresh codes to show once.
+export async function regenerate2faRecoveryCodes(
+  formData: FormData
+): Promise<
+  { ok: true; recoveryCodes: string[] } | { ok: false; error: string }
+> {
+  const { login } = requireSession();
+  if (!getLoginTotpState(login.id).enabled)
+    return { ok: false, error: "Two-factor authentication isn't on." };
+  const code = String(formData.get("code") ?? "").trim();
+  if (!verifyLoginSecondFactor(login.id, code).ok)
+    return { ok: false, error: "That code didn't match." };
+  const recoveryCodes = regenerateRecoveryCodes(login.id);
+  revalidatePath("/settings");
+  return { ok: true, recoveryCodes };
 }

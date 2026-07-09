@@ -118,7 +118,19 @@ Two concepts:
 Once signed in as an admin, manage everyone under **Settings → Family**: add or
 rename profiles, create logins, reset passwords, and grant each member login
 access to specific profiles (admins see all automatically). Any login can
-change its own password under **Settings → Preferences**.
+change its own password and turn on **two-factor authentication (2FA)** under
+**Settings → Preferences**.
+
+**Two-factor authentication (TOTP).** Any login can add a time-based one-time
+code from an authenticator app (Google Authenticator, Authy, 1Password, …) as a
+second step at sign-in — strongly recommended for admins. Enrolling shows an
+`otpauth://` URI + manual key and, after you verify one code, **8 one-time
+recovery codes** shown once (save them). At sign-in, a correct password then
+prompts for a code before any session is created. Passwords must be at least 10
+characters with a mix of character classes. If an admin is ever locked out (lost
+authenticator **and** recovery codes), the operator can set `ALLOS_DISABLE_2FA`
+(below) to bypass 2FA for that username at the next login — logged loudly and
+audited.
 
 Each grant carries an **access level**: **read & write** (the default — the
 member can view _and_ edit that profile) or **read-only** (view everything, but
@@ -138,20 +150,21 @@ the app and the `npm run seed` script, and is gitignored:
 cp .env.example .env.local   # then edit in your values
 ```
 
-| Variable               | Description                                                                                                                                                                                 |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ADMIN_USERNAME`       | Optional. Username for the bootstrap admin login created on first boot (default `admin`). Read only when no login exists yet.                                                               |
-| `ADMIN_PASSWORD`       | Password for the bootstrap admin login. If unset on first boot, a random one is generated and printed to the log **once** — capture it. Read only when no login exists yet.                 |
-| `ANTHROPIC_API_KEY`    | Enables Claude-powered insights and medical-document extraction. Optional when `AI_BASE_URL` points at a local server that ignores keys.                                                    |
-| `AI_BASE_URL`          | Optional. Point the app at a self-hosted / local inference server exposing an Anthropic-compatible API (Ollama, a proxy, …) for zero external egress. Set alone, or with a key it forwards. |
-| `HEALTH_AI_MODEL`      | Optional. Override the AI model (defaults to `claude-sonnet-4-6`).                                                                                                                          |
-| `HEALTH_AI_MAX_TOKENS` | Optional. Max output tokens for document extraction (default `16000`).                                                                                                                      |
-| `LOG_LEVEL`            | Optional. `debug`/`info`/`warn`/`error` (default `info`).                                                                                                                                   |
-| `LOG_FORMAT`           | Optional. `text` or `json`. Defaults to `text` in dev, `json` in prod.                                                                                                                      |
-| `AI_LOG_PROMPTS`       | Optional. Set `0` to keep prompts/responses out of the AI activity log.                                                                                                                     |
-| `PORT`                 | Optional (Docker). Host port to expose (container listens on `3000`).                                                                                                                       |
-| `TZ`                   | Optional. Timezone is DB-backed — the instance default under **Settings → Server**, per-profile under **Settings → Profile**; a `TZ` env only seeds the instance default on first boot.     |
-| `DATA_DIR`             | Optional (Docker). Host path for persistent data — see **Deploy with Docker**.                                                                                                              |
+| Variable               | Description                                                                                                                                                                                                                                                                                                          |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ADMIN_USERNAME`       | Optional. Username for the bootstrap admin login created on first boot (default `admin`). Read only when no login exists yet.                                                                                                                                                                                        |
+| `ADMIN_PASSWORD`       | Password for the bootstrap admin login. If unset on first boot, a random one is generated and printed to the log **once** — capture it. Read only when no login exists yet.                                                                                                                                          |
+| `ALLOS_DISABLE_2FA`    | Optional bootstrap-recovery escape hatch. Comma-separated username(s) whose TOTP second factor is **skipped** at login (for an admin locked out after losing their authenticator + recovery codes). Every bypass is logged loudly and audited (`login.2fa-bypass`). Remove it and re-enroll once access is restored. |
+| `ANTHROPIC_API_KEY`    | Enables Claude-powered insights and medical-document extraction. Optional when `AI_BASE_URL` points at a local server that ignores keys.                                                                                                                                                                             |
+| `AI_BASE_URL`          | Optional. Point the app at a self-hosted / local inference server exposing an Anthropic-compatible API (Ollama, a proxy, …) for zero external egress. Set alone, or with a key it forwards.                                                                                                                          |
+| `HEALTH_AI_MODEL`      | Optional. Override the AI model (defaults to `claude-sonnet-4-6`).                                                                                                                                                                                                                                                   |
+| `HEALTH_AI_MAX_TOKENS` | Optional. Max output tokens for document extraction (default `16000`).                                                                                                                                                                                                                                               |
+| `LOG_LEVEL`            | Optional. `debug`/`info`/`warn`/`error` (default `info`).                                                                                                                                                                                                                                                            |
+| `LOG_FORMAT`           | Optional. `text` or `json`. Defaults to `text` in dev, `json` in prod.                                                                                                                                                                                                                                               |
+| `AI_LOG_PROMPTS`       | Optional. Set `0` to keep prompts/responses out of the AI activity log.                                                                                                                                                                                                                                              |
+| `PORT`                 | Optional (Docker). Host port to expose (container listens on `3000`).                                                                                                                                                                                                                                                |
+| `TZ`                   | Optional. Timezone is DB-backed — the instance default under **Settings → Server**, per-profile under **Settings → Profile**; a `TZ` env only seeds the instance default on first boot.                                                                                                                              |
+| `DATA_DIR`             | Optional (Docker). Host path for persistent data — see **Deploy with Docker**.                                                                                                                                                                                                                                       |
 
 You can also `export` these directly instead of using a file.
 
