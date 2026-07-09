@@ -567,7 +567,7 @@ export default function JournalView({
               scroll when the content (e.g. a long editor) overflows. The header
               keeps the first card aligned with the feed's dated cards. */}
           <div className="sticky top-8 max-h-[calc(100vh-3rem)] overflow-y-auto pr-1">
-            <div className="mb-2 flex h-9 items-center justify-between gap-2">
+            <div className="mb-2 flex min-h-9 items-center justify-between gap-2">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                 {open ? "Activity" : "Details"}
               </h2>
