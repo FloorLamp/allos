@@ -1,18 +1,35 @@
 // Goal projection for the Trends hub (issue #212, Phase 3). For a body-metric goal
-// with a target value + target date (weight, body-fat), fit a least-squares trend
-// over the windowed points and extrapolate at that pace from the latest reading to
-// the target — answering "at current pace you reach X ~3 weeks early / late", or
+// with a target value + target date (weight, body-fat), fit a robust trend over
+// the windowed points and extrapolate at that pace from the latest reading to the
+// target — answering "at current pace you reach X ~3 weeks early / late", or
 // "trending away from goal".
+//
+// Robustness (#37): the slope is a Theil–Sen estimate (median of pairwise slopes),
+// not ordinary least squares. OLS let a single spike bend the whole trend and hand
+// back a confidently-wrong ETA; Theil–Sen tolerates a minority of outliers. A
+// short or ragged series can still mislead, so the result also carries a
+// `confidence` tier the UI can hedge with ("rough estimate").
 //
 // Pure math, unit-tested (lib/__tests__/trend-projection). The caller works in a
 // single consistent unit (the chart's DISPLAY unit — e.g. kg for a weight goal,
 // converted at the boundary); this module never converts units.
 
 import { daysBetweenDateStr, shiftDateStr } from "./date";
+import {
+  theilSenSlopePerDay,
+  pairwiseSlopesPerDay,
+  median,
+} from "./robust-stats";
 
 // Fewer than this many points can't support a meaningful slope — return null
-// rather than a jittery ETA off two readings.
+// rather than a jittery ETA off two readings. Kept at 3 (not raised): Theil–Sen
+// already resists a lone outlier at low n, and the sub-5-point case is surfaced as
+// confidence:"low" rather than suppressed, so the user still gets a hedged ETA.
 export const MIN_PROJECTION_POINTS = 3;
+
+// Below this many points a projection is always flagged low-confidence: even a
+// robust slope off 3–4 readings is easily swayed, so the ETA is a rough guide.
+const CONFIDENT_MIN_POINTS = 5;
 
 // Beyond this horizon the pace is so slow the ETA is meaningless (a near-flat
 // trend); treat it as flat and return null instead of a nonsense far-future date.
@@ -39,32 +56,23 @@ export interface GoalProjection {
   // before the deadline (early), NEGATIVE = after (late). null when the goal has
   // no target_date, or status is "away".
   daysEarly: number | null;
+  // How much to trust the slope/ETA (#37). "low" when there are few points
+  // (< CONFIDENT_MIN_POINTS) OR the pairwise slopes scatter widely (their MAD
+  // exceeds the |median slope|, i.e. the direction itself is uncertain); "ok"
+  // otherwise. The UI hedges a low-confidence ETA as a "rough estimate".
+  confidence: "low" | "ok";
 }
 
-// Least-squares slope (per day) of value vs day-offset from the first point.
-// Returns null when the points don't span any time (all same day) — slope
-// undefined.
-function leastSquaresSlopePerDay(points: ProjectionPoint[]): number | null {
-  const first = points[0].date;
-  const xs: number[] = [];
-  const ys: number[] = [];
-  for (const p of points) {
-    const dx = daysBetweenDateStr(first, p.date);
-    if (dx == null) return null;
-    xs.push(dx);
-    ys.push(p.value);
-  }
-  const n = xs.length;
-  const meanX = xs.reduce((a, b) => a + b, 0) / n;
-  const meanY = ys.reduce((a, b) => a + b, 0) / n;
-  let num = 0;
-  let den = 0;
-  for (let i = 0; i < n; i++) {
-    num += (xs[i] - meanX) * (ys[i] - meanY);
-    den += (xs[i] - meanX) ** 2;
-  }
-  if (den === 0) return null; // no time spread
-  return num / den;
+// Whether the pairwise slopes scatter too widely to trust the direction: their
+// median absolute deviation exceeds the magnitude of the median slope itself. When
+// the spread of "which way is it going" estimates is as large as the estimate, the
+// trend is effectively undetermined. (|median slope| of 0 is treated as wide unless
+// the spread is also 0.)
+function slopesAreScattered(slopes: number[]): boolean {
+  if (slopes.length < 2) return false;
+  const mid = median(slopes);
+  const mad = median(slopes.map((s) => Math.abs(s - mid)));
+  return mad > Math.abs(mid);
 }
 
 // Project a body-metric goal from its windowed trend.
@@ -89,8 +97,15 @@ export function projectGoal(
   const pts = points.filter((p) => Number.isFinite(p.value));
   if (pts.length < MIN_PROJECTION_POINTS) return null;
 
-  const slope = leastSquaresSlopePerDay(pts as ProjectionPoint[]);
+  const slope = theilSenSlopePerDay(pts);
   if (slope == null || slope === 0) return null;
+
+  // Trust tier: shaky on few points or a widely-scattered set of pairwise slopes.
+  const confidence: "low" | "ok" =
+    pts.length < CONFIDENT_MIN_POINTS ||
+    slopesAreScattered(pairwiseSlopesPerDay(pts))
+      ? "low"
+      : "ok";
 
   const last = pts[pts.length - 1];
   const gap = target - last.value; // signed distance still to cover
@@ -114,6 +129,7 @@ export function projectGoal(
       slopePerDay: slope,
       projectedDate: null,
       daysEarly: null,
+      confidence,
     };
   }
 
@@ -124,7 +140,13 @@ export function projectGoal(
   const daysEarly =
     targetDate != null ? daysBetweenDateStr(projectedDate, targetDate) : null;
 
-  return { status: "reaching", slopePerDay: slope, projectedDate, daysEarly };
+  return {
+    status: "reaching",
+    slopePerDay: slope,
+    projectedDate,
+    daysEarly,
+    confidence,
+  };
 }
 
 // A short, unit-free phrase for how the projection lands against the deadline.

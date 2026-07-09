@@ -504,10 +504,19 @@ export interface CardioRecent {
 export interface SleepSignal {
   lastNightMin: number;
   baselineMin: number;
+  // Optional dispersion of recent nightly sleep (minutes) — a stddev or MAD of
+  // the baseline nights. When present, the deficit needed to trip a rest nudge
+  // widens to max(fixed threshold, multiplier × spread), so a naturally variable
+  // sleeper isn't flagged every noisy night (#44 item 3a). Absent ⇒ fixed
+  // threshold, i.e. exactly the previous behavior.
+  baselineSpreadMin?: number;
 }
 export interface RestingHrSignal {
   recent: number;
   baseline: number;
+  // Optional dispersion of recent resting HR (bpm); same variance-aware widening
+  // as SleepSignal.baselineSpreadMin. Absent ⇒ fixed threshold (prior behavior).
+  baselineSpreadBpm?: number;
 }
 
 export interface CoachingThresholds {
@@ -523,6 +532,10 @@ export interface CoachingThresholds {
   overtrainingWindowActiveDays: number;
   // … measured over this many trailing days (inclusive of today).
   overtrainingWindowDays: number;
+  // When a recovery signal carries a personal variability (spread), the deviation
+  // needed to fire widens to at least this multiple of that spread — so a noisy
+  // baseline needs a bigger-than-fixed jump before we nag a rest day.
+  variabilitySpreadMultiplier: number;
 }
 
 export const DEFAULT_COACHING_THRESHOLDS: CoachingThresholds = {
@@ -532,6 +545,7 @@ export const DEFAULT_COACHING_THRESHOLDS: CoachingThresholds = {
   overtrainingConsecutiveDays: 4,
   overtrainingWindowActiveDays: 6,
   overtrainingWindowDays: 7,
+  variabilitySpreadMultiplier: 2, // ~2× the personal spread
 };
 
 export interface CoachingInput {
@@ -626,11 +640,22 @@ export function restRecommendation(
 ): Recommendation | null {
   const { sleep, restingHr, trainingDates, today } = input;
 
-  // Poor sleep — only when sleep data exists.
+  // Poor sleep — only when sleep data exists. When a personal night-to-night
+  // spread is known, the deficit that counts as "poor" widens to at least
+  // `multiplier × spread`, so a variable sleeper needs a real drop (not just a
+  // normal off-night) to be flagged. The absolute floor stays fixed — a
+  // genuinely short night is worth a nudge regardless of how variable you are.
   if (sleep) {
+    const effDeficit =
+      sleep.baselineSpreadMin != null && sleep.baselineSpreadMin > 0
+        ? Math.max(
+            th.sleepDeficitMin,
+            th.variabilitySpreadMultiplier * sleep.baselineSpreadMin
+          )
+        : th.sleepDeficitMin;
     const belowBaseline =
       sleep.baselineMin > 0 &&
-      sleep.lastNightMin <= sleep.baselineMin - th.sleepDeficitMin;
+      sleep.lastNightMin <= sleep.baselineMin - effDeficit;
     const belowFloor = sleep.lastNightMin < th.sleepFloorMin;
     if (belowBaseline || belowFloor) {
       const detail = belowBaseline
@@ -648,11 +673,22 @@ export function restRecommendation(
     }
   }
 
-  // Elevated resting HR — only when data exists.
+  // Elevated resting HR — only when data exists. Same variance-aware widening:
+  // with a known personal spread, the jump must clear max(fixed, multiplier ×
+  // spread) before it reads as under-recovered.
+  const effRhrJump =
+    restingHr &&
+    restingHr.baselineSpreadBpm != null &&
+    restingHr.baselineSpreadBpm > 0
+      ? Math.max(
+          th.restingHrJumpBpm,
+          th.variabilitySpreadMultiplier * restingHr.baselineSpreadBpm
+        )
+      : th.restingHrJumpBpm;
   if (
     restingHr &&
     restingHr.baseline > 0 &&
-    restingHr.recent >= restingHr.baseline + th.restingHrJumpBpm
+    restingHr.recent >= restingHr.baseline + effRhrJump
   ) {
     return {
       id: "rest-rhr",

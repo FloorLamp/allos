@@ -1,5 +1,6 @@
 import { db, today } from "../db";
 import { shiftDateStr } from "../date";
+import { consumptionRate, RATE_WINDOW_DAYS, type DoseRate } from "../refill";
 import { normalizeSeverity, SEVERITY_LABELS } from "../medication-history";
 import type {
   Insight,
@@ -34,6 +35,77 @@ export function getSupplementDoses(profileId: number): SupplementDose[] {
         ORDER BY d.supplement_id, d.sort, d.id`
     )
     .all(profileId) as SupplementDose[];
+}
+
+// Effective consumption rate (doses/day) + its basis for every item that has
+// either scheduled doses or logged history, for refill "≈N days left" math
+// (issue #38). Prefers the ACTUAL taken-log rate — confirmed doses in the last
+// RATE_WINDOW_DAYS ÷ the window — over the scheduled-dose-count estimate, falling
+// back to the count when history is thin (see lib/refill's consumptionRate). The
+// gather is profile-scoped: the history read JOINs intake_items and filters
+// s.profile_id (logs/doses are child tables reached through the parent), and the
+// schedule count reuses the profile-scoped getSupplementDoses. Callers (the
+// supplements page, Upcoming, and the refill notifier) all read the shared rate
+// from here rather than re-approximating it.
+export function getRefillRates(
+  profileId: number,
+  windowDays: number = RATE_WINDOW_DAYS
+): Map<number, DoseRate> {
+  const todayStr = today(profileId);
+  // Inclusive trailing window of `windowDays` calendar days ending today.
+  const windowStart = shiftDateStr(todayStr, -(windowDays - 1));
+  const todayMs = Date.parse(`${todayStr}T00:00:00Z`);
+
+  // Per-item: confirmations inside the window + the first-ever log date. Every
+  // intake_item_logs row is a confirmed (taken) dose, so COUNT is the confirmed
+  // count. Profile-scoped through the parent intake_items JOIN.
+  const rows = db
+    .prepare(
+      `SELECT l.supplement_id AS sid,
+              SUM(CASE WHEN l.date >= ? THEN 1 ELSE 0 END) AS in_window,
+              MIN(l.date) AS first_date
+         FROM intake_item_logs l
+         JOIN intake_items s ON s.id = l.supplement_id
+        WHERE s.profile_id = ?
+        GROUP BY l.supplement_id`
+    )
+    .all(windowStart, profileId) as {
+    sid: number;
+    in_window: number;
+    first_date: string | null;
+  }[];
+  const history = new Map(rows.map((r) => [r.sid, r]));
+
+  // Fallback rate ≈ number of scheduled dose rows per item.
+  const scheduleCount = new Map<number, number>();
+  for (const d of getSupplementDoses(profileId)) {
+    scheduleCount.set(
+      d.supplement_id,
+      (scheduleCount.get(d.supplement_id) ?? 0) + 1
+    );
+  }
+
+  const out = new Map<number, DoseRate>();
+  const ids = new Set<number>([...scheduleCount.keys(), ...history.keys()]);
+  for (const id of ids) {
+    const h = history.get(id);
+    const daysSinceFirstLog =
+      h?.first_date != null
+        ? Math.round(
+            (todayMs - Date.parse(`${h.first_date}T00:00:00Z`)) / 86_400_000
+          )
+        : null;
+    out.set(
+      id,
+      consumptionRate(
+        h?.in_window ?? 0,
+        daysSinceFirstLog,
+        scheduleCount.get(id) ?? 0,
+        windowDays
+      )
+    );
+  }
+  return out;
 }
 
 // Supplement ids with at least one dose logged on `date` (supplement-level view

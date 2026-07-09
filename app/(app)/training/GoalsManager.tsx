@@ -36,11 +36,11 @@ import {
 } from "@/app/(app)/goals/actions";
 import GoalForm from "@/app/(app)/goals/GoalForm";
 
-// Current progress value, formatted for the goal's metric.
-function goalCurrentText(g: Goal, prog: GoalProgress, wu: WeightUnit): string {
-  if (g.metric === "weight") return fmtWeight(prog.current, wu);
-  if (g.metric === "hold") return formatSeconds(prog.current);
-  return String(prog.current);
+// A progress value, formatted for the goal's metric.
+function goalValueText(g: Goal, value: number, wu: WeightUnit): string {
+  if (g.metric === "weight") return fmtWeight(value, wu);
+  if (g.metric === "hold") return formatSeconds(value);
+  return String(value);
 }
 
 // Goal list + create/edit modal. The "New goal" button and per-card "Edit"
@@ -276,13 +276,22 @@ export default function GoalsManager({
                     <div className="flex justify-between text-xs text-slate-500 dark:text-slate-400">
                       <span>
                         {isExercise && prog
-                          ? `${goalCurrentText(g, prog, wu)} logged`
+                          ? `${goalValueText(g, prog.current, wu)} in last 4 wks`
                           : isBody && prog
                             ? `${prog.current > 0 ? fmtBodyMetric(g.body_metric!, prog.current, wu) : "—"} now`
                             : `${g.current_value} / ${g.target_value} ${g.unit ?? ""}`}
                       </span>
                       <span>{pct}%</span>
                     </div>
+                    {/* Lifetime PR, shown only when it beats the recent-window
+                        best — so a detrained goal still surfaces the record. */}
+                    {isExercise &&
+                      prog &&
+                      (prog.lifetimeBest ?? 0) > prog.current && (
+                        <div className="mt-0.5 text-[11px] text-slate-400 dark:text-slate-500">
+                          PR {goalValueText(g, prog.lifetimeBest!, wu)}
+                        </div>
+                      )}
                     <div className="mt-1 h-2 w-full rounded-full bg-slate-100 dark:bg-ink-800">
                       <div
                         className={`h-2 rounded-full transition-colors ${goalBarClass(pct)}`}

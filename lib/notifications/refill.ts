@@ -11,7 +11,7 @@
 //     the threshold, or quantity tracking turned off), so the next time it runs
 //     low a fresh nudge fires. Without this the marker would silence it forever.
 
-import { getSupplements, getSupplementDoses } from "../queries";
+import { getSupplements, getRefillRates } from "../queries";
 import {
   daysOfSupplyLeft,
   isLowSupply,
@@ -71,21 +71,18 @@ export async function runRefills(
   );
   if (tracked.length === 0) return { failed: false };
 
-  // doses/day ≈ the number of scheduled dose rows for the item. Non-daily
-  // conditions (workout/rest/situational) actually consume less, so this is an
-  // upper bound on consumption → a conservative (early) days-left estimate, which
-  // is the safe direction for a refill nudge.
-  const doseCount = new Map<number, number>();
-  for (const d of getSupplementDoses(profileId)) {
-    doseCount.set(d.supplement_id, (doseCount.get(d.supplement_id) ?? 0) + 1);
-  }
+  // doses/day comes from the shared getRefillRates: the ACTUAL taken-log rate
+  // (confirmed doses over the trailing window) once the item has enough history,
+  // else the scheduled-dose-count estimate. A workout-only / situational
+  // supplement no longer reads as daily, so the nudge stops firing weeks early.
+  const rates = getRefillRates(profileId);
 
   const toSend: LowItem[] = [];
   for (const s of tracked) {
     const daysLeft = daysOfSupplyLeft(
       s.quantity_on_hand,
       s.qty_per_dose,
-      doseCount.get(s.id) ?? 0
+      rates.get(s.id)?.dosesPerDay ?? 0
     );
     const low = isLowSupply(daysLeft, DEFAULT_LOW_SUPPLY_DAYS);
     const marked = !!getProfileSetting(profileId, refillKey(s.id));

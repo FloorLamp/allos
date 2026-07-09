@@ -4,6 +4,7 @@ import { useState } from "react";
 import { createPortal } from "react-dom";
 import { IconX, IconMedal2 } from "@tabler/icons-react";
 import { standardFor } from "@/lib/strength";
+import type { Sex } from "@/lib/types";
 import StrengthStandards from "./StrengthStandards";
 
 // A strength "Level" label that opens the standards reference (modal) on click,
@@ -14,14 +15,16 @@ export default function LevelBadge({
   color,
   exercise,
   className,
+  sex,
 }: {
   label: string;
   color?: string;
   exercise?: string;
   className?: string;
+  sex?: Sex | null;
 }) {
   const [open, setOpen] = useState(false);
-  const std = exercise ? standardFor(exercise) : undefined;
+  const std = exercise ? standardFor(exercise, sex) : undefined;
 
   return (
     <>
@@ -69,6 +72,7 @@ export default function LevelBadge({
               <StrengthStandards
                 highlightStandard={std}
                 highlightLevel={label}
+                sex={sex}
               />
             </div>
           </div>,

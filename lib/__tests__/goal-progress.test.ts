@@ -165,6 +165,96 @@ describe("computeGoalProgress", () => {
   it("no matching sets yields zeroed progress", () => {
     const g = goal({ metric: "weight", target_weight_kg: 100 });
     const p = computeGoalProgress(g, []);
-    expect(p).toEqual({ current: 0, target: 100, pct: 0, done: false });
+    expect(p).toEqual({
+      current: 0,
+      target: 100,
+      pct: 0,
+      done: false,
+      lifetimeBest: 0,
+    });
+  });
+
+  it("without a today, current equals the lifetime best (backward compatible)", () => {
+    const g = goal({ metric: "weight", target_weight_kg: 100 });
+    const p = computeGoalProgress(g, [
+      set({ weight_kg: 80, date: "2020-01-01" }),
+      set({ weight_kg: 100, date: "2026-06-01" }),
+    ]);
+    // No windowing → current is the all-time max, same as lifetimeBest.
+    expect(p.current).toBe(100);
+    expect(p.lifetimeBest).toBe(100);
+    expect(p.done).toBe(true);
+  });
+
+  it("with a today, current is the best in the trailing 28-day window; PR survives as lifetimeBest", () => {
+    const g = goal({ metric: "weight", target_weight_kg: 100 });
+    const today = "2026-07-09";
+    const p = computeGoalProgress(
+      g,
+      [
+        // Lifetime PR, but well outside the 28-day window (detrained).
+        set({ weight_kg: 100, date: "2026-01-01" }),
+        // Recent, lighter working set.
+        set({ weight_kg: 70, date: "2026-07-01" }),
+      ],
+      today
+    );
+    expect(p.current).toBe(70); // recent form, not the stale PR
+    expect(p.lifetimeBest).toBe(100); // PR still exposed
+    expect(p.pct).toBe(70);
+    // done keys off the LIFETIME best: the target was genuinely hit once, so the
+    // achievement stands ("Mark achieved" stays tinted) even though the bar has
+    // dropped back to recent form.
+    expect(p.done).toBe(true);
+  });
+
+  it("done is false when the target was never hit, in or out of the window", () => {
+    const g = goal({ metric: "weight", target_weight_kg: 100 });
+    const p = computeGoalProgress(
+      g,
+      [
+        set({ weight_kg: 90, date: "2026-01-01" }),
+        set({ weight_kg: 70, date: "2026-07-01" }),
+      ],
+      "2026-07-09"
+    );
+    expect(p.done).toBe(false);
+    expect(p.lifetimeBest).toBe(90);
+  });
+
+  it("window edge: a set exactly 27 days back counts, 28 days back does not", () => {
+    const g = goal({ metric: "weight", target_weight_kg: 100 });
+    const today = "2026-07-28";
+    // 28-day inclusive window = today back through 2026-07-01.
+    const inWindow = computeGoalProgress(
+      g,
+      [set({ weight_kg: 100, date: "2026-07-01" })],
+      today
+    );
+    expect(inWindow.current).toBe(100);
+    const outOfWindow = computeGoalProgress(
+      g,
+      [set({ weight_kg: 100, date: "2026-06-30" })],
+      today
+    );
+    expect(outOfWindow.current).toBe(0);
+    expect(outOfWindow.lifetimeBest).toBe(100);
+  });
+
+  it("sets metric windows per session and still exposes the lifetime best", () => {
+    const g = goal({ metric: "sets", target_sets: 3, target_reps: 5 });
+    const today = "2026-07-09";
+    const sets = [
+      // Old session: 3 qualifying sets (lifetime best = 3).
+      set({ activity_id: 1, reps: 5, date: "2026-01-01" }),
+      set({ activity_id: 1, reps: 5, date: "2026-01-01" }),
+      set({ activity_id: 1, reps: 5, date: "2026-01-01" }),
+      // Recent session: only 2 qualifying sets.
+      set({ activity_id: 2, reps: 5, date: "2026-07-05" }),
+      set({ activity_id: 2, reps: 5, date: "2026-07-05" }),
+    ];
+    const p = computeGoalProgress(g, sets, today);
+    expect(p.current).toBe(2);
+    expect(p.lifetimeBest).toBe(3);
   });
 });

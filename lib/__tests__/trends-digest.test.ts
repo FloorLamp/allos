@@ -202,3 +202,83 @@ describe("summarizeTrends — ranking and limit", () => {
     ).toHaveLength(1);
   });
 });
+
+// Build an n-point series from raw values, one day apart, so `days` is n-1.
+function valueSeries(
+  key: string,
+  values: number[],
+  extra: Partial<DigestSeries> = {}
+): DigestSeries {
+  return {
+    key,
+    label: extra.label ?? key,
+    points: values.map((v, i) => ({
+      date: `2024-01-${String(i + 1).padStart(2, "0")}`,
+      value: v,
+    })),
+    ...extra,
+  };
+}
+
+describe("summarizeTrends — robust endpoints (#37)", () => {
+  it("does NOT flag a trend created by a single spiking endpoint", () => {
+    // Weight is flat at 80, but the very last reading spikes to 95. The literal
+    // first-vs-last delta is +18.75% (old failure mode); the median of the last 3
+    // is still 80, so there's no real move and the series is excluded.
+    const flatWithSpike = valueSeries("weight", [80, 80, 80, 80, 80, 95], {
+      label: "Weight",
+    });
+    expect(summarizeTrends([flatWithSpike])).toEqual([]);
+  });
+
+  it("still flags a genuine sustained move using robust endpoints", () => {
+    // A real level shift 80 → 88: robust first (median 80) vs robust last
+    // (median 88) = +10%, comfortably over threshold.
+    const [item] = summarizeTrends([
+      valueSeries("weight", [80, 80, 80, 88, 88, 88], { label: "Weight" }),
+    ]);
+    expect(item.first).toBe(80);
+    expect(item.last).toBe(88);
+    expect(item.direction).toBe("up");
+    expect(item.pctChange).toBeCloseTo(0.1, 6);
+    // `days` still spans the whole window (6 points, one day apart → 5 days).
+    expect(item.days).toBe(5);
+  });
+
+  it("keeps exact first-vs-last behavior for a 3-point series (k=1)", () => {
+    // floor(3/2)=1 → robust endpoints are the raw first/last points, mid ignored.
+    const [item] = summarizeTrends([
+      valueSeries("weight", [80, 999, 88], { label: "Weight" }),
+    ]);
+    expect(item.first).toBe(80);
+    expect(item.last).toBe(88);
+  });
+});
+
+describe("summarizeTrends — per-series thresholds (#37)", () => {
+  it("uses a per-series minPctChange over the global default", () => {
+    // A 3% move: kept because this series sets a 2% bar, despite the 5% default.
+    const [item] = summarizeTrends([
+      series("weight", 100, 103, { label: "Weight", minPctChange: 0.02 }),
+    ]);
+    expect(item.key).toBe("weight");
+  });
+
+  it("a strict per-series threshold excludes a move the global default would keep", () => {
+    // A 10% move that clears the 5% default but not this series' 15% bar.
+    expect(
+      summarizeTrends([
+        series("volume", 100, 110, { label: "Volume", minPctChange: 0.15 }),
+      ])
+    ).toEqual([]);
+  });
+
+  it("per-series threshold overrides the global option too", () => {
+    // Global bar 0.20 would drop a 10% move, but the series pins its own 0.05.
+    const [item] = summarizeTrends(
+      [series("w", 100, 110, { label: "W", minPctChange: 0.05 })],
+      { minPctChange: 0.2 }
+    );
+    expect(item.key).toBe("w");
+  });
+});

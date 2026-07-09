@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { IconX, IconAlertTriangle } from "@tabler/icons-react";
-import type { ActivityType, Goal } from "@/lib/types";
+import type { ActivityType, Goal, Sex } from "@/lib/types";
 import type {
   CardioStat,
   ExerciseStat,
@@ -82,6 +82,7 @@ export default function JournalView({
   recentByExercise,
   showHeader = true,
   showWeeklyTargets = true,
+  sex,
 }: {
   groups: DayGroup[];
   exerciseStats: ExerciseStat[];
@@ -95,6 +96,8 @@ export default function JournalView({
   recentByExercise: RecentByExercise;
   showHeader?: boolean;
   showWeeklyTargets?: boolean;
+  // Profile sex, so the exercise detail's strength standards use the right chart.
+  sex?: Sex | null;
 }) {
   const { open, openCreate, close, registerDock } = useActivityEditor();
   const dockRef = useRef<HTMLDivElement | null>(null);
@@ -327,6 +330,7 @@ export default function JournalView({
       recent={recentByExercise[selectedStat.exercise.toLowerCase()]}
       onFilterTag={(kind, value) => setTagFilter({ kind, value })}
       headerRight={closeDetailButton}
+      sex={sex}
     />
   ) : selectedCardio ? (
     <CardioDetailPanel

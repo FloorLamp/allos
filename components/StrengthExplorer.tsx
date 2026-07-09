@@ -7,7 +7,7 @@ import type {
   GoalProgress,
   RecentByExercise,
 } from "@/lib/queries";
-import type { Goal } from "@/lib/types";
+import type { Goal, Sex } from "@/lib/types";
 import { standardFor, levelFor } from "@/lib/strength";
 import { lastSessionPR } from "@/lib/coaching";
 import { formatRelativeDate } from "@/lib/format-date";
@@ -30,6 +30,7 @@ export default function StrengthExplorer({
   recentByExercise,
   goals,
   goalProgress,
+  sex,
 }: {
   exercises: ExerciseStat[];
   bodyweightKg: number | null;
@@ -39,6 +40,8 @@ export default function StrengthExplorer({
   // Auto-derived progress keyed by goal id (plain object — crosses the
   // server/client boundary, unlike a Map).
   goalProgress: Record<number, GoalProgress>;
+  // Profile sex, so strength standards/levels use the sex-appropriate chart.
+  sex?: Sex | null;
 }) {
   const [selected, setSelected] = useState(exercises[0]?.exercise ?? null);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -60,7 +63,7 @@ export default function StrengthExplorer({
     exercises.find((e) => e.exercise === selected) ?? exercises[0];
 
   function levelLabel(e: ExerciseStat) {
-    const std = standardFor(e.exercise);
+    const std = standardFor(e.exercise, sex);
     if (!std || !bodyweightKg) return null;
     return levelFor(e.e1rmKg / bodyweightKg, std);
   }
@@ -126,6 +129,7 @@ export default function StrengthExplorer({
                           label={lvl.label}
                           color={lvl.color}
                           exercise={e.exercise}
+                          sex={sex}
                         />
                       ) : (
                         <span className="text-slate-300 dark:text-slate-600">
@@ -153,6 +157,7 @@ export default function StrengthExplorer({
           recent={recentByExercise[current.exercise.toLowerCase()]}
           goals={goals}
           goalProgress={goalProgress}
+          sex={sex}
         />
       </div>
 
@@ -168,6 +173,7 @@ export default function StrengthExplorer({
           recent={recentByExercise[current.exercise.toLowerCase()]}
           goals={goals}
           goalProgress={goalProgress}
+          sex={sex}
         />
       </MobileDetailPage>
     </div>

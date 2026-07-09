@@ -26,10 +26,22 @@ export interface SeriesDose {
   label: string;
 }
 
+// Conservative minimum interval between consecutive doses of a multi-dose series,
+// in days. SIMPLIFIED single-number stand-ins for the ACIP minimum-interval tables
+// (which vary per dose pair): 4 weeks (28 d) is the floor for most childhood
+// primary-series doses; Hep A / HPV use their longer routine spacing. Doses logged
+// closer than this are treated as ONE credited dose (see assessOne), so two
+// same-week entries don't read as a finished series. NOT clinical guidance.
+export const MIN_INTERVAL_4WK = 28;
+export const MIN_INTERVAL_8WK = 56;
+export const MIN_INTERVAL_6MO = 168; // Hep A second dose (≥6 months)
+export const MIN_INTERVAL_HPV_2DOSE = 150; // HPV 2-dose ≥5 months (ACIP)
+
 // A discriminated schedule rule so the pure status engine stays generic.
 export type VaccineSchedule =
-  // Fixed-count primary series (HepB, DTaP, MMR, …).
-  | { kind: "series"; doses: SeriesDose[] }
+  // Fixed-count primary series (HepB, DTaP, MMR, …). `minIntervalDays` is the
+  // conservative minimum spacing between consecutive doses (see above).
+  | { kind: "series"; doses: SeriesDose[]; minIntervalDays?: number }
   // Recurring booster every `intervalYears`, starting at `startAgeYears` (Td/Tdap).
   | { kind: "booster"; intervalYears: number; startAgeYears: number }
   // Every year (influenza, COVID-19 — recommended from 6 months, then annually).
@@ -37,13 +49,14 @@ export type VaccineSchedule =
   // Recommended once within an age window (Zoster ≥50, Pneumococcal ≥65, HPV
   // routine through 26), optionally sex-restricted. `endAgeYears` bounds the
   // routine window above; omitted means open-ended (recommended from the start
-  // age onward).
+  // age onward). `minIntervalDays` spaces a multi-dose one_time (HPV, Zoster).
   | {
       kind: "one_time";
       startAgeYears: number;
       endAgeYears?: number;
       doses: number;
       sex?: Sex;
+      minIntervalDays?: number;
     }
   // No US age-based recommendation — travel / risk-based / non-routine. Tracked
   // and displayed, but never flagged due/overdue by age (BCG, Yellow Fever, …).
@@ -90,6 +103,7 @@ export const CATALOG: VaccineEntry[] = [
     ],
     schedule: {
       kind: "series",
+      minIntervalDays: MIN_INTERVAL_4WK,
       doses: [
         { recommendedMonths: 0, minMonths: 0, label: "Birth" },
         { recommendedMonths: 2, minMonths: 1, label: "1–2 mo" },
@@ -106,6 +120,7 @@ export const CATALOG: VaccineEntry[] = [
     antibodyMarkers: [],
     schedule: {
       kind: "series",
+      minIntervalDays: MIN_INTERVAL_4WK,
       doses: [
         { recommendedMonths: 2, minMonths: 2, label: "2 mo" },
         { recommendedMonths: 4, minMonths: 4, label: "4 mo" },
@@ -122,6 +137,7 @@ export const CATALOG: VaccineEntry[] = [
     antibodyMarkers: ["Tetanus Antibody", "Tetanus IgG", "Diphtheria Antibody"],
     schedule: {
       kind: "series",
+      minIntervalDays: MIN_INTERVAL_4WK,
       doses: [
         { recommendedMonths: 2, minMonths: 2, label: "2 mo" },
         { recommendedMonths: 4, minMonths: 4, label: "4 mo" },
@@ -140,6 +156,7 @@ export const CATALOG: VaccineEntry[] = [
     antibodyMarkers: [],
     schedule: {
       kind: "series",
+      minIntervalDays: MIN_INTERVAL_4WK,
       doses: [
         { recommendedMonths: 2, minMonths: 2, label: "2 mo" },
         { recommendedMonths: 4, minMonths: 4, label: "4 mo" },
@@ -156,6 +173,7 @@ export const CATALOG: VaccineEntry[] = [
     antibodyMarkers: [],
     schedule: {
       kind: "series",
+      minIntervalDays: MIN_INTERVAL_4WK,
       doses: [
         { recommendedMonths: 2, minMonths: 2, label: "2 mo" },
         { recommendedMonths: 4, minMonths: 4, label: "4 mo" },
@@ -173,6 +191,7 @@ export const CATALOG: VaccineEntry[] = [
     antibodyMarkers: ["Polio Antibody", "Poliovirus Antibody"],
     schedule: {
       kind: "series",
+      minIntervalDays: MIN_INTERVAL_4WK,
       doses: [
         { recommendedMonths: 2, minMonths: 2, label: "2 mo" },
         { recommendedMonths: 4, minMonths: 4, label: "4 mo" },
@@ -196,6 +215,7 @@ export const CATALOG: VaccineEntry[] = [
     ],
     schedule: {
       kind: "series",
+      minIntervalDays: MIN_INTERVAL_4WK,
       doses: [
         { recommendedMonths: 12, minMonths: 12, label: "12–15 mo" },
         { recommendedMonths: 4 * Y, minMonths: 4 * Y, label: "4–6 y" },
@@ -216,6 +236,7 @@ export const CATALOG: VaccineEntry[] = [
     ],
     schedule: {
       kind: "series",
+      minIntervalDays: MIN_INTERVAL_4WK,
       doses: [
         { recommendedMonths: 12, minMonths: 12, label: "12–15 mo" },
         { recommendedMonths: 4 * Y, minMonths: 4 * Y, label: "4–6 y" },
@@ -231,6 +252,7 @@ export const CATALOG: VaccineEntry[] = [
     antibodyMarkers: ["Hepatitis A IgG", "Hepatitis A Antibody", "Anti-HAV"],
     schedule: {
       kind: "series",
+      minIntervalDays: MIN_INTERVAL_6MO,
       doses: [
         { recommendedMonths: 12, minMonths: 12, label: "12–23 mo" },
         { recommendedMonths: 18, minMonths: 18, label: "+6 mo" },
@@ -247,6 +269,7 @@ export const CATALOG: VaccineEntry[] = [
     antibodyMarkers: [],
     schedule: {
       kind: "series",
+      minIntervalDays: MIN_INTERVAL_8WK,
       doses: [
         { recommendedMonths: 11 * Y, minMonths: 11 * Y, label: "11–12 y" },
         { recommendedMonths: 16 * Y, minMonths: 16 * Y, label: "16 y" },
@@ -270,7 +293,13 @@ export const CATALOG: VaccineEntry[] = [
     aliases: ["hpv", "gardasil", "gardasil 9", "gardasil-9"],
     antibodyMarkers: [],
     // Routine at 11–12 (from age 9); catch-up through 26 (shared decision to 45).
-    schedule: { kind: "one_time", startAgeYears: 9, endAgeYears: 26, doses: 2 },
+    schedule: {
+      kind: "one_time",
+      startAgeYears: 9,
+      endAgeYears: 26,
+      doses: 2,
+      minIntervalDays: MIN_INTERVAL_HPV_2DOSE,
+    },
   },
   // ---- Routine adult / all-ages ----
   {
@@ -317,7 +346,12 @@ export const CATALOG: VaccineEntry[] = [
     group: "routine_adult",
     aliases: ["zoster", "shingles", "shingrix", "rzv"],
     antibodyMarkers: [],
-    schedule: { kind: "one_time", startAgeYears: 50, doses: 2 },
+    schedule: {
+      kind: "one_time",
+      startAgeYears: 50,
+      doses: 2,
+      minIntervalDays: MIN_INTERVAL_8WK,
+    },
   },
   {
     code: "pneumo_adult",

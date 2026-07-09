@@ -124,6 +124,11 @@ export default function BodySection({ range }: { range: DateRange }) {
           ? `${reach} ${describeEta(projection.daysEarly)}.`
           : `${reach} around ${projection.projectedDate}.`;
     }
+    // Hedge a shaky projection (few points / scattered trend) so the ETA doesn't
+    // read as precise (#37).
+    if (projectionNote && projection?.confidence === "low") {
+      projectionNote += " (rough estimate)";
+    }
     return {
       referenceValue: { value: target, label: targetLabel },
       projectionNote,
