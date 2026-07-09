@@ -40,6 +40,10 @@ export default function TrainingPage({
             id: "overview",
             label: "Overview",
             content: <OverviewSection />,
+            // Non-default panels: don't keep them mounted client-side when a
+            // different tab is active (each section reads only its own data), so
+            // switching away drops their DOM instead of hiding it.
+            keepMounted: false,
           },
           {
             id: "analyze",
@@ -53,8 +57,14 @@ export default function TrainingPage({
                 range={one(searchParams?.range)}
               />
             ),
+            keepMounted: false,
           },
-          { id: "goals", label: "Goals", content: <GoalsSection /> },
+          {
+            id: "goals",
+            label: "Goals",
+            content: <GoalsSection />,
+            keepMounted: false,
+          },
         ]}
       />
     </div>
