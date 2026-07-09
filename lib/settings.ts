@@ -377,6 +377,15 @@ export interface NotifySchedule {
   // Morning digest (issue #135): the hour (0-23, this profile's timezone) to send
   // the once-a-day summary, or null = off. Off by default.
   digestHour: number | null;
+  // Weekly recap (issue #32): the weekday (0=Sun … 6=Sat, this profile's timezone)
+  // to send the seven-day summary, or null = off. Off by default. The recap fires
+  // at weeklyRecapHour on that weekday.
+  weeklyRecapDay: number | null;
+  weeklyRecapHour: number | null; // hour 0-23; defaults to 9 when a day is set
+  // Milestone alerts (issue #32): whether to notify when a milestone fires. On by
+  // default — milestones are always recorded to the timeline regardless; this only
+  // gates the (quiet) push/Telegram alert.
+  milestonesEnabled: boolean;
 }
 
 const SUPP_HOUR_KEYS = {
@@ -429,7 +438,23 @@ export function getNotifySchedule(profileId: number): NotifySchedule {
       getProfileSetting(profileId, "notify_digest_hour"),
       null
     ),
+    // Weekly recap — off by default (opt-in). Weekday 0-6, else null.
+    weeklyRecapDay: parseWeekday(
+      getProfileSetting(profileId, "notify_recap_day")
+    ),
+    weeklyRecapHour:
+      parseHour(getProfileSetting(profileId, "notify_recap_hour"), 9) ?? 9,
+    // Milestone alerts on unless explicitly disabled.
+    milestonesEnabled:
+      (getProfileSetting(profileId, "notify_milestones") ?? "1") === "1",
   };
+}
+
+// Parse a stored weekday (0=Sun … 6=Sat); "" / unset / out-of-range → null (off).
+function parseWeekday(raw: string | undefined): number | null {
+  if (raw === undefined || raw === "") return null;
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 0 && n <= 6 ? n : null;
 }
 
 export function setNotifySchedule(
@@ -449,6 +474,21 @@ export function setNotifySchedule(
     profileId,
     "notify_digest_hour",
     sched.digestHour == null ? "" : String(sched.digestHour)
+  );
+  setProfileSetting(
+    profileId,
+    "notify_recap_day",
+    sched.weeklyRecapDay == null ? "" : String(sched.weeklyRecapDay)
+  );
+  setProfileSetting(
+    profileId,
+    "notify_recap_hour",
+    sched.weeklyRecapHour == null ? "9" : String(sched.weeklyRecapHour)
+  );
+  setProfileSetting(
+    profileId,
+    "notify_milestones",
+    sched.milestonesEnabled ? "1" : "0"
   );
 }
 

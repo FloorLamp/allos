@@ -8,6 +8,7 @@ loadEnvConfig(process.cwd());
 
 import { db } from "../lib/db";
 import { writeRawPayload } from "../lib/integrations/raw-log";
+import { setDashboardLayout } from "../lib/settings";
 
 const PROFILE_ID = 1;
 
@@ -297,4 +298,28 @@ db.prepare(
 
 console.log(
   `e2e: seeded a second profile (${CHILD_NAME}, id=${childId}) with an upcoming appointment for the family-calendar feed`
+);
+
+// ── Weekly recap + milestones fixtures (issue #32) ────────────────────────────
+// The Weekly-recap dashboard widget is off by default (it stays quiet), so pin a
+// layout for profile 1 that makes ONLY it a known-visible widget; every other
+// widget falls back to its registry default. This gives the recap spec a
+// deterministic card to assert on. Synthetic — no PHI.
+setDashboardLayout(PROFILE_ID, { order: ["weekly-recap"], hidden: [] });
+
+// A fired milestone so the Timeline's `milestone` category has a deterministic
+// entry to render (the milestone engine also fires live on the notify tick, but
+// e2e never runs that). achieved_on is today so it lands at the top of the feed.
+const milestoneDate = new Date().toISOString().slice(0, 10);
+db.prepare(
+  `DELETE FROM milestones WHERE profile_id = ? AND key = 'workouts:50'`
+).run(PROFILE_ID);
+db.prepare(
+  `INSERT INTO milestones (profile_id, key, kind, threshold, title, detail, achieved_on)
+   VALUES (?, 'workouts:50', 'workouts', 50, '50 workouts logged',
+           'You''ve logged 50 workouts. Consistency is the point — nice going.', ?)`
+).run(PROFILE_ID, milestoneDate);
+
+console.log(
+  "e2e: seeded weekly-recap dashboard layout + a milestone timeline entry for profile 1"
 );

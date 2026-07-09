@@ -410,6 +410,18 @@ export async function saveNotificationPrefs(formData: FormData) {
       formData.get("workout_enabled") === "1",
     // Morning digest (#135): "" / "off" → off.
     digestHour: hour("digest_hour"),
+    // Weekly recap (#32): weekday 0-6, "" / "off" → off.
+    weeklyRecapDay: (() => {
+      const raw = String(formData.get("recap_day") ?? "").trim();
+      if (raw === "" || raw === "off") return null;
+      const n = Number(raw);
+      return Number.isInteger(n) && n >= 0 && n <= 6 ? n : null;
+    })(),
+    weeklyRecapHour: hour("recap_hour") ?? 9,
+    // Milestone alerts (#32): default on.
+    milestonesEnabled:
+      formData.get("milestones_enabled") === "on" ||
+      formData.get("milestones_enabled") === "1",
   });
   revalidatePath("/settings/profile");
 }

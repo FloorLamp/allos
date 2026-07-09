@@ -36,6 +36,7 @@ import { currentStreak, flexibleStreak } from "@/lib/streak";
 import { daysOfSupplyLeft, isLowSupply } from "@/lib/refill";
 import { buildDigest } from "@/lib/notifications/digest";
 import { gatherDigestInput } from "@/lib/notifications/digest-data";
+import { getWeeklyRecap } from "@/lib/notifications/weekly-recap-data";
 import { resolveWidgetList } from "@/lib/dashboard-widgets";
 import { PageHeader } from "@/components/ui";
 import StarredBiomarkers from "@/components/StarredBiomarkers";
@@ -55,6 +56,7 @@ import LowSupplyWidget, {
   type LowSupplyItem,
 } from "@/components/dashboard/LowSupplyWidget";
 import StreakWidget from "@/components/dashboard/StreakWidget";
+import WeeklyRecapWidget from "@/components/dashboard/WeeklyRecapWidget";
 import { saveDashboardLayout } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -175,6 +177,12 @@ export default function Dashboard() {
   const streak = has("streak") ? flexibleStreak(on, streakDates) : 0;
   const strictStreak = has("streak") ? currentStreak(on, streakDates) : 0;
 
+  // weekly-recap — the last seven days, rule-based (no AI). Same gather as the
+  // weekly notification, so the card and the digest always agree.
+  const weeklyRecap = has("weekly-recap")
+    ? getWeeklyRecap(profile.id, units.weightUnit)
+    : null;
+
   // immunizations: next-due / overdue against the schedule. Age comes from the
   // birthdate, or the stored whole-year age fallback when no DOB is set. Skip the
   // work when neither is known (the card then shows a static nudge).
@@ -245,6 +253,8 @@ export default function Dashboard() {
         return <LowSupplyWidget items={lowSupplyItems} />;
       case "streak":
         return <StreakWidget streak={streak} strictStreak={strictStreak} />;
+      case "weekly-recap":
+        return weeklyRecap ? <WeeklyRecapWidget recap={weeklyRecap} /> : null;
       default:
         return null;
     }

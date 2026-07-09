@@ -12,6 +12,7 @@ import {
   IconPill,
   IconScale,
   IconStethoscope,
+  IconTrophy,
   IconVaccine,
   type TablerIcon,
 } from "@tabler/icons-react";
@@ -54,6 +55,7 @@ const CATEGORY_ICONS: Record<TimelineCategory, TablerIcon> = {
   visit: IconCalendarEvent,
   goal: IconFlag,
   insight: IconBrain,
+  milestone: IconTrophy,
 };
 
 const CARD_CLASS =
@@ -75,6 +77,8 @@ const BADGE_CLASS: Record<TimelineCategory, string> = {
   goal: "bg-brand-100 text-brand-700 dark:bg-brand-950 dark:text-brand-300",
   insight:
     "bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-950 dark:text-fuchsia-300",
+  milestone:
+    "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300",
 };
 
 // The default page size and the increment each "Load more" reveals. The feed is
