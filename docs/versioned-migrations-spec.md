@@ -1,6 +1,6 @@
 # Spec: Versioned migration runner (`PRAGMA user_version`)
 
-Status: **draft** · Owner: TBD · Tracking issue: TBD
+Status: **draft** · Owner: TBD · Tracking issue: [#119](https://github.com/FloorLamp/allos/issues/119)
 
 ## Problem
 
