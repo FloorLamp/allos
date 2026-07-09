@@ -423,26 +423,63 @@ export const ACTIVITY_FOLD_FIELDS = [
 
 export type ActivityFoldField = (typeof ACTIVITY_FOLD_FIELDS)[number];
 
+// Measurement columns where a stored 0 cannot be a real workout value — it's a
+// source's "sensor didn't record this" filler (issue #93) — so the fold and the
+// richness score treat 0 the same as NULL. Deliberately NOT here: avg_temp_c
+// (0 °C is a legitimate reading) and workout_type (0 is a meaningful value in
+// Strava's enum).
+export const ZERO_IS_MISSING_FIELDS: ReadonlySet<ActivityFoldField> = new Set([
+  "duration_min",
+  "distance_km",
+  "elevation_m",
+  "avg_hr",
+  "max_hr",
+  "avg_speed_kmh",
+  "max_speed_kmh",
+  "relative_effort",
+  "avg_power_w",
+  "max_power_w",
+  "weighted_avg_power_w",
+  "avg_cadence",
+  "kilojoules",
+] as ActivityFoldField[]);
+
+// Whether a row actually carries data for a fold column: non-null, and for the
+// measurement columns above, non-zero.
+function hasFoldValue(f: ActivityFoldField, v: unknown): boolean {
+  if (v == null) return false;
+  return !(ZERO_IS_MISSING_FIELDS.has(f) && v === 0);
+}
+
 // The folded value per column: the keeper's own value wins, the discarded row only
-// fills a gap (COALESCE(keep, drop)). Pure; the action applies the result via a
-// scoped UPDATE.
+// fills a gap. A "gap" is NULL — or a zero on the measurement columns, so a keeper
+// showing "0 mi" inherits the other row's real distance (#93). When neither row
+// has real data the keeper's stored value (0 or NULL) is preserved. Pure; the
+// action applies the result via a scoped UPDATE.
 export function foldActivityFields(
   keep: Record<string, unknown>,
   drop: Record<string, unknown>
 ): Record<ActivityFoldField, unknown> {
   const out = {} as Record<ActivityFoldField, unknown>;
   for (const f of ACTIVITY_FOLD_FIELDS) {
-    out[f] = keep[f] ?? drop[f] ?? null;
+    out[f] = hasFoldValue(f, keep[f])
+      ? keep[f]
+      : hasFoldValue(f, drop[f])
+        ? drop[f]
+        : (keep[f] ?? drop[f] ?? null);
   }
   return out;
 }
 
 // How many fold-fields a row actually populates — a "richness" score used to pick a
-// default keeper. Accepts any row object and reads the fold columns dynamically.
+// default keeper. Zero-filled measurement columns don't count (#93), so a source
+// row padded with zeroes can't out-rich a manual row with real values and steer
+// the default keeper into the lossy side of the fold. Accepts any row object and
+// reads the fold columns dynamically.
 export function activityRichness(row: object): number {
   const r = row as Record<string, unknown>;
   let n = 0;
-  for (const f of ACTIVITY_FOLD_FIELDS) if (r[f] != null) n++;
+  for (const f of ACTIVITY_FOLD_FIELDS) if (hasFoldValue(f, r[f])) n++;
   return n;
 }
 

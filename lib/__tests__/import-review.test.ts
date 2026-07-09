@@ -555,12 +555,40 @@ describe("foldActivityFields", () => {
     expect(folded.distance_km).toBe(5); // filled from drop
     expect(folded.avg_hr).toBeNull(); // absent on both
   });
+
+  // Issue #93: a stored 0 on a measurement column is a source's "didn't record
+  // it" filler, not data — the other row's real value must win the fold.
+  it("treats a zero measurement as missing so the other row's value wins", () => {
+    const keep = { distance_km: 0, duration_min: 30, avg_hr: 0 };
+    const drop = { distance_km: 8.2, duration_min: 0, avg_hr: null };
+    const folded = foldActivityFields(keep, drop);
+    expect(folded.distance_km).toBe(8.2); // keeper's 0 is a gap → filled
+    expect(folded.duration_min).toBe(30); // real keeper value still wins
+    expect(folded.avg_hr).toBe(0); // no real value on either → keeper's stored 0 preserved
+  });
+
+  it("keeps legitimate zeroes on non-measurement columns", () => {
+    const keep = { avg_temp_c: 0, workout_type: 0 };
+    const drop = { avg_temp_c: 21, workout_type: 3 };
+    const folded = foldActivityFields(keep, drop);
+    expect(folded.avg_temp_c).toBe(0); // 0 °C is a real reading
+    expect(folded.workout_type).toBe(0); // 0 is a meaningful enum value
+  });
 });
 
 describe("activityRichness + preferActivityKeeper", () => {
   it("counts populated fold-fields", () => {
     expect(activityRichness({ notes: "x", duration_min: 30 })).toBe(2);
     expect(activityRichness({})).toBe(0);
+  });
+
+  it("zero-filled measurement columns don't count toward richness (#93)", () => {
+    // A source row padded with zeroes must not out-rich a manual row with real
+    // values — that default steers the merge into the lossy fold.
+    const zeroPadded = { distance_km: 0, avg_hr: 0, avg_power_w: 0 };
+    const real = { distance_km: 8.2, notes: "tempo" };
+    expect(activityRichness(zeroPadded)).toBe(0);
+    expect(activityRichness(real)).toBe(2);
   });
 
   it("prefers the integration row over a manual one", () => {
