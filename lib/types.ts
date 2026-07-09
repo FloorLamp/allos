@@ -800,6 +800,10 @@ export interface IntegrationSyncEvent {
   updated: number | null;
   unchanged: number | null;
   skipped: number | null;
+  // Bare filename of the captured raw provider payload under
+  // data/integration-payloads/<profile_id>/ (issue #9), or null. Read back only by
+  // the admin-only raw viewer route; never surfaced to members.
+  raw_ref: string | null;
   error: string | null;
   created_at: string;
 }

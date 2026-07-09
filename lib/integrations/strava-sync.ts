@@ -16,6 +16,7 @@ import {
   type UpsertCounts,
 } from "./sync-log";
 import { mapStravaActivity } from "./strava";
+import { writeRawPayload } from "./raw-log";
 import {
   upsertActivities,
   upsertMetricSamples,
@@ -81,6 +82,9 @@ export async function runStravaSync(
   const after = Math.max(0, cursor - RESCAN_MARGIN_SEC);
   const acts: NormActivity[] = [];
   const samples: NormMetricSample[] = [];
+  // Raw fetched activity JSON (detailed when available, else the list summary),
+  // accumulated for the admin-only raw viewer (issue #9) and written once below.
+  const rawItems: unknown[] = [];
   let skipped = 0;
   let detailCalls = 0;
   let truncated = false;
@@ -127,6 +131,8 @@ export async function runStravaSync(
       // A non-429 detail failure (e.g. a deleted/forbidden activity) imports
       // without calories rather than stalling all newer activities on one bad id.
       const detail = detailRes.ok ? detailRes.json : undefined;
+      // Keep the raw provider JSON for the raw viewer, whether or not it maps.
+      rawItems.push(detail ?? summary);
 
       const mapped = mapStravaActivity(summary, detail);
       if (!mapped) {
@@ -204,6 +210,12 @@ export async function runStravaSync(
       foldCounts([upActivities, upSamples]),
       skipped
     );
+    // Best-effort raw capture (never throws): the JSON we fetched this run.
+    const rawRef = writeRawPayload(
+      profileId,
+      STRAVA_ID,
+      JSON.stringify(rawItems)
+    );
     recordSyncEvent(profileId, STRAVA_ID, {
       ok: true,
       windowStart: win.start,
@@ -214,6 +226,7 @@ export async function runStravaSync(
       updated: tally.updated,
       unchanged: tally.unchanged,
       skipped: tally.skipped,
+      raw_ref: rawRef,
     });
   }
   if (truncated) {
