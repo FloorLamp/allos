@@ -374,6 +374,16 @@ export function swapProfileScopedIndexes(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_medical_profile_date ON medical_records(profile_id, date);
     CREATE INDEX IF NOT EXISTS idx_meddoc_profile_uploaded ON medical_documents(profile_id, uploaded_at);
     CREATE INDEX IF NOT EXISTS idx_metric_samples_md ON metric_samples(profile_id, metric, date);
+    -- getLatestMetricSample sorts the newest reading by end_time (NOT the derived
+    -- date column, which comes from start_time in the profile tz per #94, so it
+    -- can diverge at day boundaries — the sort key is deliberately end_time). The
+    -- (profile_id, metric, date) index above can't serve ORDER BY end_time, so the
+    -- planner adds a USE TEMP B-TREE over the whole (profile_id, metric) slice
+    -- (#115). This companion index makes end_time the ordering column right after
+    -- the equality prefix, so ORDER BY end_time DESC LIMIT 1 is a reverse index
+    -- seek with no temp sort. Kept alongside idx_metric_samples_md, which still
+    -- serves the GROUP BY date daily-aggregate reads.
+    CREATE INDEX IF NOT EXISTS idx_metric_samples_end ON metric_samples(profile_id, metric, end_time);
     CREATE INDEX IF NOT EXISTS idx_hr_minutes_day ON hr_minutes(profile_id, substr(ts,1,10));
 
     -- Per-profile partial unique indexes (issue #90). These supersede the INTERIM
