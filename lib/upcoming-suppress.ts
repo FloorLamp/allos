@@ -6,6 +6,7 @@
 // unit-tested in lib/__tests__.
 
 import type { UpcomingItem } from "./upcoming";
+import type { Finding } from "./findings";
 
 // A suppression row as stored (the two nullable state columns). A row is either a
 // SNOOZE (snooze_until set, dismissed_at null) or a DISMISS (dismissed_at set,
@@ -23,6 +24,15 @@ export interface SuppressionRecord {
 // the contract has a single, testable source of truth.
 export function signalKey(item: Pick<UpcomingItem, "key">): string {
   return item.key;
+}
+
+// The generalized suppression key for ANY finding (issue #39): a Finding's
+// dedupeKey. It is the same string an UpcomingItem's `key` yields via
+// upcomingToFinding, so old upcoming_dismissals rows keep matching — the store is
+// unchanged, just now shared by the coaching/digest engines too. Centralized here
+// (alongside signalKey) so the findings bus and Upcoming agree on the contract.
+export function findingKey(finding: Pick<Finding, "dedupeKey">): string {
+  return finding.dedupeKey;
 }
 
 // Whether a suppression record hides its item right now (`today` = the profile-

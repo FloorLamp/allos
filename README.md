@@ -78,19 +78,20 @@ the app and the `npm run seed` script, and is gitignored:
 cp .env.example .env.local   # then edit in your values
 ```
 
-| Variable               | Description                                                                                                                                                                             |
-| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ADMIN_USERNAME`       | Optional. Username for the bootstrap admin login created on first boot (default `admin`). Read only when no login exists yet.                                                           |
-| `ADMIN_PASSWORD`       | Password for the bootstrap admin login. If unset on first boot, a random one is generated and printed to the log **once** — capture it. Read only when no login exists yet.             |
-| `ANTHROPIC_API_KEY`    | Enables Claude-powered insights and medical-document extraction.                                                                                                                        |
-| `HEALTH_AI_MODEL`      | Optional. Override the AI model (defaults to `claude-sonnet-4-6`).                                                                                                                      |
-| `HEALTH_AI_MAX_TOKENS` | Optional. Max output tokens for document extraction (default `16000`).                                                                                                                  |
-| `LOG_LEVEL`            | Optional. `debug`/`info`/`warn`/`error` (default `info`).                                                                                                                               |
-| `LOG_FORMAT`           | Optional. `text` or `json`. Defaults to `text` in dev, `json` in prod.                                                                                                                  |
-| `AI_LOG_PROMPTS`       | Optional. Set `0` to keep prompts/responses out of the AI activity log.                                                                                                                 |
-| `PORT`                 | Optional (Docker). Host port to expose (container listens on `3000`).                                                                                                                   |
-| `TZ`                   | Optional. Timezone is DB-backed — the instance default under **Settings → Server**, per-profile under **Settings → Profile**; a `TZ` env only seeds the instance default on first boot. |
-| `DATA_DIR`             | Optional (Docker). Host path for persistent data — see **Deploy with Docker**.                                                                                                          |
+| Variable               | Description                                                                                                                                                                                 |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ADMIN_USERNAME`       | Optional. Username for the bootstrap admin login created on first boot (default `admin`). Read only when no login exists yet.                                                               |
+| `ADMIN_PASSWORD`       | Password for the bootstrap admin login. If unset on first boot, a random one is generated and printed to the log **once** — capture it. Read only when no login exists yet.                 |
+| `ANTHROPIC_API_KEY`    | Enables Claude-powered insights and medical-document extraction. Optional when `AI_BASE_URL` points at a local server that ignores keys.                                                    |
+| `AI_BASE_URL`          | Optional. Point the app at a self-hosted / local inference server exposing an Anthropic-compatible API (Ollama, a proxy, …) for zero external egress. Set alone, or with a key it forwards. |
+| `HEALTH_AI_MODEL`      | Optional. Override the AI model (defaults to `claude-sonnet-4-6`).                                                                                                                          |
+| `HEALTH_AI_MAX_TOKENS` | Optional. Max output tokens for document extraction (default `16000`).                                                                                                                      |
+| `LOG_LEVEL`            | Optional. `debug`/`info`/`warn`/`error` (default `info`).                                                                                                                                   |
+| `LOG_FORMAT`           | Optional. `text` or `json`. Defaults to `text` in dev, `json` in prod.                                                                                                                      |
+| `AI_LOG_PROMPTS`       | Optional. Set `0` to keep prompts/responses out of the AI activity log.                                                                                                                     |
+| `PORT`                 | Optional (Docker). Host port to expose (container listens on `3000`).                                                                                                                       |
+| `TZ`                   | Optional. Timezone is DB-backed — the instance default under **Settings → Server**, per-profile under **Settings → Profile**; a `TZ` env only seeds the instance default on first boot.     |
+| `DATA_DIR`             | Optional (Docker). Host path for persistent data — see **Deploy with Docker**.                                                                                                              |
 
 You can also `export` these directly instead of using a file.
 
@@ -119,6 +120,29 @@ coaching analysis, then use **Trends → Insights → Generate analysis**.
 Uploaded medical documents (**Data → Import**) are extracted into
 structured records by the same API; without a key the file is still stored but
 extraction is skipped.
+
+### Local / self-hosted inference (zero external egress)
+
+For a fully private setup, point the app at a **local inference server** that
+exposes an Anthropic-compatible API (Ollama and others, or a translating proxy)
+by setting `AI_BASE_URL` (e.g. `http://localhost:11434`). Then **no request ever
+leaves your machine beyond that endpoint** — the SDK talks only to the configured
+base URL. Local servers usually ignore the API key, so `ANTHROPIC_API_KEY` is
+optional when `AI_BASE_URL` is set (a placeholder is sent to satisfy the SDK);
+AI counts as configured when **either** is present.
+
+The endpoint and model are **environment-driven only** — the active endpoint,
+model, and configured/offline status are shown read-only under **Settings →
+Server → AI** (not editable in the UI, so no endpoint or credential is stored in
+the database). Each entry in the AI activity log is tagged with the backend host
+so you can tell which endpoint produced it.
+
+Quality trade-off: coaching **insights** and supplement **suggestions** work
+well on capable local models, but **medical-document extraction** is demanding
+(long documents, structured tool output) — a small local model may extract less
+reliably than Claude. Everything still degrades gracefully: with neither
+`ANTHROPIC_API_KEY` nor `AI_BASE_URL` set, insights fall back to the offline
+summary and uploads are stored but not extracted.
 
 ## Integrations
 
@@ -278,13 +302,21 @@ container: `docker compose exec allos-notify node dist/notify.cjs workout`).
 
 ## Backups
 
-The same hourly tick takes a **nightly SQLite snapshot** of the database via
+The hourly tick takes a **nightly SQLite snapshot** of the database via
 `VACUUM INTO` (a compact single-file copy, safe against the live connection).
 Configure it in **Settings → Server → Automated backups** (admin only): enable/disable,
 the hour (in the instance timezone), and retention (keep _N_ dailies + _M_ weeklies,
 default 7/8). Snapshots are written to `data/backups/allos-<YYYY-MM-DD-HHmm>.db`, older
 ones are pruned only after a successful new snapshot, and the card shows the last backup's
 time/size (plus any failure) with a **Back up now** button.
+
+**Integrity verification.** Each fresh snapshot is opened read-only and checked with
+`PRAGMA integrity_check`; the result is written to a JSON sidecar next to it
+(`allos-<stamp>.db.json`). A snapshot that **fails** the check is kept for forensics but is
+**not** counted as a successful backup and older good snapshots are **not** pruned, so a
+corrupt copy never rotates a healthy one away. The same tick also runs a **weekly**
+`integrity_check` on the live database (gated by a stored marker), logging the result loudly
+on failure.
 
 Snapshots live under `DATA_DIR` (the Docker bind mount, outside the checkout) and are
 **never served by any route** — they contain multi-profile health data.
@@ -294,9 +326,50 @@ Snapshots live under `DATA_DIR` (the Docker bind mount, outside the checkout) an
 > snapshot does **not** include them. For a complete backup, copy the whole `DATA_DIR`
 > (database + `uploads/` + `integration-payloads/`).
 
-**Restore (manual):** stop the container, replace `data/allos.db` with a snapshot
-(`cp data/backups/allos-<stamp>.db data/allos.db`), and start it again. Restore
-`data/uploads/` too if you're recovering from a full-directory backup.
+### Scheduling without the notify sidecar
+
+Backups are driven from the hourly notify tick by default. If you removed the notify
+sidecar, drive them with the standalone entrypoint instead — it applies the same
+schedule/retention/verification and is safe to run hourly by cron:
+
+```cron
+0 * * * * cd /app && npm run backup
+```
+
+`npm run backup -- now` forces an immediate (verified) snapshot regardless of the schedule.
+
+### Restore
+
+Use the restore tool (`npm run restore`) — it lists snapshots with their integrity status,
+verifies the chosen one before trusting it, copies the current live DB aside as a rollback
+(`allos.db.pre-restore-<timestamp>`), then copies the snapshot into place and clears any
+stale `-wal`/`-shm` sidecars.
+
+```bash
+npm run restore                       # list snapshots + integrity status
+npm run restore -- allos-<stamp>.db   # restore that snapshot (prompts to confirm)
+npm run restore -- allos-<stamp>.db --yes    # skip the confirmation prompt
+npm run restore -- allos-<stamp>.db --force  # also override safety refusals
+```
+
+**Stop the container/app before restoring.** The tool makes a best-effort check for a live
+DB connection and refuses if it detects one, but in WAL mode an _idle_ connection may not be
+detected, so always stop the app first. `--force` overrides both the running check and a
+failed-integrity refusal. Restore `data/uploads/` too if you're recovering from a
+full-directory backup.
+
+You can still restore by hand if you prefer: stop the container, `cp
+data/backups/allos-<stamp>.db data/allos.db`, delete any `data/allos.db-wal` /
+`data/allos.db-shm`, and start it again.
+
+### Health endpoint
+
+The container healthcheck hits `GET /api/health`, which probes both that the DB is
+**readable** and that `data/` is **writable** (a full or read-only disk answers reads but
+fails writes). It returns `{ status, reason?, lastBackupAgeHours }` and flips to HTTP **503**
+(`status: "degraded"`) when a probe fails, so the Docker healthcheck marks the container
+unhealthy. `lastBackupAgeHours` reports hours since the last successful backup (null when
+never backed up), so a stalled schedule is visible.
 
 ## Scripts
 

@@ -20,6 +20,7 @@ import {
 } from "@/lib/trend-views";
 import { generateInsight, saveInsight } from "@/lib/ai";
 import { withAiLogContext } from "@/lib/ai-log";
+import { dismissFinding } from "@/lib/queries";
 import { today } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
 
@@ -46,6 +47,19 @@ export async function generateForDate(formData: FormData) {
   saveInsight(profile.id, date, result);
   revalidatePath("/trends");
   revalidatePath("/");
+}
+
+// Dismiss a "What's trending" digest chip (findings bus, #39): hide it through the
+// shared suppression store keyed by "digest:<series-key>:<direction>", so it stays
+// dismissed only while the SAME-direction trend persists (a reversal is a new key
+// and resurfaces). Guarded to the digest namespace; profile-scoped via
+// dismissFinding.
+export async function dismissDigest(formData: FormData) {
+  const { profile } = requireSession();
+  const dedupeKey = String(formData.get("dedupe_key") ?? "").trim();
+  if (!dedupeKey.startsWith("digest:")) return;
+  dismissFinding(profile.id, dedupeKey);
+  revalidatePath("/trends");
 }
 
 // Pin / unpin a Trends-Overview tile for the active profile (issue #212, Phase 2).
