@@ -36,6 +36,7 @@ import {
   getActiveSituations,
 } from "../settings";
 import type { UpcomingItem } from "../upcoming";
+import { pickNextAppointment } from "../household";
 import {
   getSupplements,
   getSupplementDoses,
@@ -373,6 +374,40 @@ export function collectUpcoming(
   return rawUpcoming(profileId, today).filter(
     (item) => !isItemSuppressed(map, item, today)
   );
+}
+
+// The actionable household rollup for ONE profile (issue #31): the subset of the
+// Upcoming aggregation the Household cards act on — due doses, low refills, and
+// the single soonest scheduled visit. It reuses the SAME per-domain builders as
+// collectUpcoming (no duplicated aggregation), but deliberately skips the heavier
+// immunization/biomarker/goal/training domains the cards don't render, and honors
+// the same snooze/dismiss suppressions so a finding hidden on Upcoming stays
+// hidden here too.
+//
+// COST: the Household page calls this once per ACCESSIBLE profile. It is bounded —
+// a household is a handful of profiles — and each call is a few cheap, indexed,
+// profile-scoped reads: supplements + their doses + today's taken-log (doseItems),
+// the refill rates (refillItems), the scheduled appointments (appointmentItems),
+// and the suppressions map. No cross-profile SQL; every read filters profile_id.
+export interface HouseholdRollup {
+  dueDoses: UpcomingItem[];
+  lowRefills: UpcomingItem[];
+  nextAppointment: UpcomingItem | null;
+}
+
+export function collectHouseholdRollup(
+  profileId: number,
+  today: string
+): HouseholdRollup {
+  const map = getFindingSuppressions(profileId);
+  const live = (item: UpcomingItem) => !isItemSuppressed(map, item, today);
+  return {
+    dueDoses: doseItems(profileId, today).filter(live),
+    lowRefills: refillItems(profileId, today).filter(live),
+    nextAppointment: pickNextAppointment(
+      appointmentItems(profileId).filter(live)
+    ),
+  };
 }
 
 // A currently-suppressed item plus why it's hidden — powers the Upcoming page's

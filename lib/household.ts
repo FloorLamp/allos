@@ -1,4 +1,4 @@
-// Pure card-assembly logic for the admin household dashboard (issue #102). No DB
+// Pure card-assembly logic for the household dashboard (issues #102, #31). No DB
 // or network access — the page fetches each profile's data with the existing
 // per-profile query functions (in a loop over getAccessibleProfiles) and hands
 // the raw results to these helpers, so the cross-profile view is built without
@@ -7,6 +7,7 @@
 import { isDueOn } from "./supplement-schedule";
 import type { Goal, Supplement } from "./types";
 import type { GoalProgress } from "./goal-progress";
+import type { UpcomingItem } from "./upcoming";
 
 // ---- Supplement adherence (today) ----
 
@@ -97,4 +98,28 @@ export function goalHighlights(
       title: g.title,
       pct: goalPct(g, progress.get(g.id)),
     }));
+}
+
+// ---- Household rollup (issue #31) ----
+
+// The single "next" appointment to surface on a household card: the soonest by
+// calendar date (a still-scheduled past visit sorts first — it's the most
+// attention-worthy — then the nearest future one). Null for an empty list. Pure
+// pick over the appointment UpcomingItems collectHouseholdRollup produces, kept
+// here (not inline in the DB helper) so it stays unit-tested. Items missing a
+// dueDate sort last (treated as far future) so a dated visit always wins.
+export function pickNextAppointment(
+  items: UpcomingItem[]
+): UpcomingItem | null {
+  let best: UpcomingItem | null = null;
+  for (const item of items) {
+    if (best === null) {
+      best = item;
+      continue;
+    }
+    const a = item.dueDate ?? "9999-12-31";
+    const b = best.dueDate ?? "9999-12-31";
+    if (a < b) best = item;
+  }
+  return best;
 }

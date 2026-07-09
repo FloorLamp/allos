@@ -35,13 +35,14 @@ type Leaf = {
   href: string;
   label: string;
   icon: TablerIcon;
-  // `adminOnly` entries (the cross-profile household overview) are dropped for
-  // non-admins. Hiding the link is cosmetic — the page itself calls
-  // requireAdmin(), which is the real gate.
+  // `adminOnly` entries are dropped for non-admins. Hiding the link is cosmetic —
+  // the page itself calls requireAdmin(), which is the real gate. (No top-level
+  // entry uses this today; kept for future admin-only surfaces.)
   adminOnly?: boolean;
-  // `requiresMultiProfile` entries are dropped when the instance has a single
-  // profile — the Household cross-profile overview is meaningless with one
-  // profile, so it shows only when admin AND >1 profile exists.
+  // `requiresMultiProfile` entries are dropped unless the caller has more than
+  // one ACCESSIBLE profile (issue #31): the Household cross-profile overview is
+  // meaningless with a single profile, so a single-profile login (member or a
+  // one-profile instance) never sees it, while any login granted 2+ profiles does.
   requiresMultiProfile?: boolean;
 };
 
@@ -98,7 +99,8 @@ const entries: Entry[] = [
     href: "/household",
     label: "Household",
     icon: IconUsersGroup,
-    adminOnly: true,
+    // Open to any login with 2+ accessible profiles (admin or caregiver member) —
+    // issue #31. The page re-checks the accessible-profile count server-side.
     requiresMultiProfile: true,
   },
   { href: "/training", label: "Training", icon: IconBarbell },
@@ -217,8 +219,8 @@ export default function Nav({
 }: {
   restricted?: boolean;
   isAdmin?: boolean;
-  // True when the instance has more than one profile; gates entries flagged
-  // `requiresMultiProfile` (e.g. the Household cross-profile overview).
+  // True when the caller has more than one ACCESSIBLE profile; gates entries
+  // flagged `requiresMultiProfile` (e.g. the Household cross-profile overview).
   multiProfile?: boolean;
 }) {
   const visible = entries.filter((e) =>

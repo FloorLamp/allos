@@ -47,11 +47,11 @@ export default function SidebarContent({
   active: SessionProfile;
   profiles: SessionProfile[];
   restricted?: boolean;
-  // Reveals the admin-only nav entries (the household overview); the pages
-  // themselves still call requireAdmin().
+  // Reveals any admin-only nav entries; the pages themselves still call
+  // requireAdmin().
   isAdmin?: boolean;
-  // True when the instance has >1 profile; gates the (admin-only) Household
-  // overview, which is meaningless with a single profile.
+  // True when the caller has >1 ACCESSIBLE profile; gates the Household overview
+  // (issue #31), which is meaningless with a single profile.
   multiProfile?: boolean;
   // Count of integrations currently needing attention (failed syncs) — shown as
   // a badge on the profile menu, linking to Data → Review. Resolved server-side.

@@ -1,4 +1,9 @@
-import { requireAdmin, getAccessibleProfiles } from "@/lib/auth";
+import { redirect } from "next/navigation";
+import {
+  requireSession,
+  getAccessibleProfiles,
+  accessForProfile,
+} from "@/lib/auth";
 import { today } from "@/lib/db";
 import {
   getActivities,
@@ -11,6 +16,7 @@ import {
   getSupplementDoses,
   getTakenDoseIds,
   getWeights,
+  collectHouseholdRollup,
 } from "@/lib/queries";
 import { getActiveSituations, getUnitPrefs } from "@/lib/settings";
 import {
@@ -28,14 +34,22 @@ import HouseholdCard, {
 export const dynamic = "force-dynamic";
 
 export default function HouseholdPage() {
-  // Cross-profile aggregation is admin-only — requireAdmin() bounces members, who
-  // must not see other profiles' data through this page.
-  const { login } = requireAdmin();
+  // Household is a cross-profile overview. It's open to ANY login that can reach
+  // 2+ profiles (issue #31) — an admin (sees every profile) or a caregiver member
+  // (sees their granted set). A single-profile login has nothing to compare, so
+  // it's bounced to the dashboard; this server gate is authoritative (the nav
+  // link is hidden for the same case, but that's only cosmetic).
+  const { login } = requireSession();
+  const profiles = getAccessibleProfiles();
+  if (profiles.length < 2) redirect("/");
   const weightUnit = getUnitPrefs(login.id).weightUnit;
 
-  // Reuse the existing per-profile query functions in a loop; no new cross-profile
-  // SQL, so the profile-scoping test and the profileId-first convention hold.
-  const cards: HouseholdCardData[] = getAccessibleProfiles().map((profile) => {
+  // One loop over the accessible profiles, each built from the EXISTING per-profile
+  // query functions — no new cross-profile SQL, so the profile-scoping test and the
+  // profileId-first convention hold. Bounded work: a household is a handful of
+  // profiles, and each card is a small set of cheap, profile-scoped reads (the
+  // glance stats below + collectHouseholdRollup's few reads — see its COST note).
+  const cards: HouseholdCardData[] = profiles.map((profile) => {
     const pid = profile.id;
     const day = today(pid);
 
@@ -72,8 +86,20 @@ export default function HouseholdPage() {
     const goals = getGoals(pid);
     const goalProgress = getGoalProgressMap(pid, goals);
 
+    // The actionable rollup — today's attention items (due doses, low refills,
+    // next visit) reusing the Upcoming aggregation's per-domain builders.
+    const rollup = collectHouseholdRollup(pid, day);
+
+    // Whether THIS login may WRITE this profile: admins always can, a member per
+    // its grant level. Read-only cards show the attention items but no quick-action
+    // buttons; the server action (confirmDoseAction) re-checks this per profile.
+    const canWrite = accessForProfile(login.id, login.role, pid) === "write";
+
     return {
       profile,
+      canWrite,
+      rollup,
+      today: day,
       adherence,
       lastActivity: recent
         ? { title: recent.title, when: formatRelativeDate(recent.date, day) }
@@ -92,7 +118,7 @@ export default function HouseholdPage() {
     <div>
       <PageHeader
         title="Household"
-        subtitle="Everyone at a glance — tap a card to open that profile."
+        subtitle="Everyone at a glance — confirm what's due, or tap a card to open that profile."
       />
       {cards.length === 0 ? (
         <EmptyState message="No profiles to show." />

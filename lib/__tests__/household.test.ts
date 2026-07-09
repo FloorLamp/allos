@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   goalHighlights,
   goalPct,
+  pickNextAppointment,
   supplementAdherenceToday,
   weightTrend,
 } from "@/lib/household";
 import type { Goal, Supplement } from "@/lib/types";
 import type { GoalProgress } from "@/lib/goal-progress";
+import type { UpcomingItem } from "@/lib/upcoming";
 
 // Minimal Goal factory (freeform by default), matching goals.test.ts.
 function makeGoal(overrides: Partial<Goal> = {}): Goal {
@@ -177,6 +179,42 @@ describe("goalPct", () => {
 
   it("returns null for a goal with no numeric basis", () => {
     expect(goalPct(makeGoal())).toBeNull();
+  });
+});
+
+describe("pickNextAppointment", () => {
+  const appt = (id: number, dueDate: string | null): UpcomingItem => ({
+    key: `appointment:${id}`,
+    domain: "appointment",
+    title: `Visit ${id}`,
+    href: "/appointments",
+    dueDate,
+  });
+
+  it("returns null for an empty list", () => {
+    expect(pickNextAppointment([])).toBeNull();
+  });
+
+  it("picks the soonest by calendar date", () => {
+    const chosen = pickNextAppointment([
+      appt(1, "2026-07-20"),
+      appt(2, "2026-07-11"),
+      appt(3, "2026-08-01"),
+    ]);
+    expect(chosen?.key).toBe("appointment:2");
+  });
+
+  it("surfaces a still-scheduled past visit ahead of a future one", () => {
+    const chosen = pickNextAppointment([
+      appt(1, "2026-07-15"),
+      appt(2, "2026-07-01"), // overdue but still scheduled
+    ]);
+    expect(chosen?.key).toBe("appointment:2");
+  });
+
+  it("prefers a dated visit over one missing a due date", () => {
+    const chosen = pickNextAppointment([appt(1, null), appt(2, "2026-07-15")]);
+    expect(chosen?.key).toBe("appointment:2");
   });
 });
 
