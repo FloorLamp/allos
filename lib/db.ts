@@ -1006,6 +1006,17 @@ export function migrate(db: Database.Database) {
   // record id, so external_id is synthesized as '<source>:<start_time>'.
   addColumnIfMissing(db, "activities", "source", "TEXT");
   addColumnIfMissing(db, "activities", "external_id", "TEXT");
+  // INTERIM GLOBAL index. The dedup key is per-profile — ingest upserts read/write
+  // scoped by (profile_id, external_id) (lib/integrations/normalize.ts) and Health
+  // Connect external ids are content-derived, so the enforced constraint MUST be
+  // (profile_id, external_id) or two profiles recording the same timestamp collide
+  // (issue #90). That scoped index can't be created HERE, though: on a pre-#67
+  // upgrade profile_id doesn't exist on this table until the backfill loop below
+  // (BACKFILL_OWNED_TABLES). So this creates a temporary external_id-only index,
+  // which swapProfileScopedIndexes() (called after profile_id exists) DROPs and
+  // recreates as the per-profile scoped unique index. The final runtime constraint
+  // is per-profile; do not "fix" this line by scoping it — it would crash the
+  // pre-#67 upgrade boot.
   db.exec(
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_activities_external ON activities(external_id) WHERE external_id IS NOT NULL;"
   );
@@ -1067,6 +1078,10 @@ export function migrate(db: Database.Database) {
   // synthesized as '<source>:<canonical>:<time>'.
   addColumnIfMissing(db, "medical_records", "source", "TEXT");
   addColumnIfMissing(db, "medical_records", "external_id", "TEXT");
+  // INTERIM GLOBAL index — same rationale as idx_activities_external above (issue
+  // #90): the enforced dedup key is per-profile, but profile_id isn't on this table
+  // yet on a pre-#67 upgrade, so swapProfileScopedIndexes() re-scopes this to
+  // (profile_id, external_id) after the backfill. Don't scope it here.
   db.exec(
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_medical_external ON medical_records(external_id) WHERE external_id IS NOT NULL;"
   );
@@ -1074,7 +1089,9 @@ export function migrate(db: Database.Database) {
   // Idempotent dedup for immunizations imported from an integration / SMART
   // Health Card. NULL for manual and document-extracted rows; set (e.g.
   // 'smart-health-card:<code>:<date>' or 'epic:<Immunization.id>') for synced
-  // rows so re-import updates in place instead of duplicating.
+  // rows so re-import updates in place instead of duplicating. The per-profile
+  // partial unique index that backs this (idx_immunizations_external) is created in
+  // swapProfileScopedIndexes() after profile_id exists — see issue #90.
   addColumnIfMissing(db, "immunizations", "external_id", "TEXT");
 
   // Nullable provider_id FK linking a profile-owned row to the shared, GLOBAL
