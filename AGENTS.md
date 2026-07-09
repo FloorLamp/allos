@@ -80,4 +80,4 @@ Node 24 is required (pinned via `.nvmrc`; `nvm use`). CI (`.github/workflows/ci.
 
 ## Deploy
 
-Production runs as a Docker container; `docker-compose.yml` pulls a prebuilt image from GHCR (`ghcr.io/floorlamp/allos`). `.github/workflows/deploy.yml` builds on push to `main` and deploys to a self-hosted runner. Persistent data (DB, uploads, AI log) lives under `/app/data`, bind-mounted from `DATA_DIR` — which **must be outside the checkout** (deploy runs `git clean -ffdx`). See README "Deploy with Docker" for full setup.
+Production runs as a Docker container; `docker-compose.yml` pulls a prebuilt image from GHCR (`ghcr.io/floorlamp/allos`). `.github/workflows/deploy.yml` builds and publishes the image on push to `main`; deploying is a manual/host-scheduled `docker compose pull && up -d` on the box (the old self-hosted-runner deploy job was removed). Persistent data (DB, uploads, AI log) lives under `/app/data`, bind-mounted from `DATA_DIR` — keep it **outside the checkout**. See README "Deploy with Docker" for full setup.
