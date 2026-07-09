@@ -13,6 +13,7 @@ describe("metric bucket membership", () => {
       "bone_mass_kg",
       "bmr_kcal",
       "height_cm",
+      "head_circumference_cm",
     ];
     for (const m of averaged) {
       expect(AVERAGED_METRICS.has(m)).toBe(true);
@@ -22,7 +23,14 @@ describe("metric bucket membership", () => {
 
   it("is exactly the set of averaged metrics (no accidental additions)", () => {
     expect([...AVERAGED_METRICS].sort()).toEqual(
-      ["bmr_kcal", "bone_mass_kg", "height_cm", "hrv_ms", "lean_mass_kg"].sort()
+      [
+        "bmr_kcal",
+        "bone_mass_kg",
+        "head_circumference_cm",
+        "height_cm",
+        "hrv_ms",
+        "lean_mass_kg",
+      ].sort()
     );
   });
 

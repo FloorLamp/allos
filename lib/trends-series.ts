@@ -20,10 +20,12 @@ import {
 import {
   getUnitPrefs,
   getUserSex,
+  getUserAge,
   getUserAgeOn,
   getUserReproductiveStatus,
   getSituationEvents,
 } from "./settings";
+import { showBodyFat } from "./growth-metrics";
 import { buildAnnotations, type TrendAnnotation } from "./trend-annotations";
 import { dispWeight, round } from "./units";
 import {
@@ -150,6 +152,9 @@ export function buildMetricSeries(
   const wu = getUnitPrefs(loginId).weightUnit;
   const weightUnitSuffix = ` ${wu}`;
   const bodyMetrics = getBodyMetricsWithSource(profileId, ALL_ROWS);
+  // Body fat % is not a datapoint we surface for children (kids growth trends) —
+  // drop its tile for a minor, matching the Body tab's age-aware layout.
+  const hideBodyFat = !showBodyFat(getUserAge(profileId));
 
   const pointsFor = (id: string): { date: string; value: number }[] => {
     switch (id) {
@@ -180,7 +185,9 @@ export function buildMetricSeries(
     }
   };
 
-  return METRIC_DEFS.filter((d) => !(d.restricted && restricted)).map((d) => ({
+  return METRIC_DEFS.filter(
+    (d) => !(d.restricted && restricted) && !(d.id === "bodyfat" && hideBodyFat)
+  ).map((d) => ({
     key: metricPinKey(d.id),
     label: d.label,
     unit: d.id === "weight" || d.id === "volume" ? weightUnitSuffix : d.unit,
@@ -292,13 +299,14 @@ export function listCompareOptions(
   profileId: number,
   restricted: boolean
 ): { metrics: TrendOption[]; biomarkers: TrendOption[] } {
-  const metrics = METRIC_DEFS.filter((d) => !(d.restricted && restricted)).map(
-    (d) => ({
-      key: metricPinKey(d.id),
-      label: d.label,
-      kind: "metric" as const,
-    })
-  );
+  const hideBodyFat = !showBodyFat(getUserAge(profileId));
+  const metrics = METRIC_DEFS.filter(
+    (d) => !(d.restricted && restricted) && !(d.id === "bodyfat" && hideBodyFat)
+  ).map((d) => ({
+    key: metricPinKey(d.id),
+    label: d.label,
+    kind: "metric" as const,
+  }));
   const biomarkers = getUsedCanonicalNamesWithDerived(profileId).map(
     (name) => ({
       key: bioPinKey(name),

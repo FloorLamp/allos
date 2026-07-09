@@ -1,7 +1,19 @@
 import Link from "next/link";
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
-import { getUnitPrefs, getUserSex, getUserBirthdate } from "@/lib/settings";
+import {
+  getUnitPrefs,
+  getUserSex,
+  getUserBirthdate,
+  getUserAge,
+} from "@/lib/settings";
+import { ageInMonthsFromBirthdate } from "@/lib/date";
+import {
+  planBodyCharts,
+  showGrowthQuickAdd,
+  showHeadCircEntry,
+  type BodyChartKey,
+} from "@/lib/growth-metrics";
 import {
   getWeights,
   getBodyMetricsWithSource,
@@ -33,6 +45,7 @@ import GrowthChartsCard, {
 } from "@/components/GrowthChartsCard";
 import BodyQuickAdd from "./BodyQuickAdd";
 import VitalsQuickAdd from "./VitalsQuickAdd";
+import GrowthQuickAdd from "./GrowthQuickAdd";
 import DeleteBodyMetricButton from "./DeleteBodyMetricButton";
 
 // The Trends hub's Body section: the full Body Metrics surface (absorbed here in
@@ -75,6 +88,37 @@ export default function BodySection({ range }: { range: DateRange }) {
       .slice()
       .reverse()
       .map((w) => ({ date: w.date, value: Math.round(w.resting_hr!) })),
+    range
+  );
+
+  // Age drives an age-aware Body-tab layout (kids growth trends): for a child,
+  // HEIGHT is the priority datapoint and body fat % is not tracked, so the tab
+  // charts height (and head circ for the very young), drops body fat, floats the
+  // growth-percentile card to the top, and offers a height/head-circ quick-add.
+  // Adults keep the original weight → body fat → resting-HR layout unchanged. The
+  // decision is the pure lib/growth-metrics (planBodyCharts), shared with tests.
+  const ageYears = getUserAge(profile.id);
+  const birthdate = getUserBirthdate(profile.id);
+  const ageMonths = birthdate
+    ? ageInMonthsFromBirthdate(birthdate, today(profile.id))
+    : null;
+  const plan = planBodyCharts({ ageYears, ageMonths });
+
+  // Height + head-circumference series (canonical cm, from metric_samples — the
+  // same store the growth charts read). Charted on the Body tab for minors so a
+  // height/head-circ history always surfaces even without the full growth card.
+  const heightChart = filterSeriesByRange(
+    getMetricDailyTotals(profile.id, "height_cm").map((r) => ({
+      date: r.date,
+      value: round(r.value, 1),
+    })),
+    range
+  );
+  const headCircChart = filterSeriesByRange(
+    getMetricDailyTotals(profile.id, "head_circumference_cm").map((r) => ({
+      date: r.date,
+      value: round(r.value, 1),
+    })),
     range
   );
 
@@ -136,8 +180,26 @@ export default function BodySection({ range }: { range: DateRange }) {
     };
   };
 
-  const charts: BodyChartSpec[] = [
-    {
+  // The full set of body-composition chart specs, keyed so the age-aware plan can
+  // order/select them. For a minor, body fat is absent from plan.keys entirely.
+  const chartByKey: Record<BodyChartKey, BodyChartSpec> = {
+    height: {
+      key: "height",
+      title: "Height",
+      data: heightChart,
+      label: "Height",
+      unit: " cm",
+      color: "#2563eb",
+    },
+    head_circumference: {
+      key: "head_circumference",
+      title: "Head circumference",
+      data: headCircChart,
+      label: "Head circ.",
+      unit: " cm",
+      color: "#0891b2",
+    },
+    weight: {
       key: "weight",
       title: "Weight",
       data: weightChart,
@@ -146,7 +208,7 @@ export default function BodySection({ range }: { range: DateRange }) {
       color: "#16a34a",
       ...goalOverlay("weight", weightChart, ` ${wu}`, 1),
     },
-    {
+    bodyfat: {
       key: "bodyfat",
       title: "Body fat",
       data: bodyFatChart,
@@ -155,7 +217,7 @@ export default function BodySection({ range }: { range: DateRange }) {
       color: "#a855f7",
       ...goalOverlay("body_fat", bodyFatChart, "%", 1),
     },
-    {
+    resting_hr: {
       key: "resting_hr",
       title: "Resting heart rate",
       data: restingHrChart,
@@ -164,7 +226,8 @@ export default function BodySection({ range }: { range: DateRange }) {
       color: "#fb923c",
       ...goalOverlay("resting_hr", restingHrChart, " bpm", 0),
     },
-  ];
+  };
+  const charts: BodyChartSpec[] = plan.keys.map((k) => chartByKey[k]);
 
   // Pediatric growth percentiles — reuses the exact build the Body Metrics page
   // uses; returns null unless the profile has a known sex + birthdate and is in
@@ -205,6 +268,14 @@ export default function BodySection({ range }: { range: DateRange }) {
         }))
     : [];
   const growthSource = growth && growth.ageMonths < 24 ? "WHO" : "CDC";
+  const growthCard =
+    growth && growthViews.length > 0 ? (
+      <GrowthChartsCard
+        views={growthViews}
+        currentAgeMonths={growth.ageMonths}
+        source={growthSource}
+      />
+    ) : null;
 
   // Synced-from-integrations daily metrics (steps, sleep, body composition,
   // intake, heart rate). These show the full series (not windowed) — matching the
@@ -298,21 +369,27 @@ export default function BodySection({ range }: { range: DateRange }) {
     <div className="space-y-6">
       <BodyQuickAdd weightUnit={wu} defaultDate={today(profile.id)} />
 
+      {showGrowthQuickAdd(ageYears) && (
+        <GrowthQuickAdd
+          defaultDate={today(profile.id)}
+          showHeadCirc={showHeadCircEntry(ageMonths)}
+        />
+      )}
+
       <VitalsQuickAdd defaultDate={today(profile.id)} />
 
       <p className="text-sm text-slate-500 dark:text-slate-400">
         Body-composition trends over the selected window.
       </p>
 
+      {/* For a child the growth-percentile card is the headline, so it floats
+          above the body-composition charts (plan.growthCardFirst); adults keep
+          it below, unchanged. */}
+      {plan.growthCardFirst && growthCard}
+
       <BodyTrendCharts charts={charts} annotations={annotations} />
 
-      {growth && growthViews.length > 0 && (
-        <GrowthChartsCard
-          views={growthViews}
-          currentAgeMonths={growth.ageMonths}
-          source={growthSource}
-        />
-      )}
+      {!plan.growthCardFirst && growthCard}
 
       {hasSynced && (
         <div className="grid gap-6 lg:grid-cols-2">

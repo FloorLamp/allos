@@ -8,6 +8,10 @@ export const AVERAGED_METRICS = new Set([
   "bone_mass_kg",
   "bmr_kcal",
   "height_cm",
+  // Head circumference is a point measure like height: a day holds at most one
+  // reading, so a same-date manual entry + imported reading must AVERAGE (agree),
+  // never SUM into a doubled value on the growth chart.
+  "head_circumference_cm",
 ]);
 
 // The per-day aggregation a metric uses: AVG for instantaneous point metrics,
