@@ -1259,6 +1259,29 @@ export function migrate(db: Database.Database) {
   seedTimezoneFromEnv(db);
 }
 
+// Run a one-time boot/migration transaction with the write lock taken at BEGIN
+// (IMMEDIATE) and a bounded retry on SQLITE_BUSY. `next build` collects page
+// data with several parallel workers, each importing this module and running
+// migrate() against the same file; a DEFERRED transaction that reads before
+// writing hits SQLITE_BUSY on its snapshot upgrade — thrown immediately, NOT
+// covered by busy_timeout — which intermittently killed the Docker image build.
+// IMMEDIATE takes the write lock at BEGIN (waiting out a competing worker via
+// busy_timeout), the bounded retry is the backstop, and every boot step is
+// idempotent under serialization (in-txn guards / upserts / no-op re-reads), so
+// a worker that loses the race re-runs as a clean no-op. The body-metric fold
+// below carries its own variant of this loop with an isDone() fast-path.
+function runBootTx(tx: { immediate: () => unknown }, attempts = 5): void {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      tx.immediate();
+      return;
+    } catch (err) {
+      if (attempt < attempts && /SQLITE_BUSY/i.test(String(err))) continue;
+      throw err;
+    }
+  }
+}
+
 // One-time split of the flat settings table into per-profile / per-login tiers
 // (issue #67, Phase 2). Per-profile keys (sex, timezone, notification schedule,
 // telegram delivery target, active situations, the notify_last_* dedup markers)
@@ -1330,7 +1353,7 @@ function migrateMultiUserSettings(db: Database.Database) {
       "INSERT OR REPLACE INTO settings (key, value) VALUES (?, '1')"
     ).run(FLAG);
   });
-  run();
+  runBootTx(run);
 }
 
 // Move the user's birthdate/age from the global settings table to profile 1's
@@ -1364,7 +1387,7 @@ function migrateProfileBirthdate(db: Database.Database) {
       "INSERT OR REPLACE INTO settings (key, value) VALUES (?, '1')"
     ).run(FLAG);
   });
-  run();
+  runBootTx(run);
 }
 
 // One-time (#120 follow-up): body fat % and resting HR imported from an integration
@@ -1485,7 +1508,7 @@ function bootstrapAuth(db: Database.Database) {
     ).run(acct.lastInsertRowid, prof.lastInsertRowid);
   });
   try {
-    create();
+    runBootTx(create);
   } catch (err) {
     // `next build` collects page data with several workers, each running
     // migrate() against the same DB at once; two can both see logins empty and
@@ -1544,6 +1567,11 @@ function ensureCanonicalSexColumns(db: Database.Database) {
   // single transaction (all-or-nothing).
   db.exec("DROP TABLE IF EXISTS canonical_biomarkers_new");
   const rebuild = db.transaction(() => {
+    // Re-check inside the txn: a parallel boot worker may have completed the
+    // rebuild while we waited for the write lock — re-running would recreate
+    // _new and copy from the already-migrated table with stale column names.
+    if (tableColumns(db, "canonical_biomarkers").includes("optimal_low_male"))
+      return;
     db.exec(`
       CREATE TABLE canonical_biomarkers_new (
         name TEXT PRIMARY KEY COLLATE NOCASE,
@@ -1568,7 +1596,7 @@ function ensureCanonicalSexColumns(db: Database.Database) {
       ALTER TABLE canonical_biomarkers_new RENAME TO canonical_biomarkers;
     `);
   });
-  rebuild();
+  runBootTx(rebuild);
 }
 
 // Add the sex-specific reference-range columns to an older canonical_biomarkers
@@ -1687,7 +1715,7 @@ function seedCanonicalBiomarkers(db: Database.Database) {
       );
     }
   });
-  seedAll();
+  runBootTx(seedAll);
 }
 
 // Flag-reconcile migration: re-derive every record's flag against the canonical
@@ -1809,7 +1837,7 @@ function reconcileNonOptimalFlags(db: Database.Database) {
       }
     }
   });
-  run();
+  runBootTx(run);
 }
 
 // One-time backfill of content_hash for documents stored before the dedup
@@ -1944,7 +1972,7 @@ function migrateLiftMerges(db: Database.Database) {
       "INSERT OR REPLACE INTO settings (key, value) VALUES (?, '1')"
     ).run(FLAG);
   });
-  run();
+  runBootTx(run);
 }
 
 // Move per-intake fields (amount/time/food) off supplements into a child table
@@ -2006,7 +2034,7 @@ function migrateSupplementDoses(db: Database.Database) {
         }
       }
     });
-    tx();
+    runBootTx(tx);
     dropColumnIfPresent(db, "intake_items", "dosage");
     dropColumnIfPresent(db, "intake_items", "time_of_day");
   }
@@ -2019,6 +2047,9 @@ function migrateSupplementDoses(db: Database.Database) {
     // prior aborted attempt, so a crash mid-migration can't brick the next boot.
     db.exec("DROP TABLE IF EXISTS intake_item_logs_new");
     const rebuild = db.transaction(() => {
+      // Re-check inside the txn: a parallel boot worker may have re-keyed the
+      // table while we waited for the write lock.
+      if (tableColumns(db, "intake_item_logs").includes("dose_id")) return;
       db.exec(`
         CREATE TABLE intake_item_logs_new (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2042,7 +2073,7 @@ function migrateSupplementDoses(db: Database.Database) {
         CREATE INDEX IF NOT EXISTS idx_intake_log_date ON intake_item_logs(date);
       `);
     });
-    rebuild();
+    runBootTx(rebuild);
   }
 }
 

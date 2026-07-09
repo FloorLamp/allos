@@ -12,8 +12,8 @@ test.describe("Settings → Server: AI endpoint info", () => {
     // Default endpoint label (no AI_BASE_URL configured in the e2e env).
     await expect(info.getByText("Anthropic API")).toBeVisible();
     // The model row is present (env-driven; default model in the e2e env).
-    await expect(info.getByText("Model")).toBeVisible();
+    await expect(info.getByText("Model", { exact: true })).toBeVisible();
     // Env-driven, not editable: the explanatory note names the env vars.
-    await expect(info.getByText(/AI_BASE_URL/)).toBeVisible();
+    await expect(info.getByText(/AI_BASE_URL/).first()).toBeVisible();
   });
 });
