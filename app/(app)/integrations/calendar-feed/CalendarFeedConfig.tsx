@@ -9,6 +9,12 @@ import {
 } from "@tabler/icons-react";
 import type { CalendarFeedDetail } from "@/lib/settings";
 import {
+  TOKEN_EXPIRY_CHOICES,
+  type TokenExpiryChoice,
+  type TokenLifecycleStatus,
+} from "@/lib/token-lifecycle";
+import { TokenLifecycleNote } from "@/components/TokenLifecycle";
+import {
   enableCalendarFeedAction,
   disableCalendarFeedAction,
   setCalendarFeedDetailAction,
@@ -21,6 +27,42 @@ function absoluteUrl(base: string, path: string): string {
   const b =
     base || (typeof window !== "undefined" ? window.location.origin : "");
   return `${b}${path}`;
+}
+
+const EXPIRY_LABEL: Record<TokenExpiryChoice, string> = {
+  never: "Never expires",
+  "90d": "Expires in 90 days",
+  "1y": "Expires in 1 year",
+};
+
+// A controlled expiry dropdown (client state feeds the server action call).
+function ExpiryPicker({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: TokenExpiryChoice;
+  onChange: (v: TokenExpiryChoice) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <label className="block">
+      <span className="label">Expiry</span>
+      <select
+        value={value}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value as TokenExpiryChoice)}
+        className="input"
+        data-testid="token-expiry-select"
+      >
+        {TOKEN_EXPIRY_CHOICES.map((c) => (
+          <option key={c} value={c}>
+            {EXPIRY_LABEL[c]}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
 }
 
 function CopyButton({ value }: { value: string }) {
@@ -54,20 +96,29 @@ export default function CalendarFeedConfig({
   enabled,
   detail,
   baseUrl,
+  status,
+  createdAt,
+  lastUsedAt,
+  expiresAt,
 }: {
   enabled: boolean;
   detail: CalendarFeedDetail;
   baseUrl: string;
+  status: TokenLifecycleStatus;
+  createdAt: string | null;
+  lastUsedAt: string | null;
+  expiresAt: string | null;
 }) {
   const [createdUrl, setCreatedUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [curDetail, setCurDetail] = useState<CalendarFeedDetail>(detail);
+  const [expiry, setExpiry] = useState<TokenExpiryChoice>("never");
 
-  async function onEnableOrRegenerate() {
+  async function onEnableOrRotate() {
     setBusy(true);
     setError(null);
-    const res = await enableCalendarFeedAction();
+    const res = await enableCalendarFeedAction(expiry);
     setBusy(false);
     if (res.ok && res.path) {
       setCreatedUrl(absoluteUrl(baseUrl, res.path));
@@ -106,10 +157,13 @@ export default function CalendarFeedConfig({
           with 1-day and 1-hour reminders — will appear automatically and stay
           in sync.
         </p>
+        <div className="max-w-xs">
+          <ExpiryPicker value={expiry} onChange={setExpiry} disabled={busy} />
+        </div>
         {error && (
           <p className="text-sm text-rose-600 dark:text-rose-400">{error}</p>
         )}
-        <button className="btn" disabled={busy} onClick={onEnableOrRegenerate}>
+        <button className="btn" disabled={busy} onClick={onEnableOrRotate}>
           {busy ? "Enabling…" : "Enable feed"}
         </button>
       </div>
@@ -120,33 +174,55 @@ export default function CalendarFeedConfig({
     <div className="grid max-w-3xl gap-6">
       <div className="card space-y-4">
         <div className="flex items-center gap-2">
-          <span className="badge inline-flex items-center gap-1 bg-brand-100 text-brand-700 dark:bg-brand-950 dark:text-brand-300">
-            <IconCheck className="h-3.5 w-3.5" /> Enabled
-          </span>
+          {status === "expired" ? (
+            <span
+              className="badge inline-flex items-center gap-1 bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300"
+              data-testid="calendar-feed-status"
+            >
+              <IconAlertTriangle className="h-3.5 w-3.5" /> Expired
+            </span>
+          ) : (
+            <span
+              className="badge inline-flex items-center gap-1 bg-brand-100 text-brand-700 dark:bg-brand-950 dark:text-brand-300"
+              data-testid="calendar-feed-status"
+            >
+              <IconCheck className="h-3.5 w-3.5" /> Enabled
+            </span>
+          )}
         </div>
 
         {createdUrl ? (
           <div>
             <label className="label">Subscribe URL</label>
             <div className="flex items-center gap-2">
-              <code className="input min-w-0 flex-1 overflow-x-auto whitespace-nowrap font-mono text-xs">
+              <code
+                className="input min-w-0 flex-1 overflow-x-auto whitespace-nowrap font-mono text-xs"
+                data-testid="calendar-feed-url"
+              >
                 {createdUrl}
               </code>
               <CopyButton value={createdUrl} />
             </div>
             <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
               Copy this now — for your security the link is shown only once. You
-              can always regenerate a new one below.
+              can always rotate to a new one below.
             </p>
           </div>
         ) : (
           <p className="text-sm text-slate-600 dark:text-slate-300">
             The feed is active. For security the subscribe link is only shown at
             the moment it&apos;s created, so it can&apos;t be displayed again.
-            If you need the link, <strong>Regenerate</strong> it (this replaces
-            the old link — update your calendar subscription afterward).
+            If you need the link, <strong>Rotate</strong> it (this replaces the
+            old link — update your calendar subscription afterward).
           </p>
         )}
+
+        <TokenLifecycleNote
+          status={status}
+          createdAt={createdAt}
+          lastUsedAt={lastUsedAt}
+          expiresAt={expiresAt}
+        />
 
         {error && (
           <p className="text-sm text-rose-600 dark:text-rose-400">{error}</p>
@@ -189,14 +265,18 @@ export default function CalendarFeedConfig({
           )}
         </div>
 
-        <div className="flex gap-2 pt-1">
+        <div className="flex flex-wrap items-end gap-3 border-t border-black/5 pt-4 dark:border-white/5">
+          <div className="w-40">
+            <ExpiryPicker value={expiry} onChange={setExpiry} disabled={busy} />
+          </div>
           <button
             type="button"
             disabled={busy}
-            onClick={onEnableOrRegenerate}
+            onClick={onEnableOrRotate}
             className="inline-flex items-center gap-1 rounded-lg border border-black/10 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-800"
+            data-testid="calendar-feed-rotate"
           >
-            <IconRefresh className="h-4 w-4" /> Regenerate link
+            <IconRefresh className="h-4 w-4" /> Rotate link
           </button>
           <button
             type="button"

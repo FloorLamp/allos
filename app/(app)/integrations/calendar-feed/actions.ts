@@ -9,6 +9,7 @@ import {
   type CalendarFeedDetail,
 } from "@/lib/settings";
 import { upsertConnection } from "@/lib/integrations/connections";
+import { isValidExpiryChoice } from "@/lib/token-lifecycle";
 
 // Server Actions for the calendar subscribe feed. Every action is gated by
 // requireSession() and operates ONLY on the session's active profile
@@ -23,11 +24,16 @@ export type FeedResult =
   { ok: true; path?: string; message?: string } | { ok: false; error: string };
 
 // Mint a token (or rotate an existing one — a new token immediately kills the old
-// URL) and return the relative feed PATH once. The connection row mirrors the
-// enabled state so the integrations grid shows "Connected".
-export async function enableCalendarFeedAction(): Promise<FeedResult> {
+// URL) and return the relative feed PATH once. `expiry` (issue #24) is an optional
+// mint-time expiry choice ("never" | "90d" | "1y"); anything else falls back to
+// "never" to preserve behaviour. The connection row mirrors the enabled state so
+// the integrations grid shows "Connected".
+export async function enableCalendarFeedAction(
+  expiry?: string
+): Promise<FeedResult> {
   const { profile } = requireSession();
-  const token = mintCalendarFeedToken(profile.id);
+  const choice = isValidExpiryChoice(expiry) ? expiry : "never";
+  const token = mintCalendarFeedToken(profile.id, choice);
   upsertConnection(profile.id, PROVIDER, { status: "connected" });
   revalidatePath("/integrations/calendar-feed");
   revalidatePath("/data");

@@ -3,6 +3,12 @@ import { db } from "@/lib/db";
 import { log } from "@/lib/log";
 import type { IntegrationConnection } from "@/lib/types";
 import { matchTokenToProfile, type TokenCandidate } from "./token-match";
+import {
+  expiresAtFromChoice,
+  isTokenExpired,
+  shouldRecordUse,
+  type TokenExpiryChoice,
+} from "@/lib/token-lifecycle";
 
 // Generic per-provider connection state, backed by integration_connections. Holds
 // the push token for Health Connect and OAuth tokens for Strava (Garmin later).
@@ -147,14 +153,87 @@ export function getHealthConnectToken(profileId: number): string | null {
   return env && env.trim() ? env.trim() : null;
 }
 
-// Generate a fresh token, mark the connection connected, and return it.
-export function generateHealthConnectToken(profileId: number): string {
+// Token lifecycle metadata for the setup UI (issue #24). The Health Connect token
+// is stored raw (unlike the calendar feed's hash) because the setup page re-shows
+// it so a user can re-copy it into the phone exporter; the env fallback carries no
+// lifecycle (it's config, not a minted token).
+export interface HealthConnectTokenInfo {
+  token: string | null;
+  source: "db" | "env" | "none";
+  createdAt: string | null; // ISO 8601, DB token only
+  lastUsedAt: string | null; // ISO 8601, throttled write on ingest
+  expiresAt: string | null; // ISO 8601 or null (never)
+}
+
+function str(v: unknown): string | null {
+  return typeof v === "string" && v ? v : null;
+}
+
+export function getHealthConnectTokenInfo(
+  profileId: number
+): HealthConnectTokenInfo {
+  const cfg = readConfig(getConnection(profileId, "health-connect"));
+  const dbToken = str(cfg.token);
+  if (dbToken) {
+    return {
+      token: dbToken,
+      source: "db",
+      createdAt: str(cfg.tokenCreatedAt),
+      lastUsedAt: str(cfg.tokenLastUsedAt),
+      expiresAt: str(cfg.tokenExpiresAt),
+    };
+  }
+  const env = process.env.HEALTH_CONNECT_TOKEN;
+  if (env && env.trim()) {
+    return {
+      token: env.trim(),
+      source: "env",
+      createdAt: null,
+      lastUsedAt: null,
+      expiresAt: null,
+    };
+  }
+  return {
+    token: null,
+    source: "none",
+    createdAt: null,
+    lastUsedAt: null,
+    expiresAt: null,
+  };
+}
+
+// Generate (or rotate) a fresh token, mark the connection connected, and return
+// it. `expiry` (issue #24) records an optional absolute expiry; "never" (default)
+// preserves the historical no-expiry behaviour. A fresh mint replaces the whole
+// config, dropping any prior last-used stamp.
+export function generateHealthConnectToken(
+  profileId: number,
+  expiry: TokenExpiryChoice = "never"
+): string {
   const token = crypto.randomBytes(24).toString("hex");
+  const now = Date.now();
   upsertConnection(profileId, "health-connect", {
     status: "connected",
-    config: { token },
+    config: {
+      token,
+      tokenCreatedAt: new Date(now).toISOString(),
+      tokenExpiresAt: expiresAtFromChoice(expiry, now),
+    },
   });
   return token;
+}
+
+// Record a successful ingest auth, throttled to once an hour (mirrors the session
+// sliding-refresh write in lib/auth). Only stamps a DB-backed token — the env
+// fallback isn't a minted token and has nowhere to record.
+export function recordHealthConnectUse(profileId: number): void {
+  const conn = getConnection(profileId, "health-connect");
+  const cfg = readConfig(conn);
+  if (!str(cfg.token)) return; // env fallback / no token: nothing to stamp
+  if (!shouldRecordUse(str(cfg.tokenLastUsedAt), Date.now())) return;
+  upsertConnection(profileId, "health-connect", {
+    config: { ...cfg, tokenLastUsedAt: new Date().toISOString() },
+  });
 }
 
 export function disconnectHealthConnect(profileId: number) {
@@ -182,12 +261,16 @@ export function resolveHealthConnectProfile(
       "SELECT profile_id, config FROM integration_connections WHERE provider = 'health-connect'"
     )
     .all() as { profile_id: number; config: string | null }[];
+  const nowMs = Date.now();
   const candidates: TokenCandidate[] = [];
   for (const r of rows) {
-    const token = readConfig({
-      config: r.config,
-    } as IntegrationConnection).token;
+    const cfg = readConfig({ config: r.config } as IntegrationConnection);
+    const token = cfg.token;
     if (typeof token === "string" && token) {
+      // An expired token (issue #24) is treated as if it doesn't exist: it never
+      // becomes a candidate, so a presented expired token yields the same "no
+      // match" (401) as a bogus one — no oracle distinguishes the two.
+      if (isTokenExpired(str(cfg.tokenExpiresAt), nowMs)) continue;
       candidates.push({ profileId: r.profile_id, token });
     }
   }
@@ -198,7 +281,9 @@ export function resolveHealthConnectProfile(
   if (env && profileOneExists()) {
     candidates.push({ profileId: 1, token: env });
   }
-  return matchTokenToProfile(presented, candidates);
+  const matched = matchTokenToProfile(presented, candidates);
+  if (matched !== null) recordHealthConnectUse(matched);
+  return matched;
 }
 
 // ---- Strava OAuth ----

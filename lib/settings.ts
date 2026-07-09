@@ -26,6 +26,12 @@ import {
   type SituationEvent,
 } from "./trend-annotations";
 import { normalizeBloodType } from "./emergency-card";
+import {
+  expiresAtFromChoice,
+  isTokenExpired,
+  shouldRecordUse,
+  type TokenExpiryChoice,
+} from "./token-lifecycle";
 
 // Re-exported for API compatibility: these historically lived in lib/settings and
 // callers across app/ import them from here. The implementation now lives in the
@@ -923,6 +929,10 @@ export interface CalendarFeed {
   enabled: boolean;
   detail: CalendarFeedDetail;
   hasToken: boolean; // whether a token is minted (never exposes the token itself)
+  // Token lifecycle (issue #24). ISO 8601 UTC strings, or null when absent.
+  createdAt: string | null; // when the current token was minted
+  lastUsedAt: string | null; // last successful feed fetch (throttled write)
+  expiresAt: string | null; // optional expiry; null = never expires
 }
 
 export function getCalendarFeed(profileId: number): CalendarFeed {
@@ -931,15 +941,28 @@ export function getCalendarFeed(profileId: number): CalendarFeed {
     enabled: getProfileSetting(profileId, "calendar_feed_enabled") === "1",
     detail: detail === "full" ? "full" : "minimal",
     hasToken: !!getProfileSetting(profileId, "calendar_feed_token_hash"),
+    createdAt:
+      getProfileSetting(profileId, "calendar_feed_token_created_at") ?? null,
+    lastUsedAt:
+      getProfileSetting(profileId, "calendar_feed_token_last_used_at") ?? null,
+    expiresAt:
+      getProfileSetting(profileId, "calendar_feed_token_expires_at") ?? null,
   };
 }
 
 // Mint a fresh 256-bit token, store its hash, mark the feed enabled, and return
 // the RAW token exactly once (for building the subscribe URL — it's never stored,
-// so it can't be shown again). Regenerating = calling this again: a new token,
-// and the previous URL immediately stops resolving.
-export function mintCalendarFeedToken(profileId: number): string {
+// so it can't be shown again). Rotating = calling this again: a new token, and the
+// previous URL immediately stops resolving. `expiry` (issue #24) records an
+// optional absolute expiry alongside the hash; "never" (default) preserves the
+// historical no-expiry behaviour. A fresh mint clears the previous last-used stamp.
+export function mintCalendarFeedToken(
+  profileId: number,
+  expiry: TokenExpiryChoice = "never"
+): string {
   const token = crypto.randomBytes(32).toString("hex");
+  const now = new Date();
+  const expiresAt = expiresAtFromChoice(expiry, now.getTime());
   const write = db.transaction(() => {
     setProfileSetting(
       profileId,
@@ -947,19 +970,47 @@ export function mintCalendarFeedToken(profileId: number): string {
       hashShareToken(token)
     );
     setProfileSetting(profileId, "calendar_feed_enabled", "1");
+    setProfileSetting(
+      profileId,
+      "calendar_feed_token_created_at",
+      now.toISOString()
+    );
+    if (expiresAt) {
+      setProfileSetting(profileId, "calendar_feed_token_expires_at", expiresAt);
+    } else {
+      deleteProfileSetting(profileId, "calendar_feed_token_expires_at");
+    }
+    deleteProfileSetting(profileId, "calendar_feed_token_last_used_at");
   });
   write();
   return token;
 }
 
 // Disable the feed (the route then 404s) and drop the token hash so the URL is
-// dead even if re-enabled later without a fresh mint. Idempotent.
+// dead even if re-enabled later without a fresh mint. Also clears the lifecycle
+// stamps so a later re-enable starts clean. Idempotent.
 export function disableCalendarFeed(profileId: number): void {
   const write = db.transaction(() => {
     setProfileSetting(profileId, "calendar_feed_enabled", "0");
     deleteProfileSetting(profileId, "calendar_feed_token_hash");
+    deleteProfileSetting(profileId, "calendar_feed_token_created_at");
+    deleteProfileSetting(profileId, "calendar_feed_token_expires_at");
+    deleteProfileSetting(profileId, "calendar_feed_token_last_used_at");
   });
   write();
+}
+
+// Record a successful feed fetch, throttled to once an hour (mirrors the session
+// sliding-refresh write in lib/auth) so a frequently-polled feed isn't written on
+// every request. Best-effort: called from the token-authed route on the read path.
+export function recordCalendarFeedUse(profileId: number): void {
+  const last = getProfileSetting(profileId, "calendar_feed_token_last_used_at");
+  if (!shouldRecordUse(last, Date.now())) return;
+  setProfileSetting(
+    profileId,
+    "calendar_feed_token_last_used_at",
+    new Date().toISOString()
+  );
 }
 
 export function setCalendarFeedDetail(
@@ -992,5 +1043,15 @@ export function resolveProfileByCalendarToken(rawToken: string): number | null {
   const profileId = row?.profile_id;
   if (!profileId) return null;
   const enabled = getProfileSetting(profileId, "calendar_feed_enabled") === "1";
-  return enabled ? profileId : null;
+  if (!enabled) return null;
+  // An expired token (issue #24) is rejected exactly like a bad/disabled one — the
+  // same uniform null → 404 with no oracle distinguishing expired from invalid.
+  const expiresAt = getProfileSetting(
+    profileId,
+    "calendar_feed_token_expires_at"
+  );
+  if (isTokenExpired(expiresAt, Date.now())) return null;
+  // Successful resolve → stamp last-used (throttled).
+  recordCalendarFeedUse(profileId);
+  return profileId;
 }
