@@ -77,24 +77,26 @@ describe("isNavLeafVisible", () => {
     expect(isNavLeafVisible(leaf, ctx({ multiProfile: false }))).toBe(false);
   });
 
-  it("shows Household only when admin AND multi-profile (the combined gate)", () => {
+  it("shows Household to any login with 2+ accessible profiles (issue #31)", () => {
+    // Household is gated on multi-profile ONLY (no longer adminOnly): a caregiver
+    // member with several grants must see it, while a single-profile login (member
+    // or a one-profile instance) must not.
     const household = {
       href: "/household",
-      adminOnly: true,
       requiresMultiProfile: true,
     };
     expect(
       isNavLeafVisible(household, ctx({ isAdmin: true, multiProfile: true }))
     ).toBe(true);
     expect(
+      isNavLeafVisible(household, ctx({ isAdmin: false, multiProfile: true }))
+    ).toBe(true); // caregiver member with 2+ grants
+    expect(
       isNavLeafVisible(household, ctx({ isAdmin: true, multiProfile: false }))
     ).toBe(false);
     expect(
-      isNavLeafVisible(household, ctx({ isAdmin: false, multiProfile: true }))
-    ).toBe(false);
-    expect(
       isNavLeafVisible(household, ctx({ isAdmin: false, multiProfile: false }))
-    ).toBe(false);
+    ).toBe(false); // single-profile member
   });
 
   it("honors the age-gate only for hrefs in the restricted set", () => {

@@ -265,20 +265,33 @@ export function requireWriteAccess(): CurrentSession {
   return session;
 }
 
+// Cross-profile write gate (issue #31): the guard a Server Action must call when
+// it mutates a profile that is NOT the session's active one — e.g. the Household
+// quick-actions, which confirm a dose for another accessible profile without
+// switching. requireWriteAccess() checks only the ACTIVE profile, so it is the
+// wrong gate here. This resolves the session, then asserts the caller may reach
+// the TARGET profile AND holds WRITE on it (accessibility FIRST — accessForProfile
+// assumes the profile is already reachable and defaults an ungranted member to
+// 'write', so it must never be consulted alone). Admins pass (implicit all-write);
+// a member's read-only or absent grant is bounced to the app root (redirect()
+// throws NEXT_REDIRECT, aborting a forged POST before any mutation runs).
+export function requireProfileWriteAccess(profileId: number): CurrentSession {
+  const session = requireSession();
+  const { login } = session;
+  const reachable = accessibleProfiles(login.id, login.role).some(
+    (p) => p.id === profileId
+  );
+  if (!reachable) redirect("/");
+  if (accessForProfile(login.id, login.role, profileId) !== "write")
+    redirect("/");
+  return session;
+}
+
 // The profiles the current login may switch to (for the header switcher).
 export function getAccessibleProfiles(): SessionProfile[] {
   const session = getCurrentSession();
   if (!session) return [];
   return accessibleProfiles(session.login.id, session.login.role);
-}
-
-// Total number of profiles in the instance, regardless of the caller's grants.
-// The Household view is a cross-profile overview (admins see all profiles), so
-// the nav gates it on the instance-wide count, not the caller's accessible set.
-export function countProfiles(): number {
-  return (
-    db.prepare("SELECT COUNT(*) AS n FROM profiles").get() as { n: number }
-  ).n;
 }
 
 // Whether the given session may see a specific profile — the same rule as the

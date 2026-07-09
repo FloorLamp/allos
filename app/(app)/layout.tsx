@@ -12,11 +12,7 @@ import { WeekStartProvider } from "@/components/WeekStartProvider";
 import { getUnitPrefs, getTimezone, getWeekStart } from "@/lib/settings";
 import { getEquipment } from "@/lib/equipment";
 import { isTrainingRestricted } from "@/lib/age-gate";
-import {
-  requireSession,
-  getAccessibleProfiles,
-  countProfiles,
-} from "@/lib/auth";
+import { requireSession, getAccessibleProfiles } from "@/lib/auth";
 import {
   getActivitySuggestions,
   getRecentExerciseHistory,
@@ -49,11 +45,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const equipment = getEquipment(profile.id);
   const bodyweightKg = getLatestBodyMetric(profile.id, "weight");
   const version = getAppVersion();
-  // Gates the admin-only nav entries (the household overview) in both surfaces.
+  // Gates any admin-only nav entries in both surfaces.
   const isAdmin = login.role === "admin";
-  // The Household overview is cross-profile; hide it when the instance has a
-  // single profile (it's meaningless there). Gated on the instance-wide count.
-  const multiProfile = countProfiles() > 1;
+  // The Household overview is cross-profile; show it only when the caller can
+  // reach 2+ profiles (issue #31) — an admin sees every profile, a caregiver
+  // member sees their granted set, and a single-profile login never sees it.
+  const multiProfile = profiles.length > 1;
   // Count of integrations currently in a failed state — drives the header
   // "import review" badge (Data → Review). Self-clearing on the next good sync.
   const reviewCount = getImportReviewCount(profile.id);

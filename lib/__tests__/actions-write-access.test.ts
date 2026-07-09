@@ -99,6 +99,18 @@ const ALLOW: { file: string; fn: string; why: string }[] = [
     fn: "reopenAppointment",
     why: "delegates to setStatus(), which calls requireWriteAccess()",
   },
+  // --- Cross-profile / session-pointer actions (gate the TARGET, not the active
+  // profile, so requireWriteAccess() would check the wrong profile) ---
+  {
+    file: "app/(app)/household/actions.ts",
+    fn: "openProfileAction",
+    why: "moves the session's active-profile pointer (setActiveProfile re-checks accessibility); not a write to profile-owned data, and read-only members must still be able to switch profiles",
+  },
+  {
+    file: "app/(app)/household/actions.ts",
+    fn: "confirmDoseAction",
+    why: "acts on a NON-active target profile; gates via requireProfileWriteAccess(targetId), which asserts the target is accessible AND write — the active-profile requireWriteAccess() would authorize the wrong profile",
+  },
 ];
 
 function walk(dir: string, out: string[]) {

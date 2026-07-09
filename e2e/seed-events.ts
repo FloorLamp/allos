@@ -199,3 +199,46 @@ db.prepare(
 console.log(
   "e2e: seeded integration_sync_events (strava failing) + a cross-source duplicate activity pair + import-feed document/job fixtures"
 );
+
+// ── Household rollup fixtures (issue #31) ─────────────────────────────────────
+// A SECOND profile so the Household cross-profile view has more than one card and
+// the caregiver-grant flows can be exercised (a login granted 2 profiles sees the
+// overview; a single-grant login does not). The profile carries exactly one due-
+// today supplement dose, unlogged, so it surfaces as an "Attention today" item a
+// caregiver can confirm from the household card WITHOUT switching to it. Fully
+// synthetic — no real PHI. Idempotent: the DB is reset per run, but guard anyway.
+const HOUSEHOLD_PROFILE_ID = 2;
+const HOUSEHOLD_PROFILE_NAME = "Sam Rivers"; // obviously-fictional
+const HOUSEHOLD_SUPP_NAME = "Household Vitamin D";
+
+if (
+  !db.prepare("SELECT 1 FROM profiles WHERE id = ?").get(HOUSEHOLD_PROFILE_ID)
+) {
+  db.prepare("INSERT INTO profiles (id, name) VALUES (?, ?)").run(
+    HOUSEHOLD_PROFILE_ID,
+    HOUSEHOLD_PROFILE_NAME
+  );
+}
+
+if (
+  !db
+    .prepare("SELECT 1 FROM intake_items WHERE profile_id = ? AND name = ?")
+    .get(HOUSEHOLD_PROFILE_ID, HOUSEHOLD_SUPP_NAME)
+) {
+  const supp = db
+    .prepare(
+      `INSERT INTO intake_items
+         (profile_id, name, condition, priority, active, source)
+       VALUES (?, ?, 'daily', 'high', 1, 'manual')`
+    )
+    .run(HOUSEHOLD_PROFILE_ID, HOUSEHOLD_SUPP_NAME);
+  // One daily dose, no taken-log for today → surfaces as a due dose on the card.
+  db.prepare(
+    `INSERT INTO intake_item_doses (supplement_id, amount, time_of_day, food_timing, sort)
+     VALUES (?, '2000 IU', '08:00', 'any', 0)`
+  ).run(Number(supp.lastInsertRowid));
+}
+
+console.log(
+  `e2e: seeded household profile ${HOUSEHOLD_PROFILE_ID} (${HOUSEHOLD_PROFILE_NAME}) with a due-today supplement dose`
+);

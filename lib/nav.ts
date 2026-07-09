@@ -25,8 +25,10 @@ export function isGroupActive(childHrefs: string[], pathname: string): boolean {
 // children in <Nav>, so the two filters can't drift. Three gates, each a
 // cosmetic hide over an authoritative server-side check:
 //   - `adminOnly`: hidden for non-admins (the page still calls requireAdmin()).
-//   - `requiresMultiProfile`: hidden when the instance has a single profile —
-//     e.g. the Household cross-profile overview is meaningless with one profile.
+//   - `requiresMultiProfile`: hidden unless the caller has 2+ ACCESSIBLE profiles
+//     (issue #31) — the Household cross-profile overview is meaningless with one
+//     profile, so a single-profile login (member or one-profile instance) never
+//     sees it while any login granted 2+ profiles does.
 //   - age-gate: hidden when the active profile is age-restricted AND the href is
 //     in the caller's restricted set (see lib/age-gate.ts / Nav's
 //     RESTRICTED_HREFS).
