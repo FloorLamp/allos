@@ -2,7 +2,7 @@
 // supplement reminder) and dispatched to every configured channel; the core
 // knows nothing about supplements and channels know nothing about features.
 
-export type ChannelId = "telegram";
+export type ChannelId = "telegram" | "push";
 
 // An interactive action attached to a message. `data` is an opaque token the
 // inbound webhook decodes to perform the action (e.g. "take:<doseId>:<suppId>:<date>").

@@ -309,9 +309,15 @@ it by hand or from a host cron/systemd timer. If the GHCR package is private,
 ## Notifications
 
 Reminders (supplements due in a window, and a workout nudge when you're behind on a
-weekly target) are delivered over Telegram. Configure the bot token and mode under
-**Settings → Server** (global, admin-only); enable notifications, set the chat id,
-and choose per-slot send times per person under **Settings → Profile**.
+weekly target) are delivered over two channels — **Telegram** and **Web Push** — that
+share the same schedule and per-day/slot dedup. Enable either, or both; a profile with
+both configured gets each reminder on both.
+
+### Telegram
+
+Configure the bot token and mode under **Settings → Server** (global, admin-only);
+enable notifications, set the chat id, and choose per-slot send times per person under
+**Settings → Profile**.
 
 One-tap "✅" buttons reach the app one of two ways (pick under **Button taps**):
 
@@ -322,6 +328,25 @@ One-tap "✅" buttons reach the app one of two ways (pick under **Button taps**)
   shared **Settings → Server → Public app URL** (also used for Strava OAuth callbacks
   and the Health Connect ingest endpoint), then register the webhook from
   **Settings → Server**. Telegram requires HTTPS.
+
+### Web Push (browser notifications)
+
+No Telegram account needed: subscribe a browser under **Settings → Preferences → Web
+Push notifications** and reminders arrive as native OS/browser notifications, opening
+the app when tapped. Notes:
+
+- **HTTPS required.** Web Push needs a service worker, which browsers only run over
+  HTTPS (or `localhost`). It works on the deployed/installed app, **not** over plain
+  `http://` on a LAN IP, and not in local `next dev` (the service worker is disabled
+  there).
+- **Per browser, per login.** A subscription belongs to the browser you enable it on
+  and to your login — enable it on each device you want notified. A subscribed browser
+  receives reminders for every profile that login can access.
+- **Browser support.** Chrome/Edge/Firefox (desktop + Android) and, on **iOS 16.4+**,
+  Safari **only after you install the app to the Home Screen** (Add to Home Screen).
+- **Zero setup.** The instance's VAPID keypair is generated automatically the first
+  time anyone enables push; the private key stays on the server. Payloads carry only a
+  title + short body (the same text Telegram would show) and a link — no record detail.
 
 Sending is driven by a tick that runs **every hour**. Each tick sends whatever is scheduled
 for the current hour (supplement windows at their configured hours; the workout reminder on

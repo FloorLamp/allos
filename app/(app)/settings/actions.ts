@@ -51,6 +51,13 @@ import { reconcileFlags } from "@/lib/queries";
 import { normalizePublicUrl } from "@/lib/public-url";
 import { dispatch } from "@/lib/notifications";
 import { setWebhook, deleteWebhook } from "@/lib/notifications/telegram";
+import {
+  ensureVapidKeys,
+  savePushSubscription,
+  deletePushSubscription,
+  sendTestPushToLogin,
+} from "@/lib/notifications/push";
+import { parsePushSubscription } from "@/lib/notifications/push-core";
 import type { ReproductiveStatus, Sex } from "@/lib/types";
 import { recordAudit } from "@/lib/audit";
 import { AUDIT_ACTIONS } from "@/lib/audit-actions";
@@ -421,6 +428,86 @@ export async function sendTestNotification(): Promise<{
       message: failed.map((f) => `${f.id}: ${f.error}`).join("; "),
     };
   return { ok: true, message: "Sent ✅ — check your Telegram." };
+}
+
+// ---- Web Push (login scope, issue #17) ----
+
+// A push subscription belongs to THIS browser + login (like a session), not the
+// active profile, so these actions are login-scoped and gate on requireSession()
+// rather than requireWriteAccess() — even a read-only member may subscribe their
+// own browser to reminders for the profiles they can see. They're allowlisted in
+// the write-access enforcement test on that basis.
+
+// Ensure the instance VAPID keypair exists (a one-time, idempotent global
+// bootstrap like the Telegram webhook secret — generated lazily so there's no
+// admin setup step) and return the PUBLIC key the client needs to subscribe. The
+// private key never leaves the server.
+export async function getPushPublicKey(): Promise<{
+  ok: boolean;
+  publicKey?: string;
+}> {
+  requireSession();
+  try {
+    return { ok: true, publicKey: ensureVapidKeys() };
+  } catch (e) {
+    log.error("ensureVapidKeys failed", {
+      err: e instanceof Error ? e.message : String(e),
+    });
+    return { ok: false };
+  }
+}
+
+// Persist (or refresh) this browser's push subscription for the caller's login.
+export async function savePushSubscriptionAction(
+  formData: FormData
+): Promise<{ ok: boolean; error?: string }> {
+  const { login } = requireSession();
+  const raw = String(formData.get("subscription") ?? "");
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return { ok: false, error: "Invalid subscription." };
+  }
+  const sub = parsePushSubscription(parsed);
+  if (!sub) return { ok: false, error: "Invalid subscription." };
+  savePushSubscription(login.id, sub);
+  revalidatePath("/settings");
+  return { ok: true };
+}
+
+// Remove this browser's push subscription (scoped to the caller's login).
+export async function deletePushSubscriptionAction(
+  formData: FormData
+): Promise<{ ok: boolean }> {
+  const { login } = requireSession();
+  const endpoint = String(formData.get("endpoint") ?? "");
+  if (endpoint) deletePushSubscription(login.id, endpoint);
+  revalidatePath("/settings");
+  return { ok: true };
+}
+
+// Send a test push to the caller's own subscribed browsers.
+export async function sendTestPush(): Promise<{
+  ok: boolean;
+  message: string;
+}> {
+  const { login } = requireSession();
+  try {
+    const targeted = await sendTestPushToLogin(login.id, {
+      title: "Test notification",
+      body: "Web push is working ✅",
+    });
+    if (targeted === 0)
+      return {
+        ok: false,
+        message:
+          "No subscribed browsers for your login. Enable push on this browser first.",
+      };
+    return { ok: true, message: "Sent ✅ — check your notifications." };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) };
+  }
 }
 
 // ---- Notifications: global bot credentials (global, admin-only) ----

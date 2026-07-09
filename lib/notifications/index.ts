@@ -4,11 +4,19 @@
 import { createLogger } from "../log";
 import type { ChannelId, NotificationMessage } from "./types";
 import { telegramChannel } from "./telegram";
+import { pushChannel } from "./push";
 
 const log = createLogger("notifications");
 
+// The channels dispatch() fans a message out to. Both are tried on every send;
+// each gates itself via isConfigured(profileId), so an instance with only one set
+// up silently uses just that one. NOTE the per-slot dedup in scripts/notify.ts is
+// intentionally channel-AGNOSTIC: dispatch() delivers to every configured channel
+// in a single call, so a profile with BOTH Telegram and push enabled gets both
+// within the same tick; the marker ("delivered" = at least one channel ok) only
+// guards against re-sending on later hours, never against multi-channel fan-out.
 export function getChannels() {
-  return [telegramChannel];
+  return [telegramChannel, pushChannel];
 }
 
 export interface DispatchResult {

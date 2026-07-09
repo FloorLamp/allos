@@ -67,6 +67,26 @@ const ALLOW: { file: string; fn: string; why: string }[] = [
     fn: "signOutOtherSessions",
     why: "login-scoped: signs out the caller's other sessions",
   },
+  {
+    file: "app/(app)/settings/actions.ts",
+    fn: "getPushPublicKey",
+    why: "login-scoped: ensures the instance VAPID keypair exists (idempotent global bootstrap, like the auto-generated Telegram webhook secret) and returns only the PUBLIC key — never profile-owned data",
+  },
+  {
+    file: "app/(app)/settings/actions.ts",
+    fn: "savePushSubscriptionAction",
+    why: "login-scoped: stores this browser's push subscription keyed by login.id (like a session), not profile-owned data",
+  },
+  {
+    file: "app/(app)/settings/actions.ts",
+    fn: "deletePushSubscriptionAction",
+    why: "login-scoped: removes this browser's push subscription, scoped to the caller's login.id",
+  },
+  {
+    file: "app/(app)/settings/actions.ts",
+    fn: "sendTestPush",
+    why: "login-scoped: sends a test push to the caller's own subscribed browsers",
+  },
   // --- Session / auth entry points (no profile-owned data mutation) ---
   {
     file: "app/(app)/user-actions.ts",

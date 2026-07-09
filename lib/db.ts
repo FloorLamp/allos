@@ -621,6 +621,25 @@ export function migrate(db: Database.Database) {
     );
     CREATE INDEX IF NOT EXISTS idx_sessions_login ON sessions(login_id);
 
+    -- Web Push subscriptions (issue #17). A row is ONE browser's push endpoint,
+    -- owned by a LOGIN (like sessions) — NOT profile-owned data, so it carries no
+    -- profile_id and is deliberately excluded from the profile-scoping leak test.
+    -- The endpoint is the natural unique key the push service hands us; p256dh/auth
+    -- are the client's public encryption keys (safe to store — the private half
+    -- never leaves the browser). The audience for a profile's reminders is derived
+    -- at send time by joining logins → login_profiles (a login receives pushes for
+    -- every profile it may access). Deleted on 404/410 (the endpoint is gone) and
+    -- when the owning login is removed (ON DELETE CASCADE).
+    CREATE TABLE IF NOT EXISTS push_subscriptions (
+      endpoint TEXT PRIMARY KEY,
+      login_id INTEGER NOT NULL REFERENCES logins(id) ON DELETE CASCADE,
+      p256dh TEXT NOT NULL,
+      auth TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      last_used_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_push_subscriptions_login ON push_subscriptions(login_id);
+
     -- Unauthenticated, read-only "medical passport" share links (issue #105). The
     -- URL carries a random 256-bit token; token_hash is its SHA-256 (mirrors the
     -- sessions pattern), so a DB leak yields no usable link. The fields column is

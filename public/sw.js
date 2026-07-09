@@ -107,6 +107,61 @@ self.addEventListener("fetch", (event) => {
   // dynamic data) is left to the network and never cached.
 });
 
+// Web Push (issue #17). The server (lib/notifications/push.ts) sends a tiny JSON
+// blob { title, body, url } — deliberately terse and no more revealing than the
+// Telegram message, since it lands on the user's own device. We only ever SHOW a
+// notification here; nothing is cached and no PHI is persisted.
+self.addEventListener("push", (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    data = {};
+  }
+  const title = data.title || "Allos";
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body: data.body || "",
+      icon: "/icon.svg",
+      badge: "/icon.svg",
+      // The deep link to open on tap (see notificationclick). Defaults to the app
+      // root when the payload omits it.
+      data: { url: data.url || "/" },
+    })
+  );
+});
+
+// Tapping a push: focus an already-open Allos tab (navigating it to the deep
+// link) or open a new one. Same-origin only — url comes from our own payload.
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || "/";
+  event.waitUntil(
+    (async () => {
+      const clients = await self.clients.matchAll({
+        type: "window",
+        includeUncontrolled: true,
+      });
+      for (const client of clients) {
+        if ("focus" in client) {
+          await client.focus();
+          // Move the focused tab to the deep link when it supports navigation.
+          if ("navigate" in client && url) {
+            try {
+              await client.navigate(url);
+            } catch {
+              // Cross-document navigation can reject (e.g. different top-level);
+              // focusing the existing tab is still the right outcome.
+            }
+          }
+          return;
+        }
+      }
+      if (self.clients.openWindow) await self.clients.openWindow(url);
+    })()
+  );
+});
+
 async function networkThenOffline(req) {
   try {
     return await fetch(req);

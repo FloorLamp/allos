@@ -7,6 +7,7 @@ import SettingsTabs from "./SettingsTabs";
 import UnitPrefsForm from "./UnitPrefsForm";
 import ChangePasswordSettings from "./ChangePasswordSettings";
 import ActiveSessions from "./ActiveSessions";
+import PushNotificationSettings from "./PushNotificationSettings";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +26,7 @@ export default function SettingsPage() {
       />
       <SettingsTabs isAdmin={isAdmin} hideEquipment={hideEquipment} />
       <UnitPrefsForm prefs={prefs} />
+      <PushNotificationSettings />
       <ChangePasswordSettings username={login.username} />
       <ActiveSessions sessions={sessions} />
       <footer className="mt-10 border-t border-black/10 pt-4 text-xs text-slate-400 dark:border-white/10 dark:text-slate-500">
