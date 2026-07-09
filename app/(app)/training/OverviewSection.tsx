@@ -5,6 +5,7 @@ import {
   getCardioVolumeByWeek,
   getFrequencyTargetProgress,
   getJournalWeekSummary,
+  getRestEpisode,
   getRestingHrSignal,
   getSleepSignal,
   getStrengthByExercise,
@@ -81,6 +82,7 @@ export default function OverviewSection() {
     trainingDates: getActivityDates(profile.id),
     sleep: getSleepSignal(profile.id),
     restingHr: getRestingHrSignal(profile.id),
+    restEpisode: getRestEpisode(profile.id),
     weightUnit: wu,
   });
   // The card offers "log/view" actions for actionable nudges; rest/on-track are
@@ -98,7 +100,10 @@ export default function OverviewSection() {
             <h3 className="font-semibold text-slate-800 dark:text-slate-100">
               Next workout
             </h3>
-            <p className="mt-1 text-lg font-semibold text-slate-900 dark:text-slate-100">
+            <p
+              className="mt-1 text-lg font-semibold text-slate-900 dark:text-slate-100"
+              data-testid="next-workout-title"
+            >
               {nextWorkout.title}
             </p>
             <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
