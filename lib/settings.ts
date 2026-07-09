@@ -25,6 +25,7 @@ import {
   serializeSituationEvents,
   type SituationEvent,
 } from "./trend-annotations";
+import { normalizeBloodType } from "./emergency-card";
 
 // Re-exported for API compatibility: these historically lived in lib/settings and
 // callers across app/ import them from here. The implementation now lives in the
@@ -710,6 +711,76 @@ export function adoptProfileFromExtraction(
     }
   }
   return out;
+}
+
+// ---- Emergency card (issue #42) ----
+// Whether the offline emergency card is cached for this profile. Default OFF: the
+// card holds the profile's allergies/meds/conditions, and caching it offline means
+// a stolen UNLOCKED phone (or shared device) can read it without a login — which is
+// simultaneously the point (a first responder needs it) and the trade-off, so it's
+// strictly opt-in per profile.
+export function getEmergencyCardEnabled(profileId: number): boolean {
+  return getProfileSetting(profileId, "emergency_card_offline") === "1";
+}
+
+export function setEmergencyCardEnabled(
+  profileId: number,
+  enabled: boolean
+): void {
+  setProfileSetting(profileId, "emergency_card_offline", enabled ? "1" : "0");
+}
+
+// A manually-entered blood type for the profile (e.g. "O+"). The emergency card
+// prefers this over one derived from lab records (ABO/Rh), since most people know
+// their type without a lab on file. Stored canonicalized (see normalizeBloodType);
+// null clears it. Kept in profile_settings like the other per-person facts.
+export function getBloodType(profileId: number): string | null {
+  return getProfileSetting(profileId, "blood_type") ?? null;
+}
+
+export function setBloodType(profileId: number, value: string | null): void {
+  const v = normalizeBloodType(value);
+  if (!v) {
+    deleteProfileSetting(profileId, "blood_type");
+    return;
+  }
+  setProfileSetting(profileId, "blood_type", v);
+}
+
+// The profile's emergency contact — the person a first responder should call.
+// Three discrete keys in profile_settings (name / phone / relation), all optional;
+// the card shows the contact only when at least a name or phone is set.
+export interface EmergencyContactSetting {
+  name: string;
+  phone: string;
+  relation: string;
+}
+
+export function getEmergencyContact(
+  profileId: number
+): EmergencyContactSetting {
+  return {
+    name: getProfileSetting(profileId, "emergency_contact_name") ?? "",
+    phone: getProfileSetting(profileId, "emergency_contact_phone") ?? "",
+    relation: getProfileSetting(profileId, "emergency_contact_relation") ?? "",
+  };
+}
+
+export function setEmergencyContact(
+  profileId: number,
+  contact: EmergencyContactSetting
+): void {
+  const write = db.transaction(() => {
+    const set = (key: string, value: string) => {
+      const v = value.trim().slice(0, 200);
+      if (v) setProfileSetting(profileId, key, v);
+      else deleteProfileSetting(profileId, key);
+    };
+    set("emergency_contact_name", contact.name);
+    set("emergency_contact_phone", contact.phone);
+    set("emergency_contact_relation", contact.relation);
+  });
+  write();
 }
 
 // Currently-active situations (e.g. "Illness", "Travel") for a profile, persisted

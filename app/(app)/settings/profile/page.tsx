@@ -10,6 +10,9 @@ import {
   getTimezone,
   getWeekStart,
   getWeekMode,
+  getEmergencyCardEnabled,
+  getBloodType,
+  getEmergencyContact,
 } from "@/lib/settings";
 import { inferWorkoutSchedule } from "@/lib/queries";
 import { requireSession } from "@/lib/auth";
@@ -19,6 +22,7 @@ import SettingsTabs from "../SettingsTabs";
 import ProfileForm from "./ProfileForm";
 import ProfilePhotoCard from "./ProfilePhotoCard";
 import ProfileNotificationSettings from "./ProfileNotificationSettings";
+import EmergencyCardSettings from "./EmergencyCardSettings";
 
 export const dynamic = "force-dynamic";
 
@@ -72,6 +76,11 @@ export default function ProfileSettingsPage() {
         botConfigured={botConfigured}
         schedule={getNotifySchedule(profile.id)}
         workoutSummary={workoutScheduleSummary(profile.id)}
+      />
+      <EmergencyCardSettings
+        enabled={getEmergencyCardEnabled(profile.id)}
+        bloodType={getBloodType(profile.id)}
+        contact={getEmergencyContact(profile.id)}
       />
     </div>
   );

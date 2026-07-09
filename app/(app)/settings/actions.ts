@@ -37,6 +37,9 @@ import {
   setAiPrefs,
   getBackupSettings,
   setBackupSettings,
+  setEmergencyCardEnabled,
+  setBloodType,
+  setEmergencyContact,
   type DistanceUnit,
   type WeightUnit,
 } from "@/lib/settings";
@@ -163,6 +166,29 @@ export async function saveProfileSettings(formData: FormData) {
 
   // These affect display across the whole app.
   revalidatePath("/", "layout");
+}
+
+// ---- Emergency card (profile scope, issue #42) ----
+
+// The offline emergency card opt-in, manual blood type, and emergency contact —
+// all properties of the tracked person, so profile-scoped (any login acting as the
+// profile may edit them). setBloodType normalizes/validates the value; a blank or
+// unrecognized blood type clears it.
+export async function saveEmergencyCardSettings(formData: FormData) {
+  const { profile } = requireSession();
+  const enabledRaw = formData.get("emergency_enabled");
+  setEmergencyCardEnabled(
+    profile.id,
+    enabledRaw === "1" || enabledRaw === "on"
+  );
+  setBloodType(profile.id, String(formData.get("blood_type") ?? ""));
+  setEmergencyContact(profile.id, {
+    name: String(formData.get("emergency_contact_name") ?? ""),
+    phone: String(formData.get("emergency_contact_phone") ?? ""),
+    relation: String(formData.get("emergency_contact_relation") ?? ""),
+  });
+  revalidatePath("/settings/profile");
+  revalidatePath("/emergency");
 }
 
 // ---- Change own password ----

@@ -15,12 +15,36 @@
 - **Trends** — charts and analysis in one place, tab by tab: **Body** (weight, body fat %, resting heart rate), **Fitness**, **Biomarkers** (including a **Trajectory watch** that warns before a reading crosses a line — a value projected to cross its reference/optimal boundary, a persistent non-optimal pattern, or a fast decline/rise), **Compare**, and Claude-powered **Insights** (daily analysis of your activity, metrics, and goals)
 - **Goals** — set targets, track progress bars, mark achieved/archived
 - **Benchmarks** — estimated 1-rep maxes (Epley) and strength standards relative to bodyweight
-- **Medical** — vitals, labs, genomics, biomarkers, conditions, allergies, procedures, family history, immunizations, visits, and a Passport summary. Standard **derived indices** (Non-HDL cholesterol, triglyceride/HDL ratio, HOMA-IR, and race-free CKD-EPI 2021 eGFR) are computed from your existing labs and shown alongside them, marked "derived" with their formula (eGFR/HOMA-IR only appear when the needed labs and age/sex are on file)
+- **Medical** — vitals, labs, genomics, biomarkers, conditions, allergies, procedures, family history, immunizations, visits, a Passport summary, and an offline **Emergency Card**. Standard **derived indices** (Non-HDL cholesterol, triglyceride/HDL ratio, HOMA-IR, and race-free CKD-EPI 2021 eGFR) are computed from your existing labs and shown alongside them, marked "derived" with their formula (eGFR/HOMA-IR only appear when the needed labs and age/sex are on file)
 - **Immunizations** — record vaccines and doses, track them against the CDC schedule (due / overdue / up to date), and see immunity titers pulled from your labs
 - **Health-record import** — pull immunizations, labs, and vitals straight from a MyChart “Download Summary” (CCD/XDM), a SMART Health Card, or an Epic / Apple Health FHIR bundle
 - **Supplements & medications** — schedule intake and check it off each day, with adherence and refill tracking
 - **AI activity log** — every AI call and failure recorded to a file and streamed live in Settings → AI logs
 - **Data hub** — bring data in (upload documents, paste logs, connect a device or service) under **Data → Import**, review what background integrations synced under **Data → Review** (recent imports, plus any integration that's currently failing — surfaced with a badge on the profile menu; admins can also expand a per-sync **View raw** to inspect the exact provider payload), then browse and export everything you've logged under **Data → Manage & Export**; integrations available today are **Google Health Connect** and **Strava** (Garmin planned)
+
+## Emergency card (offline)
+
+**Medical → Emergency Card** is a terse, printable summary of the facts a first
+responder needs when you can't speak for yourself: allergies (worst first),
+active medications with doses, major conditions, blood type, and an emergency
+contact — with an "as of" date so a reader knows how fresh it is. It reuses the
+same records as the Passport, so it never disagrees with them. Print it with the
+**Print** button (it has its own print stylesheet).
+
+Because the moment you most need it is often the moment you have no signal, the
+card can be kept **offline**: enable **Settings → Profile → Emergency card → "Keep
+an offline copy on this device"** and the card is cached (in this browser's
+localStorage) on each visit while online, so it stays readable with no network.
+When you're offline, the app's reconnect screen offers a **View emergency card**
+button instead of dead-ending.
+
+Offline caching is **off by default** and strictly opt-in, per profile: a cached
+card is readable on that device _without logging in_ — which is the whole point in
+an emergency, but also the trade-off if the phone is lost while unlocked. The
+offline copy is wiped automatically on logout and when you switch profiles, and it
+refreshes on your next online visit so a medication or allergy change propagates.
+Set your blood type and emergency contact on **Settings → Profile → Emergency
+card** (the blood type there overrides one derived from lab records).
 
 ## Requirements
 
