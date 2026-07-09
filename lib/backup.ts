@@ -9,6 +9,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import Database from "better-sqlite3";
 import { db } from "./db";
 import {
   getBackupSettings,
@@ -20,8 +21,15 @@ import { dateStrInTz, hourInTz, zonedDateParts } from "./date";
 import {
   backupFilename,
   isBackupDue,
+  isoWeekKey,
   planBackupRotation,
 } from "./backup-rotation";
+import {
+  BackupVerification,
+  interpretIntegrityRows,
+  isLiveIntegrityCheckDue,
+  verificationSidecarName,
+} from "./backup-verify";
 import { createLogger } from "./log";
 
 const log = createLogger("backup");
@@ -63,10 +71,116 @@ export function getLastBackupError(): string | null {
   return getSetting("backup_last_error") ?? null;
 }
 
-// Take one snapshot now and prune per the retention policy. Throws on failure (so
-// callers surface it) — the prune runs only after the snapshot succeeds. Returns
-// the created snapshot's name + size.
-export function performBackup(): { name: string; size: number } {
+// Read a snapshot's verification sidecar (written by verifySnapshot), or null
+// when absent/unparseable. Used by the restore tooling to show each snapshot's
+// last-known integrity status without re-opening it.
+export function readVerification(
+  snapshotName: string
+): BackupVerification | null {
+  const p = path.join(backupsDir(), verificationSidecarName(snapshotName));
+  try {
+    if (!fs.existsSync(p)) return null;
+    const parsed = JSON.parse(fs.readFileSync(p, "utf8"));
+    if (
+      parsed &&
+      (parsed.integrity === "ok" || parsed.integrity === "failed")
+    ) {
+      return parsed as BackupVerification;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+// Open a snapshot read-only and run PRAGMA integrity_check, persisting the
+// outcome to a JSON sidecar next to it. Never throws — a check that can't run
+// (e.g. the file can't be opened) counts as a failure so a corrupt snapshot is
+// never mistaken for a good one. The read-only open guarantees we can't mutate
+// the snapshot we're verifying.
+export function verifySnapshot(snapshotName: string): BackupVerification {
+  const full = path.join(backupsDir(), snapshotName);
+  let result: { ok: boolean; detail?: string };
+  try {
+    const snap = new Database(full, { readonly: true, fileMustExist: true });
+    try {
+      result = interpretIntegrityRows(snap.pragma("integrity_check"));
+    } finally {
+      snap.close();
+    }
+  } catch (e) {
+    result = { ok: false, detail: e instanceof Error ? e.message : String(e) };
+  }
+  const verification: BackupVerification = {
+    integrity: result.ok ? "ok" : "failed",
+    checkedAt: new Date().toISOString(),
+    ...(result.ok ? {} : { detail: result.detail }),
+  };
+  try {
+    fs.writeFileSync(
+      path.join(backupsDir(), verificationSidecarName(snapshotName)),
+      JSON.stringify(verification, null, 2)
+    );
+  } catch (e) {
+    // A sidecar-write failure (e.g. full disk) must not mask the check result;
+    // log it and carry on with the in-memory verification.
+    log.warn("could not write verification sidecar", {
+      file: snapshotName,
+      err: e instanceof Error ? e.message : String(e),
+    });
+  }
+  return verification;
+}
+
+// Periodic integrity check of the LIVE database, gated to run once per ISO week
+// via a stored marker. Called from every scheduled tick (independent of whether
+// a snapshot is due) so slow-growing corruption is noticed even between backups.
+// Best-effort: logs the outcome, never throws.
+export function runLiveIntegrityCheck(now: Date = new Date()): {
+  ran: boolean;
+  ok?: boolean;
+} {
+  const tz = getInstanceTimezone();
+  const weekKey = isoWeekKey(dateStrInTz(tz, now));
+  if (
+    !isLiveIntegrityCheckDue(getSetting("backup_live_integrity_week"), weekKey)
+  ) {
+    return { ran: false };
+  }
+  try {
+    const result = interpretIntegrityRows(db.pragma("integrity_check"));
+    setSetting("backup_live_integrity_week", weekKey);
+    setSetting("backup_live_integrity_at", now.toISOString());
+    setSetting("backup_live_integrity_ok", result.ok ? "1" : "0");
+    if (result.ok) {
+      log.info("live integrity check ok");
+    } else {
+      setSetting("backup_live_integrity_detail", result.detail ?? "");
+      log.error("LIVE DATABASE INTEGRITY CHECK FAILED", {
+        detail: result.detail,
+      });
+    }
+    return { ran: true, ok: result.ok };
+  } catch (e) {
+    // A thrown check (rare) shouldn't advance the week marker, so it retries next
+    // tick; surface it loudly.
+    log.error("live integrity check errored", {
+      err: e instanceof Error ? e : String(e),
+    });
+    return { ran: true, ok: false };
+  }
+}
+
+// Take one snapshot now, verify its integrity, and prune per the retention
+// policy. Throws on snapshot failure (so callers surface it). Returns the
+// snapshot's name + size + verification. A snapshot that fails PRAGMA
+// integrity_check is NOT counted as a successful backup and pruning is skipped,
+// so the previous good snapshots are never rotated away for a corrupt one.
+export function performBackup(): {
+  name: string;
+  size: number;
+  verification: BackupVerification;
+} {
   const dir = backupsDir();
   fs.mkdirSync(dir, { recursive: true });
 
@@ -83,12 +197,30 @@ export function performBackup(): { name: string; size: number } {
 
   // VACUUM INTO wants a string-literal path; single-quotes are doubled to escape.
   // The path is app-controlled (fixed dir + timestamped name), so there's no user
-  // input here regardless.
+  // input here regardless. A failure here (e.g. ENOSPC) throws to the caller,
+  // which records it as a backup error.
   db.exec(`VACUUM INTO '${full.replace(/'/g, "''")}'`);
 
   const size = fs.statSync(full).size;
 
-  // Prune only AFTER a successful snapshot, never before.
+  // Verify the fresh snapshot before trusting it. A failed check keeps the bad
+  // file (with its "failed" sidecar) for forensics but does NOT prune older good
+  // snapshots and does NOT record a successful backup.
+  const verification = verifySnapshot(name);
+  if (verification.integrity !== "ok") {
+    const detail = verification.detail ?? "integrity check failed";
+    setSetting(
+      "backup_last_error",
+      `snapshot integrity check failed: ${detail}`
+    );
+    log.error("SNAPSHOT INTEGRITY CHECK FAILED — keeping previous snapshots", {
+      name,
+      detail,
+    });
+    return { name, size, verification };
+  }
+
+  // Prune only AFTER a successful, verified snapshot, never before.
   const { keepDaily, keepWeekly } = getBackupSettings();
   const { prune } = planBackupRotation(listBackupNames(), {
     keepDaily,
@@ -100,6 +232,9 @@ export function performBackup(): { name: string; size: number } {
     if (p === name) continue;
     try {
       fs.unlinkSync(path.join(dir, p));
+      // Remove the snapshot's verification sidecar too, so it doesn't orphan.
+      const sidecar = path.join(dir, verificationSidecarName(p));
+      if (fs.existsSync(sidecar)) fs.unlinkSync(sidecar);
     } catch (e) {
       log.warn("prune failed", {
         file: p,
@@ -108,13 +243,19 @@ export function performBackup(): { name: string; size: number } {
     }
   }
 
-  // Record success: dedup date for the scheduler + clear any prior error.
+  // Record success: dedup date for the scheduler, staleness marker for the health
+  // endpoint (backup_last_at), + clear any prior error.
   setSetting("backup_last_date", date);
   setSetting("backup_last_at", new Date().toISOString());
   setSetting("backup_last_size", String(size));
   setSetting("backup_last_error", "");
-  log.info("backup complete", { name, size, pruned: prune.length });
-  return { name, size };
+  log.info("backup complete", {
+    name,
+    size,
+    pruned: prune.length,
+    integrity: "ok",
+  });
+  return { name, size, verification };
 }
 
 // Scheduler entrypoint, called once per hourly tick. Runs a snapshot when the
@@ -125,6 +266,11 @@ export function runScheduledBackup(): {
   failed: boolean;
   error?: string;
 } {
+  // Periodic live-DB integrity check runs every tick (independent of the snapshot
+  // schedule), self-gated to once per ISO week. Best-effort — never blocks the
+  // snapshot below.
+  runLiveIntegrityCheck();
+
   const cfg = getBackupSettings();
   const tz = getInstanceTimezone();
   const now = new Date();
@@ -134,7 +280,18 @@ export function runScheduledBackup(): {
     return { ran: false, failed: false };
   }
   try {
-    performBackup();
+    const { verification } = performBackup();
+    if (verification.integrity !== "ok") {
+      // The snapshot wrote but failed integrity_check: performBackup already
+      // recorded the error and skipped pruning. Surface it as a failed tick, and
+      // leave backup_last_date unset (performBackup didn't set it) so the retry
+      // window can attempt a fresh snapshot.
+      return {
+        ran: true,
+        failed: true,
+        error: verification.detail ?? "snapshot integrity check failed",
+      };
+    }
     return { ran: true, failed: false };
   } catch (e) {
     const error = e instanceof Error ? e.message : String(e);

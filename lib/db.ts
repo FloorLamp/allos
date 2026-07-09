@@ -37,6 +37,15 @@ const globalForDb = globalThis as unknown as { __healthDb?: Database.Database };
 // schema (strip these) and prove the upgrade path re-adds them without crashing.
 export const ADDITIVE_COLUMNS: { table: string; column: string }[] = [];
 
+// The on-disk path of the live database (data/allos.db, or an ALLOS_DB_PATH
+// override). Exported so out-of-process tooling (scripts/restore.ts) can locate
+// the file it must replace without re-deriving the path convention.
+export function dbFilePath(): string {
+  return (
+    process.env.ALLOS_DB_PATH || path.join(process.cwd(), "data", "allos.db")
+  );
+}
+
 function createDb(): Database.Database {
   // The DB path is data/allos.db in normal operation. A test (see
   // lib/__db_tests__) can redirect the singleton at a throwaway database — a temp

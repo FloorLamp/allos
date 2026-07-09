@@ -295,11 +295,20 @@ export async function backupNow(): Promise<{
 }> {
   requireAdmin();
   try {
-    const { name, size } = performBackup();
+    const { name, size, verification } = performBackup();
     revalidatePath("/settings/server");
+    if (verification.integrity !== "ok") {
+      // The snapshot wrote but failed PRAGMA integrity_check — don't report it as
+      // a clean backup (performBackup already recorded the error and kept older
+      // good snapshots).
+      return {
+        ok: false,
+        message: `Backup ${name} failed integrity check: ${verification.detail ?? "corrupt snapshot"}.`,
+      };
+    }
     return {
       ok: true,
-      message: `Backup created: ${name} (${formatBytes(size)}).`,
+      message: `Backup created and verified: ${name} (${formatBytes(size)}).`,
     };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : String(e) };

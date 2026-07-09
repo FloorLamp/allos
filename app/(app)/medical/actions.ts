@@ -9,6 +9,7 @@ import { db, today } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
 import type { MedicalCategory } from "@/lib/types";
 import { extractMedicalDocument, isSupportedFile } from "@/lib/medical-extract";
+import { aiConfigured } from "@/lib/ai-client";
 import { withAiLogContext } from "@/lib/ai-log";
 import { checkAndIncrementAiUsage, extractionDailyLimit } from "@/lib/ai-usage";
 import { extractionSemaphore } from "@/lib/ai-concurrency";
@@ -239,7 +240,7 @@ const AI_DAILY_LIMIT_DOC_MESSAGE =
 // extractMedicalDocument records its own no-key skip, so we don't burn quota when
 // AI is disabled/degraded anyway (only count when a Claude call really dispatches).
 function allowExtractionDispatch(profileId: number, docId: number): boolean {
-  if (!process.env.ANTHROPIC_API_KEY) return true;
+  if (!aiConfigured()) return true;
   const { allowed } = checkAndIncrementAiUsage(
     profileId,
     "extraction",
@@ -384,7 +385,7 @@ export async function uploadMedicalDocument(formData: FormData) {
     if (
       existing.status === "failed" &&
       existing.stored_path &&
-      (healthKind || process.env.ANTHROPIC_API_KEY)
+      (healthKind || aiConfigured())
     ) {
       db.prepare(
         "UPDATE medical_documents SET extraction_status = 'processing', extraction_error = NULL WHERE id = ? AND profile_id = ?"
@@ -442,6 +443,14 @@ export async function uploadMedicalDocument(formData: FormData) {
       "UPDATE medical_documents SET stored_path = ? WHERE id = ? AND profile_id = ?"
     ).run(relPath, docId, profile.id);
   } catch (err) {
+    // Log loudly with context (a full/read-only disk — ENOSPC/EROFS — surfaces
+    // here) so the operator sees the real cause, but hand the user a friendly
+    // message on the row instead of an unhandled 500.
+    log.error("medical upload: could not persist file to disk", {
+      docId,
+      profile: profile.id,
+      err: err instanceof Error ? err : String(err),
+    });
     db.prepare(
       "UPDATE medical_documents SET extraction_status = 'failed', extraction_error = ? WHERE id = ? AND profile_id = ?"
     ).run(`Could not save file: ${errMsg(err)}`, docId, profile.id);
@@ -718,11 +727,11 @@ async function reprocessOne(
   // A health record (CCD/XDM/SHC) re-imports deterministically — no AI, no key.
   if (detectHealthRecord(prep.buffer))
     return persistHealthRecordDoc(profileId, docId, prep.buffer).status;
-  if (!process.env.ANTHROPIC_API_KEY) {
+  if (!aiConfigured()) {
     db.prepare(
       "UPDATE medical_documents SET extraction_status = 'skipped', extraction_error = ? WHERE id = ? AND profile_id = ?"
     ).run(
-      "ANTHROPIC_API_KEY not set — set the key to reprocess.",
+      "AI not configured — set ANTHROPIC_API_KEY or AI_BASE_URL to reprocess.",
       docId,
       profileId
     );
@@ -836,11 +845,11 @@ export async function reprocessDocument(formData: FormData) {
     });
     return;
   }
-  if (!process.env.ANTHROPIC_API_KEY) {
+  if (!aiConfigured()) {
     db.prepare(
       "UPDATE medical_documents SET extraction_status = 'skipped', extraction_error = ? WHERE id = ? AND profile_id = ?"
     ).run(
-      "ANTHROPIC_API_KEY not set — set the key to reprocess.",
+      "AI not configured — set ANTHROPIC_API_KEY or AI_BASE_URL to reprocess.",
       id,
       profile.id
     );
@@ -933,9 +942,9 @@ async function extractPersistInputForPreview(
 
   // AI path: needs a key. Run the model to an in-memory result and reduce it to a
   // PersistInput (never persisted). A skip/fail has nothing to diff.
-  if (!process.env.ANTHROPIC_API_KEY) {
+  if (!aiConfigured()) {
     return {
-      skip: "ANTHROPIC_API_KEY not set — cannot preview a re-extraction.",
+      skip: "AI not configured — set ANTHROPIC_API_KEY or AI_BASE_URL to preview a re-extraction.",
     };
   }
   // A preview re-extraction is a real Claude call, so it consumes the profile's
