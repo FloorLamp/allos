@@ -33,6 +33,14 @@ export interface JournalCardData {
   // Why this row can't be re-saved by the editor as-is (imports, legacy
   // data), or null. See lib/activity-validate.
   fault: string | null;
+  // Provenance chip + created/updated timestamps (issue #11).
+  provenance: {
+    // "Manual" | "Strava" | "Google Health Connect" | "Document" | "<Source> · edited"
+    label: string;
+    createdAt: string;
+    // NULL until the row has been edited since creation.
+    updatedAt: string | null;
+  };
 }
 export interface DayGroup {
   date: string;
@@ -500,6 +508,7 @@ export default function JournalView({
                         metrics={c.metrics}
                         parts={c.parts}
                         fault={c.fault}
+                        provenance={c.provenance}
                         onSelectExercise={(name) =>
                           showDetail("exercise", name)
                         }

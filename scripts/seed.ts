@@ -183,6 +183,31 @@ logEffort(
   "moderate"
 );
 
+// A Strava-imported ride (issue #11): provenance chip reads "Strava". Carries a
+// source + external_id like the real Strava pull, so the Journal's provenance
+// surface has an integration-sourced row to render (the manual seed rows all
+// read "Manual"). Richer per-activity metrics stay NULL — the chip is the point.
+const insertActivityStrava = db.prepare(
+  `INSERT INTO activities
+     (profile_id, date, type, title, notes, duration_min, distance_km, intensity,
+      components, source, external_id)
+   VALUES (1,?,?,?,?,?,?,?,?,?,?)`
+);
+insertActivityStrava.run(
+  daysAgo(3),
+  "cardio",
+  "Strava morning ride",
+  null,
+  62,
+  24.5,
+  "moderate",
+  JSON.stringify([
+    { name: "Cycling", type: "cardio", distance_km: 24.5, duration_min: 62 },
+  ]),
+  "strava",
+  "strava:seed-ride-1"
+);
+
 // A recent core session with isometric holds, so timed-hold goals have data.
 const coreId = Number(
   insertActivity.run(

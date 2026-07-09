@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { summarizeExercise, type SetRow } from "@/lib/journal-format";
+import {
+  summarizeExercise,
+  activityProvenanceLabel,
+  type SetRow,
+} from "@/lib/journal-format";
 
 // Tests use the "kg" unit so weight_kg renders verbatim (no conversion noise).
 const row = (over: Partial<SetRow> & { set_number: number }): SetRow => ({
@@ -200,5 +204,35 @@ describe("summarizeExercise — per-side (asymmetric)", () => {
     const s = summarizeExercise(sets, "kg");
     expect(s.text).toBe("L 0:45 × 2 · R 0:40 × 2");
     expect(s.totalKg).toBe(0);
+  });
+});
+
+describe("activityProvenanceLabel", () => {
+  it("labels a manual row (null or 'manual' source) as Manual", () => {
+    expect(activityProvenanceLabel(null)).toBe("Manual");
+    expect(activityProvenanceLabel("manual")).toBe("Manual");
+  });
+
+  it("resolves an integration id to its registry display name", () => {
+    expect(activityProvenanceLabel("strava")).toBe("Strava");
+    expect(activityProvenanceLabel("health-connect")).toBe(
+      "Google Health Connect"
+    );
+  });
+
+  it("labels a document-sourced row as Document", () => {
+    expect(activityProvenanceLabel("document:42")).toBe("Document");
+  });
+
+  it("falls back to the raw source for an unknown integration id", () => {
+    expect(activityProvenanceLabel("garmin-x")).toBe("garmin-x");
+  });
+
+  it("appends '· edited' only for a hand-edited imported row", () => {
+    expect(activityProvenanceLabel("strava", 1)).toBe("Strava · edited");
+    expect(activityProvenanceLabel("strava", 0)).toBe("Strava");
+    // The edited marker is meaningless for a manual row and never appended.
+    expect(activityProvenanceLabel(null, 1)).toBe("Manual");
+    expect(activityProvenanceLabel("manual", 1)).toBe("Manual");
   });
 });

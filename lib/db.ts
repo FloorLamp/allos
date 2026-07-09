@@ -855,6 +855,10 @@ export function migrate(db: Database.Database) {
   // Marks a source-owned (integration-imported) activity the user has hand-edited,
   // so re-ingest of the rolling window won't clobber those edits. 0 = untouched.
   addColumnIfMissing(db, "activities", "edited", "INTEGER DEFAULT 0");
+  // Last-edited timestamp (issue #11). NULL on rows never updated since creation;
+  // saveActivity's UPDATE path stamps it (datetime('now'), UTC — same form as
+  // created_at) so the Journal can show "added …" and, when different, "edited …".
+  addColumnIfMissing(db, "activities", "updated_at", "TEXT");
 
   // Real insert/update/unchanged accounting for a sync (issue #273). The original
   // integration_sync_events CREATE only carried the flat `written` count, which

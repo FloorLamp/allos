@@ -13,10 +13,15 @@ export interface Activity {
   end_time: string | null;
   components: string | null; // JSON ActivityComponent[]
   created_at: string;
+  // Last-edited timestamp (issue #11); NULL until the row is first updated. Same
+  // UTC datetime form as created_at.
+  updated_at: string | null;
   // Integration provenance + idempotent dedup key. NULL for manual entries; set
   // for imported rows (e.g. source 'health-connect', external_id 'health-connect:<start>').
   source: string | null;
   external_id: string | null;
+  // 1 when a source-owned (imported) row has been hand-edited; 0/NULL otherwise.
+  edited: number | null;
   // Richer per-activity metrics from pull integrations (Strava). All nullable:
   // NULL for manual entries / providers that don't supply them. Power, cadence,
   // and kilojoules are populated for cycling only; avg_temp_c for any outdoor

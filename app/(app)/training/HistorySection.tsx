@@ -19,7 +19,10 @@ import { fmtDistance, fmtSpeed } from "@/lib/units";
 import { muscleFor } from "@/lib/lifts";
 import type { Activity } from "@/lib/types";
 import { getEquipment } from "@/lib/equipment";
-import { summarizeExercise } from "@/lib/journal-format";
+import {
+  summarizeExercise,
+  activityProvenanceLabel,
+} from "@/lib/journal-format";
 import { storedActivityFault } from "@/lib/activity-validate";
 import { formatLongDate } from "@/lib/format-date";
 import type { ActivityComponent } from "@/lib/types";
@@ -168,6 +171,11 @@ export default function HistorySection() {
       end_time: a.end_time,
       components: a.components,
       notes: a.notes,
+      // Provenance for the editor header (issue #11).
+      source: a.source,
+      edited: a.edited,
+      created_at: a.created_at,
+      updated_at: a.updated_at,
       sets: aSets.map((s) => ({
         exercise: s.exercise,
         set_number: s.set_number,
@@ -200,6 +208,12 @@ export default function HistorySection() {
       parts,
       // Flag rows the editor couldn't re-save as-is (imports, legacy data).
       fault: storedActivityFault(a, aSets),
+      // Provenance chip + created/updated timestamps (issue #11).
+      provenance: {
+        label: activityProvenanceLabel(a.source, a.edited),
+        createdAt: a.created_at,
+        updatedAt: a.updated_at,
+      },
     };
 
     let group = byDate.get(a.date);
