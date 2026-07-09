@@ -1,0 +1,238 @@
+// Pure validation + canonical-unit conversion for the manual "Log vitals"
+// quick-add (issue #16). Mirrors lib/body-metric-input.ts: the addVitals server
+// action normalizes the same raw fields, so the client form pre-validates with the
+// exact same bounds to surface an inline error instead of a false "saved" toast.
+// Kept DB-free and pure so it's unit-tested in lib/__tests__.
+//
+// CANONICAL STORAGE — these MUST match the Health Connect parser (lib/integrations/
+// health-connect.ts) exactly, so a manually entered vital lands in the same table /
+// metric key / canonical name / canonical unit as the integration's and shares its
+// charts + reference-range flags:
+//   • Blood Pressure Systolic / Diastolic → medical_records, category 'vitals',  mmHg
+//   • Glucose                             → medical_records, category 'biomarker', mg/dL
+//   • Oxygen Saturation (SpO2)            → medical_records, category 'vitals',  %
+//   • Body Temperature                    → medical_records, category 'vitals',  degF
+//   • Sleep duration                      → metric_samples,  metric 'sleep_min', minutes
+//   • Heart rate variability (HRV)        → metric_samples,  metric 'hrv_ms',    ms
+// Body temperature and glucose have internationally-varying entry units, so the form
+// carries an explicit unit selector for each and converts to the canonical unit here
+// (°C→°F, mmol/L→mg/dL). BP/SpO2/HRV/sleep have universal entry units.
+
+export type TempUnit = "C" | "F";
+export type GlucoseUnit = "mg/dL" | "mmol/L";
+
+// A vital destined for medical_records (reference-range flagged). `canonical`/
+// `unit`/`category` are the exact canonical shape the HC parser writes.
+export interface VitalMedicalRow {
+  canonical: string;
+  category: "vitals" | "biomarker";
+  unit: string;
+  value_num: number; // canonical unit
+}
+
+// A vital destined for metric_samples, keyed by `metric`. `value` is canonical.
+export interface VitalSampleRow {
+  metric: string;
+  value: number;
+}
+
+export interface VitalsRawInput {
+  systolic?: string | null;
+  diastolic?: string | null;
+  glucose?: string | null;
+  glucoseUnit?: string | null; // 'mg/dL' | 'mmol/L' (defaults mg/dL)
+  spo2?: string | null;
+  temperature?: string | null;
+  tempUnit?: string | null; // 'C' | 'F' (defaults F — the canonical/display unit)
+  sleepHours?: string | null;
+  hrv?: string | null;
+}
+
+// Canonical names/units — the single source of truth shared by the action + tests,
+// matching health-connect.ts so both writers agree byte-for-byte.
+export const VITAL_CANONICAL = {
+  systolic: {
+    canonical: "Blood Pressure Systolic",
+    category: "vitals" as const,
+    unit: "mmHg",
+  },
+  diastolic: {
+    canonical: "Blood Pressure Diastolic",
+    category: "vitals" as const,
+    unit: "mmHg",
+  },
+  glucose: {
+    canonical: "Glucose",
+    category: "biomarker" as const,
+    unit: "mg/dL",
+  },
+  spo2: {
+    canonical: "Oxygen Saturation",
+    category: "vitals" as const,
+    unit: "%",
+  },
+  temperature: {
+    canonical: "Body Temperature",
+    category: "vitals" as const,
+    unit: "degF",
+  },
+} as const;
+
+export const SLEEP_METRIC = "sleep_min";
+export const HRV_METRIC = "hrv_ms";
+
+// °C → °F, rounded to 0.1 — identical to the Health Connect parser's conversion so
+// a manual °C entry and a synced reading land on the same canonical degF scale.
+export function celsiusToF(c: number): number {
+  return Math.round((c * (9 / 5) + 32) * 10) / 10;
+}
+
+// mmol/L → mg/dL, rounded to 0.1 — matches the HC parser's 18.0156 factor.
+export function mmolToMgdl(v: number): number {
+  return Math.round(v * 18.0156 * 10) / 10;
+}
+
+function blank(v: string | null | undefined): boolean {
+  return v == null || String(v).trim() === "";
+}
+
+function numOrNull(v: string | null | undefined): number | null {
+  if (blank(v)) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+// Validate the raw form. Returns a human-readable error for the first problem, or
+// null when the input is acceptable. Every field is optional individually, but at
+// least one vital must be present, and blood pressure is a pair (both sides
+// together). Bounds are on the CANONICAL value (after unit conversion).
+export function validateVitalsInput(input: VitalsRawInput): string | null {
+  const hasSys = !blank(input.systolic);
+  const hasDia = !blank(input.diastolic);
+  const anyOther = [
+    input.glucose,
+    input.spo2,
+    input.temperature,
+    input.sleepHours,
+    input.hrv,
+  ].some((v) => !blank(v));
+
+  if (!hasSys && !hasDia && !anyOther) {
+    return "Enter at least one vital.";
+  }
+
+  // Blood pressure — a reading is a systolic/diastolic pair.
+  if (hasSys !== hasDia) {
+    return "Enter both systolic and diastolic blood pressure.";
+  }
+  if (hasSys && hasDia) {
+    const sys = numOrNull(input.systolic);
+    const dia = numOrNull(input.diastolic);
+    if (sys == null || sys < 40 || sys > 300) {
+      return "Systolic must be between 40 and 300 mmHg.";
+    }
+    if (dia == null || dia < 20 || dia > 250) {
+      return "Diastolic must be between 20 and 250 mmHg.";
+    }
+    if (dia >= sys) {
+      return "Systolic must be greater than diastolic.";
+    }
+  }
+
+  if (!blank(input.glucose)) {
+    const raw = numOrNull(input.glucose);
+    if (raw == null || raw <= 0) return "Enter a valid glucose value.";
+    const mgdl = input.glucoseUnit === "mmol/L" ? mmolToMgdl(raw) : raw;
+    if (mgdl < 20 || mgdl > 1000) {
+      return "Glucose is out of range.";
+    }
+  }
+
+  if (!blank(input.spo2)) {
+    const v = numOrNull(input.spo2);
+    if (v == null || v < 50 || v > 100) {
+      return "Oxygen saturation must be between 50 and 100%.";
+    }
+  }
+
+  if (!blank(input.temperature)) {
+    const raw = numOrNull(input.temperature);
+    if (raw == null) return "Enter a valid temperature.";
+    const degF = input.tempUnit === "C" ? celsiusToF(raw) : raw;
+    if (degF < 86 || degF > 113) {
+      return "Body temperature is out of range.";
+    }
+  }
+
+  if (!blank(input.sleepHours)) {
+    const v = numOrNull(input.sleepHours);
+    if (v == null || v <= 0 || v > 24) {
+      return "Sleep must be between 0 and 24 hours.";
+    }
+  }
+
+  if (!blank(input.hrv)) {
+    const v = numOrNull(input.hrv);
+    if (v == null || v <= 0 || v > 500) {
+      return "HRV must be between 1 and 500 ms.";
+    }
+  }
+
+  return null;
+}
+
+export interface NormalizedVitals {
+  medical: VitalMedicalRow[];
+  samples: VitalSampleRow[];
+}
+
+// Convert a validated raw form into the canonical rows to persist. Returns a
+// discriminated union: `{ error }` when validation fails (so the caller never
+// writes a partial/invalid set), else the normalized medical + sample rows. Callers
+// attach date / profile / source at the DB boundary.
+export function normalizeVitalsInput(
+  input: VitalsRawInput
+): { error: string } | NormalizedVitals {
+  const error = validateVitalsInput(input);
+  if (error) return { error };
+
+  const medical: VitalMedicalRow[] = [];
+  const samples: VitalSampleRow[] = [];
+
+  const sys = numOrNull(input.systolic);
+  const dia = numOrNull(input.diastolic);
+  if (sys != null && dia != null) {
+    medical.push({ ...VITAL_CANONICAL.systolic, value_num: sys });
+    medical.push({ ...VITAL_CANONICAL.diastolic, value_num: dia });
+  }
+
+  const glucoseRaw = numOrNull(input.glucose);
+  if (glucoseRaw != null) {
+    const value =
+      input.glucoseUnit === "mmol/L" ? mmolToMgdl(glucoseRaw) : glucoseRaw;
+    medical.push({ ...VITAL_CANONICAL.glucose, value_num: value });
+  }
+
+  const spo2 = numOrNull(input.spo2);
+  if (spo2 != null) {
+    medical.push({ ...VITAL_CANONICAL.spo2, value_num: spo2 });
+  }
+
+  const tempRaw = numOrNull(input.temperature);
+  if (tempRaw != null) {
+    const value = input.tempUnit === "C" ? celsiusToF(tempRaw) : tempRaw;
+    medical.push({ ...VITAL_CANONICAL.temperature, value_num: value });
+  }
+
+  const sleepHours = numOrNull(input.sleepHours);
+  if (sleepHours != null) {
+    samples.push({ metric: SLEEP_METRIC, value: Math.round(sleepHours * 60) });
+  }
+
+  const hrv = numOrNull(input.hrv);
+  if (hrv != null) {
+    samples.push({ metric: HRV_METRIC, value: hrv });
+  }
+
+  return { medical, samples };
+}

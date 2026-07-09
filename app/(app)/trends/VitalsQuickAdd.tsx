@@ -1,0 +1,217 @@
+"use client";
+
+import { useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import DateField from "@/components/DateField";
+import SubmitButton from "@/components/SubmitButton";
+import { useToast } from "@/components/Toast";
+import { validateVitalsInput } from "@/lib/vitals-input";
+import { addVitals } from "./vitals-actions";
+
+// Manual "Log vitals" quick-add (issue #16) — a sibling of BodyQuickAdd on the
+// Trends "Body" surface for the vitals that previously could ONLY arrive via the
+// Health Connect exporter: blood pressure, glucose, SpO2, temperature, sleep, and
+// HRV. Every field is optional (log just the ones you measured); at least one is
+// required. The server action writes to the SAME tables/metric keys the integration
+// uses, so entries share the biomarker table + Body charts + reference-range flags.
+// Temperature (°C/°F) and glucose (mg/dL / mmol/L) carry an explicit unit selector
+// defaulting to the canonical/display unit; the pure validateVitalsInput mirrors the
+// action's bounds so the form surfaces an inline error instead of a false "saved".
+export default function VitalsQuickAdd({
+  defaultDate,
+}: {
+  defaultDate: string;
+}) {
+  const router = useRouter();
+  const toast = useToast();
+  const formRef = useRef<HTMLFormElement>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handle(formData: FormData) {
+    setError(null);
+    const validationError = validateVitalsInput({
+      systolic: formData.get("systolic") as string | null,
+      diastolic: formData.get("diastolic") as string | null,
+      glucose: formData.get("glucose") as string | null,
+      glucoseUnit: formData.get("glucose_unit") as string | null,
+      spo2: formData.get("spo2") as string | null,
+      temperature: formData.get("temperature") as string | null,
+      tempUnit: formData.get("temp_unit") as string | null,
+      sleepHours: formData.get("sleep_hours") as string | null,
+      hrv: formData.get("hrv") as string | null,
+    });
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+    try {
+      await addVitals(formData);
+    } catch {
+      setError("Couldn't save these vitals. Please try again.");
+      return;
+    }
+    toast("Vitals saved");
+    formRef.current?.reset();
+    router.refresh();
+  }
+
+  return (
+    <form
+      ref={formRef}
+      action={handle}
+      className="card space-y-3"
+      data-testid="vitals-quick-add"
+    >
+      <div>
+        <h2 className="font-semibold text-slate-800 dark:text-slate-100">
+          Log vitals
+        </h2>
+        <p className="text-sm text-slate-500 dark:text-slate-400">
+          Blood pressure, glucose, oxygen, temperature, sleep, or HRV — fill in
+          only what you measured. Shows up alongside synced readings.
+        </p>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div>
+          <label className="label" htmlFor="v-date">
+            Date
+          </label>
+          <DateField
+            id="v-date"
+            name="date"
+            defaultValue={defaultDate}
+            required
+          />
+        </div>
+
+        <div>
+          <label className="label" htmlFor="v-systolic">
+            Systolic (mmHg)
+          </label>
+          <input
+            id="v-systolic"
+            type="number"
+            step="1"
+            min="0"
+            name="systolic"
+            className="input"
+          />
+        </div>
+        <div>
+          <label className="label" htmlFor="v-diastolic">
+            Diastolic (mmHg)
+          </label>
+          <input
+            id="v-diastolic"
+            type="number"
+            step="1"
+            min="0"
+            name="diastolic"
+            className="input"
+          />
+        </div>
+
+        <div>
+          <label className="label" htmlFor="v-glucose">
+            Glucose
+          </label>
+          <div className="flex gap-2">
+            <input
+              id="v-glucose"
+              type="number"
+              step="0.1"
+              min="0"
+              name="glucose"
+              className="input"
+            />
+            <select
+              name="glucose_unit"
+              aria-label="Glucose unit"
+              defaultValue="mg/dL"
+              className="input w-auto"
+            >
+              <option value="mg/dL">mg/dL</option>
+              <option value="mmol/L">mmol/L</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label className="label" htmlFor="v-spo2">
+            Oxygen sat. (%)
+          </label>
+          <input
+            id="v-spo2"
+            type="number"
+            step="0.1"
+            min="0"
+            max="100"
+            name="spo2"
+            className="input"
+          />
+        </div>
+
+        <div>
+          <label className="label" htmlFor="v-temperature">
+            Temperature
+          </label>
+          <div className="flex gap-2">
+            <input
+              id="v-temperature"
+              type="number"
+              step="0.1"
+              name="temperature"
+              className="input"
+            />
+            <select
+              name="temp_unit"
+              aria-label="Temperature unit"
+              defaultValue="F"
+              className="input w-auto"
+            >
+              <option value="F">°F</option>
+              <option value="C">°C</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label className="label" htmlFor="v-sleep">
+            Sleep (hours)
+          </label>
+          <input
+            id="v-sleep"
+            type="number"
+            step="0.1"
+            min="0"
+            max="24"
+            name="sleep_hours"
+            className="input"
+          />
+        </div>
+
+        <div>
+          <label className="label" htmlFor="v-hrv">
+            HRV (ms)
+          </label>
+          <input
+            id="v-hrv"
+            type="number"
+            step="1"
+            min="0"
+            name="hrv"
+            className="input"
+          />
+        </div>
+      </div>
+
+      {error && (
+        <p role="alert" className="text-sm text-rose-600 dark:text-rose-400">
+          {error}
+        </p>
+      )}
+      <SubmitButton pendingLabel="Saving…">Save vitals</SubmitButton>
+    </form>
+  );
+}
