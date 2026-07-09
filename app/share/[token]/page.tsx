@@ -8,6 +8,8 @@ import {
 import ProfilePassport from "@/components/ProfilePassport";
 import type { AvatarProfile } from "@/components/Avatar";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { recordAudit } from "@/lib/audit";
+import { AUDIT_ACTIONS } from "@/lib/audit-actions";
 
 // A human opening a shared passport hits this a handful of times; 30 requests/min
 // per token is far above that while capping a client scraping this PHI-bearing,
@@ -49,6 +51,14 @@ export default function SharePage({ params }: { params: { token: string } }) {
   const link = getShareLinkByToken(params.token);
   if (!link) notFound();
   if (shareLinkStatus(link, new Date()) !== "valid") notFound();
+
+  // Audit the unauthenticated access by the link's id (never the raw token). No
+  // login; the profile whose passport is exposed is the subject.
+  recordAudit({
+    profileId: link.profile_id,
+    action: AUDIT_ACTIONS.shareLinkView,
+    target: String(link.id),
+  });
 
   const fields = parseShareFields(link.fields);
   const name = getProfileNameById(link.profile_id) ?? "Profile";

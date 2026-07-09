@@ -3,6 +3,8 @@ import crypto from "node:crypto";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { db } from "./db";
+import { recordAudit } from "./audit";
+import { AUDIT_ACTIONS } from "./audit-actions";
 
 // Session/auth layer for the single-tenant → multi-user conversion (issue #67,
 // Phase 1). The cookie holds a random 256-bit token; the DB stores only its
@@ -331,4 +333,11 @@ export function setActiveProfile(profileId: number): void {
   db.prepare(
     "UPDATE sessions SET active_profile_id = ? WHERE token_hash = ?"
   ).run(profileId, hashToken(token));
+  // Audit the switch — the login now acts as `profileId` (the target).
+  recordAudit({
+    loginId: session.login.id,
+    profileId,
+    action: AUDIT_ACTIONS.profileSwitch,
+    target: String(profileId),
+  });
 }

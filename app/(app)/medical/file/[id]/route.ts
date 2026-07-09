@@ -2,6 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { db } from "@/lib/db";
 import { getCurrentSession } from "@/lib/auth";
+import { recordAudit } from "@/lib/audit";
+import { AUDIT_ACTIONS } from "@/lib/audit-actions";
 import type { MedicalDocument } from "@/lib/types";
 
 // The only directory uploaded medical files are ever stored under. A served path
@@ -53,6 +55,14 @@ export async function GET(
   if (!fs.existsSync(abs)) {
     return new Response("File missing", { status: 410 });
   }
+
+  // Audit the PHI access (the file id only — never its contents).
+  recordAudit({
+    loginId: session.login.id,
+    profileId: session.profile.id,
+    action: AUDIT_ACTIONS.medicalFileView,
+    target: String(id),
+  });
 
   const mime = doc.mime_type || "application/octet-stream";
   const disposition = INLINE_OK.has(mime) ? "inline" : "attachment";

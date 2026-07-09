@@ -4,11 +4,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 // The tabs follow the three settings tiers: Preferences (login), Profile
-// (active profile), and Server (global) — plus Family and AI logs. Server,
-// Family, and AI logs are admin-only (global config, login/profile management,
-// and extraction content mixed across profiles), so they're appended only when
-// isAdmin. The order interleaves them where they belong: Server sits after the
-// per-person tabs, before Family.
+// (active profile), and Server (global) — plus Family, AI logs, and Audit.
+// Server, Family, AI logs, and Audit are admin-only (global config,
+// login/profile management, extraction content mixed across profiles, and the
+// cross-profile access trail), so they're appended only when isAdmin. The order
+// interleaves them where they belong: Server sits after the per-person tabs,
+// before Family.
 const BASE_TABS = [
   { href: "/settings", label: "Preferences" },
   { href: "/settings/profile", label: "Profile" },
@@ -18,6 +19,7 @@ const ADMIN_TABS = [
   { href: "/settings/family", label: "Family" },
   { href: "/settings/server", label: "Server" },
   { href: "/settings/logs", label: "AI logs" },
+  { href: "/settings/audit", label: "Audit" },
 ];
 
 export default function SettingsTabs({

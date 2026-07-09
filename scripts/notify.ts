@@ -47,6 +47,7 @@ import { runRefills } from "../lib/notifications/refill";
 import { runDigest } from "../lib/notifications/digest-data";
 import { runUpcomingDigest } from "../lib/notifications/upcoming-digest-data";
 import { runScheduledBackup } from "../lib/backup";
+import { pruneAuditEvents } from "../lib/audit";
 import { inferWorkoutSchedule } from "../lib/queries";
 import { slotDue } from "../lib/notifications/schedule";
 import { db, today } from "../lib/db";
@@ -350,6 +351,12 @@ async function tick() {
     });
     anyFailed = true;
   }
+
+  // Audit-log retention (#22): global, once per tick. Deletes events past the
+  // 90-day default. Best-effort (pruneAuditEvents never throws); a failure here
+  // must never affect the notification flow or the exit code.
+  const pruned = pruneAuditEvents();
+  if (pruned > 0) log.info("pruned audit events", { pruned });
 
   process.exit(anyFailed ? 1 : 0);
 }

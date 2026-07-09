@@ -20,6 +20,7 @@
 - **Health-record import** — pull immunizations, labs, and vitals straight from a MyChart “Download Summary” (CCD/XDM), a SMART Health Card, or an Epic / Apple Health FHIR bundle
 - **Supplements & medications** — schedule intake and check it off each day, with adherence and refill tracking
 - **AI activity log** — every AI call and failure recorded to a file and streamed live in Settings → AI logs
+- **Audit log** — a durable record of who accessed or modified which profile's data (logins in/out, profile switches, medical-file and share-link views, document uploads/deletes, and admin/family changes), reviewable with filters under **Settings → Audit** (admin only); identifiers only, never medical content, retained 90 days
 - **Data hub** — bring data in (upload documents, paste logs, connect a device or service) under **Data → Import**, review what background integrations synced under **Data → Review** (recent imports, plus any integration that's currently failing — surfaced with a badge on the profile menu; admins can also expand a per-sync **View raw** to inspect the exact provider payload), then browse and export everything you've logged under **Data → Manage & Export**; integrations available today are **Google Health Connect** and **Strava** (Garmin planned)
 
 ## Requirements
