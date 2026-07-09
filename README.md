@@ -212,9 +212,18 @@ Ingest is **idempotent**: the rolling 48-hour window means records are resent, s
 imports dedup on natural keys (time windows) and never double-count. Manually
 entered rows are never overwritten by a sync.
 
-The token is normally managed in the UI; for headless setups you can instead set
-`HEALTH_CONNECT_TOKEN` (see `.env.example`). **Keep the token secret** — anyone
-with it can post data to your instance.
+The token is normally managed in the UI (Data → Import → Google Health Connect),
+where you can **rotate** it in one click, set an optional **expiry** (90 days / 1
+year / never), and see when it was **last used**. `HEALTH_CONNECT_TOKEN` is a
+**headless-bootstrap-only fallback** (see `.env.example`) that maps to profile 1;
+it has no expiry, rotation, or last-used tracking, so prefer generating a
+DB-backed token in the UI once the app is reachable. **Keep the token secret** —
+anyone with it can post data to your instance.
+
+The calendar `.ics` subscribe feed (Data → Integrations → Calendar feed) shares
+the same lifecycle controls — rotate the link, set an optional expiry, and see the
+last fetch time. Rotating either token immediately invalidates the previous one,
+and an expired token is rejected exactly like an invalid one.
 
 ### Strava
 

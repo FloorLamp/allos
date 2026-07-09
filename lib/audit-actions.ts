@@ -28,6 +28,11 @@ export const AUDIT_ACTIONS = {
   shareLinkCreate: "share-link.create",
   shareLinkRevoke: "share-link.revoke",
   shareLinkView: "share-link.view",
+  // Long-lived access tokens (issue #24): the calendar .ics feed and the Health
+  // Connect ingest token. mint covers both first mint and rotation (a rotation IS
+  // a mint that kills the old token); detail says which.
+  tokenMint: "token.mint",
+  tokenRevoke: "token.revoke",
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];

@@ -4,6 +4,7 @@ import { IconArrowLeft } from "@tabler/icons-react";
 import { PageHeader } from "@/components/ui";
 import { getIntegration } from "@/lib/integrations/registry";
 import { getCalendarFeed, getPublicUrl, getTimezone } from "@/lib/settings";
+import { tokenLifecycleStatus } from "@/lib/token-lifecycle";
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
 import { getAppointments } from "@/lib/queries";
@@ -60,6 +61,17 @@ export default function CalendarFeedPage() {
           enabled={feed.enabled}
           detail={feed.detail}
           baseUrl={baseUrl()}
+          status={tokenLifecycleStatus(
+            {
+              hasToken: feed.hasToken,
+              createdAt: feed.createdAt,
+              expiresAt: feed.expiresAt,
+            },
+            Date.now()
+          )}
+          createdAt={feed.createdAt}
+          lastUsedAt={feed.lastUsedAt}
+          expiresAt={feed.expiresAt}
         />
 
         <CalendarFeedPreview rows={previewRows} detail={feed.detail} />
