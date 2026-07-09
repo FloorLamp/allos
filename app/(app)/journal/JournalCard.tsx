@@ -6,6 +6,7 @@ import { ActivityTypeIcon, IntensityBadge } from "@/components/ui";
 import ActivityProvenance from "@/components/ActivityProvenance";
 import type { ActivityEditData } from "@/components/ActivityForm";
 import { SET_STATUS_TITLES, type SetStatus } from "@/lib/journal-format";
+import MergeActivityMenu from "./MergeActivityMenu";
 
 export type DisplayPart =
   | {
@@ -29,6 +30,7 @@ export default function JournalCard({
   parts,
   fault,
   provenance,
+  mergeSiblings = [],
   onSelectExercise,
   onSelectCardio,
   onSelectSport,
@@ -51,6 +53,9 @@ export default function JournalCard({
     createdAt: string;
     updatedAt: string | null;
   };
+  // Same-day siblings this activity can be manually merged with (issue #64). Empty
+  // (the default) hides the merge affordance — a lone activity has nothing to fold.
+  mergeSiblings?: { id: number; title: string }[];
   // When provided, a strength exercise name becomes a button that opens its
   // detail (progression/benchmarks/goals) in the history right column.
   onSelectExercise?: (exercise: string) => void;
@@ -105,11 +110,10 @@ export default function JournalCard({
             )}
           </div>
         </div>
-        {activity.intensity && (
-          <div className="shrink-0">
-            <IntensityBadge value={activity.intensity} />
-          </div>
-        )}
+        <div className="flex shrink-0 items-center gap-1.5">
+          {activity.intensity && <IntensityBadge value={activity.intensity} />}
+          <MergeActivityMenu keepId={activity.id} siblings={mergeSiblings} />
+        </div>
       </div>
 
       {/* Rows the editor can't re-save as-is (imports, legacy data): say why,

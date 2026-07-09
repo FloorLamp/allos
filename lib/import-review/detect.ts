@@ -75,15 +75,38 @@ function provenance(source: string | null): string {
   return source ?? "manual";
 }
 
-// Two activities are a CROSS-SOURCE pair when their provenance differs — the only
-// pairs worth flagging here, since the external_id unique index already dedups
-// same-source re-syncs, and two manual rows on one day are a deliberate user
-// choice (contrast body metrics, where duplicate manual rows ARE flagged).
+// Two activities are a CROSS-SOURCE pair when their provenance differs. These are
+// the classic import duplicate (a Strava run + a manual "Morning run" on one day):
+// invisible to the external_id unique index (different source/external_id), so both
+// persist and double-count. Two manual rows on one day are NOT flagged — a
+// deliberate user choice (contrast body metrics, where duplicate manual rows ARE).
 export function crossSource(
   a: Pick<ActivityDupInput, "source">,
   b: Pick<ActivityDupInput, "source">
 ): boolean {
   return provenance(a.source) !== provenance(b.source);
+}
+
+// Two activities are a SAME-SOURCE duplicate candidate (issue #64) when they share
+// one NON-manual provenance but carry DIFFERENT external_ids. This models UPSTREAM
+// double-feeding — e.g. Strava ingests one workout from both Garmin and Health
+// Connect, so Allos sees two `strava` rows with distinct external_ids for the same
+// session. Guards:
+//   - same provenance only (crossSource pairs go through the other path);
+//   - never MANUAL: two manual rows are a deliberate user act (same stance as the
+//     cross-source rule), and manual rows have no external_id to tell apart anyway;
+//   - both external_ids present AND different: a row is never paired with itself,
+//     and a same-external_id re-sync (already deduped by the unique index) is not a
+//     new duplicate.
+export function sameSourceDuplicate(
+  a: Pick<ActivityDupInput, "source" | "external_id">,
+  b: Pick<ActivityDupInput, "source" | "external_id">
+): boolean {
+  const pa = provenance(a.source);
+  if (pa !== provenance(b.source)) return false; // different source
+  if (pa === "manual") return false; // two manual rows: excluded by design
+  if (a.external_id == null || b.external_id == null) return false;
+  return a.external_id !== b.external_id;
 }
 
 // The stable identity token for a row: its external_id when present (an
@@ -170,28 +193,14 @@ export function proximityMatch(
   return compared > 0;
 }
 
-// Classify one cross-source pair, or null when they are NOT a likely duplicate:
-//   - both rows have clock windows → HIGH if they overlap, else NOT a duplicate
-//     (two timed sessions at different times of day are genuinely distinct);
-//   - otherwise fall back to duration/distance proximity → MEDIUM, else null.
-function classifyActivityPair<T extends ActivityDupInput>(
+// Build a detected pair from two rows: the stable order-independent signature plus
+// a deterministic a/b order (the row whose token sorts first is `a`). Pure.
+function buildPair<T extends ActivityDupInput>(
   a: T,
-  b: T
-): ActivityDupPair<T> | null {
-  const wa = activityWindow(a);
-  const wb = activityWindow(b);
-  let confidence: PairConfidence;
-  let reason: string;
-  if (wa && wb) {
-    if (!windowsOverlap(wa, wb)) return null;
-    confidence = "high";
-    reason = "Overlapping start/end times";
-  } else if (proximityMatch(a, b)) {
-    confidence = "medium";
-    reason = "Same day, similar duration/distance";
-  } else {
-    return null;
-  }
+  b: T,
+  confidence: PairConfidence,
+  reason: string
+): ActivityDupPair<T> {
   const ta = activityToken(a);
   const tb = activityToken(b);
   const [first, second] = ta <= tb ? [a, b] : [b, a];
@@ -204,9 +213,48 @@ function classifyActivityPair<T extends ActivityDupInput>(
   };
 }
 
-// Find cross-source duplicate activity pairs within each (date, type) bucket.
-// Generic over the row so callers keep their display fields (title, …). Ordered
-// deterministically: HIGH confidence first, then by date desc, then signature.
+// Classify one CROSS-SOURCE pair, or null when they are NOT a likely duplicate:
+//   - both rows have clock windows → HIGH if they overlap, else NOT a duplicate
+//     (two timed sessions at different times of day are genuinely distinct);
+//   - otherwise fall back to duration/distance proximity → MEDIUM, else null.
+function classifyCrossSourcePair<T extends ActivityDupInput>(
+  a: T,
+  b: T
+): ActivityDupPair<T> | null {
+  const wa = activityWindow(a);
+  const wb = activityWindow(b);
+  if (wa && wb) {
+    if (!windowsOverlap(wa, wb)) return null;
+    return buildPair(a, b, "high", "Overlapping start/end times");
+  }
+  if (proximityMatch(a, b))
+    return buildPair(a, b, "medium", "Same day, similar duration/distance");
+  return null;
+}
+
+// Classify one SAME-SOURCE pair (issue #64), or null when it is NOT a duplicate.
+// HIGH confidence ONLY, and ONLY from overlapping clock windows: one person can't
+// run two sessions from a single source at the same time, so overlap alone is
+// strong evidence of upstream double-feeding. The duration/distance proximity
+// fallback is DELIBERATELY NOT applied here — two similar same-day gym sessions from
+// one source are usually legitimate, and matching them on closeness alone would
+// flag real back-to-back workouts. So a same-source pair missing either window is
+// left alone.
+function classifySameSourcePair<T extends ActivityDupInput>(
+  a: T,
+  b: T
+): ActivityDupPair<T> | null {
+  const wa = activityWindow(a);
+  const wb = activityWindow(b);
+  if (!wa || !wb || !windowsOverlap(wa, wb)) return null;
+  return buildPair(a, b, "high", "Overlapping times from one source");
+}
+
+// Find duplicate activity pairs within each (date, type) bucket. Two paths:
+// CROSS-SOURCE pairs (high overlap OR medium proximity) and, since issue #64,
+// SAME-SOURCE pairs (high overlap only). Generic over the row so callers keep their
+// display fields (title, …). Ordered deterministically: HIGH confidence first, then
+// by date desc, then signature.
 export function findActivityDuplicates<T extends ActivityDupInput>(
   rows: T[]
 ): ActivityDupPair<T>[] {
@@ -221,8 +269,13 @@ export function findActivityDuplicates<T extends ActivityDupInput>(
   for (const group of groups.values()) {
     for (let i = 0; i < group.length; i++) {
       for (let j = i + 1; j < group.length; j++) {
-        if (!crossSource(group[i], group[j])) continue;
-        const pair = classifyActivityPair(group[i], group[j]);
+        const a = group[i];
+        const b = group[j];
+        const pair = crossSource(a, b)
+          ? classifyCrossSourcePair(a, b)
+          : sameSourceDuplicate(a, b)
+            ? classifySameSourcePair(a, b)
+            : null;
         if (pair) out.push(pair);
       }
     }

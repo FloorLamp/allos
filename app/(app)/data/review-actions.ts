@@ -7,8 +7,8 @@ import { recordPairDecision } from "@/lib/queries";
 import {
   ACTIVITY_DOMAIN,
   BODY_METRIC_DOMAIN,
-  foldActivityFields,
 } from "@/lib/import-review/detect";
+import { writeActivityFold } from "@/lib/merge-activity";
 import { mergeBodyMetric } from "@/lib/body-metric-extract";
 import type { PairDecision } from "@/lib/import-review/detect";
 
@@ -32,11 +32,16 @@ function revalidateBodyMetricSurfaces() {
 }
 
 // MERGE two duplicate activities into the user-chosen keeper: fold every field the
-// keeper is missing from the discarded row (COALESCE(keep, drop) — the pure
-// foldActivityFields), delete the discarded row, and mark the keeper `edited = 1`
-// so a later re-ingest of the rolling window won't clobber the merged result (the
-// user-edit-wins lock — same convention saveActivity uses). Both ids are verified
-// to belong to the acting profile before anything is touched.
+// keeper is missing from the discarded row (writeActivityFold — COALESCE(keep, drop)
+// + the edited=1 lock), delete the discarded row, and record a durable 'merged'
+// decision. Both ids are verified to belong to the acting profile before anything is
+// touched.
+//
+// The delete here is a plain cascade delete — NOT undoable. Unlike the journal's
+// manual merge (which routes its delete through captureDelete for an Undo toast),
+// this resolver's controls are plain server-action <form>s in a server component;
+// making it undoable would mean converting DuplicateReview to a client component
+// wired to useUndoableDelete — not a one-line change, so it is left out of #64.
 export async function mergeActivityPair(formData: FormData) {
   const { profile } = requireWriteAccess();
   const keepId = Number(formData.get("keep_id"));
@@ -53,41 +58,7 @@ export async function mergeActivityPair(formData: FormData) {
       .get(dropId, profile.id) as Record<string, unknown> | undefined;
     if (!keep || !drop) return false;
 
-    const f = foldActivityFields(keep, drop);
-    db.prepare(
-      `UPDATE activities
-          SET notes = ?, duration_min = ?, distance_km = ?, intensity = ?,
-              start_time = ?, end_time = ?, components = ?,
-              avg_hr = ?, max_hr = ?, elevation_m = ?, avg_speed_kmh = ?,
-              max_speed_kmh = ?, relative_effort = ?, avg_power_w = ?,
-              max_power_w = ?, weighted_avg_power_w = ?, avg_cadence = ?,
-              avg_temp_c = ?, kilojoules = ?, workout_type = ?,
-              edited = 1
-        WHERE id = ? AND profile_id = ?`
-    ).run(
-      f.notes,
-      f.duration_min,
-      f.distance_km,
-      f.intensity,
-      f.start_time,
-      f.end_time,
-      f.components,
-      f.avg_hr,
-      f.max_hr,
-      f.elevation_m,
-      f.avg_speed_kmh,
-      f.max_speed_kmh,
-      f.relative_effort,
-      f.avg_power_w,
-      f.max_power_w,
-      f.weighted_avg_power_w,
-      f.avg_cadence,
-      f.avg_temp_c,
-      f.kilojoules,
-      f.workout_type,
-      keepId,
-      profile.id
-    );
+    writeActivityFold(profile.id, keepId, keep, drop);
     // Sets live on the kept row via activity_id; the discarded row's sets are
     // removed by the FK ON DELETE CASCADE when its row goes.
     db.prepare("DELETE FROM activities WHERE id = ? AND profile_id = ?").run(

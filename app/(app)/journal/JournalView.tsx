@@ -190,6 +190,20 @@ export default function JournalView({
 
   const shown = filtered.slice(0, visibleDays);
 
+  // Manual-merge targets per day (issue #64): all same-day activities keyed by date,
+  // from the UNFILTERED groups so a type/search filter can't hide a legitimate
+  // duplicate from the merge picker. Each card's own id is excluded at render.
+  const mergeTargetsByDate = useMemo(() => {
+    const m = new Map<string, { id: number; title: string }[]>();
+    for (const g of groups) {
+      m.set(
+        g.date,
+        g.cards.map((c) => ({ id: c.activity.id, title: c.activity.title }))
+      );
+    }
+    return m;
+  }, [groups]);
+
   // Workout-history deep links can target a day or specific activity. A
   // day older than the visible window (or hidden by a filter) wouldn't be in the
   // DOM, so on hash navigation: clear filters, expand the window to include it,
@@ -509,6 +523,11 @@ export default function JournalView({
                         parts={c.parts}
                         fault={c.fault}
                         provenance={c.provenance}
+                        // Manual-merge targets: the OTHER activities logged this
+                        // same day (issue #64), from the unfiltered day group.
+                        mergeSiblings={(
+                          mergeTargetsByDate.get(g.date) ?? []
+                        ).filter((o) => o.id !== c.activity.id)}
                         onSelectExercise={(name) =>
                           showDetail("exercise", name)
                         }

@@ -4,6 +4,13 @@ import { requireWriteAccess } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { captureDelete } from "@/lib/undo-delete-db";
+import { writeActivityFold } from "@/lib/merge-activity";
+import { recordPairDecision } from "@/lib/queries";
+import {
+  ACTIVITY_DOMAIN,
+  activityToken,
+  pairSignature,
+} from "@/lib/import-review/detect";
 import type { ActivityType } from "@/lib/types";
 import { getUnitPrefs } from "@/lib/settings";
 import { toKg, toKm } from "@/lib/units";
@@ -228,6 +235,63 @@ export async function logBodyweight(weight: number, date: string) {
   revalidatePath("/training");
   revalidatePath("/trends");
   revalidatePath("/");
+}
+
+// MANUAL pair-merge from the Journal (issue #64): the user picks two activities of
+// the SAME day and explicitly merges them — the escape hatch for duplicates no
+// heuristic catches (e.g. rows with no clock windows). Reuses the SAME machinery as
+// the Data → Review resolver: fold the discarded row's gap-filling fields into the
+// keeper (writeActivityFold, keeper edited=1), record a durable 'merged' decision
+// keyed on the stable pair signature, then delete the discarded row.
+//
+// The keeper is the card the user acted on; the picked sibling is absorbed + removed.
+// UNLIKE the review resolver, the delete routes through captureDelete so the merge is
+// UNDOABLE from a toast (issue #30): undo re-inserts the discarded row (with its
+// sets). Note undo does NOT unwind the keeper's gap-fills or the recorded decision —
+// it restores the row, matching the capture-based undo model; after an undo you get
+// both rows back (the keeper simply retains any fields it had absorbed).
+//
+// Same-profile + same-day are enforced server-side (the untrusted form ids), even
+// though the UI only ever offers same-day siblings.
+export async function mergeActivities(
+  formData: FormData
+): Promise<{ undoId: number | null }> {
+  // Merging edits the keeper and deletes the discarded row — a write (issue #33).
+  const { profile } = requireWriteAccess();
+  const keepId = Number(formData.get("keep_id"));
+  const dropId = Number(formData.get("drop_id"));
+  if (!keepId || !dropId || keepId === dropId) return { undoId: null };
+
+  let undoId: number | null = null;
+  const tx = db.transaction((): boolean => {
+    const keep = db
+      .prepare("SELECT * FROM activities WHERE id = ? AND profile_id = ?")
+      .get(keepId, profile.id) as Record<string, unknown> | undefined;
+    const drop = db
+      .prepare("SELECT * FROM activities WHERE id = ? AND profile_id = ?")
+      .get(dropId, profile.id) as Record<string, unknown> | undefined;
+    // Both must be the acting profile's and share a day — a manual merge only makes
+    // sense within one day (the detector buckets by day too).
+    if (!keep || !drop || keep.date !== drop.date) return false;
+
+    writeActivityFold(profile.id, keepId, keep, drop);
+    const signature = pairSignature(
+      activityToken(keep as { id: number; external_id: string | null }),
+      activityToken(drop as { id: number; external_id: string | null })
+    );
+    recordPairDecision(profile.id, ACTIVITY_DOMAIN, signature, "merged");
+    // Capture-and-delete the discarded row (its sets cascade into the undo payload).
+    undoId = captureDelete("activity", profile.id, dropId);
+    return true;
+  });
+  if (!tx()) return { undoId: null };
+
+  // The Journal feed lives on /training (the "Log" tab); revalidate it plus the
+  // dashboard rollups the folded/deleted row feeds — same surfaces deleteActivity
+  // refreshes.
+  revalidatePath("/training");
+  revalidatePath("/");
+  return { undoId };
 }
 
 export async function deleteActivity(
