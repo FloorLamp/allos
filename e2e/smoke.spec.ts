@@ -74,6 +74,31 @@ test("biomarkers page surfaces a derived clinical index (#40)", async ({
   await expect(note).toContainText("Total Cholesterol − HDL");
 });
 
+// #19: the global (Cmd-K) command palette now fans out over the clinical passport,
+// so an allergy substance is findable. Seed documents a Penicillin allergy; opening
+// the palette and typing "penicillin" must surface it under the Allergies group and
+// link to /allergies. Proves the new search domains wire end-to-end (query → server
+// action → ranked group → rendered hit).
+test("command palette surfaces a seeded allergy for 'penicillin' (#19)", async ({
+  page,
+}) => {
+  await page.goto("/");
+  // Open via Ctrl-K (the handler accepts metaKey||ctrlKey).
+  await page.keyboard.press("Control+KeyK");
+  const input = page.getByRole("combobox", { name: "Search all data" });
+  await expect(input).toBeVisible();
+  await input.fill("penicillin");
+  // The result list is the palette's listbox; scope to it so the sidebar's own
+  // "Allergies" nav link can't satisfy the assertions.
+  const results = page.getByRole("listbox", { name: "Search results" });
+  await expect(results.getByText("Allergies", { exact: true })).toBeVisible();
+  const hit = results.getByRole("option", { name: /Penicillin/i });
+  await expect(hit.first()).toBeVisible();
+  // Selecting it navigates to the allergies passport page.
+  await hit.first().click();
+  await expect(page).toHaveURL(/\/allergies$/);
+});
+
 // #38: a refill-tracked supplement (seed sets Magnesium Glycinate's on-hand
 // supply) shows an "≈N days left" estimate that names its basis — the actual
 // taken-log rate vs the scheduled-dose-count fallback. Asserts the rendered

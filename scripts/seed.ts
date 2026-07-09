@@ -1044,10 +1044,21 @@ condIns.run(
 ); // coherent with the climbing Vitamin D panel
 
 // ── Allergies (#183) ─────────────────────────────────────────────────────────
-// (No penicillin/amoxicillin conflict with the antibiotic course seeded above.)
+// The Amoxicillin course seeded above is DISCONTINUED (a past, inactive med), so a
+// documented Penicillin allergy is coherent — discovered after the course, which is
+// why it was stopped. The Penicillin row also anchors the #19 global-search e2e
+// (Cmd-K "penicillin" must surface this allergy).
 const allIns = db.prepare(
   `INSERT INTO allergies (profile_id, substance, reaction, severity, status, onset_date, notes)
    VALUES (1,?,?,?,?,?,?)`
+);
+allIns.run(
+  "Penicillin",
+  "Hives and swelling",
+  "severe",
+  "active",
+  "2005-06-01",
+  "Reaction to amoxicillin course; avoid all penicillins"
 );
 allIns.run("Peanuts", "Hives", "moderate", "active", "1998-01-01", null);
 allIns.run(
