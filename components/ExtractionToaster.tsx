@@ -41,6 +41,19 @@ export default function ExtractionToaster() {
     let timer: ReturnType<typeof setTimeout>;
 
     const poll = async () => {
+      // Skip polling while the tab is hidden (no background timers churning), but
+      // only AFTER the first poll has seeded prev.current. Gating on the seed means
+      // a document that finishes while the tab is hidden is still caught — as a
+      // `before === undefined` terminal on the next visible poll — instead of being
+      // silently absorbed into the seed and never toasted.
+      if (
+        prev.current !== null &&
+        typeof document !== "undefined" &&
+        document.hidden
+      ) {
+        timer = setTimeout(poll, 6000);
+        return;
+      }
       let docs: Awaited<ReturnType<typeof getExtractionStates>>;
       try {
         docs = await getExtractionStates();
@@ -64,7 +77,23 @@ export default function ExtractionToaster() {
         for (const d of docs) {
           const before = prev.current.get(d.id);
           if (before === undefined || before !== d.status) changed = true;
-          if (before === "processing" && d.status === "done") {
+          // A document is "newly finished" when it reaches a terminal state either
+          // from 'processing' (the async AI-extraction path) OR from not-yet-seen
+          // (before === undefined). The undefined case is essential: a small
+          // deterministic health-record import (CCD/XDM/SHC/FHIR under the sync
+          // threshold) lands 'done' SYNCHRONOUSLY during the upload action, and a
+          // rejected upload (unsupported/oversized/magic-byte mismatch #58, or a
+          // skipped duplicate) is inserted straight into a terminal state — neither
+          // is ever observed as 'processing', so without this they'd never toast.
+          // The first poll seeds prev.current, so pre-existing docs never re-toast
+          // on load.
+          const finishedNow =
+            (before === "processing" || before === undefined) &&
+            (d.status === "done" ||
+              d.status === "failed" ||
+              d.status === "skipped");
+          if (!finishedNow) continue;
+          if (d.status === "done") {
             fresh.push({
               key: ++toastSeq,
               tone: "success",
@@ -72,10 +101,7 @@ export default function ExtractionToaster() {
               filename: d.filename,
               count: d.count,
             });
-          } else if (
-            before === "processing" &&
-            (d.status === "failed" || d.status === "skipped")
-          ) {
+          } else {
             fresh.push({
               key: ++toastSeq,
               tone: "error",
