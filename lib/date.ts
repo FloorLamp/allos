@@ -92,6 +92,20 @@ export function zonedDateParts(
   };
 }
 
+// The minute-resolution wall-clock stamp ('YYYY-MM-DDTHH:MM') of an instant in the
+// given IANA timezone — the profile-local minute an absolute timestamp is
+// attributed to. This is the identity of an `hr_minutes.ts` bucket: intraday HR is
+// keyed by the minute string derived here at ingest, so the stamp is
+// profile-local-at-ingest and carries no zone of its own (issue #94). A later
+// profile-timezone change therefore re-labels which local minute a *new* push of
+// the same raw sample lands on; historical rows keep the minute they were written
+// with. Pure (formats a concrete zone; reads no DB/env), so it's unit-testable in
+// isolation from ingest.
+export function zonedMinuteStr(tz: string, d: Date): string {
+  const { date, hhmm } = zonedDateParts(tz, d);
+  return `${date}T${hhmm}`;
+}
+
 // Whole days from calendar date `a` to `b` (both YYYY-MM-DD), i.e. b − a.
 // UTC-anchored so it's timezone-independent and never crosses a DST boundary.
 // Returns null if either date is unparseable.
