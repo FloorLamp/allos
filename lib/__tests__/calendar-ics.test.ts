@@ -11,9 +11,19 @@ import {
   groupConsolidatedPreviewRows,
   escapeIcsText,
   zonedWallTimeToUtc,
+  parseFeedCategories,
+  canonicalizeFeedCategories,
+  clampFeedWindowDays,
+  upcomingSignalToIcsEvent,
+  composeFeedEvents,
+  composeFeedPreviewRows,
+  FEED_CATEGORIES,
+  DEFAULT_FEED_CATEGORIES,
   type AppointmentLike,
   type IcsEvent,
   type ConsolidatedProfileFeed,
+  type FeedOptions,
+  type UpcomingSignalLike,
 } from "@/lib/calendar-ics";
 
 const DTSTAMP = new Date("2026-07-08T12:00:00Z");
@@ -576,5 +586,306 @@ describe("selectConsolidatedPreviewRows + grouping", () => {
     );
     expect(groups).toHaveLength(1);
     expect(groups[0].rows.map((r) => r.profileName)).toEqual(["Leo", "Ada"]);
+  });
+});
+
+// ---- Feed category customization (issue #12) -------------------------------
+
+const TODAY = "2026-07-09";
+
+function opts(over: Partial<FeedOptions> = {}): FeedOptions {
+  return {
+    categories: ["appointment"],
+    detail: "minimal",
+    reminders: true,
+    pastWindowDays: 30,
+    futureWindowDays: null,
+    ...over,
+  };
+}
+
+function signal(over: Partial<UpcomingSignalLike> = {}): UpcomingSignalLike {
+  return {
+    key: "dose:12",
+    domain: "dose",
+    title: "Vitamin D",
+    detail: "Medication · 1000 IU",
+    dueDate: null,
+    ...over,
+  };
+}
+
+describe("parseFeedCategories / canonicalizeFeedCategories", () => {
+  it("defaults to appointments-only when unset/empty/unparseable", () => {
+    expect(parseFeedCategories(null)).toEqual([...DEFAULT_FEED_CATEGORIES]);
+    expect(parseFeedCategories(undefined)).toEqual(["appointment"]);
+    expect(parseFeedCategories("")).toEqual(["appointment"]);
+    expect(parseFeedCategories("not json")).toEqual(["appointment"]);
+    expect(parseFeedCategories('{"x":1}')).toEqual(["appointment"]);
+  });
+
+  it("validates, de-dupes, and canonically orders", () => {
+    expect(parseFeedCategories('["dose","appointment","dose"]')).toEqual([
+      "appointment",
+      "dose",
+    ]);
+    // Unknown values are dropped.
+    expect(parseFeedCategories('["goal","bogus","refill"]')).toEqual([
+      "refill",
+      "goal",
+    ]);
+    // An explicit empty array is honored (feed serves nothing).
+    expect(parseFeedCategories("[]")).toEqual([]);
+    // Order always follows FEED_CATEGORIES regardless of input order.
+    expect(
+      canonicalizeFeedCategories(["training", "dose", "appointment"])
+    ).toEqual(["appointment", "dose", "training"]);
+  });
+});
+
+describe("clampFeedWindowDays", () => {
+  it("clamps to a non-negative bounded integer", () => {
+    expect(clampFeedWindowDays(30)).toBe(30);
+    expect(clampFeedWindowDays(-5)).toBe(0);
+    expect(clampFeedWindowDays(NaN)).toBe(0);
+    expect(clampFeedWindowDays(99999)).toBe(3650);
+    expect(clampFeedWindowDays(30.9)).toBe(30);
+  });
+});
+
+describe("selectFeedAppointments — future horizon", () => {
+  const appts: AppointmentLike[] = [
+    {
+      id: 1,
+      scheduled_at: "2026-07-20",
+      status: "scheduled",
+      title: null,
+      location: null,
+      provider_name: null,
+      notes: null,
+    },
+    {
+      id: 2,
+      scheduled_at: "2026-09-01",
+      status: "scheduled",
+      title: null,
+      location: null,
+      provider_name: null,
+      notes: null,
+    },
+  ];
+
+  it("unbounded by default (no future filter)", () => {
+    const out = selectFeedAppointments(appts, { today: TODAY });
+    expect(out.map((a) => a.id)).toEqual([1, 2]);
+  });
+
+  it("drops appointments beyond the horizon", () => {
+    const out = selectFeedAppointments(appts, {
+      today: TODAY,
+      futureWindowDays: 30, // through 2026-08-08
+    });
+    expect(out.map((a) => a.id)).toEqual([1]);
+  });
+});
+
+describe("upcomingSignalToIcsEvent", () => {
+  it("null due date anchors to today as an all-day event", () => {
+    const ev = upcomingSignalToIcsEvent(signal(), {
+      today: TODAY,
+      detail: "minimal",
+      reminders: true,
+    });
+    expect(ev.allDay).toBe(true);
+    expect(ev.start).toEqual(new Date("2026-07-09T00:00:00Z"));
+    expect(ev.end).toEqual(new Date("2026-07-10T00:00:00Z"));
+    expect(ev.uid).toBe("up-dose-12@allos");
+  });
+
+  it("minimal detail emits a neutral category label (no PHI name)", () => {
+    const ev = upcomingSignalToIcsEvent(signal(), {
+      today: TODAY,
+      detail: "minimal",
+      reminders: true,
+    });
+    expect(ev.summary).toBe("Medication / supplement dose");
+    expect(ev.description).toBeNull();
+  });
+
+  it("full detail carries the real title + context", () => {
+    const ev = upcomingSignalToIcsEvent(signal({ dueDate: "2026-07-15" }), {
+      today: TODAY,
+      detail: "full",
+      reminders: false,
+    });
+    expect(ev.summary).toBe("Vitamin D");
+    expect(ev.description).toBe("Medication · 1000 IU");
+    expect(ev.alarms).toBe(false);
+    expect(ev.start).toEqual(new Date("2026-07-15T00:00:00Z"));
+  });
+});
+
+describe("composeFeedEvents", () => {
+  const appt: AppointmentLike = {
+    id: 5,
+    scheduled_at: "2026-07-11 14:30",
+    status: "scheduled",
+    title: "Cardiology",
+    location: "Heart Center",
+    provider_name: "Dr Fake",
+    notes: null,
+  };
+  const doseSig = signal({
+    key: "dose:1",
+    domain: "dose",
+    dueDate: "2026-07-10",
+  });
+  const goalSig = signal({
+    key: "goal:2",
+    domain: "goal",
+    title: "Run 5k",
+    detail: null,
+    dueDate: "2026-07-12",
+  });
+
+  it("appointments-only default excludes every signal", () => {
+    const evs = composeFeedEvents({
+      appointments: [appt],
+      signals: [doseSig, goalSig],
+      today: TODAY,
+      tz: "UTC",
+      options: opts(),
+    });
+    expect(evs).toHaveLength(1);
+    expect(evs[0].uid).toBe("appt-5@allos");
+  });
+
+  it("includes only enabled non-appointment categories", () => {
+    const evs = composeFeedEvents({
+      appointments: [appt],
+      signals: [doseSig, goalSig],
+      today: TODAY,
+      tz: "UTC",
+      options: opts({ categories: ["appointment", "dose"] }),
+    });
+    const uids = evs.map((e) => e.uid);
+    expect(uids).toContain("appt-5@allos");
+    expect(uids).toContain("up-dose-1@allos");
+    expect(uids).not.toContain("up-goal-2@allos");
+  });
+
+  it("never double-counts an appointment-domain signal", () => {
+    const apptSignal = signal({
+      key: "appointment:5",
+      domain: "appointment",
+      dueDate: "2026-07-11",
+    });
+    const evs = composeFeedEvents({
+      appointments: [appt],
+      signals: [apptSignal],
+      today: TODAY,
+      tz: "UTC",
+      options: opts({ categories: ["appointment"] }),
+    });
+    // Only the rich appointment mapping produces an event, not the signal.
+    expect(evs.map((e) => e.uid)).toEqual(["appt-5@allos"]);
+  });
+
+  it("honors the reminder toggle across categories", () => {
+    const evs = composeFeedEvents({
+      appointments: [appt],
+      signals: [doseSig],
+      today: TODAY,
+      tz: "UTC",
+      options: opts({ categories: ["appointment", "dose"], reminders: false }),
+    });
+    expect(evs.every((e) => e.alarms === false)).toBe(true);
+  });
+
+  it("applies the window to signals (future horizon)", () => {
+    const evs = composeFeedEvents({
+      appointments: [],
+      signals: [doseSig, goalSig],
+      today: TODAY,
+      tz: "UTC",
+      options: opts({
+        categories: ["dose", "goal"],
+        futureWindowDays: 1, // through 2026-07-10
+      }),
+    });
+    // doseSig (07-10) in range; goalSig (07-12) out.
+    expect(evs.map((e) => e.uid)).toEqual(["up-dose-1@allos"]);
+  });
+
+  it("is chronologically sorted", () => {
+    const evs = composeFeedEvents({
+      appointments: [appt],
+      signals: [doseSig, goalSig],
+      today: TODAY,
+      tz: "UTC",
+      options: opts({ categories: ["appointment", "dose", "goal"] }),
+    });
+    const dates = evs.map((e) => e.start.getTime());
+    expect(dates).toEqual([...dates].sort((a, b) => a - b));
+  });
+});
+
+describe("composeFeedPreviewRows mirrors composeFeedEvents", () => {
+  const appt: AppointmentLike = {
+    id: 5,
+    scheduled_at: "2026-07-11 14:30",
+    status: "scheduled",
+    title: "Cardiology",
+    location: "Heart Center",
+    provider_name: null,
+    notes: null,
+  };
+  const doseSig = signal({
+    key: "dose:1",
+    domain: "dose",
+    dueDate: "2026-07-10",
+  });
+
+  it("emits one row per composed event, same uids + categories", () => {
+    const input = {
+      appointments: [appt],
+      signals: [doseSig],
+      today: TODAY,
+      tz: "UTC",
+      options: opts({ categories: ["appointment", "dose"] }),
+    };
+    const events = composeFeedEvents(input);
+    const rows = composeFeedPreviewRows(input);
+    expect(rows.map((r) => r.uid).sort()).toEqual(
+      events.map((e) => e.uid).sort()
+    );
+    const apptRow = rows.find((r) => r.category === "appointment")!;
+    expect(apptRow.timeLabel).toBe("2:30 PM");
+    const doseRow = rows.find((r) => r.category === "dose")!;
+    expect(doseRow.summary).toBe("Medication / supplement dose");
+    expect(doseRow.timeLabel).toBeNull();
+  });
+
+  it("strips reminder flag when reminders are off", () => {
+    const rows = composeFeedPreviewRows({
+      appointments: [appt],
+      signals: [],
+      today: TODAY,
+      tz: "UTC",
+      options: opts({ reminders: false }),
+    });
+    expect(rows.every((r) => r.hasReminders === false)).toBe(true);
+  });
+});
+
+describe("FEED_CATEGORIES completeness", () => {
+  it("every category has a minimal-detail representation", () => {
+    for (const cat of FEED_CATEGORIES) {
+      const ev = upcomingSignalToIcsEvent(
+        signal({ key: `${cat}:1`, domain: cat }),
+        { today: TODAY, detail: "minimal", reminders: true }
+      );
+      expect(ev.summary.length).toBeGreaterThan(0);
+    }
   });
 });

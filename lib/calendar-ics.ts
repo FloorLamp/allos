@@ -171,16 +171,28 @@ export function appointmentToIcsEvent(
 // so a native reminder still helps) plus recently-cancelled ones (so the calendar
 // removes/cancels an event the user already subscribed to). Completed visits are
 // history and are dropped — they need no reminder and keep PHI out of the feed.
-// `pastWindowDays` bounds how far back a stale row is carried.
+// `pastWindowDays` bounds how far back a stale row is carried; `futureWindowDays`
+// (issue #12) optionally bounds how far AHEAD — null/undefined keeps the historical
+// unbounded-future behaviour (a visit years out still rides the feed).
 export function selectFeedAppointments(
   appts: readonly AppointmentLike[],
-  opts: { today: string; pastWindowDays?: number }
+  opts: {
+    today: string;
+    pastWindowDays?: number;
+    futureWindowDays?: number | null;
+  }
 ): AppointmentLike[] {
   const cutoff = shiftDateStr(opts.today, -(opts.pastWindowDays ?? 30));
+  const horizon =
+    opts.futureWindowDays != null && opts.futureWindowDays >= 0
+      ? shiftDateStr(opts.today, opts.futureWindowDays)
+      : null;
   return appts.filter((a) => {
     if (a.status === "completed") return false;
     const day = a.scheduled_at.slice(0, 10);
-    return day >= cutoff;
+    if (day < cutoff) return false;
+    if (horizon != null && day > horizon) return false;
+    return true;
   });
 }
 
@@ -287,6 +299,353 @@ export function selectFeedPreviewRows(
       defaultDurationMin: opts.defaultDurationMin,
     })
   );
+}
+
+// ---- Feed category customization (issue #12) -------------------------------
+// The feed historically carried ONLY medical appointments. It can now optionally
+// include the other forward-looking due-signals the Upcoming aggregator already
+// computes (doses, refills, immunizations, biomarker retests, goal deadlines,
+// training targets). Each category is an opt-in; the default stays appointments-
+// only, so an existing feed is unchanged until the user turns something on. All of
+// this is pure — the route resolves the enabled set + the collected signals and
+// passes them in, so the composition/filtering decisions live here and are tested.
+
+// A feed category maps 1:1 onto an UpcomingDomain (same seven names). "appointment"
+// is special: it flows through the rich appointment mapping (timed events,
+// cancellations, provider/reason at full detail), not the generic signal mapping.
+export type FeedCategory =
+  | "appointment"
+  | "dose"
+  | "refill"
+  | "immunization"
+  | "biomarker"
+  | "goal"
+  | "training";
+
+// Canonical order (also the serialized/preview sort tiebreak within a day).
+export const FEED_CATEGORIES: readonly FeedCategory[] = [
+  "appointment",
+  "dose",
+  "refill",
+  "immunization",
+  "biomarker",
+  "goal",
+  "training",
+];
+
+// The default enabled set: appointments only — preserves the historical feed so a
+// pre-existing subscription sees no change until the user opts into more.
+export const DEFAULT_FEED_CATEGORIES: readonly FeedCategory[] = ["appointment"];
+
+// "Concrete" categories are hard, dated commitments (a booked visit, a scheduled
+// dose, a running-low refill). "Suggested" ones are softer, status-driven nudges
+// (a vaccine that's due, a lab worth redrawing, a goal/training pace). The UI
+// groups them so the noisier suggestions are a separate opt-in (per the issue's
+// "gate concrete vs suggested" note) — a calendar of recommendations gets busy.
+export const CONCRETE_FEED_CATEGORIES: readonly FeedCategory[] = [
+  "appointment",
+  "dose",
+  "refill",
+];
+export const SUGGESTED_FEED_CATEGORIES: readonly FeedCategory[] = [
+  "immunization",
+  "biomarker",
+  "goal",
+  "training",
+];
+
+// PHI-conscious neutral label per non-appointment category, emitted at MINIMAL
+// detail so a subscribed calendar reveals only the KIND of item — never the
+// medication/lab/goal name (which is PHI). Full detail swaps in the real title.
+const CATEGORY_MINIMAL_LABEL: Record<
+  Exclude<FeedCategory, "appointment">,
+  string
+> = {
+  dose: "Medication / supplement dose",
+  refill: "Refill running low",
+  immunization: "Immunization due",
+  biomarker: "Lab retest due",
+  goal: "Goal deadline",
+  training: "Training target",
+};
+
+// Human labels for the settings UI (kept beside the categories so the list can't
+// drift from the enum).
+export const FEED_CATEGORY_LABELS: Record<FeedCategory, string> = {
+  appointment: "Medical appointments",
+  dose: "Doses due",
+  refill: "Refills running low",
+  immunization: "Immunizations due",
+  biomarker: "Biomarker retests",
+  goal: "Goal deadlines",
+  training: "Training targets",
+};
+
+export function isFeedCategory(s: string): s is FeedCategory {
+  return (FEED_CATEGORIES as readonly string[]).includes(s);
+}
+
+// Validate + de-dupe + canonically order an arbitrary list of category strings.
+// Unknown values are dropped. Used by the action (form input) and the parser.
+export function canonicalizeFeedCategories(
+  list: readonly string[]
+): FeedCategory[] {
+  const set = new Set(list.filter(isFeedCategory));
+  return FEED_CATEGORIES.filter((c) => set.has(c));
+}
+
+// Parse the stored `calendar_feed_categories` value (a JSON string array) into a
+// validated, canonically-ordered list. An ABSENT setting (null/undefined/empty)
+// falls back to the appointments-only default so the historical feed is preserved;
+// anything unparseable also falls back rather than silently emptying the feed. An
+// explicitly-stored empty array is honored as "no categories" (feed serves nothing).
+export function parseFeedCategories(
+  raw: string | null | undefined
+): FeedCategory[] {
+  if (raw == null || raw === "") return [...DEFAULT_FEED_CATEGORIES];
+  let arr: unknown;
+  try {
+    arr = JSON.parse(raw);
+  } catch {
+    return [...DEFAULT_FEED_CATEGORIES];
+  }
+  if (!Array.isArray(arr)) return [...DEFAULT_FEED_CATEGORIES];
+  return canonicalizeFeedCategories(
+    arr.filter((x): x is string => typeof x === "string")
+  );
+}
+
+// Clamp a past/future window (days) to a sane, non-negative range. Guards the
+// stored setting AND the form input against nonsense (NaN, negatives, absurd spans).
+export const MAX_FEED_WINDOW_DAYS = 3650; // ~10y
+export function clampFeedWindowDays(n: number): number {
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.min(Math.floor(n), MAX_FEED_WINDOW_DAYS);
+}
+
+// The full resolved customization the feed composition honors. `futureWindowDays`
+// null = unbounded (historical behaviour). Detail is the existing minimal/full
+// PHI toggle, now applied to every category's summary/description.
+export interface FeedOptions {
+  categories: readonly FeedCategory[];
+  detail: IcsDetail;
+  reminders: boolean; // emit VALARM reminders on events
+  pastWindowDays: number;
+  futureWindowDays: number | null;
+}
+
+// The subset of an UpcomingItem this module needs to turn a non-appointment
+// due-signal into a calendar event. Structurally compatible with UpcomingItem
+// (lib/upcoming.ts), so the route passes those straight through — kept structural
+// so this module stays free of a query-layer import and is testable with fixtures.
+export interface UpcomingSignalLike {
+  key: string; // stable, namespaced id ("dose:12", "biomarker:ldl")
+  domain: FeedCategory;
+  title: string;
+  detail?: string | null;
+  dueDate: string | null; // "YYYY-MM-DD", or null for a "due today" signal
+}
+
+// Map one non-appointment due-signal to an all-day ICS event. A null due date
+// (a "due today" signal like a scheduled dose or training pace) anchors to today.
+// At minimal detail the summary is the neutral category label (no name leaves the
+// app); at full detail the real title rides along plus its context line. The UID
+// is namespaced by the signal key so it stays stable across fetches (a re-fetch
+// UPDATES the same event) and never collides with an appointment UID.
+export function upcomingSignalToIcsEvent(
+  item: UpcomingSignalLike,
+  opts: { today: string; detail: IcsDetail; reminders: boolean }
+): IcsEvent {
+  const dateStr = (item.dueDate ?? opts.today).slice(0, 10);
+  const start = new Date(dateStr + "T00:00:00Z");
+  const end = new Date(shiftDateStr(dateStr, 1) + "T00:00:00Z");
+  const minimalLabel =
+    item.domain === "appointment"
+      ? "Medical appointment"
+      : CATEGORY_MINIMAL_LABEL[item.domain];
+  const title = trimOrNull(item.title);
+  const summary =
+    opts.detail === "full" ? (title ?? minimalLabel) : minimalLabel;
+  const description = opts.detail === "full" ? trimOrNull(item.detail) : null;
+  return {
+    uid: `up-${item.key.replace(/[^A-Za-z0-9_.-]/g, "-")}@allos`,
+    status: "CONFIRMED",
+    sequence: 0,
+    summary,
+    location: null,
+    description,
+    alarms: opts.reminders,
+    allDay: true,
+    start,
+    end,
+  };
+}
+
+// Whether an event date falls inside the configured window. Past cutoff is always
+// applied; the future horizon only when set (null = unbounded).
+function withinWindow(
+  day: string,
+  today: string,
+  pastWindowDays: number,
+  futureWindowDays: number | null
+): boolean {
+  if (day < shiftDateStr(today, -pastWindowDays)) return false;
+  if (
+    futureWindowDays != null &&
+    futureWindowDays >= 0 &&
+    day > shiftDateStr(today, futureWindowDays)
+  )
+    return false;
+  return true;
+}
+
+// Compose the complete resolved event list for a feed from its two sources — the
+// rich appointment rows and the generic upcoming signals — honoring the enabled
+// categories, detail level, reminder toggle, and window. Appointments always flow
+// through the appointment mapping (so timed/cancelled/provider handling is intact);
+// every other enabled category comes from `signals` (appointment-domain signals are
+// ignored here — they'd double-count the rich path). Deterministically sorted so the
+// serialized feed is stable. Pure: the caller supplies the reads + `today`/`tz`.
+export function composeFeedEvents(input: {
+  appointments: readonly AppointmentLike[];
+  signals: readonly UpcomingSignalLike[];
+  today: string;
+  tz: string;
+  options: FeedOptions;
+}): IcsEvent[] {
+  const { appointments, signals, today, tz, options } = input;
+  const enabled = new Set(options.categories);
+  const events: IcsEvent[] = [];
+
+  if (enabled.has("appointment")) {
+    const selected = selectFeedAppointments(appointments, {
+      today,
+      pastWindowDays: options.pastWindowDays,
+      futureWindowDays: options.futureWindowDays,
+    });
+    for (const a of selected) {
+      const ev = appointmentToIcsEvent(a, { tz, detail: options.detail });
+      // Honor the global reminder toggle (a cancelled event never has alarms).
+      events.push(options.reminders ? ev : { ...ev, alarms: false });
+    }
+  }
+
+  for (const s of signals) {
+    if (s.domain === "appointment") continue; // rich path owns appointments
+    if (!enabled.has(s.domain)) continue;
+    const day = (s.dueDate ?? today).slice(0, 10);
+    if (
+      !withinWindow(
+        day,
+        today,
+        options.pastWindowDays,
+        options.futureWindowDays
+      )
+    )
+      continue;
+    events.push(
+      upcomingSignalToIcsEvent(s, {
+        today,
+        detail: options.detail,
+        reminders: options.reminders,
+      })
+    );
+  }
+
+  events.sort(
+    (x, y) =>
+      x.start.getTime() - y.start.getTime() || x.uid.localeCompare(y.uid)
+  );
+  return events;
+}
+
+// ---- Unified feed preview (pure) -------------------------------------------
+// The in-app "Preview" card now spans every enabled category, not just
+// appointments. This projection MIRRORS composeFeedEvents exactly (same enabled-set
+// + window filtering, same detail-resolved summaries), so the preview can never
+// diverge from what a subscribed calendar receives.
+
+export interface FeedPreviewRow {
+  uid: string;
+  category: FeedCategory;
+  dateKey: string; // "YYYY-MM-DD" for grouping/sorting
+  dateLabel: string; // "Fri, Jul 10, 2026"
+  timeLabel: string | null; // wall-clock time for a timed appointment, else null
+  summary: string;
+  location: string | null;
+  cancelled: boolean;
+  hasReminders: boolean;
+}
+
+export function composeFeedPreviewRows(input: {
+  appointments: readonly AppointmentLike[];
+  signals: readonly UpcomingSignalLike[];
+  today: string;
+  tz: string;
+  options: FeedOptions;
+}): FeedPreviewRow[] {
+  const { appointments, signals, today, tz, options } = input;
+  const enabled = new Set(options.categories);
+  const rows: FeedPreviewRow[] = [];
+
+  if (enabled.has("appointment")) {
+    const selected = selectFeedAppointments(appointments, {
+      today,
+      pastWindowDays: options.pastWindowDays,
+      futureWindowDays: options.futureWindowDays,
+    });
+    for (const a of selected) {
+      const base = appointmentToPreviewRow(a, { tz, detail: options.detail });
+      rows.push({
+        uid: base.uid,
+        category: "appointment",
+        dateKey: a.scheduled_at.slice(0, 10),
+        dateLabel: base.dateLabel,
+        timeLabel: base.timeLabel,
+        summary: base.summary,
+        location: base.location,
+        cancelled: base.cancelled,
+        // The global reminder toggle can strip alarms from an otherwise-scheduled event.
+        hasReminders: options.reminders && base.hasReminders,
+      });
+    }
+  }
+
+  for (const s of signals) {
+    if (s.domain === "appointment") continue;
+    if (!enabled.has(s.domain)) continue;
+    const dateKey = (s.dueDate ?? today).slice(0, 10);
+    if (
+      !withinWindow(
+        dateKey,
+        today,
+        options.pastWindowDays,
+        options.futureWindowDays
+      )
+    )
+      continue;
+    const ev = upcomingSignalToIcsEvent(s, {
+      today,
+      detail: options.detail,
+      reminders: options.reminders,
+    });
+    rows.push({
+      uid: ev.uid,
+      category: s.domain,
+      dateKey,
+      dateLabel: formatPreviewDate(dateKey),
+      timeLabel: null,
+      summary: ev.summary,
+      location: null,
+      cancelled: false,
+      hasReminders: ev.alarms,
+    });
+  }
+
+  rows.sort(
+    (x, y) => x.dateKey.localeCompare(y.dateKey) || x.uid.localeCompare(y.uid)
+  );
+  return rows;
 }
 
 // ---- Consolidated (multi-profile) feed -------------------------------------

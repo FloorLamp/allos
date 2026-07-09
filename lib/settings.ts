@@ -20,6 +20,12 @@ import type { DashboardLayout } from "./dashboard-widgets";
 import { parsePins, serializePins } from "./trend-pins";
 import { parseViews, serializeViews, type TrendView } from "./trend-views";
 import {
+  parseFeedCategories,
+  canonicalizeFeedCategories,
+  clampFeedWindowDays,
+  type FeedCategory,
+} from "./calendar-ics";
+import {
   diffSituations,
   parseSituationEvents,
   serializeSituationEvents,
@@ -967,14 +973,26 @@ export function setDashboardLayout(
 //   calendar_feed_enabled     "1" | "0"
 //   calendar_feed_token_hash  hex SHA-256 of the raw token
 //   calendar_feed_detail      "minimal" | "full"   (default "minimal")
+//   calendar_feed_categories  JSON string[] of FeedCategory (default ["appointment"])
+//   calendar_feed_reminders   "1" | "0"            (default "1" — emit VALARMs)
+//   calendar_feed_past_days   integer string       (default "30")
+//   calendar_feed_future_days integer string       (absent = unbounded horizon)
 // Minimal is the default: the feed then reveals nothing but "Medical appointment"
-// (+ location). Full is an explicit opt-in that sends provider/reason too.
+// (+ location). Full is an explicit opt-in that sends provider/reason too. The
+// customization keys (issue #12) all default to the historical appointments-only,
+// reminders-on, 30-day-past, unbounded-future behaviour so an existing feed is
+// unchanged until the user opts in.
 
 export type CalendarFeedDetail = "minimal" | "full";
 
 export interface CalendarFeed {
   enabled: boolean;
   detail: CalendarFeedDetail;
+  // Content/window customization (issue #12).
+  categories: FeedCategory[]; // which category kinds the feed emits
+  reminders: boolean; // emit VALARM reminders on events
+  pastWindowDays: number; // how far back a stale-but-scheduled item is carried
+  futureWindowDays: number | null; // optional horizon; null = unbounded
   hasToken: boolean; // whether a token is minted (never exposes the token itself)
   // Token lifecycle (issue #24). ISO 8601 UTC strings, or null when absent.
   createdAt: string | null; // when the current token was minted
@@ -984,9 +1002,22 @@ export interface CalendarFeed {
 
 export function getCalendarFeed(profileId: number): CalendarFeed {
   const detail = getProfileSetting(profileId, "calendar_feed_detail");
+  const pastRaw = getProfileSetting(profileId, "calendar_feed_past_days");
+  const futureRaw = getProfileSetting(profileId, "calendar_feed_future_days");
+  const past = pastRaw != null ? Number(pastRaw) : NaN;
+  const future = futureRaw != null ? Number(futureRaw) : NaN;
   return {
     enabled: getProfileSetting(profileId, "calendar_feed_enabled") === "1",
     detail: detail === "full" ? "full" : "minimal",
+    categories: parseFeedCategories(
+      getProfileSetting(profileId, "calendar_feed_categories")
+    ),
+    // Default ON: only an explicit "0" disables reminders.
+    reminders: getProfileSetting(profileId, "calendar_feed_reminders") !== "0",
+    pastWindowDays: Number.isFinite(past) ? clampFeedWindowDays(past) : 30,
+    futureWindowDays: Number.isFinite(future)
+      ? clampFeedWindowDays(future)
+      : null,
     hasToken: !!getProfileSetting(profileId, "calendar_feed_token_hash"),
     createdAt:
       getProfileSetting(profileId, "calendar_feed_token_created_at") ?? null,
@@ -1069,6 +1100,51 @@ export function setCalendarFeedDetail(
     "calendar_feed_detail",
     detail === "full" ? "full" : "minimal"
   );
+}
+
+// The content/window customization the user controls (issue #12). Category list is
+// validated + canonicalized, windows clamped, all written in one transaction. An
+// unbounded future horizon (null) DELETES the key so the absence reads back as
+// unbounded. detail is left to setCalendarFeedDetail (its own PHI-warned control).
+export interface CalendarFeedOptionsInput {
+  categories: readonly string[];
+  reminders: boolean;
+  pastWindowDays: number;
+  futureWindowDays: number | null;
+}
+
+export function setCalendarFeedOptions(
+  profileId: number,
+  opts: CalendarFeedOptionsInput
+): void {
+  const categories = canonicalizeFeedCategories(opts.categories);
+  const write = db.transaction(() => {
+    setProfileSetting(
+      profileId,
+      "calendar_feed_categories",
+      JSON.stringify(categories)
+    );
+    setProfileSetting(
+      profileId,
+      "calendar_feed_reminders",
+      opts.reminders ? "1" : "0"
+    );
+    setProfileSetting(
+      profileId,
+      "calendar_feed_past_days",
+      String(clampFeedWindowDays(opts.pastWindowDays))
+    );
+    if (opts.futureWindowDays != null && opts.futureWindowDays >= 0) {
+      setProfileSetting(
+        profileId,
+        "calendar_feed_future_days",
+        String(clampFeedWindowDays(opts.futureWindowDays))
+      );
+    } else {
+      deleteProfileSetting(profileId, "calendar_feed_future_days");
+    }
+  });
+  write();
 }
 
 // Resolve a raw token from the feed URL to the owning profile id, or null. This is
