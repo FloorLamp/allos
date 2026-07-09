@@ -92,12 +92,34 @@ export default function OfflineQueueProvider({
 }) {
   const [pending, setPending] = useState(0);
   const flushing = useRef(false);
+  // One delayed retry per failure streak (see the fetch catch below) — reset by
+  // any flush that reaches the server, so a dead server can't turn the retry
+  // into a permanent 1.5s poll loop.
+  const retriedAfterFailure = useRef(false);
   const toast = useToast();
   const router = useRouter();
 
   const refreshCount = useCallback(async () => {
     setPending(await countIntents());
   }, []);
+
+  // Announce a completed sync exactly once even when several replay actors
+  // report it — the page flush AND the service worker's Background Sync both
+  // replay the queue (idempotent server-side), so the same reconnect can settle
+  // via either or both. A short suppression window collapses their reports.
+  const lastSyncToastAt = useRef(0);
+  const announceSynced = useCallback(
+    (n: number) => {
+      if (n <= 0) return;
+      const now = Date.now();
+      if (now - lastSyncToastAt.current < 3000) return;
+      lastSyncToastAt.current = now;
+      toast(`Synced ${n} offline ${n === 1 ? "entry" : "entries"}.`);
+      // Reflect the newly-landed rows in the current view.
+      router.refresh();
+    },
+    [toast, router]
+  );
 
   const flush = useCallback(async () => {
     // A single in-flight flush at a time; the server ledger makes any missed
@@ -107,7 +129,14 @@ export default function OfflineQueueProvider({
     flushing.current = true;
     try {
       const intents = await allIntents();
-      if (intents.length === 0) return;
+      if (intents.length === 0) {
+        // The queue may have been drained by ANOTHER actor since the badge last
+        // rendered — the service worker's Background Sync handler replays the
+        // queue itself and then messages this tab. Re-read the count before
+        // bailing, or the badge sticks at "N queued offline" forever.
+        await refreshCount();
+        return;
+      }
       let res: Response;
       try {
         res = await fetch("/api/offline-replay", {
@@ -116,9 +145,23 @@ export default function OfflineQueueProvider({
           body: JSON.stringify({ intents }),
         });
       } catch {
-        // Still offline / a blip mid-flush — keep everything queued, retry later.
+        // Still offline / a blip mid-flush — keep everything queued. When the
+        // browser SAYS it's online, this was likely the reconnect race (the
+        // "online" event can fire while the network stack is still coming up and
+        // the flush's own fetch then dies), and no other trigger may follow for
+        // a long time — so schedule ONE short retry (per failure streak) rather
+        // than stranding the queue until the next visibility change.
+        if (
+          typeof navigator !== "undefined" &&
+          navigator.onLine !== false &&
+          !retriedAfterFailure.current
+        ) {
+          retriedAfterFailure.current = true;
+          setTimeout(() => void flush(), 1500);
+        }
         return;
       }
+      retriedAfterFailure.current = false;
       if (isAuthFailure(res.status)) {
         // Session lapsed (maybe while offline). Never drop the queue — prompt login.
         toast(
@@ -131,19 +174,21 @@ export default function OfflineQueueProvider({
       const data = (await res.json()) as { results?: ReplayResult[] };
       const results = data.results ?? [];
       await removeIntents(settledKeys(results));
-      const applied = results.filter((r) => r.status === "done").length;
+      // Count what this reconnect actually got to the server: "done" is our
+      // apply, "duplicate" means a racing actor (the service worker's Background
+      // Sync replays the queue independently) applied it first — either way the
+      // user's offline entry is now safely synced and deserves the confirmation.
+      // Only counting "done" made the toast (and the router refresh) vanish
+      // whenever the service worker won the race.
+      const synced = results.filter(
+        (r) => r.status === "done" || r.status === "duplicate"
+      ).length;
       await refreshCount();
-      if (applied > 0) {
-        toast(
-          `Synced ${applied} offline ${applied === 1 ? "entry" : "entries"}.`
-        );
-        // Reflect the newly-landed rows in the current view.
-        router.refresh();
-      }
+      announceSynced(synced);
     } finally {
       flushing.current = false;
     }
-  }, [toast, router, refreshCount]);
+  }, [toast, refreshCount, announceSynced]);
 
   const enqueue = useCallback(
     async (flow: FlowKind, date: string, payload: IntentPayload) => {
@@ -163,7 +208,14 @@ export default function OfflineQueueProvider({
       if (document.visibilityState === "visible") void flush();
     };
     const onSwMessage = (e: MessageEvent) => {
-      if (e.data && e.data.type === "allos-flush-queue") void flush();
+      if (e.data && e.data.type === "allos-flush-queue") {
+        // The worker replayed the queue itself; it reports how many entries it
+        // settled so the user still gets the confirmation when the tab's own
+        // flush finds nothing left to send (announceSynced dedups the race
+        // where both actors replayed the same reconnect).
+        announceSynced(Number(e.data.synced) || 0);
+        void flush();
+      }
     };
 
     window.addEventListener("online", onOnline);
@@ -179,7 +231,7 @@ export default function OfflineQueueProvider({
       document.removeEventListener("visibilitychange", onVisible);
       sw?.removeEventListener("message", onSwMessage);
     };
-  }, [flush, refreshCount]);
+  }, [flush, refreshCount, announceSynced]);
 
   return (
     <OfflineQueueContext.Provider value={{ pending, enqueue, flush }}>
