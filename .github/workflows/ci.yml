@@ -3,10 +3,18 @@ name: CI
 # PR-time checks the deploy pipeline doesn't provide. deploy.yml only runs on
 # push to main (gated by `next build`), so without this nothing validates a PR.
 # Safe to run on pull_request: it touches no secrets and does no deploy.
+#
+# pull_request ONLY (no push trigger): with both, every push to a PR branch ran
+# the whole suite twice — identical jobs on the push event and the PR merge ref.
+# Branches without a PR aren't validated until their PR opens, which is when
+# validation matters. The concurrency group cancels superseded runs, so pushing a
+# fixup two minutes after a commit doesn't finish CI for the dead head.
 on:
   pull_request:
-  push:
-    branches-ignore: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   check:
