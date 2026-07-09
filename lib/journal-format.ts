@@ -1,6 +1,28 @@
 import type { WeightUnit } from "./settings";
+import type { IntegrationId } from "./types";
 import { kgTo, round } from "./units";
 import { formatSeconds } from "./duration";
+import { getIntegration } from "./integrations/registry";
+import { DOCUMENT_SOURCE_PREFIX } from "./body-metric-extract";
+
+// Provenance label for an activity's `source` (issue #11), mirroring the
+// body-metrics history convention (lib/queries/metrics.ts): a manual row (source
+// NULL or the journal's 'manual') reads "Manual"; an integration id resolves to
+// its registry display name ('strava' -> "Strava", 'health-connect' -> "Google
+// Health Connect"); a doc-extracted row ('document:<id>') reads "Document"; any
+// other value shows verbatim. When a source-owned (imported) row has been
+// hand-edited (edited=1) it reads "<Source> · edited" — e.g. "Strava · edited".
+export function activityProvenanceLabel(
+  source: string | null,
+  edited?: number | null
+): string {
+  const imported = !!source && source !== "manual";
+  let base: string;
+  if (!imported) base = "Manual";
+  else if (source!.startsWith(DOCUMENT_SOURCE_PREFIX)) base = "Document";
+  else base = getIntegration(source as IntegrationId)?.name ?? source!;
+  return imported && edited ? `${base} · edited` : base;
+}
 
 export interface SetRow {
   set_number: number;

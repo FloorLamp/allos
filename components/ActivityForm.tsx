@@ -66,6 +66,8 @@ import {
 import CustomTypeChips from "./activity-form/CustomTypeChips";
 import CardioFields from "./activity-form/CardioFields";
 import StrengthSets from "./activity-form/StrengthSets";
+import ActivityProvenance from "@/components/ActivityProvenance";
+import { activityProvenanceLabel } from "@/lib/journal-format";
 
 // Re-exported so existing callers keep importing the edit-payload shape from
 // this module; the definition now lives in ./activity-form/model.
@@ -926,6 +928,19 @@ export default function ActivityForm({
           <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
             {formatLongDate(date)}
           </p>
+          {/* Provenance + created/updated timestamps for a stored row (issue
+              #11). Omitted while creating a new activity (no created_at yet). */}
+          {editData?.created_at && (
+            <ActivityProvenance
+              label={activityProvenanceLabel(
+                editData.source ?? null,
+                editData.edited
+              )}
+              createdAt={editData.created_at}
+              updatedAt={editData.updated_at ?? null}
+              className="mt-1"
+            />
+          )}
         </div>
         {/* Close control for both the centered modal and the docked editor; the
             docked form flushes any pending auto-save on unmount. */}

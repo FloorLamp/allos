@@ -154,6 +154,9 @@ export async function saveActivity(formData: FormData) {
         `UPDATE activities
          SET date = ?, type = ?, title = ?, notes = ?, duration_min = ?, distance_km = ?,
              intensity = ?, start_time = ?, end_time = ?, components = ?,
+             -- Stamp last-edited (UTC, same form as created_at) so the Journal can
+             -- show "edited …" alongside "added …" (issue #11).
+             updated_at = datetime('now'),
              -- Mark integration-owned rows as hand-edited so re-ingest won't
              -- clobber this edit (no-op for manual rows: source/external_id null).
              edited = CASE WHEN source IS NOT NULL OR external_id IS NOT NULL
