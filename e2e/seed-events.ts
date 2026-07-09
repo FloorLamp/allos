@@ -94,4 +94,50 @@ ins.run(
   "Strava token refresh failed (401): unauthorized"
 );
 
-console.log("e2e: seeded integration_sync_events (strava currently failing)");
+// ── Duplicate/conflict fixtures (issue #10, Phase 2) ──────────────────────────
+// A cross-source ACTIVITY pair on one day: a manually-logged "Morning run" and a
+// Strava-imported run with overlapping clock times — a HIGH-confidence duplicate
+// the Review inbox must surface with merge/keep-both/dismiss actions. Clear any
+// prior fixtures first so re-seeding is idempotent. Synthetic data only.
+const DUP_DATE = "2026-07-07";
+db.prepare(
+  `DELETE FROM activities WHERE profile_id = ? AND date = ? AND (source = 'strava' OR title IN ('Morning run', 'Afternoon Run'))`
+).run(PROFILE_ID, DUP_DATE);
+db.prepare(`DELETE FROM import_pair_decisions WHERE profile_id = ?`).run(
+  PROFILE_ID
+);
+
+const insActivity = db.prepare(
+  `INSERT INTO activities
+     (profile_id, date, type, title, duration_min, distance_km,
+      start_time, end_time, source, external_id, edited)
+   VALUES (?, ?, 'cardio', ?, ?, ?, ?, ?, ?, ?, 0)`
+);
+// Manual entry (source NULL): the user's own "Morning run".
+insActivity.run(
+  PROFILE_ID,
+  DUP_DATE,
+  "Morning run",
+  32,
+  5.0,
+  "08:00",
+  "08:32",
+  null,
+  null
+);
+// Strava import of the same run, overlapping times → detected as a duplicate.
+insActivity.run(
+  PROFILE_ID,
+  DUP_DATE,
+  "Afternoon Run",
+  33,
+  5.1,
+  "08:02",
+  "08:35",
+  "strava",
+  "strava:e2e-run-1"
+);
+
+console.log(
+  "e2e: seeded integration_sync_events (strava failing) + a cross-source duplicate activity pair"
+);
