@@ -1357,4 +1357,76 @@ db.prepare(
   `UPDATE medical_documents SET extracted_count = ? WHERE id = ? AND profile_id = 1`
 ).run(linkedRows.changes, docId);
 
+// ---------------------------------------------------------------------------
+// A second, CHILD profile so the pediatric growth trends have a subject out of
+// the box (kids growth trends). ~18 months old with a known sex + birthdate, a
+// synthetic weight / height / head-circumference history — so the Trends → Body
+// tab renders the WHO growth-percentile card, charts height + head circ, and the
+// age-aware layout hides body fat. All values are obviously-synthetic, plausible
+// WHO-range infant measurements. The admin login sees every profile (grants are
+// bypassed for admins), so no login_profiles grant is needed to reach it.
+const CHILD_NAME = "Riley (child)";
+const existingChild = db
+  .prepare("SELECT id FROM profiles WHERE name = ?")
+  .get(CHILD_NAME) as { id: number } | undefined;
+if (!existingChild) {
+  const childId = Number(
+    db.prepare("INSERT INTO profiles (name) VALUES (?)").run(CHILD_NAME)
+      .lastInsertRowid
+  );
+  // ~18 months old: WHO reference (0–24 mo) applies, so height/weight/head-circ
+  // all score against the WHO curves and head-circ entry is offered.
+  const childBirthdate = shiftDateStr(today(childId), -548);
+  const setChildSetting = db.prepare(
+    `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, ?, ?)
+       ON CONFLICT(profile_id, key) DO NOTHING`
+  );
+  setChildSetting.run(childId, "sex", "female");
+  setChildSetting.run(childId, "birthdate", childBirthdate);
+
+  const childDaysAgo = (n: number): string => shiftDateStr(today(childId), -n);
+
+  // Weight history (kg) → body_metrics. Dates run oldest→newest over the last
+  // ~6 months (child aged ~12 mo → ~18 mo across the window).
+  const insChildWeight = db.prepare(
+    `INSERT INTO body_metrics (profile_id, date, weight_kg, notes) VALUES (?, ?, ?, ?)`
+  );
+  const weighIns: [number, number][] = [
+    [180, 9.6],
+    [120, 10.1],
+    [60, 10.5],
+    [0, 10.9],
+  ];
+  for (const [ago, kg] of weighIns) {
+    insChildWeight.run(childId, childDaysAgo(ago), kg, "Well-child visit");
+  }
+
+  // Height (cm) + head circumference (cm) → metric_samples, exactly where the
+  // growth charts + Body height/head-circ charts read (source 'manual', a fixed
+  // midnight point window per date, mirroring the manual quick-add writer).
+  const insChildSample = db.prepare(
+    `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+       VALUES (?, 'manual', ?, ?, ?, ?, ?)`
+  );
+  const point = (metric: string, ago: number, value: number) => {
+    const d = childDaysAgo(ago);
+    const ts = `${d}T00:00:00`;
+    insChildSample.run(childId, metric, d, ts, ts, value);
+  };
+  const heights: [number, number][] = [
+    [180, 74.2],
+    [120, 77.1],
+    [60, 79.5],
+    [0, 81.4],
+  ];
+  for (const [ago, cm] of heights) point("height_cm", ago, cm);
+  const headCircs: [number, number][] = [
+    [180, 45.6],
+    [120, 46.4],
+    [60, 47.1],
+    [0, 47.8],
+  ];
+  for (const [ago, cm] of headCircs) point("head_circumference_cm", ago, cm);
+}
+
 console.log("✅ Seeded sample health data.");
