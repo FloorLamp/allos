@@ -136,9 +136,13 @@ export function MedicalValue({
 export function ActivityTypeIcon({
   type,
   title,
+  sportNames,
 }: {
   type: string;
   title?: string;
+  // Structured component/sport names (e.g. Strava's canonical "Cycling"),
+  // matched before the free-text title so an imported ride icons as a bike.
+  sportNames?: string[];
 }) {
   // Bare icon, matching the activity modal heading — no circle, no per-type color.
   return (
@@ -147,7 +151,12 @@ export function ActivityTypeIcon({
       aria-label={type}
       className="shrink-0 text-brand-600 dark:text-brand-400"
     >
-      <ActivityIcon type={type} title={title} className="h-6 w-6" />
+      <ActivityIcon
+        type={type}
+        title={title}
+        sportNames={sportNames}
+        className="h-6 w-6"
+      />
     </span>
   );
 }

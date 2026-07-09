@@ -31,3 +31,22 @@ test("journal cards show a source provenance chip and 'added' timestamp (#11)", 
     "Manual"
   );
 });
+
+// The imported Strava ride is stored with the athlete's free-text title ("Strava
+// morning ride") but a canonical "Cycling" component. The journal must icon it
+// off the structured sport (a bike), matching the activity form — not fall back
+// to the generic cardio (run) icon from the title alone.
+test("an imported cycling ride shows the bike icon in the journal", async ({
+  page,
+}) => {
+  await page.goto("/training");
+
+  const stravaCard = page.locator(".card", {
+    hasText: "Strava morning ride",
+  });
+  await expect(stravaCard).toBeVisible();
+  await expect(stravaCard.getByTestId("activity-icon")).toHaveAttribute(
+    "data-icon",
+    "bike"
+  );
+});
