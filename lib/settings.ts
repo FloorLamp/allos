@@ -123,6 +123,26 @@ export function deleteProfileSetting(profileId: number, key: string): void {
   ).run(profileId, key);
 }
 
+// Every profile_settings key for `profileId` starting with `prefix`. Used by the
+// preventive-care nudge (issue #87) to enumerate its per-rule dedup markers
+// (notify_last_preventive_<ruleKey>) so stale ones can be cleared once the item is
+// no longer due. Profile-scoped (filters profile_id); profile_settings is a
+// settings tier, not profile-owned data, so it isn't covered by the owned-table
+// scoping test regardless.
+export function getProfileSettingKeysWithPrefix(
+  profileId: number,
+  prefix: string
+): string[] {
+  const rows = db
+    .prepare(
+      "SELECT key FROM profile_settings WHERE profile_id = ? AND key LIKE ? ESCAPE '\\'"
+    )
+    .all(profileId, prefix.replace(/[\\%_]/g, "\\$&") + "%") as {
+    key: string;
+  }[];
+  return rows.map((r) => r.key);
+}
+
 // Generic per-login key/value access (login_settings table). Statement hoisted to
 // module scope: getUnitPrefs (and others) read login settings on effectively
 // every request. NOT cache()-wrapped — a request may write via setLoginSetting
@@ -398,6 +418,11 @@ export interface NotifySchedule {
   // default — milestones are always recorded to the timeline regardless; this only
   // gates the (quiet) push/Telegram alert.
   milestonesEnabled: boolean;
+  // Preventive-care reminders (issue #87): whether due/overdue preventive visits &
+  // screenings send a proactive nudge AND appear in the "what's due" digest. On by
+  // default. Off suppresses both push paths; the Upcoming page still lists them
+  // (that's a pull surface, not a push).
+  preventiveEnabled: boolean;
 }
 
 const SUPP_HOUR_KEYS = {
@@ -459,6 +484,9 @@ export function getNotifySchedule(profileId: number): NotifySchedule {
     // Milestone alerts on unless explicitly disabled.
     milestonesEnabled:
       (getProfileSetting(profileId, "notify_milestones") ?? "1") === "1",
+    // Preventive-care reminders on unless explicitly disabled.
+    preventiveEnabled:
+      (getProfileSetting(profileId, "notify_preventive") ?? "1") === "1",
   };
 }
 
@@ -501,6 +529,11 @@ export function setNotifySchedule(
     profileId,
     "notify_milestones",
     sched.milestonesEnabled ? "1" : "0"
+  );
+  setProfileSetting(
+    profileId,
+    "notify_preventive",
+    sched.preventiveEnabled ? "1" : "0"
   );
 }
 

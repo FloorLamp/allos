@@ -1,0 +1,93 @@
+import { describe, expect, it } from "vitest";
+import {
+  planPreventiveNudges,
+  type PreventiveNudgeItem,
+} from "@/lib/preventive-nudge";
+
+// Episode-dedup for the proactive preventive-care nudge (issue #87), mirroring the
+// refill nudge's "once per episode" tests. planPreventiveNudges is pure: given the
+// currently due/overdue items and the already-nudged rule keys, it returns which
+// items to send now and which stale markers to clear.
+
+const item = (
+  ruleKey: string,
+  status: "due" | "overdue" = "due"
+): PreventiveNudgeItem => ({
+  ruleKey,
+  name: ruleKey,
+  status,
+  detail: null,
+});
+
+describe("planPreventiveNudges", () => {
+  it("sends every actionable item when nothing has been nudged yet", () => {
+    const plan = planPreventiveNudges(
+      [item("colorectal_cancer", "overdue"), item("lipid_screening")],
+      []
+    );
+    expect(plan.toSend.map((i) => i.ruleKey)).toEqual([
+      "colorectal_cancer",
+      "lipid_screening",
+    ]);
+    expect(plan.toClear).toEqual([]);
+  });
+
+  it("suppresses an item that is still due and already marked (once per episode)", () => {
+    // colorectal was nudged last episode and is STILL overdue → no re-send; lipid is
+    // newly due → send.
+    const plan = planPreventiveNudges(
+      [item("colorectal_cancer", "overdue"), item("lipid_screening")],
+      ["colorectal_cancer"]
+    );
+    expect(plan.toSend.map((i) => i.ruleKey)).toEqual(["lipid_screening"]);
+    expect(plan.toClear).toEqual([]);
+  });
+
+  it("clears a marker once its rule is no longer actionable (episode ended)", () => {
+    // colorectal was nudged, but is now satisfied/overridden so it's absent from the
+    // actionable set → clear its marker so a future due can nudge again.
+    const plan = planPreventiveNudges(
+      [item("lipid_screening")],
+      ["colorectal_cancer", "lipid_screening"]
+    );
+    expect(plan.toSend).toEqual([]); // lipid already marked, still due
+    expect(plan.toClear).toEqual(["colorectal_cancer"]);
+  });
+
+  it("re-fires after an episode ends and the next interval comes due", () => {
+    // Episode 1: due + unmarked → send (caller then sets the marker).
+    const first = planPreventiveNudges([item("mammography")], []);
+    expect(first.toSend.map((i) => i.ruleKey)).toEqual(["mammography"]);
+
+    // Satisfied: not actionable, marker present → clear (caller deletes it).
+    const ended = planPreventiveNudges([], ["mammography"]);
+    expect(ended.toSend).toEqual([]);
+    expect(ended.toClear).toEqual(["mammography"]);
+
+    // Next interval: due again with NO marker → a fresh nudge fires.
+    const next = planPreventiveNudges([item("mammography")], []);
+    expect(next.toSend.map((i) => i.ruleKey)).toEqual(["mammography"]);
+  });
+
+  it("does nothing when there is nothing due and no markers", () => {
+    const plan = planPreventiveNudges([], []);
+    expect(plan.toSend).toEqual([]);
+    expect(plan.toClear).toEqual([]);
+  });
+
+  it("both sends new items and clears stale markers in one pass", () => {
+    const plan = planPreventiveNudges(
+      [item("lipid_screening"), item("diabetes_screening", "overdue")],
+      ["mammography", "lipid_screening"]
+    );
+    // diabetes is new (send); lipid still due + marked (suppress); mammography no
+    // longer actionable (clear).
+    expect(plan.toSend.map((i) => i.ruleKey)).toEqual(["diabetes_screening"]);
+    expect(plan.toClear).toEqual(["mammography"]);
+  });
+
+  it("returns toClear sorted for deterministic output", () => {
+    const plan = planPreventiveNudges([], ["skin_check", "aaa_ultrasound"]);
+    expect(plan.toClear).toEqual(["aaa_ultrasound", "skin_check"]);
+  });
+});

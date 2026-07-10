@@ -44,6 +44,7 @@ import { getUpdates } from "../lib/notifications/telegram";
 import { handleCallbackQuery } from "../lib/notifications/telegram-callbacks";
 import { runEscalations } from "../lib/notifications/escalate";
 import { runRefills } from "../lib/notifications/refill";
+import { runPreventive } from "../lib/notifications/preventive";
 import { runDigest } from "../lib/notifications/digest-data";
 import { runUpcomingDigest } from "../lib/notifications/upcoming-digest-data";
 import { runWeeklyRecap } from "../lib/notifications/weekly-recap-data";
@@ -275,6 +276,20 @@ async function tickProfile(
     if (rf.failed) anyFailed = true;
   } catch (e) {
     log.error("refill check failed", {
+      profile: profile.id,
+      err: e instanceof Error ? e : String(e),
+    });
+    anyFailed = true;
+  }
+
+  // Preventive-care nudge (#87): runs every hour; its own per-rule "once per due
+  // episode" dedup (cleared when an item is satisfied / no longer due) keeps it
+  // from re-nagging daily. Gated by the per-profile preventive toggle.
+  try {
+    const pv = await runPreventive(profile.id, profile.name, date);
+    if (pv.failed) anyFailed = true;
+  } catch (e) {
+    log.error("preventive check failed", {
       profile: profile.id,
       err: e instanceof Error ? e : String(e),
     });
