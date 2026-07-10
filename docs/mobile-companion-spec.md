@@ -1,6 +1,6 @@
 # Spec: Mobile companion app (Capacitor shell)
 
-Status: **draft** · Owner: TBD · Tracking issue: TBD
+Status: **draft** · Owner: TBD · Tracking issue: [#174](https://github.com/FloorLamp/allos/issues/174)
 
 ## Problem
 
