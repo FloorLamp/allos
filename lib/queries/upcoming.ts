@@ -15,6 +15,10 @@ import {
   isSuppressed,
   type SuppressionRecord,
 } from "../upcoming-suppress";
+import {
+  biomarkerDismissalKey,
+  immunizationDismissalKey,
+} from "../dismissal-keys";
 import { isDueOn } from "../supplement-schedule";
 import {
   daysOfSupplyLeft,
@@ -610,6 +614,75 @@ export function restoreFinding(profileId: number, dedupeKey: string): void {
   db.prepare(
     "DELETE FROM upcoming_dismissals WHERE profile_id = ? AND signal_key = ?"
   ).run(profileId, dedupeKey);
+}
+
+// ---- Name-keyed suppression lifecycle (issue #203) ----
+// upcoming_dismissals is keyed by a REUSABLE string (a biomarker's canonical name,
+// a vaccine code), so a dismissal left behind after its subject is deleted/renamed
+// silently re-attaches to a later subject that reuses the same key (AGENTS.md #224:
+// "names and codes DO recycle"). These helpers clear/re-key those rows at the
+// delete/rename seams, mirroring cleanupOrphanStars on the star store. Each is
+// profile-scoped.
+
+// Drop biomarker retest dismissals (`biomarker:<name>`) whose backing readings are
+// all gone, so dismissing a nudge → deleting every reading → re-adding the marker
+// later re-surfaces the nudge instead of it being suppressed by the stale row. The
+// nudge keys on lower(canonical_name || name); a dismissal with no matching reading
+// can never fire again, so removing it is a pure de-orphan (mirrors
+// cleanupOrphanStars). 11 = length('biomarker:') + 1.
+export function cleanupOrphanBiomarkerDismissals(profileId: number): void {
+  db.prepare(
+    `DELETE FROM upcoming_dismissals
+       WHERE profile_id = ?
+         AND signal_key LIKE 'biomarker:%'
+         AND substr(signal_key, 11) NOT IN (
+           SELECT lower(COALESCE(NULLIF(trim(canonical_name), ''), name))
+             FROM medical_records WHERE profile_id = ?
+         )`
+  ).run(profileId, profileId);
+}
+
+// Re-key a biomarker's star + retest dismissal when its canonical name is renamed:
+// the user's pin/snooze intent follows the reading to its new name rather than
+// orphaning under the old (manifestations 3 & 4). UPDATE OR IGNORE so a collision
+// with an existing star/dismissal already under the new name is a no-op; the caller
+// then runs the orphan sweeps to drop any leftover old row. The star store matches
+// COLLATE NOCASE (as its writers do); the dismissal keys are already lowercased.
+export function migrateRenamedBiomarker(
+  profileId: number,
+  oldName: string,
+  newName: string
+): void {
+  db.prepare(
+    `UPDATE OR IGNORE starred_biomarkers
+        SET canonical_name = ?
+      WHERE profile_id = ? AND canonical_name = ? COLLATE NOCASE`
+  ).run(newName, profileId, oldName);
+  db.prepare(
+    `UPDATE OR IGNORE upcoming_dismissals
+        SET signal_key = ?
+      WHERE profile_id = ? AND signal_key = ?`
+  ).run(
+    biomarkerDismissalKey(newName),
+    profileId,
+    biomarkerDismissalKey(oldName)
+  );
+}
+
+// Clear the retest dismissals for the given immunization component codes (their
+// last backing dose was just deleted — see immunizationCodesLosingBacking), so
+// re-adding that immunization later re-surfaces the due nudge. A no-op for the
+// empty set (the common case: the deleted dose still has a sibling crediting it).
+export function clearImmunizationDismissals(
+  profileId: number,
+  codes: string[]
+): void {
+  if (codes.length === 0) return;
+  const placeholders = codes.map(() => "?").join(",");
+  db.prepare(
+    `DELETE FROM upcoming_dismissals
+       WHERE profile_id = ? AND signal_key IN (${placeholders})`
+  ).run(profileId, ...codes.map(immunizationDismissalKey));
 }
 
 // Whether an item is currently hidden by a snooze/dismiss row in `map`.

@@ -4,7 +4,11 @@ import { requireWriteAccess } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { db, today } from "@/lib/db";
 import { captureDelete } from "@/lib/undo-delete-db";
-import { getActiveSituations, setActiveSituations } from "@/lib/settings";
+import {
+  getActiveSituations,
+  setActiveSituations,
+  deleteProfileSetting,
+} from "@/lib/settings";
 import { generateAndStoreSuggestions } from "@/lib/supplement-suggest";
 import {
   decrementSupply,
@@ -556,6 +560,10 @@ export async function deleteSupplement(
   // from the toast. NOTE: refill supply decrements are NOT recomputed on Undo — the
   // item's quantity_on_hand is restored verbatim as it stood at delete time.
   const undoId = captureDelete("intake-item", profile.id, id);
+  // Drop the item's low-supply episode marker with it (issue #203). This is a
+  // dead row rather than wrong suppression — the id never recycles — but leaving
+  // it strands a `notify_last_refill_<id>` setting the item no longer backs.
+  deleteProfileSetting(profile.id, `notify_last_refill_${id}`);
   revalidatePath("/medicine");
   revalidatePath("/");
   return { undoId };

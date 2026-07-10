@@ -8,7 +8,10 @@ import {
   DELETE_POLICY,
   type DatasetDeletePolicy,
 } from "@/lib/export";
-import { cleanupOrphanStars } from "@/lib/queries";
+import {
+  cleanupOrphanStars,
+  cleanupOrphanBiomarkerDismissals,
+} from "@/lib/queries";
 import { undoKindForDataset } from "@/lib/dataset-undo";
 import { captureDelete } from "@/lib/undo-delete-db";
 
@@ -33,7 +36,13 @@ function afterDelete(
   policy: DatasetDeletePolicy,
   profileId: number
 ) {
-  if (policy.cleanupStars) cleanupOrphanStars(profileId);
+  if (policy.cleanupStars) {
+    cleanupOrphanStars(profileId);
+    // The same subject-delete that can orphan a star can orphan a biomarker
+    // retest dismissal — sweep both so a bulk delete of every reading doesn't
+    // leave a name-keyed snooze to silence a later re-add (issue #203).
+    cleanupOrphanBiomarkerDismissals(profileId);
+  }
   // Always refresh the Data page (the management table lives there).
   revalidatePath("/data");
   // A "[param]" path is a dynamic route and must be revalidated with the "page"
