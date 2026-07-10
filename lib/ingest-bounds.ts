@@ -34,9 +34,11 @@ export interface MetricBound {
 // newly-parsed metric is never silently dropped before someone curates its range.
 export const METRIC_BOUNDS: Record<string, MetricBound> = {
   // ---- body_metrics ----
-  // Lightest surviving newborn ≈0.25 kg; heaviest human ever ≈635 kg. 2–650 clears
-  // both with margin for any tracked human.
-  weight_kg: { min: 2, max: 650 },
+  // Lightest surviving newborn ≈0.25 kg; heaviest human ever ≈635 kg. 0.2–650
+  // clears both with margin for any tracked human — the app tracks kids and ships
+  // growth charts, so a premature / low-birth-weight infant weight (0.25–2 kg) is a
+  // legitimate reading, not the "physically impossible" this envelope drops.
+  weight_kg: { min: 0.2, max: 650 },
   // Body fat can't reach 0 % (essential fat ≈3 %); extreme obesity tops out ≈70 %.
   body_fat_pct: { min: 1, max: 75 },
   // Elite endurance resting HR ≈27 bpm; a resting reading above 250 is a sensor
