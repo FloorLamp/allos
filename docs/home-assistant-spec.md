@@ -38,7 +38,7 @@ a general `/api/v1` namespace.
   sensor + `rest_command` + a stock entities/markdown card) ships in the
   docs; a polished custom card is a separately-maintained artifact and the
   place scope creep lives. Revisit on demand.
-- **No general record access** — schedule + dose actuation + ingest +
+- **No general record access** — the board feed + dose actuation + ingest +
   events only. No labs, conditions, documents, or search over these
   endpoints.
 - **No HA add-on packaging** (Allos already ships as a container).
