@@ -47,6 +47,7 @@ import {
   setAiPrefs,
   getBackupSettings,
   setBackupSettings,
+  setAuditRetentionMonths,
   setEmergencyCardEnabled,
   setBloodType,
   setEmergencyContact,
@@ -394,6 +395,17 @@ export async function backupNow(): Promise<{
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : String(e) };
   }
+}
+
+// ---- Audit-log retention (global, admin-only) ----
+// The window (whole months) the hourly notify tick keeps `audit_events` for before
+// pruning older rows (#98). setAuditRetentionMonths clamps to the allowed range.
+
+export async function saveAuditRetention(formData: FormData) {
+  await requireAdmin();
+  const raw = String(formData.get("audit_retention_months") ?? "").trim();
+  setAuditRetentionMonths(Number(raw));
+  revalidatePath("/settings/server");
 }
 
 // ---- Fitness age gate (global, admin-only) ----

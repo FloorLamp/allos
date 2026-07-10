@@ -4,6 +4,7 @@ import {
   getInstanceTimezone,
   getAiPrefs,
   getBackupSettings,
+  getAuditRetentionMonths,
 } from "@/lib/settings";
 import {
   getLastBackup,
@@ -26,6 +27,7 @@ import ServerTelegramSettings from "./ServerTelegramSettings";
 import InstanceTimezoneSettings from "./InstanceTimezoneSettings";
 import AgeGateSettings from "./AgeGateSettings";
 import BackupSettings from "./BackupSettings";
+import AuditRetentionSettings from "./AuditRetentionSettings";
 
 export const dynamic = "force-dynamic";
 
@@ -73,6 +75,7 @@ export default async function ServerSettingsPage() {
         }}
       />
       <AgeGateSettings minTrainingAge={minTrainingAge()} />
+      <AuditRetentionSettings months={getAuditRetentionMonths()} />
       <footer className="mt-10 border-t border-black/10 pt-4 text-xs text-slate-400 dark:border-white/10 dark:text-slate-500">
         Version <AppVersion />
       </footer>

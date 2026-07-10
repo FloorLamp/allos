@@ -20,6 +20,7 @@ import {
   addCanonicalNames,
   reconcileFlags,
 } from "@/lib/queries";
+import { REPLAYED_KEYS_RETENTION_DAYS, daysAgoModifier } from "@/lib/retention";
 import type {
   FlowKind,
   QueuedIntent,
@@ -194,6 +195,29 @@ function recordReplayKey(profileId: number, key: string, flow: FlowKind): void {
   db.prepare(
     "INSERT OR IGNORE INTO replayed_keys (client_key, profile_id, flow) VALUES (?,?,?)"
   ).run(key, profileId, flow);
+}
+
+// Retention sweep (issue #98), driven from the hourly notify tick alongside the
+// deleted_rows undo purge. A replayed-key row only has to outlive the replay-race
+// window (online event / on-load flush / Background Sync triple-fire), so anything
+// older than REPLAYED_KEYS_RETENTION_DAYS is safe to drop — a flush that old would
+// re-apply the write on a fresh key anyway. GLOBAL by design: one call per tick
+// clears EVERY profile's expired ledger rows by age, so it is intentionally NOT
+// profile-scoped (mirrors sweepDeletedRows; allowlisted in the profile-scoping
+// test). Returns the number of rows removed. Never throws — a sweep failure must
+// not affect the tick.
+export function sweepReplayedKeys(
+  maxAgeDays = REPLAYED_KEYS_RETENTION_DAYS
+): number {
+  try {
+    return db
+      .prepare(
+        `DELETE FROM replayed_keys WHERE created_at < datetime('now', ?)`
+      )
+      .run(daysAgoModifier(maxAgeDays)).changes;
+  } catch {
+    return 0;
+  }
 }
 
 // ── replay dispatch ─────────────────────────────────────────────────────────────

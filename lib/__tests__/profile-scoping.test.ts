@@ -103,6 +103,11 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     why: "sweepDeletedRows: the 24h undo-holding purge is GLOBAL by design (one call per hourly tick clears every profile's expired rows), so it is intentionally profile-agnostic",
   },
   {
+    file: "lib/offline/writes.ts",
+    includes: "DELETE FROM replayed_keys WHERE created_at < datetime('now', ?)",
+    why: "sweepReplayedKeys (#98): the offline-replay idempotency-ledger retention purge is GLOBAL by design (one call per hourly tick prunes every profile's expired keys by age, once past the replay-race window), so it is intentionally profile-agnostic — mirrors sweepDeletedRows",
+  },
+  {
     file: "lib/extraction-reaper.ts",
     includes:
       "UPDATE medical_documents SET extraction_status = 'failed', extraction_error = ? WHERE extraction_status = 'processing'",
