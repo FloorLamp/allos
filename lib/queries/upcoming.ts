@@ -27,6 +27,7 @@ import {
   type PreventiveOverride,
   type PreventiveOverrideKind,
   type PreventiveSatisfaction,
+  type PreventiveSummary,
 } from "../preventive-status";
 import { preventiveAssessmentToUpcomingItem } from "../preventive-upcoming";
 import {
@@ -379,11 +380,17 @@ function kindedScheduled(profileId: number): KindedAppointment[] {
 // immunization schedule). A missing birthdate/age → the assessor emits nothing
 // (its contract), so this returns []. Each actionable assessment maps to a
 // status-driven `visit`/`screening` Upcoming item carrying its rule key for the
-// inline mark-done + override forms, a prefilled "Book" CTA, and — when a matching
-// visit is already booked (issue #85) — a quiet "Scheduled" state.
-function preventiveItems(profileId: number, today: string): UpcomingItem[] {
-  const scheduled = kindedScheduled(profileId);
-  const summary = assessCatalog({
+// inline mark-done + override forms.
+// The profile's full preventive-care assessment (all rules + the due/overdue
+// actionable slice), resolving age/sex/satisfactions/overrides/smoking identically
+// for every consumer. Shared by the Upcoming builder below AND the proactive
+// preventive nudge (lib/notifications/preventive.ts) so the page and the push can
+// never diverge on WHICH items are due. Every read is profile-scoped.
+export function assessProfilePreventive(
+  profileId: number,
+  today: string
+): PreventiveSummary {
+  return assessCatalog({
     ageMonths: profileAgeMonths(profileId, today),
     sex: getUserSex(profileId),
     // Manual "mark done" events PLUS inferred satisfactions from existing records
@@ -405,7 +412,14 @@ function preventiveItems(profileId: number, today: string): UpcomingItem[] {
     ),
     today,
   });
-  return summary.actionable.map((a) =>
+}
+
+// Maps the actionable slice into Upcoming items, adding the prefilled "Book" CTA
+// and — when a matching-kind visit is already booked (issue #85) — a quiet
+// "Scheduled" state (from the profile's still-scheduled appointments).
+function preventiveItems(profileId: number, today: string): UpcomingItem[] {
+  const scheduled = kindedScheduled(profileId);
+  return assessProfilePreventive(profileId, today).actionable.map((a) =>
     preventiveAssessmentToUpcomingItem(a, {
       today,
       scheduledDate: scheduledMatchForRule(a.key, scheduled, today),

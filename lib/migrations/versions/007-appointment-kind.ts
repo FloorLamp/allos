@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Migration } from "../runner";
 
-// Migration 006 (issue #85): a nullable `kind` category on appointments.
+// Migration 007 (issue #85): a nullable `kind` category on appointments.
 //
 // A booked visit can now name WHAT it is — `well_child | physical | dental |
 // vision | screening | other` — so a preventive-care reminder ends in an explicit
@@ -21,7 +21,10 @@ import type { Migration } from "../runner";
 // Replay-safe by construction: the ADD COLUMN is guarded on PRAGMA table_info so
 // the non-version-gated `migrate()` test wrapper (which replays every migration)
 // doesn't hit "duplicate column name"; production applies it exactly once behind
-// the user_version gate. Determinism: reads only the DB + its own constants.
+// the user_version gate. Determinism: reads only the DB + its own constants. Runs
+// AFTER migration 006 (issue #95) rebuilds the appointments table for its
+// provider_id FK — this migration makes no assumption about that CREATE sql, it
+// simply adds `kind` to whatever appointments table exists at this version.
 
 function columnNames(db: Database.Database, table: string): Set<string> {
   return new Set(
@@ -38,7 +41,7 @@ export function up(db: Database.Database): void {
 }
 
 export const migration: Migration = {
-  id: 6,
-  name: "006-appointment-kind",
+  id: 7,
+  name: "007-appointment-kind",
   up,
 };

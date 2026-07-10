@@ -454,6 +454,10 @@ export async function saveNotificationPrefs(formData: FormData) {
     milestonesEnabled:
       formData.get("milestones_enabled") === "on" ||
       formData.get("milestones_enabled") === "1",
+    // Preventive-care reminders (#87): default on.
+    preventiveEnabled:
+      formData.get("preventive_enabled") === "on" ||
+      formData.get("preventive_enabled") === "1",
   });
   revalidatePath("/settings/profile");
 }

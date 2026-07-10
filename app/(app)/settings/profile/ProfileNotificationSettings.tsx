@@ -33,6 +33,9 @@ export default function ProfileNotificationSettings({
   const [milestonesEnabled, setMilestonesEnabled] = useState(
     schedule.milestonesEnabled
   );
+  const [preventiveEnabled, setPreventiveEnabled] = useState(
+    schedule.preventiveEnabled
+  );
   const [pending, startTransition] = useTransition();
   const [savedAt, setSavedAt] = useState(0);
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(
@@ -64,6 +67,7 @@ export default function ProfileNotificationSettings({
     fd.set("recap_day", recapDay == null ? "" : String(recapDay));
     fd.set("recap_hour", String(recapHour));
     fd.set("milestones_enabled", milestonesEnabled ? "1" : "0");
+    fd.set("preventive_enabled", preventiveEnabled ? "1" : "0");
     return fd;
   }
 
@@ -280,6 +284,27 @@ export default function ProfileNotificationSettings({
             <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
               A quiet note when you hit a milestone. Milestones always appear on
               your Timeline either way.
+            </p>
+          </div>
+
+          {/* Preventive-care reminders (#87) — a proactive nudge when a
+              preventive visit or screening comes due, plus its lines in the
+              "what's due" digest. Due items always stay on the Upcoming page. */}
+          <div className="border-t border-slate-100 pt-5 dark:border-slate-800">
+            <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
+              <input
+                type="checkbox"
+                checked={preventiveEnabled}
+                onChange={(e) => setPreventiveEnabled(e.target.checked)}
+                className="h-4 w-4 accent-brand-600"
+                data-testid="preventive-enabled"
+              />
+              Preventive-care reminders
+            </label>
+            <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+              A nudge (and digest lines) when a recommended checkup or screening
+              is due or overdue. Due items still appear on your Upcoming page
+              either way. Informational only — not medical advice.
             </p>
           </div>
         </>
