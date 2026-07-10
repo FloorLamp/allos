@@ -5,6 +5,7 @@ import {
   documentEntry,
   jobEntry,
   feedItemView,
+  collapseQuietSyncs,
   type FeedSyncEvent,
   type FeedDocument,
   type FeedJob,
@@ -214,5 +215,105 @@ describe("feedItemView — job", () => {
     );
     expect(v.tone).toBe("pending");
     expect(v.detail).toBe("extracting…");
+  });
+});
+
+// A no-op (all-unchanged) sync factory for the collapse tests (issue #137).
+function quiet(over: Partial<FeedSyncEvent> = {}): FeedSyncEvent {
+  return sync({
+    inserted: 0,
+    updated: 0,
+    unchanged: 6,
+    written: 6,
+    skipped: 0,
+    ...over,
+  });
+}
+
+describe("collapseQuietSyncs", () => {
+  it("folds a run of consecutive no-op syncs into ONE summary entry", () => {
+    const entries = collapseQuietSyncs([
+      quiet({ id: 4, at: "2026-07-08 11:00:00" }),
+      quiet({ id: 3, at: "2026-07-08 10:00:00" }),
+      quiet({ id: 2, at: "2026-07-08 09:00:00" }),
+      quiet({ id: 1, at: "2026-07-08 08:00:00" }),
+    ]);
+    expect(entries).toHaveLength(1);
+    const e = entries[0];
+    expect(e.stream).toBe("sync-quiet");
+    if (e.stream !== "sync-quiet") throw new Error("unreachable");
+    expect(e.count).toBe(4);
+    // Pinned at the newest event's time/id; spans down to the oldest.
+    expect(e.at).toBe("2026-07-08 11:00:00");
+    expect(e.sortId).toBe(4);
+    expect(e.latest).toBe("2026-07-08 11:00:00");
+    expect(e.oldest).toBe("2026-07-08 08:00:00");
+  });
+
+  it("keeps a meaningful sync and a failure as their own entries around a quiet run", () => {
+    const entries = collapseQuietSyncs([
+      sync({ id: 5, at: "2026-07-08 12:00:00", ok: 0, error: "boom" }), // failure (newest)
+      quiet({ id: 4, at: "2026-07-08 11:00:00" }),
+      quiet({ id: 3, at: "2026-07-08 10:00:00" }),
+      sync({ id: 2, at: "2026-07-08 09:00:00", inserted: 5 }), // real import (breaks the run)
+      quiet({ id: 1, at: "2026-07-08 08:00:00" }),
+    ]);
+    expect(entries.map((e) => e.stream)).toEqual([
+      "sync", // the failure
+      "sync-quiet", // ids 4,3 collapsed
+      "sync", // the real import
+      "sync-quiet", // id 1 alone
+    ]);
+    const firstQuiet = entries[1];
+    if (firstQuiet.stream !== "sync-quiet") throw new Error("unreachable");
+    expect(firstQuiet.count).toBe(2);
+  });
+
+  it("collapses each provider's own run independently even when interleaved", () => {
+    const entries = collapseQuietSyncs([
+      quiet({ id: 4, provider: "strava", at: "2026-07-08 11:00:00" }),
+      quiet({ id: 3, provider: "health-connect", at: "2026-07-08 10:30:00" }),
+      quiet({ id: 2, provider: "strava", at: "2026-07-08 10:00:00" }),
+      quiet({ id: 1, provider: "health-connect", at: "2026-07-08 09:30:00" }),
+    ]);
+    // One quiet summary per provider (each run is that provider's own two no-ops),
+    // not four rows and not one merged row.
+    const quiets = entries.filter((e) => e.stream === "sync-quiet");
+    expect(quiets).toHaveLength(2);
+    for (const q of quiets) {
+      if (q.stream !== "sync-quiet") throw new Error("unreachable");
+      expect(q.count).toBe(2);
+    }
+  });
+
+  it("returns an empty list for no events", () => {
+    expect(collapseQuietSyncs([])).toEqual([]);
+  });
+});
+
+describe("feedItemView — sync-quiet", () => {
+  it("renders a single quiet sync as a muted 'No new data'", () => {
+    const [entry] = collapseQuietSyncs([quiet({ id: 1 })]);
+    const v = feedItemView(entry, providerName);
+    expect(v.tone).toBe("neutral");
+    expect(v.title).toBe("Google Health Connect");
+    expect(v.href).toBeNull();
+    expect(v.detail).toBe("No new data");
+    expect(v.detailMuted).toBe(true);
+    expect(v.skipped).toBe(0);
+    expect(v.meta).toBeNull();
+  });
+
+  it("counts the collapsed checks when more than one", () => {
+    const [entry] = collapseQuietSyncs([
+      quiet({ id: 3, at: "2026-07-08 10:00:00" }),
+      quiet({ id: 2, at: "2026-07-08 09:00:00" }),
+      quiet({ id: 1, at: "2026-07-08 08:00:00" }),
+    ]);
+    const v = feedItemView(entry, providerName);
+    expect(v.detail).toBe("No new data · 3 checks");
+    expect(v.detailMuted).toBe(true);
+    // Key is stable/unique per provider + newest id.
+    expect(v.key).toBe("sync-quiet:health-connect:3");
   });
 });

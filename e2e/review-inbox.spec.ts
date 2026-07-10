@@ -26,11 +26,15 @@ test.describe("Data → Review import inbox", () => {
       review.getByText("Google Health Connect").first()
     ).toBeVisible();
 
-    // The recent-imports feed renders the insert/update/unchanged split:
-    // the Health Connect sync shows "30 new · 10 changed", and the all-unchanged
-    // Strava re-scan collapses to "nothing new".
+    // The recent-imports feed renders the insert/update/unchanged split: the Health
+    // Connect sync shows "30 new · 10 changed".
     await expect(review.getByText("30 new · 10 changed")).toBeVisible();
-    await expect(review.getByText("nothing new")).toBeVisible();
+
+    // Issue #137: the four consecutive hourly Strava no-op re-scans do NOT each
+    // print a "nothing new" row — they collapse into a single "No new data · 4
+    // checks" summary line, so the feed isn't drowned in noise.
+    await expect(review.getByText("No new data · 4 checks")).toBeVisible();
+    await expect(review.getByText("nothing new")).toHaveCount(0);
 
     // Admin-only raw payload viewer (#9): the seeded Health Connect sync carries a
     // raw_ref, so the admin (the seed logs in as admin) sees a "View raw"
