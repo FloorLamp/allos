@@ -13,7 +13,11 @@ import { test, expect, type Page } from "@playwright/test";
 async function switchProfile(page: Page, name: string) {
   await page.goto("/");
   await page.getByTestId("user-menu-trigger").click();
+  // Scope the click INSIDE the user-menu popover: the dashboard's household
+  // strip (#171) also renders profile-named form buttons behind the menu, so an
+  // unscoped page-wide form locator is ambiguous (strict-mode violation).
   await page
+    .getByTestId("user-menu-popover")
     .locator("form")
     .filter({ hasText: name })
     .getByRole("button")

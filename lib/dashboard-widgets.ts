@@ -7,6 +7,17 @@
 // (lib/settings.ts) as a DashboardLayout blob and merged against this catalog by
 // the resolve* functions here, so a stored layout survives the catalog gaining or
 // losing widgets between releases.
+//
+// TWO widgets are special (issue #171):
+//   - `pinned` widgets (the "Needs attention" hero) live OUTSIDE the customizable
+//     grid: they're never listed in Customize, never hideable, and always render
+//     first. The catalog still carries the entry so the pin is a single source of
+//     truth (and the registry test asserts it can't be hidden/reordered away).
+//   - `dataAware` widgets show an onboarding CTA when their domain has no data yet,
+//     extending the fitness/age gate from role-aware to data-aware. Emptiness never
+//     hides the widget (that would bury the CTA that fills it) — it flips the
+//     resolved item's `empty` flag so the page renders the CTA instead of a
+//     blank card.
 
 export type WidgetSpan = "full" | "two-thirds" | "third" | "half";
 
@@ -21,6 +32,12 @@ export interface WidgetDef {
   // replacing the old per-card `!restricted` JSX guards.
   fitness: boolean;
   span: WidgetSpan;
+  // Pinned above the customizable grid, non-hideable, always first (the hero).
+  // Excluded from every resolve* output — it's rendered directly by the page.
+  pinned?: boolean;
+  // Renders an onboarding CTA (not a blank card) when its domain has no data yet.
+  // The page decides emptiness and passes it to resolveWidgetList.
+  dataAware?: boolean;
 }
 
 // Per-profile customization. `order` is the display order of widget ids; `hidden`
@@ -33,23 +50,60 @@ export interface DashboardLayout {
 
 // The catalog. Array order is the default display order; new widgets appended to
 // the end appear automatically for existing profiles (see resolveWidgetList).
+//
+// Order posture (issue #171): the medical differentiators (recent labs, next
+// appointment, care plan) lead, the coaching next-workout recommendation is
+// promoted near the top ("what should I do today" is core content — the promoted
+// slot's suggestion quality is tightened separately in #185), and the vanity
+// defaults (quick stats, streak) are demoted lower. Defaults are the product;
+// customization is the valve.
 export const DASHBOARD_WIDGETS: WidgetDef[] = [
   {
-    id: "quick-stats",
-    label: "Quick stats",
+    id: "needs-attention",
+    label: "Needs attention",
     description:
-      "Activities, weight, active goals, and supplements at a glance.",
+      "Everything that needs you today — doses, flagged labs, appointments, low supply, and more. Always shown, can't be hidden.",
     defaultOn: true,
     fitness: false,
     span: "full",
+    pinned: true,
   },
   {
-    id: "today-actions",
-    label: "Today's actions",
-    description: "Doses and goals on deck, yesterday's recap, and what's new.",
+    id: "recent-labs",
+    label: "Recent labs",
+    description:
+      "Your latest lab panel — flagged and recently-changed markers.",
+    defaultOn: true,
+    fitness: false,
+    span: "two-thirds",
+    dataAware: true,
+  },
+  {
+    id: "next-appointment",
+    label: "Next appointment",
+    description: "Your soonest scheduled medical visit.",
+    defaultOn: true,
+    fitness: false,
+    span: "third",
+    dataAware: true,
+  },
+  {
+    id: "care-plan-due",
+    label: "Care plan",
+    description: "Provider-ordered care items coming due.",
     defaultOn: true,
     fitness: false,
     span: "half",
+    dataAware: true,
+  },
+  {
+    id: "coaching",
+    label: "Coaching",
+    description:
+      "One focused suggestion — train or rest — from your routine and recovery.",
+    defaultOn: true,
+    fitness: true,
+    span: "third",
   },
   {
     id: "starred-biomarkers",
@@ -66,30 +120,7 @@ export const DASHBOARD_WIDGETS: WidgetDef[] = [
     defaultOn: true,
     fitness: false,
     span: "two-thirds",
-  },
-  {
-    id: "todays-insight",
-    label: "Today's insight",
-    description: "The AI-generated summary for today.",
-    defaultOn: true,
-    fitness: true,
-    span: "third",
-  },
-  {
-    id: "immunizations",
-    label: "Immunizations",
-    description: "Next-due and overdue vaccines against the schedule.",
-    defaultOn: true,
-    fitness: false,
-    span: "full",
-  },
-  {
-    id: "recent-activity",
-    label: "Recent activity",
-    description: "Your most recently logged workouts.",
-    defaultOn: true,
-    fitness: true,
-    span: "half",
+    dataAware: true,
   },
   {
     id: "active-goals",
@@ -100,15 +131,6 @@ export const DASHBOARD_WIDGETS: WidgetDef[] = [
     span: "half",
   },
   {
-    id: "coaching",
-    label: "Coaching",
-    description:
-      "One focused suggestion — train or rest — from your routine and recovery.",
-    defaultOn: true,
-    fitness: true,
-    span: "third",
-  },
-  {
     id: "weekly-routine",
     label: "Weekly routine",
     description: "This week's frequency targets and how you're tracking.",
@@ -117,12 +139,38 @@ export const DASHBOARD_WIDGETS: WidgetDef[] = [
     span: "full",
   },
   {
-    id: "low-supply",
-    label: "Low supply",
-    description: "Supplements and medications running low on refills.",
-    defaultOn: false,
-    fitness: false,
+    id: "recent-activity",
+    label: "Recent activity",
+    description: "Your most recently logged workouts.",
+    defaultOn: true,
+    fitness: true,
     span: "half",
+    dataAware: true,
+  },
+  {
+    id: "immunizations",
+    label: "Immunizations",
+    description: "Next-due and overdue vaccines against the schedule.",
+    defaultOn: true,
+    fitness: false,
+    span: "full",
+  },
+  {
+    id: "todays-insight",
+    label: "Today's insight",
+    description: "The AI-generated summary for today.",
+    defaultOn: true,
+    fitness: true,
+    span: "third",
+  },
+  {
+    id: "quick-stats",
+    label: "Quick stats",
+    description:
+      "Activities, weight, active goals, and supplements at a glance.",
+    defaultOn: true,
+    fitness: false,
+    span: "full",
   },
   {
     id: "streak",
@@ -131,6 +179,14 @@ export const DASHBOARD_WIDGETS: WidgetDef[] = [
     defaultOn: false,
     fitness: true,
     span: "third",
+  },
+  {
+    id: "low-supply",
+    label: "Low supply",
+    description: "Supplements and medications running low on refills.",
+    defaultOn: false,
+    fitness: false,
+    span: "half",
   },
   {
     id: "weekly-recap",
@@ -146,10 +202,27 @@ export const DASHBOARD_WIDGETS: WidgetDef[] = [
 
 const WIDGETS_BY_ID = new Map(DASHBOARD_WIDGETS.map((w) => [w.id, w]));
 
-// The widgets a profile is eligible to see, in registry order: everything except
-// fitness widgets when the profile is age-restricted.
+// The pinned widgets (the hero), in registry order — rendered directly by the page,
+// above the customizable grid.
+export function pinnedWidgets(): WidgetDef[] {
+  return DASHBOARD_WIDGETS.filter((w) => w.pinned);
+}
+
+// A resolved customizable-widget entry: its def, whether it's currently visible,
+// and whether it's data-aware-empty (render the onboarding CTA instead of content).
+export interface ResolvedWidget {
+  def: WidgetDef;
+  visible: boolean;
+  empty: boolean;
+}
+
+// The widgets a profile is eligible to customize, in registry order: everything
+// except pinned widgets (rendered separately) and fitness widgets on an
+// age-restricted profile.
 function eligibleWidgets(restricted: boolean): WidgetDef[] {
-  return DASHBOARD_WIDGETS.filter((w) => !(restricted && w.fitness));
+  return DASHBOARD_WIDGETS.filter(
+    (w) => !w.pinned && !(restricted && w.fitness)
+  );
 }
 
 // Every eligible widget (visible + hidden) in display order, for the customize
@@ -158,10 +231,15 @@ function eligibleWidgets(restricted: boolean): WidgetDef[] {
 // index order — so a new release's widgets appear automatically. A widget the
 // stored layout has never seen (neither in `order` nor `hidden`) falls back to
 // its `defaultOn`; a known widget is visible iff it's not in `hidden`.
+//
+// `emptyIds` is the set of data-aware widget ids whose domain currently has no
+// data; a data-aware widget in that set resolves with `empty: true` so the page
+// renders its onboarding CTA. Emptiness never changes `visible`.
 export function resolveWidgetList(
   layout: DashboardLayout | null,
-  restricted: boolean
-): { def: WidgetDef; visible: boolean }[] {
+  restricted: boolean,
+  emptyIds: Set<string> = new Set()
+): ResolvedWidget[] {
   const eligible = eligibleWidgets(restricted);
   const eligibleIds = new Set(eligible.map((w) => w.id));
 
@@ -186,16 +264,18 @@ export function resolveWidgetList(
   return ordered.map((id) => {
     const def = WIDGETS_BY_ID.get(id)!;
     const visible = layout && known.has(id) ? !hidden.has(id) : def.defaultOn;
-    return { def, visible };
+    const empty = !!def.dataAware && emptyIds.has(id);
+    return { def, visible, empty };
   });
 }
 
 // The visible widgets a profile should render, in display order.
 export function resolveWidgets(
   layout: DashboardLayout | null,
-  restricted: boolean
+  restricted: boolean,
+  emptyIds: Set<string> = new Set()
 ): WidgetDef[] {
-  return resolveWidgetList(layout, restricted)
+  return resolveWidgetList(layout, restricted, emptyIds)
     .filter((w) => w.visible)
     .map((w) => w.def);
 }
