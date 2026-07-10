@@ -7,6 +7,7 @@
 // lib/, so the split submodules are still scanned — its per-file allowlist points
 // at the new lib/queries/*.ts paths where the moved statements now live.
 export * from "./queries/metrics";
+export * from "./queries/sleep";
 export * from "./queries/training";
 export * from "./queries/zones";
 export * from "./queries/coaching";

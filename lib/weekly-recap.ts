@@ -140,6 +140,11 @@ export interface RecapInput {
   // exists — the line is omitted then. minutes>0 is required for the line to show.
   zone2Min?: number | null;
   zone2Target?: number | null;
+  // Sleep Regularity Index (#160), −100..100, over the trailing 28-night window,
+  // with the weekend-vs-weekday mid-sleep shift for context. Null when there isn't
+  // enough sleep data (below the minimum-nights gate) — the line is omitted then.
+  sri?: number | null;
+  socialJetlagMin?: number | null;
 }
 
 export interface RecapLine {
@@ -345,6 +350,22 @@ export function buildWeeklyRecap(input: RecapInput): WeeklyRecap {
       delta: target
         ? `${Math.round((input.zone2Min / target) * 100)}% of ${target} min target`
         : undefined,
+    });
+  }
+
+  // Sleep regularity (#160): the SRI over the trailing 28-night window, with the
+  // weekend-vs-weekday mid-sleep shift as context. Omitted when there isn't enough
+  // sleep data (sri null under the minimum-nights gate).
+  if (input.sri != null) {
+    const shiftH =
+      input.socialJetlagMin != null && input.socialJetlagMin > 0
+        ? `${(input.socialJetlagMin / 60).toFixed(1)}h weekend shift`
+        : undefined;
+    lines.push({
+      key: "sleepRegularity",
+      label: "Sleep regularity",
+      value: `${Math.round(input.sri)}/100`,
+      delta: shiftH,
     });
   }
 

@@ -20,6 +20,9 @@ import {
   getMetricDailyTotals,
   getLatestMetricValue,
   getSleepStageDailyTotals,
+  getSleepRegularity,
+  getSleepRegularityTrend,
+  getSleepRegularityInsight,
   getHrDailySummary,
   getLatestHrDay,
   getHrMinutes,
@@ -301,6 +304,15 @@ export default async function BodySection({ range }: { range: DateRange }) {
     date: r.date,
     value: round(r.value / 60, 1), // minutes → hours
   }));
+  // Sleep Regularity Index (#160): consistency of sleep/wake timing over a rolling
+  // 28-night window — a mortality-linked signal the nightly-duration chart can't
+  // show. Null (card hidden) until the minimum-nights gate is met.
+  const sleepReg = getSleepRegularity(profile.id);
+  const sleepRegTrend = getSleepRegularityTrend(profile.id).map((r) => ({
+    date: r.date,
+    value: r.sri,
+  }));
+  const sleepRegInsight = getSleepRegularityInsight(profile.id);
   const sleepStages = getSleepStageDailyTotals(profile.id).map((r) => ({
     date: r.date.slice(5),
     deep: round(r.deep / 60, 1),
@@ -368,6 +380,7 @@ export default async function BodySection({ range }: { range: DateRange }) {
   const hasSynced =
     stepsChart.length > 0 ||
     sleepChart.length > 0 ||
+    sleepReg != null ||
     sleepStages.length > 0 ||
     hrChart.length > 0 ||
     leanMassChart.length > 0 ||
@@ -425,6 +438,55 @@ export default async function BodySection({ range }: { range: DateRange }) {
                 color="#6366f1"
                 unit=" h"
               />
+            </div>
+          )}
+          {sleepReg != null && (
+            <div className="card" data-testid="sleep-regularity">
+              <div className="mb-3 flex items-baseline justify-between gap-2">
+                <h2 className="font-semibold text-slate-800 dark:text-slate-100">
+                  Sleep regularity
+                </h2>
+                <span className="text-xs text-slate-500 dark:text-slate-400">
+                  SRI · last {sleepReg.nights} nights
+                </span>
+              </div>
+              <div className="flex items-baseline gap-2">
+                <span
+                  className="text-3xl font-bold text-indigo-600 dark:text-indigo-300"
+                  data-testid="sri-value"
+                >
+                  {Math.round(sleepReg.sri)}
+                </span>
+                <span className="text-sm text-slate-500 dark:text-slate-400">
+                  / 100
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                Consistency of your sleep/wake timing (higher is steadier).
+                Bedtime ±{sleepReg.bedtimeSdMin} min, wake ±
+                {sleepReg.waketimeSdMin} min
+                {sleepReg.socialJetlagMin != null
+                  ? `, ${(sleepReg.socialJetlagMin / 60).toFixed(1)} h weekend shift`
+                  : ""}
+                .
+              </p>
+              {sleepRegInsight && (
+                <p
+                  className="mt-2 rounded bg-amber-50 px-2 py-1 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
+                  data-testid="sri-insight"
+                >
+                  {sleepRegInsight}
+                </p>
+              )}
+              {sleepRegTrend.length > 1 && (
+                <div className="mt-3">
+                  <LineChartCard
+                    data={sleepRegTrend}
+                    label="SRI"
+                    color="#6366f1"
+                  />
+                </div>
+              )}
             </div>
           )}
           {sleepStages.length > 0 && (

@@ -453,6 +453,33 @@ console.log(
   `e2e: seeded a low-sleep sample + a day-2 rest episode for profile 1 (${COACH_YESTERDAY} → ${COACH_TODAY})`
 );
 
+// ── Sleep Regularity Index fixture (issue #160) ───────────────────────────────
+// 28 nightly sleep sessions (wake-days today-1 … today-28), each bed 23:00 → wake
+// 07:00 in UTC (the e2e default profile timezone), so the rolling 28-night window
+// clears the minimum-nights gate and the Trends → Body "Sleep regularity" card
+// (SRI) renders. Weekend nights (Sat/Sun wake) shift 90 min later so the companion
+// social-jetlag line is non-trivial. Relative dates → never stale; instants carry
+// a Z so they're timezone-unambiguous. Idempotent: clear this range first (the
+// coaching low-sleep row on wake-day `today` is outside it and untouched).
+const sriInsert = db.prepare(
+  `INSERT OR IGNORE INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+   VALUES (?, 'manual', 'sleep_min', ?, ?, ?, ?)`
+);
+for (let i = 1; i <= 28; i++) {
+  const wakeDay = shiftDateStr(COACH_TODAY, -i);
+  const bedDay = shiftDateStr(wakeDay, -1);
+  db.prepare(
+    `DELETE FROM metric_samples WHERE profile_id = ? AND metric = 'sleep_min' AND date = ?`
+  ).run(PROFILE_ID, wakeDay);
+  const dow = new Date(wakeDay + "T00:00:00Z").getUTCDay(); // 0=Sun … 6=Sat
+  const weekend = dow === 0 || dow === 6;
+  // Weekday 23:00→07:00 (480 min); weekend 00:30→08:30 (still 480 min, later).
+  const start = weekend ? `${wakeDay}T00:30:00Z` : `${bedDay}T23:00:00Z`;
+  const end = weekend ? `${wakeDay}T08:30:00Z` : `${wakeDay}T07:00:00Z`;
+  sriInsert.run(PROFILE_ID, wakeDay, start, end, 480);
+}
+console.log("e2e: seeded 28 nightly sleep sessions for profile 1 (SRI, #160)");
+
 // ── Training HR-zone fixture (issue #159) ─────────────────────────────────────
 // A windowed cardio session with per-minute HR inside its window, so the Trends →
 // Fitness zone section, weekly Zone 2 volume, and polarization split render on the
