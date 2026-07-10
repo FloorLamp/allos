@@ -12,7 +12,9 @@ import {
   getProviderNames,
   getMedicationCourses,
   getMedicationSideEffects,
+  getDietaryLimitWarnings,
 } from "@/lib/queries";
+import { ulWarningTitle, ulWarningDetail, ulWarningEvidence } from "@/lib/dri";
 import {
   partitionMedications,
   type MedicationWithHistory,
@@ -221,6 +223,12 @@ export default async function SupplementsPage() {
   // each row so the badge reflects real consumption and can name its basis.
   const refillRates = getRefillRates(profile.id);
 
+  // Stack-total UL warnings (issue #148): nutrients whose active-stack daily
+  // supplemental intake exceeds the NIH Tolerable Upper Intake Level for this
+  // profile's age/sex. Same computation the Upcoming finding uses; informational,
+  // never prescriptive.
+  const ulWarnings = getDietaryLimitWarnings(profile.id, todayStr);
+
   const renderRow = (it: Item, due: boolean) => (
     <EditableSupplementRow
       key={it.dose.id}
@@ -275,6 +283,32 @@ export default async function SupplementsPage() {
           );
         })}
       </div>
+
+      {/* Stack-total UL warnings (issue #148) */}
+      {ulWarnings.length > 0 && (
+        <div className="mb-4 space-y-2" data-testid="ul-warnings">
+          {ulWarnings.map((w) => (
+            <div
+              key={w.key}
+              data-testid={`ul-warning-${w.key}`}
+              className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200"
+            >
+              <div className="flex items-start gap-1.5">
+                <IconAlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                <div>
+                  <p className="font-semibold">{ulWarningTitle(w)}</p>
+                  <p className="mt-0.5 text-amber-700 dark:text-amber-300">
+                    {ulWarningDetail(w)}
+                  </p>
+                  <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                    From: {ulWarningEvidence(w)}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {supplements.length === 0 ? (
         <EmptyState message="Nothing here yet. Add a supplement or medication below." />

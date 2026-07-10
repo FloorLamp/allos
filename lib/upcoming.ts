@@ -22,6 +22,7 @@ import { daysRemainingLabel } from "./format-date";
 export type UpcomingDomain =
   | "dose"
   | "refill"
+  | "dietary-limit"
   | "appointment"
   | "visit"
   | "screening"
@@ -35,14 +36,15 @@ export type UpcomingDomain =
 const DOMAIN_ORDER: Record<UpcomingDomain, number> = {
   dose: 0,
   refill: 1,
-  appointment: 2,
-  careplan: 3,
-  visit: 4,
-  screening: 5,
-  immunization: 6,
-  biomarker: 7,
-  goal: 8,
-  training: 9,
+  "dietary-limit": 2,
+  appointment: 3,
+  careplan: 4,
+  visit: 5,
+  screening: 6,
+  immunization: 7,
+  biomarker: 8,
+  goal: 9,
+  training: 10,
 };
 
 export type UrgencyBand = "overdue" | "today" | "week" | "later";

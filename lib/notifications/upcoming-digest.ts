@@ -16,6 +16,7 @@ import type { NotificationMessage } from "./types";
 const DOMAIN_NOUN: Record<UpcomingDomain, string> = {
   dose: "dose",
   refill: "refill",
+  "dietary-limit": "intake limit",
   appointment: "appointment",
   visit: "preventive visit",
   screening: "screening",
@@ -31,6 +32,7 @@ const DOMAIN_NOUN: Record<UpcomingDomain, string> = {
 const DOMAIN_SEQ: UpcomingDomain[] = [
   "dose",
   "refill",
+  "dietary-limit",
   "appointment",
   "careplan",
   "visit",
