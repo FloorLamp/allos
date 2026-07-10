@@ -130,10 +130,21 @@ test("edit mode surfaces the exercise's previous sessions (#188)", async ({
   // Click the card's title to open the editor in EDIT mode (openEdit).
   await pushCard.getByRole("button", { name: "Push day" }).click();
 
-  // The editor opens on the stored session; a strength part renders its Recent
-  // panel of prior sessions. Scope to <main> so a responsive-shell double-render
-  // can't match twice (#206 isolation).
-  await expect(main.getByTestId("recent-sessions").first()).toBeVisible();
+  // The editor opens on the stored session — its header carries the title.
+  await expect(page.getByRole("heading", { name: "Push day" })).toBeVisible();
+
+  // A strength part renders its Recent panel of prior sessions. Deliberately
+  // NOT scoped to <main>: the editor mounts either in the journal's dock
+  // (inside <main>) or in the body-level overlay portal — the dock registers
+  // in a post-hydration effect, so a click landing before that legitimately
+  // falls back to the overlay (a timing the spec must not depend on). The
+  // testid cannot double-render — there is exactly one editor instance — so
+  // the #206 main-scoping rule doesn't apply here.
+  const panel = page.getByTestId("recent-sessions").first();
+  await expect(panel).toBeVisible();
+  // …and it lists at least one prior session row (self-excluded: the session
+  // being edited never appears in its own Recent list).
+  await expect(panel.getByRole("listitem").first()).toBeVisible();
 
   // Read-only assertion: no field was touched, so nothing auto-saves and the
   // shared seed DB is left untouched — no cleanup needed. Close the editor.
