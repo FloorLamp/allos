@@ -114,6 +114,19 @@ export const DASHBOARD_WIDGETS: WidgetDef[] = [
     span: "full",
   },
   {
+    id: "bio-age",
+    label: "Biological age",
+    description:
+      "Your PhenoAge biological-age estimate and its gap to your calendar age.",
+    // Off by default (issue #171 growth-valve): a specialized medical signal that
+    // only lands for adults with a complete nine-analyte panel — opt in from
+    // Customize. Data-aware so an incomplete panel shows an import CTA, not a blank.
+    defaultOn: false,
+    fitness: false,
+    span: "third",
+    dataAware: true,
+  },
+  {
     id: "weight-trend",
     label: "Weight trend",
     description: "Your recent body-weight chart.",

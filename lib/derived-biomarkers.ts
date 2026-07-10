@@ -218,7 +218,9 @@ const CRP_MGL_TO_MGDL = 1 / 10; // mg/L → mg/dL
 // PhenoAge is developed/validated in ADULTS (NHANES III/IV, ages ~20–84); it is
 // not meaningful for children, so — mirroring how age-dependent surfaces gate off
 // child profiles (see lib/age-gate.ts) — the deriver emits NOTHING below this age.
-const PHENOAGE_MIN_AGE = 18;
+// Exported so the biological-age surfaces (lib/bio-age.ts) gate their hero card on
+// exactly the same adult floor the computation uses.
+export const PHENOAGE_MIN_AGE = 18;
 
 // The catalogue of derived indices. Ordered for stable output. Each formula runs
 // on values already converted to the input's canonical unit.
