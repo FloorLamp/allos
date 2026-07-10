@@ -7,20 +7,22 @@
 // split); this module turns the gathered facts into a line model and renders the
 // notification message.
 //
-// Week definition — a TRAILING SEVEN DAYS ending on the recap date (inclusive),
-// with the prior seven days as the comparison window. Chosen over a fixed
-// Monday–Sunday calendar week because: (a) it is independent of the profile's
-// week-start / week-mode setting and of timezone week boundaries, so the same
-// window math holds for every profile; (b) it always ends on "today", so the card
-// on the dashboard reflects the most recent seven days no matter which day it's
-// viewed; and (c) the notification, which fires on a chosen weekday, then
-// summarizes exactly the seven days leading up to that send — no partial-week edge
-// cases.
+// Week definition — the WEEKLY recap (7-day period) uses the profile's ONE
+// definition of "this week" (lib/week-window.ts, honoring `week_mode`), so the
+// recap card/notification count the same days as the routine counters and the
+// journal week summary (issue #223). A rolling-mode profile still gets a trailing
+// seven days ending on "today" (unchanged); a calendar-mode profile gets the
+// current calendar week through today, with the prior full week as the comparison
+// window. Any OTHER period length (e.g. the monthly recap, #20) falls back to a
+// trailing `days` window — `week_mode` only defines a week. The range label on
+// both surfaces prints the concrete start–end dates, so the copy is honest in
+// either mode.
 
 import { shiftDateStr } from "./date";
 import { median, robustEndpoints } from "./robust-stats";
 import { fmtWeight, kgTo } from "./units";
-import type { WeightUnit } from "./settings";
+import { weekWindow } from "./week-window";
+import type { WeekMode, WeekStart, WeightUnit } from "./settings";
 import type { NotificationMessage } from "./notifications/types";
 
 // The seven-day window ending on `today` (inclusive) plus the preceding seven-day
@@ -44,6 +46,25 @@ export function recapWindow(today: string, days = 7): RecapWindow {
     prevStart: shiftDateStr(today, -(2 * days - 1)),
     prevEnd: shiftDateStr(today, -days),
   };
+}
+
+// The window a recap covers. For the WEEKLY recap (days === 7) it honors the
+// profile's `week_mode` via the shared `weekWindow` computation, so the recap's
+// "this week" matches the routine counters and journal week summary (issue #223).
+// For any other period length (e.g. the monthly recap, #20) `week_mode` doesn't
+// apply, so it falls back to the trailing `recapWindow(today, days)`. `weekMode`
+// defaults to "rolling" — which makes the 7-day window byte-for-byte identical to
+// `recapWindow(today, 7)` — so callers that don't pass a mode keep the original
+// trailing-seven behavior.
+export function resolveRecapWindow(
+  today: string,
+  days = 7,
+  weekMode: WeekMode = "rolling",
+  weekStart: WeekStart = 0
+): RecapWindow {
+  return days === 7
+    ? weekWindow(today, weekMode, weekStart)
+    : recapWindow(today, days);
 }
 
 // A short noun for the period length, used in the delta phrasing ("last week"
@@ -82,6 +103,12 @@ export interface RecapInput {
   // omitted, so pre-#20 callers are unchanged; a monthly recap passes 30. Drives
   // both the window math and the "last week"/"last month" delta wording.
   periodDays?: number;
+  // The profile's week definition, applied to the 7-day weekly recap so its
+  // window matches the routine counters / journal (issue #223). Omitted ⇒
+  // "rolling" (trailing seven days), preserving the pre-#223 behavior; ignored for
+  // non-weekly periods (weekMode only defines a week).
+  weekMode?: WeekMode;
+  weekStart?: WeekStart;
   // Workouts (one per activity) in the current and previous seven-day windows.
   workouts: RecapWorkout[];
   prevWorkouts: RecapWorkout[];
@@ -174,7 +201,12 @@ export function weightTrendKg(weights: RecapWeight[]): number | null {
 // omitted entirely.
 export function buildWeeklyRecap(input: RecapInput): WeeklyRecap {
   const days = input.periodDays ?? 7;
-  const win = recapWindow(input.today, days);
+  const win = resolveRecapWindow(
+    input.today,
+    days,
+    input.weekMode,
+    input.weekStart
+  );
   const noun = periodNounFor(days);
   const wu = input.weightUnit;
   const lines: RecapLine[] = [];

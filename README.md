@@ -402,8 +402,10 @@ share the same schedule and per-day/slot dedup. Enable either, or both; a profil
 both configured gets each reminder on both.
 
 Beyond reminders, two opt-in retention nudges ride the same channels: a **weekly recap**
-— a quiet once-a-week summary of your last seven days (workouts + volume, PRs, supplement
-adherence, a body-weight trend, and streak status), set the send day/hour under
+— a quiet once-a-week summary of your week (workouts + volume, PRs, supplement
+adherence, a body-weight trend, and streak status), covering the same "this week" your
+routine counters use per your **week mode** (a calendar week or a rolling seven days —
+**Settings → Profile**), set the send day/hour under
 **Settings → Profile**; and **milestone alerts** — a brief note when you cross a
 milestone (your 10th/50th/100th/… workout, a 7/30/100/365-day streak, a completed goal, or
 a 7/30-day adherence run). Both are rule-based and work with **no AI configured**.

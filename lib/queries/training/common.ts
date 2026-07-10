@@ -1,8 +1,9 @@
 import * as React from "react";
-import { shiftDateStr, startOfWeekStr } from "../../date";
+import { shiftDateStr } from "../../date";
 import { db, today } from "../../db";
 import { decayedWeight } from "../../decay";
 import { getWeekMode, getWeekStart } from "../../settings";
+import { weekWindow } from "../../week-window";
 import type { ActivityComponent } from "../../types";
 
 // React's per-request cache() exists only in the canary React that Next vendors
@@ -27,13 +28,15 @@ export function recentWindowStart(profileId: number): string {
 
 // Inclusive start date (YYYY-MM-DD) of a profile's "this week" window: either the
 // current calendar week (from the configured week-start day) or a rolling 7-day
-// window, per the profile's week_mode. Shared by the weekly-routine counters and
-// the journal week summary so the two always agree.
+// window, per the profile's week_mode. Delegates to the shared `weekWindow`
+// computation (lib/week-window.ts) so the weekly-routine counters, the journal
+// week summary, and the weekly recap all agree on which days count (issue #223).
 export function weekWindowStart(profileId: number): string {
-  const t = today(profileId);
-  return getWeekMode(profileId) === "rolling"
-    ? shiftDateStr(t, -6) // inclusive 7-day window
-    : startOfWeekStr(t, getWeekStart(profileId));
+  return weekWindow(
+    today(profileId),
+    getWeekMode(profileId),
+    getWeekStart(profileId)
+  ).start;
 }
 
 // All dated weights ascending, for bodyweightAsOf lookups. Weightless
