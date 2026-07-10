@@ -197,6 +197,14 @@ export interface Provider {
 // still surfaces on the Upcoming page (only 'scheduled' does).
 export type AppointmentStatus = "scheduled" | "completed" | "cancelled";
 
+// Optional visit category (issue #85). NULL on existing rows and whenever the user
+// leaves it blank — a NULL kind never matches a preventive rule (no fuzzy title
+// guessing). The values map to preventive-care rules in lib/preventive-appointment.ts,
+// which powers the prefilled "Book" CTA, the scheduled-visit suppression, and the
+// close-the-loop satisfaction on completion.
+export type AppointmentKind =
+  "well_child" | "physical" | "dental" | "vision" | "screening" | "other";
+
 export interface Appointment {
   id: number;
   profile_id: number;
@@ -209,6 +217,9 @@ export interface Appointment {
   location: string | null;
   notes: string | null;
   status: AppointmentStatus;
+  // Optional visit category (well_child | physical | dental | vision | screening |
+  // other), or null when unset. See AppointmentKind above.
+  kind: AppointmentKind | null;
   created_at: string;
 }
 

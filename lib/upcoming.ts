@@ -83,6 +83,14 @@ export interface UpcomingItem {
   // catalog rule key. Only visit/screening items (issue #82) carry one; mirrors
   // doseId's inline fast path.
   preventiveRuleKey?: string;
+  // Preventive items only (issue #85): the prefilled new-appointment URL for the
+  // "Book" CTA (title + kind + suggested date as query params). Absent once a
+  // matching visit is already scheduled.
+  bookHref?: string;
+  // Preventive items only (issue #85): true when a FUTURE matching-kind appointment
+  // is already booked, so the row renders a quiet "Scheduled" state (links to the
+  // appointment) instead of nagging.
+  scheduled?: boolean;
   // When set, the row renders an inline "Mark done" form that marks this
   // care_plan_items row completed (issue #84) — the same inline fast-path shape as
   // doseId/preventiveRuleKey. Only careplan items carry one.

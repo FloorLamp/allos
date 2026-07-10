@@ -14,6 +14,10 @@
 
 import type { PreventiveAssessment } from "./preventive-status";
 import type { UpcomingItem, UrgencyBand } from "./upcoming";
+import {
+  appointmentKindForRule,
+  suggestedBookDate,
+} from "./preventive-appointment";
 
 // Where a preventive row links to for follow-through. A visit is acted on by
 // booking/logging an appointment; a screening by its result in the medical
@@ -23,15 +27,48 @@ const HREF_BY_KIND: Record<PreventiveAssessment["kind"], string> = {
   screening: "/medical",
 };
 
+// The prefilled new-appointment URL for a preventive rule's "Book" CTA (issue #85):
+// the appointments page's create form, focused (?new=1), seeded with the rule name
+// as the title, the mapped visit kind, and a suggested date. The appointments page
+// reads these query params to pre-fill the form.
+function bookHrefForRule(a: PreventiveAssessment, today: string): string {
+  const kind = appointmentKindForRule(a.key);
+  const params = new URLSearchParams({ new: "1", title: a.name });
+  if (kind) params.set("kind", kind);
+  params.set("date", suggestedBookDate(a.nextDueDate, today));
+  return `/appointments?${params.toString()}`;
+}
+
 // Map one due/overdue preventive assessment to an Upcoming item. Overdue → the
 // Overdue band with "Overdue" text; due → the Today band with "Due" text (mirrors
 // immunizationItems). The stable key is `<kind>:<ruleKey>` — namespaced so it
 // never collides with another domain's key and so a snooze/dismiss follows the
 // rule across time. `preventiveRuleKey` drives the row's inline mark-done +
 // override forms.
+//
+// `ctx.today` seeds the "Book" CTA's suggested date. When `ctx.scheduledDate` is
+// set, a FUTURE matching-kind appointment is already booked (issue #85), so the
+// item flips to a quiet "Scheduled" state — pushed down to the Later band, no
+// "Book" CTA, its link pointing at the booked visit — instead of nagging.
 export function preventiveAssessmentToUpcomingItem(
-  a: PreventiveAssessment
+  a: PreventiveAssessment,
+  ctx: { today: string; scheduledDate?: string | null }
 ): UpcomingItem {
+  const scheduled = ctx.scheduledDate != null;
+  if (scheduled) {
+    return {
+      key: `${a.kind}:${a.key}`,
+      domain: a.kind,
+      title: a.name,
+      detail: `Scheduled for ${ctx.scheduledDate}`,
+      href: "/appointments",
+      dueDate: null,
+      band: "later",
+      dueText: "Scheduled",
+      preventiveRuleKey: a.key,
+      scheduled: true,
+    };
+  }
   const overdue = a.status === "overdue";
   const band: UrgencyBand = overdue ? "overdue" : "today";
   return {
@@ -46,5 +83,6 @@ export function preventiveAssessmentToUpcomingItem(
     band,
     dueText: overdue ? "Overdue" : "Due",
     preventiveRuleKey: a.key,
+    bookHref: bookHrefForRule(a, ctx.today),
   };
 }

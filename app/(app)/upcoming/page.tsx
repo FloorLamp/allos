@@ -16,6 +16,8 @@ import {
   IconInfoCircle,
   IconCircleX,
   IconCircleMinus,
+  IconCalendarPlus,
+  IconCalendarCheck,
   type TablerIcon,
 } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
@@ -363,6 +365,24 @@ function Row({
             Mark taken
           </SubmitButton>
         </form>
+      )}
+      {item.scheduled && (
+        <span
+          data-testid="scheduled-badge"
+          className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-emerald-200 px-2 py-1 text-xs font-medium text-emerald-700 dark:border-emerald-900 dark:text-emerald-400"
+        >
+          <IconCalendarCheck className="h-3.5 w-3.5" stroke={1.75} />
+          Scheduled
+        </span>
+      )}
+      {item.bookHref && (
+        <Link
+          href={item.bookHref}
+          className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-black/10 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"
+        >
+          <IconCalendarPlus className="h-3.5 w-3.5" stroke={1.75} />
+          Book
+        </Link>
       )}
       {item.preventiveRuleKey != null && (
         <PreventiveControls ruleKey={item.preventiveRuleKey} />

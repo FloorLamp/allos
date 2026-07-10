@@ -13,7 +13,7 @@ const SELECT_COLS = `
   id, profile_id, scheduled_at, provider_id,
   (SELECT p.name FROM providers p WHERE p.id = appointments.provider_id)
     AS provider_name,
-  title, location, notes, status, created_at`;
+  title, location, notes, status, kind, created_at`;
 
 // Every appointment for a profile, soonest first. Used by the management page.
 export function getAppointments(profileId: number): Appointment[] {

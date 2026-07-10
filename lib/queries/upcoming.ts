@@ -31,6 +31,10 @@ import {
 } from "../preventive-status";
 import { preventiveAssessmentToUpcomingItem } from "../preventive-upcoming";
 import {
+  scheduledMatchForRule,
+  type KindedAppointment,
+} from "../preventive-appointment";
+import {
   inferPreventiveSatisfactions,
   isCompletedStatus,
   type InferenceRecord,
@@ -359,6 +363,18 @@ export function clearPreventiveOverride(
   ).run(profileId, ruleKey);
 }
 
+// A profile's still-scheduled appointments reduced to the shape the pure
+// scheduled-match uses (kind + date + status). Profile-scoped via
+// getScheduledAppointments. Used to quiet a due preventive item that already has a
+// matching-kind visit booked (issue #85).
+function kindedScheduled(profileId: number): KindedAppointment[] {
+  return getScheduledAppointments(profileId).map((a) => ({
+    kind: a.kind,
+    scheduledAt: a.scheduled_at,
+    status: a.status,
+  }));
+}
+
 // Preventive well-visits and screenings that are due/overdue for the profile
 // (reuses the pure catalog assessor with the same age/sex resolution as the
 // immunization schedule). A missing birthdate/age → the assessor emits nothing
@@ -398,9 +414,16 @@ export function assessProfilePreventive(
   });
 }
 
+// Maps the actionable slice into Upcoming items, adding the prefilled "Book" CTA
+// and — when a matching-kind visit is already booked (issue #85) — a quiet
+// "Scheduled" state (from the profile's still-scheduled appointments).
 function preventiveItems(profileId: number, today: string): UpcomingItem[] {
-  return assessProfilePreventive(profileId, today).actionable.map(
-    preventiveAssessmentToUpcomingItem
+  const scheduled = kindedScheduled(profileId);
+  return assessProfilePreventive(profileId, today).actionable.map((a) =>
+    preventiveAssessmentToUpcomingItem(a, {
+      today,
+      scheduledDate: scheduledMatchForRule(a.key, scheduled, today),
+    })
   );
 }
 

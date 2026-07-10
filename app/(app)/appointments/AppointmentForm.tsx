@@ -6,6 +6,10 @@ import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
 import { useFocusFormOnParam } from "@/components/useFocusFormOnParam";
+import {
+  APPOINTMENT_KINDS,
+  APPOINTMENT_KIND_LABELS,
+} from "@/lib/preventive-appointment";
 import type { Appointment } from "@/lib/types";
 
 // Shared add/edit form for a scheduled visit. Add mode: no `appointment`. Edit
@@ -30,6 +34,7 @@ export default function AppointmentForm({
     title: string | null;
     provider: string | null;
     location: string | null;
+    kind?: string | null;
   };
 }) {
   const router = useRouter();
@@ -38,9 +43,12 @@ export default function AppointmentForm({
   const editing = !!appointment;
   const [error, setError] = useState<string | null>(null);
 
-  // The primary create form (not editing, not a follow-up prefill) focuses
-  // itself when reached from the command palette's "Add appointment" (issue #29).
-  useFocusFormOnParam(formRef, "new", undefined, !editing && !prefill);
+  // The primary create form focuses itself when reached with ?new=1 — from the
+  // command palette's "Add appointment" (issue #29) or a preventive "Book" CTA
+  // (issue #85), which also prefills title/kind/date. The follow-up prefill form
+  // (distinguished by its `onDone` Cancel handler) opts out so it never steals
+  // focus from the main form.
+  useFocusFormOnParam(formRef, "new", undefined, !editing && !onDone);
 
   // Split any stored "YYYY-MM-DD HH:MM" back into its date + time parts for edit.
   const storedDate = appointment?.scheduled_at?.slice(0, 10) ?? defaultDate;
@@ -76,7 +84,7 @@ export default function AppointmentForm({
     <form ref={formRef} action={handle} className="card space-y-3">
       {!editing && (
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-          {prefill ? "Schedule follow-up" : "Add appointment"}
+          {onDone ? "Schedule follow-up" : "Add appointment"}
         </h2>
       )}
       {editing && <input type="hidden" name="id" value={appointment!.id} />}
@@ -116,6 +124,27 @@ export default function AppointmentForm({
             defaultValue={storedTime}
           />
         </div>
+      </div>
+      <div>
+        <label className="label" htmlFor={`appt-kind-${uid}`}>
+          Kind (optional)
+        </label>
+        {/* Optional visit category (issue #85). A matching kind lets a preventive
+            reminder quiet to "Scheduled" and, once completed, offer to mark that
+            care done. Blank stays unset and never matches. */}
+        <select
+          id={`appt-kind-${uid}`}
+          name="kind"
+          className="input"
+          defaultValue={appointment?.kind ?? prefill?.kind ?? ""}
+        >
+          <option value="">Unspecified</option>
+          {APPOINTMENT_KINDS.map((k) => (
+            <option key={k} value={k}>
+              {APPOINTMENT_KIND_LABELS[k]}
+            </option>
+          ))}
+        </select>
       </div>
       <div>
         <label className="label" htmlFor={`appt-provider-${uid}`}>
@@ -161,7 +190,7 @@ export default function AppointmentForm({
       )}
       <div className="flex gap-2">
         <SubmitButton className="btn w-full" pendingLabel="Saving…">
-          {editing ? "Save" : prefill ? "Schedule" : "Add"}
+          {editing ? "Save" : onDone ? "Schedule" : "Add"}
         </SubmitButton>
         {onDone && (
           <button type="button" className="btn-ghost" onClick={onDone}>
