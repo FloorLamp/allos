@@ -115,8 +115,9 @@ test("biomarkers page shows the biological-age hero for the adult (#209)", async
   await expect(hero.getByTestId("bio-age-delta")).toContainText("calendar age");
   // Estimate framing with the model citation (never a precise verdict).
   const estimate = hero.getByTestId("bio-age-estimate");
-  await expect(estimate).toContainText("Estimate");
+  await expect(estimate).toContainText("estimate");
   await expect(estimate).toContainText("Levine PhenoAge");
+  await expect(estimate).toContainText("not a precise verdict");
 });
 
 // #209: the hero is ADULT-GATED exactly as the computation is — hidden entirely for a
