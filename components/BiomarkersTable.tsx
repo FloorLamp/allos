@@ -335,15 +335,40 @@ function BiomarkerRow({
 // The Biomarkers results table. Client-side so each row can swap in place for an
 // inline editor and offer delete — but the display, grouping, sorting, staleness,
 // and filter links are unchanged from the prior server-rendered table.
+// Bounded-payload pagination (#114): the server ships ONE page of deduped rows,
+// and this pager round-trips the page via `?p=` (URL navigation, preserving the
+// active filters/sort) rather than the client holding the whole history in memory.
+interface Pagination {
+  total: number;
+  page: number; // 1-based, already clamped server-side
+  pageCount: number;
+  pageSize: number;
+}
+
 export default function BiomarkersTable({
   records,
   now,
   filters,
+  pagination,
 }: {
   records: MedicalRecord[];
   now: string;
   filters: FilterCtx;
+  pagination?: Pagination;
 }) {
+  const { category, panel, range, q, sort, dir, current } = filters;
+  // Preserve the active filters/sort when moving between pages; page 1 drops `p`.
+  const pageHref = (n: number) =>
+    qs({
+      category,
+      panel,
+      range,
+      q,
+      sort,
+      dir,
+      current: current ? "1" : undefined,
+      p: n > 1 ? String(n) : undefined,
+    });
   return (
     <div className="card mb-6 overflow-hidden p-0">
       <div className="max-h-[70vh] overflow-auto">
@@ -412,6 +437,48 @@ export default function BiomarkersTable({
           </tbody>
         </table>
       </div>
+      {pagination && pagination.total > 0 && (
+        <div
+          data-testid="biomarkers-pagination"
+          className="flex items-center justify-between gap-3 border-t border-black/5 px-3 py-2 text-xs text-slate-400 dark:border-white/10 dark:text-slate-500"
+        >
+          <span>
+            {(() => {
+              const start = (pagination.page - 1) * pagination.pageSize;
+              return `Showing ${start + 1}–${start + records.length} of ${pagination.total}`;
+            })()}
+          </span>
+          {pagination.pageCount > 1 && (
+            <div className="flex items-center gap-2">
+              {pagination.page > 1 ? (
+                <Link
+                  href={pageHref(pagination.page - 1)}
+                  className="btn-ghost text-sm"
+                  rel="prev"
+                >
+                  Prev
+                </Link>
+              ) : (
+                <span className="btn-ghost text-sm opacity-40">Prev</span>
+              )}
+              <span className="text-slate-500 dark:text-slate-400">
+                Page {pagination.page} of {pagination.pageCount}
+              </span>
+              {pagination.page < pagination.pageCount ? (
+                <Link
+                  href={pageHref(pagination.page + 1)}
+                  className="btn-ghost text-sm"
+                  rel="next"
+                >
+                  Next
+                </Link>
+              ) : (
+                <span className="btn-ghost text-sm opacity-40">Next</span>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

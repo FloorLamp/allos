@@ -12,6 +12,7 @@ import { parseSortColumn, parseSortDir } from "@/lib/table-sort";
 import {
   filterDerivedForTable,
   prepareTableRecords,
+  paginateRecords,
 } from "@/lib/derived-table";
 import StarredBiomarkers from "@/components/StarredBiomarkers";
 import BiomarkersTable from "@/components/BiomarkersTable";
@@ -33,6 +34,7 @@ export default function BiomarkersPage({
     sort?: string;
     dir?: string;
     current?: string;
+    p?: string;
   };
 }) {
   const { profile } = requireSession();
@@ -80,6 +82,10 @@ export default function BiomarkersPage({
     dir,
     current,
   });
+  // Ship only ONE page to the client BiomarkersTable so the RSC payload stays
+  // bounded as lab history grows (#114) — the full deduped list is built above in
+  // one pass, then sliced here by the `?p=` page (clamped to a real page).
+  const pageData = paginateRecords(records, Number(searchParams.p));
   const canonicalOptions = getCanonicalAutocomplete(profile.id);
   const now = today(profile.id);
 
@@ -110,7 +116,7 @@ export default function BiomarkersPage({
         current={current}
       />
 
-      {records.length === 0 ? (
+      {pageData.total === 0 ? (
         <EmptyState
           message={
             active || panel || range || q || current
@@ -120,9 +126,15 @@ export default function BiomarkersPage({
         />
       ) : (
         <BiomarkersTable
-          records={records}
+          records={pageData.rows}
           now={now}
           filters={{ category: active, panel, range, q, sort, dir, current }}
+          pagination={{
+            total: pageData.total,
+            page: pageData.page,
+            pageCount: pageData.pageCount,
+            pageSize: pageData.pageSize,
+          }}
         />
       )}
 
