@@ -78,6 +78,28 @@ test("biomarkers page surfaces a derived clinical index (#40)", async ({
   await expect(note).toContainText("Total Cholesterol − HDL");
 });
 
+// #157: PhenoAge (Levine 2018) is a derived biological-age index computed at read
+// time from the seeded nine-analyte panel (albumin, creatinine, glucose, hs-CRP,
+// lymphocyte %, MCV, RDW, ALP, WBC) + the adult profile's age. It surfaces on the
+// Biomarkers page like any other derived analyte, and its detail page explains the
+// derivation and cites the formula.
+test("biomarkers page surfaces the derived PhenoAge biological age (#157)", async ({
+  page,
+}) => {
+  await page.goto("/biomarkers?q=phenoage");
+  // Renders with the shared "Derived" badge.
+  await expect(page.getByTestId("derived-badge").first()).toBeVisible();
+
+  const link = page.getByRole("link", { name: "PhenoAge" }).first();
+  await expect(link).toBeVisible();
+  await link.click();
+
+  const note = page.getByTestId("derived-note");
+  await expect(note).toBeVisible();
+  await expect(note).toContainText("Derived index");
+  await expect(note).toContainText("Levine PhenoAge");
+});
+
 // #19: the global (Cmd-K) command palette now fans out over the clinical passport,
 // so an allergy substance is findable. Seed documents a Penicillin allergy; opening
 // the palette and typing "penicillin" must surface it under the Allergies group and

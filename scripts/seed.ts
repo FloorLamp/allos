@@ -520,6 +520,60 @@ const PANELS: Panel[] = [
     ref: ">60",
     values: [88, 84, 80, 76, 72, 68],
   },
+  // CBC + chemistry that (together with hs-CRP, Creatinine and Glucose above)
+  // complete the nine-analyte panel driving the derived PhenoAge biological-age
+  // index (Levine 2018, issue #157): Albumin, Alkaline Phosphatase, Lymphocyte %,
+  // MCV, RDW and WBC. All six carry a value on every LAB_DATES draw, so an ADULT
+  // profile (profile 1) gets a full PhenoAge series; the ~18-month-old (profile 2)
+  // is correctly excluded by the deriver's adult age gate.
+  {
+    category: "lab",
+    name: "Albumin",
+    canonical: "Albumin",
+    unit: "g/dL",
+    ref: "3.5-5.0",
+    values: [4.5, 4.6, 4.6, 4.7, 4.7, 4.8],
+  },
+  {
+    category: "lab",
+    name: "Alkaline Phosphatase",
+    canonical: "Alkaline Phosphatase",
+    unit: "U/L",
+    ref: "40-129",
+    values: [72, 70, 68, 66, 64, 62],
+  },
+  {
+    category: "lab",
+    name: "Lymphocytes",
+    canonical: "Lymphocytes",
+    unit: "%",
+    ref: "20-40",
+    values: [32, 33, 34, 34, 35, 36],
+  },
+  {
+    category: "lab",
+    name: "MCV",
+    canonical: "MCV",
+    unit: "fL",
+    ref: "80-100",
+    values: [89, 89, 90, 90, 91, 91],
+  },
+  {
+    category: "lab",
+    name: "RDW",
+    canonical: "RDW",
+    unit: "%",
+    ref: "11.5-14.5",
+    values: [13.4, 13.2, 13.1, 13.0, 12.9, 12.8],
+  },
+  {
+    category: "lab",
+    name: "White Blood Cell Count",
+    canonical: "White Blood Cell Count",
+    unit: "10^3/uL",
+    ref: "3.4-10.8",
+    values: [6.2, 6.0, 5.8, 5.6, 5.5, 5.4],
+  },
   // Thyroid.
   {
     category: "lab",

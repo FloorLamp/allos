@@ -2510,6 +2510,17 @@
       "note": "Estimated biological age; lower than chronological is favorable"
     },
     {
+      "name": "PhenoAge",
+      "category": "lab",
+      "unit": "years",
+      "ref_low": null,
+      "ref_high": null,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "lower_better",
+      "note": "Levine Phenotypic Age (2018), in years — a derived biological-age estimate from 9 analytes (albumin, creatinine, glucose, hs-CRP, lymphocyte %, MCV, RDW, ALP, WBC) plus chronological age. Interpreted relative to chronological age (lower = biologically younger); a population estimate with several years of error, not day-level precision."
+    },
+    {
       "name": "Triglyceride/HDL Ratio",
       "category": "lab",
       "unit": "ratio",

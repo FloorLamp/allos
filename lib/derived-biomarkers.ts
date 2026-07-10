@@ -37,6 +37,7 @@ export const DERIVED_NAMES = [
   "Triglyceride/HDL Ratio",
   "HOMA-IR",
   "eGFR",
+  "PhenoAge",
 ] as const;
 export type DerivedName = (typeof DERIVED_NAMES)[number];
 
@@ -131,6 +132,94 @@ export function ckdEpi2021(
   return egfr;
 }
 
+// ── PhenoAge (Levine 2018) ────────────────────────────────────────────────────
+//
+// Levine's Phenotypic Age: a "biological age" (in years) estimated from nine
+// routine clinical analytes plus chronological age, via a mortality-risk model.
+// Reference: Levine ME, Lu AT, Quach A, et al. "An epigenetic biomarker of aging
+// for lifespan and healthspan." Aging (Albany NY). 2018;10(4):573–591.
+// doi:10.18632/aging.101414 — the linear predictor + Gompertz mortality→age
+// conversion are given in the paper's Methods / supplement (developed and
+// validated in NHANES III/IV adults, ages ~20–84).
+//
+// STEP 1 — the mortality-score linear predictor `xb`. The published coefficients
+// assume EACH analyte in a SPECIFIC unit (NOT the app's canonical unit in every
+// case), so the compute() below converts each canonical value to the formula's
+// expected unit BEFORE calling this function. This function takes values ALREADY
+// in the formula units documented per-parameter:
+//   albuminGL       Albumin,               g/L
+//   creatinineUmolL Creatinine,            µmol/L
+//   glucoseMmolL    Glucose (fasting),     mmol/L
+//   crpMgDl         hs-CRP,                mg/dL  (then natural-log transformed)
+//   lymphocytePct   Lymphocytes,           % of WBC
+//   mcvFl           Mean Corpuscular Vol., fL
+//   rdwPct          RDW,                   %
+//   alpUL           Alkaline Phosphatase,  U/L
+//   wbcThousandUl   WBC count,             1000 cells/µL (== 10^9 cells/L)
+//   ageYears        Chronological age,     years
+//
+// STEP 2 — convert `xb` (a 10-year / 120-month Gompertz mortality hazard) to a
+// phenotypic age in years using the published constants (gamma = 0.0076927,
+// 141.50225, 0.090165, 0.00553). These are fixed model constants, not tunables.
+//
+// INFORMATIONAL, NOT MEDICAL ADVICE. This is a population-level estimate with
+// several years of error; it does not carry day-level precision.
+const PHENOAGE_GAMMA = 0.0076927; // Gompertz shape parameter (per month)
+const PHENOAGE_TT = 120; // evaluation horizon, months (10-year mortality)
+
+export function phenoAge(input: {
+  albuminGL: number;
+  creatinineUmolL: number;
+  glucoseMmolL: number;
+  crpMgDl: number;
+  lymphocytePct: number;
+  mcvFl: number;
+  rdwPct: number;
+  alpUL: number;
+  wbcThousandUl: number;
+  ageYears: number;
+}): number | null {
+  // ln(CRP) is undefined at/below zero (a below-detection or absent hs-CRP); we
+  // decline rather than invent a value or clamp to an arbitrary floor.
+  if (!(input.crpMgDl > 0)) return null;
+
+  const xb =
+    -19.907 -
+    0.0336 * input.albuminGL +
+    0.0095 * input.creatinineUmolL +
+    0.1953 * input.glucoseMmolL +
+    0.0954 * Math.log(input.crpMgDl) -
+    0.012 * input.lymphocytePct +
+    0.0268 * input.mcvFl +
+    0.3306 * input.rdwPct +
+    0.00188 * input.alpUL +
+    0.0554 * input.wbcThousandUl +
+    0.0804 * input.ageYears;
+
+  const g = PHENOAGE_GAMMA;
+  // 10-year mortality risk under the Gompertz model.
+  const mort =
+    1 - Math.exp((-Math.exp(xb) * (Math.exp(g * PHENOAGE_TT) - 1)) / g);
+  // Mortality → phenotypic age (years). 1 - mort must be in (0,1) for the logs.
+  if (!(mort > 0) || !(mort < 1)) return null;
+  const pheno = 141.50225 + Math.log(-0.00553 * Math.log(1 - mort)) / 0.090165;
+  return Number.isFinite(pheno) ? pheno : null;
+}
+
+// Per-parameter unit conversions from the app's CANONICAL storage unit to the
+// PhenoAge FORMULA unit (see phenoAge() above). Documented with molar masses so a
+// reviewer can verify each factor against the Levine 2018 unit assumptions.
+const ALBUMIN_GDL_TO_GL = 10; // g/dL → g/L
+const CREATININE_MGDL_TO_UMOLL = 88.4017; // mg/dL → µmol/L (MW 113.12 g/mol)
+const GLUCOSE_MGDL_TO_MMOLL = 1 / 18.0182; // mg/dL → mmol/L (MW 180.156 g/mol)
+const CRP_MGL_TO_MGDL = 1 / 10; // mg/L → mg/dL
+// WBC 10^3/µL is numerically identical to 10^9/L (the formula's unit); no factor.
+
+// PhenoAge is developed/validated in ADULTS (NHANES III/IV, ages ~20–84); it is
+// not meaningful for children, so — mirroring how age-dependent surfaces gate off
+// child profiles (see lib/age-gate.ts) — the deriver emits NOTHING below this age.
+const PHENOAGE_MIN_AGE = 18;
+
 // The catalogue of derived indices. Ordered for stable output. Each formula runs
 // on values already converted to the input's canonical unit.
 const DERIVED_DEFS: DerivedDef[] = [
@@ -196,6 +285,43 @@ const DERIVED_DEFS: DerivedDef[] = [
       const scr = v["Creatinine"];
       if (!(scr > 0)) return null;
       return ckdEpi2021(scr, age, sex);
+    },
+  },
+  {
+    name: "PhenoAge",
+    unit: "years",
+    decimals: 1,
+    formulaLabel: "Levine PhenoAge (2018): 9 analytes + age",
+    needsAge: true,
+    // All nine analytes required from ONE draw (no imputation). Units here are the
+    // app's CANONICAL units; compute() converts each to the formula unit.
+    inputs: [
+      { canonical: "Albumin", unit: "g/dL", label: "Alb" },
+      { canonical: "Creatinine", unit: "mg/dL", label: "Cr" },
+      { canonical: "Glucose", unit: "mg/dL", label: "Glu" },
+      { canonical: "hs-CRP", unit: "mg/L", label: "CRP" },
+      { canonical: "Lymphocytes", unit: "%", label: "Lym%" },
+      { canonical: "MCV", unit: "fL", label: "MCV" },
+      { canonical: "RDW", unit: "%", label: "RDW" },
+      { canonical: "Alkaline Phosphatase", unit: "U/L", label: "ALP" },
+      { canonical: "White Blood Cell Count", unit: "10^3/uL", label: "WBC" },
+    ],
+    compute: (v, demo, date) => {
+      const age = demo.ageOn(date);
+      // Never guess: PhenoAge needs a known chronological age, and is adult-only.
+      if (age == null || age < PHENOAGE_MIN_AGE) return null;
+      return phenoAge({
+        albuminGL: v["Albumin"] * ALBUMIN_GDL_TO_GL,
+        creatinineUmolL: v["Creatinine"] * CREATININE_MGDL_TO_UMOLL,
+        glucoseMmolL: v["Glucose"] * GLUCOSE_MGDL_TO_MMOLL,
+        crpMgDl: v["hs-CRP"] * CRP_MGL_TO_MGDL,
+        lymphocytePct: v["Lymphocytes"],
+        mcvFl: v["MCV"],
+        rdwPct: v["RDW"],
+        alpUL: v["Alkaline Phosphatase"],
+        wbcThousandUl: v["White Blood Cell Count"],
+        ageYears: age,
+      });
     },
   },
 ];

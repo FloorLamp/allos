@@ -153,6 +153,11 @@
       "full_name": "Estimated Glomerular Filtration Rate",
       "description": "eGFR is a calculated estimate of how much blood the kidneys filter each minute, based on creatinine along with age and sex. It is the main measure used to stage kidney function, with lower values indicating reduced function."
     },
+    "PhenoAge": {
+      "abbreviation": "PhenoAge",
+      "full_name": "Phenotypic Age (Levine 2018)",
+      "description": "PhenoAge is a calculated 'biological age' in years, estimated from nine routine blood analytes (albumin, creatinine, glucose, hs-CRP, lymphocyte percentage, MCV, RDW, alkaline phosphatase, and white blood cell count) together with chronological age, using a published mortality-risk model. It is interpreted relative to your actual age: a PhenoAge below your chronological age suggests biologically younger physiology. It is a population-level estimate with an error of several years, not a precise measurement, and is informational rather than diagnostic."
+    },
     "Cystatin C": {
       "full_name": "Cystatin C",
       "description": "Cystatin C is a protein filtered by the kidneys that is used as an alternative marker of kidney function, sometimes more reliable than creatinine. Higher levels suggest reduced kidney filtration."
