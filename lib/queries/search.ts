@@ -8,6 +8,11 @@ import {
   type SearchHit,
 } from "../search-rank";
 import { ENCOUNTER_REPRESENTATIVE_IDS } from "./medical";
+import {
+  CONDITION_REPRESENTATIVE_IDS,
+  PROCEDURE_REPRESENTATIVE_IDS,
+  FAMILY_HISTORY_REPRESENTATIVE_IDS,
+} from "./clinical";
 
 // Global (Cmd-K) search fan-out (issue #133). One entry point, searchAll(),
 // runs a small capped LIKE query per domain — each PROFILE-SCOPED (every
@@ -234,16 +239,19 @@ function goalHits(profileId: number, like: string): SearchHit[] {
 // profile_id, so the scoping rule holds.
 
 function conditionHits(profileId: number, like: string): SearchHit[] {
+  // De-duplicated across documents (#134): only representative rows, so two
+  // overlapping CCDs collapse to ONE hit (its profile_id bind comes first).
   const rows = db
     .prepare(
       `SELECT id, name, status, onset_date
          FROM conditions
         WHERE profile_id = ?
+          AND id IN (${CONDITION_REPRESENTATIVE_IDS})
           AND (name LIKE ? ESCAPE '\\' OR notes LIKE ? ESCAPE '\\')
         ORDER BY COALESCE(onset_date, created_at) DESC
         LIMIT ?`
     )
-    .all(profileId, like, like, CANDIDATE_LIMIT) as {
+    .all(profileId, profileId, like, like, CANDIDATE_LIMIT) as {
     id: number;
     name: string;
     status: string;
@@ -298,16 +306,19 @@ function allergyHits(profileId: number, like: string): SearchHit[] {
 }
 
 function procedureHits(profileId: number, like: string): SearchHit[] {
+  // De-duplicated across documents (#134): representative rows only, so the
+  // per-document duplicates two overlapping CCDs produce collapse to ONE hit.
   const rows = db
     .prepare(
       `SELECT id, name, code, date
          FROM procedures
         WHERE profile_id = ?
+          AND id IN (${PROCEDURE_REPRESENTATIVE_IDS})
           AND (name LIKE ? ESCAPE '\\' OR notes LIKE ? ESCAPE '\\')
         ORDER BY date DESC
         LIMIT ?`
     )
-    .all(profileId, like, like, CANDIDATE_LIMIT) as {
+    .all(profileId, profileId, like, like, CANDIDATE_LIMIT) as {
     id: number;
     name: string;
     code: string | null;
@@ -420,18 +431,21 @@ function appointmentHits(profileId: number, like: string): SearchHit[] {
 }
 
 function familyHistoryHits(profileId: number, like: string): SearchHit[] {
+  // De-duplicated across documents (#134): representative rows only, so the
+  // per-document duplicates two overlapping CCDs produce collapse to ONE hit.
   const rows = db
     .prepare(
       `SELECT id, relation, condition
          FROM family_history
         WHERE profile_id = ?
+          AND id IN (${FAMILY_HISTORY_REPRESENTATIVE_IDS})
           AND (condition LIKE ? ESCAPE '\\'
                OR relation LIKE ? ESCAPE '\\'
                OR notes LIKE ? ESCAPE '\\')
         ORDER BY condition
         LIMIT ?`
     )
-    .all(profileId, like, like, like, CANDIDATE_LIMIT) as {
+    .all(profileId, profileId, like, like, like, CANDIDATE_LIMIT) as {
     id: number;
     relation: string | null;
     condition: string;

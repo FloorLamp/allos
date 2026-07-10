@@ -17,6 +17,9 @@ import {
   getEncounters,
   getEncounter,
   findRecordsByContentIdentity,
+  getConditions,
+  getProcedures,
+  getFamilyHistory,
 } from "@/lib/queries";
 import { getTimelineEvents } from "@/lib/timeline";
 import {
@@ -85,7 +88,17 @@ function glucoseInput(overrides?: {
       },
     ],
     allergies: [],
-    conditions: [],
+    conditions: [
+      {
+        name: "Hypertension",
+        code: "I10",
+        code_system: "ICD-10-CM",
+        status: "active",
+        onset_date: DATE,
+        resolved_date: null,
+        external_id: "condition:htn",
+      },
+    ],
     encounters: [
       {
         date: DATE,
@@ -100,8 +113,27 @@ function glucoseInput(overrides?: {
         external_id: "encounter:1",
       },
     ],
-    procedures: [],
-    familyHistory: [],
+    procedures: [
+      {
+        name: "Appendectomy",
+        code: "44950",
+        code_system: "CPT",
+        date: DATE,
+        provider: null,
+        external_id: "procedure:appy",
+      },
+    ],
+    familyHistory: [
+      {
+        relation: "Mother",
+        condition: "Breast Cancer",
+        code: null,
+        code_system: null,
+        onset_age: 55,
+        deceased: 0,
+        external_id: "fh:mother:breast",
+      },
+    ],
     carePlanItems: [],
     careGoals: [],
     bodyMetrics: [],
@@ -366,5 +398,214 @@ describe("cross-source read-layer de-duplication", () => {
         unit: "mg/dL",
       })
     ).toHaveLength(2); // still only this profile's two rows
+  });
+
+  // ---- Conditions / procedures / family history (#134, extends #71) ----
+
+  it("de-dups the same condition imported from two documents", () => {
+    const docA = newDocument(profileId, "A.ccd");
+    const docB = newDocument(profileId, "B.ccd");
+    persistDocumentImport(profileId, docA, glucoseInput());
+    persistDocumentImport(profileId, docB, glucoseInput());
+
+    // Two physical rows (per-document storage preserved)…
+    const physical = db
+      .prepare(
+        "SELECT COUNT(*) AS n FROM conditions WHERE profile_id = ? AND name = 'Hypertension'"
+      )
+      .get(profileId) as { n: number };
+    expect(physical.n).toBe(2);
+
+    // …but the list shows exactly one.
+    expect(
+      getConditions(profileId).filter((c) => c.name === "Hypertension")
+    ).toHaveLength(1);
+
+    // Delete one contributor → still shown via the survivor's physical row.
+    clearImportedDocumentRows(profileId, docA);
+    expect(
+      getConditions(profileId).filter((c) => c.name === "Hypertension")
+    ).toHaveLength(1);
+
+    // Delete the only remaining contributor → gone entirely.
+    clearImportedDocumentRows(profileId, docB);
+    expect(
+      getConditions(profileId).filter((c) => c.name === "Hypertension")
+    ).toHaveLength(0);
+  });
+
+  it("de-dups the same condition on the TIMELINE", () => {
+    const docA = newDocument(profileId, "A.ccd");
+    const docB = newDocument(profileId, "B.ccd");
+    persistDocumentImport(profileId, docA, glucoseInput());
+    persistDocumentImport(profileId, docB, glucoseInput());
+
+    const conditions = getTimelineEvents(profileId).filter(
+      (e) => e.category === "condition" && e.title === "Hypertension"
+    );
+    expect(conditions).toHaveLength(1);
+
+    clearImportedDocumentRows(profileId, docA);
+    expect(
+      getTimelineEvents(profileId).filter(
+        (e) => e.category === "condition" && e.title === "Hypertension"
+      )
+    ).toHaveLength(1);
+  });
+
+  it("prefers a manual condition over an imported twin", () => {
+    // Manual entry: no document_id, no external_id, same coded identity (I10).
+    const manualId = Number(
+      db
+        .prepare(
+          `INSERT INTO conditions (profile_id, name, code, code_system, status, onset_date)
+           VALUES (?, 'Hypertension', 'I10', 'ICD-10-CM', 'active', ?)`
+        )
+        .run(profileId, DATE).lastInsertRowid
+    );
+    const doc = newDocument(profileId, "cond-twin.ccd");
+    persistDocumentImport(profileId, doc, glucoseInput());
+
+    const rows = getConditions(profileId).filter(
+      (c) => c.name === "Hypertension"
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].id).toBe(manualId);
+    expect(rows[0].document_id).toBeNull();
+  });
+
+  it("keeps genuinely distinct conditions (different codes) both visible", () => {
+    // Two same-named problems with DIFFERENT codes are NOT the same condition.
+    const input = glucoseInput();
+    input.conditions = [
+      {
+        name: "Diabetes mellitus",
+        code: "E10",
+        code_system: "ICD-10-CM",
+        status: "active",
+        onset_date: DATE,
+        resolved_date: null,
+        external_id: "condition:dm1",
+      },
+      {
+        name: "Diabetes mellitus",
+        code: "E11",
+        code_system: "ICD-10-CM",
+        status: "active",
+        onset_date: DATE,
+        resolved_date: null,
+        external_id: "condition:dm2",
+      },
+    ];
+    const doc = newDocument(profileId, "distinct.ccd");
+    persistDocumentImport(profileId, doc, input);
+
+    expect(
+      getConditions(profileId).filter((c) => c.name === "Diabetes mellitus")
+    ).toHaveLength(2);
+  });
+
+  it("de-dups the same procedure imported from two documents", () => {
+    const docA = newDocument(profileId, "A.ccd");
+    const docB = newDocument(profileId, "B.ccd");
+    persistDocumentImport(profileId, docA, glucoseInput());
+    persistDocumentImport(profileId, docB, glucoseInput());
+
+    const physical = db
+      .prepare(
+        "SELECT COUNT(*) AS n FROM procedures WHERE profile_id = ? AND name = 'Appendectomy'"
+      )
+      .get(profileId) as { n: number };
+    expect(physical.n).toBe(2);
+
+    expect(
+      getProcedures(profileId).filter((p) => p.name === "Appendectomy")
+    ).toHaveLength(1);
+
+    clearImportedDocumentRows(profileId, docA);
+    expect(
+      getProcedures(profileId).filter((p) => p.name === "Appendectomy")
+    ).toHaveLength(1);
+  });
+
+  it("keeps the same-named procedure on different dates distinct", () => {
+    const input = glucoseInput();
+    input.procedures = [
+      {
+        name: "Colonoscopy",
+        code: "45378",
+        code_system: "CPT",
+        date: "2019-01-01",
+        provider: null,
+        external_id: "procedure:colo:2019",
+      },
+      {
+        name: "Colonoscopy",
+        code: "45378",
+        code_system: "CPT",
+        date: "2024-01-01",
+        provider: null,
+        external_id: "procedure:colo:2024",
+      },
+    ];
+    const doc = newDocument(profileId, "proc-dates.ccd");
+    persistDocumentImport(profileId, doc, input);
+
+    expect(
+      getProcedures(profileId).filter((p) => p.name === "Colonoscopy")
+    ).toHaveLength(2);
+  });
+
+  it("de-dups the same family-history entry imported from two documents", () => {
+    const docA = newDocument(profileId, "A.ccd");
+    const docB = newDocument(profileId, "B.ccd");
+    persistDocumentImport(profileId, docA, glucoseInput());
+    persistDocumentImport(profileId, docB, glucoseInput());
+
+    const physical = db
+      .prepare(
+        "SELECT COUNT(*) AS n FROM family_history WHERE profile_id = ? AND condition = 'Breast Cancer'"
+      )
+      .get(profileId) as { n: number };
+    expect(physical.n).toBe(2);
+
+    expect(
+      getFamilyHistory(profileId).filter((f) => f.condition === "Breast Cancer")
+    ).toHaveLength(1);
+
+    clearImportedDocumentRows(profileId, docA);
+    expect(
+      getFamilyHistory(profileId).filter((f) => f.condition === "Breast Cancer")
+    ).toHaveLength(1);
+  });
+
+  it("keeps the same condition in different relatives distinct in family history", () => {
+    const input = glucoseInput();
+    input.familyHistory = [
+      {
+        relation: "Mother",
+        condition: "Breast Cancer",
+        code: null,
+        code_system: null,
+        onset_age: 55,
+        deceased: 0,
+        external_id: "fh:mother:breast",
+      },
+      {
+        relation: "Sister",
+        condition: "Breast Cancer",
+        code: null,
+        code_system: null,
+        onset_age: 48,
+        deceased: 0,
+        external_id: "fh:sister:breast",
+      },
+    ];
+    const doc = newDocument(profileId, "fh-relatives.ccd");
+    persistDocumentImport(profileId, doc, input);
+
+    expect(
+      getFamilyHistory(profileId).filter((f) => f.condition === "Breast Cancer")
+    ).toHaveLength(2);
   });
 });

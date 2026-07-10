@@ -4,6 +4,7 @@ import { db } from "./db";
 import { vaccineDisplayName } from "./immunization-catalog";
 import { medicationCourseEvents } from "./medication-history";
 import { ENCOUNTER_REPRESENTATIVE_IDS } from "./queries/medical";
+import { CONDITION_REPRESENTATIVE_IDS } from "./queries/clinical";
 import type { MedStopReason } from "./types";
 import { summarizeExercise, type SetRow } from "./journal-format";
 import { getTimezone, type UnitPrefs } from "./settings";
@@ -501,15 +502,19 @@ function collectEvents(
   const conditionBounds = loose(
     "COALESCE(resolved_date, onset_date, substr(created_at, 1, 10))"
   );
+  // De-duplicated across documents (#134) via CONDITION_REPRESENTATIVE_IDS so two
+  // overlapping CCDs show one event per condition — its profile_id bind comes right
+  // after the main WHERE's, before the date-bounds params.
   const conditions = db
     .prepare(
       `SELECT id, name, status, onset_date, resolved_date, notes, created_at
          FROM conditions
-        WHERE profile_id = ?${conditionBounds.clause}
+        WHERE profile_id = ?
+          AND id IN (${CONDITION_REPRESENTATIVE_IDS})${conditionBounds.clause}
         ORDER BY COALESCE(resolved_date, onset_date, substr(created_at, 1, 10)) DESC, id DESC
         LIMIT ?`
     )
-    .all(profileId, ...conditionBounds.params, perTableLimit) as {
+    .all(profileId, profileId, ...conditionBounds.params, perTableLimit) as {
     id: number;
     name: string;
     status: string;
