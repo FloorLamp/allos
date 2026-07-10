@@ -27,7 +27,21 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
 
+      # Whole-node_modules cache: the single biggest step in both jobs is
+      # `npm ci` (~2 min, dominated by better-sqlite3's native compile). The key
+      # pins the exact lockfile AND .nvmrc (native modules are built per node
+      # ABI), so a hit is byte-identical to what npm ci would produce and the
+      # install is skipped entirely. No restore-keys on purpose: a stale
+      # node_modules under a changed lockfile must never be reused.
+      - name: Cache node_modules
+        id: modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: modules-${{ runner.os }}-${{ hashFiles('.nvmrc') }}-${{ hashFiles('package-lock.json') }}
+
       - run: npm ci
+        if: steps.modules.outputs.cache-hit != 'true'
 
       # Surfaces high/critical advisories in the CI log. Intentionally
       # NON-BLOCKING (continue-on-error) so an unfixable transitive advisory
@@ -107,14 +121,37 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
 
-      - run: npm ci
+      # Same node_modules cache as the `check` job (see the comment there).
+      - name: Cache node_modules
+        id: modules
         if: steps.changes.outputs.code == 'true'
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: modules-${{ runner.os }}-${{ hashFiles('.nvmrc') }}-${{ hashFiles('package-lock.json') }}
 
-      # Install only Chromium (+ its OS deps). Cached by setup-node's npm cache
-      # miss otherwise; the browser binary download is the bulk of the cost.
-      - name: Install Playwright Chromium
+      - run: npm ci
+        if: steps.changes.outputs.code == 'true' && steps.modules.outputs.cache-hit != 'true'
+
+      # Chromium binary cache, keyed on the lockfile (which pins the
+      # @playwright/test version and with it the browser build). On a hit the
+      # ~25s download is skipped and only the OS dependencies are (re)applied —
+      # apt is a near-no-op when they're already present on the runner image.
+      - name: Cache Playwright Chromium
+        id: playwright
         if: steps.changes.outputs.code == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright Chromium
+        if: steps.changes.outputs.code == 'true' && steps.playwright.outputs.cache-hit != 'true'
         run: npx playwright install --with-deps chromium
+
+      - name: Install Playwright OS deps
+        if: steps.changes.outputs.code == 'true' && steps.playwright.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
 
       # Next's incremental compile cache, shared ACROSS RUNS (#61): keyed on the
       # lockfile + source hash, with a lockfile-only restore key so a source-only
