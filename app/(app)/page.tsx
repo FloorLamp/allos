@@ -1,4 +1,11 @@
 import type { ReactNode } from "react";
+import {
+  IconFlask,
+  IconCalendarEvent,
+  IconClipboardList,
+  IconScale,
+  IconBarbell,
+} from "@tabler/icons-react";
 import { today } from "@/lib/db";
 import {
   getActivities,
@@ -14,12 +21,17 @@ import {
   getWeights,
   getImmunizations,
   getImmunityTiters,
+  getMedicalRecords,
+  getScheduledAppointments,
+  getCarePlanItems,
   gatherCoachingInput,
   getFindingSuppressions,
+  collectAttention,
+  attentionCountForProfile,
 } from "@/lib/queries";
 import { recommendCoaching } from "@/lib/coaching";
 import { activeByKey, coachingDedupeKey } from "@/lib/findings";
-import { requireSession } from "@/lib/auth";
+import { requireSession, getAccessibleProfiles } from "@/lib/auth";
 import { isTrainingRestricted } from "@/lib/age-gate";
 import {
   getDashboardLayout,
@@ -31,11 +43,11 @@ import {
 import { ageInMonthsFromBirthdate } from "@/lib/date";
 import { assessSchedule } from "@/lib/immunization-status";
 import { dispWeight } from "@/lib/units";
-import { formatLongDate } from "@/lib/format-date";
+import { formatLongDate, daysRemainingLabel } from "@/lib/format-date";
 import { currentStreak, flexibleStreak } from "@/lib/streak";
 import { daysOfSupplyLeft, isLowSupply } from "@/lib/refill";
-import { buildDigest } from "@/lib/notifications/digest";
-import { gatherDigestInput } from "@/lib/notifications/digest-data";
+import { bandForItem, upcomingDueText } from "@/lib/upcoming";
+import { carePlanUpcomingItems } from "@/lib/care-plan-upcoming";
 import { getWeeklyRecap } from "@/lib/notifications/weekly-recap-data";
 import { resolveWidgetList } from "@/lib/dashboard-widgets";
 import { PageHeader } from "@/components/ui";
@@ -43,8 +55,12 @@ import StarredBiomarkers from "@/components/StarredBiomarkers";
 import DashboardGrid, {
   type GridWidget,
 } from "@/components/dashboard/DashboardGrid";
+import NeedsAttentionHero from "@/components/dashboard/NeedsAttentionHero";
+import HouseholdStrip, {
+  type HouseholdStripEntry,
+} from "@/components/dashboard/HouseholdStrip";
+import WidgetEmpty from "@/components/dashboard/WidgetEmpty";
 import QuickStatsWidget from "@/components/dashboard/QuickStatsWidget";
-import TodayActionsWidget from "@/components/dashboard/TodayActionsWidget";
 import WeightTrendWidget from "@/components/dashboard/WeightTrendWidget";
 import TodaysInsightWidget from "@/components/dashboard/TodaysInsightWidget";
 import ImmunizationsWidget from "@/components/dashboard/ImmunizationsWidget";
@@ -57,9 +73,22 @@ import LowSupplyWidget, {
 } from "@/components/dashboard/LowSupplyWidget";
 import StreakWidget from "@/components/dashboard/StreakWidget";
 import WeeklyRecapWidget from "@/components/dashboard/WeeklyRecapWidget";
+import RecentLabsWidget, {
+  type RecentLabRow,
+} from "@/components/dashboard/RecentLabsWidget";
+import NextAppointmentWidget, {
+  type NextAppointment,
+} from "@/components/dashboard/NextAppointmentWidget";
+import CarePlanDueWidget, {
+  type CarePlanDueRow,
+} from "@/components/dashboard/CarePlanDueWidget";
 import { saveDashboardLayout } from "./actions";
 
 export const dynamic = "force-dynamic";
+
+// Lab-ish medical categories the Recent labs widget surfaces (parity with the
+// Upcoming retest signal): actual labs/biomarkers, not vitals/scans/prescriptions.
+const LAB_CATEGORIES = new Set(["lab", "biomarker"]);
 
 export default async function Dashboard() {
   const { login, profile } = await requireSession();
@@ -69,6 +98,28 @@ export default async function Dashboard() {
   const restricted = isTrainingRestricted(profile.id);
   const on = today(profile.id);
   const units = getUnitPrefs(login.id);
+
+  // Tier 1 — the "Needs attention" hero. Pinned + non-hideable, so it's computed
+  // unconditionally (outside the customizable grid). Renders the merged, severity-
+  // ordered attention model that shares its underlying reads with the Telegram
+  // digest and the Upcoming list — one source of truth (issue #171).
+  const attention = collectAttention(profile.id, on);
+
+  // Tier 2 — the household strip. A caregiver reaching 2+ profiles gets a per-
+  // profile attention count for their OTHER profiles (same gate as the Household
+  // nav entry). Bounded work: a household is a handful of profiles, each count a
+  // few profile-scoped reads. Grants are respected — getAccessibleProfiles returns
+  // only reachable profiles, and the switch action re-checks.
+  const accessible = await getAccessibleProfiles();
+  const householdEntries: HouseholdStripEntry[] =
+    accessible.length > 1
+      ? accessible
+          .filter((p) => p.id !== profile.id)
+          .map((p) => ({
+            profile: p,
+            count: attentionCountForProfile(p.id, today(p.id)),
+          }))
+      : [];
 
   // Resolve the eligible widget set (visible + hidden) for this profile first,
   // then fetch only the data those widgets need — a net win over the old
@@ -90,11 +141,6 @@ export default async function Dashboard() {
     ? getSupplementLogsForDate(profile.id, on)
     : null;
 
-  // today-actions: the pre-built morning-digest model.
-  const digest = has("today-actions")
-    ? buildDigest(gatherDigestInput(profile.id, profile.name))
-    : null;
-
   // weight-trend
   const bodyMetrics = has("weight-trend")
     ? getWeights(profile.id, 60)
@@ -105,6 +151,76 @@ export default async function Dashboard() {
           value: dispWeight(w.weight_kg, units.weightUnit),
         }))
     : [];
+
+  // recent-labs (medical): the current reading per lab/biomarker marker, flagged
+  // markers surfaced first so an out-of-range result is the headline.
+  let labRows: RecentLabRow[] = [];
+  if (has("recent-labs")) {
+    labRows = getMedicalRecords(profile.id, { current: true })
+      .filter((r) => LAB_CATEGORIES.has(r.category))
+      .slice()
+      .sort((a, b) => {
+        const af = a.flag && a.flag !== "normal" ? 0 : 1;
+        const bf = b.flag && b.flag !== "normal" ? 0 : 1;
+        return af - bf || b.date.localeCompare(a.date);
+      })
+      .slice(0, 6)
+      .map((r) => {
+        const name = r.canonical_name?.trim() || r.name;
+        return {
+          name,
+          value: r.value,
+          unit: r.unit,
+          flag: r.flag,
+          date: r.date,
+          href: r.canonical_name?.trim()
+            ? `/biomarkers/view?name=${encodeURIComponent(name)}`
+            : "/biomarkers",
+        };
+      });
+  }
+
+  // next-appointment (medical): the soonest scheduled visit — a future one if any,
+  // else the most-recent still-scheduled (missed) one worth chasing.
+  let nextAppt: NextAppointment | null = null;
+  let hasScheduledAppt = false;
+  if (has("next-appointment")) {
+    const scheduled = getScheduledAppointments(profile.id)
+      .slice()
+      .sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at));
+    hasScheduledAppt = scheduled.length > 0;
+    const soonest =
+      scheduled.find((a) => a.scheduled_at.slice(0, 10) >= on) ??
+      scheduled[scheduled.length - 1];
+    if (soonest) {
+      const d = soonest.scheduled_at.slice(0, 10);
+      const detailParts = [soonest.provider_name, soonest.location].filter(
+        Boolean
+      );
+      nextAppt = {
+        title: soonest.title?.trim() || soonest.provider_name || "Appointment",
+        whenLabel: formatLongDate(d),
+        dueText: daysRemainingLabel(d, on) ?? d,
+        detail: detailParts.length ? detailParts.join(" · ") : null,
+      };
+    }
+  }
+
+  // care-plan-due (medical): open, dated provider-ordered items, soonest first.
+  let carePlanRows: CarePlanDueRow[] = [];
+  if (has("care-plan-due")) {
+    carePlanRows = carePlanUpcomingItems(getCarePlanItems(profile.id))
+      .slice()
+      .sort((a, b) => (a.dueDate ?? "").localeCompare(b.dueDate ?? ""))
+      .slice(0, 4)
+      .map((it) => ({
+        key: it.key,
+        title: it.title,
+        detail: it.detail ?? null,
+        dueText: upcomingDueText(it, on),
+        overdue: bandForItem(it, on) === "overdue",
+      }));
+  }
 
   // todays-insight
   const insight = has("todays-insight")
@@ -212,6 +328,81 @@ export default async function Dashboard() {
     }
   }
 
+  // Data-aware empty set (issue #171): a data-aware widget whose domain has no data
+  // yet renders an onboarding CTA instead of a blank card. Computed from the same
+  // reads the widget consumes, so the CTA shows exactly when the widget would be
+  // empty.
+  const emptyIds = new Set<string>();
+  if (has("recent-labs") && labRows.length === 0) emptyIds.add("recent-labs");
+  if (has("next-appointment") && !hasScheduledAppt)
+    emptyIds.add("next-appointment");
+  if (has("care-plan-due") && carePlanRows.length === 0)
+    emptyIds.add("care-plan-due");
+  if (has("weight-trend") && bodyMetrics.length === 0)
+    emptyIds.add("weight-trend");
+  if (has("recent-activity") && recent.length === 0)
+    emptyIds.add("recent-activity");
+
+  // The onboarding CTA for a data-aware widget whose domain is empty — the
+  // dashboard doubling as the setup checklist, each empty widget pointing at the
+  // pipeline that fills it.
+  function emptyNode(id: string): ReactNode {
+    switch (id) {
+      case "recent-labs":
+        return (
+          <WidgetEmpty
+            title="Recent labs"
+            icon={IconFlask}
+            message="No lab results yet. Import a lab report or connect a portal to track your biomarkers."
+            ctaLabel="Import labs"
+            ctaHref="/data"
+          />
+        );
+      case "next-appointment":
+        return (
+          <WidgetEmpty
+            title="Next appointment"
+            icon={IconCalendarEvent}
+            message="No appointments scheduled. Add one to see it here and get reminders."
+            ctaLabel="Add appointment"
+            ctaHref="/appointments"
+          />
+        );
+      case "care-plan-due":
+        return (
+          <WidgetEmpty
+            title="Care plan"
+            icon={IconClipboardList}
+            message="No care-plan items yet. Import a visit summary to track provider-ordered care."
+            ctaLabel="Import records"
+            ctaHref="/data"
+          />
+        );
+      case "weight-trend":
+        return (
+          <WidgetEmpty
+            title="Weight trend"
+            icon={IconScale}
+            message="No weigh-ins yet. Connect Health Connect or log your weight to see the trend."
+            ctaLabel="Connect Health Connect"
+            ctaHref="/integrations/health-connect"
+          />
+        );
+      case "recent-activity":
+        return (
+          <WidgetEmpty
+            title="Recent activity"
+            icon={IconBarbell}
+            message="No workouts logged. Connect Health Connect or log a workout to get started."
+            ctaLabel="Connect Health Connect"
+            ctaHref="/integrations/health-connect"
+          />
+        );
+      default:
+        return null;
+    }
+  }
+
   // Map a widget id to its server-rendered node. Kept a plain switch so the
   // registry stays pure (no JSX in lib/).
   function renderWidget(id: string): ReactNode {
@@ -229,8 +420,12 @@ export default async function Dashboard() {
             weightUnit={units.weightUnit}
           />
         );
-      case "today-actions":
-        return <TodayActionsWidget model={digest} />;
+      case "recent-labs":
+        return <RecentLabsWidget rows={labRows} />;
+      case "next-appointment":
+        return <NextAppointmentWidget appointment={nextAppt} />;
+      case "care-plan-due":
+        return <CarePlanDueWidget items={carePlanRows} />;
       case "starred-biomarkers":
         return <StarredBiomarkers />;
       case "weight-trend":
@@ -265,7 +460,10 @@ export default async function Dashboard() {
     label: def.label,
     span: def.span,
     visible,
-    node: renderWidget(def.id),
+    node:
+      def.dataAware && emptyIds.has(def.id)
+        ? emptyNode(def.id)
+        : renderWidget(def.id),
   }));
 
   return (
@@ -274,6 +472,10 @@ export default async function Dashboard() {
         title="Dashboard"
         subtitle={`Today is ${formatLongDate(on)} — here's your health at a glance.`}
       />
+      <div className="mb-6">
+        <NeedsAttentionHero items={attention} />
+      </div>
+      <HouseholdStrip entries={householdEntries} />
       <DashboardGrid widgets={gridWidgets} saveAction={saveDashboardLayout} />
     </div>
   );
