@@ -21,7 +21,26 @@ export const parser = new XMLParser({
   ignoreAttributes: false,
   attributeNamePrefix: "@_",
   removeNSPrefix: true, // drop cda:/sdtc:/xsi: prefixes so paths are stable
+  // Explicit entity-handling posture (issue #135, item 5) — no longer inherited
+  // from fast-xml-parser defaults. Decode the standard XML / numeric character
+  // entities that legitimately appear in clinical text (&amp; &lt; &#160; …), but
+  // do NOT expand DTD-defined custom entities: fast-xml-parser leaves a
+  // DTD/undeclared entity literal, so a "billion laughs" internal subset can't
+  // expand into gigabytes (verified against v5). As belt-and-suspenders,
+  // parseCcdaDocument also REFUSES any document that declares its own <!ENTITY>
+  // (see hasInternalDtdEntities), so this stays safe even if a future parser
+  // version changes its DTD posture. htmlEntities stays OFF (CDA is XML, not HTML)
+  // and the parser never fetches an external DTD (no network I/O).
+  processEntities: true,
+  htmlEntities: false,
 });
+
+// Hard recursion cap for the narrative/entity tree walkers below (issue #135, item
+// 5). Real C-CDA nesting is shallow (a handful of levels); a pathological document
+// with tens of thousands of nested elements would otherwise recurse once per level
+// and blow the call stack. Stop descending past this depth — far beyond any genuine
+// document — so a hostile input is contained (truncated) instead of crashing.
+export const MAX_XML_WALK_DEPTH = 500;
 
 export const asArray = <T>(x: T | T[] | undefined | null): T[] =>
   x == null ? [] : Array.isArray(x) ? x : [x];
@@ -201,10 +220,15 @@ export function providerFromPerformer(
 // section, whose entries nest the clinicians under organizer/act/participant
 // shapes that vary by EMR). Skips attribute keys; stops recursing into an
 // assignedEntity's own children once captured to avoid double-counting.
-export function collectAssignedEntities(node: any, out: any[]): void {
+export function collectAssignedEntities(
+  node: any,
+  out: any[],
+  depth: number = 0
+): void {
   if (node == null || typeof node !== "object") return;
+  if (depth >= MAX_XML_WALK_DEPTH) return; // depth cap (#135 item 5)
   if (Array.isArray(node)) {
-    for (const x of node) collectAssignedEntities(x, out);
+    for (const x of node) collectAssignedEntities(x, out, depth + 1);
     return;
   }
   for (const [k, v] of Object.entries(node)) {
@@ -212,7 +236,7 @@ export function collectAssignedEntities(node: any, out: any[]): void {
     if (k === "assignedEntity") {
       for (const ae of asArray(v)) out.push(ae);
     } else {
-      collectAssignedEntities(v, out);
+      collectAssignedEntities(v, out, depth + 1);
     }
   }
 }
@@ -222,18 +246,20 @@ export function collectAssignedEntities(node: any, out: any[]): void {
 // Recursively gather the visible text of a parsed narrative node (string / number
 // / element with #text / nested elements + arrays), skipping attributes. Used to
 // read the analyte name out of the cell a <reference> points at.
-export function collectText(node: any): string {
+export function collectText(node: any, depth: number = 0): string {
   if (node == null) return "";
   if (typeof node === "string") return node;
   if (typeof node === "number" || typeof node === "boolean")
     return String(node);
-  if (Array.isArray(node)) return node.map(collectText).join(" ");
+  if (depth >= MAX_XML_WALK_DEPTH) return ""; // depth cap (#135 item 5)
+  if (Array.isArray(node))
+    return node.map((n) => collectText(n, depth + 1)).join(" ");
   if (typeof node === "object") {
     const parts: string[] = [];
     for (const [k, v] of Object.entries(node)) {
       if (k.startsWith("@_")) continue; // attributes aren't visible text
       if (k === "#text") parts.push(String(v));
-      else parts.push(collectText(v));
+      else parts.push(collectText(v, depth + 1));
     }
     return parts.join(" ");
   }
@@ -247,10 +273,11 @@ export function collectText(node: any): string {
 // removeNSPrefix + the @_ prefix make it `@_ID`.)
 export function buildNarrativeIdMap(textNode: any): Record<string, string> {
   const map: Record<string, string> = {};
-  const walk = (node: any): void => {
+  const walk = (node: any, depth: number): void => {
     if (node == null || typeof node !== "object") return;
+    if (depth >= MAX_XML_WALK_DEPTH) return; // depth cap (#135 item 5)
     if (Array.isArray(node)) {
-      node.forEach(walk);
+      node.forEach((n) => walk(n, depth + 1));
       return;
     }
     const id = node["@_ID"];
@@ -260,10 +287,10 @@ export function buildNarrativeIdMap(textNode: any): Record<string, string> {
     }
     for (const [k, v] of Object.entries(node)) {
       if (k.startsWith("@_")) continue;
-      walk(v);
+      walk(v, depth + 1);
     }
   };
-  walk(textNode);
+  walk(textNode, 0);
   return map;
 }
 

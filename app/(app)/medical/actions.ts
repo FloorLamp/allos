@@ -18,8 +18,12 @@ import { extractMedicalDocument, isSupportedFile } from "@/lib/medical-extract";
 import { sniffUploadType } from "@/lib/file-sniff";
 import { aiConfigured } from "@/lib/ai-client";
 import { withAiLogContext } from "@/lib/ai-log";
-import { checkAndIncrementAiUsage, extractionDailyLimit } from "@/lib/ai-usage";
-import { extractionSemaphore } from "@/lib/ai-concurrency";
+import {
+  checkAndIncrementAiUsage,
+  extractionDailyLimit,
+  refundAiUsage,
+} from "@/lib/ai-usage";
+import { extractionSemaphore, QueueFullError } from "@/lib/ai-concurrency";
 import {
   reconcileFlags,
   getCanonicalVocabulary,
@@ -272,26 +276,75 @@ function allowExtractionDispatch(profileId: number, docId: number): boolean {
   return true;
 }
 
+// Surfaced when the concurrency limiter's wait queue is saturated (#135 item 2):
+// the file is stored but its extraction was SHED rather than parked, so it reuses
+// the 'skipped' surface (kept, reprocessable) and the charged unit is refunded.
+const AI_QUEUE_FULL_DOC_MESSAGE =
+  "Server busy — too many documents extracting at once. Saved but not auto-extracted; reprocess it in a moment.";
+
 // Dispatch a fire-and-forget background AI extraction: gate on the daily cap, then
 // run it through the process-wide concurrency limiter (at most N at once; the rest
-// queue) inside the AI-log context so the acting login/profile tag the background
-// call. A no-op when the cap denies (the doc is already marked 'skipped').
-// runExtraction catches its own errors and finalizes the row, so this never
-// rejects; the client's ExtractionToaster poller refreshes when it settles.
+// queue up to the queue cap) inside the AI-log context so the acting login/profile
+// tag the background call. A no-op when the cap denies (the doc is already marked
+// 'skipped').
+//
+// Memory discipline (#135 item 2): the queued closure holds only the stored PATH,
+// not the upload bytes — the file is re-read from disk once the job's slot frees, so
+// a burst of large uploads parks path strings rather than 32MB buffers. If the wait
+// queue is full the limiter rejects with QueueFullError; we shed the job to the
+// 'skipped' surface and refund. runExtraction otherwise catches its own errors and
+// finalizes the row, so the ExtractionToaster poller always sees a terminal state.
 function dispatchExtraction(
   loginId: number,
   profileId: number,
   docId: number,
-  buffer: Buffer,
+  storedPath: string,
   mime: string,
   filename: string
 ): void {
   if (!allowExtractionDispatch(profileId, docId)) return;
+  // A quota unit was consumed above ONLY when an API key is configured; a no-key
+  // dispatch runs but records its own skip, so it was never charged and must never
+  // be refunded (that would drive the counter below its true value).
+  const charged = aiConfigured();
   void withAiLogContext({ loginId, profileId }, () =>
-    extractionSemaphore.run(() =>
-      runExtraction(profileId, docId, buffer, mime, filename)
-    )
-  );
+    extractionSemaphore.run(async () => {
+      let buffer: Buffer;
+      try {
+        buffer = fs.readFileSync(path.join(process.cwd(), storedPath));
+      } catch (err) {
+        log.error("extraction: could not read stored file", {
+          docId,
+          profile: profileId,
+          err: err instanceof Error ? err : String(err),
+        });
+        db.prepare(
+          "UPDATE medical_documents SET extraction_status = 'failed', extraction_error = ? WHERE id = ? AND profile_id = ?"
+        ).run(`Could not read stored file: ${errMsg(err)}`, docId, profileId);
+        // Charged but nothing extracted — hand the unit back (#135 item 3).
+        if (charged) refundAiUsage(profileId, "extraction");
+        return;
+      }
+      return runExtraction(profileId, docId, buffer, mime, filename, charged);
+    })
+  ).catch((err) => {
+    // The limiter shed this dispatch (wait queue full): keep the file, mark it
+    // 'skipped' so it can be reprocessed, and refund the charged unit.
+    if (err instanceof QueueFullError) {
+      db.prepare(
+        "UPDATE medical_documents SET extraction_status = 'skipped', extraction_error = ? WHERE id = ? AND profile_id = ?"
+      ).run(AI_QUEUE_FULL_DOC_MESSAGE, docId, profileId);
+      if (charged) refundAiUsage(profileId, "extraction");
+      return;
+    }
+    // Unexpected — runExtraction owns its own failures, so a rejection here means
+    // something above it threw. Mark failed (don't leave the row spinning) + refund.
+    log.error("extraction dispatch rejected unexpectedly", { docId, err });
+    db.prepare(
+      "UPDATE medical_documents SET extraction_status = 'failed', extraction_error = ? WHERE id = ? AND profile_id = ?"
+    ).run(`Extraction dispatch failed: ${errMsg(err)}`, docId, profileId);
+    if (charged) refundAiUsage(profileId, "extraction");
+  });
 }
 
 // Upload a medical document and store it on disk, then kick off AI extraction
@@ -395,8 +448,8 @@ export async function uploadMedicalDocument(formData: FormData) {
       LIMIT 1`
   );
   const insertRow = db.prepare(
-    `INSERT INTO medical_documents (filename, stored_path, mime_type, size_bytes, content_hash, extraction_status, profile_id)
-     VALUES (?,?,?,?,?, 'processing', ?)`
+    `INSERT INTO medical_documents (filename, stored_path, mime_type, size_bytes, content_hash, extraction_status, processing_started_at, profile_id)
+     VALUES (?,?,?,?,?, 'processing', datetime('now'), ?)`
   );
   const reserve = db.transaction(
     (): { existing: Existing } | { docId: number } => {
@@ -428,16 +481,18 @@ export async function uploadMedicalDocument(formData: FormData) {
       (healthKind || aiConfigured())
     ) {
       db.prepare(
-        "UPDATE medical_documents SET extraction_status = 'processing', extraction_error = NULL WHERE id = ? AND profile_id = ?"
+        "UPDATE medical_documents SET extraction_status = 'processing', extraction_error = NULL, processing_started_at = datetime('now') WHERE id = ? AND profile_id = ?"
       ).run(existing.id, profile.id);
       if (healthKind) {
         runHealthImport(profile.id, existing.id, buffer);
       } else {
+        // Re-read the stored file inside the job (#135 item 2) — pass the path, not
+        // the bytes. existing.stored_path is guaranteed non-null by the guard above.
         dispatchExtraction(
           login.id,
           profile.id,
           existing.id,
-          buffer,
+          existing.stored_path,
           storedMime,
           existing.filename
         );
@@ -475,12 +530,16 @@ export async function uploadMedicalDocument(formData: FormData) {
   //    per-row, so pre-existing flat files (data/uploads/medical/<file>) need no
   //    migration — only new files land under the profile dir. The serve route's
   //    path-containment check accepts both shapes (both resolve inside the root).
+  // Hoisted out of the try so the background dispatch below can pass the stored
+  // PATH (re-read from disk in the job) instead of closing over the buffer (#135
+  // item 2).
+  let storedRelPath = "";
   try {
     const profileDir = path.join(UPLOAD_DIR, String(profile.id));
     fs.mkdirSync(profileDir, { recursive: true });
     const stored = `${docId}-${safeName(file.name)}`;
     fs.writeFileSync(path.join(profileDir, stored), buffer);
-    const relPath = path.join(
+    storedRelPath = path.join(
       "data",
       "uploads",
       "medical",
@@ -489,7 +548,7 @@ export async function uploadMedicalDocument(formData: FormData) {
     );
     db.prepare(
       "UPDATE medical_documents SET stored_path = ? WHERE id = ? AND profile_id = ?"
-    ).run(relPath, docId, profile.id);
+    ).run(storedRelPath, docId, profile.id);
   } catch (err) {
     // Log loudly with context (a full/read-only disk — ENOSPC/EROFS — surfaces
     // here) so the operator sees the real cause, but hand the user a friendly
@@ -520,7 +579,7 @@ export async function uploadMedicalDocument(formData: FormData) {
     login.id,
     profile.id,
     docId,
-    buffer,
+    storedRelPath,
     storedMime,
     file.name
   );
@@ -588,12 +647,22 @@ function revalidateAfterHealthImport() {
 // successful extraction it replaces the document's existing records, so it
 // doubles as the reprocess path (a fresh upload simply has none to replace).
 // Returns the final status so callers (e.g. reprocess) can tally results.
+//
+// `charged` (#135 item 3): whether the caller consumed a daily extraction unit for
+// this run (true when an API key was present at dispatch). On a TRANSIENT `failed`
+// outcome — a model timeout/429/5xx or a crash mid-run — the unit is refunded, so a
+// flaky evening no longer permanently exhausts the profile's cap with nothing
+// imported. A `skipped` outcome is never refunded (a deliberate decline), and a
+// no-key run (`charged=false`) was never charged, so nothing is handed back. The
+// refund lands on the profile's local day, matching the charge (they share the same
+// process tick — extraction settles within minutes, on the same local date).
 async function runExtraction(
   profileId: number,
   docId: number,
   buffer: Buffer,
   mime: string,
-  filename: string
+  filename: string,
+  charged: boolean = false
 ): Promise<"done" | "failed" | "skipped"> {
   try {
     // Pass the known canonical vocabulary so the model reuses existing names
@@ -632,6 +701,8 @@ async function runExtraction(
       db.prepare(
         "UPDATE medical_documents SET extraction_status = 'failed', extraction_error = ? WHERE id = ? AND profile_id = ?"
       ).run(result.error, docId, profileId);
+      // Transient model failure — refund the consumed unit (#135 item 3).
+      if (charged) refundAiUsage(profileId, "extraction");
       return "failed";
     }
 
@@ -709,6 +780,8 @@ async function runExtraction(
     db.prepare(
       "UPDATE medical_documents SET extraction_status = 'failed', extraction_error = ? WHERE id = ? AND profile_id = ?"
     ).run(`Extraction crashed: ${errMsg(err)}`, docId, profileId);
+    // A crash mid-run is transient from the quota's view — refund (#135 item 3).
+    if (charged) refundAiUsage(profileId, "extraction");
     return "failed";
   }
 }
@@ -748,7 +821,7 @@ function beginReprocess(
   // so two concurrent reprocess calls can't both run extraction on the same row.
   const claimed = db
     .prepare(
-      "UPDATE medical_documents SET extraction_status = 'processing', extraction_error = NULL WHERE id = ? AND profile_id = ? AND extraction_status != 'processing'"
+      "UPDATE medical_documents SET extraction_status = 'processing', extraction_error = NULL, processing_started_at = datetime('now') WHERE id = ? AND profile_id = ? AND extraction_status != 'processing'"
     )
     .run(docId, profileId);
   if (claimed.changes === 0) return { status: "processing" }; // already in flight
@@ -797,9 +870,30 @@ async function reprocessOne(
   // it so the bulk tally reflects the skip. Otherwise run through the concurrency
   // limiter (the caller already established the AI-log context).
   if (!allowExtractionDispatch(profileId, docId)) return "skipped";
-  return extractionSemaphore.run(() =>
-    runExtraction(profileId, docId, prep.buffer, prep.mime, prep.filename)
-  );
+  // Charged (key present + cap allowed), so a transient failure inside runExtraction
+  // refunds the unit (#135 item 3). If the limiter's queue is saturated (#135 item
+  // 2), shed to 'skipped' and refund rather than throwing out of the bulk loop.
+  try {
+    return await extractionSemaphore.run(() =>
+      runExtraction(
+        profileId,
+        docId,
+        prep.buffer,
+        prep.mime,
+        prep.filename,
+        true
+      )
+    );
+  } catch (err) {
+    if (err instanceof QueueFullError) {
+      db.prepare(
+        "UPDATE medical_documents SET extraction_status = 'skipped', extraction_error = ? WHERE id = ? AND profile_id = ?"
+      ).run(AI_QUEUE_FULL_DOC_MESSAGE, docId, profileId);
+      refundAiUsage(profileId, "extraction");
+      return "skipped";
+    }
+    throw err;
+  }
 }
 
 // Re-extraction may change canonical names — drop any now-orphaned stars.
@@ -926,14 +1020,28 @@ export async function reprocessDocument(formData: FormData) {
   // outside request scope — swallow it, the toaster poller refreshes anyway.
   void withAiLogContext({ loginId: login.id, profileId: profile.id }, () =>
     extractionSemaphore.run(() =>
-      runExtraction(profile.id, id, prep.buffer, prep.mime, prep.filename)
+      // charged=true — key present + cap allowed, so a transient failure refunds
+      // the unit (#135 item 3).
+      runExtraction(profile.id, id, prep.buffer, prep.mime, prep.filename, true)
     )
   )
     .then(() => {
       cleanupOrphanStars(profile.id);
       revalidateAfterReprocess();
     })
-    .catch((err) => log.error("post-reprocess refresh failed", { id, err }));
+    .catch((err) => {
+      // Shed the job if the limiter's queue is saturated (#135 item 2): mark
+      // 'skipped' (reprocessable) and refund; otherwise log the unexpected reject.
+      if (err instanceof QueueFullError) {
+        db.prepare(
+          "UPDATE medical_documents SET extraction_status = 'skipped', extraction_error = ? WHERE id = ? AND profile_id = ?"
+        ).run(AI_QUEUE_FULL_DOC_MESSAGE, id, profile.id);
+        refundAiUsage(profile.id, "extraction");
+        revalidateAfterReprocess();
+        return;
+      }
+      log.error("post-reprocess refresh failed", { id, err });
+    });
   // Return now with the document marked 'processing' so the page swaps the
   // reprocess button for a spinner instead of blocking on the AI call.
   revalidateAfterReprocess();

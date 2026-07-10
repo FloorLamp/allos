@@ -83,3 +83,40 @@ describe("readZip", () => {
     expect(() => readZip(Buffer.from("garbage".repeat(10)))).toThrow(ZipError);
   });
 });
+
+// Aggregate decompression-bomb caps (issue #135, item 5). The per-entry cap already
+// bounds ONE entry; these pin the whole-archive limits: too many entries, and too
+// many decompressed bytes summed across entries (a multi-member high-ratio bomb).
+describe("readZip aggregate caps", () => {
+  it("refuses an archive with too many entries", () => {
+    // MAX_ENTRIES is 4096; 4097 tiny entries must be refused, not iterated.
+    const many = Array.from({ length: 4097 }, (_, i) => ({
+      name: `f${i}.xml`,
+      data: Buffer.from("x"),
+    }));
+    expect(() => readZip(buildZip(many))).toThrow(/too many entries/i);
+  });
+
+  it("refuses when the total decompressed size crosses the aggregate cap", () => {
+    // MAX_TOTAL_BYTES is 256 MiB. Six highly-compressible 48 MiB members (each under
+    // the 64 MiB per-entry cap) sum to 288 MiB — the aggregate tally trips before
+    // the whole archive is materialized. One shared source buffer keeps the test's
+    // own memory bounded (~48 MiB); the compressed archive is tiny.
+    const chunk = Buffer.alloc(48 * 1024 * 1024, 0x78); // 48 MiB of 'x'
+    const members = Array.from({ length: 6 }, (_, i) => ({
+      name: `big${i}.bin`,
+      data: chunk,
+    }));
+    expect(() => readZip(buildZip(members))).toThrow(/total size/i);
+  });
+
+  it("still accepts a normal small multi-entry package", () => {
+    const out = readZip(
+      buildZip([
+        { name: "DOC0001.XML", data: Buffer.from("<ClinicalDocument/>") },
+        { name: "DOC0002.XML", data: Buffer.from("<ClinicalDocument/>") },
+      ])
+    );
+    expect(out).toHaveLength(2);
+  });
+});

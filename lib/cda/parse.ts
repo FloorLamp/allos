@@ -35,6 +35,22 @@ export function looksLikeCda(text: string): boolean {
   return /<ClinicalDocument[\s>]/.test(text.slice(0, 4000));
 }
 
+// Refuse a document that declares its own DTD entities (issue #135, item 5). The
+// standard XML entities (&amp; &lt; …) need NO declaration; a `<!ENTITY>` in the
+// internal DTD subset is the billion-laughs / XXE vector, and no legitimate C-CDA
+// export defines one. We scan the DOCTYPE region — everything before the root
+// element, where the internal subset must live — so a literal "<!ENTITY" sitting
+// inside body text can't false-positive. Pure (raw-string scan, no parse), so it
+// runs BEFORE the parser sees the bytes and is independent of the parser's own DTD
+// posture. Unit-tested in lib/__tests__/cda-hardening.test.ts.
+export function hasInternalDtdEntities(xml: string): boolean {
+  const rootIdx = xml.search(/<(?:\w+:)?ClinicalDocument[\s>]/);
+  // The internal subset precedes the root element; if we can't find the root, scan a
+  // bounded prefix (the prolog is always near the top) rather than the whole file.
+  const prolog = rootIdx >= 0 ? xml.slice(0, rootIdx) : xml.slice(0, 8192);
+  return /<!ENTITY\b/i.test(prolog);
+}
+
 // Does a ZIP buffer actually contain a CCD/CDA document? Every OOXML file (.xlsx,
 // .docx, .pptx) is also a ZIP, so a bare "is it a zip" check misroutes those to
 // the XDM parser (which then fails, marking the upload failed instead of letting
@@ -95,6 +111,13 @@ export function parseCcdaDocument(xml: string): {
   // own (#Fix 2), so a plain med list still imports rather than dropping.
   documentDate: string | null;
 } {
+  // Reject a hostile internal DTD subset (#135 item 5) before parsing — no
+  // legitimate C-CDA declares custom entities, so a `<!ENTITY>` is an attack shape.
+  if (hasInternalDtdEntities(xml)) {
+    throw new CdaError(
+      "Refusing a CCD/CDA that declares custom DTD entities (unsupported / unsafe)."
+    );
+  }
   let doc: any;
   try {
     doc = parser.parse(xml);
