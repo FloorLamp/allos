@@ -1308,6 +1308,23 @@ careGoalIns.run(
   "Gradual loss, ~0.5 kg/week"
 );
 
+// ── N-of-1 protocol (issue #161) ─────────────────────────────────────────────
+// One ongoing demo protocol started ~8 weeks ago, comparing body-weight and
+// resting-HR before vs. during. Both metrics are seeded weekly across the whole
+// window, so the detail page shows a real baseline-vs-intervention shift. Synthetic
+// — an obviously-fictional self-experiment, no PHI.
+db.prepare(
+  `INSERT INTO protocols
+     (profile_id, name, start_date, end_date, notes, outcome_keys, situation)
+   VALUES (1, ?, ?, NULL, ?, ?, ?)`
+).run(
+  "Creatine 5 g/day",
+  daysAgo(56),
+  "Daily creatine monohydrate; tracking weight and resting HR.",
+  JSON.stringify(["metric:weight", "metric:resting_hr"]),
+  "Creatine loading"
+);
+
 // ── Active situations + change log (Trends Ph3 annotations) ──────────────────
 // profile_settings stores only the CURRENT set; the dated start/stop log
 // (situation_events) is what makes situations chartable. Build a small history so

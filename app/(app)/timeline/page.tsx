@@ -8,6 +8,7 @@ import {
   IconChartLine,
   IconFileText,
   IconFlag,
+  IconFlask2,
   IconNotes,
   IconPill,
   IconScale,
@@ -56,6 +57,7 @@ const CATEGORY_ICONS: Record<TimelineCategory, TablerIcon> = {
   goal: IconFlag,
   insight: IconBrain,
   milestone: IconTrophy,
+  protocol: IconFlask2,
 };
 
 const CARD_CLASS =
@@ -79,6 +81,8 @@ const BADGE_CLASS: Record<TimelineCategory, string> = {
     "bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-950 dark:text-fuchsia-300",
   milestone:
     "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300",
+  protocol:
+    "bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300",
 };
 
 // The default page size and the increment each "Load more" reveals. The feed is

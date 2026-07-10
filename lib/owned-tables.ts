@@ -77,6 +77,7 @@ export const OWNED_TABLES = [
   "deleted_rows",
   "replayed_keys",
   "milestones",
+  "protocols",
 ] as const;
 
 export type OwnedTable = (typeof OWNED_TABLES)[number];

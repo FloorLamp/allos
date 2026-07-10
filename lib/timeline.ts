@@ -15,6 +15,7 @@ import {
   journalActivityHref,
   medicalRecordHref,
   parseDetailItems,
+  protocolTimelineEvents,
   sortTimelineEvents,
   timeFromCreatedAt,
   type TimelineEvent,
@@ -468,6 +469,28 @@ function collectEvents(
     pushLimited(events, event, options);
   }
 
+  // Protocols (issue #161): a Started event on start_date and, when ended, an
+  // Ended event on end_date. Two-sided like medication courses, so no date-bound
+  // clause here — the pure shaper emits both dates and pushLimited filters each
+  // against the window. Ordered by the freshest boundary.
+  const protocolRows = db
+    .prepare(
+      `SELECT id, name, start_date, end_date
+         FROM protocols
+        WHERE profile_id = ?
+        ORDER BY COALESCE(end_date, start_date) DESC, id DESC
+        LIMIT ?`
+    )
+    .all(profileId, perTableLimit) as {
+    id: number;
+    name: string;
+    start_date: string;
+    end_date: string | null;
+  }[];
+  for (const event of protocolTimelineEvents(protocolRows)) {
+    pushLimited(events, event, options);
+  }
+
   const immunizationBounds = exact("date");
   const immunizations = db
     .prepare(
@@ -802,6 +825,9 @@ export function getTimelineDates(
     "SELECT date FROM encounters WHERE profile_id = @profileId",
     "SELECT date FROM insights WHERE profile_id = @profileId",
     "SELECT achieved_on AS date FROM milestones WHERE profile_id = @profileId",
+    "SELECT start_date AS date FROM protocols WHERE profile_id = @profileId",
+    `SELECT end_date AS date FROM protocols
+      WHERE profile_id = @profileId AND end_date IS NOT NULL`,
   ].join("\nUNION\n");
 
   return (

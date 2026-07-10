@@ -13,6 +13,7 @@ export const TIMELINE_CATEGORIES = [
   "goal",
   "insight",
   "milestone",
+  "protocol",
 ] as const;
 
 export type TimelineCategory = (typeof TIMELINE_CATEGORIES)[number];
@@ -73,7 +74,47 @@ export function timelineCategoryLabel(category: TimelineCategory): string {
       return "Insight";
     case "milestone":
       return "Milestone";
+    case "protocol":
+      return "Protocol";
   }
+}
+
+// Timeline events for a protocol: a "Started" entry on start_date and, when the
+// protocol has ended, an "Ended" entry on end_date. Pure — the DB layer selects
+// the rows and this shapes them (mirrors medicationCourseEvents), so start/end
+// surface on the Timeline like any other dated thing.
+export function protocolTimelineEvents(
+  rows: {
+    id: number;
+    name: string;
+    start_date: string;
+    end_date: string | null;
+  }[]
+): TimelineEvent[] {
+  const events: TimelineEvent[] = [];
+  for (const r of rows) {
+    events.push({
+      id: `protocol-start:${r.id}`,
+      date: r.start_date,
+      category: "protocol",
+      title: `Started ${r.name}`,
+      subtitle: "Protocol started",
+      href: `/protocols/${r.id}`,
+      tone: "good",
+    });
+    if (r.end_date) {
+      events.push({
+        id: `protocol-end:${r.id}`,
+        date: r.end_date,
+        category: "protocol",
+        title: `Ended ${r.name}`,
+        subtitle: "Protocol ended",
+        href: `/protocols/${r.id}`,
+        tone: "default",
+      });
+    }
+  }
+  return events;
 }
 
 function firstTimelineParam(value: TimelineSearchParam): string | undefined {
