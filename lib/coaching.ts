@@ -2,20 +2,25 @@
 // (double progression) and detect personal records to celebrate, for both
 // strength and cardio. Pure and client-safe — no DB/network — so it runs in
 // components and under test.
-import {
-  isTimed,
-  liftInfo,
-  regionForExercise,
-  regionsForGroup,
-  type BodyGroup,
-} from "./lifts";
+import { isTimed, liftInfo, type MuscleRegion } from "./lifts";
 import { estimate1RM } from "./strength";
 import { frequencyScopeLabel } from "./goals";
 import { formatRelativeDate } from "./format-date";
 import { shiftDateStr } from "./date";
 import { dispWeight, kgTo, toKg, round } from "./units";
 import { classifyPolarization, type PolarizedSplit } from "./training-zones";
+import {
+  recommendNextWorkout,
+  VARIETY_LOOKBACK_DAYS,
+  type DatedExercise,
+  type NextWorkout,
+  type NextWorkoutItem,
+} from "./workout-recommendation";
 import type { WeightUnit } from "./settings";
+
+// Re-exported so existing importers of the variety window keep working — its
+// single definition now lives with the unified next-workout core (#221).
+export { VARIETY_LOOKBACK_DAYS };
 
 // ---- Strength ----
 
@@ -479,6 +484,11 @@ export interface Recommendation {
   // Optional next-set hint ("62.5 kg × 5") for the Training next-workout card's
   // "Target" line. Only strength recommendations set it; other surfaces ignore it.
   target?: string;
+  // The shared next-workout suggestion behind a strength recommendation (#221):
+  // focus regions to emphasize and a ranked exercise list. Set only on strength
+  // recs; the Telegram reminder renders these, the dashboard cards ignore them.
+  focus?: MuscleRegion[];
+  exercises?: string[];
 }
 
 // The weekly frequency-target progress slice the engine reads.
@@ -570,6 +580,11 @@ export interface CoachingInput {
   // Distinct dates (YYYY-MM-DD) the profile logged any activity — powers the
   // consecutive-day / weekly-load overtraining checks.
   trainingDates: string[];
+  // Bounded-window (date, exercise) rows feeding the unified next-workout core's
+  // recovery-exclusion + weekday-habit + frequency-ranked exercise list (#221).
+  // Optional — absent ⇒ the core falls back to aggregate least-recent picks, so
+  // existing callers/tests keep their prior behavior.
+  datedExercises?: DatedExercise[];
   sleep: SleepSignal | null;
   restingHr: RestingHrSignal | null;
   // The persisted rest episode as of the last reconcile (null when none is open).
@@ -583,22 +598,6 @@ export interface CoachingInput {
   intensity?: PolarizedSplit | null;
   weightUnit?: WeightUnit; // for the next-set target text; default "kg"
   thresholds?: Partial<CoachingThresholds>;
-}
-
-function isCardioTarget(t: RoutineTargetProgress): boolean {
-  return t.target.scope_kind === "type" && t.target.scope_value === "cardio";
-}
-
-// Least-complete first (fraction of the weekly target met), so the most-overdue
-// target leads. Stable tie-break keeps output deterministic.
-function byFractionComplete(
-  a: RoutineTargetProgress,
-  b: RoutineTargetProgress
-): number {
-  const fa = a.count / Math.max(1, a.per_week);
-  const fb = b.count / Math.max(1, b.per_week);
-  if (fa !== fb) return fa - fb;
-  return a.target.scope_value.localeCompare(b.target.scope_value);
 }
 
 function pluralSessions(n: number): string {
@@ -830,11 +829,14 @@ export function withRestContinuity(
 
 // A strength recommendation seeded off an exercise's next-set suggestion. Title
 // is the exercise; `target` carries the next-set text; detail leads with the
-// progression rationale, then the routine/last-trained reason.
+// progression rationale, then the routine/last-trained reason. `focus`/`exercises`
+// carry the shared next-workout suggestion through for the Telegram surface (#221).
 function strengthExerciseRec(
   exercise: StrengthRecent,
   wu: WeightUnit,
-  reason: string
+  reason: string,
+  focus: MuscleRegion[] = [],
+  exercises: string[] = []
 ): Recommendation {
   const nextSet = suggestNextSet(exercise, wu);
   return {
@@ -848,79 +850,9 @@ function strengthExerciseRec(
     )}`,
     actionLabel: "View details",
     ...(nextSet ? { target: nextSetText(nextSet, wu) } : {}),
+    ...(focus.length ? { focus } : {}),
+    ...(exercises.length ? { exercises } : {}),
   };
-}
-
-// The "least-recently-done" variety nudge only makes sense among types you
-// actually train now. Bound it to this trailing window (days) so an ancient
-// one-off — an imported 2015 kayak, a single lift logged years ago — can't
-// permanently win the least-recent slot and read as "your last cardio was 11
-// years ago" (#185). A quarter is generous enough to keep genuine variety
-// (a biweekly cross-train, a monthly long ride) while excluding stale history.
-export const VARIETY_LOOKBACK_DAYS = 90;
-
-// The least-recently-trained exercise among those trained within the variety
-// lookback (an ancient one-off is excluded, not treated as a lapsed habit).
-// Stable tie-break by name. Undefined when nothing qualifies.
-function pickOldestStrengthRecent(
-  strength: StrengthRecent[],
-  today: string
-): StrengthRecent | undefined {
-  return [...strength]
-    .filter((s) => within(s.lastDate, today, VARIETY_LOOKBACK_DAYS))
-    .sort((a, b) =>
-      a.lastDate === b.lastDate
-        ? a.exercise.localeCompare(b.exercise)
-        : a.lastDate.localeCompare(b.lastDate)
-    )[0];
-}
-
-// The least-recently-done cardio activity within the variety lookback, same
-// bound as strength — so a years-old imported type never wins the slot (#185).
-function pickOldestCardioRecent(
-  cardio: CardioRecent[],
-  today: string
-): CardioRecent | undefined {
-  return [...cardio]
-    .filter((c) => within(c.lastDate, today, VARIETY_LOOKBACK_DAYS))
-    .sort((a, b) =>
-      a.lastDate === b.lastDate
-        ? a.activity.localeCompare(b.activity)
-        : a.lastDate.localeCompare(b.lastDate)
-    )[0];
-}
-
-// The exercise to suggest for a routine target: for a region/group target, the
-// least-recently-trained exercise mapping into that scope; for a type=strength
-// target, the least-recently-trained exercise overall.
-function pickStrengthForTarget(
-  strength: StrengthRecent[],
-  target: RoutineTargetProgress,
-  today: string
-): StrengthRecent | undefined {
-  const kind = target.target.scope_kind;
-  const value = target.target.scope_value;
-  const matches = strength.filter((s) => {
-    if (kind === "type") return value === "strength";
-    const region = regionForExercise(s.exercise);
-    if (!region) return false;
-    if (kind === "region") return region === value;
-    if (kind === "group")
-      return regionsForGroup(value as BodyGroup).includes(region);
-    return false;
-  });
-  return pickOldestStrengthRecent(matches, today);
-}
-
-// Newest training date across strength + cardio, or undefined.
-function latestTrainingDate(
-  strength: StrengthRecent[],
-  cardio: CardioRecent[]
-): string | undefined {
-  return [...strength.map((s) => s.lastDate), ...cardio.map((c) => c.lastDate)]
-    .filter(Boolean)
-    .sort()
-    .at(-1);
 }
 
 const ON_TRACK: Recommendation = {
@@ -1014,32 +946,39 @@ export function recommendCoaching(input: CoachingInput): Recommendation[] {
   return training;
 }
 
-// The non-rest, training-side recommendations in priority order. With a weekly
-// routine: a behind cardio target (cardio) and/or a behind strength target
-// (strength), or on-track when all targets are met. Without a routine: a
-// habit-based next-workout, or the empty/log fallback.
+// The non-rest, training-side recommendations in priority order. Now a pure
+// FORMATTER over the unified next-workout core (#221): the core decides WHAT to
+// train (routine-gap composition, #185 practiced-activity picker, recovery
+// exclusion, weekday habit, on-track/setup) and this maps each ranked item to a
+// Recommendation card. The Telegram reminder formats the same core result, so the
+// two surfaces can no longer disagree.
 function trainingRecommendations(
   input: CoachingInput,
   wu: WeightUnit
 ): Recommendation[] {
-  const { routine, strength, cardio, today } = input;
+  const nw = recommendNextWorkout(input);
+  return nw.items.map((item) => formatWorkoutItem(item, nw, input.today, wu));
+}
 
-  if (routine.length > 0) {
-    const behind = routine.filter((t) => !t.met);
-    const out: Recommendation[] = [];
-
-    const behindCardio = behind
-      .filter(isCardioTarget)
-      .sort(byFractionComplete)[0];
-    if (behindCardio) {
-      const remaining = Math.max(0, behindCardio.per_week - behindCardio.count);
-      const suggestion = pickOldestCardioRecent(cardio, today);
-      out.push({
+// Map one core NextWorkoutItem to its Recommendation card, preserving the exact
+// per-branch copy each dashboard/overview surface renders.
+function formatWorkoutItem(
+  item: NextWorkoutItem,
+  nw: NextWorkout,
+  today: string,
+  wu: WeightUnit
+): Recommendation {
+  if (item.kind === "cardio") {
+    if (item.reason === "routine-gap") {
+      const t = item.target!;
+      const remaining = Math.max(0, t.perWeek - t.count);
+      const suggestion = item.activity;
+      return {
         id: "cardio-gap",
         kind: "cardio",
         title: "Add a cardio session",
-        detail: `${behindCardio.count} of ${behindCardio.per_week} cardio ${pluralSessions(
-          behindCardio.per_week
+        detail: `${t.count} of ${t.perWeek} cardio ${pluralSessions(
+          t.perWeek
         )} this week — ${remaining} to go.${
           suggestion
             ? ` ${suggestion.activity} — last done ${formatRelativeDate(
@@ -1055,85 +994,66 @@ function trainingRecommendations(
             )}`
           : "/training",
         actionLabel: suggestion ? "View details" : "Log activity",
-      });
+      };
     }
+    // Habit-based cardio (no routine): the picked activity is guaranteed present.
+    const a = item.activity!;
+    return {
+      id: `cardio-${a.activity}`,
+      kind: "cardio",
+      title: `Add a ${a.activity} session`,
+      detail: `Last done ${formatRelativeDate(a.lastDate, today)}.`,
+      tone: "action",
+      actionHref: `/training?tab=analyze&kind=cardio&item=${encodeURIComponent(
+        a.activity
+      )}`,
+      actionLabel: "View details",
+    };
+  }
 
-    const behindStrength = behind
-      .filter((t) => !isCardioTarget(t))
-      .sort(byFractionComplete)[0];
-    if (behindStrength) {
-      const label = frequencyScopeLabel(
-        behindStrength.target.scope_kind,
-        behindStrength.target.scope_value
-      );
-      const remaining = Math.max(
-        0,
-        behindStrength.per_week - behindStrength.count
-      );
-      const reason = `${behindStrength.count} of ${behindStrength.per_week} ${label} ${pluralSessions(
-        behindStrength.per_week
+  if (item.kind === "strength") {
+    if (item.reason === "routine-gap") {
+      const t = item.target!;
+      const label = frequencyScopeLabel(t.scopeKind, t.scopeValue);
+      const remaining = Math.max(0, t.perWeek - t.count);
+      const reason = `${t.count} of ${t.perWeek} ${label} ${pluralSessions(
+        t.perWeek
       )} this week — ${remaining} to go.`;
-      const exercise = pickStrengthForTarget(strength, behindStrength, today);
-      out.push(
-        exercise
-          ? strengthExerciseRec(exercise, wu, reason)
-          : {
-              id: `strength-${label}`,
-              kind: "strength",
-              title: `Train ${label}`,
-              detail: reason,
-              tone: "action",
-              actionHref: "/training",
-              actionLabel: "Log activity",
-            }
-      );
+      return item.exercise
+        ? strengthExerciseRec(item.exercise, wu, reason, nw.focus, nw.exercises)
+        : {
+            id: `strength-${label}`,
+            kind: "strength",
+            title: `Train ${label}`,
+            detail: reason,
+            tone: "action",
+            actionHref: "/training",
+            actionLabel: "Log activity",
+          };
     }
-
-    if (out.length > 0) return out;
-    // All targets met.
-    return [ON_TRACK];
+    // Habit-based strength (no routine): the picked exercise is guaranteed present.
+    return strengthExerciseRec(
+      item.exercise!,
+      wu,
+      `Last trained ${formatRelativeDate(item.exercise!.lastDate, today)}.`,
+      nw.focus,
+      nw.exercises
+    );
   }
 
-  // No weekly routine: fall back to a habit-based next-workout.
-  if (latestTrainingDate(strength, cardio) === today) {
-    return [
-      {
-        id: "ontrack-today",
-        kind: "ontrack",
-        title: "Nice work today",
-        detail:
-          "You already logged training today — resting or an easy session is fine now.",
-        tone: "positive",
-      },
-    ];
+  if (item.kind === "ontrack") {
+    return item.reason === "trained-today"
+      ? {
+          id: "ontrack-today",
+          kind: "ontrack",
+          title: "Nice work today",
+          detail:
+            "You already logged training today — resting or an easy session is fine now.",
+          tone: "positive",
+        }
+      : ON_TRACK;
   }
-  const exercise = pickOldestStrengthRecent(strength, today);
-  if (exercise) {
-    return [
-      strengthExerciseRec(
-        exercise,
-        wu,
-        `Last trained ${formatRelativeDate(exercise.lastDate, today)}.`
-      ),
-    ];
-  }
-  const activity = pickOldestCardioRecent(cardio, today);
-  if (activity) {
-    return [
-      {
-        id: `cardio-${activity.activity}`,
-        kind: "cardio",
-        title: `Add a ${activity.activity} session`,
-        detail: `Last done ${formatRelativeDate(activity.lastDate, today)}.`,
-        tone: "action",
-        actionHref: `/training?tab=analyze&kind=cardio&item=${encodeURIComponent(
-          activity.activity
-        )}`,
-        actionLabel: "View details",
-      },
-    ];
-  }
-  // Has a routine-less context flag but no usable history (shouldn't normally
-  // happen once hasContext is true) → the setup nudge.
-  return [EMPTY_STATE];
+
+  // Setup / empty state.
+  return EMPTY_STATE;
 }
