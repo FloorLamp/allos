@@ -895,3 +895,20 @@ export interface HrMinute {
   n: number;
   source: string | null;
 }
+
+// An N-of-1 protocol (issue #161): a dated self-experiment with a declared set of
+// outcome-metric keys the app compares before vs. during. `end_date` NULL = the
+// protocol is still running ("ongoing"). `outcome_keys` is stored as a JSON array
+// of namespaced metric keys (see lib/protocol-metrics); `outcomeKeys` is the
+// parsed form the query layer returns. `situation` is the optional situational-
+// intake label the protocol activates on start.
+export interface Protocol {
+  id: number;
+  name: string;
+  start_date: string;
+  end_date: string | null;
+  notes: string | null;
+  situation: string | null;
+  outcomeKeys: string[];
+  created_at: string;
+}

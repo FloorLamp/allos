@@ -10,6 +10,7 @@ import {
   normalizeTimelineRange,
   parseDetailItems,
   parseUtcStamp,
+  protocolTimelineEvents,
   sortTimelineEvents,
   timeFromCreatedAt,
   timelineCategoryFromParam,
@@ -169,6 +170,44 @@ describe("timeline event helpers", () => {
     expect(parseUtcStamp(null)).toBeNull();
     expect(parseUtcStamp("")).toBeNull();
     expect(parseUtcStamp("not-a-date")).toBeNull();
+  });
+
+  it("shapes protocol start/end timeline events", () => {
+    const ongoing = protocolTimelineEvents([
+      {
+        id: 5,
+        name: "Creatine 5 g/day",
+        start_date: "2026-05-01",
+        end_date: null,
+      },
+    ]);
+    expect(ongoing).toHaveLength(1);
+    expect(ongoing[0]).toMatchObject({
+      id: "protocol-start:5",
+      date: "2026-05-01",
+      category: "protocol",
+      title: "Started Creatine 5 g/day",
+      href: "/protocols/5",
+      tone: "good",
+    });
+
+    const ended = protocolTimelineEvents([
+      {
+        id: 7,
+        name: "Sauna block",
+        start_date: "2026-05-01",
+        end_date: "2026-06-01",
+      },
+    ]);
+    expect(ended.map((e) => e.id)).toEqual([
+      "protocol-start:7",
+      "protocol-end:7",
+    ]);
+    expect(ended[1]).toMatchObject({
+      date: "2026-06-01",
+      title: "Ended Sauna block",
+      category: "protocol",
+    });
   });
 
   it("derives created-at date/time in the profile timezone (off-by-one safe)", () => {

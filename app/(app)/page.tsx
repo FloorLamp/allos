@@ -29,6 +29,7 @@ import {
   collectAttention,
   attentionCountForProfile,
   getBioAgeReadings,
+  getHealthspanPillars,
 } from "@/lib/queries";
 import { recommendCoaching } from "@/lib/coaching";
 import { activeByKey, coachingDedupeKey } from "@/lib/findings";
@@ -86,6 +87,7 @@ import CarePlanDueWidget, {
   type CarePlanDueRow,
 } from "@/components/dashboard/CarePlanDueWidget";
 import BioAgeWidget from "@/components/dashboard/BioAgeWidget";
+import HealthspanPillarsWidget from "@/components/dashboard/HealthspanPillarsWidget";
 import { saveDashboardLayout } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -176,6 +178,13 @@ export default async function Dashboard() {
             chronoAge: d.chronoAge as number,
           }))
       : [];
+
+  // healthspan-pillars (issue #161): the visible longevity pillars, each consuming
+  // its already-merged source computation. buildPillars omits an absent pillar, so
+  // an empty array means no pillar has data yet (the data-aware CTA below).
+  const pillars = has("healthspan-pillars")
+    ? getHealthspanPillars(profile.id)
+    : [];
 
   // recent-labs (medical): the current reading per lab/biomarker marker, flagged
   // markers surfaced first so an out-of-range result is the headline.
@@ -368,6 +377,8 @@ export default async function Dashboard() {
   if (has("recent-activity") && recent.length === 0)
     emptyIds.add("recent-activity");
   if (has("bio-age") && bioAgeDraws.length === 0) emptyIds.add("bio-age");
+  if (has("healthspan-pillars") && pillars.length === 0)
+    emptyIds.add("healthspan-pillars");
 
   // The onboarding CTA for a data-aware widget whose domain is empty — the
   // dashboard doubling as the setup checklist, each empty widget pointing at the
@@ -434,6 +445,16 @@ export default async function Dashboard() {
             ctaHref="/biomarkers"
           />
         );
+      case "healthspan-pillars":
+        return (
+          <WidgetEmpty
+            title="Healthspan pillars"
+            icon={IconFlask}
+            message="No pillar data yet. Import labs, log sleep, or record a VO₂ Max to light up your longevity signals."
+            ctaLabel="Import health data"
+            ctaHref="/data"
+          />
+        );
       default:
         return null;
     }
@@ -466,6 +487,8 @@ export default async function Dashboard() {
         return <StarredBiomarkers />;
       case "bio-age":
         return <BioAgeWidget draws={bioAgeDraws} />;
+      case "healthspan-pillars":
+        return <HealthspanPillarsWidget pillars={pillars} />;
       case "weight-trend":
         return (
           <WeightTrendWidget data={bodyMetrics} weightUnit={units.weightUnit} />

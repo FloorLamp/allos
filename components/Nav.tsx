@@ -7,6 +7,7 @@ import {
   IconLayoutDashboard,
   IconTimelineEvent,
   IconTrendingUp,
+  IconFlask2,
   IconCalendarClock,
   IconUsersGroup,
   IconBarbell,
@@ -94,6 +95,7 @@ const entries: Entry[] = [
   { href: "/", label: "Dashboard", icon: IconLayoutDashboard },
   { href: "/timeline", label: "Timeline", icon: IconTimelineEvent },
   { href: "/trends", label: "Trends", icon: IconTrendingUp },
+  { href: "/protocols", label: "Protocols", icon: IconFlask2 },
   { href: "/upcoming", label: "Upcoming", icon: IconCalendarClock },
   {
     href: "/household",

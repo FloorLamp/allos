@@ -106,6 +106,20 @@ export const DASHBOARD_WIDGETS: WidgetDef[] = [
     span: "third",
   },
   {
+    id: "healthspan-pillars",
+    label: "Healthspan pillars",
+    description:
+      "Evidence-backed longevity signals — VO₂ Max percentile, sleep regularity, biological age, and biomarkers in optimal range. Each pillar appears only when its data exists.",
+    // On by default: the differentiator headline. Data-aware so a profile with no
+    // pillar data yet gets an onboarding CTA instead of a blank card. Not fitness-
+    // gated wholesale — individual pillars self-hide, and a child profile can still
+    // show sleep/biomarker pillars.
+    defaultOn: true,
+    fitness: false,
+    span: "full",
+    dataAware: true,
+  },
+  {
     id: "starred-biomarkers",
     label: "Starred biomarkers",
     description: "Your pinned biomarkers with latest values and trends.",
