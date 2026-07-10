@@ -29,6 +29,10 @@ test.describe("protocols create → compare (issue #161)", () => {
     const form = main.getByTestId("protocol-form");
     await form.getByLabel("Name").fill(uniqueName);
     await main.locator("#pr-start-new").fill(start);
+    // Filling the date field opens its DateField popover, which floats over the
+    // outcome-metric checkboxes below and would intercept their clicks — dismiss
+    // it (the picker closes on Escape) before checking the boxes.
+    await page.keyboard.press("Escape");
     await form.getByRole("checkbox", { name: "Body weight" }).check();
     await form.getByRole("checkbox", { name: "Resting heart rate" }).check();
     await form.getByRole("button", { name: "Create protocol" }).click();
