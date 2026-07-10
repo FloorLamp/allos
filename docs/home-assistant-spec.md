@@ -1,6 +1,6 @@
 # Spec: Home Assistant integration (appliance endpoints)
 
-Status: **draft** · Owner: TBD · Tracking issue: TBD
+Status: **draft** · Owner: TBD · Tracking issue: [#235](https://github.com/FloorLamp/allos/issues/235)
 
 ## Problem / use cases
 
