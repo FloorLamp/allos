@@ -15,6 +15,7 @@ import {
   paginateRecords,
 } from "@/lib/derived-table";
 import StarredBiomarkers from "@/components/StarredBiomarkers";
+import BioAgeHero from "@/components/BioAgeHero";
 import BiomarkersTable from "@/components/BiomarkersTable";
 import RecordForm from "@/components/RecordForm";
 import ProviderDatalist from "@/components/ProviderDatalist";
@@ -104,6 +105,11 @@ export default async function BiomarkersPage(props: {
         ))}
       </datalist>
       <ProviderDatalist names={getProviderNames()} />
+
+      {/* Biological-age hero (#209): the derived PhenoAge index (#157) surfaced as a
+          headline "how am I aging" result, pinned above the analyte table. Adult-
+          gated; renders nothing for child profiles. The derived table row remains. */}
+      <BioAgeHero />
 
       <StarredBiomarkers />
 
