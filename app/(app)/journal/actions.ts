@@ -18,7 +18,7 @@ import {
 import { parseOverrideFields } from "@/lib/import-review/conflicts";
 import type { ActivityType } from "@/lib/types";
 import { getUnitPrefs } from "@/lib/settings";
-import { toKg, toKm } from "@/lib/units";
+import { toKg, toKm, resolveWeightKg } from "@/lib/units";
 import { minutesBetween } from "@/lib/activity-meta";
 import { isRealIsoDate } from "@/lib/date";
 
@@ -42,10 +42,22 @@ interface SetInput {
   toFailure?: boolean;
 }
 
+// The stored canonical (kg) loads of the activity's existing sets before an edit
+// replaces them, keyed by `${exercise}#${set_number}`. Lets an untouched edit
+// re-store the exact stored kg instead of drifting it by the display-rounding
+// quantum on every kg↔lb round-trip (issue #194). Empty/absent on create.
+type StoredSetWeights = Map<
+  string,
+  { weight_kg: number | null; weight_kg_right: number | null }
+>;
+const setKey = (exercise: string, setNumber: number) =>
+  `${exercise}#${setNumber}`;
+
 function writeSets(
   activityId: number,
   formData: FormData,
-  weightUnit: "kg" | "lb"
+  weightUnit: "kg" | "lb",
+  stored?: StoredSetWeights
 ) {
   const raw = formData.get("sets");
   if (!raw) return;
@@ -66,13 +78,18 @@ function writeSets(
     if (!s.exercise?.trim()) continue;
     const ex = s.exercise.trim();
     counters[ex] = (counters[ex] ?? 0) + 1;
+    const prior = stored?.get(setKey(ex, counters[ex]));
     setStmt.run(
       activityId,
       ex,
       counters[ex],
-      s.weight != null ? toKg(s.weight, weightUnit) : null,
+      s.weight != null
+        ? resolveWeightKg(s.weight, prior?.weight_kg, weightUnit)
+        : null,
       s.reps ?? null,
-      s.weightRight != null ? toKg(s.weightRight, weightUnit) : null,
+      s.weightRight != null
+        ? resolveWeightKg(s.weightRight, prior?.weight_kg_right, weightUnit)
+        : null,
       s.repsRight ?? null,
       s.durationSec ?? null,
       s.durationSecRight ?? null,
@@ -156,6 +173,7 @@ export async function saveActivity(formData: FormData) {
 
   const tx = db.transaction((): number | null => {
     let activityId: number;
+    let storedSets: StoredSetWeights | undefined;
     if (id) {
       // Verify the activity belongs to this profile before touching it or its
       // sets — the form id is untrusted. Bail (no-op) when it isn't owned.
@@ -190,6 +208,25 @@ export async function saveActivity(formData: FormData) {
         profile.id
       );
       activityId = id;
+      // Snapshot the existing sets' canonical loads keyed by (exercise, set
+      // number) BEFORE replacing them, so an untouched edit re-stores the exact
+      // stored kg rather than drifting it on a kg↔lb round-trip (issue #194).
+      storedSets = new Map();
+      for (const row of db
+        .prepare(
+          "SELECT exercise, set_number, weight_kg, weight_kg_right FROM exercise_sets WHERE activity_id = ?"
+        )
+        .all(id) as {
+        exercise: string;
+        set_number: number;
+        weight_kg: number | null;
+        weight_kg_right: number | null;
+      }[]) {
+        storedSets.set(setKey(row.exercise, row.set_number), {
+          weight_kg: row.weight_kg,
+          weight_kg_right: row.weight_kg_right,
+        });
+      }
       // Replace sets wholesale (parent ownership verified above).
       db.prepare("DELETE FROM exercise_sets WHERE activity_id = ?").run(id);
     } else {
@@ -214,7 +251,8 @@ export async function saveActivity(formData: FormData) {
         );
       activityId = Number(res.lastInsertRowid);
     }
-    if (hasStrength) writeSets(activityId, formData, prefs.weightUnit);
+    if (hasStrength)
+      writeSets(activityId, formData, prefs.weightUnit, storedSets);
     return activityId;
   });
   const activityId = tx();

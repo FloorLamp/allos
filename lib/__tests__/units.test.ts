@@ -5,6 +5,7 @@ import {
   fmtWeight,
   kgTo,
   kmTo,
+  resolveWeightKg,
   round,
   stripNegative,
   stripNonPositive,
@@ -69,6 +70,49 @@ describe("stripNonPositive", () => {
     expect(stripNonPositive("")).toBe("");
     expect(stripNonPositive("1")).toBe("1");
     expect(stripNonPositive("10")).toBe("10");
+  });
+});
+
+describe("resolveWeightKg (issue #194)", () => {
+  // The edit-form round-trip: a form pre-fills the display value as
+  // round(kgTo(stored, unit), 1); re-saving that same display value must NOT
+  // move the canonical kg (a true no-op), for kg and lb alike.
+  const displayOf = (kg: number, unit: "kg" | "lb") => round(kgTo(kg, unit), 1);
+
+  it("keeps the stored kg exactly when the display value is unchanged (lb)", () => {
+    const stored = 60.4; // canonical kg with sub-quantum precision
+    const submitted = displayOf(stored, "lb"); // what the untouched form holds
+    expect(resolveWeightKg(submitted, stored, "lb")).toBe(stored);
+  });
+
+  it("keeps the stored kg exactly when the display value is unchanged (kg)", () => {
+    const stored = 80.25; // more precision than the 1-decimal display shows
+    const submitted = displayOf(stored, "kg"); // 80.3
+    expect(resolveWeightKg(submitted, stored, "kg")).toBe(stored);
+  });
+
+  it("does not drift across repeated untouched round-trips (lb)", () => {
+    let kg = 100.7;
+    for (let i = 0; i < 25; i++) {
+      const submitted = displayOf(kg, "lb");
+      kg = resolveWeightKg(submitted, kg, "lb");
+    }
+    expect(kg).toBe(100.7);
+  });
+
+  it("converts a genuinely changed value through toKg (lb)", () => {
+    const stored = 60.4;
+    const changed = displayOf(stored, "lb") + 1; // user nudged it up 1 lb
+    expect(resolveWeightKg(changed, stored, "lb")).toBeCloseTo(
+      toKg(changed, "lb"),
+      9
+    );
+    expect(resolveWeightKg(changed, stored, "lb")).not.toBe(stored);
+  });
+
+  it("falls back to toKg when there is no stored value (create path)", () => {
+    expect(resolveWeightKg(150, null, "lb")).toBeCloseTo(toKg(150, "lb"), 9);
+    expect(resolveWeightKg(80, undefined, "kg")).toBe(80);
   });
 });
 
