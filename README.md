@@ -440,10 +440,13 @@ default). Turning it off suppresses both the nudge and the preventive lines in t
 digest; due items still appear on your **Upcoming** page either way (that's a pull view,
 not a push). Informational only — not medical advice.
 
-**Dismiss once, silence everywhere.** Snoozing or dismissing a **refill** or
-**preventive-care** item on the **Upcoming** page (or the dashboard attention banner) now
-also silences its **push nudge**, not just the page and digest lines — the reminder and
-the nudge share the same identity, so one "I've decided about this" hides both. A snooze
+**Dismiss once, silence everywhere.** Snoozing or dismissing a **refill**,
+**preventive-care**, or **training-target** item on the **Upcoming** page (or the
+dashboard attention banner) now also silences its **push nudge**, not just the page and
+digest lines — the reminder and the nudge share the same identity, so one "I've decided
+about this" hides both. For the workout nudge that means dismissing every behind
+training target quiets the "today's workout" reminder (a still-behind target keeps it
+coming). A snooze
 resumes nudging after its date; restoring the item brings the nudge back. Safety-critical
 reminders are deliberately **not** silenceable this way — scheduled **dose reminders** and
 **missed-dose escalations** keep firing on their own per-day dedup regardless of a page

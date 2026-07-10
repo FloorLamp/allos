@@ -10,7 +10,9 @@
 import { frequencyScopeLabel } from "../goals";
 import { recommendCoaching } from "../coaching";
 import { recommendNextWorkout } from "../workout-recommendation";
+import { isWorkoutNudgeSuppressed } from "../workout-nudge";
 import { gatherCoachingInput } from "../queries";
+import { getFindingSuppressions } from "../queries/upcoming";
 import type { WorkoutRecommendation } from "./workout-format";
 
 export type { WorkoutRecommendation };
@@ -22,6 +24,23 @@ export function recommendWorkout(
   // read the same computation, so they can't drift.
   const input = gatherCoachingInput(profileId, "kg", "km");
   const nw = recommendNextWorkout(input);
+
+  // Route through the shared findings-suppression bus (#227/#245): the nudge is
+  // driven by the profile's behind (unmet) weekly targets, each surfaced on Upcoming
+  // as a `training:<id>` finding via the SAME trainingSignalKey. When every one is
+  // dismissed/snoozed there, return null — holding the recommendation out of BOTH the
+  // send AND the daily `notify_last_workout` slot marker (the tick only marks the slot
+  // on a delivered message), so un-dismissing resumes the normal lifecycle.
+  const suppressions = getFindingSuppressions(profileId);
+  if (
+    isWorkoutNudgeSuppressed(
+      nw.behind.map((t) => t.id),
+      suppressions,
+      input.today
+    )
+  )
+    return null;
+
   const recs = recommendCoaching(input);
 
   const behind = input.routine
