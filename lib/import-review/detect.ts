@@ -445,8 +445,10 @@ export const ZERO_IS_MISSING_FIELDS: ReadonlySet<ActivityFoldField> = new Set([
 ] as ActivityFoldField[]);
 
 // Whether a row actually carries data for a fold column: non-null, and for the
-// measurement columns above, non-zero.
-function hasFoldValue(f: ActivityFoldField, v: unknown): boolean {
+// measurement columns above, non-zero. Exported so the conflict detector
+// (lib/import-review/conflicts.ts, issue #100) shares the SAME zero-as-missing
+// semantics — never a fork.
+export function hasFoldValue(f: ActivityFoldField, v: unknown): boolean {
   if (v == null) return false;
   return !(ZERO_IS_MISSING_FIELDS.has(f) && v === 0);
 }

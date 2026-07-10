@@ -5,9 +5,10 @@ import { useActivityEditor } from "@/components/ActivityEditorProvider";
 import { ActivityTypeIcon, IntensityBadge } from "@/components/ui";
 import ActivityProvenance from "@/components/ActivityProvenance";
 import type { ActivityEditData } from "@/components/ActivityForm";
+import type { UnitPrefs } from "@/lib/settings";
 import { SET_STATUS_TITLES, type SetStatus } from "@/lib/journal-format";
 import { activityComponentSportNames } from "@/lib/activity-icon";
-import ActivityCardMenu from "./ActivityCardMenu";
+import ActivityCardMenu, { type MergeSibling } from "./ActivityCardMenu";
 
 export type DisplayPart =
   | {
@@ -32,6 +33,8 @@ export default function JournalCard({
   fault,
   provenance,
   mergeSiblings = [],
+  keeperLabel,
+  units,
   onSelectExercise,
   onSelectCardio,
   onSelectSport,
@@ -54,9 +57,13 @@ export default function JournalCard({
     createdAt: string;
     updatedAt: string | null;
   };
-  // Same-day siblings this activity can be manually merged with (issue #64). Empty
-  // (the default) hides the merge affordance — a lone activity has nothing to fold.
-  mergeSiblings?: { id: number; title: string }[];
+  // Same-day siblings this activity can be manually merged with (issue #64), each
+  // carrying its per-field conflicts vs this card (issue #100). Empty (the default)
+  // hides the merge affordance — a lone activity has nothing to fold.
+  mergeSiblings?: MergeSibling[];
+  // Provenance label for THIS card's values — the keeper side of a merge conflict.
+  keeperLabel: string;
+  units: UnitPrefs;
   // When provided, a strength exercise name becomes a button that opens its
   // detail (progression/benchmarks/goals) in the history right column.
   onSelectExercise?: (exercise: string) => void;
@@ -117,7 +124,12 @@ export default function JournalCard({
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
           {activity.intensity && <IntensityBadge value={activity.intensity} />}
-          <ActivityCardMenu activity={activity} siblings={mergeSiblings} />
+          <ActivityCardMenu
+            activity={activity}
+            siblings={mergeSiblings}
+            keeperLabel={keeperLabel}
+            units={units}
+          />
         </div>
       </div>
 

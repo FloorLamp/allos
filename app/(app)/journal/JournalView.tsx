@@ -21,6 +21,8 @@ import ExerciseDetailPanel from "@/components/ExerciseDetailPanel";
 import CardioDetailPanel from "@/components/CardioDetailPanel";
 import SportDetailPanel from "@/components/SportDetailPanel";
 import JournalCard, { type DisplayPart } from "./JournalCard";
+import type { MergeSibling } from "./ActivityCardMenu";
+import { detectFieldConflicts } from "@/lib/import-review/conflicts";
 
 export interface JournalCardData {
   activity: ActivityEditData;
@@ -41,6 +43,10 @@ export interface JournalCardData {
     // NULL until the row has been edited since creation.
     updatedAt: string | null;
   };
+  // The row's fold-field values (issue #100) — the compact payload the manual-merge
+  // conflict preview compares against a same-day sibling. Values are raw canonical
+  // numbers/strings straight off the activity row.
+  foldValues: Record<string, unknown>;
 }
 export interface DayGroup {
   date: string;
@@ -199,12 +205,27 @@ export default function JournalView({
   // Manual-merge targets per day (issue #64): all same-day activities keyed by date,
   // from the UNFILTERED groups so a type/search filter can't hide a legitimate
   // duplicate from the merge picker. Each card's own id is excluded at render.
+  // Carries each row's provenance label + fold values so the conflict preview
+  // (issue #100) can be computed per keeper/sibling pair at render.
   const mergeTargetsByDate = useMemo(() => {
-    const m = new Map<string, { id: number; title: string }[]>();
+    const m = new Map<
+      string,
+      {
+        id: number;
+        title: string;
+        sourceLabel: string;
+        foldValues: Record<string, unknown>;
+      }[]
+    >();
     for (const g of groups) {
       m.set(
         g.date,
-        g.cards.map((c) => ({ id: c.activity.id, title: c.activity.title }))
+        g.cards.map((c) => ({
+          id: c.activity.id,
+          title: c.activity.title,
+          sourceLabel: c.provenance.label,
+          foldValues: c.foldValues,
+        }))
       );
     }
     return m;
@@ -530,10 +551,21 @@ export default function JournalView({
                         fault={c.fault}
                         provenance={c.provenance}
                         // Manual-merge targets: the OTHER activities logged this
-                        // same day (issue #64), from the unfiltered day group.
-                        mergeSiblings={(
-                          mergeTargetsByDate.get(g.date) ?? []
-                        ).filter((o) => o.id !== c.activity.id)}
+                        // same day (issue #64), from the unfiltered day group, each
+                        // with the per-field conflicts vs this keeper (issue #100).
+                        mergeSiblings={(mergeTargetsByDate.get(g.date) ?? [])
+                          .filter((o) => o.id !== c.activity.id)
+                          .map((o): MergeSibling => ({
+                            id: o.id,
+                            title: o.title,
+                            sourceLabel: o.sourceLabel,
+                            conflicts: detectFieldConflicts(
+                              c.foldValues,
+                              o.foldValues
+                            ),
+                          }))}
+                        keeperLabel={c.provenance.label}
+                        units={units}
                         onSelectExercise={(name) =>
                           showDetail("exercise", name)
                         }

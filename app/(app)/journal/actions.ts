@@ -11,6 +11,7 @@ import {
   activityToken,
   pairSignature,
 } from "@/lib/import-review/detect";
+import { parseOverrideFields } from "@/lib/import-review/conflicts";
 import type { ActivityType } from "@/lib/types";
 import { getUnitPrefs } from "@/lib/settings";
 import { toKg, toKm } from "@/lib/units";
@@ -261,6 +262,10 @@ export async function mergeActivities(
   const keepId = Number(formData.get("keep_id"));
   const dropId = Number(formData.get("drop_id"));
   if (!keepId || !dropId || keepId === dropId) return { undoId: null };
+  // Conflict-preview overrides (issue #100): validated to real fold-field names
+  // only — the value for each is taken from the re-read discarded row, never the
+  // client. Empty for the common (no-conflict) one-click merge.
+  const overrideFields = parseOverrideFields(formData.get("overrides"));
 
   let undoId: number | null = null;
   const tx = db.transaction((): boolean => {
@@ -274,7 +279,7 @@ export async function mergeActivities(
     // sense within one day (the detector buckets by day too).
     if (!keep || !drop || keep.date !== drop.date) return false;
 
-    writeActivityFold(profile.id, keepId, keep, drop);
+    writeActivityFold(profile.id, keepId, keep, drop, overrideFields);
     const signature = pairSignature(
       activityToken(keep as { id: number; external_id: string | null }),
       activityToken(drop as { id: number; external_id: string | null })
