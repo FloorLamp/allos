@@ -121,7 +121,12 @@ describe("shouldQueueOffline", () => {
 });
 
 describe("FLOW_KINDS", () => {
-  it("is exactly the three queueable quick-log flows", () => {
-    expect([...FLOW_KINDS]).toEqual(["dose", "body-metric", "vitals"]);
+  it("is exactly the queueable quick-log flows", () => {
+    expect([...FLOW_KINDS]).toEqual([
+      "dose",
+      "skip-dose",
+      "body-metric",
+      "vitals",
+    ]);
   });
 });

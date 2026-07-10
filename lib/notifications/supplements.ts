@@ -9,6 +9,7 @@ import {
   getSupplements,
   getSupplementDoses,
   getTakenDoseIds,
+  getSkippedDoseIds,
   getActivitiesByDate,
   getActivityDates,
   getSupplementLogsInRange,
@@ -67,6 +68,7 @@ function gatherWindowDoses(
 
   const suppById = new Map(supplements.map((s) => [s.id, s]));
   const taken = getTakenDoseIds(profileId, date);
+  const skipped = getSkippedDoseIds(profileId, date);
   const activeSituations = new Set(getActiveSituations(profileId));
   const ctx = {
     isWorkoutDay: getActivitiesByDate(profileId, date).length > 0,
@@ -91,16 +93,19 @@ function gatherWindowDoses(
     if (bucketWindow(timeBucket(dose.time_of_day)) !== window) continue;
     // A dose is "due" on a past date when its supplement was due that day
     // (workout/situational logic); situations are only known as of now.
+    const dd = takenByDose.get(dose.id);
     const strip = doseStrip(
       windowDates,
       (d) =>
         isDueOn(supp, { isWorkoutDay: workoutDays.has(d), activeSituations }),
-      takenByDose.get(dose.id) ?? new Set<string>()
+      dd?.taken ?? new Set<string>(),
+      dd?.skipped ?? new Set<string>()
     );
     entries.push({
       dose,
       supp,
       taken: taken.has(dose.id),
+      skipped: skipped.has(dose.id),
       adherence: adherenceSummary(strip),
     });
   }
@@ -133,7 +138,9 @@ export function buildSupplementReminder(
   const date = today(profileId);
   const entries = collectWindowDoses(profileId, window, date);
   if (entries.length === 0) return null;
-  if (entries.every((e) => e.taken)) return null;
+  // Every dose resolved — taken OR deliberately skipped (#232) — means nothing
+  // is pending, so no reminder goes out (a skip stops re-nudging like a take).
+  if (entries.every((e) => e.taken || e.skipped)) return null;
   return renderWindowMessage(profileId, window, date, entries);
 }
 

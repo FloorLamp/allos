@@ -154,7 +154,7 @@ describe("buildWeeklyRecap", () => {
 
   it("computes adherence percentage from taken/due", () => {
     const recap = buildWeeklyRecap(
-      baseInput({ adherence: { taken: 12, due: 14 } })
+      baseInput({ adherence: { taken: 12, skipped: 0, due: 14 } })
     );
     const line = recap.lines.find((l) => l.key === "adherence")!;
     expect(line.value).toBe("86%");
@@ -208,7 +208,7 @@ describe("renderRecapMessage", () => {
     const recap = buildWeeklyRecap(
       baseInput({
         workouts: [{ date: "2026-07-08", type: "strength" }],
-        adherence: { taken: 7, due: 7 },
+        adherence: { taken: 7, skipped: 0, due: 7 },
       })
     );
     const msg = renderRecapMessage(recap, "Ada")!;

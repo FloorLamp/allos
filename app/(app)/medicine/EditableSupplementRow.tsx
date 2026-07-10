@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { IconCheck, IconFlame } from "@tabler/icons-react";
+import { IconFlame } from "@tabler/icons-react";
 import type { Supplement, SupplementDose, SupplementPair } from "@/lib/types";
 import { CONDITION_LABELS, FOOD_TIMING_HINTS } from "@/lib/supplement-schedule";
 import {
@@ -15,7 +15,7 @@ import {
   type DoseRate,
 } from "@/lib/refill";
 import SupplementForm from "./SupplementForm";
-import DoseToggleButton from "@/components/DoseToggleButton";
+import DoseStatusControl from "@/components/DoseStatusControl";
 import OverflowMenu, {
   MENU_ITEM,
   MENU_ITEM_DANGER,
@@ -34,6 +34,7 @@ export default function EditableSupplementRow({
   allSupplements,
   pairs,
   isTaken,
+  isSkipped,
   due,
   strip,
   trainingRestricted,
@@ -45,6 +46,7 @@ export default function EditableSupplementRow({
   allSupplements: { id: number; name: string }[];
   pairs: SupplementPair[];
   isTaken: boolean;
+  isSkipped: boolean;
   due: boolean;
   strip: AdherenceDot[];
   trainingRestricted: boolean;
@@ -123,21 +125,12 @@ export default function EditableSupplementRow({
     >
       <div className="flex min-w-0 flex-1 items-start gap-4">
         {!!s.active && due && (
-          <DoseToggleButton
+          <DoseStatusControl
             doseId={dose.id}
-            supplementId={s.id}
             taken={isTaken}
-            ariaLabel={(t) => (t ? "Mark not taken" : "Mark taken")}
-            className={(t) =>
-              `flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 text-sm transition ${
-                t
-                  ? "border-brand-600 bg-brand-600 text-white"
-                  : "border-black/10 text-transparent hover:border-brand-400 dark:border-white/10"
-              }`
-            }
-          >
-            <IconCheck className="h-4 w-4" stroke={2.5} />
-          </DoseToggleButton>
+            skipped={isSkipped}
+            variant="circle"
+          />
         )}
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
@@ -233,7 +226,7 @@ export default function EditableSupplementRow({
               {s.notes}
             </div>
           )}
-          {adherence.pct !== null && (
+          {(adherence.pct !== null || adherence.skippedDays > 0) && (
             <div
               className="mt-1.5 flex items-center gap-1.5 text-xs"
               title="Adherence over the last 14 days"
@@ -255,9 +248,26 @@ export default function EditableSupplementRow({
                   </span>
                 </>
               )}
-              <span className="text-slate-500 dark:text-slate-400">
-                {adherence.pct}% adherence
-              </span>
+              {adherence.pct !== null && (
+                <span className="text-slate-500 dark:text-slate-400">
+                  {adherence.pct}% adherence
+                </span>
+              )}
+              {adherence.skippedDays > 0 && (
+                <>
+                  {adherence.pct !== null && (
+                    <span
+                      aria-hidden="true"
+                      className="text-slate-300 dark:text-slate-600"
+                    >
+                      ·
+                    </span>
+                  )}
+                  <span className="text-amber-600 dark:text-amber-400">
+                    {adherence.skippedDays} skipped
+                  </span>
+                </>
+              )}
             </div>
           )}
         </div>

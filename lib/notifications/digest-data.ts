@@ -10,6 +10,7 @@ import {
   getSupplements,
   getSupplementDoses,
   getTakenDoseIds,
+  getSkippedDoseIds,
   getActivitiesByDate,
   getFrequencyTargetProgress,
 } from "../queries";
@@ -128,11 +129,15 @@ export function gatherDigestInput(
     })
   );
   const yDue = dueDoseIds(yd);
-  let adherence: { taken: number; due: number } | null = null;
+  let adherence: { taken: number; skipped: number; due: number } | null = null;
   if (yDue.length > 0) {
     const taken = getTakenDoseIds(profileId, yd);
+    const skipped = getSkippedDoseIds(profileId, yd);
     adherence = {
       taken: yDue.filter((id) => taken.has(id)).length,
+      // Deliberate skips (#232) are shown alongside taken and excluded from the
+      // percentage denominator (see buildDigest).
+      skipped: yDue.filter((id) => skipped.has(id)).length,
       due: yDue.length,
     };
   }

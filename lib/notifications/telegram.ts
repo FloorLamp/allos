@@ -36,12 +36,24 @@ export function renderMessageHtml(msg: NotificationMessage): string {
   return `<b>${esc(msg.title)}</b>\n${esc(msg.body)}`;
 }
 
-// One button per row keeps long labels readable. Empty when the message has no
-// actions (e.g. a completed session).
+// One button per row keeps long labels readable, EXCEPT that consecutive actions
+// sharing a `row` group key sit side by side on one row (#232 — a dose's ✅ take +
+// ⏭ skip). Empty when the message has no actions (e.g. a completed session).
 export function messageKeyboard(msg: NotificationMessage): InlineKeyboard {
-  return (msg.actions ?? []).map((a) => [
-    { text: a.label, callback_data: a.data },
-  ]);
+  const rows: InlineKeyboard = [];
+  let prevRow: string | undefined;
+  for (const a of msg.actions ?? []) {
+    const btn = { text: a.label, callback_data: a.data };
+    // Merge into the previous row only when both carry the SAME defined group
+    // key; an undefined `row` always starts its own row.
+    if (a.row !== undefined && a.row === prevRow && rows.length > 0) {
+      rows[rows.length - 1].push(btn);
+    } else {
+      rows.push([btn]);
+    }
+    prevRow = a.row;
+  }
+  return rows;
 }
 
 // POST to a Bot API method; throw on transport or API error (Telegram returns

@@ -2,17 +2,20 @@
 // the webhook route and the getUpdates poller both delegate here, so both paths
 // get identical profile-scoping and verification.
 
-import { markDoseTaken } from "../queries";
+import { markDoseTaken, markDoseSkipped } from "../queries";
 import { getProfilesByTelegramChatId } from "../settings";
 import {
   type AllCallback,
+  type TakeCallback,
   OUTDATED_MESSAGE_TEXT,
   parseAllCallback,
+  parseSkipCallback,
   parseTakeCallback,
   removeButton,
   resolveTapProfile,
   tapAnswerText,
-  tapLogged,
+  tapResolved,
+  tapSkipAnswerText,
 } from "./callback-data";
 import { collectWindowDoses, windowSessionForDose } from "./supplements";
 import { renderWindowMessage } from "./supplement-format";
@@ -35,13 +38,32 @@ export async function handleCallbackQuery(
     return;
   }
 
+  // A dose tap is either ✅ take or ⏭ skip (#232); both carry the same token
+  // shape and share the rebuild path, differing only in which write they apply
+  // and how they answer.
   const take = parseTakeCallback(cq.data);
-  if (!take) {
-    // Unknown/malformed token: ack so the client stops the spinner, do nothing.
-    await answerCallbackQuery(cq.id);
+  if (take) {
+    await handleDoseTap(cq, take, "take");
+    return;
+  }
+  const skip = parseSkipCallback(cq.data);
+  if (skip) {
+    await handleDoseTap(cq, skip, "skip");
     return;
   }
 
+  // Unknown/malformed token: ack so the client stops the spinner, do nothing.
+  await answerCallbackQuery(cq.id);
+}
+
+// Apply a single ✅ take or ⏭ skip tap: resolve the acting profile from the chat,
+// run the verified write, answer honestly from the outcome union, then rebuild
+// the session message so resolved doses drop their buttons.
+async function handleDoseTap(
+  cq: TelegramCallbackQuery,
+  tap: TakeCallback,
+  kind: "take" | "skip"
+): Promise<void> {
   // Resolve WHO tapped from the chat id. A chat can be shared by several profiles
   // (a family group), so pull every profile mapped to it and let the button
   // token disambiguate — the token's profile id is trusted only when it's one of
@@ -49,7 +71,7 @@ export async function handleCallbackQuery(
   const chatId = cq.message?.chat?.id;
   const profileId =
     chatId != null
-      ? resolveTapProfile(take, getProfilesByTelegramChatId(String(chatId)))
+      ? resolveTapProfile(tap, getProfilesByTelegramChatId(String(chatId)))
       : null;
   if (profileId == null) {
     // A chat that maps to no configured profile (or a token minted for a
@@ -59,13 +81,19 @@ export async function handleCallbackQuery(
     return;
   }
 
-  // markDoseTaken independently verifies the dose → supplement → profile chain
-  // before logging, so a forged dose id from another profile is rejected there.
-  // The message the button lives in is a frozen snapshot — the dose may have
-  // been deleted/retired by an edit, or its item paused, since it was sent — so
-  // answer with what ACTUALLY happened rather than an unconditional "Logged".
-  const outcome = markDoseTaken(profileId, take.doseId, take.suppId, take.date);
-  await answerCallbackQuery(cq.id, tapAnswerText(outcome));
+  // markDoseTaken/markDoseSkipped independently verify the dose → supplement →
+  // profile chain before writing, so a forged dose id from another profile is
+  // rejected there. The message the button lives in is a frozen snapshot — the
+  // dose may have been deleted/retired by an edit, or its item paused, since it
+  // was sent — so answer with what ACTUALLY happened, never unconditionally.
+  const outcome =
+    kind === "take"
+      ? markDoseTaken(profileId, tap.doseId, tap.suppId, tap.date)
+      : markDoseSkipped(profileId, tap.doseId, tap.suppId, tap.date);
+  await answerCallbackQuery(
+    cq.id,
+    kind === "take" ? tapAnswerText(outcome) : tapSkipAnswerText(outcome)
+  );
 
   const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
   const messageId = cq.message?.message_id;
@@ -74,13 +102,14 @@ export async function handleCallbackQuery(
   if (chatId == null || messageId == null || rows.length === 0) return;
 
   // Rebuild the whole message from current state so it reflects what's now been
-  // taken this session; the final tap yields a completion summary (no buttons).
-  const session = windowSessionForDose(profileId, take.doseId, take.date);
+  // taken/skipped this session; the final tap yields a completion summary (no
+  // buttons).
+  const session = windowSessionForDose(profileId, tap.doseId, tap.date);
   if (session && session.entries.length > 0) {
     const msg = renderWindowMessage(
       profileId,
       session.window,
-      take.date,
+      tap.date,
       session.entries
     );
     await editMessageText(chatId, messageId, renderMessageHtml(msg), {
@@ -93,14 +122,14 @@ export async function handleCallbackQuery(
   // Fallback: the tapped dose is gone (deleted/retired) or no longer due
   // (paused supplement / ended situation), so there's no session view to
   // rebuild — just drop the tapped button. Once none remain, the closing text
-  // must match the truth: "All done" only when this tap actually logged;
-  // otherwise say the reminder is stale so the user knows nothing was recorded.
+  // must match the truth: "All done" only when this tap actually resolved the
+  // dose; otherwise say the reminder is stale so the user knows nothing changed.
   const remaining = removeButton(rows, cq.data as string);
   if (remaining.length === 0) {
     await editMessageText(
       chatId,
       messageId,
-      tapLogged(outcome) ? "All done 💊✅" : OUTDATED_MESSAGE_TEXT
+      tapResolved(outcome) ? "All done 💊✅" : OUTDATED_MESSAGE_TEXT
     );
   } else {
     await editMessageReplyMarkup(chatId, messageId, remaining);
@@ -133,8 +162,11 @@ async function handleAllTaken(
   const entries = collectWindowDoses(profileId, all.window, all.date);
   let logged = 0;
   for (const e of entries) {
+    // A deliberately-skipped dose (#232) is already resolved — "✅ All" marks the
+    // remaining PENDING doses taken and leaves skips alone.
     if (
       !e.taken &&
+      !e.skipped &&
       markDoseTaken(profileId, e.dose.id, e.supp.id, all.date) === "logged"
     ) {
       logged++;
