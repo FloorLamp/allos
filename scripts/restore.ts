@@ -4,6 +4,9 @@
 //   npm run restore -- <snapshot.db>   # RESTORE the named snapshot to the live DB
 //   npm run restore -- <snapshot.db> --yes    # skip the confirmation prompt
 //   npm run restore -- <snapshot.db> --force  # also override safety refusals
+//   npm run restore -- --from <dir> [<snapshot.db>]  # list/restore from an
+//                                       # OFF-VOLUME copy (BACKUP_DEST_DIR mirror,
+//                                       # issue #130); bare --from uses BACKUP_DEST_DIR
 //
 // Restore is deliberate and safe:
 //   1. VERIFY the chosen snapshot (PRAGMA integrity_check) before trusting it.
@@ -27,8 +30,10 @@ import Database from "better-sqlite3";
 import { dbFilePath } from "../lib/db";
 import {
   backupsDir,
+  backupDestDir,
   listBackupNames,
   readVerification,
+  uploadsDir,
   verifySnapshot,
 } from "../lib/backup";
 import { interpretIntegrityRows, decideRestore } from "../lib/backup-verify";
@@ -39,17 +44,17 @@ function fmtBytes(n: number): string {
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-// Print every snapshot with size + last-known verification status.
-function list() {
-  const names = listBackupNames();
+// Print every snapshot in `dir` with size + last-known verification status.
+function list(dir: string) {
+  const names = listBackupNames(dir);
   if (names.length === 0) {
-    console.log("No snapshots found in", backupsDir());
+    console.log("No snapshots found in", dir);
     return;
   }
-  console.log(`Snapshots in ${backupsDir()} (newest first):\n`);
+  console.log(`Snapshots in ${dir} (newest first):\n`);
   for (const name of names) {
-    const st = fs.statSync(path.join(backupsDir(), name));
-    const v = readVerification(name);
+    const st = fs.statSync(path.join(dir, name));
+    const v = readVerification(name, dir);
     const status = v
       ? v.integrity === "ok"
         ? "verified ok"
@@ -103,8 +108,11 @@ function confirm(question: string): Promise<boolean> {
   });
 }
 
-async function restore(name: string, opts: { force: boolean; yes: boolean }) {
-  const dir = backupsDir();
+async function restore(
+  name: string,
+  opts: { force: boolean; yes: boolean; sourceDir: string }
+) {
+  const dir = opts.sourceDir;
   const snapPath = path.join(dir, name);
   if (!fs.existsSync(snapPath)) {
     console.error(`Snapshot not found: ${snapPath}`);
@@ -113,7 +121,7 @@ async function restore(name: string, opts: { force: boolean; yes: boolean }) {
   }
 
   // 1. Verify the snapshot now (fresh check, also refreshes its sidecar).
-  const v = verifySnapshot(name);
+  const v = verifySnapshot(name, dir);
   const snapshotOk = v.integrity === "ok";
   console.log(
     `Snapshot integrity: ${snapshotOk ? "ok" : `FAILED — ${v.detail ?? ""}`}`
@@ -201,21 +209,72 @@ async function restore(name: string, opts: { force: boolean; yes: boolean }) {
   }
 
   console.log(`\nRestored ${name} -> ${livePath}. Start the app to use it.`);
+
+  // Uploads live on disk (data/uploads/**), not in the SQLite snapshot, so a
+  // DB-only restore leaves medical_documents rows pointing at missing files. When
+  // restoring from an off-volume copy (issue #130) that mirror carries the uploads
+  // — point the operator at putting them back.
+  const uploads = uploadsDir();
+  const destUploads = path.join(dir, "uploads");
+  if (dir !== backupsDir() && fs.existsSync(destUploads)) {
+    console.log(
+      `\nUploads: the off-volume copy includes medical files. Restore them too:\n` +
+        `  cp -a ${path.join(destUploads, ".")} ${uploads}/`
+    );
+  }
   process.exit(0);
 }
 
+// Resolve the source directory from --from: `--from=<dir>` / `--from <dir>` names an
+// explicit directory (an off-volume mirror), a bare `--from` uses BACKUP_DEST_DIR,
+// and no flag means the primary data/backups directory. Returns the resolved dir
+// plus the args with the flag (+ its value) consumed, so positional parsing of the
+// snapshot name isn't confused by the directory value.
+function resolveSourceDir(args: string[]): {
+  dir: string;
+  rest: string[];
+} {
+  const rest: string[] = [];
+  let dir: string | null = null;
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a.startsWith("--from=")) {
+      dir = a.slice("--from=".length);
+      continue;
+    }
+    if (a === "--from") {
+      const next = args[i + 1];
+      if (next && !next.startsWith("-")) {
+        dir = next;
+        i++;
+      } else {
+        dir = backupDestDir() ?? "";
+      }
+      continue;
+    }
+    rest.push(a);
+  }
+  if (dir !== null && dir.trim() === "") {
+    console.error(
+      "--from was given with no directory and BACKUP_DEST_DIR is not set."
+    );
+    process.exit(2);
+  }
+  return { dir: dir ?? backupsDir(), rest };
+}
+
 async function main() {
-  const args = process.argv.slice(2);
-  const force = args.includes("--force");
-  const yes = args.includes("--yes") || args.includes("-y") || force;
-  const positional = args.filter((a) => !a.startsWith("-"));
+  const { dir: sourceDir, rest } = resolveSourceDir(process.argv.slice(2));
+  const force = rest.includes("--force");
+  const yes = rest.includes("--yes") || rest.includes("-y") || force;
+  const positional = rest.filter((a) => !a.startsWith("-"));
   const target = positional[0];
 
   if (!target || target === "list") {
-    list();
+    list(sourceDir);
     process.exit(0);
   }
-  await restore(target, { force, yes });
+  await restore(target, { force, yes, sourceDir });
 }
 
 main().catch((e) => {

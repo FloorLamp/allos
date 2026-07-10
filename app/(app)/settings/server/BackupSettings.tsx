@@ -12,10 +12,18 @@ export default function BackupSettings({
   settings,
   lastBackup,
   lastError,
+  offsite,
 }: {
   settings: BackupSettings;
   lastBackup: { name: string; size: string; when: string } | null;
   lastError: string | null;
+  // Off-volume replication status (#130): whether BACKUP_DEST_DIR is configured
+  // (env-driven, not editable here) plus the last off-volume copy time / error.
+  offsite: {
+    configured: boolean;
+    lastAt: string | null;
+    lastError: string | null;
+  };
 }) {
   const router = useRouter();
   const [enabled, setEnabled] = useState(settings.enabled);
@@ -116,11 +124,14 @@ export default function BackupSettings({
       )}
 
       <p className="text-xs text-amber-600 dark:text-amber-400">
-        Note: uploaded medical files live on disk under{" "}
-        <code>data/uploads/</code>, not in the database — this snapshot does not
-        include them. Back up the whole <code>DATA_DIR</code> (DB + uploads) for
-        a complete restore. To restore the database: stop the container, replace{" "}
-        <code>data/allos.db</code> with a snapshot, and start it again.
+        Snapshots land under <code>DATA_DIR</code> — the <em>same</em> volume as
+        the live database — so a disk/volume loss takes the database and every
+        snapshot together, and uploaded medical files (
+        <code>data/uploads/</code>) aren&apos;t in a snapshot at all. Set{" "}
+        <code>BACKUP_DEST_DIR</code> to a{" "}
+        <strong>second mounted directory</strong> (a NAS, another disk, a synced
+        folder) to copy each verified snapshot off-volume and mirror uploads
+        there — see the README &ldquo;Backups&rdquo; section.
       </p>
 
       <div className="rounded-lg bg-slate-50 p-3 text-xs text-slate-500 dark:bg-slate-800/50 dark:text-slate-400">
@@ -135,6 +146,35 @@ export default function BackupSettings({
         {lastError && (
           <div className="mt-1 text-rose-600 dark:text-rose-400">
             Last error: {lastError}
+          </div>
+        )}
+      </div>
+
+      <div
+        data-testid="backup-offsite"
+        className="rounded-lg bg-slate-50 p-3 text-xs text-slate-500 dark:bg-slate-800/50 dark:text-slate-400"
+      >
+        <span className="font-medium text-slate-600 dark:text-slate-300">
+          Off-volume copy:
+        </span>{" "}
+        {offsite.configured ? (
+          <>
+            enabled (<code>BACKUP_DEST_DIR</code>).{" "}
+            {offsite.lastAt ? (
+              <>Last off-volume backup: {offsite.lastAt}.</>
+            ) : (
+              <>No off-volume backup yet.</>
+            )}
+          </>
+        ) : (
+          <>
+            not configured — set <code>BACKUP_DEST_DIR</code> to a second mount
+            so backups survive loss of the primary volume.
+          </>
+        )}
+        {offsite.lastError && (
+          <div className="mt-1 text-rose-600 dark:text-rose-400">
+            Last off-volume error: {offsite.lastError}
           </div>
         )}
       </div>

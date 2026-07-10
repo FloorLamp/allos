@@ -30,6 +30,11 @@ import {
   isLiveIntegrityCheckDue,
   verificationSidecarName,
 } from "./backup-verify";
+import {
+  MirrorEntry,
+  planUploadMirror,
+  resolveOffsiteDir,
+} from "./backup-offsite";
 import { createLogger } from "./log";
 
 const log = createLogger("backup");
@@ -39,15 +44,47 @@ export function backupsDir(): string {
   return path.join(process.cwd(), "data", "backups");
 }
 
+// The uploaded-medical-files root (data/uploads). These files live on disk, not in
+// the SQLite snapshot, so the off-volume durability path mirrors them (issue #130).
+export function uploadsDir(): string {
+  return path.join(process.cwd(), "data", "uploads");
+}
+
+// The operator-configured OFF-VOLUME backup destination (BACKUP_DEST_DIR), or null
+// when unset — a second directory the operator mounts (NAS / other disk / synced
+// folder) so a loss of the DATA_DIR volume doesn't take every backup with it.
+export function backupDestDir(): string | null {
+  return resolveOffsiteDir(process.env.BACKUP_DEST_DIR);
+}
+
+// Whether an off-volume destination is configured (surfaced read-only in the admin
+// backup card so an operator can see durability is / isn't in effect).
+export function isOffsiteConfigured(): boolean {
+  return backupDestDir() !== null;
+}
+
+// ISO timestamp of the last successful off-volume replication, or null.
+export function getLastOffsiteBackupAt(): string | null {
+  return getSetting("backup_offsite_last_at") ?? null;
+}
+
+// The last recorded off-volume replication error (cleared on the next success), or
+// null. Recorded under its own key so an off-volume failure is visible without
+// masking (or being masked by) the primary snapshot's own `backup_last_error`.
+export function getLastOffsiteError(): string | null {
+  return getSetting("backup_offsite_last_error") || null;
+}
+
 export interface BackupInfo {
   name: string;
   size: number; // bytes
   mtimeMs: number;
 }
 
-// All snapshot files currently on disk (filenames only), newest first by name.
-export function listBackupNames(): string[] {
-  const dir = backupsDir();
+// All snapshot files currently in `dir` (filenames only), newest first by name.
+// Defaults to the primary backup directory; the restore tool passes an off-volume
+// directory (`--from`) to list snapshots replicated to a secondary destination.
+export function listBackupNames(dir: string = backupsDir()): string[] {
   if (!fs.existsSync(dir)) return [];
   return fs
     .readdirSync(dir)
@@ -57,11 +94,11 @@ export function listBackupNames(): string[] {
 }
 
 // The most recent snapshot's metadata, or null when none exist.
-export function getLastBackup(): BackupInfo | null {
-  const names = listBackupNames();
+export function getLastBackup(dir: string = backupsDir()): BackupInfo | null {
+  const names = listBackupNames(dir);
   if (names.length === 0) return null;
   const name = names[0];
-  const st = fs.statSync(path.join(backupsDir(), name));
+  const st = fs.statSync(path.join(dir, name));
   return { name, size: st.size, mtimeMs: st.mtimeMs };
 }
 
@@ -75,9 +112,10 @@ export function getLastBackupError(): string | null {
 // when absent/unparseable. Used by the restore tooling to show each snapshot's
 // last-known integrity status without re-opening it.
 export function readVerification(
-  snapshotName: string
+  snapshotName: string,
+  dir: string = backupsDir()
 ): BackupVerification | null {
-  const p = path.join(backupsDir(), verificationSidecarName(snapshotName));
+  const p = path.join(dir, verificationSidecarName(snapshotName));
   try {
     if (!fs.existsSync(p)) return null;
     const parsed = JSON.parse(fs.readFileSync(p, "utf8"));
@@ -98,8 +136,11 @@ export function readVerification(
 // (e.g. the file can't be opened) counts as a failure so a corrupt snapshot is
 // never mistaken for a good one. The read-only open guarantees we can't mutate
 // the snapshot we're verifying.
-export function verifySnapshot(snapshotName: string): BackupVerification {
-  const full = path.join(backupsDir(), snapshotName);
+export function verifySnapshot(
+  snapshotName: string,
+  dir: string = backupsDir()
+): BackupVerification {
+  const full = path.join(dir, snapshotName);
   let result: { ok: boolean; detail?: string };
   try {
     const snap = new Database(full, { readonly: true, fileMustExist: true });
@@ -118,7 +159,7 @@ export function verifySnapshot(snapshotName: string): BackupVerification {
   };
   try {
     fs.writeFileSync(
-      path.join(backupsDir(), verificationSidecarName(snapshotName)),
+      path.join(dir, verificationSidecarName(snapshotName)),
       JSON.stringify(verification, null, 2)
     );
   } catch (e) {
@@ -169,6 +210,135 @@ export function runLiveIntegrityCheck(now: Date = new Date()): {
     });
     return { ran: true, ok: false };
   }
+}
+
+// Walk a directory tree and return every file as a { rel, size } entry (rel is the
+// path relative to `root`). Missing root → empty list. Used to diff the uploads
+// tree against its off-volume mirror; source and destination are both walked here
+// so their `rel` strings compare directly.
+export function listUploadFiles(root: string): MirrorEntry[] {
+  if (!fs.existsSync(root)) return [];
+  const out: MirrorEntry[] = [];
+  const walk = (dir: string, prefix: string): void => {
+    for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+      const abs = path.join(dir, ent.name);
+      const rel = prefix ? path.join(prefix, ent.name) : ent.name;
+      if (ent.isDirectory()) {
+        walk(abs, rel);
+      } else if (ent.isFile()) {
+        try {
+          out.push({ rel, size: fs.statSync(abs).size });
+        } catch {
+          // A file that vanished between readdir and stat (concurrent prune) is
+          // simply skipped — it'll be picked up on the next backup if it returns.
+        }
+      }
+    }
+  };
+  walk(root, "");
+  return out;
+}
+
+export interface OffsiteResult {
+  replicated: boolean; // false when no destination is configured
+  dest?: string;
+  snapshotCopied?: boolean;
+  uploadsCopied?: number; // files copied by the incremental uploads mirror
+  pruned?: number;
+}
+
+// Replicate a verified snapshot OFF-VOLUME (issue #130). When BACKUP_DEST_DIR is
+// configured (a second mounted directory), copy the just-written snapshot + its
+// verification sidecar into the destination root (same filenames, so
+// `restore --from <dest>` lists and restores them directly), prune the destination
+// to the same retention policy, and mirror the medical uploads tree so a restore
+// from the secondary volume also recovers the on-disk files. Immutable,
+// content-hashed uploads make the mirror cheap (only new/size-changed files copy),
+// keeping this safe to run on every (daily) snapshot.
+//
+// This performs fs side effects but touches NO settings — the caller records the
+// `backup_offsite_last_*` markers from the returned result / a thrown error — so it
+// stays unit-testable against temp dirs (lib/__db_tests__/backup-offsite.test.ts).
+// `opts` lets tests inject the destination / source roots and retention; production
+// callers pass none and get the real dirs + configured retention.
+export function replicateToOffsite(
+  snapshotName: string,
+  opts: {
+    destDir?: string | null;
+    sourceBackupsDir?: string;
+    uploadsRoot?: string;
+    keepDaily?: number;
+    keepWeekly?: number;
+  } = {}
+): OffsiteResult {
+  const dest = opts.destDir !== undefined ? opts.destDir : backupDestDir();
+  if (!dest) return { replicated: false };
+
+  const srcDir = opts.sourceBackupsDir ?? backupsDir();
+  fs.mkdirSync(dest, { recursive: true });
+
+  // 1. Copy the verified snapshot + its verification sidecar into the dest root.
+  const snapSrc = path.join(srcDir, snapshotName);
+  fs.copyFileSync(snapSrc, path.join(dest, snapshotName));
+  const sidecar = verificationSidecarName(snapshotName);
+  const sidecarSrc = path.join(srcDir, sidecar);
+  if (fs.existsSync(sidecarSrc)) {
+    fs.copyFileSync(sidecarSrc, path.join(dest, sidecar));
+  }
+
+  // 2. Prune the destination to the same retention as the primary volume, so the
+  //    off-volume copy doesn't grow unbounded. Never prune the snapshot we just
+  //    copied.
+  let keepDaily = opts.keepDaily;
+  let keepWeekly = opts.keepWeekly;
+  if (keepDaily === undefined || keepWeekly === undefined) {
+    const cfg = getBackupSettings();
+    keepDaily = keepDaily ?? cfg.keepDaily;
+    keepWeekly = keepWeekly ?? cfg.keepWeekly;
+  }
+  const { prune } = planBackupRotation(listBackupNames(dest), {
+    keepDaily,
+    keepWeekly,
+  });
+  let pruned = 0;
+  for (const p of prune) {
+    if (p === snapshotName) continue;
+    try {
+      fs.unlinkSync(path.join(dest, p));
+      const sc = path.join(dest, verificationSidecarName(p));
+      if (fs.existsSync(sc)) fs.unlinkSync(sc);
+      pruned++;
+    } catch (e) {
+      log.warn("off-volume prune failed", {
+        file: p,
+        err: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+
+  // 3. Mirror the uploads tree (medical files are PHI and live only on disk).
+  //    Append-only, incremental: copy only files missing (or size-changed) at the
+  //    destination — content-hashed immutable files mean same-name ⇒ same content.
+  const uploadsRoot = opts.uploadsRoot ?? uploadsDir();
+  const destUploads = path.join(dest, "uploads");
+  const toCopy = planUploadMirror(
+    listUploadFiles(uploadsRoot),
+    listUploadFiles(destUploads)
+  );
+  for (const rel of toCopy) {
+    const from = path.join(uploadsRoot, rel);
+    const to = path.join(destUploads, rel);
+    fs.mkdirSync(path.dirname(to), { recursive: true });
+    fs.copyFileSync(from, to);
+  }
+
+  return {
+    replicated: true,
+    dest,
+    snapshotCopied: true,
+    uploadsCopied: toCopy.length,
+    pruned,
+  };
 }
 
 // Take one snapshot now, verify its integrity, and prune per the retention
@@ -255,6 +425,31 @@ export function performBackup(): {
     pruned: prune.length,
     integrity: "ok",
   });
+
+  // Off-volume replication (issue #130): with BACKUP_DEST_DIR configured, copy the
+  // verified snapshot + mirror uploads to a second mount. A failure here NEVER
+  // fails the primary backup (which already succeeded on the main volume) — it's
+  // recorded under `backup_offsite_last_error` so staleness stays visible, then
+  // swallowed.
+  try {
+    const offsite = replicateToOffsite(name);
+    if (offsite.replicated) {
+      setSetting("backup_offsite_last_at", new Date().toISOString());
+      setSetting("backup_offsite_last_error", "");
+      log.info("off-volume backup complete", {
+        dest: offsite.dest,
+        uploadsCopied: offsite.uploadsCopied,
+        pruned: offsite.pruned,
+      });
+    }
+  } catch (e) {
+    const err = e instanceof Error ? e.message : String(e);
+    setSetting("backup_offsite_last_error", err);
+    log.error("off-volume backup failed", {
+      err: e instanceof Error ? e : err,
+    });
+  }
+
   return { name, size, verification };
 }
 

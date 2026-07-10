@@ -30,6 +30,15 @@ services:
     #
     # Prefer the named-volume alternative if you don't need direct host file access:
     #   volumes: [ "allos-data:/app/data" ]   (and add the top-level `volumes:` block)
+    #
+    # OFF-VOLUME BACKUPS (issue #130): mount a SECOND directory on a DIFFERENT
+    # volume (a NAS / other disk / synced folder) and set BACKUP_DEST_DIR to its
+    # in-container path. After each verified snapshot the app copies it there and
+    # mirrors data/uploads/, so a loss of the DATA_DIR volume doesn't take every
+    # backup with it. Add the SAME two lines to allos-notify below (that sidecar
+    # drives the nightly backup tick). It holds multi-profile PHI — keep the
+    # destination operator-controlled.
+    #   - "/mnt/nas/allos-backup:/backup"     # BACKUP_DEST_DIR=/backup (see .env)
     volumes:
       - "${DATA_DIR:-./data}:/app/data"
     restart: unless-stopped
@@ -66,6 +75,9 @@ services:
       NODE_ENV: production
       # Timezone comes from the DB setting (shared with the app via the bind mount),
       # so the sidecar fires reminders on the user's clock without a TZ env.
+    # This sidecar drives the nightly backup tick, so the off-volume mount +
+    # BACKUP_DEST_DIR (see the allos service above / .env) belong here too:
+    #   - "/mnt/nas/allos-backup:/backup"     # BACKUP_DEST_DIR=/backup
     volumes:
       - "${DATA_DIR:-./data}:/app/data"
     depends_on:
