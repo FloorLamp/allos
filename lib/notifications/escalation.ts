@@ -52,6 +52,22 @@ export interface EscalationDue {
   escalateChatId: string | null;
 }
 
+// The hourly tick's clock never advances past 23:00: nowMinutes = hour*60 with
+// hour ∈ [0,23], so its maximum is 23*60 = 1380. An escalation threshold beyond
+// that final tick is unreachable and the escalation silently never fires — the
+// shipped Bedtime slot (22:00) with the default 120-min wait computes 22*60+120 =
+// 1440 (midnight). We clamp the effective threshold to the day's last tick so a
+// late-evening critical dose still escalates once, at 23:00, instead of never.
+//
+// We deliberately do NOT wrap the escalation past midnight to recover it the next
+// day: the per-dose escalation dedup marker (notify_last_esc_<dose>, set by
+// ./escalate) is keyed only by the calendar date, so an escalation carried into
+// and marked on the new day would then suppress that day's OWN real escalation —
+// the same date-keyed drift ./schedule.ts avoids by not wrapping its retry hour.
+// Clamping keeps every escalation same-day, so the existing once-per-episode
+// dedup stays intact with no cross-midnight ambiguity. (#189)
+const LAST_TICK_MINUTES = 23 * 60;
+
 export function escalationsDue(
   input: EscalationDecisionInput
 ): EscalationDue[] {
@@ -64,7 +80,13 @@ export function escalationsDue(
     if (!sent.has(c.window)) continue; // reminder never went out
     if (confirmed.has(c.doseId)) continue; // already taken
     if (escalated.has(c.doseId)) continue; // already escalated today
-    if (input.nowMinutes < c.slotHour * 60 + c.escalateAfterMin) continue;
+    // Clamp so a slotHour+escalateAfterMin past the day's last tick still fires
+    // at 23:00 rather than never (see LAST_TICK_MINUTES). #189
+    const threshold = Math.min(
+      c.slotHour * 60 + c.escalateAfterMin,
+      LAST_TICK_MINUTES
+    );
+    if (input.nowMinutes < threshold) continue;
     out.push({
       doseId: c.doseId,
       supplementId: c.supplementId,
