@@ -30,10 +30,7 @@ import {
   type PreventiveSummary,
 } from "../preventive-status";
 import { preventiveAssessmentToUpcomingItem } from "../preventive-upcoming";
-import {
-  scheduledMatchForRule,
-  type KindedAppointment,
-} from "../preventive-appointment";
+import { scheduledMatchForRule } from "../preventive-appointment";
 import {
   inferPreventiveSatisfactions,
   isCompletedStatus,
@@ -63,7 +60,11 @@ import {
   getTakenDoseIds,
   getRefillRates,
 } from "./intake";
-import { getAppointments, getScheduledAppointments } from "./appointments";
+import {
+  getAppointments,
+  getScheduledAppointments,
+  kindedScheduled,
+} from "./appointments";
 import {
   getActivitiesByDate,
   getGoals,
@@ -361,18 +362,6 @@ export function clearPreventiveOverride(
   db.prepare(
     "DELETE FROM preventive_overrides WHERE profile_id = ? AND rule_key = ?"
   ).run(profileId, ruleKey);
-}
-
-// A profile's still-scheduled appointments reduced to the shape the pure
-// scheduled-match uses (kind + date + status). Profile-scoped via
-// getScheduledAppointments. Used to quiet a due preventive item that already has a
-// matching-kind visit booked (issue #85).
-function kindedScheduled(profileId: number): KindedAppointment[] {
-  return getScheduledAppointments(profileId).map((a) => ({
-    kind: a.kind,
-    scheduledAt: a.scheduled_at,
-    status: a.status,
-  }));
 }
 
 // Preventive well-visits and screenings that are due/overdue for the profile

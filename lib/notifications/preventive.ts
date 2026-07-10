@@ -16,6 +16,8 @@
 
 import { today } from "../db";
 import { assessProfilePreventive } from "../queries/upcoming";
+import { kindedScheduled } from "../queries/appointments";
+import { scheduledMatchForRule } from "../preventive-appointment";
 import {
   planPreventiveNudges,
   type PreventiveNudgeItem,
@@ -91,7 +93,20 @@ export async function runPreventive(
     MARKER_PREFIX
   ).map(ruleKeyFromMarker);
 
-  const { toSend, toClear } = planPreventiveNudges(actionable, markedRuleKeys);
+  // Rules already covered by a future matching-kind booking (issue #183) — the SAME
+  // profile-scoped read the Upcoming builder uses to quiet an item to "Scheduled"
+  // (issue #85), so the push never contradicts the page. A covered rule is held out
+  // of the nudge without burning its once-per-episode marker.
+  const scheduled = kindedScheduled(profileId);
+  const coveredRuleKeys = actionable
+    .filter((it) => scheduledMatchForRule(it.ruleKey, scheduled, td) != null)
+    .map((it) => it.ruleKey);
+
+  const { toSend, toClear } = planPreventiveNudges(
+    actionable,
+    markedRuleKeys,
+    coveredRuleKeys
+  );
 
   // End any episodes that are no longer due first — cheap, and it never depends on
   // a successful send.
