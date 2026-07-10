@@ -5,7 +5,7 @@ import { resolveTimezone } from "./timezone";
 import { dateStrInTz, shiftDateStr } from "./date";
 import { runMigrations } from "./migrations/runner";
 import { bootTasks } from "./migrations/boot-tasks";
-import { up as baselineUp } from "./migrations/versions/001-baseline";
+import { MIGRATIONS } from "./migrations/versions";
 
 // Single shared connection across hot-reloads in dev.
 const globalForDb = globalThis as unknown as { __healthDb?: Database.Database };
@@ -53,14 +53,17 @@ function createDb(): Database.Database {
   return db;
 }
 
-// DB-tier test entry point. Applies the full current schema (the baseline's
-// CREATE ... IF NOT EXISTS set) followed by the per-boot tasks, UNCONDITIONALLY
-// (not version-gated). The production boot path (createDb) uses the version-gated
-// `runMigrations` + `bootTasks` instead; this wrapper exists for the
-// lib/__db_tests__ suites that build the schema on their own in-memory handle
-// (and re-run it to prove the replay is a no-op) without touching user_version.
+// DB-tier test entry point. Applies the full current schema — EVERY migration's
+// up() in order (baseline's CREATE ... IF NOT EXISTS set plus each appended
+// migration) followed by the per-boot tasks — UNCONDITIONALLY (not version-gated).
+// The production boot path (createDb) uses the version-gated `runMigrations` +
+// `bootTasks` instead; this wrapper exists for the lib/__db_tests__ suites that
+// build the schema on their own in-memory handle (and re-run it to prove the replay
+// is a no-op) without touching user_version. Every migration is written to be
+// re-runnable (CREATE IF NOT EXISTS / guarded ADD COLUMN), so replaying the whole
+// list is a schema no-op.
 export function migrate(db: Database.Database): void {
-  baselineUp(db);
+  for (const m of MIGRATIONS) m.up(db);
   bootTasks(db);
 }
 

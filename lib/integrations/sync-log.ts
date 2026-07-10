@@ -28,6 +28,17 @@ export function emptyCounts(): UpsertCounts {
   return { inserted: 0, updated: 0, unchanged: 0 };
 }
 
+// The user-edit lock (issue #133): true when an integration-owned row has been
+// hand-edited in the app and MUST NOT be overwritten by a re-ingest of the rolling
+// window. Every keyed upsert consults this on the row it found (activities.edited,
+// body_metrics.edited, medical_records.edited) and, when locked, deliberately
+// persists nothing and counts the row as `unchanged` — we touched no value, so the
+// #273 split must not report it as a write. The DB stores 0/1 (nullable historically),
+// so this normalizes any falsy/absent value to "not locked". Pure → unit-testable.
+export function isEditLocked(edited: number | null | undefined): boolean {
+  return !!edited;
+}
+
 // Field-wise sum of several per-type UpsertCounts into one batch total. Pure.
 export function foldCounts(parts: UpsertCounts[]): UpsertCounts {
   const out = emptyCounts();

@@ -70,11 +70,6 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
   },
   {
     file: "lib/integrations/normalize.ts",
-    includes: "UPDATE body_metrics SET weight_kg",
-    why: "upsertBodyMetrics: the id comes from a profile-scoped find() just above",
-  },
-  {
-    file: "lib/integrations/normalize.ts",
     includes: "UPDATE medical_records SET date = ?",
     why: "upsertVitals: the id comes from a profile-scoped find() just above",
   },

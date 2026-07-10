@@ -138,6 +138,62 @@ describe("upsert accounting: inserted → unchanged → updated", () => {
     });
   });
 
+  it("upsertBodyMetrics counts a hand-edited row as unchanged (edit survives)", () => {
+    const rows: NormBodyMetric[] = [
+      { date: "2024-05-13", weight_kg: 82, body_fat_pct: 20, resting_hr: 60 },
+    ];
+    expect(upsertBodyMetrics(profileId, rows, SOURCE).inserted).toBe(1);
+    // Simulate the user hand-correcting the imported weight (Review resolver sets
+    // the edit lock on a source-owned keeper).
+    db.prepare(
+      "UPDATE body_metrics SET edited = 1, weight_kg = 79 WHERE profile_id = ? AND date = ? AND source IS ?"
+    ).run(profileId, "2024-05-13", SOURCE);
+    // Re-ingest the same window with the ORIGINAL (wrong) weight must NOT clobber
+    // the correction and is counted unchanged.
+    expect(upsertBodyMetrics(profileId, rows, SOURCE)).toEqual({
+      inserted: 0,
+      updated: 0,
+      unchanged: 1,
+    });
+    const stored = db
+      .prepare(
+        "SELECT weight_kg FROM body_metrics WHERE profile_id = ? AND date = ? AND source IS ?"
+      )
+      .get(profileId, "2024-05-13", SOURCE) as { weight_kg: number };
+    expect(stored.weight_kg).toBe(79);
+  });
+
+  it("upsertVitals leaves a hand-edited imported vital untouched (unchanged, id not re-touched)", () => {
+    const rows: NormVital[] = [
+      {
+        external_id: "hc:vital:edited",
+        date: "2024-05-14",
+        category: "vitals" as const,
+        name: "Systolic blood pressure",
+        canonical: "systolic_bp",
+        value_num: 130,
+        unit: "mmHg",
+      },
+    ];
+    const first = upsertVitals(profileId, rows, SOURCE);
+    expect(first.counts.inserted).toBe(1);
+    // Simulate the medical editor locking the imported row on a hand-edit.
+    db.prepare(
+      "UPDATE medical_records SET edited = 1, value = '125', value_num = 125 WHERE profile_id = ? AND external_id = ?"
+    ).run(profileId, "hc:vital:edited");
+    // Re-ingest with the original value → unchanged, edit preserved, id NOT returned
+    // (the locked row is left entirely untouched — no flag re-derivation).
+    const second = upsertVitals(profileId, rows, SOURCE);
+    expect(second.counts).toEqual({ inserted: 0, updated: 0, unchanged: 1 });
+    expect(second.ids).toEqual([]);
+    const stored = db
+      .prepare(
+        "SELECT value_num FROM medical_records WHERE profile_id = ? AND external_id = ?"
+      )
+      .get(profileId, "hc:vital:edited") as { value_num: number };
+    expect(stored.value_num).toBe(125);
+  });
+
   it("upsertMetricSamples", () => {
     const rows: NormMetricSample[] = [
       {
