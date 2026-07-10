@@ -1,0 +1,67 @@
+name: Cache seed
+
+# Populates the Actions caches that ci.yml consumes, FROM MAIN. Cache scoping is
+# the whole reason this workflow exists: a cache saved during a pull_request run
+# is only restorable by later runs of that same PR, while caches saved on the
+# default branch are restorable by every PR. ci.yml runs on pull_request only,
+# so without this job each PR's first CI run is always cold. This runs on every
+# push to main (i.e. every merge) and saves:
+#
+#   - node_modules  (key: .nvmrc + exact lockfile — identical to ci.yml's key)
+#   - ~/.cache/ms-playwright  (key: lockfile — identical to ci.yml's key)
+#   - .next/cache   (key: lockfile + source hash, matching ci.yml's restore-keys
+#                    prefix, so a source-only PR warms from main's last build)
+#
+# actions/cache skips the save on an exact-key hit, so on merges that change no
+# dependencies this job is a fast restore + no-op (~1 min). No secrets are used.
+on:
+  push:
+    branches: [main]
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Cache node_modules
+        id: modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: modules-${{ runner.os }}-${{ hashFiles('.nvmrc') }}-${{ hashFiles('package-lock.json') }}
+
+      - run: npm ci
+        if: steps.modules.outputs.cache-hit != 'true'
+
+      - name: Cache Playwright Chromium
+        id: playwright
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright Chromium
+        if: steps.playwright.outputs.cache-hit != 'true'
+        run: npx playwright install chromium
+
+      - name: Cache Next.js build
+        id: next
+        uses: actions/cache@v4
+        with:
+          path: .next/cache
+          key: nextjs-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ hashFiles('app/**', 'components/**', 'lib/**', 'public/**', 'next.config.*') }}
+          restore-keys: |
+            nextjs-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
+
+      # Only build (the expensive part) when this exact source state hasn't been
+      # cached yet — the usual case right after a merge, warming the cache the
+      # next PR restores from.
+      - name: Build
+        if: steps.next.outputs.cache-hit != 'true'
+        run: npm run build
