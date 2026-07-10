@@ -7,7 +7,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint app components lib e2e scripts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:db": "vitest run --config vitest.db.config.ts",
@@ -29,6 +29,11 @@
   "lint-staged": {
     "*.{js,jsx,ts,tsx,json,css,scss,md,yml,yaml}": "prettier --write --ignore-unknown"
   },
+  "overrides": {
+    "eslint-config-next": {
+      "eslint": "$eslint"
+    }
+  },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.105.0",
     "@dnd-kit/core": "^6.3.1",
@@ -45,6 +50,7 @@
     "web-push": "^3.6.7"
   },
   "devDependencies": {
+    "@eslint/eslintrc": "^3.3.5",
     "@playwright/test": "^1.61.1",
     "@types/better-sqlite3": "^7.6.11",
     "@types/node": "^24.13.3",
@@ -53,8 +59,9 @@
     "@types/react-dom": "^18.3.0",
     "@vitest/coverage-v8": "^2.1.8",
     "autoprefixer": "^10.4.19",
-    "eslint": "^8.57.0",
+    "eslint": "^9.39.4",
     "eslint-config-next": "^14.2.33",
+    "eslint-plugin-react-hooks": "^5.2.0",
     "husky": "^9.1.7",
     "lint-staged": "^17.0.8",
     "postcss": "^8.4.39",
