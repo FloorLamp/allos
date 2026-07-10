@@ -41,6 +41,7 @@ import {
   AGE_OBS_TEMPLATE,
   ALLERGY_OBS_TEMPLATE,
   CARE_PLAN_ELEMENTS,
+  CLINICAL_NOTE_LOINCS,
   COMMENT_ACT_TEMPLATE,
   FAMILY_OBS_TEMPLATE,
   FAMILY_RELATION_LABELS,
@@ -658,6 +659,131 @@ export function chiefComplaintsFromSections(sections: CdaSection[]): string[] {
         out.push(name);
       }
     }
+  }
+  return out;
+}
+
+// ---- standalone visit diagnoses (top-level "Diagnosis" section, 29308-4) ----
+
+// One visit diagnosis collected from a top-level Standalone Visit Diagnoses section
+// — the packaging Epic uses when the diagnoses are NOT nested in an Encounter
+// Activity. Carries the coded identity + onset so an uncorrelatable one can land as a
+// full problem-list condition.
+export interface StandaloneVisitDiagnosis {
+  name: string;
+  code: string | null;
+  code_system: string | null;
+  onset_date: string | null;
+}
+
+// Deep-walk the top-level Standalone Visit Diagnoses section(s) for their Problem
+// Observations (template 4.4) — the SAME node shape encounterDiagnoses reads when the
+// diagnoses are nested in an encounter, but here kept with the coded identity + date
+// so an uncorrelatable one can become a condition. Prefers the printed original text /
+// narrative, then a coded displayName; dedups by name; drops "no active problems"
+// placeholders. Read at the document level (like chiefComplaintsFromSections) so the
+// caller can correlate it onto the same-document encounter.
+export function visitDiagnosesFromSections(
+  sections: CdaSection[]
+): StandaloneVisitDiagnosis[] {
+  const out: StandaloneVisitDiagnosis[] = [];
+  const seen = new Set<string>();
+  for (const s of sections) {
+    if (!sectionIs(s, SECTIONS.visitDiagnoses)) continue;
+    const ids = buildNarrativeIdMap(s.raw?.text);
+    const walk = (node: any): void => {
+      if (node == null || typeof node !== "object") return;
+      if (Array.isArray(node)) {
+        node.forEach(walk);
+        return;
+      }
+      const tids = asArray(node?.templateId)
+        .map((t: any) => t?.["@_root"])
+        .filter(Boolean);
+      if (
+        tids.includes(PROBLEM_OBS_TEMPLATE) &&
+        !truthyNegation(node["@_negationInd"])
+      ) {
+        const value = Array.isArray(node.value) ? node.value[0] : node.value;
+        const name =
+          codedDisplayName(value, ids) ||
+          resolveNarrativeText(node?.text, ids) ||
+          codedDisplayName(node?.code, ids);
+        if (name && !isNoKnownProblemText(name)) {
+          const key = name.toLowerCase();
+          if (!seen.has(key)) {
+            seen.add(key);
+            const { code, system } = pickCode(value);
+            out.push({
+              name,
+              code,
+              code_system: system,
+              onset_date: effTime(node.effectiveTime),
+            });
+          }
+        }
+        return; // captured — don't recurse into a captured problem obs
+      }
+      for (const [k, v] of Object.entries(node)) {
+        if (k.startsWith("@_")) continue;
+        walk(v);
+      }
+    };
+    walk(s.entries);
+  }
+  return out;
+}
+
+// ---- clinician / progress notes (top-level narrative note sections) ----
+
+// A free-text clinical note collected from a top-level Progress Notes (11506-3) or
+// per-clinician "Notes from <clinician>" section. `text` is the plain-text note body
+// (React-escaped on render, no raw HTML — the #71 precedent). `author` is the
+// authoring clinician when the section names one (attribution). `title` is the
+// section title (e.g. "Progress Notes", "Notes from …"), used to label a standalone
+// note. `date` is the section's author time when present.
+export interface ClinicalNote {
+  text: string;
+  author: ImportedProvider | null;
+  title: string | null;
+  date: string | null;
+}
+
+// Whether a section is a clinical-note section: its <code> LOINC is one of the known
+// clinical-note codes, OR its title mentions "note(s)" (the deployment-varying "Notes
+// from <clinician>" case). The title fallback never fires for a section whose code is
+// the Visit Diagnoses LOINC (which routes to its own handler even if titled "… Notes").
+export function isClinicalNoteSection(section: CdaSection): boolean {
+  const code = section.code ?? undefined;
+  if (code && CLINICAL_NOTE_LOINCS.has(code)) return true;
+  if (code === SECTIONS.visitDiagnoses.loinc) return false;
+  const title = section.title?.trim().toLowerCase();
+  return !!title && /\bnotes?\b/.test(title);
+}
+
+// Collect the free-text notes from every top-level Progress Notes / per-clinician
+// Notes section — the note body is the section narrative (collectText, whitespace-
+// normalized, plain text). Skips a section with no narrative. Read at the document
+// level so the caller can attach the note to the same-document encounter (else store
+// it as a standalone dated note). One entry per note section.
+export function clinicalNotesFromSections(
+  sections: CdaSection[]
+): ClinicalNote[] {
+  const out: ClinicalNote[] = [];
+  for (const s of sections) {
+    if (!isClinicalNoteSection(s)) continue;
+    const text = collectText(s.raw?.text).replace(/\s+/g, " ").trim();
+    if (!text) continue;
+    const authorNode = asArray(s.raw?.author)[0];
+    out.push({
+      text,
+      author: providerFromAssignedEntity(
+        authorNode?.assignedAuthor,
+        "individual"
+      ),
+      title: s.title?.trim() || null,
+      date: hl7Date(authorNode?.time?.["@_value"]),
+    });
   }
   return out;
 }

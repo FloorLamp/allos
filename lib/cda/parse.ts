@@ -23,10 +23,13 @@ import {
   recordDropKind,
   unmappedLoincsFromRecords,
 } from "./coverage";
+import type { ClinicalNote, StandaloneVisitDiagnosis } from "./extractors";
 import {
   DEFAULT_EXTRACTORS,
   chiefComplaintsFromSections,
+  clinicalNotesFromSections,
   socialHistorySex,
+  visitDiagnosesFromSections,
 } from "./extractors";
 import { asArray, effTime, hl7Date, parser, textOf } from "./normalize";
 
@@ -194,6 +197,78 @@ function mergeDedupe<T extends { external_id: string }>(rows: T[]): T[] {
   return order.map((id) => byId.get(id)!);
 }
 
+// An uncorrelatable standalone visit diagnosis → a problem-list condition. Given a
+// visit-diagnosis provenance namespace on its external_id so it's stored as a real
+// condition (tied to the document like any other) yet never conflated with an
+// Active-Problems row of the same name.
+function visitDiagnosisToCondition(
+  d: StandaloneVisitDiagnosis
+): ImportedCondition {
+  return {
+    name: d.name,
+    code: d.code,
+    code_system: d.code_system,
+    status: "active",
+    onset_date: d.onset_date,
+    resolved_date: null,
+    external_id: `ccda:visit-dx:${d.name.toLowerCase()}:${d.code ?? ""}:${
+      d.onset_date ?? ""
+    }`,
+  };
+}
+
+// A note line for attaching to an encounter that already has its own performer:
+// prefix the authoring clinician's name for attribution when the section named one.
+function attributedNoteLine(n: ClinicalNote): string {
+  const author = n.author?.name?.trim();
+  return author ? `${author}: ${n.text}` : n.text;
+}
+
+// Fold clinical-note text into an encounter's existing free-text notes, deduping by
+// line (so re-attaching the same note is idempotent). Returns the merged block, or
+// null when there is nothing.
+function mergeEncounterNotes(
+  existing: string | null,
+  notes: ClinicalNote[]
+): string | null {
+  const lines = existing ? existing.split("\n") : [];
+  const seen = new Set(lines.map((l) => l.toLowerCase()));
+  for (const n of notes) {
+    const line = attributedNoteLine(n);
+    if (seen.has(line.toLowerCase())) continue;
+    seen.add(line.toLowerCase());
+    lines.push(line);
+  }
+  return lines.length ? lines.join("\n") : null;
+}
+
+// An uncorrelatable clinical note → a standalone dated note entry, modeled as a
+// note-only encounter (reusing the encounters store + its notes render/search — no
+// new table). The note's author becomes the encounter's provider (so the text is
+// stored unprefixed); the section title labels the visit type. Null when no date can
+// be resolved (a note we can't place on a day).
+function clinicalNoteToEncounter(
+  n: ClinicalNote,
+  documentDate: string | null
+): ImportedEncounter | null {
+  const date = n.date ?? documentDate;
+  if (!date) return null;
+  const label = (n.title ?? "note").toLowerCase().replace(/\s+/g, "-");
+  const snippet = n.text.slice(0, 60).toLowerCase().replace(/\s+/g, " ").trim();
+  return {
+    date,
+    end_date: null,
+    type: n.title ?? "Clinical Note",
+    class_code: null,
+    reason: null,
+    diagnoses: [],
+    provider: n.author,
+    location: null,
+    notes: n.text,
+    external_id: `ccda:note:${date}:${label}:${snippet}`,
+  };
+}
+
 // Run the given extractors over a CCD. Each section is handed to the first
 // extractor that matches it; results are merged and de-duplicated.
 export function extractFromCcda(
@@ -211,9 +286,15 @@ export function extractFromCcda(
   const familyHistory: ImportedFamilyHistory[] = [];
   const carePlanItems: ImportedCarePlanItem[] = [];
   const careGoals: ImportedCareGoal[] = [];
+  // Sections a registered extractor claimed. The document-level note / visit-
+  // diagnosis correlation below runs ONLY over the leftover (unclaimed) sections, so
+  // a real content section that happens to be titled "… Notes" can never be
+  // double-processed as a note.
+  const claimedSections = new Set<CdaSection>();
   for (const section of sections) {
     const ex = extractors.find((e) => e.matches(section));
     if (!ex) continue;
+    claimedSections.add(section);
     const part = ex.extract(section, documentDate);
     if (part.immunizations) immunizations.push(...part.immunizations);
     if (part.records) records.push(...part.records);
@@ -241,6 +322,46 @@ export function extractFromCcda(
     if (reasons.length) {
       deduped[0].reason = reasons.join("; ");
       reasonForVisitConsumed = true;
+    }
+  }
+  // The sections the extractor loop did NOT claim — the only ones eligible to be a
+  // note / standalone visit-diagnosis surface (the encounters/problems/etc. sections
+  // are already claimed and must not be reprocessed here).
+  const leftover = sections.filter((s) => !claimedSections.has(s));
+  // Standalone Visit Diagnoses (top-level 29308-4): correlate onto the same-document
+  // encounter when there is exactly ONE (mirroring Reason for Visit) by folding the
+  // names into its diagnosis list (deduped against the nested ones it may already
+  // carry — so a CCD that ships BOTH packagings doesn't double-list). With zero or
+  // several encounters we can't attribute reliably, so each lands as a problem-list
+  // condition carrying its visit-diagnosis provenance (a distinct external_id
+  // namespace, so it's never conflated with an Active-Problems row).
+  const visitDiagnoses = visitDiagnosesFromSections(leftover);
+  if (deduped.length === 1) {
+    const target = deduped[0];
+    const seenDx = new Set(target.diagnoses.map((d) => d.toLowerCase()));
+    for (const d of visitDiagnoses) {
+      if (seenDx.has(d.name.toLowerCase())) continue;
+      seenDx.add(d.name.toLowerCase());
+      target.diagnoses.push(d.name);
+    }
+  } else {
+    for (const d of visitDiagnoses) {
+      conditions.push(visitDiagnosisToCondition(d));
+    }
+  }
+  // Progress Notes + per-clinician Notes: attach to the same-document encounter's
+  // free-text notes when there is exactly one (extending the #71 visit-narrative
+  // model — the note's author is prefixed for attribution since the encounter carries
+  // its own performer); else store each as a standalone dated note (a note-only
+  // encounter row, whose provider IS the note author). A note with no date and no
+  // document date can't be placed as a standalone entry and is dropped.
+  const clinicalNotes = clinicalNotesFromSections(leftover);
+  if (deduped.length === 1) {
+    deduped[0].notes = mergeEncounterNotes(deduped[0].notes, clinicalNotes);
+  } else {
+    for (const n of clinicalNotes) {
+      const enc = clinicalNoteToEncounter(n, documentDate);
+      if (enc) deduped.push(enc);
     }
   }
   // Enrich the header demographics with the Social History sex — the
