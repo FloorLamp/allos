@@ -15,6 +15,7 @@ import { today } from "@/lib/db";
 import { getAppointments, collectUpcoming } from "@/lib/queries";
 import {
   composeFeedPreviewRows,
+  feedEligibleSignals,
   selectConsolidatedPreviewRows,
   groupConsolidatedPreviewRows,
   type ConsolidatedProfileFeed,
@@ -57,7 +58,9 @@ export default async function CalendarFeedPage() {
   const wantsSignals = feed.categories.some((c) => c !== "appointment");
   const previewRows = composeFeedPreviewRows({
     appointments: wantsAppointments ? getAppointments(profile.id) : [],
-    signals: wantsSignals ? collectUpcoming(profile.id, profileToday) : [],
+    signals: wantsSignals
+      ? feedEligibleSignals(collectUpcoming(profile.id, profileToday))
+      : [],
     today: profileToday,
     tz: getTimezone(profile.id),
     options: {

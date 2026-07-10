@@ -2,6 +2,7 @@ import Link from "next/link";
 import {
   IconPill,
   IconRefresh,
+  IconAlertTriangle,
   IconStethoscope,
   IconMicroscope,
   IconVaccine,
@@ -56,6 +57,7 @@ export const dynamic = "force-dynamic";
 const DOMAIN_ICON: Record<UpcomingDomain, TablerIcon> = {
   dose: IconPill,
   refill: IconRefresh,
+  "dietary-limit": IconAlertTriangle,
   appointment: IconStethoscope,
   visit: IconStethoscope,
   screening: IconMicroscope,

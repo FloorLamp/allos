@@ -64,7 +64,9 @@ import {
   getSupplementDoses,
   getTakenDoseIds,
   getRefillRates,
+  getDietaryLimitWarnings,
 } from "./intake";
+import { dietaryLimitSignalKey, ulWarningTitle, ulWarningDetail } from "../dri";
 import {
   getAppointments,
   getScheduledAppointments,
@@ -164,6 +166,26 @@ function refillItems(profileId: number, today: string): UpcomingItem[] {
     });
   }
   return items;
+}
+
+// Supplement stack totals that exceed an NIH Tolerable Upper Intake Level (issue
+// #148). Reuses the shared getDietaryLimitWarnings gather (same computation as the
+// /medicine warning rows), so a nutrient over its UL surfaces as a dismissible
+// finding keyed by `dietary-limit:<nutrient>` — it goes through getFindingSuppressions
+// like every other finding, so a dismiss/snooze on Upcoming silences it. Standing
+// informational findings (no due date): banded to Today, framed "discuss with your
+// clinician", never prescriptive.
+function dietaryLimitItems(profileId: number, today: string): UpcomingItem[] {
+  return getDietaryLimitWarnings(profileId, today).map((w) => ({
+    key: dietaryLimitSignalKey(w.key),
+    domain: "dietary-limit" as const,
+    title: ulWarningTitle(w),
+    detail: ulWarningDetail(w),
+    href: "/medicine",
+    dueDate: null,
+    band: "today" as const,
+    dueText: "Review",
+  }));
 }
 
 // The profile's age in MONTHS for the schedule engines: from the birthdate when
@@ -539,6 +561,7 @@ function rawUpcoming(profileId: number, today: string): UpcomingItem[] {
   return [
     ...doseItems(profileId, today),
     ...refillItems(profileId, today),
+    ...dietaryLimitItems(profileId, today),
     ...appointmentItems(profileId),
     ...carePlanItems(profileId),
     ...preventiveItems(profileId, today),

@@ -400,6 +400,19 @@ export function isFeedCategory(s: string): s is FeedCategory {
   return (FEED_CATEGORIES as readonly string[]).includes(s);
 }
 
+// Narrow a collected Upcoming list to the signals a calendar feed can carry: those
+// whose domain is a FeedCategory. Standing advisories with no calendar meaning
+// (e.g. the dietary-limit UL warnings, issue #148 — no due date) are dropped here
+// so they never reach the feed, and the result is assignable to
+// UpcomingSignalLike[] (its domain narrowed to FeedCategory).
+export function feedEligibleSignals<T extends { domain: string }>(
+  items: readonly T[]
+): (T & { domain: FeedCategory })[] {
+  return items.filter((i): i is T & { domain: FeedCategory } =>
+    isFeedCategory(i.domain)
+  );
+}
+
 // Validate + de-dupe + canonically order an arbitrary list of category strings.
 // Unknown values are dropped. Used by the action (form input) and the parser.
 export function canonicalizeFeedCategories(

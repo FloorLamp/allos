@@ -1,7 +1,9 @@
 import { db, today } from "../db";
-import { shiftDateStr } from "../date";
+import { shiftDateStr, ageFromBirthdate } from "../date";
 import { consumptionRate, RATE_WINDOW_DAYS, type DoseRate } from "../refill";
 import { normalizeSeverity, SEVERITY_LABELS } from "../medication-history";
+import { getUserSex, getUserBirthdate, getStoredAge } from "../settings";
+import { stackUlWarnings, type StackItem, type UlWarning } from "../dri";
 import type {
   DoseStatus,
   DoseTakenOutcome,
@@ -322,6 +324,42 @@ export function getSupplementPairs(profileId: number): SupplementPair[] {
        ORDER BY p.id`
     )
     .all(profileId) as SupplementPair[];
+}
+
+// ---- Dietary limits: supplement stack-total UL warnings (issue #148) ----
+
+// The active stack's nutrients whose summed daily supplemental intake exceeds the
+// NIH Tolerable Upper Intake Level (UL) for the profile's age/sex. The SINGLE
+// gather behind both surfaces — the /medicine warning rows and the dismissible
+// Upcoming finding — so they can never disagree on which nutrients are over
+// (AGENTS.md "one question, one computation"). Reuses the profile-scoped
+// getSupplements + getSupplementDoses reads (no new SQL, so profile scoping is
+// already enforced) and resolves age/sex from profile_settings; the UL math is the
+// pure lib/dri.stackUlWarnings. `today` selects the age from a birthdate.
+export function getDietaryLimitWarnings(
+  profileId: number,
+  todayStr: string = today(profileId)
+): UlWarning[] {
+  const supplements = getSupplements(profileId);
+  const dosesBySupp = new Map<number, (string | null)[]>();
+  for (const d of getSupplementDoses(profileId)) {
+    const arr = dosesBySupp.get(d.supplement_id) ?? [];
+    arr.push(d.amount);
+    dosesBySupp.set(d.supplement_id, arr);
+  }
+  const items: StackItem[] = supplements.map((s) => ({
+    name: s.name,
+    active: !!s.active,
+    doseAmounts: dosesBySupp.get(s.id) ?? [],
+  }));
+
+  const birthdate = getUserBirthdate(profileId);
+  const ageYears = birthdate
+    ? ageFromBirthdate(birthdate, todayStr)
+    : getStoredAge(profileId);
+  const sex = getUserSex(profileId);
+
+  return stackUlWarnings(items, ageYears, sex);
 }
 
 // ---- Medication history / lifecycle ----

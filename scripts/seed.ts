@@ -882,6 +882,17 @@ addSupp({ name: "Omega-3", priority: "high", brand: "Nordic Naturals" }, [
 addSupp({ name: "Magnesium Glycinate", priority: "high", notes: "Sleep" }, [
   { amount: "400 mg", time: "Before sleep", food: "any" },
 ]);
+// A SECOND magnesium form so the stack TOTAL (400 + 200 = 600 mg elemental)
+// clearly exceeds the 350 mg supplemental UL — demoes the stack-total dietary-
+// limit warning (issue #148), which sums both products, on /medicine + Upcoming.
+addSupp(
+  {
+    name: "Magnesium Citrate",
+    priority: "low",
+    notes: "Digestion; adds to the magnesium stack total",
+  },
+  [{ amount: "200 mg", time: "Morning", food: "any" }]
+);
 addSupp(
   {
     name: "Whey Protein",

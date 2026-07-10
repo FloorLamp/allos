@@ -5,7 +5,11 @@ import {
   getTimezone,
 } from "@/lib/settings";
 import { getAppointments, collectUpcoming } from "@/lib/queries";
-import { buildAppointmentIcs, composeFeedEvents } from "@/lib/calendar-ics";
+import {
+  buildAppointmentIcs,
+  composeFeedEvents,
+  feedEligibleSignals,
+} from "@/lib/calendar-ics";
 import { checkRateLimit } from "@/lib/rate-limit";
 
 // A subscribed calendar client refetches on the order of hours; 30 requests/min
@@ -65,7 +69,9 @@ export async function GET(
   const wantsSignals = feed.categories.some((c) => c !== "appointment");
   const events = composeFeedEvents({
     appointments: wantsAppointments ? getAppointments(profileId) : [],
-    signals: wantsSignals ? collectUpcoming(profileId, todayStr) : [],
+    signals: wantsSignals
+      ? feedEligibleSignals(collectUpcoming(profileId, todayStr))
+      : [],
     today: todayStr,
     tz,
     options: {
