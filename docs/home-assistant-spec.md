@@ -37,7 +37,8 @@ a general `/api/v1` namespace.
 - **No HACS custom integration/card in v1** — plain HA YAML (RESTful
   sensor + `rest_command` + a stock entities/markdown card) ships in the
   docs; a polished custom card is a separately-maintained artifact and the
-  place scope creep lives. Revisit on demand.
+  place scope creep lives. Revisit on demand — the deferred design lives
+  in the appendix at the end of this spec.
 - **No general record access** — the board feed + dose actuation + ingest +
   events only. No labs, conditions, documents, or search over these
   endpoints.
