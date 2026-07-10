@@ -44,6 +44,7 @@ import {
   shouldRecordUse,
   type TokenExpiryChoice,
 } from "./token-lifecycle";
+import { clampAuditRetentionMonths } from "./retention";
 
 // Re-exported for API compatibility: these historically lived in lib/settings and
 // callers across app/ import them from here. The implementation now lives in the
@@ -600,6 +601,22 @@ export function setBackupSettings(cfg: BackupSettings): void {
     setSetting("backup_keep_weekly", String(cfg.keepWeekly));
   });
   write();
+}
+
+// Audit-log retention window (issue #98), stored app-globally as a whole-month
+// count. The `audit_events` trail is deliberately durable, but a self-hosted box
+// still wants a bound; this is the admin-tunable window (Settings → Server) the
+// hourly notify tick prunes against. Absent/garbage → the generous default.
+export function getAuditRetentionMonths(): number {
+  const raw = getSetting("audit_retention_months");
+  return clampAuditRetentionMonths(Number(raw));
+}
+
+export function setAuditRetentionMonths(months: number): void {
+  setSetting(
+    "audit_retention_months",
+    String(clampAuditRetentionMonths(months))
+  );
 }
 
 // AI automation toggles, stored app-globally in the settings table.

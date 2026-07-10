@@ -39,6 +39,7 @@ import {
   setProfileSetting,
   getTimezone,
   getTelegramBotConfig,
+  getAuditRetentionMonths,
 } from "../lib/settings";
 import { getUpdates } from "../lib/notifications/telegram";
 import { handleCallbackQuery } from "../lib/notifications/telegram-callbacks";
@@ -52,6 +53,7 @@ import { runMilestones } from "../lib/milestones-db";
 import { runScheduledBackup } from "../lib/backup";
 import { pruneAuditEvents } from "../lib/audit";
 import { sweepDeletedRows } from "../lib/undo-delete-db";
+import { sweepReplayedKeys } from "../lib/offline/writes";
 import { reapStuckExtractions } from "../lib/extraction-reaper";
 import { inferWorkoutSchedule, runCoachingEpisode } from "../lib/queries";
 import { slotDue } from "../lib/notifications/schedule";
@@ -422,10 +424,11 @@ async function tick() {
     anyFailed = true;
   }
 
-  // Audit-log retention (#22): global, once per tick. Deletes events past the
-  // 90-day default. Best-effort (pruneAuditEvents never throws); a failure here
+  // Audit-log retention (#22, window configurable per #98): global, once per tick.
+  // Deletes events past the admin-configured window (Settings → Server; generous
+  // 24-month default). Best-effort (pruneAuditEvents never throws); a failure here
   // must never affect the notification flow or the exit code.
-  const pruned = pruneAuditEvents();
+  const pruned = pruneAuditEvents({ maxMonths: getAuditRetentionMonths() });
   if (pruned > 0) log.info("pruned audit events", { pruned });
 
   // Undo-window sweep (#30): global, once per tick. Purges undo holding rows older
@@ -433,6 +436,19 @@ async function tick() {
   // (sweepDeletedRows never throws); never affects the notification flow/exit code.
   const swept = sweepDeletedRows();
   if (swept > 0) log.info("swept expired undo rows", { swept });
+
+  // Offline-replay ledger sweep (#98): global, once per tick. Prunes replayed_keys
+  // rows older than the replay-race window (~7 days) so the idempotency ledger
+  // doesn't grow forever. Best-effort (sweepReplayedKeys never throws); never
+  // affects the notification flow/exit code.
+  try {
+    const sweptKeys = sweepReplayedKeys();
+    if (sweptKeys > 0) log.info("swept expired replay keys", { sweptKeys });
+  } catch (e) {
+    log.error("replay-key sweep failed", {
+      err: e instanceof Error ? e : String(e),
+    });
+  }
 
   // Stuck-extraction lease reap (#135 item 4): global, once per tick. Boot already
   // clears extractions a crash left mid-flight, but a process that stays up with a

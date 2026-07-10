@@ -19,6 +19,7 @@ import {
   DEFAULT_AUDIT_RETENTION_DAYS,
   retentionModifier,
 } from "./audit-actions";
+import { monthsAgoModifier } from "./retention";
 
 const log = createLogger("audit");
 
@@ -69,16 +70,23 @@ export function recordAudit(e: AuditInput): void {
 }
 
 // Retention sweep, driven from the hourly notify tick. Deletes events older than
-// `maxDays` (default 90) and, when `maxRows` is given, additionally trims to the
-// newest `maxRows` rows as a hard size cap. Returns the number of rows removed.
-// Never throws — a prune failure must not stop the tick.
+// the configured window and, when `maxRows` is given, additionally trims to the
+// newest `maxRows` rows as a hard size cap. The window is `maxMonths` when supplied
+// (the admin-configurable audit-retention setting the tick reads — issue #98),
+// otherwise `maxDays` (default 90, kept for callers/tests that want a day window).
+// Returns the number of rows removed. Never throws — a prune failure must not stop
+// the tick.
 export function pruneAuditEvents(
-  opts: { maxDays?: number; maxRows?: number } = {}
+  opts: { maxDays?: number; maxMonths?: number; maxRows?: number } = {}
 ): number {
-  const maxDays = opts.maxDays ?? DEFAULT_AUDIT_RETENTION_DAYS;
   let deleted = 0;
   try {
-    if (maxDays != null) {
+    if (opts.maxMonths != null) {
+      deleted += db
+        .prepare(`DELETE FROM audit_events WHERE ts < datetime('now', ?)`)
+        .run(monthsAgoModifier(opts.maxMonths)).changes;
+    } else {
+      const maxDays = opts.maxDays ?? DEFAULT_AUDIT_RETENTION_DAYS;
       deleted += db
         .prepare(`DELETE FROM audit_events WHERE ts < datetime('now', ?)`)
         .run(retentionModifier(maxDays)).changes;
