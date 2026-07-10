@@ -52,6 +52,8 @@ import {
   setBloodType,
   setEmergencyContact,
   setSmokingHistory,
+  setMaxHrOverride,
+  setZone2WeeklyTargetMin,
   type DistanceUnit,
   type WeightUnit,
 } from "@/lib/settings";
@@ -218,6 +220,42 @@ export async function saveSmokingHistory(formData: FormData) {
   // The record drives the preventive reminders (Upcoming) and the profile page.
   revalidatePath("/upcoming");
   revalidatePath("/settings/profile");
+}
+
+// ---- Training HR zones (profile scope, issue #159) ----
+
+// The manual max-HR override (bpm) and the weekly Zone 2 minutes target that drive
+// the Trends → Fitness intensity-distribution view. Both profile-scoped properties
+// of the tracked person; any login with write access may edit them. A blank/zero
+// max-HR clears the override (falls back to the age formula); a blank Zone 2 target
+// leaves the stored value untouched (its getter supplies the default).
+export async function saveTrainingZones(formData: FormData) {
+  const { profile } = await requireWriteAccess();
+
+  const maxHrRaw = String(formData.get("max_hr_override") ?? "").trim();
+  if (maxHrRaw === "") {
+    setMaxHrOverride(profile.id, null);
+  } else {
+    const bpm = Number(maxHrRaw);
+    // Guard an implausible entry rather than storing junk; a real max HR sits well
+    // inside this band. Out-of-range input is ignored (keeps the prior value).
+    if (Number.isFinite(bpm) && bpm >= 100 && bpm <= 240) {
+      setMaxHrOverride(profile.id, Math.round(bpm));
+    }
+  }
+
+  const targetRaw = String(
+    formData.get("zone2_weekly_target_min") ?? ""
+  ).trim();
+  if (targetRaw !== "") {
+    const min = Number(targetRaw);
+    if (Number.isFinite(min) && min >= 0 && min <= 5000) {
+      setZone2WeeklyTargetMin(profile.id, Math.round(min));
+    }
+  }
+
+  revalidatePath("/settings/profile");
+  revalidatePath("/trends");
 }
 
 // ---- Emergency card (profile scope, issue #42) ----

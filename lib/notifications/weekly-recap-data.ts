@@ -21,6 +21,7 @@ import {
   getSupplementDoses,
   getTakenDoseIds,
   getActivitiesByDate,
+  getZone2MinutesInWindow,
 } from "../queries";
 import { recentPRs, recentCardioPRs } from "../coaching";
 import { isDueOn } from "../supplement-schedule";
@@ -35,7 +36,11 @@ import {
   type WeeklyRecap,
   type WorkoutType,
 } from "../weekly-recap";
-import { getActiveSituations, setProfileSetting } from "../settings";
+import {
+  getActiveSituations,
+  getZone2WeeklyTargetMin,
+  setProfileSetting,
+} from "../settings";
 import type { WeightUnit } from "../settings";
 import { dispatch } from "./index";
 import { createLogger } from "../log";
@@ -175,6 +180,10 @@ export function gatherRecapInput(
     streak: flexibleStreak(td, activityDates),
     strictStreak: currentStreak(td, activityDates),
     goalsCompleted,
+    // Zone 2 aerobic-base minutes over the SAME window (win is a days-1 inclusive
+    // range, #190) — null when no HR zone model exists (line then omitted).
+    zone2Min: getZone2MinutesInWindow(profileId, win.start, win.end),
+    zone2Target: getZone2WeeklyTargetMin(profileId),
   };
 }
 

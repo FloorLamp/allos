@@ -3,6 +3,7 @@ import NavTabs from "@/components/NavTabs";
 import StrengthSection from "../training/StrengthSection";
 import CardioSection from "../training/CardioSection";
 import SportSection from "../training/SportSection";
+import TrainingZonesSection from "./TrainingZonesSection";
 
 const FTABS = ["strength", "cardio", "sport"] as const;
 type FitnessTab = (typeof FTABS)[number];
@@ -27,7 +28,12 @@ export default function FitnessSection({ ftab }: { ftab?: string }) {
   const active = parseFtab(ftab);
   const section =
     active === "cardio" ? (
-      <CardioSection />
+      <>
+        {/* HR training-intensity distribution (issue #159): zones, weekly Zone 2
+            volume, polarization split. Cardio-tab home since it's HR-driven. */}
+        <TrainingZonesSection />
+        <CardioSection />
+      </>
     ) : active === "sport" ? (
       <SportSection />
     ) : (

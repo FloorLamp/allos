@@ -239,3 +239,30 @@ describe("medianWeeklyWorkouts", () => {
     expect(medianWeeklyWorkouts([2, 4, 3])).toBe(3);
   });
 });
+
+describe("Zone 2 recap line (issue #159)", () => {
+  it("adds a Zone 2 line with % of target when minutes are present", () => {
+    const recap = buildWeeklyRecap(
+      baseInput({ zone2Min: 90, zone2Target: 150 })
+    );
+    const line = recap.lines.find((l) => l.key === "zone2");
+    expect(line).toBeTruthy();
+    expect(line!.value).toBe("90 min");
+    expect(line!.delta).toBe("60% of 150 min target");
+  });
+
+  it("omits the target delta when there is no target", () => {
+    const recap = buildWeeklyRecap(baseInput({ zone2Min: 90, zone2Target: 0 }));
+    const line = recap.lines.find((l) => l.key === "zone2");
+    expect(line!.delta).toBeUndefined();
+  });
+
+  it("omits the line entirely when there are no Zone 2 minutes", () => {
+    const recap = buildWeeklyRecap(
+      baseInput({ zone2Min: 0, zone2Target: 150 })
+    );
+    expect(recap.lines.some((l) => l.key === "zone2")).toBe(false);
+    const nullRecap = buildWeeklyRecap(baseInput({ zone2Min: null }));
+    expect(nullRecap.lines.some((l) => l.key === "zone2")).toBe(false);
+  });
+});

@@ -442,3 +442,48 @@ setProfileSetting(
 console.log(
   `e2e: seeded a low-sleep sample + a day-2 rest episode for profile 1 (${COACH_YESTERDAY} → ${COACH_TODAY})`
 );
+
+// ── Training HR-zone fixture (issue #159) ─────────────────────────────────────
+// A windowed cardio session with per-minute HR inside its window, so the Trends →
+// Fitness zone section, weekly Zone 2 volume, and polarization split render on the
+// e2e DB. The seed profile is ~40y with a latest resting HR of 55 bpm, so the zone
+// model is Karvonen (max 180, resting 55): Zone 2 ≈ 130–142 bpm, Zone 4 ≈ 155–167.
+// Relative dates so it never goes stale. Idempotent: clear any prior fixture rows.
+const zoneDate = shiftDateStr(today(PROFILE_ID), -2);
+
+db.prepare(
+  `DELETE FROM activities WHERE profile_id = ? AND external_id = 'e2e:zone-ride'`
+).run(PROFILE_ID);
+db.prepare(
+  `DELETE FROM hr_minutes WHERE profile_id = ? AND substr(ts,1,10) = ?`
+).run(PROFILE_ID, zoneDate);
+
+db.prepare(
+  `INSERT INTO activities
+     (profile_id, date, type, title, notes, duration_min, distance_km, intensity,
+      start_time, end_time, components, source, external_id)
+   VALUES (1, ?, 'cardio', 'Zone 2 base ride', NULL, 60, 20, 'moderate',
+           '08:00', '09:00', ?, 'manual', 'e2e:zone-ride')`
+).run(
+  zoneDate,
+  JSON.stringify([
+    { name: "Cycling", type: "cardio", distance_km: 20, duration_min: 60 },
+  ])
+);
+
+const insHr = db.prepare(
+  `INSERT INTO hr_minutes (profile_id, ts, bpm, n, source) VALUES (1, ?, ?, 6, 'health-connect')`
+);
+// 08:00–08:49 easy Zone 2 (135 bpm), 08:50–08:59 hard Zone 4 (160 bpm): 50 easy +
+// 10 hard, an ~83/17 balanced split (below the hard-heavy nudge threshold).
+for (let m = 0; m < 60; m++) {
+  const mm = String(m).padStart(2, "0");
+  insHr.run(`${zoneDate}T08:${mm}`, m < 50 ? 135 : 160);
+}
+// A resting bucket at noon, OUTSIDE any activity window — proves the aggregation
+// scopes to workout windows (this all-day wear minute must not count as training).
+insHr.run(`${zoneDate}T12:00`, 62);
+
+console.log(
+  `e2e: seeded a windowed HR-zone ride for profile 1 on ${zoneDate} (50 min Z2 + 10 min Z4)`
+);
