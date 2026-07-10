@@ -60,7 +60,7 @@ distinction is explicit:
 
 - Per-profile tokens, issued/revoked on the integration's config page
   (reusing the HC issuance UI pattern), with a per-token **`allow_actions`
-  flag, default OFF**. Ingest/events/schedule-read work with any valid
+  flag, default OFF**. Ingest/events/board-read work with any valid
   token; the dose endpoint requires `allow_actions`.
 - Rationale: a leaked display-only token exposes schedule PHI but cannot
   write adherence history. The kitchen iPad's token is the only one that
@@ -102,19 +102,44 @@ distinction is explicit:
 - Nothing due → 200 with `{sent: false}`; never an error (automations
   fire unconditionally).
 
-### 3. `GET /schedule` — the medication board (use case 3, read half)
+### 3. `GET /upcoming` — the board feed (use case 3, read half)
 
-- Returns today's doses for the token's profile: item name, dose label,
-  time bucket/slot, food timing, and status (`due | taken | skipped`),
-  plus the profile's display name. Date resolved in the profile timezone.
+**Not a bespoke schedule shape.** The Upcoming findings engine
+(`collectUpcoming` → the banded model) is already the app's one answer to
+"what's next" across nine domains (doses, refill, appointments, care plan,
+preventive, immunizations, biomarker retest, goals, training). Serving a
+second dose-only computation here would violate the one-question-one-
+computation convention; instead this endpoint is a **formatter over the
+existing banded model**:
+
+- `GET /upcoming?domains=doses` → the medication board (dose entries carry
+  `doseId`, dose label, bucket/slot, food timing, and status
+  `due | taken | skipped` so the card can pair each row with `/dose`
+  actuation).
+- `GET /upcoming?domains=all` (or a comma list) → the family board:
+  appointments, care-plan items, preventive due, refill warnings — banded
+  overdue/today/week/later exactly as the Upcoming page shows them.
+- **Suppression-honoring by construction**: a snooze/dismiss on the
+  Upcoming page (or via #227's bus) removes the item from the kitchen
+  board too — one suppression store, every surface.
 - Shape is a **stable, documented, versioned-by-additive-fields** JSON —
-  the one place this spec accepts an API-shaped compatibility promise,
-  kept small on purpose.
+  the one place this spec accepts an API-shaped compatibility promise. The
+  promise is cheap precisely because the payload mirrors an internal model
+  that the one-computation convention already keeps stable.
 - One token = one profile; a multi-profile kitchen board composes N
   RESTful sensors (one per profile token). No cross-profile token.
-- PHI note: medication names on a kitchen display are inherent to the use
-  case; the docs say so plainly and recommend display-token revocation
-  from the config page if the household changes.
+- PHI note: medication/appointment names on a kitchen display are inherent
+  to the use case; the docs say so plainly and recommend display-token
+  revocation from the config page if the household changes.
+
+**The scope rule this establishes** (the real defense against endpoint
+sprawl): an appliance read endpoint must be a formatter over an existing
+shared `lib/` model — the Upcoming bus here; the digest or weekly-recap
+models if a stats/summary tile is ever wanted (recent activities, streak,
+weekly counts would be `GET /summary` over the digest/recap models — a
+later PR, same posture, explicitly NOT a new computation). Anything that
+would require a **new** engine or raw record access is out of scope, full
+stop.
 
 ### 4. `POST /dose` — actuation (use case 3, write half)
 
@@ -133,7 +158,8 @@ inactive | skipped`), exactly the Telegram-callback contract: a stale
 A `docs/` (or README section) recipe set, tested against a real HA
 instance before release:
 
-1. RESTful sensor YAML for `/schedule` (30–60s scan interval is plenty).
+1. RESTful sensor YAML for `/upcoming` (medication-board and family-board
+   variants; 30–60s scan interval is plenty).
 2. `rest_command` YAML for `/dose` + a stock Lovelace card wiring buttons
    to it (entities card with `tap_action` → service call).
 3. Automation blueprint for `/ingest` (scale weight example).
@@ -157,7 +183,7 @@ instance before release:
    tokens + Review-inbox wiring + blueprint doc). Smallest, proves the
    token/guard reuse.
 2. **PR 2 — events** (`/event` + opt-in setting + dedup tests + recipe).
-3. **PR 3 — board** (`/schedule` + `/dose` + `allow_actions` +
+3. **PR 3 — board** (`/upcoming` + `/dose` + `allow_actions` +
    Lovelace recipes). Depends on #232 for the skip half (ship take-only
    if #232 hasn't landed; the payload already reserves `skipped`).
 4. Later, on demand: HACS custom card, more event vocabulary, richer
@@ -168,10 +194,10 @@ instance before release:
 1. **Event vocabulary growth** — `meal` only in v1; do `wake`/`bedtime`
    earn their keep, and do they map to slots or buckets? Decide when a
    real automation asks.
-2. **Schedule endpoint scope creep** — households will eventually want
-   appointments/care-plan items on the board. That's Upcoming, not the
-   dose schedule; if it happens, it's a separate read endpoint with the
-   same posture, not fields bolted onto `/schedule`.
+2. **`/summary` (stats tiles)** — recent activities, streak, weekly
+   counts as HA sensors. Deferred; when wanted it's a formatter over the
+   existing digest/weekly-recap models (per the scope rule above), never a
+   new computation.
 3. **Per-token rate-limit tuning** — the HC limiter defaults are sized
    for a phone exporter; a 30s-polling display is chattier. Likely fine;
    measure in PR 3.
