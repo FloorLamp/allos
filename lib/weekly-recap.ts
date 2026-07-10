@@ -101,6 +101,11 @@ export interface RecapInput {
   strictStreak: number;
   // Goals marked achieved with a target date inside the window (best-effort dating).
   goalsCompleted: string[];
+  // Zone 2 (aerobic-base) training minutes over the window, from HR zones (#159),
+  // with the weekly target for context. Both optional/null when no HR zone model
+  // exists — the line is omitted then. minutes>0 is required for the line to show.
+  zone2Min?: number | null;
+  zone2Target?: number | null;
 }
 
 export interface RecapLine {
@@ -252,6 +257,22 @@ export function buildWeeklyRecap(input: RecapInput): WeeklyRecap {
         input.strictStreak > 0
           ? `${input.strictStreak}-day consecutive`
           : undefined,
+    });
+  }
+
+  // Zone 2 aerobic base (#159): easy-endurance minutes vs the weekly target.
+  if (input.zone2Min != null && input.zone2Min > 0) {
+    const target =
+      input.zone2Target != null && input.zone2Target > 0
+        ? input.zone2Target
+        : null;
+    lines.push({
+      key: "zone2",
+      label: "Zone 2",
+      value: `${input.zone2Min} min`,
+      delta: target
+        ? `${Math.round((input.zone2Min / target) * 100)}% of ${target} min target`
+        : undefined,
     });
   }
 

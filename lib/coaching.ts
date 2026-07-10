@@ -14,6 +14,7 @@ import { frequencyScopeLabel } from "./goals";
 import { formatRelativeDate } from "./format-date";
 import { shiftDateStr } from "./date";
 import { dispWeight, kgTo, toKg, round } from "./units";
+import { classifyPolarization, type PolarizedSplit } from "./training-zones";
 import type { WeightUnit } from "./settings";
 
 // ---- Strength ----
@@ -461,7 +462,8 @@ export function recentCardioPRs(
 //
 // Every rule is pure and tested at its thresholds in lib/__tests__/coaching.test.ts.
 
-export type CoachingKind = "rest" | "cardio" | "strength" | "ontrack" | "setup";
+export type CoachingKind =
+  "rest" | "cardio" | "strength" | "ontrack" | "setup" | "intensity";
 // Visual/semantic tone the surface maps to a color: caution (ease off),
 // action (go do it), positive (you're doing well), neutral (informational).
 export type CoachingTone = "caution" | "action" | "positive" | "neutral";
@@ -575,6 +577,10 @@ export interface CoachingInput {
   // fires, only how it reads. Absent ⇒ every rest nudge is phrased fresh (prior
   // behavior).
   restEpisode?: RestEpisode | null;
+  // The easy/hard training-intensity split over a trailing window (issue #159),
+  // or null when there's no HR zone model / no windowed HR. Drives the hard-heavy
+  // "add easy Zone 2" nudge — the classic self-coached polarization failure.
+  intensity?: PolarizedSplit | null;
   weightUnit?: WeightUnit; // for the next-set target text; default "kg"
   thresholds?: Partial<CoachingThresholds>;
 }
@@ -937,6 +943,27 @@ const EMPTY_STATE: Recommendation = {
   actionLabel: "Log activity",
 };
 
+// The intensity-distribution nudge (issue #159): when the trailing easy/hard split
+// drifts hard-heavy — too little easy Zone 2, the classic self-coached failure —
+// suggest swapping a hard day for easy aerobic work. Caution-toned, informational
+// (never a "go train harder" push). Null unless the split is meaningfully
+// hard-heavy over enough volume (classifyPolarization).
+export function intensityRecommendation(
+  split: PolarizedSplit | null | undefined
+): Recommendation | null {
+  if (!split) return null;
+  if (classifyPolarization(split) !== "hard-heavy") return null;
+  return {
+    id: "intensity-hard-heavy",
+    kind: "intensity",
+    title: "Ease off — add easy Zone 2",
+    detail: `${split.hardPct}% of your recent training time was hard (above the aerobic threshold); a polarized 80/20 base keeps most of it easy. Swap a hard session for easy Zone 2 to build aerobic volume without the fatigue.`,
+    tone: "caution",
+    actionHref: "/trends?tab=fitness&ftab=cardio",
+    actionLabel: "See HR zones",
+  };
+}
+
 // Rank a day's recommendations, highest-priority first. The first element is the
 // "one clear thing"; any remainder are secondary context.
 export function recommendCoaching(input: CoachingInput): Recommendation[] {
@@ -960,6 +987,10 @@ export function recommendCoaching(input: CoachingInput): Recommendation[] {
   // or a habit-based/setup fallback).
   const training = trainingRecommendations(input, wu);
 
+  // A hard-heavy intensity distribution is context, not a top-line alert: it rides
+  // along as a trailing secondary note (classifyPolarization is the gate).
+  const intensity = intensityRecommendation(input.intensity);
+
   const ranked: Recommendation[] = [];
   if (rest) {
     // Episode continuity (#44 item 3b): if this rest run continues a prior one,
@@ -976,8 +1007,10 @@ export function recommendCoaching(input: CoachingInput): Recommendation[] {
     // Keep the "what to do once recovered" nudge as secondary context, but drop
     // a redundant on-track note (rest already implies rest is fine).
     for (const r of training) if (r.kind !== "ontrack") ranked.push(r);
+    if (intensity) ranked.push(intensity);
     return ranked;
   }
+  if (intensity) return [...training, intensity];
   return training;
 }
 

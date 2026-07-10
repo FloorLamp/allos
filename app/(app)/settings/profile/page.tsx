@@ -14,10 +14,13 @@ import {
   getBloodType,
   getEmergencyContact,
   getSmokingHistory,
+  getMaxHrOverride,
+  getZone2WeeklyTargetMin,
 } from "@/lib/settings";
 import { inferWorkoutSchedule } from "@/lib/queries";
 import { requireSession } from "@/lib/auth";
 import { isTrainingRestricted } from "@/lib/age-gate";
+import { estimateMaxHr } from "@/lib/training-zones";
 import { PageHeader } from "@/components/ui";
 import SettingsTabs from "../SettingsTabs";
 import ProfileForm from "./ProfileForm";
@@ -25,6 +28,7 @@ import ProfilePhotoCard from "./ProfilePhotoCard";
 import ProfileNotificationSettings from "./ProfileNotificationSettings";
 import EmergencyCardSettings from "./EmergencyCardSettings";
 import SmokingHistoryForm from "./SmokingHistoryForm";
+import TrainingZonesForm from "./TrainingZonesForm";
 
 export const dynamic = "force-dynamic";
 
@@ -73,6 +77,13 @@ export default async function ProfileSettingsPage() {
         weekStart={weekStart}
         weekMode={weekMode}
       />
+      {!isTrainingRestricted(profile.id) && (
+        <TrainingZonesForm
+          maxHrOverride={getMaxHrOverride(profile.id)}
+          zone2Target={getZone2WeeklyTargetMin(profile.id)}
+          estimatedMaxHr={age != null ? estimateMaxHr(age) : null}
+        />
+      )}
       <SmokingHistoryForm history={getSmokingHistory(profile.id)} />
       <ProfileNotificationSettings
         telegram={telegram}

@@ -8,6 +8,7 @@
 // at the new lib/queries/*.ts paths where the moved statements now live.
 export * from "./queries/metrics";
 export * from "./queries/training";
+export * from "./queries/zones";
 export * from "./queries/coaching";
 export * from "./queries/medical";
 export * from "./queries/derived";

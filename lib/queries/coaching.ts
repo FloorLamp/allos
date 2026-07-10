@@ -6,6 +6,7 @@ import {
   getFrequencyTargetProgress,
   getStrengthByExercise,
 } from "./training";
+import { getIntensitySignal } from "./zones";
 import {
   nextRestEpisode,
   recommendCoaching,
@@ -108,6 +109,7 @@ export function gatherCoachingInput(
     sleep: getSleepSignal(profileId),
     restingHr: getRestingHrSignal(profileId),
     restEpisode: getRestEpisode(profileId),
+    intensity: getIntensitySignal(profileId),
     weightUnit,
   };
 }

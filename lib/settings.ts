@@ -856,6 +856,51 @@ export function getUserAgeOn(
   return getStoredAge(profileId);
 }
 
+// ---- Training HR zones (issue #159) — profile scope, no migration ----
+// A manual max-HR override for people who know theirs from a lab/field test (it
+// beats the age formula), and the configurable weekly Zone 2 minutes target the
+// endurance/longevity view tracks against. Both live in profile_settings.
+
+// The manual max-HR override in bpm, or null when unset (the zone model then falls
+// back to the Tanaka age estimate). Ignores an implausible stored value.
+export function getMaxHrOverride(profileId: number): number | null {
+  const raw = getProfileSetting(profileId, "max_hr_override");
+  if (raw == null || raw === "") return null;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : null;
+}
+
+// Set (or clear, with null/0) the manual max-HR override.
+export function setMaxHrOverride(profileId: number, bpm: number | null): void {
+  if (bpm == null || !Number.isFinite(bpm) || bpm <= 0) {
+    deleteProfileSetting(profileId, "max_hr_override");
+    return;
+  }
+  setProfileSetting(profileId, "max_hr_override", String(Math.round(bpm)));
+}
+
+// The weekly Zone 2 minutes target. Defaults to 150 (the common aerobic-base
+// recommendation) when unset. A stored 0 means "no target".
+export const DEFAULT_ZONE2_WEEKLY_TARGET_MIN = 150;
+
+export function getZone2WeeklyTargetMin(profileId: number): number {
+  const raw = getProfileSetting(profileId, "zone2_weekly_target_min");
+  if (raw == null || raw === "") return DEFAULT_ZONE2_WEEKLY_TARGET_MIN;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0
+    ? Math.round(n)
+    : DEFAULT_ZONE2_WEEKLY_TARGET_MIN;
+}
+
+export function setZone2WeeklyTargetMin(profileId: number, min: number): void {
+  if (!Number.isFinite(min) || min < 0) return;
+  setProfileSetting(
+    profileId,
+    "zone2_weekly_target_min",
+    String(Math.round(min))
+  );
+}
+
 export interface ProfileAdoption {
   sexAdopted: boolean; // sex-specific bands may now apply to ALL existing records
   birthdate: string | null; // a birthdate that was adopted (for caller logging)
