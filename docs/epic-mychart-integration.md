@@ -1,5 +1,26 @@
 # Integrating with Epic MyChart — investigation
 
+> **Status: partially superseded (2026-07).** This is the original
+> investigation. **Path B shipped** and its description below is still
+> accurate. **Path A is now designed in
+> [`smart-on-fhir-spec.md`](./smart-on-fhir-spec.md)** (issue #143), which
+> supersedes this doc's Path A recommendations where they differ:
+>
+> - **Public client + PKCE**, not a confidential client with a secret; one
+>   **global client id** (Settings → Server), not per-profile credentials in
+>   `integration_connections.config`.
+> - Connections keyed **`smart-fhir:<endpointId>`** (multiple portals per
+>   profile), not a single `epic` provider config.
+> - Persistence via the **living-document model** (`persistHealthRecordDoc`
+>   reprocess + canonicalized-bundle content hash), not direct row writes —
+>   which also dissolves the "immunizations idempotency gap" below (document
+>   import already handles immunizations).
+> - The "no existing FHIR/SMART code" claim predates `lib/fhir.ts` and the
+>   deterministic health-record import path; both exist now.
+>
+> The FHIR→schema mapping notes, sandbox guidance, endpoint-directory
+> research, and Sources remain useful background.
+
 ## TL;DR
 
 There are **two** ways to get a patient's data out of Epic/MyChart, at very different cost levels:
@@ -118,4 +139,4 @@ Pure, testable pieces (fit the repo's "logic in `lib/`, tested in `lib/__tests__
 - [SMART App Launch — scopes & launch context (HL7)](https://build.fhir.org/ig/HL7/smart-app-launch/scopes-and-launch-context.html)
 - [SMART Health Cards Framework spec](https://spec.smarthealth.cards/) · [smart-on-fhir/health-cards](https://github.com/smart-on-fhir/health-cards/blob/main/docs/index.md)
 - Practical guides: [Medblocks — Patient app on Epic](https://medblocks.com/blog/patient-app-integration-with-smart-on-epic-how-to-guide-the-fundamentals), [6B — register/authenticate/launch](https://6b.health/insight/how-to-register-authenticate-launch-apps-with-epics-fhir-apis/), [Consolidate Health — Epic FHIR access](<https://consolidate.health/blog/how-to-access-patient-records-from-epic-s-fhir-api-(without-the-headache)>)
-</content>
+  </content>
