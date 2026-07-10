@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { TelegramBotConfig, TelegramMode } from "@/lib/settings";
+import type { NotifyErrorMarker } from "@/lib/notifications/delivery-status";
 import { saveTelegramBotConfig, registerTelegramWebhook } from "../actions";
 import SaveStatus from "@/components/SaveStatus";
 
@@ -12,9 +13,14 @@ import SaveStatus from "@/components/SaveStatus";
 export default function ServerTelegramSettings({
   config,
   publicUrl,
+  lastError,
 }: {
   config: TelegramBotConfig;
   publicUrl: string;
+  // The last notification-delivery failure (#131), or null when the most recent
+  // send succeeded. The per-profile "Send test" button on Settings → Profile is
+  // the remediation path — a successful test clears this marker.
+  lastError: NotifyErrorMarker | null;
 }) {
   const router = useRouter();
   const [botToken, setBotToken] = useState(config.telegramBotToken);
@@ -67,6 +73,29 @@ export default function ServerTelegramSettings({
         @BotFather for the token. Each profile sets its own chat id and schedule
         on Settings → Profile.
       </p>
+
+      {lastError && (
+        <div
+          data-testid="notify-last-error"
+          className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300"
+        >
+          <div className="font-medium">
+            Last notification delivery failed
+            {lastError.channel ? ` (${lastError.channel})` : ""}
+          </div>
+          <div className="mt-0.5 break-words">{lastError.error}</div>
+          {lastError.at && (
+            <div className="mt-0.5 opacity-80">
+              {new Date(lastError.at).toLocaleString()}
+            </div>
+          )}
+          <div className="mt-1 opacity-80">
+            Fix the bot token above (or the chat id on Settings → Profile), then
+            use “Send test” on Settings → Profile — a successful send clears
+            this.
+          </div>
+        </div>
+      )}
 
       <div>
         <label className="label">Bot token</label>

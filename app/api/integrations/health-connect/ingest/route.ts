@@ -203,12 +203,6 @@ export async function POST(req: Request) {
       }
     );
     ({ counts, split } = tx());
-    // Register any new canonical names and (re)compute out-of-range flags for the
-    // imported vitals against their canonical reference/optimal ranges.
-    if (vitalIds.length) {
-      addCanonicalNames(parsed.vitals.map((v) => v.canonical));
-      reconcileFlags(INGEST_PROFILE_ID, vitalIds);
-    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     log.error("health-connect ingest failed", { err: String(err) });
@@ -223,6 +217,23 @@ export async function POST(req: Request) {
       error: message,
     });
     return Response.json({ ok: false, error: message }, { status: 500 });
+  }
+
+  // Post-commit reconcile (#131): register new canonical names and (re)compute
+  // out-of-range flags for the imported vitals. This runs AFTER the transaction
+  // committed, so a failure here must NOT be recorded as a failed sync — the batch
+  // already landed. Scope its own try/catch to log-and-continue instead of folding
+  // into the failure event above (which previously mislabelled a committed batch as
+  // ok:false when this threw).
+  if (vitalIds.length) {
+    try {
+      addCanonicalNames(parsed.vitals.map((v) => v.canonical));
+      reconcileFlags(INGEST_PROFILE_ID, vitalIds);
+    } catch (err) {
+      log.error("health-connect post-commit reconcile failed", {
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   const summary = { ...counts, skipped: parsed.skipped };

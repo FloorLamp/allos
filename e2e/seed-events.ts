@@ -9,7 +9,21 @@ loadEnvConfig(process.cwd());
 import { db, today } from "../lib/db";
 import { shiftDateStr } from "../lib/date";
 import { writeRawPayload } from "../lib/integrations/raw-log";
-import { setDashboardLayout, setProfileSetting } from "../lib/settings";
+import {
+  setDashboardLayout,
+  setProfileSetting,
+  setSetting,
+} from "../lib/settings";
+
+// A persisted notification-delivery failure (#131) so Settings → Server surfaces
+// the "Last notification delivery failed" marker for the e2e to assert. Synthetic
+// error text — no PHI. Mirrors what dispatch() writes on a failed Telegram send.
+setSetting(
+  "notify_last_error",
+  "Telegram API 401: Unauthorized (bot token revoked)"
+);
+setSetting("notify_last_error_at", "2026-07-09T08:00:00.000Z");
+setSetting("notify_last_error_channel", "telegram");
 
 const PROFILE_ID = 1;
 
