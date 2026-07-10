@@ -13,8 +13,35 @@ import {
   snoozeItem,
   dismissItem,
   restoreItem,
+  markCarePlanDone,
 } from "@/app/(app)/upcoming/actions";
 import { seedActor, createLogin, createProfile, actAs, fd } from "./harness";
+
+// Insert a care_plan_items row for a profile, returning its id.
+function insertCarePlanItem(
+  profileId: number,
+  description: string,
+  plannedDate: string | null,
+  status: string | null
+): number {
+  return Number(
+    db
+      .prepare(
+        `INSERT INTO care_plan_items
+           (profile_id, description, planned_date, status)
+         VALUES (?, ?, ?, ?)`
+      )
+      .run(profileId, description, plannedDate, status).lastInsertRowid
+  );
+}
+function carePlanStatus(id: number): string | null {
+  return (
+    (
+      db.prepare("SELECT status FROM care_plan_items WHERE id = ?").get(id) as
+        { status: string | null } | undefined
+    )?.status ?? null
+  );
+}
 
 const revalidate = vi.mocked(revalidatePath);
 beforeEach(() => revalidate.mockClear());
@@ -96,6 +123,48 @@ describe("restoreItem", () => {
     await restoreItem(fd({ signal_key: "refill:9" }));
     expect(rows(profile.id)).toHaveLength(0);
     expect(revalidate).toHaveBeenCalledWith("/upcoming");
+  });
+});
+
+describe("markCarePlanDone (issue #84)", () => {
+  it("marks the acting profile's care-plan item completed and revalidates", async () => {
+    const { profile } = seedActor();
+    const id = insertCarePlanItem(
+      profile.id,
+      "Repeat screening colonoscopy",
+      "2026-09-01",
+      "planned"
+    );
+
+    await markCarePlanDone(fd({ care_plan_item_id: id }));
+
+    expect(carePlanStatus(id)).toBe("completed");
+    expect(revalidate).toHaveBeenCalledWith("/upcoming");
+    expect(revalidate).toHaveBeenCalledWith("/care-plan");
+  });
+
+  it("ignores a missing id", async () => {
+    const { profile } = seedActor();
+    const id = insertCarePlanItem(
+      profile.id,
+      "Follow-up",
+      "2026-09-01",
+      "active"
+    );
+    await markCarePlanDone(fd({ care_plan_item_id: 0 }));
+    expect(carePlanStatus(id)).toBe("active");
+  });
+
+  it("never touches another profile's care-plan item", async () => {
+    const login = createLogin({ role: "admin" });
+    const a = createProfile("CP-A", login.id);
+    const b = createProfile("CP-B", login.id);
+    const bItem = insertCarePlanItem(b.id, "B's plan", "2026-09-01", "planned");
+
+    // Acting as A, a tampered id pointing at B's row is a no-op (WHERE profile_id).
+    actAs(login, a);
+    await markCarePlanDone(fd({ care_plan_item_id: bItem }));
+    expect(carePlanStatus(bItem)).toBe("planned");
   });
 });
 
