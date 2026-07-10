@@ -5,7 +5,13 @@ import {
   getAiPrefs,
   getBackupSettings,
 } from "@/lib/settings";
-import { getLastBackup, getLastBackupError } from "@/lib/backup";
+import {
+  getLastBackup,
+  getLastBackupError,
+  isOffsiteConfigured,
+  getLastOffsiteBackupAt,
+  getLastOffsiteError,
+} from "@/lib/backup";
 import { getNotifyError } from "@/lib/notifications";
 import { aiEndpointInfo } from "@/lib/ai-client";
 import { formatBytes } from "@/lib/format-bytes";
@@ -57,6 +63,14 @@ export default function ServerSettingsPage() {
             : null
         }
         lastError={getLastBackupError() || null}
+        offsite={{
+          configured: isOffsiteConfigured(),
+          lastAt: (() => {
+            const at = getLastOffsiteBackupAt();
+            return at ? new Date(at).toLocaleString() : null;
+          })(),
+          lastError: getLastOffsiteError(),
+        }}
       />
       <AgeGateSettings minTrainingAge={minTrainingAge()} />
       <footer className="mt-10 border-t border-black/10 pt-4 text-xs text-slate-400 dark:border-white/10 dark:text-slate-500">

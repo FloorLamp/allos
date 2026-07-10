@@ -165,6 +165,7 @@ cp .env.example .env.local   # then edit in your values
 | `PORT`                 | Optional (Docker). Host port to expose (container listens on `3000`).                                                                                                                                                                                                                                                |
 | `TZ`                   | Optional. Timezone is DB-backed — the instance default under **Settings → Server**, per-profile under **Settings → Profile**; a `TZ` env only seeds the instance default on first boot.                                                                                                                              |
 | `DATA_DIR`             | Optional (Docker). Host path for persistent data — see **Deploy with Docker**.                                                                                                                                                                                                                                       |
+| `BACKUP_DEST_DIR`      | Optional. A **second mounted directory** to copy each verified snapshot to (and mirror `data/uploads/` to), so backups survive loss of the `DATA_DIR` volume — see **[Backups → Off-volume backups](#off-volume-backups-backup_dest_dir)**.                                                                          |
 
 You can also `export` these directly instead of using a file.
 
@@ -478,10 +479,38 @@ unhealthy (see [Health endpoint](#health-endpoint)) so the container healthcheck
 Snapshots live under `DATA_DIR` (the Docker bind mount, outside the checkout) and are
 **never served by any route** — they contain multi-profile health data.
 
-> **Uploads caveat:** uploaded medical files (`data/uploads/`) and captured integration
-> payloads (`data/integration-payloads/`) live on disk, _not_ in the database, so the
-> snapshot does **not** include them. For a complete backup, copy the whole `DATA_DIR`
-> (database + `uploads/` + `integration-payloads/`).
+### Off-volume backups (`BACKUP_DEST_DIR`)
+
+> **Same-volume caveat:** by default snapshots land in `data/backups` — the **same** bind
+> mount as the live database. A disk or volume loss destroys the database **and** every
+> snapshot together, and uploaded medical files (`data/uploads/`) aren't in a snapshot at
+> all. On-volume backups are not a durability story on their own.
+
+Set **`BACKUP_DEST_DIR`** to a **second mounted directory** — a NAS, another disk, or a
+synced folder the operator controls — and after each verified snapshot the app copies it
+(and its `.json` verify sidecar) there, prunes that destination to the same retention, and
+**mirrors `data/uploads/`** to `BACKUP_DEST_DIR/uploads`. The uploads mirror is incremental
+and append-only: because uploaded files are content-hashed and immutable, only new files are
+copied each night, so it stays cheap. Keep the destination **operator-controlled** — it holds
+multi-profile PHI, so no cloud/network target is wired up (mount your own if you want one).
+
+The **Settings → Server → Automated backups** card shows whether `BACKUP_DEST_DIR` is
+configured and the time of the last off-volume copy (or its last error). Off-volume failures
+are recorded under their own marker and never fail the primary snapshot.
+
+```bash
+# docker-compose: mount a second host directory and point the env at it
+#   volumes:
+#     - "${DATA_DIR:-./data}:/app/data"
+#     - "/mnt/nas/allos-backup:/backup"     # second, independent volume
+#   environment:
+#     BACKUP_DEST_DIR: /backup
+```
+
+> **Uploads caveat (no second mount):** without `BACKUP_DEST_DIR`, uploaded medical files
+> (`data/uploads/`) and captured integration payloads (`data/integration-payloads/`) live on
+> disk, _not_ in the database, so the snapshot does **not** include them. For a complete
+> backup then, copy the whole `DATA_DIR` (database + `uploads/` + `integration-payloads/`).
 
 ### Scheduling without the notify sidecar
 
@@ -507,13 +536,22 @@ npm run restore                       # list snapshots + integrity status
 npm run restore -- allos-<stamp>.db   # restore that snapshot (prompts to confirm)
 npm run restore -- allos-<stamp>.db --yes    # skip the confirmation prompt
 npm run restore -- allos-<stamp>.db --force  # also override safety refusals
+
+# Restore from an OFF-VOLUME copy (BACKUP_DEST_DIR mirror):
+npm run restore -- --from /backup                     # list snapshots on the mirror
+npm run restore -- --from /backup allos-<stamp>.db    # restore one from the mirror
+npm run restore -- --from                             # bare --from uses BACKUP_DEST_DIR
 ```
 
 **Stop the container/app before restoring.** The tool makes a best-effort check for a live
 DB connection and refuses if it detects one, but in WAL mode an _idle_ connection may not be
 detected, so always stop the app first. `--force` overrides both the running check and a
-failed-integrity refusal. Restore `data/uploads/` too if you're recovering from a
-full-directory backup.
+failed-integrity refusal.
+
+**Putting uploads back.** A snapshot restores only the database. When recovering from an
+off-volume mirror (or any full-directory backup), also copy the uploaded medical files back
+so `medical_documents` rows aren't left pointing at missing files — `--from` prints the exact
+command, e.g. `cp -a /backup/uploads/. data/uploads/`.
 
 You can still restore by hand if you prefer: stop the container, `cp
 data/backups/allos-<stamp>.db data/allos.db`, delete any `data/allos.db-wal` /
