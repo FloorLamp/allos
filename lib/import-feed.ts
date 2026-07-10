@@ -203,21 +203,24 @@ function documentTone(status: string): FeedTone {
   }
 }
 
-// A document's primary detail line: the produced-record count when done, else a
+// A document's primary detail line: the produced-item count when done, else a
 // short status phrase. Kept terse — the full error + breakdown live on the detail
 // page the row links to.
 function documentDetail(doc: FeedDocument): { detail: string; muted: boolean } {
   const status = documentLogStatus(doc.extraction_status);
   switch (status) {
     case "done":
+      // "items", not "records": extracted_count tallies every clinical kind an
+      // import writes (encounters/conditions/allergies/…), not just lab records
+      // (#212).
       return doc.extracted_count > 0
         ? {
             detail: `${doc.extracted_count} ${
-              doc.extracted_count === 1 ? "record" : "records"
+              doc.extracted_count === 1 ? "item" : "items"
             }`,
             muted: false,
           }
-        : { detail: "no records", muted: true };
+        : { detail: "no items", muted: true };
     case "processing":
       return { detail: "extracting…", muted: true };
     case "failed":

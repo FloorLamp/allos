@@ -13,7 +13,6 @@ import {
   recentCardioPRs,
   recommendCoaching,
   restRecommendation,
-  consecutiveTrainingDays,
   activeDaysInWindow,
   nextRestEpisode,
   restEpisodeDay,
@@ -28,6 +27,7 @@ import {
   type StrengthRecent,
   type CardioRecent,
 } from "@/lib/coaching";
+import { currentStreak } from "@/lib/streak";
 import { kgTo, toKg } from "@/lib/units";
 
 // ExerciseSummary factory with sensible defaults; override per test.
@@ -564,21 +564,6 @@ function consecutiveDates(end: string, n: number): string[] {
   return out;
 }
 
-describe("consecutiveTrainingDays", () => {
-  it("counts a run ending today", () => {
-    expect(consecutiveTrainingDays(consecutiveDates(TODAY, 4), TODAY)).toBe(4);
-  });
-  it("anchors on yesterday when today is untrained", () => {
-    expect(consecutiveTrainingDays(["2026-07-07", "2026-07-06"], TODAY)).toBe(
-      2
-    );
-  });
-  it("is 0 with no recent training", () => {
-    expect(consecutiveTrainingDays(["2026-07-01"], TODAY)).toBe(0);
-    expect(consecutiveTrainingDays([], TODAY)).toBe(0);
-  });
-});
-
 describe("activeDaysInWindow", () => {
   it("counts distinct days inside the trailing window (inclusive of today)", () => {
     const dates = ["2026-07-08", "2026-07-06", "2026-07-02", "2026-07-01"];
@@ -700,6 +685,19 @@ describe("restRecommendation", () => {
     );
     expect(rest?.id).toBe("rest-overtraining");
     expect(rest?.detail).toContain("4 days in a row");
+  });
+
+  // Anti-drift pin (#222): the overtraining nudge and the dashboard StreakWidget
+  // must read the SAME consecutive-day count. Coaching now calls currentStreak
+  // (the widget's source) directly, so prove they agree on the same fixture — if
+  // one ever forks, the number in the nudge copy stops matching currentStreak.
+  it("counts the streak the same way the dashboard widget does (currentStreak)", () => {
+    const dates = consecutiveDates(TODAY, 5);
+    const widgetStreak = currentStreak(TODAY, dates); // StreakWidget's source
+    const rest = restRecommendation(input({ trainingDates: dates }), th);
+    expect(rest?.id).toBe("rest-overtraining");
+    expect(rest?.detail).toContain(`${widgetStreak} days in a row`);
+    expect(widgetStreak).toBe(5);
   });
 
   it("fires on a heavy trailing window without a long streak", () => {

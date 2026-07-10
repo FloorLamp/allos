@@ -9,7 +9,7 @@
 // and the notification always show identical numbers.
 
 import { today } from "../db";
-import { shiftDateStr } from "../date";
+import { daysBetweenDateStr, shiftDateStr } from "../date";
 import {
   getActivities,
   getVolumeByDate,
@@ -28,7 +28,7 @@ import { isDueOn } from "../supplement-schedule";
 import { currentStreak, flexibleStreak } from "../streak";
 import {
   buildWeeklyRecap,
-  recapWindow,
+  resolveRecapWindow,
   renderRecapMessage,
   inWindow,
   type RecapInput,
@@ -38,6 +38,8 @@ import {
 } from "../weekly-recap";
 import {
   getActiveSituations,
+  getWeekMode,
+  getWeekStart,
   getZone2WeeklyTargetMin,
   setProfileSetting,
 } from "../settings";
@@ -108,7 +110,12 @@ export function gatherRecapInput(
   days = 7
 ): RecapInput {
   const td = today(profileId);
-  const win = recapWindow(td, days);
+  // "This week" per the profile's week_mode for the 7-day recap (issue #223), so
+  // the recap window matches the routine counters / journal; monthly (#20) falls
+  // back to a trailing window inside resolveRecapWindow.
+  const weekMode = getWeekMode(profileId);
+  const weekStart = getWeekStart(profileId);
+  const win = resolveRecapWindow(td, days, weekMode, weekStart);
 
   const activities = getActivities(profileId).map(asWorkout);
   const workouts = activities.filter((w) =>
@@ -124,14 +131,21 @@ export function gatherRecapInput(
 
   // PRs (strength + cardio) set within the recap window; labels are canonical
   // exercise / activity display names, de-duplicated in first-seen order. The PR
-  // helpers' `within` is INCLUSIVE both ends, so an N-day window is days-1 (matching
-  // recapWindow / weekWindowStart / the dashboard last7): passing `days` would admit
-  // a today-N PR whose workout already falls in the *previous* window (issue #190).
-  const strengthPRs = recentPRs(getStrengthByExercise(profileId), td, days - 1);
+  // helpers' `within` is INCLUSIVE both ends, so it must be the number of days from
+  // the window start to today — derived from `win.start` so it tracks whichever
+  // window resolveRecapWindow produced (a calendar week can be a partial, <7-day
+  // span). This matches the workout window exactly, so a PR dated on `win.prevEnd`
+  // (whose workout lands in the *previous* window) never leaks in (issues #190/#223).
+  const withinDays = daysBetweenDateStr(win.start, td) ?? days - 1;
+  const strengthPRs = recentPRs(
+    getStrengthByExercise(profileId),
+    td,
+    withinDays
+  );
   const cardioPRs = recentCardioPRs(
     getCardioByActivity(profileId, "km"),
     td,
-    days - 1
+    withinDays
   );
   const prLabels: string[] = [];
   const seen = new Set<string>();
@@ -170,6 +184,8 @@ export function gatherRecapInput(
     today: td,
     weightUnit,
     periodDays: days,
+    weekMode,
+    weekStart,
     workouts,
     prevWorkouts,
     volumeKg,

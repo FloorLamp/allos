@@ -7,6 +7,7 @@ import { estimate1RM } from "./strength";
 import { frequencyScopeLabel } from "./goals";
 import { formatRelativeDate } from "./format-date";
 import { shiftDateStr } from "./date";
+import { currentStreak } from "./streak";
 import { dispWeight, kgTo, toKg, round } from "./units";
 import { classifyPolarization, type PolarizedSplit } from "./training-zones";
 import {
@@ -613,28 +614,6 @@ function daysSince(dateISO: string, today: string): number {
   return Math.round((b - a) / 86_400_000);
 }
 
-// Consecutive training days ending at today (or yesterday, so a streak you
-// haven't extended yet still counts). Mirrors lib/streak's currentStreak but is
-// duplicated here to keep this module free of that import cycle.
-export function consecutiveTrainingDays(
-  dates: string[],
-  today: string
-): number {
-  const set = new Set(dates);
-  if (set.size === 0) return 0;
-  let cur = today;
-  if (!set.has(cur)) {
-    cur = shiftDateStr(cur, -1);
-    if (!set.has(cur)) return 0;
-  }
-  let streak = 0;
-  while (set.has(cur)) {
-    streak++;
-    cur = shiftDateStr(cur, -1);
-  }
-  return streak;
-}
-
 // Distinct active days within the trailing `windowDays` (inclusive of today).
 export function activeDaysInWindow(
   dates: string[],
@@ -725,8 +704,10 @@ export function restRecommendation(
     };
   }
 
-  // Overtraining — consecutive days, or a heavy trailing window.
-  const streak = consecutiveTrainingDays(trainingDates, today);
+  // Overtraining — consecutive days, or a heavy trailing window. Uses the SAME
+  // currentStreak the dashboard StreakWidget shows, so the rest nudge can't drift
+  // from the streak the user sees (issue #222).
+  const streak = currentStreak(today, trainingDates);
   if (streak >= th.overtrainingConsecutiveDays) {
     return {
       id: "rest-overtraining",
