@@ -10,12 +10,13 @@ import {
   type ActivityDupPair,
   type BodyMetricConflictPair,
 } from "@/lib/import-review/detect";
+import { detectFieldConflicts } from "@/lib/import-review/conflicts";
+import ActivityMergeControls from "@/components/ActivityMergeControls";
 import type {
   ActivityDupRow,
   BodyMetricConflictRow,
 } from "@/lib/queries/integrations";
 import {
-  mergeActivityPair,
   mergeBodyMetricPair,
   resolvePair,
 } from "@/app/(app)/data/review-actions";
@@ -235,14 +236,19 @@ export default function DuplicateReview({
                   isKeeper={false}
                 />
               </div>
-              <PairActions
-                domain={ACTIVITY_DOMAIN}
+              <ActivityMergeControls
                 signature={pair.signature}
-                keepId={keeper.id}
-                dropId={other.id}
-                mergeAction={mergeActivityPair}
-                keepLabelA={sourceLabel(keeper.source)}
-                keepLabelB={sourceLabel(other.source)}
+                aId={keeper.id}
+                bId={other.id}
+                aLabel={sourceLabel(keeper.source)}
+                bLabel={sourceLabel(other.source)}
+                // Oriented with the default keeper as A; the dialog flips values
+                // for the "keep other" button (issue #100).
+                conflicts={detectFieldConflicts(
+                  keeper as unknown as Record<string, unknown>,
+                  other as unknown as Record<string, unknown>
+                )}
+                units={units}
               />
             </li>
           );

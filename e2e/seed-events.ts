@@ -157,8 +157,21 @@ const insMerge = db.prepare(
 insMerge.run(PROFILE_ID, MERGE_DATE, "Journal merge keeper", 40, 6);
 insMerge.run(PROFILE_ID, MERGE_DATE, "Journal merge dupe", 42, null);
 
+// ── Conflict-aware merge fixture (issue #100) ─────────────────────────────────
+// Two same-day MANUAL cardio rows that genuinely DISAGREE on duration (42 vs 51
+// min — well beyond the conflict tolerance) but agree on distance. The manual
+// merge must therefore raise the per-field conflict preview; the e2e overrides
+// duration to the discarded row's value and asserts the merged keeper carries it.
+// Distinct date + titles so it never collides with the fixtures above. Synthetic.
+const CONFLICT_DATE = "2026-07-06";
+db.prepare(
+  `DELETE FROM activities WHERE profile_id = ? AND date = ? AND title IN ('Conflict merge keeper', 'Conflict merge dupe')`
+).run(PROFILE_ID, CONFLICT_DATE);
+insMerge.run(PROFILE_ID, CONFLICT_DATE, "Conflict merge keeper", 42, 5);
+insMerge.run(PROFILE_ID, CONFLICT_DATE, "Conflict merge dupe", 51, 5);
+
 console.log(
-  "e2e: seeded integration_sync_events (strava failing) + a cross-source duplicate activity pair + a same-day manual-merge pair"
+  "e2e: seeded integration_sync_events (strava failing) + a cross-source duplicate activity pair + a same-day manual-merge pair + a conflicting merge pair"
 );
 
 // ── Unified import-feed fixtures (issue #208 / #212) ──────────────────────────

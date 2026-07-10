@@ -10,7 +10,7 @@
 // mis-merge can be undone from a toast (issue #64 / #30).
 
 import { db } from "./db";
-import { foldActivityFields } from "./import-review/detect";
+import { foldActivityFieldsWithOverrides } from "./import-review/conflicts";
 
 // Fold the DISCARDED row's gap-filling fields into the KEEPER — COALESCE(keep, drop)
 // per column, so the keeper's own values always win and the discarded row only fills
@@ -19,13 +19,21 @@ import { foldActivityFields } from "./import-review/detect";
 // saveActivity uses). PROFILE-SCOPED (the UPDATE filters profile_id); the caller has
 // already verified both rows are the acting profile's. `keep`/`drop` are the full
 // activity rows the caller SELECTed.
+//
+// `overrideFields` (issue #100): the conflict-preview per-field overrides — a
+// validated list of fold-field names where the user chose the DISCARDED row's value
+// instead of the keeper's. For those fields the discarded row's own value wins; all
+// other fields fold exactly as before. Empty (the default) is the unchanged
+// keeper-wins fold. The values are ALWAYS taken from the re-read `drop` row here —
+// the caller only forwards NAMES, never client-supplied values.
 export function writeActivityFold(
   profileId: number,
   keepId: number,
   keep: Record<string, unknown>,
-  drop: Record<string, unknown>
+  drop: Record<string, unknown>,
+  overrideFields: Iterable<string> = []
 ): void {
-  const f = foldActivityFields(keep, drop);
+  const f = foldActivityFieldsWithOverrides(keep, drop, overrideFields);
   db.prepare(
     `UPDATE activities
         SET notes = ?, duration_min = ?, distance_km = ?, intensity = ?,

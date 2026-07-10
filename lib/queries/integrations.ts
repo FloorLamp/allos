@@ -89,9 +89,24 @@ export function getImportReviewCount(profileId: number): number {
 // PROFILE-SCOPED (WHERE profile_id = ?).
 
 // A detected activity row with the display field (title) the UI shows alongside the
-// detection fields. Extra fields flow through the generic detectors untouched.
+// detection fields, plus the numeric fold columns the conflict preview (issue #100)
+// compares. Extra fields flow through the generic detectors untouched.
 export interface ActivityDupRow extends ActivityDupInput {
   title: string;
+  // Numeric magnitude fold-fields — the ones detectFieldConflicts can surface as a
+  // per-field conflict (duration_min/distance_km already on ActivityDupInput).
+  elevation_m: number | null;
+  avg_hr: number | null;
+  max_hr: number | null;
+  avg_speed_kmh: number | null;
+  max_speed_kmh: number | null;
+  relative_effort: number | null;
+  avg_power_w: number | null;
+  max_power_w: number | null;
+  weighted_avg_power_w: number | null;
+  avg_cadence: number | null;
+  kilojoules: number | null;
+  avg_temp_c: number | null;
 }
 
 // A detected body-metrics row plus its notes for display.
@@ -121,7 +136,10 @@ function loadActivityDupRows(profileId: number): ActivityDupRow[] {
   return db
     .prepare(
       `SELECT a.id, a.date, a.type, a.title, a.source, a.external_id,
-              a.duration_min, a.distance_km, a.start_time, a.end_time
+              a.duration_min, a.distance_km, a.start_time, a.end_time,
+              a.elevation_m, a.avg_hr, a.max_hr, a.avg_speed_kmh, a.max_speed_kmh,
+              a.relative_effort, a.avg_power_w, a.max_power_w,
+              a.weighted_avg_power_w, a.avg_cadence, a.kilojoules, a.avg_temp_c
          FROM activities a
          JOIN (SELECT date, type FROM activities
                 WHERE profile_id = ?
