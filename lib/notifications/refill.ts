@@ -12,11 +12,18 @@
 //     low a fresh nudge fires. Without this the marker would silence it forever.
 
 import { getSupplements, getRefillRates } from "../queries";
+import { getFindingSuppressions } from "../queries/upcoming";
 import {
   daysOfSupplyLeft,
   isLowSupply,
   DEFAULT_LOW_SUPPLY_DAYS,
 } from "../refill";
+import {
+  planRefillNudges,
+  refillSignalKey,
+  type RefillCandidate,
+} from "../refill-nudge";
+import { isSuppressed } from "../upcoming-suppress";
 import {
   getProfileSetting,
   setProfileSetting,
@@ -77,23 +84,43 @@ export async function runRefills(
   // supplement no longer reads as daily, so the nudge stops firing weeks early.
   const rates = getRefillRates(profileId);
 
-  const toSend: LowItem[] = [];
-  for (const s of tracked) {
+  const candidates: RefillCandidate[] = tracked.map((s) => {
     const daysLeft = daysOfSupplyLeft(
       s.quantity_on_hand,
       s.qty_per_dose,
       rates.get(s.id)?.dosesPerDay ?? 0
     );
-    const low = isLowSupply(daysLeft, DEFAULT_LOW_SUPPLY_DAYS);
-    const marked = !!getProfileSetting(profileId, refillKey(s.id));
-    if (low && daysLeft != null) {
-      if (!marked) toSend.push({ id: s.id, name: s.name, daysLeft });
-    } else if (marked) {
-      // Recovered (refilled, or no longer estimable) — end the episode so a
-      // future low run can nudge again.
-      deleteProfileSetting(profileId, refillKey(s.id));
-    }
-  }
+    return {
+      id: s.id,
+      name: s.name,
+      daysLeft,
+      low: isLowSupply(daysLeft, DEFAULT_LOW_SUPPLY_DAYS),
+    };
+  });
+
+  // Route the nudge through the shared findings-suppression bus (#227): a refill
+  // dismissed/snoozed on the Upcoming page (keyed by the identical `refill:<id>`
+  // signal) is held out of the push too. `date` is the profile-local today.
+  const suppressions = getFindingSuppressions(profileId);
+  const markedIds = candidates
+    .filter((c) => !!getProfileSetting(profileId, refillKey(c.id)))
+    .map((c) => c.id);
+  const suppressedIds = candidates
+    .filter((c) => {
+      const rec = suppressions.get(refillSignalKey(c.id));
+      return rec != null && isSuppressed(rec, date);
+    })
+    .map((c) => c.id);
+
+  const { toSend, toClear } = planRefillNudges(
+    candidates,
+    markedIds,
+    suppressedIds
+  );
+
+  // End any recovered episodes first — cheap, and never depends on a send.
+  for (const id of toClear) deleteProfileSetting(profileId, refillKey(id));
+
   if (toSend.length === 0) return { failed: false };
 
   const results = await dispatch(

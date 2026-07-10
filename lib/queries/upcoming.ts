@@ -25,6 +25,7 @@ import {
   isLowSupply,
   DEFAULT_LOW_SUPPLY_DAYS,
 } from "../refill";
+import { refillSignalKey } from "../refill-nudge";
 import { assessSchedule } from "../immunization-status";
 import {
   assessCatalog,
@@ -153,7 +154,7 @@ function refillItems(profileId: number, today: string): UpcomingItem[] {
     if (!isLowSupply(daysLeft, DEFAULT_LOW_SUPPLY_DAYS) || daysLeft == null)
       continue;
     items.push({
-      key: `refill:${s.id}`,
+      key: refillSignalKey(s.id),
       domain: "refill",
       title: s.name,
       detail:

@@ -25,6 +25,15 @@
 // double-nudging. This is why covered items are held out of the clear set instead of
 // being dropped from `actionable` — dropping them would age their marker out and let
 // a later un-cover re-nudge the SAME episode.
+//
+// Page suppression (issue #227) — the SAME frozen-marker treatment for a rule the
+// user dismissed/snoozed on the Upcoming page. The push is the pull surface's cousin,
+// so a bus dismissal (keyed by the rule's `<kind>:<ruleKey>` signal — the identical
+// dedupeKey the Upcoming item carries) must silence the ping too. A suppressed rule
+// is held out of BOTH `toSend` and `toClear` exactly like a covered one, so its
+// episode marker is frozen: un-dismissing later (or a snooze expiring) resumes the
+// normal lifecycle — a never-nudged rule fires, a mid-episode marked rule does not
+// re-nudge the same episode. Covered and suppressed are the two "frozen" sources.
 
 // One due/overdue preventive item the nudge can announce. Derived from the pure
 // assessor's actionable slice (lib/preventive-status.ts): `ruleKey` is the catalog
@@ -48,23 +57,27 @@ export interface PreventiveNudgePlan {
 // Decide the nudge plan from the actionable items and the currently-set markers.
 // Pure: `markedRuleKeys` is the set of rule keys that already have a
 // notify_last_preventive_<ruleKey> marker. `coveredRuleKeys` is the set of rule keys
-// currently covered by a booked matching-kind visit (issue #183) — these are held
-// out of BOTH `toSend` and `toClear` so their episode markers stay frozen while the
-// booking stands. `toClear` is sorted for deterministic output (delete order is
-// irrelevant, but stable output keeps tests simple).
+// currently covered by a booked matching-kind visit (issue #183); `suppressedRuleKeys`
+// is the set the user dismissed/snoozed on the Upcoming page (issue #227). Both are
+// "frozen" sources — a rule in EITHER is held out of BOTH `toSend` and `toClear` so
+// its episode marker stays exactly as-is while the coverage/suppression stands.
+// `toClear` is sorted for deterministic output (delete order is irrelevant, but
+// stable output keeps tests simple).
 export function planPreventiveNudges(
   actionable: readonly PreventiveNudgeItem[],
   markedRuleKeys: Iterable<string>,
-  coveredRuleKeys: Iterable<string> = []
+  coveredRuleKeys: Iterable<string> = [],
+  suppressedRuleKeys: Iterable<string> = []
 ): PreventiveNudgePlan {
   const marked = new Set(markedRuleKeys);
-  const covered = new Set(coveredRuleKeys);
+  // Covered (booked visit) and suppressed (page dismissal) both freeze the episode.
+  const frozen = new Set([...coveredRuleKeys, ...suppressedRuleKeys]);
   const actionableKeys = new Set(actionable.map((a) => a.ruleKey));
   const toSend = actionable.filter(
-    (a) => !marked.has(a.ruleKey) && !covered.has(a.ruleKey)
+    (a) => !marked.has(a.ruleKey) && !frozen.has(a.ruleKey)
   );
   const toClear = [...marked]
-    .filter((k) => !actionableKeys.has(k) && !covered.has(k))
+    .filter((k) => !actionableKeys.has(k) && !frozen.has(k))
     .sort();
   return { toSend, toClear };
 }
