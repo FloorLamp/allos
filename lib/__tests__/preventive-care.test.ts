@@ -310,8 +310,8 @@ describe("sex gating", () => {
 // Risk-gated rules stay inert
 // ---------------------------------------------------------------------------
 describe("risk-gated rules", () => {
-  it("never fires until its risk input exists", () => {
-    // A 60y male matches AAA's age/sex, yet it stays not_recommended.
+  it("never fires when no smoking input is resolved (default inert)", () => {
+    // A 70y male matches AAA's age/sex, yet it stays not_recommended.
     expect(
       statusOf("aaa_ultrasound", assess({ ageMonths: 70 * Y, sex: "male" }))
         ?.status
@@ -319,6 +319,104 @@ describe("risk-gated rules", () => {
     expect(
       statusOf("lung_cancer_ldct", assess({ ageMonths: 60 * Y }))?.status
     ).toBe("not_recommended");
+  });
+
+  // Smoking activates the two risk-gated screenings (issue #83). The smoking facts
+  // come pre-resolved (lib/smoking.resolveSmoking); the assessor consumes them.
+  const everSmoker = {
+    status: "former" as const,
+    packYears: 30,
+    quitYear: 2020,
+    everSmoked: true,
+    source: "structured" as const,
+  };
+
+  it("AAA fires (becomes actionable) for an ever-smoker in the age/sex window", () => {
+    const s = assess({
+      ageMonths: 70 * Y,
+      sex: "male",
+      smoking: everSmoker,
+    });
+    // Never done + well past the 65y entry age → actionable (overdue here).
+    expect(["due", "overdue"]).toContain(statusOf("aaa_ultrasound", s)?.status);
+    expect(s.actionable.some((a) => a.key === "aaa_ultrasound")).toBe(true);
+  });
+
+  it("AAA stays inert for a never-smoker even in the window", () => {
+    const s = assess({
+      ageMonths: 70 * Y,
+      sex: "male",
+      smoking: {
+        status: "never",
+        packYears: null,
+        quitYear: null,
+        everSmoked: false,
+        source: "structured",
+      },
+    });
+    expect(statusOf("aaa_ultrasound", s)?.status).toBe("not_recommended");
+  });
+
+  it("AAA respects the age gate — no smoking prompt for a 40y ever-smoker", () => {
+    const s = assess({
+      ageMonths: 40 * Y,
+      sex: "male",
+      smoking: everSmoker,
+    });
+    expect(statusOf("aaa_ultrasound", s)?.status).toBe("not_recommended");
+  });
+
+  it("lung LDCT fires for a qualifying smoker (≥20 pack-years, quit <15y)", () => {
+    const s = assess({
+      ageMonths: 60 * Y,
+      smoking: everSmoker, // quit 2020, today 2026 → 6y ago
+    });
+    // Never done + past the 50y entry age → actionable (overdue here).
+    expect(["due", "overdue"]).toContain(
+      statusOf("lung_cancer_ldct", s)?.status
+    );
+    expect(s.actionable.some((a) => a.key === "lung_cancer_ldct")).toBe(true);
+  });
+
+  it("lung LDCT stays inert below the pack-year threshold", () => {
+    const s = assess({
+      ageMonths: 60 * Y,
+      smoking: { ...everSmoker, packYears: 10 },
+    });
+    expect(statusOf("lung_cancer_ldct", s)?.status).toBe("not_recommended");
+  });
+
+  it("lung LDCT stays inert for a former smoker who quit > 15y ago", () => {
+    const s = assess({
+      ageMonths: 60 * Y,
+      smoking: { ...everSmoker, quitYear: 2000 },
+    });
+    expect(statusOf("lung_cancer_ldct", s)?.status).toBe("not_recommended");
+  });
+
+  it("lung LDCT PROMPTS an imported-only ever-smoker to add pack-years", () => {
+    const s = assess({
+      ageMonths: 60 * Y,
+      smoking: {
+        status: null,
+        packYears: null,
+        quitYear: null,
+        everSmoked: true,
+        source: "imported",
+      },
+    });
+    const a = statusOf("lung_cancer_ldct", s)!;
+    expect(a.status).toBe("due");
+    expect(a.href).toBe("/settings/profile");
+    expect(a.detail).toMatch(/pack-years/i);
+  });
+
+  it("age gate still wins — a 40y qualifying smoker gets no lung prompt", () => {
+    const s = assess({
+      ageMonths: 40 * Y,
+      smoking: everSmoker,
+    });
+    expect(statusOf("lung_cancer_ldct", s)?.status).toBe("not_recommended");
   });
 });
 
@@ -360,6 +458,7 @@ describe("overrides", () => {
       nextDueAgeMonths: null,
       detail: "",
       nextLabel: null,
+      href: null,
       override: null,
       citation: { source: "s", summary: "", reviewed: "2026-07" },
     };

@@ -13,6 +13,7 @@ import {
   getEmergencyCardEnabled,
   getBloodType,
   getEmergencyContact,
+  getSmokingHistory,
 } from "@/lib/settings";
 import { inferWorkoutSchedule } from "@/lib/queries";
 import { requireSession } from "@/lib/auth";
@@ -23,6 +24,7 @@ import ProfileForm from "./ProfileForm";
 import ProfilePhotoCard from "./ProfilePhotoCard";
 import ProfileNotificationSettings from "./ProfileNotificationSettings";
 import EmergencyCardSettings from "./EmergencyCardSettings";
+import SmokingHistoryForm from "./SmokingHistoryForm";
 
 export const dynamic = "force-dynamic";
 
@@ -71,6 +73,7 @@ export default function ProfileSettingsPage() {
         weekStart={weekStart}
         weekMode={weekMode}
       />
+      <SmokingHistoryForm history={getSmokingHistory(profile.id)} />
       <ProfileNotificationSettings
         telegram={telegram}
         botConfigured={botConfigured}

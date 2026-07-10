@@ -22,6 +22,7 @@ function mkAssessment(
     nextDueAgeMonths: null,
     detail: "Recommended",
     nextLabel: "Due now",
+    href: null,
     override: null,
     citation: CITATION,
     ...over,
@@ -63,6 +64,17 @@ describe("preventiveAssessmentToUpcomingItem", () => {
     expect(item.href).toBe("/medical");
     // Falls back to detail when nextLabel is null.
     expect(item.detail).toBe("Recommended, none on record");
+  });
+
+  it("honors a rule-specific href override (the #83 lung prompt → Settings)", () => {
+    const item = preventiveAssessmentToUpcomingItem(
+      mkAssessment({
+        kind: "screening",
+        key: "lung_cancer_ldct",
+        href: "/settings/profile",
+      })
+    );
+    expect(item.href).toBe("/settings/profile");
   });
 });
 
