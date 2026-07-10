@@ -59,12 +59,12 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     why: "reconcileFlags: ids come from a profile-scoped SELECT",
   },
   {
-    file: "lib/db.ts",
+    file: "lib/migrations/boot-tasks.ts",
     includes: "UPDATE medical_records SET flag = ? WHERE id = ?",
     why: "boot-time reconcile: ids come from a per-profile SELECT (rowsStmt)",
   },
   {
-    file: "lib/db.ts",
+    file: "lib/migrations/boot-tasks.ts",
     includes: "UPDATE medical_records SET flag = NULL WHERE id = ?",
     why: "boot-time reconcile: ids come from a per-profile SELECT (rowsStmt)",
   },
@@ -83,33 +83,34 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     includes: "UPDATE activities SET date = ?",
     why: "upsertActivities: the id comes from a profile-scoped find() just above",
   },
-  // db.ts one-time, pre-profile-scoping data migrations that intentionally rewrite
-  // EVERY profile's rows (vocabulary/file-hash/legacy-dose migrations run once at
-  // boot and are profile-agnostic by design).
+  // The frozen baseline migration's one-time, pre-profile-scoping data migrations
+  // that intentionally rewrite EVERY profile's rows (vocabulary/file-hash/legacy-
+  // dose migrations run once and are profile-agnostic by design). These moved out
+  // of lib/db.ts into the baseline migration (issue #119) but are unchanged.
   {
-    file: "lib/db.ts",
+    file: "lib/migrations/versions/001-baseline.ts",
     includes:
       "SELECT id, stored_path FROM medical_documents WHERE content_hash IS NULL",
     why: "backfillDocumentHashes: hashes files on disk for all documents (global, one-time)",
   },
   {
-    file: "lib/db.ts",
+    file: "lib/migrations/versions/001-baseline.ts",
     includes: "UPDATE medical_documents SET content_hash = ? WHERE id = ?",
     why: "backfillDocumentHashes: id from the global SELECT above",
   },
   {
-    file: "lib/db.ts",
+    file: "lib/migrations/versions/001-baseline.ts",
     includes:
       "SELECT id, components FROM activities WHERE components IS NOT NULL",
     why: "migrateLiftMerges: renames legacy lift names across all rows (global, one-time)",
   },
   {
-    file: "lib/db.ts",
+    file: "lib/migrations/versions/001-baseline.ts",
     includes: "UPDATE activities SET components = ? WHERE id = ?",
     why: "migrateLiftMerges: id from the global SELECT above",
   },
   {
-    file: "lib/db.ts",
+    file: "lib/migrations/versions/001-baseline.ts",
     includes: "${dosageSel}",
     why: "migrateSupplementDoses: reads legacy dosage/time off all supplements once (global)",
   },
@@ -294,13 +295,21 @@ describe("profile scoping: every owned-table query filters by profile_id", () =>
 // carries no ON DELETE CASCADE). This block fails the build if the shared const or
 // its consumers drift.
 
-// The tables whose CREATE TABLE block in lib/db.ts declares a `profile_id` column.
-// Every profile-owned table is born `profile_id NOT NULL` in its CREATE block on a
-// fresh DB (upgraded DBs additionally get it via addColumnIfMissing), so the schema
-// itself is the ground truth for "directly profile-owned" — deriving from it means
-// adding a profile_id table to db.ts WITHOUT adding it to OWNED_TABLES fails this
-// test, which is the exact drift Fix 1 exists to prevent. `_new` rebuild scratch
-// tables are ignored. Uses a balanced-paren scan of each CREATE body.
+// The single file holding the entire schema's CREATE TABLE blocks. As of issue
+// #119 these live in the frozen baseline migration (moved verbatim out of
+// lib/db.ts); a NEW table added in a later migration file would also need to be
+// scanned here, but until a post-baseline migration adds a profile-owned table the
+// baseline is the whole schema. (Keep this in sync if that changes.)
+const SCHEMA_FILE = "lib/migrations/versions/001-baseline.ts";
+
+// The tables whose CREATE TABLE block in the baseline migration declares a
+// `profile_id` column. Every profile-owned table is born `profile_id NOT NULL` in
+// its CREATE block on a fresh DB (upgraded DBs additionally get it via
+// addColumnIfMissing), so the schema itself is the ground truth for "directly
+// profile-owned" — adding a profile_id table to the schema WITHOUT adding it to
+// OWNED_TABLES fails this test, which is the exact drift Fix 1 exists to prevent.
+// `_new` rebuild scratch tables are ignored. Uses a balanced-paren scan of each
+// CREATE body.
 function tablesDeclaringProfileId(dbSrc: string): Set<string> {
   const out = new Set<string>();
   const re = /CREATE TABLE (?:IF NOT EXISTS )?(\w+)\s*\(/g;
@@ -339,11 +348,11 @@ const NON_OWNED_PROFILE_ID_TABLES = new Set([
 ]);
 
 describe("owned-table set: single source of truth (no drift)", () => {
-  it("OWNED_TABLES equals db.ts's profile_id tables (minus documented globals)", () => {
-    const dbSrc = fs.readFileSync(path.join(REPO, "lib/db.ts"), "utf8");
+  it("OWNED_TABLES equals the schema's profile_id tables (minus documented globals)", () => {
+    const dbSrc = fs.readFileSync(path.join(REPO, SCHEMA_FILE), "utf8");
     const declared = tablesDeclaringProfileId(dbSrc);
 
-    // Guard against a broken parse silently passing: db.ts declares many
+    // Guard against a broken parse silently passing: the schema declares many
     // profile_id tables.
     expect(declared.size).toBeGreaterThan(20);
 
@@ -385,8 +394,8 @@ describe("owned-table set: single source of truth (no drift)", () => {
     for (const s of LIST_SENTINELS) expect(src.includes(s)).toBe(false);
   });
 
-  it("db.ts consumes BACKFILL_OWNED_TABLES for the profile_id backfill", () => {
-    const src = read("lib/db.ts");
+  it("the baseline migration consumes BACKFILL_OWNED_TABLES for the profile_id backfill", () => {
+    const src = read(SCHEMA_FILE);
     expect(src).toContain("BACKFILL_OWNED_TABLES");
   });
 });
