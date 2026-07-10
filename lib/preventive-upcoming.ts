@@ -27,6 +27,19 @@ const HREF_BY_KIND: Record<PreventiveAssessment["kind"], string> = {
   screening: "/medical",
 };
 
+// The stable suppression/identity key for a preventive rule: `<kind>:<ruleKey>`
+// (e.g. "screening:colorectal_cancer"). Namespaced by kind so it never collides
+// with another Upcoming domain's key. This is the SINGLE source of truth for the
+// key — both the Upcoming item below AND the proactive preventive nudge
+// (lib/notifications/preventive.ts) derive their dedupeKey from it, so a page
+// dismissal and its push cousin line up on the same string (issue #227).
+export function preventiveSignalKey(
+  kind: PreventiveAssessment["kind"],
+  ruleKey: string
+): string {
+  return `${kind}:${ruleKey}`;
+}
+
 // The prefilled new-appointment URL for a preventive rule's "Book" CTA (issue #85):
 // the appointments page's create form, focused (?new=1), seeded with the rule name
 // as the title, the mapped visit kind, and a suggested date. The appointments page
@@ -57,7 +70,7 @@ export function preventiveAssessmentToUpcomingItem(
   const scheduled = ctx.scheduledDate != null;
   if (scheduled) {
     return {
-      key: `${a.kind}:${a.key}`,
+      key: preventiveSignalKey(a.kind, a.key),
       domain: a.kind,
       title: a.name,
       detail: `Scheduled for ${ctx.scheduledDate}`,
@@ -72,7 +85,7 @@ export function preventiveAssessmentToUpcomingItem(
   const overdue = a.status === "overdue";
   const band: UrgencyBand = overdue ? "overdue" : "today";
   return {
-    key: `${a.kind}:${a.key}`,
+    key: preventiveSignalKey(a.kind, a.key),
     domain: a.kind,
     title: a.name,
     detail: a.nextLabel ?? a.detail,

@@ -3,6 +3,11 @@ import {
   planPreventiveNudges,
   type PreventiveNudgeItem,
 } from "@/lib/preventive-nudge";
+import {
+  preventiveSignalKey,
+  preventiveAssessmentToUpcomingItem,
+} from "@/lib/preventive-upcoming";
+import type { PreventiveAssessment } from "@/lib/preventive-status";
 
 // Episode-dedup for the proactive preventive-care nudge (issue #87), mirroring the
 // refill nudge's "once per episode" tests. planPreventiveNudges is pure: given the
@@ -176,5 +181,111 @@ describe("planPreventiveNudges", () => {
       expect(plan.toSend.map((i) => i.ruleKey)).toEqual(["lipid_screening"]);
       expect(plan.toClear).toEqual([]);
     });
+  });
+
+  // Page suppression (issue #227): a rule dismissed/snoozed on the Upcoming page is
+  // held out of the nudge with its episode marker frozen — the same treatment as a
+  // covered rule, but sourced from the shared findings-suppression bus.
+  describe("page suppression (#227)", () => {
+    it("does not nudge a suppressed item, and never sets its marker", () => {
+      const plan = planPreventiveNudges(
+        [item("colorectal_cancer", "overdue"), item("lipid_screening")],
+        [],
+        [],
+        ["colorectal_cancer"]
+      );
+      expect(plan.toSend.map((i) => i.ruleKey)).toEqual(["lipid_screening"]);
+      expect(plan.toClear).toEqual([]);
+    });
+
+    it("re-allows the nudge once the item is un-dismissed", () => {
+      const suppressed = planPreventiveNudges(
+        [item("colorectal_cancer", "overdue")],
+        [],
+        [],
+        ["colorectal_cancer"]
+      );
+      expect(suppressed.toSend).toEqual([]);
+      expect(suppressed.toClear).toEqual([]);
+
+      const restored = planPreventiveNudges(
+        [item("colorectal_cancer", "overdue")],
+        [],
+        [],
+        []
+      );
+      expect(restored.toSend.map((i) => i.ruleKey)).toEqual([
+        "colorectal_cancer",
+      ]);
+    });
+
+    it("freezes a marked item's episode while suppressed (no double-nudge on restore)", () => {
+      // Nudged (marked), then dismissed while still due → no re-send, marker preserved.
+      const dismissed = planPreventiveNudges(
+        [item("mammography")],
+        ["mammography"],
+        [],
+        ["mammography"]
+      );
+      expect(dismissed.toSend).toEqual([]);
+      expect(dismissed.toClear).toEqual([]); // marker frozen, not cleared
+
+      // Un-dismissed, still due + still marked → no duplicate ping (same episode).
+      const restored = planPreventiveNudges(
+        [item("mammography")],
+        ["mammography"],
+        [],
+        []
+      );
+      expect(restored.toSend).toEqual([]);
+      expect(restored.toClear).toEqual([]);
+    });
+
+    it("does not clear a suppressed rule's marker even once it's no longer actionable", () => {
+      // Suppressed AND no longer due: still frozen, so the marker survives — the
+      // dismissal, not the episode lifecycle, governs while suppression stands.
+      const plan = planPreventiveNudges(
+        [],
+        ["mammography"],
+        [],
+        ["mammography"]
+      );
+      expect(plan.toSend).toEqual([]);
+      expect(plan.toClear).toEqual([]);
+    });
+  });
+});
+
+// The crux of #227: the push must compute the IDENTICAL dedupeKey the Upcoming item
+// carries, or a page dismissal won't line up with the nudge. Both derive from
+// preventiveSignalKey, so this pins that they can't drift.
+describe("preventiveSignalKey ↔ Upcoming item key", () => {
+  const assessment: PreventiveAssessment = {
+    key: "colorectal_cancer",
+    name: "Colorectal cancer screening",
+    kind: "screening",
+    status: "overdue",
+    lastDate: null,
+    nextDueDate: null,
+    nextDueAgeMonths: null,
+    detail: "Overdue",
+    nextLabel: "Overdue",
+    href: null,
+    override: null,
+    citation: { source: "USPSTF", summary: "test", reviewed: "2026-07" },
+  };
+
+  it("namespaces by kind: `<kind>:<ruleKey>`", () => {
+    expect(preventiveSignalKey("screening", "colorectal_cancer")).toBe(
+      "screening:colorectal_cancer"
+    );
+    expect(preventiveSignalKey("visit", "well_adult")).toBe("visit:well_adult");
+  });
+
+  it("equals the key the Upcoming item builder produces", () => {
+    const item = preventiveAssessmentToUpcomingItem(assessment, {
+      today: "2026-07-10",
+    });
+    expect(item.key).toBe(preventiveSignalKey(assessment.kind, assessment.key));
   });
 });

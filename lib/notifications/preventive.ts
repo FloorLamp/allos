@@ -15,9 +15,14 @@
 // preventiveEnabled): off ⇒ no nudge at all (and the digest drops these lines too).
 
 import { today } from "../db";
-import { assessProfilePreventive } from "../queries/upcoming";
+import {
+  assessProfilePreventive,
+  getFindingSuppressions,
+} from "../queries/upcoming";
 import { kindedScheduled } from "../queries/appointments";
 import { scheduledMatchForRule } from "../preventive-appointment";
+import { preventiveSignalKey } from "../preventive-upcoming";
+import { isSuppressed } from "../upcoming-suppress";
 import {
   planPreventiveNudges,
   type PreventiveNudgeItem,
@@ -77,10 +82,8 @@ export async function runPreventive(
   if (!getNotifySchedule(profileId).preventiveEnabled) return { failed: false };
 
   const td = today(profileId);
-  const actionable: PreventiveNudgeItem[] = assessProfilePreventive(
-    profileId,
-    td
-  ).actionable.map((a) => ({
+  const assessments = assessProfilePreventive(profileId, td).actionable;
+  const actionable: PreventiveNudgeItem[] = assessments.map((a) => ({
     ruleKey: a.key,
     name: a.name,
     // actionable is exactly the due/overdue slice, so the status narrows cleanly.
@@ -102,10 +105,23 @@ export async function runPreventive(
     .filter((it) => scheduledMatchForRule(it.ruleKey, scheduled, td) != null)
     .map((it) => it.ruleKey);
 
+  // Rules the user dismissed/snoozed on the Upcoming page (#227): the SAME shared
+  // findings-suppression bus, keyed by the identical `<kind>:<ruleKey>` signal the
+  // Upcoming item carries — so a page dismissal silences the push. Like a covered
+  // rule, a suppressed rule is held out of the nudge with its episode marker frozen.
+  const suppressions = getFindingSuppressions(profileId);
+  const suppressedRuleKeys = assessments
+    .filter((a) => {
+      const rec = suppressions.get(preventiveSignalKey(a.kind, a.key));
+      return rec != null && isSuppressed(rec, td);
+    })
+    .map((a) => a.key);
+
   const { toSend, toClear } = planPreventiveNudges(
     actionable,
     markedRuleKeys,
-    coveredRuleKeys
+    coveredRuleKeys,
+    suppressedRuleKeys
   );
 
   // End any episodes that are no longer due first — cheap, and it never depends on
