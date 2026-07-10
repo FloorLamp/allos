@@ -41,7 +41,9 @@ import {
   getUserBirthdate,
   getStoredAge,
   getActiveSituations,
+  getSmokingHistory,
 } from "../settings";
+import { resolveSmoking } from "../smoking";
 import type { UpcomingItem } from "../upcoming";
 import { pickNextAppointment } from "../household";
 import {
@@ -62,6 +64,7 @@ import {
   getImmunityTiters,
   getImmunizationOverrides,
 } from "./medical";
+import { hasImportedSmokingHistory } from "./clinical";
 
 // Biomarker categories a retest nudge makes sense for. Vitals/scans/prescriptions
 // aren't "labs to redraw", and genomics never go stale (handled by
@@ -277,6 +280,13 @@ function preventiveItems(profileId: number, today: string): UpcomingItem[] {
     sex: getUserSex(profileId),
     satisfactions: getPreventiveSatisfactions(profileId),
     overrides: getPreventiveOverrides(profileId),
+    // Resolve smoking (issue #83): the structured record wins, else the imported
+    // social-history condition is the ever-smoker fallback. Activates the lung
+    // LDCT / AAA rules that ship inert.
+    smoking: resolveSmoking(
+      getSmokingHistory(profileId),
+      hasImportedSmokingHistory(profileId)
+    ),
     today,
   });
   return summary.actionable.map(preventiveAssessmentToUpcomingItem);

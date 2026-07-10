@@ -33,6 +33,12 @@ import {
 } from "./trend-annotations";
 import { normalizeBloodType } from "./emergency-card";
 import {
+  parsePackYears,
+  parseQuitYear,
+  parseSmokingStatus,
+  type SmokingHistory,
+} from "./smoking";
+import {
   expiresAtFromChoice,
   isTokenExpired,
   shouldRecordUse,
@@ -631,6 +637,89 @@ export function setUserReproductiveStatus(
     return;
   }
   setProfileSetting(profileId, "reproductive_status", status);
+}
+
+// ---- Smoking history (issue #83) ----
+// A per-profile STRUCTURED smoking record — status (never | former | current;
+// absent = unknown, the tri-state the risk-gated screening rules need), pack-years,
+// and the quit year — stored as discrete profile_settings keys like sex/birthdate.
+// A `smoking_source` key records provenance ('manual' | 'imported') so a CCD
+// re-import (adoptSmokingStatusFromImport) never clobbers a user's correction. This
+// content is more sensitive than most profile_settings and, like the rest of the
+// passport, is visible to any login granted the profile — the UI states that.
+export function getSmokingHistory(profileId: number): SmokingHistory {
+  return {
+    status: parseSmokingStatus(getProfileSetting(profileId, "smoking_status")),
+    packYears: parsePackYears(
+      getProfileSetting(profileId, "smoking_pack_years")
+    ),
+    quitYear: parseQuitYear(getProfileSetting(profileId, "smoking_quit_year")),
+  };
+}
+
+// Persist the structured smoking record. Manual entry is AUTHORITATIVE: it marks
+// the source 'manual' so a later import leaves it alone. status null clears the
+// whole record. pack-years applies only to an ever-smoker (former/current) and the
+// quit year only to a former smoker; a 'never'/unset status drops both so a stale
+// quantity can't linger and mislead the gate.
+export function setSmokingHistory(
+  profileId: number,
+  record: SmokingHistory,
+  source: "manual" | "imported" = "manual"
+): void {
+  const write = db.transaction(() => {
+    if (record.status == null) {
+      deleteProfileSetting(profileId, "smoking_status");
+      deleteProfileSetting(profileId, "smoking_pack_years");
+      deleteProfileSetting(profileId, "smoking_quit_year");
+      deleteProfileSetting(profileId, "smoking_source");
+      return;
+    }
+    setProfileSetting(profileId, "smoking_status", record.status);
+    if (record.status !== "never" && record.packYears != null) {
+      setProfileSetting(
+        profileId,
+        "smoking_pack_years",
+        String(record.packYears)
+      );
+    } else {
+      deleteProfileSetting(profileId, "smoking_pack_years");
+    }
+    if (record.status === "former" && record.quitYear != null) {
+      setProfileSetting(
+        profileId,
+        "smoking_quit_year",
+        String(record.quitYear)
+      );
+    } else {
+      deleteProfileSetting(profileId, "smoking_quit_year");
+    }
+    setProfileSetting(profileId, "smoking_source", source);
+  });
+  write();
+}
+
+// Seed the structured smoking STATUS from an imported CCD social-history smoking
+// condition (issue #83) so the risk-gated screening rules read structured data and
+// the two representations don't drift. Respects a manual entry: when the record was
+// last set by the user (source 'manual') the import leaves it untouched — a wrong
+// import can't overwrite a correction. Otherwise it (re)seeds the status
+// (latest-import-wins, mirroring the condition row) WITHOUT touching pack-years (a
+// CCD rarely carries them), clearing a now-stale quit year only when the new status
+// is 'current'.
+export function adoptSmokingStatusFromImport(
+  profileId: number,
+  status: "former" | "current"
+): void {
+  if (getProfileSetting(profileId, "smoking_source") === "manual") return;
+  const write = db.transaction(() => {
+    setProfileSetting(profileId, "smoking_status", status);
+    if (status === "current") {
+      deleteProfileSetting(profileId, "smoking_quit_year");
+    }
+    setProfileSetting(profileId, "smoking_source", "imported");
+  });
+  write();
 }
 
 // The tracked person's full/legal name — distinct from profiles.name, which is

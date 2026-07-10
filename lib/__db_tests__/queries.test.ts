@@ -39,6 +39,7 @@ import {
   getConditions,
 } from "@/lib/queries";
 import type { Activity } from "@/lib/types";
+import { getSmokingHistory, setSmokingHistory } from "@/lib/settings";
 import { assessSchedule } from "@/lib/immunization-status";
 import { daysOfSupplyLeft, isLowSupply } from "@/lib/refill";
 import { gatherDigestInput } from "@/lib/notifications/digest-data";
@@ -590,5 +591,47 @@ describe("health-record import: smoking status supersede (#188 M1)", () => {
     expect(smokingRows(b).map((c) => c.name)).toEqual([
       "Current every day smoker",
     ]);
+  });
+
+  // Issue #83: the import ALSO seeds the structured smoking record so the risk-gated
+  // screening rules read structured data, and a manual entry is never clobbered.
+  it("seeds the structured smoking-history record from the imported status (#83)", () => {
+    const profileId = newProfile("SMOKE-SEED");
+    const docId = newDoc(profileId, "SMOKE-SEED-DOC");
+    importDoc(
+      profileId,
+      docId,
+      smokingDoc({ name: "Former smoker", code: "8517006" })
+    );
+    expect(getSmokingHistory(profileId).status).toBe("former");
+
+    // A re-import (separate document) with a newer status re-seeds it.
+    const doc2 = newDoc(profileId, "SMOKE-SEED-DOC2");
+    importDoc(
+      profileId,
+      doc2,
+      smokingDoc({ name: "Current every day smoker", code: "449868002" })
+    );
+    expect(getSmokingHistory(profileId).status).toBe("current");
+  });
+
+  it("a manual smoking entry survives a later import (source=manual, #83)", () => {
+    const profileId = newProfile("SMOKE-MANUAL");
+    // The user records "never" (plus, hypothetically, corrects a wrong import).
+    setSmokingHistory(profileId, {
+      status: "never",
+      packYears: null,
+      quitYear: null,
+    });
+    const docId = newDoc(profileId, "SMOKE-MANUAL-DOC");
+    importDoc(
+      profileId,
+      docId,
+      smokingDoc({ name: "Current every day smoker", code: "449868002" })
+    );
+    // The manual "never" is NOT overwritten by the imported "current".
+    expect(getSmokingHistory(profileId).status).toBe("never");
+    // The condition row is still imported (it remains the /conditions artifact).
+    expect(smokingRows(profileId)).toHaveLength(1);
   });
 });

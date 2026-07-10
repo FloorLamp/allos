@@ -6,6 +6,12 @@ import {
   type PreventiveKind,
   type PreventiveRule,
 } from "./preventive-catalog";
+import {
+  everSmoked,
+  lungScreeningGate,
+  NO_SMOKING,
+  type ResolvedSmoking,
+} from "./smoking";
 
 // Pure, DB-free assessment of a profile's preventive-care status against the
 // curated catalog (`lib/preventive-catalog.ts`), mirroring the immunization
@@ -63,6 +69,11 @@ export interface PreventiveAssessment {
   nextDueAgeMonths: number | null;
   detail: string; // short human status line
   nextLabel: string | null; // upcoming hint
+  // Optional destination override for the surfaced item. Null → the caller's
+  // kind-based default (e.g. a screening links to the passport). Used by the
+  // risk-gated lung prompt to point at Settings → Profile, where the missing
+  // pack-years are entered.
+  href: string | null;
   // The override in effect, if any (status is then not_recommended). Null when
   // the status is purely schedule-derived.
   override: PreventiveOverrideKind | null;
@@ -123,6 +134,7 @@ function make(
     nextDueAgeMonths: null,
     detail,
     nextLabel: null,
+    href: null,
     override: null,
     citation: rule.citation,
     ...extra,
@@ -133,6 +145,8 @@ interface Ctx {
   ageMonths: number;
   sex: Sex | null;
   today: string;
+  year: number; // calendar year of `today`, for the lung-screening recency window
+  smoking: ResolvedSmoking; // resolved smoking facts for the risk-gated rules
   lastByRule: Map<string, string>;
 }
 
@@ -255,29 +269,13 @@ function assessMilestone(
   );
 }
 
-function assessOne(rule: PreventiveRule, ctx: Ctx): PreventiveAssessment {
-  // Risk-gated rules ship but stay inert until their risk input exists.
-  if (rule.riskGated) {
-    return make(
-      rule,
-      "not_recommended",
-      "Depends on risk factors not yet recorded"
-    );
-  }
+// The pure schedule assessment (age/interval), ignoring any risk gate.
+function assessSchedule(rule: PreventiveRule, ctx: Ctx): PreventiveAssessment {
   const s = rule.schedule;
   if (s.type === "milestone") {
     return assessMilestone(rule as MilestoneVisitRule, ctx);
   }
-  if (s.type === "recurring") {
-    return assessRecurring(
-      rule,
-      ctx,
-      s.startMonths,
-      s.endMonths,
-      s.intervalMonths
-    );
-  }
-  // screening
+  // recurring + screening share the from-last / age-based recurrence engine.
   return assessRecurring(
     rule,
     ctx,
@@ -285,6 +283,64 @@ function assessOne(rule: PreventiveRule, ctx: Ctx): PreventiveAssessment {
     s.endMonths,
     s.intervalMonths
   );
+}
+
+// Where the risk-gated lung prompt sends the user to fill in the missing input.
+const SMOKING_SETTINGS_HREF = "/settings/profile";
+
+// Assess a risk-gated rule (issue #83) against the resolved smoking facts. Age/sex
+// still gate first: the schedule assessment runs, and if the profile is OUTSIDE the
+// age window (or the sex mismatch already handled upstream), that verdict stands —
+// a 30-year-old ever-smoker is never prompted for lung screening. Only WITHIN the
+// window does the smoking gate decide, activating the rule that shipped inert.
+function assessRiskGated(rule: PreventiveRule, ctx: Ctx): PreventiveAssessment {
+  const schedule = assessSchedule(rule, ctx);
+  // Outside the routine age window → the age gate wins; smoking is moot.
+  if (schedule.status === "not_recommended") return schedule;
+
+  const s = ctx.smoking;
+  if (rule.key === "aaa_ultrasound") {
+    if (everSmoked(s)) return schedule;
+    return make(
+      rule,
+      "not_recommended",
+      s.source == null
+        ? "No smoking history on file — recommended only for those who have ever smoked"
+        : "Recommended only for those who have ever smoked"
+    );
+  }
+  if (rule.key === "lung_cancer_ldct") {
+    const gate = lungScreeningGate(s, ctx.year);
+    if (gate === "eligible") return schedule;
+    if (gate === "needs_info") {
+      // An ever-smoker with unknown pack-years / quit year: surface a PROMPT to
+      // finish the record (linking to Settings) rather than silently gating out.
+      return make(
+        rule,
+        "due",
+        "Add your pack-years to check lung screening eligibility",
+        { href: SMOKING_SETTINGS_HREF, nextLabel: "Add smoking details" }
+      );
+    }
+    return make(
+      rule,
+      "not_recommended",
+      s.everSmoked
+        ? "Below the pack-year / recency threshold for lung screening"
+        : "No qualifying smoking history on file"
+    );
+  }
+  // Unknown risk-gated rule — stay inert (defensive; no such rule ships today).
+  return make(
+    rule,
+    "not_recommended",
+    "Depends on risk factors not yet recorded"
+  );
+}
+
+function assessOne(rule: PreventiveRule, ctx: Ctx): PreventiveAssessment {
+  if (rule.riskGated) return assessRiskGated(rule, ctx);
+  return assessSchedule(rule, ctx);
 }
 
 // Resolve a manual override on top of a schedule-derived assessment (pure). Both
@@ -312,6 +368,10 @@ export interface PreventiveInput {
   sex: Sex | null;
   satisfactions: PreventiveSatisfaction[];
   overrides?: PreventiveOverride[];
+  // Resolved smoking facts (issue #83) for the risk-gated rules. Omitted → the
+  // rules stay inert (NO_SMOKING), preserving the pre-#83 behavior for any caller
+  // that doesn't resolve smoking.
+  smoking?: ResolvedSmoking;
   today: string;
 }
 
@@ -334,6 +394,8 @@ export function assessPreventiveCare(
     ageMonths: input.ageMonths,
     sex: input.sex,
     today: input.today,
+    year: Number(input.today.slice(0, 4)) || 0,
+    smoking: input.smoking ?? NO_SMOKING,
     lastByRule: lastByRule(input.satisfactions),
   };
   const overrideByKey = new Map(
