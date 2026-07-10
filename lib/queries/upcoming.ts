@@ -27,6 +27,7 @@ import {
   type PreventiveOverride,
   type PreventiveOverrideKind,
   type PreventiveSatisfaction,
+  type PreventiveSummary,
 } from "../preventive-status";
 import { preventiveAssessmentToUpcomingItem } from "../preventive-upcoming";
 import {
@@ -364,8 +365,16 @@ export function clearPreventiveOverride(
 // (its contract), so this returns []. Each actionable assessment maps to a
 // status-driven `visit`/`screening` Upcoming item carrying its rule key for the
 // inline mark-done + override forms.
-function preventiveItems(profileId: number, today: string): UpcomingItem[] {
-  const summary = assessCatalog({
+// The profile's full preventive-care assessment (all rules + the due/overdue
+// actionable slice), resolving age/sex/satisfactions/overrides/smoking identically
+// for every consumer. Shared by the Upcoming builder below AND the proactive
+// preventive nudge (lib/notifications/preventive.ts) so the page and the push can
+// never diverge on WHICH items are due. Every read is profile-scoped.
+export function assessProfilePreventive(
+  profileId: number,
+  today: string
+): PreventiveSummary {
+  return assessCatalog({
     ageMonths: profileAgeMonths(profileId, today),
     sex: getUserSex(profileId),
     // Manual "mark done" events PLUS inferred satisfactions from existing records
@@ -387,7 +396,12 @@ function preventiveItems(profileId: number, today: string): UpcomingItem[] {
     ),
     today,
   });
-  return summary.actionable.map(preventiveAssessmentToUpcomingItem);
+}
+
+function preventiveItems(profileId: number, today: string): UpcomingItem[] {
+  return assessProfilePreventive(profileId, today).actionable.map(
+    preventiveAssessmentToUpcomingItem
+  );
 }
 
 // Approximate whole months for a span of days, for the cadence due-text

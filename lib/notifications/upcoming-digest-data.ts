@@ -8,7 +8,11 @@
 import { today } from "../db";
 import { collectUpcoming } from "../queries";
 import { groupUpcoming } from "../upcoming";
-import { getProfileSetting, setProfileSetting } from "../settings";
+import {
+  getNotifySchedule,
+  getProfileSetting,
+  setProfileSetting,
+} from "../settings";
 import { dispatch } from "./index";
 import {
   buildUpcomingDigest,
@@ -34,7 +38,16 @@ export async function runUpcomingDigest(
   const td = today(profileId);
   // collectUpcoming already drops snoozed/dismissed items and training items for
   // an age-restricted profile, so the digest inherits both for free.
-  const groups = groupUpcoming(collectUpcoming(profileId, td), td);
+  let items = collectUpcoming(profileId, td);
+  // Preventive-care domain toggle (#87): off ⇒ no digest lines for the preventive
+  // visit/screening domains (they still appear on the Upcoming page — that's pull,
+  // not push). The proactive nudge is suppressed the same way in ./preventive.
+  if (!getNotifySchedule(profileId).preventiveEnabled) {
+    items = items.filter(
+      (i) => i.domain !== "visit" && i.domain !== "screening"
+    );
+  }
+  const groups = groupUpcoming(items, td);
   const model = buildUpcomingDigest(profileName, groups);
   if (!model) {
     // Nothing due — mark the day done so we don't recompute every hour.
