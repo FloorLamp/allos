@@ -1,6 +1,7 @@
 import * as React from "react";
 import { shiftDateStr, startOfWeekStr } from "../../date";
 import { db, today } from "../../db";
+import { decayedWeight } from "../../decay";
 import { getWeekMode, getWeekStart } from "../../settings";
 import type { ActivityComponent } from "../../types";
 
@@ -141,13 +142,15 @@ export const effortEntries = cache(function effortEntries(
 });
 
 // Previously-logged cardio/sport activity names (canonical, from components),
-// with usage counts — for the activity picker's frequency-ranked suggestions.
+// with recency-decayed usage weights — for the activity picker's frequency-
+// ranked suggestions (issue #195: a recent activity outranks a stale one).
 // Bounded to the recent window: suggestions rank by recent usage, so a name not
 // logged in the last 12 months needn't be offered as a prior custom name.
 export function effortNameCounts(
   profileId: number,
   targetType: "cardio" | "sport"
 ): { name: string; c: number }[] {
+  const t = today(profileId);
   const counts = new Map<string, { name: string; c: number }>();
   for (const e of effortEntries(
     profileId,
@@ -155,9 +158,10 @@ export function effortNameCounts(
     recentWindowStart(profileId)
   )) {
     const key = e.name.toLowerCase();
+    const w = decayedWeight(e.date, t);
     const prev = counts.get(key);
-    if (prev) prev.c += 1;
-    else counts.set(key, { name: e.name, c: 1 });
+    if (prev) prev.c += w;
+    else counts.set(key, { name: e.name, c: w });
   }
   return [...counts.values()];
 }
