@@ -194,7 +194,11 @@ export async function updateRecord(formData: FormData) {
     `UPDATE medical_records
        SET date = ?, category = ?, name = ?, value = ?, value_num = ?, unit = ?,
            reference_range = ?, flag = ?, panel = ?, notes = ?, canonical_name = ?,
-           provider_id = ?
+           provider_id = ?,
+           -- Lock integration-imported rows (external_id set) against re-ingest so a
+           -- hand-corrected vital isn't silently reverted by the next rolling window
+           -- (issue #133). No-op for manual/document rows (external_id NULL).
+           edited = CASE WHEN external_id IS NOT NULL THEN 1 ELSE edited END
      WHERE id = ? AND profile_id = ?`
   ).run(
     date,

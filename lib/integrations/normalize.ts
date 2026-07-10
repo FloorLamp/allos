@@ -5,7 +5,7 @@ import {
   mergeBodyMetric,
   type BodyMetricValues,
 } from "@/lib/body-metric-extract";
-import { emptyCounts, rowsEqual } from "./sync-log";
+import { emptyCounts, rowsEqual, isEditLocked } from "./sync-log";
 import type { UpsertCounts } from "./sync-log";
 
 // Provider-agnostic record shapes. Every integration parses its own payload into
@@ -126,17 +126,23 @@ export function upsertBodyMetrics(
   rows: NormBodyMetric[],
   source: string
 ): UpsertCounts {
+  // Pre-image on the (profile_id, date, source) natural key — now a DB UNIQUE index
+  // (#133), which also lets the write below use ON CONFLICT DO UPDATE. `edited` is
+  // the user-edit lock: a source-owned row the user has hand-edited (via the Review
+  // resolver) is left alone on re-ingest so the rolling window never clobbers it.
   const find = db.prepare(
-    "SELECT id, weight_kg, body_fat_pct, resting_hr FROM body_metrics WHERE profile_id = ? AND date = ? AND source IS ? ORDER BY id LIMIT 1"
+    "SELECT id, edited, weight_kg, body_fat_pct, resting_hr FROM body_metrics WHERE profile_id = ? AND date = ? AND source IS ? ORDER BY id LIMIT 1"
   );
-  const insert = db.prepare(
+  // Atomic upsert on the unique key: the bound values are the RESOLVED post-image
+  // (incoming for a fresh row, mergeBodyMetric(mine, incoming) for an existing one),
+  // so `excluded.*` already carries the merged triple and DO UPDATE writes it.
+  const upsert = db.prepare(
     `INSERT INTO body_metrics (profile_id, date, weight_kg, body_fat_pct, resting_hr, source)
-     VALUES (?, ?, ?, ?, ?, ?)`
-  );
-  // Which non-null value wins is decided by mergeBodyMetric; the UPDATE just
-  // writes the resolved triple.
-  const update = db.prepare(
-    `UPDATE body_metrics SET weight_kg = ?, body_fat_pct = ?, resting_hr = ? WHERE id = ?`
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(profile_id, date, source) DO UPDATE SET
+       weight_kg = excluded.weight_kg,
+       body_fat_pct = excluded.body_fat_pct,
+       resting_hr = excluded.resting_hr`
   );
 
   const counts = emptyCounts();
@@ -148,35 +154,39 @@ export function upsertBodyMetrics(
     };
     if (!hasBodyMetric(incoming)) continue; // nothing to store
     const mine = find.get(profileId, r.date, source) as
-      (BodyMetricValues & { id: number }) | undefined;
-    if (mine) {
-      // Compare the pre-image (mine) to the resolved post-image (the merge). A
-      // window that only re-states values mergeBodyMetric already stored is a
-      // no-op → unchanged; anything that fills a gap or corrects a value → updated.
-      const m = mergeBodyMetric(mine, incoming);
-      if (
-        rowsEqual(
-          BODY_METRIC_COMPARE_COLS,
-          mine as unknown as Record<string, unknown>,
-          m as unknown as Record<string, unknown>
-        )
-      ) {
-        counts.unchanged++;
-      } else {
-        update.run(m.weight_kg, m.body_fat_pct, m.resting_hr, mine.id);
-        counts.updated++;
-      }
-    } else {
-      insert.run(
-        profileId,
-        r.date,
-        incoming.weight_kg,
-        incoming.body_fat_pct,
-        incoming.resting_hr,
-        source
-      );
-      counts.inserted++;
+      (BodyMetricValues & { id: number; edited: number | null }) | undefined;
+    // A hand-edited imported row is never overwritten; count it as unchanged (we
+    // deliberately persist nothing), mirroring the activities path.
+    if (mine && isEditLocked(mine.edited)) {
+      counts.unchanged++;
+      continue;
     }
+    // Resolved post-image: the merge fills gaps and lets a fresh non-null value
+    // (a corrected weight) overwrite; a fresh row stores the incoming triple as-is.
+    const post = mine ? mergeBodyMetric(mine, incoming) : incoming;
+    if (
+      mine &&
+      rowsEqual(
+        BODY_METRIC_COMPARE_COLS,
+        mine as unknown as Record<string, unknown>,
+        post as unknown as Record<string, unknown>
+      )
+    ) {
+      // A window that only re-states already-stored values is a no-op → unchanged;
+      // skip the redundant write.
+      counts.unchanged++;
+      continue;
+    }
+    upsert.run(
+      profileId,
+      r.date,
+      post.weight_kg,
+      post.body_fat_pct,
+      post.resting_hr,
+      source
+    );
+    if (mine) counts.updated++;
+    else counts.inserted++;
   }
   return counts;
 }
@@ -326,7 +336,7 @@ export function upsertVitals(
   source: string
 ): { ids: number[]; counts: UpsertCounts } {
   const find = db.prepare(
-    `SELECT id, date, category, name, value, value_num, unit, canonical_name
+    `SELECT id, edited, date, category, name, value, value_num, unit, canonical_name
        FROM medical_records WHERE profile_id = ? AND external_id = ?`
   );
   const insert = db.prepare(
@@ -345,7 +355,15 @@ export function upsertVitals(
   for (const r of rows) {
     const valueStr = String(r.value_num);
     const found = find.get(profileId, r.external_id) as
-      (Record<string, unknown> & { id: number }) | undefined;
+      | (Record<string, unknown> & { id: number; edited: number | null })
+      | undefined;
+    // A hand-edited imported vital is never clobbered by re-ingest. Count it as
+    // unchanged (we persist nothing) and, unlike the value-matched unchanged case,
+    // do NOT push its id — the row is left entirely untouched, no flag re-derivation.
+    if (found && isEditLocked(found.edited)) {
+      counts.unchanged++;
+      continue;
+    }
     if (found) {
       // Resolved post-image (note the incoming `canonical` maps to the stored
       // `canonical_name` column). The `flag` column isn't compared: it's set out

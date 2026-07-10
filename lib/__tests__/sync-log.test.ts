@@ -9,7 +9,19 @@ import {
   summarizeSplit,
   formatSplitLabel,
   rowsEqual,
+  isEditLocked,
 } from "@/lib/integrations/sync-log";
+
+describe("isEditLocked", () => {
+  it("treats a set flag (1) as locked", () => {
+    expect(isEditLocked(1)).toBe(true);
+  });
+  it("treats 0 / null / undefined as unlocked", () => {
+    expect(isEditLocked(0)).toBe(false);
+    expect(isEditLocked(null)).toBe(false);
+    expect(isEditLocked(undefined)).toBe(false);
+  });
+});
 
 describe("summarizeSync", () => {
   it("splits received into written + skipped", () => {

@@ -117,7 +117,11 @@ export async function mergeBodyMetricPair(formData: FormData) {
     const merged = mergeBodyMetric(drop, keep);
     db.prepare(
       `UPDATE body_metrics
-          SET weight_kg = ?, body_fat_pct = ?, resting_hr = ?
+          SET weight_kg = ?, body_fat_pct = ?, resting_hr = ?,
+              -- Lock a source-owned keeper (integration/document row) against
+              -- re-ingest so this merged correction isn't reverted by the next
+              -- rolling window (issue #133). No-op for a manual keeper (source NULL).
+              edited = CASE WHEN source IS NOT NULL THEN 1 ELSE edited END
         WHERE id = ? AND profile_id = ?`
     ).run(
       merged.weight_kg,
