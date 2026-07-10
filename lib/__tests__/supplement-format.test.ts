@@ -57,6 +57,7 @@ function dose(
     time_of_day: "morning",
     food_timing: foodTiming,
     sort: 0,
+    retired: 0,
   };
 }
 

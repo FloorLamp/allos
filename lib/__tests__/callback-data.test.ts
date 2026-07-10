@@ -1,10 +1,13 @@
 import { describe, it, expect } from "vitest";
 import {
+  OUTDATED_MESSAGE_TEXT,
   parseAllCallback,
   parseTakeCallback,
   removeButton,
   resolveTapProfile,
   takeMatchesProfile,
+  tapAnswerText,
+  tapLogged,
   type InlineKeyboard,
 } from "../notifications/callback-data";
 
@@ -98,6 +101,36 @@ describe("resolveTapProfile", () => {
   it("refuses a token for a profile not in the chat", () => {
     expect(resolveTapProfile(take, [1, 3])).toBeNull();
     expect(resolveTapProfile(take, [])).toBeNull();
+  });
+});
+
+// A reminder message is a frozen snapshot: the tapped dose may have been
+// deleted/retired or its item paused since it was sent. The answer must state
+// what actually happened — "Logged ✅" is only honest for a real (or idempotent
+// repeat) confirmation.
+describe("tap outcome → answer", () => {
+  it("acknowledges only real confirmations as logged", () => {
+    expect(tapLogged("logged")).toBe(true);
+    expect(tapLogged("already-logged")).toBe(true);
+    expect(tapLogged("stale-dose")).toBe(false);
+    expect(tapLogged("inactive")).toBe(false);
+  });
+
+  it("answers 'Logged ✅' for confirmations and idempotent repeats", () => {
+    expect(tapAnswerText("logged")).toBe("Logged ✅");
+    expect(tapAnswerText("already-logged")).toBe("Logged ✅");
+  });
+
+  it("says 'Not logged' for a stale or paused tap (never claims success)", () => {
+    expect(tapAnswerText("stale-dose")).toMatch(/^Not logged/);
+    expect(tapAnswerText("inactive")).toMatch(/^Not logged/);
+    expect(tapAnswerText("stale-dose")).not.toContain("Logged ✅");
+    expect(tapAnswerText("inactive")).not.toContain("Logged ✅");
+  });
+
+  it("has a stale replacement body distinct from the success closer", () => {
+    expect(OUTDATED_MESSAGE_TEXT).toMatch(/out of date/);
+    expect(OUTDATED_MESSAGE_TEXT).not.toContain("All done");
   });
 });
 

@@ -385,7 +385,9 @@ function collectEvents(
       `SELECT l.date AS date, ii.kind AS kind, COUNT(*) AS count,
               GROUP_CONCAT(DISTINCT ii.name) AS names,
               GROUP_CONCAT(
-                ii.name || '::' || COALESCE(NULLIF(TRIM(d.amount), ''), 'Dose confirmed'),
+                ii.name || '::' || COALESCE(NULLIF(TRIM(l.amount), ''),
+                                            NULLIF(TRIM(d.amount), ''),
+                                            'Dose confirmed'),
                 '||'
               ) AS dose_details
          FROM intake_item_logs l

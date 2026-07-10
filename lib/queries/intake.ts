@@ -3,6 +3,7 @@ import { shiftDateStr } from "../date";
 import { consumptionRate, RATE_WINDOW_DAYS, type DoseRate } from "../refill";
 import { normalizeSeverity, SEVERITY_LABELS } from "../medication-history";
 import type {
+  DoseTakenOutcome,
   Insight,
   MedicationCourse,
   MedicationSideEffect,
@@ -24,14 +25,18 @@ export function getSupplements(profileId: number): Supplement[] {
     .all(profileId) as Supplement[];
 }
 
-// All scheduled doses, ordered for stable rendering. Doses are a child of
-// supplements, so they're scoped through the parent's profile_id.
+// All CURRENTLY SCHEDULED doses, ordered for stable rendering. Doses are a
+// child of supplements, so they're scoped through the parent's profile_id.
+// Retired doses (removed from the schedule by an edit but kept for their
+// adherence logs) are excluded — every "current schedule" consumer (the page,
+// reminders, refill math, digests) reads through here; history reads join
+// intake_item_doses directly and still see retired rows.
 export function getSupplementDoses(profileId: number): SupplementDose[] {
   return db
     .prepare(
       `SELECT d.* FROM intake_item_doses d
          JOIN intake_items s ON s.id = d.supplement_id
-        WHERE s.profile_id = ?
+        WHERE s.profile_id = ? AND d.retired = 0
         ORDER BY d.supplement_id, d.sort, d.id`
     )
     .all(profileId) as SupplementDose[];
@@ -169,34 +174,50 @@ export function incrementSupply(profileId: number, supplementId: number): void {
 
 // Log a single dose as taken on `date`, idempotently — the non-React-context
 // counterpart to the toggleTaken server action, callable from the notification
-// webhook. Mirrors toggleTaken's insert (dose_id + supplement_id + date) so the
-// supplements page's per-dose adherence reflects it; never deletes.
+// webhook. Mirrors toggleTaken's insert (dose_id + supplement_id + date +
+// amount snapshot) so the supplements page's per-dose adherence reflects it;
+// never deletes. Returns what actually happened so the caller (the Telegram
+// tap handler) can answer honestly: a tap on a button whose dose was since
+// deleted/retired by an edit, or whose item was paused, logs NOTHING and must
+// not be acknowledged as "Logged".
 export function markDoseTaken(
   profileId: number,
   doseId: number,
   supplementId: number | null,
   date: string
-): void {
+): DoseTakenOutcome {
   // The dose id arrives from a Telegram callback, so verify it belongs to this
   // profile (via its parent supplement) before logging anything against it. Read
-  // the supplement id from the row rather than trusting the callback token.
+  // the supplement id from the row rather than trusting the callback token. A
+  // retired dose is no longer part of the schedule — treat it like a deleted one.
   const owned = db
     .prepare(
-      `SELECT d.supplement_id AS supplement_id FROM intake_item_doses d
+      `SELECT d.supplement_id AS supplement_id, d.amount AS amount,
+              s.active AS active
+         FROM intake_item_doses d
          JOIN intake_items s ON s.id = d.supplement_id
-        WHERE d.id = ? AND s.profile_id = ?`
+        WHERE d.id = ? AND s.profile_id = ? AND d.retired = 0`
     )
-    .get(doseId, profileId) as { supplement_id: number } | undefined;
-  if (!owned) return;
+    .get(doseId, profileId) as
+    | { supplement_id: number; amount: string | null; active: number }
+    | undefined;
+  if (!owned) return "stale-dose";
+  // A paused/stopped item keeps its buttons in old messages; refuse the tap so
+  // a lingering reminder can't silently log doses (and burn supply) for an item
+  // the user has deliberately paused.
+  if (!owned.active) return "inactive";
   const existing = db
     .prepare("SELECT 1 FROM intake_item_logs WHERE dose_id = ? AND date = ?")
     .get(doseId, date);
-  if (existing) return; // already logged — don't re-decrement supply
+  if (existing) return "already-logged"; // don't re-decrement supply
+  // Snapshot the dose amount at confirm time: history must keep showing what
+  // was actually taken even after a later dosage edit rewrites the dose row.
   db.prepare(
-    "INSERT INTO intake_item_logs (dose_id, supplement_id, date) VALUES (?,?,?)"
-  ).run(doseId, supplementId ?? owned.supplement_id, date);
+    "INSERT INTO intake_item_logs (dose_id, supplement_id, date, amount) VALUES (?,?,?,?)"
+  ).run(doseId, supplementId ?? owned.supplement_id, date, owned.amount);
   // Guarded by the dedup above: a confirmed dose decrements on-hand supply once.
   decrementSupply(profileId, owned.supplement_id);
+  return "logged";
 }
 
 // Per-dose taken dates over the last `days` days, for the adherence strip.

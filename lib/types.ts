@@ -660,7 +660,21 @@ export interface SupplementDose {
   time_of_day: string | null; // bucketed via timeBucket()
   food_timing: FoodTiming;
   sort: number;
+  // Soft-retire flag: 1 when an edit removed the dose from the schedule but it
+  // was kept because adherence logs reference it. Retired doses are excluded
+  // from every "current schedule" read (getSupplementDoses) and are never
+  // loggable; history reads still join them.
+  retired: 0 | 1;
 }
+
+// Outcome of an attempt to log a dose as taken (markDoseTaken). Lets the
+// Telegram callback answer honestly instead of claiming "Logged" for a tap on a
+// button whose dose has since been deleted/retired or whose item was paused.
+export type DoseTakenOutcome =
+  | "logged" // a new log row was written
+  | "already-logged" // idempotent repeat — that dose+date was already confirmed
+  | "stale-dose" // dose deleted/retired (or not this profile's): nothing logged
+  | "inactive"; // parent item is paused/stopped: nothing logged
 
 // A relationship between two supplements: take them together (synergy) or keep
 // them apart (antagonism). `separate` pairs raise a warning when both land in
