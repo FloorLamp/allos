@@ -1,6 +1,12 @@
 import { CARDIO_ACTIVITIES, SPORTS } from "../../activities-catalog";
+import {
+  buildCompanionMap,
+  type CompanionMap,
+  type CompanionRow,
+} from "../../companions";
 import { shiftDateStr, weekdayOfDateStr } from "../../date";
 import { db, today } from "../../db";
+import { decayedWeight } from "../../decay";
 import { LIFT_OPTIONS, baseLiftName } from "../../lifts";
 import { rankByFrequency } from "../../rank-by-frequency";
 import { currentStreak } from "../../streak";
@@ -16,6 +22,9 @@ export interface ActivitySuggestions {
   lifts: string[];
   cardio: string[];
   sports: string[];
+  // Per-lift co-occurrence: base-name (lowercased) -> top co-logged lifts, used
+  // to bias the combobox toward companions of the draft's exercises (issue #195).
+  liftCompanions: CompanionMap;
 }
 
 // cache(): the app layout resolves suggestions on every navigation, and a request
@@ -24,29 +33,50 @@ export interface ActivitySuggestions {
 export const getActivitySuggestions = cache(function getActivitySuggestions(
   profileId: number
 ): ActivitySuggestions {
+  const t = today(profileId);
+  const since = recentWindowStart(profileId);
+  // Per-name × date rows so each occurrence can be recency-weighted (issue #195):
+  // a set logged today counts 1.0, ~60 days ago 0.5, so a recent habit outranks
+  // a stale one. Still bounded to the 12-month recent window.
   const rawLiftRows = db
     .prepare(
-      `SELECT s.exercise AS name, COUNT(*) AS c
+      `SELECT s.exercise AS name, a.date AS date, COUNT(*) AS c
        FROM exercise_sets s JOIN activities a ON a.id = s.activity_id
        WHERE a.profile_id = ? AND a.date >= ?
-       GROUP BY s.exercise`
+       GROUP BY s.exercise, a.date`
     )
-    .all(profileId, recentWindowStart(profileId)) as {
+    .all(profileId, since) as {
     name: string;
+    date: string;
     c: number;
   }[];
   // Collapse variant names ("Dumbbell Curl") to their base ("Curl") so the
-  // picker offers the grouped base and ranks it by combined usage; equipment is
-  // then chosen with chips.
+  // picker offers the grouped base and ranks it by combined (decayed) usage;
+  // equipment is then chosen with chips.
   const liftCounts = new Map<string, { name: string; c: number }>();
   for (const r of rawLiftRows) {
     const name = baseLiftName(r.name);
     const key = name.toLowerCase();
+    const w = r.c * decayedWeight(r.date, t);
     const prev = liftCounts.get(key);
-    if (prev) prev.c += r.c;
-    else liftCounts.set(key, { name, c: r.c });
+    if (prev) prev.c += w;
+    else liftCounts.set(key, { name, c: w });
   }
   const liftRows = [...liftCounts.values()];
+
+  // Co-occurrence: the distinct exercises per activity (one row each), fed to
+  // the pure companion builder (base-collapsed, decayed, top-5 capped). The
+  // GROUP BY makes each (activity, exercise) distinct, so set multiplicity
+  // doesn't inflate a pairing. Profile-scoped via the activities join.
+  const companionRows = db
+    .prepare(
+      `SELECT s.activity_id AS activityId, a.date AS date, s.exercise AS exercise
+       FROM exercise_sets s JOIN activities a ON a.id = s.activity_id
+       WHERE a.profile_id = ? AND a.date >= ?
+       GROUP BY s.activity_id, s.exercise`
+    )
+    .all(profileId, since) as CompanionRow[];
+
   // Cardio/sport names come from the structured component names ("Running"), not
   // the freeform activity title ("Morning run"), so the picker suggests real
   // activity names rather than one-off session labels.
@@ -57,6 +87,7 @@ export const getActivitySuggestions = cache(function getActivitySuggestions(
       effortNameCounts(profileId, "cardio")
     ),
     sports: rankByFrequency(SPORTS, effortNameCounts(profileId, "sport")),
+    liftCompanions: buildCompanionMap(companionRows, t),
   };
 });
 

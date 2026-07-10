@@ -26,6 +26,7 @@ import {
   titleCase,
 } from "@/lib/activity-meta";
 import { isCuratedActivity } from "@/lib/activities-catalog";
+import { biasByCompanions } from "@/lib/companions";
 import { dispWeight, kmTo, round } from "@/lib/units";
 import { type NextSet } from "@/lib/coaching";
 import {
@@ -682,6 +683,12 @@ export default function ActivityForm({
   // Index of the first bodyweight part, so the bodyweight prompt shows once.
   const firstBwPart = parts.findIndex((p) => isBodyweight(p.name));
 
+  // Base names of the lifts already committed in this draft — the co-occurrence
+  // signal that biases each part's combobox toward companions (issue #195).
+  const enteredLiftBases = parts
+    .filter((p) => partType(p) === "strength" && p.name.trim())
+    .map((p) => baseLiftName(p.name).trim().toLowerCase());
+
   // Nag when the user has changed something the save can't accept, but also on
   // an untouched existing activity whose loaded data already can't save (e.g.
   // imported rows or records predating stricter validation) — otherwise edits
@@ -784,6 +791,17 @@ export default function ActivityForm({
           const t = partType(p);
           const valid = t !== null;
           const muscle = t === "strength" ? muscleFor(p.name) : null;
+          // Hoist companions of the OTHER entered lifts to the top of this
+          // part's picker (issue #195); excludes this part's own name so it
+          // can't bias its own list. No-op until a lift is entered.
+          const selfBase = p.name.trim()
+            ? baseLiftName(p.name).trim().toLowerCase()
+            : "";
+          const biasedOptions = biasByCompanions(
+            allOptions,
+            enteredLiftBases.filter((n) => n !== selfBase),
+            suggestions.liftCompanions
+          );
           // While a change is stuck on this part, the specific fields at fault
           // are highlighted (in StrengthSets/CardioFields); the equipment fault
           // also gets its inline hint below.
@@ -810,7 +828,7 @@ export default function ActivityForm({
                         <>Add “{q}” as new activity</>
                       )
                     }
-                    options={allOptions}
+                    options={biasedOptions}
                     placeholder={
                       pi === 0
                         ? "What did you do? e.g. Bench Press, Running, Tennis"
