@@ -159,22 +159,29 @@ test("logging a manual cardio activity auto-fills an editable estimated-calorie 
   // Open a fresh create form. The "New activity" button lives in the Journal
   // header inside <main>; the editor it opens mounts either in the docked pane
   // (inside <main>) or the body-level overlay portal, so the form's own fields are
-  // addressed by their unique testids/labels rather than main-scoped (there is
+  // addressed by their unique testids/roles rather than main-scoped (there is
   // exactly one editor instance — same reasoning as the #206 recent-sessions spec).
   await page
     .getByRole("main")
     .getByRole("button", { name: "New activity" })
     .click();
 
-  // Name a known cardio activity and give it a duration. Distance is left blank —
-  // "Running" requires a distance to save, so this draft never auto-persists (it
-  // leaves the shared seed DB untouched, no cleanup needed), yet the estimate still
-  // computes from the duration + the seeded profile's bodyweight.
+  // PICK a known cardio activity from the combobox — typing the name alone doesn't
+  // resolve the part TYPE, so the cardio fields (and the shared estimate field) only
+  // appear after an explicit selection commits the type.
   await page.getByPlaceholder(/What did you do/).fill("Running");
-  await page.getByLabel("Duration (min)").fill("30");
+  await page
+    .getByRole("listbox")
+    .getByRole("button", { name: "Running", exact: true })
+    .click();
+
+  // A duration makes the estimate compute (MET dataset × the seeded profile's
+  // bodyweight × duration). It also makes the activity savable, so it auto-saves —
+  // the draft is deleted at the end to leave the shared seed DB untouched.
+  await page.getByTestId("cardio-duration").fill("30");
 
   // The estimated-calorie field appears, marked "(estimated)", auto-filled with a
-  // positive number (MET dataset × bodyweight × duration).
+  // positive number.
   const field = page.getByTestId("est-calories-field");
   await expect(field).toBeVisible();
   await expect(field).toContainText("estimated");
@@ -185,8 +192,14 @@ test("logging a manual cardio activity auto-fills an editable estimated-calorie 
   await input.fill("123");
   await expect(input).toHaveValue("123");
 
-  // Read-only draft (never saved): close it without persisting.
-  await page.keyboard.press("Escape");
+  // Clean up: delete the just-created activity from the still-open editor. The
+  // Delete button only appears once the auto-save has created the row, so waiting on
+  // it also confirms the activity persisted. Restores the seed for later specs.
+  await page.getByRole("button", { name: "Delete", exact: true }).click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Delete", exact: true })
+    .click();
 });
 
 test("bulk-delete rows in Data → Manage, then Undo restores them (#29)", async ({
