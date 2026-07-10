@@ -71,9 +71,9 @@ describe("supplementAdherenceToday", () => {
 
   it("counts due doses and how many are taken", () => {
     const doses = [
-      { id: 10, supplement_id: 1 },
-      { id: 11, supplement_id: 1 },
-      { id: 12, supplement_id: 2 },
+      { id: 10, item_id: 1 },
+      { id: 11, item_id: 1 },
+      { id: 12, item_id: 2 },
     ];
     const byId = new Map([
       [1, supp({ id: 1, condition: "daily" })],
@@ -85,8 +85,8 @@ describe("supplementAdherenceToday", () => {
 
   it("skips doses whose supplement isn't in the active map", () => {
     const doses = [
-      { id: 10, supplement_id: 1 },
-      { id: 20, supplement_id: 99 }, // inactive/deleted supplement
+      { id: 10, item_id: 1 },
+      { id: 20, item_id: 99 }, // inactive/deleted supplement
     ];
     const byId = new Map([[1, supp({ id: 1 })]]);
     const adh = supplementAdherenceToday(doses, byId, ctx, new Set([10, 20]));
@@ -95,8 +95,8 @@ describe("supplementAdherenceToday", () => {
 
   it("excludes doses not due today via isDueOn (rest-day supplement on a workout day)", () => {
     const doses = [
-      { id: 10, supplement_id: 1 },
-      { id: 11, supplement_id: 2 },
+      { id: 10, item_id: 1 },
+      { id: 11, item_id: 2 },
     ];
     const byId = new Map([
       [1, supp({ id: 1, condition: "daily" })],
@@ -118,7 +118,7 @@ describe("supplementAdherenceToday", () => {
   });
 
   it("counts a situational dose only when its situation is active", () => {
-    const doses = [{ id: 10, supplement_id: 1 }];
+    const doses = [{ id: 10, item_id: 1 }];
     const byId = new Map([
       [1, supp({ id: 1, condition: "situational", situation: "Travel" })],
     ]);

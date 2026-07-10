@@ -113,7 +113,7 @@ function doseItems(profileId: number, today: string): UpcomingItem[] {
   const items: UpcomingItem[] = [];
   for (const dose of doses) {
     if (taken.has(dose.id)) continue;
-    const supp = byId.get(dose.supplement_id);
+    const supp = byId.get(dose.item_id);
     if (!supp || !supp.active || !isDueOn(supp, ctx)) continue;
     const detail = [
       supp.kind === "medication" ? "Medication" : null,

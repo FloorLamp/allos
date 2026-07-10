@@ -379,7 +379,7 @@ export function persistDocumentImport(
      VALUES (?,?,1,'daily','high','medication',?,?,?,?,?,'extracted',?)`
   );
   const insMedDose = db.prepare(
-    `INSERT INTO intake_item_doses (supplement_id, amount, time_of_day, food_timing, sort)
+    `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
      VALUES (?,?,?, 'any', ?)`
   );
 

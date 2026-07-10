@@ -673,7 +673,7 @@ export type SupplementKind = "supplement" | "medication";
 // with its own amount, time, and food relationship.
 export interface SupplementDose {
   id: number;
-  supplement_id: number;
+  item_id: number;
   amount: string | null; // e.g. "600 mg", "1 cap"
   time_of_day: string | null; // bucketed via timeBucket()
   food_timing: FoodTiming;

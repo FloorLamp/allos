@@ -300,7 +300,7 @@ export default async function Dashboard() {
   if (has("low-supply")) {
     const doseCount = new Map<number, number>();
     for (const d of getSupplementDoses(profile.id)) {
-      doseCount.set(d.supplement_id, (doseCount.get(d.supplement_id) ?? 0) + 1);
+      doseCount.set(d.item_id, (doseCount.get(d.item_id) ?? 0) + 1);
     }
     lowSupplyItems = supplements
       .map((s) => ({

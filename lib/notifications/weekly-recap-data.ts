@@ -81,7 +81,7 @@ function windowAdherence(
   if (active.length === 0) return null;
   const suppById = new Map(active.map((s) => [s.id, s]));
   const doses = getSupplementDoses(profileId).filter((d) =>
-    suppById.has(d.supplement_id)
+    suppById.has(d.item_id)
   );
   if (doses.length === 0) return null;
   const situations = new Set(getActiveSituations(profileId));
@@ -93,7 +93,7 @@ function windowAdherence(
     const isWorkoutDay = getActivitiesByDate(profileId, d).length > 0;
     const dueIds = doses
       .filter((dose) =>
-        isDueOn(suppById.get(dose.supplement_id)!, {
+        isDueOn(suppById.get(dose.item_id)!, {
           isWorkoutDay,
           activeSituations: situations,
         })

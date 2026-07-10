@@ -9,6 +9,7 @@ import { migration as m007 } from "./007-appointment-kind";
 import { migration as m008 } from "./008-dose-skip-state";
 import { migration as m009 } from "./009-activity-est-calories";
 import { migration as m010 } from "./010-protocols";
+import { migration as m011 } from "./011-intake-schema-debt";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
 // CONTRACT: a migration's position (1-based) must equal its `id`, and the runner
@@ -27,4 +28,5 @@ export const MIGRATIONS: Migration[] = [
   m008,
   m009,
   m010,
+  m011,
 ];

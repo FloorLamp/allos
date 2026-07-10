@@ -61,7 +61,7 @@ function adherenceDays(profileId: number, td: string): AdherenceDay[] {
   if (active.length === 0) return [];
   const suppById = new Map(active.map((s) => [s.id, s]));
   const doses = getSupplementDoses(profileId).filter((d) =>
-    suppById.has(d.supplement_id)
+    suppById.has(d.item_id)
   );
   if (doses.length === 0) return [];
   const situations = new Set(getActiveSituations(profileId));
@@ -73,7 +73,7 @@ function adherenceDays(profileId: number, td: string): AdherenceDay[] {
     const isWorkoutDay = getActivitiesByDate(profileId, date).length > 0;
     const dueIds = doses
       .filter((d) =>
-        isDueOn(suppById.get(d.supplement_id)!, {
+        isDueOn(suppById.get(d.item_id)!, {
           isWorkoutDay,
           activeSituations: situations,
         })

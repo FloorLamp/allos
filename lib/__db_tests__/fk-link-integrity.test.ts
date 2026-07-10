@@ -216,6 +216,8 @@ describe("migration 006 — FK link integrity (issue #95)", () => {
     const doseId = Number(
       db
         .prepare(
+          // Pre-011 schema (only migrations 001–005 applied here), so the dose FK
+          // column is still its baseline name supplement_id (011 renames it to item_id).
           `INSERT INTO intake_item_doses (supplement_id, amount) VALUES (?, '1 cap')`
         )
         .run(itemId).lastInsertRowid

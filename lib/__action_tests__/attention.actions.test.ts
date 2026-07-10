@@ -35,7 +35,7 @@ function seedDose(profileId: number): number {
   return Number(
     db
       .prepare(
-        `INSERT INTO intake_item_doses (supplement_id, amount, time_of_day, food_timing, sort)
+        `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
          VALUES (?, '1000 IU', 'morning', 'any', 0)`
       )
       .run(suppId).lastInsertRowid

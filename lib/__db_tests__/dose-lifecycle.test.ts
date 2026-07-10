@@ -59,7 +59,7 @@ function seedDose(itemId: number, amount: string, retired = 0): number {
     db
       .prepare(
         `INSERT INTO intake_item_doses
-           (supplement_id, amount, time_of_day, food_timing, sort, retired)
+           (item_id, amount, time_of_day, food_timing, sort, retired)
          VALUES (?, ?, 'morning', 'any', 0, ?)`
       )
       .run(itemId, amount, retired).lastInsertRowid

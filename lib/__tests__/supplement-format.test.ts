@@ -52,7 +52,7 @@ function dose(
 ): SupplementDose {
   return {
     id,
-    supplement_id: supplementId,
+    item_id: supplementId,
     amount,
     time_of_day: "morning",
     food_timing: foodTiming,

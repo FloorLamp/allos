@@ -95,7 +95,7 @@ export function gatherDigestInput(
   const active = getSupplements(profileId).filter((s) => s.active);
   const suppById = new Map(active.map((s) => [s.id, s]));
   const doses = getSupplementDoses(profileId).filter((d) =>
-    suppById.has(d.supplement_id)
+    suppById.has(d.item_id)
   );
   const situations = new Set(getActiveSituations(profileId));
 
@@ -103,7 +103,7 @@ export function gatherDigestInput(
     const isWorkoutDay = getActivitiesByDate(profileId, date).length > 0;
     return doses
       .filter((d) => {
-        const supp = suppById.get(d.supplement_id)!;
+        const supp = suppById.get(d.item_id)!;
         return isDueOn(supp, { isWorkoutDay, activeSituations: situations });
       })
       .map((d) => d.id);

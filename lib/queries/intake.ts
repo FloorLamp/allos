@@ -38,9 +38,9 @@ export function getSupplementDoses(profileId: number): SupplementDose[] {
   return db
     .prepare(
       `SELECT d.* FROM intake_item_doses d
-         JOIN intake_items s ON s.id = d.supplement_id
+         JOIN intake_items s ON s.id = d.item_id
         WHERE s.profile_id = ? AND d.retired = 0
-        ORDER BY d.supplement_id, d.sort, d.id`
+        ORDER BY d.item_id, d.sort, d.id`
     )
     .all(profileId) as SupplementDose[];
 }
@@ -70,13 +70,13 @@ export function getRefillRates(
   // parent intake_items JOIN.
   const rows = db
     .prepare(
-      `SELECT l.supplement_id AS sid,
+      `SELECT l.item_id AS sid,
               SUM(CASE WHEN l.date >= ? THEN 1 ELSE 0 END) AS in_window,
               MIN(l.date) AS first_date
          FROM intake_item_logs l
-         JOIN intake_items s ON s.id = l.supplement_id
+         JOIN intake_items s ON s.id = l.item_id
         WHERE s.profile_id = ? AND l.status = 'taken'
-        GROUP BY l.supplement_id`
+        GROUP BY l.item_id`
     )
     .all(windowStart, profileId) as {
     sid: number;
@@ -88,10 +88,7 @@ export function getRefillRates(
   // Fallback rate ≈ number of scheduled dose rows per item.
   const scheduleCount = new Map<number, number>();
   for (const d of getSupplementDoses(profileId)) {
-    scheduleCount.set(
-      d.supplement_id,
-      (scheduleCount.get(d.supplement_id) ?? 0) + 1
-    );
+    scheduleCount.set(d.item_id, (scheduleCount.get(d.item_id) ?? 0) + 1);
   }
 
   const out = new Map<number, DoseRate>();
@@ -126,13 +123,13 @@ export function getSupplementLogsForDate(
 ): Set<number> {
   const rows = db
     .prepare(
-      `SELECT DISTINCT l.supplement_id FROM intake_item_logs l
-         JOIN intake_items s ON s.id = l.supplement_id
+      `SELECT DISTINCT l.item_id FROM intake_item_logs l
+         JOIN intake_items s ON s.id = l.item_id
         WHERE s.profile_id = ? AND l.date = ? AND l.status = 'taken'
-          AND l.supplement_id IS NOT NULL`
+          AND l.item_id IS NOT NULL`
     )
-    .all(profileId, date) as { supplement_id: number }[];
-  return new Set(rows.map((r) => r.supplement_id));
+    .all(profileId, date) as { item_id: number }[];
+  return new Set(rows.map((r) => r.item_id));
 }
 
 // Dose ids TAKEN on `date` (per-dose view for the schedule check-offs), scoped to
@@ -143,7 +140,7 @@ export function getTakenDoseIds(profileId: number, date: string): Set<number> {
     .prepare(
       `SELECT l.dose_id FROM intake_item_logs l
          JOIN intake_item_doses d ON d.id = l.dose_id
-         JOIN intake_items s ON s.id = d.supplement_id
+         JOIN intake_items s ON s.id = d.item_id
         WHERE s.profile_id = ? AND l.date = ? AND l.status = 'taken'`
     )
     .all(profileId, date) as { dose_id: number }[];
@@ -161,7 +158,7 @@ export function getSkippedDoseIds(
     .prepare(
       `SELECT l.dose_id FROM intake_item_logs l
          JOIN intake_item_doses d ON d.id = l.dose_id
-         JOIN intake_items s ON s.id = d.supplement_id
+         JOIN intake_items s ON s.id = d.item_id
         WHERE s.profile_id = ? AND l.date = ? AND l.status = 'skipped'`
     )
     .all(profileId, date) as { dose_id: number }[];
@@ -199,7 +196,7 @@ export function incrementSupply(profileId: number, supplementId: number): void {
 
 // Log a single dose as taken on `date`, idempotently — the non-React-context
 // counterpart to the toggleTaken server action, callable from the notification
-// webhook. Mirrors toggleTaken's insert (dose_id + supplement_id + date +
+// webhook. Mirrors toggleTaken's insert (dose_id + item_id + date +
 // amount snapshot) so the supplements page's per-dose adherence reflects it;
 // never deletes. Returns what actually happened so the caller (the Telegram
 // tap handler) can answer honestly: a tap on a button whose dose was since
@@ -217,15 +214,14 @@ export function markDoseTaken(
   // retired dose is no longer part of the schedule — treat it like a deleted one.
   const owned = db
     .prepare(
-      `SELECT d.supplement_id AS supplement_id, d.amount AS amount,
+      `SELECT d.item_id AS item_id, d.amount AS amount,
               s.active AS active
          FROM intake_item_doses d
-         JOIN intake_items s ON s.id = d.supplement_id
+         JOIN intake_items s ON s.id = d.item_id
         WHERE d.id = ? AND s.profile_id = ? AND d.retired = 0`
     )
     .get(doseId, profileId) as
-    | { supplement_id: number; amount: string | null; active: number }
-    | undefined;
+    { item_id: number; amount: string | null; active: number } | undefined;
   if (!owned) return "stale-dose";
   // A paused/stopped item keeps its buttons in old messages; refuse the tap so
   // a lingering reminder can't silently log doses (and burn supply) for an item
@@ -238,10 +234,10 @@ export function markDoseTaken(
   // Snapshot the dose amount at confirm time: history must keep showing what
   // was actually taken even after a later dosage edit rewrites the dose row.
   db.prepare(
-    "INSERT INTO intake_item_logs (dose_id, supplement_id, date, amount) VALUES (?,?,?,?)"
-  ).run(doseId, supplementId ?? owned.supplement_id, date, owned.amount);
+    "INSERT INTO intake_item_logs (dose_id, item_id, date, amount) VALUES (?,?,?,?)"
+  ).run(doseId, supplementId ?? owned.item_id, date, owned.amount);
   // Guarded by the dedup above: a confirmed dose decrements on-hand supply once.
-  decrementSupply(profileId, owned.supplement_id);
+  decrementSupply(profileId, owned.item_id);
   return "logged";
 }
 
@@ -263,13 +259,12 @@ export function markDoseSkipped(
 ): DoseTakenOutcome {
   const owned = db
     .prepare(
-      `SELECT d.supplement_id AS supplement_id, s.active AS active
+      `SELECT d.item_id AS item_id, s.active AS active
          FROM intake_item_doses d
-         JOIN intake_items s ON s.id = d.supplement_id
+         JOIN intake_items s ON s.id = d.item_id
         WHERE d.id = ? AND s.profile_id = ? AND d.retired = 0`
     )
-    .get(doseId, profileId) as
-    { supplement_id: number; active: number } | undefined;
+    .get(doseId, profileId) as { item_id: number; active: number } | undefined;
   if (!owned) return "stale-dose";
   if (!owned.active) return "inactive";
   // Any existing log (taken OR skipped) means this dose is already resolved for
@@ -281,8 +276,8 @@ export function markDoseSkipped(
     .get(doseId, date);
   if (existing) return "already-logged";
   db.prepare(
-    "INSERT INTO intake_item_logs (dose_id, supplement_id, date, amount, status) VALUES (?,?,?,NULL,'skipped')"
-  ).run(doseId, _supplementId ?? owned.supplement_id, date);
+    "INSERT INTO intake_item_logs (dose_id, item_id, date, amount, status) VALUES (?,?,?,NULL,'skipped')"
+  ).run(doseId, _supplementId ?? owned.item_id, date);
   // Deliberately no decrementSupply: a skipped dose consumes nothing.
   return "skipped";
 }
@@ -302,7 +297,7 @@ export function getSupplementLogsInRange(
     .prepare(
       `SELECT l.dose_id, l.date, l.status FROM intake_item_logs l
          JOIN intake_item_doses d ON d.id = l.dose_id
-         JOIN intake_items s ON s.id = d.supplement_id
+         JOIN intake_items s ON s.id = d.item_id
         WHERE s.profile_id = ? AND l.date >= ? ORDER BY l.date`
     )
     .all(profileId, since) as {
@@ -343,9 +338,9 @@ export function getDietaryLimitWarnings(
   const supplements = getSupplements(profileId);
   const dosesBySupp = new Map<number, (string | null)[]>();
   for (const d of getSupplementDoses(profileId)) {
-    const arr = dosesBySupp.get(d.supplement_id) ?? [];
+    const arr = dosesBySupp.get(d.item_id) ?? [];
     arr.push(d.amount);
-    dosesBySupp.set(d.supplement_id, arr);
+    dosesBySupp.set(d.item_id, arr);
   }
   const items: StackItem[] = supplements.map((s) => ({
     name: s.name,

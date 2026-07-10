@@ -168,10 +168,10 @@ export async function deleteProfile(formData: FormData): Promise<FamilyResult> {
       "DELETE FROM exercise_sets WHERE activity_id IN (SELECT id FROM activities WHERE profile_id = ?)"
     ).run(id);
     db.prepare(
-      "DELETE FROM intake_item_logs WHERE supplement_id IN (SELECT id FROM intake_items WHERE profile_id = ?)"
+      "DELETE FROM intake_item_logs WHERE item_id IN (SELECT id FROM intake_items WHERE profile_id = ?)"
     ).run(id);
     db.prepare(
-      "DELETE FROM intake_item_doses WHERE supplement_id IN (SELECT id FROM intake_items WHERE profile_id = ?)"
+      "DELETE FROM intake_item_doses WHERE item_id IN (SELECT id FROM intake_items WHERE profile_id = ?)"
     ).run(id);
     db.prepare(
       `DELETE FROM intake_item_pairs

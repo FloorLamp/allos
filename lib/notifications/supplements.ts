@@ -87,7 +87,7 @@ function gatherWindowDoses(
 
   const entries: WindowDose[] = [];
   for (const dose of doses) {
-    const supp = suppById.get(dose.supplement_id);
+    const supp = suppById.get(dose.item_id);
     if (!supp) continue;
     if (!isDueOn(supp, ctx)) continue;
     if (bucketWindow(timeBucket(dose.time_of_day)) !== window) continue;

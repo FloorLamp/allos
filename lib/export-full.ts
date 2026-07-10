@@ -93,12 +93,12 @@ function sanitizeName(name: string): string {
 function medicationSchedules(profileId: number): Map<number, string> {
   const doses = db
     .prepare(
-      `SELECT d.supplement_id, d.amount, d.time_of_day, d.food_timing
-         FROM intake_item_doses d JOIN intake_items ii ON ii.id = d.supplement_id
+      `SELECT d.item_id, d.amount, d.time_of_day, d.food_timing
+         FROM intake_item_doses d JOIN intake_items ii ON ii.id = d.item_id
         WHERE ii.profile_id = ? ORDER BY ii.id, d.sort, d.id`
     )
     .all(profileId) as {
-    supplement_id: number;
+    item_id: number;
     amount: string | null;
     time_of_day: string | null;
     food_timing: string | null;
@@ -112,9 +112,9 @@ function medicationSchedules(profileId: number): Map<number, string> {
     let piece = time && amount ? `${time} × ${amount}` : time || amount;
     if (food) piece = piece ? `${piece} (${food})` : food;
     if (!piece) continue;
-    const list = byItem.get(d.supplement_id);
+    const list = byItem.get(d.item_id);
     if (list) list.push(piece);
-    else byItem.set(d.supplement_id, [piece]);
+    else byItem.set(d.item_id, [piece]);
   }
   const out = new Map<number, string>();
   for (const [id, parts] of byItem) out.set(id, parts.join("; "));

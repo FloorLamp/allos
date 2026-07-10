@@ -137,6 +137,17 @@ export function restoreDeletedRow(profileId: number, undoId: number): boolean {
           toInsert[ref.column] = null; // onMissing === "null"
         }
         if (drop) continue;
+        // Re-canonicalize an ordered pair (intake_item_pairs a_id/b_id) whose order
+        // the remap may have inverted, so its CHECK (a_id < b_id) holds (#97).
+        if (entity.orderedPair) {
+          const [lo, hi] = entity.orderedPair;
+          const x = toInsert[lo];
+          const y = toInsert[hi];
+          if (typeof x === "number" && typeof y === "number" && x > y) {
+            toInsert[lo] = y;
+            toInsert[hi] = x;
+          }
+        }
         const cols = Object.keys(toInsert);
         const info = db
           .prepare(

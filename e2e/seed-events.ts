@@ -313,7 +313,7 @@ if (
     .run(HOUSEHOLD_PROFILE_ID, HOUSEHOLD_SUPP_NAME);
   // One daily dose, no taken-log for today → surfaces as a due dose on the card.
   db.prepare(
-    `INSERT INTO intake_item_doses (supplement_id, amount, time_of_day, food_timing, sort)
+    `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
      VALUES (?, '2000 IU', '08:00', 'any', 0)`
   ).run(Number(supp.lastInsertRowid));
 }
@@ -336,7 +336,7 @@ if (
     )
     .run(HOUSEHOLD_PROFILE_ID, HOUSEHOLD_RO_SUPP_NAME);
   db.prepare(
-    `INSERT INTO intake_item_doses (supplement_id, amount, time_of_day, food_timing, sort)
+    `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
      VALUES (?, '200 mg', '20:00', 'any', 0)`
   ).run(Number(roSupp.lastInsertRowid));
 }

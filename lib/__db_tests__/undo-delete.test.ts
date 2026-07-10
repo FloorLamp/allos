@@ -106,7 +106,7 @@ describe("intake-item delete → undo (full cascade)", () => {
     ).toBe(0);
     expect(
       count(
-        "SELECT COUNT(*) c FROM intake_item_doses WHERE supplement_id = ?",
+        "SELECT COUNT(*) c FROM intake_item_doses WHERE item_id = ?",
         p.supplementId
       )
     ).toBe(0);
@@ -132,12 +132,12 @@ describe("intake-item delete → undo (full cascade)", () => {
 
     // A dose came back; its log points at the RESTORED dose (remapped dose_id).
     const dose = db
-      .prepare("SELECT id FROM intake_item_doses WHERE supplement_id = ?")
+      .prepare("SELECT id FROM intake_item_doses WHERE item_id = ?")
       .get(newId) as { id: number } | undefined;
     expect(dose).toBeTruthy();
     expect(
       count(
-        "SELECT COUNT(*) c FROM intake_item_logs WHERE supplement_id = ? AND dose_id = ?",
+        "SELECT COUNT(*) c FROM intake_item_logs WHERE item_id = ? AND dose_id = ?",
         newId,
         dose!.id
       )
