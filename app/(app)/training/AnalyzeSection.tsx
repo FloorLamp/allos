@@ -1,5 +1,4 @@
 import Link from "next/link";
-import type { ReactNode } from "react";
 import {
   getCardioByActivity,
   getExerciseComparison,
@@ -10,7 +9,6 @@ import {
   getSportByActivity,
   getStrengthByExercise,
   type CardioStat,
-  type ExerciseCompareMetric,
   type GoalProgress,
   type SportStat,
 } from "@/lib/queries";
@@ -19,56 +17,40 @@ import { getUnitPrefs, getUserSex } from "@/lib/settings";
 import type { Sex } from "@/lib/types";
 import { today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
-import {
-  dispWeight,
-  fmtDistance,
-  fmtKmh,
-  fmtWeight,
-  kmTo,
-  round,
-} from "@/lib/units";
+import { fmtDistance, fmtKmh, fmtWeight } from "@/lib/units";
 import { formatLongDate } from "@/lib/format-date";
-import {
-  STANDARD_LEVELS,
-  levelFor,
-  standardFor,
-  type Standard,
-} from "@/lib/strength";
+import { standardFor, type Standard } from "@/lib/strength";
 import { formatMinutes } from "@/lib/duration";
+import {
+  RANGES,
+  STRENGTH_METRICS,
+  CARDIO_METRICS,
+  benchmarkState,
+  buildAnalyzeOptions,
+  cardioMetricValue,
+  coerceCardioMetric,
+  coerceKind,
+  coerceRange,
+  coerceStrengthMetric,
+  defaultMetric,
+  e1rmText,
+  bestText,
+  firstName,
+  formatIntensity,
+  formatRatio,
+  newestFirst,
+  rangeFilter,
+  strengthMetricValue,
+  type AnalyzeKind,
+  type AnalyzeView,
+  type RangeId,
+} from "@/lib/analyze-view";
 import { EmptyState } from "@/components/ui";
 import CardioDetailPanel from "@/components/CardioDetailPanel";
 import ExerciseDetailPanel from "@/components/ExerciseDetailPanel";
 import LineChartCard from "@/components/LineChartCard";
 import SportDetailPanel from "@/components/SportDetailPanel";
-import AnalyzePicker, { type AnalyzeOption } from "./AnalyzePicker";
-
-type AnalyzeKind = "strength" | "cardio" | "sport";
-type RangeId = (typeof RANGES)[number]["id"];
-
-const RANGES = [
-  { id: "12w", label: "12w", days: 84 },
-  { id: "6m", label: "6m", days: 183 },
-  { id: "1y", label: "1y", days: 365 },
-  { id: "all", label: "All", days: null },
-] as const;
-
-const STRENGTH_METRICS: {
-  id: ExerciseCompareMetric;
-  label: string;
-  chartLabel: string;
-}[] = [
-  { id: "volume", label: "Volume", chartLabel: "Volume" },
-  { id: "e1rm", label: "Est. 1RM", chartLabel: "Est. 1RM" },
-  { id: "top", label: "Top set", chartLabel: "Top weight" },
-  { id: "reps", label: "Reps", chartLabel: "Reps" },
-];
-
-const CARDIO_METRICS = [
-  { id: "distance", label: "Distance", chartLabel: "Distance" },
-  { id: "duration", label: "Duration", chartLabel: "Duration" },
-  { id: "speed", label: "Speed", chartLabel: "Avg speed" },
-] as const;
-type CardioMetric = (typeof CARDIO_METRICS)[number]["id"];
+import AnalyzePicker from "./AnalyzePicker";
 
 export default function AnalyzeSection({
   kind,
@@ -315,10 +297,6 @@ export default function AnalyzeSection({
   );
 }
 
-function formatRatio(ratio: number) {
-  return Number.isInteger(ratio) ? String(ratio) : ratio.toFixed(2);
-}
-
 function strengthView({
   stat,
   profileId,
@@ -436,14 +414,7 @@ function cardioView({
     latestActivityId: newest[0]?.activityId ?? stat.lastActivityId,
     chart: sessions.map((s) => ({
       date: s.date,
-      value:
-        activeMetric === "distance"
-          ? round(kmTo(s.distanceKm, units.distanceUnit), 2)
-          : activeMetric === "speed"
-            ? s.speedKmh == null
-              ? null
-              : round(kmTo(s.speedKmh, units.distanceUnit), 1)
-            : Math.round(s.durationMin),
+      value: cardioMetricValue(s, activeMetric, units.distanceUnit),
     })),
     columns: ["Distance", "Duration", "Avg speed"],
     sessions: newest.map((s) => ({
@@ -506,199 +477,9 @@ function sportView({
   };
 }
 
-interface AnalyzeView {
-  name: string;
-  metric: string;
-  metrics: { id: string; label: string; chartLabel: string }[];
-  chartLabel: string;
-  chartUnit: string;
-  color: string;
-  latestActivityId: number;
-  chart: { date: string; value: number | null }[];
-  columns: string[];
-  sessions: { activityId: number; date: string; cells: string[] }[];
-  detail: ReactNode;
-}
-
-function coerceKind(
-  value: string | undefined,
-  available: Record<AnalyzeKind, boolean>
-): AnalyzeKind {
-  if (value === "strength" && available.strength) return "strength";
-  if (value === "cardio" && available.cardio) return "cardio";
-  if (value === "sport" && available.sport) return "sport";
-  if (available.strength) return "strength";
-  if (available.cardio) return "cardio";
-  return "sport";
-}
-
-function coerceRange(value: string | undefined): RangeId {
-  return RANGES.some((r) => r.id === value) ? (value as RangeId) : "12w";
-}
-
-function coerceStrengthMetric(
-  value: string | undefined
-): ExerciseCompareMetric {
-  return STRENGTH_METRICS.some((m) => m.id === value)
-    ? (value as ExerciseCompareMetric)
-    : "volume";
-}
-
-function coerceCardioMetric(
-  value: string | undefined,
-  stat: CardioStat | undefined
-): CardioMetric {
-  if (value === "distance" && stat?.hasDistance) return "distance";
-  if (value === "speed" && stat?.hasDistance) return "speed";
-  if (value === "duration") return "duration";
-  return stat?.hasDistance ? "distance" : "duration";
-}
-
-function defaultMetric(
-  kind: AnalyzeKind,
-  currentMetric: string | undefined,
-  cardioStat?: CardioStat
-): string {
-  if (kind === "cardio") return coerceCardioMetric(currentMetric, cardioStat);
-  if (kind === "sport") return "duration";
-  return coerceStrengthMetric(currentMetric);
-}
-
-function firstName(
-  kind: AnalyzeKind,
-  strength: ReturnType<typeof getStrengthByExercise>,
-  cardio: CardioStat[],
-  sports: SportStat[]
-): string | null {
-  if (kind === "strength") return strength[0]?.exercise ?? null;
-  if (kind === "cardio") return cardio[0]?.activity ?? null;
-  return sports[0]?.sport ?? null;
-}
-
-function buildAnalyzeOptions({
-  strength,
-  cardio,
-  sports,
-  activeRange,
-  metric,
-}: {
-  strength: ReturnType<typeof getStrengthByExercise>;
-  cardio: CardioStat[];
-  sports: SportStat[];
-  activeRange: RangeId;
-  metric?: string;
-}): AnalyzeOption[] {
-  const raw = [
-    ...strength.map((s) => ({
-      kind: "strength" as const,
-      item: s.exercise,
-      metric: coerceStrengthMetric(metric),
-    })),
-    ...cardio.map((c) => ({
-      kind: "cardio" as const,
-      item: c.activity,
-      metric: coerceCardioMetric(metric, c),
-    })),
-    ...sports.map((s) => ({
-      kind: "sport" as const,
-      item: s.sport,
-      metric: "duration",
-    })),
-  ];
-  const counts = new Map<string, number>();
-  for (const option of raw) {
-    const key = option.item.trim().toLowerCase();
-    counts.set(key, (counts.get(key) ?? 0) + 1);
-  }
-  return raw.map((option) => {
-    const duplicate = (counts.get(option.item.trim().toLowerCase()) ?? 0) > 1;
-    const label = duplicate
-      ? `${option.item} (${kindLabel(option.kind)})`
-      : option.item;
-    const params = new URLSearchParams();
-    params.set("tab", "analyze");
-    params.set("kind", option.kind);
-    params.set("item", option.item);
-    params.set("metric", option.metric);
-    params.set("range", activeRange);
-    return {
-      kind: option.kind,
-      item: option.item,
-      label,
-      href: `/training?${params.toString()}`,
-    };
-  });
-}
-
-function kindLabel(kind: AnalyzeKind): string {
-  if (kind === "strength") return "Strength";
-  if (kind === "cardio") return "Cardio";
-  return "Sport";
-}
-
 function rangeStart(profileId: number, range: RangeId): string | null {
   const def = RANGES.find((r) => r.id === range)!;
   return def.days == null ? null : shiftDateStr(today(profileId), -def.days);
-}
-
-function rangeFilter<T extends { date: string }>(
-  rows: T[],
-  fromDate: string | null
-): T[] {
-  return fromDate ? rows.filter((r) => r.date >= fromDate) : rows;
-}
-
-function newestFirst(
-  a: { date: string; activityId: number },
-  b: { date: string; activityId: number }
-) {
-  return a.date < b.date
-    ? 1
-    : a.date > b.date
-      ? -1
-      : b.activityId - a.activityId;
-}
-
-function strengthMetricValue(
-  session: ReturnType<typeof getExerciseComparison>[number],
-  metric: ExerciseCompareMetric,
-  unit: "kg" | "lb"
-): number | null {
-  switch (metric) {
-    case "volume":
-      return dispWeight(session.volumeKg, unit, 0);
-    case "e1rm":
-      return session.e1rmKg == null
-        ? null
-        : dispWeight(session.e1rmKg, unit, 0);
-    case "top":
-      return session.topWeightKg == null
-        ? null
-        : dispWeight(session.topWeightKg, unit, 0);
-    case "reps":
-      return session.totalReps;
-  }
-}
-
-function bestText(
-  session: ReturnType<typeof getExerciseComparison>[number],
-  unit: "kg" | "lb"
-) {
-  if (session.topWeightKg == null || session.topReps == null) return "—";
-  return `${fmtWeight(session.topWeightKg, unit)} × ${session.topReps}`;
-}
-
-function e1rmText(
-  session: ReturnType<typeof getExerciseComparison>[number],
-  unit: "kg" | "lb"
-) {
-  return session.e1rmKg == null ? "—" : fmtWeight(session.e1rmKg, unit);
-}
-
-function formatIntensity(value: string | null) {
-  const normalized = value?.trim();
-  if (!normalized) return "—";
-  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
 }
 
 function BenchmarkCard({
@@ -714,30 +495,11 @@ function BenchmarkCard({
   bodyweightKg: number | null;
   weightUnit: "kg" | "lb";
 }) {
-  const currentRatio =
-    bodyweightKg && currentE1rmKg > 0 ? currentE1rmKg / bodyweightKg : null;
-  const currentLevel =
-    currentRatio == null ? null : levelFor(currentRatio, standard);
-  const isUnranked = currentRatio != null && currentRatio < standard.beginner;
-  const rankedLevelLabel = !isUnranked ? currentLevel?.label : null;
-  const rows = [
-    ...STANDARD_LEVELS.map((level) => ({
-      type: "level" as const,
-      label: level.label,
-      ratio: standard[level.key],
-      color: level.color,
-    })),
-    ...(!isUnranked || currentRatio == null
-      ? []
-      : [
-          {
-            type: "current" as const,
-            label: "Current",
-            ratio: currentRatio,
-            color: "text-brand-700 dark:text-brand-300",
-          },
-        ]),
-  ].sort((a, b) => b.ratio - a.ratio);
+  const { currentRatio, currentLevel, rankedLevelLabel, rows } = benchmarkState(
+    standard,
+    currentE1rmKg,
+    bodyweightKg
+  );
 
   return (
     <div className="card">

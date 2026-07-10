@@ -7,6 +7,14 @@ import PhotoPicker from "@/components/PhotoPicker";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { membersLosingAllAccess } from "@/lib/family-deletion";
 import type { Access } from "@/lib/grants";
+import {
+  deletionErasesText,
+  grantFormEntries,
+  initialGrantSelection,
+  memberGrantList,
+  setGrantLevel,
+  toggleGrant,
+} from "@/lib/family-ui";
 import { uploadProfilePhoto, removeProfilePhoto } from "../photo-actions";
 import type { ProfileDataSummary } from "./page";
 import {
@@ -86,17 +94,6 @@ export default function FamilyManager({
       </p>
     </div>
   );
-}
-
-// The member logins (with their granted profile ids) that a profile deletion
-// would strip of their last remaining access — computed from the grant matrix.
-function memberGrantList(
-  logins: Login[],
-  grants: Record<number, number[]>
-): { username: string; profileIds: number[] }[] {
-  return logins
-    .filter((a) => a.role === "member")
-    .map((a) => ({ username: a.username, profileIds: grants[a.id] ?? [] }));
 }
 
 // ---- Profiles ----
@@ -298,12 +295,9 @@ function ProfileRow({
               Permanently delete “{profile.name}” and all of their data?
             </p>
             <p className="text-xs text-rose-700/90 dark:text-rose-300/90">
-              This erases{" "}
-              {summary
-                ? `${summary.activities} ${plural(summary.activities, "activity", "activities")}, ${summary.bodyMetrics} ${plural(summary.bodyMetrics, "body metric", "body metrics")}, ${summary.medicalRecords} medical ${plural(summary.medicalRecords, "record", "records")}, and ${summary.documents} ${plural(summary.documents, "document", "documents")}`
-                : "all of this profile's data"}{" "}
-              — plus goals, supplements, equipment, and any imported metrics.
-              This cannot be undone.
+              This erases {deletionErasesText(summary)} — plus goals,
+              supplements, equipment, and any imported metrics. This cannot be
+              undone.
             </p>
             {losingAccess.length > 0 && (
               <p className="text-xs text-rose-700/90 dark:text-rose-300/90">
@@ -351,11 +345,6 @@ function ProfileRow({
       </div>
     </div>
   );
-}
-
-// Tiny count-aware word picker for the deletion summary line.
-function plural(n: number, one: string, many: string): string {
-  return n === 1 ? one : many;
 }
 
 // ---- Logins ----
@@ -703,31 +692,22 @@ function GrantsRow({
   // profile id → access level for each CURRENTLY-granted profile. Absence from
   // the map means "not granted"; a grant defaults to 'write' when its level is
   // unknown (matches the server's normalizeAccess).
-  const [selected, setSelected] = useState<Map<number, Access>>(
-    () => new Map(granted.map((id) => [id, access[id] ?? "write"]))
+  const [selected, setSelected] = useState<Map<number, Access>>(() =>
+    initialGrantSelection(granted, access)
   );
 
   function toggle(id: number) {
-    setSelected((prev) => {
-      const next = new Map(prev);
-      if (next.has(id)) next.delete(id);
-      else next.set(id, "write");
-      return next;
-    });
+    setSelected((prev) => toggleGrant(prev, id));
   }
 
   function setLevel(id: number, level: Access) {
-    setSelected((prev) => {
-      const next = new Map(prev);
-      if (next.has(id)) next.set(id, level);
-      return next;
-    });
+    setSelected((prev) => setGrantLevel(prev, id, level));
   }
 
   function save() {
     const fd = new FormData();
     fd.set("loginId", String(login.id));
-    for (const [id, level] of selected) {
+    for (const { id, level } of grantFormEntries(selected)) {
       fd.append("profileId", String(id));
       fd.set(`access_${id}`, level);
     }
