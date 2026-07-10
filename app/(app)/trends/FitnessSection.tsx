@@ -4,6 +4,7 @@ import StrengthSection from "../training/StrengthSection";
 import CardioSection from "../training/CardioSection";
 import SportSection from "../training/SportSection";
 import TrainingZonesSection from "./TrainingZonesSection";
+import WorkoutHeatmapSection from "./WorkoutHeatmapSection";
 
 const FTABS = ["strength", "cardio", "sport"] as const;
 type FitnessTab = (typeof FTABS)[number];
@@ -41,6 +42,10 @@ export default function FitnessSection({ ftab }: { ftab?: string }) {
     );
   return (
     <div className="space-y-4">
+      {/* Workout-density heatmap (issue #186): overall training cadence over the
+          trailing 12 months, above the per-discipline strip so it shows on every
+          nested tab. "How often" — the companion to the zone card's "how hard". */}
+      <WorkoutHeatmapSection />
       <p className="text-sm text-slate-500 dark:text-slate-400">
         Strength, cardio, and sport progress (full history).{" "}
         <Link
