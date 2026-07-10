@@ -1,15 +1,15 @@
 "use client";
 
-import { useFormState } from "react-dom";
+import { useActionState } from "react";
 import { generateSuggestions, type SuggestState } from "./actions";
 import GenerateButton from "./GenerateButton";
 
-// AI-suggestions form. Uses useFormState so the server action's result (a
+// AI-suggestions form. Uses useActionState so the server action's result (a
 // failure note, a no-key message, or "added N") is surfaced inline instead of
 // the request silently completing. GenerateButton (useFormStatus) drives the
 // pending spinner.
 export default function SuggestionsForm() {
-  const [state, formAction] = useFormState<SuggestState | null, FormData>(
+  const [state, formAction] = useActionState<SuggestState | null, FormData>(
     generateSuggestions,
     null
   );

@@ -24,12 +24,12 @@ import BiomarkerScale from "./BiomarkerScale";
 // and on the dashboard. Each tile links to the biomarker detail page and shows
 // the latest value, an optimal-status chip (when known), and a sparkline.
 // Renders nothing when no biomarkers are starred.
-export default function StarredBiomarkers({
+export default async function StarredBiomarkers({
   title = "Starred biomarkers",
 }: {
   title?: string;
 }) {
-  const { profile } = requireSession();
+  const { profile } = await requireSession();
   const starred = getStarredBiomarkers(profile.id);
   if (starred.length === 0) return null;
   const sex = getUserSex(profile.id);

@@ -56,10 +56,8 @@ function parseFlag(
 // a SHARED date-range control. Every section reuses existing components/queries;
 // the shared window (from/to) drives them all. Fitness + Insights (age-gated
 // surfaces) are hidden for training-restricted profiles.
-export default function TrendsPage({
-  searchParams,
-}: {
-  searchParams: {
+export default async function TrendsPage(props: {
+  searchParams: Promise<{
     tab?: string | string[];
     ftab?: string | string[];
     from?: string | string[];
@@ -69,9 +67,10 @@ export default function TrendsPage({
     cmpA?: string | string[];
     cmpB?: string | string[];
     cmpn?: string | string[];
-  };
+  }>;
 }) {
-  const { profile } = requireSession();
+  const searchParams = await props.searchParams;
+  const { profile } = await requireSession();
   const todayStr = today(profile.id);
   const restricted = isTrainingRestricted(profile.id);
   const savedViews = getTrendViews(profile.id);

@@ -6,11 +6,12 @@ export const dynamic = "force-dynamic";
 // GET /api/export/<dataset> — stream the dataset as a downloadable CSV.
 export async function GET(
   _req: Request,
-  { params }: { params: { dataset: string } }
+  props: { params: Promise<{ dataset: string }> }
 ) {
+  const params = await props.params;
   // Cookie-authoritative gate: this exposes full medical/biomarker data, so the
   // Edge middleware's coarse cookie-presence check isn't enough here.
-  const session = getCurrentSession();
+  const session = await getCurrentSession();
   if (!session) {
     return new Response("Unauthorized", { status: 401 });
   }

@@ -61,8 +61,8 @@ import { saveDashboardLayout } from "./actions";
 
 export const dynamic = "force-dynamic";
 
-export default function Dashboard() {
-  const { login, profile } = requireSession();
+export default async function Dashboard() {
+  const { login, profile } = await requireSession();
   // Age-restricted profiles don't see the fitness surfaces (Training, AI
   // Insights), so their fitness dashboard widgets are dropped by the registry
   // merge (see lib/dashboard-widgets.ts / lib/age-gate.ts).

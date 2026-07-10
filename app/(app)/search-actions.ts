@@ -8,6 +8,6 @@ import type { SearchGroup } from "@/lib/search-rank";
 // profile from the session (requireSession) and searches ONLY that profile's
 // data — never a login's other accessible profiles. Read-only.
 export async function runGlobalSearch(query: string): Promise<SearchGroup[]> {
-  const { profile } = requireSession();
+  const { profile } = await requireSession();
   return searchAll(profile.id, query);
 }

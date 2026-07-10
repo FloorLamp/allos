@@ -13,8 +13,8 @@ export const dynamic = "force-dynamic";
 // Imported from a health record's CCD Encounters section, plus manual add/edit/
 // delete. Each visit shows its date, type, chief complaint, diagnoses, and the
 // attending provider + facility (resolved from the shared providers registry).
-export default function EncountersPage() {
-  const { profile } = requireSession();
+export default async function EncountersPage() {
+  const { profile } = await requireSession();
   const now = today(profile.id);
   const encounters = getEncounters(profile.id);
   const providerNames = getProviderNames();

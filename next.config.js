@@ -14,7 +14,7 @@
 // without breaking anything, and enforce ONLY `frame-ancestors 'none'` today via
 // a separate real Content-Security-Policy header — that directive is
 // clickjacking defense equivalent to X-Frame-Options: DENY and is safe to turn on
-// immediately. `script-src`/`style-src` keep `'unsafe-inline'` because Next 14's
+// immediately. `script-src`/`style-src` keep `'unsafe-inline'` because Next's
 // App Router emits inline bootstrap/runtime <script> and Tailwind emits inline
 // styles; a nonce-based strict CSP requires threading a per-request nonce through
 // the framework and is deliberately left as a follow-up. Once the report-only
@@ -60,15 +60,19 @@ const nextConfig = {
   async headers() {
     return [{ source: "/:path*", headers: SECURITY_HEADERS }];
   },
+  // better-sqlite3 is a native module; keep it external to the server bundle.
+  // Graduated out of `experimental` in Next 15 (was
+  // experimental.serverComponentsExternalPackages).
+  serverExternalPackages: ["better-sqlite3"],
   experimental: {
     // Tree-shake barrel imports: only the icon/chart pieces actually used are
     // pulled into each route's bundle (Next rewrites `import { X } from "pkg"`
     // to deep per-module imports), shrinking the client JS on analytics routes.
     optimizePackageImports: ["recharts", "@tabler/icons-react"],
-    // better-sqlite3 is a native module; keep it external to the server bundle.
-    serverComponentsExternalPackages: ["better-sqlite3"],
+    // Server Actions are stable (enabled by default) in Next 15, but the config
+    // sub-object that tunes them still lives under `experimental`.
     serverActions: {
-      // Server Action body cap. Next 14 defaults this to 1MB, which would silently
+      // Server Action body cap. Next defaults this to 1MB, which would silently
       // reject the 1–32MB uploads `uploadMedicalDocument` explicitly permits before
       // the action runs. Set to 33MB (not 32MB) on purpose: the multipart body is
       // the file bytes PLUS boundary/field overhead, so a file at the action's 32MB

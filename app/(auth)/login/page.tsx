@@ -8,14 +8,13 @@ import LoginForm from "./LoginForm";
 // -authed check must run per request.
 export const dynamic = "force-dynamic";
 
-export default function LoginPage({
-  searchParams,
-}: {
-  searchParams: { next?: string };
+export default async function LoginPage(props: {
+  searchParams: Promise<{ next?: string }>;
 }) {
+  const searchParams = await props.searchParams;
   const next = safeNextPath(searchParams.next);
   // Already signed in — skip the form and go where they were headed.
-  if (getCurrentSession()) redirect(next);
+  if (await getCurrentSession()) redirect(next);
 
   return (
     <main className="flex min-h-screen items-center justify-center px-4 py-12">

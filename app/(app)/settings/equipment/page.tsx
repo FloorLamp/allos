@@ -9,8 +9,8 @@ import EquipmentManager from "@/components/EquipmentManager";
 
 export const dynamic = "force-dynamic";
 
-export default function EquipmentSettingsPage() {
-  const { login, profile } = requireSession();
+export default async function EquipmentSettingsPage() {
+  const { login, profile } = await requireSession();
   // Age-restricted profiles can't reach Equipment even by direct URL — the tab
   // is hidden for them; bounce them back to Preferences (see lib/age-gate.ts).
   if (isTrainingRestricted(profile.id)) redirect("/settings");

@@ -49,8 +49,8 @@ function prValue(p: CardioPR, du: "km" | "mi"): string {
   return formatMinutes(p.durationMin);
 }
 
-export default function OverviewSection() {
-  const { login, profile } = requireSession();
+export default async function OverviewSection() {
+  const { login, profile } = await requireSession();
   const units = getUnitPrefs(login.id);
   const wu = units.weightUnit;
   const du = units.distanceUnit;

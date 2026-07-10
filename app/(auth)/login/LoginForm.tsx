@@ -1,6 +1,7 @@
 "use client";
 
-import { useFormState, useFormStatus } from "react-dom";
+import { useActionState } from "react";
+import { useFormStatus } from "react-dom";
 import { login, verifyLoginTotp, type LoginState } from "./actions";
 
 function SubmitButton({
@@ -39,7 +40,7 @@ function ErrorAlert({ message }: { message?: string }) {
 // verifyLoginTotp, which finishes the sign-in server-side. The intermediate state
 // is a short-lived server challenge — this form holds no credentials.
 function TotpStep() {
-  const [state, formAction] = useFormState<LoginState, FormData>(
+  const [state, formAction] = useActionState<LoginState, FormData>(
     verifyLoginTotp,
     { needsTotp: true }
   );
@@ -75,11 +76,11 @@ function TotpStep() {
 }
 
 // Client form driving the login Server Action, with inline error via
-// useFormState. The `next` target is carried through as a hidden field and
+// useActionState. The `next` target is carried through as a hidden field and
 // re-validated server-side. When the password succeeds but 2FA is required, the
 // action returns needsTotp and we swap to the second-factor step.
 export default function LoginForm({ next }: { next: string }) {
-  const [state, formAction] = useFormState<LoginState, FormData>(login, {});
+  const [state, formAction] = useActionState<LoginState, FormData>(login, {});
   if (state.needsTotp) return <TotpStep />;
   return (
     <form action={formAction} className="flex flex-col gap-4">

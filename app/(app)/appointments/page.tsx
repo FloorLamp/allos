@@ -17,12 +17,11 @@ function one(v: string | string[] | undefined): string | null {
   return s?.trim() || null;
 }
 
-export default function AppointmentsPage({
-  searchParams,
-}: {
-  searchParams: { [key: string]: string | string[] | undefined };
+export default async function AppointmentsPage(props: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
-  const { profile } = requireSession();
+  const searchParams = await props.searchParams;
+  const { profile } = await requireSession();
   const now = today(profile.id);
   const appointments = getAppointments(profile.id);
   const providerNames = getProviderNames();

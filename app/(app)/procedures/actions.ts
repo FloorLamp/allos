@@ -27,7 +27,7 @@ function dateOrNull(raw: unknown): string | null {
 }
 
 export async function addProcedure(formData: FormData) {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const name = String(formData.get("name") ?? "").trim();
   if (!name) return;
   const providerId = resolveProviderIdByName(
@@ -50,7 +50,7 @@ export async function addProcedure(formData: FormData) {
 }
 
 export async function updateProcedure(formData: FormData) {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   const name = String(formData.get("name") ?? "").trim();
   if (!id || !name) return;
@@ -75,7 +75,7 @@ export async function updateProcedure(formData: FormData) {
 }
 
 export async function deleteProcedure(formData: FormData) {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return;
   db.prepare("DELETE FROM procedures WHERE id = ? AND profile_id = ?").run(

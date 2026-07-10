@@ -22,8 +22,8 @@ import TrendingDigest from "./TrendingDigest";
 // biomarker) render FIRST and persist across sessions (per-profile trend_pins);
 // the rest keep their default order. Reuses StarredBiomarkers plus the standard
 // body/training metric tiles, each linking to its detail page.
-export default function OverviewSection({ range }: { range: DateRange }) {
-  const { login, profile } = requireSession();
+export default async function OverviewSection({ range }: { range: DateRange }) {
+  const { login, profile } = await requireSession();
   const restricted = isTrainingRestricted(profile.id);
   const pins = getTrendPins(profile.id);
 

@@ -30,6 +30,11 @@ export default function AppError({
           <button type="button" onClick={reset} className="btn">
             Try again
           </button>
+          {/* Intentional full-document navigation, not a <Link> soft transition:
+              this is an error boundary, so a hard reload to the dashboard is the
+              robust escape hatch — it tears down and rebuilds the crashed client
+              tree (which a soft nav could otherwise carry along). */}
+          {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
           <a href="/" className="btn-ghost">
             Go to dashboard
           </a>

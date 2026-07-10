@@ -14,8 +14,8 @@ import PassportControls, {
 // the session's active profile and never caches one profile's data for another.
 export const dynamic = "force-dynamic";
 
-export default function ProfilePage() {
-  const { login, profile } = requireSession();
+export default async function ProfilePage() {
+  const { login, profile } = await requireSession();
   const units = getUnitPrefs(login.id);
   const summary = getProfileSummary(profile.id, profile.name);
   const generatedAt = new Date().toISOString();

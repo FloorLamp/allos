@@ -35,19 +35,18 @@ const ERROR_MESSAGES: Record<string, string> = {
     "This app's callback URL resolves to localhost, so Strava can't redirect back. Set the Public app URL in Settings → Server to the address this app is reachable at, then reconnect.",
 };
 
-export default function StravaPage({
-  searchParams,
-}: {
-  searchParams: { error?: string };
+export default async function StravaPage(props: {
+  searchParams: Promise<{ error?: string }>;
 }) {
-  const { profile } = requireSession();
+  const searchParams = await props.searchParams;
+  const { profile } = await requireSession();
   const def = getIntegration("strava")!;
   const conn = getConnection(profile.id, "strava");
   const cfg = getStravaConfig(profile.id);
   const hasCreds = !!(cfg.clientId && cfg.clientSecret);
   const connected = conn?.status === "connected" && !!cfg.accessToken;
-  const callbackUrl = stravaCallbackUrl();
-  const callbackDomain = new URL(baseUrl()).host;
+  const callbackUrl = await stravaCallbackUrl();
+  const callbackDomain = new URL(await baseUrl()).host;
   const error = searchParams.error
     ? (ERROR_MESSAGES[searchParams.error] ?? "Connection failed. Try again.")
     : null;

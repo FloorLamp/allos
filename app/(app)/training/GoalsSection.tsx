@@ -11,8 +11,8 @@ import FrequencyTargets from "@/app/(app)/goals/FrequencyTargets";
 import GoalsManager from "./GoalsManager";
 
 // Goals (with a create/edit modal) on top, weekly frequency targets below.
-export default function GoalsSection() {
-  const { login, profile } = requireSession();
+export default async function GoalsSection() {
+  const { login, profile } = await requireSession();
   const units = getUnitPrefs(login.id);
   const wu = units.weightUnit;
   const goals = getGoals(profile.id);

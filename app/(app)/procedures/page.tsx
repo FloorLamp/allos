@@ -12,8 +12,8 @@ export const dynamic = "force-dynamic";
 // Imported from a health record's CCD Procedures section (LOINC 47519-4) or a FHIR
 // Procedure resource, plus manual add/edit/delete. Each row shows its name, code,
 // performed date, and performing provider (resolved from the shared registry).
-export default function ProceduresPage() {
-  const { profile } = requireSession();
+export default async function ProceduresPage() {
+  const { profile } = await requireSession();
   const procedures = getProcedures(profile.id);
   const providerNames = getProviderNames();
 

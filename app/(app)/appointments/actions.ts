@@ -35,7 +35,7 @@ function revalidate() {
 }
 
 export async function createAppointment(formData: FormData) {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const scheduledAt = str(formData, "scheduled_at");
   if (!scheduledAt) return; // a visit with no date can't be scheduled
   const providerId = resolveProviderIdByName(
@@ -58,7 +58,7 @@ export async function createAppointment(formData: FormData) {
 }
 
 export async function updateAppointment(formData: FormData) {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   const scheduledAt = str(formData, "scheduled_at");
   if (!id || !scheduledAt) return;
@@ -85,7 +85,7 @@ export async function updateAppointment(formData: FormData) {
 // Set the lifecycle status. 'completed'/'cancelled' drop the row off Upcoming;
 // 'scheduled' returns it. Guarded to the known values.
 async function setStatus(formData: FormData, status: AppointmentStatus) {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return;
   db.prepare(
@@ -107,7 +107,7 @@ export async function reopenAppointment(formData: FormData) {
 }
 
 export async function deleteAppointment(formData: FormData) {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return;
   db.prepare("DELETE FROM appointments WHERE id = ? AND profile_id = ?").run(
@@ -126,7 +126,7 @@ export async function deleteAppointment(formData: FormData) {
 // complements — never duplicates — the record-inference layer: it lets a visit whose
 // title doesn't name-match still complete its rule, using the explicit kind signal.
 export async function recordPreventiveFromAppointment(formData: FormData) {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return;
   const row = db

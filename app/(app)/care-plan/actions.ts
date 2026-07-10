@@ -26,7 +26,7 @@ function dateOrNull(raw: unknown): string | null {
 }
 
 export async function addCarePlanItem(formData: FormData) {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const description = String(formData.get("description") ?? "").trim();
   if (!description) return;
   const providerId = resolveProviderIdByName(
@@ -52,7 +52,7 @@ export async function addCarePlanItem(formData: FormData) {
 }
 
 export async function updateCarePlanItem(formData: FormData) {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   const description = String(formData.get("description") ?? "").trim();
   if (!id || !description) return;
@@ -80,7 +80,7 @@ export async function updateCarePlanItem(formData: FormData) {
 }
 
 export async function deleteCarePlanItem(formData: FormData) {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return;
   db.prepare("DELETE FROM care_plan_items WHERE id = ? AND profile_id = ?").run(

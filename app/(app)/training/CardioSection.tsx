@@ -36,8 +36,8 @@ function prValue(p: CardioPR, du: "km" | "mi"): string {
 }
 
 // Cardio analytics + records. New section on the combined Training page.
-export default function CardioSection() {
-  const { login, profile } = requireSession();
+export default async function CardioSection() {
+  const { login, profile } = await requireSession();
   const units = getUnitPrefs(login.id);
   const du = units.distanceUnit;
   const cardio = getCardioByActivity(profile.id, du);

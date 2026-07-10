@@ -71,20 +71,19 @@ function ProvenanceRow({ label, value }: { label: string; value: string }) {
 // Import detail: for one uploaded document — provenance,
 // a "what it produced" verify breakdown (counts per kind, each linking to where
 // those rows live), basic debug (error + raw extraction), and reprocess/delete.
-export default function ImportDetailPage({
-  params,
-  searchParams,
-}: {
-  params: { id: string };
-  searchParams: {
+export default async function ImportDetailPage(props: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{
     category?: string;
     range?: string;
     q?: string;
     sort?: string;
     dir?: string;
-  };
+  }>;
 }) {
-  const { profile } = requireSession();
+  const searchParams = await props.searchParams;
+  const params = await props.params;
+  const { profile } = await requireSession();
   const id = Number(params.id);
   const doc = id ? getMedicalDocument(profile.id, id) : undefined;
   if (!doc) notFound();
@@ -118,7 +117,7 @@ export default function ImportDetailPage({
   // "Move to profile…" targets: the login's OTHER accessible profiles (admins see
   // all; members only their granted set). Shown only when there's somewhere to
   // move to (≥2 accessible profiles).
-  const reassignTargets = getAccessibleProfiles()
+  const reassignTargets = (await getAccessibleProfiles())
     .filter((p) => p.id !== profile.id)
     .map((p) => ({ id: p.id, name: p.name }));
 
@@ -168,14 +167,12 @@ export default function ImportDetailPage({
       </datalist>
       {/* Shared provider picker options for each record's edit row. */}
       <ProviderDatalist names={getProviderNames()} />
-
       <Link
         href="/data?section=review"
         className="mb-4 inline-flex items-center gap-1 text-sm text-brand-700 hover:underline dark:text-brand-400"
       >
         <IconArrowLeft className="h-4 w-4" /> Back to Review
       </Link>
-
       <PageHeader
         title={doc.filename}
         subtitle={documentFormatLabel(doc)}
@@ -187,7 +184,6 @@ export default function ImportDetailPage({
           </span>
         }
       />
-
       <div className="space-y-6">
         {/* Provenance */}
         <div className="card">

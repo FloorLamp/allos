@@ -10,13 +10,14 @@ export const dynamic = "force-dynamic";
 
 export async function GET(
   _req: Request,
-  { params }: { params: { id: string } }
+  props: { params: Promise<{ id: string }> }
 ) {
+  const params = await props.params;
   // Raw payloads are PHI-adjacent and mix content across every profile, so this is
   // admin-only — mirror the AI-log SSE gate exactly: cookie-authoritative check
   // (the Edge middleware only checks cookie presence); no session → 401; a member
   // gets 404 (not 403) so the endpoint's existence isn't confirmed.
-  const session = getCurrentSession();
+  const session = await getCurrentSession();
   if (!session) {
     return new Response("Unauthorized", { status: 401 });
   }

@@ -74,12 +74,11 @@ function sortValue(a: VaccineAssessment, key: SortKey): string | number {
   }
 }
 
-export default function ImmunizationsPage({
-  searchParams,
-}: {
-  searchParams: { sort?: string; dir?: string; status?: string };
+export default async function ImmunizationsPage(props: {
+  searchParams: Promise<{ sort?: string; dir?: string; status?: string }>;
 }) {
-  const { profile } = requireSession();
+  const searchParams = await props.searchParams;
+  const { profile } = await requireSession();
   const now = today(profile.id);
   const birthdate = getUserBirthdate(profile.id);
   const sex = getUserSex(profile.id);

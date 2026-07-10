@@ -80,7 +80,7 @@ const USERNAME_RE = /^[a-zA-Z0-9._-]{3,32}$/;
 // ---- Profiles ----
 
 export async function createProfile(formData: FormData): Promise<FamilyResult> {
-  const admin = requireAdmin();
+  const admin = await requireAdmin();
   const name = String(formData.get("name") ?? "").trim();
   if (!name) return { ok: false, error: "Enter a name." };
   if (name.length > 60) return { ok: false, error: "Name is too long." };
@@ -108,7 +108,7 @@ export async function createProfile(formData: FormData): Promise<FamilyResult> {
 }
 
 export async function renameProfile(formData: FormData): Promise<FamilyResult> {
-  requireAdmin();
+  await requireAdmin();
   const id = Number(formData.get("id"));
   const name = String(formData.get("name") ?? "").trim();
   if (!id) return { ok: false, error: "Unknown profile." };
@@ -135,7 +135,7 @@ export async function renameProfile(formData: FormData): Promise<FamilyResult> {
 // any parked session to its first accessible profile. Files are removed on disk
 // after the transaction commits.
 export async function deleteProfile(formData: FormData): Promise<FamilyResult> {
-  const admin = requireAdmin();
+  const admin = await requireAdmin();
   const id = Number(formData.get("id"));
   if (!id) return { ok: false, error: "Unknown profile." };
 
@@ -220,7 +220,7 @@ export async function deleteProfile(formData: FormData): Promise<FamilyResult> {
 // ---- Logins ----
 
 export async function createLogin(formData: FormData): Promise<FamilyResult> {
-  const admin = requireAdmin();
+  const admin = await requireAdmin();
   const username = String(formData.get("username") ?? "").trim();
   const password = String(formData.get("password") ?? "");
   const roleRaw = String(formData.get("role") ?? "member");
@@ -272,7 +272,7 @@ export async function createLogin(formData: FormData): Promise<FamilyResult> {
 }
 
 export async function resetPassword(formData: FormData): Promise<FamilyResult> {
-  const admin = requireAdmin();
+  const admin = await requireAdmin();
   const id = Number(formData.get("id"));
   const password = String(formData.get("password") ?? "");
   if (!id) return { ok: false, error: "Unknown login." };
@@ -313,7 +313,7 @@ export async function resetPassword(formData: FormData): Promise<FamilyResult> {
 // logins. Sessions + grants + login_settings cascade via FK, but are deleted
 // explicitly too so this holds even if foreign_keys is ever off.
 export async function deleteLogin(formData: FormData): Promise<FamilyResult> {
-  const session = requireAdmin();
+  const session = await requireAdmin();
   const id = Number(formData.get("id"));
   if (!id) return { ok: false, error: "Unknown login." };
 
@@ -348,7 +348,7 @@ export async function deleteLogin(formData: FormData): Promise<FamilyResult> {
   if (isSelf) {
     // We just deleted our own login. Clear the cookie and bounce to /login;
     // redirect() throws (NEXT_REDIRECT), so nothing below runs.
-    destroySession();
+    await destroySession();
     redirect("/login");
   }
 
@@ -364,7 +364,7 @@ export async function deleteLogin(formData: FormData): Promise<FamilyResult> {
 export async function revokeLoginSessions(
   formData: FormData
 ): Promise<FamilyResult> {
-  requireAdmin();
+  await requireAdmin();
   const id = Number(formData.get("id"));
   if (!id) return { ok: false, error: "Unknown login." };
 
@@ -385,7 +385,7 @@ export async function revokeLoginSessions(
 // arrives as a repeated `profileId` field plus an `access_<id>` field carrying
 // 'read' | 'write' (issue #33); a missing/garbled access defaults to 'write'.
 export async function setGrants(formData: FormData): Promise<FamilyResult> {
-  const admin = requireAdmin();
+  const admin = await requireAdmin();
   const loginId = Number(formData.get("loginId"));
   if (!loginId) return { ok: false, error: "Unknown login." };
 

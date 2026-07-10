@@ -177,7 +177,7 @@ export async function startImport(
   type: ImportType,
   text: string
 ): Promise<{ ok: true; jobId: number } | { ok: false; error: string }> {
-  const { login, profile } = requireWriteAccess();
+  const { login, profile } = await requireWriteAccess();
   const input = (text ?? "").slice(0, MAX_CHARS);
   if (!input.trim())
     return { ok: false, error: "Paste or upload some data first." };
@@ -257,7 +257,7 @@ interface ImportJobRow {
 
 // All import jobs, newest first, with result_json parsed for the review UI.
 export async function getImportJobs(): Promise<ImportJob[]> {
-  const { profile } = requireSession();
+  const { profile } = await requireSession();
   const rows = db
     .prepare(
       `SELECT id, type, status, summary, error, created_at, result_json
@@ -287,7 +287,7 @@ export async function getImportJobs(): Promise<ImportJob[]> {
 
 // Lightweight status snapshot the client poller reads on an interval.
 export async function getImportJobStates(): Promise<ImportJobState[]> {
-  const { profile } = requireSession();
+  const { profile } = await requireSession();
   return db
     .prepare(
       "SELECT id, type, status, summary, error FROM import_jobs WHERE profile_id = ? ORDER BY id"
@@ -301,7 +301,7 @@ export async function getImportJobStates(): Promise<ImportJobState[]> {
 export async function commitImportJob(
   jobId: number
 ): Promise<{ ok: true; message: string } | { ok: false; error: string }> {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const row = db
     .prepare(
       "SELECT status, result_json FROM import_jobs WHERE id = ? AND profile_id = ?"
@@ -383,7 +383,7 @@ export async function commitImportJob(
 // Drop a job (from a failed extraction, or a ready one the user chose not to
 // save). No effect on any data already committed.
 export async function discardImportJob(jobId: number): Promise<void> {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   db.prepare("DELETE FROM import_jobs WHERE id = ? AND profile_id = ?").run(
     jobId,
     profile.id
@@ -401,7 +401,7 @@ const isIsoDate = isRealIsoDate;
 export async function commitWorkouts(
   workouts: ExtractedWorkout[]
 ): Promise<{ ok: true; workouts: number; sets: number } | { ok: false; error: string }> {
-  const { login, profile } = requireWriteAccess();
+  const { login, profile } = await requireWriteAccess();
   if (!Array.isArray(workouts) || workouts.length === 0)
     return { ok: false, error: "Nothing to import." };
 
@@ -476,7 +476,7 @@ export async function commitBiomarkers(
 ): Promise<
   { ok: true; count: number; immCount: number } | { ok: false; error: string }
 > {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const rows = Array.isArray(results) ? results : [];
   // Vaccine doses the extractor found in the same paste land in immunizations
   // with manual provenance (source NULL) — the paste isn't a stored document.

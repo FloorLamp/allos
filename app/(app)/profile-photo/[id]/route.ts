@@ -9,10 +9,11 @@ import { PHOTO_ROOT, mimeForPhotoPath } from "@/lib/profile-photo";
 // ?v= version so a replaced photo defeats the short private cache.
 export async function GET(
   _req: Request,
-  { params }: { params: { id: string } }
+  props: { params: Promise<{ id: string }> }
 ) {
+  const params = await props.params;
   // Cookie-authoritative gate (the Edge middleware only checks cookie presence).
-  const session = getCurrentSession();
+  const session = await getCurrentSession();
   if (!session) {
     return new Response("Unauthorized", { status: 401 });
   }

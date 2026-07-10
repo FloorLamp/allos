@@ -22,12 +22,12 @@ function firstParam(value: string | string[] | undefined): string | undefined {
 // COUNT(*) for the pager — NOT the whole dataset. Page position is per-dataset in
 // the URL (`p_<key>`), so a visit ships ~25 rows/table instead of every row (the
 // old path serialized 22.5 MB / 183k hr_minutes rows just to display 25).
-export default function DataExport({
+export default async function DataExport({
   searchParams,
 }: {
   searchParams: Record<string, string | string[] | undefined>;
 }) {
-  const { profile } = requireSession();
+  const { profile } = await requireSession();
   const datasets = isTrainingRestricted(profile.id)
     ? DATASETS.filter((ds) => !RESTRICTED_DATASETS.has(ds.key))
     : DATASETS;

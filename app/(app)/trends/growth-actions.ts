@@ -33,7 +33,7 @@ function upsertManualSample(
 }
 
 export async function addGrowth(formData: FormData) {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const date = String(formData.get("date") ?? "").trim();
   if (!isRealIsoDate(date)) return;
 

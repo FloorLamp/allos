@@ -21,7 +21,7 @@ import { preventiveRuleByKey } from "@/lib/preventive-catalog";
 // path the Telegram callback uses — so a dose confirmed here reflects everywhere.
 // Marking-only (never un-marks): a taken dose simply drops off the Upcoming list.
 export async function markTaken(formData: FormData) {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const doseId = Number(formData.get("dose_id"));
   if (!doseId) return;
   markDoseTaken(profile.id, doseId, null, today(profile.id));
@@ -37,7 +37,7 @@ export async function markTaken(formData: FormData) {
 // against the static catalog so a tampered form can't write an unknown key.
 // Profile-scoped; recordPreventiveDone is idempotent per (rule, date).
 export async function markPreventiveDone(formData: FormData) {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const ruleKey = String(formData.get("rule_key") ?? "").trim();
   if (!ruleKey || !preventiveRuleByKey(ruleKey)) return;
   recordPreventiveDone(profile.id, ruleKey, today(profile.id));
@@ -51,7 +51,7 @@ export async function markPreventiveDone(formData: FormData) {
 // path as a dose "mark taken" — so the item drops off Upcoming and the /care-plan
 // page reflects the completion.
 export async function markCarePlanDone(formData: FormData) {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const id = Number(formData.get("care_plan_item_id"));
   if (!id) return;
   markCarePlanItemDone(profile.id, id);
@@ -65,7 +65,7 @@ export async function markCarePlanDone(formData: FormData) {
 // kind is whitelisted and the rule key validated against the catalog. Upserts on
 // (profile_id, rule_key). Profile-scoped.
 export async function overridePreventive(formData: FormData) {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const ruleKey = String(formData.get("rule_key") ?? "").trim();
   const kind = String(formData.get("kind") ?? "");
   if (!ruleKey || !preventiveRuleByKey(ruleKey)) return;
@@ -84,7 +84,7 @@ const SNOOZE_MAX_DAYS = 3650;
 // (profile_id, signal_key) index so re-snoozing — or snoozing a previously-
 // dismissed item — just moves the date and clears any dismiss). Profile-scoped.
 export async function snoozeItem(formData: FormData) {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const signalKey = String(formData.get("signal_key") ?? "").trim();
   const days = Number(formData.get("days"));
   if (!signalKey || !Number.isFinite(days) || days < 1) return;
@@ -100,7 +100,7 @@ export async function snoozeItem(formData: FormData) {
 // Delegates to the shared writer (upserts, clearing any snooze so a dismiss always
 // wins). Profile-scoped.
 export async function dismissItem(formData: FormData) {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const signalKey = String(formData.get("signal_key") ?? "").trim();
   if (!signalKey) return;
   dismissFinding(profile.id, signalKey);
@@ -110,7 +110,7 @@ export async function dismissItem(formData: FormData) {
 // Restore a snoozed/dismissed item: drop its suppression row so it reappears on
 // Upcoming immediately. Profile-scoped.
 export async function restoreItem(formData: FormData) {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const signalKey = String(formData.get("signal_key") ?? "").trim();
   if (!signalKey) return;
   restoreFinding(profile.id, signalKey);

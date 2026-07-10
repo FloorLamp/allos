@@ -33,14 +33,14 @@ import HouseholdCard, {
 
 export const dynamic = "force-dynamic";
 
-export default function HouseholdPage() {
+export default async function HouseholdPage() {
   // Household is a cross-profile overview. It's open to ANY login that can reach
   // 2+ profiles (issue #31) — an admin (sees every profile) or a caregiver member
   // (sees their granted set). A single-profile login has nothing to compare, so
   // it's bounced to the dashboard; this server gate is authoritative (the nav
   // link is hidden for the same case, but that's only cosmetic).
-  const { login } = requireSession();
-  const profiles = getAccessibleProfiles();
+  const { login } = await requireSession();
+  const profiles = await getAccessibleProfiles();
   if (profiles.length < 2) redirect("/");
   const weightUnit = getUnitPrefs(login.id).weightUnit;
 

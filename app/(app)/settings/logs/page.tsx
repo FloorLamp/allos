@@ -7,10 +7,10 @@ import LogsStream from "./LogsStream";
 
 export const dynamic = "force-dynamic";
 
-export default function AiLogsPage() {
+export default async function AiLogsPage() {
   // The AI log mixes extraction content (names, biomarkers) across every
   // profile, so it's admin-only — a member is redirected out by requireAdmin().
-  const { profile } = requireAdmin();
+  const { profile } = await requireAdmin();
   const initial = readAiEvents(200);
   return (
     <div>

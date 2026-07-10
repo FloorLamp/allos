@@ -23,10 +23,8 @@ import { BIOMARKER_CATEGORIES } from "@/lib/medical-categories";
 
 export const dynamic = "force-dynamic";
 
-export default function BiomarkersPage({
-  searchParams,
-}: {
-  searchParams: {
+export default async function BiomarkersPage(props: {
+  searchParams: Promise<{
     category?: string;
     panel?: string;
     range?: string;
@@ -35,9 +33,10 @@ export default function BiomarkersPage({
     dir?: string;
     current?: string;
     p?: string;
-  };
+  }>;
 }) {
-  const { profile } = requireSession();
+  const searchParams = await props.searchParams;
+  const { profile } = await requireSession();
   // Prescriptions are medications and don't belong in the Biomarkers browser —
   // they live on the document detail view and Supplements & Meds. So they're never
   // a valid `?category=` here, never listed (excludeCategories below), and never

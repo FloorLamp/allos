@@ -27,10 +27,14 @@ import { getTimelineDates } from "@/lib/timeline";
 // session. Every page under here is dynamic (it reads cookies() transitively),
 // which is intended: it prevents the full-route cache from leaking one session's
 // rendered data to another.
-export default function AppLayout({ children }: { children: React.ReactNode }) {
-  const session = requireSession();
+export default async function AppLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const session = await requireSession();
   const { login, profile } = session;
-  const profiles = getAccessibleProfiles();
+  const profiles = await getAccessibleProfiles();
 
   const units = getUnitPrefs(login.id);
   const timezone = getTimezone(profile.id);

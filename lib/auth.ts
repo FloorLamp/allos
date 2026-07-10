@@ -18,7 +18,7 @@ export { SESSION_COOKIE };
 // lives server-side on the session row, never in the cookie.
 //
 // CSRF: no separate token is needed. State-changing requests go through Server
-// Actions (Next 14 enforces an Origin/Host match on POST) or through
+// Actions (Next enforces an Origin/Host match on POST) or through
 // token-authenticated API handlers (Health Connect ingest, Telegram webhook);
 // the only cookie-authenticated handlers are GET-only downloads/streams, which a
 // cross-site form can't meaningfully forge. The cookie is httpOnly + SameSite=Lax.
@@ -167,14 +167,15 @@ export function createSession(
 
 // Revoke the current session (logout): delete the DB row and clear the cookie.
 // Safe to call from a Server Action, where cookie mutation is allowed.
-export function destroySession(): void {
-  const token = cookies().get(SESSION_COOKIE)?.value;
+export async function destroySession(): Promise<void> {
+  const store = await cookies();
+  const token = store.get(SESSION_COOKIE)?.value;
   if (token) {
     db.prepare("DELETE FROM sessions WHERE token_hash = ?").run(
       hashToken(token)
     );
   }
-  cookies().delete(SESSION_COOKIE);
+  store.delete(SESSION_COOKIE);
 }
 
 // The absolute-max modifier is a trusted internal constant (never user input), so
@@ -213,8 +214,8 @@ const SESSION_TOUCH_STMT = db.prepare(
 // and then re-reads it expecting the change within the same render (the switch-
 // profile action revalidates, producing a fresh request with a fresh cache).
 export const getCurrentSession = cache(
-  function getCurrentSession(): CurrentSession | null {
-    const token = cookies().get(SESSION_COOKIE)?.value;
+  async function getCurrentSession(): Promise<CurrentSession | null> {
+    const token = (await cookies()).get(SESSION_COOKIE)?.value;
     if (!token) return null;
     const tokenHash = hashToken(token);
 
@@ -257,16 +258,16 @@ export const getCurrentSession = cache(
 // Guard for Server Components / Server Actions: returns the session or redirects
 // to /login. redirect() throws (NEXT_REDIRECT), which is the intended control
 // flow inside actions too.
-export function requireSession(): CurrentSession {
-  const session = getCurrentSession();
+export async function requireSession(): Promise<CurrentSession> {
+  const session = await getCurrentSession();
   if (!session) redirect("/login");
   return session;
 }
 
 // Admin-only guard. Members are bounced to the app root. (No admin-only surface
 // ships in Phase 1; provided for the Phase 4 admin UI.)
-export function requireAdmin(): CurrentSession {
-  const session = requireSession();
+export async function requireAdmin(): Promise<CurrentSession> {
+  const session = await requireSession();
   if (session.login.role !== "admin") redirect("/");
   return session;
 }
@@ -280,8 +281,8 @@ export function requireAdmin(): CurrentSession {
 // UI affordances are only a convenience. A source-scanning test
 // (lib/__tests__/actions-write-access.test.ts) fails the build if a mutating
 // action forgets to call this.
-export function requireWriteAccess(): CurrentSession {
-  const session = requireSession();
+export async function requireWriteAccess(): Promise<CurrentSession> {
+  const session = await requireSession();
   if (session.access !== "write") redirect("/");
   return session;
 }
@@ -296,8 +297,10 @@ export function requireWriteAccess(): CurrentSession {
 // 'write', so it must never be consulted alone). Admins pass (implicit all-write);
 // a member's read-only or absent grant is bounced to the app root (redirect()
 // throws NEXT_REDIRECT, aborting a forged POST before any mutation runs).
-export function requireProfileWriteAccess(profileId: number): CurrentSession {
-  const session = requireSession();
+export async function requireProfileWriteAccess(
+  profileId: number
+): Promise<CurrentSession> {
+  const session = await requireSession();
   const { login } = session;
   const reachable = accessibleProfiles(login.id, login.role).some(
     (p) => p.id === profileId
@@ -309,8 +312,8 @@ export function requireProfileWriteAccess(profileId: number): CurrentSession {
 }
 
 // The profiles the current login may switch to (for the header switcher).
-export function getAccessibleProfiles(): SessionProfile[] {
-  const session = getCurrentSession();
+export async function getAccessibleProfiles(): Promise<SessionProfile[]> {
+  const session = await getCurrentSession();
   if (!session) return [];
   return accessibleProfiles(session.login.id, session.login.role);
 }
@@ -369,8 +372,10 @@ export function destroyLoginSessions(
 // Change-own-password helper: drop every session for this login EXCEPT the
 // caller's current one (identified by the live cookie). Returns silently if
 // there's no cookie (nothing to keep — caller handles the full destroy).
-export function destroyOtherSessionsForCurrent(loginId: number): void {
-  const token = cookies().get(SESSION_COOKIE)?.value;
+export async function destroyOtherSessionsForCurrent(
+  loginId: number
+): Promise<void> {
+  const token = (await cookies()).get(SESSION_COOKIE)?.value;
   destroyLoginSessions(loginId, token ? hashToken(token) : undefined);
 }
 
@@ -389,15 +394,17 @@ export interface SessionSummary {
 
 // The SHA-256 of the caller's current cookie token, or null when there's no
 // cookie — used to flag the current row in the sessions list.
-function currentTokenHash(): string | null {
-  const token = cookies().get(SESSION_COOKIE)?.value;
+async function currentTokenHash(): Promise<string | null> {
+  const token = (await cookies()).get(SESSION_COOKIE)?.value;
   return token ? hashToken(token) : null;
 }
 
 // Every live session for a login, newest-seen first, for the active-sessions
 // view. Expired rows are excluded (they're already dead to getCurrentSession).
-export function listLoginSessions(loginId: number): SessionSummary[] {
-  const currentHash = currentTokenHash();
+export async function listLoginSessions(
+  loginId: number
+): Promise<SessionSummary[]> {
+  const currentHash = await currentTokenHash();
   const rows = db
     .prepare(
       `SELECT token_hash AS id, created_at AS createdAt,
@@ -434,10 +441,10 @@ export function adminLoginCount(): number {
 // Switch the active profile on the current session row, after verifying the
 // login may act as it (granted, or admin). No-op-safe: an inaccessible target
 // is rejected.
-export function setActiveProfile(profileId: number): void {
-  const token = cookies().get(SESSION_COOKIE)?.value;
+export async function setActiveProfile(profileId: number): Promise<void> {
+  const token = (await cookies()).get(SESSION_COOKIE)?.value;
   if (!token) return;
-  const session = getCurrentSession();
+  const session = await getCurrentSession();
   if (!session) return;
   const allowed = accessibleProfiles(session.login.id, session.login.role).some(
     (p) => p.id === profileId

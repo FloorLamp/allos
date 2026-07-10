@@ -22,10 +22,10 @@ export type PhotoResult = { ok: true } | { ok: false; error: string };
 
 // Resolve which profile this mutation targets, enforcing the rule above. Returns
 // the profile id or a friendly error.
-function resolveTargetProfile(
+async function resolveTargetProfile(
   formData: FormData
-): { ok: true; profileId: number } | { ok: false; error: string } {
-  const session = requireSession();
+): Promise<{ ok: true; profileId: number } | { ok: false; error: string }> {
+  const session = await requireSession();
   const raw = formData.get("profileId");
   const submitted = raw == null ? "" : String(raw).trim();
   // No id (or the caller's own) → the active profile.
@@ -59,8 +59,8 @@ export async function uploadProfilePhoto(
   // profile: a member may only ever target their own active profile (see
   // resolveTargetProfile), so an active-profile write check is exactly right;
   // admins bypass grants and may target any profile from the Family screen.
-  requireWriteAccess();
-  const target = resolveTargetProfile(formData);
+  await requireWriteAccess();
+  const target = await resolveTargetProfile(formData);
   if (!target.ok) return target;
   const profileId = target.profileId;
 
@@ -121,8 +121,8 @@ export async function removeProfilePhoto(
   formData: FormData
 ): Promise<PhotoResult> {
   // A photo change is a write — same active-profile gate as the upload path.
-  requireWriteAccess();
-  const target = resolveTargetProfile(formData);
+  await requireWriteAccess();
+  const target = await resolveTargetProfile(formData);
   if (!target.ok) return target;
   const profileId = target.profileId;
 

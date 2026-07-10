@@ -35,7 +35,7 @@ import { isRealIsoDate } from "@/lib/date";
 // The Trends page hides this tab entirely for age-restricted profiles, so the
 // generate form is only ever rendered for eligible profiles.
 export async function generateForDate(formData: FormData) {
-  const { login, profile } = requireWriteAccess();
+  const { login, profile } = await requireWriteAccess();
   // Re-check the age gate on the write path: the Insights tab (and its generate
   // form) is spliced out of the UI for age-restricted profiles, but a direct
   // POST would otherwise still run the AI work. Bounce to the dashboard exactly
@@ -61,7 +61,7 @@ export async function generateForDate(formData: FormData) {
 // recap the dashboard widget shows; without an API key it stores the offline
 // composition (still useful, still persisted).
 export async function generateRecap(formData: FormData) {
-  const { login, profile } = requireWriteAccess();
+  const { login, profile } = await requireWriteAccess();
   if (isTrainingRestricted(profile.id)) redirect("/");
   const raw = String(formData.get("period") ?? "").trim();
   const period: NarrativePeriod = raw === "month" ? "month" : "week";
@@ -86,7 +86,7 @@ export async function generateRecap(formData: FormData) {
 // requireWriteAccess. The read is grounded in the biomarker trajectory findings +
 // medication timeline + conditions; degrades to the offline composition.
 export async function generateLabTrend() {
-  const { login, profile } = requireWriteAccess();
+  const { login, profile } = await requireWriteAccess();
   const result = await withAiLogContext(
     { loginId: login.id, profileId: profile.id },
     () => generateLabTrendInterpretation(profile.id)
@@ -107,7 +107,7 @@ export async function generateLabTrend() {
 // and resurfaces). Guarded to the digest namespace; profile-scoped via
 // dismissFinding.
 export async function dismissDigest(formData: FormData) {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const dedupeKey = String(formData.get("dedupe_key") ?? "").trim();
   if (!dedupeKey.startsWith("digest:")) return;
   dismissFinding(profile.id, dedupeKey);
@@ -119,7 +119,7 @@ export async function dismissDigest(formData: FormData) {
 // trajectory namespace (like dismissDigest) so this action can only ever silence a
 // trajectory key; profile-scoped via dismissFinding.
 export async function dismissTrajectory(formData: FormData) {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const dedupeKey = String(formData.get("dedupe_key") ?? "").trim();
   if (!dedupeKey.startsWith("trajectory:")) return;
   dismissFinding(profile.id, dedupeKey);
@@ -132,7 +132,7 @@ export async function dismissTrajectory(formData: FormData) {
 // resolved from the session — any login acting as the profile may pin (it's
 // per-profile data), so this is requireWriteAccess, not requireAdmin.
 export async function toggleTrendPin(formData: FormData) {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const key = String(formData.get("key") ?? "").trim();
   if (!key) return;
   setTrendPins(profile.id, togglePin(getTrendPins(profile.id), key));
@@ -164,7 +164,7 @@ function paramsFromForm(formData: FormData, pins: string[]): TrendViewParams {
 // the active profile — per-profile data, so requireWriteAccess (any login acting as
 // the profile may save), not requireAdmin. Re-saving the same name overwrites it.
 export async function saveTrendView(formData: FormData) {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const name = String(formData.get("name") ?? "").trim();
   if (!name) return;
   const params = paramsFromForm(formData, getTrendPins(profile.id));
@@ -177,7 +177,7 @@ export async function saveTrendView(formData: FormData) {
 
 // Delete a saved view by name.
 export async function deleteTrendView(formData: FormData) {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const name = String(formData.get("name") ?? "").trim();
   if (!name) return;
   setTrendViews(profile.id, deleteView(getTrendViews(profile.id), name));
@@ -189,7 +189,7 @@ export async function deleteTrendView(formData: FormData) {
 // vocabulary the DateRangeControl / CompareControls already read. Unknown name is a
 // no-op back to /trends.
 export async function applyTrendView(formData: FormData) {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const name = String(formData.get("name") ?? "").trim();
   const view = name ? findView(getTrendViews(profile.id), name) : null;
   if (!view) redirect("/trends");

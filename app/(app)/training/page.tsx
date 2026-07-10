@@ -12,14 +12,13 @@ export const dynamic = "force-dynamic";
 
 // Combined training hub: aggregate overview, workout history, per-activity
 // analysis, and goals behind tabs.
-export default function TrainingPage({
-  searchParams,
-}: {
-  searchParams?: Record<string, string | string[] | undefined>;
+export default async function TrainingPage(props: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  const searchParams = await props.searchParams;
   // Hidden for age-restricted profiles; the nav link is gone, this bounces any
   // direct navigation back to the dashboard (see lib/age-gate.ts).
-  const { profile } = requireSession();
+  const { profile } = await requireSession();
   if (isTrainingRestricted(profile.id)) redirect("/");
   return (
     <div>

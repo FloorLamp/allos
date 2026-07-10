@@ -24,7 +24,7 @@ function dateOrNull(raw: unknown): string | null {
 }
 
 export async function addCareGoal(formData: FormData) {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const description = String(formData.get("description") ?? "").trim();
   if (!description) return;
   db.prepare(
@@ -44,7 +44,7 @@ export async function addCareGoal(formData: FormData) {
 }
 
 export async function updateCareGoal(formData: FormData) {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   const description = String(formData.get("description") ?? "").trim();
   if (!id || !description) return;
@@ -67,7 +67,7 @@ export async function updateCareGoal(formData: FormData) {
 }
 
 export async function deleteCareGoal(formData: FormData) {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return;
   db.prepare("DELETE FROM care_goals WHERE id = ? AND profile_id = ?").run(

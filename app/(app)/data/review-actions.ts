@@ -44,7 +44,7 @@ function revalidateBodyMetricSurfaces() {
 // making it undoable would mean converting DuplicateReview to a client component
 // wired to useUndoableDelete — not a one-line change, so it is left out of #64.
 export async function mergeActivityPair(formData: FormData) {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const keepId = Number(formData.get("keep_id"));
   const dropId = Number(formData.get("drop_id"));
   const signature = String(formData.get("signature") ?? "").trim();
@@ -81,7 +81,7 @@ export async function mergeActivityPair(formData: FormData) {
 // row only fills gaps (mergeBodyMetric with the keeper as `incoming`), then delete
 // the discarded row. Profile-scoped + transactional.
 export async function mergeBodyMetricPair(formData: FormData) {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const keepId = Number(formData.get("keep_id"));
   const dropId = Number(formData.get("drop_id"));
   const signature = String(formData.get("signature") ?? "").trim();
@@ -146,7 +146,7 @@ export async function mergeBodyMetricPair(formData: FormData) {
 // two rows are genuinely distinct; `dismissed` hides a false positive. Generic over
 // domain since neither has a side effect beyond the recorded decision.
 export async function resolvePair(formData: FormData) {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const domain = String(formData.get("domain") ?? "");
   const decision = String(formData.get("decision") ?? "");
   const signature = String(formData.get("signature") ?? "").trim();

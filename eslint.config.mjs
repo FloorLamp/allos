@@ -8,11 +8,11 @@ import { FlatCompat } from "@eslint/eslintrc";
 // `eslint-config-next`'s `next/core-web-vitals` rule set, applied to the same
 // source trees (app/ components/ lib/ e2e/ scripts/ — passed on the CLI).
 //
-// eslint-config-next 14.2.x ships only classic (.eslintrc) configs — it has no
-// flat-config export — so we bridge it with FlatCompat from @eslint/eslintrc,
-// the officially documented path for consuming a legacy shareable config under
-// flat config. When the repo moves to Next 15+, this can be replaced by
-// eslint-config-next's native flat export.
+// eslint-config-next 15.x still ships only classic (.eslintrc) configs — it has
+// no flat-config export (that lands in a later major) — so we bridge it with
+// FlatCompat from @eslint/eslintrc, the officially documented path for consuming
+// a legacy shareable config under flat config. When eslint-config-next gains a
+// native flat export, this can be replaced by it.
 const compat = new FlatCompat({
   baseDirectory: dirname(fileURLToPath(import.meta.url)),
 });
@@ -35,24 +35,11 @@ const config = [
     },
   },
   ...compat.extends("next/core-web-vitals"),
-  // ESLint 9 compatibility shim for two pages-router-only rules.
-  //
-  // @next/eslint-plugin-next@14.2.33 (bundled with next 14.2.33) implements
-  // `no-duplicate-head` and `no-page-custom-font` with `context.getAncestors()`,
-  // an API ESLint 9 removed — so they THROW on any file rather than lint it (the
-  // same crash `next lint` would hit under ESLint 9; it is not a flat-config
-  // artifact). Both rules only target the Pages Router (`pages/_document`, custom
-  // `<Head>`/font usage), and this is a pure App Router app with no `pages/`
-  // directory, so they can never produce a real finding here. Disabling them
-  // therefore removes nothing that was actually enforced on this codebase while
-  // unblocking every other Next/core-web-vitals rule. Drop this block once the
-  // repo moves to a Next 15+ config whose plugin build is ESLint 9-native.
-  {
-    rules: {
-      "@next/next/no-duplicate-head": "off",
-      "@next/next/no-page-custom-font": "off",
-    },
-  },
+  // NOTE: the ESLint-9 compatibility shim that disabled `no-duplicate-head` and
+  // `no-page-custom-font` (they crashed under @next/eslint-plugin-next@14.2.x via
+  // the removed `context.getAncestors()` API) is gone — @next/eslint-plugin-next
+  // @15.x reimplements both rules against the ESLint-9 API, so the full
+  // next/core-web-vitals rule set now runs without throwing.
 ];
 
 export default config;

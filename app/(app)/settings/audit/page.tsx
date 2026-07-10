@@ -36,14 +36,13 @@ function pageHref(sp: SearchParams, page: number): string {
   return `/settings/audit?${q.toString()}`;
 }
 
-export default function AuditLogPage({
-  searchParams,
-}: {
-  searchParams: SearchParams;
+export default async function AuditLogPage(props: {
+  searchParams: Promise<SearchParams>;
 }) {
+  const searchParams = await props.searchParams;
   // The audit log spans every profile (who accessed/modified whose data), so it's
   // admin-only — a member is redirected out by requireAdmin().
-  const { profile } = requireAdmin();
+  const { profile } = await requireAdmin();
 
   const filters: AuditFilters = {
     loginId: intOrNull(searchParams.login),

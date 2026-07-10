@@ -54,12 +54,11 @@ function formatRange(
   return null;
 }
 
-export default function BiomarkerDetailPage({
-  searchParams,
-}: {
-  searchParams: { name?: string };
+export default async function BiomarkerDetailPage(props: {
+  searchParams: Promise<{ name?: string }>;
 }) {
-  const { profile } = requireSession();
+  const searchParams = await props.searchParams;
+  const { profile } = await requireSession();
   const canonical = searchParams.name?.trim();
   const series = canonical
     ? getBiomarkerSeriesWithDerived(profile.id, canonical)

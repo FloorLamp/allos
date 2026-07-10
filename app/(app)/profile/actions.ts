@@ -26,7 +26,7 @@ export type ShareResult =
 export async function createShareLinkAction(
   formData: FormData
 ): Promise<ShareResult> {
-  const { login, profile } = requireWriteAccess();
+  const { login, profile } = await requireWriteAccess();
 
   const fields = normalizeShareFields(
     formData.getAll("field").map((v) => String(v))
@@ -58,7 +58,7 @@ export async function createShareLinkAction(
 export async function revokeShareLinkAction(
   formData: FormData
 ): Promise<ShareResult> {
-  const { login, profile } = requireWriteAccess();
+  const { login, profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return { ok: false, error: "Unknown link." };
 

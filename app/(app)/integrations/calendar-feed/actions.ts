@@ -36,7 +36,7 @@ export type FeedResult =
 export async function enableCalendarFeedAction(
   expiry?: string
 ): Promise<FeedResult> {
-  const { profile, login } = requireWriteAccess();
+  const { profile, login } = await requireWriteAccess();
   const choice = isValidExpiryChoice(expiry) ? expiry : "never";
   const token = mintCalendarFeedToken(profile.id, choice);
   upsertConnection(profile.id, PROVIDER, { status: "connected" });
@@ -55,7 +55,7 @@ export async function enableCalendarFeedAction(
 
 // Disable the feed: the token hash is dropped (URL dies) and the route 404s.
 export async function disableCalendarFeedAction(): Promise<FeedResult> {
-  const { profile, login } = requireWriteAccess();
+  const { profile, login } = await requireWriteAccess();
   disableCalendarFeed(profile.id);
   upsertConnection(profile.id, PROVIDER, { status: "disconnected" });
   recordAudit({
@@ -74,7 +74,7 @@ export async function disableCalendarFeedAction(): Promise<FeedResult> {
 export async function setCalendarFeedDetailAction(
   formData: FormData
 ): Promise<FeedResult> {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const detail: CalendarFeedDetail =
     String(formData.get("detail")) === "full" ? "full" : "minimal";
   setCalendarFeedDetail(profile.id, detail);
@@ -90,7 +90,7 @@ export async function setCalendarFeedDetailAction(
 export async function setCalendarFeedOptionsAction(
   formData: FormData
 ): Promise<FeedResult> {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const categories = formData.getAll("category").map(String);
   const reminders = String(formData.get("reminders")) === "1";
   const pastWindowDays = Number(formData.get("pastWindowDays"));
@@ -121,7 +121,7 @@ export async function setCalendarFeedOptionsAction(
 export async function enableConsolidatedCalendarFeedAction(
   expiry?: string
 ): Promise<FeedResult> {
-  const { profile, login } = requireSession();
+  const { profile, login } = await requireSession();
   const choice = isValidExpiryChoice(expiry) ? expiry : "never";
   const token = mintConsolidatedCalendarFeedToken(login.id, choice);
   // Minting kills any prior token, so this covers both first mint and rotation.
@@ -138,7 +138,7 @@ export async function enableConsolidatedCalendarFeedAction(
 
 // Disable the family feed: the token hash is dropped (URL dies) and the route 404s.
 export async function disableConsolidatedCalendarFeedAction(): Promise<FeedResult> {
-  const { profile, login } = requireSession();
+  const { profile, login } = await requireSession();
   disableConsolidatedCalendarFeed(login.id);
   recordAudit({
     loginId: login.id,

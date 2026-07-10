@@ -15,8 +15,8 @@ import { dismissTrajectory } from "./actions";
 // clinician" framing, links to the biomarker's detail (schedule a retest), and can
 // be dismissed through the shared findings-bus suppression store. Nothing renders
 // when no trajectory is firing.
-export default function TrajectoryFindings() {
-  const { profile } = requireSession();
+export default async function TrajectoryFindings() {
+  const { profile } = await requireSession();
   const now = today(profile.id);
   const findings = activeByKey(
     buildTrajectoryFindings(profile.id, now),

@@ -5,8 +5,8 @@ import SportExplorer from "@/components/SportExplorer";
 
 // Sport records + trends. Sports are duration-only, so the detail is lighter
 // than strength/cardio, but the explorer interaction matches them.
-export default function SportSection() {
-  const { profile } = requireSession();
+export default async function SportSection() {
+  const { profile } = await requireSession();
   const sports = getSportByActivity(profile.id);
   if (sports.length === 0) {
     return (

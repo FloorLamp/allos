@@ -13,8 +13,8 @@ export const dynamic = "force-dynamic";
 // FHIR CarePlan resource, plus manual add/edit/delete. Each row shows its planned
 // activity, category, planned date, and status. NB: this is CLINICAL care planned
 // in the record — distinct from the user's own fitness "Goals" (/goals).
-export default function CarePlanPage() {
-  const { profile } = requireSession();
+export default async function CarePlanPage() {
+  const { profile } = await requireSession();
   const items = getCarePlanItems(profile.id);
   const providerNames = getProviderNames();
 

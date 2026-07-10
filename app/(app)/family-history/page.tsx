@@ -11,8 +11,8 @@ export const dynamic = "force-dynamic";
 // context for hereditary risk. Imported from a health record's CCD Family History
 // section (LOINC 10157-6) or a FHIR FamilyMemberHistory resource, plus manual
 // add/edit/delete. One row per (relative, condition) pair.
-export default function FamilyHistoryPage() {
-  const { profile } = requireSession();
+export default async function FamilyHistoryPage() {
+  const { profile } = await requireSession();
   const entries = getFamilyHistory(profile.id);
 
   return (

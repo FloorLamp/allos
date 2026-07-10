@@ -17,9 +17,9 @@ import { markDoseTaken } from "@/lib/queries";
 // (admins may act as any; members only their granted profiles), so a read-only
 // member can still switch, and an inaccessible target is a no-op.
 export async function openProfileAction(formData: FormData) {
-  requireSession();
+  await requireSession();
   const profileId = Number(formData.get("profileId"));
-  if (profileId) setActiveProfile(profileId);
+  if (profileId) await setActiveProfile(profileId);
   redirect("/");
 }
 
@@ -35,7 +35,7 @@ export async function confirmDoseAction(formData: FormData) {
   const profileId = Number(formData.get("profileId"));
   const doseId = Number(formData.get("dose_id"));
   if (!profileId || !doseId) return;
-  requireProfileWriteAccess(profileId);
+  await requireProfileWriteAccess(profileId);
   markDoseTaken(profileId, doseId, null, today(profileId));
   revalidatePath("/household");
   revalidatePath("/medicine");

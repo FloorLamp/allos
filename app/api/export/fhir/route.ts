@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 // (issue #18) — the inverse of lib/fhir.ts's import mapping, so a bundle exported
 // here re-imports here. A READ, gated like the per-dataset CSV export.
 export async function GET() {
-  const session = getCurrentSession();
+  const session = await getCurrentSession();
   if (!session) {
     return new Response("Unauthorized", { status: 401 });
   }

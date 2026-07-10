@@ -36,12 +36,13 @@ function parseSection(value: string | string[] | undefined): Section {
 // standalone Data page content) browses and exports everything you've logged,
 // with per-dataset CSV download and row edit/delete. The active tab is
 // deep-linkable via ?section= (import | manage); /import redirects here.
-export default async function DataPage({
-  searchParams,
-}: {
-  searchParams: Record<string, string | string[] | undefined>;
-}) {
-  const { login, profile } = requireSession();
+export default async function DataPage(
+  props: {
+    searchParams: Promise<Record<string, string | string[] | undefined>>;
+  }
+) {
+  const searchParams = await props.searchParams;
+  const { login, profile } = await requireSession();
   const units = getUnitPrefs(login.id);
   const section = parseSection(searchParams.section);
 
