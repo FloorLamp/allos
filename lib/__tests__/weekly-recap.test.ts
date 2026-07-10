@@ -8,6 +8,7 @@ import {
   medianWeeklyWorkouts,
   type RecapInput,
 } from "@/lib/weekly-recap";
+import { recentPRs, type ExerciseSummary } from "@/lib/coaching";
 
 const TODAY = "2026-07-09"; // a Thursday
 
@@ -184,6 +185,51 @@ describe("renderRecapMessage", () => {
     expect(msg.body).toContain("2026-07-03 – 2026-07-09");
     expect(msg.body).toContain("• Workouts: 1");
     expect(msg.body).toContain("• Adherence: 100%");
+  });
+});
+
+// Issue #190: gatherRecapInput passes `days - 1` into recentPRs/recentCardioPRs
+// because those helpers' `within` is INCLUSIVE at both ends. For a 7-day weekly
+// recap the PR window must be the same [today-6, today] the workout window uses —
+// a PR dated exactly today-7 belongs to the PREVIOUS week (its workout lands in
+// prevWorkouts), so it must NOT surface in this week's PR labels. Otherwise the
+// recap can read "0 workouts this week, 1 PR". Mirrors the gather-layer boundary.
+describe("recap PR window off-by-one (issue #190)", () => {
+  // TODAY is 2026-07-09; exactly seven calendar days earlier is 2026-07-02, the
+  // last day of the *previous* recap window (recapWindow(TODAY).prevEnd).
+  const TODAY_MINUS_7 = "2026-07-02";
+
+  function summary(bestDate: string): ExerciseSummary {
+    return {
+      exercise: "Bench press",
+      sessions: 2, // >1 so it isn't a first-ever log
+      bodyweight: false,
+      e1rmKg: 100,
+      bestWeightKg: 90,
+      bestReps: 5,
+      bestDate,
+      topWeightKg: 90,
+      topWeightDate: bestDate,
+      lastDate: bestDate,
+      lastSessionBest: { weightKg: 90, reps: 5 },
+    };
+  }
+
+  it("excludes a PR dated exactly today-7 from a 7-day recap (days-1 window)", () => {
+    expect(recapWindow(TODAY).prevEnd).toBe(TODAY_MINUS_7);
+    // Gather layer calls recentPRs with days - 1 = 6 for the weekly recap.
+    const prs = recentPRs([summary(TODAY_MINUS_7)], TODAY, 7 - 1);
+    expect(prs).toEqual([]);
+  });
+
+  it("still surfaces a PR inside the corrected window", () => {
+    const prs = recentPRs([summary("2026-07-05")], TODAY, 7 - 1);
+    expect(prs.map((p) => p.exercise)).toContain("Bench press");
+  });
+
+  it("would have leaked the today-7 PR under the pre-fix inclusive `days` window", () => {
+    const leaked = recentPRs([summary(TODAY_MINUS_7)], TODAY, 7);
+    expect(leaked.map((p) => p.exercise)).toContain("Bench press");
   });
 });
 
