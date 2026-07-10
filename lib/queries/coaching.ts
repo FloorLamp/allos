@@ -4,6 +4,7 @@ import {
   getActivityDates,
   getCardioByActivity,
   getFrequencyTargetProgress,
+  getRecentDatedExercises,
   getStrengthByExercise,
 } from "./training";
 import { getIntensitySignal } from "./zones";
@@ -106,6 +107,7 @@ export function gatherCoachingInput(
     strength: getStrengthByExercise(profileId),
     cardio: getCardioByActivity(profileId, distanceUnit),
     trainingDates: getActivityDates(profileId),
+    datedExercises: getRecentDatedExercises(profileId),
     sleep: getSleepSignal(profileId),
     restingHr: getRestingHrSignal(profileId),
     restEpisode: getRestEpisode(profileId),
