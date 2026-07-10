@@ -667,6 +667,27 @@ function applyAgeBandsInPlace(): void {
 //    Anion Gap, Reticulocytes: Mayo Clinic Laboratories & ARUP Consult adult
 //    reference intervals (MedlinePlus for corroboration).
 export const CURATED_LABS: Biomarker[] = [
+  // ── Derived biological-age index (issue #157) ──────────────────────────────
+  // PhenoAge — Levine's Phenotypic Age (2018): a "biological age" in YEARS
+  // computed (not measured) from nine routine analytes + chronological age via a
+  // mortality-risk model (lib/derived-biomarkers.phenoAge). It has no fixed
+  // reference interval — it is interpreted RELATIVE to the person's chronological
+  // age (a PhenoAge below chronological age is favorable) — so ref/optimal bounds
+  // are intentionally null (no misleading high/low flag); direction is
+  // lower_better for the trajectory machinery. Reference: Levine ME et al.,
+  // "An epigenetic biomarker of aging for lifespan and healthspan," Aging 2018;
+  // 10(4):573-591. INFORMATIONAL, NOT MEDICAL ADVICE.
+  {
+    name: "PhenoAge",
+    category: "lab",
+    unit: "years",
+    ref_low: null,
+    ref_high: null,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "lower_better",
+    note: "Levine Phenotypic Age (2018), in years — a derived biological-age estimate from 9 analytes (albumin, creatinine, glucose, hs-CRP, lymphocyte %, MCV, RDW, ALP, WBC) plus chronological age. Interpreted relative to chronological age (lower = biologically younger); a population estimate with several years of error, not day-level precision.",
+  },
   // ── Derived clinical index (issue #40) ─────────────────────────────────────
   // Triglyceride/HDL ratio — a simple, widely-cited surrogate for insulin
   // resistance and small-dense-LDL burden, computed (not measured) from the lipid
