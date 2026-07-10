@@ -869,7 +869,8 @@ export default function ActivityForm({
                   units={units}
                   isEdit={isEdit}
                   history={history}
-                  createdId={createdId}
+                  currentActivityId={editData?.id ?? createdId}
+                  editedDate={editData?.date ?? null}
                   equipmentList={equipmentList}
                   showBodyweightPrompt={!bwKnown && pi === firstBwPart}
                   bwInput={bwInput}

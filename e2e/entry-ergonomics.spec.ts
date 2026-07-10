@@ -111,6 +111,35 @@ test("'Repeat last' button is not clipped by the editor pane's scroll container 
   await expect(button).toBeEnabled();
 });
 
+test("edit mode surfaces the exercise's previous sessions (#188)", async ({
+  page,
+}) => {
+  await page.goto("/training"); // default "Log" tab renders the Journal feed
+
+  // The seed plants recurring "Push day" strength sessions across several weeks,
+  // each repeating the same lifts (Barbell Bench Press, …). Opening the NEWEST
+  // one for edit — by clicking its title — must show the "Recent" reference
+  // panel of prior sessions (issue #188: edit mode used to omit it entirely).
+  const main = page.getByRole("main");
+  const pushCard = main
+    .locator('[id^="activity-"]')
+    .filter({ hasText: "Push day" })
+    .first();
+  await expect(pushCard).toBeVisible();
+
+  // Click the card's title to open the editor in EDIT mode (openEdit).
+  await pushCard.getByRole("button", { name: "Push day" }).click();
+
+  // The editor opens on the stored session; a strength part renders its Recent
+  // panel of prior sessions. Scope to <main> so a responsive-shell double-render
+  // can't match twice (#206 isolation).
+  await expect(main.getByTestId("recent-sessions").first()).toBeVisible();
+
+  // Read-only assertion: no field was touched, so nothing auto-saves and the
+  // shared seed DB is left untouched — no cleanup needed. Close the editor.
+  await page.keyboard.press("Escape");
+});
+
 test("bulk-delete rows in Data → Manage, then Undo restores them (#29)", async ({
   page,
 }) => {

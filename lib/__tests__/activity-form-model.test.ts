@@ -5,6 +5,7 @@ import {
   partIntent,
   partTotal,
   groupEditSets,
+  recentSessionsForForm,
   setComplete,
   type ActivityEditData,
   type PartEntry,
@@ -238,5 +239,63 @@ describe("groupEditSets", () => {
       "kg"
     );
     expect(grouped[0].targetReps).toBe("8");
+  });
+});
+
+describe("recentSessionsForForm", () => {
+  // Newest-first, as the history query ships them.
+  const sessions = [
+    { activityId: 40, date: "2026-03-10" },
+    { activityId: 30, date: "2026-03-03" },
+    { activityId: 20, date: "2026-02-24" },
+    { activityId: 10, date: "2026-02-17" },
+  ];
+
+  it("returns [] when there is no history", () => {
+    expect(recentSessionsForForm(undefined, null, null)).toEqual([]);
+    expect(recentSessionsForForm([], 10, null)).toEqual([]);
+  });
+
+  it("create mode with no saved row yet shows the newest sessions", () => {
+    // currentActivityId null (nothing auto-saved), no edited date.
+    const r = recentSessionsForForm(sessions, null, null);
+    expect(r.map((s) => s.activityId)).toEqual([40, 30, 20]);
+  });
+
+  it("create mode excludes the auto-saved row so it never lists itself", () => {
+    // Once auto-save creates the row (id 40, newest), it drops out and the
+    // spare session keeps three priors visible.
+    const r = recentSessionsForForm(sessions, 40, null);
+    expect(r.map((s) => s.activityId)).toEqual([30, 20, 10]);
+  });
+
+  it("edit mode excludes the edited session by id (self-exclusion)", () => {
+    // Editing session 30: it must not appear in its own "Recent".
+    const r = recentSessionsForForm(sessions, 30, "2026-03-03");
+    expect(r.map((s) => s.activityId)).not.toContain(30);
+  });
+
+  it("edit mode drops sessions logged AFTER the edited one", () => {
+    // Editing back-dated session 20 (2026-02-24): the later 40/30 sessions are
+    // not "previous" and must be hidden; only the older 10 remains.
+    const r = recentSessionsForForm(sessions, 20, "2026-02-24");
+    expect(r.map((s) => s.activityId)).toEqual([10]);
+  });
+
+  it("edit mode keeps same-day siblings (not 'after')", () => {
+    const sameDay = [
+      { activityId: 41, date: "2026-03-10" },
+      { activityId: 40, date: "2026-03-10" },
+      { activityId: 30, date: "2026-03-03" },
+    ];
+    // Editing 40: its same-day sibling 41 stays (same date is not after),
+    // 40 itself is excluded by id.
+    const r = recentSessionsForForm(sameDay, 40, "2026-03-10");
+    expect(r.map((s) => s.activityId)).toEqual([41, 30]);
+  });
+
+  it("honours the limit and preserves newest-first order", () => {
+    const r = recentSessionsForForm(sessions, null, null, 2);
+    expect(r.map((s) => s.activityId)).toEqual([40, 30]);
   });
 });

@@ -36,6 +36,7 @@ import { IconX, IconBarbell, IconAlertTriangle } from "@tabler/icons-react";
 import {
   partIntent,
   partTotal,
+  recentSessionsForForm,
   setComplete,
   sidePartial,
   blockedField,
@@ -57,7 +58,8 @@ export default function StrengthSets({
   units,
   isEdit,
   history,
-  createdId,
+  currentActivityId,
+  editedDate,
   equipmentList,
   showBodyweightPrompt,
   bwInput,
@@ -77,7 +79,11 @@ export default function StrengthSets({
   units: UnitPrefs;
   isEdit: boolean;
   history: ExerciseHistoryMap;
-  createdId: number | null;
+  // The session the form is saving (edit row id, or the auto-saved create row
+  // once it exists, else null) — always excluded from its own "Recent" list.
+  currentActivityId: number | null;
+  // The edited session's date in edit mode (else null): drops later sessions.
+  editedDate: string | null;
   equipmentList: Equipment[];
   showBodyweightPrompt: boolean;
   bwInput: string;
@@ -93,19 +99,27 @@ export default function StrengthSets({
   onPlateTarget: (si: number, field: "weight" | "weightRight") => void;
 }) {
   const p = part;
-  // Recent attempts help when logging fresh; not useful while editing. The
-  // session being logged is excluded — once auto-save creates it, a refresh
-  // would list it in its own "Recent" (the layout fetches one spare session
-  // per exercise so three prior ones still show).
-  const hist =
-    !isEdit && p.name.trim() ? history[p.name.trim().toLowerCase()] : undefined;
-  const past = hist?.sessions.filter((s) => s.activityId !== createdId);
-  const recent = past?.slice(0, 3);
-  // Suggested next top set — the same progression the exercise detail panel
-  // shows, made fillable here. Seeded from every set on the newest prior
-  // date (two same-day activities are one session, as in
-  // getStrengthByExercise), with the exercise's resolved bodyweight flag
-  // and fold base shipped by the server so the two surfaces always agree.
+  // Recent attempts as a reference — shown when logging fresh AND while editing
+  // (issue #188). The current session is always excluded (`currentActivityId`),
+  // so a session never appears in its own "Recent": in create that's the
+  // auto-saved row once it exists (the layout fetches one spare session per
+  // exercise so three priors still show); in edit it's the row being edited,
+  // and `editedDate` also drops any session logged after it so the panel stays
+  // "previous".
+  const hist = p.name.trim() ? history[p.name.trim().toLowerCase()] : undefined;
+  const recent = recentSessionsForForm(
+    hist?.sessions,
+    currentActivityId,
+    isEdit ? editedDate : null
+  );
+  // Suggested next top set — a forward-looking coaching prompt for logging a
+  // fresh set, so it stays create-only. Seeded from every set on the newest
+  // prior date (two same-day activities are one session, as in
+  // getStrengthByExercise), with the exercise's resolved bodyweight flag and
+  // fold base shipped by the server so the two surfaces always agree.
+  const past = !isEdit
+    ? hist?.sessions.filter((s) => s.activityId !== currentActivityId)
+    : undefined;
   let suggestion: NextSet | null = null;
   if (hist && past?.length) {
     const best = sessionBestSet(
@@ -338,8 +352,11 @@ export default function StrengthSets({
           )}
         </div>
       )}
-      {recent && recent.length > 0 && (
-        <div className="mt-2 rounded-md border border-black/10 bg-white px-2.5 py-1.5 text-xs dark:border-white/10 dark:bg-ink-900">
+      {recent.length > 0 && (
+        <div
+          data-testid="recent-sessions"
+          className="mt-2 rounded-md border border-black/10 bg-white px-2.5 py-1.5 text-xs dark:border-white/10 dark:bg-ink-900"
+        >
           <div className="font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
             Recent
           </div>
