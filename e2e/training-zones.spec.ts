@@ -26,12 +26,12 @@ test("Trends → Fitness renders the HR training-intensity section (#159)", asyn
   ).toBeVisible();
 
   // The easy/hard polarization split renders. The fixture is ~83/17, so "easy"
-  // dominates — assert the split summary is present. Scope the text assertion
-  // INSIDE the split element: the section's explanatory note also contains
-  // "% easy", so a section-wide getByText double-matches (strict mode).
+  // dominates — assert the split SUMMARY ("83% easy · 17% hard"). The full
+  // pattern is required: the split element's own explanatory note ("...keeps
+  // ~80% easy.") also matches a bare /% easy/, a strict-mode double-match.
   const split = zones.getByTestId("polarization-split");
   await expect(split).toBeVisible();
-  await expect(split.getByText(/% easy/)).toBeVisible();
+  await expect(split.getByText(/\d+% easy · \d+% hard/)).toBeVisible();
 
   // The current-week Zone 2 adherence line renders against the default target.
   await expect(zones.getByTestId("zone2-adherence")).toBeVisible();
