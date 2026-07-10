@@ -99,10 +99,11 @@ function windowAdherence(
 // notification uses canonical kg). distanceUnit only feeds the cardio stats query.
 export function gatherRecapInput(
   profileId: number,
-  weightUnit: WeightUnit = "kg"
+  weightUnit: WeightUnit = "kg",
+  days = 7
 ): RecapInput {
   const td = today(profileId);
-  const win = recapWindow(td);
+  const win = recapWindow(td, days);
 
   const activities = getActivities(profileId).map(asWorkout);
   const workouts = activities.filter((w) =>
@@ -116,13 +117,13 @@ export function gatherRecapInput(
   const volumeKg = sumVolume(volumeRows, win.start, win.end);
   const prevVolumeKg = sumVolume(volumeRows, win.prevStart, win.prevEnd);
 
-  // PRs (strength + cardio) set within the last seven days; labels are canonical
+  // PRs (strength + cardio) set within the recap window; labels are canonical
   // exercise / activity display names, de-duplicated in first-seen order.
-  const strengthPRs = recentPRs(getStrengthByExercise(profileId), td, 7);
+  const strengthPRs = recentPRs(getStrengthByExercise(profileId), td, days);
   const cardioPRs = recentCardioPRs(
     getCardioByActivity(profileId, "km"),
     td,
-    7
+    days
   );
   const prLabels: string[] = [];
   const seen = new Set<string>();
@@ -139,7 +140,9 @@ export function gatherRecapInput(
     }
   }
 
-  const weights = getWeights(profileId, 60)
+  // Pull enough recent rows to cover the window even at a few weigh-ins per day
+  // (a monthly window spans more days than the historical 60-row cap assumed).
+  const weights = getWeights(profileId, Math.max(60, days * 4))
     .filter((w) => w.weight_kg != null && inWindow(w.date, win.start, win.end))
     .map((w) => ({ date: w.date, weightKg: w.weight_kg as number }))
     .sort((a, b) => a.date.localeCompare(b.date));
@@ -158,6 +161,7 @@ export function gatherRecapInput(
   return {
     today: td,
     weightUnit,
+    periodDays: days,
     workouts,
     prevWorkouts,
     volumeKg,
@@ -177,6 +181,17 @@ export function getWeeklyRecap(
   weightUnit: WeightUnit = "kg"
 ): WeeklyRecap {
   return buildWeeklyRecap(gatherRecapInput(profileId, weightUnit));
+}
+
+// Gather + build a recap over an arbitrary window length (issue #20): the AI
+// narrative generator reuses this so the weekly/monthly AI read narrates over the
+// SAME rule-based recap facts the dashboard widget/notification already show.
+export function getPeriodRecap(
+  profileId: number,
+  days: number,
+  weightUnit: WeightUnit = "kg"
+): WeeklyRecap {
+  return buildWeeklyRecap(gatherRecapInput(profileId, weightUnit, days));
 }
 
 // Build + send this profile's weekly recap for `date`. Marks the day done (dedup)
