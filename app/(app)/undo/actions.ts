@@ -21,8 +21,14 @@ export async function undoDelete(undoId: number): Promise<{ ok: boolean }> {
 
 // Restore a whole batch of deleted rows from their undo tokens — the single
 // "Deleted N · Undo" toast a bulk table delete offers (issue #29). Each token is
-// restored independently (a token already swept/restored just no-ops), and the
-// layout is revalidated once. Returns how many were actually restored.
+// restored independently in its OWN transaction, and the layout is revalidated
+// once. Returns how many were actually restored.
+//
+// Per-token isolation (#202): a token whose restore THROWS — despite the external-FK
+// reconciliation in restoreDeletedRow, some other integrity surprise could still
+// abort one token's transaction — must not abort the whole batch and leave it
+// partially restored. Each token is wrapped so a failing one is skipped and the
+// rest still restore. A token already swept/restored just no-ops (returns false).
 export async function undoDeletes(
   undoIds: number[]
 ): Promise<{ restored: number }> {
@@ -31,7 +37,14 @@ export async function undoDeletes(
     (n) => Number.isInteger(n) && n > 0
   );
   let restored = 0;
-  for (const id of ids) if (restoreDeletedRow(profile.id, id)) restored += 1;
+  for (const id of ids) {
+    try {
+      if (restoreDeletedRow(profile.id, id)) restored += 1;
+    } catch (err) {
+      // Isolate the failure to this token; the remaining tokens still restore.
+      console.error(`undoDeletes: token ${id} failed to restore`, err);
+    }
+  }
   if (restored > 0) revalidatePath("/", "layout");
   return { restored };
 }

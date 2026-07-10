@@ -10,7 +10,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { reassignDocument } from "@/app/(app)/medical/actions";
 import { getReprocessSnapshot, reconcileFlags } from "@/lib/queries";
-import { persistDocumentImport } from "@/lib/import-persist";
+import {
+  persistDocumentImport,
+  IMPORT_FOOTPRINT_TABLES,
+} from "@/lib/import-persist";
 import { computeImportDiff } from "@/lib/import-diff";
 import type { PersistInput } from "@/lib/import-shape";
 import { db } from "@/lib/db";
@@ -68,13 +71,88 @@ function makeInput(): PersistInput {
         provider: null,
       },
     ],
-    allergies: [],
-    conditions: [],
-    encounters: [],
-    procedures: [],
-    familyHistory: [],
-    carePlanItems: [],
-    careGoals: [],
+    allergies: [
+      {
+        substance: "Penicillin",
+        substance_code: null,
+        substance_code_system: null,
+        reaction: "hives",
+        severity: "moderate",
+        status: "active",
+        onset_date: null,
+        external_id: "alg:pcn",
+      },
+    ],
+    conditions: [
+      {
+        name: "Hypertension",
+        code: null,
+        code_system: null,
+        status: "active",
+        onset_date: null,
+        resolved_date: null,
+        external_id: "cond:htn",
+      },
+    ],
+    encounters: [
+      {
+        date: DATE,
+        end_date: null,
+        type: "office visit",
+        class_code: null,
+        reason: "annual physical",
+        diagnoses: [],
+        provider: null,
+        location: null,
+        notes: null,
+        external_id: "enc:physical",
+      },
+    ],
+    // The four tables reassign used to strand cross-profile (#201) — populated so the
+    // move/empties assertions actually exercise them.
+    procedures: [
+      {
+        name: "Appendectomy",
+        code: null,
+        code_system: null,
+        date: DATE,
+        provider: null,
+        external_id: "proc:appy",
+      },
+    ],
+    familyHistory: [
+      {
+        relation: "mother",
+        condition: "Diabetes",
+        code: null,
+        code_system: null,
+        onset_age: 55,
+        deceased: 0,
+        external_id: "fh:dm",
+      },
+    ],
+    carePlanItems: [
+      {
+        description: "Colonoscopy screening",
+        code: null,
+        code_system: null,
+        category: "procedure",
+        planned_date: DATE,
+        status: "planned",
+        provider: null,
+        external_id: "cp:colo",
+      },
+    ],
+    careGoals: [
+      {
+        description: "Lower systolic BP below 130",
+        code: null,
+        code_system: null,
+        target_date: DATE,
+        status: "in-progress",
+        external_id: "cg:bp",
+      },
+    ],
     bodyMetrics: [
       { date: DATE, weight_kg: 80, body_fat_pct: null, resting_hr: null },
     ],
@@ -109,38 +187,23 @@ function newDocument(profileId: number, storedPath = ""): number {
 
 const UPLOAD_DIR = path.join(process.cwd(), "data", "uploads", "medical");
 
-// Count every owned row a document produced, straight from the DB, for a profile.
+// Count every owned row a document produced, straight from the DB, for a profile —
+// driven off the SHARED IMPORT_FOOTPRINT_TABLES list (not a hand-maintained set) so
+// the count covers the FULL footprint and can't silently omit a table the way the
+// original five-table version omitted procedures/family_history/care_plan_items/
+// care_goals (the #201 blind spot). Every footprint table contributes here, so the
+// "empties the source" assertion is meaningful for all of them.
 function ownedRowCount(profileId: number, docId: number): number {
-  const q = (sql: string, ...a: unknown[]) =>
-    (db.prepare(sql).get(...a) as { c: number }).c;
   const src = `document:${docId}`;
-  return (
-    q(
-      "SELECT COUNT(*) c FROM medical_records WHERE profile_id = ? AND document_id = ?",
-      profileId,
-      docId
-    ) +
-    q(
-      "SELECT COUNT(*) c FROM immunizations WHERE profile_id = ? AND source = ?",
-      profileId,
-      src
-    ) +
-    q(
-      "SELECT COUNT(*) c FROM body_metrics WHERE profile_id = ? AND source = ?",
-      profileId,
-      src
-    ) +
-    q(
-      "SELECT COUNT(*) c FROM metric_samples WHERE profile_id = ? AND source = ?",
-      profileId,
-      src
-    ) +
-    q(
-      "SELECT COUNT(*) c FROM intake_items WHERE profile_id = ? AND document_id = ? AND source = 'extracted'",
-      profileId,
-      docId
-    )
-  );
+  let total = 0;
+  for (const t of IMPORT_FOOTPRINT_TABLES) {
+    const keyVal = t.key === "document_id" ? docId : src;
+    const sql = `SELECT COUNT(*) c FROM ${t.table} WHERE ${t.key} = ? AND profile_id = ?${
+      t.extra ? ` AND ${t.extra}` : ""
+    }`;
+    total += (db.prepare(sql).get(keyVal, profileId) as { c: number }).c;
+  }
+  return total;
 }
 
 describe("reassignDocument", () => {

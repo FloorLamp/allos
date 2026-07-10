@@ -41,6 +41,7 @@ import {
   persistDocumentImport,
   applyImportFollowups,
   clearImportedDocumentRows,
+  moveImportedDocumentRows,
 } from "@/lib/import-persist";
 import {
   detectHealthRecord,
@@ -52,7 +53,6 @@ import {
   snapCanonicalName,
   distinguishVitaminDIsoform,
 } from "@/lib/canonical-name";
-import { documentSource } from "@/lib/body-metric-extract";
 import {
   snapshotFromPersistInput,
   computeImportDiff,
@@ -1234,43 +1234,20 @@ export async function reassignDocument(
     };
   }
 
-  const source = documentSource(id);
-  // Re-point every owned row from the source profile to the destination, scoped to
-  // this document's provenance (document_id for records/allergies/conditions/
-  // encounters/extracted meds; documentSource(id) for body_metrics/immunizations/
-  // height + head-circ metric_samples) AND to the source profile_id so no other
-  // profile's rows can be touched. Child rows (intake_item_doses/_logs/_pairs,
-  // medication_courses, side effects) carry no profile_id — they follow the parent
-  // intake_items row. The on-disk file move + stored_path update happen after the
-  // commit.
+  // Re-point the document row + its ENTIRE per-row footprint from the source
+  // profile to the destination. The footprint move goes through the shared
+  // moveImportedDocumentRows helper (driven off the ONE IMPORT_FOOTPRINT_TABLES
+  // list that clearImportedDocumentRows also consumes), so a reassign and a
+  // delete/reprocess can never disagree about which tables a document owns — the
+  // drift that stranded procedures/family_history/care_plan_items/care_goals
+  // cross-profile with an FK-500 on the new owner's later delete (#201). Every
+  // statement is scoped to the source profile_id so no other profile's rows can be
+  // touched; the on-disk file move + stored_path update happen after the commit.
   const move = db.transaction(() => {
     db.prepare(
       "UPDATE medical_documents SET profile_id = ? WHERE id = ? AND profile_id = ?"
     ).run(dest, id, src);
-    db.prepare(
-      "UPDATE medical_records SET profile_id = ? WHERE document_id = ? AND profile_id = ?"
-    ).run(dest, id, src);
-    db.prepare(
-      "UPDATE allergies SET profile_id = ? WHERE document_id = ? AND profile_id = ?"
-    ).run(dest, id, src);
-    db.prepare(
-      "UPDATE conditions SET profile_id = ? WHERE document_id = ? AND profile_id = ?"
-    ).run(dest, id, src);
-    db.prepare(
-      "UPDATE encounters SET profile_id = ? WHERE document_id = ? AND profile_id = ?"
-    ).run(dest, id, src);
-    db.prepare(
-      "UPDATE intake_items SET profile_id = ? WHERE document_id = ? AND source = 'extracted' AND profile_id = ?"
-    ).run(dest, id, src);
-    db.prepare(
-      "UPDATE body_metrics SET profile_id = ? WHERE source = ? AND profile_id = ?"
-    ).run(dest, source, src);
-    db.prepare(
-      "UPDATE immunizations SET profile_id = ? WHERE source = ? AND profile_id = ?"
-    ).run(dest, source, src);
-    db.prepare(
-      "UPDATE metric_samples SET profile_id = ? WHERE source = ? AND profile_id = ?"
-    ).run(dest, source, src);
+    moveImportedDocumentRows(src, dest, id);
     // A star on the source profile may now point at a biomarker with no remaining
     // records there — drop any orphaned ones (mirrors deleteMedicalDocument).
     db.prepare(

@@ -53,6 +53,33 @@ describe("undo-delete registry", () => {
   it("getKindSpec throws on an unknown kind", () => {
     expect(() => getKindSpec("nope")).toThrow(/unknown undo kind/);
   });
+
+  // #202: the captured FK columns that point OUTSIDE a capture (and can dangle if
+  // their target is deleted before undo) are declared as externalRefs so restore
+  // can null / drop them instead of throwing on a verbatim re-insert.
+  it("declares the dangling external FK links (equipment, pair endpoints)", () => {
+    const sets = getKindSpec("activity").entities.find(
+      (e) => e.entity === "sets"
+    )!;
+    expect(sets.externalRefs).toEqual([
+      { column: "equipment_id", table: "equipment", onMissing: "null" },
+    ]);
+
+    const pairs = getKindSpec("intake-item").entities.find(
+      (e) => e.entity === "pairs"
+    )!;
+    expect(pairs.externalRefs).toEqual([
+      { column: "a_id", table: "intake_items", onMissing: "drop" },
+      { column: "b_id", table: "intake_items", onMissing: "drop" },
+    ]);
+
+    // Every externalRef target is a real table name and its onMissing is one of the
+    // two supported actions.
+    for (const spec of Object.values(UNDO_KINDS))
+      for (const e of spec.entities)
+        for (const ref of e.externalRefs ?? [])
+          expect(["null", "drop"]).toContain(ref.onMissing);
+  });
 });
 
 describe("serialize / parse round-trip", () => {

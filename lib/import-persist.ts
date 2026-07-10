@@ -36,26 +36,84 @@ export interface PersistOutcome {
   insertedRecordIds: number[];
 }
 
-// Delete every row a document import produced, across ALL of the tables an
-// import can write. This is the SINGLE source of truth for a document's
-// per-row footprint, shared by BOTH the reprocess delete-set (persistDocumentImport
-// below, which clears the old set before re-inserting) and deleteMedicalDocument
-// (app/(app)/medical/actions.ts, which clears it on delete). Those two lists had
-// drifted: later changes added head-circumference samples, allergies, conditions,
-// and encounters to the reprocess delete-set but not to the delete path, so
-// deleting a document orphaned those rows. Funnelling both callers through here
-// makes a new imported table impossible to clear in one place but leak in the
-// other.
+// THE single source of truth for a document import's per-row footprint: every
+// table an import writes, and how each row traces back to its source document.
+// EVERY consumer that must touch a document's whole footprint derives its
+// statements from this ONE list, so a table can never be handled in one place but
+// leak in another (#201):
+//   - clearImportedDocumentRows — the reprocess/delete delete-set;
+//   - moveImportedDocumentRows — reassignDocument's cross-profile move.
+// (The tables had drifted before this list existed: head-circ samples/allergies/
+// conditions/encounters were added to the reprocess clear but not the delete path,
+// then procedures/family_history/care_plan_items/care_goals were cleared+deleted
+// but NOT moved on reassign — stranding them cross-profile with an FK-500 on the
+// new owner's later delete. Binding both callers to this list makes that drift
+// impossible.)
 //
-// Keying differs per table and MUST match what persistDocumentImport writes:
-//   - by document_id: medical_records, allergies, conditions, encounters,
-//     procedures, family_history, care_plan_items, care_goals, and the
-//     auto-structured extracted medications (intake_items source='extracted').
-//   - by the document's source string (documentSource(docId)): body_metrics,
-//     immunizations, and the height/head-circumference metric_samples — these
-//     carry the source rather than a document_id.
-// Every statement is profile_id-scoped (profile-scoping rule). Manual rows are
-// never touched: they carry a NULL document_id or a non-document source.
+// `key` is how a row is tied to its document — and MUST match what
+// persistDocumentImport writes:
+//   - "document_id": the row carries the document_id (medical_records, allergies,
+//     conditions, encounters, procedures, family_history, care_plan_items,
+//     care_goals, and the auto-structured extracted medications, which ALSO carry
+//     `extra: source = 'extracted'`).
+//   - "source": the row carries the document's source STRING
+//     (documentSource(docId)) rather than a document_id (body_metrics,
+//     immunizations, and the height/head-circumference metric_samples, the latter
+//     two isolated by their `extra` metric filter).
+// `extra` is an additional bound-param-free AND predicate.
+export interface ImportFootprintTable {
+  table: string;
+  key: "document_id" | "source";
+  extra?: string;
+}
+
+export const IMPORT_FOOTPRINT_TABLES: readonly ImportFootprintTable[] = [
+  { table: "medical_records", key: "document_id" },
+  { table: "allergies", key: "document_id" },
+  { table: "conditions", key: "document_id" },
+  { table: "encounters", key: "document_id" },
+  { table: "procedures", key: "document_id" },
+  { table: "family_history", key: "document_id" },
+  { table: "care_plan_items", key: "document_id" },
+  { table: "care_goals", key: "document_id" },
+  // Medications auto-structured from this document. Keyed on source='extracted' so
+  // a manual med — even one pointing at no document — is never touched; child
+  // dose/log rows cascade via their FKs.
+  { table: "intake_items", key: "document_id", extra: "source = 'extracted'" },
+  { table: "body_metrics", key: "source" },
+  { table: "immunizations", key: "source" },
+  { table: "metric_samples", key: "source", extra: "metric = 'height_cm'" },
+  {
+    table: "metric_samples",
+    key: "source",
+    extra: "metric = 'head_circumference_cm'",
+  },
+];
+
+// The value bound to a footprint table's key column for `docId`: the raw id for a
+// document_id-keyed table, the document source string for a source-keyed one.
+function footprintKeyValue(
+  t: ImportFootprintTable,
+  docId: number,
+  source: string
+): number | string {
+  return t.key === "document_id" ? docId : source;
+}
+
+// The trailing WHERE predicate a footprint statement appends after its `<key> = ?`
+// bind — the profile scope plus any table-specific `extra` filter. Kept here so
+// clear + move build identical predicates from the ONE list.
+function footprintScope(t: ImportFootprintTable): string {
+  return `profile_id = ?${t.extra ? ` AND ${t.extra}` : ""}`;
+}
+
+// Delete every row a document import produced, across ALL footprint tables. Shared
+// by BOTH the reprocess delete-set (persistDocumentImport below, which clears the
+// old set before re-inserting) and deleteMedicalDocument
+// (app/(app)/medical/actions.ts, which clears it on delete) — driven off
+// IMPORT_FOOTPRINT_TABLES so the two can't drift. Every statement is
+// profile_id-scoped (profile-scoping rule); manual rows carry a NULL document_id or
+// a non-document source and are never touched.
 //
 // Caller-specific deletes stay OUT of here: the reprocess path's cross-document
 // social-smoking supersession (it deletes OTHER documents' smoking rows) and
@@ -67,48 +125,32 @@ export function clearImportedDocumentRows(
   docId: number
 ): void {
   const source = documentSource(docId);
-  db.prepare(
-    "DELETE FROM medical_records WHERE document_id = ? AND profile_id = ?"
-  ).run(docId, profileId);
-  db.prepare(
-    "DELETE FROM body_metrics WHERE source = ? AND profile_id = ?"
-  ).run(source, profileId);
-  db.prepare(
-    "DELETE FROM metric_samples WHERE source = ? AND metric = 'height_cm' AND profile_id = ?"
-  ).run(source, profileId);
-  db.prepare(
-    "DELETE FROM metric_samples WHERE source = ? AND metric = 'head_circumference_cm' AND profile_id = ?"
-  ).run(source, profileId);
-  db.prepare(
-    "DELETE FROM immunizations WHERE source = ? AND profile_id = ?"
-  ).run(source, profileId);
-  db.prepare(
-    "DELETE FROM allergies WHERE document_id = ? AND profile_id = ?"
-  ).run(docId, profileId);
-  db.prepare(
-    "DELETE FROM conditions WHERE document_id = ? AND profile_id = ?"
-  ).run(docId, profileId);
-  db.prepare(
-    "DELETE FROM encounters WHERE document_id = ? AND profile_id = ?"
-  ).run(docId, profileId);
-  db.prepare(
-    "DELETE FROM procedures WHERE document_id = ? AND profile_id = ?"
-  ).run(docId, profileId);
-  db.prepare(
-    "DELETE FROM family_history WHERE document_id = ? AND profile_id = ?"
-  ).run(docId, profileId);
-  db.prepare(
-    "DELETE FROM care_plan_items WHERE document_id = ? AND profile_id = ?"
-  ).run(docId, profileId);
-  db.prepare(
-    "DELETE FROM care_goals WHERE document_id = ? AND profile_id = ?"
-  ).run(docId, profileId);
-  // Medications auto-structured from this document. Keyed on
-  // source='extracted' so a manual med — even one pointing at no document — is
-  // never touched; child dose/log rows cascade via their FKs.
-  db.prepare(
-    "DELETE FROM intake_items WHERE profile_id = ? AND document_id = ? AND source = 'extracted'"
-  ).run(profileId, docId);
+  for (const t of IMPORT_FOOTPRINT_TABLES) {
+    db.prepare(
+      `DELETE FROM ${t.table} WHERE ${t.key} = ? AND ${footprintScope(t)}`
+    ).run(footprintKeyValue(t, docId, source), profileId);
+  }
+}
+
+// Re-point a document's ENTIRE per-row footprint from one profile to another — the
+// move counterpart of clearImportedDocumentRows, iterating the SAME
+// IMPORT_FOOTPRINT_TABLES list so a delete and a reassign can never disagree about
+// which tables a document owns (#201). Runs inside reassignDocument's transaction;
+// the parent medical_documents row + the starred-biomarker cleanup stay with the
+// caller. Every UPDATE is scoped to the SOURCE profile so no other profile's rows
+// can be touched; child rows (intake_item_doses/_logs/_pairs, medication_courses,
+// side effects) carry no profile_id and follow their parent intake_items row.
+export function moveImportedDocumentRows(
+  srcProfileId: number,
+  destProfileId: number,
+  docId: number
+): void {
+  const source = documentSource(docId);
+  for (const t of IMPORT_FOOTPRINT_TABLES) {
+    db.prepare(
+      `UPDATE ${t.table} SET profile_id = ? WHERE ${t.key} = ? AND ${footprintScope(t)}`
+    ).run(destProfileId, footprintKeyValue(t, docId, source), srcProfileId);
+  }
 }
 
 // Write one document's parsed contents, replacing any rows it previously
