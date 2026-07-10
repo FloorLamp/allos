@@ -22,6 +22,13 @@ const revalidate = vi.mocked(revalidatePath);
 // Insert an imported-style encounter directly (source/document_id/external_id set),
 // bypassing the action, to model a CCD-imported row.
 function importedEncounter(profileId: number, date: string): number {
+  // The row cites medical document #7 as its import provenance. Now that
+  // encounters.document_id carries an enforced FK (issue #95), that document must
+  // exist — create it idempotently so repeated calls across tests don't collide.
+  db.prepare(
+    `INSERT OR IGNORE INTO medical_documents (id, profile_id, filename, stored_path)
+       VALUES (7, ?, 'ccd.xml', 'data/uploads/medical/ccd.xml')`
+  ).run(profileId);
   return Number(
     db
       .prepare(

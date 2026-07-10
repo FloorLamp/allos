@@ -3,5 +3,6 @@
   "002-edit-lock-flags.ts": "7542260494089e04d824b4a48ce126ea1165d4899f3c4a8cf576576701c33e9f",
   "003-preventive-tracking.ts": "2b39d13a8fc94055a28ec192071cb7b6d8ea072546dcd52ebead3b0d25cef450",
   "004-extraction-lease.ts": "70c8153d738734054fb2b644011f28f4d778bf35e64523a03b31a074fa1b62ba",
-  "005-dose-history.ts": "7550fee0dfd1ca82f3d727c679c2c6f2a7de50528239dd218c67fe8b38f60a93"
+  "005-dose-history.ts": "7550fee0dfd1ca82f3d727c679c2c6f2a7de50528239dd218c67fe8b38f60a93",
+  "006-fk-link-integrity.ts": "eb894fbbae7391469afadc3016a6de6f8df8240727ba6ad46ddfb72c6eefb659"
 }

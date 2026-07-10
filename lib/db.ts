@@ -63,7 +63,16 @@ function createDb(): Database.Database {
 // re-runnable (CREATE IF NOT EXISTS / guarded ADD COLUMN), so replaying the whole
 // list is a schema no-op.
 export function migrate(db: Database.Database): void {
-  for (const m of MIGRATIONS) m.up(db);
+  // Mirror runMigrations: apply migrations with foreign_keys disabled so a FK-parent
+  // rebuild (issue #95) can drop-and-recreate its table without cascade-wiping
+  // children, then restore the prior setting before the boot tasks run.
+  const fkWasOn = (db.pragma("foreign_keys", { simple: true }) as number) === 1;
+  if (fkWasOn) db.pragma("foreign_keys = OFF");
+  try {
+    for (const m of MIGRATIONS) m.up(db);
+  } finally {
+    if (fkWasOn) db.pragma("foreign_keys = ON");
+  }
   bootTasks(db);
 }
 
