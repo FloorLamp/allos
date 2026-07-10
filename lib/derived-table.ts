@@ -139,3 +139,46 @@ export function prepareTableRecords(
     : withLatest;
   return filtered.sort(comparator(opts.sort, opts.dir ?? "asc"));
 }
+
+// How many biomarker rows the table ships (and renders) per page. The full
+// content-deduped list is built server-side (prepareTableRecords over the single
+// getMedicalRecords dedup pass), but only ONE page is serialized into the client
+// BiomarkersTable — so the RSC payload is bounded regardless of lab history
+// instead of shipping every deduped row (#114: 2,594 rows ≈ 2.97 MB unbounded).
+export const BIOMARKER_PAGE_SIZE = 50;
+
+export interface TablePage {
+  // The rows to render for the current page.
+  rows: MedicalRecord[];
+  // Total rows across all pages (for the "N of M" footer and pager math).
+  total: number;
+  // The resolved 1-based page (clamped into [1, pageCount]).
+  page: number;
+  pageCount: number;
+  pageSize: number;
+}
+
+// Slice the already-built, already-sorted combined table list to one page.
+// `page` is 1-based and may be any user-supplied value (from `?p=`); it's clamped
+// into [1, pageCount] so an out-of-range or garbage value lands on a real page.
+// Pure — no DB; this only bounds what the client component receives, not the DB
+// read (the window-CTE dedup still runs once in getMedicalRecords). An empty list
+// reads as page 1 of 1.
+export function paginateRecords(
+  records: MedicalRecord[],
+  page: number,
+  pageSize: number = BIOMARKER_PAGE_SIZE
+): TablePage {
+  const total = records.length;
+  const count = pageSize > 0 ? Math.max(1, Math.ceil(total / pageSize)) : 1;
+  const clamped = Number.isFinite(page) && page >= 1 ? Math.floor(page) : 1;
+  const current = Math.min(clamped, count);
+  const start = (current - 1) * pageSize;
+  return {
+    rows: records.slice(start, start + pageSize),
+    total,
+    page: current,
+    pageCount: count,
+    pageSize,
+  };
+}

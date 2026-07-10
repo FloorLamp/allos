@@ -24,6 +24,7 @@ import {
   activityProvenanceLabel,
 } from "@/lib/journal-format";
 import { storedActivityFault } from "@/lib/activity-validate";
+import { pickFoldValues } from "@/lib/import-review/conflicts";
 import { formatLongDate } from "@/lib/format-date";
 import type { ActivityComponent } from "@/lib/types";
 import { EmptyState } from "@/components/ui";
@@ -214,6 +215,8 @@ export default function HistorySection() {
         createdAt: a.created_at,
         updatedAt: a.updated_at,
       },
+      // Fold-field values for the manual-merge conflict preview (issue #100).
+      foldValues: pickFoldValues(a as unknown as Record<string, unknown>),
     };
 
     let group = byDate.get(a.date);

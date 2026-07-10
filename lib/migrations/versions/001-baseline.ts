@@ -624,6 +624,10 @@ export function up(db: Database.Database): void {
           UNIQUE (profile_id, metric, source, start_time, end_time)
         );
     CREATE INDEX IF NOT EXISTS idx_metric_samples_md ON metric_samples(profile_id, metric, date);
+    -- getLatestMetricSample sorts by end_time (deliberately NOT the derived date
+    -- column); this companion index serves ORDER BY end_time DESC LIMIT 1 as a
+    -- reverse index seek with no temp sort (#115).
+    CREATE INDEX IF NOT EXISTS idx_metric_samples_end ON metric_samples(profile_id, metric, end_time);
 
     CREATE TABLE IF NOT EXISTS hr_minutes (
           profile_id INTEGER NOT NULL REFERENCES profiles(id),

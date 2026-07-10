@@ -59,8 +59,12 @@ test("dashboard coaching 'Not today' snoozes the top recommendation (#39)", asyn
 test("biomarkers page surfaces a derived clinical index (#40)", async ({
   page,
 }) => {
-  await page.goto("/biomarkers");
-  // At least one derived index (Non-HDL, TG/HDL, eGFR) renders its Derived badge.
+  // Filter to the analyte via the server-side ?q= search: the table now ships
+  // one bounded page (#114), so on an unfiltered view the derived rows can land
+  // beyond page 1 for a long history — the filter keeps this assertion about
+  // "derived indices render", not about pagination order.
+  await page.goto("/biomarkers?q=non-hdl");
+  // The derived index renders its Derived badge.
   await expect(page.getByTestId("derived-badge").first()).toBeVisible();
 
   // Non-HDL Cholesterol is derived from the seeded Total + HDL readings.

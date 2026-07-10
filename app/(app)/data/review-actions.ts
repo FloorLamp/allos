@@ -9,6 +9,7 @@ import {
   BODY_METRIC_DOMAIN,
 } from "@/lib/import-review/detect";
 import { writeActivityFold } from "@/lib/merge-activity";
+import { parseOverrideFields } from "@/lib/import-review/conflicts";
 import { mergeBodyMetric } from "@/lib/body-metric-extract";
 import type { PairDecision } from "@/lib/import-review/detect";
 
@@ -48,6 +49,10 @@ export async function mergeActivityPair(formData: FormData) {
   const dropId = Number(formData.get("drop_id"));
   const signature = String(formData.get("signature") ?? "").trim();
   if (!keepId || !dropId || keepId === dropId || !signature) return;
+  // Conflict-preview overrides (issue #100): validated to real fold-field names
+  // only; each overridden field takes the discarded row's re-read value, never a
+  // client value. Empty for the common one-click merge.
+  const overrideFields = parseOverrideFields(formData.get("overrides"));
 
   const tx = db.transaction(() => {
     const keep = db
@@ -58,7 +63,7 @@ export async function mergeActivityPair(formData: FormData) {
       .get(dropId, profile.id) as Record<string, unknown> | undefined;
     if (!keep || !drop) return false;
 
-    writeActivityFold(profile.id, keepId, keep, drop);
+    writeActivityFold(profile.id, keepId, keep, drop, overrideFields);
     // Sets live on the kept row via activity_id; the discarded row's sets are
     // removed by the FK ON DELETE CASCADE when its row goes.
     db.prepare("DELETE FROM activities WHERE id = ? AND profile_id = ?").run(

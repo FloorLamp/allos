@@ -115,6 +115,70 @@ describe("mergeActivities", () => {
     expect(revalidate).toHaveBeenCalledWith("/");
   });
 
+  // Issue #100: a conflict-preview override makes the keeper take the DISCARDED
+  // row's value for one field, while every other field still folds keeper-wins.
+  it("applies a per-field override to the discarded row's value", async () => {
+    const login = createLogin();
+    const profile = createProfile("merge-override", login.id);
+    actAs(login, profile);
+
+    // Both rows carry a REAL, differing duration — the conflict case.
+    const keepId = insertActivity(profile.id, {
+      title: "Keeper",
+      duration_min: 42,
+      distance_km: 5,
+    });
+    const dropId = insertActivity(profile.id, {
+      title: "Dupe",
+      duration_min: 51,
+      distance_km: 5.1,
+    });
+
+    const { undoId } = await mergeActivities(
+      fd({
+        keep_id: keepId,
+        drop_id: dropId,
+        overrides: JSON.stringify(["duration_min"]),
+      })
+    );
+
+    const keep = activityRow(keepId)!;
+    expect(keep.duration_min).toBe(51); // overridden → discarded row's value
+    expect(keep.distance_km).toBe(5); // not overridden → keeper's value wins
+    expect(keep.edited).toBe(1);
+    expect(activityRow(dropId)).toBeUndefined();
+    expect(undoId).not.toBeNull();
+  });
+
+  // A client can only send field NAMES; an override naming a non-fold field (or a
+  // value it invented) can never take effect — the server re-reads the drop row and
+  // only ever writes that row's own value.
+  it("ignores an override for a non-fold field name", async () => {
+    const login = createLogin();
+    const profile = createProfile("merge-override-junk", login.id);
+    actAs(login, profile);
+
+    const keepId = insertActivity(profile.id, {
+      title: "Keeper",
+      duration_min: 42,
+    });
+    const dropId = insertActivity(profile.id, {
+      title: "Dupe",
+      duration_min: 51,
+    });
+
+    await mergeActivities(
+      fd({
+        keep_id: keepId,
+        drop_id: dropId,
+        overrides: JSON.stringify(["id", "source", "title"]),
+      })
+    );
+
+    // None of those are fold fields → the keeper-wins fold stands untouched.
+    expect(activityRow(keepId)!.duration_min).toBe(42);
+  });
+
   it("undo restores the discarded row from the returned token", async () => {
     const login = createLogin();
     const profile = createProfile("merge-undo", login.id);
