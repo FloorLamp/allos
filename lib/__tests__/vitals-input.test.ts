@@ -191,4 +191,45 @@ describe("normalizeVitalsInput", () => {
       },
     ]);
   });
+
+  it("maps the functional fitness markers to their canonical medical rows (#158)", () => {
+    const out = normalizeVitalsInput({
+      gripStrength: "48",
+      chairStand: "16",
+      balance: "42",
+    });
+    if ("error" in out) throw new Error(out.error);
+    expect(out.medical).toEqual([
+      {
+        canonical: "Grip Strength",
+        category: "vitals",
+        unit: "kg",
+        value_num: 48,
+      },
+      {
+        canonical: "30-Second Chair Stand",
+        category: "vitals",
+        unit: "reps",
+        value_num: 16,
+      },
+      {
+        canonical: "Single-Leg Balance",
+        category: "vitals",
+        unit: "seconds",
+        value_num: 42,
+      },
+    ]);
+    expect(out.samples).toEqual([]);
+  });
+
+  it("rejects out-of-range or non-integer functional markers (#158)", () => {
+    expect(validateVitalsInput({ gripStrength: "0" })).toMatch(/Grip strength/);
+    expect(validateVitalsInput({ gripStrength: "200" })).toMatch(
+      /Grip strength/
+    );
+    expect(validateVitalsInput({ chairStand: "16.5" })).toMatch(/whole number/);
+    expect(validateVitalsInput({ balance: "-1" })).toMatch(/Balance/);
+    // A lone valid functional marker satisfies the "at least one vital" gate.
+    expect(validateVitalsInput({ chairStand: "14" })).toBeNull();
+  });
 });

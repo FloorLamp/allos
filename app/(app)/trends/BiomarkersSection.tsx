@@ -11,6 +11,12 @@ import { groupContiguous } from "@/lib/table-sort";
 import { filterSeriesByRange } from "@/lib/trends";
 import { formatLongDate } from "@/lib/format-date";
 import type { DateRange } from "@/lib/timeline-format";
+import { getUserSex, getUserAgeOn } from "@/lib/settings";
+import { hasFitnessNorms } from "@/lib/fitness-norms";
+import {
+  fitnessContextFor,
+  FitnessPercentileInline,
+} from "@/components/FitnessPercentile";
 import { EmptyState, MedicalValue } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
 import StarredBiomarkers from "@/components/StarredBiomarkers";
@@ -38,6 +44,9 @@ export default async function BiomarkersSection({
 }) {
   const { profile } = await requireSession();
   const now = today(profile.id);
+  // Sex for the age/sex fitness-percentile inline (#158); age is resolved per row
+  // from the reading's date. Null sex hides every percentile (adult-context gate).
+  const sex = getUserSex(profile.id);
   const records = filterSeriesByRange(
     getMedicalRecords(profile.id, { range: flag, panel, sort: "name" }),
     range
@@ -223,6 +232,18 @@ export default async function BiomarkersSection({
                           unit={r.unit}
                           flag={r.flag}
                         />
+                        {r.is_latest &&
+                          r.canonical_name &&
+                          hasFitnessNorms(r.canonical_name) && (
+                            <FitnessPercentileInline
+                              ctx={fitnessContextFor(
+                                r.canonical_name,
+                                r.value_num,
+                                sex,
+                                getUserAgeOn(profile.id, r.date)
+                              )}
+                            />
+                          )}
                       </td>
                       <td className="td hidden text-slate-500 sm:table-cell dark:text-slate-400">
                         {r.reference_range ?? "—"}
