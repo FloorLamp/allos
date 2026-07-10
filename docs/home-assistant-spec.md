@@ -271,3 +271,52 @@ real HA instance before release:
    only it knows (who is home, which room) — kitchen-speaker TTS dose
    announcements, escalation light-flashes. Tracked separately (see the
    tracking issue's related list); NOT part of this spec's three PRs.
+
+## Appendix: HACS integration sketch (deferred — build when the generator's users ask)
+
+The endpoints above are the stable contract; a HACS custom integration is
+a **second client of that contract**, built only once the YAML-generator
+path has proven demand and hardened the payload shapes. Recorded here so
+whoever builds it starts from a design, not a conversation.
+
+**Packaging.** Separate repo (`allos-homeassistant`), Python,
+`custom_components/allos/` (manifest, config_flow, coordinator, one module
+per platform); HACS listing + an HA `brands` PR for the logo. The real
+cost is not the initial 2–4 weeks — it is HA's monthly release treadmill:
+an unmaintained integration decays within a year. That maintenance
+commitment is the go/no-go question.
+
+**Onboarding.** Config flow: URL + token → entities appear (no YAML, no
+restart). With server-side **mDNS advertisement** (`_allos._tcp`), HA
+proactively offers "Found Allos on your network" — the true one-click.
+One config entry per profile token; each entry registers an HA **device**
+("Allos — Dad"), mapping the household model onto HA's device registry.
+Options flow replaces the wizard's capability checkboxes.
+
+**Entity model** (what YAML REST sensors cannot express):
+
+- **`todo` entity per profile** — today's doses as a native HA to-do
+  list; checking an item calls `POST /dose` (taken). Works on any
+  dashboard and via voice assistants.
+- **`calendar` entity** from `/upcoming`'s appointments domain (native
+  cards + departure automations), superseding the `.ics` recipe.
+- **Sensors**: per-band attention counts, next-dose-at, minimum
+  days-of-supply — real entities with history, usable in automation
+  conditions.
+- **Services**: `allos.log_dose`, `allos.skip_dose`, `allos.send_event`,
+  `allos.ingest` — the dinnertime automation becomes one service call.
+- **Announcements invert cleanly**: the integration registers its own
+  webhook during config flow and re-emits reminders as HA events
+  (`allos_reminder`) — no user-pasted URLs (subsumes the manual half of
+  the notification-channel setup).
+
+All platforms sit on one `DataUpdateCoordinator` polling `/upcoming` at
+the same cadence as the REST-sensor path — identical server load.
+
+**Server-side additions it would want** (both additive, useful beyond
+HACS): the mDNS advertisement, and a tiny `GET /info` (instance name,
+version, capability list) for config-flow validation and device labeling.
+
+**Sequencing rule**: generator first, HACS when asked. Building HACS
+first would stabilize the API contract and the Python client
+simultaneously — the recipe for breaking-change churn.
