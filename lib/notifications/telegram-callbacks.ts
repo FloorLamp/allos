@@ -6,10 +6,13 @@ import { markDoseTaken } from "../queries";
 import { getProfilesByTelegramChatId } from "../settings";
 import {
   type AllCallback,
+  OUTDATED_MESSAGE_TEXT,
   parseAllCallback,
   parseTakeCallback,
   removeButton,
   resolveTapProfile,
+  tapAnswerText,
+  tapLogged,
 } from "./callback-data";
 import { collectWindowDoses, windowSessionForDose } from "./supplements";
 import { renderWindowMessage } from "./supplement-format";
@@ -58,8 +61,11 @@ export async function handleCallbackQuery(
 
   // markDoseTaken independently verifies the dose → supplement → profile chain
   // before logging, so a forged dose id from another profile is rejected there.
-  markDoseTaken(profileId, take.doseId, take.suppId, take.date);
-  await answerCallbackQuery(cq.id, "Logged ✅");
+  // The message the button lives in is a frozen snapshot — the dose may have
+  // been deleted/retired by an edit, or its item paused, since it was sent — so
+  // answer with what ACTUALLY happened rather than an unconditional "Logged".
+  const outcome = markDoseTaken(profileId, take.doseId, take.suppId, take.date);
+  await answerCallbackQuery(cq.id, tapAnswerText(outcome));
 
   const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
   const messageId = cq.message?.message_id;
@@ -84,12 +90,18 @@ export async function handleCallbackQuery(
     return;
   }
 
-  // Fallback: the tapped dose is gone (deleted) or no longer due (deactivated
-  // supplement / ended situation), so there's no session view to rebuild — just
-  // drop the tapped button, replacing the text once none remain.
+  // Fallback: the tapped dose is gone (deleted/retired) or no longer due
+  // (paused supplement / ended situation), so there's no session view to
+  // rebuild — just drop the tapped button. Once none remain, the closing text
+  // must match the truth: "All done" only when this tap actually logged;
+  // otherwise say the reminder is stale so the user knows nothing was recorded.
   const remaining = removeButton(rows, cq.data as string);
   if (remaining.length === 0) {
-    await editMessageText(chatId, messageId, "All done 💊✅");
+    await editMessageText(
+      chatId,
+      messageId,
+      tapLogged(outcome) ? "All done 💊✅" : OUTDATED_MESSAGE_TEXT
+    );
   } else {
     await editMessageReplyMarkup(chatId, messageId, remaining);
   }
@@ -114,23 +126,41 @@ async function handleAllTaken(
     return;
   }
 
+  // The window's doses are re-collected from CURRENT state (active, non-retired,
+  // due today), so this tolerates schedule edits made after the message was
+  // sent. Count only real inserts; when the whole window has since emptied
+  // (schedule restructured / items paused), say so instead of "Logged ✅".
   const entries = collectWindowDoses(profileId, all.window, all.date);
   let logged = 0;
   for (const e of entries) {
-    if (!e.taken) {
-      markDoseTaken(profileId, e.dose.id, e.supp.id, all.date);
+    if (
+      !e.taken &&
+      markDoseTaken(profileId, e.dose.id, e.supp.id, all.date) === "logged"
+    ) {
       logged++;
     }
   }
-  await answerCallbackQuery(cq.id, logged > 0 ? "All logged ✅" : "Logged ✅");
+  await answerCallbackQuery(
+    cq.id,
+    entries.length === 0
+      ? "Not logged — this reminder is out of date. Open the app."
+      : logged > 0
+        ? "All logged ✅"
+        : "Logged ✅"
+  );
 
   const messageId = cq.message?.message_id;
   if (chatId == null || messageId == null) return;
 
   // Rebuild from current state — everything's now taken, so this renders the
-  // completion summary (no buttons).
+  // completion summary (no buttons). With nothing due in the window anymore
+  // there is no session to render; replace the stale message (it had buttons —
+  // this tap came from one) so it stops advertising doses that no longer exist.
   const refreshed = collectWindowDoses(profileId, all.window, all.date);
-  if (refreshed.length === 0) return;
+  if (refreshed.length === 0) {
+    await editMessageText(chatId, messageId, OUTDATED_MESSAGE_TEXT);
+    return;
+  }
   const msg = renderWindowMessage(profileId, all.window, all.date, refreshed);
   await editMessageText(chatId, messageId, renderMessageHtml(msg), {
     keyboard: messageKeyboard(msg),

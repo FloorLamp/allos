@@ -328,13 +328,16 @@ export async function updateSupplement(formData: FormData) {
       id,
       profile.id
     );
-    // Reconcile doses: update those with an id, insert new ones, delete the
-    // rest. Updating in place (rather than delete-all + re-insert) preserves the
-    // adherence logs keyed on dose_id.
+    // Reconcile doses: update those with an id, insert new ones, and remove the
+    // rest from the schedule. Updating in place (rather than delete-all +
+    // re-insert) preserves the adherence logs keyed on dose_id AND keeps any
+    // in-flight Telegram reminder buttons (which carry the dose id) valid across
+    // a brand/dosage edit. The retired = 0 guard keeps a forged/stale id from
+    // rewriting a retired dose's row, which history still displays through.
     const ins = insertDoseStmt();
     const upd = db.prepare(
       `UPDATE intake_item_doses SET amount = ?, time_of_day = ?, food_timing = ?, sort = ?
-       WHERE id = ? AND supplement_id = ?`
+       WHERE id = ? AND supplement_id = ? AND retired = 0`
     );
     const keptIds: number[] = [];
     doses.forEach((d, i) => {
@@ -346,10 +349,21 @@ export async function updateSupplement(formData: FormData) {
         keptIds.push(Number(info.lastInsertRowid));
       }
     });
+    // A dose the user removed is RETIRED (kept, flagged) when adherence logs
+    // reference it — hard-deleting would ON DELETE CASCADE away its entire taken
+    // history — and hard-deleted only when no log ever pointed at it. Already-
+    // retired rows are never resubmitted by the form (it only sees live doses),
+    // so both statements skip them to leave history untouched.
     const placeholders = keptIds.map(() => "?").join(",");
     db.prepare(
+      `UPDATE intake_item_doses SET retired = 1
+        WHERE supplement_id = ? AND retired = 0 AND id NOT IN (${placeholders})
+          AND EXISTS (SELECT 1 FROM intake_item_logs l
+                       WHERE l.dose_id = intake_item_doses.id)`
+    ).run(id, ...keptIds);
+    db.prepare(
       `DELETE FROM intake_item_doses
-       WHERE supplement_id = ? AND id NOT IN (${placeholders})`
+        WHERE supplement_id = ? AND retired = 0 AND id NOT IN (${placeholders})`
     ).run(id, ...keptIds);
     reconcilePairs(id, pairs, profile.id);
     // Ensure-course invariant: if this row is (or just became) a
@@ -371,13 +385,17 @@ export async function toggleTaken(formData: FormData) {
   const doseId = Number(formData.get("dose_id"));
   if (!doseId) return;
   // Verify the dose belongs to a supplement this profile owns, and use the
-  // row's own supplement_id rather than trusting the form field.
+  // row's own supplement_id rather than trusting the form field. A retired dose
+  // is no longer part of the schedule — the UI never renders a toggle for one,
+  // and refusing it here keeps a stale/forged id from touching its history.
   const dose = db
     .prepare(
-      `SELECT supplement_id FROM intake_item_doses
-       WHERE id = ? AND supplement_id IN (SELECT id FROM intake_items WHERE profile_id = ?)`
+      `SELECT supplement_id, amount FROM intake_item_doses
+       WHERE id = ? AND retired = 0
+         AND supplement_id IN (SELECT id FROM intake_items WHERE profile_id = ?)`
     )
-    .get(doseId, profile.id) as { supplement_id: number } | undefined;
+    .get(doseId, profile.id) as
+    { supplement_id: number; amount: string | null } | undefined;
   if (!dose) return;
   const date = today(profile.id);
   const existing = db
@@ -391,9 +409,11 @@ export async function toggleTaken(formData: FormData) {
     // set of currently-logged doses (keeps toggle off→on from double-decrementing).
     incrementSupply(profile.id, dose.supplement_id);
   } else {
+    // The amount is snapshotted at confirm time so history keeps showing what
+    // was actually taken even after a later dosage edit rewrites the dose row.
     db.prepare(
-      "INSERT INTO intake_item_logs (dose_id, supplement_id, date) VALUES (?,?,?)"
-    ).run(doseId, dose.supplement_id, date);
+      "INSERT INTO intake_item_logs (dose_id, supplement_id, date, amount) VALUES (?,?,?,?)"
+    ).run(doseId, dose.supplement_id, date, dose.amount);
     // A newly confirmed dose consumes one dose's worth of supply.
     decrementSupply(profile.id, dose.supplement_id);
   }

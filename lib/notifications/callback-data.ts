@@ -1,6 +1,7 @@
 // Pure helpers for Telegram callback payloads — no DB/network, so they can be
 // unit-tested (lib/__tests__). Consumed by telegram-callbacks.ts.
 
+import type { DoseTakenOutcome } from "../types";
 import type { ReminderWindow } from "./supplement-format";
 
 export type InlineKeyboard = { text: string; callback_data: string }[][];
@@ -81,6 +82,35 @@ export function resolveTapProfile(
     ? take.profileId
     : null;
 }
+
+// True when a tap actually resulted in a confirmed dose (new or idempotent
+// repeat) — the only outcomes a "Logged ✅" acknowledgement is honest for.
+export function tapLogged(outcome: DoseTakenOutcome): boolean {
+  return outcome === "logged" || outcome === "already-logged";
+}
+
+// The Telegram callback-answer toast for a tap, per markDoseTaken outcome.
+// A reminder message is a frozen snapshot: by the time a button is tapped the
+// dose may have been deleted/retired by an edit, or its item paused — those
+// taps log NOTHING and must say so instead of claiming "Logged ✅" (the old
+// behavior, which falsely confirmed doses of possibly-critical medications).
+export function tapAnswerText(outcome: DoseTakenOutcome): string {
+  switch (outcome) {
+    case "logged":
+    case "already-logged":
+      return "Logged ✅";
+    case "inactive":
+      return "Not logged — this item is paused. Open the app to log it.";
+    case "stale-dose":
+    default:
+      return "Not logged — this reminder is out of date. Open the app.";
+  }
+}
+
+// Replacement body when a message can't be rebuilt from current state and a
+// FAILED tap consumed its last button — "All done 💊✅" would be a lie.
+export const OUTDATED_MESSAGE_TEXT =
+  "This reminder is out of date — check the app for your current schedule.";
 
 // Drop the tapped button from an inline keyboard, removing rows that become
 // empty. An empty result means the tap consumed the last button.

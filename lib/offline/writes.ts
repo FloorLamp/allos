@@ -45,20 +45,25 @@ export function confirmDoseTaken(
   if (!Number.isInteger(doseId) || doseId <= 0 || !isRealIsoDate(date)) {
     return { ok: false, inserted: false };
   }
+  // A dose retired by an edit while the confirm sat in the offline queue is a
+  // permanent rejection, same as a deleted one — its history must stay frozen.
   const dose = db
     .prepare(
-      `SELECT supplement_id FROM intake_item_doses
-       WHERE id = ? AND supplement_id IN (SELECT id FROM intake_items WHERE profile_id = ?)`
+      `SELECT supplement_id, amount FROM intake_item_doses
+       WHERE id = ? AND retired = 0
+         AND supplement_id IN (SELECT id FROM intake_items WHERE profile_id = ?)`
     )
-    .get(doseId, profileId) as { supplement_id: number } | undefined;
+    .get(doseId, profileId) as
+    { supplement_id: number; amount: string | null } | undefined;
   if (!dose) return { ok: false, inserted: false };
   const existing = db
     .prepare("SELECT id FROM intake_item_logs WHERE dose_id = ? AND date = ?")
     .get(doseId, date);
   if (existing) return { ok: true, inserted: false };
+  // Amount snapshotted at confirm time (matches toggleTaken/markDoseTaken).
   db.prepare(
-    "INSERT INTO intake_item_logs (dose_id, supplement_id, date) VALUES (?,?,?)"
-  ).run(doseId, dose.supplement_id, date);
+    "INSERT INTO intake_item_logs (dose_id, supplement_id, date, amount) VALUES (?,?,?,?)"
+  ).run(doseId, dose.supplement_id, date, dose.amount);
   decrementSupply(profileId, dose.supplement_id);
   return { ok: true, inserted: true };
 }
