@@ -19,6 +19,7 @@ import {
   type WorkoutRecommendation,
 } from "@/lib/notifications/workout-format";
 import { suggestTitle } from "@/lib/lifts";
+import { trainingSignalKey } from "@/lib/workout-nudge";
 
 // A Wednesday, so the weekday-habit dates below (all Wednesdays) line up.
 const TODAY = "2026-07-08";
@@ -210,7 +211,7 @@ describe("cross-surface consistency (#221)", () => {
     today: TODAY,
     routine: [
       {
-        target: { scope_kind: "region", scope_value: "Chest" },
+        target: { id: 42, scope_kind: "region", scope_value: "Chest" },
         count: 0,
         per_week: 2,
         met: false,
@@ -262,5 +263,14 @@ describe("cross-surface consistency (#221)", () => {
     // All three surfaces resolved to the identical focus + lead exercise.
     expect(strengthRec!.exercises![0]).toBe(nw.exercises[0]);
     expect(wr.exercises[0]).toBe(nw.exercises[0]);
+  });
+
+  it("carries the originating target id so the push shares the Upcoming finding key (#245)", () => {
+    // The core forwards the behind target's frequency_targets id, and the SAME
+    // trainingSignalKey feeds the Upcoming `training:<id>` finding — so the workout
+    // nudge can be silenced by a page dismissal (see workout-nudge.test.ts).
+    const nw = recommendNextWorkout(fixture);
+    expect(nw.behind.map((t) => t.id)).toEqual([42]);
+    expect(trainingSignalKey(nw.behind[0].id!)).toBe("training:42");
   });
 });

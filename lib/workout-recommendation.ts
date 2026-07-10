@@ -76,6 +76,12 @@ export interface DatedExercise {
 // The slice of a behind weekly target the core carries forward so each surface
 // can render its own copy without re-deriving the numbers.
 export interface BehindTarget {
+  // The frequency_targets row id — the identity the Upcoming `training:<id>` finding
+  // is keyed on (#245). Carried through so the workout nudge can derive the SAME
+  // `trainingSignalKey(id)` and be silenced when that finding is dismissed/snoozed.
+  // Null only when the caller's target has no id (test fixtures); production always
+  // supplies it.
+  id: number | null;
   scopeKind: string; // 'type' | 'region' | 'group'
   scopeValue: string;
   count: number;
@@ -152,6 +158,7 @@ function byFractionComplete(
 
 function toBehindTarget(t: RoutineTargetProgress): BehindTarget {
   return {
+    id: t.target.id ?? null,
     scopeKind: t.target.scope_kind,
     scopeValue: t.target.scope_value,
     count: t.count,

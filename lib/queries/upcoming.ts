@@ -26,6 +26,7 @@ import {
   DEFAULT_LOW_SUPPLY_DAYS,
 } from "../refill";
 import { refillSignalKey } from "../refill-nudge";
+import { trainingSignalKey } from "../workout-nudge";
 import { assessSchedule } from "../immunization-status";
 import {
   assessCatalog,
@@ -523,7 +524,7 @@ function trainingItems(profileId: number): UpcomingItem[] {
   return getFrequencyTargetProgress(profileId)
     .filter((p) => !p.met)
     .map((p) => ({
-      key: `training:${p.target.id}`,
+      key: trainingSignalKey(p.target.id),
       domain: "training" as const,
       title: frequencyScopeLabel(p.target.scope_kind, p.target.scope_value),
       detail: "Weekly training target",
