@@ -17,7 +17,7 @@ import {
 } from "../import-log";
 import {
   mergeFeed,
-  syncEntry,
+  collapseQuietSyncs,
   documentEntry,
   jobEntry,
   type FeedEntry,
@@ -108,8 +108,19 @@ export function getImportLog(profileId: number): ImportLogRow[] {
 // (getRecentSyncEvents, getImportLogDocuments, getImportLogJobs) — so scoping is
 // inherited — and hands the merge/humanize to the pure lib/import-feed. Capped at
 // `limit` after the merge so one noisy stream can't crowd out the others.
+//
+// Sync events are scanned deeper than `limit` (SYNC_FEED_SCAN) and run through
+// collapseQuietSyncs FIRST (issue #137): a push-based integration that checks in
+// hourly and finds nothing new would otherwise post one "nothing new" row an hour
+// and bury every real import. Consecutive no-op syncs per provider fold into a
+// single "no new data · N checks" line, so the deep scan makes that count honest
+// without letting the noise occupy `limit` feed slots.
+const SYNC_FEED_SCAN = 200;
+
 export function getImportFeed(profileId: number, limit = 40): FeedEntry[] {
-  const syncs = getRecentSyncEvents(profileId, limit).map(syncEntry);
+  const syncs = collapseQuietSyncs(
+    getRecentSyncEvents(profileId, SYNC_FEED_SCAN)
+  );
   const documents = getImportLogDocuments(profileId).map(documentEntry);
   const jobs = getImportLogJobs(profileId).map(jobEntry);
   return mergeFeed([...syncs, ...documents, ...jobs]).slice(0, limit);

@@ -57,10 +57,21 @@ const ins = db.prepare(
    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 );
 
-// Two clean syncs, then a newer Strava failure — so Strava is "currently failing"
-// (its latest event is the failure) while Health Connect is healthy. The Health
-// Connect sync carries the split (30 new + 10 changed + 2 skipped); the
-// Strava sync is an all-unchanged re-scan of the rolling window ("nothing new").
+// One meaningful Health Connect sync, then a RUN of hourly all-unchanged Strava
+// re-scans (the "nothing new every hour" spam of issue #137), then a newer Strava
+// failure — so Strava is "currently failing" (its latest event is the failure)
+// while Health Connect is healthy. The Health Connect sync carries the split (30
+// new + 10 changed + 2 skipped). The four consecutive Strava no-ops (all ok=1,
+// 0 inserted + 0 updated) must COLLAPSE into a single "No new data · 4 checks"
+// line in the Review feed rather than four rows. The failure below stays newest so
+// the "currently failing" surface is unaffected.
+//
+// NOTE: these timestamps are deliberately fixed past dates, NOT relative to today.
+// Nothing compares them against `now`/`today()` — the feed sorts them purely by
+// string and "currently failing" is decided by per-provider ordering within this
+// block — so they can't drift or collide with a relative fixture the way a
+// hardcoded date in a table that ALSO has daysAgo() rows can. The only invariant
+// is that the failure sorts newest among Strava and the no-ops stay consecutive.
 ins.run(
   PROFILE_ID,
   "health-connect",
@@ -77,22 +88,25 @@ ins.run(
   hcRawRef, // raw_ref → drives the admin "View raw" affordance (#9)
   null
 );
-ins.run(
-  PROFILE_ID,
-  "strava",
-  "2026-07-08 08:00:00",
-  1,
-  "2026-07-01",
-  "2026-07-08",
-  6, // received
-  6, // written
-  0, // inserted
-  0, // updated
-  6, // unchanged → "nothing new"
-  0, // skipped
-  null, // raw_ref
-  null
-);
+// Four consecutive hourly Strava no-op re-scans (05:00–08:00) → one collapsed line.
+for (const hour of ["05", "06", "07", "08"]) {
+  ins.run(
+    PROFILE_ID,
+    "strava",
+    `2026-07-08 ${hour}:00:00`,
+    1,
+    "2026-07-01",
+    "2026-07-08",
+    6, // received
+    6, // written
+    0, // inserted
+    0, // updated
+    6, // unchanged → no new data
+    0, // skipped
+    null, // raw_ref
+    null
+  );
+}
 ins.run(
   PROFILE_ID,
   "strava",

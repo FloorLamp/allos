@@ -9,7 +9,11 @@
 // lib/queries/imports.ts (getImportFeed) — so it's covered by the pure unit tier
 // (lib/__tests__/import-feed.test.ts).
 
-import { formatSplitLabel, formatWindow } from "./integrations/sync-log";
+import {
+  formatSplitLabel,
+  formatWindow,
+  isNoOpSyncEvent,
+} from "./integrations/sync-log";
 import {
   documentLogStatus,
   jobLogStatus,
@@ -64,11 +68,73 @@ export interface FeedJob {
 // patient-name provenance flag, a sync's admin raw payload).
 export type FeedEntry =
   | { stream: "sync"; at: string; sortId: number; event: FeedSyncEvent }
+  // A collapsed run of consecutive no-op syncs for ONE provider (issue #137):
+  // `count` such syncs found nothing new, the newest at `latest` (which is also the
+  // entry's sort time) and the oldest at `oldest`.
+  | {
+      stream: "sync-quiet";
+      at: string;
+      sortId: number;
+      provider: string;
+      count: number;
+      oldest: string;
+      latest: string;
+    }
   | { stream: "document"; at: string; sortId: number; doc: FeedDocument }
   | { stream: "job"; at: string; sortId: number; job: FeedJob };
 
 export function syncEntry(event: FeedSyncEvent): FeedEntry {
   return { stream: "sync", at: event.at, sortId: event.id, event };
+}
+
+// Collapse a run of consecutive no-op syncs (newest-first, non-empty, all the same
+// provider) into one summary entry pinned at the newest event's time/id. Pure.
+export function syncQuietEntry(runNewestFirst: FeedSyncEvent[]): FeedEntry {
+  const latest = runNewestFirst[0];
+  const oldest = runNewestFirst[runNewestFirst.length - 1];
+  return {
+    stream: "sync-quiet",
+    at: latest.at,
+    sortId: latest.id,
+    provider: latest.provider,
+    count: runNewestFirst.length,
+    oldest: oldest.at,
+    latest: latest.at,
+  };
+}
+
+// Fold a profile's raw sync events (newest-first, providers interleaved) into feed
+// entries, collapsing each maximal run of CONSECUTIVE no-op syncs PER PROVIDER into
+// a single "no new data" summary. A meaningful sync (something inserted/updated) or
+// a failure renders as its own entry, so a currently-broken integration and its
+// recovery history stay fully visible; only the hourly "nothing new" noise (#137) is
+// summarized. Grouping is per-provider so two devices both checking in hourly each
+// collapse their own run instead of breaking each other's. Pure → unit-testable.
+export function collapseQuietSyncs(
+  eventsNewestFirst: FeedSyncEvent[]
+): FeedEntry[] {
+  const byProvider = new Map<string, FeedSyncEvent[]>();
+  for (const ev of eventsNewestFirst) {
+    const list = byProvider.get(ev.provider);
+    if (list) list.push(ev);
+    else byProvider.set(ev.provider, [ev]);
+  }
+  const out: FeedEntry[] = [];
+  for (const evs of byProvider.values()) {
+    let i = 0;
+    while (i < evs.length) {
+      if (!isNoOpSyncEvent(evs[i])) {
+        out.push(syncEntry(evs[i]));
+        i++;
+        continue;
+      }
+      let j = i;
+      while (j < evs.length && isNoOpSyncEvent(evs[j])) j++;
+      out.push(syncQuietEntry(evs.slice(i, j)));
+      i = j;
+    }
+  }
+  return out;
 }
 export function documentEntry(doc: FeedDocument): FeedEntry {
   return { stream: "document", at: doc.uploaded_at, sortId: doc.id, doc };
@@ -86,6 +152,7 @@ export function mergeFeed(entries: FeedEntry[]): FeedEntry[] {
     document: 0,
     job: 1,
     sync: 2,
+    "sync-quiet": 3,
   };
   return [...entries].sort((a, b) => {
     if (a.at !== b.at) return a.at < b.at ? 1 : -1;
@@ -211,6 +278,22 @@ export function feedItemView(
       detailMuted: muted,
       skipped: ev.skipped ?? 0,
       meta: formatWindow(ev.window_start, ev.window_end),
+      patientName: null,
+    };
+  }
+  if (entry.stream === "sync-quiet") {
+    return {
+      key: `sync-quiet:${entry.provider}:${entry.sortId}`,
+      tone: "neutral",
+      title: providerName(entry.provider),
+      href: null,
+      detail:
+        entry.count === 1
+          ? "No new data"
+          : `No new data · ${entry.count} checks`,
+      detailMuted: true,
+      skipped: 0,
+      meta: null,
       patientName: null,
     };
   }

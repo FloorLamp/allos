@@ -164,6 +164,27 @@ export function formatWindow(start: string | null, end: string | null): string {
   return (start ?? end) as string;
 }
 
+// A "no-op" sync (issue #137): a SUCCESSFUL sync that brought nothing meaningful in
+// — 0 inserted AND 0 updated (an all-unchanged re-scan of the rolling window, or an
+// empty incremental pull). A push-based integration that checks in hourly emits one
+// of these every hour, which floods the Review feed; the feed collapses consecutive
+// no-ops per provider into a single summary line. A FAILURE is never a no-op (it's
+// always signal that stays visible), and a LEGACY event whose split columns are all
+// null predates the accounting — we keep it visible with its flat `written` count
+// rather than guessing. Pure → unit-testable.
+export function isNoOpSyncEvent(ev: {
+  ok: number;
+  inserted: number | null;
+  updated: number | null;
+  unchanged: number | null;
+}): boolean {
+  if (!ev.ok) return false;
+  if (ev.inserted === null && ev.updated === null && ev.unchanged === null) {
+    return false;
+  }
+  return (ev.inserted ?? 0) + (ev.updated ?? 0) === 0;
+}
+
 // Given sync events ordered NEWEST-FIRST (as the queries return them), keep only
 // the most recent event per provider whose latest outcome is a failure — i.e. the
 // integrations that are *currently* broken. A later successful sync drops a

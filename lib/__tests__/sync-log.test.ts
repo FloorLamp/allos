@@ -10,6 +10,7 @@ import {
   formatSplitLabel,
   rowsEqual,
   isEditLocked,
+  isNoOpSyncEvent,
 } from "@/lib/integrations/sync-log";
 
 describe("isEditLocked", () => {
@@ -233,6 +234,44 @@ describe("formatWindow", () => {
     expect(formatWindow("2024-06-01", "2024-06-03")).toBe(
       "2024-06-01 → 2024-06-03"
     );
+  });
+});
+
+describe("isNoOpSyncEvent", () => {
+  it("is true for a successful all-unchanged re-scan (0 inserted, 0 updated)", () => {
+    expect(
+      isNoOpSyncEvent({ ok: 1, inserted: 0, updated: 0, unchanged: 6 })
+    ).toBe(true);
+  });
+
+  it("is true for a wholly empty successful sync (0/0/0)", () => {
+    expect(
+      isNoOpSyncEvent({ ok: 1, inserted: 0, updated: 0, unchanged: 0 })
+    ).toBe(true);
+  });
+
+  it("is false when anything was inserted or updated", () => {
+    expect(
+      isNoOpSyncEvent({ ok: 1, inserted: 3, updated: 0, unchanged: 0 })
+    ).toBe(false);
+    expect(
+      isNoOpSyncEvent({ ok: 1, inserted: 0, updated: 2, unchanged: 5 })
+    ).toBe(false);
+  });
+
+  it("is false for a FAILURE even with an empty split (a failure is always signal)", () => {
+    expect(
+      isNoOpSyncEvent({ ok: 0, inserted: 0, updated: 0, unchanged: 0 })
+    ).toBe(false);
+    expect(
+      isNoOpSyncEvent({ ok: 0, inserted: null, updated: null, unchanged: null })
+    ).toBe(false);
+  });
+
+  it("is false for a legacy event whose split columns are all null (kept visible)", () => {
+    expect(
+      isNoOpSyncEvent({ ok: 1, inserted: null, updated: null, unchanged: null })
+    ).toBe(false);
   });
 });
 
