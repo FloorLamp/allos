@@ -25,6 +25,7 @@ import {
   getZone2MinutesInWindow,
 } from "../queries";
 import { recentPRs, recentCardioPRs } from "../coaching";
+import { totalEstimatedKcal, type DatedWeight } from "../calorie-estimate";
 import { isDueOn } from "../supplement-schedule";
 import { currentStreak, flexibleStreak } from "../streak";
 import {
@@ -123,7 +124,8 @@ export function gatherRecapInput(
   const weekStart = getWeekStart(profileId);
   const win = resolveRecapWindow(td, days, weekMode, weekStart);
 
-  const activities = getActivities(profileId).map(asWorkout);
+  const allActivities = getActivities(profileId);
+  const activities = allActivities.map(asWorkout);
   const workouts = activities.filter((w) =>
     inWindow(w.date, win.start, win.end)
   );
@@ -134,6 +136,21 @@ export function gatherRecapInput(
   const volumeRows = getVolumeByDate(profileId);
   const volumeKg = sumVolume(volumeRows, win.start, win.end);
   const prevVolumeKg = sumVolume(volumeRows, win.prevStart, win.prevEnd);
+
+  // Estimated calorie burn (issue #151) from MANUAL activities: each scored against
+  // the bodyweight nearest its date, so a full (unfiltered) weight series is needed
+  // for the nearest-in-time lookup — not just the in-window weigh-ins below.
+  const weightSeries: DatedWeight[] = getWeights(profileId)
+    .filter((w) => w.weight_kg != null)
+    .map((w) => ({ date: w.date, weightKg: w.weight_kg as number }));
+  const estimatedKcal = totalEstimatedKcal(
+    allActivities.filter((a) => inWindow(a.date, win.start, win.end)),
+    weightSeries
+  );
+  const prevEstimatedKcal = totalEstimatedKcal(
+    allActivities.filter((a) => inWindow(a.date, win.prevStart, win.prevEnd)),
+    weightSeries
+  );
 
   // PRs (strength + cardio) set within the recap window; labels are canonical
   // exercise / activity display names, de-duplicated in first-seen order. The PR
@@ -196,6 +213,8 @@ export function gatherRecapInput(
     prevWorkouts,
     volumeKg,
     prevVolumeKg,
+    estimatedKcal,
+    prevEstimatedKcal,
     prLabels,
     adherence: windowAdherence(profileId, win.start, win.end),
     weights,

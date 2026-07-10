@@ -31,6 +31,9 @@ export interface ActivityEditData {
   edited?: number | null;
   created_at?: string;
   updated_at?: string | null;
+  // Stored estimated calories for a MANUAL activity (issue #151), so an edit
+  // preloads the saved value instead of recomputing it. NULL/absent otherwise.
+  est_calories?: number | null;
   sets: {
     exercise: string;
     set_number: number;

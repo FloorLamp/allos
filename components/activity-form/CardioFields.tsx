@@ -50,6 +50,7 @@ export default function CardioFields({
           <input
             type="number"
             min="0"
+            data-testid="cardio-duration"
             value={p.durationMin}
             onChange={(e) => onDurationMin(stripNegative(e.target.value))}
             className={`input bg-white dark:bg-ink-900 ${

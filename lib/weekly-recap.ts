@@ -115,6 +115,12 @@ export interface RecapInput {
   // Strength training volume (kg lifted) summed over each window.
   volumeKg: number;
   prevVolumeKg: number;
+  // Total ESTIMATED calorie burn (issue #151) from MANUAL activities in each
+  // window — MET dataset × nearest bodyweight × duration (lib/calorie-estimate).
+  // Both optional/null when nothing estimable was logged; the line is then omitted.
+  // Always an estimate, kept distinct from any device-measured energy.
+  estimatedKcal?: number | null;
+  prevEstimatedKcal?: number | null;
   // Personal records (strength + cardio) dated within the current window; labels
   // are short display names ("Bench press", "Running") for the summary line.
   prLabels: string[];
@@ -236,6 +242,25 @@ export function buildWeeklyRecap(input: RecapInput): WeeklyRecap {
       label: "Volume",
       value: `${disp} ${wu}`,
       delta: p == null ? undefined : `${signed(p)}%`,
+    });
+  }
+
+  // Estimated calorie burn (issue #151) from manual activities. The "≈" and the
+  // "estimated" annotation keep it visually distinct from a measured total — it is
+  // a MET-based estimate, never a device reading.
+  const estKcal =
+    input.estimatedKcal != null ? Math.round(input.estimatedKcal) : 0;
+  const prevEstKcal =
+    input.prevEstimatedKcal != null ? Math.round(input.prevEstimatedKcal) : 0;
+  if (estKcal > 0 || prevEstKcal > 0) {
+    lines.push({
+      key: "calories",
+      label: "Calories",
+      value: `≈${estKcal.toLocaleString("en-US")} kcal`,
+      delta:
+        prevEstKcal > 0
+          ? `estimated · ${prevEstKcal.toLocaleString("en-US")} last ${noun}`
+          : "estimated",
     });
   }
 

@@ -6,5 +6,6 @@
   "005-dose-history.ts": "7550fee0dfd1ca82f3d727c679c2c6f2a7de50528239dd218c67fe8b38f60a93",
   "006-fk-link-integrity.ts": "eb894fbbae7391469afadc3016a6de6f8df8240727ba6ad46ddfb72c6eefb659",
   "007-appointment-kind.ts": "0f9320f533bd270f3ca83f45d9c08bcd3a2ada51ef22dd5d873a8b36f1e57056",
-  "008-dose-skip-state.ts": "0df27eb3162fd4353a44572d354629f35d6c98d23ecd4e221f5e424b53e7e518"
+  "008-dose-skip-state.ts": "0df27eb3162fd4353a44572d354629f35d6c98d23ecd4e221f5e424b53e7e518",
+  "009-activity-est-calories.ts": "686f1c4c341f5096b386fa2283e0686858250935c16c9982dec79970eec93d80"
 }

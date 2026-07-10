@@ -70,6 +70,7 @@ import CardioFields from "./activity-form/CardioFields";
 import StrengthSets from "./activity-form/StrengthSets";
 import ActivityProvenance from "@/components/ActivityProvenance";
 import { activityProvenanceLabel } from "@/lib/journal-format";
+import { estimateActivityKcal } from "@/lib/calorie-estimate";
 
 // Re-exported so existing callers keep importing the edit-payload shape from
 // this module; the definition now lives in ./activity-form/model.
@@ -182,6 +183,17 @@ export default function ActivityForm({
   const [endTime, setEndTime] = useState(editData?.end_time ?? "");
   const [intensity, setIntensity] = useState(seed?.intensity ?? "");
   const [notes, setNotes] = useState(seed?.notes ?? "");
+  // Estimated calories (issue #151): the field auto-fills from the MET dataset ×
+  // this profile's bodyweight × duration, and stays editable so the user can
+  // override it. An override (or an edit of a manual row that already saved one)
+  // sets estEdited, which pins the field against further auto-fill. Kept as a
+  // string so an empty field round-trips (clears the stored estimate).
+  const [estCalories, setEstCalories] = useState<string>(() =>
+    seed?.est_calories != null ? String(Math.round(seed.est_calories)) : ""
+  );
+  const [estEdited, setEstEdited] = useState<boolean>(
+    seed?.est_calories != null
+  );
   // Editable activity name. For new activities it tracks the auto-generated
   // title until the user types their own; for edits (and repeat prefills) it
   // keeps the seeded title.
@@ -286,6 +298,43 @@ export default function ActivityForm({
       : null;
   const firstValid = namedParts[0];
   const headingType = firstValid ? partType(firstValid) : null;
+
+  // Auto-computed calorie ESTIMATE for this (manual) draft: the MET dataset × this
+  // profile's bodyweight × the activity's duration (issue #151). null when there's
+  // no bodyweight on record, no usable duration, or nothing valid entered yet — the
+  // field then stays empty rather than showing a fabricated number.
+  const autoEstimateKcal = useMemo(() => {
+    if (bodyweightKg == null || namedParts.length === 0) return null;
+    const { comps, primaryType } = buildActivityPayload(classifier, namedParts);
+    return estimateActivityKcal(
+      {
+        type: primaryType,
+        title: effectiveTitle,
+        intensity: intensity || null,
+        duration_min: overallDuration,
+        components: comps.length ? JSON.stringify(comps) : null,
+        source: null,
+      },
+      bodyweightKg
+    );
+  }, [
+    bodyweightKg,
+    namedParts,
+    classifier,
+    effectiveTitle,
+    intensity,
+    overallDuration,
+  ]);
+  // Keep the field tracking the auto-estimate until the user types their own.
+  useEffect(() => {
+    if (estEdited) return;
+    setEstCalories(autoEstimateKcal != null ? String(autoEstimateKcal) : "");
+  }, [autoEstimateKcal, estEdited]);
+  // Only MANUAL activities get an estimate field — an imported row carries device
+  // energy. Shown once there's an estimate to fill (or the user has typed one).
+  const showEstimate =
+    !editData?.source &&
+    (autoEstimateKcal != null || estCalories.trim() !== "");
 
   // Closing goes through requestClose (defined below the save machinery), which
   // warns when a blocked form would drop edits; the ref keeps this effect
@@ -542,6 +591,9 @@ export default function ActivityForm({
     if (startTime) fd.set("start_time", startTime);
     if (endTime) fd.set("end_time", endTime);
     if (intensity) fd.set("intensity", intensity);
+    // Estimated calories (issue #151): submit whatever's in the field (auto or
+    // overridden). A blank field is omitted, which clears any stored estimate.
+    if (estCalories.trim()) fd.set("est_calories", estCalories.trim());
     return fd;
   }
 
@@ -556,8 +608,18 @@ export default function ActivityForm({
         notes,
         parts,
         title: effectiveTitle,
+        estCalories,
       }),
-    [date, startTime, endTime, intensity, notes, parts, effectiveTitle]
+    [
+      date,
+      startTime,
+      endTime,
+      intensity,
+      notes,
+      parts,
+      effectiveTitle,
+      estCalories,
+    ]
   );
   // The state we last persisted (or loaded). Starts equal to the initial state
   // so loading existing data — or opening a blank create form — saves nothing.
@@ -1051,6 +1113,57 @@ export default function ActivityForm({
           })}
         </div>
       </div>
+
+      {/* Estimated calories (issue #151). Auto-filled from the MET dataset × this
+          profile's bodyweight × duration, and editable — the user can override it.
+          Shown only for manual activities (imported rows carry device energy). The
+          "Estimated" label marks it as an estimate, distinct from measured. */}
+      {showEstimate && (
+        <div data-testid="est-calories-field">
+          <label className="label" htmlFor="est-calories">
+            Calories{" "}
+            <span className="font-normal normal-case text-slate-400 dark:text-slate-500">
+              (estimated)
+            </span>
+          </label>
+          <div className="flex items-center gap-2">
+            <input
+              id="est-calories"
+              data-testid="est-calories-input"
+              type="number"
+              inputMode="numeric"
+              min={0}
+              step={1}
+              value={estCalories}
+              onChange={(e) => {
+                setEstCalories(e.target.value);
+                setEstEdited(true);
+              }}
+              className="input max-w-[10rem]"
+              placeholder="—"
+            />
+            <span className="text-sm text-slate-400 dark:text-slate-500">
+              kcal
+            </span>
+            {estEdited && autoEstimateKcal != null && (
+              <button
+                type="button"
+                onClick={() => {
+                  setEstEdited(false);
+                  setEstCalories(String(autoEstimateKcal));
+                }}
+                className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
+              >
+                reset
+              </button>
+            )}
+          </div>
+          <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+            Estimated from activity type, intensity, duration, and your
+            bodyweight — edit if you have a measured value.
+          </p>
+        </div>
+      )}
 
       {/* Auto-save is paused: spell out what to fix (the offending fields are
           also highlighted above). There's no Save button to lean on — the form
