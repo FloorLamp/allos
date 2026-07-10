@@ -1,0 +1,175 @@
+import * as React from "react";
+import { shiftDateStr, startOfWeekStr } from "../../date";
+import { db, today } from "../../db";
+import { getWeekMode, getWeekStart } from "../../settings";
+import type { ActivityComponent } from "../../types";
+
+// React's per-request cache() exists only in the canary React that Next vendors
+// for server components. The plain `react` package that tsx entrypoints
+// (scripts/notify.ts, scripts/seed.ts) resolve doesn't export it, so importing
+// the named binding crashes the notify sidecar at module load. Fall back to
+// identity there: those scripts run each query at most once per tick, so
+// per-request dedup is meaningless outside Next anyway.
+export const cache: typeof React.cache =
+  (React as { cache?: typeof React.cache }).cache ?? ((fn) => fn);
+
+// Window for the "recent" scans that back the activity picker's suggestions and
+// the editor's per-exercise history. Both only need recent data — a name or a
+// session older than a year is irrelevant to what to suggest next — so bounding
+// the underlying full-table scans to the last 12 months is semantically invisible
+// while turning an all-history scan into a small windowed one.
+const RECENT_WINDOW_DAYS = 365;
+
+export function recentWindowStart(profileId: number): string {
+  return shiftDateStr(today(profileId), -RECENT_WINDOW_DAYS);
+}
+
+// Inclusive start date (YYYY-MM-DD) of a profile's "this week" window: either the
+// current calendar week (from the configured week-start day) or a rolling 7-day
+// window, per the profile's week_mode. Shared by the weekly-routine counters and
+// the journal week summary so the two always agree.
+export function weekWindowStart(profileId: number): string {
+  const t = today(profileId);
+  return getWeekMode(profileId) === "rolling"
+    ? shiftDateStr(t, -6) // inclusive 7-day window
+    : startOfWeekStr(t, getWeekStart(profileId));
+}
+
+// All dated weights ascending, for bodyweightAsOf lookups. Weightless
+// body-metrics rows (HR/body-fat only, #120) are excluded — no bodyweight.
+// cache(): both getStrengthByExercise and getRecentExerciseHistory load this, so a
+// page rendering both (journal, strength) would otherwise scan the weight history
+// twice — cache() collapses it to one scan per profile per request.
+export const loadWeightsAsc = cache(function loadWeightsAsc(
+  profileId: number
+): { date: string; weight_kg: number }[] {
+  return db
+    .prepare(
+      "SELECT date, weight_kg FROM body_metrics WHERE profile_id = ? AND weight_kg IS NOT NULL ORDER BY date ASC"
+    )
+    .all(profileId) as { date: string; weight_kg: number }[];
+});
+
+// One logged cardio/sport effort, identified by its canonical activity name.
+// The name comes from the activity's structured component (e.g. "Running"); the
+// freeform activity title ("Morning run", "5k run") is NOT used for grouping, so
+// the same activity combines across differently-titled sessions. Activities with
+// no matching component (legacy/imported rows) fall back to the title + the
+// row's own distance/duration.
+interface EffortEntry {
+  activityId: number;
+  date: string;
+  name: string;
+  distanceKm: number;
+  durationMin: number;
+  intensity: string | null; // from the activity row (shared by its components)
+}
+
+// cache(): a single page can aggregate the same (profile, type) efforts 3–4 times
+// per request (getCardioByActivity + getCardioVolumeByWeek + getCardioIntensityMix
+// on the training page; + getSportByActivity/journal), each a full activities scan
+// with per-row JSON.parse. cache() computes it once per (profile, type[, since])
+// per request. Pass `since` (YYYY-MM-DD) to bound the scan — used only by the
+// suggestion path, which needs recent names, not all history; the stats
+// aggregators call with no `since` so they still see the full record.
+export const effortEntries = cache(function effortEntries(
+  profileId: number,
+  targetType: "cardio" | "sport",
+  since?: string
+): EffortEntry[] {
+  const args: (string | number)[] = since
+    ? [profileId, targetType, since]
+    : [profileId, targetType];
+  const rows = db
+    .prepare(
+      `SELECT id, date, type, title, distance_km, duration_min, intensity, components
+       FROM activities
+       WHERE profile_id = ? AND (type = ? OR components IS NOT NULL)${
+         since ? " AND date >= ?" : ""
+       }
+       ORDER BY date ASC, id ASC`
+    )
+    .all(...args) as {
+    id: number;
+    date: string;
+    type: string;
+    title: string;
+    distance_km: number | null;
+    duration_min: number | null;
+    intensity: string | null;
+    components: string | null;
+  }[];
+
+  const out: EffortEntry[] = [];
+  for (const r of rows) {
+    let comps: ActivityComponent[] = [];
+    if (r.components) {
+      try {
+        const parsed = JSON.parse(r.components);
+        if (Array.isArray(parsed)) comps = parsed;
+      } catch {
+        /* malformed components JSON — fall through to the row-level fallback */
+      }
+    }
+    const matching = comps.filter(
+      (c) =>
+        c?.type === targetType && typeof c.name === "string" && c.name.trim()
+    );
+    if (matching.length) {
+      for (const c of matching) {
+        out.push({
+          activityId: r.id,
+          date: r.date,
+          name: c.name.trim(),
+          distanceKm: c.distance_km ?? 0,
+          durationMin: c.duration_min ?? 0,
+          intensity: r.intensity,
+        });
+      }
+    } else if (r.type === targetType && r.title.trim()) {
+      out.push({
+        activityId: r.id,
+        date: r.date,
+        name: r.title.trim(),
+        distanceKm: r.distance_km ?? 0,
+        durationMin: r.duration_min ?? 0,
+        intensity: r.intensity,
+      });
+    }
+  }
+  return out;
+});
+
+// Previously-logged cardio/sport activity names (canonical, from components),
+// with usage counts — for the activity picker's frequency-ranked suggestions.
+// Bounded to the recent window: suggestions rank by recent usage, so a name not
+// logged in the last 12 months needn't be offered as a prior custom name.
+export function effortNameCounts(
+  profileId: number,
+  targetType: "cardio" | "sport"
+): { name: string; c: number }[] {
+  const counts = new Map<string, { name: string; c: number }>();
+  for (const e of effortEntries(
+    profileId,
+    targetType,
+    recentWindowStart(profileId)
+  )) {
+    const key = e.name.toLowerCase();
+    const prev = counts.get(key);
+    if (prev) prev.c += 1;
+    else counts.set(key, { name: e.name, c: 1 });
+  }
+  return [...counts.values()];
+}
+
+// Distinct, readable colors assigned to cardio activities in the weekly chart.
+export const CARDIO_PALETTE = [
+  "#0ea5e9",
+  "#16a34a",
+  "#a855f7",
+  "#f97316",
+  "#ef4444",
+  "#14b8a6",
+  "#eab308",
+  "#6366f1",
+];
