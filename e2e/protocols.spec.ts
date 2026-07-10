@@ -34,7 +34,12 @@ test.describe("protocols create → compare (issue #161)", () => {
     // it (the picker closes on Escape) before checking the boxes.
     await page.keyboard.press("Escape");
     await form.getByRole("checkbox", { name: "Body weight" }).check();
-    await form.getByRole("checkbox", { name: "Resting heart rate" }).check();
+    // Resting HR is offered from two metric namespaces (a device `metric:` and a
+    // discrete `biomarker:` reading), so its label matches two checkboxes — target
+    // the device-metric one unambiguously by value.
+    await form
+      .locator('input[name="outcome_keys"][value="metric:resting_hr"]')
+      .check();
     await form.getByRole("button", { name: "Create protocol" }).click();
 
     // Redirects to the detail page.
