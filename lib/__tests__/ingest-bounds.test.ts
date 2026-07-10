@@ -55,7 +55,8 @@ describe("inMetricBounds", () => {
   // ...while plausible human values — including athletic/clinical outliers — pass.
   it("accepts plausible outliers across every metric family", () => {
     const plausible: [string, number][] = [
-      ["weight_kg", 3], // newborn
+      ["weight_kg", 3], // term newborn
+      ["weight_kg", 1.6], // premature / low-birth-weight infant (issue #191)
       ["weight_kg", 250], // extreme but real adult
       ["body_fat_pct", 4], // very lean athlete
       ["body_fat_pct", 60], // extreme obesity
@@ -85,6 +86,16 @@ describe("inMetricBounds", () => {
     for (const [metric, value] of plausible) {
       expect(inMetricBounds(metric, value)).toBe(true);
     }
+  });
+
+  // Issue #191: the weight floor must clear the lightest surviving newborn
+  // (≈0.25 kg) its own comment names, since the app tracks kids + growth charts.
+  // Below the floor is still "physically impossible" and rejected.
+  it("admits a preemie weight but still rejects a sub-floor value", () => {
+    expect(inMetricBounds("weight_kg", 1.6)).toBe(true); // preemie
+    expect(inMetricBounds("weight_kg", 0.25)).toBe(true); // lightest surviving newborn
+    expect(inMetricBounds("weight_kg", 0.1)).toBe(false); // below the 0.2 kg floor
+    expect(inMetricBounds("weight_kg", 0)).toBe(false);
   });
 
   it("caps sleep stages and totals at 24h", () => {
