@@ -28,6 +28,7 @@ import {
   type DerivedName,
   type DerivedReading,
 } from "../derived-biomarkers";
+import { PHENOAGE_INPUT_NAMES } from "../bio-age";
 import type { MedicalRecord } from "../types";
 
 // A virtual (unstored) record synthesized from a computed derived reading. Same
@@ -173,4 +174,70 @@ export function getBiomarkerSeriesWithDerived(
   return [...stored, ...derived].sort((a, b) =>
     a.date < b.date ? -1 : a.date > b.date ? 1 : a.id - b.id
   );
+}
+
+// One complete PhenoAge draw, shaped for the biological-age hero (issue #209): the
+// estimated biological age, the chronological age on that draw date, and the nine
+// canonical-unit inputs it was built from (each linking to its own series).
+export interface BioAgeDraw {
+  date: string;
+  bioAge: number;
+  chronoAge: number | null;
+  inputs: { name: string; value: number; unit: string }[];
+}
+
+// The biological-age (PhenoAge) reading data for a profile: every complete draw
+// (oldest-first) plus WHICH of the nine inputs the profile has any usable reading of
+// — the latter drives the partial-panel checklist CTA when no draw is complete. This
+// is the DB seam over the pure lib/bio-age + lib/derived-biomarkers math; nothing is
+// written, and every read goes through an already profile-scoped query, so the
+// profile-scoping guard is unaffected.
+export function getBioAgeReadings(profileId: number): {
+  draws: BioAgeDraw[];
+  presentInputs: string[];
+} {
+  // Load only the nine PhenoAge input series (profile-scoped), reduced to exact
+  // numeric readings, and note which inputs the profile has at all.
+  const seriesByCanonical = new Map<string, ComponentReading[]>();
+  const present = new Set<string>();
+  for (const canonical of PHENOAGE_INPUT_NAMES) {
+    const rows = getBiomarkerSeries(profileId, canonical)
+      .filter((r) => r.value_num != null)
+      .map((r) => ({
+        date: r.date,
+        value: r.value_num as number,
+        unit: r.unit,
+      }));
+    seriesByCanonical.set(canonical, rows);
+    if (rows.length > 0) present.add(canonical);
+  }
+
+  // A lab that reports PhenoAge directly wins its draw (parity with the derived
+  // table): skip those dates so a computed value never shadows a stored one.
+  const storedDates = new Set(
+    getBiomarkerSeries(profileId, "PhenoAge").map((r) => r.date)
+  );
+  const storedDatesByName: Partial<Record<DerivedName, Set<string>>> =
+    storedDates.size ? { PhenoAge: storedDates } : {};
+
+  const readings = computeDerivedReadings(
+    seriesByCanonical,
+    {
+      sex: getUserSex(profileId),
+      ageOn: (date) => getUserAgeOn(profileId, date),
+    },
+    { storedDatesByName }
+  );
+
+  const draws: BioAgeDraw[] = readings
+    .filter((r) => r.name === "PhenoAge")
+    .map((r) => ({
+      date: r.date,
+      bioAge: r.value,
+      chronoAge: getUserAgeOn(profileId, r.date),
+      inputs: r.inputs,
+    }));
+
+  const presentInputs = PHENOAGE_INPUT_NAMES.filter((n) => present.has(n));
+  return { draws, presentInputs };
 }

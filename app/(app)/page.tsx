@@ -28,14 +28,17 @@ import {
   getFindingSuppressions,
   collectAttention,
   attentionCountForProfile,
+  getBioAgeReadings,
 } from "@/lib/queries";
 import { recommendCoaching } from "@/lib/coaching";
 import { activeByKey, coachingDedupeKey } from "@/lib/findings";
 import { requireSession, getAccessibleProfiles } from "@/lib/auth";
 import { isTrainingRestricted } from "@/lib/age-gate";
+import { isBioAgeHiddenForAge } from "@/lib/bio-age";
 import {
   getDashboardLayout,
   getUnitPrefs,
+  getUserAge,
   getUserBirthdate,
   getUserSex,
   getStoredAge,
@@ -82,6 +85,7 @@ import NextAppointmentWidget, {
 import CarePlanDueWidget, {
   type CarePlanDueRow,
 } from "@/components/dashboard/CarePlanDueWidget";
+import BioAgeWidget from "@/components/dashboard/BioAgeWidget";
 import { saveDashboardLayout } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -125,7 +129,14 @@ export default async function Dashboard() {
   // then fetch only the data those widgets need — a net win over the old
   // unconditional fetching. Every eligible widget is rendered server-side so
   // Customize mode can preview/re-enable a hidden one without a round-trip.
-  const list = resolveWidgetList(getDashboardLayout(profile.id), restricted);
+  // The biological-age widget is adult-gated exactly like its hero card (PhenoAge is
+  // an adult model, #209): a child profile drops it entirely — not even offered in
+  // Customize — mirroring how fitness widgets drop for age-restricted profiles.
+  const bioAgeHidden = isBioAgeHiddenForAge(getUserAge(profile.id));
+  const list = resolveWidgetList(
+    getDashboardLayout(profile.id),
+    restricted
+  ).filter((w) => !(w.def.id === "bio-age" && bioAgeHidden));
   const eligible = new Set(list.map((w) => w.def.id));
   const has = (id: string) => eligible.has(id);
 
@@ -151,6 +162,20 @@ export default async function Dashboard() {
           value: dispWeight(w.weight_kg, units.weightUnit),
         }))
     : [];
+
+  // bio-age (medical): the complete PhenoAge draws (oldest-first) for the headline
+  // number + sparkline. Only complete draws carry a value; an incomplete panel makes
+  // the widget data-aware-empty (import CTA) below.
+  const bioAgeDraws =
+    has("bio-age") && !bioAgeHidden
+      ? getBioAgeReadings(profile.id)
+          .draws.filter((d) => d.chronoAge != null)
+          .map((d) => ({
+            date: d.date,
+            bioAge: d.bioAge,
+            chronoAge: d.chronoAge as number,
+          }))
+      : [];
 
   // recent-labs (medical): the current reading per lab/biomarker marker, flagged
   // markers surfaced first so an out-of-range result is the headline.
@@ -342,6 +367,7 @@ export default async function Dashboard() {
     emptyIds.add("weight-trend");
   if (has("recent-activity") && recent.length === 0)
     emptyIds.add("recent-activity");
+  if (has("bio-age") && bioAgeDraws.length === 0) emptyIds.add("bio-age");
 
   // The onboarding CTA for a data-aware widget whose domain is empty — the
   // dashboard doubling as the setup checklist, each empty widget pointing at the
@@ -398,6 +424,16 @@ export default async function Dashboard() {
             ctaHref="/integrations/health-connect"
           />
         );
+      case "bio-age":
+        return (
+          <WidgetEmpty
+            title="Biological age"
+            icon={IconFlask}
+            message="No complete PhenoAge panel yet. Import labs covering all nine analytes to estimate your biological age."
+            ctaLabel="Import labs"
+            ctaHref="/biomarkers"
+          />
+        );
       default:
         return null;
     }
@@ -428,6 +464,8 @@ export default async function Dashboard() {
         return <CarePlanDueWidget items={carePlanRows} />;
       case "starred-biomarkers":
         return <StarredBiomarkers />;
+      case "bio-age":
+        return <BioAgeWidget draws={bioAgeDraws} />;
       case "weight-trend":
         return (
           <WeightTrendWidget data={bodyMetrics} weightUnit={units.weightUnit} />

@@ -100,6 +100,63 @@ test("biomarkers page surfaces the derived PhenoAge biological age (#157)", asyn
   await expect(note).toContainText("Levine PhenoAge");
 });
 
+// #209: PhenoAge is surfaced as a headline biological-age HERO card pinned above the
+// Biomarkers table (not just the derived row). For the seeded ADULT profile (a full
+// nine-analyte panel + a known age) the card shows the biological age, its delta to
+// calendar age, and the required estimate citation. Read-only — no mutation.
+test("biomarkers page shows the biological-age hero for the adult (#209)", async ({
+  page,
+}) => {
+  await page.goto("/biomarkers");
+  const hero = page.getByRole("main").getByTestId("bio-age-hero");
+  await expect(hero).toBeVisible();
+  // The headline number and its delta to chronological age.
+  await expect(hero.getByTestId("bio-age-value")).toBeVisible();
+  await expect(hero.getByTestId("bio-age-delta")).toContainText("calendar age");
+  // Estimate framing with the model citation (never a precise verdict).
+  const estimate = hero.getByTestId("bio-age-estimate");
+  await expect(estimate).toContainText("Estimate");
+  await expect(estimate).toContainText("Levine PhenoAge");
+});
+
+// #209: the hero is ADULT-GATED exactly as the computation is — hidden entirely for a
+// child profile (PhenoAge is an adult population model). Switches to profile 2,
+// "Riley (child)", in an ISOLATED cookie-less context with its own fresh session, so
+// it never disturbs the shared admin session other specs depend on.
+test("biological-age hero is absent for a child profile (#209)", async ({
+  browser,
+}) => {
+  const ctx = await browser.newContext({
+    storageState: { cookies: [], origins: [] },
+  });
+  const page = await ctx.newPage();
+  try {
+    await page.goto("/login");
+    await page.fill('input[name="username"]', "admin");
+    await page.fill('input[name="password"]', "e2e-admin-pass");
+    await page.click('button[type="submit"]');
+    await page.waitForURL((u) => !u.pathname.startsWith("/login"), {
+      timeout: 20_000,
+    });
+
+    // Switch to profile 2 ("Riley (child)") via its household chip, then confirm the
+    // switch by the user-menu naming the new profile.
+    await page.goto("/");
+    await page.getByRole("main").getByTestId("household-chip-2").click();
+    await expect(page.getByTestId("user-menu-trigger")).toContainText(
+      "Riley (child)"
+    );
+
+    // On the child's Biomarkers page the hero is not rendered at all.
+    await page.goto("/biomarkers");
+    await expect(
+      page.getByRole("main").getByTestId("bio-age-hero")
+    ).toHaveCount(0);
+  } finally {
+    await ctx.close();
+  }
+});
+
 // #19: the global (Cmd-K) command palette now fans out over the clinical passport,
 // so an allergy substance is findable. Seed documents a Penicillin allergy; opening
 // the palette and typing "penicillin" must surface it under the Allergies group and
