@@ -47,4 +47,13 @@ describe("collectUpcoming is scoped to the querying profile", () => {
     // 8 units, 1/day → ≈8 days of supply left.
     expect(refill?.detail).toContain("8 days");
   });
+
+  it("surfaces the open, dated care-plan item (with a mark-done action) (issue #84)", () => {
+    const itemsA = collectUpcoming(a.profileId, a.todayStr);
+    const careplan = itemsA.find((i) => i.domain === "careplan");
+    expect(careplan?.title).toBe("AAA Colonoscopy");
+    expect(careplan?.key).toBe(`careplan:${a.carePlanItemId}`);
+    expect(careplan?.carePlanItemId).toBe(a.carePlanItemId); // inline mark-done form
+    expect(careplan?.dueDate).toBe(a.todayStr); // real planned date → date-banded
+  });
 });

@@ -18,6 +18,7 @@ import { daysRemainingLabel } from "./format-date";
 //   biomarker   — a lab past its per-analyte retest (staleness) window
 //   goal        — a goal with a target_date approaching or overdue
 //   training    — an unmet weekly frequency target
+//   careplan    — a provider-ordered care_plan_item with a planned_date (issue #84)
 export type UpcomingDomain =
   | "dose"
   | "refill"
@@ -27,19 +28,21 @@ export type UpcomingDomain =
   | "immunization"
   | "biomarker"
   | "goal"
-  | "training";
+  | "training"
+  | "careplan";
 
 // Stable within-band ordering when two items share an effective due date.
 const DOMAIN_ORDER: Record<UpcomingDomain, number> = {
   dose: 0,
   refill: 1,
   appointment: 2,
-  visit: 3,
-  screening: 4,
-  immunization: 5,
-  biomarker: 6,
-  goal: 7,
-  training: 8,
+  careplan: 3,
+  visit: 4,
+  screening: 5,
+  immunization: 6,
+  biomarker: 7,
+  goal: 8,
+  training: 9,
 };
 
 export type UrgencyBand = "overdue" | "today" | "week" | "later";
@@ -80,6 +83,10 @@ export interface UpcomingItem {
   // catalog rule key. Only visit/screening items (issue #82) carry one; mirrors
   // doseId's inline fast path.
   preventiveRuleKey?: string;
+  // When set, the row renders an inline "Mark done" form that marks this
+  // care_plan_items row completed (issue #84) — the same inline fast-path shape as
+  // doseId/preventiveRuleKey. Only careplan items carry one.
+  carePlanItemId?: number;
 }
 
 export interface BandGroup {
