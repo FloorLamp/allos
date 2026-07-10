@@ -171,6 +171,16 @@ export async function saveActivity(formData: FormData) {
   );
   const durationMin = fromTimes ?? (partsDuration > 0 ? partsDuration : null);
 
+  // Estimated calories (issue #151): the activity form fills this from the MET
+  // dataset × nearest bodyweight × duration, and the user can override it. Stored
+  // ONLY for MANUAL activities (a fresh insert is always manual; an edit only sets
+  // it when the row is source-null, below) so an estimate never shadows a device
+  // value. A blank/invalid field clears it. Rounded, non-negative.
+  const estCalories = (() => {
+    const n = num(formData.get("est_calories"));
+    return n != null && n >= 0 ? Math.round(n) : null;
+  })();
+
   const tx = db.transaction((): number | null => {
     let activityId: number;
     let storedSets: StoredSetWeights | undefined;
@@ -185,6 +195,11 @@ export async function saveActivity(formData: FormData) {
         `UPDATE activities
          SET date = ?, type = ?, title = ?, notes = ?, duration_min = ?, distance_km = ?,
              intensity = ?, start_time = ?, end_time = ?, components = ?,
+             -- Estimated calories (issue #151): only for MANUAL rows (source +
+             -- external_id null) so an estimate never overwrites an imported row's
+             -- device energy; imported rows keep their existing value untouched.
+             est_calories = CASE WHEN source IS NULL AND external_id IS NULL
+                                 THEN ? ELSE est_calories END,
              -- Stamp last-edited (UTC, same form as created_at) so the Journal can
              -- show "edited …" alongside "added …" (issue #11).
              updated_at = datetime('now'),
@@ -204,6 +219,7 @@ export async function saveActivity(formData: FormData) {
         startTime,
         endTime,
         componentsJson,
+        estCalories,
         id,
         profile.id
       );
@@ -233,8 +249,8 @@ export async function saveActivity(formData: FormData) {
       const res = db
         .prepare(
           `INSERT INTO activities
-             (date, type, title, notes, duration_min, distance_km, intensity, start_time, end_time, components, profile_id)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?)`
+             (date, type, title, notes, duration_min, distance_km, intensity, start_time, end_time, components, est_calories, profile_id)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
         )
         .run(
           date,
@@ -247,6 +263,7 @@ export async function saveActivity(formData: FormData) {
           startTime,
           endTime,
           componentsJson,
+          estCalories,
           profile.id
         );
       activityId = Number(res.lastInsertRowid);

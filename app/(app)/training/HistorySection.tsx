@@ -10,7 +10,14 @@ import {
   getLatestBodyMetric,
   getJournalWeekSummary,
   getRecentByExercise,
+  getWeights,
 } from "@/lib/queries";
+import {
+  activityEstimateKcal,
+  nearestBodyweightKg,
+  formatEstimatedKcal,
+  type DatedWeight,
+} from "@/lib/calorie-estimate";
 import { today as todayFn, yesterday as yesterdayFn } from "@/lib/db";
 import { frequencyScopeLabel } from "@/lib/goals";
 import { getUnitPrefs, getUserSex, type DistanceUnit } from "@/lib/settings";
@@ -46,6 +53,13 @@ export default async function HistorySection() {
       <EmptyState message="No activities logged yet. Use “Log activity” to start." />
     );
   }
+
+  // Bodyweight series for the per-activity calorie ESTIMATE (issue #151): each
+  // manual activity is scored against the weigh-in nearest its own date.
+  const weights: DatedWeight[] = getWeights(profile.id).map((w) => ({
+    date: w.date,
+    weightKg: w.weight_kg,
+  }));
 
   const sets = getSetsForActivities(
     profile.id,
@@ -177,6 +191,7 @@ export default async function HistorySection() {
       edited: a.edited,
       created_at: a.created_at,
       updated_at: a.updated_at,
+      est_calories: a.est_calories,
       sets: aSets.map((s) => ({
         exercise: s.exercise,
         set_number: s.set_number,
@@ -205,7 +220,14 @@ export default async function HistorySection() {
       speedText: singlePureEffort
         ? null
         : fmtSpeed(a.distance_km, a.duration_min, units.distanceUnit),
-      metrics: activityMetrics(a, units.distanceUnit),
+      metrics: activityMetrics(
+        a,
+        units.distanceUnit,
+        // Estimated calories for a manual activity, scored against the bodyweight
+        // nearest its date (issue #151). null (no chip) for imported rows and when
+        // no estimate can be computed.
+        activityEstimateKcal(a, nearestBodyweightKg(weights, a.date))
+      ),
       parts,
       // Flag rows the editor couldn't re-save as-is (imports, legacy data).
       fault: storedActivityFault(a, aSets),
@@ -272,7 +294,11 @@ export default async function HistorySection() {
 // entries and Health Connect imports render nothing extra. Power, cadence, and
 // kilojoules are cycling-only; temperature is outdoor-only; workout_type is a
 // label — all set by the parser, so this just formats whatever is non-null.
-function activityMetrics(a: Activity, distanceUnit: DistanceUnit): string[] {
+function activityMetrics(
+  a: Activity,
+  distanceUnit: DistanceUnit,
+  estKcal: number | null = null
+): string[] {
   const m: string[] = [];
   if (a.workout_type)
     m.push(a.workout_type.replace(/\b\w/, (c) => c.toUpperCase()));
@@ -295,5 +321,9 @@ function activityMetrics(a: Activity, distanceUnit: DistanceUnit): string[] {
   if (a.kilojoules != null) m.push(`${a.kilojoules} kJ`);
   if (a.avg_temp_c != null) m.push(`${Math.round(a.avg_temp_c)}°C`);
   if (a.relative_effort != null) m.push(`Effort ${a.relative_effort}`);
+  // Estimated calories (issue #151) — the "≈" marks it as an estimate, visually
+  // distinct from a device-measured value. Only present for manual activities.
+  const est = formatEstimatedKcal(estKcal);
+  if (est) m.push(est);
   return m;
 }

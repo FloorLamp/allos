@@ -151,6 +151,44 @@ test("edit mode surfaces the exercise's previous sessions (#188)", async ({
   await page.keyboard.press("Escape");
 });
 
+test("logging a manual cardio activity auto-fills an editable estimated-calorie value (#151)", async ({
+  page,
+}) => {
+  await page.goto("/training"); // default "Log" tab renders the Journal feed
+
+  // Open a fresh create form. The "New activity" button lives in the Journal
+  // header inside <main>; the editor it opens mounts either in the docked pane
+  // (inside <main>) or the body-level overlay portal, so the form's own fields are
+  // addressed by their unique testids/labels rather than main-scoped (there is
+  // exactly one editor instance — same reasoning as the #206 recent-sessions spec).
+  await page
+    .getByRole("main")
+    .getByRole("button", { name: "New activity" })
+    .click();
+
+  // Name a known cardio activity and give it a duration. Distance is left blank —
+  // "Running" requires a distance to save, so this draft never auto-persists (it
+  // leaves the shared seed DB untouched, no cleanup needed), yet the estimate still
+  // computes from the duration + the seeded profile's bodyweight.
+  await page.getByPlaceholder(/What did you do/).fill("Running");
+  await page.getByLabel("Duration (min)").fill("30");
+
+  // The estimated-calorie field appears, marked "(estimated)", auto-filled with a
+  // positive number (MET dataset × bodyweight × duration).
+  const field = page.getByTestId("est-calories-field");
+  await expect(field).toBeVisible();
+  await expect(field).toContainText("estimated");
+  const input = page.getByTestId("est-calories-input");
+  await expect(input).toHaveValue(/^[1-9]\d*$/);
+
+  // It's editable — the user can override the auto value.
+  await input.fill("123");
+  await expect(input).toHaveValue("123");
+
+  // Read-only draft (never saved): close it without persisting.
+  await page.keyboard.press("Escape");
+});
+
 test("bulk-delete rows in Data → Manage, then Undo restores them (#29)", async ({
   page,
 }) => {

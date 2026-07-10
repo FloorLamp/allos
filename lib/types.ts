@@ -39,6 +39,13 @@ export interface Activity {
   avg_temp_c: number | null;
   kilojoules: number | null;
   workout_type: string | null;
+  // ESTIMATED calorie burn for a MANUAL activity (issue #151): the auto-value the
+  // activity form fills from the MET dataset × nearest bodyweight × duration, or the
+  // user's manual override of it. NULL for legacy/seed rows and every imported row —
+  // device energy lives in metric_samples (active_kcal), never here, so an estimate
+  // can't shadow a measured value. Distinct from `kilojoules` (Strava mechanical
+  // work). See lib/calorie-estimate.ts.
+  est_calories: number | null;
 }
 
 // A single component of a (possibly multi-type) activity. Strength components

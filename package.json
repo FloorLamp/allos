@@ -23,6 +23,7 @@
     "backup": "tsx scripts/backup.ts",
     "restore": "tsx scripts/restore.ts",
     "gen:biomarkers": "tsx scripts/gen-canonical-biomarkers.ts",
+    "gen:mets": "tsx scripts/gen-mets.ts",
     "gen:growth": "tsx scripts/gen-growth-charts.ts",
     "prepare": "husky"
   },
