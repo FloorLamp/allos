@@ -1,4 +1,4 @@
-// Morning-digest DB gather + send orchestration (issue #135). Pulls the per-profile
+// Morning-digest DB gather + send orchestration. Pulls the per-profile
 // facts the digest summarizes from the already-scoped query layer (plus two small
 // profile-scoped reads for "new since last digest"), hands them to the pure
 // buildDigest, and dispatches the rendered message. Called once per hour per

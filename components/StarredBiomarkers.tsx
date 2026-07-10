@@ -34,7 +34,7 @@ export default function StarredBiomarkers({
   if (starred.length === 0) return null;
   const sex = getUserSex(profile.id);
   // Reproductive status (female physiology only) overrides the age proxy for the
-  // reproductive-hormone ranges (#202); a profile-level attribute, read once.
+  // reproductive-hormone ranges; a profile-level attribute, read once.
   const reproductiveStatus = getUserReproductiveStatus(profile.id);
   // Age-banded ranges are judged against the subject's age on each reading's own
   // date (not today). Read the birthdate/stored-age once; derive per-tile age.

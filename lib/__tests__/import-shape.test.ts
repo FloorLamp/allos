@@ -170,7 +170,7 @@ describe("extractionToPersistInput (AI path)", () => {
     ]);
   });
 
-  it("body metrics captured in a body-metrics row are NOT also stored as records (#120)", () => {
+  it("body metrics captured in a body-metrics row are NOT also stored as records", () => {
     const input = extractionToPersistInput(
       doneExtraction({
         results: [
@@ -219,7 +219,7 @@ describe("extractionToPersistInput (AI path)", () => {
     expect(input.canonicalNamesToRegister).not.toContain("Resting Heart Rate");
   });
 
-  it("routes a lone body metric (HR, no weight) to a weightless body-metrics row (#120)", () => {
+  it("routes a lone body metric (HR, no weight) to a weightless body-metrics row", () => {
     // A vitals panel with a heart rate but no weight → a weightless body_metrics
     // row (weight_kg nullable), and the HR is removed from records so it lives in
     // exactly one place.
@@ -304,7 +304,7 @@ describe("extractionToPersistInput (AI path)", () => {
     expect(input.records.map((r) => r.name)).toEqual(["Total Body Fat"]);
   });
 
-  it("projects Body Height into metric_samples heights and drops it from records (#167)", () => {
+  it("projects Body Height into metric_samples heights and drops it from records", () => {
     const input = extractionToPersistInput(
       doneExtraction({
         results: [
@@ -409,7 +409,7 @@ describe("healthRecordToPersistInput (deterministic path)", () => {
     expect(input.bodyMetrics).toEqual([]);
   });
 
-  it("projects encounters with their provider/location + diagnoses (#178 B)", () => {
+  it("projects encounters with their provider/location + diagnoses", () => {
     const withEncounter: ImportResult = {
       ...parsed,
       encounters: [
@@ -483,7 +483,7 @@ describe("healthRecordToPersistInput (deterministic path)", () => {
     });
   });
 
-  it("routes CDA body metrics to body_metrics, leaving clinical vitals as records (#120)", () => {
+  it("routes CDA body metrics to body_metrics, leaving clinical vitals as records", () => {
     const withBodyMetrics: ImportResult = {
       immunizations: [],
       records: [
@@ -534,7 +534,7 @@ describe("healthRecordToPersistInput (deterministic path)", () => {
     ]);
   });
 
-  it("routes CDA/FHIR Body Height to metric_samples heights, incl. a LOINC-only reading (#167)", () => {
+  it("routes CDA/FHIR Body Height to metric_samples heights, incl. a LOINC-only reading", () => {
     const withHeight: ImportResult = {
       immunizations: [],
       records: [
@@ -594,7 +594,7 @@ describe("healthRecordToPersistInput (deterministic path)", () => {
     expect(input.canonicalNamesToRegister).toEqual([]);
   });
 
-  it("routes CDA head circumference (8287-5) to metric_samples headCircs, not records (#182)", () => {
+  it("routes CDA head circumference (8287-5) to metric_samples headCircs, not records", () => {
     const withHeadCirc: ImportResult = {
       immunizations: [],
       records: [

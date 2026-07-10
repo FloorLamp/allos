@@ -424,7 +424,7 @@ function collectEvents(
     );
   }
 
-  // Medication course start/stop events (#209). A child of intake_items, so
+  // Medication course start/stop events. A child of intake_items, so
   // scoped through the parent's profile_id. Each course yields up to two events
   // (a "Started" on started_on and, when closed, a "Stopped" on stopped_on with
   // its reason + any linked side effects); pushLimited applies the exact per-event

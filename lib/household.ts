@@ -1,4 +1,4 @@
-// Pure card-assembly logic for the household dashboard (issues #102, #31). No DB
+// Pure card-assembly logic for the household dashboard (issue #31). No DB
 // or network access — the page fetches each profile's data with the existing
 // per-profile query functions (in a loop over getAccessibleProfiles) and hands
 // the raw results to these helpers, so the cross-profile view is built without

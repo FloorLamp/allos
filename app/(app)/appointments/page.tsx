@@ -25,7 +25,7 @@ export default function AppointmentsPage() {
 
   return (
     <div>
-      {/* Shared provider picker options for the add + edit forms (issue #178). */}
+      {/* Shared provider picker options for the add + edit forms. */}
       <ProviderDatalist names={providerNames} />
       <PageHeader
         title="Appointments"

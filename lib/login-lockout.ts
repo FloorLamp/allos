@@ -1,4 +1,4 @@
-// Pure failed-login lockout policy (issue #132, Phase A). Given a summary of a
+// Pure failed-login lockout policy. Given a summary of a
 // key's recent failed attempts, decide whether the next attempt should be
 // throttled and, if so, for how long. No DB, no clock, no I/O — the login action
 // feeds it numbers pulled from the login_attempts table, so the decision logic is

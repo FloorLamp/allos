@@ -155,7 +155,7 @@ const MED_SECTION = `
   </substanceAdministration></entry>
 </section>`;
 
-describe("encounters extraction (#178 Phase B)", () => {
+describe("encounters extraction", () => {
   it("maps an encounter: date/period, type, class, provider, location, diagnoses", () => {
     const r = extractFromCcda(doc(ENCOUNTERS));
     expect(r.encounters).toHaveLength(1);
@@ -277,7 +277,7 @@ describe("encounters extraction (#178 Phase B)", () => {
   });
 });
 
-describe("mergeImportResults (multi-document XDM, #178 Phase B)", () => {
+describe("mergeImportResults (multi-document XDM)", () => {
   // DOC0001-shaped: the complete record (immunizations), no encounters.
   const complete: ImportResult = extractFromCcda(doc(IMMUNIZATIONS));
   // DOC0002-shaped: the same immunization again PLUS the encounter + reason.

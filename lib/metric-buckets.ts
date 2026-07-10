@@ -1,7 +1,7 @@
 // Instantaneous (point) metrics: a day can hold several readings, so they must be
 // averaged per day, not summed. Everything else (steps, distance, calories,
 // hydration, nutrition, sleep totals) is genuinely additive. body_fat_pct /
-// resting_hr are absent: they now live in body_metrics, not metric_samples (#120).
+// resting_hr are absent: they now live in body_metrics, not metric_samples.
 export const AVERAGED_METRICS = new Set([
   "hrv_ms",
   "lean_mass_kg",

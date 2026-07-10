@@ -1,4 +1,4 @@
-// Refill math (issue #103 Phase B) — pure, no DB/network, so it's unit-tested in
+// Refill math — pure, no DB/network, so it's unit-tested in
 // lib/__tests__. Given a supplement/medication's on-hand quantity, how many units
 // one dose consumes, and how many doses land per day, it derives "≈N days of
 // supply left" and whether that's low enough to nudge a refill. The DB decrement

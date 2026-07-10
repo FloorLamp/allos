@@ -33,7 +33,7 @@ export const SECTIONS = {
       "2.16.840.1.113883.10.20.22.2.1.1",
     ],
   },
-  // Care Teams (issue #178): a provider source, not a clinical reading. The
+  // Care Teams: a provider source, not a clinical reading. The
   // section lists the patient's named clinicians/organizations, which we register
   // into the shared providers registry.
   careTeams: {
@@ -54,7 +54,7 @@ export const SECTIONS = {
       "2.16.840.1.113883.10.20.22.2.5.1",
     ],
   },
-  // Encounters / visit history (issue #178 Phase B). The "History of
+  // Encounters / visit history. The "History of
   // Hospitalizations + Outpatient visits" section; each entry is an Encounter
   // Activity (templateId 4.49) carrying the visit's date/period, type/class,
   // performing clinician, location, and (nested) visit diagnoses.
@@ -66,12 +66,12 @@ export const SECTIONS = {
     ],
   },
   // Reason for Visit (chief complaint 8661-1). Not a stored record on its own —
-  // read at the document level and correlated onto the encounter (#178 Phase B).
+  // read at the document level and correlated onto the encounter.
   reasonForVisit: {
     loinc: "29299-5",
     templates: ["2.16.840.1.113883.10.20.22.2.12"],
   },
-  // Social History (issue #188). Carries the patient's coded sex (Sex assigned at
+  // Social History. Carries the patient's coded sex (Sex assigned at
   // birth / Sex) — used to enrich the header demographics — and the tobacco smoking
   // status, captured as a social-history condition. Observations are keyed by their
   // LOINC <code> (72166-2 / 76689-9 / 46098-0), NOT by templateId: the Sex 46098-0
@@ -120,7 +120,7 @@ export const SECTIONS = {
 
 export const LOINC_OID = "2.16.840.1.113883.6.1";
 
-// Code-system OIDs used to label a condition/substance code (#180 / #179).
+// Code-system OIDs used to label a condition/substance code.
 export const SNOMED_OID = "2.16.840.1.113883.6.96";
 
 export const ICD10CM_OID = "2.16.840.1.113883.6.90";
@@ -146,7 +146,7 @@ export const SEVERITY_OBS_TEMPLATE = "2.16.840.1.113883.10.20.22.4.8";
 export const STATUS_OBS_TEMPLATE = "2.16.840.1.113883.10.20.22.4.6";
 
 // HL7 ActEncounterCode (v3 ActCode) — the encounter class translation (AMB / IMP /
-// EMER / …) that rides alongside a CPT/local type code on an Encounter (#178 B).
+// EMER / …) that rides alongside a CPT/local type code on an Encounter.
 export const ACT_CODE_OID = "2.16.840.1.113883.5.4";
 
 // Procedure Activity entry templates (procedure / act / observation flavors) —
@@ -171,7 +171,7 @@ const GOAL_OBS_TEMPLATE = "2.16.840.1.113883.10.20.22.4.121";
 // root carries a provider's NPI (authoritative for the global provider dedup).
 export const NPI_OID = "2.16.840.1.113883.4.6";
 
-// Social History observation LOINCs (#188). The section entries are identified by
+// Social History observation LOINCs. The section entries are identified by
 // these codes on the observation's <code>, not by templateId (see SECTIONS note).
 export const SMOKING_STATUS_LOINC = "72166-2"; // Tobacco smoking status (NHIS)
 

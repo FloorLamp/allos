@@ -1,5 +1,5 @@
 // DB INTEGRATION TIER — runtime profile-scoping check for the Upcoming
-// aggregation (issue #213). collectUpcoming() fans out across many existing
+// aggregation. collectUpcoming() fans out across many existing
 // reads; this seeds TWO profiles with distinct, tagged rows and proves that one
 // profile's aggregated due-list never surfaces the other's data. The static
 // source scan (lib/__tests__/profile-scoping.test.ts) can't see across the

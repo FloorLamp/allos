@@ -127,7 +127,7 @@ function classifyImmunizationDrop(sa: any, section: string): ImportDrop {
 }
 
 // Classify a dropped medication (kept OUTSIDE mapMedication to avoid touching the
-// medication mapper — see the #209 note): negated, else missing name/date.
+// medication mapper — see the medication-course note): negated, else missing name/date.
 function classifyMedicationDrop(
   sa: any,
   ids: Record<string, string>,

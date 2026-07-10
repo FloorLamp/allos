@@ -48,7 +48,7 @@ function fmtDate(iso: string): string {
       });
 }
 
-// Print + Share controls for the passport page (issue #105). Client-only so it
+// Print + Share controls for the passport page. Client-only so it
 // can drive window.print() and the share modal; the actual link mutations are
 // Server Actions gated by requireSession().
 export default function PassportControls({

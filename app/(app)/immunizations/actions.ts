@@ -35,7 +35,7 @@ export async function addImmunization(formData: FormData) {
   if (!isRealIsoDate(date) || !vaccineRaw) return;
   const doseLabel = String(formData.get("dose_label") ?? "").trim() || null;
   const notes = String(formData.get("notes") ?? "").trim() || null;
-  // Administering provider (issue #178): resolve the typed name into the shared
+  // Administering provider: resolve the typed name into the shared
   // GLOBAL registry (create-on-type), or NULL when left blank.
   const providerId = resolveProviderIdByName(
     String(formData.get("provider") ?? "")
@@ -92,7 +92,7 @@ export async function deleteImmunization(formData: FormData) {
   revalidateImmunizations();
 }
 
-// ---- Per-vaccine status overrides (issue #155) ----
+// ---- Per-vaccine status overrides ----
 // Set from the per-vaccine detail view, active profile only. `immune` counts the
 // series complete despite missing doses; `declined` drops it from
 // needs-attention. Upsert on (profile_id, vaccine) so re-setting flips the kind.

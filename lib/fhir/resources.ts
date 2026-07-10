@@ -55,7 +55,7 @@ export function mapImmunizationResource(
   if (!code || !date) return null;
   const lot = typeof r.lotNumber === "string" ? r.lotNumber.trim() : "";
   // The administering clinic/clinician (Immunization.performer[].actor) — kept as
-  // provenance (issue #178), preferring the recognizable organization.
+  // provenance, preferring the recognizable organization.
   const provider = ctx
     ? providerFromRefs(
         (Array.isArray(r.performer) ? r.performer : []).map(
@@ -99,7 +99,7 @@ export function observationRecords(
     r?.effectiveDateTime ?? r?.issued ?? r?.effectivePeriod?.start
   );
   if (!date) return [];
-  // The performing lab/org (Observation.performer) — provenance (issue #178).
+  // The performing lab/org (Observation.performer) — provenance.
   const provider = ctx
     ? providerFromRefs(r?.performer, ctx, r?.contained, "organization")
     : null;
@@ -261,8 +261,8 @@ function dosageText(r: any): string | null {
   return null;
 }
 
-// A medication's effective/therapy period(s), for course derivation (#209 Phase
-// 2): the effectivePeriod (start/end), an effectiveDateTime point, and any
+// A medication's effective/therapy period(s), for course derivation:
+// the effectivePeriod (start/end), an effectiveDateTime point, and any
 // dosage[].timing.repeat.boundsPeriod. The persist layer dedups on started_on, so
 // overlapping sources collapse.
 function fhirMedPeriods(r: any): ImportMedPeriod[] {
@@ -286,8 +286,8 @@ function fhirMedPeriods(r: any): ImportMedPeriod[] {
 }
 
 // A short free-text detail for the derived course: why the med was stopped
-// (statusReason) or, failing that, why it was prescribed (reasonCode) — #209
-// Phase 2. statusReason is a SINGLE CodeableConcept on MedicationRequest but an
+// (statusReason) or, failing that, why it was prescribed (reasonCode).
+// statusReason is a SINGLE CodeableConcept on MedicationRequest but an
 // ARRAY on MedicationStatement, so accept both (first non-empty concept name).
 function fhirMedStatusNote(r: any): string | null {
   const statusReasons = Array.isArray(r?.statusReason)
@@ -337,7 +337,7 @@ export function mapMedicationResource(
       r?.dateAsserted
   );
   if (!date) return null;
-  // Derived courses (#209 Phase 2): effective period(s) → dates, status →
+  // Derived courses: effective period(s) → dates, status →
   // open/closed + stop_reason. entered-in-error already returned null above; the
   // pure derivation returns null for it too (belt and suspenders).
   const periods = fhirMedPeriods(r);

@@ -1,6 +1,6 @@
 // DB INTEGRATION TIER (npm run test:db). Guards the per-document deletion
 // footprint — the bug where deleteMedicalDocument (app/(app)/medical/actions.ts)
-// and the reprocess delete-set (lib/import-persist) had drifted, so #182/#183/#196's
+// and the reprocess delete-set (lib/import-persist) had drifted, so
 // head-circumference samples, allergies, conditions, and encounters were cleared on
 // reprocess but ORPHANED on document delete.
 //
@@ -379,7 +379,7 @@ describe("reprocess stays idempotent through the shared helper", () => {
   });
 });
 
-// Finding A (review of #203): the delete must not OVER-delete within the same
+// Finding A: the delete must not OVER-delete within the same
 // profile. The footprint tests above seed only the deleted document's own rows,
 // so "no orphans" passes trivially; this proves the per-table keying protects a
 // same-profile MANUAL / INTEGRATION / OTHER-DOCUMENT row. It's the assertion that
@@ -500,7 +500,7 @@ describe("clearImportedDocumentRows never touches same-profile survivors", () =>
   });
 });
 
-// Finding B (review of #203): the full deleteMedicalDocument path — not just the
+// Finding B: the full deleteMedicalDocument path — not just the
 // helper — must hold the FK-ordering invariant. intake_items.document_id →
 // medical_documents(id) is NO ACTION (not cascade), so the extracted meds MUST be
 // deleted BEFORE the medical_documents row, or SQLite raises a FK violation. The

@@ -1,4 +1,4 @@
-// DB INTEGRATION TIER (not the pure unit suite). Exercises the #209 medication
+// DB INTEGRATION TIER (not the pure unit suite). Exercises the medication
 // history schema + query helpers against a real (in-memory / temp-file) SQLite
 // handle: the stop/restart course machinery, side-effect CRUD
 // + promote-to-intolerance, ON DELETE CASCADE via the parent, and two-profile

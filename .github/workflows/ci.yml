@@ -38,7 +38,7 @@ jobs:
         run: npm audit --audit-level=high
         continue-on-error: true
 
-      # PHI guard (#245): scan the whole tree for likely-real NPIs/phones/SSNs
+      # PHI guard: scan the whole tree for likely-real NPIs/phones/SSNs
       # using the pure detector in lib/phi-scan.ts. High-signal structural checks
       # only (Luhn-valid NPIs, dialable non-555 phones, valid-shaped SSNs), so
       # synthetic fixtures pass. Fails the PR instead of relying on a reviewer.
@@ -66,7 +66,7 @@ jobs:
 
       # DB integration tier: exercises migrate() on both a fresh and an existing
       # ("upgrade") database. Separate from the pure unit suite above; catches
-      # boot-crash-on-upgrade regressions like #157 that fresh-only tests miss.
+      # boot-crash-on-upgrade regressions that fresh-only tests miss.
       - name: Test (DB)
         run: npm run test:db
 

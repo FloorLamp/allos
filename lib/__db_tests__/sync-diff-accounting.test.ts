@@ -1,4 +1,4 @@
-// DB INTEGRATION TIER — real insert/update/unchanged accounting (issue #273).
+// DB INTEGRATION TIER — real insert/update/unchanged accounting.
 //
 // The correctness proof for the SELECT-before-compare upserts: better-sqlite3's
 // `info.changes` counts a MATCHED row even when no value differed, so "unchanged"

@@ -1,4 +1,4 @@
-// SERVER-ACTION TIER — AI insight generation (#226 sidebar consolidation).
+// SERVER-ACTION TIER — AI insight generation (sidebar consolidation).
 //
 // generateForDate (Trends "Insights" tab) writes an AI daily insight for the
 // active profile. The tab — and its generate form — is spliced out of the UI for

@@ -1,4 +1,4 @@
-// Goal projection for the Trends hub (issue #212, Phase 3). For a body-metric goal
+// Goal projection for the Trends hub. For a body-metric goal
 // with a target value + target date (weight, body-fat), fit a robust trend over
 // the windowed points and extrapolate at that pace from the latest reading to the
 // target — answering "at current pace you reach X ~3 weeks early / late", or

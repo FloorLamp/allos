@@ -11,7 +11,7 @@ function fmt(ts: string): string {
   return isNaN(d.getTime()) ? ts : d.toLocaleString();
 }
 
-// Active-sessions view (issue #132, Phase B). Lists every live session for the
+// Active-sessions view. Lists every live session for the
 // signed-in login with per-session revoke, plus a standalone "sign out
 // everywhere else". The current device is labelled and can't be revoked from
 // here (use logout for that) so the list can't leave you with nothing.

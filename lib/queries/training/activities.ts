@@ -249,7 +249,7 @@ export function getDashboardStats(profileId: number) {
       .get(profileId, shiftDateStr(today(profileId), -6)) as { c: number }
   ).c;
   // Latest row that actually carries a weight (weightless HR/body-fat rows are
-  // skipped, #120). Tie-break same-date rows by id so the newest wins (matches
+  // skipped). Tie-break same-date rows by id so the newest wins (matches
   // getLatestBodyMetric).
   const latestWeight = db
     .prepare(

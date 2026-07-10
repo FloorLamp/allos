@@ -6,7 +6,7 @@ import { IconArrowsExchange } from "@tabler/icons-react";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { reassignDocument } from "@/app/(app)/medical/actions";
 
-// "Move to profile…" control (issue #208, Phase 3). Shown only when the acting
+// "Move to profile…" control. Shown only when the acting
 // login can reach ≥2 profiles. Picks a destination among the login's OTHER
 // accessible profiles, confirms, then moves the document + everything it imported
 // + its file to that profile via the reassignDocument server action.

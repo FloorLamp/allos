@@ -1,4 +1,4 @@
-// Read layer for the unified import log + import detail (issue #208, Phase 1).
+// Read layer for the unified import log + import detail.
 // Every statement here is PROFILE-SCOPED (the scoping rule): the log lists a
 // profile's own medical_documents + import_jobs, and the produced-breakdown
 // counts each trace one document's output through the provenance link the writer
@@ -104,7 +104,7 @@ export function getImportLog(profileId: number): ImportLogRow[] {
 
 // The unified "all my imported data" feed behind Data → Review: a profile's
 // background integration syncs + uploaded documents + paste/CSV jobs, merged
-// newest-first (issue #208 / #212). Composes the existing profile-scoped reads
+// newest-first. Composes the existing profile-scoped reads
 // (getRecentSyncEvents, getImportLogDocuments, getImportLogJobs) — so scoping is
 // inherited — and hands the merge/humanize to the pure lib/import-feed. Capped at
 // `limit` after the merge so one noisy stream can't crowd out the others.
@@ -247,7 +247,7 @@ export function getDocumentProduced(
 }
 
 // The currently-persisted rows a document produced, reduced to the neutral
-// ImportSnapshot the reprocess-diff compares against (issue #208, Phase 3). This
+// ImportSnapshot the reprocess-diff compares against. This
 // is the PERSISTED ("current") side; the freshly-extracted ("next") side comes
 // from snapshotFromPersistInput on an in-memory PersistInput that is NEVER
 // written. Both funnel through the SAME row builders (lib/import-diff), so a

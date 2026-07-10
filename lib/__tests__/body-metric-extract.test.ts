@@ -164,7 +164,7 @@ describe("bodyMetricsFromExtraction", () => {
     expect(malformed).toEqual([]);
   });
 
-  it("emits a weightless row for a date with only body fat / resting HR (#120)", () => {
+  it("emits a weightless row for a date with only body fat / resting HR", () => {
     const rows = bodyMetricsFromExtraction(
       [
         result({ name: "Body Fat %", value_num: 22, unit: "%" }),
@@ -195,7 +195,7 @@ describe("bodyMetricsFromExtraction", () => {
     expect(rows).toEqual([]);
   });
 
-  it("imports infant & toddler weights so pediatric growth charts get data (#173)", () => {
+  it("imports infant & toddler weights so pediatric growth charts get data", () => {
     // A 15 kg toddler and an 18 lb infant (~8.16 kg) are real body weights that
     // the old 20 kg floor silently dropped; both now project. A sub-2 kg value
     // stays rejected.
@@ -279,7 +279,7 @@ describe("bodyMetricsFromExtraction", () => {
   });
 });
 
-describe("bodyMetricKind (#120 classifier)", () => {
+describe("bodyMetricKind classifier", () => {
   it("classifies weight / body fat / resting HR by name or canonical", () => {
     expect(bodyMetricKind("Body Weight", null)).toBe("weight");
     expect(bodyMetricKind("Weight, Body", null)).toBe("weight");

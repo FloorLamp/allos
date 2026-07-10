@@ -246,7 +246,7 @@ async function tickProfile(
     if (delivered) setProfileSetting(profile.id, key, date);
   }
 
-  // Missed-dose escalation (#103 Phase A): runs every hour regardless of which
+  // Missed-dose escalation: runs every hour regardless of which
   // slots are due, so a dose whose morning reminder already went out gets chased
   // later the same day. Its own per-dose/day dedup prevents repeat nudges.
   try {
@@ -266,7 +266,7 @@ async function tickProfile(
     anyFailed = true;
   }
 
-  // Low-supply refill nudge (#103 Phase B): runs every hour; its own per-item
+  // Low-supply refill nudge: runs every hour; its own per-item
   // "once per low-supply episode" dedup (cleared when an item is refilled) keeps
   // it from re-nagging daily.
   try {
@@ -294,7 +294,7 @@ async function tickProfile(
     });
   }
 
-  // Morning digest (#135): one summary per profile per day at digest_hour (this
+  // Morning digest: one summary per profile per day at digest_hour (this
   // profile's timezone), hard-deduped so a bug can't spam a family chat at 7am.
   if (
     sched.digestHour != null &&
@@ -313,7 +313,7 @@ async function tickProfile(
     }
   }
 
-  // "What's due" upcoming digest (#213 Phase 3): shares the digest_hour slot but
+  // "What's due" upcoming digest: shares the digest_hour slot but
   // its own per-profile/day dedup key, so it coexists with the morning digest and
   // can't spam. Reuses collectUpcoming, so snooze/dismiss + training-restriction
   // apply automatically.

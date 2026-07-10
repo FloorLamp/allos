@@ -96,7 +96,7 @@ export function mapImmunization(sa: any): ImportedImmunization | null {
     notes: lot ? `Lot ${lot}` : null,
     external_id: `ccda:${catalog}:${date}`,
     // Who administered the shot / at what facility (CCD <performer>) — kept as
-    // provenance (issue #178) rather than dropped.
+    // provenance rather than dropped.
     provider: providerFromPerformer(sa),
   };
 }
@@ -174,13 +174,13 @@ export function mapObservation(
       loinc || name
     ).toLowerCase()}:${date}:${value_num ?? value ?? ""}`,
     // The performing lab/org (e.g. "QUEST") — from the observation's own
-    // <performer>, else the organizer's (issue #178).
+    // <performer>, else the organizer's.
     provider: providerFromPerformer(obs) ?? fallbackProvider,
   };
 }
 
-// A medication's effective/therapy period(s), for course derivation (#209 Phase
-// 2). A med's effectiveTime is typically an array of an IVL_TS therapy period
+// A medication's effective/therapy period(s), for course derivation.
+// A med's effectiveTime is typically an array of an IVL_TS therapy period
 // (low/high) plus a PIVL_TS frequency (period/@value) — take the interval bound(s)
 // and any point date, and ignore the frequency element (no low/high/@value). A
 // substanceAdministration may carry MULTIPLE IVL_TS periods (distinct episodes).
@@ -201,7 +201,7 @@ function medEffectivePeriods(
   return out;
 }
 
-// The medication's lifecycle status (#209 Phase 2): the substanceAdministration
+// The medication's lifecycle status: the substanceAdministration
 // statusCode (active/completed/aborted/suspended/held), else a nested C-CDA
 // "status of medication" observation's value code/displayName. The nested value
 // is only trusted when it normalizes to a real status token, so an indication /
@@ -218,15 +218,15 @@ function ccdaMedStatus(sa: any): ImportMedStatus {
 }
 
 // Map a medication <substanceAdministration> to a `prescription` record. This is
-// the interim home #103 (medication support) calls for — the extraction
+// the interim home (medication support) calls for — the extraction
 // pipeline's `prescription` category — until a dedicated medications table lands,
 // at which point only this sink changes. The record ALSO carries the derived
-// medication COURSES (#209 Phase 2): the effective period(s) → course dates, the
+// medication COURSES: the effective period(s) → course dates, the
 // status → open/closed + stop_reason; the persist layer turns them into
 // medication_courses rows. A nullified/entered-in-error med yields null courses,
 // dropping the whole medication.
 // A medication name resolved from the narrative table via the code's
-// <originalText><reference> (#209 Phase 2). The tested Epic shape points the
+// <originalText><reference>. The tested Epic shape points the
 // reference at a <content ID> holding ONLY the drug name, but a different export
 // could point it at a wider cell (a <td>/<tr> that also holds the sig/frequency),
 // whose collectText returns a whitespace-collapsed blob. Guard that: take the
@@ -303,7 +303,7 @@ export function mapMedication(
   };
 }
 
-// ---- allergies + problem-list conditions (#179 / #180) ----
+// ---- allergies + problem-list conditions ----
 
 // Map one Problem Concern Act (template 4.3) to an ImportedCondition, or null when
 // it carries no productive problem (nullFlavored / "no active problems").
@@ -460,7 +460,7 @@ export function mapAllergy(
   };
 }
 
-// ---- encounters / visits (#178 Phase B) ----
+// ---- encounters / visits ----
 
 // The HL7 v3 ActEncounterCode class (AMB / IMP / EMER / …) carried as a
 // <translation> on the encounter <code> alongside the CPT/local type code.
@@ -871,7 +871,7 @@ function mapCareGoal(
   };
 }
 
-// ---- social history (#188) ----
+// ---- social history ----
 
 // The patient's sex as coded in a document's Social History section, or null. Sex
 // assigned at birth (76689-9) is preferred over the administrative Sex (46098-0)
@@ -971,7 +971,7 @@ function observationsFromEntries(
   return out;
 }
 
-// Collect providers from the Care Teams section (issue #178). Not a clinical
+// Collect providers from the Care Teams section. Not a clinical
 // reading — it names the patient's clinicians/orgs, which are registered into the
 // shared registry. Deep-walks the section for assignedEntity nodes (their nesting
 // under organizer/act/participant varies by EMR), preferring the named individual.
@@ -1132,7 +1132,7 @@ export const goalsExtractor: SectionExtractor = {
   },
 };
 
-// Social History (issue #188): the smoking status becomes a condition row; the
+// Social History: the smoking status becomes a condition row; the
 // section's coded sex is read separately (socialHistorySex) to enrich demographics.
 export const socialHistoryExtractor: SectionExtractor = {
   key: "socialHistory",
@@ -1156,7 +1156,7 @@ export const DEFAULT_EXTRACTORS: SectionExtractor[] = [
   socialHistoryExtractor,
 ];
 
-// ---- import DEBUGGER: drop-reason + coverage report (issue #208 Phase 2) ----
+// ---- import DEBUGGER: drop-reason + coverage report ----
 //
 // The extractors above silently drop candidates: mapObservation returns null for a
 // null-flavored "Comment(s)" row, mapImmunization for an unmapped vaccine code,

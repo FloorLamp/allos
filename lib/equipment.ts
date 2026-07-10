@@ -9,7 +9,7 @@ export interface EquipmentInput {
   category: string | null;
 }
 
-// Equipment is per-profile (issue #67): deleteEquipment() nulls
+// Equipment is per-profile: deleteEquipment() nulls
 // exercise_sets.equipment_id, so a shared row would let one profile's cleanup
 // corrupt another's set history.
 export function getEquipment(profileId: number): Equipment[] {

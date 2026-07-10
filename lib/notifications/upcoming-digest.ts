@@ -1,4 +1,4 @@
-// Per-profile "what's due" digest (issue #213, Phase 3) — PURE assembly +
+// Per-profile "what's due" digest — PURE assembly +
 // rendering, no DB/network, so both are unit-tested in lib/__tests__. The DB
 // gather lives in ./upcoming-digest-data, which reuses collectUpcoming (so a
 // snooze/dismiss from the Upcoming page applies to this push automatically) and

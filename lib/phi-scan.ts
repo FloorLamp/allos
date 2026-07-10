@@ -1,5 +1,5 @@
 /**
- * Pure PHI scanner (issue #245-class guard).
+ * Pure PHI scanner (a structural guard).
  *
  * Detects *likely-real* PHI in source/fixtures using high-signal STRUCTURAL
  * checks only — no name/org lists live here (that would itself commit PHI).

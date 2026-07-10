@@ -1,4 +1,4 @@
-// Server-side series assembly for the Trends hub Phase 2 (issue #212). Builds the
+// Server-side series assembly for the Trends hub Phase 2. Builds the
 // named, date-keyed numeric series that the Compare overlay, the "what's trending"
 // digest, and the pinned Overview tiles all consume, so each surface shapes its
 // data ONE way. This is a server helper (it reads via the profile-scoped queries
@@ -336,8 +336,8 @@ export function resolveSeriesByKey(
   return null;
 }
 
-// Assemble the event-annotation markers for the Trends charts (issue #212,
-// Phase 3), windowed to `range`: medication course start/stop, scheduled/completed
+// Assemble the event-annotation markers for the Trends charts,
+// windowed to `range`: medication course start/stop, scheduled/completed
 // appointments, and active-situation changes. Every source read goes through an
 // already PROFILE-SCOPED query (getMedicationCourses / getSupplements /
 // getAppointments) or the per-profile situation-event log (getSituationEvents), so

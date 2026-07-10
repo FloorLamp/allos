@@ -51,7 +51,7 @@ function parseFlag(
   return first === "oor" || first === "nonoptimal" ? first : undefined;
 }
 
-// The Trends hub (issue #212, Phase 1): the analytics lens — a sibling to the
+// The Trends hub: the analytics lens — a sibling to the
 // Timeline — that aggregates the app's existing trend charts into one place under
 // a SHARED date-range control. Every section reuses existing components/queries;
 // the shared window (from/to) drives them all. Fitness + Insights (age-gated

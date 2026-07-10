@@ -1,4 +1,4 @@
-// Missed-dose escalation orchestration (issue #103 Phase A). Gathers the critical
+// Missed-dose escalation orchestration. Gathers the critical
 // unconfirmed doses for a profile from already-scoped queries, runs the pure
 // escalationsDue decision, and sends a nudge over Telegram (to escalate_chat_id
 // when set, else the profile's own chat). Called once per hour from the notify

@@ -11,8 +11,8 @@ import {
 } from "./immunization-status";
 import { expandToComponents } from "./immunization-catalog";
 
-// Pure view-model assembly for the profile summary / "medical passport" (issue
-// #105). Every field the passport shows already exists as a query; this module
+// Pure view-model assembly for the profile summary / "medical passport".
+// Every field the passport shows already exists as a query; this module
 // takes the individual latest-value results and shapes them into one card model,
 // with the interesting derivations — blood-type resolution, BMI, and the merge of
 // flagged + starred biomarkers — done here so they're unit-testable without a DB
@@ -51,7 +51,7 @@ export interface SummaryImmunizationDose {
   label: string | null;
 }
 
-// A per-vaccine passport row (issue #185): the vaccine's current status badge
+// A per-vaccine passport row: the vaccine's current status badge
 // plus EVERY recorded dose date (not just the latest). One row per catalog
 // vaccine that has at least one crediting dose (a combination shot credits each
 // of its component vaccines), or a titer/override-driven immunity.
@@ -141,7 +141,7 @@ export interface ProfileSummary {
     weightDate: string | null;
     bodyFatDate: string | null;
     restingHrDate: string | null;
-    // Pediatric growth percentiles (WHO/CDC) at the current age (#101), or null
+    // Pediatric growth percentiles (WHO/CDC) at the current age, or null
     // for adults / out-of-range ages / unknown sex.
     growth: GrowthBadge | null;
   };
@@ -243,7 +243,7 @@ export function computeBmi(
   return Math.round((weightKg / (m * m)) * 10) / 10;
 }
 
-// Resolve a medication's "started on" date for the passport (issue #209 data):
+// Resolve a medication's "started on" date for the passport:
 // a currently-taken med has exactly one OPEN course (stopped_on IS NULL) by
 // invariant, so its started_on is the start date. When several are open we take
 // the most recent start; when no course is on file we fall back to the item's
@@ -351,7 +351,7 @@ export function buildProfileSummary(
   };
 }
 
-// Build the passport's per-vaccine immunization rows (issue #185) from the raw
+// Build the passport's per-vaccine immunization rows from the raw
 // stored records and the already-computed schedule assessments. Each assessment
 // is a catalog vaccine; a stored dose credits it when the vaccine's code expands
 // to (or is) that catalog code — so one combination shot (e.g. Vaxelis) surfaces

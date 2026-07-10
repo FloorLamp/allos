@@ -38,7 +38,7 @@ export default function FamilySettingsPage() {
     .prepare("SELECT id, username, role FROM logins ORDER BY id")
     .all() as LoginRow[];
   // Live-session count per login, for the "signed in on N devices" line + the
-  // revoke-all button (issue #132, Phase C). Expired rows are excluded to match
+  // revoke-all button. Expired rows are excluded to match
   // what getCurrentSession would accept.
   const sessionCountRows = db
     .prepare(

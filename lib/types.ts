@@ -96,7 +96,7 @@ export function isBarbell(category: string | null | undefined): boolean {
   return (category ?? "").trim().toLowerCase() === "barbell";
 }
 
-// One dated body-metrics row (table: body_metrics). weight_kg is nullable (#120)
+// One dated body-metrics row (table: body_metrics). weight_kg is nullable
 // so a row can carry only body fat and/or resting HR (a vitals panel or wearable
 // with no scale weight). Distinct from BodyMetricKind below, which names *which*
 // metric a value is (weight / body_fat / resting_hr).
@@ -170,7 +170,7 @@ export interface FrequencyTarget {
   created_at: string;
 }
 
-// A healthcare provider or organization (issue #178). GLOBAL — shared across the
+// A healthcare provider or organization. GLOBAL — shared across the
 // whole family/instance (a family sees one "Quest Diagnostics" / "Dr. Smith"),
 // modeled like logins/profiles, so it is intentionally NOT profile-scoped. Records
 // link to it via a nullable provider_id FK on their profile-owned row. `type`
@@ -191,7 +191,7 @@ export interface Provider {
   created_at: string;
 }
 
-// A scheduled medical visit (issue #213, Phase 2). Profile-owned; optionally
+// A scheduled medical visit. Profile-owned; optionally
 // linked to the shared providers registry via a nullable provider_id FK.
 // `scheduled_at` is a date (YYYY-MM-DD) or datetime; `status` drives whether it
 // still surfaces on the Upcoming page (only 'scheduled' does).
@@ -249,7 +249,7 @@ export interface MedicalRecord {
   // 1 when this is the most recent reading in its biomarker group; only set by
   // queries that select it (e.g. the biomarkers table). Absent otherwise.
   is_latest?: number;
-  // The performing provider/organization (issue #178). provider_id links the
+  // The performing provider/organization. provider_id links the
   // shared GLOBAL registry; provider_name is joined for display. NULL/absent when
   // unlinked.
   provider_id: number | null;
@@ -388,13 +388,13 @@ export interface Immunization {
   // NULL for manual and document-extracted rows.
   external_id: string | null;
   created_at: string;
-  // The administering provider/organization (issue #178). provider_id links the
+  // The administering provider/organization. provider_id links the
   // shared GLOBAL registry; provider_name is joined for display.
   provider_id: number | null;
   provider_name?: string | null;
 }
 
-// ---- Allergies & conditions (CCD clinical lists — issues #179 / #180) ----
+// ---- Allergies & conditions (CCD clinical lists) ----
 
 // Clinical status of an allergy/intolerance. `active` is the default for a
 // documented allergy; `inactive`/`resolved` come from the source's concern-act
@@ -443,7 +443,7 @@ export interface Condition {
   created_at: string;
 }
 
-// A visit / encounter (table: encounters, issue #178 Phase B). `type` is the
+// A visit / encounter (table: encounters). `type` is the
 // display ("Office Visit"), `class_code` the HL7 ActEncounterCode (AMB/IMP/…),
 // `reason` the chief complaint, `diagnoses` a '; '-joined summary of the visit
 // diagnoses. provider_id / location_provider_id link the shared providers registry
@@ -572,7 +572,7 @@ export interface MedicalDocument {
   raw_extraction: string | null;
   model: string | null;
   content_hash: string | null;
-  // The import DEBUGGER report as JSON (issue #208 Phase 2): dropped candidates +
+  // The import DEBUGGER report as JSON: dropped candidates +
   // section/resource coverage. NULL for AI-extracted docs or pre-feature rows.
   import_report: string | null;
   uploaded_at: string;
@@ -608,7 +608,7 @@ export interface Supplement {
   // Optional "stack" label grouping supplements taken together (e.g. "D3 + K2");
   // members render adjacently in their time bucket. Free text.
   stack: string | null;
-  // Missed-dose escalation (issue #103 Phase A). critical=1 opts this
+  // Missed-dose escalation. critical=1 opts this
   // (medication) into a follow-up nudge when a sent dose reminder goes
   // unconfirmed; escalate_after_min is the wait after the slot's reminder
   // (null → a sensible default); escalate_chat_id optionally routes the
@@ -616,12 +616,12 @@ export interface Supplement {
   critical: number;
   escalate_after_min: number | null;
   escalate_chat_id: string | null;
-  // Refill tracking (issue #103 Phase B). quantity_on_hand is the units left
+  // Refill tracking. quantity_on_hand is the units left
   // (NULL = not tracked); qty_per_dose is units consumed per confirmed dose
   // (defaults to 1). Decremented on the "taken" path; drives "≈N days left".
   quantity_on_hand: number | null;
   qty_per_dose: number;
-  // Medication identity (issue #103 Phase C). kind splits medications from
+  // Medication identity. kind splits medications from
   // supplements (shared table/machinery); prescriber/pharmacy/rx_number are
   // medication-only free text; as_needed (0/1) marks a PRN med that generates no
   // scheduled reminders/escalation/adherence-due (an as-needed med is never
@@ -631,22 +631,22 @@ export interface Supplement {
   pharmacy: string | null;
   rx_number: string | null;
   as_needed: number;
-  // Provenance (issue #103 Phase C follow-up, #150). source is 'manual' for
+  // Provenance. source is 'manual' for
   // hand-entered rows and 'extracted' for medications auto-structured from an
   // uploaded prescription document; document_id points at that source document
   // (NULL for manual/legacy rows). The extraction persist replaces/removes only
   // the (profile, document_id, source='extracted') set, never a manual row.
   document_id: number | null;
   source: string | null;
-  // The prescribing provider (issue #178) — a medication links to the shared
+  // The prescribing provider — a medication links to the shared
   // GLOBAL registry via provider_id; provider_name is joined for display. NULL for
   // supplements and unlinked medications.
   provider_id: number | null;
   provider_name?: string | null;
 }
 
-// Whether a row is an ordinary supplement or a prescription medication (issue
-// #103 Phase C). Same table, same dose/schedule/adherence machinery; the UI
+// Whether a row is an ordinary supplement or a prescription medication.
+// Same table, same dose/schedule/adherence machinery; the UI
 // groups by this and reveals the stricter medication fields.
 export type SupplementKind = "supplement" | "medication";
 
@@ -678,7 +678,7 @@ export interface SupplementPair {
   b_name?: string;
 }
 
-// Medication history / lifecycle (issue #209, Phase 1). A medication's real-world
+// Medication history / lifecycle. A medication's real-world
 // use is a sequence of COURSES (episodes): a course opens when the med is started
 // and closes when it's stopped, so restarting a med after a break is a NEW course
 // rather than an edit of the old one. `intake_items.active` stays the live
@@ -821,7 +821,7 @@ export interface IntegrationSyncEvent {
   window_end: string | null;
   received: number | null;
   written: number | null;
-  // Real insert/update/unchanged accounting (#273). Null on legacy rows recorded
+  // Real insert/update/unchanged accounting. Null on legacy rows recorded
   // before the split columns existed — the Review feed falls back to `written`.
   inserted: number | null;
   updated: number | null;

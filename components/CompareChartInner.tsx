@@ -18,7 +18,7 @@ import {
   type TrendAnnotation,
 } from "@/lib/trend-annotations";
 
-// Dual-series overlay for the Trends Compare tab (issue #212, Phase 2). Plots two
+// Dual-series overlay for the Trends Compare tab. Plots two
 // date-aligned series on one time axis so correlation is eyeball-able. When the
 // units differ we use a DUAL Y-axis (A left, B right); when `normalized`, both
 // series are already min-max scaled to 0–1 by the caller, so they share ONE 0–100%
@@ -43,7 +43,7 @@ export default function CompareChart({
   unitA: string;
   unitB: string;
   normalized: boolean;
-  // Event annotations (issue #212, Phase 3), pre-filtered to the enabled kinds by
+  // Event annotations, pre-filtered to the enabled kinds by
   // the parent; drawn as vertical reference lines snapped to the nearest charted date.
   annotations?: TrendAnnotation[];
 }) {

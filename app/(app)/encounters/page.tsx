@@ -9,7 +9,7 @@ import { addEncounter } from "./actions";
 
 export const dynamic = "force-dynamic";
 
-// Visits / encounters (#178 Phase B): the profile's visit history, newest first.
+// Visits / encounters: the profile's visit history, newest first.
 // Imported from a health record's CCD Encounters section, plus manual add/edit/
 // delete. Each visit shows its date, type, chief complaint, diagnoses, and the
 // attending provider + facility (resolved from the shared providers registry).
@@ -21,7 +21,7 @@ export default function EncountersPage() {
 
   return (
     <div>
-      {/* Shared provider picker options for the add + edit forms (issue #178). */}
+      {/* Shared provider picker options for the add + edit forms. */}
       <ProviderDatalist names={providerNames} />
       <PageHeader
         title="Visits"

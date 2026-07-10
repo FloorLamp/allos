@@ -1,4 +1,4 @@
-// DB INTEGRATION TIER — runtime profile-scoping check (issue #160).
+// DB INTEGRATION TIER — runtime profile-scoping check.
 //
 // lib/__tests__/profile-scoping.test.ts asserts the `profile_id` filter STATICALLY
 // (a source scan of every owned-table .prepare). This file asserts the same

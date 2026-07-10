@@ -1,8 +1,8 @@
 // DB INTEGRATION TIER (not the pure unit suite in lib/__tests__).
 //
-// Covers the #128 fix: `source` is part of the metric_samples unique key, so two
+// Covers the fix: `source` is part of the metric_samples unique key, so two
 // providers reporting the SAME metric for the SAME window coexist instead of
-// silently overwriting each other. Also covers the #120-follow-up guard that body
+// silently overwriting each other. Also covers the follow-up guard that body
 // fat / resting HR never re-split into metric_samples via the ingest normalizer.
 //
 // Runs via `npm run test:db` (vitest.db.config.ts). The `db` singleton is pointed
@@ -50,7 +50,7 @@ beforeAll(() => {
   );
 });
 
-describe("metric_samples: source is part of the unique key (#128)", () => {
+describe("metric_samples: source is part of the unique key", () => {
   it("fresh schema's unique key includes source", () => {
     expect(uniqueKeyCols()).toContain("source");
     // Leads with (profile_id, metric) to serve the rollup reads' WHERE prefix.
@@ -91,7 +91,7 @@ describe("metric_samples: source is part of the unique key (#128)", () => {
   });
 });
 
-describe("metric_samples: body-metric measures never land here (#120 guard)", () => {
+describe("metric_samples: body-metric measures never land here", () => {
   it("skips body_fat_pct / resting_hr rows in the samples upsert", () => {
     const counts = upsertMetricSamples(
       profileId,

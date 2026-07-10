@@ -12,8 +12,8 @@ import { SESSION_COOKIE, SESSION_COOKIE_SECURE } from "./session-cookie";
 // which is dependency-free so the Edge middleware can import it too (issue #21).
 export { SESSION_COOKIE };
 
-// Session/auth layer for the single-tenant → multi-user conversion (issue #67,
-// Phase 1). The cookie holds a random 256-bit token; the DB stores only its
+// Session/auth layer for the single-tenant → multi-user conversion.
+// The cookie holds a random 256-bit token; the DB stores only its
 // SHA-256, so a DB leak can't be replayed as a live cookie. The active profile
 // lives server-side on the session row, never in the cookie.
 //
@@ -374,7 +374,7 @@ export function destroyOtherSessionsForCurrent(loginId: number): void {
   destroyLoginSessions(loginId, token ? hashToken(token) : undefined);
 }
 
-// A live session as shown on Settings → Preferences (issue #132, Phase B). `id`
+// A live session as shown on Settings → Preferences. `id`
 // is the SHA-256 token_hash — safe to hand to the client: it can't be reversed
 // into the cookie token, and revokeSession scopes deletion to the owning login,
 // so it only ever revokes the caller's own sessions. `current` marks the session

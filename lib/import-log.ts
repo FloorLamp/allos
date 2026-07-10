@@ -1,4 +1,4 @@
-// Pure logic for the unified import log + import detail (issue #208, Phase 1).
+// Pure logic for the unified import log + import detail.
 //
 // The /import page interleaves two record kinds — uploaded medical_documents and
 // pasted/CSV import_jobs — into one newest-first log, badges each by a normalized

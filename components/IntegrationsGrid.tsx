@@ -7,7 +7,7 @@ import RelativeTime from "./RelativeTime";
 
 // The connect-card grid for the integration providers (Health Connect / Strava /
 // Garmin). Shared by the Integrations page and the /import page's "connect a
-// device or service" section (issue #208) so the two never drift. Profile-scoped
+// device or service" section so the two never drift. Profile-scoped
 // connection status is read per card; the caller passes its active profile id.
 export default function IntegrationsGrid({ profileId }: { profileId: number }) {
   return (

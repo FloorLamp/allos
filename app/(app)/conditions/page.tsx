@@ -15,7 +15,7 @@ const FILTERS = [
   { key: "resolved", label: "Resolved" },
 ] as const;
 
-// Conditions / problem list (#180): the current problem list, with manual
+// Conditions / problem list: the current problem list, with manual
 // add/edit/delete and an active/resolved filter.
 export default function ConditionsPage({
   searchParams,

@@ -55,7 +55,7 @@ export default function BiomarkerScale({
   // scales against the band that applied to the reading (not today's age).
   age?: number | null;
   // The profile's current reproductive status (female physiology only); overrides
-  // the age proxy for the reproductive-hormone ranges (#202).
+  // the age proxy for the reproductive-hormone ranges.
   status?: ReproductiveStatus | null;
 }) {
   const cb = b.canonical;

@@ -2748,7 +2748,7 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Sex- and cycle-dependent (pg/mL). Female = reproductive-age, spanning follicular→mid-cycle peak→luteal (the app can't know cycle phase), with no low bound so early-follicular / post-menopausal lows never false-flag; the lower post-menopausal range is already covered, so no age band. Male ~10–40. Replaces a prior male-ish single range that false-flagged normal female physiology. When the profile's reproductive_status is set, ranges_by_status overrides this (#202).",
+      "note": "Sex- and cycle-dependent (pg/mL). Female = reproductive-age, spanning follicular→mid-cycle peak→luteal (the app can't know cycle phase), with no low bound so early-follicular / post-menopausal lows never false-flag; the lower post-menopausal range is already covered, so no age band. Male ~10–40. Replaces a prior male-ish single range that false-flagged normal female physiology. When the profile's reproductive_status is set, ranges_by_status overrides this.",
       "ranges_by_status": {
         "premenopausal": {
           "ref_low": null,
@@ -2778,7 +2778,7 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Sex- and life-stage-dependent (mIU/mL). Female reproductive-age spans luteal→mid-cycle (the app can't know cycle phase); post-menopausal FSH is many-fold higher and is resolved via the 51+ age band so it isn't false-flagged 'high'. When the profile's reproductive_status is set, ranges_by_status overrides the age proxy (#202).",
+      "note": "Sex- and life-stage-dependent (mIU/mL). Female reproductive-age spans luteal→mid-cycle (the app can't know cycle phase); post-menopausal FSH is many-fold higher and is resolved via the 51+ age band so it isn't false-flagged 'high'. When the profile's reproductive_status is set, ranges_by_status overrides the age proxy.",
       "ranges_by_age": [
         {
           "min_age": 51,
@@ -2818,7 +2818,7 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Sex-dependent (mIU/mL). Female reproductive-age spans the luteal low → ovulatory LH surge (~95; the app can't know cycle phase) — an envelope that already contains the post-menopausal range (~8–59), so LH needs no age band. Male ~1.5–9.5. When the profile's reproductive_status is set, ranges_by_status refines this (#202).",
+      "note": "Sex-dependent (mIU/mL). Female reproductive-age spans the luteal low → ovulatory LH surge (~95; the app can't know cycle phase) — an envelope that already contains the post-menopausal range (~8–59), so LH needs no age band. Male ~1.5–9.5. When the profile's reproductive_status is set, ranges_by_status refines this.",
       "ranges_by_status": {
         "premenopausal": {
           "ref_low": 1,

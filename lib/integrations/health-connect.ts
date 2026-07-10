@@ -155,7 +155,7 @@ export function parseHealthConnectPayload(
   const payload = body as Record<string, unknown>;
 
   // --- weight / body fat % / resting HR → one body_metrics row per local day ---
-  // All three share the body_metrics home (#120): weight is last-wins per day;
+  // All three share the body_metrics home: weight is last-wins per day;
   // body fat and resting HR are day-averaged (they were point metrics, averaged per
   // day back when they lived in metric_samples). A day may carry any subset — a
   // weightless row (HR/body-fat only) is valid now that body_metrics.weight_kg is

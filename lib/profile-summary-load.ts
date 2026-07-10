@@ -43,7 +43,7 @@ import {
 import type { MedicationCourse } from "./types";
 import type { MedicalRecord } from "./types";
 
-// Server-side gathering for the profile passport (issue #105): it runs the
+// Server-side gathering for the profile passport: it runs the
 // individual profile-scoped latest-value queries and hands the raw results to the
 // pure buildProfileSummary(). Shared verbatim by the authenticated page and the
 // public share render, so both show the identical model.
@@ -108,7 +108,7 @@ export function getProfileSummary(
     starred: true,
   }));
 
-  // Medications (#103 Phase C / #150): structured medication rows
+  // Medications: structured medication rows
   // (kind='medication') are the primary source — including the ones now
   // auto-structured from prescription documents (source='extracted'). Extracted
   // prescription *records* remain a fallback only for prescriptions NOT yet
@@ -176,7 +176,7 @@ export function getProfileSummary(
       date: s.created_at ? s.created_at.slice(0, 10) : null,
     }));
 
-  // Immunizations passport table (#185): one row per catalog vaccine the profile
+  // Immunizations passport table: one row per catalog vaccine the profile
   // has doses for, each carrying its schedule status badge and EVERY dose date.
   // Built from the same assessSchedule() the immunizations page uses, so the two
   // surfaces can't drift; a combination shot credits each component series.
@@ -219,8 +219,8 @@ export function getProfileSummary(
       category: r.category,
     }));
 
-  // Allergies (#179): documented allergies merged with positive lab-derived IgE
-  // sensitizations (dedup by allergen). Conditions (#180): the active problem list.
+  // Allergies: documented allergies merged with positive lab-derived IgE
+  // sensitizations (dedup by allergen). Conditions: the active problem list.
   const allergies: SummaryAllergy[] = getAllergiesView(profileId).map((a) => ({
     substance: a.substance,
     reaction: a.reaction,

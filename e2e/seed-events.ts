@@ -59,7 +59,7 @@ const ins = db.prepare(
 
 // Two clean syncs, then a newer Strava failure — so Strava is "currently failing"
 // (its latest event is the failure) while Health Connect is healthy. The Health
-// Connect sync carries the #273 split (30 new + 10 changed + 2 skipped); the
+// Connect sync carries the split (30 new + 10 changed + 2 skipped); the
 // Strava sync is an all-unchanged re-scan of the rolling window ("nothing new").
 ins.run(
   PROFILE_ID,
@@ -193,7 +193,7 @@ console.log(
   "e2e: seeded integration_sync_events (strava failing) + a cross-source duplicate activity pair + a same-day manual-merge pair + a conflicting merge pair"
 );
 
-// ── Unified import-feed fixtures (issue #208 / #212) ──────────────────────────
+// ── Unified import-feed fixtures ──────────────────────────
 // The Data → Review feed merges background syncs with uploaded documents and
 // pasted/CSV jobs. Plant one of each so the feed proves it renders every stream,
 // not just integration syncs. Synthetic filenames/content only — no real PHI.

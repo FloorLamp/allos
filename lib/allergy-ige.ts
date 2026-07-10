@@ -1,7 +1,7 @@
 import type { AllergyStatus, MedicalFlag } from "./types";
 import { isNonOptimal } from "./reference-range";
 
-// Allergen-specific IgE → Allergies view (issue #179 follow-up). Allergen-specific
+// Allergen-specific IgE → Allergies view. Allergen-specific
 // IgE tests (RAST / ImmunoCAP — "Peanut IgE", "Cat Dander IgE Ab", "Dust Mite d1
 // IgE") arrive as lab biomarkers in medical_records, NOT in the CCD Allergies
 // section. A positive/elevated result indicates a sensitization to that allergen

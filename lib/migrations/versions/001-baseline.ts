@@ -184,7 +184,7 @@ export function up(db: Database.Database): void {
           extracted_count INTEGER NOT NULL DEFAULT 0,
           raw_extraction TEXT,
           model TEXT,
-          -- The import DEBUGGER report (issue #208 Phase 2): JSON of what the parse
+          -- The import DEBUGGER report: JSON of what the parse
           -- DROPPED + why, and section/resource coverage. Written by import-persist on
           -- import/reprocess; NULL for AI-extracted documents (no structured report).
           import_report TEXT,
@@ -360,7 +360,7 @@ export function up(db: Database.Database): void {
           name TEXT NOT NULL,
           notes TEXT,
           active INTEGER NOT NULL DEFAULT 1,
-          -- Missed-dose escalation (issue #103 Phase A): critical marks a medication
+          -- Missed-dose escalation: critical marks a medication
           -- whose unconfirmed doses get a follow-up nudge; escalate_after_min is how
           -- long after the slot's reminder to wait; escalate_chat_id optionally routes
           -- the escalation to a second chat (e.g. a caregiver) instead of the
@@ -368,13 +368,13 @@ export function up(db: Database.Database): void {
           critical INTEGER NOT NULL DEFAULT 0,
           escalate_after_min INTEGER,
           escalate_chat_id TEXT,
-          -- Refill tracking (issue #103 Phase B). quantity_on_hand is the units left
+          -- Refill tracking. quantity_on_hand is the units left
           -- (pills/caps/mL) — NULL means "not tracked" (ordinary supplements opt out);
           -- qty_per_dose is how many units one dose consumes, decremented on a
           -- confirmed dose. Defaulted/nullable so existing rows are unaffected.
           quantity_on_hand REAL,
           qty_per_dose REAL NOT NULL DEFAULT 1,
-          -- Medication identity (issue #103 Phase C). kind splits medications from
+          -- Medication identity. kind splits medications from
           -- supplements so the shared dose/schedule/adherence/escalation/refill
           -- machinery serves both; prescriber/pharmacy/rx_number are medication-only
           -- free text; as_needed marks a PRN med that generates no scheduled
@@ -385,7 +385,7 @@ export function up(db: Database.Database): void {
           pharmacy TEXT,
           rx_number TEXT,
           as_needed INTEGER NOT NULL DEFAULT 0,
-          -- Provenance (issue #150). A medication row can be entered by hand
+          -- Provenance. A medication row can be entered by hand
           -- (source='manual', document_id NULL) or auto-structured from an uploaded
           -- prescription (source='extracted', document_id = the source document).
           -- The extraction persist keys its per-document delete/replace set on

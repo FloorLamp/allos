@@ -36,7 +36,7 @@ export function weekWindowStart(profileId: number): string {
 }
 
 // All dated weights ascending, for bodyweightAsOf lookups. Weightless
-// body-metrics rows (HR/body-fat only, #120) are excluded — no bodyweight.
+// body-metrics rows (HR/body-fat only) are excluded — no bodyweight.
 // cache(): both getStrengthByExercise and getRecentExerciseHistory load this, so a
 // page rendering both (journal, strength) would otherwise scan the weight history
 // twice — cache() collapses it to one scan per profile per request.

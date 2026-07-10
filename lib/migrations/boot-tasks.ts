@@ -278,7 +278,7 @@ function reconcileNonOptimalFlags(db: Database.Database) {
   // Flags depend on the profile's sex (sex-specific bands) and, for age-banded
   // biomarkers, the subject's age on each record's collection date. Both are
   // per-profile, so this loops profiles: each profile's sex/birthdate/age live in
-  // profile_settings (issue #67, Phase 2) and records are scoped by profile_id.
+  // profile_settings and records are scoped by profile_id.
   // Read them inline (importing lib/settings here would be circular), falling back
   // to legacy global settings for a DB migrated before the settings split ran.
   const profiles = db.prepare("SELECT id FROM profiles").all() as {

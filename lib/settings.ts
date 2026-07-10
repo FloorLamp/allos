@@ -60,7 +60,7 @@ export interface UnitPrefs {
 
 const DEFAULTS: UnitPrefs = { weightUnit: "kg", distanceUnit: "km" };
 
-// ---- Settings tiers (issue #67, Phase 2) ----
+// ---- Settings tiers ----
 // Three key/value stores. `settings` is app-global (bot token, migration flags,
 // instance defaults). `profile_settings` is per tracked person (sex, timezone,
 // notification schedule, active situations). `login_settings` is per login
@@ -386,7 +386,7 @@ export interface NotifySchedule {
     Bedtime: number | null;
   };
   workoutEnabled: boolean;
-  // Morning digest (issue #135): the hour (0-23, this profile's timezone) to send
+  // Morning digest: the hour (0-23, this profile's timezone) to send
   // the once-a-day summary, or null = off. Off by default.
   digestHour: number | null;
   // Weekly recap (issue #32): the weekday (0=Sun … 6=Sat, this profile's timezone)
@@ -952,7 +952,7 @@ export function setActiveSituations(profileId: number, situations: string[]) {
   const distinct = [
     ...new Set(situations.map((s) => s.trim()).filter(Boolean)),
   ];
-  // Log the start/stop transitions (Trends event annotations, #212 Phase 3) before
+  // Log the start/stop transitions (Trends event annotations) before
   // overwriting the current set — profile_settings keeps only the CURRENT set, so
   // the dated change log is what makes situations chartable. Same JSON-in-settings
   // precedent as active_situations itself; no owned table.
@@ -975,14 +975,14 @@ export function setActiveSituations(profileId: number, situations: string[]) {
   write();
 }
 
-// The profile's active-situation change log (Trends event annotations, #212
-// Phase 3): the dated start/stop transitions appended by setActiveSituations.
+// The profile's active-situation change log (Trends event annotations):
+// the dated start/stop transitions appended by setActiveSituations.
 // Read defensively — a malformed blob yields an empty list.
 export function getSituationEvents(profileId: number): SituationEvent[] {
   return parseSituationEvents(getProfileSetting(profileId, "situation_events"));
 }
 
-// Pin-to-Trends (issue #212, Phase 2) — the profile's pinned Trends-Overview
+// Pin-to-Trends — the profile's pinned Trends-Overview
 // tiles (metric + biomarker keys), stored as a JSON array in profile_settings
 // (same key/value precedent as active_situations / dashboard_layout). The list
 // math (parse/toggle/order) lives in the pure lib/trend-pins; this tier only
@@ -995,7 +995,7 @@ export function setTrendPins(profileId: number, pins: readonly string[]): void {
   setProfileSetting(profileId, "trend_pins", serializePins(pins));
 }
 
-// Saved views (issue #212, Phase 3) — named snapshots of the Trends hub state
+// Saved views — named snapshots of the Trends hub state
 // (range + tab + compare pair + pins), stored as a JSON array in profile_settings
 // (key "trend_views", same precedent as trend_pins). The list math (add/rename/
 // delete/normalize) lives in the pure lib/trend-views; this tier only
@@ -1011,7 +1011,7 @@ export function setTrendViews(
   setProfileSetting(profileId, "trend_views", serializeViews(views));
 }
 
-// Per-profile dashboard customization (issue #156) — the widget order + hidden
+// Per-profile dashboard customization — the widget order + hidden
 // set, stored as a JSON blob (same key/value precedent as active situations).
 // Read defensively: any malformed/legacy shape returns null so the page falls
 // back to the registry defaults rather than throwing. The layout is merged

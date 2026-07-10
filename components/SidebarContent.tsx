@@ -12,11 +12,11 @@ import ThemeToggle from "@/components/ThemeToggle";
 import type { SessionProfile } from "@/lib/auth";
 import type { AppVersion } from "@/lib/version";
 
-// The single source of truth for the sidebar's contents (issue #106). Rendered
+// The single source of truth for the sidebar's contents. Rendered
 // verbatim by BOTH the desktop sidebar (app/(app)/layout.tsx) and the mobile
 // drawer (components/MobileNav.tsx), so anything added here appears on every
 // viewport — the two responsive surfaces can no longer drift (which is how the
-// mobile drawer silently lacked the profile switcher/logout for all of #67).
+// mobile drawer silently lacked the profile switcher/logout).
 //
 // The version hash is rendered from a passed-in value rather than the AppVersion
 // server component: this is a client component (the drawer that hosts it is), so
@@ -80,7 +80,7 @@ export default function SidebarContent({
         )}
       </div>
       {/* Global search trigger — lives in the shared content so it appears in
-      both the desktop sidebar and the mobile drawer (issue #133). Opens the
+      both the desktop sidebar and the mobile drawer. Opens the
       Cmd-K command palette (mounted once in the app layout) via a custom event;
       closes the drawer afterward on mobile. */}
       <button

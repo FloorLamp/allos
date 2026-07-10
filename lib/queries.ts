@@ -19,6 +19,6 @@ export * from "./queries/search";
 export * from "./queries/imports";
 export * from "./queries/upcoming";
 export * from "./queries/integrations";
-// The shared, GLOBAL providers registry (issue #178) — not profile-scoped, but
+// The shared, GLOBAL providers registry — not profile-scoped, but
 // re-exported here so pages read it through the familiar @/lib/queries surface.
 export * from "./providers-db";

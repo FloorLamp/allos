@@ -41,7 +41,7 @@ export interface PersistOutcome {
 // per-row footprint, shared by BOTH the reprocess delete-set (persistDocumentImport
 // below, which clears the old set before re-inserting) and deleteMedicalDocument
 // (app/(app)/medical/actions.ts, which clears it on delete). Those two lists had
-// drifted: #182/#183/#196 added head-circumference samples, allergies, conditions,
+// drifted: later changes added head-circumference samples, allergies, conditions,
 // and encounters to the reprocess delete-set but not to the delete path, so
 // deleting a document orphaned those rows. Funnelling both callers through here
 // makes a new imported table impossible to clear in one place but leak in the
@@ -103,7 +103,7 @@ export function clearImportedDocumentRows(
   db.prepare(
     "DELETE FROM care_goals WHERE document_id = ? AND profile_id = ?"
   ).run(docId, profileId);
-  // Medications auto-structured from this document (issue #150). Keyed on
+  // Medications auto-structured from this document. Keyed on
   // source='extracted' so a manual med — even one pointing at no document — is
   // never touched; child dose/log rows cascade via their FKs.
   db.prepare(
@@ -126,7 +126,7 @@ export function persistDocumentImport(
 
   // Resolve every captured provider (per-record/immunization performers + the
   // section-level Care Teams) into the shared GLOBAL registry, memoized by dedup
-  // key so one INSERT per distinct provider (issue #178). Done up front, outside
+  // key so one INSERT per distinct provider. Done up front, outside
   // the per-document transaction, because the providers table is global and its
   // resolve-or-create is independently idempotent — a reprocess re-resolves to the
   // same rows and never coins a duplicate. Returns the shared row id to stamp onto
@@ -165,7 +165,7 @@ export function persistDocumentImport(
        FROM body_metrics WHERE date = ? AND profile_id = ?`
   );
   // Body height lives in metric_samples (metric 'height_cm'), not body_metrics
-  // (#167). A point sample uses the date as both start/end. INSERT OR IGNORE keeps
+  //. A point sample uses the date as both start/end. INSERT OR IGNORE keeps
   // the (profile_id, metric, start_time, end_time) natural key idempotent; the
   // per-source delete in the transaction clears this document's own prior rows on
   // reprocess. Integration rows carry full ISO timestamps, so they never collide.
@@ -183,7 +183,7 @@ export function persistDocumentImport(
        WHERE profile_id = ? AND metric = 'height_cm' AND date = ? LIMIT 1`
   );
   // Head circumference lives in metric_samples (metric 'head_circumference_cm'),
-  // exactly like height (#182). Same idempotency: INSERT OR IGNORE on the
+  // exactly like height. Same idempotency: INSERT OR IGNORE on the
   // (profile_id, metric, start_time, end_time) natural key, a per-source delete on
   // reprocess (below), and a defer probe so a manual/integration/another-document
   // reading for a date is never overwritten.
@@ -219,7 +219,7 @@ export function persistDocumentImport(
      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
   );
 
-  // Allergies (#179) + problem-list conditions (#180). Own tables, same idempotency
+  // Allergies + problem-list conditions. Own tables, same idempotency
   // as the records path: a per-document delete-set clears this document's prior rows
   // (below), then INSERT OR IGNORE dedups within the document via the per-profile
   // unique external_id index (scoped with the document source so two documents each
@@ -236,7 +236,7 @@ export function persistDocumentImport(
         source, document_id, external_id, profile_id)
      VALUES (?,?,?,?,?,?,?,?,?,?)`
   );
-  // Encounters / visits (#178 Phase B). Same idempotency as records/conditions: a
+  // Encounters / visits. Same idempotency as records/conditions: a
   // per-document delete-set (below) clears this document's prior rows, then INSERT
   // OR IGNORE dedups within the document via the per-profile unique external_id
   // index (scoped with the document source). provider_id / location_provider_id are
@@ -282,9 +282,9 @@ export function persistDocumentImport(
      VALUES (?,?,?,?,?,?,?,?,?)`
   );
 
-  // Structured medications (issue #150): a prescription record is ALSO projected
+  // Structured medications: a prescription record is ALSO projected
   // into a kind='medication' intake_items row (source='extracted', document_id),
-  // so the #105 passport reads it as a real medication rather than only via the
+  // so the passport reads it as a real medication rather than only via the
   // medical_records fallback. These statements back that projection.
   //
   // Existing medications (manual OR from another document) the profile already
@@ -318,7 +318,7 @@ export function persistDocumentImport(
     // SAME shared helper deleteMedicalDocument runs, so the two delete-sets can't
     // drift. Manual rows are never touched.
     clearImportedDocumentRows(profileId, docId);
-    // Smoking status is single-valued (#188): a profile keeps AT MOST ONE
+    // Smoking status is single-valued: a profile keeps AT MOST ONE
     // social-history smoking-status condition, and the latest import wins. This
     // supersession is IMPORT-specific — it deletes OTHER documents' smoking rows —
     // so it stays here, out of the shared per-document helper. The per-document
@@ -379,7 +379,7 @@ export function persistDocumentImport(
         profileId
       );
     }
-    // Body-height samples → metric_samples (#167). Defer a date another source
+    // Body-height samples → metric_samples. Defer a date another source
     // already covers (never overwrite manual/integration/another-document height),
     // else insert a point sample keyed by the date. heightsFromReadings already
     // reduced to one plausible value per date.
@@ -387,7 +387,7 @@ export function persistDocumentImport(
       if (heightCovered.get(profileId, h.date)) continue;
       insHeight.run(profileId, docSource, h.date, h.date, h.date, h.height_cm);
     }
-    // Head-circumference samples → metric_samples (#182), same defer-then-insert
+    // Head-circumference samples → metric_samples, same defer-then-insert
     // rule as height: never overwrite a date another source already covers.
     for (const h of input.headCircs) {
       if (headCircCovered.get(profileId, h.date)) continue;
@@ -568,7 +568,7 @@ export function persistDocumentImport(
       input.meta.patientName,
       input.meta.raw,
       input.meta.model,
-      // The import DEBUGGER report (issue #208 Phase 2) — refreshed on every
+      // The import DEBUGGER report — refreshed on every
       // reprocess so it always reflects the current parse (idempotent).
       input.meta.importReport,
       docId,
@@ -609,7 +609,7 @@ function persistExtractedMedications(
   // Group NEW (not already-present) prescriptions by cleaned drug name so
   // repeated prescriptions — or several MedicationStatements for one drug at
   // different periods — collapse into ONE medication carrying the UNION of their
-  // derived courses (#209 Phase 2). The FIRST occurrence's parse (sig / strength /
+  // derived courses. The FIRST occurrence's parse (sig / strength /
   // schedule) wins; later ones only contribute courses. A manual / other-document
   // med of the same name blocks the whole group (it stays a records fallback).
   const groups = new Map<
@@ -655,7 +655,7 @@ function persistExtractedMedications(
     );
     const medId = Number(info.lastInsertRowid);
 
-    // Courses (#209 Phase 2): when the source carried effective period(s), create
+    // Courses: when the source carried effective period(s), create
     // one medication_courses row per DERIVED course (open/closed synced to
     // `active`, deduped by (item_id, started_on)). Otherwise fall back to the
     // Phase-1 single open initial course (started on the med's created_at). Both

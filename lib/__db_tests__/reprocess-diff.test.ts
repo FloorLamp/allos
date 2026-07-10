@@ -1,4 +1,4 @@
-// DB INTEGRATION TIER — reprocess-diff (issue #208, Phase 3).
+// DB INTEGRATION TIER — reprocess-diff.
 //
 // Proves the PERSISTED-side snapshot reader (getReprocessSnapshot) and the pure
 // extraction-side snapshot (snapshotFromPersistInput) line up through the shared

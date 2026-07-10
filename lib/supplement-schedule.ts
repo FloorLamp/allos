@@ -72,7 +72,7 @@ export function availableConditions(
 // Whether a supplement applies given today's context: workout vs rest day (from
 // the journal) and the set of currently-active situations. An as-needed (PRN)
 // medication is never scheduled-due — it's taken on demand, so it generates no
-// reminders/escalation/adherence-due and can never be "missed" (#103 Phase C).
+// reminders/escalation/adherence-due and can never be "missed".
 export function isDueOn(
   supp: Pick<Supplement, "condition" | "situation"> & { as_needed?: number },
   ctx: { isWorkoutDay: boolean; activeSituations: Set<string> }

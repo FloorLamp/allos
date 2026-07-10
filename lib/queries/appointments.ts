@@ -1,4 +1,4 @@
-// Scheduled-appointment reads (issue #213, Phase 2). Profile-scoped: every
+// Scheduled-appointment reads. Profile-scoped: every
 // statement filters profile_id. The provider name is resolved through a
 // correlated subquery into the shared, GLOBAL providers registry (the same
 // pattern getMedicalRecords / getImmunizations use) so the FK link stays on the

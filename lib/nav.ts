@@ -15,7 +15,7 @@ export function isRouteActive(href: string, pathname: string): boolean {
 
 // True when any of a group's child hrefs is the active route — used to light up
 // the group header and to force the group expanded so the active child is
-// always visible (issue #192).
+// always visible.
 export function isGroupActive(childHrefs: string[], pathname: string): boolean {
   return childHrefs.some((href) => isRouteActive(href, pathname));
 }

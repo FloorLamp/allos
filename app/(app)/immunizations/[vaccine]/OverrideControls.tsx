@@ -7,7 +7,7 @@ import SubmitButton from "@/components/SubmitButton";
 import type { OverrideKind } from "@/lib/immunization-status";
 import { setImmunizationOverride, clearImmunizationOverride } from "../actions";
 
-// Per-vaccine override controls on the detail view (issue #155). Lets the active
+// Per-vaccine override controls on the detail view. Lets the active
 // profile mark a vaccine "Immune" (counts the series complete despite missing
 // doses) or "Not tracking / Declined" (drops it from needs-attention). The
 // current override (if any) is shown with a Remove control. Reasons are optional

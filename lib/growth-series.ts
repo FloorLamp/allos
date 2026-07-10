@@ -185,7 +185,7 @@ export function growthBadge(profile: GrowthProfile | null): GrowthBadge | null {
 }
 
 // The passport badge from the latest scalar height/weight scored at the CURRENT
-// age (no full series needed) — for the profile summary card (#105). Null for an
+// age (no full series needed) — for the profile summary card. Null for an
 // adult / out-of-range age or unknown sex, so the badge simply doesn't render.
 export function currentGrowthBadge(input: {
   sex: GrowthSex | null;

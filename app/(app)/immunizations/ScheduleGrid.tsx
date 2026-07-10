@@ -102,7 +102,7 @@ function recommendationForBand(entry: VaccineEntry, i: number): string | null {
   return "Recommended";
 }
 
-// The series dose that falls in a given band, as "Dose 2 of 4" (issue #155). Only
+// The series dose that falls in a given band, as "Dose 2 of 4". Only
 // primary series have a numbered position; other schedule kinds return null.
 function doseOfLabel(entry: VaccineEntry, i: number): string | null {
   const s = entry.schedule;

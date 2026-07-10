@@ -60,7 +60,7 @@ function deleteFilesUnderRoot(root: string, relPaths: readonly string[]) {
   }
 }
 
-// Family / login management (issue #67, Phase 4). Every action is admin-only —
+// Family / login management. Every action is admin-only —
 // requireAdmin() (which redirects a member) is the first line of each. Mutations
 // are global by nature (they manage logins/profiles/grants), so they're NOT
 // profile-scoped; the profile-scoping leak test only covers the per-profile data
@@ -357,8 +357,8 @@ export async function deleteLogin(formData: FormData): Promise<FamilyResult> {
   return { ok: true, message: `Deleted login “${acct.username}”.` };
 }
 
-// Revoke every live session for a login without changing its password (issue
-// #132, Phase C) — the "sign out all devices" companion to the password reset,
+// Revoke every live session for a login without changing its password —
+// the "sign out all devices" companion to the password reset,
 // exposed directly so an admin can boot a login off every device on suspicion of
 // compromise. Admin-only; profiles/credentials are untouched.
 export async function revokeLoginSessions(

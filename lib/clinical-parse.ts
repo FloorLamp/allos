@@ -1,7 +1,7 @@
 import type { AllergyStatus, ConditionStatus } from "./types";
 
 // Pure, DB-free parsing/normalization for the CCD clinical-list domains —
-// allergies (#179) and the problem list / conditions (#180). The shared bits both
+// allergies and the problem list / conditions. The shared bits both
 // extractors and the persist layer lean on live here so they stay unit-testable
 // without any XML/DB: clinical-status normalization, the "no known allergies"
 // negation guard, and the natural-key builders used for per-document dedup.

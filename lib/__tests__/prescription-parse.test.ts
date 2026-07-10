@@ -7,7 +7,7 @@ import {
 } from "../prescription-parse";
 
 // Pure parsing of an extracted prescription into structured medication fields
-// (issue #150). No DB — the DB routing/dedup is exercised separately.
+//. No DB — the DB routing/dedup is exercised separately.
 
 describe("parseSig — sig/frequency → schedule", () => {
   it("'1 tab PO daily' → scheduled once daily, route stripped", () => {

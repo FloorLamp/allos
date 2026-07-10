@@ -20,8 +20,8 @@ import type {
   CareGoal,
 } from "../types";
 
-// Read layer for the CCD clinical-list domains — allergies (#179) and the problem
-// list / conditions (#180). Both tables are profile-owned, so every statement
+// Read layer for the CCD clinical-list domains — allergies and the problem
+// list / conditions. Both tables are profile-owned, so every statement
 // filters profile_id. The allergen-specific IgE merge is derived at READ TIME from
 // medical_records (no stored duplication) so a lab edit/delete flows straight
 // through to the allergies view.

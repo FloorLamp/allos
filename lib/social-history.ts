@@ -1,7 +1,7 @@
 import type { Sex } from "./types";
 
-// Pure, DB-free parsing/normalization for the CCD Social History section (issue
-// #188): the patient's coded sex (Sex assigned at birth 76689-9 / Sex 46098-0)
+// Pure, DB-free parsing/normalization for the CCD Social History section:
+// the patient's coded sex (Sex assigned at birth 76689-9 / Sex 46098-0)
 // and the tobacco smoking status (72166-2). Kept here — free of any XML/DB — so
 // the sex-code and smoking-status mappings are unit-testable in isolation, exactly
 // like clinical-parse.ts does for allergies/problems. lib/cda.ts reads the coded

@@ -58,7 +58,7 @@ function fields(formData: FormData) {
     ? (priorityRaw as SupplementPriority)
     : "high";
   const situation = condition === "situational" ? str("situation") : null;
-  // Missed-dose escalation (#103 Phase A). Only a critical supplement carries an
+  // Missed-dose escalation. Only a critical supplement carries an
   // escalation window/override; clear them when it's toggled off so a stale value
   // can't fire later. escalate_after_min is a positive minute count (else null →
   // the notifier's default).
@@ -68,7 +68,7 @@ function fields(formData: FormData) {
   const escalateAfterMin =
     critical && Number.isInteger(afterRaw) && afterRaw > 0 ? afterRaw : null;
   const escalateChatId = critical ? str("escalate_chat_id") : null;
-  // Refill tracking (#103 Phase B). quantity_on_hand is opt-in: a blank field
+  // Refill tracking. quantity_on_hand is opt-in: a blank field
   // leaves it NULL (untracked). qty_per_dose defaults to 1 and is clamped
   // positive so days-of-supply math never divides by zero.
   const qtyRaw = String(formData.get("quantity_on_hand") ?? "").trim();
@@ -79,7 +79,7 @@ function fields(formData: FormData) {
   const perDoseRaw = Number(formData.get("qty_per_dose"));
   const qtyPerDose =
     Number.isFinite(perDoseRaw) && perDoseRaw > 0 ? perDoseRaw : 1;
-  // Medication identity (#103 Phase C). kind = 'medication' reveals the
+  // Medication identity. kind = 'medication' reveals the
   // prescriber/pharmacy/Rx + as-needed fields; the medication-only columns are
   // cleared for a plain supplement so a kind flip can't leave stale data.
   const kind: SupplementKind =
@@ -222,7 +222,7 @@ export async function addSupplement(formData: FormData) {
   const f = fields(formData);
   const doses = parseDoses(formData);
   const pairs = parsePairs(formData);
-  // Prescribing provider (issue #178): medications only, resolved into the shared
+  // Prescribing provider: medications only, resolved into the shared
   // GLOBAL registry (create-on-type); NULL for supplements.
   const providerId =
     f.kind === "medication"
@@ -263,7 +263,7 @@ export async function addSupplement(formData: FormData) {
     const suppId = Number(info.lastInsertRowid);
     insertDoses(suppId, doses);
     reconcilePairs(suppId, pairs, profile.id);
-    // Ensure-course-on-create (#209): a new medication opens an initial course
+    // Ensure-course-on-create: a new medication opens an initial course
     // dated today. A no-op for supplements (kind guard inside the helper).
     if (f.kind === "medication") {
       ensureMedicationCourse(profile.id, suppId, today(profile.id));
@@ -283,7 +283,7 @@ export async function updateSupplement(formData: FormData) {
   const f = fields(formData);
   const doses = parseDoses(formData);
   const pairs = parsePairs(formData);
-  // Prescribing provider (issue #178): medications only; NULL for supplements so
+  // Prescribing provider: medications only; NULL for supplements so
   // a kind flip back to supplement clears a stale link.
   const providerId =
     f.kind === "medication"
@@ -352,7 +352,7 @@ export async function updateSupplement(formData: FormData) {
        WHERE supplement_id = ? AND id NOT IN (${placeholders})`
     ).run(id, ...keptIds);
     reconcilePairs(id, pairs, profile.id);
-    // Ensure-course invariant (#209): if this row is (or just became) a
+    // Ensure-course invariant: if this row is (or just became) a
     // medication, make sure it has at least one course. No-op when it already has
     // one or is a supplement. Uses the created_at-date fallback (no explicit start
     // date on an edit).
@@ -394,7 +394,7 @@ export async function toggleTaken(formData: FormData) {
     db.prepare(
       "INSERT INTO intake_item_logs (dose_id, supplement_id, date) VALUES (?,?,?)"
     ).run(doseId, dose.supplement_id, date);
-    // A newly confirmed dose consumes one dose's worth of supply (#103 Phase B).
+    // A newly confirmed dose consumes one dose's worth of supply.
     decrementSupply(profile.id, dose.supplement_id);
   }
   revalidatePath("/medicine");
@@ -414,7 +414,7 @@ export async function toggleActive(formData: FormData) {
   const nextActive: 0 | 1 = row.active ? 0 : 1;
   if (row.kind === "medication") {
     // Keep the medication's course history in sync with the plain Pause/Resume
-    // toggle so `active` can't desync from the open-course state (#209).
+    // toggle so `active` can't desync from the open-course state.
     setMedicationActive(profile.id, id, nextActive, today(profile.id));
   } else {
     db.prepare(
@@ -425,7 +425,7 @@ export async function toggleActive(formData: FormData) {
   revalidatePath("/");
 }
 
-// ---- Medication lifecycle: stop / restart / side effects (#209) ----
+// ---- Medication lifecycle: stop / restart / side effects ----
 // Thin session wrappers over the profile-scoped lib/queries helpers, which own
 // the transactions + ownership checks.
 
@@ -512,8 +512,8 @@ export async function deleteSideEffect(formData: FormData) {
   revalidatePath("/");
 }
 
-// Promote a medication side effect into a manual allergies/intolerance row (#183
-// path). The side effect is kept (marked resolved) for the medication's history.
+// Promote a medication side effect into a manual allergies/intolerance row.
+// The side effect is kept (marked resolved) for the medication's history.
 export async function promoteSideEffectToIntolerance(formData: FormData) {
   const { profile } = requireWriteAccess();
   const id = Number(formData.get("id"));

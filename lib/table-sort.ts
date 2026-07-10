@@ -1,5 +1,5 @@
 // Shared, DB-free machinery for the sortable/filterable/groupable tables that
-// biomarkers, immunizations and (issue #168) medical documents all re-implement.
+// biomarkers, immunizations and medical documents all re-implement.
 // Only the genuinely-shared pure bits live here — column definitions and row
 // rendering stay per-table because they differ. The three reusable pieces are:
 //

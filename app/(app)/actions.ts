@@ -7,7 +7,7 @@ import { today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { snoozeFinding } from "@/lib/queries";
 
-// Persist the active profile's dashboard customization (issue #156): the widget
+// Persist the active profile's dashboard customization: the widget
 // display order and the set of hidden widget ids. Profile-scoped like the other
 // per-profile settings; the layout is merged defensively against the registry on
 // read, so ids aren't validated here.

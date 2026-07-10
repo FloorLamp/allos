@@ -3,7 +3,7 @@ import { db } from "./db";
 import { serializeShareFields, type ShareField } from "./share-links";
 import { hashShareToken } from "./share-token";
 
-// DB read/write for the passport share links (issue #105). The pure logic
+// DB read/write for the passport share links. The pure logic
 // (validity, scope, hashing) lives in lib/share-links.ts; this is the thin data
 // layer. Every profile-owned query is scoped by profile_id — EXCEPT
 // getShareLinkByToken, the single unauthenticated entry point, which must look up

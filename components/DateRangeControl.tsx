@@ -36,7 +36,7 @@ function rangePillClass(active: boolean): string {
 }
 
 // The shared from/to + quick-range control. The Timeline and the Trends hub both
-// drive their charts from this one control (issue #212): a GET form that submits
+// drive their charts from this one control: a GET form that submits
 // from/to back to `basePath` (carrying `hiddenParams` — the Timeline's category,
 // the hub's active tab), plus 7D/30D/90D/All-time quick-range pills built through
 // `buildHref` so each surface preserves its own extra params. `rightSlot` holds

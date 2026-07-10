@@ -1,4 +1,4 @@
-// Missed-dose escalation decision (issue #103 Phase A) — pure, no DB/network, so
+// Missed-dose escalation decision — pure, no DB/network, so
 // it's unit-tested in lib/__tests__. Given the critical doses in play, which
 // reminder windows actually went out today, what's been confirmed, what's already
 // been escalated, and the current profile-local time, it returns exactly the
@@ -78,7 +78,7 @@ export function escalationsDue(
 }
 
 // The escalation message. Always names the profile (escalations may land in a
-// shared/caregiver chat where whose dose it is isn't obvious — see #135's chat-id
+// shared/caregiver chat where whose dose it is isn't obvious — see the chat-id
 // ambiguity fix). No action button: an override chat isn't mapped to the profile
 // for tap resolution, so a "taken" button there wouldn't log — this is a nudge.
 export function renderEscalationMessage(

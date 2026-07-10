@@ -108,7 +108,7 @@ describe("isDueOn", () => {
     ).toBe(false);
   });
 
-  it("an as-needed (PRN) medication is never scheduled-due (#103 Phase C)", () => {
+  it("an as-needed (PRN) medication is never scheduled-due", () => {
     // Even a daily-condition med is never "due" for a reminder when as_needed=1,
     // so it generates no missed-dose escalation and can't drag adherence down.
     expect(

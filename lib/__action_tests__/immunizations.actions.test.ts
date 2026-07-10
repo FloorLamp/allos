@@ -1,4 +1,4 @@
-// SERVER-ACTION TIER — immunization write path + per-vaccine overrides (#155).
+// SERVER-ACTION TIER — immunization write path + per-vaccine overrides.
 //
 // Adds a dose, then exercises the override lifecycle via assessSchedule: an
 // 'immune' override completes a series, a 'declined' override drops a vaccine from

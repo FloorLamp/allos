@@ -21,8 +21,8 @@ import type { HouseholdRollup } from "@/lib/queries";
 import type { WeightUnit } from "@/lib/settings";
 import type { Adherence, GoalHighlight, WeightTrend } from "@/lib/household";
 
-// One compact, at-a-glance card per profile on the household dashboard (issues
-// #102, #31). The header is a submit button bound to openProfileAction — one click
+// One compact, at-a-glance card per profile on the household dashboard (issue
+// #31). The header is a submit button bound to openProfileAction — one click
 // switches the session's active profile to this person and opens their dashboard —
 // while the actionable rollup below carries its OWN per-dose confirm forms
 // (confirmDoseAction) so a caregiver can check off a due dose for this profile

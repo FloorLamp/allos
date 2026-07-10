@@ -127,7 +127,7 @@ export default function BodySection({ range }: { range: DateRange }) {
   // one toggle bar. Reads only through profile-scoped queries (buildTrendAnnotations).
   const annotations = buildTrendAnnotations(profile.id, range);
 
-  // Goal projection (#212 Phase 3): for a body-metric goal with a target value +
+  // Goal projection: for a body-metric goal with a target value +
   // target_date, draw the target line and extrapolate the windowed trend to it.
   // Weight targets are stored canonically (kg) → convert to the display unit so the
   // line and the projection math share the chart's unit. First active, non-archived

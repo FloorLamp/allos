@@ -25,7 +25,7 @@ export function getBodyMetrics(profileId: number, limit = 365): BodyMetric[] {
 }
 
 // Weight series (rows that actually carry a weight), newest first. body_metrics
-// interleaves weightless HR/body-fat rows (#120), so a weight consumer MUST filter
+// interleaves weightless HR/body-fat rows, so a weight consumer MUST filter
 // in SQL: a JS filter after a LIMIT would let a run of weightless days starve the
 // window (e.g. a daily-HR syncer with weekly weigh-ins). weight_kg is non-null on
 // every returned row. Backs the dashboard + weight-page weight/BMI charts.
@@ -238,7 +238,7 @@ export function getHrMinutes(profileId: number, date: string): HrMinute[] {
 }
 
 // The most recent (non-null) recorded value for a body metric with its measured
-// date, or null. The passport shows the date next to each body stat (#185).
+// date, or null. The passport shows the date next to each body stat.
 export function getLatestBodyMetricDated(
   profileId: number,
   metric: BodyMetricKind

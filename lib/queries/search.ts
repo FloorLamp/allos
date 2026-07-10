@@ -14,7 +14,7 @@ import {
   FAMILY_HISTORY_REPRESENTATIVE_IDS,
 } from "./clinical";
 
-// Global (Cmd-K) search fan-out (issue #133). One entry point, searchAll(),
+// Global (Cmd-K) search fan-out. One entry point, searchAll(),
 // runs a small capped LIKE query per domain — each PROFILE-SCOPED (every
 // statement filters profile_id, per the scoping rule) — collects the matches
 // into a flat SearchHit[], and hands them to the pure ranker (lib/search-rank)
@@ -608,7 +608,7 @@ const PAGES: {
   },
   {
     // The single "Data" umbrella (import + manage/export folded into one hub at
-    // /data — #212). One palette entry covers both halves.
+    // /data). One palette entry covers both halves.
     title: "Data",
     href: "/data",
     keywords:

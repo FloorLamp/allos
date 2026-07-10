@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { canReassignDocument } from "@/lib/import-reassign";
 
-// Pure decision tests for reassign (issue #208, Phase 3), mirroring
+// Pure decision tests for reassign, mirroring
 // lib/family-deletion. The DB/file move lives in the server action; only the
 // "may this login move A → B?" rule is under test here.
 

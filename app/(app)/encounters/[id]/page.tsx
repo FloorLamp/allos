@@ -14,7 +14,7 @@ import type { Encounter } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-// Visit detail (#178 Phase B, follow-up): the full record for a single encounter —
+// Visit detail: the full record for a single encounter —
 // dates, type/class, chief complaint, diagnoses, attending clinician + facility,
 // the free-text visit notes, and provenance. Reached from the Visits list and from
 // a Timeline visit entry (both deeplink to /encounters/[id]). Profile-scoped: the

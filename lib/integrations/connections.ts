@@ -74,7 +74,7 @@ export interface SyncEventInput {
   windowEnd?: string | null;
   received?: number | null;
   written?: number | null;
-  // Real insert/update/unchanged accounting (#273). Optional/nullable: a failure
+  // Real insert/update/unchanged accounting. Optional/nullable: a failure
   // event or a legacy caller leaves them null and the reader falls back to
   // `written`.
   inserted?: number | null;
@@ -276,7 +276,7 @@ export function resolveHealthConnectProfile(
   }
   const env = process.env.HEALTH_CONNECT_TOKEN?.trim();
   // The env-token fallback maps to profile 1, but only while profile 1 still
-  // exists — an admin can delete it (issue #67 deletion), and ingesting under a
+  // exists — an admin can delete it (profile deletion), and ingesting under a
   // missing profile would violate the profile_id FK on every write.
   if (env && profileOneExists()) {
     candidates.push({ profileId: 1, token: env });

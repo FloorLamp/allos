@@ -103,7 +103,7 @@ interface Biomarker {
 }
 
 // Curated pediatric (and adolescent) reference bands for the highest-impact
-// age-dependent markers (issue #101). These REPLACE the adult top-level fields
+// age-dependent markers. These REPLACE the adult top-level fields
 // when the subject's age at the record's collection date falls in the band; sex
 // overrides then resolve within the band. Ages are whole years, bands half-open
 // [min_age, max_age). Values are informational (not medical advice) and rounded
@@ -642,7 +642,7 @@ function applyAgeBandsInPlace(): void {
 // Curated lab entries that don't require the model — well-established, standard
 // reference ranges added to the committed dataset API-free (mirrors AGE_BANDS).
 // Two groups:
-//  1. CBC differential complements (issue #187): the existing "Neutrophils"/
+//  1. CBC differential complements: the existing "Neutrophils"/
 //     "Lymphocytes" entries hold the % form and "Monocytes"/"Eosinophils"/
 //     "Basophils" the absolute (cells/uL) form, so the complementary form of each
 //     needs its own entry (a % and an absolute count are not interconvertible
@@ -857,7 +857,7 @@ export const CURATED_LABS: Biomarker[] = [
     direction: "in_range",
     note: "Absolute reticulocyte count (~25–75 ×10^3/uL; equivalently 25–75 ×10^9/L). Assay-dependent.",
   },
-  // ── Reproductive hormones: sex- and life-stage-aware (issue #200) ──────────
+  // ── Reproductive hormones: sex- and life-stage-aware ──────────
   // Estradiol, FSH, and LH are strongly sex- and (for women) menstrual-cycle- and
   // menopause-dependent, so a single flat range false-flags normal physiology: a
   // healthy premenopausal woman's mid-cycle estradiol (~150–250 pg/mL) reads
@@ -914,8 +914,8 @@ export const CURATED_LABS: Biomarker[] = [
     optimal_low: null,
     optimal_high: null,
     direction: "in_range",
-    note: "Sex- and cycle-dependent (pg/mL). Female = reproductive-age, spanning follicular→mid-cycle peak→luteal (the app can't know cycle phase), with no low bound so early-follicular / post-menopausal lows never false-flag; the lower post-menopausal range is already covered, so no age band. Male ~10–40. Replaces a prior male-ish single range that false-flagged normal female physiology. When the profile's reproductive_status is set, ranges_by_status overrides this (#202).",
-    // Reproductive-status override (female physiology only, #202): a set menopausal
+    note: "Sex- and cycle-dependent (pg/mL). Female = reproductive-age, spanning follicular→mid-cycle peak→luteal (the app can't know cycle phase), with no low bound so early-follicular / post-menopausal lows never false-flag; the lower post-menopausal range is already covered, so no age band. Male ~10–40. Replaces a prior male-ish single range that false-flagged normal female physiology. When the profile's reproductive_status is set, ranges_by_status overrides this.",
+    // Reproductive-status override (female physiology only): a set menopausal
     // status resolves ahead of the age proxy. Postmenopausal E2 is ≤~30 pg/mL, so
     // this is what finally flags a genuinely post-menopausal HIGH estradiol (e.g.
     // 200 pg/mL) that the reproductive-age ceiling of 400 leaves unflagged — that
@@ -951,7 +951,7 @@ export const CURATED_LABS: Biomarker[] = [
     optimal_low: null,
     optimal_high: null,
     direction: "in_range",
-    note: "Sex- and life-stage-dependent (mIU/mL). Female reproductive-age spans luteal→mid-cycle (the app can't know cycle phase); post-menopausal FSH is many-fold higher and is resolved via the 51+ age band so it isn't false-flagged 'high'. When the profile's reproductive_status is set, ranges_by_status overrides the age proxy (#202).",
+    note: "Sex- and life-stage-dependent (mIU/mL). Female reproductive-age spans luteal→mid-cycle (the app can't know cycle phase); post-menopausal FSH is many-fold higher and is resolved via the 51+ age band so it isn't false-flagged 'high'. When the profile's reproductive_status is set, ranges_by_status overrides the age proxy.",
     ranges_by_age: [
       {
         min_age: 51,
@@ -965,7 +965,7 @@ export const CURATED_LABS: Biomarker[] = [
         note: "Post-menopausal (age ≥51, median menopause): FSH rises to ~27–133 mIU/mL; the low bound stays broad so HRT-suppressed values aren't false-flagged 'low'. Male ceiling widened for the age-related rise.",
       },
     ],
-    // Reproductive-status override (female physiology only, #202): a set menopausal
+    // Reproductive-status override (female physiology only): a set menopausal
     // status resolves AHEAD of the 51+ age band. Mayo Clinic Labs adult intervals
     // (test 602753): premenopausal ~1–21 (luteal→mid-cycle peak); postmenopausal
     // ~25.8–134.8. Setting premenopausal on a 51+ woman therefore correctly narrows
@@ -999,8 +999,8 @@ export const CURATED_LABS: Biomarker[] = [
     optimal_low: null,
     optimal_high: null,
     direction: "in_range",
-    note: "Sex-dependent (mIU/mL). Female reproductive-age spans the luteal low → ovulatory LH surge (~95; the app can't know cycle phase) — an envelope that already contains the post-menopausal range (~8–59), so LH needs no age band. Male ~1.5–9.5. When the profile's reproductive_status is set, ranges_by_status refines this (#202).",
-    // Reproductive-status override (female physiology only, #202). Mayo/endocrine
+    note: "Sex-dependent (mIU/mL). Female reproductive-age spans the luteal low → ovulatory LH surge (~95; the app can't know cycle phase) — an envelope that already contains the post-menopausal range (~8–59), so LH needs no age band. Male ~1.5–9.5. When the profile's reproductive_status is set, ranges_by_status refines this.",
+    // Reproductive-status override (female physiology only). Mayo/endocrine
     // adult intervals: premenopausal spans the luteal low → ovulatory surge (~1–100);
     // postmenopausal up to ~58.5. The reproductive envelope already covers the
     // post-menopausal range, so status here mainly tightens the postmenopausal
@@ -1022,7 +1022,7 @@ export const CURATED_LABS: Biomarker[] = [
 ];
 
 // Curated per-analyte retest cadences, in DAYS, keyed by exact canonical name
-// (issue #213, Phase 2). These replace the old flat 365-day staleness rule for the
+// These replace the old flat 365-day staleness rule for the
 // Upcoming retest signal: a marker not listed here falls back to
 // lib/reference-range.DEFAULT_RETEST_DAYS (365). Chosen from routine
 // monitoring practice — INFORMATIONAL, not medical advice; human-review before

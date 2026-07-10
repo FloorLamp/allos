@@ -103,7 +103,7 @@ export default function BiomarkerDetailPage({
   const latestDate = series[series.length - 1]?.date ?? null;
   const age = getUserAgeOn(profile.id, latestDate);
   // For female physiology, an explicit reproductive status overrides the age proxy
-  // when selecting the reproductive-hormone ranges (#202).
+  // when selecting the reproductive-hormone ranges.
   const reproductiveStatus = getUserReproductiveStatus(profile.id);
   const ref = referenceRange(cb, sex, age, reproductiveStatus);
   const opt = optimalBand(cb, sex, age);
@@ -197,7 +197,7 @@ export default function BiomarkerDetailPage({
   const refRange = cb ? formatRange(ref.low, ref.high, cb.unit) : null;
   const optimalRange = cb ? formatRange(opt.low, opt.high, cb.unit) : null;
   // Label a range with the qualifiers that shaped it: the reproductive status (when
-  // a status range applied — female physiology, #202), else the user's sex (when a
+  // a status range applied — female physiology), else the user's sex (when a
   // sex-specific override applied), and/or the age band (e.g. "age 6–12").
   const statusApplied =
     cb != null &&

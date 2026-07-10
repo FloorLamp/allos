@@ -1,5 +1,5 @@
 // Pure drop-reason + coverage reporting for the deterministic health-record
-// importers — the import DEBUGGER (issue #208, Phase 2). No DB / network.
+// importers — the import DEBUGGER. No DB / network.
 //
 // The CCD/FHIR extractors silently drop candidate readings (a nullFlavor'd value,
 // a placeholder "—", a "no known allergy" negation, a duplicate, an unrecognized

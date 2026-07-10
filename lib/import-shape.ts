@@ -58,9 +58,9 @@ export interface PersistRecord {
   // metric_samples (see withoutCapturedHeights). The AI path leaves it null.
   loinc: string | null;
   // The performing provider (CCD observation <performer>), resolved into the
-  // shared registry and linked via provider_id (issue #178). Null on the AI path.
+  // shared registry and linked via provider_id. Null on the AI path.
   provider: ImportedProvider | null;
-  // Derived medication COURSES (#209 Phase 2), set only on prescription records by
+  // Derived medication COURSES, set only on prescription records by
   // the deterministic CCD/FHIR path; null/absent on the AI path (which has no
   // structured period/status). The persist layer creates medication_courses from
   // these. Optional so existing PersistRecord constructors need no change.
@@ -73,11 +73,11 @@ export interface PersistImmunization {
   dose_label: string | null;
   notes: string | null;
   external_id: string | null;
-  // The administering provider (CCD <performer>), resolved + linked (issue #178).
+  // The administering provider (CCD <performer>), resolved + linked.
   provider: ImportedProvider | null;
 }
 
-// Allergy / condition projections (#179 / #180). The deterministic CCD path fills
+// Allergy / condition projections. The deterministic CCD path fills
 // these; the AI path leaves them empty (no allergy/problem extraction yet).
 export interface PersistAllergy {
   substance: string;
@@ -100,7 +100,7 @@ export interface PersistCondition {
   external_id: string | null;
 }
 
-// Encounter / visit projection (#178 Phase B). The deterministic CCD path fills
+// Encounter / visit projection. The deterministic CCD path fills
 // these; the AI path leaves them empty. The attending clinician (`provider`) and
 // the facility (`location`) are resolved into the shared registry on persist. The
 // diagnoses list is stored as a joined summary column on the encounters row.
@@ -178,7 +178,7 @@ export interface DocMeta {
   patientName: string | null;
   raw: string | null;
   model: string | null;
-  // The import DEBUGGER report as JSON (issue #208 Phase 2) — what the parse
+  // The import DEBUGGER report as JSON — what the parse
   // DROPPED + why, and section/resource coverage. Null on the AI extraction path
   // (no structured report). Persisted to medical_documents.import_report.
   importReport: string | null;
@@ -196,10 +196,10 @@ export interface PersistInput {
   careGoals: PersistCareGoal[];
   bodyMetrics: DocBodyMetric[];
   // Body-height samples (metric_samples, metric 'height_cm') — height has no
-  // body_metrics column, so it gets its own projection (#167).
+  // body_metrics column, so it gets its own projection.
   heights: DocHeight[];
   // Head-circumference samples (metric_samples, metric 'head_circumference_cm') —
-  // a pediatric anthropometric vital projected exactly like height (#182).
+  // a pediatric anthropometric vital projected exactly like height.
   headCircs: DocHeadCirc[];
   demographics: AdoptMeta | null;
   meta: DocMeta;
@@ -208,13 +208,13 @@ export interface PersistInput {
   // medication names never enter the biomarker vocabulary).
   canonicalNamesToRegister: string[];
   // Section-level providers to register into the shared registry even when not
-  // tied to a specific reading (CCD Care Teams — issue #178). Per-record/immunization
+  // tied to a specific reading (CCD Care Teams). Per-record/immunization
   // performers ride on those rows; import-persist unions and dedups all of them.
   providers: ImportedProvider[];
 }
 
 // Body metrics (weight / body fat % / resting HR) have a single home —
-// body_metrics, not medical_records (#120). Drop from `records` a body-metric
+// body_metrics, not medical_records. Drop from `records` a body-metric
 // reading only when the projected row for its date actually STORED that measure,
 // so it lives in exactly one place. A reading whose kind is a body metric but
 // whose value was rejected by the projection's guards (a DEXA "Total Body Fat"
@@ -243,7 +243,7 @@ function withoutCapturedBodyMetrics(
 }
 
 // Body height has a single home too — metric_samples (metric 'height_cm'), not
-// medical_records (#167). Drop from `records` a height reading only when a height
+// medical_records. Drop from `records` a height reading only when a height
 // sample was actually projected for its date. A height whose value was rejected by
 // heightToCm's guards (implausible / unknown unit) produced no sample, so it stays
 // a record rather than vanishing from both tables — mirroring the weight rule.
@@ -261,7 +261,7 @@ function withoutCapturedHeights(
 }
 
 // Head circumference has a single home too — metric_samples (metric
-// 'head_circumference_cm'), not medical_records (#182). Drop from `records` a
+// 'head_circumference_cm'), not medical_records. Drop from `records` a
 // head-circ reading only when a sample was actually projected for its date; a
 // reading rejected by headCircToCm's guards produced no sample and stays a record.
 // Mirrors withoutCapturedHeights exactly.
@@ -402,11 +402,11 @@ export function healthRecordToPersistInput(
     external_id: r.external_id,
     loinc: r.loinc ?? null,
     provider: r.provider ?? null,
-    // Derived medication courses ride on prescription records (#209 Phase 2).
+    // Derived medication courses ride on prescription records.
     courses: r.courses ?? null,
   }));
   // Project body-metric records (weight / body fat / resting HR) into body_metrics
-  // (#120) — the same single-home rule the AI path uses.
+  // — the same single-home rule the AI path uses.
   const bodyMetrics = bodyMetricsFromReadings(
     parsed.records.map((r) => ({
       name: r.name,
@@ -417,7 +417,7 @@ export function healthRecordToPersistInput(
     })),
     docDate
   );
-  // Project body-height records into metric_samples (#167). LOINC is threaded from
+  // Project body-height records into metric_samples. LOINC is threaded from
   // the CCD/FHIR mappers, so a height with a generic name still routes correctly.
   const heights = heightsFromReadings(
     parsed.records.map((r) => ({
@@ -430,7 +430,7 @@ export function healthRecordToPersistInput(
     })),
     docDate
   );
-  // Project head-circumference records into metric_samples (#182). LOINC (8287-5 /
+  // Project head-circumference records into metric_samples. LOINC (8287-5 /
   // 9843-4) is threaded from the CCD mappers, so an OFC reading routes correctly
   // even under a generic display name; the percentile code 8289-1 is not a
   // head-circ LOINC and so is never projected.
@@ -553,7 +553,7 @@ export function healthRecordToPersistInput(
       .filter((r) => r.category === "lab")
       .map((r) => r.canonical),
     // Care-team providers (not tied to one reading) — registered so the family's
-    // provider list is populated even before a record is manually linked (#178).
+    // provider list is populated even before a record is manually linked.
     providers: parsed.providers ?? [],
   };
 }

@@ -184,7 +184,7 @@ export async function updateRecord(formData: FormData) {
   // Canonical name: sanitized, defaulting to the record's name when blank so a
   // cleared field re-groups the record under itself (editable + reversible).
   const canonical = sanitizeCanonical(str("canonical_name")) ?? name;
-  // Performing provider (issue #178): resolve the typed name into the shared
+  // Performing provider: resolve the typed name into the shared
   // GLOBAL registry (create-on-type), or NULL when left blank.
   const providerId = resolveProviderIdByName(
     String(formData.get("provider") ?? "")
@@ -940,7 +940,7 @@ export async function reprocessDocument(formData: FormData) {
 }
 
 // Re-extract a stored document to an in-memory PersistInput WITHOUT writing
-// anything (issue #208, Phase 3 reprocess-diff). This is the read-only twin of the
+// anything (reprocess-diff). This is the read-only twin of the
 // reprocess writers: it reads the stored file and runs the same parse/extract the
 // commit path would, but returns the shape instead of persisting it — so a diff
 // preview can compare it against the currently-persisted rows and only the
@@ -1036,7 +1036,7 @@ async function extractPersistInputForPreview(
 export type PreviewReprocessResult =
   { status: "ok"; diff: ImportDiff } | { status: "skipped"; message: string };
 
-// Preview what a reprocess would change (issue #208, Phase 3): re-extract to an
+// Preview what a reprocess would change: re-extract to an
 // in-memory PersistInput, diff it against the currently-persisted rows, and return
 // the diff WITHOUT touching the DB. The client shows the diff, then calls
 // reprocessDocument (the unchanged commit path) to actually apply it. AI
@@ -1070,8 +1070,8 @@ export interface ReassignResult {
 }
 
 // Move a mis-filed document — the medical_documents row, every row it imported,
-// and its on-disk file — to another profile the acting login can access (issue
-// #208, Phase 3). One transaction re-points profile_id on the document and each
+// and its on-disk file — to another profile the acting login can access.
+// One transaction re-points profile_id on the document and each
 // imported child row; the file is moved afterward best-effort (if the move fails
 // the stored_path keeps pointing at the old, still-served location). Each UPDATE
 // is scoped to the SOURCE profile + the document's provenance link, so it can
@@ -1273,7 +1273,7 @@ export async function deleteMedicalDocument(formData: FormData) {
     // immunizations, allergies, conditions, and encounters. This is the SAME
     // shared helper the reprocess delete-set runs (lib/import-persist), so the
     // delete path can't leak rows the reprocess path clears (the drift that
-    // orphaned #182/#183/#196's head-circ/allergy/condition/encounter rows). It
+    // orphaned head-circ/allergy/condition/encounter rows). It
     // also clears the auto-structured meds BEFORE the medical_documents row is
     // dropped, which their intake_items.document_id foreign key requires.
     clearImportedDocumentRows(profile.id, id);

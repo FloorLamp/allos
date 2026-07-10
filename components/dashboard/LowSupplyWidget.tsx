@@ -7,7 +7,7 @@ export interface LowSupplyItem {
   kind: "supplement" | "medication";
 }
 
-// Low supply (NEW, issue #156) — supplements/medications with tracked quantity
+// Low supply (NEW) — supplements/medications with tracked quantity
 // running at or below the refill threshold, computed via lib/refill. Off by
 // default; when nothing is low the card reads "All stocked up".
 export default function LowSupplyWidget({ items }: { items: LowSupplyItem[] }) {

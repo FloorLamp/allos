@@ -5,8 +5,8 @@ import {
   type AnnotationKind,
 } from "@/lib/trend-annotations";
 
-// The per-event-type toggle for the Trends event annotations (issue #212,
-// Phase 3). Presentational + controlled: the parent owns which kinds are enabled
+// The per-event-type toggle for the Trends event annotations.
+// Presentational + controlled: the parent owns which kinds are enabled
 // and re-renders the charts when a pill is clicked. Only the kinds actually present
 // in the marker set are offered (a toggle for a kind with no markers is dead
 // weight). Each pill doubles as the legend — its dot is the marker color used on

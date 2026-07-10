@@ -1,4 +1,4 @@
-// SERVER-ACTION TIER — dashboard layout persistence (#156).
+// SERVER-ACTION TIER — dashboard layout persistence.
 //
 // saveDashboardLayout takes plain args (not FormData) and persists the order/hidden
 // blob under the ACTIVE profile's profile_settings. Asserts the stored JSON and the
