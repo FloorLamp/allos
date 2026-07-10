@@ -95,8 +95,12 @@ export default function UserMenu({
       </button>
       {/* Kept mounted (toggled via display) rather than unmounted: closing on
       select must not tear down the <form> before React dispatches its Server
-      Action, or the switch/logout is silently dropped. */}
+      Action, or the switch/logout is silently dropped. The testid scopes e2e
+      profile-switch clicks to THIS popover — the dashboard's household-strip
+      chips are also profile-named form buttons, so an unscoped page-wide
+      locator would be ambiguous. */}
       <div
+        data-testid="user-menu-popover"
         className={`absolute inset-x-0 bottom-full z-20 mb-2 ${
           open ? "flex" : "hidden"
         } flex-col gap-1 rounded-lg border border-black/10 bg-white p-2 shadow-xl dark:border-white/10 dark:bg-ink-850`}

@@ -61,10 +61,14 @@ test("a data-less profile shows an onboarding empty-state CTA", async ({
 
     // Switch to Sam Rivers (profile 2 — supplements only, no labs/appointments) via
     // its household chip. The data-aware Recent-labs / Next-appointment widgets then
-    // render their onboarding CTA instead of a blank card.
+    // render their onboarding CTA instead of a blank card. Wait on the user-menu
+    // trigger naming the new profile — the definitive switch signal (we're already
+    // on "/", so a URL wait could resolve before the action round-trips).
     await page.goto("/");
     await page.getByRole("main").getByTestId("household-chip-2").click();
-    await page.waitForURL("**/");
+    await expect(page.getByTestId("user-menu-trigger")).toContainText(
+      "Sam Rivers"
+    );
 
     await expect(
       page.getByRole("main").getByTestId("widget-empty").first()
