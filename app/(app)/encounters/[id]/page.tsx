@@ -152,18 +152,23 @@ export default async function EncounterDetailPage(props: {
           </DetailRow>
 
           <DetailRow label="Source">
-            <span className="text-slate-500 dark:text-slate-400">
-              {sourceLabel(encounter.source)}
-            </span>
-            {encounter.document_id ? (
-              <Link
-                href={`/import/${encounter.document_id}`}
-                className="mt-1 inline-flex items-center gap-1.5 text-xs font-semibold text-brand-700 transition hover:underline dark:text-brand-300"
+            <div className="flex flex-col items-start gap-1.5">
+              <span
+                className="text-slate-500 dark:text-slate-400"
+                data-testid="encounter-source"
               >
-                <IconFileText className="h-3.5 w-3.5" stroke={1.75} />
-                View source document
-              </Link>
-            ) : null}
+                {sourceLabel(encounter.source)}
+              </span>
+              {encounter.document_id ? (
+                <Link
+                  href={`/import/${encounter.document_id}`}
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-700 transition hover:underline dark:text-brand-300"
+                >
+                  <IconFileText className="h-3.5 w-3.5" stroke={1.75} />
+                  View source document
+                </Link>
+              ) : null}
+            </div>
           </DetailRow>
         </dl>
       </div>
