@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { IconGitMerge } from "@tabler/icons-react";
 import type { UnitPrefs } from "@/lib/settings";
 import { fmtDistance, fmtKmh } from "@/lib/units";
@@ -125,9 +126,13 @@ export default function MergeConflictDialog({
     onConfirm(overrideFields);
   }
 
-  return (
+  // Portal to <body> (matching ModalShell/ConfirmDialog): rendered inline inside
+  // a journal card, an ancestor stacking context traps the overlay's z-index and
+  // later cards paint over the dialog — the confirm button was literally
+  // unclickable behind a sibling card (caught by the #100 e2e).
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      className="fixed inset-0 z-[60] flex items-center justify-center p-4"
       role="dialog"
       aria-modal="true"
       aria-label="Resolve merge conflicts"
@@ -207,6 +212,7 @@ export default function MergeConflictDialog({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
