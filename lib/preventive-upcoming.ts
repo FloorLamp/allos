@@ -39,7 +39,9 @@ export function preventiveAssessmentToUpcomingItem(
     domain: a.kind,
     title: a.name,
     detail: a.nextLabel ?? a.detail,
-    href: HREF_BY_KIND[a.kind],
+    // A rule-specific override (e.g. the lung prompt → Settings) wins; otherwise
+    // the kind-based default (visit → appointments, screening → passport).
+    href: a.href ?? HREF_BY_KIND[a.kind],
     dueDate: null,
     band,
     dueText: overdue ? "Overdue" : "Due",

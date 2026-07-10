@@ -3,13 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Combobox from "@/components/Combobox";
+import type { AnalyzeOption } from "@/lib/analyze-view";
 
-export interface AnalyzeOption {
-  kind: "strength" | "cardio" | "sport";
-  item: string;
-  label: string;
-  href: string;
-}
+export type { AnalyzeOption };
 
 const BADGE_CLASS: Record<AnalyzeOption["kind"], string> = {
   strength:

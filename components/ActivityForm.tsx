@@ -11,22 +11,17 @@ import type { ActivityType, ActivityComponent, Equipment } from "@/lib/types";
 import type { UnitPrefs } from "@/lib/settings";
 import {
   muscleFor,
-  suggestTitle,
   isUnilateral,
-  isTimed,
   isBodyweight,
   variantOf,
   composeVariant,
   baseLiftName,
 } from "@/lib/lifts";
-import { parseSeconds, isValidDuration } from "@/lib/duration";
 import { formatLongDate } from "@/lib/format-date";
 import type { ActivitySuggestions, ExerciseHistoryMap } from "@/lib/queries";
 import {
   inferFreeTextType,
   legacyActivityName,
-  showsDistanceField,
-  timeOfDay,
   minutesBetween,
   titleCase,
 } from "@/lib/activity-meta";
@@ -58,12 +53,17 @@ import {
   partIntent,
   groupEditSets,
   setComplete,
-  sideComplete,
   setPartial,
   todayStr,
   nowHHMM,
   INTENSITIES,
 } from "./activity-form/model";
+import {
+  makeNameClassifier,
+  analyzeActivityForm,
+  buildActivityPayload,
+  generateActivityTitle,
+} from "@/lib/activity-form-validate";
 import CustomTypeChips from "./activity-form/CustomTypeChips";
 import CardioFields from "./activity-form/CardioFields";
 import StrengthSets from "./activity-form/StrengthSets";
@@ -153,33 +153,14 @@ export default function ActivityForm({
     return { allOptions: all, typeByName: m };
   }, [suggestions]);
 
-  const nameType = (name: string): ActivityType | null => {
-    const t = typeByName.get(name.trim().toLowerCase());
-    if (t) return t;
-    // Composed variant names ("Dumbbell Curl") aren't in the grouped picker
-    // list but are real strength lifts.
-    if (variantOf(name)) return "strength";
-    return null;
-  };
-  const isKnown = (name: string) => nameType(name) !== null;
-  // A user-coined cardio/sport name: in the vocabulary (previously logged)
-  // but not curated. Such names load and re-pick as custom parts, keeping
-  // their chips and distance field in every session, not just the first.
-  const isCoined = (name: string) => {
-    const t = nameType(name);
-    return t !== null && t !== "strength" && !isCuratedActivity(name);
-  };
-  // A part's effective type. A nameless part has none (imported components
-  // can carry blank names — they must not count as savable). For custom
-  // parts the chip/inferred/stored choice is the only source: every path
-  // that sets `custom` also resolves `customType` (null only for a novel
-  // name awaiting its chip, where the vocabulary is empty-handed anyway).
-  const partType = (p: PartEntry): ActivityType | null => {
-    if (!p.name.trim()) return null;
-    return p.custom ? p.customType : nameType(p.name);
-  };
-  const partNeedsDistance = (p: PartEntry) =>
-    showsDistanceField(p.name, partType(p), p.custom);
+  // All name→type classification (partType, distance-field, custom flags) is
+  // pure logic keyed off the picker vocabulary — built once here and destructured
+  // so the inline call sites below stay unchanged (see lib/activity-form-validate).
+  const classifier = useMemo(
+    () => makeNameClassifier(typeByName),
+    [typeByName]
+  );
+  const { partType, partNeedsDistance, isKnown, customFlags } = classifier;
 
   // Local copy so a bar created from the plate builder appears immediately in
   // both the equipment selector and the builder without waiting on a refetch.
@@ -278,155 +259,20 @@ export default function ActivityForm({
   });
 
   const isEdit = !!editData;
-  // A bare variant base ("Curl") still needs an equipment chip picked before it
-  // is a concrete, savable lift.
-  const needsEquipment = (name: string) => variantOf(name)?.equipment === null;
-  const namedParts = parts.filter((p) => partType(p) !== null);
-  // A committed custom part has a valid *name*; a missing type is its own
-  // fault (typeMissing) with its own chips to fix it.
-  const allNamedValid = parts.every(
-    (p) => !p.name.trim() || isKnown(p.name) || p.custom
-  );
-  const typeMissing = parts.some(
-    (p) => p.custom && p.name.trim() !== "" && partType(p) === null
-  );
-  // A bare variant base needs equipment — satisfied by a variant chip (which
-  // makes the name concrete) or a chosen custom implement.
-  const allEquipmentChosen = namedParts.every(
-    (p) => !needsEquipment(p.name) || p.equipmentId != null
-  );
-  // Every entered hold time on a timed lift must be well-formed (m:ss or seconds).
-  const durationsValid = namedParts.every((p) => {
-    if (partType(p) !== "strength" || !isTimed(p.name)) return true;
-    return p.sets.every(
-      (s) =>
-        (!s.duration.trim() || isValidDuration(s.duration)) &&
-        (!p.perSide ||
-          !s.durationRight.trim() ||
-          isValidDuration(s.durationRight))
-    );
+  // All validation/auto-save gating (namedParts, canSave, the per-part fault,
+  // the save-blocker message, canAddPart) is pure — computed from the parts +
+  // session fields by lib/activity-form-validate. partIssue keeps its call
+  // signature via the returned partFault.
+  const analysis = analyzeActivityForm(classifier, {
+    parts,
+    startTime,
+    endTime,
+    date,
   });
-  const timeError = !!startTime && !!endTime && endTime < startTime;
-  // Every named exercise must carry its own content — a bare name can't be saved
-  // on the strength of a sibling's data or the session's time range alone (which
-  // is how a stray Enter used to auto-create an empty activity). A strength part
-  // needs a completed set (weight/reps or a hold time); a cardio/sport part needs
-  // a distance or duration, or a full start–end time range to stand in for one.
-  const timeRange = !!startTime && !!endTime && !timeError;
-  // Only a distance the save will actually keep counts as content — a value
-  // stranded in state after its field hid (e.g. a cardio part switched to
-  // sport) must pause the save, not let it author a contentless component.
-  const partHasContent = (p: PartEntry) =>
-    partType(p) === "strength"
-      ? p.sets.some((s) => setComplete(p.name, s, p.perSide))
-      : (partNeedsDistance(p) && !!p.distance.trim()) ||
-        !!p.durationMin.trim() ||
-        timeRange;
-  const hasContent = namedParts.every(partHasContent);
-  const partHasPartialSet = (p: PartEntry) =>
-    partType(p) === "strength" &&
-    p.sets.some((s) => setPartial(p.name, s, p.perSide));
-  const noPartialSets = namedParts.every((p) => !partHasPartialSet(p));
-  // The date field accepts raw text (DateField's onChange passes the unparsed
-  // value) and the docked editor never runs native submit validation, so gate the
-  // auto-save on a real ISO date — otherwise "2026-07" or "Friday" would persist.
-  const dateValid = isRealIsoDate(date);
-  const canSave =
-    namedParts.length > 0 &&
-    allNamedValid &&
-    !typeMissing &&
-    allEquipmentChosen &&
-    durationsValid &&
-    !timeError &&
-    noPartialSets &&
-    dateValid &&
-    hasContent;
+  const { namedParts, timeError, canSave, canAddPart } = analysis;
+  const partIssue = analysis.partFault;
 
-  const lastPart = parts[parts.length - 1];
-  const lastType = lastPart ? partType(lastPart) : null;
-  const canAddPart =
-    lastType !== null &&
-    (!needsEquipment(lastPart.name) || lastPart.equipmentId != null) &&
-    (lastType !== "strength" ||
-      lastPart.sets.some((s) =>
-        setComplete(lastPart.name, s, lastPart.perSide)
-      ));
-
-  // --- Auto-save feedback ---
-  // The docked editor has no Save button, so when a change can't persist there's
-  // nothing to tell the user why. These pinpoint what's holding the save back.
-  // Per-part fault (only for parts the user has named): the reason this activity
-  // can't be saved, so its card can be flagged. `null` when the part is fine.
-  const partIssue = (
-    p: PartEntry
-  ): "name" | "type" | "equipment" | "set" | "content" | null => {
-    const name = p.name.trim();
-    if (!name) return null; // a still-blank part isn't a fault, just unfinished
-    if (!isKnown(name) && !p.custom) return "name";
-    if (p.custom && partType(p) === null) return "type";
-    if (needsEquipment(name) && p.equipmentId == null) return "equipment";
-    if (partHasPartialSet(p)) return "set";
-    if (!partHasContent(p)) return "content";
-    return null;
-  };
-  // One short line naming the first thing blocking auto-save, evaluated in the
-  // same order as canSave's clauses. `null` when the form is savable.
-  // Kept in sync with lib/activity-validate's storedActivityFault, the
-  // journal's card-level mirror of these rules over stored rows.
-  const saveBlocker = (): string | null => {
-    if (canSave) return null;
-    // The typeless-custom message is needed at two spots (a lone typeless
-    // part never reaches namedParts, so it lands in the first gate).
-    const typeBlocker = "Choose a type for the new activity — cardio or sport.";
-    if (namedParts.length === 0) {
-      if (typeMissing) return typeBlocker;
-      return parts.some((p) => p.name.trim())
-        ? "Pick an activity from the list, or add it as a new one."
-        : "Add an activity to start.";
-    }
-    if (!allNamedValid)
-      return "An activity name isn’t recognized — pick it from the list or add it as new.";
-    if (typeMissing) return typeBlocker;
-    if (!allEquipmentChosen)
-      return "Choose equipment for the highlighted activity.";
-    if (!durationsValid) return "Enter the hold time as m:ss or seconds.";
-    if (timeError) return "End time must be after the start time.";
-    if (!noPartialSets)
-      return "A set is only half-filled — finish it or clear it.";
-    if (!hasContent) {
-      // Point at the first activity still missing content, in its own terms.
-      const empty = namedParts.find((p) => !partHasContent(p));
-      return empty && partType(empty) === "strength"
-        ? "Enter a set — weight & reps, or a hold time."
-        : "Enter a distance, duration, or a start & end time.";
-    }
-    return null;
-  };
-
-  function generateTitle(): string {
-    const tod = timeOfDay(startTime);
-    const strengthNames = namedParts
-      .filter((p) => partType(p) === "strength")
-      .map((p) => p.name);
-    const others = namedParts.filter((p) => partType(p) !== "strength");
-    const otherStrs = others.map((p) =>
-      titleCase(`${p.durationMin ? `${p.durationMin} Min ` : ""}${p.name}`)
-    );
-    const strengthTitle = strengthNames.length
-      ? titleCase(suggestTitle(strengthNames))
-      : null;
-
-    let core: string;
-    if (strengthTitle && otherStrs.length)
-      core = `${strengthTitle} with ${otherStrs.join(" & ")}`;
-    else if (strengthTitle) core = strengthTitle;
-    else if (otherStrs.length) core = `${otherStrs.join(" & ")} Session`;
-    else core = "New activity";
-
-    return tod && core !== "New activity" ? `${tod} ${core}` : core;
-  }
-
-  const liveTitle = generateTitle();
+  const liveTitle = generateActivityTitle(startTime, namedParts, classifier);
   // The name actually saved/shown: the user's title, else the generated one.
   const effectiveTitle = title.trim() || liveTitle;
   // Until the user edits the title, keep it following the generated one.
@@ -545,13 +391,6 @@ export default function ActivityForm({
     }
     updatePartName(i, rawName, { equipmentId: lastEquipmentId(rawName) });
   }
-  // Custom-part flags for a typed or picked name: a coined (logged,
-  // non-curated) cardio/sport name stays custom with its vocabulary type; any
-  // other name is un-committed until an explicit "Add as new" pick.
-  const customFlags = (name: string): Partial<PartEntry> => {
-    const coined = isCoined(name);
-    return { custom: coined, customType: coined ? nameType(name) : null };
-  };
   // Typing in the combobox: a plain name update (keeping updatePartName's
   // per-side defaulting and the last-used-implement sync) that re-derives the
   // custom flags from the text — a novel free-text commit only survives an
@@ -685,62 +524,10 @@ export default function ActivityForm({
   // on `canSave` first. Uses the live row id (existing or auto-created) so saves
   // update in place rather than inserting duplicates.
   function buildFormData(): FormData {
-    const comps = namedParts.map((p) => {
-      const t = partType(p)!;
-      return {
-        name: p.name.trim(),
-        type: t,
-        distance:
-          partNeedsDistance(p) && p.distance ? Number(p.distance) : null,
-        duration_min:
-          t !== "strength" && p.durationMin ? Number(p.durationMin) : null,
-      };
-    });
-    const flat: {
-      exercise: string;
-      weight: number | null;
-      reps: number | null;
-      weightRight: number | null;
-      repsRight: number | null;
-      durationSec: number | null;
-      durationSecRight: number | null;
-      equipmentId: number | null;
-      targetReps: number | null;
-      toFailure: boolean;
-    }[] = [];
-    for (const p of namedParts) {
-      if (partType(p) !== "strength") continue;
-      const timed = isTimed(p.name);
-      const intent = partIntent(p);
-      for (const s of p.sets) {
-        const perSide = p.perSide;
-        // For timed holds the "effort" is duration; otherwise it's reps.
-        const hasLeft = sideComplete(p.name, s.weight, s.reps, s.duration);
-        const hasRight =
-          perSide &&
-          sideComplete(p.name, s.weightRight, s.repsRight, s.durationRight);
-        if (!hasLeft && !hasRight) continue;
-        flat.push({
-          exercise: p.name.trim(),
-          weight: s.weight ? Number(s.weight) : null,
-          reps: timed ? null : s.reps ? Number(s.reps) : null,
-          weightRight: hasRight && s.weightRight ? Number(s.weightRight) : null,
-          repsRight: timed
-            ? null
-            : hasRight && s.repsRight
-              ? Number(s.repsRight)
-              : null,
-          durationSec: timed ? parseSeconds(s.duration) : null,
-          durationSecRight:
-            timed && hasRight ? parseSeconds(s.durationRight) : null,
-          equipmentId: p.equipmentId,
-          targetReps: intent.target,
-          toFailure: intent.toFailure,
-        });
-      }
-    }
-    const primaryType =
-      comps.find((c) => c.type === "strength")?.type ?? comps[0].type;
+    const { comps, flat, primaryType } = buildActivityPayload(
+      classifier,
+      namedParts
+    );
 
     const fd = new FormData();
     const id = savableId();
@@ -900,7 +687,7 @@ export default function ActivityForm({
   // imported rows or records predating stricter validation) — otherwise edits
   // would silently never persist. Only a pristine blank create shows nothing.
   const dirty = formSig !== savedSigRef.current;
-  const blocker = (dirty || hasRow) && !canSave ? saveBlocker() : null;
+  const blocker = (dirty || hasRow) && !canSave ? analysis.saveBlocker : null;
 
   // Auto-save can't persist a blocked form, so closing one with unsaved edits
   // to a real row would silently drop them — confirm first. A blocked blank

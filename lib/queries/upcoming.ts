@@ -29,6 +29,7 @@ import {
   type PreventiveSatisfaction,
 } from "../preventive-status";
 import { preventiveAssessmentToUpcomingItem } from "../preventive-upcoming";
+import { carePlanUpcomingItems } from "../care-plan-upcoming";
 import {
   isBiomarkerStale,
   retestIntervalDays,
@@ -41,7 +42,9 @@ import {
   getUserBirthdate,
   getStoredAge,
   getActiveSituations,
+  getSmokingHistory,
 } from "../settings";
+import { resolveSmoking } from "../smoking";
 import type { UpcomingItem } from "../upcoming";
 import { pickNextAppointment } from "../household";
 import {
@@ -62,6 +65,7 @@ import {
   getImmunityTiters,
   getImmunizationOverrides,
 } from "./medical";
+import { hasImportedSmokingHistory, getCarePlanItems } from "./clinical";
 
 // Biomarker categories a retest nudge makes sense for. Vitals/scans/prescriptions
 // aren't "labs to redraw", and genomics never go stale (handled by
@@ -277,6 +281,13 @@ function preventiveItems(profileId: number, today: string): UpcomingItem[] {
     sex: getUserSex(profileId),
     satisfactions: getPreventiveSatisfactions(profileId),
     overrides: getPreventiveOverrides(profileId),
+    // Resolve smoking (issue #83): the structured record wins, else the imported
+    // social-history condition is the ever-smoker fallback. Activates the lung
+    // LDCT / AAA rules that ship inert.
+    smoking: resolveSmoking(
+      getSmokingHistory(profileId),
+      hasImportedSmokingHistory(profileId)
+    ),
     today,
   });
   return summary.actionable.map(preventiveAssessmentToUpcomingItem);
@@ -373,6 +384,27 @@ function trainingItems(profileId: number): UpcomingItem[] {
     }));
 }
 
+// Provider-ordered / manually-entered care-plan items with a planned date (issue
+// #84). Reuses getCarePlanItems (profile-scoped read) and the pure adapter, which
+// keeps only OPEN (non-completed/cancelled) DATED items and bands them by their
+// real planned_date. Each carries its row id for the inline "Mark done" form.
+// NOTE (v1): no dedup yet against the preventive-care engine — an ordered
+// colonoscopy and a catalog "colorectal screening due" can both appear; the issue
+// punts that to a follow-up.
+function carePlanItems(profileId: number): UpcomingItem[] {
+  return carePlanUpcomingItems(getCarePlanItems(profileId));
+}
+
+// Mark a care-plan item completed (issue #84) — the write behind the Upcoming
+// "Mark done" fast path. Sets status = 'completed' so the pure adapter drops it
+// from the due-list on the next read. Profile-scoped (WHERE id AND profile_id), so
+// a tampered id for another profile is a no-op.
+export function markCarePlanItemDone(profileId: number, id: number): void {
+  db.prepare(
+    "UPDATE care_plan_items SET status = 'completed' WHERE id = ? AND profile_id = ?"
+  ).run(id, profileId);
+}
+
 // Every forward-looking due-signal for the active profile, BEFORE snooze/dismiss
 // filtering. `today` is resolved by the caller in the profile's timezone.
 function rawUpcoming(profileId: number, today: string): UpcomingItem[] {
@@ -380,6 +412,7 @@ function rawUpcoming(profileId: number, today: string): UpcomingItem[] {
     ...doseItems(profileId, today),
     ...refillItems(profileId, today),
     ...appointmentItems(profileId),
+    ...carePlanItems(profileId),
     ...preventiveItems(profileId, today),
     ...immunizationItems(profileId, today),
     ...biomarkerItems(profileId, today),

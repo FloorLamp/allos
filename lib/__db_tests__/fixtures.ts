@@ -24,6 +24,7 @@ export interface SeededProfile {
   medicationId: number;
   goalId: number;
   documentId: number;
+  carePlanItemId: number;
   glucoseValueNum: number;
   weightKg: number;
   /** A vaccine code carrying a `declined` override, for the immunization read. */
@@ -174,6 +175,18 @@ export function seedProfile(tag: string, opts: SeedOpts = {}): SeededProfile {
         .run(profileId, `${tag} Squat 140`).lastInsertRowid
     );
 
+    // ---- care plan: an open, dated care-plan item (issue #84) → a careplan
+    //      Upcoming signal. planned_date = today so it lands in the Today band. ----
+    const carePlanItemId = Number(
+      db
+        .prepare(
+          `INSERT INTO care_plan_items
+             (profile_id, description, category, planned_date, status)
+           VALUES (?, ?, 'procedure', ?, 'planned')`
+        )
+        .run(profileId, `${tag} Colonoscopy`, todayStr).lastInsertRowid
+    );
+
     return {
       profileId,
       tag,
@@ -185,6 +198,7 @@ export function seedProfile(tag: string, opts: SeedOpts = {}): SeededProfile {
       medicationId,
       goalId,
       documentId,
+      carePlanItemId,
       glucoseValueNum,
       weightKg,
       declinedVaccine,

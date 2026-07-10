@@ -23,6 +23,7 @@ const DOMAIN_NOUN: Record<UpcomingDomain, string> = {
   biomarker: "lab",
   goal: "goal",
   training: "training target",
+  careplan: "care-plan item",
 };
 
 // Fixed within-band ordering for the count phrase, matching the page's domain
@@ -31,6 +32,7 @@ const DOMAIN_SEQ: UpcomingDomain[] = [
   "dose",
   "refill",
   "appointment",
+  "careplan",
   "visit",
   "screening",
   "immunization",

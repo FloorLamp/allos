@@ -8,6 +8,7 @@ import {
   IconChartLine,
   IconTarget,
   IconBarbell,
+  IconClipboardList,
   IconDotsVertical,
   IconClock,
   IconEyeOff,
@@ -37,6 +38,7 @@ import {
   restoreItem,
   markPreventiveDone,
   overridePreventive,
+  markCarePlanDone,
 } from "./actions";
 
 // Quick-snooze options offered in each item's menu.
@@ -59,6 +61,7 @@ const DOMAIN_ICON: Record<UpcomingDomain, TablerIcon> = {
   biomarker: IconChartLine,
   goal: IconTarget,
   training: IconBarbell,
+  careplan: IconClipboardList,
 };
 
 // Urgency band → accent tone for the band heading + the overdue-date text.
@@ -90,7 +93,7 @@ export default function UpcomingPage() {
     <div>
       <PageHeader
         title="Upcoming"
-        subtitle="Everything due soon — doses, refills, appointments, preventive visits & screenings, vaccines, retests, goals, and training — in one forward-looking list."
+        subtitle="Everything due soon — doses, refills, appointments, planned care, preventive visits & screenings, vaccines, retests, goals, and training — in one forward-looking list."
       />
 
       {!hasDemographics && (
@@ -363,6 +366,21 @@ function Row({
       )}
       {item.preventiveRuleKey != null && (
         <PreventiveControls ruleKey={item.preventiveRuleKey} />
+      )}
+      {item.carePlanItemId != null && (
+        <form action={markCarePlanDone} className="shrink-0">
+          <input
+            type="hidden"
+            name="care_plan_item_id"
+            value={item.carePlanItemId}
+          />
+          <SubmitButton
+            pendingLabel="…"
+            className="rounded-lg border border-black/10 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 disabled:opacity-60 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"
+          >
+            Mark done
+          </SubmitButton>
+        </form>
       )}
       <ItemMenu signalKey={item.key} />
     </div>

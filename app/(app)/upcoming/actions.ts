@@ -10,6 +10,7 @@ import {
   restoreFinding,
   recordPreventiveDone,
   setPreventiveOverride,
+  markCarePlanItemDone,
 } from "@/lib/queries";
 import { shiftDateStr } from "@/lib/date";
 import { preventiveRuleByKey } from "@/lib/preventive-catalog";
@@ -41,6 +42,21 @@ export async function markPreventiveDone(formData: FormData) {
   if (!ruleKey || !preventiveRuleByKey(ruleKey)) return;
   recordPreventiveDone(profile.id, ruleKey, today(profile.id));
   revalidatePath("/upcoming");
+  revalidatePath("/");
+}
+
+// Inline "mark done" for a provider-ordered care-plan item on the Upcoming page
+// (issue #84). Marks the row completed via the profile-scoped writer (WHERE id AND
+// profile_id, so a tampered id can't touch another profile's row) — the same fast
+// path as a dose "mark taken" — so the item drops off Upcoming and the /care-plan
+// page reflects the completion.
+export async function markCarePlanDone(formData: FormData) {
+  const { profile } = requireWriteAccess();
+  const id = Number(formData.get("care_plan_item_id"));
+  if (!id) return;
+  markCarePlanItemDone(profile.id, id);
+  revalidatePath("/upcoming");
+  revalidatePath("/care-plan");
   revalidatePath("/");
 }
 

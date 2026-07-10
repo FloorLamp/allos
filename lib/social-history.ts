@@ -83,6 +83,24 @@ export function normalizeSmokingStatus(
   return { code, display: display || `Smoking status ${code}` };
 }
 
+// Map a KEPT tobacco-exposure smoking status (the output of normalizeSmokingStatus,
+// which already drops "never smoker") to the structured tri-state used by the
+// smoking-history record (issue #83). Everything the CCD parser keeps is an ever-
+// smoker, so this is only the former-vs-current split: the SNOMED "ex-smoker" code
+// (8517006) and any "former"/"ex-smoker"/"stopped"/"quit" display read as `former`;
+// every other kept exposure status (current every-day / some-day / light / heavy
+// smoker) reads as `current`.
+export function smokingStatusToStructured(
+  s: SmokingStatus
+): "former" | "current" {
+  const code = (s.code ?? "").trim();
+  const disp = (s.display ?? "").toLowerCase();
+  if (code === "8517006") return "former";
+  if (/\bformer\b|\bex[-\s]?smoker\b|stopped smoking|\bquit\b/.test(disp))
+    return "former";
+  return "current";
+}
+
 // Stable per-document dedup key for a smoking-status condition row — keyed on the
 // SNOMED code (else the display), so a reprocess and the two documents of an XDM
 // package collapse to one row. Namespaced apart from problem-list conditions.

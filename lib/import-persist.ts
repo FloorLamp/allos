@@ -1,7 +1,12 @@
 import type Database from "better-sqlite3";
 import { db } from "./db";
 import { documentSource, undeferredBodyMetrics } from "./body-metric-extract";
-import { adoptProfileFromExtraction, type ProfileAdoption } from "./settings";
+import {
+  adoptProfileFromExtraction,
+  adoptSmokingStatusFromImport,
+  type ProfileAdoption,
+} from "./settings";
+import { smokingStatusToStructured } from "./social-history";
 import {
   addCanonicalNames,
   reconcileFlags,
@@ -446,6 +451,24 @@ export function persistDocumentImport(
         docId,
         scopedExternalId(c.external_id),
         profileId
+      );
+    }
+    // Seed the STRUCTURED smoking record (#83) from the imported social-history
+    // smoking condition, so the risk-gated screening rules (lung LDCT / AAA) read
+    // structured data without a re-derivation drift. The condition row stays the
+    // /conditions display artifact; adoptSmokingStatusFromImport skips a manual
+    // entry (a user correction always wins) and otherwise seeds status only —
+    // pack-years aren't in a CCD. Single-valued per profile, so one winning row.
+    const smokingCond = input.conditions.find((c) =>
+      c.external_id?.startsWith("ccda:social-smoking:")
+    );
+    if (smokingCond) {
+      adoptSmokingStatusFromImport(
+        profileId,
+        smokingStatusToStructured({
+          code: smokingCond.code,
+          display: smokingCond.name,
+        })
       );
     }
     for (const e of input.encounters) {

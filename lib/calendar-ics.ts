@@ -310,13 +310,14 @@ export function selectFeedPreviewRows(
 // this is pure — the route resolves the enabled set + the collected signals and
 // passes them in, so the composition/filtering decisions live here and are tested.
 
-// A feed category maps 1:1 onto an UpcomingDomain (same seven names). "appointment"
+// A feed category maps 1:1 onto an UpcomingDomain (same names). "appointment"
 // is special: it flows through the rich appointment mapping (timed events,
 // cancellations, provider/reason at full detail), not the generic signal mapping.
 export type FeedCategory =
   | "appointment"
   | "dose"
   | "refill"
+  | "careplan"
   | "visit"
   | "screening"
   | "immunization"
@@ -329,6 +330,7 @@ export const FEED_CATEGORIES: readonly FeedCategory[] = [
   "appointment",
   "dose",
   "refill",
+  "careplan",
   "visit",
   "screening",
   "immunization",
@@ -350,6 +352,7 @@ export const CONCRETE_FEED_CATEGORIES: readonly FeedCategory[] = [
   "appointment",
   "dose",
   "refill",
+  "careplan",
 ];
 export const SUGGESTED_FEED_CATEGORIES: readonly FeedCategory[] = [
   "visit",
@@ -369,6 +372,7 @@ const CATEGORY_MINIMAL_LABEL: Record<
 > = {
   dose: "Medication / supplement dose",
   refill: "Refill running low",
+  careplan: "Planned care due",
   visit: "Preventive visit due",
   screening: "Preventive screening due",
   immunization: "Immunization due",
@@ -383,6 +387,7 @@ export const FEED_CATEGORY_LABELS: Record<FeedCategory, string> = {
   appointment: "Medical appointments",
   dose: "Doses due",
   refill: "Refills running low",
+  careplan: "Planned care",
   visit: "Preventive visits due",
   screening: "Preventive screenings due",
   immunization: "Immunizations due",

@@ -50,9 +50,15 @@ import {
   setEmergencyCardEnabled,
   setBloodType,
   setEmergencyContact,
+  setSmokingHistory,
   type DistanceUnit,
   type WeightUnit,
 } from "@/lib/settings";
+import {
+  parsePackYears,
+  parseQuitYear,
+  parseSmokingStatus,
+} from "@/lib/smoking";
 import { performBackup } from "@/lib/backup";
 import { formatBytes } from "@/lib/format-bytes";
 import { setMinTrainingAge } from "@/lib/age-gate";
@@ -185,6 +191,32 @@ export async function saveProfileSettings(formData: FormData) {
 
   // These affect display across the whole app.
   revalidatePath("/", "layout");
+}
+
+// ---- Smoking history (profile scope, issue #83) ----
+// The structured smoking record (status / pack-years / quit year) — a property of
+// the tracked person, so profile-scoped; any login with write access to the profile
+// may edit it. Marks the entry 'manual' so a later CCD re-import never clobbers it.
+// pack-years apply only to an ever-smoker and the quit year only to a former smoker
+// (the setter drops the rest); the assessor uses this to activate the risk-gated
+// lung LDCT / AAA screening reminders.
+export async function saveSmokingHistory(formData: FormData) {
+  const { profile } = requireWriteAccess();
+  const status = parseSmokingStatus(
+    String(formData.get("smoking_status") ?? "")
+  );
+  const packYears = parsePackYears(String(formData.get("pack_years") ?? ""));
+  // Bound the quit year to a real, non-future year; parseQuitYear already rejects
+  // an out-of-range value, and a future year is meaningless for "quit N years ago".
+  const thisYear = new Date().getFullYear();
+  const quitYearRaw = parseQuitYear(String(formData.get("quit_year") ?? ""));
+  const quitYear =
+    quitYearRaw != null && quitYearRaw <= thisYear ? quitYearRaw : null;
+
+  setSmokingHistory(profile.id, { status, packYears, quitYear });
+  // The record drives the preventive reminders (Upcoming) and the profile page.
+  revalidatePath("/upcoming");
+  revalidatePath("/settings/profile");
 }
 
 // ---- Emergency card (profile scope, issue #42) ----

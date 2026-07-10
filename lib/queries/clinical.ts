@@ -128,6 +128,23 @@ export function getConditions(
     .all(...args) as Condition[];
 }
 
+// Whether the profile has an IMPORTED social-history smoking condition (#188) — the
+// "ever smoked, details unknown" FALLBACK for the smoking-history resolver (#83)
+// when no structured record has been entered or seeded. The parser only keeps
+// tobacco-EXPOSURE statuses ("never smoker" is dropped), so the mere presence of
+// such a row means ever-smoked. Profile-scoped; the social-smoking namespace is
+// source-prefixed in external_id, hence the leading-% LIKE (mirrors import-persist).
+export function hasImportedSmokingHistory(profileId: number): boolean {
+  const row = db
+    .prepare(
+      `SELECT 1 FROM conditions
+         WHERE profile_id = ? AND external_id LIKE '%ccda:social-smoking:%'
+         LIMIT 1`
+    )
+    .get(profileId);
+  return row != null;
+}
+
 export function getCondition(
   profileId: number,
   id: number
