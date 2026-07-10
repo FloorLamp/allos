@@ -11,6 +11,7 @@ import { setUserBirthdate, setUserSex } from "@/lib/settings";
 import {
   collectUpcoming,
   getPreventiveSatisfactions,
+  getInferredPreventiveSatisfactions,
   getPreventiveOverrides,
   recordPreventiveDone,
   setPreventiveOverride,
@@ -108,6 +109,74 @@ describe("preventive Upcoming integration", () => {
     expect(
       getPreventiveSatisfactions(other).some(
         (s) => s.ruleKey === "adult_physical"
+      )
+    ).toBe(true);
+  });
+});
+
+// Issue #86 — record-driven inference feeding the SAME satisfaction stream.
+describe("preventive inference from existing records", () => {
+  let inferId: number;
+
+  beforeAll(() => {
+    inferId = makeProfile("Inference Test");
+  });
+
+  it("a coded colonoscopy procedure silently satisfies the colorectal rule", () => {
+    // Due before any record.
+    expect(
+      collectUpcoming(inferId, now).some(
+        (i) => i.key === "screening:colorectal_cancer"
+      )
+    ).toBe(true);
+
+    db.prepare(
+      `INSERT INTO procedures (profile_id, name, code, code_system, date)
+         VALUES (?, 'Screening colonoscopy', '45378', 'CPT', ?)`
+    ).run(inferId, now);
+
+    // Inference now yields the satisfaction, and the item drops off Upcoming —
+    // WITHOUT any manual mark-done and WITHOUT writing a preventive_events row.
+    expect(
+      getInferredPreventiveSatisfactions(inferId).some(
+        (s) => s.ruleKey === "colorectal_cancer"
+      )
+    ).toBe(true);
+    expect(getPreventiveSatisfactions(inferId)).toHaveLength(0);
+    expect(
+      collectUpcoming(inferId, now).some(
+        (i) => i.key === "screening:colorectal_cancer"
+      )
+    ).toBe(false);
+  });
+
+  it("a completed appointment satisfies the matching visit rule", () => {
+    expect(
+      collectUpcoming(inferId, now).some(
+        (i) => i.key === "visit:adult_physical"
+      )
+    ).toBe(true);
+
+    db.prepare(
+      `INSERT INTO appointments (profile_id, scheduled_at, title, status)
+         VALUES (?, ?, 'Annual physical exam', 'completed')`
+    ).run(inferId, now);
+
+    expect(
+      collectUpcoming(inferId, now).some(
+        (i) => i.key === "visit:adult_physical"
+      )
+    ).toBe(false);
+  });
+
+  it("inference is profile-scoped — one profile's records never satisfy another's rules", () => {
+    const bystander = makeProfile("Inference Bystander");
+    // The bystander has no records, so its colorectal screening stays due despite
+    // inferId's colonoscopy above.
+    expect(getInferredPreventiveSatisfactions(bystander)).toHaveLength(0);
+    expect(
+      collectUpcoming(bystander, now).some(
+        (i) => i.key === "screening:colorectal_cancer"
       )
     ).toBe(true);
   });

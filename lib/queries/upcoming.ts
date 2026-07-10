@@ -29,6 +29,11 @@ import {
   type PreventiveSatisfaction,
 } from "../preventive-status";
 import { preventiveAssessmentToUpcomingItem } from "../preventive-upcoming";
+import {
+  inferPreventiveSatisfactions,
+  isCompletedStatus,
+  type InferenceRecord,
+} from "../preventive-inference";
 import { carePlanUpcomingItems } from "../care-plan-upcoming";
 import {
   isBiomarkerStale,
@@ -53,7 +58,7 @@ import {
   getTakenDoseIds,
   getRefillRates,
 } from "./intake";
-import { getScheduledAppointments } from "./appointments";
+import { getAppointments, getScheduledAppointments } from "./appointments";
 import {
   getActivitiesByDate,
   getGoals,
@@ -64,8 +69,13 @@ import {
   getImmunizations,
   getImmunityTiters,
   getImmunizationOverrides,
+  getEncounters,
 } from "./medical";
-import { hasImportedSmokingHistory, getCarePlanItems } from "./clinical";
+import {
+  hasImportedSmokingHistory,
+  getCarePlanItems,
+  getProcedures,
+} from "./clinical";
 
 // Biomarker categories a retest nudge makes sense for. Vitals/scans/prescriptions
 // aren't "labs to redraw", and genomics never go stale (handled by
@@ -209,6 +219,85 @@ export function getPreventiveSatisfactions(
     .all(profileId) as PreventiveSatisfaction[];
 }
 
+// Medical-record categories whose results can satisfy a lab-based screening
+// (cholesterol/A1c/glucose labs; blood-pressure vitals). Genomics/scans/
+// prescriptions are never screening RESULTS in this sense.
+const INFERENCE_RESULT_CATEGORIES = new Set(["lab", "biomarker", "vitals"]);
+
+// INFERRED satisfactions (issue #86): preventive rules a profile's EXISTING
+// records already satisfy — a colonoscopy procedure, a lipid/A1c result, a
+// completed physical/eye/dental visit or encounter, a completed care-plan item —
+// derived deterministically by the pure concept-mapping layer
+// (lib/preventive-inference.ts). These feed the SAME `(ruleKey, date)` stream as
+// the manual "mark done" events and NEVER touch the stored preventive_events rows;
+// the merge happens in-memory in preventiveItems below. Every read here is
+// profile-scoped (each getX filters profile_id). Records are routed to the rule
+// KINDS their source can legitimately satisfy: procedures/labs → screenings,
+// appointments/encounters → visits, completed care-plan items → either.
+export function getInferredPreventiveSatisfactions(
+  profileId: number
+): PreventiveSatisfaction[] {
+  const records: InferenceRecord[] = [];
+
+  // Procedures → screenings (coded or name-matched, e.g. colonoscopy, DEXA).
+  for (const p of getProcedures(profileId)) {
+    records.push({
+      code: p.code,
+      name: p.name,
+      date: p.date,
+      allow: ["screening"],
+    });
+  }
+
+  // Lab / vitals results → lab screenings, by canonical biomarker name (or the
+  // raw result name as a fallback synonym match).
+  for (const r of getMedicalRecords(profileId)) {
+    if (!INFERENCE_RESULT_CATEGORIES.has(r.category)) continue;
+    records.push({
+      code: null,
+      name: r.name,
+      canonicalName: r.canonical_name,
+      date: r.date,
+      allow: ["screening"],
+    });
+  }
+
+  // Completed appointments → visits (name-matched on the title).
+  for (const a of getAppointments(profileId)) {
+    if (a.status !== "completed") continue;
+    records.push({
+      code: null,
+      name: a.title,
+      date: a.scheduled_at.slice(0, 10),
+      allow: ["visit"],
+    });
+  }
+
+  // Encounters → visits: a recorded encounter IS a completed visit; match on its
+  // type + reason free text.
+  for (const e of getEncounters(profileId)) {
+    records.push({
+      code: null,
+      name: [e.type, e.reason].filter(Boolean).join(" ") || null,
+      date: e.date,
+      allow: ["visit"],
+    });
+  }
+
+  // Completed care-plan items → whichever rule they identify (visit or screening).
+  for (const c of getCarePlanItems(profileId)) {
+    if (!isCompletedStatus(c.status)) continue;
+    records.push({
+      code: c.code,
+      name: c.description,
+      date: c.planned_date,
+      allow: ["visit", "screening"],
+    });
+  }
+
+  return inferPreventiveSatisfactions(records);
+}
+
 // The manual declined / not-applicable overrides for a profile. Each drops its
 // rule out of the actionable set (the pure assessor reads them). Profile-scoped.
 export function getPreventiveOverrides(
@@ -279,7 +368,15 @@ function preventiveItems(profileId: number, today: string): UpcomingItem[] {
   const summary = assessCatalog({
     ageMonths: profileAgeMonths(profileId, today),
     sex: getUserSex(profileId),
-    satisfactions: getPreventiveSatisfactions(profileId),
+    // Manual "mark done" events PLUS inferred satisfactions from existing records
+    // (issue #86), merged into one stream. Both are `(ruleKey, date)`; the assessor
+    // takes the most recent per rule, so a manual event is never overwritten — a
+    // later real record simply advances the clock, exactly as a later manual event
+    // would. Overrides still win (they force not_recommended downstream).
+    satisfactions: [
+      ...getPreventiveSatisfactions(profileId),
+      ...getInferredPreventiveSatisfactions(profileId),
+    ],
     overrides: getPreventiveOverrides(profileId),
     // Resolve smoking (issue #83): the structured record wins, else the imported
     // social-history condition is the ever-smoker fallback. Activates the lung
