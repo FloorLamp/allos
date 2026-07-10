@@ -33,6 +33,13 @@ import type { PersistInput, PersistRecord } from "./import-shape";
 export interface PersistOutcome {
   immCount: number;
   recCount: number;
+  // Total per-profile rows this import wrote across ALL footprint tables — the
+  // "N items imported" the toast + Review feed report (#212). A SUPERSET of
+  // immCount + recCount: it also covers allergies, conditions, encounters,
+  // procedures, family history, care-plan items + goals, auto-structured
+  // medications, body metrics, and height/head-circ samples. immCount/recCount
+  // stay for the callers/tests that still tally those two kinds specifically.
+  extractedCount: number;
   insertedRecordIds: number[];
 }
 
@@ -151,6 +158,34 @@ export function moveImportedDocumentRows(
       `UPDATE ${t.table} SET profile_id = ? WHERE ${t.key} = ? AND ${footprintScope(t)}`
     ).run(destProfileId, footprintKeyValue(t, docId, source), srcProfileId);
   }
+}
+
+// Total per-profile rows a document import produced across ALL footprint tables —
+// the true "N items imported" tally the toast + Review feed report (#212). Driven
+// off the SAME IMPORT_FOOTPRINT_TABLES list as clearImportedDocumentRows /
+// moveImportedDocumentRows, so a table added to the footprint is counted
+// automatically and the three consumers can't drift (the bug this fixes: the old
+// tally was a hand-maintained `immCount + recCount` that missed seven clinical
+// kinds and read "0 records" for an encounter-only import). Providers are a GLOBAL
+// registry, not a footprint table, so they're correctly excluded. Every COUNT is
+// profile_id-scoped. Run AFTER the insert loops (inside persistDocumentImport's
+// transaction), so it counts exactly what landed — a deferred/deduped row that was
+// never written isn't counted, and a reprocess reflects the replaced set.
+export function countImportedDocumentRows(
+  profileId: number,
+  docId: number
+): number {
+  const source = documentSource(docId);
+  let total = 0;
+  for (const t of IMPORT_FOOTPRINT_TABLES) {
+    const row = db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM ${t.table} WHERE ${t.key} = ? AND ${footprintScope(t)}`
+      )
+      .get(footprintKeyValue(t, docId, source), profileId) as { n: number };
+    total += row.n;
+  }
+  return total;
 }
 
 // Write one document's parsed contents, replacing any rows it previously
@@ -351,6 +386,7 @@ export function persistDocumentImport(
   const insertedRecordIds: number[] = [];
   let immCount = 0;
   let recCount = 0;
+  let extractedCount = 0;
 
   const tx = db.transaction(() => {
     // Replace this document's prior rows (a no-op on first import; on reprocess
@@ -596,6 +632,11 @@ export function persistDocumentImport(
       insMed,
       insMedDose,
     });
+    // The toast + Review feed report ONE "N items imported" number. Tally it off
+    // the footprint tables here — after every insert loop — so it counts every
+    // clinical kind an import wrote, not just the immunizations + records the old
+    // `immCount + recCount` saw (#212).
+    extractedCount = countImportedDocumentRows(profileId, docId);
     db.prepare(
       `UPDATE medical_documents
          SET extraction_status = 'done', extracted_count = ?, doc_type = ?,
@@ -603,7 +644,7 @@ export function persistDocumentImport(
              model = ?, import_report = ?, extraction_error = NULL
        WHERE id = ? AND profile_id = ?`
     ).run(
-      immCount + recCount,
+      extractedCount,
       input.meta.docType,
       input.meta.source,
       input.meta.documentDate,
@@ -619,7 +660,7 @@ export function persistDocumentImport(
   });
   tx();
 
-  return { immCount, recCount, insertedRecordIds };
+  return { immCount, recCount, extractedCount, insertedRecordIds };
 }
 
 type Stmt = Database.Statement;

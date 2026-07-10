@@ -14,7 +14,10 @@ import {
   getDocumentProduced,
   getMedicalDocument,
 } from "@/lib/queries";
-import { persistDocumentImport } from "@/lib/import-persist";
+import {
+  persistDocumentImport,
+  countImportedDocumentRows,
+} from "@/lib/import-persist";
 import type { PersistInput } from "@/lib/import-shape";
 import { db } from "@/lib/db";
 
@@ -297,5 +300,81 @@ describe("getDocumentProduced", () => {
     expect(getMedicalDocument(profileA, docB)).toBeUndefined();
     // Sanity: A's own document still resolves for A.
     expect(getMedicalDocument(profileA, docA)?.id).toBe(docA);
+  });
+});
+
+// #212: extracted_count — the ONE number the toast + Review feed report — must
+// total every per-profile row an import writes, not just immunizations + records.
+describe("extracted_count (toast + Review-feed tally)", () => {
+  it("stores the full footprint total on the document row, not immCount+recCount", () => {
+    // The cross-domain makeInput() writes: 3 medical_records (2 lab + 1
+    // prescription) + 1 immunization + 1 allergy + 1 condition + 1 encounter +
+    // 1 procedure + 1 family-history + 1 structured medication (the prescription
+    // projected into intake_items) + 1 body-metric + 1 height + 1 head-circ = 13.
+    // The old tally (immCount + recCount = 1 + 3 = 4) missed the other nine.
+    const row = db
+      .prepare(
+        "SELECT extracted_count AS n FROM medical_documents WHERE id = ? AND profile_id = ?"
+      )
+      .get(docA, profileA) as { n: number };
+    expect(row.n).toBe(13);
+    // And it equals the live footprint count the writer derives off
+    // IMPORT_FOOTPRINT_TABLES, so the stored value can't silently drift.
+    expect(countImportedDocumentRows(profileA, docA)).toBe(13);
+  });
+
+  it("counts an encounter-only import as 1 item (the reported repro)", () => {
+    // A CCD carrying a single Visit and nothing else — no labs, no immunizations.
+    // The old tally read 0; the fix must report 1.
+    const profile = newProfile("ENCOUNTER-ONLY");
+    const doc = newDocument(profile, "visit-only.ccd");
+    const outcome = persistDocumentImport(profile, doc, {
+      records: [],
+      immunizations: [],
+      allergies: [],
+      conditions: [],
+      encounters: [
+        {
+          date: DATE,
+          end_date: null,
+          type: "Office Visit",
+          class_code: "AMB",
+          reason: "Annual physical",
+          diagnoses: [],
+          provider: null,
+          location: null,
+          notes: null,
+          external_id: "encounter:solo",
+        },
+      ],
+      procedures: [],
+      familyHistory: [],
+      carePlanItems: [],
+      careGoals: [],
+      bodyMetrics: [],
+      heights: [],
+      headCircs: [],
+      demographics: null,
+      meta: {
+        docType: "ccd",
+        source: "ccd",
+        documentDate: DATE,
+        patientName: "Test Patient",
+        raw: null,
+        model: null,
+        importReport: null,
+      },
+      canonicalNamesToRegister: [],
+      providers: [],
+    });
+    expect(outcome.immCount).toBe(0);
+    expect(outcome.recCount).toBe(0);
+    expect(outcome.extractedCount).toBe(1);
+    const row = db
+      .prepare(
+        "SELECT extracted_count AS n FROM medical_documents WHERE id = ? AND profile_id = ?"
+      )
+      .get(doc, profile) as { n: number };
+    expect(row.n).toBe(1);
   });
 });

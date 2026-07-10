@@ -141,17 +141,27 @@ describe("feedItemView — document", () => {
     expect(v.tone).toBe("ok");
     expect(v.title).toBe("labs.pdf");
     expect(v.href).toBe("/import/5");
-    expect(v.detail).toBe("12 records");
+    // "items", not "records" — the count spans every clinical kind (#212).
+    expect(v.detail).toBe("12 items");
     expect(v.meta).toBe("Lab report");
     expect(v.patientName).toBeNull();
   });
 
-  it("reads a done-but-empty extraction as a muted 'no records'", () => {
+  it("renders a single produced item as '1 item' (not '1 items')", () => {
+    const v = feedItemView(
+      documentEntry(doc({ extracted_count: 1 })),
+      providerName
+    );
+    expect(v.detail).toBe("1 item");
+    expect(v.detailMuted).toBe(false);
+  });
+
+  it("reads a done-but-empty extraction as a muted 'no items'", () => {
     const v = feedItemView(
       documentEntry(doc({ extracted_count: 0 })),
       providerName
     );
-    expect(v.detail).toBe("no records");
+    expect(v.detail).toBe("no items");
     expect(v.detailMuted).toBe(true);
   });
 

@@ -249,7 +249,7 @@ db.prepare(
   `DELETE FROM import_jobs WHERE profile_id = ? AND summary = 'e2e: 4 readings'`
 ).run(PROFILE_ID);
 
-// A successfully-extracted document (7 records) — links to its /import/[id] detail.
+// A successfully-extracted document (7 items) — links to its /import/[id] detail.
 db.prepare(
   `INSERT INTO medical_documents
      (profile_id, filename, stored_path, mime_type, size_bytes, doc_type,
