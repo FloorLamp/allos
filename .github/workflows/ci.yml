@@ -78,30 +78,69 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
     steps:
+      # fetch-depth 2: the pull_request checkout is the MERGE commit, so depth 2
+      # brings both parents — enough for the docs-only diff below (HEAD^1 is the
+      # PR base).
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+
+      # Docs-only PRs skip the browser suite (#61): the whole PR diff (merge
+      # commit vs its base parent) touching nothing outside README/SECURITY/
+      # LICENSE/docs means there is no runtime surface to drive. Steps below gate
+      # on this output; the job itself still completes green, so nothing blocks
+      # even if checks are later made required. The `check` job (phi-scan,
+      # format, lint) always runs — those apply to docs too.
+      - name: Detect non-docs changes
+        id: changes
+        run: |
+          if git diff --name-only HEAD^1 HEAD | grep -qvE '^(README\.md|SECURITY\.md|LICENSE|docs/)'; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "code=false" >> "$GITHUB_OUTPUT"
+            echo "Docs-only diff - skipping the browser suite."
+          fi
 
       - uses: actions/setup-node@v6
+        if: steps.changes.outputs.code == 'true'
         with:
           node-version-file: .nvmrc
           cache: npm
 
       - run: npm ci
+        if: steps.changes.outputs.code == 'true'
 
       # Install only Chromium (+ its OS deps). Cached by setup-node's npm cache
       # miss otherwise; the browser binary download is the bulk of the cost.
       - name: Install Playwright Chromium
+        if: steps.changes.outputs.code == 'true'
         run: npx playwright install --with-deps chromium
+
+      # Next's incremental compile cache, shared ACROSS RUNS (#61): keyed on the
+      # lockfile + source hash, with a lockfile-only restore key so a source-only
+      # change still warms from the previous build instead of compiling cold.
+      # Saves ~1-2 min of the Build step on cache hits.
+      - name: Restore Next.js build cache
+        if: steps.changes.outputs.code == 'true'
+        uses: actions/cache@v4
+        with:
+          path: .next/cache
+          key: nextjs-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ hashFiles('app/**', 'components/**', 'lib/**', 'public/**', 'next.config.*') }}
+          restore-keys: |
+            nextjs-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
 
       # CI runs production-like: build once, then the Playwright webServer boots
       # `next start` against the built app (see playwright.config.ts).
       - name: Build
+        if: steps.changes.outputs.code == 'true'
         run: npm run build
 
       - name: E2E (Playwright)
+        if: steps.changes.outputs.code == 'true'
         run: npm run test:e2e
 
       - name: Upload Playwright report
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.changes.outputs.code == 'true' }}
         uses: actions/upload-artifact@v7
         with:
           name: playwright-report
