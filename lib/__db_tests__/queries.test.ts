@@ -548,10 +548,17 @@ describe("health-record import: smoking status supersede (#188 M1)", () => {
 
     // The real problem-list condition is untouched by the supersede: each document
     // keeps its own physical Asthma row (source-scoped external_id), so BOTH
-    // documents' Asthma rows survive — the smoking supersede deleted only the
-    // ccda:social-smoking:* row, never a ccda:condition:* problem-list row.
+    // documents' physical Asthma rows survive — the smoking supersede deleted only
+    // the ccda:social-smoking:* row, never a ccda:condition:* problem-list row.
+    const physicalAsthma = db
+      .prepare(
+        "SELECT COUNT(*) AS n FROM conditions WHERE profile_id = ? AND name = 'Asthma'"
+      )
+      .get(profileId) as { n: number };
+    expect(physicalAsthma.n).toBe(2);
+    // …but the read layer collapses those cross-document twins to ONE (#134).
     const asthma = getConditions(profileId).filter((c) => c.name === "Asthma");
-    expect(asthma).toHaveLength(2);
+    expect(asthma).toHaveLength(1);
   });
 
   it("is idempotent (reimporting the same document yields one row)", () => {
