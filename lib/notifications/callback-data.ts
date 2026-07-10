@@ -40,18 +40,32 @@ export function parseAllCallback(data: unknown): AllCallback | null {
   return { profileId, window: window as ReminderWindow, date };
 }
 
-// Parse a "take:<profileId>:<doseId>:<suppId>:<date>" button token. The profile
-// id names who the button was sent to; the handler still resolves the acting
-// profile from the chat id and re-checks the dose→supplement→profile chain, so
-// this id is a cross-check, never trusted on its own. Forward-compatible:
-// anything else (unknown prefix, malformed ids, missing date) returns null.
-export function parseTakeCallback(data: unknown): TakeCallback | null {
-  if (typeof data !== "string" || !data.startsWith("take:")) return null;
+// Parse a "<prefix>:<profileId>:<doseId>:<suppId>:<date>" dose button token for a
+// given prefix ("take" or "skip"). The profile id names who the button was sent
+// to; the handler still resolves the acting profile from the chat id and
+// re-checks the dose→supplement→profile chain, so this id is a cross-check, never
+// trusted on its own. Anything malformed (wrong prefix, bad ids, missing date)
+// returns null.
+function parseDoseCallback(
+  data: unknown,
+  prefix: "take" | "skip"
+): TakeCallback | null {
+  if (typeof data !== "string" || !data.startsWith(`${prefix}:`)) return null;
   const [, profStr, doseStr, suppStr, date] = data.split(":");
   const profileId = Number(profStr);
   const doseId = Number(doseStr);
   if (!profileId || !doseId || !date) return null;
   return { profileId, doseId, suppId: Number(suppStr) || null, date };
+}
+
+export function parseTakeCallback(data: unknown): TakeCallback | null {
+  return parseDoseCallback(data, "take");
+}
+
+// Parse a "skip:<profileId>:<doseId>:<suppId>:<date>" button token — the ⏭ Skip
+// action (#232), mirroring parseTakeCallback exactly (same shape, "skip" prefix).
+export function parseSkipCallback(data: unknown): TakeCallback | null {
+  return parseDoseCallback(data, "skip");
 }
 
 // True when a parsed token's profile id matches the profile resolved from the
@@ -89,6 +103,17 @@ export function tapLogged(outcome: DoseTakenOutcome): boolean {
   return outcome === "logged" || outcome === "already-logged";
 }
 
+// True when a tap left the dose RESOLVED (taken, skipped, or an idempotent repeat
+// of either) — used to pick honest closing text once a message runs out of
+// buttons, regardless of which resolution it was.
+export function tapResolved(outcome: DoseTakenOutcome): boolean {
+  return (
+    outcome === "logged" ||
+    outcome === "skipped" ||
+    outcome === "already-logged"
+  );
+}
+
 // The Telegram callback-answer toast for a tap, per markDoseTaken outcome.
 // A reminder message is a frozen snapshot: by the time a button is tapped the
 // dose may have been deleted/retired by an edit, or its item paused — those
@@ -99,6 +124,23 @@ export function tapAnswerText(outcome: DoseTakenOutcome): string {
     case "logged":
     case "already-logged":
       return "Logged ✅";
+    case "inactive":
+      return "Not logged — this item is paused. Open the app to log it.";
+    case "stale-dose":
+    default:
+      return "Not logged — this reminder is out of date. Open the app.";
+  }
+}
+
+// The Telegram callback-answer toast for a ⏭ Skip tap (#232), per markDoseSkipped
+// outcome. "already-logged" means the dose was already resolved (a skip button
+// never overwrites a taken dose), so "Skipped" is honest for a fresh skip or an
+// idempotent repeat; the paused/stale cases mirror tapAnswerText.
+export function tapSkipAnswerText(outcome: DoseTakenOutcome): string {
+  switch (outcome) {
+    case "skipped":
+    case "already-logged":
+      return "Skipped ⏭";
     case "inactive":
       return "Not logged — this item is paused. Open the app to log it.";
     case "stale-dose":

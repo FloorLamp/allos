@@ -14,6 +14,7 @@ import {
   addSupplement,
   updateSupplement,
   toggleTaken,
+  setDoseStatus,
   toggleActive,
 } from "@/app/(app)/medicine/actions";
 import { getSupplements, getSupplementDoses } from "@/lib/queries";
@@ -46,6 +47,16 @@ function logCount(doseId: number, date: string): number {
       )
       .get(doseId, date) as { c: number }
   ).c;
+}
+
+function logStatus(doseId: number, date: string): string | undefined {
+  return (
+    db
+      .prepare(
+        "SELECT status FROM intake_item_logs WHERE dose_id = ? AND date = ?"
+      )
+      .get(doseId, date) as { status: string } | undefined
+  )?.status;
 }
 
 beforeEach(() => revalidate.mockClear());
@@ -124,6 +135,74 @@ describe("toggleTaken refill invariant", () => {
     expect(logCount(foreignDoseId, today(owner.profile.id))).toBe(0);
     expect(itemRow(suppId).quantity_on_hand).toBe(5);
     expect(getSupplements(attacker.profile.id)).toHaveLength(0);
+  });
+});
+
+describe("setDoseStatus tri-state + skip supply invariant (#232)", () => {
+  async function seedTracked(qty = 10) {
+    const { profile } = seedActor();
+    await addSupplement(
+      fd({ name: "Vitamin D", quantity_on_hand: qty, qty_per_dose: 2 })
+    );
+    const suppId = getSupplements(profile.id)[0].id;
+    const doseId = getSupplementDoses(profile.id)[0].id;
+    return { profile, suppId, doseId, date: today(profile.id) };
+  }
+
+  it("skipping a dose logs status='skipped' and NEVER touches supply", async () => {
+    const { suppId, doseId, date } = await seedTracked();
+    await setDoseStatus(fd({ dose_id: doseId, status: "skipped" }));
+    expect(logStatus(doseId, date)).toBe("skipped");
+    // Supply is untouched — a skip consumes nothing.
+    expect(itemRow(suppId).quantity_on_hand).toBe(10);
+  });
+
+  it("taken→skipped RESTORES supply; skipped→taken decrements it (symmetry)", async () => {
+    const { suppId, doseId, date } = await seedTracked();
+
+    // Take: 10 → 8.
+    await setDoseStatus(fd({ dose_id: doseId, status: "taken" }));
+    expect(logStatus(doseId, date)).toBe("taken");
+    expect(itemRow(suppId).quantity_on_hand).toBe(8);
+
+    // Flip taken → skipped: the dose gave nothing back before, so restore 8 → 10.
+    await setDoseStatus(fd({ dose_id: doseId, status: "skipped" }));
+    expect(logStatus(doseId, date)).toBe("skipped");
+    expect(itemRow(suppId).quantity_on_hand).toBe(10);
+
+    // Flip skipped → taken again: consume once more 10 → 8 (never double-counts).
+    await setDoseStatus(fd({ dose_id: doseId, status: "taken" }));
+    expect(logStatus(doseId, date)).toBe("taken");
+    expect(itemRow(suppId).quantity_on_hand).toBe(8);
+  });
+
+  it("clear removes the log; clearing a skip leaves supply where it was", async () => {
+    const { suppId, doseId, date } = await seedTracked();
+
+    // skip → clear: no log, supply stays at 10 (skip never moved it).
+    await setDoseStatus(fd({ dose_id: doseId, status: "skipped" }));
+    await setDoseStatus(fd({ dose_id: doseId, status: "clear" }));
+    expect(logCount(doseId, date)).toBe(0);
+    expect(itemRow(suppId).quantity_on_hand).toBe(10);
+
+    // take → clear: log removed and the decrement is given back (8 → 10).
+    await setDoseStatus(fd({ dose_id: doseId, status: "taken" }));
+    expect(itemRow(suppId).quantity_on_hand).toBe(8);
+    await setDoseStatus(fd({ dose_id: doseId, status: "clear" }));
+    expect(logCount(doseId, date)).toBe(0);
+    expect(itemRow(suppId).quantity_on_hand).toBe(10);
+  });
+
+  it("ignores an unknown target and a dose from another profile", async () => {
+    const { doseId, date } = await seedTracked();
+    await setDoseStatus(fd({ dose_id: doseId, status: "bogus" }));
+    expect(logCount(doseId, date)).toBe(0);
+
+    // A different actor cannot skip the owner's dose.
+    const owner = await seedTracked();
+    seedActor();
+    await setDoseStatus(fd({ dose_id: owner.doseId, status: "skipped" }));
+    expect(logCount(owner.doseId, owner.date)).toBe(0);
   });
 });
 

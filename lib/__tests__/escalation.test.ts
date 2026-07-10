@@ -64,6 +64,32 @@ describe("escalationsDue", () => {
     expect(due).toEqual([]);
   });
 
+  // A deliberate skip is a DECISION, not a lapse — a skipped critical dose must
+  // never escalate (#232), even though it's neither taken nor already-escalated.
+  it("does not escalate a deliberately skipped critical dose", () => {
+    const due = escalationsDue({
+      candidates: [candidate()],
+      sentWindows: ["Morning"],
+      confirmedDoseIds: [], // not taken…
+      skippedDoseIds: [1], // …but deliberately skipped
+      escalatedDoseIds: [],
+      nowMinutes: 12 * 60,
+    });
+    expect(due).toEqual([]);
+  });
+
+  it("still escalates a peer dose that was NOT skipped", () => {
+    const due = escalationsDue({
+      candidates: [candidate({ doseId: 1 }), candidate({ doseId: 2 })],
+      sentWindows: ["Morning"],
+      confirmedDoseIds: [],
+      skippedDoseIds: [1], // only dose 1 skipped
+      escalatedDoseIds: [],
+      nowMinutes: 12 * 60,
+    });
+    expect(due.map((d) => d.doseId)).toEqual([2]);
+  });
+
   it("does not escalate a dose already escalated today (dedup)", () => {
     const due = escalationsDue({
       candidates: [candidate()],

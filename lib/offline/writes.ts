@@ -69,6 +69,42 @@ export function confirmDoseTaken(
   return { ok: true, inserted: true };
 }
 
+// Set-to-skipped for one dose on one date (issue #232) — the offline sibling of
+// confirmDoseTaken, mirroring the Telegram markDoseSkipped. Idempotent on the same
+// per-(dose,date) natural key: inserts a status='skipped' log (amount NULL) only
+// when NO row exists — never overwriting an already-taken or already-skipped dose
+// (a taken→skipped change is an explicit online toggle, never a replayed
+// overwrite). A skipped dose consumes nothing, so on-hand supply is untouched.
+// Verifies the dose belongs to a supplement the profile owns; a retired dose is a
+// permanent rejection like a deleted one. Returns {ok:false} on a bad payload,
+// {ok:true, inserted} otherwise.
+export function skipDose(
+  profileId: number,
+  doseId: number,
+  date: string
+): { ok: boolean; inserted: boolean } {
+  if (!Number.isInteger(doseId) || doseId <= 0 || !isRealIsoDate(date)) {
+    return { ok: false, inserted: false };
+  }
+  const dose = db
+    .prepare(
+      `SELECT supplement_id FROM intake_item_doses
+       WHERE id = ? AND retired = 0
+         AND supplement_id IN (SELECT id FROM intake_items WHERE profile_id = ?)`
+    )
+    .get(doseId, profileId) as { supplement_id: number } | undefined;
+  if (!dose) return { ok: false, inserted: false };
+  const existing = db
+    .prepare("SELECT id FROM intake_item_logs WHERE dose_id = ? AND date = ?")
+    .get(doseId, date);
+  if (existing) return { ok: true, inserted: false };
+  db.prepare(
+    "INSERT INTO intake_item_logs (dose_id, supplement_id, date, amount, status) VALUES (?,?,?,NULL,'skipped')"
+  ).run(doseId, dose.supplement_id, date);
+  // Deliberately no decrementSupply: a skipped dose consumes nothing.
+  return { ok: true, inserted: true };
+}
+
 // ── body-metric quick-add ───────────────────────────────────────────────────────
 
 export interface BodyMetricWrite {
@@ -247,6 +283,9 @@ export function applyIntent(
     if (intent.flow === "dose") {
       const p = intent.payload as DosePayload;
       ok = confirmDoseTaken(profileId, p.doseId, intent.date).ok;
+    } else if (intent.flow === "skip-dose") {
+      const p = intent.payload as DosePayload;
+      ok = skipDose(profileId, p.doseId, intent.date).ok;
     } else if (intent.flow === "body-metric") {
       const p = intent.payload as BodyMetricPayload;
       ok = insertBodyMetric(profileId, {

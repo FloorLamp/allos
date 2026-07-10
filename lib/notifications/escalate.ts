@@ -12,7 +12,7 @@ import {
   type EscalationWindow,
 } from "./escalation";
 import { sendTelegramMessage } from "./telegram";
-import { getTakenDoseIds } from "../queries";
+import { getTakenDoseIds, getSkippedDoseIds } from "../queries";
 import {
   getProfileSetting,
   setProfileSetting,
@@ -72,6 +72,7 @@ export async function runEscalations(
   if (candidates.length === 0) return { failed: false };
 
   const confirmed = getTakenDoseIds(profileId, date);
+  const skipped = getSkippedDoseIds(profileId, date);
   const escalatedDoseIds = candidates
     .filter((c) => getProfileSetting(profileId, escKey(c.doseId)) === date)
     .map((c) => c.doseId);
@@ -80,6 +81,7 @@ export async function runEscalations(
     candidates,
     sentWindows,
     confirmedDoseIds: confirmed,
+    skippedDoseIds: skipped,
     escalatedDoseIds,
     // The tick is hourly, so the elapsed check works at hour granularity.
     nowMinutes: hour * 60,

@@ -56,7 +56,7 @@ describe("buildDigest", () => {
           distanceKm: null,
         },
       ],
-      adherence: { taken: 4, due: 5 },
+      adherence: { taken: 4, skipped: 0, due: 5 },
       weightKg: 72.5,
     });
     const y = model?.sections.find((s) => s.heading === "Yesterday");

@@ -35,8 +35,12 @@ export interface EscalationDecisionInput {
   // dedup markers). An undelivered window never escalates — there was no reminder
   // to miss.
   sentWindows: Iterable<EscalationWindow>;
-  // Dose ids confirmed (logged) today.
+  // Dose ids confirmed (taken) today.
   confirmedDoseIds: Iterable<number>;
+  // Dose ids deliberately SKIPPED today (issue #232). A skip is a DECISION, not a
+  // lapse, so a skipped critical dose must NOT escalate — the caregiver digest can
+  // still show it ("2 skipped this week"), visibility without alarm.
+  skippedDoseIds?: Iterable<number>;
   // Dose ids already escalated today (per-day/slot dedup).
   escalatedDoseIds: Iterable<number>;
   // Minutes since profile-local midnight (the hourly tick passes hour*60).
@@ -73,12 +77,14 @@ export function escalationsDue(
 ): EscalationDue[] {
   const sent = new Set(input.sentWindows);
   const confirmed = new Set(input.confirmedDoseIds);
+  const skipped = new Set(input.skippedDoseIds ?? []);
   const escalated = new Set(input.escalatedDoseIds);
 
   const out: EscalationDue[] = [];
   for (const c of input.candidates) {
     if (!sent.has(c.window)) continue; // reminder never went out
     if (confirmed.has(c.doseId)) continue; // already taken
+    if (skipped.has(c.doseId)) continue; // deliberately skipped — a decision (#232)
     if (escalated.has(c.doseId)) continue; // already escalated today
     // Clamp so a slotHour+escalateAfterMin past the day's last tick still fires
     // at 23:00 rather than never (see LAST_TICK_MINUTES). #189

@@ -383,44 +383,106 @@ export async function updateSupplement(formData: FormData) {
   revalidatePath("/");
 }
 
-// Toggle a single dose's log for today.
-export async function toggleTaken(formData: FormData) {
-  const { profile } = await requireWriteAccess();
-  const doseId = Number(formData.get("dose_id"));
-  if (!doseId) return;
-  // Verify the dose belongs to a supplement this profile owns, and use the
-  // row's own supplement_id rather than trusting the form field. A retired dose
-  // is no longer part of the schedule — the UI never renders a toggle for one,
-  // and refusing it here keeps a stale/forged id from touching its history.
+// The three states one dose can be in for a day: taken, deliberately skipped
+// (issue #232), or clear (no log row). The web check-off is a tri-state over
+// these; the Telegram buttons are one-way resolves.
+type DoseStatusTarget = "taken" | "skipped" | "clear";
+
+// Set one dose to an explicit target status for `date`, keeping on-hand supply in
+// lock-step. ONLY a taken row consumes supply, so crossing the taken boundary is
+// the sole thing that moves the count: clear/skipped → taken decrements, taken →
+// clear/skipped re-increments (the symmetric restore #232 calls for), and a
+// skipped ↔ clear flip never touches supply. The amount is snapshotted on a taken
+// row (history must survive a later dosage edit) and NULL on a skipped one
+// (nothing was consumed). Verifies the dose belongs to a supplement this profile
+// owns and uses the row's own supplement_id, never trusting the caller; a retired
+// dose is refused (the UI never renders a control for one). Idempotent per target.
+function applyDoseStatus(
+  profileId: number,
+  doseId: number,
+  date: string,
+  target: DoseStatusTarget
+): void {
   const dose = db
     .prepare(
       `SELECT supplement_id, amount FROM intake_item_doses
        WHERE id = ? AND retired = 0
          AND supplement_id IN (SELECT id FROM intake_items WHERE profile_id = ?)`
     )
-    .get(doseId, profile.id) as
+    .get(doseId, profileId) as
     { supplement_id: number; amount: string | null } | undefined;
   if (!dose) return;
-  const date = today(profile.id);
   const existing = db
-    .prepare("SELECT id FROM intake_item_logs WHERE dose_id = ? AND date = ?")
-    .get(doseId, date);
-  if (existing) {
+    .prepare(
+      "SELECT status FROM intake_item_logs WHERE dose_id = ? AND date = ?"
+    )
+    .get(doseId, date) as { status: DoseStatusTarget } | undefined;
+  const current: DoseStatusTarget = existing ? existing.status : "clear";
+  if (current === target) return;
+
+  if (target === "clear") {
     db.prepare(
       "DELETE FROM intake_item_logs WHERE dose_id = ? AND date = ?"
     ).run(doseId, date);
-    // Untoggling gives the dose's units back so on-hand supply always mirrors the
-    // set of currently-logged doses (keeps toggle off→on from double-decrementing).
-    incrementSupply(profile.id, dose.supplement_id);
-  } else {
-    // The amount is snapshotted at confirm time so history keeps showing what
-    // was actually taken even after a later dosage edit rewrites the dose row.
+  } else if (!existing) {
     db.prepare(
-      "INSERT INTO intake_item_logs (dose_id, supplement_id, date, amount) VALUES (?,?,?,?)"
-    ).run(doseId, dose.supplement_id, date, dose.amount);
-    // A newly confirmed dose consumes one dose's worth of supply.
-    decrementSupply(profile.id, dose.supplement_id);
+      "INSERT INTO intake_item_logs (dose_id, supplement_id, date, amount, status) VALUES (?,?,?,?,?)"
+    ).run(
+      doseId,
+      dose.supplement_id,
+      date,
+      target === "taken" ? dose.amount : null,
+      target
+    );
+  } else {
+    db.prepare(
+      "UPDATE intake_item_logs SET status = ?, amount = ? WHERE dose_id = ? AND date = ?"
+    ).run(target, target === "taken" ? dose.amount : null, doseId, date);
   }
+
+  if (current !== "taken" && target === "taken") {
+    decrementSupply(profileId, dose.supplement_id);
+  } else if (current === "taken" && target !== "taken") {
+    incrementSupply(profileId, dose.supplement_id);
+  }
+}
+
+// Set a single dose's status for today to an explicit target — the web
+// tri-state's write path (taken / skipped / clear). #232
+export async function setDoseStatus(formData: FormData) {
+  const { profile } = await requireWriteAccess();
+  const doseId = Number(formData.get("dose_id"));
+  const target = String(formData.get("status") ?? "");
+  if (
+    !doseId ||
+    (target !== "taken" && target !== "skipped" && target !== "clear")
+  ) {
+    return;
+  }
+  applyDoseStatus(profile.id, doseId, today(profile.id), target);
+  revalidatePath("/medicine");
+  revalidatePath("/");
+}
+
+// Toggle a single dose's TAKEN log for today (taken ↔ clear). A skipped dose
+// (issue #232) counts as "not taken", so this flips it to taken. Kept as the
+// dedicated take toggle; setDoseStatus is the general tri-state path.
+export async function toggleTaken(formData: FormData) {
+  const { profile } = await requireWriteAccess();
+  const doseId = Number(formData.get("dose_id"));
+  if (!doseId) return;
+  const date = today(profile.id);
+  const existing = db
+    .prepare(
+      "SELECT status FROM intake_item_logs WHERE dose_id = ? AND date = ?"
+    )
+    .get(doseId, date) as { status: DoseStatusTarget } | undefined;
+  applyDoseStatus(
+    profile.id,
+    doseId,
+    date,
+    existing?.status === "taken" ? "clear" : "taken"
+  );
   revalidatePath("/medicine");
   revalidatePath("/");
 }

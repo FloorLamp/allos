@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   adherenceSummary,
+  aggregateDoseDay,
   doseStrip,
   indexTakenByDose,
   type AdherenceState,
@@ -13,6 +14,7 @@ const S: Record<string, AdherenceState> = {
   p: "partial",
   m: "missed",
   n: "na",
+  s: "skipped",
 };
 const strip = (s: string) =>
   [...s].map((c, i) => ({ date: `d${i}`, state: S[c] }));
@@ -93,6 +95,40 @@ describe("adherenceSummary", () => {
     expect(r.applicableDays).toBe(0);
   });
 
+  // Three-way adherence (#232): a deliberate skip is excluded from the
+  // denominator (it wasn't an intended dose) and is transparent to the streak,
+  // yet counted on its own — distinct from a "missed" lapse.
+  describe("skipped days (#232)", () => {
+    it("excludes skips from the denominator but counts them separately", () => {
+      // 3 taken, 1 skipped, 1 missed over the settled window (today = taken).
+      const r = adherenceSummary(strip("tsmtt"));
+      expect(r.skippedDays).toBe(1);
+      // Denominator is 4 (3 taken + 1 missed), not 5 — 75%, not 60%.
+      expect(r.applicableDays).toBe(4);
+      expect(r.takenDays).toBe(3);
+      expect(r.pct).toBe(75);
+    });
+
+    it("keeps a skip transparent to the streak (neither counts nor breaks it)", () => {
+      // …taken, skipped, taken → the skip doesn't end the run.
+      const r = adherenceSummary(strip("ttstt"));
+      expect(r.streak).toBe(5 - 1); // 4 taken days, skip is invisible
+      expect(r.skippedDays).toBe(1);
+    });
+
+    it("a missed day still breaks the streak even with skips present", () => {
+      const r = adherenceSummary(strip("tsmtt"));
+      expect(r.streak).toBe(2); // the two trailing taken days
+    });
+
+    it("reports null percentage when every settled day was skipped or na", () => {
+      const r = adherenceSummary(strip("nssn"));
+      expect(r.pct).toBeNull();
+      expect(r.applicableDays).toBe(0);
+      expect(r.skippedDays).toBe(2);
+    });
+  });
+
   it("handles an empty window", () => {
     const r = adherenceSummary([]);
     expect(r).toEqual({
@@ -100,21 +136,25 @@ describe("adherenceSummary", () => {
       pct: null,
       takenDays: 0,
       partialDays: 0,
+      skippedDays: 0,
       applicableDays: 0,
     });
   });
 });
 
 describe("indexTakenByDose", () => {
-  it("groups log rows into a set of dates per dose id", () => {
+  it("groups log rows into taken/skipped date sets per dose id", () => {
     const m = indexTakenByDose([
-      { dose_id: 1, date: "d0" },
-      { dose_id: 2, date: "d0" },
+      { dose_id: 1, date: "d0" }, // status omitted → taken (pre-#232 default)
+      { dose_id: 2, date: "d0", status: "taken" },
       { dose_id: 1, date: "d1" },
       { dose_id: 1, date: "d1" }, // duplicate collapses in the set
+      { dose_id: 1, date: "d2", status: "skipped" }, // #232
     ]);
-    expect(m.get(1)).toEqual(new Set(["d0", "d1"]));
-    expect(m.get(2)).toEqual(new Set(["d0"]));
+    expect(m.get(1)?.taken).toEqual(new Set(["d0", "d1"]));
+    expect(m.get(1)?.skipped).toEqual(new Set(["d2"]));
+    expect(m.get(2)?.taken).toEqual(new Set(["d0"]));
+    expect(m.get(2)?.skipped).toEqual(new Set());
     expect(m.get(3)).toBeUndefined();
   });
 
@@ -146,5 +186,44 @@ describe("doseStrip", () => {
     const r = adherenceSummary(strip);
     expect(r.streak).toBe(3);
     expect(r.pct).toBe(100);
+  });
+
+  it("marks a deliberately skipped day as skipped, not missed (#232)", () => {
+    const strip = doseStrip(
+      dates,
+      () => true,
+      new Set(["d0"]), // taken
+      new Set(["d2"]) // skipped
+    );
+    expect(strip).toEqual([
+      { date: "d0", state: "taken" },
+      { date: "d1", state: "missed" },
+      { date: "d2", state: "skipped" },
+      { date: "d3", state: "missed" },
+    ]);
+  });
+});
+
+// Roll per-dose outcomes into one supplement-day state (#232).
+describe("aggregateDoseDay", () => {
+  it("is taken only when every due dose was taken", () => {
+    expect(aggregateDoseDay(2, 2, 0)).toBe("taken");
+    expect(aggregateDoseDay(1, 1, 0)).toBe("taken");
+  });
+
+  it("is partial when some (but not all) doses were taken", () => {
+    expect(aggregateDoseDay(2, 1, 0)).toBe("partial");
+    expect(aggregateDoseDay(3, 1, 1)).toBe("partial"); // any take wins
+  });
+
+  it("is skipped when every due dose was deliberately skipped", () => {
+    expect(aggregateDoseDay(2, 0, 2)).toBe("skipped");
+    expect(aggregateDoseDay(1, 0, 1)).toBe("skipped");
+  });
+
+  it("is missed when nothing was resolved, or a skip left a real miss", () => {
+    expect(aggregateDoseDay(2, 0, 0)).toBe("missed");
+    // one skipped, one neither taken nor skipped → an unhandled miss remains
+    expect(aggregateDoseDay(2, 0, 1)).toBe("missed");
   });
 });

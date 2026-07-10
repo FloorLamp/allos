@@ -3,6 +3,7 @@ import { shiftDateStr } from "../date";
 import { consumptionRate, RATE_WINDOW_DAYS, type DoseRate } from "../refill";
 import { normalizeSeverity, SEVERITY_LABELS } from "../medication-history";
 import type {
+  DoseStatus,
   DoseTakenOutcome,
   Insight,
   MedicationCourse,
@@ -61,9 +62,10 @@ export function getRefillRates(
   const windowStart = shiftDateStr(todayStr, -(windowDays - 1));
   const todayMs = Date.parse(`${todayStr}T00:00:00Z`);
 
-  // Per-item: confirmations inside the window + the first-ever log date. Every
-  // intake_item_logs row is a confirmed (taken) dose, so COUNT is the confirmed
-  // count. Profile-scoped through the parent intake_items JOIN.
+  // Per-item: confirmations inside the window + the first-ever log date. Only a
+  // TAKEN log row is consumption — a skipped dose (issue #232) burned no supply,
+  // so it must not inflate the consumption rate. Profile-scoped through the
+  // parent intake_items JOIN.
   const rows = db
     .prepare(
       `SELECT l.supplement_id AS sid,
@@ -71,7 +73,7 @@ export function getRefillRates(
               MIN(l.date) AS first_date
          FROM intake_item_logs l
          JOIN intake_items s ON s.id = l.supplement_id
-        WHERE s.profile_id = ?
+        WHERE s.profile_id = ? AND l.status = 'taken'
         GROUP BY l.supplement_id`
     )
     .all(windowStart, profileId) as {
@@ -113,8 +115,9 @@ export function getRefillRates(
   return out;
 }
 
-// Supplement ids with at least one dose logged on `date` (supplement-level view
-// for the dashboard / AI summary).
+// Supplement ids with at least one dose actually TAKEN on `date` (supplement-
+// level view for the dashboard / AI summary). A skipped dose (issue #232) is not
+// "taken", so it's excluded.
 export function getSupplementLogsForDate(
   profileId: number,
   date: string
@@ -123,21 +126,41 @@ export function getSupplementLogsForDate(
     .prepare(
       `SELECT DISTINCT l.supplement_id FROM intake_item_logs l
          JOIN intake_items s ON s.id = l.supplement_id
-        WHERE s.profile_id = ? AND l.date = ? AND l.supplement_id IS NOT NULL`
+        WHERE s.profile_id = ? AND l.date = ? AND l.status = 'taken'
+          AND l.supplement_id IS NOT NULL`
     )
     .all(profileId, date) as { supplement_id: number }[];
   return new Set(rows.map((r) => r.supplement_id));
 }
 
-// Dose ids logged on `date` (per-dose view for the schedule check-offs), scoped
-// to the profile through the dose's parent supplement.
+// Dose ids TAKEN on `date` (per-dose view for the schedule check-offs), scoped to
+// the profile through the dose's parent supplement. Skipped doses are NOT taken —
+// getSkippedDoseIds surfaces those separately for the tri-state (issue #232).
 export function getTakenDoseIds(profileId: number, date: string): Set<number> {
   const rows = db
     .prepare(
       `SELECT l.dose_id FROM intake_item_logs l
          JOIN intake_item_doses d ON d.id = l.dose_id
          JOIN intake_items s ON s.id = d.supplement_id
-        WHERE s.profile_id = ? AND l.date = ?`
+        WHERE s.profile_id = ? AND l.date = ? AND l.status = 'taken'`
+    )
+    .all(profileId, date) as { dose_id: number }[];
+  return new Set(rows.map((r) => r.dose_id));
+}
+
+// Dose ids deliberately SKIPPED on `date` (issue #232) — the other half of the
+// web tri-state and, together with getTakenDoseIds, the "resolved" set that
+// suppresses escalation and re-nudging. Scoped through the parent supplement.
+export function getSkippedDoseIds(
+  profileId: number,
+  date: string
+): Set<number> {
+  const rows = db
+    .prepare(
+      `SELECT l.dose_id FROM intake_item_logs l
+         JOIN intake_item_doses d ON d.id = l.dose_id
+         JOIN intake_items s ON s.id = d.supplement_id
+        WHERE s.profile_id = ? AND l.date = ? AND l.status = 'skipped'`
     )
     .all(profileId, date) as { dose_id: number }[];
   return new Set(rows.map((r) => r.dose_id));
@@ -220,23 +243,71 @@ export function markDoseTaken(
   return "logged";
 }
 
-// Per-dose taken dates over the last `days` days, for the adherence strip.
-// `since` is computed in the configured app timezone so it matches the strip's
-// displayed columns (app/medicine lastDates() uses the same today()-based
-// window); a UTC window could drop a taken dose on the oldest column.
+// Log a single dose as SKIPPED on `date` (issue #232) — the sibling of
+// markDoseTaken for the Telegram ⏭ button. A skip is a deliberate "chose not to
+// take it" decision, so it writes a status='skipped' log row (amount NULL:
+// nothing was consumed) and NEVER decrements on-hand supply. Same staleness
+// contract as markDoseTaken: refuses a retired/deleted/cross-profile dose
+// (stale-dose) or a paused item (inactive). Idempotent, and — because a
+// taken→skipped change must be an explicit UI toggle, never a stale-button
+// overwrite — it does NOT flip an already-resolved dose: any existing log row
+// for (dose,date) returns "already-logged" and is left untouched. Returns what
+// actually happened so the tap handler answers honestly.
+export function markDoseSkipped(
+  profileId: number,
+  doseId: number,
+  _supplementId: number | null,
+  date: string
+): DoseTakenOutcome {
+  const owned = db
+    .prepare(
+      `SELECT d.supplement_id AS supplement_id, s.active AS active
+         FROM intake_item_doses d
+         JOIN intake_items s ON s.id = d.supplement_id
+        WHERE d.id = ? AND s.profile_id = ? AND d.retired = 0`
+    )
+    .get(doseId, profileId) as
+    { supplement_id: number; active: number } | undefined;
+  if (!owned) return "stale-dose";
+  if (!owned.active) return "inactive";
+  // Any existing log (taken OR skipped) means this dose is already resolved for
+  // the day. A stale ⏭ tap must not overwrite a taken dose (the explicit
+  // taken→skipped toggle lives in the web setDoseStatus action); an already-
+  // skipped dose is an idempotent no-op. Either way: leave it, report as such.
+  const existing = db
+    .prepare("SELECT 1 FROM intake_item_logs WHERE dose_id = ? AND date = ?")
+    .get(doseId, date);
+  if (existing) return "already-logged";
+  db.prepare(
+    "INSERT INTO intake_item_logs (dose_id, supplement_id, date, amount, status) VALUES (?,?,?,NULL,'skipped')"
+  ).run(doseId, _supplementId ?? owned.supplement_id, date);
+  // Deliberately no decrementSupply: a skipped dose consumes nothing.
+  return "skipped";
+}
+
+// Per-dose log rows over the last `days` days, for the adherence strip. Each row
+// carries its status ('taken' | 'skipped') so the strip can render a deliberate
+// skip (issue #232) distinctly from a taken dose or a real miss. `since` is
+// computed in the configured app timezone so it matches the strip's displayed
+// columns (app/medicine lastDates() uses the same today()-based window); a UTC
+// window could drop a dose on the oldest column.
 export function getSupplementLogsInRange(
   profileId: number,
   days = 14
-): { dose_id: number; date: string }[] {
+): { dose_id: number; date: string; status: DoseStatus }[] {
   const since = shiftDateStr(today(profileId), -(days - 1));
   return db
     .prepare(
-      `SELECT l.dose_id, l.date FROM intake_item_logs l
+      `SELECT l.dose_id, l.date, l.status FROM intake_item_logs l
          JOIN intake_item_doses d ON d.id = l.dose_id
          JOIN intake_items s ON s.id = d.supplement_id
         WHERE s.profile_id = ? AND l.date >= ? ORDER BY l.date`
     )
-    .all(profileId, since) as { dose_id: number; date: string }[];
+    .all(profileId, since) as {
+    dose_id: number;
+    date: string;
+    status: DoseStatus;
+  }[];
 }
 
 // "Take together" / "keep apart" pairs, with both supplement names joined in.
