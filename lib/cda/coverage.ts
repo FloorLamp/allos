@@ -15,6 +15,7 @@ import {
 } from "./constants";
 import type { CdaSection, SectionExtractor } from "./constants";
 import {
+  isClinicalNoteSection,
   mapAllergy,
   mapCondition,
   mapImmunization,
@@ -315,8 +316,29 @@ export function buildCcdaCoverage(
     const ex = extractors.find((e) => e.matches(section));
     const title = sectionTitle(section);
     const isReasonForVisit = sectionIs(section, SECTIONS.reasonForVisit);
-    const consumed = !!ex || (isReasonForVisit && reasonForVisitConsumed);
-    const key = ex?.key ?? (isReasonForVisit ? "reasonForVisit" : "");
+    // The two document-level surfaces routed after the extractor loop (see
+    // extractFromCcda). Unlike Reason for Visit these are ALWAYS consumed when
+    // present: a standalone visit diagnosis correlates onto the encounter OR lands as
+    // a condition, and a note attaches to the encounter OR becomes a standalone note —
+    // so recognizing the section (not a runtime flag) is the right consumed signal.
+    // `!!ex` keeps precedence, so a real content section titled "… Notes" stays owned
+    // by its extractor and is never mis-attributed here.
+    const isVisitDiagnoses = sectionIs(section, SECTIONS.visitDiagnoses);
+    const isClinicalNote = !ex && isClinicalNoteSection(section);
+    const consumed =
+      !!ex ||
+      (isReasonForVisit && reasonForVisitConsumed) ||
+      isVisitDiagnoses ||
+      isClinicalNote;
+    const key =
+      ex?.key ??
+      (isReasonForVisit
+        ? "reasonForVisit"
+        : isVisitDiagnoses
+          ? "visitDiagnoses"
+          : isClinicalNote
+            ? "clinicalNotes"
+            : "");
     coverage.push({
       key: key || title,
       title,

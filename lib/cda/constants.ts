@@ -116,7 +116,46 @@ export const SECTIONS = {
     loinc: "61146-7",
     templates: ["2.16.840.1.113883.10.20.22.2.60"],
   },
+  // Standalone Visit Diagnoses (LOINC 29308-4 "Diagnosis"). Epic Encounter Summary
+  // CCDs often emit the visit diagnoses as a TOP-LEVEL section rather than nested in
+  // an Encounter Activity (which the encounter deep-walk already consumes — #71).
+  // Not an extractor of its own: read at the document level and routed into the SAME
+  // encounter-diagnosis store — correlated onto the same-document encounter when there
+  // is a single one (mirroring Reason for Visit), else landed as problem-list
+  // conditions. There is no stable C-CDA section templateId, so it matches by LOINC.
+  visitDiagnoses: {
+    loinc: "29308-4",
+    templates: [],
+  },
+  // Progress Notes (LOINC 11506-3). A per-visit clinician progress note emitted as a
+  // TOP-LEVEL narrative section (the note text lives in the section <text>), not the
+  // encounter-nested Comment Activity the encounter walk already reads. Handled with
+  // the per-clinician "Notes from <clinician>" sections (see CLINICAL_NOTE_LOINCS /
+  // isClinicalNoteSection) at the document level: attached to the same-document
+  // encounter's notes when there is a single one, else stored as a standalone dated
+  // note (a note-only encounter row). No section templateId — matched by LOINC/title.
+  progressNotes: {
+    loinc: "11506-3",
+    templates: [],
+  },
 } as const;
+
+// Per-clinician clinical-note section LOINCs. Epic emits one "Notes from <clinician>"
+// section per note type/author, and the section <code> LOINC varies by deployment and
+// note type — so recognition is this small set of common clinical-note codes PLUS a
+// title heuristic ("note(s)" in the section title, see isClinicalNoteSection) for a
+// deployment-specific code we haven't catalogued. Progress Notes (11506-3) is included
+// so a "Notes from …" wrapper carrying it routes through the same note path.
+export const CLINICAL_NOTE_LOINCS = new Set<string>([
+  "11506-3", // Progress note
+  "11488-4", // Consultation note
+  "34117-2", // History and physical note
+  "18842-5", // Discharge summary
+  "28570-0", // Procedure note
+  "34109-9", // Note
+  "34111-5", // Emergency department note
+  "68552-9", // Emergency medicine Progress note
+]);
 
 export const LOINC_OID = "2.16.840.1.113883.6.1";
 
@@ -274,4 +313,6 @@ export const KNOWN_SECTION_TITLES: Record<string, string> = {
   [SECTIONS.goals.loinc]: "Goals",
   [SECTIONS.reasonForVisit.loinc]: "Reason for Visit",
   [SECTIONS.socialHistory.loinc]: "Social History",
+  [SECTIONS.visitDiagnoses.loinc]: "Visit Diagnoses",
+  [SECTIONS.progressNotes.loinc]: "Progress Notes",
 };
