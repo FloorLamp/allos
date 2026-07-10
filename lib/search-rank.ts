@@ -1,4 +1,4 @@
-// Pure ranking/merging for the global (Cmd-K) search (issue #133). The DB
+// Pure ranking/merging for the global (Cmd-K) search. The DB
 // fan-out in lib/queries/search.ts decides *what* matches (profile-scoped LIKE
 // queries per domain); this module decides *ordering*: it scores each hit's
 // match quality (exact > prefix > substring), breaks ties by recency, and groups

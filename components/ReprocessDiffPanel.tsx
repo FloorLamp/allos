@@ -10,7 +10,7 @@ import {
 } from "@/app/(app)/medical/actions";
 import type { EntityDiff } from "@/lib/import-diff";
 
-// Reprocess-with-diff (issue #208, Phase 3). Instead of silently re-extracting and
+// Reprocess-with-diff. Instead of silently re-extracting and
 // replacing a document's rows, this previews the diff between what's currently
 // persisted and what a fresh re-extraction would produce, then commits on a
 // separate confirm. "Reprocess…" calls the read-only preview action (no DB

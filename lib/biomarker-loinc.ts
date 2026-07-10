@@ -216,7 +216,7 @@ const VITAL_LOINCS = new Set([
   // projected into metric_samples ('head_circumference_cm') by the head-circ
   // recognizer — see lib/head-circ-extract (HEADCIRC_LOINCS). Keep these two lists
   // in sync. The percentile code 8289-1 is intentionally NOT here (it's a derived
-  // percentile, not a measurement). (#182)
+  // percentile, not a measurement).
   "8287-5", // Head Occipital-frontal circumference by Tape measure
   "9843-4", // Head circumference (alias)
 ]);

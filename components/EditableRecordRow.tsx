@@ -65,7 +65,7 @@ export default function EditableRecordRow({
           ) : (
             r.name
           )}
-          {/* Performing provider (issue #178), as a muted sub-line. */}
+          {/* Performing provider, as a muted sub-line. */}
           {r.provider_name ? (
             <div className="text-xs font-normal text-slate-400 dark:text-slate-500">
               {r.provider_name}

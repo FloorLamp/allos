@@ -42,7 +42,7 @@ import {
   promoteSideEffectToIntolerance,
 } from "./actions";
 
-// One medication, rendered as a card carrying its whole lifecycle (#209): the
+// One medication, rendered as a card carrying its whole lifecycle: the
 // current dose check-offs, its course history (start/stop dates + reasons), the
 // side-effect list, and the stop / restart / side-effect / promote actions. Unlike
 // supplements (rendered one row per dose), a medication renders once so its

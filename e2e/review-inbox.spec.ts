@@ -26,7 +26,7 @@ test.describe("Data → Review import inbox", () => {
       review.getByText("Google Health Connect").first()
     ).toBeVisible();
 
-    // The recent-imports feed renders the #273 insert/update/unchanged split:
+    // The recent-imports feed renders the insert/update/unchanged split:
     // the Health Connect sync shows "30 new · 10 changed", and the all-unchanged
     // Strava re-scan collapses to "nothing new".
     await expect(review.getByText("30 new · 10 changed")).toBeVisible();

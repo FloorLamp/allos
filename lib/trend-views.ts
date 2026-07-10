@@ -1,4 +1,4 @@
-// Saved views for the Trends hub (issue #212, Phase 3). A named snapshot of the
+// Saved views for the Trends hub. A named snapshot of the
 // hub's state — the date range, active tab, compare pair, and the pinned-tile set
 // — so a user can flip between e.g. "Lipids review" and "Cut progress" without
 // rebuilding the view each time.

@@ -1,5 +1,5 @@
-// Pure period/status → medication-course derivation for imports (issue #209,
-// Phase 2). Both deterministic importers reduce a source medication to a small,
+// Pure period/status → medication-course derivation for imports.
+// Both deterministic importers reduce a source medication to a small,
 // provider-neutral shape — its effective/therapy period(s) plus a normalized
 // lifecycle status — and this module turns that into the medication COURSES the
 // persist layer writes. No DB, no XML/JSON parsing here, so every rule is

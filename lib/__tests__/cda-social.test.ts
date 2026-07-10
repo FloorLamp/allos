@@ -68,7 +68,7 @@ const MALE_FINDING = `<value xsi:type="CD" code="248153007" codeSystem="2.16.840
 const BIRTHSEX_UNK = `<value xsi:type="CD" codeSystem="2.16.840.1.113883.5.1" codeSystemName="HL7 Gender" nullFlavor="UNK"/>`;
 const BIRTHSEX_FEMALE = `<value xsi:type="CD" code="F" codeSystem="2.16.840.1.113883.5.1"/>`;
 
-describe("CCD Social History extraction (#188)", () => {
+describe("CCD Social History extraction", () => {
   it("captures the smoking status as a social-history condition", () => {
     const r = extractFromCcda(doc(socialSection({ smoking: FORMER_SMOKER })));
     expect(r.conditions).toHaveLength(1);

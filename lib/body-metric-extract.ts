@@ -17,7 +17,7 @@ export function documentSource(docId: number): string {
 }
 
 // One body-metrics row derived from a document (per date). weight_kg is nullable
-// (#120): a date reporting only body fat or resting HR still produces a row, so a
+//: a date reporting only body fat or resting HR still produces a row, so a
 // weightless vitals reading has a home in body_metrics rather than being split off.
 export interface DocBodyMetric {
   date: string;
@@ -72,7 +72,7 @@ function isoOrNull(s: string | null): string | null {
 // null). Since every value reaching the plausibility band is already
 // unit-converted from an explicit unit, the band is a pure sanity guard: the
 // lower bound is 2 kg (a small term newborn) so infant/toddler weights import
-// and feed the pediatric growth charts (#101) — the old 20 kg floor silently
+// and feed the pediatric growth charts — the old 20 kg floor silently
 // dropped them. 400 kg caps mis-unitted garbage.
 function weightToKg(value: number, unit: string | null): number | null {
   const u = (unit ?? "").toLowerCase().replace(/[^a-z]/g, "");
@@ -105,7 +105,7 @@ function restingHr(value: number): number | null {
   return value >= 25 && value <= 150 ? Math.round(value) : null;
 }
 
-// A body metric that belongs in body_metrics rather than medical_records (#120):
+// A body metric that belongs in body_metrics rather than medical_records:
 // weight / body fat % / resting HR. Returns null for a clinical vital (BP, temp,
 // SpO2, respiratory rate) or a lab, which stay in medical_records. Matches on the
 // order-independent token key, so spellings/inversions/units don't matter.
@@ -139,7 +139,7 @@ export interface BodyMetricReading {
 // document date; both must be ISO, and a reading with no real date is skipped —
 // inventing a date (e.g. "today") would make an old scan's weight the newest
 // reading everywhere. A date with only body fat / resting HR and no weight still
-// produces a (weightless) row (#120), so nothing is silently dropped; only a date
+// produces a (weightless) row, so nothing is silently dropped; only a date
 // with no recognized body metric at all is omitted.
 export function bodyMetricsFromReadings(
   readings: BodyMetricReading[],
@@ -256,7 +256,7 @@ export function roundBodyMetric(
 }
 
 // Precedence when folding an integration sample into an existing body_metrics row
-// (the #120 metric_samples → body_metrics migration): an existing manual/document
+// (the metric_samples → body_metrics migration): an existing manual/document
 // value wins; the sample only fills a gap. The equivalent of COALESCE(col, ?).
 export function foldSampleIntoRow(
   existing: number | null,

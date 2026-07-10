@@ -208,7 +208,7 @@ export default function RecordForm({
           <label className="label" htmlFor={`rec-${uid}-provider`}>
             Performed by
           </label>
-          {/* Provider picker (issue #178): create-on-type from the shared registry
+          {/* Provider picker: create-on-type from the shared registry
               via the host page's <datalist id="provider-names">. */}
           <input
             id={`rec-${uid}-provider`}

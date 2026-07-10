@@ -1,4 +1,4 @@
-// Pure medication history / lifecycle logic (issue #209, Phase 1). No DB or
+// Pure medication history / lifecycle logic. No DB or
 // network — everything here is a pure function of its inputs so it's unit-tested
 // in lib/__tests__/medication-history.test.ts. The DB reads/writes live in the
 // query layer + server actions; they call into these helpers for validation,

@@ -373,7 +373,7 @@ export function getCanonicalBiomarker(
 
 // The single most recent record for a canonical name (newest date, id tie-break),
 // or undefined. Used by the profile passport to read the latest 'ABO Blood Group'
-// and 'Rh Type' records (issue #105) — a record read, not a biomarker chart.
+// and 'Rh Type' records — a record read, not a biomarker chart.
 export function getLatestMedicalRecordByCanonical(
   profileId: number,
   canonical: string
@@ -596,7 +596,7 @@ export interface ImmunizationOverrideRow {
   created_at: string;
 }
 
-// All manual per-vaccine status overrides for a profile (issue #155). Feeds the
+// All manual per-vaccine status overrides for a profile. Feeds the
 // pure `applyOverride` resolver in the schedule assessment and the detail view's
 // override controls.
 export function getImmunizationOverrides(
@@ -760,7 +760,7 @@ export function reconcileFlags(profileId: number, ids?: number[]): number {
   return changes.length;
 }
 
-// ---- Encounters / visits (#178 Phase B) ----
+// ---- Encounters / visits ----
 
 // The id of the representative encounter for each distinct visit, collapsing the
 // per-document duplicates two overlapping CCDs produce (each portal export carries

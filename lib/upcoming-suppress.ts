@@ -1,4 +1,4 @@
-// Pure snooze/dismiss decision layer for the Upcoming page (issue #213, Phase 3).
+// Pure snooze/dismiss decision layer for the Upcoming page.
 // NO DB/network: the query layer (lib/queries/upcoming.ts) reads the profile's
 // upcoming_dismissals rows and the actions write them; this module only derives
 // the STABLE per-signal key and decides whether a given suppression currently

@@ -1,4 +1,4 @@
-// Dashboard widget registry (issue #156) — PURE data + merge logic, no JSX and no
+// Dashboard widget registry — PURE data + merge logic, no JSX and no
 // DB, so it's importable by both the server page and the client grid and fully
 // unit-tested. The catalog is the source of truth for which widgets exist, their
 // default order (array index), whether they're fitness-gated (hidden for

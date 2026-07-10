@@ -6,7 +6,7 @@ import {
   type ProviderInput,
 } from "./providers";
 
-// The shared providers registry data layer (issue #178). GLOBAL, like
+// The shared providers registry data layer. GLOBAL, like
 // logins/profiles — a family shares one "Quest Diagnostics" / "Dr. Smith", so
 // these statements are intentionally NOT profile-scoped (and the providers table
 // is excluded from the profile-scoping leak test for the same reason the auth

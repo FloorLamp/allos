@@ -1,5 +1,5 @@
 // Pure decision logic for reassigning a mis-filed import to another profile
-// (issue #208, Phase 3). A document uploaded under the wrong person needs to move
+//. A document uploaded under the wrong person needs to move
 // — the document row, every row it imported, and its on-disk file — to another
 // profile the acting login can reach. The DB/file move lives in the server action
 // (app/(app)/medical/actions.reassignDocument); this module owns the pure

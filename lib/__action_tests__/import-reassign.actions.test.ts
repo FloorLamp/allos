@@ -1,5 +1,5 @@
-// SERVER-ACTION TIER — reassign a mis-filed document to another profile (issue
-// #208, Phase 3). Runs the real reassignDocument against the throwaway temp DB
+// SERVER-ACTION TIER — reassign a mis-filed document to another profile.
+// Runs the real reassignDocument against the throwaway temp DB
 // with the auth chokepoint mocked (setup.ts): it proves the move re-points EVERY
 // owned row to the destination, leaves the source with zero rows for the document,
 // nulls nothing it shouldn't, moves the on-disk file, and is rejected when the

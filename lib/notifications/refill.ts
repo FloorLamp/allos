@@ -1,4 +1,4 @@
-// Low-supply refill nudge (issue #103 Phase B). Once per hour per profile, checks
+// Low-supply refill nudge. Once per hour per profile, checks
 // every tracked (quantity_on_hand set) active item's remaining days of supply and,
 // when one drops to/below the refill threshold, sends a single "refill due" nudge
 // over the profile's own channel. The days-of-supply arithmetic is the pure
@@ -38,7 +38,7 @@ interface LowItem {
 }
 
 // The refill nudge. Names the profile (a shared/caregiver chat may carry several
-// profiles — see #135) and lists each low item with its remaining days. A nudge,
+// profiles) and lists each low item with its remaining days. A nudge,
 // so no action button.
 export function renderRefillMessage(
   profileName: string,

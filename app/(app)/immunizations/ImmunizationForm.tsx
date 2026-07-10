@@ -125,7 +125,7 @@ export default function ImmunizationForm({
         >
           Administered by
         </label>
-        {/* Provider picker (issue #178): free text with create-on-type from the
+        {/* Provider picker: free text with create-on-type from the
             shared registry via the page's <datalist id="provider-names">. */}
         <input
           id={`imm-provider-${immunization?.id ?? "new"}`}

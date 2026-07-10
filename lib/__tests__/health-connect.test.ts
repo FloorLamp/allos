@@ -56,7 +56,7 @@ describe("parseHealthConnectPayload — body metrics", () => {
     expect(out.skipped).toBe(2);
   });
 
-  it("merges weight, body fat, and resting HR into one row per day (#120)", () => {
+  it("merges weight, body fat, and resting HR into one row per day", () => {
     const out = parse({
       weight: [{ time: "2026-06-15T07:00:00Z", kilograms: 80 }],
       body_fat: [{ time: "2026-06-15T08:00:00Z", percentage: 18.5 }],

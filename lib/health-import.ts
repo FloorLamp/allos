@@ -9,7 +9,7 @@ import type {
 import type { ImportReport } from "./import-report";
 
 // A derived medication COURSE (episode) carried on an imported medication record
-// (issue #209, Phase 2). started_on/stopped_on are the source's effective-period
+//. started_on/stopped_on are the source's effective-period
 // bounds (YYYY-MM-DD); stopped_on null means the course is still open (the med is
 // ongoing). stop_reason is derived from the source status (completed →
 // completed_course, stopped → provider_discontinued, …); notes carries a short
@@ -25,7 +25,7 @@ export interface ImportedMedicationCourse {
 
 // A provider/organization captured from a health record (a CCD `<performer>` or
 // the Care Teams section), before it's resolved into the shared global providers
-// registry (issue #178). Provider-neutral so every parser can produce it. The
+// registry. Provider-neutral so every parser can produce it. The
 // pure normalize/dedup key lives in lib/providers; the DB resolver in
 // lib/providers-db turns one of these into a shared providers row id.
 export interface ImportedProvider {
@@ -40,7 +40,7 @@ export interface ImportedProvider {
 // Shared shapes for records pulled out of a portal export (MyChart CCD/XDM or a
 // SMART Health Card). Keeping them provider-neutral lets one persistence path in
 // the import action handle everything, and lets the parsers grow to cover more
-// of the record (labs today; vitals, medications (#103), problems, allergies as
+// of the record (labs today; vitals, medications, problems, allergies as
 // extractors are added) without changing the writer.
 
 export interface ImportedImmunization {
@@ -74,7 +74,7 @@ export interface ImportedRecord {
   // "QUEST"), when carried. Resolved into the shared registry and linked via
   // medical_records.provider_id.
   provider?: ImportedProvider | null;
-  // Medication COURSES (issue #209, Phase 2) derived from the source's effective
+  // Medication COURSES derived from the source's effective
   // period(s) + lifecycle status — set ONLY on `category === 'prescription'`
   // records by the CCD/FHIR importers. When present + non-empty, the persist layer
   // creates one medication_courses row per course (open/closed synced to
@@ -84,7 +84,7 @@ export interface ImportedRecord {
   courses?: ImportedMedicationCourse[] | null;
 }
 
-// An allergy / intolerance pulled from a CCD Allergies section (#179). Substance
+// An allergy / intolerance pulled from a CCD Allergies section. Substance
 // is the offending agent; reaction/severity/status are as coded/printed. A
 // "No known allergies" statement is dropped upstream — it never becomes a row.
 export interface ImportedAllergy {
@@ -98,7 +98,7 @@ export interface ImportedAllergy {
   external_id: string; // stable dedup key
 }
 
-// A problem-list condition pulled from a CCD Active Problems section (#180).
+// A problem-list condition pulled from a CCD Active Problems section.
 export interface ImportedCondition {
   name: string;
   code: string | null;
@@ -109,7 +109,7 @@ export interface ImportedCondition {
   external_id: string;
 }
 
-// A visit / encounter pulled from a CCD Encounters section (issue #178 Phase B).
+// A visit / encounter pulled from a CCD Encounters section.
 // Provider-neutral: the attending clinician and the facility/location are captured
 // as ImportedProviders and resolved into the shared registry on persist (linked
 // via encounters.provider_id / location_provider_id). Diagnoses are captured as a
@@ -192,12 +192,12 @@ export interface ImportDemographics {
 export interface ImportResult {
   immunizations: ImportedImmunization[];
   records: ImportedRecord[];
-  // Allergies (#179) + problem-list conditions (#180). Optional so the FHIR / SMART
+  // Allergies + problem-list conditions. Optional so the FHIR / SMART
   // Health Card parsers (which don't yet emit these) need no change — consumers
   // default to []. The CCD extractor populates them.
   allergies?: ImportedAllergy[];
   conditions?: ImportedCondition[];
-  // Visits / encounters (#178 Phase B). Optional for the same reason — only the CCD
+  // Visits / encounters. Optional for the same reason — only the CCD
   // Encounters section populates it; other parsers default to [].
   encounters?: ImportedEncounter[];
   // Procedures + family history. Optional (default []): the CCD Procedures / Family
@@ -212,11 +212,11 @@ export interface ImportResult {
   careGoals?: ImportedCareGoal[];
   demographics: ImportDemographics | null;
   // Providers/organizations captured from the record that aren't tied to a single
-  // reading — the CCD Care Teams section (issue #178). Registered into the shared
+  // reading — the CCD Care Teams section. Registered into the shared
   // registry so the family's provider list is populated even before a record is
   // manually linked. Optional: parsers that don't surface care teams omit it.
   providers?: ImportedProvider[];
-  // The import DEBUGGER report (issue #208 Phase 2): every candidate the parser
+  // The import DEBUGGER report: every candidate the parser
   // DROPPED and why, plus which sections/resource-types it did/didn't consume.
   // Additive + optional so existing callers (and the AI extraction path, which
   // produces no structured report) are unaffected. The deterministic CCD/FHIR

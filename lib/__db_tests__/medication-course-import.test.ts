@@ -1,4 +1,4 @@
-// DB INTEGRATION TIER (not the pure suite). Exercises the #209 Phase 2 import
+// DB INTEGRATION TIER (not the pure suite). Exercises the medication-course import
 // path: persistDocumentImport turning a prescription record's DERIVED courses into
 // medication_courses rows, keeping intake_items.active in sync with the course
 // state, falling back to the Phase-1 single open course when the source carried no
@@ -156,7 +156,7 @@ beforeAll(() => {
   );
 });
 
-describe("persist derived medication courses (#209 Phase 2)", () => {
+describe("persist derived medication courses", () => {
   it("a two-period med yields two courses (open + closed) with active=1 (latest open)", () => {
     const id = medId(profile, "Warfarin");
     expect(coursesOf(id)).toEqual([

@@ -11,7 +11,7 @@ import { createShareLink, revokeShareLink } from "@/lib/share-links-db";
 import { recordAudit } from "@/lib/audit";
 import { AUDIT_ACTIONS } from "@/lib/audit-actions";
 
-// Share-link management for the profile passport (issue #105). Every action is
+// Share-link management for the profile passport. Every action is
 // gated by requireWriteAccess() and operates ONLY on the session's active profile
 // (session.profile.id) — a login can only act as a profile it's authorized for
 // (admins: any; members: their granted ones), so this enforces the grant rule by

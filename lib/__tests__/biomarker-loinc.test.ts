@@ -273,7 +273,7 @@ describe("sex-specific new-entry flag behavior", () => {
   });
 });
 
-describe("reproductive hormones — sex & life-stage ranges (#200)", () => {
+describe("reproductive hormones — sex & life-stage ranges", () => {
   // Exercises the actual committed Estradiol / FSH / LH entries through the same
   // sex × age composition the boot-time reconcile uses (age = the subject's age on
   // the collection date). The bug these fix: a flat single range false-flagged
@@ -389,11 +389,11 @@ describe("reproductive hormones — sex & life-stage ranges (#200)", () => {
   });
 });
 
-describe("reproductive hormones — reproductive-status ranges (#202)", () => {
+describe("reproductive hormones — reproductive-status ranges", () => {
   // Exercises the ACTUAL committed Estradiol / FSH / LH entries through the real
   // reconciledFlag/referenceRange path (sex + age + reproductive status), the same
   // composition the boot-time and request-time reconciles use. The gap this closes
-  // (#200): a post-menopausal HIGH estradiol wasn't flagged because the
+  //: a post-menopausal HIGH estradiol wasn't flagged because the
   // reproductive-age ceiling of 400 was kept to avoid false-flagging women still
   // cycling at 51+.
   const e2 = () => cb("Estradiol");
@@ -401,7 +401,7 @@ describe("reproductive hormones — reproductive-status ranges (#202)", () => {
   const lh = () => cb("Luteinizing Hormone (LH)");
 
   it("estradiol: a postmenopausal female flags a high E2 (200) that unset/premenopausal does NOT", () => {
-    // The headline #202 case. Postmenopausal E2 ceiling is ~30, so 200 pg/mL is high.
+    // The headline case. Postmenopausal E2 ceiling is ~30, so 200 pg/mL is high.
     expect(
       reconciledFlag(null, 200, "pg/mL", e2(), "female", 55, "postmenopausal")
     ).toBe("high");
@@ -443,7 +443,7 @@ describe("reproductive hormones — reproductive-status ranges (#202)", () => {
       reconciledFlag(null, 200, "mIU/mL", fsh(), "female", 55, "postmenopausal")
     ).toBe("high");
     // Open low bound: a postmenopausal HRT-suppressed FSH (~5) is NOT false-flagged
-    // 'low' — the closed 25.8 low would have wrongly flagged it (the #202 fix).
+    // 'low' — the closed 25.8 low would have wrongly flagged it (the fix).
     expect(
       reconciledFlag(null, 5, "mIU/mL", fsh(), "female", 55, "postmenopausal")
     ).toBeUndefined();
@@ -459,7 +459,7 @@ describe("reproductive hormones — reproductive-status ranges (#202)", () => {
       reconciledFlag(null, 70, "mIU/mL", lh(), "female", 55, null)
     ).toBeUndefined();
     // Open low bound: a postmenopausal HRT-suppressed LH (~3) is NOT false-flagged
-    // 'low' (the 7.7 closed low would have wrongly flagged it — the #202 fix).
+    // 'low' (the 7.7 closed low would have wrongly flagged it — the fix).
     expect(
       reconciledFlag(null, 3, "mIU/mL", lh(), "female", 55, "postmenopausal")
     ).toBeUndefined();

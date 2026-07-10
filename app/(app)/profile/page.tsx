@@ -9,7 +9,7 @@ import PassportControls, {
   type ShareLinkView,
 } from "@/components/PassportControls";
 
-// The profile summary / "medical passport" (issue #105): a single read view of a
+// The profile summary / "medical passport": a single read view of a
 // profile's latest, most relevant health facts. force-dynamic because it reads
 // the session's active profile and never caches one profile's data for another.
 export const dynamic = "force-dynamic";

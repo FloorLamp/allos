@@ -1,4 +1,4 @@
-// DB INTEGRATION TIER — import DEBUGGER report persistence (issue #208 Phase 2).
+// DB INTEGRATION TIER — import DEBUGGER report persistence.
 //
 // Proves persistDocumentImport writes the drop/coverage report onto
 // medical_documents.import_report, that a REPROCESS refreshes it (idempotent —

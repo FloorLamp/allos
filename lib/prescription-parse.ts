@@ -1,5 +1,5 @@
 // Pure parsing of an extracted `prescription`-category record into the fields a
-// structured `kind='medication'` intake_items row needs (issue #150). No DB
+// structured `kind='medication'` intake_items row needs. No DB
 // access, so it's unit-tested in lib/__tests__/prescription-parse.test.ts.
 //
 // The extraction pipeline (lib/medical-extract) emits a prescription as a loose
@@ -121,7 +121,7 @@ export interface ParsedSig {
 }
 
 // Parse a sig / directions string ("1 tab PO daily", "take 2 tablets twice
-// daily", "as needed for pain", "every 8 hours") into a schedule. Reuses the #15
+// daily", "as needed for pain", "every 8 hours") into a schedule. Reuses the
 // dosage parser for the amount + per-day count, adds interval ("every N hours")
 // and PRN handling, and — crucially — returns `timesPerDay: null` (unscheduled)
 // when no frequency signal is present rather than defaulting to daily.

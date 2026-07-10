@@ -101,7 +101,7 @@ describe("mergeFeed", () => {
 });
 
 describe("feedItemView — sync", () => {
-  it("humanizes the #273 split and carries the data window + skipped", () => {
+  it("humanizes the split and carries the data window + skipped", () => {
     const v = feedItemView(syncEntry(sync()), providerName);
     expect(v.tone).toBe("ok");
     expect(v.title).toBe("Google Health Connect");

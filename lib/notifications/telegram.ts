@@ -96,7 +96,7 @@ export const telegramChannel: NotificationChannel = {
 };
 
 // Send a message to an EXPLICIT chat id, bypassing the profile's configured
-// delivery target. Used by missed-dose escalation (#103), which may route to a
+// delivery target. Used by missed-dose escalation, which may route to a
 // second chat (a caregiver) via escalate_chat_id. Reads the bot token internally
 // like the channel send, so callers never pass creds.
 export async function sendTelegramMessage(

@@ -14,7 +14,7 @@ import { activeByKey, digestDedupeKey } from "@/lib/findings";
 import type { DateRange } from "@/lib/timeline-format";
 import { dismissDigest } from "./actions";
 
-// "What's trending" digest for the Trends Overview (issue #212, Phase 2). Feeds
+// "What's trending" digest for the Trends Overview. Feeds
 // every candidate series (metrics + biomarkers, windowed to the shared range) to
 // the pure summarizeTrends, which flags the ones that actually moved (or crossed a
 // reference range) and ranks them. Renders the top few as compact chips. Nothing

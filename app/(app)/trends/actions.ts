@@ -126,7 +126,7 @@ export async function dismissTrajectory(formData: FormData) {
   revalidatePath("/trends");
 }
 
-// Pin / unpin a Trends-Overview tile for the active profile (issue #212, Phase 2).
+// Pin / unpin a Trends-Overview tile for the active profile.
 // The pin key ("metric:weight" | "bio:LDL Cholesterol") toggles in the per-profile
 // `trend_pins` list; pinned tiles render first on the Overview. profileId is
 // resolved from the session — any login acting as the profile may pin (it's
@@ -160,7 +160,7 @@ function paramsFromForm(formData: FormData, pins: string[]): TrendViewParams {
   };
 }
 
-// Saved views (issue #212, Phase 3). Save the current hub state under a name for
+// Saved views. Save the current hub state under a name for
 // the active profile — per-profile data, so requireWriteAccess (any login acting as
 // the profile may save), not requireAdmin. Re-saving the same name overwrites it.
 export async function saveTrendView(formData: FormData) {

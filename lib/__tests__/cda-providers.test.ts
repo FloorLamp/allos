@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { parseCcda } from "../cda";
 
-// A minimal CCD exercising the issue #178 provider capture: a lab observation
+// A minimal CCD exercising the provider capture: a lab observation
 // with a performing organization (QUEST) + NPI'd person, an immunization with an
 // administering organization, and a Care Teams section listing a clinician.
 const CCD = `<?xml version="1.0"?>
@@ -47,7 +47,7 @@ const CCD = `<?xml version="1.0"?>
   </structuredBody></component>
 </ClinicalDocument>`;
 
-describe("CCD provider capture (#178)", () => {
+describe("CCD provider capture", () => {
   const r = parseCcda(CCD);
 
   it("captures the performing organization on a lab observation", () => {
@@ -97,7 +97,7 @@ const CCD_NON_NPI_ORG = `<?xml version="1.0"?>
   </structuredBody></component>
 </ClinicalDocument>`;
 
-describe("CCD provider identifier namespacing (#178 review)", () => {
+describe("CCD provider identifier namespacing", () => {
   it("qualifies a non-NPI identifier with its assigning-authority root OID", () => {
     const r = parseCcda(CCD_NON_NPI_ORG);
     const p = r.records[0].provider;

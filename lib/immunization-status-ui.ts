@@ -6,7 +6,7 @@ import {
 
 // Shared status → badge/label styling for every surface that shows an
 // immunization status pill: the immunizations master table, the per-vaccine
-// detail view, and the profile passport's immunizations table (issue #185). It
+// detail view, and the profile passport's immunizations table. It
 // lives in lib/ (not the immunizations page dir) so a Server Component shared by
 // the authed + public passport can reuse the identical pill without importing
 // app-route code. Pure — just class/label maps.

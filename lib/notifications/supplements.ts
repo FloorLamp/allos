@@ -1,5 +1,5 @@
 // Builds the supplement-reminder notification for a time-of-day window, reusing
-// the #15 schedule helpers so workout/rest-day and situational logic is honored.
+// the schedule helpers so workout/rest-day and situational logic is honored.
 // The DB-touching gather lives here; the message formatting is the pure
 // renderWindowMessage in ./supplement-format.
 

@@ -80,7 +80,7 @@ export default function EditableSupplementRow({
   // bottom of the card. The streak only surfaces once it's worth celebrating.
   const adherence = adherenceSummary(strip);
 
-  // Refill tracking (#103 Phase B): "≈N days left" from on-hand quantity. The
+  // Refill tracking: "≈N days left" from on-hand quantity. The
   // doses/day rate comes from the shared refill estimate (#38) — the ACTUAL
   // taken-log rate when the item has enough history, else the scheduled-dose-count
   // estimate — with the basis surfaced in the badge's tooltip. Only shown when the
@@ -94,7 +94,7 @@ export default function EditableSupplementRow({
   const lowSupply = isLowSupply(daysLeft);
   const refillBasis = refillBasisLabel(refillRate?.basis ?? "schedule");
 
-  // Medication identity (#103 Phase C): the stricter affordances (Rx/PRN/escalate
+  // Medication identity: the stricter affordances (Rx/PRN/escalate
   // badges above, prescriber/pharmacy/Rx line below).
   const isMed = s.kind === "medication";
   const medMeta = isMed
@@ -102,7 +102,7 @@ export default function EditableSupplementRow({
         s.prescriber && `Dr. ${s.prescriber.replace(/^dr\.?\s*/i, "")}`,
         s.pharmacy,
         s.rx_number && `Rx ${s.rx_number.replace(/^rx\s*/i, "")}`,
-        // The linked provider from the shared registry (issue #178).
+        // The linked provider from the shared registry.
         s.provider_name,
       ]
         .filter(Boolean)

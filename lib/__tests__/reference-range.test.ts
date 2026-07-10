@@ -339,7 +339,7 @@ describe("referenceRange", () => {
 describe("selectStatusRange (reproductive status)", () => {
   const ranges = {
     premenopausal: { ref_low: 1, ref_high: 21 },
-    // Open low bound, mirroring the committed postmenopausal FSH (#202): an
+    // Open low bound, mirroring the committed postmenopausal FSH: an
     // HRT-suppressed value must not be false-flagged 'low'.
     postmenopausal: { ref_low: null, ref_high: 134.8 },
   };
@@ -381,7 +381,7 @@ describe("selectStatusRange (reproductive status)", () => {
   });
 });
 
-describe("referenceRange — reproductive status precedence (#202)", () => {
+describe("referenceRange — reproductive status precedence", () => {
   // A female hormone entry: sex-adult female envelope, a 51+ age band, and
   // reproductive-status overrides. Mirrors the committed FSH shape.
   const fsh = {

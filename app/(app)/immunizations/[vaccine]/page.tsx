@@ -30,7 +30,7 @@ import VaccineDoseHistory from "../VaccineDoseHistory";
 
 export const dynamic = "force-dynamic";
 
-// Per-vaccine detail view (issue #155): full dose history, recommended schedule,
+// Per-vaccine detail view: full dose history, recommended schedule,
 // relevant titers, the computed status, and the override controls. Profile-scoped
 // like every other read on this route.
 export default function VaccineDetailPage({
@@ -104,7 +104,7 @@ export default function VaccineDetailPage({
 
   return (
     <div>
-      {/* Provider picker options for the inline dose-edit form (issue #178). */}
+      {/* Provider picker options for the inline dose-edit form. */}
       <ProviderDatalist names={getProviderNames()} />
       <Link
         href="/immunizations"

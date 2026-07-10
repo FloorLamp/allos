@@ -3,7 +3,7 @@
 // data/logs/ai.jsonl — an audit trail that's readable directly on the host
 // (under the data volume) and streamed into the Settings → AI logs tab.
 //
-// Multi-user (issue #67, Phase 4): the log mixes extraction content across
+// Multi-user: the log mixes extraction content across
 // profiles, so each event is tagged with the acting loginId/profileId when
 // they're known (see withAiLogContext) and the logs tab is admin-only.
 //

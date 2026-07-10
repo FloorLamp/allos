@@ -1,4 +1,4 @@
-// SERVER-ACTION TIER — Upcoming snooze/dismiss/restore (#213 Phase 3).
+// SERVER-ACTION TIER — Upcoming snooze/dismiss/restore.
 //
 // These write upcoming_dismissals rows scoped to the ACTIVE profile. Asserts the
 // stored row shape (snooze vs dismiss), the upsert on re-snooze / dismiss-then-

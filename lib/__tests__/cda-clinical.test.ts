@@ -83,7 +83,7 @@ const PROBLEM = `
   </act></entry>
 </section>`;
 
-describe("CCD allergy extraction (#179)", () => {
+describe("CCD allergy extraction", () => {
   it("extracts a documented allergy with reaction + severity", () => {
     const r = extractFromCcda(doc(REAL_ALLERGY));
     expect(r.allergies).toHaveLength(1);
@@ -103,7 +103,7 @@ describe("CCD allergy extraction (#179)", () => {
   });
 });
 
-describe("CCD problem-list extraction (#180)", () => {
+describe("CCD problem-list extraction", () => {
   it("extracts a condition with ICD-10 code, status, onset", () => {
     const r = extractFromCcda(doc(PROBLEM));
     expect(r.conditions).toHaveLength(1);

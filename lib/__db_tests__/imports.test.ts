@@ -1,4 +1,4 @@
-// DB INTEGRATION TIER — import-log + produced-breakdown query tests (issue #208).
+// DB INTEGRATION TIER — import-log + produced-breakdown query tests.
 //
 // Proves the new lib/queries/imports.ts reads (a) list a profile's own documents
 // AND paste/CSV jobs interleaved, with NO cross-profile bleed, and (b) count what

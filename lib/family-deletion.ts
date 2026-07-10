@@ -1,5 +1,5 @@
 // Pure decision logic for the Family admin page's login/profile deletion
-// (issue #67 follow-up). No DB access — the caller reads the relevant counts and
+//. No DB access — the caller reads the relevant counts and
 // grants and passes them in — so this stays unit-testable, and the SQL / cookie /
 // redirect side effects live in the Server Action. See
 // lib/__tests__/family-deletion.test.ts.

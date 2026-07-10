@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-// Visit detail + timeline deeplink (#178 Phase B follow-up). The seed (scripts/seed)
+// Visit detail + timeline deeplink. The seed (scripts/seed)
 // plants a recent "Office Visit" encounter with a chief complaint ("Annual physical")
 // and diagnoses ("Essential hypertension; Hyperlipidemia"). We assert a Timeline
 // visit entry deep-links to /encounters/[id], and that the detail page renders the

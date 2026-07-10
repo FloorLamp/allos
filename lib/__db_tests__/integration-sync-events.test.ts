@@ -186,7 +186,7 @@ describe("integration_sync_events: simulated Health Connect ingest path", () => 
     expect(persisted.n).toBe(2);
 
     // Idempotency check: re-upserting the same window writes no NEW rows and now
-    // classifies both as unchanged (the #273 accounting).
+    // classifies both as unchanged (the split accounting).
     const rewritten = upsertMetricSamples(profileA, rows, "health-connect");
     expect(rewritten).toEqual({ inserted: 0, updated: 0, unchanged: 2 });
     const persistedAfter = db

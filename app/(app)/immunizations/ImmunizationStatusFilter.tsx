@@ -3,7 +3,7 @@
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { ImmunizationFilter } from "@/lib/immunization-status";
 
-// Status filter for the immunizations master table (issue #155). Writes the
+// Status filter for the immunizations master table. Writes the
 // choice into the `status` query param on the current path (preserving the sort
 // params), so the server component reads it back and filters the assessments.
 // Modeled on the biomarkers RangeFilterSelect.

@@ -33,7 +33,7 @@ export interface DeleteConfirm {
   confirmLabel?: string;
 }
 
-// The shared Records list surface (issue #180 pattern): a `card` table whose rows
+// The shared Records list surface: a `card` table whose rows
 // each swap in place for an inline edit form (a `colSpan` cell rendering the
 // page's shared <XForm>), with a per-row pencil (edit) + trash (confirm → delete)
 // action cell and the shared EmptyState. Columns and the edit form are supplied by

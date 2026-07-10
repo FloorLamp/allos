@@ -11,7 +11,7 @@ import {
 } from "@/lib/import-diff";
 import type { PersistInput, PersistRecord } from "@/lib/import-shape";
 
-// Pure unit tests for the reprocess-diff logic (issue #208, Phase 3). No DB — the
+// Pure unit tests for the reprocess-diff logic. No DB — the
 // DB reader (lib/queries/imports.getReprocessSnapshot) and the extraction adapter
 // both reduce to the same neutral snapshot these functions diff.
 

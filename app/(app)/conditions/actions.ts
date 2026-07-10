@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
 import type { ConditionStatus } from "@/lib/types";
 
-// Condition / problem-list writes (#180). Session-scoped; every mutation is
+// Condition / problem-list writes. Session-scoped; every mutation is
 // `WHERE id = ? AND profile_id = ?`. Manual rows carry a NULL source/document_id.
 
 function revalidateConditions() {

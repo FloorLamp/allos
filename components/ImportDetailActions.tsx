@@ -7,7 +7,7 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import ReprocessDiffPanel from "@/components/ReprocessDiffPanel";
 import { deleteMedicalDocument } from "@/app/(app)/medical/actions";
 
-// The reprocess + delete actions on the import-detail page (issue #208). Reprocess
+// The reprocess + delete actions on the import-detail page. Reprocess
 // is now preview-first (ReprocessDiffPanel: preview the diff, then confirm the
 // commit); delete confirms (it also removes the imported results) and navigates
 // back to the import log, since the detail page's own document is gone afterward.

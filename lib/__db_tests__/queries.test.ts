@@ -1,4 +1,4 @@
-// DB INTEGRATION TIER — query-layer SMOKE tests (issue #160).
+// DB INTEGRATION TIER — query-layer SMOKE tests.
 //
 // The SQL in lib/queries/* is otherwise only *source-scanned* (the pure
 // profile-scoping test) and never EXECUTED, so a typo'd JOIN, a renamed/wrong
@@ -219,7 +219,7 @@ describe("dashboard / digest gather", () => {
   });
 });
 
-describe("health-record import: height → metric_samples, weight → body_metrics (#167)", () => {
+describe("health-record import: height → metric_samples, weight → body_metrics", () => {
   // Build a fresh profile + document and run the real persist core, then assert an
   // imported Body Height lands in metric_samples(height_cm) and Body Weight in
   // body_metrics(weight_kg) — the split the growth chart height + BMI paths read.
@@ -249,7 +249,7 @@ describe("health-record import: height → metric_samples, weight → body_metri
         loinc: "29463-7",
       },
       {
-        // Head circumference (#182): projects into metric_samples like height.
+        // Head circumference: projects into metric_samples like height.
         category: "vitals",
         name: "Head Occipital-frontal circumference by Tape measure",
         canonical: "Head Occipital-frontal circumference by Tape measure",
@@ -302,7 +302,7 @@ describe("health-record import: height → metric_samples, weight → body_metri
     const weights = getWeights(profileId);
     expect(weights.map((w) => w.weight_kg)).toEqual([82]);
 
-    // Head circumference lands in metric_samples('head_circumference_cm') (#182).
+    // Head circumference lands in metric_samples('head_circumference_cm').
     const headCirc = getMetricDailyTotals(profileId, "head_circumference_cm");
     expect(headCirc).toEqual([{ date: "2024-01-10", value: 46 }]);
 
@@ -336,7 +336,7 @@ describe("health-record import: height → metric_samples, weight → body_metri
   });
 });
 
-describe("health-record import: encounters → encounters table (#178 Phase B)", () => {
+describe("health-record import: encounters → encounters table", () => {
   // A parsed CCD carrying one encounter with an attending clinician + facility and
   // a visit diagnosis. Run through the real persist core to prove: the row lands
   // profile-scoped, its providers resolve into the shared GLOBAL registry, and a
@@ -448,7 +448,7 @@ describe("health-record import: encounters → encounters table (#178 Phase B)",
   });
 });
 
-describe("health-record import: smoking status supersede (#188 M1)", () => {
+describe("health-record import: smoking status supersede", () => {
   // A parsed CCD carrying one social-history smoking-status condition plus a real
   // problem-list condition. Smoking status is single-valued: re-importing a newer
   // status (as a SEPARATE document) must SUPERSEDE the prior one, leaving exactly

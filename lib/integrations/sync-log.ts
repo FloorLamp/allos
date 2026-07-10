@@ -10,7 +10,7 @@ export interface SyncCounts {
   skipped: number;
 }
 
-// Real insert/update/unchanged accounting for a sync batch (issue #273). Unlike
+// Real insert/update/unchanged accounting for a sync batch. Unlike
 // SyncCounts (which only knows how many rows were persisted), this distinguishes
 // a brand-new row (inserted) from a value-changing overwrite (updated) from a
 // no-op re-send of the rolling window (unchanged). "unchanged" is ONLY detectable
@@ -33,7 +33,7 @@ export function emptyCounts(): UpsertCounts {
 // window. Every keyed upsert consults this on the row it found (activities.edited,
 // body_metrics.edited, medical_records.edited) and, when locked, deliberately
 // persists nothing and counts the row as `unchanged` — we touched no value, so the
-// #273 split must not report it as a write. The DB stores 0/1 (nullable historically),
+// split must not report it as a write. The DB stores 0/1 (nullable historically),
 // so this normalizes any falsy/absent value to "not locked". Pure → unit-testable.
 export function isEditLocked(edited: number | null | undefined): boolean {
   return !!edited;
@@ -96,7 +96,7 @@ export function rowsEqual(
 // When the split columns are present it reads "N new · N changed · N unchanged"
 // (zero segments omitted); when nothing was inserted or updated it collapses to a
 // muted "nothing new"; and when the split columns are all null (a legacy event
-// recorded before #273) it falls back to the flat `written` count. Pure.
+// recorded before the split columns existed) it falls back to the flat `written` count. Pure.
 export function formatSplitLabel(ev: {
   inserted: number | null;
   updated: number | null;

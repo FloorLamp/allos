@@ -1,5 +1,5 @@
-// Pure decision + shaping logic for the "medical passport" share links (issue
-// #105). No DB, no network, no Node built-ins — this module is imported by the
+// Pure decision + shaping logic for the "medical passport" share links.
+// No DB, no network, no Node built-ins — this module is imported by the
 // client share modal (for the field/TTL constants), so it must stay
 // browser-safe. Everything here is testable in isolation
 // (lib/__tests__/share-links.test.ts). The DB read/write helpers live in

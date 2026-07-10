@@ -1,4 +1,4 @@
-// Upcoming-page aggregation (issue #213, Phase 1). One profile-scoped entry
+// Upcoming-page aggregation. One profile-scoped entry
 // point, collectUpcoming(), fans out across the EXISTING forward-looking
 // due-signals — reusing each domain's own read + pure helper rather than
 // reinventing the logic — and returns a flat UpcomingItem[] for the pure

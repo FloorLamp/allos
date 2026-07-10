@@ -1,10 +1,10 @@
-// Per-profile morning digest (issue #135) — PURE assembly + rendering, no
+// Per-profile morning digest — PURE assembly + rendering, no
 // DB/network, so both are unit-tested in lib/__tests__. The DB gather lives in
 // ./digest-data. buildDigest turns the gathered facts into a section/line model,
 // collapsing empty sections and returning null when there's nothing worth sending;
 // renderDigestMessage turns that model into the Telegram message (kept separate
 // from assembly per the issue). The title always names the profile — a chat may be
-// shared by several profiles (#135's chat-id ambiguity fix).
+// shared by several profiles (the chat-id ambiguity fix).
 
 import type { NotificationMessage } from "./types";
 

@@ -3,7 +3,7 @@ import { parseCcda } from "@/lib/cda";
 import { parseFhirBundle } from "@/lib/fhir";
 
 // End-to-end (still pure — no DB) checks that the CCD and FHIR importers carry
-// derived medication COURSES on their prescription records (issue #209, Phase 2):
+// derived medication COURSES on their prescription records:
 // effective period(s) → course dates, status → open/closed + stop_reason.
 
 function ccdWithMeds(entries: string): string {
@@ -23,7 +23,7 @@ function ccdWithMeds(entries: string): string {
   </ClinicalDocument>`;
 }
 
-describe("CCD medications → courses (#209 Phase 2)", () => {
+describe("CCD medications → courses", () => {
   it("active med → one open course from effectiveTime low", () => {
     const r = parseCcda(
       ccdWithMeds(`
@@ -157,7 +157,7 @@ describe("CCD undated medication → document-date fallback (Fix 2)", () => {
   });
 });
 
-describe("FHIR medications → courses (#209 Phase 2)", () => {
+describe("FHIR medications → courses", () => {
   const bundle = (resources: object[]) =>
     JSON.stringify({
       resourceType: "Bundle",

@@ -5,7 +5,7 @@ import {
   smokingConditionExternalId,
 } from "../social-history";
 
-describe("normalizeSocialSex (#188)", () => {
+describe("normalizeSocialSex", () => {
   it("maps the SNOMED sex findings", () => {
     expect(
       normalizeSocialSex({
@@ -76,7 +76,7 @@ describe("normalizeSocialSex (#188)", () => {
   });
 });
 
-describe("normalizeSmokingStatus (#188)", () => {
+describe("normalizeSmokingStatus", () => {
   it("keeps a tobacco-exposure risk-factor status with its coded display", () => {
     expect(
       normalizeSmokingStatus({
@@ -148,7 +148,7 @@ describe("normalizeSmokingStatus (#188)", () => {
   });
 });
 
-describe("smokingConditionExternalId (#188)", () => {
+describe("smokingConditionExternalId", () => {
   it("is stable and keyed on the SNOMED code", () => {
     const key = smokingConditionExternalId({
       code: "8517006",

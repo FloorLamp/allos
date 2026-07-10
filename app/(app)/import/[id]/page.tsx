@@ -68,7 +68,7 @@ function ProvenanceRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-// Import detail (issue #208, Phase 1): for one uploaded document — provenance,
+// Import detail: for one uploaded document — provenance,
 // a "what it produced" verify breakdown (counts per kind, each linking to where
 // those rows live), basic debug (error + raw extraction), and reprocess/delete.
 export default function ImportDetailPage({
@@ -97,7 +97,7 @@ export default function ImportDetailPage({
     profile.name,
   ]);
   const raw = formatRawExtraction(doc.raw_extraction);
-  // Import DEBUGGER report (issue #208 Phase 2): what the parse DROPPED + why, and
+  // Import DEBUGGER report: what the parse DROPPED + why, and
   // which sections/resource types it did/didn't consume. Null for AI-extracted docs
   // or rows imported before this feature — the Debug cards degrade gracefully.
   const report = parseImportReport(doc.import_report);
@@ -166,7 +166,7 @@ export default function ImportDetailPage({
           <option key={n} value={n} />
         ))}
       </datalist>
-      {/* Shared provider picker options for each record's edit row (issue #178). */}
+      {/* Shared provider picker options for each record's edit row. */}
       <ProviderDatalist names={getProviderNames()} />
 
       <Link

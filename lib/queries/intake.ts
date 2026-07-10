@@ -138,7 +138,7 @@ export function getTakenDoseIds(profileId: number, date: string): Set<number> {
   return new Set(rows.map((r) => r.dose_id));
 }
 
-// Refill decrement/increment (issue #103 Phase B). Adjust an item's on-hand
+// Refill decrement/increment. Adjust an item's on-hand
 // quantity by one dose's worth (qty_per_dose), only when tracking is enabled
 // (quantity_on_hand not null). Profile-scoped, so a forged id can't touch another
 // profile's row. Callers keep the adjustment in lock-step with the existing
@@ -232,7 +232,7 @@ export function getSupplementPairs(profileId: number): SupplementPair[] {
     .all(profileId) as SupplementPair[];
 }
 
-// ---- Medication history / lifecycle (#209, Phase 1) ----
+// ---- Medication history / lifecycle ----
 
 // Every medication course for the profile, oldest first per medication. Courses
 // are a child of intake_items, so they're scoped through the parent's profile_id.
@@ -295,7 +295,7 @@ export function ensureMedicationCourse(
 }
 
 // Create the medication COURSES an import DERIVED from the source's effective
-// period(s) + status (issue #209, Phase 2), and sync the med's `active` flag to
+// period(s) + status, and sync the med's `active` flag to
 // the resulting course state. The import persist path calls this INSTEAD of
 // ensureMedicationCourse when the source carried period(s); it falls back to the
 // single ensure-course when it did not. Courses are deduped by (item_id,
@@ -580,8 +580,8 @@ export function deleteMedicationSideEffect(
   db.prepare("DELETE FROM intake_item_side_effects WHERE id = ?").run(id);
 }
 
-// Promote a medication side effect into a manual allergies/intolerance row (#183
-// path). Reads the effect + its severity off the side effect row, inserts a
+// Promote a medication side effect into a manual allergies/intolerance row.
+// Reads the effect + its severity off the side effect row, inserts a
 // profile-scoped `allergies` row (severity stored as its display label), and
 // marks the side effect resolved (kept for the medication's history). Returns
 // false when the side effect isn't owned by the profile.

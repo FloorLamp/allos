@@ -1,5 +1,5 @@
-// Event annotations for the Trends hub (issue #212, Phase 3). Overlays life-events
-// — medication course start/stop (#209), scheduled appointments (#213), and
+// Event annotations for the Trends hub. Overlays life-events
+// — medication course start/stop, scheduled appointments, and
 // active-situation changes — as vertical reference-line markers on the trend /
 // compare charts, so a metric move can be tied to a plausible cause.
 //

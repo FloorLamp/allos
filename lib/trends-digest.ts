@@ -1,4 +1,4 @@
-// "What's trending" digest for the Trends hub (issue #212, Phase 2). Given a set
+// "What's trending" digest for the Trends hub. Given a set
 // of windowed, date-keyed numeric series (body/training metrics and biomarkers),
 // auto-detect which ones are actually MOVING over the selected window — direction
 // + magnitude — and, for biomarkers carrying a canonical reference range, whether

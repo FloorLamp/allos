@@ -2,7 +2,7 @@
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
-// The Compare picker for the Trends hub (issue #212, Phase 2): two series
+// The Compare picker for the Trends hub: two series
 // dropdowns (A + B) plus a "normalize" toggle, writing their choices into the
 // cmpA / cmpB / cmpn query params on the current path (preserving the shared
 // date window + active tab). Server components read the params back and build the

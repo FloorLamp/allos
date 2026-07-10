@@ -1,4 +1,4 @@
-// Grant-matrix helpers for the family admin UI (issue #67, Phase 4). A member
+// Grant-matrix helpers for the family admin UI. A member
 // login's profile access lives in login_profiles; the admin screen submits
 // the full set of profile ids that should be granted, and the action reconciles
 // it against what's stored. Kept as a pure function so it's unit-testable without

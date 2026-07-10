@@ -116,7 +116,7 @@ export interface IngestCounts {
 // Upsert one imported body-metrics row per day, keyed by date + source. Only ever
 // touches the row this source created — manually-entered rows (and rows from other
 // sources) are never read or modified. Weight, body fat, and resting HR all live
-// here now (#120); a row may carry any subset (weight_kg is nullable). On update
+// here now; a row may carry any subset (weight_kg is nullable). On update
 // the incoming reading is folded into the stored row by mergeBodyMetric (pure,
 // tested): a later sync window with only some of the three fills the gaps without
 // blanking a value an earlier window stored, while a fresh non-null value (e.g. a
@@ -198,7 +198,7 @@ const BODY_METRIC_COMPARE_COLS: string[] = [
 ];
 
 // Body-metric measures that live in body_metrics (weight_kg/body_fat_pct/
-// resting_hr), NOT in metric_samples. A #120 one-time fold moved body fat / resting
+// resting_hr), NOT in metric_samples. A one-time fold moved body fat / resting
 // HR out of metric_samples into body_metrics so every source of them shares one
 // home; parsers route these to upsertBodyMetrics. This set is the guard (below)
 // that keeps a future path from re-splitting them back into metric_samples, whose
@@ -210,10 +210,10 @@ export const BODY_METRIC_SAMPLE_MEASURES = [
 
 // Idempotent on (profile_id, metric, source, start_time, end_time): a resent
 // record from the SAME source overwrites itself, but two DIFFERENT sources
-// reporting the same metric for the same window each keep their own row (#128) —
+// reporting the same metric for the same window each keep their own row —
 // `source` is part of the unique key, so they no longer clobber each other.
 //
-// Guard (#120 follow-up): body fat % and resting HR belong in body_metrics, not
+// Guard: body fat % and resting HR belong in body_metrics, not
 // here — see BODY_METRIC_SAMPLE_MEASURES. A row whose metric is one of those is a
 // programming error (a parser mis-routing a body metric into the samples path), so
 // it is skipped and NOT counted rather than re-splitting the measure across two

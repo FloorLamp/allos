@@ -66,7 +66,7 @@ export function getSleepSignal(profileId: number): SleepSignal | null {
 }
 
 // The most recent resting HR (bpm) and the recent baseline, or null when none is
-// recorded. Resting HR lives one-per-day in body_metrics (#120), so this reads
+// recorded. Resting HR lives one-per-day in body_metrics, so this reads
 // that column directly (profile-scoped). Baseline is the mean of the prior days
 // in the window (falls back to all when only one reading exists).
 export function getRestingHrSignal(profileId: number): RestingHrSignal | null {

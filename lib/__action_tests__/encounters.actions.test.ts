@@ -1,4 +1,4 @@
-// SERVER-ACTION TIER — visit / encounter write path (#178 Phase B). Exercises
+// SERVER-ACTION TIER — visit / encounter write path. Exercises
 // add/update/delete against a real (temp) SQLite handle to prove every mutation is
 // profile-scoped (no cross-profile bleed), that the provider + facility resolve
 // through the shared registry, and that editing never disturbs an imported row's

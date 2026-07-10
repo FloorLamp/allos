@@ -27,7 +27,7 @@ export interface BodyChartSpec {
   projectionNote?: string | null;
 }
 
-// The Body section's chart grid (issue #212, Phase 3). Client-side so a single
+// The Body section's chart grid. Client-side so a single
 // event-annotation toggle bar drives every chart at once: flip "Medications" off
 // and the markers vanish from all three. Charts, goal target lines, and projection
 // notes are computed server-side; this component only owns the toggle state and

@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
 import { resolveProviderIdByName } from "@/lib/providers-db";
 
-// Visit / encounter writes (#178 Phase B). Session-scoped; every mutation is
+// Visit / encounter writes. Session-scoped; every mutation is
 // `WHERE id = ? AND profile_id = ?` and the INSERT carries profile_id. Manual rows
 // carry a NULL source/document_id/external_id (like conditions/allergies), so the
 // per-document import delete-set never touches them; editing an imported row leaves

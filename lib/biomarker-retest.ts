@@ -1,4 +1,4 @@
-// Per-biomarker retest cadence lookup (issue #213, Phase 2). Reads the curated
+// Per-biomarker retest cadence lookup. Reads the curated
 // `retest_days` off the committed canonical dataset — the same static JSON the
 // flags-signature module imports — and exposes it keyed by canonical name. No DB
 // or network: it's a pure map over a bundled asset, so the Upcoming retest signal

@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { OWNED_TABLES } from "@/lib/owned-tables";
 
-// Static leak-detection for the multi-user conversion (issue #67, Phase 2). This
+// Static leak-detection for the multi-user conversion. This
 // reads the repo's own source as TEXT — no DB, no network, so it stays "pure" in
 // the vitest sense — extracts the first argument of every `.prepare(` call, and
 // fails if a statement touches a profile-OWNED table without `profile_id`
@@ -25,17 +25,17 @@ const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 // CHILD tables are intentionally absent: they carry no profile_id of their own and
 // are scoped through a JOIN to their parent (which IS owned, so a query that joins
 // the parent necessarily mentions profile_id). The intake_items children —
-// intake_item_doses / _logs / _pairs and, added in #209, the medication history
+// intake_item_doses / _logs / _pairs and, added later, the medication history
 // tables `medication_courses` + `intake_item_side_effects` — are reached this way:
 // their READ queries JOIN intake_items and filter ii.profile_id = ?, and their
 // child-only writes (WHERE item_id = ?) are guarded by a prior profile-scoped
-// ownership check on the parent intake_items row. Both #209 tables FK item_id →
-// intake_items(id) ON DELETE CASCADE, so deleteProfile (and the #203 document
+// ownership check on the parent intake_items row. Both of those tables FK item_id →
+// intake_items(id) ON DELETE CASCADE, so deleteProfile (and the document
 // delete) clear them via the parent.
 //
 // GLOBAL tables are intentionally absent, so a statement touching only one of them
 // is never flagged: logins, profiles, login_profiles, sessions, login_attempts,
-// global settings, canonical_biomarkers, and — added in issue #178 — `providers`.
+// global settings, canonical_biomarkers, and — added later — `providers`.
 // The providers registry is shared across the whole family/instance (a family sees
 // one "Quest Diagnostics"), modeled like logins/profiles: the per-record LINK
 // (immunizations/medical_records/intake_items.provider_id) lives on a profile-owned

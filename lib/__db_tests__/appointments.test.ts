@@ -1,4 +1,4 @@
-// DB INTEGRATION TIER (issue #213, Phase 2). Two features against a real
+// DB INTEGRATION TIER. Two features against a real
 // (in-memory) SQLite handle:
 //   1. Appointments: the queries are profile-scoped (no cross-profile bleed), the
 //      scheduled/settled split is right, and a scheduled visit surfaces in

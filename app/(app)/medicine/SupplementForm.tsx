@@ -86,11 +86,11 @@ export default function SupplementForm({
   const [name, setName] = useState(s?.name ?? "");
   const [condition, setCondition] = useState(s?.condition ?? "daily");
   const [brand, setBrand] = useState(s?.brand ?? "");
-  // Medication identity (#103 Phase C) — a medication reveals prescriber/pharmacy/
+  // Medication identity — a medication reveals prescriber/pharmacy/
   // Rx + an "as needed" (PRN) toggle that suppresses scheduled reminders.
   const [kind, setKind] = useState<SupplementKind>(s?.kind ?? "supplement");
   const [asNeeded, setAsNeeded] = useState(s?.as_needed === 1);
-  // Missed-dose escalation (#103 Phase A) — critical meds get a follow-up nudge.
+  // Missed-dose escalation — critical meds get a follow-up nudge.
   const [critical, setCritical] = useState(s?.critical === 1);
   const [error, setError] = useState<string | null>(null);
   // Unique id suffix so multiple forms on one page (add + inline edit rows)
@@ -176,7 +176,7 @@ export default function SupplementForm({
       {s && <input type="hidden" name="id" value={s.id} />}
       <input type="hidden" name="kind" value={kind} />
 
-      {/* Kind toggle — Supplement vs Medication (#103 Phase C) */}
+      {/* Kind toggle — Supplement vs Medication */}
       <div className="sm:col-span-2">
         <label className="label">Type</label>
         <div className="inline-flex overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700">
@@ -309,7 +309,7 @@ export default function SupplementForm({
         />
       </div>
 
-      {/* Medication-only identity + as-needed (#103 Phase C) */}
+      {/* Medication-only identity + as-needed */}
       {kind === "medication" && (
         <div className="sm:col-span-2 grid grid-cols-1 gap-3 border-t border-slate-100 pt-4 sm:grid-cols-2 dark:border-slate-800">
           <div>
@@ -352,7 +352,7 @@ export default function SupplementForm({
             <label className="label" htmlFor={`supp-provider-${fid}`}>
               Provider / pharmacy
             </label>
-            {/* Provider picker (issue #178): create-on-type from the shared
+            {/* Provider picker: create-on-type from the shared
                 registry via the page's <datalist id="provider-names">. */}
             <input
               id={`supp-provider-${fid}`}
@@ -428,7 +428,7 @@ export default function SupplementForm({
         )}
       </div>
 
-      {/* Refill tracking (#103 Phase B) */}
+      {/* Refill tracking */}
       <div className="sm:col-span-2 border-t border-slate-100 pt-4 dark:border-slate-800">
         <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
           Refill tracking (optional)

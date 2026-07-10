@@ -9,7 +9,7 @@ import { round } from "./units";
 // Circumference" vital needs its own recognizer + projection, EXACTLY parallel to
 // the height arm in ./height-extract (which routes to metric_samples 'height_cm').
 // Kept pure + unit-tested; the persist writer (lib/import-persist) is the only DB
-// caller. (#182)
+// caller.
 
 // Metric recognition matches on the same order-independent token key the
 // canonical-name machinery uses, so spelling/punctuation variants match without

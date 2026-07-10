@@ -1,4 +1,4 @@
-// Pure aggregation shaping for the Upcoming page (issue #213, Phase 1) — the
+// Pure aggregation shaping for the Upcoming page — the
 // forward-looking mirror of the Timeline. It carries NO DB/network: the query
 // layer (lib/queries/upcoming.ts) turns each existing due-signal into these
 // plain UpcomingItem records, and this module buckets them into urgency bands

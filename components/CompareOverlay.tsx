@@ -10,8 +10,8 @@ import {
   type TrendAnnotation,
 } from "@/lib/trend-annotations";
 
-// The Compare tab's overlay chart plus its event-annotation toggle (issue #212,
-// Phase 3). Client-side so the per-type toggle can add/remove the vertical markers
+// The Compare tab's overlay chart plus its event-annotation toggle.
+// Client-side so the per-type toggle can add/remove the vertical markers
 // live; the aligned series + correlation read-out are computed server-side in
 // CompareSection and passed straight through to CompareChart.
 export default function CompareOverlay({

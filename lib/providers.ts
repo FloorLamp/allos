@@ -1,7 +1,7 @@
 import type { ProviderType } from "./types";
 
-// Pure normalization + global dedup for the shared providers registry (issue
-// #178). No DB/network — the DB resolver (lib/providers-db) computes the same key
+// Pure normalization + global dedup for the shared providers registry.
+// No DB/network — the DB resolver (lib/providers-db) computes the same key
 // and INSERTs on a UNIQUE(dedup_key) index, so "resolve or create" is idempotent
 // and a reprocess never coins a duplicate provider.
 

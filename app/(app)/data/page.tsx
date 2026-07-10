@@ -28,7 +28,7 @@ function parseSection(value: string | string[] | undefined): Section {
   return SECTIONS.includes(first as Section) ? (first as Section) : "import";
 }
 
-// The consolidated data hub (issues #208 + #212): one "Data" umbrella for
+// The consolidated data hub: one "Data" umbrella for
 // everything you do with your data. The "Import" tab is every way to bring data
 // in (upload a document, paste a workout/lab log, connect a device/service) plus
 // the unified, profile-scoped import log — each entry drilling into a verify +

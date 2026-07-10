@@ -121,7 +121,7 @@ export default function SupplementsPage() {
         (dosesBySupp.get(s.id) ?? []).map((dose) => ({ supplement: s, dose }))
       );
 
-  // Medications (#103 Phase C) render in their own section; the buckets/paused
+  // Medications render in their own section; the buckets/paused
   // lists below are supplements only, so the two kinds never intermix.
   const isMed = (s: Supplement) => s.kind === "medication";
   const dueItems = itemsFor((s) => !isMed(s) && !!s.active && isDueOn(s, ctx));
@@ -130,7 +130,7 @@ export default function SupplementsPage() {
   );
   const paused = itemsFor((s) => !isMed(s) && !s.active);
 
-  // Medications (#209) render one card per medication (not per dose), carrying
+  // Medications render one card per medication (not per dose), carrying
   // their course history + side effects. Group the profile's courses/side effects
   // by medication, then partition into Current (an open course) vs Past
   // (discontinued). A med is "loggable today" (check-offs shown) when it's active
@@ -233,7 +233,7 @@ export default function SupplementsPage() {
 
   return (
     <div>
-      {/* Provider picker options for the medication add/edit forms (issue #178). */}
+      {/* Provider picker options for the medication add/edit forms. */}
       <ProviderDatalist names={getProviderNames()} />
       <PageHeader
         title="Supplements & Medications"

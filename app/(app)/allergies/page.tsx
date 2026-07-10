@@ -8,7 +8,7 @@ import { addAllergy } from "./actions";
 
 export const dynamic = "force-dynamic";
 
-// Allergies (#179): documented allergies (CCD Allergies section + manual) merged
+// Allergies: documented allergies (CCD Allergies section + manual) merged
 // with lab-derived allergen-specific IgE sensitizations (read-time; RAST /
 // ImmunoCAP). The merged view leads; the stored rows are managed below.
 export default function AllergiesPage() {

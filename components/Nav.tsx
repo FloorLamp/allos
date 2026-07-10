@@ -48,8 +48,8 @@ type Leaf = {
 
 type Group = {
   // A collapsible submenu. Its `children` are leaves that live one level down;
-  // adding a new child (e.g. Visits/Encounters once #178 Phase B ships) is a
-  // one-line array edit here (issue #192).
+  // adding a new child (e.g. Visits/Encounters) is a
+  // one-line array edit here.
   group: string;
   icon: TablerIcon;
   children: Leaf[];
@@ -60,7 +60,7 @@ type Entry = Leaf | Group;
 const isGroup = (e: Entry): e is Group => "group" in e;
 
 // The medical-record pages, grouped under a single collapsible "Medical" entry
-// so the sidebar stays uncluttered (issue #192). Passport is the LAST child — it
+// so the sidebar stays uncluttered. Passport is the LAST child — it
 // is the summary of these records — so it lives here rather than top-level; the
 // children array is the only place the records live — append here to add another.
 const RECORDS: Group = {
@@ -107,7 +107,7 @@ const entries: Entry[] = [
   RECORDS,
   // One "Data" umbrella covering both halves — bringing data in (upload/paste/
   // connect) and managing/exporting what's logged. The former standalone /import
-  // hub folded into /data as its "Import" tab (#212); nav label and URL match.
+  // hub folded into /data as its "Import" tab; nav label and URL match.
   { href: "/data", label: "Data", icon: IconDatabase },
   { href: "/settings", label: "Settings", icon: IconSettings },
 ];

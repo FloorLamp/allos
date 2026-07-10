@@ -15,7 +15,7 @@ import ReprocessButton from "@/components/ReprocessButton";
 
 // Data → Review, "Recent imports": the unified feed of everything that has brought
 // data into this profile — background integration syncs, uploaded documents, and
-// pasted/CSV jobs — merged newest-first (issue #208 / #212). Every stream renders
+// pasted/CSV jobs — merged newest-first. Every stream renders
 // through the ONE <FeedRow> below; the pure lib/import-feed shapes each entry into
 // a common view, so only the stream-specific extras (a document's provenance flag,
 // a sync's admin raw payload) branch here. Server component — the page reads the

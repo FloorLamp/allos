@@ -1,4 +1,4 @@
-// Pin-to-Trends (issue #212, Phase 2). A profile can pin specific Overview tiles
+// Pin-to-Trends. A profile can pin specific Overview tiles
 // — the standard body/training metrics ("metric:weight") and individual
 // biomarkers ("bio:LDL Cholesterol") — so they persist at the TOP of the Trends
 // Overview across sessions. The pin list is stored per-profile as a JSON array in

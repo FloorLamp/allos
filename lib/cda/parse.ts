@@ -220,7 +220,7 @@ export function extractFromCcda(
       reasonForVisitConsumed = true;
     }
   }
-  // Enrich the header demographics with the Social History sex (#188) — the
+  // Enrich the header demographics with the Social History sex — the
   // fallback when the header states none. Prefer the header's own sex; never
   // override it. If the header carried no demographics at all but the section
   // codes a sex, surface it as sex-only demographics so profile seeding still
@@ -263,7 +263,7 @@ export function extractFromCcda(
     (a.target_date ?? "").localeCompare(b.target_date ?? "")
   );
 
-  // Import DEBUGGER report (issue #208 Phase 2): coverage + section drops from the
+  // Import DEBUGGER report: coverage + section drops from the
   // walker, plus the per-kind `deduped` drops and the kept-vs-considered counts.
   const { coverage, drops } = buildCcdaCoverage(
     sections,
@@ -410,7 +410,7 @@ export function mergeImportResults(results: ImportResult[]): ImportResult {
     // Demographics come from the FIRST document that carries any (callers order
     // largest-first). NB: this is a whole-OBJECT pick, not a field-level merge — so
     // if the largest document's header states a sex but a SMALLER document is the
-    // only one whose Social History codes a sex (#188), the smaller doc's
+    // only one whose Social History codes a sex, the smaller doc's
     // social-history sex is NOT backfilled here. In practice a MyChart XDM's
     // comprehensive DOC0001 carries both the header and the Social History section,
     // so the largest document already has the richest demographics; this is a
@@ -446,7 +446,7 @@ export function mergeImportResults(results: ImportResult[]): ImportResult {
     (a.target_date ?? "").localeCompare(b.target_date ?? "")
   );
 
-  // Merge the per-document reports (issue #208 Phase 2): coverage + drops concat
+  // Merge the per-document reports: coverage + drops concat
   // (the view dedups coverage by title), plus the CROSS-document `deduped` drops —
   // the rows mergeDedupe collapsed because a section (Results/Allergies/…) appears
   // in both DOC0001 and DOC0002. `imported` is the final merged row count.

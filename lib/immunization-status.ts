@@ -27,7 +27,7 @@ export type VaccineStatus =
   | "not_recommended" // outside the age/sex window, or a record-only vaccine with no dose
   | "declined"; // terminal: the profile is not tracking / has declined this vaccine
 
-// A per-profile, per-vaccine manual status override (issue #155). `immune`
+// A per-profile, per-vaccine manual status override. `immune`
 // counts the series complete regardless of dose count (the manual counterpart to
 // titer-driven immunity); `declined` drops the vaccine from needs-attention and
 // shows a muted terminal status. Stored in `immunization_overrides` and resolved
@@ -217,7 +217,7 @@ export function applyOverride(
   };
 }
 
-// The status-filter buckets the master table exposes (issue #155). Distinct from
+// The status-filter buckets the master table exposes. Distinct from
 // the raw VaccineStatus so a titer/override-driven completion filters as "immune"
 // rather than plain "complete", and due/overdue collapse into "needs-attention".
 export type ImmunizationFilter =

@@ -10,7 +10,7 @@ import {
 } from "@/app/(app)/trends/actions";
 import type { TrendView } from "@/lib/trend-views";
 
-// The Trends hub's saved-views switcher (issue #212, Phase 3). A named snapshot of
+// The Trends hub's saved-views switcher. A named snapshot of
 // { range + tab + compare pair + pins } per profile: apply one to flip the whole
 // hub to e.g. "Lipids review" without rebuilding it. Applying redirects with the
 // hub's existing ?from/to/tab/cmpA/cmpB/cmpn params (and restores the pins

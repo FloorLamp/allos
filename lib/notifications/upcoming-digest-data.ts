@@ -1,9 +1,9 @@
-// "What's due" digest DB gather + send orchestration (issue #213, Phase 3). Reuses
+// "What's due" digest DB gather + send orchestration. Reuses
 // the Upcoming aggregation — collectUpcoming (fully profile-scoped, and already
 // filtered through the page's snooze/dismiss + isTrainingRestricted rules) and the
 // pure groupUpcoming banding — so the push and the page never diverge. Called once
 // per hour per profile from the notify tick; hard-deduped to one send per profile
-// per day, mirroring the morning digest (#135) dedup + gating exactly.
+// per day, mirroring the morning digest dedup + gating exactly.
 
 import { today } from "../db";
 import { collectUpcoming } from "../queries";

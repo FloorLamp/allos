@@ -12,7 +12,7 @@ import {
   serializeSituationEvents,
 } from "../lib/trend-annotations";
 
-// The seed populates the bootstrap profile (issue #67, Phase 2). Owned-table
+// The seed populates the bootstrap profile. Owned-table
 // rows are born NOT NULL on a fresh DB, so every insert carries profile_id = 1.
 const SEED_PROFILE_ID = 1;
 
@@ -23,7 +23,7 @@ function daysAgo(n: number): string {
 }
 
 // The seed targets profile 1 specifically. On a fresh DB bootstrapAuth() creates
-// it; if it's missing here, an admin deleted it (issue #67 deletion). Rather than
+// it; if it's missing here, an admin deleted it (profile deletion). Rather than
 // resurrect a deliberately-removed profile, fail with guidance.
 const profileOne = db.prepare("SELECT 1 FROM profiles WHERE id = 1").get();
 if (!profileOne) {
@@ -334,7 +334,7 @@ freq.run("group", "Lower", 1); // leg day → met
 freq.run("region", "Chest", 2); // one push day → partial
 freq.run("type", "cardio", 2); // one recent run → partial
 
-// Profile demographics (issue #67 / #200 / #202): a ~40-year-old male. Sex is set
+// Profile demographics: a ~40-year-old male. Sex is set
 // BEFORE the medical records below so reconcileFlags picks the sex-specific
 // reference/optimal bands (hormones, ferritin, …); birthdate (also set with the
 // immunizations further down) makes the immunization schedule age-aware. No
@@ -613,7 +613,7 @@ const PANELS: Panel[] = [
     ref: null,
     values: [42, 44, 46, 48, 50, 52],
   },
-  // Male reproductive hormones (issue #200) — flags resolve against the male
+  // Male reproductive hormones — flags resolve against the male
   // sex-specific bands set above. Total testosterone climbs from below the male
   // optimal band (<500) into it; free testosterone + estradiol stay mid-range.
   {
@@ -871,7 +871,7 @@ db.prepare(
   "Calcium blocks iron absorption"
 );
 
-// Medications (#209) — a current med with a prior (stopped) course to demo the
+// Medications — a current med with a prior (stopped) course to demo the
 // course history + side effects, plus a fully discontinued med for the Past list.
 const medIns = db.prepare(
   `INSERT INTO intake_items
@@ -937,7 +937,7 @@ for (let d = 6; d >= 1; d--) {
   }
 }
 
-// ── Providers (GLOBAL registry, #178) ───────────────────────────────────────
+// ── Providers (GLOBAL registry) ───────────────────────────────────────
 // Not profile-scoped: appointments/encounters/immunizations link to these via a
 // nullable provider_id. dedup_key is the pure global key so a later import won't
 // coin a duplicate.
@@ -986,7 +986,7 @@ const clinic = addProvider("Northside Family Medicine", "organization", {
   phone: "(415) 555-0100",
 });
 
-// ── Appointments (#221) ──────────────────────────────────────────────────────
+// ── Appointments ──────────────────────────────────────────────────────
 // One completed (history) plus scheduled rows spread so the Upcoming urgency
 // bands each get a hit: a past-and-still-scheduled row → Overdue, one today, one
 // this week, one further out → Later.
@@ -1035,7 +1035,7 @@ apptIns.run(
   "scheduled"
 ); // Later
 
-// ── Conditions / problem list (#180) ─────────────────────────────────────────
+// ── Conditions / problem list ─────────────────────────────────────────
 const condIns = db.prepare(
   `INSERT INTO conditions (profile_id, name, code, code_system, status, onset_date, resolved_date, notes)
    VALUES (1,?,?,?,?,?,?,?)`
@@ -1068,7 +1068,7 @@ condIns.run(
   "Resolved with supplementation"
 ); // coherent with the climbing Vitamin D panel
 
-// ── Allergies (#183) ─────────────────────────────────────────────────────────
+// ── Allergies ─────────────────────────────────────────────────────────
 // The Amoxicillin course seeded above is DISCONTINUED (a past, inactive med), so a
 // documented Penicillin allergy is coherent — discovered after the course, which is
 // why it was stopped. The Penicillin row also anchors the #19 global-search e2e
@@ -1103,7 +1103,7 @@ allIns.run(
   "Seasonal (spring)"
 );
 
-// ── Encounters / visit history (#178) ────────────────────────────────────────
+// ── Encounters / visit history ────────────────────────────────────────
 const encIns = db.prepare(
   `INSERT INTO encounters (profile_id, date, end_date, type, class_code, reason, diagnoses, provider_id, location_provider_id, notes)
    VALUES (1,?,?,?,?,?,?,?,?,?)`
@@ -1300,7 +1300,7 @@ upsertProfileSetting.run(
   ])
 );
 
-// ── Refill tracking (#103 Phase B) — low days-of-supply → Upcoming refill signal.
+// ── Refill tracking — low days-of-supply → Upcoming refill signal.
 const setSupply = db.prepare(
   `UPDATE intake_items SET quantity_on_hand = ?, qty_per_dose = ? WHERE profile_id = 1 AND name = ?`
 );
@@ -1312,7 +1312,7 @@ setSupply.run(8, 1, "Magnesium Glycinate"); // ≈8 days left → This week band
 // current weigh-in near 80, so the projection reads "behind".
 bodyGoal.run("Reach 74 kg", "body", 74, "weight", 84, daysAgo(-6));
 
-// ── Upcoming snooze/dismiss (#224) — populate the "Snoozed & dismissed" section.
+// ── Upcoming snooze/dismiss — populate the "Snoozed & dismissed" section.
 // Both keys point at genuinely-firing stale-biomarker signals (Uric Acid & Free
 // T4 are >1y old), so each is a real suppression the restore UI can list. Ferritin
 // stays live, so the biomarker band still has an item.
@@ -1323,7 +1323,7 @@ const dismissIns = db.prepare(
 dismissIns.run("biomarker:uric acid", daysAgo(-5), null); // snoozed 5 days out
 dismissIns.run("biomarker:free t4", null, `${daysAgo(0)} 09:00:00`); // dismissed
 
-// ── Import log (#208) — one completed medical-document import, linked to the most
+// ── Import log — one completed medical-document import, linked to the most
 // recent lab draw's rows so /import shows a real "produced N rows" breakdown. No
 // blob is needed on disk: content_hash is pre-set so the boot hash-backfill skips
 // it, and the row only feeds the log/detail views.

@@ -1,6 +1,6 @@
 // DB INTEGRATION TIER (not the pure unit suite in lib/__tests__).
 //
-// Cheap backstop for the bare-INTEGER provider links (issue #178): the nullable
+// Cheap backstop for the bare-INTEGER provider links: the nullable
 // provider_id / location_provider_id columns on profile-owned rows point into the
 // shared, GLOBAL providers registry, but several were added via addColumnIfMissing
 // as plain INTEGERs (no enforced REFERENCES on upgraded DBs). This test asserts no

@@ -17,7 +17,7 @@ import { AUDIT_ACTIONS } from "@/lib/audit-actions";
 const SHARE_RATE_LIMIT = 30;
 const SHARE_RATE_WINDOW_MS = 60 * 1000;
 
-// Unauthenticated, read-only "medical passport" render (issue #105). This is the
+// Unauthenticated, read-only "medical passport" render. This is the
 // ONLY session-free view of a profile's data, so it is deliberately minimal:
 //   - Looked up by the unguessable token's hash; ANY miss/expiry/revocation
 //     returns notFound() (a uniform 404 that never confirms a link exists).

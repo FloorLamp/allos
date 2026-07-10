@@ -14,7 +14,7 @@ import type { AppVersion } from "@/lib/version";
 // Mobile-only top bar + slide-in drawer. The desktop sidebar in app/layout.tsx is
 // hidden below `md`; this surfaces the same navigation on phones by rendering the
 // shared <SidebarContent> (the single source of truth for the sidebar's contents)
-// inside the drawer, so the two viewports can't drift apart (issue #106). Only the
+// inside the drawer, so the two viewports can't drift apart. Only the
 // collapsed top bar — hamburger, wordmark and a quick "log activity" shortcut — is
 // mobile-specific chrome and lives here.
 export default function MobileNav({

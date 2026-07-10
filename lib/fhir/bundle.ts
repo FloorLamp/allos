@@ -113,7 +113,7 @@ export function resourcesToImportResult(
   );
 }
 
-// ---- import DEBUGGER: drop-reason + coverage (issue #208 Phase 2) ----
+// ---- import DEBUGGER: drop-reason + coverage ----
 //
 // The resource mappers above return null for a retracted (entered-in-error) reading,
 // one with no usable date, an unmapped vaccine code, or a "no known allergy" coded
@@ -254,7 +254,7 @@ function fhirDropReason(resourceType: string, r: any): DropReason {
 // carry no entry in RESOURCE_MAPPERS yet are still read. A `Medication` is resolved
 // for a MedicationRequest/Statement's drug (mapMedicationResource), and
 // `Practitioner` / `Organization` / `PractitionerRole` are routed into the shared
-// providers registry as performers / participants / locations (#178,
+// providers registry as performers / participants / locations (via
 // providerFromResource). Real Epic/Apple bundles carry these as top-level entries,
 // so without this they'd wrongly read "present but not consumed" (and emit spurious
 // unrecognized_section drops). Genuinely-unconsumed support types —
@@ -324,7 +324,7 @@ export function entriesToImportResult(
   const seenCarePlan = new Set<string>();
   const seenCareGoal = new Set<string>();
 
-  // Import DEBUGGER accumulators (issue #208 Phase 2).
+  // Import DEBUGGER accumulators.
   const drops: ImportDrop[] = [];
   const dropFor = (r: any): ImportDrop => ({
     kind: fhirDropKind(r.resourceType),

@@ -39,7 +39,7 @@ import { matchPaletteActions, type PaletteAction } from "@/lib/palette-actions";
 import { parseQuickLog, type QuickLogWeight } from "@/lib/palette-quick-log";
 import type { WeightUnit } from "@/lib/settings";
 
-// Global command palette (issue #133, extended for create actions in #29).
+// Global command palette (extended for create actions in #29).
 // Mounted once from the app layout; renders nothing until opened by Cmd/Ctrl-K or
 // the SEARCH_OPEN_EVENT dispatched by the sidebar's search trigger. A single input
 // drives (1) inline quick-log parsing (`weight 82.5` → a body-metrics entry Enter

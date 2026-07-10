@@ -56,7 +56,7 @@ export function textOf(v: any): string | null {
   return null;
 }
 
-// ---- provider / organization extraction (issue #178) ----
+// ---- provider / organization extraction ----
 
 // A CDA <name> (given(s) + family, or a bare text node) → one display string.
 // Mirrors cdaName but for an assignedPerson rather than the patient.

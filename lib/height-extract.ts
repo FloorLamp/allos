@@ -8,7 +8,7 @@ import { round } from "./units";
 // getLatestMetricValue). So an imported "Body Height" vital needs its own
 // recognizer + projection, parallel to the weight arm in ./body-metric-extract
 // (which routes to body_metrics). Kept pure + unit-tested; the persist writer
-// (lib/import-persist) is the only DB caller. (#167)
+// (lib/import-persist) is the only DB caller.
 
 // Metric recognition matches on the same order-independent token key the
 // canonical-name machinery uses, so spelling/punctuation variants match without

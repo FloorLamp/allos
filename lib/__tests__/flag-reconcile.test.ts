@@ -154,7 +154,7 @@ describe("computeFlagReconciliation", () => {
     expect(changes).toEqual([{ id: 1, flag: "high" }]);
   });
 
-  // Reproductive-status threading (#202): a hormone entry with a postmenopausal
+  // Reproductive-status threading: a hormone entry with a postmenopausal
   // status range that's tighter than the reproductive-age envelope.
   const e2 = {
     name: "Estradiol",

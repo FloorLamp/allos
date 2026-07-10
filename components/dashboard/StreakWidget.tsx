@@ -1,7 +1,7 @@
 import { IconFlame } from "@tabler/icons-react";
 import WidgetHeader from "./WidgetHeader";
 
-// Activity streak (NEW, issue #156, fitness). The headline is the rest-tolerant
+// Activity streak (NEW, fitness). The headline is the rest-tolerant
 // "flexible" streak (lib/streak.flexibleStreak) — active days in the current run,
 // tolerating the odd rest day — so a healthy training rhythm isn't reset by a
 // single day off. The strict consecutive-days streak (currentStreak) is kept as

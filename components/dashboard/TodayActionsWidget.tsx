@@ -1,6 +1,6 @@
 import type { DigestModel } from "@/lib/notifications/digest";
 
-// Today's actions (NEW, issue #156) — surfaces the pre-built morning-digest model
+// Today's actions (NEW) — surfaces the pre-built morning-digest model
 // (doses/goals due today, yesterday's recap, newly-flagged biomarkers + new docs)
 // right on the dashboard. `model` is null when the digest has nothing to say, in
 // which case the card reads "All clear".

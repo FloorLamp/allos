@@ -7,7 +7,7 @@ import type { ProfileSummary } from "@/lib/profile-summary";
 import { ordinalPercentile } from "@/lib/growth-format";
 import { statusBadgeParts } from "@/lib/immunization-status-ui";
 
-// The shared, presentational "medical passport" (issue #105). Rendered verbatim
+// The shared, presentational "medical passport". Rendered verbatim
 // by BOTH the authenticated page (app/(app)/profile) and the unauthenticated
 // share render (app/share/[token]) — one component, so the two surfaces can't
 // drift. It is pure markup (no hooks, no server-only APIs, no navigation), which
@@ -87,7 +87,7 @@ function Empty({ children }: { children: React.ReactNode }) {
 }
 
 // A pediatric growth-percentile pill (e.g. "Weight 40th"), shown on the passport
-// Body section for a child in WHO/CDC chart range (#101).
+// Body section for a child in WHO/CDC chart range.
 function GrowthBadge({
   label,
   percentile,
@@ -214,7 +214,7 @@ export default function ProfilePassport({
           </div>
         </section>
 
-        {/* Allergies — an emergency-card essential (#179), shown prominently. Merges
+        {/* Allergies — an emergency-card essential, shown prominently. Merges
           documented allergies with lab-derived IgE sensitizations. */}
         {inScope(fields, "allergies") && (
           <Section title="Allergies">
@@ -258,7 +258,7 @@ export default function ProfilePassport({
           </Section>
         )}
 
-        {/* Conditions / problem list — a passport essential (#180). */}
+        {/* Conditions / problem list — a passport essential. */}
         {inScope(fields, "conditions") && (
           <Section title="Conditions / problems">
             {summary.conditions.length > 0 ? (
@@ -374,7 +374,7 @@ export default function ProfilePassport({
               <Empty>No body metrics recorded.</Empty>
             )}
 
-            {/* Pediatric growth percentiles (#101), shown only for a child in
+            {/* Pediatric growth percentiles, shown only for a child in
               chart range. "Reference — not medical advice" per the disclaimer. */}
             {body.growth && (
               <div className="mt-4 border-t border-black/5 pt-3 dark:border-white/10">

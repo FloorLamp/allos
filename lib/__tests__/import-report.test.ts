@@ -16,7 +16,7 @@ import {
   type ImportReport,
 } from "@/lib/import-report";
 
-// The import DEBUGGER (issue #208 Phase 2): drop-reason classification + coverage.
+// The import DEBUGGER: drop-reason classification + coverage.
 // These are pure — parseCcda / parseFhirBundle build the report from a fixture, and
 // the derivations (grouping, coverage split, merge, (de)serialize) are exercised
 // directly.

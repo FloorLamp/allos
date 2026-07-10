@@ -1,5 +1,5 @@
 // DB INTEGRATION TIER — snooze/dismiss filtering in the Upcoming aggregation +
-// the "what's due" digest (issue #213, Phase 3). Seeds two profiles via the shared
+// the "what's due" digest. Seeds two profiles via the shared
 // fixture (each gets a pending med dose + a low refill), writes upcoming_dismissals
 // rows directly (the actions' write path is covered in the action tier), and proves:
 //   - a dismissal hides its item from collectUpcoming and surfaces it in

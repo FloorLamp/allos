@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
 import type { AllergyStatus } from "@/lib/types";
 
-// Allergy writes (#179). Session-scoped; every mutation is
+// Allergy writes. Session-scoped; every mutation is
 // `WHERE id = ? AND profile_id = ?`. Manual rows carry a NULL source/document_id
 // so the per-document import delete-set never touches them.
 

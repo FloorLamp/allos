@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
 import { resolveProviderIdByName } from "@/lib/providers-db";
 import type { AppointmentStatus } from "@/lib/types";
 
-// CRUD for scheduled medical visits (issue #213, Phase 2). Every write is
+// CRUD for scheduled medical visits. Every write is
 // profile-scoped (profileId from requireWriteAccess) and revalidates the surfaces an
 // appointment shows on. The optional provider is resolved through the shared,
 // GLOBAL registry via a create-on-type name (like the immunizations form).

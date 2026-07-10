@@ -47,7 +47,7 @@ export default function LineChartCard({
   labelFormatter?: (value: string) => string;
   // Chart height (Tailwind class); shrink for compact/secondary charts.
   heightClass?: string;
-  // Event annotations (issue #212, Phase 3), pre-filtered to the enabled kinds by
+  // Event annotations, pre-filtered to the enabled kinds by
   // the parent. Drawn as vertical reference lines, snapped to the nearest charted
   // date (recharts positions a category-axis ReferenceLine only on an actual point).
   annotations?: TrendAnnotation[];

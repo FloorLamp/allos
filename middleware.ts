@@ -29,7 +29,7 @@ const PUBLIC_PATHS = new Set([
   "/icon.svg",
   "/apple-icon",
   "/favicon.ico",
-  // PWA (issue #134). These must load without a session: a standalone launch
+  // PWA. These must load without a session: a standalone launch
   // starts unauthenticated, the SW registers on the login page, and the offline
   // fallback has to render when there's no live session at all. None expose PHI —
   // the manifest and offline page are static, and the worker's caching policy
@@ -43,7 +43,7 @@ function isPublic(pathname: string): boolean {
   if (PUBLIC_PATHS.has(pathname)) return true;
   // next/og serves the apple icon under a hashed child path (/apple-icon/<id>).
   if (pathname.startsWith("/apple-icon")) return true;
-  // Unauthenticated, read-only "medical passport" share links (issue #105). The
+  // Unauthenticated, read-only "medical passport" share links. The
   // path carries an unguessable token; the handler (app/share/[token]) validates
   // it against the DB (hash lookup + expiry/revocation) and 404s on any miss.
   if (pathname.startsWith("/share/")) return true;

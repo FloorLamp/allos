@@ -60,7 +60,7 @@ export default function AppointmentList({
   const confirm = useConfirm();
 
   // Complete a scheduled visit, then offer to schedule the next one prefilled
-  // from it (issue #213 Phase 3) — so recurring visits don't fall off.
+  // from it — so recurring visits don't fall off.
   async function onComplete(a: Appointment) {
     await submit(completeAppointment, a.id);
     setFollowUpFrom(a);

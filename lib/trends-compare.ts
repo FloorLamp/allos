@@ -1,4 +1,4 @@
-// Overlay / compare math for the Trends hub (issue #212, Phase 2). Given two
+// Overlay / compare math for the Trends hub. Given two
 // date-keyed numeric series (e.g. body weight vs resting HR, or two biomarkers),
 // align them onto one shared time axis, optionally min-max normalize each so
 // series in different units can be eyeballed together, and compute a Pearson

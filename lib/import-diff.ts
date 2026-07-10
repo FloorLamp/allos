@@ -1,4 +1,4 @@
-// Pure reprocess-DIFF logic (issue #208, Phase 3). A reprocess re-runs extraction
+// Pure reprocess-DIFF logic. A reprocess re-runs extraction
 // and REPLACES a document's imported rows; before Phase 3 that happened silently.
 // This module lets the UI PREVIEW what a fresh re-extraction would change against
 // what's currently persisted, per entity type, so the user confirms an informed

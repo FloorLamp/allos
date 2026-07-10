@@ -9,10 +9,10 @@ import canonicalSeed from "./canonical-biomarkers.json";
 // change which readings convert and flag, so force one re-reconcile.
 // v3: age-banded reference ranges (ranges_by_age) — flags are now derived against
 // the subject's age on the record's collection date, so every stored record must
-// re-reconcile once against its age band (#101).
+// re-reconcile once against its age band.
 // v4: reproductive-status ranges (ranges_by_status) — for female physiology, an
 // explicit menopausal status now overrides the age proxy in referenceRange, so
-// hormone records for a profile with a status set must re-reconcile once (#202).
+// hormone records for a profile with a status set must re-reconcile once.
 export const FLAG_LOGIC_VERSION = 4;
 
 // The canonical fields that can change a record's derived flag: the reference and
@@ -40,7 +40,7 @@ const FLAG_RELEVANT_FIELDS = [
   "ranges_by_age",
   // Reproductive-status reference overrides (JSON object). Hashed by value like
   // ranges_by_age, so adding/editing a status range flows into the signature and
-  // re-reconciles stored flags on the next boot (#202).
+  // re-reconciles stored flags on the next boot.
   "ranges_by_status",
   "conversions",
 ] as const;
