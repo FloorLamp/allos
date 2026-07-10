@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   pickDispatchError,
   isDeliveryHealthy,
+  decideMarker,
 } from "../notifications/delivery-status";
 
 describe("pickDispatchError", () => {
@@ -67,5 +68,98 @@ describe("isDeliveryHealthy", () => {
 
   it("is false when nothing was attempted (clears nothing)", () => {
     expect(isDeliveryHealthy([])).toBe(false);
+  });
+});
+
+describe("decideMarker (channel-aware clearing, #192)", () => {
+  it("sets the failure when a channel failed (no prior marker)", () => {
+    expect(
+      decideMarker([{ id: "push", ok: false, error: "bad VAPID" }], "")
+    ).toEqual({
+      action: "set",
+      failure: { channel: "push", error: "bad VAPID" },
+    });
+  });
+
+  it("keeps the marker untouched when nothing was attempted", () => {
+    expect(decideMarker([], "push")).toEqual({ action: "keep" });
+  });
+
+  // --- Cross-profile tick: push broken globally, Telegram works. ---
+
+  it("A: a both-channels profile with a broken push SETS the push failure", () => {
+    // Profile A dispatches Telegram (ok) + push (fails) → record push.
+    expect(
+      decideMarker(
+        [
+          { id: "telegram", ok: true },
+          { id: "push", ok: false, error: "bad VAPID" },
+        ],
+        ""
+      )
+    ).toEqual({
+      action: "set",
+      failure: { channel: "push", error: "bad VAPID" },
+    });
+  });
+
+  it("B: a Telegram-only profile does NOT clear a push failure it never attempted", () => {
+    // Profile B (Telegram only) succeeds later in the same tick — push is still
+    // broken and was not attempted, so the marker must survive.
+    expect(decideMarker([{ id: "telegram", ok: true }], "push")).toEqual({
+      action: "keep",
+    });
+  });
+
+  it("a later successful push DOES clear the push failure", () => {
+    // Once push is fixed, a dispatch that attempts push and succeeds clears it.
+    expect(
+      decideMarker(
+        [
+          { id: "telegram", ok: true },
+          { id: "push", ok: true },
+        ],
+        "push"
+      )
+    ).toEqual({ action: "clear" });
+  });
+
+  it("clears when a single-channel healthy dispatch attempts the failing channel", () => {
+    // Send-test remediation: the broken channel is the one tested successfully.
+    expect(decideMarker([{ id: "telegram", ok: true }], "telegram")).toEqual({
+      action: "clear",
+    });
+  });
+
+  it("keeps a telegram failure when only push is attempted successfully", () => {
+    // Symmetric to the push case: a push-only success must not mask a broken
+    // Telegram.
+    expect(decideMarker([{ id: "push", ok: true }], "telegram")).toEqual({
+      action: "keep",
+    });
+  });
+
+  it("clears on any healthy dispatch when the prior channel is unknown (legacy marker)", () => {
+    // A marker written before channel tracking has no stored channel; fall back
+    // to the original clear-on-healthy behavior.
+    expect(decideMarker([{ id: "telegram", ok: true }], "")).toEqual({
+      action: "clear",
+    });
+  });
+
+  it("overwrites an existing failure with a newly-failing channel", () => {
+    // push was broken; now push is ok but telegram fails → record telegram.
+    expect(
+      decideMarker(
+        [
+          { id: "telegram", ok: false, error: "chat not found" },
+          { id: "push", ok: true },
+        ],
+        "push"
+      )
+    ).toEqual({
+      action: "set",
+      failure: { channel: "telegram", error: "chat not found" },
+    });
   });
 });

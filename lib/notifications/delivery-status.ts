@@ -48,3 +48,35 @@ export function pickDispatchError(
 export function isDeliveryHealthy(results: DispatchOutcome[]): boolean {
   return results.length > 0 && results.every((r) => r.ok);
 }
+
+// How a single dispatch should mutate the GLOBAL delivery-health marker.
+export type MarkerAction =
+  | { action: "set"; failure: DeliveryFailure }
+  | { action: "clear" }
+  | { action: "keep" };
+
+// Decide how one dispatch fan-out should update the global marker, given the
+// channel of any PREVIOUSLY-recorded failure (`prevFailedChannel`; empty for a
+// clean state, or for a legacy plain marker written before channel tracking).
+//
+// Clearing is CHANNEL-AWARE (#192). The marker is global but a tick fans dispatch
+// out per profile, so a naive "clear whenever this one dispatch was all-OK" is
+// asymmetric across that fan-out: a Telegram-only profile succeeding would clear a
+// push failure recorded by an earlier both-channels profile — masking a push that
+// is still broken, with the final state depending on profile order. So a healthy
+// dispatch only clears the marker when it actually ATTEMPTED the previously-failing
+// channel: a later successful push clears a push failure; a Telegram-only profile
+// leaves it intact. When the prior channel is unknown (a legacy marker), we fall
+// back to the original clear-on-healthy behavior. Setting a failure stays
+// unconditional (and is sticky across empty results — see pickDispatchError).
+export function decideMarker(
+  results: DispatchOutcome[],
+  prevFailedChannel: string
+): MarkerAction {
+  const failure = pickDispatchError(results);
+  if (failure) return { action: "set", failure };
+  if (!isDeliveryHealthy(results)) return { action: "keep" };
+  if (!prevFailedChannel) return { action: "clear" };
+  const attemptedPrev = results.some((r) => r.id === prevFailedChannel);
+  return attemptedPrev ? { action: "clear" } : { action: "keep" };
+}
