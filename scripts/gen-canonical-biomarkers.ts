@@ -20,7 +20,7 @@ import fs from "node:fs";
 import path from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
 
-const MODEL = process.env.HEALTH_AI_MODEL || "claude-sonnet-4-6";
+const MODEL = process.env.HEALTH_AI_MODEL || "claude-sonnet-5";
 const OUT = path.join(process.cwd(), "lib", "canonical-biomarkers.json");
 const OVERWRITE = process.argv.includes("--overwrite");
 // Re-apply only the curated pediatric age bands to the existing committed JSON,
