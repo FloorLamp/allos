@@ -117,10 +117,14 @@ test.describe.serial("kids growth trends", () => {
     try {
       await page.goto("/trends?tab=body");
 
+      // Filter by the card's own <h2> — a bare hasText substring also matches
+      // the growth-quick-add form card above it (strict-mode double-match).
       const card = page
         .getByRole("main")
         .locator(".card")
-        .filter({ hasText: "Growth percentiles" });
+        .filter({
+          has: page.getByRole("heading", { name: "Growth percentiles" }),
+        });
       await expect(card).toBeVisible();
 
       // Default metric is Height (unit cm regardless) — switch to Weight, whose
