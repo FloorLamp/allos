@@ -108,3 +108,61 @@ describe("splitCamelCase", () => {
     expect(splitCamelCase("Workout")).toBe("Workout");
   });
 });
+
+describe("mapStravaActivity — plausibility bounds (#132)", () => {
+  function stravaRec(over: Record<string, unknown> = {}) {
+    return {
+      id: 12345,
+      name: "ride",
+      sport_type: "Ride",
+      start_date_local: "2024-05-01T08:00:00Z",
+      moving_time: 3600,
+      elapsed_time: 3700,
+      distance: 20000,
+      ...over,
+    };
+  }
+
+  it("rejects the whole activity when its core distance is impossible", () => {
+    // 5,000 km in one activity — reject the record entirely (caller counts skipped).
+    const res = mapStravaActivity(stravaRec({ distance: 5_000_000 }));
+    expect(res).toBeNull();
+  });
+
+  it("rejects the whole activity when its duration is impossible", () => {
+    // moving_time in seconds → 3000 min > the 2880 (48h) ceiling.
+    const res = mapStravaActivity(stravaRec({ moving_time: 180_000 }));
+    expect(res).toBeNull();
+  });
+
+  it("keeps the ride but nulls an out-of-range optional field (avg HR)", () => {
+    const res = mapStravaActivity(
+      stravaRec({
+        has_heartrate: true,
+        average_heartrate: 5000,
+        max_heartrate: 150,
+      })
+    );
+    expect(res).not.toBeNull();
+    // The bogus avg HR is dropped; the plausible max HR survives.
+    expect(res!.activity.avg_hr).toBeNull();
+    expect(res!.activity.max_hr).toBe(150);
+  });
+
+  it("drops an out-of-range calories sample but keeps the activity", () => {
+    const res = mapStravaActivity(stravaRec(), { calories: 999_999 });
+    expect(res).not.toBeNull();
+    expect(res!.samples).toHaveLength(0);
+  });
+
+  it("keeps a plausible ride and its metrics untouched", () => {
+    const res = mapStravaActivity(
+      stravaRec({ average_watts: 220, average_speed: 8 }),
+      { calories: 600 }
+    );
+    expect(res).not.toBeNull();
+    expect(res!.activity.avg_power_w).toBe(220);
+    expect(res!.samples).toHaveLength(1);
+    expect(res!.samples[0].value).toBe(600);
+  });
+});

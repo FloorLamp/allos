@@ -304,3 +304,106 @@ describe("parseHealthConnectPayload — timezone attribution", () => {
     expect(out.hrMinutes[0].bpm).toBe(65);
   });
 });
+
+describe("parseHealthConnectPayload — plausibility bounds (#132)", () => {
+  it("drops an absurd weight but keeps a plausible one, counting the reject", () => {
+    const out = parse({
+      weight: [
+        { time: "2026-06-15T08:00:00Z", kilograms: 5000 }, // impossible
+        { time: "2026-06-16T08:00:00Z", kilograms: 80 }, // fine
+      ],
+    });
+    expect(out.bodyMetrics).toEqual([{ date: "2026-06-16", weight_kg: 80 }]);
+    expect(out.skipped).toBe(1);
+  });
+
+  it("rejects a 0 / 500 bpm resting HR and negative steps", () => {
+    const out = parse({
+      resting_heart_rate: [
+        { time: "2026-06-15T08:00:00Z", bpm: 0 },
+        { time: "2026-06-15T09:00:00Z", bpm: 500 },
+      ],
+      steps: [
+        {
+          start_time: "2026-06-15T00:00:00Z",
+          end_time: "2026-06-15T23:59:00Z",
+          count: -100,
+        },
+      ],
+    });
+    expect(out.bodyMetrics).toHaveLength(0);
+    expect(out.samples).toHaveLength(0);
+    expect(out.skipped).toBe(3);
+  });
+
+  it("rejects SpO2 > 100 but keeps a valid reading", () => {
+    const out = parse({
+      oxygen_saturation: [
+        { time: "2026-06-15T08:00:00Z", percentage: 900 },
+        { time: "2026-06-15T09:00:00Z", percentage: 97 },
+      ],
+    });
+    expect(out.vitals).toHaveLength(1);
+    expect(out.vitals[0].value_num).toBe(97);
+    expect(out.skipped).toBe(1);
+  });
+
+  it("rejects a year-3000 timestamp as out of the sanity window", () => {
+    const out = parse({
+      weight: [{ time: "3000-01-01T08:00:00Z", kilograms: 80 }],
+    });
+    expect(out.bodyMetrics).toHaveLength(0);
+    expect(out.skipped).toBe(1);
+  });
+
+  it("rejects a pre-1900 timestamp", () => {
+    const out = parse({
+      weight: [{ time: "1850-01-01T08:00:00Z", kilograms: 80 }],
+    });
+    expect(out.bodyMetrics).toHaveLength(0);
+    expect(out.skipped).toBe(1);
+  });
+
+  it("drops an absurd continuous-HR sample from its minute bucket", () => {
+    const out = parse({
+      heart_rate: [
+        { time: "2026-06-15T08:00:10Z", bpm: 60 },
+        { time: "2026-06-15T08:00:40Z", bpm: 9000 }, // sensor fault
+      ],
+    });
+    expect(out.hrMinutes).toHaveLength(1);
+    expect(out.hrMinutes[0].bpm).toBe(60); // the 9000 never entered the bucket
+    expect(out.hrMinutes[0].n).toBe(1);
+    expect(out.skipped).toBe(1);
+  });
+
+  it("caps a >24h sleep session as implausible", () => {
+    const out = parse({
+      sleep: [
+        {
+          start_time: "2026-06-14T00:00:00Z",
+          end_time: "2026-06-16T00:00:00Z", // 48h
+        },
+      ],
+    });
+    expect(out.samples).toHaveLength(0);
+    expect(out.skipped).toBe(1);
+  });
+
+  it("nulls an absurd activity distance without discarding the session", () => {
+    const out = parse({
+      exercise: [
+        {
+          type: "Running",
+          start_time: "2026-06-15T08:00:00Z",
+          end_time: "2026-06-15T09:00:00Z",
+          distance_meters: 5_000_000, // 5,000 km — impossible
+        },
+      ],
+    });
+    expect(out.activities).toHaveLength(1);
+    expect(out.activities[0].distance_km).toBeNull();
+    expect(out.activities[0].duration_min).toBe(60);
+    expect(out.skipped).toBe(0);
+  });
+});

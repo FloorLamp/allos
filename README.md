@@ -277,6 +277,14 @@ Ingest is **idempotent**: the rolling 48-hour window means records are resent, s
 imports dedup on natural keys (time windows) and never double-count. Manually
 entered rows are never overwritten by a sync.
 
+Incoming records are also **sanity-checked**: values outside a wide physiological
+envelope (e.g. a 5,000 kg weight, a 500 bpm heart rate, negative steps, an SpO₂
+above 100 %) or with an implausible timestamp (before 1900 or more than a day in
+the future) are dropped and counted as **skipped** in the Review feed's
+"· N skipped" tally, rather than poisoning trends and coaching. A single payload
+is also capped at 10,000 records (a generous ceiling above any real 48-hour batch);
+an over-cap push is rejected with a `400` and a recorded sync failure.
+
 The token is normally managed in the UI (Data → Import → Google Health Connect),
 where you can **rotate** it in one click, set an optional **expiry** (90 days / 1
 year / never), and see when it was **last used**. `HEALTH_CONNECT_TOKEN` is a

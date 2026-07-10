@@ -30,6 +30,7 @@ import {
 import { checkRateLimit } from "@/lib/rate-limit";
 import { readBodyCapped } from "@/lib/request-body";
 import { writeRawPayload } from "@/lib/integrations/raw-log";
+import { countPayloadRecords, MAX_INGEST_RECORDS } from "@/lib/ingest-bounds";
 
 // A rolling-48h phone export batch is small (a few days of samples/activities as
 // JSON); 2MB is comfortably above any legitimate payload, so a larger body is
@@ -141,6 +142,22 @@ export async function POST(req: Request) {
       { ok: false, error: "Invalid JSON body." },
       { status: 400 }
     );
+  }
+
+  // Record-count cap (issue #132): a <2MB payload can still carry tens of thousands
+  // of records, all upserted in one synchronous transaction that blocks the single
+  // better-sqlite3 connection for its duration. A legitimate rolling-48h batch is a
+  // few thousand at most, so reject an over-cap payload before the write path with a
+  // 400 and an attributable failure event (mirrors the JSON-body rejection above).
+  const recordCount = countPayloadRecords(body);
+  if (recordCount > MAX_INGEST_RECORDS) {
+    const error = `Too many records in one payload (${recordCount} > ${MAX_INGEST_RECORDS}).`;
+    recordSyncEvent(INGEST_PROFILE_ID, HEALTH_CONNECT_ID, {
+      ok: false,
+      raw_ref: rawRef,
+      error,
+    });
+    return Response.json({ ok: false, error }, { status: 400 });
   }
 
   // Attribute each absolute timestamp to a local day/minute in the app-configured

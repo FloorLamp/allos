@@ -1,5 +1,6 @@
 import type { ActivityType } from "@/lib/types";
 import { zonedDateParts, zonedMinuteStr } from "@/lib/date";
+import { boundedOrNull, inTimeWindow } from "@/lib/ingest-bounds";
 import type {
   NormActivity,
   NormHrMinute,
@@ -42,6 +43,10 @@ function parts(
   if (typeof iso !== "string") return null;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
+  // Reject a year-3000 / pre-1900 instant (issue #132): parsing succeeds but the
+  // day attribution would silently skew Trends windows, recaps, and insights. A
+  // null return folds into the caller's existing skip-and-count path.
+  if (!inTimeWindow(d.getTime())) return null;
   const { date, hhmm } = zonedDateParts(tz, d);
   return { date, minute: zonedMinuteStr(tz, d), hhmm };
 }
@@ -173,7 +178,7 @@ export function parseHealthConnectPayload(
   };
   for (const w of asArray(payload.weight)) {
     const p = parts(w.time, tz);
-    const kg = num(w.kilograms, w.kg, w.weight);
+    const kg = boundedOrNull("weight_kg", num(w.kilograms, w.kg, w.weight));
     if (!p || kg == null) {
       out.skipped++;
       continue;
@@ -182,7 +187,10 @@ export function parseHealthConnectPayload(
   }
   for (const b of asArray(payload.body_fat)) {
     const p = parts(b.time, tz);
-    const pct = num(b.percentage, b.percent, b.value);
+    const pct = boundedOrNull(
+      "body_fat_pct",
+      num(b.percentage, b.percent, b.value)
+    );
     if (!p || pct == null) {
       out.skipped++;
       continue;
@@ -193,7 +201,10 @@ export function parseHealthConnectPayload(
   }
   for (const r of asArray(payload.resting_heart_rate)) {
     const p = parts(r.time, tz);
-    const bpm = num(r.bpm, r.beatsPerMinute, r.value);
+    const bpm = boundedOrNull(
+      "resting_hr",
+      num(r.bpm, r.beatsPerMinute, r.value)
+    );
     if (!p || bpm == null) {
       out.skipped++;
       continue;
@@ -220,7 +231,9 @@ export function parseHealthConnectPayload(
         typeof rec.start_time === "string" ? rec.start_time : undefined;
       const end = typeof rec.end_time === "string" ? rec.end_time : start;
       const p = parts(start, tz);
-      const value = valueOf(rec);
+      // Bound the canonical value against the metric's plausibility envelope; an
+      // out-of-range reading folds into the same skip path as a missing one (#132).
+      const value = boundedOrNull(metric, valueOf(rec));
       if (!p || !start || !end || value == null) {
         out.skipped++;
         continue;
@@ -270,8 +283,8 @@ export function parseHealthConnectPayload(
       continue;
     }
     for (const [field, metric] of NUTRIENTS) {
-      const value = num(rec[field]);
-      if (value == null) continue; // absent nutrient — not a skipped record
+      const value = boundedOrNull(metric, num(rec[field]));
+      if (value == null) continue; // absent/out-of-bounds nutrient — not counted
       out.samples.push({
         metric,
         date: p.date,
@@ -291,7 +304,7 @@ export function parseHealthConnectPayload(
     for (const rec of asArray(payload[key])) {
       const t = typeof rec.time === "string" ? rec.time : undefined;
       const p = parts(t, tz);
-      const value = valueOf(rec);
+      const value = boundedOrNull(metric, valueOf(rec));
       if (!p || !t || value == null) {
         out.skipped++;
         continue;
@@ -330,7 +343,7 @@ export function parseHealthConnectPayload(
     for (const rec of asArray(payload[key])) {
       const t = typeof rec.time === "string" ? rec.time : undefined;
       const p = parts(t, tz);
-      const value = valueOf(rec);
+      const value = boundedOrNull(canonical, valueOf(rec));
       if (!p || !t || value == null) {
         out.skipped++;
         continue;
@@ -350,8 +363,14 @@ export function parseHealthConnectPayload(
   for (const rec of asArray(payload.blood_pressure)) {
     const t = typeof rec.time === "string" ? rec.time : undefined;
     const p = parts(t, tz);
-    const sys = num(rec.systolic, rec.systolic_mmhg);
-    const dia = num(rec.diastolic, rec.diastolic_mmhg);
+    const sys = boundedOrNull(
+      "Blood Pressure Systolic",
+      num(rec.systolic, rec.systolic_mmhg)
+    );
+    const dia = boundedOrNull(
+      "Blood Pressure Diastolic",
+      num(rec.diastolic, rec.diastolic_mmhg)
+    );
     if (!p || !t || (sys == null && dia == null)) {
       out.skipped++;
       continue;
@@ -400,7 +419,10 @@ export function parseHealthConnectPayload(
   for (const h of asArray(payload.heart_rate_variability)) {
     const t = typeof h.time === "string" ? h.time : undefined;
     const p = parts(t, tz);
-    const ms = num(h.milliseconds, h.ms, h.rmssd, h.value);
+    const ms = boundedOrNull(
+      "hrv_ms",
+      num(h.milliseconds, h.ms, h.rmssd, h.value)
+    );
     if (!p || !t || ms == null) {
       out.skipped++;
       continue;
@@ -438,7 +460,11 @@ export function parseHealthConnectPayload(
       if (!Number.isNaN(e)) start = new Date(e - secs * 1000).toISOString();
     }
     const p = parts(end, tz);
-    if (!p || !start || !end || secs == null || secs <= 0) {
+    // Bound the total (minutes): a session can't exceed 24 h, so an absurd duration
+    // is dropped and counted like a malformed one (#132).
+    const sleepMin =
+      secs != null ? boundedOrNull("sleep_min", Math.round(secs / 60)) : null;
+    if (!p || !start || !end || secs == null || secs <= 0 || sleepMin == null) {
       out.skipped++;
       continue;
     }
@@ -448,7 +474,7 @@ export function parseHealthConnectPayload(
       date: wakeDay,
       start_time: start,
       end_time: end,
-      value: Math.round(secs / 60),
+      value: sleepMin,
     });
 
     // Per-stage breakdown. Each stage carries its own start/end (+ duration); we key
@@ -463,14 +489,26 @@ export function parseHealthConnectPayload(
       let stSecs = num(st.duration_seconds, st.duration_sec);
       if (stSecs == null && stStart && stEnd)
         stSecs = (minutesBetween(stStart, stEnd) ?? 0) * 60;
-      if (!bucket || !stStart || !stEnd || stSecs == null || stSecs <= 0)
+      const stMetric = `sleep_${bucket}_min`;
+      const stMin =
+        stSecs != null
+          ? boundedOrNull(stMetric, Math.round(stSecs / 60))
+          : null;
+      if (
+        !bucket ||
+        !stStart ||
+        !stEnd ||
+        stSecs == null ||
+        stSecs <= 0 ||
+        stMin == null
+      )
         continue;
       out.samples.push({
-        metric: `sleep_${bucket}_min`,
+        metric: stMetric,
         date: wakeDay,
         start_time: stStart,
         end_time: stEnd,
-        value: Math.round(stSecs / 60),
+        value: stMin,
       });
     }
   }
@@ -482,7 +520,10 @@ export function parseHealthConnectPayload(
   >();
   for (const s of asArray(payload.heart_rate)) {
     const p = parts(s.time, tz);
-    const bpm = num(s.bpm, s.beatsPerMinute, s.value);
+    const bpm = boundedOrNull(
+      "heart_rate_bpm",
+      num(s.bpm, s.beatsPerMinute, s.value)
+    );
     if (!p || bpm == null) {
       out.skipped++;
       continue;
@@ -517,10 +558,19 @@ export function parseHealthConnectPayload(
     }
     const { type, title } = classifyExercise(e.type);
     const secs = num(e.duration_seconds, e.duration_sec);
-    const duration_min =
+    // Sanitize the optional duration/distance to null when physiologically absurd
+    // (#132): the session itself is still valid (it has a start + type), so we drop
+    // only the bad field rather than the whole activity.
+    const duration_min = boundedOrNull(
+      "duration_min",
       minutesBetween(start, end) ??
-      (secs != null ? Math.round(secs / 60) : null);
+        (secs != null ? Math.round(secs / 60) : null)
+    );
     const meters = num(e.distance_meters, e.meters, e.distance);
+    const distance_km = boundedOrNull(
+      "distance_km",
+      meters != null ? meters / 1000 : null
+    );
     const endParts = end ? parts(end, tz) : null;
     out.activities.push({
       external_id: `${HEALTH_CONNECT_ID}:${start}`,
@@ -528,7 +578,7 @@ export function parseHealthConnectPayload(
       type,
       title,
       duration_min,
-      distance_km: meters != null ? meters / 1000 : null,
+      distance_km,
       start_time: p.hhmm,
       end_time: endParts?.hhmm ?? null,
     });
