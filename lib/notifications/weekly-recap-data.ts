@@ -118,12 +118,15 @@ export function gatherRecapInput(
   const prevVolumeKg = sumVolume(volumeRows, win.prevStart, win.prevEnd);
 
   // PRs (strength + cardio) set within the recap window; labels are canonical
-  // exercise / activity display names, de-duplicated in first-seen order.
-  const strengthPRs = recentPRs(getStrengthByExercise(profileId), td, days);
+  // exercise / activity display names, de-duplicated in first-seen order. The PR
+  // helpers' `within` is INCLUSIVE both ends, so an N-day window is days-1 (matching
+  // recapWindow / weekWindowStart / the dashboard last7): passing `days` would admit
+  // a today-N PR whose workout already falls in the *previous* window (issue #190).
+  const strengthPRs = recentPRs(getStrengthByExercise(profileId), td, days - 1);
   const cardioPRs = recentCardioPRs(
     getCardioByActivity(profileId, "km"),
     td,
-    days
+    days - 1
   );
   const prLabels: string[] = [];
   const seen = new Set<string>();

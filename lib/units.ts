@@ -22,6 +22,30 @@ export function round(n: number, decimals = 1): number {
   return Math.round(n * f) / f;
 }
 
+// Resolve a submitted display-unit weight back to canonical kg, treating a
+// value that is materially unchanged from the stored canonical value as a true
+// no-op. Edit forms pre-fill `round(kgTo(stored, unit), decimals)`; on save the
+// action would re-store `toKg(submitted, unit)`, which for lb-preference users
+// nudges the canonical kg by up to the rounding quantum on every round-trip —
+// even when the user never touched the field. So if the submitted (display)
+// number equals the rounded display of the stored kg, keep the stored kg
+// exactly rather than re-deriving it from the rounded display (issue #194). A
+// genuinely changed value still converts through toKg as before.
+export function resolveWeightKg(
+  submitted: number,
+  storedKg: number | null | undefined,
+  unit: WeightUnit,
+  decimals = 1
+): number {
+  if (
+    storedKg != null &&
+    round(kgTo(storedKg, unit), decimals) === round(submitted, decimals)
+  ) {
+    return storedKg;
+  }
+  return toKg(submitted, unit);
+}
+
 // Sanitize a numeric text input so it can't hold a negative value: strips any
 // minus signs while leaving an in-progress decimal ("1.", "0.5") untouched.
 // Weights are never negative, so this enforces a floor of 0 on entry.

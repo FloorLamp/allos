@@ -6,11 +6,7 @@ import { getSetting, setSetting } from "../settings";
 import type { ChannelId, NotificationMessage } from "./types";
 import { telegramChannel } from "./telegram";
 import { pushChannel } from "./push";
-import {
-  isDeliveryHealthy,
-  pickDispatchError,
-  type NotifyErrorMarker,
-} from "./delivery-status";
+import { decideMarker, type NotifyErrorMarker } from "./delivery-status";
 
 const log = createLogger("notifications");
 
@@ -35,22 +31,30 @@ export function getNotifyError(): NotifyErrorMarker | null {
 }
 
 // Fold a dispatch fan-out into the global delivery-health marker. Set it when any
-// attempted channel failed; clear it when every attempted channel succeeded; leave
-// it untouched when nothing was attempted (no configured channel). Best-effort — a
-// settings write must never turn a delivery into a throw, so failures are logged
-// and swallowed.
+// attempted channel failed; clear it when a healthy dispatch actually exercised the
+// previously-failing channel; leave it untouched otherwise — nothing attempted (no
+// configured channel), or a healthy dispatch that never touched the broken channel
+// (#192: a Telegram-only profile must not clear a still-broken push recorded by a
+// both-channels profile earlier in the same tick). Best-effort — a settings write
+// must never turn a delivery into a throw, so failures are logged and swallowed.
 function recordDeliveryOutcome(results: DispatchResult[]): void {
   try {
-    const failure = pickDispatchError(results);
-    if (failure) {
-      setSetting(NOTIFY_ERR_KEY, failure.error);
+    // The channel of the currently-recorded failure, if any (empty when the
+    // marker is clear or is a legacy value predating channel tracking).
+    const prevFailedChannel = getSetting(NOTIFY_ERR_KEY)
+      ? (getSetting(NOTIFY_ERR_CHANNEL_KEY) ?? "")
+      : "";
+    const decision = decideMarker(results, prevFailedChannel);
+    if (decision.action === "set") {
+      setSetting(NOTIFY_ERR_KEY, decision.failure.error);
       setSetting(NOTIFY_ERR_AT_KEY, new Date().toISOString());
-      setSetting(NOTIFY_ERR_CHANNEL_KEY, failure.channel);
-    } else if (isDeliveryHealthy(results)) {
+      setSetting(NOTIFY_ERR_CHANNEL_KEY, decision.failure.channel);
+    } else if (decision.action === "clear") {
       setSetting(NOTIFY_ERR_KEY, "");
       setSetting(NOTIFY_ERR_AT_KEY, "");
       setSetting(NOTIFY_ERR_CHANNEL_KEY, "");
     }
+    // "keep" → leave the marker untouched.
   } catch (e) {
     log.error("recording delivery outcome failed", {
       err: e instanceof Error ? e.message : String(e),

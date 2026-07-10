@@ -21,12 +21,27 @@ async function switchProfile(page: Page, name: string) {
   await expect(page.getByTestId("user-menu-trigger")).toContainText(name);
 }
 
+// The weight unit is a LOGIN-scoped preference (shared across profiles/specs),
+// so a test that flips it MUST restore "kg" so no sibling spec inherits the
+// switch. Auto-saves on change (SaveStatus check).
+async function setWeightUnit(page: Page, value: "kg" | "lb") {
+  await page.goto("/settings");
+  const select = page
+    .getByRole("main")
+    .locator("select")
+    .filter({ has: page.locator('option[value="lb"]') })
+    .first();
+  await select.selectOption(value);
+  await expect(page.getByLabel("Saved")).toBeVisible();
+}
+
 test.describe.serial("kids growth trends", () => {
   test.afterAll(async ({ browser }) => {
-    // Restore the default profile for any following spec, even if a test above
-    // failed mid-switch.
+    // Restore the default profile AND weight unit for any following spec, even
+    // if a test above failed mid-switch.
     const page = await browser.newPage();
     try {
+      await setWeightUnit(page, "kg");
       await switchProfile(page, "admin");
     } finally {
       await page.close();
@@ -87,5 +102,57 @@ test.describe.serial("kids growth trends", () => {
     await expect(
       page.getByRole("heading", { name: "Head circumference" })
     ).toHaveCount(0);
+  });
+
+  // Issue #194: the growth-percentile card's WEIGHT plot + label must follow the
+  // login's weight preference (it used to hardcode kg). For an lb-preference
+  // user the weight chart's tooltip reads in lb — proving the bands + points +
+  // axis were all converted together at the display boundary (percentiles stay
+  // kg-computed upstream). Restores kg at the end so no sibling spec inherits lb.
+  test("child profile: growth card weight follows lb preference", async ({
+    page,
+  }) => {
+    await switchProfile(page, "Riley (child)");
+    await setWeightUnit(page, "lb");
+    try {
+      await page.goto("/trends?tab=body");
+
+      // Filter by the card's own <h2> — a bare hasText substring also matches
+      // the growth-quick-add form card above it (strict-mode double-match).
+      const card = page
+        .getByRole("main")
+        .locator(".card")
+        .filter({
+          has: page.getByRole("heading", { name: "Growth percentiles" }),
+        });
+      await expect(card).toBeVisible();
+
+      // Default metric is Height (unit cm regardless) — switch to Weight, whose
+      // unit is the one that must reflect the lb preference.
+      await card.getByRole("button", { name: "Weight", exact: true }).click();
+
+      // Hover the weight chart: the recharts tooltip renders values with the
+      // display unit suffix. Re-hover on each retry (recharts needs a mousemove).
+      const surface = card.locator(".recharts-surface").first();
+      const tooltip = card.locator(".recharts-tooltip-wrapper");
+      await expect(async () => {
+        const box = await surface.boundingBox();
+        if (!box) throw new Error("no growth chart surface");
+        await page.mouse.move(
+          box.x + box.width * 0.5,
+          box.y + box.height * 0.5
+        );
+        await page.mouse.move(
+          box.x + box.width * 0.55,
+          box.y + box.height * 0.5
+        );
+        await expect(tooltip).toContainText("lb");
+      }).toPass({ timeout: 10_000 });
+
+      // And never kg while lb is the preference.
+      await expect(tooltip).not.toContainText("kg");
+    } finally {
+      await setWeightUnit(page, "kg");
+    }
   });
 });

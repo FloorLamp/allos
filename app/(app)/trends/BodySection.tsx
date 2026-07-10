@@ -26,7 +26,7 @@ import {
   getGoals,
 } from "@/lib/queries";
 import { dispWeight, fmtWeight, round } from "@/lib/units";
-import { buildGrowthProfile } from "@/lib/growth-series";
+import { buildGrowthProfile, displayWeightGrowth } from "@/lib/growth-series";
 import { ALL_ROWS, filterSeriesByRange } from "@/lib/trends";
 import { buildTrendAnnotations } from "@/lib/trends-series";
 import { projectGoal, describeEta } from "@/lib/trend-projection";
@@ -250,22 +250,35 @@ export default async function BodySection({ range }: { range: DateRange }) {
     { label: string; unit: string; valueRound: number }
   > = {
     height: { label: "Height", unit: " cm", valueRound: 1 },
-    weight: { label: "Weight", unit: " kg", valueRound: 1 },
+    // Weight's unit follows the login's weight preference — the plotted values
+    // are converted at the display boundary below (displayWeightGrowth).
+    weight: { label: "Weight", unit: ` ${wu}`, valueRound: 1 },
     bmi: { label: "BMI", unit: "", valueRound: 1 },
     head_circumference: { label: "Head circ.", unit: " cm", valueRound: 1 },
   };
   const growthViews: GrowthMetricView[] = growth
     ? growth.metrics
         .filter((m) => m.bands.length > 0 && m.points.length > 0)
-        .map((m) => ({
-          metric: m.metric,
-          ...growthMeta[m.metric],
-          bands: m.bands,
-          points: m.points,
-          latestPercentile: m.latest?.percentile ?? null,
-          minMonths: m.minMonths,
-          maxMonths: m.maxMonths,
-        }))
+        .map((m) => {
+          // Percentiles stay computed in kg (correct); only the DISPLAYED plot +
+          // label change for an lb-preference user. For weight, convert the
+          // reference bands AND the trajectory points together so they stay
+          // coherent (converting only the points would break the plot). Other
+          // metrics (height / BMI / head circ) are unit-invariant here.
+          const plot =
+            m.metric === "weight"
+              ? displayWeightGrowth(m, wu)
+              : { bands: m.bands, points: m.points };
+          return {
+            metric: m.metric,
+            ...growthMeta[m.metric],
+            bands: plot.bands,
+            points: plot.points,
+            latestPercentile: m.latest?.percentile ?? null,
+            minMonths: m.minMonths,
+            maxMonths: m.maxMonths,
+          };
+        })
     : [];
   const growthSource = growth && growth.ageMonths < 24 ? "WHO" : "CDC";
   const growthCard =
