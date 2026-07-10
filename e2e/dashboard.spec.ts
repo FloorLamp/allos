@@ -37,7 +37,9 @@ test("the household strip shows the caregiver's other profiles", async ({
   // The bootstrap admin reaches 2+ profiles, so the strip renders (single-profile
   // logins never see it — same gate as the Household nav entry).
   await expect(strip).toBeVisible();
-  // Sam Rivers is profile 2 — a chip links through to switch-and-view it.
+  // Profile 2 is "Riley (child)" (scripts/seed.ts creates it before
+  // e2e/seed-events.ts runs, so its guarded "Sam Rivers" insert at id 2 is a
+  // no-op) — a chip links through to switch-and-view it.
   await expect(strip.getByTestId("household-chip-2")).toBeVisible();
 });
 
@@ -59,15 +61,17 @@ test("a data-less profile shows an onboarding empty-state CTA", async ({
       timeout: 20_000,
     });
 
-    // Switch to Sam Rivers (profile 2 — supplements only, no labs/appointments) via
-    // its household chip. The data-aware Recent-labs / Next-appointment widgets then
-    // render their onboarding CTA instead of a blank card. Wait on the user-menu
-    // trigger naming the new profile — the definitive switch signal (we're already
-    // on "/", so a URL wait could resolve before the action round-trips).
+    // Switch to profile 2 — "Riley (child)" (growth data only, no labs or
+    // appointments; the seed-events "Sam Rivers" insert is a no-op because
+    // scripts/seed.ts's Riley already owns id 2) — via its household chip. The
+    // data-aware Recent-labs / Next-appointment widgets then render their
+    // onboarding CTA instead of a blank card. Wait on the user-menu trigger
+    // naming the new profile — the definitive switch signal (we're already on
+    // "/", so a URL wait could resolve before the action round-trips).
     await page.goto("/");
     await page.getByRole("main").getByTestId("household-chip-2").click();
     await expect(page.getByTestId("user-menu-trigger")).toContainText(
-      "Sam Rivers"
+      "Riley (child)"
     );
 
     await expect(
