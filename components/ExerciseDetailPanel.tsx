@@ -7,6 +7,7 @@ import type { Goal, Sex } from "@/lib/types";
 import { dispWeight, fmtWeight } from "@/lib/units";
 import { liftInfo } from "@/lib/lifts";
 import { standardFor, levelFor } from "@/lib/strength";
+import { strengthStanding, strengthLevelLabel } from "@/lib/strength-standards";
 import { goalsForExercise, goalTargetText } from "@/lib/goals";
 import { formatLongDate, formatRelativeDate } from "@/lib/format-date";
 import { useTimezone } from "@/components/TimezoneProvider";
@@ -98,6 +99,35 @@ export default function ExerciseDetailPanel({
   const std = standardFor(stat.exercise, sex);
   const ratio = bodyweightKg ? stat.e1rmKg / bodyweightKg : null;
   const lvl = showLevel && std && ratio ? levelFor(ratio, std) : null;
+
+  // Bodyweight-band strength standing (#152) — a coaching-framed context line
+  // turning the estimated 1RM into progress against the standards for this sex +
+  // bodyweight. Hidden entirely when sex or bodyweight is unset, or the lift isn't
+  // one of the core barbell lifts. Gated on showLevel so it doesn't double up with
+  // the Analyze tab's Benchmarks card. See lib/strength-standards.ts.
+  const standing =
+    showLevel && sex && bodyweightKg
+      ? strengthStanding(stat.exercise, stat.e1rmKg, sex, bodyweightKg)
+      : null;
+  let standingMsg: string | null = null;
+  if (standing) {
+    const sexWord = sex === "female" ? "women" : "men";
+    if (standing.level === "untrained") {
+      standingMsg = `${fmtWeight(
+        standing.toNextKg ?? 0,
+        wu
+      )} from the beginner standard for ${sexWord} at your bodyweight.`;
+    } else if (standing.nextLevel == null) {
+      standingMsg = `At the elite standard for ${sexWord} at your bodyweight — the top band.`;
+    } else {
+      standingMsg = `At the ${strengthLevelLabel(
+        standing.level
+      ).toLowerCase()} standard for ${sexWord} at your bodyweight — ${fmtWeight(
+        standing.toNextKg ?? 0,
+        wu
+      )} to ${strengthLevelLabel(standing.nextLevel).toLowerCase()}.`;
+    }
+  }
   const matchedGoals = goals
     ? goalsForExercise(goals, stat.exercise).filter((g) => !g.archived)
     : [];
@@ -202,6 +232,20 @@ export default function ExerciseDetailPanel({
           );
         })}
       </dl>
+
+      {standingMsg && (
+        <div
+          data-testid="strength-standard"
+          className="mt-4 rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2 dark:border-white/10 dark:bg-white/5"
+        >
+          <div className="text-sm font-medium text-slate-600 dark:text-slate-300">
+            Strength standard
+          </div>
+          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+            {standingMsg}
+          </p>
+        </div>
+      )}
 
       {nextSet && (
         <div className="mt-4 rounded-lg border border-brand-200 bg-brand-50/60 px-3 py-2 dark:border-brand-900 dark:bg-brand-950/40">

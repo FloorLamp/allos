@@ -6,6 +6,7 @@ import {
 } from "@/lib/healthspan-pillars";
 import { formatPercentile, type FitnessPercentile } from "@/lib/fitness-norms";
 import { bioAgeDelta, bioAgeDeltaPhrase } from "@/lib/bio-age";
+import { strengthLevelLabel } from "@/lib/strength-standards";
 import type { CanonicalBiomarker } from "@/lib/types";
 
 // A minimal canonical row carrying just the fields rangeBadge reads (name/unit for
@@ -75,6 +76,14 @@ describe("buildPillars availability", () => {
       "optimal-biomarkers",
     ]);
   });
+
+  it("includes the strength pillar when a standing is present", () => {
+    const pillars = buildPillars({
+      strength: { level: "advanced", lift: "Back Squat" },
+    });
+    expect(pillars.map((p) => p.key)).toEqual(["strength"]);
+    expect(pillars[0].detail).toContain("Back Squat");
+  });
 });
 
 describe("buildPillars value equals its source computation (#224)", () => {
@@ -102,5 +111,13 @@ describe("buildPillars value equals its source computation (#224)", () => {
     const [pillar] = buildPillars({ sleep: { sri: 83.6 } });
     expect(pillar.value).toBe("SRI 84");
     expect(pillar.tone).toBe("good"); // ≥80
+  });
+
+  it("strength pillar value is the label of the source level", () => {
+    const [pillar] = buildPillars({
+      strength: { level: "intermediate", lift: "Deadlift" },
+    });
+    expect(pillar.value).toBe(strengthLevelLabel("intermediate"));
+    expect(pillar.tone).toBe("warn"); // intermediate
   });
 });

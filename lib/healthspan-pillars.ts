@@ -17,6 +17,11 @@ import {
   type FitnessPercentile,
 } from "./fitness-norms";
 import { bioAgeDeltaPhrase, type BioAgeDelta } from "./bio-age";
+import {
+  strengthLevelLabel,
+  strengthTone,
+  type StrengthLevel,
+} from "./strength-standards";
 import { rangeBadge } from "./reference-range";
 import { convertToCanonical } from "./unit-conversions";
 import type { CanonicalBiomarker, Sex } from "./types";
@@ -64,7 +69,7 @@ export function optimalRangeHitRate(
 // ── Pillars ──────────────────────────────────────────────────────────────────
 
 export type PillarKey =
-  "vo2max" | "sleep-regularity" | "bio-age" | "optimal-biomarkers";
+  "vo2max" | "strength" | "sleep-regularity" | "bio-age" | "optimal-biomarkers";
 
 export type PillarTone = "good" | "warn" | "bad" | "neutral";
 
@@ -97,6 +102,14 @@ export interface PillarInputs {
   sleep?: { sri: number; trend?: PillarTrend | null } | null;
   bioAge?: { delta: BioAgeDelta; trend?: PillarTrend | null } | null;
   optimal?: OptimalHitRate | null;
+  // The lifter's strongest standing across the core barbell lifts (#152). `lift`
+  // is the lift that reached `level`; the headline formats over `level` only, so a
+  // consistency test can pin the pillar value equals strengthLevelLabel(level).
+  strength?: {
+    level: StrengthLevel;
+    lift: string;
+    trend?: PillarTrend | null;
+  } | null;
 }
 
 function vo2Tone(p: number): PillarTone {
@@ -146,6 +159,20 @@ export function buildPillars(inputs: PillarInputs): Pillar[] {
       tone: vo2Tone(p),
       trend: inputs.vo2.trend ?? null,
       href: "/biomarkers/view?name=VO2+Max",
+    });
+  }
+
+  if (inputs.strength) {
+    const level = inputs.strength.level;
+    pillars.push({
+      key: "strength",
+      label: "Strength standard",
+      value: strengthLevelLabel(level),
+      detail: `${inputs.strength.lift} — for your bodyweight & sex`,
+      // strengthTone returns good/warn/bad, all valid PillarTones.
+      tone: strengthTone(level),
+      trend: inputs.strength.trend ?? null,
+      href: "/trends?tab=fitness",
     });
   }
 

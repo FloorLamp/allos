@@ -4,3 +4,4 @@ data/
 package-lock.json
 lib/canonical-biomarkers.json
 lib/fitness-norms.json
+lib/strength-standards.json
