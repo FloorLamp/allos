@@ -203,6 +203,36 @@ db.prepare(
 insMerge.run(PROFILE_ID, CONFLICT_DATE, "Conflict merge keeper", 42, 5);
 insMerge.run(PROFILE_ID, CONFLICT_DATE, "Conflict merge dupe", 51, 5);
 
+// ── Set-re-parenting merge fixture (issues #199/#200) ─────────────────────────
+// Two same-day MANUAL STRENGTH activities that conflict on duration (30 vs 45 min),
+// so the manual merge raises the per-field conflict preview — the surface that now
+// shows how many logged sets will move (#199). The DROP carries two typed-in sets
+// that a merge must RE-PARENT onto the keeper (never destroy). Distinct date + titles
+// so it never collides with the fixtures above. Synthetic only.
+const SETS_DATE = "2026-07-04";
+db.prepare(
+  `DELETE FROM activities WHERE profile_id = ? AND date = ? AND title IN ('Set merge keeper', 'Set merge dupe')`
+).run(PROFILE_ID, SETS_DATE);
+const insStrength = db.prepare(
+  `INSERT INTO activities
+     (profile_id, date, type, title, duration_min, source, external_id, edited)
+   VALUES (?, ?, 'strength', ?, ?, NULL, NULL, 0)`
+);
+const setsKeeperId = Number(
+  insStrength.run(PROFILE_ID, SETS_DATE, "Set merge keeper", 30).lastInsertRowid
+);
+const setsDupeId = Number(
+  insStrength.run(PROFILE_ID, SETS_DATE, "Set merge dupe", 45).lastInsertRowid
+);
+const insSeedSet = db.prepare(
+  `INSERT INTO exercise_sets (activity_id, exercise, set_number, weight_kg, reps)
+   VALUES (?, ?, ?, ?, ?)`
+);
+// The keeper has one set of its own; the dupe carries the two the merge must move.
+insSeedSet.run(setsKeeperId, "Bench Press", 1, 60, 5);
+insSeedSet.run(setsDupeId, "Back Squat", 1, 80, 5);
+insSeedSet.run(setsDupeId, "Deadlift", 1, 100, 5);
+
 console.log(
   "e2e: seeded integration_sync_events (strava failing) + a cross-source duplicate activity pair + a same-day manual-merge pair + a conflicting merge pair"
 );

@@ -4,7 +4,11 @@ import { requireWriteAccess } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { captureDelete } from "@/lib/undo-delete-db";
-import { writeActivityFold } from "@/lib/merge-activity";
+import {
+  writeActivityFold,
+  snapshotKeeperFold,
+  dropSetIds,
+} from "@/lib/merge-activity";
 import { recordPairDecision } from "@/lib/queries";
 import {
   ACTIVITY_DOMAIN,
@@ -247,10 +251,16 @@ export async function logBodyweight(weight: number, date: string) {
 //
 // The keeper is the card the user acted on; the picked sibling is absorbed + removed.
 // UNLIKE the review resolver, the delete routes through captureDelete so the merge is
-// UNDOABLE from a toast (issue #30): undo re-inserts the discarded row (with its
-// sets). Note undo does NOT unwind the keeper's gap-fills or the recorded decision —
-// it restores the row, matching the capture-based undo model; after an undo you get
-// both rows back (the keeper simply retains any fields it had absorbed).
+// UNDOABLE from a toast (issue #30).
+//
+// FULLY-INVERTIBLE undo (issues #199/#200): the merge carries a MergeUndoContext into
+// the undo payload — the pre-fold keeper snapshot, the ids of the discarded row's
+// re-parented sets (#199), and the pair signature — so undoing the merge doesn't just
+// re-insert the discarded row, it also moves those sets back off the keeper, restores
+// the keeper's pre-fold fields (undoing the gap-fills that would otherwise
+// double-count, the inherited `components` array chief among them), and clears the
+// recorded 'merged' decision so the un-merged pair resurfaces in Review. Undo returns
+// to the true pre-merge state — no data lost, no data duplicated, no pair suppressed.
 //
 // Same-profile + same-day are enforced server-side (the untrusted form ids), even
 // though the UI only ever offers same-day siblings.
@@ -279,14 +289,28 @@ export async function mergeActivities(
     // sense within one day (the detector buckets by day too).
     if (!keep || !drop || keep.date !== drop.date) return false;
 
+    // Snapshot the invert-undo context BEFORE the fold mutates anything (#199/#200):
+    // the keeper's pre-fold fields, and the discarded row's set ids before
+    // writeActivityFold re-parents them onto the keeper.
+    const keeperBefore = snapshotKeeperFold(keep);
+    const movedSetIds = dropSetIds(dropId);
+
     writeActivityFold(profile.id, keepId, keep, drop, overrideFields);
     const signature = pairSignature(
       activityToken(keep as { id: number; external_id: string | null }),
       activityToken(drop as { id: number; external_id: string | null })
     );
     recordPairDecision(profile.id, ACTIVITY_DOMAIN, signature, "merged");
-    // Capture-and-delete the discarded row (its sets cascade into the undo payload).
-    undoId = captureDelete("activity", profile.id, dropId);
+    // Capture-and-delete the discarded row. Its sets have already been re-parented
+    // onto the keeper (#199), so nothing set-related cascades here; the merge context
+    // rides in the payload so undo fully inverts the merge (#200).
+    undoId = captureDelete("activity", profile.id, dropId, {
+      keeperId: keepId,
+      domain: ACTIVITY_DOMAIN,
+      signature,
+      keeperBefore,
+      movedSetIds,
+    });
     return true;
   });
   if (!tx()) return { undoId: null };

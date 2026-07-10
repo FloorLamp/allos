@@ -215,6 +215,7 @@ export default function JournalView({
         title: string;
         sourceLabel: string;
         foldValues: Record<string, unknown>;
+        setCount: number;
       }[]
     >();
     for (const g of groups) {
@@ -225,6 +226,7 @@ export default function JournalView({
           title: c.activity.title,
           sourceLabel: c.provenance.label,
           foldValues: c.foldValues,
+          setCount: c.activity.sets?.length ?? 0,
         }))
       );
     }
@@ -563,6 +565,7 @@ export default function JournalView({
                               c.foldValues,
                               o.foldValues
                             ),
+                            setCount: o.setCount,
                           }))}
                         keeperLabel={c.provenance.label}
                         units={units}

@@ -70,6 +70,25 @@ const activityRow = (id: number) =>
   db.prepare("SELECT * FROM activities WHERE id = ?").get(id) as
     Record<string, unknown> | undefined;
 
+// Insert one exercise_set onto an activity; returns its id.
+function insertSet(activityId: number, exercise: string): number {
+  return Number(
+    db
+      .prepare(
+        `INSERT INTO exercise_sets (activity_id, exercise, set_number, weight_kg, reps)
+         VALUES (?, ?, 1, 50, 5)`
+      )
+      .run(activityId, exercise).lastInsertRowid
+  );
+}
+
+const setsFor = (activityId: number) =>
+  db
+    .prepare(
+      "SELECT id, exercise FROM exercise_sets WHERE activity_id = ? ORDER BY id"
+    )
+    .all(activityId) as { id: number; exercise: string }[];
+
 beforeEach(() => {
   revalidate.mockClear();
 });
@@ -201,6 +220,114 @@ describe("mergeActivities", () => {
       )
       .get(profile.id) as { c: number };
     expect(restored.c).toBe(1);
+  });
+
+  // Issue #199: the discarded row's exercise_sets must survive the merge — they are
+  // RE-PARENTED onto the keeper, never deleted by the FK cascade. The trap this
+  // guards: a manual strength log (the row WITH sets) merged into an imported keeper
+  // (the default keeper) must not silently destroy the typed-in sets.
+  it("re-parents the discarded row's sets onto the keeper (#199)", async () => {
+    const login = createLogin();
+    const profile = createProfile("merge-sets", login.id);
+    actAs(login, profile);
+
+    // Keeper is the imported row (the default keeper) with its own set; the drop is
+    // the manual strength log carrying the typed-in sets.
+    const keepId = insertActivity(profile.id, {
+      type: "strength",
+      title: "Imported session",
+      source: "strava",
+      external_id: "strava:sets-1",
+    });
+    insertSet(keepId, "Bench Press");
+    const dropId = insertActivity(profile.id, {
+      type: "strength",
+      title: "Manual session",
+    });
+    insertSet(dropId, "Back Squat");
+    insertSet(dropId, "Deadlift");
+
+    await mergeActivities(fd({ keep_id: keepId, drop_id: dropId }));
+
+    // The discarded row is gone but ALL three sets now live on the keeper — none
+    // were lost to the cascade.
+    expect(activityRow(dropId)).toBeUndefined();
+    const keeperSets = setsFor(keepId).map((s) => s.exercise);
+    expect(keeperSets).toEqual(["Bench Press", "Back Squat", "Deadlift"]);
+  });
+
+  // Issue #200: undoing a merge fully inverts it — the recorded pair decision is
+  // CLEARED (so the un-merged pair re-detects), the keeper's gap-fills (chiefly a
+  // wholesale-inherited components array) are REVERTED (no double-count), and the
+  // re-parented sets move BACK onto the restored row.
+  it("undo fully inverts the merge: clears the decision, reverts keeper gap-fills, moves sets back (#200)", async () => {
+    const login = createLogin();
+    const profile = createProfile("merge-invert", login.id);
+    actAs(login, profile);
+
+    // Keeper carries NO components and no distance; the drop carries both plus a set.
+    const keepId = insertActivity(profile.id, {
+      type: "strength",
+      title: "Keeper",
+    });
+    insertSet(keepId, "Bench Press");
+    const dropId = insertActivity(profile.id, {
+      type: "strength",
+      title: "Drop",
+      distance_km: 5,
+    });
+    const dropSetId = insertSet(dropId, "Back Squat");
+    db.prepare("UPDATE activities SET components = ? WHERE id = ?").run(
+      JSON.stringify([{ name: "Row", type: "cardio", distance_km: 2 }]),
+      dropId
+    );
+
+    const { undoId } = await mergeActivities(
+      fd({ keep_id: keepId, drop_id: dropId })
+    );
+
+    // Post-merge: the keeper absorbed the drop's components + distance and both sets.
+    const mergedKeep = activityRow(keepId)!;
+    expect(mergedKeep.components).not.toBeNull();
+    expect(mergedKeep.distance_km).toBe(5);
+    expect(setsFor(keepId)).toHaveLength(2);
+    expect(getPairDecisions(profile.id, ACTIVITY_DOMAIN).size).toBe(1);
+
+    // Undo.
+    const { ok } = await undoDelete(undoId!);
+    expect(ok).toBe(true);
+
+    // The keeper is back to its pre-fold state — no inherited components, no distance
+    // — so nothing double-counts with the restored row.
+    const revertedKeep = activityRow(keepId)!;
+    expect(revertedKeep.components).toBeNull();
+    expect(revertedKeep.distance_km).toBeNull();
+    // The keeper keeps ONLY its own set; the drop's set moved back onto the restored
+    // row (re-inserted under a new id, carrying its original set).
+    expect(setsFor(keepId).map((s) => s.exercise)).toEqual(["Bench Press"]);
+    const restored = db
+      .prepare(
+        "SELECT id FROM activities WHERE profile_id = ? AND title = 'Drop'"
+      )
+      .get(profile.id) as { id: number };
+    expect(setsFor(restored.id).map((s) => s.exercise)).toEqual(["Back Squat"]);
+    // The original drop set row was moved (not duplicated): exactly one Back Squat
+    // across this profile's activities.
+    expect(
+      (
+        db
+          .prepare(
+            `SELECT COUNT(*) c FROM exercise_sets es
+               JOIN activities a ON a.id = es.activity_id
+              WHERE a.profile_id = ? AND es.exercise = ?`
+          )
+          .get(profile.id, "Back Squat") as { c: number }
+      ).c
+    ).toBe(1);
+    void dropSetId;
+
+    // The recorded 'merged' decision is gone, so the live duplicate pair resurfaces.
+    expect(getPairDecisions(profile.id, ACTIVITY_DOMAIN).size).toBe(0);
   });
 
   it("refuses a cross-day pair (no-op)", async () => {

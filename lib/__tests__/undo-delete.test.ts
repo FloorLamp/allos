@@ -70,6 +70,28 @@ describe("serialize / parse round-trip", () => {
     expect(back.rows).toEqual(rows);
   });
 
+  // Issue #200: an activity-merge delete rides an optional MergeUndoContext in the
+  // payload so its undo can invert the merge. A plain delete omits it entirely.
+  it("carries an optional merge-undo context through the round-trip", () => {
+    const rows: Record<string, Row[]> = {
+      activity: [{ id: 5, title: "Drop", profile_id: 2 }],
+      sets: [],
+    };
+    const merge = {
+      keeperId: 4,
+      domain: "activity",
+      signature: "id:4|id:5",
+      keeperBefore: { components: null, distance_km: null, edited: 0 },
+      movedSetIds: [9, 10],
+    };
+    const back = parsePayload(serializePayload("activity", rows, merge));
+    expect(back.merge).toEqual(merge);
+    // Omitting it leaves the field absent (a plain delete is unchanged).
+    expect(
+      parsePayload(serializePayload("activity", rows)).merge
+    ).toBeUndefined();
+  });
+
   it("rejects an invalid payload version / unknown kind", () => {
     expect(() =>
       parsePayload(JSON.stringify({ v: 2, kind: "activity" }))

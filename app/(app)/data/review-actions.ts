@@ -63,9 +63,11 @@ export async function mergeActivityPair(formData: FormData) {
       .get(dropId, profile.id) as Record<string, unknown> | undefined;
     if (!keep || !drop) return false;
 
+    // writeActivityFold both folds the gap-filling fields AND re-parents the
+    // discarded row's exercise_sets onto the keeper (#199), so the plain cascade
+    // delete below can no longer take typed-in sets down with it — the sets now
+    // belong to the keeper before its parent row is removed.
     writeActivityFold(profile.id, keepId, keep, drop, overrideFields);
-    // Sets live on the kept row via activity_id; the discarded row's sets are
-    // removed by the FK ON DELETE CASCADE when its row goes.
     db.prepare("DELETE FROM activities WHERE id = ? AND profile_id = ?").run(
       dropId,
       profile.id
