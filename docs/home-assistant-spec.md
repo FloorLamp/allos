@@ -153,10 +153,44 @@ inactive | skipped`), exactly the Telegram-callback contract: a stale
   come from the shared write cores — nothing HA-specific in the write
   path.
 
+## Onboarding — one wizard, one file
+
+Raw YAML recipes would make setup four copy-paste sessions across two
+admin UIs. Instead, **Allos generates the HA side**: a Connect wizard on
+the integration's config page whose output is a single HA
+[package](https://www.home-assistant.io/docs/configuration/packages/)
+file.
+
+1. **Choose scope** — profile(s) + capabilities (board display / board +
+   actions (`allow_actions`) / ingest / meal events / announcements).
+   Defaults: display on, actions off.
+2. **Optional HA base URL** — only needed for the outbound announcement
+   webhook and absolute-URL templating.
+3. **Generate** — Allos issues the token(s) and renders one `allos.yaml`
+   for HA's `packages/` dir: the `/upcoming` REST sensors, `/dose` +
+   `/event` `rest_command`s, a commented dinnertime-automation stub, the
+   ingest blueprint reference, and (when the HA URL was given) the inbound
+   announcement automation. Copy button + download. The generator is a
+   pure template over values Allos already holds (URL, tokens, profile
+   names) — unit-testable, and it ships in the same release as the
+   endpoints so recipes can't drift from contracts.
+4. **Verify on-page** — the wizard's final state polls for the token's
+   first authenticated request and flips to "✓ Connected — last seen Ns
+   ago" (the `integration_connections` last-sync machinery, like every
+   other provider). Re-running the wizard regenerates the package; token
+   rotation = regenerate + repaste.
+
+**Evolution path:** if demand later justifies a HACS custom integration
+with an HA config-flow (true one-click: URL + token in HA's own UI,
+entities appear), the endpoints are unchanged — the config-flow becomes a
+second client of the same contract and the wizard collapses to a token +
+QR. The generator is the 90% version at 10% of the maintenance.
+
 ## HA-side deliverables (docs, not code)
 
-A `docs/` (or README section) recipe set, tested against a real HA
-instance before release:
+The generated package (above) covers the wizard-selected capabilities; a
+`docs/` (or README section) recipe set covers the rest, tested against a
+real HA instance before release:
 
 1. RESTful sensor YAML for `/upcoming` (medication-board and family-board
    variants; 30–60s scan interval is plenty).
