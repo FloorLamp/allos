@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   recapWindow,
+  resolveRecapWindow,
   inWindow,
   weightTrendKg,
   buildWeeklyRecap,
@@ -49,6 +50,36 @@ describe("recapWindow", () => {
     expect(inWindow(w.prevEnd, w.start, w.end)).toBe(false);
     expect(inWindow(w.start, w.start, w.end)).toBe(true);
     expect(inWindow(w.end, w.start, w.end)).toBe(true);
+  });
+});
+
+// Issue #223: the weekly recap honors the profile's week_mode so its window lines
+// up with the routine counters / journal week summary (both derive from
+// lib/week-window). resolveRecapWindow is the shared resolver; buildWeeklyRecap's
+// {start, end} must follow it. TODAY is a Thursday.
+describe("recap honors week_mode (issue #223)", () => {
+  const MONDAY = 1;
+
+  it("rolling mode keeps the trailing-seven window (backward compatible)", () => {
+    expect(resolveRecapWindow(TODAY, 7, "rolling")).toEqual(recapWindow(TODAY));
+    const recap = buildWeeklyRecap(baseInput({ weekMode: "rolling" }));
+    expect(recap.start).toBe("2026-07-03");
+    expect(recap.end).toBe(TODAY);
+  });
+
+  it("calendar mode covers the current week-start day through today", () => {
+    // Week starts Monday 2026-07-06; today (Thu 07-09) → partial Mon–Thu window.
+    const recap = buildWeeklyRecap(
+      baseInput({ weekMode: "calendar", weekStart: MONDAY })
+    );
+    expect(recap.start).toBe("2026-07-06");
+    expect(recap.end).toBe(TODAY);
+  });
+
+  it("defaults to the trailing window when no week_mode is supplied", () => {
+    const recap = buildWeeklyRecap(baseInput());
+    expect(recap.start).toBe("2026-07-03");
+    expect(recap.end).toBe(TODAY);
   });
 });
 

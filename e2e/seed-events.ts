@@ -13,6 +13,7 @@ import {
   setDashboardLayout,
   setProfileSetting,
   setSetting,
+  setWeekMode,
 } from "../lib/settings";
 
 // A persisted notification-delivery failure (#131) so Settings → Server surfaces
@@ -383,6 +384,15 @@ console.log(
 // widget falls back to its registry default. This gives the recap spec a
 // deterministic card to assert on. Synthetic — no PHI.
 setDashboardLayout(PROFILE_ID, { order: ["weekly-recap"], hidden: [] });
+
+// Pin profile 1 to rolling week_mode so the recap covers a trailing seven days
+// (issue #223): the recap now honors week_mode, and under the default calendar
+// mode the current-week window would shrink toward the week-start day, so on some
+// weekdays the last seeded workout (daysAgo(1)) would fall outside it and the card
+// would render its empty-state nudge instead of the summary rows. Rolling keeps
+// the spec deterministic across every CI run day. Calendar-mode window behavior is
+// covered by the pure unit tests (lib/__tests__/week-window.test.ts).
+setWeekMode(PROFILE_ID, "rolling");
 
 // A fired milestone so the Timeline's `milestone` category has a deterministic
 // entry to render (the milestone engine also fires live on the notify tick, but
