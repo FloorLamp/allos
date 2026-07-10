@@ -2842,6 +2842,39 @@
           "note": "Postmenopausal LH up to ~58.5 mIU/mL (Mayo/endocrine); open low bound so HRT-suppressed values aren't false-flagged 'low'."
         }
       }
+    },
+    {
+      "name": "Grip Strength",
+      "category": "vitals",
+      "unit": "kg",
+      "ref_low": null,
+      "ref_high": null,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "higher_better",
+      "note": "Maximum handgrip (dynamometer), in kg. A whole-body strength proxy and independent mortality predictor; interpreted by age/sex percentile (Dodds et al. 2014), not a fixed cutoff."
+    },
+    {
+      "name": "30-Second Chair Stand",
+      "category": "vitals",
+      "unit": "reps",
+      "ref_low": null,
+      "ref_high": null,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "higher_better",
+      "note": "Sit-to-stand repetitions in 30 seconds — a lower-body strength / frailty measure for older adults. Interpreted by age/sex percentile (Rikli & Jones Senior Fitness Test), not a fixed cutoff."
+    },
+    {
+      "name": "Single-Leg Balance",
+      "category": "vitals",
+      "unit": "seconds",
+      "ref_low": null,
+      "ref_high": null,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "higher_better",
+      "note": "Unipedal stance time, eyes open (seconds; typically capped at 45 s). A postural-control / fall-risk measure; interpreted by age/sex percentile (Springer et al. 2007), not a fixed cutoff."
     }
   ]
 }

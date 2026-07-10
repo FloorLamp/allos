@@ -48,6 +48,9 @@ describe("buildIntent", () => {
       tempUnit: null,
       sleepHours: null,
       hrv: null,
+      gripStrength: null,
+      chairStand: null,
+      balance: null,
     });
     const b = buildIntent("vitals", "2026-01-01", {
       systolic: "121",
@@ -59,6 +62,9 @@ describe("buildIntent", () => {
       tempUnit: null,
       sleepHours: null,
       hrv: null,
+      gripStrength: null,
+      chairStand: null,
+      balance: null,
     });
     expect(a.key).not.toBe(b.key);
   });

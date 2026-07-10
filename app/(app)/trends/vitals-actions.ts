@@ -31,6 +31,9 @@ export async function addVitals(formData: FormData) {
       tempUnit: formData.get("temp_unit") as string | null,
       sleepHours: formData.get("sleep_hours") as string | null,
       hrv: formData.get("hrv") as string | null,
+      gripStrength: formData.get("grip_strength") as string | null,
+      chairStand: formData.get("chair_stand") as string | null,
+      balance: formData.get("balance") as string | null,
     }
   );
   // A rejected/empty vitals input is a no-op — skip revalidation.

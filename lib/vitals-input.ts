@@ -14,6 +14,12 @@
 //   • Body Temperature                    → medical_records, category 'vitals',  degF
 //   • Sleep duration                      → metric_samples,  metric 'sleep_min', minutes
 //   • Heart rate variability (HRV)        → metric_samples,  metric 'hrv_ms',    ms
+//   • Grip Strength                       → medical_records, category 'vitals',  kg
+//   • 30-Second Chair Stand               → medical_records, category 'vitals',  reps
+//   • Single-Leg Balance                  → medical_records, category 'vitals',  seconds
+// The three functional-fitness markers (#158) are manual-only physical measurements
+// stored in their canonical unit directly (no entry-unit selector); their age/sex
+// PERCENTILE context comes from lib/fitness-norms.ts.
 // Body temperature and glucose have internationally-varying entry units, so the form
 // carries an explicit unit selector for each and converts to the canonical unit here
 // (°C→°F, mmol/L→mg/dL). BP/SpO2/HRV/sleep have universal entry units.
@@ -46,6 +52,9 @@ export interface VitalsRawInput {
   tempUnit?: string | null; // 'C' | 'F' (defaults F — the canonical/display unit)
   sleepHours?: string | null;
   hrv?: string | null;
+  gripStrength?: string | null; // kg
+  chairStand?: string | null; // reps in 30 s
+  balance?: string | null; // single-leg stance seconds
 }
 
 // Canonical names/units — the single source of truth shared by the action + tests,
@@ -75,6 +84,25 @@ export const VITAL_CANONICAL = {
     canonical: "Body Temperature",
     category: "vitals" as const,
     unit: "degF",
+  },
+  // Functional fitness markers (#158) — manual-entry physical measurements stored
+  // in their canonical unit directly (no conversion). Each is a canonical biomarker
+  // (see scripts/gen-canonical-biomarkers.ts CURATED_LABS) whose age/sex percentile
+  // context comes from lib/fitness-norms.json; the names/units MUST match both.
+  gripStrength: {
+    canonical: "Grip Strength",
+    category: "vitals" as const,
+    unit: "kg",
+  },
+  chairStand: {
+    canonical: "30-Second Chair Stand",
+    category: "vitals" as const,
+    unit: "reps",
+  },
+  balance: {
+    canonical: "Single-Leg Balance",
+    category: "vitals" as const,
+    unit: "seconds",
   },
 } as const;
 
@@ -115,6 +143,9 @@ export function validateVitalsInput(input: VitalsRawInput): string | null {
     input.temperature,
     input.sleepHours,
     input.hrv,
+    input.gripStrength,
+    input.chairStand,
+    input.balance,
   ].some((v) => !blank(v));
 
   if (!hasSys && !hasDia && !anyOther) {
@@ -178,6 +209,27 @@ export function validateVitalsInput(input: VitalsRawInput): string | null {
     }
   }
 
+  if (!blank(input.gripStrength)) {
+    const v = numOrNull(input.gripStrength);
+    if (v == null || v <= 0 || v > 150) {
+      return "Grip strength must be between 1 and 150 kg.";
+    }
+  }
+
+  if (!blank(input.chairStand)) {
+    const v = numOrNull(input.chairStand);
+    if (v == null || v < 0 || v > 100 || !Number.isInteger(v)) {
+      return "Chair stands must be a whole number between 0 and 100.";
+    }
+  }
+
+  if (!blank(input.balance)) {
+    const v = numOrNull(input.balance);
+    if (v == null || v < 0 || v > 600) {
+      return "Balance time must be between 0 and 600 seconds.";
+    }
+  }
+
   return null;
 }
 
@@ -232,6 +284,21 @@ export function normalizeVitalsInput(
   const hrv = numOrNull(input.hrv);
   if (hrv != null) {
     samples.push({ metric: HRV_METRIC, value: hrv });
+  }
+
+  const grip = numOrNull(input.gripStrength);
+  if (grip != null) {
+    medical.push({ ...VITAL_CANONICAL.gripStrength, value_num: grip });
+  }
+
+  const chair = numOrNull(input.chairStand);
+  if (chair != null) {
+    medical.push({ ...VITAL_CANONICAL.chairStand, value_num: chair });
+  }
+
+  const bal = numOrNull(input.balance);
+  if (bal != null) {
+    medical.push({ ...VITAL_CANONICAL.balance, value_num: bal });
   }
 
   return { medical, samples };

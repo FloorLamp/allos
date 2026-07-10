@@ -46,6 +46,9 @@ export default function VitalsQuickAdd({
       tempUnit: s("temp_unit"),
       sleepHours: s("sleep_hours"),
       hrv: s("hrv"),
+      gripStrength: s("grip_strength"),
+      chairStand: s("chair_stand"),
+      balance: s("balance"),
     };
     const validationError = validateVitalsInput(raw);
     if (validationError) {
@@ -92,8 +95,9 @@ export default function VitalsQuickAdd({
           Log vitals
         </h2>
         <p className="text-sm text-slate-500 dark:text-slate-400">
-          Blood pressure, glucose, oxygen, temperature, sleep, or HRV — fill in
-          only what you measured. Shows up alongside synced readings.
+          Blood pressure, glucose, oxygen, temperature, sleep, HRV, or the
+          functional-fitness markers — fill in only what you measured. Shows up
+          alongside synced readings.
         </p>
       </div>
 
@@ -226,6 +230,48 @@ export default function VitalsQuickAdd({
             step="1"
             min="0"
             name="hrv"
+            className="input"
+          />
+        </div>
+
+        <div>
+          <label className="label" htmlFor="v-grip">
+            Grip strength (kg)
+          </label>
+          <input
+            id="v-grip"
+            type="number"
+            step="0.1"
+            min="0"
+            name="grip_strength"
+            className="input"
+          />
+        </div>
+
+        <div>
+          <label className="label" htmlFor="v-chair">
+            Chair stands (30s reps)
+          </label>
+          <input
+            id="v-chair"
+            type="number"
+            step="1"
+            min="0"
+            name="chair_stand"
+            className="input"
+          />
+        </div>
+
+        <div>
+          <label className="label" htmlFor="v-balance">
+            Single-leg balance (s)
+          </label>
+          <input
+            id="v-balance"
+            type="number"
+            step="0.1"
+            min="0"
+            name="balance"
             className="input"
           />
         </div>

@@ -324,6 +324,18 @@
       "full_name": "Maximal Oxygen Uptake",
       "description": "VO2 max is the maximum rate at which the body can use oxygen during intense exercise and is a key measure of cardiorespiratory fitness. Higher values reflect greater aerobic capacity and are associated with better long-term health."
     },
+    "Grip Strength": {
+      "full_name": "Handgrip Strength",
+      "description": "Grip strength is the maximum force of a handgrip measured with a dynamometer, used as a simple proxy for whole-body muscle strength. Lower grip strength for one's age and sex is a well-studied predictor of frailty and mortality, so the trend matters more than any single reading."
+    },
+    "30-Second Chair Stand": {
+      "full_name": "30-Second Chair Stand Test",
+      "description": "The 30-second chair stand counts how many times a person can rise from and return to a seated position in 30 seconds without using their arms. It gauges lower-body strength and endurance and is a standard measure of functional fitness and fall risk in older adults."
+    },
+    "Single-Leg Balance": {
+      "full_name": "Single-Leg (Unipedal) Stance Time",
+      "description": "Single-leg balance measures how long a person can stand on one leg, typically with eyes open. It reflects postural control and is associated with fall risk; the ability generally declines with age, so tracking it over time is more informative than a one-off value."
+    },
     "Alternaria Alternata (M6) IgE": {
       "full_name": "Alternaria Alternata (M6) IgE Antibody",
       "description": "This test measures IgE antibodies specific to Alternaria alternata, a common outdoor mold. Elevated levels indicate sensitization and a possible allergy to this mold, which can trigger respiratory symptoms."

@@ -36,6 +36,10 @@ import BiomarkerChart, {
 } from "@/components/BiomarkerChart";
 import StarButton from "@/components/StarButton";
 import ScrollFade from "@/components/ScrollFade";
+import {
+  FitnessPercentileCard,
+  fitnessContextFor,
+} from "@/components/FitnessPercentile";
 
 export const dynamic = "force-dynamic";
 
@@ -292,6 +296,20 @@ export default async function BiomarkerDetailPage(props: {
   );
   const badgeMeta = RANGE_BADGE_META[badge];
 
+  // Age/sex percentile + fitness age for the longevity fitness markers (VO2 Max,
+  // grip strength, chair stand, balance) — issue #158. Uses the latest reading in
+  // the canonical unit and the subject's sex + age-on-that-reading. Renders nothing
+  // (fitnessContextFor → null) for a non-fitness marker or when sex/age is unset.
+  const latestCanonicalValue = latestPlottable
+    ? convertToCanonical(latestPlottable.value, latestPlottable.r.unit, cb)
+    : null;
+  const fitnessCtx = fitnessContextFor(
+    canonical,
+    latestCanonicalValue,
+    sex,
+    age
+  );
+
   // Staleness: most biomarkers want a yearly retest; genomics never go stale.
   const stale = isBiomarkerStale(
     latest.date,
@@ -399,6 +417,10 @@ export default async function BiomarkerDetailPage(props: {
           </div>
         )}
       </div>
+
+      {/* Age/sex percentile + fitness age (#158) — fitness markers only, hidden
+          when sex/age unset. */}
+      <FitnessPercentileCard ctx={fitnessCtx} />
 
       {/* Chart */}
       <div className="card mb-6">

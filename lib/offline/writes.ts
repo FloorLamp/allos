@@ -308,6 +308,9 @@ export function applyIntent(
         tempUnit: p.tempUnit,
         sleepHours: p.sleepHours,
         hrv: p.hrv,
+        gripStrength: p.gripStrength,
+        chairStand: p.chairStand,
+        balance: p.balance,
       });
     } else {
       // Unknown flow — treat as a permanent rejection (client drops it).

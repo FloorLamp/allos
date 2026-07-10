@@ -26,6 +26,7 @@
     "gen:mets": "tsx scripts/gen-mets.ts",
     "gen:dri": "tsx scripts/gen-dri.ts",
     "gen:growth": "tsx scripts/gen-growth-charts.ts",
+    "gen:fitness-norms": "tsx scripts/gen-fitness-norms.ts",
     "prepare": "husky"
   },
   "lint-staged": {

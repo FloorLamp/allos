@@ -54,6 +54,9 @@ export interface VitalsPayload {
   tempUnit: string | null;
   sleepHours: string | null;
   hrv: string | null;
+  gripStrength: string | null;
+  chairStand: string | null;
+  balance: string | null;
 }
 
 export type IntentPayload = DosePayload | BodyMetricPayload | VitalsPayload;
