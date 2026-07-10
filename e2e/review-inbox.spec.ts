@@ -53,12 +53,13 @@ test.describe("Data → Review import inbox", () => {
     await page.goto("/data?section=review");
     const feed = page.getByTestId("import-feed");
 
-    // The successfully-extracted document appears with its produced-record count
-    // and links to its /import/[id] verify/detail view.
+    // The successfully-extracted document appears with its produced-item count
+    // and links to its /import/[id] verify/detail view. "items", not "records":
+    // the tally spans every clinical kind an import writes (#212).
     const docLink = feed.getByRole("link", { name: "e2e-labs.pdf" });
     await expect(docLink).toBeVisible();
     await expect(docLink).toHaveAttribute("href", /\/import\/\d+/);
-    await expect(feed.getByText("7 records", { exact: true })).toBeVisible();
+    await expect(feed.getByText("7 items", { exact: true })).toBeVisible();
 
     // A rejected upload (inserted straight into a terminal 'failed' state — the
     // path the toast bug missed) still surfaces in the feed.
