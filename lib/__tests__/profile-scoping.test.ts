@@ -264,21 +264,25 @@ describe("profile scoping: every owned-table query filters by profile_id", () =>
 // carries no ON DELETE CASCADE). This block fails the build if the shared const or
 // its consumers drift.
 
-// The single file holding the entire schema's CREATE TABLE blocks: the frozen
-// baseline migration (issue #119). A NEW table added in a later migration file
-// would also need to be scanned here, but until a post-baseline migration adds a
-// profile-owned table the baseline is the whole schema. (Keep this in sync if
-// that changes.)
-const SCHEMA_FILE = "lib/migrations/versions/001-baseline.ts";
+const MIGRATION_VERSIONS_DIR = "lib/migrations/versions";
 
-// The tables whose CREATE TABLE block in the baseline migration declares a
-// `profile_id` column. Every profile-owned table is born `profile_id NOT NULL` in
-// its CREATE block on a fresh DB (upgraded DBs additionally get it via
-// addColumnIfMissing), so the schema itself is the ground truth for "directly
-// profile-owned" — adding a profile_id table to the schema WITHOUT adding it to
-// OWNED_TABLES fails this test, which is the exact drift Fix 1 exists to prevent.
-// `_new` rebuild scratch tables are ignored. Uses a balanced-paren scan of each
-// CREATE body.
+function migrationSources(): string {
+  const dir = path.join(REPO, MIGRATION_VERSIONS_DIR);
+  return fs
+    .readdirSync(dir)
+    .filter((f) => /^\d{3}-.*\.ts$/.test(f))
+    .sort()
+    .map((f) => fs.readFileSync(path.join(dir, f), "utf8"))
+    .join("\n");
+}
+
+// The tables whose CREATE TABLE block in any numbered migration declares a
+// `profile_id` column. Every profile-owned table should be born `profile_id NOT
+// NULL` in its CREATE block, so the migration source is the ground truth for
+// "directly profile-owned" — adding a profile_id table to the schema WITHOUT
+// adding it to OWNED_TABLES fails this test, which is the exact drift Fix 1 exists
+// to prevent. `_new` rebuild scratch tables are ignored. Uses a balanced-paren
+// scan of each CREATE body.
 function tablesDeclaringProfileId(dbSrc: string): Set<string> {
   const out = new Set<string>();
   const re = /CREATE TABLE (?:IF NOT EXISTS )?(\w+)\s*\(/g;
@@ -318,7 +322,7 @@ const NON_OWNED_PROFILE_ID_TABLES = new Set([
 
 describe("owned-table set: single source of truth (no drift)", () => {
   it("OWNED_TABLES equals the schema's profile_id tables (minus documented globals)", () => {
-    const dbSrc = fs.readFileSync(path.join(REPO, SCHEMA_FILE), "utf8");
+    const dbSrc = migrationSources();
     const declared = tablesDeclaringProfileId(dbSrc);
 
     // Guard against a broken parse silently passing: the schema declares many
@@ -334,8 +338,8 @@ describe("owned-table set: single source of truth (no drift)", () => {
       .filter((t) => !NON_OWNED_PROFILE_ID_TABLES.has(t))
       .sort();
     // The schema-derived owned set MUST equal OWNED_TABLES. A new profile_id table
-    // added to db.ts but forgotten in OWNED_TABLES lands in `derivedOwned` only →
-    // this fails, catching the exact orphaned-PHI drift Fix 1 prevents.
+    // added to a migration but forgotten in OWNED_TABLES lands in `derivedOwned`
+    // only → this fails, catching the exact orphaned-PHI drift Fix 1 prevents.
     expect(derivedOwned).toEqual([...OWNED_TABLES].sort());
     expect(new Set(OWNED_TABLES).size).toBe(OWNED_TABLES.length);
   });
