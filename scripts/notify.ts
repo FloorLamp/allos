@@ -51,9 +51,10 @@ import { runMilestones } from "../lib/milestones-db";
 import { runScheduledBackup } from "../lib/backup";
 import { pruneAuditEvents } from "../lib/audit";
 import { sweepDeletedRows } from "../lib/undo-delete-db";
+import { reapStuckExtractions } from "../lib/extraction-reaper";
 import { inferWorkoutSchedule, runCoachingEpisode } from "../lib/queries";
 import { slotDue } from "../lib/notifications/schedule";
-import { db, today } from "../lib/db";
+import { db, today, checkpointWal } from "../lib/db";
 import { hourInTz, weekdayInTz } from "../lib/date";
 import { createLogger } from "../lib/log";
 import { getConnection } from "../lib/integrations/connections";
@@ -417,6 +418,43 @@ async function tick() {
   // (sweepDeletedRows never throws); never affects the notification flow/exit code.
   const swept = sweepDeletedRows();
   if (swept > 0) log.info("swept expired undo rows", { swept });
+
+  // Stuck-extraction lease reap (#135 item 4): global, once per tick. Boot already
+  // clears extractions a crash left mid-flight, but a process that stays up with a
+  // hung extraction leaves the row spinning on 'processing' forever — this fails any
+  // whose lease ran past the timeout. Best-effort; a failure must never affect the
+  // notification flow or exit code.
+  try {
+    const reaped = reapStuckExtractions();
+    if (reaped > 0) log.info("reaped stuck extractions", { reaped });
+  } catch (e) {
+    log.error("stuck-extraction reap failed", {
+      err: e instanceof Error ? e : String(e),
+    });
+  }
+
+  // WAL checkpoint (#135 item 6): global, once per tick. Three processes share the
+  // DB file and nothing else forces a checkpoint, so the write-ahead log can grow
+  // unbounded on the shared mount. TRUNCATE flushes it back into the main DB and
+  // shrinks the -wal file. Best-effort — a busy checkpoint just does less and is
+  // retried next tick; a failure must never affect the notification flow/exit code.
+  try {
+    checkpointWal();
+  } catch (e) {
+    log.error("wal checkpoint failed", {
+      err: e instanceof Error ? e : String(e),
+    });
+  }
+
+  // NOTE (#135 item 7 — notification at-least-once duplicate window): dedup markers
+  // (notify_last_*) are written AFTER a successful send, so a crash in the send→mark
+  // gap re-sends that slot once on the next tick. This is WONTFIX BY DESIGN: for
+  // health reminders a rare duplicate ("take your medication") is strictly safer
+  // than a silently missed one, and closing the window fully would need a
+  // send-intent/outbox record with its own failure modes. Running two schedulers
+  // concurrently (the compose poll sidecar AND a host crontab tick) widens this
+  // window — operators should run exactly ONE tick scheduler; the poll sidecar is
+  // only for inbound button taps and does not itself send scheduled reminders.
 
   process.exit(anyFailed ? 1 : 0);
 }

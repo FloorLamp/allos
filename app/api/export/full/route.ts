@@ -1,15 +1,12 @@
 import fs from "node:fs";
-import { DATASETS, toCsv } from "@/lib/export";
+import { toCsv } from "@/lib/export";
 import { getCurrentSession } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { AUDIT_ACTIONS } from "@/lib/audit-actions";
 import { ZipBuilder } from "@/lib/zip-write";
 import { buildFhirBundle } from "@/lib/fhir-export";
 import { buildExportManifest } from "@/lib/export-manifest";
-import {
-  collectFhirExportInput,
-  listProfileMedicalFiles,
-} from "@/lib/export-full";
+import { collectExportSnapshot } from "@/lib/export-full";
 import pkg from "@/package.json";
 
 // Node runtime: this streams a ZIP built with fs + the sync SQLite handle; it can't
@@ -27,6 +24,14 @@ export const dynamic = "force-dynamic";
 // STORE-only ZIP writer (lib/zip-write) rather than materialized whole. Datasets +
 // the FHIR bundle are bounded JSON built in memory, but each medical FILE is read
 // and emitted one at a time — the writer only ever holds the current entry.
+//
+// Snapshot consistency (issue #135, item 1): every dataset + the FHIR passport input
+// + the medical-file list are captured in ONE SQLite read transaction up front
+// (collectExportSnapshot), so a write landing between two stream pulls can no longer
+// tear the archive (e.g. a supplement whose log row goes missing mid-stream). The
+// export is a PORTABILITY artifact (a readable copy of your data), NOT the restore
+// path — restoring an instance uses the snapshot backups (scripts/restore.ts), not
+// this ZIP.
 export async function GET() {
   const session = getCurrentSession();
   if (!session) {
@@ -46,32 +51,33 @@ export async function GET() {
 
   // Lazily produce the archive bytes: each yield is one entry's local header + data
   // (from the ZipBuilder), then the central directory + EOCD at the end.
+  // Read the whole consistent payload in ONE transaction before streaming (item 1);
+  // the bounded JSON is now in hand, medical files are still streamed from disk.
+  const snapshot = collectExportSnapshot(profileId, profileName);
+
   function* archive(): Generator<Buffer> {
     const zip = new ZipBuilder();
     const datasetCounts: Record<string, number> = {};
 
-    for (const ds of DATASETS) {
-      const rows = ds.rows(profileId);
-      datasetCounts[ds.key] = rows.length;
+    for (const ds of snapshot.datasets) {
+      datasetCounts[ds.key] = ds.rows.length;
       yield zip.file(
         `datasets/${ds.key}.json`,
-        Buffer.from(JSON.stringify(rows, null, 2), "utf8")
+        Buffer.from(JSON.stringify(ds.rows, null, 2), "utf8")
       );
       yield zip.file(
         `datasets/${ds.key}.csv`,
-        Buffer.from(toCsv(ds.columns, rows), "utf8")
+        Buffer.from(toCsv(ds.columns, ds.rows), "utf8")
       );
     }
 
-    const fhir = buildFhirBundle(
-      collectFhirExportInput(profileId, profileName)
-    );
+    const fhir = buildFhirBundle(snapshot.fhirInput);
     yield zip.file(
       "passport.fhir.json",
       Buffer.from(JSON.stringify(fhir, null, 2), "utf8")
     );
 
-    const files = listProfileMedicalFiles(profileId);
+    const files = snapshot.files;
     for (const f of files) {
       let data: Buffer;
       try {

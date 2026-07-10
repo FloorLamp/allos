@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Migration } from "../runner";
 
-// Migration 004: make dose edits stop rewriting/destroying adherence history.
+// Migration 005: make dose edits stop rewriting/destroying adherence history.
 //
 // A supplement's scheduled doses (intake_item_doses) were previously mutated in
 // place and hard-deleted on edit, while the adherence log (intake_item_logs)
@@ -60,7 +60,7 @@ export function up(db: Database.Database): void {
 }
 
 export const migration: Migration = {
-  id: 4,
-  name: "004-dose-history",
+  id: 5,
+  name: "005-dose-history",
   up,
 };

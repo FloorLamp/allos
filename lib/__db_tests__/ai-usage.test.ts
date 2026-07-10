@@ -11,7 +11,11 @@
 
 import { describe, it, expect, beforeAll } from "vitest";
 import { db } from "@/lib/db";
-import { checkAndIncrementAiUsage, getAiUsageCount } from "@/lib/ai-usage";
+import {
+  checkAndIncrementAiUsage,
+  getAiUsageCount,
+  refundAiUsage,
+} from "@/lib/ai-usage";
 
 function newProfile(name: string): number {
   return Number(
@@ -67,5 +71,50 @@ describe("checkAndIncrementAiUsage — atomic read-increment", () => {
     expect(getAiUsageCount(pb, "extraction", DAY)).toBe(1);
     // A's exhausted counter is unchanged by B's increment.
     expect(getAiUsageCount(pa, "extraction", DAY)).toBe(3);
+  });
+});
+
+describe("refundAiUsage — transactional decrement (issue #135 item 3)", () => {
+  const RDAY = "2025-02-20";
+
+  it("hands back exactly one unit and frees a slot under the cap", () => {
+    const pc = newProfile("AIUSAGE-REFUND");
+    // Burn the whole 3/day extraction cap.
+    for (let i = 0; i < 3; i++) {
+      checkAndIncrementAiUsage(pc, "extraction", 3, RDAY);
+    }
+    expect(getAiUsageCount(pc, "extraction", RDAY)).toBe(3);
+    expect(checkAndIncrementAiUsage(pc, "extraction", 3, RDAY).allowed).toBe(
+      false
+    );
+
+    // A transient failure refunds one unit; a fresh call now fits again.
+    refundAiUsage(pc, "extraction", RDAY);
+    expect(getAiUsageCount(pc, "extraction", RDAY)).toBe(2);
+    const after = checkAndIncrementAiUsage(pc, "extraction", 3, RDAY);
+    expect(after.allowed).toBe(true);
+    expect(getAiUsageCount(pc, "extraction", RDAY)).toBe(3);
+  });
+
+  it("never goes below zero and no-ops when no counter row exists", () => {
+    const pd = newProfile("AIUSAGE-REFUND-FLOOR");
+    // No row yet — refund must be a harmless no-op (not create a negative row).
+    refundAiUsage(pd, "extraction", RDAY);
+    expect(getAiUsageCount(pd, "extraction", RDAY)).toBe(0);
+    // One charge, two refunds → floored at 0, never negative.
+    checkAndIncrementAiUsage(pd, "extraction", 5, RDAY);
+    refundAiUsage(pd, "extraction", RDAY);
+    refundAiUsage(pd, "extraction", RDAY);
+    expect(getAiUsageCount(pd, "extraction", RDAY)).toBe(0);
+  });
+
+  it("only touches the named (profile, day, kind) counter", () => {
+    const pe = newProfile("AIUSAGE-REFUND-SCOPE");
+    checkAndIncrementAiUsage(pe, "extraction", 5, RDAY);
+    checkAndIncrementAiUsage(pe, "insight", 5, RDAY);
+    refundAiUsage(pe, "extraction", RDAY);
+    expect(getAiUsageCount(pe, "extraction", RDAY)).toBe(0);
+    // The insight bucket (different kind) is untouched by the extraction refund.
+    expect(getAiUsageCount(pe, "insight", RDAY)).toBe(1);
   });
 });

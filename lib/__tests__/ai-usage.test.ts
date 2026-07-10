@@ -3,6 +3,7 @@ import {
   DEFAULT_DAILY_EXTRACTION_LIMIT,
   DEFAULT_DAILY_INSIGHT_LIMIT,
   dailyLimitFor,
+  decideAiRefund,
   decideAiUsage,
   extractionDailyLimit,
   insightDailyLimit,
@@ -80,6 +81,37 @@ describe("decideAiUsage", () => {
     }
     expect(allowedCalls).toBe(limit);
     expect(count).toBe(limit);
+  });
+});
+
+describe("decideAiRefund (issue #135 item 3)", () => {
+  it("hands one unit back", () => {
+    expect(decideAiRefund(3)).toBe(2);
+    expect(decideAiRefund(1)).toBe(0);
+  });
+
+  it("never goes below zero (nothing to refund)", () => {
+    expect(decideAiRefund(0)).toBe(0);
+    expect(decideAiRefund(-5)).toBe(0);
+  });
+
+  it("treats a non-finite current as 0 (defensive)", () => {
+    expect(decideAiRefund(NaN)).toBe(0);
+    expect(decideAiRefund(Number.POSITIVE_INFINITY)).toBe(0);
+  });
+
+  it("floors a fractional current before decrementing", () => {
+    expect(decideAiRefund(3.9)).toBe(2); // floor(3.9)=3 → 2
+  });
+
+  it("charge-then-refund round-trips: a failed attempt restores the count", () => {
+    // Consume 2, refund 1 → net 1 consumed, matching one successful + one failed.
+    const afterTwoCharges = decideAiUsage(
+      decideAiUsage(0, 10).nextCount,
+      10
+    ).nextCount;
+    expect(afterTwoCharges).toBe(2);
+    expect(decideAiRefund(afterTwoCharges)).toBe(1);
   });
 });
 

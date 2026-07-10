@@ -81,3 +81,17 @@ export interface AiUsageResult {
   allowed: boolean;
   remaining: number;
 }
+
+// PURE refund decision (issue #135, item 3): a transient extraction FAILURE
+// (timeout / 429 / 5xx / crash) burned a unit at dispatch but imported nothing, so
+// the unit is handed back. Returns the count AFTER the refund: current - 1, floored
+// at 0 (a refund can never drive the counter negative, and a non-finite/≤0 current —
+// nothing to refund — yields 0). Refunds apply ONLY to `failed` outcomes, never
+// `skipped` (a skip means the model deliberately declined, or the daily cap already
+// prevented the charge). Keeping this pure lets the DB wrapper stay a thin
+// transactional decrement and mirrors decideAiUsage.
+export function decideAiRefund(current: number): number {
+  const safeCurrent =
+    Number.isFinite(current) && current > 0 ? Math.floor(current) : 0;
+  return Math.max(0, safeCurrent - 1);
+}

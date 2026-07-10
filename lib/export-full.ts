@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { db } from "./db";
+import { DATASETS } from "./export";
 import { getUserSex, getUserBirthdate, getUserFullName } from "./settings";
 import type {
   FhirExportInput,
@@ -205,4 +206,45 @@ export function collectFhirExportInput(
     observations,
     medications,
   };
+}
+
+// One dataset's rows captured at snapshot time (key + column order + rows), the
+// shape the streamer serializes to `datasets/<key>.json` / `.csv`.
+export interface ExportDatasetSnapshot {
+  key: string;
+  columns: string[];
+  rows: Record<string, unknown>[];
+}
+
+// Everything the full-account export streams, captured as ONE point-in-time read.
+export interface ExportSnapshot {
+  datasets: ExportDatasetSnapshot[];
+  fhirInput: FhirExportInput;
+  files: ExportFile[];
+}
+
+// Collect the whole export payload inside a SINGLE SQLite read transaction (issue
+// #135, item 1). The archive previously ran each dataset as its own lazy query as
+// the stream was pulled, with no snapshot — so a write landing BETWEEN two pulls
+// could tear the archive internally (a supplement present in supplements.json whose
+// log row, read a moment later, is already gone). better-sqlite3 is synchronous and
+// a `db.transaction` wraps the reads in one BEGIN…COMMIT, so every dataset + the
+// FHIR passport input + the medical-file list observe the same consistent snapshot.
+// The bounded JSON (datasets + FHIR input) is materialized in memory here; the
+// medical FILES are only LISTED here (their bytes are still streamed one at a time
+// from disk by the route, preserving the entry-at-a-time memory discipline). Every
+// read is scoped to `profileId` — the caller resolves it from the session.
+export function collectExportSnapshot(
+  profileId: number,
+  profileName: string
+): ExportSnapshot {
+  return db.transaction((): ExportSnapshot => ({
+    datasets: DATASETS.map((ds) => ({
+      key: ds.key,
+      columns: ds.columns,
+      rows: ds.rows(profileId),
+    })),
+    fhirInput: collectFhirExportInput(profileId, profileName),
+    files: listProfileMedicalFiles(profileId),
+  }))();
 }

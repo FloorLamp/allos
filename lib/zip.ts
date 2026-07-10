@@ -14,6 +14,15 @@ export class ZipError extends Error {}
 // the process. inflateRawSync rejects with a RangeError once output exceeds it.
 const MAX_ENTRY_BYTES = 64 * 1024 * 1024;
 
+// AGGREGATE caps across the whole archive (issue #135, item 5). The per-entry cap
+// above bounds ONE entry, but a package of many mid-sized high-ratio entries could
+// still sum to gigabytes, and a central directory can claim a huge entry count. Cap
+// the total decompressed bytes and the number of data entries so a multi-entry
+// bomb throws instead of exhausting memory. Both are far above any real XDM
+// health-summary package (a handful of small members).
+const MAX_TOTAL_BYTES = 256 * 1024 * 1024;
+const MAX_ENTRIES = 4096;
+
 export interface ZipEntry {
   name: string;
   data: Buffer;
@@ -48,8 +57,13 @@ export function readZip(buf: Buffer): ZipEntry[] {
   const cdOffset = buf.readUInt32LE(eocd + 16);
 
   const entries: ZipEntry[] = [];
+  // Aggregate decompressed byte tally across every entry (#135 item 5).
+  let total = 0;
   let p = cdOffset;
   for (let i = 0; i < count; i++) {
+    // Too many entries claimed — a multi-member bomb. Refuse rather than iterate.
+    if (entries.length >= MAX_ENTRIES)
+      throw new ZipError("ZIP has too many entries.");
     if (p + 46 > buf.length || buf.readUInt32LE(p) !== CEN_SIG) break;
     const method = buf.readUInt16LE(p + 10);
     const compSize = buf.readUInt32LE(p + 20);
@@ -79,6 +93,9 @@ export function readZip(buf: Buffer): ZipEntry[] {
         }
       } else
         throw new ZipError(`Unsupported ZIP compression method ${method}.`);
+      total += data.length;
+      if (total > MAX_TOTAL_BYTES)
+        throw new ZipError("ZIP total size exceeds the limit.");
       entries.push({ name, data });
     }
     p += 46 + nameLen + extraLen + commentLen;

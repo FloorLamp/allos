@@ -103,6 +103,12 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     why: "sweepDeletedRows: the 24h undo-holding purge is GLOBAL by design (one call per hourly tick clears every profile's expired rows), so it is intentionally profile-agnostic",
   },
   {
+    file: "lib/extraction-reaper.ts",
+    includes:
+      "UPDATE medical_documents SET extraction_status = 'failed', extraction_error = ? WHERE extraction_status = 'processing'",
+    why: "reapStuckExtractions (#135 item 4): the stuck-'processing' lease reaper is GLOBAL maintenance run once per hourly tick (mirrors the boot reset in boot-tasks.ts), so it is intentionally profile-agnostic — it only fails rows a hung in-process extraction left mid-flight, keyed by the lease timestamp, never a profile's data",
+  },
+  {
     file: "lib/share-links-db.ts",
     includes: "FROM profile_share_links WHERE token_hash = ?",
     why: "getShareLinkByToken: the ONLY entry point for the unauthenticated public share route — the caller has no profile context yet; the lookup is by the unguessable 256-bit token's SHA-256, and the returned row's profile_id then scopes every downstream read",
