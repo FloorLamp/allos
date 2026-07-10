@@ -61,6 +61,32 @@ export interface Payload {
   v: 1;
   kind: string;
   rows: Record<string, Row[]>;
+  // OPTIONAL merge-undo context (issues #199/#200). Present ONLY when this deleted
+  // row is the discarded side of an activity merge; absent for a plain delete. When
+  // set, restore additionally INVERTS the merge that produced this delete: it moves
+  // the drop's re-parented exercise_sets back off the keeper, restores the keeper's
+  // pre-fold field values, and clears the recorded pair decision so the pair can be
+  // re-detected. A plain delete never carries it, so its restore is unchanged.
+  merge?: MergeUndoContext;
+}
+
+// The context an activity-merge delete carries so its undo can fully invert the
+// merge (issues #199/#200). Captured at merge time from the pre-fold keeper + the
+// discarded row; consumed by restoreDeletedRow.
+export interface MergeUndoContext {
+  // The keeper the discarded row was folded into.
+  keeperId: number;
+  // The decision domain + stable pair signature recorded for this merge — deleted on
+  // undo so the (now un-merged) pair resurfaces in Review (#200).
+  domain: string;
+  signature: string;
+  // The keeper's fold-field values BEFORE the fold (plus its prior `edited` flag),
+  // so undo restores the keeper exactly, undoing the gap-fills that would otherwise
+  // double-count with the restored row (#200).
+  keeperBefore: Record<string, unknown>;
+  // ids of the discarded row's exercise_sets that were re-parented onto the keeper
+  // at merge time (#199). Undo moves exactly these back onto the restored row.
+  movedSetIds: number[];
 }
 
 // ── The kind registry ─────────────────────────────────────────────────────────
@@ -162,12 +188,15 @@ export function getKindSpec(kind: string): KindSpec {
   return spec;
 }
 
-// Build the serialized payload from captured rows-by-entity. Pure.
+// Build the serialized payload from captured rows-by-entity. Pure. `merge` is the
+// optional merge-undo context (#199/#200) — omitted for a plain delete.
 export function serializePayload(
   kind: string,
-  rows: Record<string, Row[]>
+  rows: Record<string, Row[]>,
+  merge?: MergeUndoContext
 ): string {
   const payload: Payload = { v: 1, kind, rows };
+  if (merge) payload.merge = merge;
   return JSON.stringify(payload);
 }
 

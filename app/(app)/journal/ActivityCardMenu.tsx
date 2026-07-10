@@ -20,6 +20,9 @@ export interface MergeSibling {
   sourceLabel: string;
   // Fields where both rows carry differing values — empty in the common case.
   conflicts: FieldConflict[];
+  // How many exercise sets this sibling carries — moved onto the keeper by the merge
+  // (#199); surfaced in the conflict preview so the user sees what's moving.
+  setCount: number;
 }
 
 // The kebab (⋯) action menu on a Journal activity card. Two affordances:
@@ -152,6 +155,7 @@ export default function ActivityCardMenu({
           keeperLabel={keeperLabel}
           dropLabel={conflictFor.sourceLabel}
           units={units}
+          dropSetCount={conflictFor.setCount}
           onConfirm={(overrideFields) => void confirmConflict(overrideFields)}
           onCancel={() => setConflictFor(null)}
         />

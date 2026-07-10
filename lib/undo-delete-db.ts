@@ -14,8 +14,10 @@ import {
   remapRow,
   serializePayload,
   type IdMaps,
+  type MergeUndoContext,
   type Row,
 } from "./undo-delete";
+import { revertActivityMerge } from "./merge-activity";
 
 // Human-readable, NON-PHI descriptors stored in deleted_rows.label (for a possible
 // future trash view). Never the user's title/name — that stays in `payload`.
@@ -32,10 +34,16 @@ const KIND_LABELS: Record<string, string> = {
 // are removed by the FK ON DELETE CASCADE (foreign_keys = ON), so only the root
 // DELETE is issued. Returns the new deleted_rows id (the undo token), or null when
 // the row doesn't exist / isn't this profile's (nothing was deleted).
+//
+// `merge` (issues #199/#200): the optional merge-undo context, present ONLY when the
+// captured row is the DISCARDED side of an activity merge. It rides in the payload so
+// restoreDeletedRow can invert the merge (move re-parented sets back, restore the
+// keeper's pre-fold fields, clear the pair decision). Omitted for a plain delete.
 export function captureDelete(
   kind: string,
   profileId: number,
-  rootId: number
+  rootId: number,
+  merge?: MergeUndoContext
 ): number | null {
   const spec = getKindSpec(kind);
   const root = spec.entities[0];
@@ -54,7 +62,7 @@ export function captureDelete(
         .all(...binds) as Row[];
     }
 
-    const payload = serializePayload(kind, rows);
+    const payload = serializePayload(kind, rows, merge);
     const info = db
       .prepare(
         `INSERT INTO deleted_rows (profile_id, kind, label, payload) VALUES (?, ?, ?, ?)`
@@ -109,6 +117,23 @@ export function restoreDeletedRow(profileId: number, undoId: number): boolean {
           map.set(oldId, Number(info.lastInsertRowid));
       }
     }
+
+    // Merge-undo inversion (#199/#200): when the captured row was the discarded side
+    // of an activity merge, also reverse the merge's keeper-side effects now that the
+    // drop row is back — move its re-parented sets off the keeper, restore the
+    // keeper's pre-fold fields, and clear the recorded pair decision. Gated on the
+    // presence of the merge context, so every OTHER undo kind is untouched.
+    if (payload.merge) {
+      const rootEntity = spec.entities[0].entity;
+      const oldRootId = payload.rows[rootEntity]?.[0]?.id;
+      const newDropId =
+        typeof oldRootId === "number"
+          ? idMaps[rootEntity]?.get(oldRootId)
+          : undefined;
+      if (typeof newDropId === "number")
+        revertActivityMerge(profileId, payload.merge, newDropId);
+    }
+
     db.prepare(`DELETE FROM deleted_rows WHERE id = ? AND profile_id = ?`).run(
       undoId,
       profileId

@@ -98,6 +98,7 @@ export default function MergeConflictDialog({
   keeperLabel,
   dropLabel,
   units,
+  dropSetCount = 0,
   busy = false,
   onConfirm,
   onCancel,
@@ -108,6 +109,10 @@ export default function MergeConflictDialog({
   // Provenance label for the row being absorbed (the override side).
   dropLabel: string;
   units: UnitPrefs;
+  // How many exercise sets the absorbed row carries — moved onto the keeper by the
+  // merge (#199). Shown so the user sees the training history that will move; 0 hides
+  // the line.
+  dropSetCount?: number;
   busy?: boolean;
   // Called with the fold-field NAMES the user flipped to the discarded row's value.
   onConfirm: (overrideFields: string[]) => void;
@@ -151,6 +156,18 @@ export default function MergeConflictDialog({
           {conflicts.length === 1 ? "a field" : "some fields"}. Pick which to
           keep — everything else folds together automatically.
         </p>
+
+        {dropSetCount > 0 && (
+          <p
+            className="mt-2 text-sm text-slate-500 dark:text-slate-400"
+            data-testid="merge-set-count"
+          >
+            <span className="font-medium text-slate-700 dark:text-slate-200">
+              {dropSetCount} logged set{dropSetCount === 1 ? "" : "s"}
+            </span>{" "}
+            from {dropLabel} will move to this activity.
+          </p>
+        )}
 
         <ul className="mt-3 space-y-3">
           {conflicts.map((c) => {

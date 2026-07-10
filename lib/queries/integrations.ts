@@ -211,6 +211,24 @@ export function recordPairDecision(
   ).run(profileId, domain, signature, decision);
 }
 
+// Delete a recorded decision for a pair (issue #200). Used when UNDOING an activity
+// merge: the merge recorded a durable 'merged' decision that permanently suppresses
+// the pair from Review (keyed on the stable signature); clearing it on undo lets the
+// now-unmerged pair resurface for a clean re-resolution. Profile-scoped; a no-op when
+// no decision exists. Returns the number of rows removed.
+export function deletePairDecision(
+  profileId: number,
+  domain: string,
+  signature: string
+): number {
+  return db
+    .prepare(
+      `DELETE FROM import_pair_decisions
+        WHERE profile_id = ? AND domain = ? AND pair_signature = ?`
+    )
+    .run(profileId, domain, signature).changes;
+}
+
 // Undecided detected duplicate activity pairs for the Review inbox, newest/highest-
 // confidence first (ordering is the pure detector's). Profile-scoped.
 export function getActivityDuplicates(
