@@ -1,6 +1,8 @@
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
 import { getAppointments, getProviderNames } from "@/lib/queries";
+import { isRealIsoDate } from "@/lib/date";
+import { isAppointmentKind } from "@/lib/preventive-appointment";
 import ProviderDatalist from "@/components/ProviderDatalist";
 import { PageHeader, EmptyState } from "@/components/ui";
 import AppointmentForm from "./AppointmentForm";
@@ -9,11 +11,36 @@ import { createAppointment } from "./actions";
 
 export const dynamic = "force-dynamic";
 
-export default function AppointmentsPage() {
+// A single value from the (string | string[]) searchParams shape.
+function one(v: string | string[] | undefined): string | null {
+  const s = Array.isArray(v) ? v[0] : v;
+  return s?.trim() || null;
+}
+
+export default function AppointmentsPage({
+  searchParams,
+}: {
+  searchParams: { [key: string]: string | string[] | undefined };
+}) {
   const { profile } = requireSession();
   const now = today(profile.id);
   const appointments = getAppointments(profile.id);
   const providerNames = getProviderNames();
+
+  // Prefill the create form from a preventive "Book" CTA (issue #85): the item's
+  // title + mapped visit kind + suggested date arrive as query params. Only build a
+  // prefill when at least a title or kind is present; a lone ?new=1 (command
+  // palette) just focuses the empty form. The date param, when a real ISO date,
+  // seeds the form's default date.
+  const ctaTitle = one(searchParams.title);
+  const ctaKindRaw = one(searchParams.kind);
+  const ctaKind = isAppointmentKind(ctaKindRaw) ? ctaKindRaw : null;
+  const ctaDate = one(searchParams.date);
+  const prefillDate = ctaDate && isRealIsoDate(ctaDate) ? ctaDate : now;
+  const bookPrefill =
+    ctaTitle || ctaKind
+      ? { title: ctaTitle, provider: null, location: null, kind: ctaKind }
+      : undefined;
 
   // Split scheduled (future-facing, still on Upcoming) from the settled history so
   // the active list stays actionable. getAppointments returns soonest-first.
@@ -66,7 +93,11 @@ export default function AppointmentsPage() {
         </div>
 
         <div className="min-w-0 space-y-4">
-          <AppointmentForm action={createAppointment} defaultDate={now} />
+          <AppointmentForm
+            action={createAppointment}
+            defaultDate={bookPrefill ? prefillDate : now}
+            prefill={bookPrefill}
+          />
         </div>
       </div>
     </div>

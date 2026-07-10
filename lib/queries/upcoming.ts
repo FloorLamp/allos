@@ -30,6 +30,10 @@ import {
 } from "../preventive-status";
 import { preventiveAssessmentToUpcomingItem } from "../preventive-upcoming";
 import {
+  scheduledMatchForRule,
+  type KindedAppointment,
+} from "../preventive-appointment";
+import {
   inferPreventiveSatisfactions,
   isCompletedStatus,
   type InferenceRecord,
@@ -358,13 +362,27 @@ export function clearPreventiveOverride(
   ).run(profileId, ruleKey);
 }
 
+// A profile's still-scheduled appointments reduced to the shape the pure
+// scheduled-match uses (kind + date + status). Profile-scoped via
+// getScheduledAppointments. Used to quiet a due preventive item that already has a
+// matching-kind visit booked (issue #85).
+function kindedScheduled(profileId: number): KindedAppointment[] {
+  return getScheduledAppointments(profileId).map((a) => ({
+    kind: a.kind,
+    scheduledAt: a.scheduled_at,
+    status: a.status,
+  }));
+}
+
 // Preventive well-visits and screenings that are due/overdue for the profile
 // (reuses the pure catalog assessor with the same age/sex resolution as the
 // immunization schedule). A missing birthdate/age → the assessor emits nothing
 // (its contract), so this returns []. Each actionable assessment maps to a
 // status-driven `visit`/`screening` Upcoming item carrying its rule key for the
-// inline mark-done + override forms.
+// inline mark-done + override forms, a prefilled "Book" CTA, and — when a matching
+// visit is already booked (issue #85) — a quiet "Scheduled" state.
 function preventiveItems(profileId: number, today: string): UpcomingItem[] {
+  const scheduled = kindedScheduled(profileId);
   const summary = assessCatalog({
     ageMonths: profileAgeMonths(profileId, today),
     sex: getUserSex(profileId),
@@ -387,7 +405,12 @@ function preventiveItems(profileId: number, today: string): UpcomingItem[] {
     ),
     today,
   });
-  return summary.actionable.map(preventiveAssessmentToUpcomingItem);
+  return summary.actionable.map((a) =>
+    preventiveAssessmentToUpcomingItem(a, {
+      today,
+      scheduledDate: scheduledMatchForRule(a.key, scheduled, today),
+    })
+  );
 }
 
 // Approximate whole months for a span of days, for the cadence due-text

@@ -4,6 +4,11 @@ import { revalidatePath } from "next/cache";
 import { requireWriteAccess } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { resolveProviderIdByName } from "@/lib/providers-db";
+import { recordPreventiveDone } from "@/lib/queries";
+import {
+  isAppointmentKind,
+  satisfiedRuleForCompletedKind,
+} from "@/lib/preventive-appointment";
 import type { AppointmentStatus } from "@/lib/types";
 
 // CRUD for scheduled medical visits. Every write is
@@ -13,6 +18,13 @@ import type { AppointmentStatus } from "@/lib/types";
 
 const str = (formData: FormData, key: string): string | null =>
   (formData.get(key) as string)?.trim() || null;
+
+// The optional visit category, validated against the known kinds (a blank or
+// tampered value is stored as NULL — which never matches a preventive rule).
+const kindOf = (formData: FormData): string | null => {
+  const raw = str(formData, "kind");
+  return isAppointmentKind(raw) ? raw : null;
+};
 
 // Both the management page and the Upcoming aggregation reflect appointment
 // changes, so keep their caches in lockstep.
@@ -31,15 +43,16 @@ export async function createAppointment(formData: FormData) {
   );
   db.prepare(
     `INSERT INTO appointments
-       (profile_id, scheduled_at, provider_id, title, location, notes, status)
-     VALUES (?, ?, ?, ?, ?, ?, 'scheduled')`
+       (profile_id, scheduled_at, provider_id, title, location, notes, kind, status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'scheduled')`
   ).run(
     profile.id,
     scheduledAt,
     providerId,
     str(formData, "title"),
     str(formData, "location"),
-    str(formData, "notes")
+    str(formData, "notes"),
+    kindOf(formData)
   );
   revalidate();
 }
@@ -54,7 +67,7 @@ export async function updateAppointment(formData: FormData) {
   );
   db.prepare(
     `UPDATE appointments
-       SET scheduled_at = ?, provider_id = ?, title = ?, location = ?, notes = ?
+       SET scheduled_at = ?, provider_id = ?, title = ?, location = ?, notes = ?, kind = ?
      WHERE id = ? AND profile_id = ?`
   ).run(
     scheduledAt,
@@ -62,6 +75,7 @@ export async function updateAppointment(formData: FormData) {
     str(formData, "title"),
     str(formData, "location"),
     str(formData, "notes"),
+    kindOf(formData),
     id,
     profile.id
   );
@@ -99,6 +113,36 @@ export async function deleteAppointment(formData: FormData) {
   db.prepare("DELETE FROM appointments WHERE id = ? AND profile_id = ?").run(
     id,
     profile.id
+  );
+  revalidate();
+}
+
+// Close the loop (issue #85): record the preventive satisfaction implied by a
+// completed, kind-tagged appointment. The kind → rule mapping is derived server-side
+// from the stored row (profile-scoped read), so a tampered form can't record an
+// arbitrary rule; only the unambiguous single-rule kinds (physical/dental/vision)
+// map, and the satisfaction is dated the visit's own day. Idempotent per
+// (profile, rule, date) via recordPreventiveDone, so re-offering is a no-op. This
+// complements — never duplicates — the record-inference layer: it lets a visit whose
+// title doesn't name-match still complete its rule, using the explicit kind signal.
+export async function recordPreventiveFromAppointment(formData: FormData) {
+  const { profile } = requireWriteAccess();
+  const id = Number(formData.get("id"));
+  if (!id) return;
+  const row = db
+    .prepare(
+      "SELECT kind, scheduled_at FROM appointments WHERE id = ? AND profile_id = ?"
+    )
+    .get(id, profile.id) as
+    { kind: string | null; scheduled_at: string } | undefined;
+  if (!row) return;
+  const ruleKey = satisfiedRuleForCompletedKind(row.kind);
+  if (!ruleKey) return;
+  recordPreventiveDone(
+    profile.id,
+    ruleKey,
+    row.scheduled_at.slice(0, 10),
+    "appointment"
   );
   revalidate();
 }

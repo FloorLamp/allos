@@ -16,9 +16,21 @@ import {
   cancelAppointment,
   reopenAppointment,
   deleteAppointment,
+  recordPreventiveFromAppointment,
 } from "./actions";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { useToast } from "@/components/Toast";
+import { satisfiedRuleForCompletedKind } from "@/lib/preventive-appointment";
+import { preventiveRuleByKey } from "@/lib/preventive-catalog";
 import type { Appointment, AppointmentStatus } from "@/lib/types";
+
+// The preventive rule name a completed appointment's kind would satisfy (issue
+// #85), or null when the kind is unset / ambiguous. Drives the close-the-loop
+// "Also mark … done" offer.
+function satisfiableRuleName(a: Appointment): string | null {
+  const ruleKey = satisfiedRuleForCompletedKind(a.kind);
+  return ruleKey ? (preventiveRuleByKey(ruleKey)?.name ?? null) : null;
+}
 
 const STATUS_BADGE: Record<AppointmentStatus, string> = {
   scheduled:
@@ -57,13 +69,25 @@ export default function AppointmentList({
   const [editingId, setEditingId] = useState<number | null>(null);
   // The visit a follow-up is being scheduled from (prefills the create form).
   const [followUpFrom, setFollowUpFrom] = useState<Appointment | null>(null);
+  // The appointment id whose preventive satisfaction has already been recorded
+  // from the close-the-loop offer, so the button reads "Recorded" and no-ops.
+  const [recordedId, setRecordedId] = useState<number | null>(null);
   const confirm = useConfirm();
+  const toast = useToast();
 
   // Complete a scheduled visit, then offer to schedule the next one prefilled
   // from it — so recurring visits don't fall off.
   async function onComplete(a: Appointment) {
     await submit(completeAppointment, a.id);
     setFollowUpFrom(a);
+  }
+
+  // Close the loop (issue #85): record the preventive satisfaction a completed,
+  // kind-tagged visit implies. Server-side re-derives the rule from the stored kind.
+  async function onRecordPreventive(a: Appointment) {
+    await submit(recordPreventiveFromAppointment, a.id);
+    setRecordedId(a.id);
+    toast("Preventive care recorded");
   }
 
   async function onDelete(a: Appointment) {
@@ -81,6 +105,28 @@ export default function AppointmentList({
     <div className="space-y-3">
       {followUpFrom && (
         <div className="rounded-xl border border-brand-200 bg-brand-50/50 p-3 dark:border-brand-900 dark:bg-brand-950/30">
+          {/* Close the loop (issue #85): a completed kind-tagged visit can mark the
+              matching preventive care done in one click, so a due reminder clears
+              without a separate mark-done on Upcoming. */}
+          {satisfiableRuleName(followUpFrom) && (
+            <div className="mb-3 flex flex-wrap items-center gap-2 border-b border-brand-200/60 pb-3 dark:border-brand-900/60">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Also record{" "}
+                <span className="font-medium text-slate-700 dark:text-slate-200">
+                  {satisfiableRuleName(followUpFrom)}
+                </span>{" "}
+                as done?
+              </p>
+              <button
+                type="button"
+                disabled={recordedId === followUpFrom.id}
+                onClick={() => onRecordPreventive(followUpFrom)}
+                className="rounded-lg border border-black/10 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 disabled:opacity-60 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"
+              >
+                {recordedId === followUpFrom.id ? "Recorded ✓" : "Mark done"}
+              </button>
+            </div>
+          )}
           <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
             Scheduling a follow-up to{" "}
             <span className="font-medium text-slate-700 dark:text-slate-200">
@@ -98,6 +144,7 @@ export default function AppointmentList({
               title: followUpFrom.title,
               provider: followUpFrom.provider_name,
               location: followUpFrom.location,
+              kind: followUpFrom.kind,
             }}
           />
         </div>
