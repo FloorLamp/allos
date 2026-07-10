@@ -1,4 +1,5 @@
 import type { ActivityType } from "@/lib/types";
+import { boundedOrNull, inMetricBounds } from "@/lib/ingest-bounds";
 import type { NormActivity, NormMetricSample } from "./normalize";
 
 // Maps Strava activities (https://developers.strava.com/docs/reference/) into the
@@ -204,6 +205,18 @@ export function mapStravaActivity(
   const distanceKm =
     meters != null ? Math.round((meters / 1000) * 100) / 100 : null;
 
+  // Plausibility guard (issue #132). The identity-defining distance/duration are
+  // the record's core: a physiologically-impossible one makes the whole activity
+  // untrustworthy, so return null → the sync counts it skipped. The optional metric
+  // fields below are instead sanitized to null individually (boundedOrNull), so one
+  // bad sensor field never discards an otherwise-valid ride.
+  if (
+    (distanceKm != null && !inMetricBounds("distance_km", distanceKm)) ||
+    (durationMin != null && !inMetricBounds("duration_min", durationMin))
+  ) {
+    return null;
+  }
+
   const activity: NormActivity = {
     external_id: `${STRAVA_ID}:${id}`,
     date: p.date,
@@ -225,20 +238,37 @@ export function mapStravaActivity(
     ],
     start_time: p.hhmm,
     end_time: endHhmm,
-    avg_hr: hasHr ? roundOrNull(num(rec.average_heartrate)) : null,
-    max_hr: hasHr ? roundOrNull(num(rec.max_heartrate)) : null,
-    elevation_m: roundOrNull(num(rec.total_elevation_gain)),
-    avg_speed_kmh: mps(rec.average_speed),
-    max_speed_kmh: mps(rec.max_speed),
-    relative_effort: roundOrNull(num(rec.suffer_score)),
-    avg_power_w: isCycling ? roundOrNull(num(rec.average_watts)) : null,
-    max_power_w: isCycling ? roundOrNull(num(rec.max_watts)) : null,
-    weighted_avg_power_w: isCycling
-      ? roundOrNull(num(rec.weighted_average_watts))
+    avg_hr: hasHr
+      ? boundedOrNull("heart_rate_bpm", roundOrNull(num(rec.average_heartrate)))
       : null,
-    avg_cadence: isCycling ? roundOrNull(num(rec.average_cadence)) : null,
-    kilojoules: isCycling ? roundOrNull(num(rec.kilojoules)) : null,
-    avg_temp_c: isOutdoor ? num(rec.average_temp) : null,
+    max_hr: hasHr
+      ? boundedOrNull("heart_rate_bpm", roundOrNull(num(rec.max_heartrate)))
+      : null,
+    elevation_m: boundedOrNull(
+      "elevation_m",
+      roundOrNull(num(rec.total_elevation_gain))
+    ),
+    avg_speed_kmh: boundedOrNull("speed_kmh", mps(rec.average_speed)),
+    max_speed_kmh: boundedOrNull("speed_kmh", mps(rec.max_speed)),
+    relative_effort: roundOrNull(num(rec.suffer_score)),
+    avg_power_w: isCycling
+      ? boundedOrNull("power_w", roundOrNull(num(rec.average_watts)))
+      : null,
+    max_power_w: isCycling
+      ? boundedOrNull("power_w", roundOrNull(num(rec.max_watts)))
+      : null,
+    weighted_avg_power_w: isCycling
+      ? boundedOrNull("power_w", roundOrNull(num(rec.weighted_average_watts)))
+      : null,
+    avg_cadence: isCycling
+      ? boundedOrNull("cadence_rpm", roundOrNull(num(rec.average_cadence)))
+      : null,
+    kilojoules: isCycling
+      ? boundedOrNull("kilojoules", roundOrNull(num(rec.kilojoules)))
+      : null,
+    avg_temp_c: isOutdoor
+      ? boundedOrNull("temp_c", num(rec.average_temp))
+      : null,
     workout_type: workoutTypeLabel(rec.workout_type),
   };
 
@@ -249,7 +279,9 @@ export function mapStravaActivity(
     detail && typeof detail === "object"
       ? (detail as Record<string, unknown>)
       : null;
-  const calories = detailRec ? num(detailRec.calories) : null;
+  const calories = detailRec
+    ? boundedOrNull("active_kcal", num(detailRec.calories))
+    : null;
   if (calories != null && elapsedSec != null) {
     // Wall-clock numerals as a stable, TZ-independent dedup key (consistent across
     // re-syncs); `date` is the activity's true local day.
