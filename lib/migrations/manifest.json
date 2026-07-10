@@ -1,5 +1,6 @@
 {
   "001-baseline.ts": "d2ba88a263510934d6482387989fc5ab453327617dca440f2b6f411cc5f25ead",
   "002-edit-lock-flags.ts": "7542260494089e04d824b4a48ce126ea1165d4899f3c4a8cf576576701c33e9f",
-  "003-preventive-tracking.ts": "2b39d13a8fc94055a28ec192071cb7b6d8ea072546dcd52ebead3b0d25cef450"
+  "003-preventive-tracking.ts": "2b39d13a8fc94055a28ec192071cb7b6d8ea072546dcd52ebead3b0d25cef450",
+  "004-extraction-lease.ts": "70c8153d738734054fb2b644011f28f4d778bf35e64523a03b31a074fa1b62ba"
 }

@@ -9,6 +9,16 @@
 // limit is per Node process — fine for this single-container deploy; a
 // multi-instance deploy would need a shared limiter, which is out of scope here.
 
+// Thrown by acquire()/run() when the wait queue is full (issue #135, item 2). A
+// distinct class so a caller can tell "the queue is saturated, shed this task"
+// apart from a real task failure and degrade gracefully (mark the doc 'skipped').
+export class QueueFullError extends Error {
+  constructor(maxWaiters: number) {
+    super(`Extraction queue is full (max ${maxWaiters} waiting).`);
+    this.name = "QueueFullError";
+  }
+}
+
 // A classic counting semaphore. `run()` is the ergonomic wrapper most callers
 // want: it acquires a permit, runs the async task, and releases the permit even if
 // the task throws — so a rejected extraction can never leak a permit and wedge the
@@ -20,22 +30,42 @@ export class Semaphore {
   // over-counts while waiters are pending.
   private permits: number;
   private readonly waiters: Array<() => void> = [];
+  // Hard cap on how many callers may PARK waiting for a permit (issue #135, item
+  // 2). Infinity = unbounded (the historical behavior). A finite cap bounds the
+  // memory the queue can pin: acquire() past the cap rejects with QueueFullError
+  // instead of parking another waiter, so a burst of uploads sheds load rather than
+  // growing the queue without limit.
+  private readonly maxWaiters: number;
 
-  constructor(max: number) {
+  constructor(max: number, maxWaiters: number = Infinity) {
     if (!Number.isInteger(max) || max < 1) {
       throw new Error("Semaphore size must be a positive integer");
     }
+    if (
+      maxWaiters !== Infinity &&
+      (!Number.isInteger(maxWaiters) || maxWaiters < 0)
+    ) {
+      throw new Error(
+        "Semaphore maxWaiters must be a non-negative integer or Infinity"
+      );
+    }
     this.max = max;
     this.permits = max;
+    this.maxWaiters = maxWaiters;
   }
 
   // Acquire a permit, waiting (FIFO) until one is free. Resolves once the caller
   // holds a permit; the caller MUST call release() exactly once afterward (or use
-  // run(), which does it for you).
+  // run(), which does it for you). Rejects with QueueFullError WITHOUT parking when
+  // the wait queue is already at maxWaiters — no permit is taken, so nothing needs
+  // releasing on that rejection.
   acquire(): Promise<void> {
     if (this.permits > 0) {
       this.permits--;
       return Promise.resolve();
+    }
+    if (this.waiters.length >= this.maxWaiters) {
+      return Promise.reject(new QueueFullError(this.maxWaiters));
     }
     return new Promise<void>((resolve) => {
       // The permit is handed to us directly on release() — we do NOT decrement
@@ -82,11 +112,22 @@ export class Semaphore {
   get waiting(): number {
     return this.waiters.length;
   }
+  // The configured wait-queue cap (Infinity when unbounded).
+  get maxQueue(): number {
+    return this.maxWaiters;
+  }
 }
 
 // Max concurrent document extractions per process. Overridable per deploy via env;
 // the default stays the source of truth in code.
 export const DEFAULT_EXTRACTION_CONCURRENCY = 3;
+
+// Max uploads that may QUEUE behind the running extractions before the limiter
+// sheds load (issue #135, item 2). Generous — well past any realistic interactive
+// burst — because the queued closures no longer pin document buffers (the job
+// re-reads the stored file from disk when its slot frees), so the cap is a
+// backstop against pathological floods, not a routine limit.
+export const DEFAULT_EXTRACTION_QUEUE_MAX = 100;
 
 function envConcurrency(fallback: number): number {
   const raw = process.env.AI_EXTRACTION_CONCURRENCY;
@@ -95,8 +136,17 @@ function envConcurrency(fallback: number): number {
   return Number.isInteger(n) && n >= 1 ? n : fallback;
 }
 
+function envQueueMax(fallback: number): number {
+  const raw = process.env.AI_EXTRACTION_QUEUE_MAX;
+  if (raw === undefined || raw.trim() === "") return fallback;
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 0 ? n : fallback;
+}
+
 // Process-wide semaphore the medical-upload/reprocess paths route extraction
-// dispatch through, so at most N run at once and the rest queue.
+// dispatch through, so at most N run at once and the rest queue (up to the queue
+// cap, past which a fresh dispatch is shed rather than parked).
 export const extractionSemaphore = new Semaphore(
-  envConcurrency(DEFAULT_EXTRACTION_CONCURRENCY)
+  envConcurrency(DEFAULT_EXTRACTION_CONCURRENCY),
+  envQueueMax(DEFAULT_EXTRACTION_QUEUE_MAX)
 );

@@ -18,12 +18,14 @@
 import { db, today } from "./db";
 import {
   decideAiUsage,
+  decideAiRefund,
   type AiUsageKind,
   type AiUsageResult,
 } from "./ai-usage-limits";
 
 export {
   decideAiUsage,
+  decideAiRefund,
   dailyLimitFor,
   extractionDailyLimit,
   insightDailyLimit,
@@ -44,10 +46,12 @@ export type {
 // profile_id (never reads or writes another profile's counter). `day` defaults to
 // the profile's local date; callers pass it explicitly only in tests.
 //
-// NO REFUND (deliberate): quota is consumed here, BEFORE the Claude call dispatches,
-// so a failed/timed-out API call still burns a unit. This is intentional — refunding
-// on failure would reintroduce a check-then-act race (and let a failing loop retry
-// unbounded), so the cap counts attempts, not successes.
+// Quota is consumed here, BEFORE the Claude call dispatches (so a check-then-act
+// race can't let two concurrent calls both pass). A TRANSIENT extraction failure
+// then refunds its unit via refundAiUsage below (issue #135, item 3) — the cap
+// still counts every attempt while in flight, but a flaky evening of timeouts no
+// longer permanently exhausts the day with nothing imported. A `skipped` outcome is
+// NOT refunded (the model declined, or the cap already blocked the charge).
 //
 // Atomicity holds WITHIN a single Node process: better-sqlite3 is synchronous and
 // every AI-writing path runs in the web process (the notify sidecar doesn't call
@@ -78,6 +82,33 @@ export function checkAndIncrementAiUsage(
     return { allowed: decision.allowed, remaining: decision.remaining };
   });
   return run();
+}
+
+// Refund one unit for a (day, kind) counter after a TRANSIENT extraction failure
+// (issue #135, item 3): atomically re-read and decrement, floored at 0, in one
+// transaction. Scoped by profile_id, and a no-op when there's no row / a zero count
+// (a refund can never go negative or resurrect a counter). Callers pass the SAME
+// `day` the charge used so a refund lands on the day the unit was consumed; it
+// defaults to the profile's local date (the common case — extraction settles within
+// minutes of dispatch, on the same local day).
+export function refundAiUsage(
+  profileId: number,
+  kind: AiUsageKind,
+  day: string = today(profileId)
+): void {
+  const run = db.transaction((): void => {
+    const row = db
+      .prepare(
+        "SELECT count FROM ai_usage_counters WHERE profile_id = ? AND day = ? AND kind = ?"
+      )
+      .get(profileId, day, kind) as { count: number } | undefined;
+    if (row === undefined) return; // nothing was ever charged for this day/kind
+    const nextCount = decideAiRefund(row.count);
+    db.prepare(
+      "UPDATE ai_usage_counters SET count = ? WHERE profile_id = ? AND day = ? AND kind = ?"
+    ).run(nextCount, profileId, day, kind);
+  });
+  run();
 }
 
 // Read the profile's current count for a day/kind WITHOUT incrementing (for

@@ -70,6 +70,20 @@ export function migrate(db: Database.Database): void {
 export const db = globalForDb.__healthDb ?? createDb();
 if (process.env.NODE_ENV !== "production") globalForDb.__healthDb = db;
 
+// Proactively checkpoint the write-ahead log (issue #135, item 6). Three processes
+// share one DB file on a bind mount (the app, the hourly tick, the poll sidecar) and
+// nothing otherwise runs a passive checkpoint, so a long-lived reader can hold the
+// WAL open and let it grow without bound on the shared volume. The hourly tick calls
+// this once per run: TRUNCATE flushes committed pages back into the main DB and
+// shrinks the -wal file to zero when no other connection is mid-read. It is
+// best-effort — a busy checkpoint (another connection reading) simply does less work
+// and is retried next tick; a hard failure is caught by the caller and never affects
+// the notification flow. Returns the raw pragma result (busy flag + page counts) for
+// logging. Uses `pragma(..., { simple:false })` so callers can log what happened.
+export function checkpointWal(): unknown {
+  return db.pragma("wal_checkpoint(TRUNCATE)");
+}
+
 // today()/appTimezone() run many times per request (weekWindowStart, streaks,
 // dashboards, adherence), and resolving the zone costs 1–2 DB reads. Memoize the
 // resolved zone per profile with a short TTL: within a request every call after

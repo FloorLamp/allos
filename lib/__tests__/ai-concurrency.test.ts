@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_EXTRACTION_CONCURRENCY,
+  DEFAULT_EXTRACTION_QUEUE_MAX,
+  QueueFullError,
   Semaphore,
   extractionSemaphore,
 } from "@/lib/ai-concurrency";
@@ -139,6 +141,77 @@ describe("Semaphore", () => {
     expect(s.available).toBe(2);
     s.release();
     expect(s.available).toBe(2);
+  });
+});
+
+describe("Semaphore — bounded wait queue (issue #135 item 2)", () => {
+  it("defaults to an unbounded queue (Infinity) when maxWaiters is omitted", () => {
+    const s = new Semaphore(1);
+    expect(s.maxQueue).toBe(Infinity);
+  });
+
+  it("rejects a negative or non-integer maxWaiters (Infinity is allowed)", () => {
+    expect(() => new Semaphore(1, -1)).toThrow();
+    expect(() => new Semaphore(1, 1.5)).toThrow();
+    expect(new Semaphore(1, 0).maxQueue).toBe(0);
+    expect(new Semaphore(1, Infinity).maxQueue).toBe(Infinity);
+  });
+
+  it("parks up to maxWaiters, then rejects further acquires with QueueFullError", async () => {
+    // 1 permit, queue cap 2: 1 runs + 2 may park; the 4th acquire is shed.
+    const s = new Semaphore(1, 2);
+    await s.acquire(); // takes the only permit (running)
+    const w1 = s.acquire(); // parks (queue 1/2)
+    const w2 = s.acquire(); // parks (queue 2/2)
+    await tick();
+    expect(s.waiting).toBe(2);
+
+    await expect(s.acquire()).rejects.toBeInstanceOf(QueueFullError);
+    // The rejection did NOT consume a permit or grow the queue.
+    expect(s.waiting).toBe(2);
+    expect(s.available).toBe(0);
+
+    // Drain: releasing hands permits to the parked waiters in FIFO order.
+    s.release();
+    await w1;
+    s.release();
+    await w2;
+    expect(s.waiting).toBe(0);
+  });
+
+  it("a queue-cap of 0 sheds the very first would-be waiter (only inline runs)", async () => {
+    const s = new Semaphore(1, 0);
+    await s.acquire(); // running
+    await expect(s.acquire()).rejects.toBeInstanceOf(QueueFullError);
+  });
+
+  it("run() rejects with QueueFullError WITHOUT leaking a permit", async () => {
+    const s = new Semaphore(1, 0);
+    const gate = deferred();
+    const held = s.run(async () => {
+      await gate.promise;
+    });
+    // Queue is full (cap 0) while the first task holds the permit.
+    await expect(s.run(async () => "never")).rejects.toBeInstanceOf(
+      QueueFullError
+    );
+    // Let the holder finish; the permit was never taken by the shed task, so a
+    // fresh task runs normally afterward.
+    gate.resolve();
+    await held;
+    await expect(s.run(async () => "ok")).resolves.toBe("ok");
+    expect(s.available).toBe(1);
+    expect(s.inUse).toBe(0);
+  });
+});
+
+describe("extractionSemaphore queue cap", () => {
+  it("defaults to the documented queue max when AI_EXTRACTION_QUEUE_MAX is unset", () => {
+    if (process.env.AI_EXTRACTION_QUEUE_MAX === undefined) {
+      expect(extractionSemaphore.maxQueue).toBe(DEFAULT_EXTRACTION_QUEUE_MAX);
+    } else {
+      expect(extractionSemaphore.maxQueue).toBeGreaterThanOrEqual(0);
+    }
   });
 });
 
