@@ -8,8 +8,11 @@ import {
   snoozeFinding,
   dismissFinding,
   restoreFinding,
+  recordPreventiveDone,
+  setPreventiveOverride,
 } from "@/lib/queries";
 import { shiftDateStr } from "@/lib/date";
+import { preventiveRuleByKey } from "@/lib/preventive-catalog";
 
 // Inline "mark taken" for a due dose surfaced on the Upcoming page. Reuses the
 // idempotent markDoseTaken helper (verifies the dose belongs to this profile via
@@ -23,6 +26,36 @@ export async function markTaken(formData: FormData) {
   markDoseTaken(profile.id, doseId, null, today(profile.id));
   revalidatePath("/upcoming");
   revalidatePath("/medicine");
+  revalidatePath("/");
+}
+
+// Inline "mark done" for a due preventive visit/screening on the Upcoming page
+// (issue #82). Records a satisfaction dated today into the shared stream the pure
+// assessor reads — the same fast path as a dose "mark taken" — so the item drops
+// off Upcoming (and the assessor advances the next-due). The rule key is validated
+// against the static catalog so a tampered form can't write an unknown key.
+// Profile-scoped; recordPreventiveDone is idempotent per (rule, date).
+export async function markPreventiveDone(formData: FormData) {
+  const { profile } = requireWriteAccess();
+  const ruleKey = String(formData.get("rule_key") ?? "").trim();
+  if (!ruleKey || !preventiveRuleByKey(ruleKey)) return;
+  recordPreventiveDone(profile.id, ruleKey, today(profile.id));
+  revalidatePath("/upcoming");
+  revalidatePath("/");
+}
+
+// Override a preventive rule as declined (an informed opt-out) or not applicable
+// (the anatomy escape hatch). Both drop the item out of the actionable set. The
+// kind is whitelisted and the rule key validated against the catalog. Upserts on
+// (profile_id, rule_key). Profile-scoped.
+export async function overridePreventive(formData: FormData) {
+  const { profile } = requireWriteAccess();
+  const ruleKey = String(formData.get("rule_key") ?? "").trim();
+  const kind = String(formData.get("kind") ?? "");
+  if (!ruleKey || !preventiveRuleByKey(ruleKey)) return;
+  if (kind !== "declined" && kind !== "not_applicable") return;
+  setPreventiveOverride(profile.id, ruleKey, kind);
+  revalidatePath("/upcoming");
   revalidatePath("/");
 }
 

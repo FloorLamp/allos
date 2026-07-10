@@ -12,6 +12,8 @@ import { daysRemainingLabel } from "./format-date";
 //   dose        — a scheduled supplement/medication dose pending today
 //   refill      — a tracked med/supplement running low on supply
 //   appointment — a scheduled medical visit on its calendar date
+//   visit       — a preventive well-visit due/overdue (issue #82, satisfied by a visit)
+//   screening   — a preventive screening due/overdue (issue #82, satisfied by a result)
 //   immunization— a vaccine due/overdue on the tracked schedule
 //   biomarker   — a lab past its per-analyte retest (staleness) window
 //   goal        — a goal with a target_date approaching or overdue
@@ -20,6 +22,8 @@ export type UpcomingDomain =
   | "dose"
   | "refill"
   | "appointment"
+  | "visit"
+  | "screening"
   | "immunization"
   | "biomarker"
   | "goal"
@@ -30,10 +34,12 @@ const DOMAIN_ORDER: Record<UpcomingDomain, number> = {
   dose: 0,
   refill: 1,
   appointment: 2,
-  immunization: 3,
-  biomarker: 4,
-  goal: 5,
-  training: 6,
+  visit: 3,
+  screening: 4,
+  immunization: 5,
+  biomarker: 6,
+  goal: 7,
+  training: 8,
 };
 
 export type UrgencyBand = "overdue" | "today" | "week" | "later";
@@ -69,6 +75,11 @@ export interface UpcomingItem {
   // When set, the page renders an inline "mark taken" form for this dose id
   // (reusing the existing dose check-off path). Only dose items carry one.
   doseId?: number;
+  // When set, the row renders inline preventive controls — "Mark done" (records a
+  // satisfaction) plus a declined / not-applicable override — for this stable
+  // catalog rule key. Only visit/screening items (issue #82) carry one; mirrors
+  // doseId's inline fast path.
+  preventiveRuleKey?: string;
 }
 
 export interface BandGroup {
