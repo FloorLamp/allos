@@ -58,17 +58,34 @@ export function runMigrations(db: Database.Database): void {
     );
   }
 
-  for (const m of MIGRATIONS) {
-    if (m.id <= current) continue;
-    const tx = db.transaction(() => {
-      // Authoritative in-txn dedup: a peer worker may have applied this migration
-      // (and bumped user_version) between our pre-loop read and taking the write
-      // lock. Re-read inside the transaction and no-op if it's already done.
-      if (readVersion(db) >= m.id) return;
-      m.up(db);
-      db.pragma(`user_version = ${m.id}`);
-    });
-    runBootTx(tx);
+  // Apply migrations with foreign_keys DISABLED, restoring the prior setting after
+  // (issue #95). SQLite cannot attach a foreign key to an existing column, so a
+  // migration that enforces a link rebuilds the table (create → copy → drop → rename
+  // into place). Rebuilding a table that is itself a FK *parent* while foreign_keys
+  // is ON fires ON DELETE CASCADE on the drop and wipes its children — so SQLite's
+  // own documented table-rebuild procedure requires foreign_keys off for the swap.
+  // Toggling it is a no-op INSIDE a transaction, hence here, around the per-migration
+  // IMMEDIATE transactions (we are in autocommit at this point). Migrations null any
+  // dangling link before adding its FK, so re-enabling enforcement meets a clean
+  // graph (baseline and the ordinary column/table migrations don't rely on FK
+  // enforcement while applying).
+  const fkWasOn = (db.pragma("foreign_keys", { simple: true }) as number) === 1;
+  if (fkWasOn) db.pragma("foreign_keys = OFF");
+  try {
+    for (const m of MIGRATIONS) {
+      if (m.id <= current) continue;
+      const tx = db.transaction(() => {
+        // Authoritative in-txn dedup: a peer worker may have applied this migration
+        // (and bumped user_version) between our pre-loop read and taking the write
+        // lock. Re-read inside the transaction and no-op if it's already done.
+        if (readVersion(db) >= m.id) return;
+        m.up(db);
+        db.pragma(`user_version = ${m.id}`);
+      });
+      runBootTx(tx);
+    }
+  } finally {
+    if (fkWasOn) db.pragma("foreign_keys = ON");
   }
 }
 
