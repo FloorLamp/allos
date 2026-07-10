@@ -102,8 +102,13 @@ ins.run(
 // the Review inbox must surface with merge/keep-both/dismiss actions. Clear any
 // prior fixtures first so re-seeding is idempotent. Synthetic data only.
 const DUP_DATE = "2026-07-07";
+// Idempotency cleanup scoped to THIS fixture's rows only (its titles + its own
+// external_id) — a blanket source='strava' delete on the date silently ate the
+// provenance fixture's "Strava morning ride" whenever seed.ts's relative
+// daysAgo(3) rolled onto DUP_DATE (it did on 2026-07-10, failing
+// journal-provenance suite-wide until the date moved on).
 db.prepare(
-  `DELETE FROM activities WHERE profile_id = ? AND date = ? AND (source = 'strava' OR title IN ('Morning run', 'Afternoon Run'))`
+  `DELETE FROM activities WHERE profile_id = ? AND date = ? AND (external_id = 'strava:e2e-run-1' OR title IN ('Morning run', 'Afternoon Run'))`
 ).run(PROFILE_ID, DUP_DATE);
 db.prepare(`DELETE FROM import_pair_decisions WHERE profile_id = ?`).run(
   PROFILE_ID
