@@ -472,7 +472,8 @@ time/size (plus any failure) with a **Back up now** button.
 **not** counted as a successful backup and older good snapshots are **not** pruned, so a
 corrupt copy never rotates a healthy one away. The same tick also runs a **weekly**
 `integrity_check` on the live database (gated by a stored marker), logging the result loudly
-on failure.
+on failure **and caching the verdict** — a failed live check makes the health endpoint report
+unhealthy (see [Health endpoint](#health-endpoint)) so the container healthcheck flips.
 
 Snapshots live under `DATA_DIR` (the Docker bind mount, outside the checkout) and are
 **never served by any route** — they contain multi-profile health data.
@@ -520,12 +521,32 @@ data/backups/allos-<stamp>.db data/allos.db`, delete any `data/allos.db-wal` /
 
 ### Health endpoint
 
-The container healthcheck hits `GET /api/health`, which probes both that the DB is
-**readable** and that `data/` is **writable** (a full or read-only disk answers reads but
-fails writes). It returns `{ status, reason?, lastBackupAgeHours }` and flips to HTTP **503**
-(`status: "degraded"`) when a probe fails, so the Docker healthcheck marks the container
-unhealthy. `lastBackupAgeHours` reports hours since the last successful backup (null when
-never backed up), so a stalled schedule is visible.
+The container healthcheck hits `GET /api/health`. It returns
+`{ status, reason?, lastBackupAgeHours }` and flips to HTTP **503**
+(`status: "degraded"`) for any of the following, so the Docker healthcheck marks the
+container unhealthy:
+
+- **`db-failed`** — the DB is not readable.
+- **`write-failed`** — `data/` is not writable (a full or read-only disk answers reads but
+  fails writes).
+- **`integrity-failed`** — the cached weekly live-DB `integrity_check` (above) last found
+  **corruption**. The endpoint only reads this cached verdict; it never runs the expensive
+  `integrity_check` itself, so it stays cheap enough for a frequent uptime poll.
+- **`backup-stale`** — backups are enabled and the newest snapshot is older than the
+  staleness threshold (**48h** by default; override with the `backup_staleness_hours`
+  global setting). A never-backed-up instance (fresh install, or backups just enabled) is
+  **not** flagged, so this only catches a schedule that ran and then silently died.
+
+The body stays deliberately coarse (a `status`, a single `reason`, and `lastBackupAgeHours`)
+with no paths, versions, or PHI, since the endpoint is unauthenticated — details go to the
+server logs. `lastBackupAgeHours` reports hours since the last successful backup (null when
+never backed up).
+
+**Notification delivery failures.** A failed Telegram/push send is also persisted as a
+global marker (`notify_last_error`, cleared on the next successful send) and surfaced on
+**Settings → Server → Telegram bot**, so a revoked bot token or wrong chat id is visible
+instead of only appearing as a notify-tick exit code. The per-profile **Send test** button
+on **Settings → Profile** is the remediation path — a successful test clears the marker.
 
 ## Scripts
 

@@ -2,11 +2,61 @@
 // and list it here.
 
 import { createLogger } from "../log";
+import { getSetting, setSetting } from "../settings";
 import type { ChannelId, NotificationMessage } from "./types";
 import { telegramChannel } from "./telegram";
 import { pushChannel } from "./push";
+import {
+  isDeliveryHealthy,
+  pickDispatchError,
+  type NotifyErrorMarker,
+} from "./delivery-status";
 
 const log = createLogger("notifications");
+
+// Global marker keys mirroring backup_last_* (#131): the last delivery failure,
+// its ISO timestamp, and which channel failed. Cleared on the next all-OK send.
+const NOTIFY_ERR_KEY = "notify_last_error";
+const NOTIFY_ERR_AT_KEY = "notify_last_error_at";
+const NOTIFY_ERR_CHANNEL_KEY = "notify_last_error_channel";
+
+// The last persisted delivery failure for the Settings surface, or null when the
+// most recent attempted send succeeded (marker cleared). Global, like the backup
+// error — one shared bot serves every profile, so a revoked token / broken send
+// is an instance-level signal.
+export function getNotifyError(): NotifyErrorMarker | null {
+  const error = getSetting(NOTIFY_ERR_KEY);
+  if (!error) return null;
+  return {
+    error,
+    at: getSetting(NOTIFY_ERR_AT_KEY) ?? "",
+    channel: getSetting(NOTIFY_ERR_CHANNEL_KEY) ?? "",
+  };
+}
+
+// Fold a dispatch fan-out into the global delivery-health marker. Set it when any
+// attempted channel failed; clear it when every attempted channel succeeded; leave
+// it untouched when nothing was attempted (no configured channel). Best-effort — a
+// settings write must never turn a delivery into a throw, so failures are logged
+// and swallowed.
+function recordDeliveryOutcome(results: DispatchResult[]): void {
+  try {
+    const failure = pickDispatchError(results);
+    if (failure) {
+      setSetting(NOTIFY_ERR_KEY, failure.error);
+      setSetting(NOTIFY_ERR_AT_KEY, new Date().toISOString());
+      setSetting(NOTIFY_ERR_CHANNEL_KEY, failure.channel);
+    } else if (isDeliveryHealthy(results)) {
+      setSetting(NOTIFY_ERR_KEY, "");
+      setSetting(NOTIFY_ERR_AT_KEY, "");
+      setSetting(NOTIFY_ERR_CHANNEL_KEY, "");
+    }
+  } catch (e) {
+    log.error("recording delivery outcome failed", {
+      err: e instanceof Error ? e.message : String(e),
+    });
+  }
+}
 
 // The channels dispatch() fans a message out to. Both are tried on every send;
 // each gates itself via isConfigured(profileId), so an instance with only one set
@@ -37,7 +87,7 @@ export async function dispatch(
     log.warn("no configured channels; nothing sent");
     return [];
   }
-  return Promise.all(
+  const results = await Promise.all(
     channels.map(async (c): Promise<DispatchResult> => {
       try {
         await c.send(profileId, msg);
@@ -50,4 +100,8 @@ export async function dispatch(
       }
     })
   );
+  // Persist the delivery-health marker so a broken bot token / chat id becomes
+  // visible in Settings instead of only surfacing as a tick exit code (#131).
+  recordDeliveryOutcome(results);
+  return results;
 }
