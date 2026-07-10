@@ -887,6 +887,97 @@ describe("recommendCoaching", () => {
   });
 });
 
+describe("recommendCoaching variety lookback (#185)", () => {
+  // Regression: a single ancient one-off type (an imported 2015 kayak) used to
+  // permanently win the "least-recently-done" slot, so a routine cardio nudge
+  // read "Last done 11 years ago" even after cardio yesterday. The variety pick
+  // is now bounded to a recent window and the copy names the activity.
+  const ancient = { lastDate: "2015-06-01" };
+
+  it("names the recent cardio type, not an ancient one-off, when behind a cardio target", () => {
+    const [top] = recommendCoaching(
+      input({
+        routine: [
+          tgt({
+            target: { scope_kind: "type", scope_value: "cardio" },
+            count: 1,
+            per_week: 3,
+          }),
+        ],
+        cardio: [
+          cRec({ activity: "Running", lastDate: "2026-07-07" }), // yesterday
+          cRec({ activity: "Kayaking", ...ancient }), // ancient one-off
+        ],
+      })
+    );
+    expect(top.kind).toBe("cardio");
+    expect(top.detail).toContain("Running — last done");
+    expect(top.detail).not.toContain("Kayaking");
+    expect(top.detail).not.toContain("years ago");
+    expect(top.actionHref).toContain("Running");
+  });
+
+  it("drops the stale suggestion entirely when every cardio type is ancient", () => {
+    const [top] = recommendCoaching(
+      input({
+        routine: [
+          tgt({
+            target: { scope_kind: "type", scope_value: "cardio" },
+            count: 0,
+            per_week: 2,
+          }),
+        ],
+        cardio: [cRec({ activity: "Kayaking", ...ancient })],
+      })
+    );
+    expect(top.kind).toBe("cardio");
+    expect(top.title).toBe("Add a cardio session");
+    expect(top.detail).not.toContain("Kayaking");
+    expect(top.detail).not.toContain("years ago");
+    expect(top.actionLabel).toBe("Log activity");
+  });
+
+  it("does not pick an ancient lift for a behind strength target", () => {
+    const [top] = recommendCoaching(
+      input({
+        routine: [tgt()], // type=strength, 0 of 3
+        strength: [
+          sRec({ exercise: "Back Squat", lastDate: "2026-07-05" }),
+          sRec({ exercise: "Overhead Press", ...ancient }),
+        ],
+      })
+    );
+    expect(top.kind).toBe("strength");
+    expect(top.title).toBe("Train Back Squat");
+  });
+
+  it("suggests the recent habit, not an ancient one-off cardio (no routine)", () => {
+    const [top] = recommendCoaching(
+      input({
+        cardio: [
+          cRec({ activity: "Cycling", lastDate: "2026-06-20" }), // ~3 weeks ago
+          cRec({ activity: "Kayaking", ...ancient }),
+        ],
+      })
+    );
+    expect(top.kind).toBe("cardio");
+    expect(top.title).toBe("Add a Cycling session");
+  });
+
+  it("suggests the recent habit, not an ancient one-off lift (no routine)", () => {
+    const [top] = recommendCoaching(
+      input({
+        strength: [
+          sRec({ exercise: "Bench Press", lastDate: "2026-06-25" }),
+          sRec({ exercise: "Overhead Press", ...ancient }),
+        ],
+      })
+    );
+    expect(top.kind).toBe("strength");
+    expect(top.title).toBe("Train Bench Press");
+  });
+});
+
 // ---- Rest-episode continuity (#44 item 3b) ----
 
 const YESTERDAY = "2026-07-07";

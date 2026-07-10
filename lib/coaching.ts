@@ -845,24 +845,43 @@ function strengthExerciseRec(
   };
 }
 
+// The "least-recently-done" variety nudge only makes sense among types you
+// actually train now. Bound it to this trailing window (days) so an ancient
+// one-off — an imported 2015 kayak, a single lift logged years ago — can't
+// permanently win the least-recent slot and read as "your last cardio was 11
+// years ago" (#185). A quarter is generous enough to keep genuine variety
+// (a biweekly cross-train, a monthly long ride) while excluding stale history.
+export const VARIETY_LOOKBACK_DAYS = 90;
+
+// The least-recently-trained exercise among those trained within the variety
+// lookback (an ancient one-off is excluded, not treated as a lapsed habit).
+// Stable tie-break by name. Undefined when nothing qualifies.
 function pickOldestStrengthRecent(
-  strength: StrengthRecent[]
+  strength: StrengthRecent[],
+  today: string
 ): StrengthRecent | undefined {
-  return [...strength].sort((a, b) =>
-    a.lastDate === b.lastDate
-      ? a.exercise.localeCompare(b.exercise)
-      : a.lastDate.localeCompare(b.lastDate)
-  )[0];
+  return [...strength]
+    .filter((s) => within(s.lastDate, today, VARIETY_LOOKBACK_DAYS))
+    .sort((a, b) =>
+      a.lastDate === b.lastDate
+        ? a.exercise.localeCompare(b.exercise)
+        : a.lastDate.localeCompare(b.lastDate)
+    )[0];
 }
 
+// The least-recently-done cardio activity within the variety lookback, same
+// bound as strength — so a years-old imported type never wins the slot (#185).
 function pickOldestCardioRecent(
-  cardio: CardioRecent[]
+  cardio: CardioRecent[],
+  today: string
 ): CardioRecent | undefined {
-  return [...cardio].sort((a, b) =>
-    a.lastDate === b.lastDate
-      ? a.activity.localeCompare(b.activity)
-      : a.lastDate.localeCompare(b.lastDate)
-  )[0];
+  return [...cardio]
+    .filter((c) => within(c.lastDate, today, VARIETY_LOOKBACK_DAYS))
+    .sort((a, b) =>
+      a.lastDate === b.lastDate
+        ? a.activity.localeCompare(b.activity)
+        : a.lastDate.localeCompare(b.lastDate)
+    )[0];
 }
 
 // The exercise to suggest for a routine target: for a region/group target, the
@@ -870,7 +889,8 @@ function pickOldestCardioRecent(
 // target, the least-recently-trained exercise overall.
 function pickStrengthForTarget(
   strength: StrengthRecent[],
-  target: RoutineTargetProgress
+  target: RoutineTargetProgress,
+  today: string
 ): StrengthRecent | undefined {
   const kind = target.target.scope_kind;
   const value = target.target.scope_value;
@@ -883,7 +903,7 @@ function pickStrengthForTarget(
       return regionsForGroup(value as BodyGroup).includes(region);
     return false;
   });
-  return pickOldestStrengthRecent(matches);
+  return pickOldestStrengthRecent(matches, today);
 }
 
 // Newest training date across strength + cardio, or undefined.
@@ -980,7 +1000,7 @@ function trainingRecommendations(
       .sort(byFractionComplete)[0];
     if (behindCardio) {
       const remaining = Math.max(0, behindCardio.per_week - behindCardio.count);
-      const suggestion = pickOldestCardioRecent(cardio);
+      const suggestion = pickOldestCardioRecent(cardio, today);
       out.push({
         id: "cardio-gap",
         kind: "cardio",
@@ -989,7 +1009,10 @@ function trainingRecommendations(
           behindCardio.per_week
         )} this week — ${remaining} to go.${
           suggestion
-            ? ` Last done ${formatRelativeDate(suggestion.lastDate, today)}.`
+            ? ` ${suggestion.activity} — last done ${formatRelativeDate(
+                suggestion.lastDate,
+                today
+              )}.`
             : ""
         }`,
         tone: "action",
@@ -1017,7 +1040,7 @@ function trainingRecommendations(
       const reason = `${behindStrength.count} of ${behindStrength.per_week} ${label} ${pluralSessions(
         behindStrength.per_week
       )} this week — ${remaining} to go.`;
-      const exercise = pickStrengthForTarget(strength, behindStrength);
+      const exercise = pickStrengthForTarget(strength, behindStrength, today);
       out.push(
         exercise
           ? strengthExerciseRec(exercise, wu, reason)
@@ -1051,7 +1074,7 @@ function trainingRecommendations(
       },
     ];
   }
-  const exercise = pickOldestStrengthRecent(strength);
+  const exercise = pickOldestStrengthRecent(strength, today);
   if (exercise) {
     return [
       strengthExerciseRec(
@@ -1061,7 +1084,7 @@ function trainingRecommendations(
       ),
     ];
   }
-  const activity = pickOldestCardioRecent(cardio);
+  const activity = pickOldestCardioRecent(cardio, today);
   if (activity) {
     return [
       {
