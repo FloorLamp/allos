@@ -5,7 +5,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 
 // Default to a capable, fast model; override with HEALTH_AI_MODEL.
-export const AI_MODEL = process.env.HEALTH_AI_MODEL || "claude-sonnet-4-6";
+export const AI_MODEL = process.env.HEALTH_AI_MODEL || "claude-sonnet-5";
 
 // --- Configurable endpoint (issue #43) ---------------------------------------
 // By default the SDK talks to Anthropic's hosted API. Privacy-focused
