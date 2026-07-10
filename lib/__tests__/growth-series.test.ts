@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { buildGrowthProfile, growthBadge } from "../growth-series";
+import {
+  buildGrowthProfile,
+  displayWeightGrowth,
+  growthBadge,
+} from "../growth-series";
+import { kgTo } from "../units";
 
 describe("buildGrowthProfile degradation", () => {
   const base = {
@@ -129,5 +134,47 @@ describe("growthBadge", () => {
     expect(badge!.heightPercentile).toBeGreaterThan(0);
     expect(badge!.weightPercentile).toBeGreaterThan(0);
     expect(badge!.bmiPercentile).toBeGreaterThan(0);
+  });
+});
+
+describe("displayWeightGrowth (issue #194)", () => {
+  const series = {
+    bands: [
+      {
+        percentile: 50,
+        points: [
+          { ageMonths: 12, value: 9 },
+          { ageMonths: 18, value: 10 },
+        ],
+      },
+    ],
+    points: [
+      { date: "2026-07-01", ageMonths: 18, value: 10.9, percentile: 42 },
+    ],
+  };
+
+  it("is a no-op for kg (same references)", () => {
+    const out = displayWeightGrowth(series, "kg");
+    expect(out.bands).toBe(series.bands);
+    expect(out.points).toBe(series.points);
+  });
+
+  it("converts BANDS and POINTS together for lb", () => {
+    const out = displayWeightGrowth(series, "lb");
+    expect(out.bands[0].points[0].value).toBeCloseTo(kgTo(9, "lb"), 9);
+    expect(out.bands[0].points[1].value).toBeCloseTo(kgTo(10, "lb"), 9);
+    expect(out.points[0].value).toBeCloseTo(kgTo(10.9, "lb"), 9);
+  });
+
+  it("preserves percentile fields (computed in kg upstream)", () => {
+    const out = displayWeightGrowth(series, "lb");
+    expect(out.points[0].percentile).toBe(42);
+    expect(out.bands[0].percentile).toBe(50);
+  });
+
+  it("does not mutate the input series", () => {
+    displayWeightGrowth(series, "lb");
+    expect(series.points[0].value).toBe(10.9);
+    expect(series.bands[0].points[0].value).toBe(9);
   });
 });

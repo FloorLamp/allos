@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { createGoal, setStatus } from "@/app/(app)/goals/actions";
+import { createGoal, setStatus, updateGoal } from "@/app/(app)/goals/actions";
 import { getGoals } from "@/lib/queries";
 import { LB_PER_KG } from "@/lib/units";
 import { createLogin, createProfile, actAs, seedActor, fd } from "./harness";
@@ -76,6 +76,56 @@ describe("createGoal", () => {
       })
     );
     expect(goalRows(profile.id)).toHaveLength(0);
+  });
+});
+
+describe("updateGoal weight round-trip (issue #194)", () => {
+  it("does not drift the stored kg when an lb user re-saves an unchanged weight", async () => {
+    const login = createLogin({ weightUnit: "lb" });
+    const profile = createProfile("cutter", login.id);
+    actAs(login, profile);
+
+    // A body weight goal with a CLEAN canonical kg value (as if entered in kg).
+    const storedKg = 142.9;
+    const id = Number(
+      db
+        .prepare(
+          "INSERT INTO goals (title, category, target_value, body_metric, profile_id, status) VALUES (?, 'body', ?, 'weight', ?, 'active')"
+        )
+        .run("Cut", storedKg, profile.id).lastInsertRowid
+    );
+
+    // What the edit form pre-fills for an lb user: round(kgTo(stored, lb), 1).
+    const displayLb = Math.round(storedKg * LB_PER_KG * 10) / 10;
+    await updateGoal(
+      fd({ id, kind: "body", body_metric: "weight", body_target: displayLb })
+    );
+
+    // The untouched round-trip is a true no-op: the canonical kg is byte-identical,
+    // not nudged by the display-rounding quantum.
+    const row = goalRows(profile.id).find((r) => r.id === id);
+    expect(row.target_value).toBe(storedKg);
+  });
+
+  it("still stores a genuinely changed weight (converted through kg)", async () => {
+    const login = createLogin({ weightUnit: "lb" });
+    const profile = createProfile("cutter2", login.id);
+    actAs(login, profile);
+
+    const id = Number(
+      db
+        .prepare(
+          "INSERT INTO goals (title, category, target_value, body_metric, profile_id, status) VALUES (?, 'body', ?, 'weight', ?, 'active')"
+        )
+        .run("Cut", 142.9, profile.id).lastInsertRowid
+    );
+
+    // User actually lowers the target to 300 lb.
+    await updateGoal(
+      fd({ id, kind: "body", body_metric: "weight", body_target: 300 })
+    );
+    const row = goalRows(profile.id).find((r) => r.id === id);
+    expect(row.target_value).toBeCloseTo(300 / LB_PER_KG, 6);
   });
 });
 

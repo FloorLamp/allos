@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import type { BodyMetricKind, GoalStatus, GoalMetric } from "@/lib/types";
 import { getUnitPrefs } from "@/lib/settings";
-import { toKg } from "@/lib/units";
+import { toKg, resolveWeightKg } from "@/lib/units";
 import { parseSeconds } from "@/lib/duration";
 import { BODY_METRIC_LABELS } from "@/lib/goals";
 import { getLatestBodyMetric } from "@/lib/queries";
@@ -30,9 +30,18 @@ interface GoalCols {
   body_metric: BodyMetricKind | null;
 }
 
+// The prior canonical (kg) weight values for the goal being edited, so an
+// untouched lb-preference edit re-stores the exact stored kg instead of drifting
+// it by the display-rounding quantum (issue #194). Null/absent on create.
+interface StoredWeights {
+  target_weight_kg: number | null;
+  target_value: number | null;
+}
+
 function goalColsFromForm(
   formData: FormData,
-  loginId: number
+  loginId: number,
+  stored?: StoredWeights
 ): GoalCols | null {
   const kind = String(formData.get("kind") ?? "freeform");
   // Parse to a finite number, or null (so non-numeric input doesn't silently
@@ -53,7 +62,13 @@ function goalColsFromForm(
     const prefs = getUnitPrefs(loginId);
     const weightUser = num("target_weight");
     const targetWeightKg =
-      weightUser != null ? toKg(weightUser, prefs.weightUnit) : null;
+      weightUser != null
+        ? resolveWeightKg(
+            weightUser,
+            stored?.target_weight_kg,
+            prefs.weightUnit
+          )
+        : null;
     const targetReps = num("target_reps");
     const targetSets = num("target_sets");
     const durStr = String(formData.get("target_duration") ?? "").trim();
@@ -102,7 +117,13 @@ function goalColsFromForm(
     // Weight target is entered in the user's unit → store canonical kg; body fat
     // (%) and resting HR (bpm) are stored as entered.
     const target =
-      bm === "weight" ? toKg(raw, getUnitPrefs(loginId).weightUnit) : raw;
+      bm === "weight"
+        ? resolveWeightKg(
+            raw,
+            stored?.target_value,
+            getUnitPrefs(loginId).weightUnit
+          )
+        : raw;
     return {
       title:
         String(formData.get("title") ?? "").trim() ||
@@ -189,7 +210,14 @@ export async function updateGoal(formData: FormData) {
   const { login, profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return;
-  const c = goalColsFromForm(formData, login.id);
+  // Read the stored canonical weight values so an untouched edit is a true no-op
+  // (issue #194) instead of a kg↔lb round-trip drift on every save.
+  const stored = db
+    .prepare(
+      "SELECT target_weight_kg, target_value FROM goals WHERE id = ? AND profile_id = ?"
+    )
+    .get(id, profile.id) as StoredWeights | undefined;
+  const c = goalColsFromForm(formData, login.id, stored);
   if (!c) return;
   // baseline_value is intentionally left untouched on edit — the starting point
   // for progress shouldn't move when the target is tweaked.

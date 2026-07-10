@@ -7,6 +7,8 @@
 // passport badge. REFERENCE CURVES — NOT MEDICAL ADVICE.
 
 import { ageInMonthsFromBirthdate } from "./date";
+import { kgTo } from "./units";
+import type { WeightUnit } from "./settings";
 import {
   measurementPercentile,
   bmiFrom,
@@ -156,6 +158,27 @@ export function buildGrowthProfile(input: {
   ];
 
   return { sex, ageMonths, metrics };
+}
+
+// Convert a weight growth series into a display weight unit for the chart.
+// Percentiles are computed in kg upstream (in buildMetric) and are NOT touched
+// here — only the plotted values are converted, and the reference BANDS and the
+// child's own trajectory POINTS are converted TOGETHER so the plot stays
+// coherent (converting only the points would float the trajectory off its
+// bands). A no-op for kg, and only meaningful for the weight metric — height /
+// BMI / head-circumference carry no weight unit. (issue #194)
+export function displayWeightGrowth(
+  series: Pick<GrowthMetricSeries, "bands" | "points">,
+  unit: WeightUnit
+): { bands: BandCurve[]; points: TrajectoryPoint[] } {
+  if (unit === "kg") return { bands: series.bands, points: series.points };
+  return {
+    bands: series.bands.map((b) => ({
+      ...b,
+      points: b.points.map((p) => ({ ...p, value: kgTo(p.value, unit) })),
+    })),
+    points: series.points.map((p) => ({ ...p, value: kgTo(p.value, unit) })),
+  };
 }
 
 // The three current percentiles for the passport badge, from the latest in-range
