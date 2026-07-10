@@ -8,6 +8,8 @@ import {
   normalizeVaccineName,
   slugifyVaccine,
 } from "@/lib/immunization-catalog";
+import { immunizationCodesLosingBacking } from "@/lib/dismissal-keys";
+import { clearImmunizationDismissals } from "@/lib/queries";
 import { resolveProviderIdByName } from "@/lib/providers-db";
 
 // Immunization writes. Mirrors app/(app)/trends/body-actions.ts: session-scoped,
@@ -85,10 +87,35 @@ export async function deleteImmunization(formData: FormData) {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return;
+  // Read the dose's vaccine before deleting so we can tell which component codes
+  // it credited (a combo dose credits several).
+  const row = db
+    .prepare(
+      "SELECT vaccine FROM immunizations WHERE id = ? AND profile_id = ?"
+    )
+    .get(id, profile.id) as { vaccine: string } | undefined;
   db.prepare("DELETE FROM immunizations WHERE id = ? AND profile_id = ?").run(
     id,
     profile.id
   );
+  // If this was the last dose backing a vaccine code, clear that code's due-nudge
+  // dismissal — the key is the reusable vaccine code, so a stale row would silence
+  // the nudge again after the immunization is re-added later (issue #203). Scoped
+  // to codes this dose actually un-backed, so a never-recorded vaccine's dismissal
+  // (no backing dose ever) is left intact.
+  if (row) {
+    const remaining = (
+      db
+        .prepare(
+          "SELECT DISTINCT vaccine FROM immunizations WHERE profile_id = ?"
+        )
+        .all(profile.id) as { vaccine: string }[]
+    ).map((r) => r.vaccine);
+    clearImmunizationDismissals(
+      profile.id,
+      immunizationCodesLosingBacking(row.vaccine, remaining)
+    );
+  }
   revalidateImmunizations();
 }
 

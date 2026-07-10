@@ -29,6 +29,8 @@ import {
   getCanonicalVocabulary,
   getMedicalDocument,
   getReprocessSnapshot,
+  cleanupOrphanBiomarkerDismissals,
+  migrateRenamedBiomarker,
 } from "@/lib/queries";
 import { resolveProviderIdByName } from "@/lib/providers-db";
 import { autoSuggestFromBiomarkers } from "@/lib/supplement-suggest";
@@ -194,6 +196,19 @@ export async function updateRecord(formData: FormData) {
     String(formData.get("provider") ?? "")
   );
 
+  // Read the reading's PRIOR canonical grouping before overwriting it, so a
+  // canonical rename can carry its star + retest dismissal to the new name rather
+  // than orphaning them under the old (issue #203). The effective group name
+  // mirrors the retest nudge / star derivation: canonical_name, falling back to
+  // the raw name.
+  const prev = db
+    .prepare(
+      "SELECT canonical_name, name FROM medical_records WHERE id = ? AND profile_id = ?"
+    )
+    .get(id, profile.id) as
+    { canonical_name: string | null; name: string } | undefined;
+  const oldCanonical = prev ? prev.canonical_name?.trim() || prev.name : null;
+
   db.prepare(
     `UPDATE medical_records
        SET date = ?, category = ?, name = ?, value = ?, value_num = ?, unit = ?,
@@ -223,6 +238,16 @@ export async function updateRecord(formData: FormData) {
   // Re-derive the non-optimal flag for this row (the editor sets only clinical
   // flags; non-optimal follows the value vs the canonical optimal band).
   reconcileFlags(profile.id, [id]);
+  // A canonical rename re-keys this reading's group: migrate any star + retest
+  // dismissal to the new name (the delete path already sweeps stars — the edit
+  // path didn't), then sweep whatever the rename orphaned (a name-collision under
+  // the new name leaves the old row for the sweep to drop). Guarded on an actual
+  // name change so a plain value/date edit stays a no-op.
+  if (oldCanonical && oldCanonical.toLowerCase() !== canonical.toLowerCase()) {
+    migrateRenamedBiomarker(profile.id, oldCanonical, canonical);
+    cleanupOrphanStars(profile.id);
+    cleanupOrphanBiomarkerDismissals(profile.id);
+  }
   revalidateMedical();
 }
 
@@ -240,6 +265,10 @@ export async function deleteRecord(
   // NOTE (consciously scoped out of undo): a star orphan-cleaned here is NOT
   // re-created on Undo — the reading returns but the pinned-tile star stays gone.
   cleanupOrphanStars(profile.id);
+  // Same shape for the retest dismissal: deleting the last reading of a biomarker
+  // clears its `biomarker:<name>` snooze so re-adding that marker later re-nudges
+  // instead of being silenced by the stale, name-keyed row (issue #203).
+  cleanupOrphanBiomarkerDismissals(profile.id);
   revalidateMedical();
   return { undoId };
 }
