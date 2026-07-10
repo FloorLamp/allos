@@ -287,3 +287,31 @@ export const blockedRing = "ring-1 ring-amber-400 dark:ring-amber-600";
 // saved, so its card and the offending inputs can be flagged. `null` when fine.
 export type PartFault =
   "name" | "type" | "equipment" | "set" | "content" | null;
+
+// Which of an exercise's recent sessions to surface in the form's "Recent"
+// reference panel — shared by create AND edit (issue #188). The input is the
+// history query's newest-first list; that order is preserved.
+//
+// `currentActivityId` is the session the form is saving, and is ALWAYS excluded
+// so a session never lists itself: in create that's the auto-saved row once it
+// exists (was null → excludes nothing until then); in edit it's the row being
+// edited. `editedDate` is the edited session's date in edit mode (else null) —
+// used to drop any session logged strictly AFTER the edited one, so the panel
+// stays semantically "previous" when editing a back-dated session (in create
+// the saved row is always newest, so this filter is inert). Same-day siblings
+// are kept (they aren't "after"); self is already gone by id. Newest-first
+// slice to `limit`, matching create's prior behaviour exactly.
+export function recentSessionsForForm<
+  T extends { activityId: number; date: string },
+>(
+  sessions: T[] | undefined,
+  currentActivityId: number | null,
+  editedDate: string | null,
+  limit = 3
+): T[] {
+  if (!sessions) return [];
+  return sessions
+    .filter((s) => s.activityId !== currentActivityId)
+    .filter((s) => editedDate == null || s.date <= editedDate)
+    .slice(0, limit);
+}
