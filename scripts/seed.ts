@@ -1483,4 +1483,32 @@ if (!existingChild) {
   for (const [ago, cm] of headCircs) point("head_circumference_cm", ago, cm);
 }
 
+// ── Sleep sessions → Sleep Regularity Index (#160) ────────────────────────────
+// 30 nightly sleep sessions for the adult profile (bed ~23:00 → wake ~07:00, with
+// weekend nights shifted ~90 min later) so the Trends → Body "Sleep regularity"
+// card (SRI) and the weekly-recap line have data. Stored as absolute instants
+// (source 'manual'), keyed on the time window like the Health Connect ingest.
+const insSleep = db.prepare(
+  `INSERT OR IGNORE INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+     VALUES (?, 'manual', 'sleep_min', ?, ?, ?, ?)`
+);
+for (let i = 1; i <= 30; i++) {
+  const wakeDay = daysAgo(i);
+  const bedDay = shiftDateStr(wakeDay, -1);
+  const dow = new Date(wakeDay + "T00:00:00Z").getUTCDay(); // 0=Sun … 6=Sat
+  const weekend = dow === 0 || dow === 6;
+  // A small deterministic jitter (±10 min) keeps the schedule realistic rather
+  // than a perfect SRI = 100.
+  const jitter = ((i * 7) % 21) - 10;
+  const bedMin = (weekend ? 30 : 0) + jitter; // 00:30 weekend vs 23:00 weekday
+  const start = weekend
+    ? `${wakeDay}T00:${String(Math.max(0, bedMin)).padStart(2, "0")}:00Z`
+    : `${bedDay}T23:${String(Math.max(0, jitter + 30)).padStart(2, "0")}:00Z`;
+  const wakeMin = weekend ? 30 : 0;
+  const end = weekend
+    ? `${wakeDay}T08:${String(wakeMin).padStart(2, "0")}:00Z`
+    : `${wakeDay}T07:${String(Math.max(0, jitter + 30)).padStart(2, "0")}:00Z`;
+  insSleep.run(SEED_PROFILE_ID, wakeDay, start, end, 480);
+}
+
 console.log("✅ Seeded sample health data.");

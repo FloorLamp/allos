@@ -196,6 +196,29 @@ export function getSleepStageDailyTotals(
   return rows.reverse();
 }
 
+// Raw per-night sleep sessions (metric 'sleep_min') as absolute time windows,
+// newest→oldest, capped at `limit` rows — the input to the Sleep Regularity Index
+// (#160), which needs each session's start/end INSTANTS (not the derived per-day
+// totals) to reconstruct the sleep/wake timeline in the profile timezone. `source`
+// is carried for future source-aware handling (Oura, #140 / #14).
+export function getSleepSessions(
+  profileId: number,
+  limit = 800
+): { start: string; end: string; source: string | null }[] {
+  return db
+    .prepare(
+      `SELECT start_time AS start, end_time AS end, source
+         FROM metric_samples
+        WHERE profile_id = ? AND metric = 'sleep_min'
+        ORDER BY end_time DESC LIMIT ?`
+    )
+    .all(profileId, limit) as {
+    start: string;
+    end: string;
+    source: string | null;
+  }[];
+}
+
 // Daily HR summary derived from the 1-minute buckets, oldest→newest.
 export function getHrDailySummary(
   profileId: number,

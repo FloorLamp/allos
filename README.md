@@ -262,23 +262,39 @@ Bearer <token>` header, then pick a sync schedule (a 15–60 min interval and/or
 
 **What gets imported** (mapped from the app's native payload):
 
-| Health Connect data                                                 | Where it lands                                                                                                             |
-| ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| Weight                                                              | **Trends → Body** (one imported weigh-in per day)                                                                          |
-| Body fat, resting HR                                                | **Trends → Body** charts (kept lossless even on days without a weigh-in)                                                   |
-| Steps, distance, calories                                           | **Trends → Body** charts (daily totals)                                                                                    |
-| Sleep                                                               | **Trends → Body** charts: total per night + a stacked deep/REM/light/awake stage breakdown (attributed to the wake-up day) |
-| Heart rate (continuous)                                             | Bucketed to 1-minute averages → daily + intraday HR charts                                                                 |
-| Heart rate variability                                              | Stored per day                                                                                                             |
-| Exercise sessions                                                   | **Training history** (cardio or sport activities)                                                                          |
-| Blood pressure, glucose, SpO₂, body temp, respiratory rate, VO₂ max | **Medical / Biomarkers** (with reference-range flags)                                                                      |
-| Lean mass, bone mass, BMR, height                                   | **Trends → Body** charts (height also drives a BMI chart)                                                                  |
-| Hydration                                                           | **Trends → Body** chart (liters/day)                                                                                       |
-| Nutrition                                                           | **Trends → Body** charts: calories + a protein/carbs/fat macros breakdown                                                  |
+| Health Connect data                                                 | Where it lands                                                                                                                                                                 |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Weight                                                              | **Trends → Body** (one imported weigh-in per day)                                                                                                                              |
+| Body fat, resting HR                                                | **Trends → Body** charts (kept lossless even on days without a weigh-in)                                                                                                       |
+| Steps, distance, calories                                           | **Trends → Body** charts (daily totals)                                                                                                                                        |
+| Sleep                                                               | **Trends → Body** charts: total per night + a stacked deep/REM/light/awake stage breakdown (attributed to the wake-up day), plus a **Sleep Regularity Index** card (see below) |
+| Heart rate (continuous)                                             | Bucketed to 1-minute averages → daily + intraday HR charts                                                                                                                     |
+| Heart rate variability                                              | Stored per day                                                                                                                                                                 |
+| Exercise sessions                                                   | **Training history** (cardio or sport activities)                                                                                                                              |
+| Blood pressure, glucose, SpO₂, body temp, respiratory rate, VO₂ max | **Medical / Biomarkers** (with reference-range flags)                                                                                                                          |
+| Lean mass, bone mass, BMR, height                                   | **Trends → Body** charts (height also drives a BMI chart)                                                                                                                      |
+| Hydration                                                           | **Trends → Body** chart (liters/day)                                                                                                                                           |
+| Nutrition                                                           | **Trends → Body** charts: calories + a protein/carbs/fat macros breakdown                                                                                                      |
 
 Ingest is **idempotent**: the rolling 48-hour window means records are resent, so
 imports dedup on natural keys (time windows) and never double-count. Manually
 entered rows are never overwritten by a sync.
+
+### Sleep Regularity Index (SRI)
+
+Consistency of sleep timing turns out to predict mortality risk _better than sleep
+duration_ (Windred et al., "Sleep regularity is a stronger predictor of mortality
+risk than sleep duration", _SLEEP_ 2023, UK Biobank; the index itself is from
+Phillips et al., _Sci. Rep._ 2017). So beyond the nightly-duration chart, **Trends →
+Body** shows a **Sleep Regularity Index** card once you have enough recorded nights
+(a rolling 28-night window with a minimum-nights gate). The SRI runs −100 (fully
+irregular) to 100 (a perfectly reproducible schedule) and measures the probability
+of being in the same sleep/wake state at the same clock time on consecutive days.
+Alongside it are two companions — the standard deviation of your bedtime and
+wake time, and **social jetlag** (how much your mid-sleep shifts between weekdays
+and weekends). All clock math is done in your **profile timezone**, so DST changes
+and travel don't distort it, and missing nights are skipped (never treated as
+"awake") rather than faked. The current SRI also rides the **weekly recap**.
 
 Incoming records are also **sanity-checked**: values outside a wide physiological
 envelope (e.g. a 5,000 kg weight, a 500 bpm heart rate, negative steps, an SpO₂

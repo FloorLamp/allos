@@ -23,6 +23,7 @@ import {
   getSkippedDoseIds,
   getActivitiesByDate,
   getZone2MinutesInWindow,
+  getSleepRegularity,
 } from "../queries";
 import { recentPRs, recentCardioPRs } from "../coaching";
 import { totalEstimatedKcal, type DatedWeight } from "../calorie-estimate";
@@ -225,6 +226,16 @@ export function gatherRecapInput(
     // range, #190) — null when no HR zone model exists (line then omitted).
     zone2Min: getZone2MinutesInWindow(profileId, win.start, win.end),
     zone2Target: getZone2WeeklyTargetMin(profileId),
+    // Sleep Regularity Index (#160) over the trailing 28-night window — the SAME
+    // pure computeSleepRegularity the Trends sleep card renders (one computation).
+    // Null (line omitted) below the minimum-nights gate.
+    ...(() => {
+      const reg = getSleepRegularity(profileId);
+      return {
+        sri: reg?.sri ?? null,
+        socialJetlagMin: reg?.socialJetlagMin ?? null,
+      };
+    })(),
   };
 }
 

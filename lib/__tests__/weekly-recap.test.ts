@@ -125,6 +125,20 @@ describe("buildWeeklyRecap", () => {
     expect(recap.isEmpty).toBe(false);
   });
 
+  it("surfaces a sleep-regularity line with the weekend shift (#160)", () => {
+    const recap = buildWeeklyRecap(baseInput({ sri: 82, socialJetlagMin: 78 }));
+    const line = recap.lines.find((l) => l.key === "sleepRegularity")!;
+    expect(line.value).toBe("82/100");
+    expect(line.delta).toBe("1.3h weekend shift");
+  });
+
+  it("omits the sleep-regularity line when SRI is null (#160)", () => {
+    const recap = buildWeeklyRecap(baseInput({ sri: null }));
+    expect(
+      recap.lines.find((l) => l.key === "sleepRegularity")
+    ).toBeUndefined();
+  });
+
   it("reports a volume delta versus the previous window", () => {
     const recap = buildWeeklyRecap(
       baseInput({ volumeKg: 11000, prevVolumeKg: 10000 })
