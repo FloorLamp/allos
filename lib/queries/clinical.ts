@@ -65,17 +65,37 @@ export function getAllergy(profileId: number, id: number): Allergy | undefined {
 // normalized name ('name:<lower(name)>'). The 'code:'/'name:' prefixes keep the two
 // namespaces from ever colliding; NULLIF(TRIM(code),'') makes a blank code fall
 // through to the name branch.
-export const CONDITION_REPRESENTATIVE_IDS = `
+//
+// Representative ORDER (#193): an ACTIVE-status row wins the representative slot
+// BEFORE the manual-over-imported / newest tiebreakers, so when a same-name twin
+// pair (e.g. a resolved 2015 entry + an active 2023 recurrence of the same uncoded
+// condition) collapses, the SURVIVING representative is the active one — the
+// unfiltered list, Timeline, and Search all show the live problem, and an "active"
+// filtered view can never be emptied by a resolved representative hiding an active
+// twin.
+//
+// The status filter (#193, issue option (c)) is injected INTO the inner FROM (via
+// `filterStatus`) so the representative is chosen from ONLY the matching-status
+// rows: a filtered view then can't be emptied by a representative the filter would
+// exclude while a matching twin exists. The optional status bind comes AFTER the
+// profile_id bind.
+function conditionRepresentativeIds(filterStatus: boolean): string {
+  return `
   SELECT id FROM (
     SELECT id, ROW_NUMBER() OVER (
       PARTITION BY profile_id, COALESCE(
         'code:' || NULLIF(TRIM(code), ''),
         'name:' || LOWER(TRIM(name))
       )
-      ORDER BY (document_id IS NULL) DESC, id DESC
+      ORDER BY (status = 'active') DESC, (document_id IS NULL) DESC, id DESC
     ) AS rn
-    FROM conditions WHERE profile_id = ?
+    FROM conditions WHERE profile_id = ?${filterStatus ? " AND status = ?" : ""}
   ) WHERE rn = 1`;
+}
+
+// Unfiltered representative set — shared by the Timeline and Search (one row per
+// condition, preferring the active twin). Takes ONE profile_id bind param.
+export const CONDITION_REPRESENTATIVE_IDS = conditionRepresentativeIds(false);
 
 // Procedures collapse on (coded-or-named identity, performed date). Two procedures
 // with the same name on different dates stay distinct; an undated pair groups
@@ -106,17 +126,23 @@ export const FAMILY_HISTORY_REPRESENTATIVE_IDS = `
 
 // Conditions, optionally filtered to a single status (drives the page's
 // active/resolved filter). Active first, then most recent onset. De-duplicated
-// across documents via CONDITION_REPRESENTATIVE_IDS (its profile_id bind comes
-// after the main WHERE's). The status filter applies to the surviving
-// representative, so a condition shows once with its representative's status.
+// across documents via the condition-representative subquery (its profile_id bind
+// comes after the main WHERE's). When a status is requested, the filter is pushed
+// INTO the representative selection (#193) so the representative is picked from only
+// the matching-status rows — a resolved same-name twin can't hide an active one, and
+// an active-filtered view is never emptied. The status bind (when present) follows
+// the subquery's profile_id bind.
 export function getConditions(
   profileId: number,
   opts: { status?: ConditionStatus } = {}
 ): Condition[] {
-  const where = ["profile_id = ?", `id IN (${CONDITION_REPRESENTATIVE_IDS})`];
+  const filterStatus = opts.status != null;
+  const where = [
+    "profile_id = ?",
+    `id IN (${conditionRepresentativeIds(filterStatus)})`,
+  ];
   const args: (string | number)[] = [profileId, profileId];
   if (opts.status) {
-    where.push("status = ?");
     args.push(opts.status);
   }
   return db
