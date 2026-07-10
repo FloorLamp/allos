@@ -90,4 +90,91 @@ describe("planPreventiveNudges", () => {
     const plan = planPreventiveNudges([], ["skin_check", "aaa_ultrasound"]);
     expect(plan.toClear).toEqual(["aaa_ultrasound", "skin_check"]);
   });
+
+  // Scheduled-visit coverage (issue #183): a due item with a booked matching-kind
+  // visit is held out of the nudge without touching its episode marker, matching the
+  // Upcoming page's "Scheduled" quiet state (issue #85).
+  describe("scheduled-visit coverage", () => {
+    it("does not nudge a covered item, and never sets its marker", () => {
+      // Item is due and unmarked, but a matching visit is booked → suppress the ping;
+      // since it's not marked, nothing to clear either (its episode stays un-started).
+      const plan = planPreventiveNudges(
+        [item("colorectal_cancer", "overdue"), item("lipid_screening")],
+        [],
+        ["colorectal_cancer"]
+      );
+      expect(plan.toSend.map((i) => i.ruleKey)).toEqual(["lipid_screening"]);
+      expect(plan.toClear).toEqual([]);
+    });
+
+    it("re-allows the nudge once the covering appointment is cancelled", () => {
+      // Covered → no send.
+      const covered = planPreventiveNudges(
+        [item("colorectal_cancer", "overdue")],
+        [],
+        ["colorectal_cancer"]
+      );
+      expect(covered.toSend).toEqual([]);
+      expect(covered.toClear).toEqual([]);
+
+      // Appointment cancelled (no longer covered), still due + unmarked → nudge fires.
+      const uncovered = planPreventiveNudges(
+        [item("colorectal_cancer", "overdue")],
+        [],
+        []
+      );
+      expect(uncovered.toSend.map((i) => i.ruleKey)).toEqual([
+        "colorectal_cancer",
+      ]);
+      expect(uncovered.toClear).toEqual([]);
+    });
+
+    it("freezes a marked item's episode while covered, then ends it normally", () => {
+      // Episode 1: due + unmarked, uncovered → send (caller sets the marker).
+      const first = planPreventiveNudges([item("mammography")], [], []);
+      expect(first.toSend.map((i) => i.ruleKey)).toEqual(["mammography"]);
+
+      // User books a matching visit: still due, now marked AND covered → no re-send,
+      // and the marker is NOT cleared (episode frozen, not ended).
+      const booked = planPreventiveNudges(
+        [item("mammography")],
+        ["mammography"],
+        ["mammography"]
+      );
+      expect(booked.toSend).toEqual([]);
+      expect(booked.toClear).toEqual([]);
+
+      // Visit completed → item satisfied (no longer actionable), no longer covered,
+      // marker present → clear it so the next interval can re-fire.
+      const done = planPreventiveNudges([], ["mammography"], []);
+      expect(done.toSend).toEqual([]);
+      expect(done.toClear).toEqual(["mammography"]);
+    });
+
+    it("does not double-nudge the same episode when coverage is cancelled mid-episode", () => {
+      // Nudged (marked), then covered by a booking, then the booking is cancelled
+      // while the item is STILL due. Because the marker was preserved through the
+      // covered tick, the un-covered tick suppresses (already nudged this episode).
+      const booked = planPreventiveNudges(
+        [item("mammography")],
+        ["mammography"],
+        ["mammography"]
+      );
+      expect(booked.toClear).toEqual([]); // marker preserved
+
+      const cancelled = planPreventiveNudges(
+        [item("mammography")],
+        ["mammography"],
+        []
+      );
+      expect(cancelled.toSend).toEqual([]); // still marked → no duplicate ping
+      expect(cancelled.toClear).toEqual([]);
+    });
+
+    it("defaults to no coverage when the set is omitted (back-compat)", () => {
+      const plan = planPreventiveNudges([item("lipid_screening")], []);
+      expect(plan.toSend.map((i) => i.ruleKey)).toEqual(["lipid_screening"]);
+      expect(plan.toClear).toEqual([]);
+    });
+  });
 });
