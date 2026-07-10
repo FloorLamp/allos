@@ -31,6 +31,25 @@ export interface FkSpec {
   ref: string;
 }
 
+// A captured FK column that points OUTSIDE this capture — at a row that may have
+// been deleted between the capture and the undo (#202). remapRow leaves such a
+// value verbatim (it's not in any id map), so a verbatim re-insert would violate
+// the FK (foreign_keys = ON) and abort the whole restore. At restore time the
+// executor probes the live target and, when it's gone, applies `onMissing`:
+//   - "null": set the column to NULL — for a nullable link whose live delete nulls
+//     it anyway (deleteEquipment nulls exercise_sets.equipment_id);
+//   - "drop": skip re-inserting the row — for a join row whose far endpoint is
+//     REQUIRED (an intake_item_pairs row whose partner item is gone), matching what
+//     the live cascade would have removed.
+export interface ExternalRefSpec {
+  // The FK column on this entity's rows that may dangle at restore time.
+  column: string;
+  // The physical table the column references (a constant) — probed for existence.
+  table: string;
+  // What to do when the referenced row no longer exists at restore.
+  onMissing: "null" | "drop";
+}
+
 export interface EntitySpec {
   // Logical key within a kind (used to key the payload + the id maps).
   entity: string;
@@ -38,6 +57,9 @@ export interface EntitySpec {
   table: string;
   // FK columns to remap on restore. Empty for the root.
   fks: FkSpec[];
+  // Captured FK columns pointing OUTSIDE this capture whose target may have been
+  // deleted since capture — reconciled (null/drop) on restore. Absent when none.
+  externalRefs?: ExternalRefSpec[];
   // For a CHILD entity, how to select its rows given the root id: a WHERE fragment
   // and how many times the root id is bound into it. Omitted for the root (which is
   // captured by `id = ? AND profile_id = ?`). Static SQL — no user input.
@@ -102,6 +124,13 @@ export const UNDO_KINDS: Record<string, KindSpec> = {
         entity: "sets",
         table: "exercise_sets",
         fks: [{ column: "activity_id", ref: "activity" }],
+        // equipment_id points at an equipment row OUTSIDE this capture. If that
+        // equipment was deleted after the activity was (deleteEquipment nulls only
+        // LIVE sets, so this captured set kept its equipment_id), null it on restore
+        // rather than re-inserting a dangling FK (#202).
+        externalRefs: [
+          { column: "equipment_id", table: "equipment", onMissing: "null" },
+        ],
         childWhere: "activity_id = ?",
         childBinds: 1,
       },
@@ -145,6 +174,16 @@ export const UNDO_KINDS: Record<string, KindSpec> = {
         fks: [
           { column: "a_id", ref: "item" },
           { column: "b_id", ref: "item" },
+        ],
+        // A pair needs BOTH items alive. The near endpoint is remapped to the
+        // just-restored item (so it exists), but the far endpoint may have been
+        // deleted after the near item was — its live cascade would have removed the
+        // pair. Probe both endpoints and DROP the row if either is gone, rather than
+        // re-inserting a pair that references a missing item (#202). (Checking both
+        // is safe: the remapped near endpoint always exists post-insert.)
+        externalRefs: [
+          { column: "a_id", table: "intake_items", onMissing: "drop" },
+          { column: "b_id", table: "intake_items", onMissing: "drop" },
         ],
         childWhere: "a_id = ? OR b_id = ?",
         childBinds: 2,

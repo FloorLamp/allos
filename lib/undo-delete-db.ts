@@ -28,6 +28,19 @@ const KIND_LABELS: Record<string, string> = {
   "intake-item": "intake item",
 };
 
+// Does a row with this id still exist for this profile? Used at restore to reconcile
+// captured external FK links (equipment_id, pair endpoints) whose target may have
+// been deleted since capture (#202). `table` comes from the pure ExternalRefSpec
+// registry (a constant, never user input); ids never recycle (AUTOINCREMENT), so an
+// id match is the same row, and the profile_id scope is defense-in-depth.
+function targetExists(table: string, id: number, profileId: number): boolean {
+  return (
+    db
+      .prepare(`SELECT 1 FROM ${table} WHERE id = ? AND profile_id = ?`)
+      .get(id, profileId) !== undefined
+  );
+}
+
 // Capture a profile-owned row + its cascade children into the undo holding table
 // and delete the row — all in ONE transaction, so the holding copy and the delete
 // commit together (never a delete without an undo record, nor vice versa). Children
@@ -105,6 +118,25 @@ export function restoreDeletedRow(profileId: number, undoId: number): boolean {
       for (const row of captured) {
         const oldId = row.id;
         const toInsert = remapRow(row, idMaps, entity.fks);
+        // Reconcile captured FK links that point OUTSIDE this capture and may have
+        // been deleted between capture and undo (#202): null a now-dangling nullable
+        // link (e.g. exercise_sets.equipment_id — deleteEquipment nulls only live
+        // sets, so a captured set kept its id), or DROP a join row whose required
+        // far endpoint is gone (an intake_item_pairs whose partner item was deleted
+        // — the live cascade would have removed it). Without this the verbatim
+        // re-insert violates the FK (foreign_keys = ON) and aborts the whole undo.
+        let drop = false;
+        for (const ref of entity.externalRefs ?? []) {
+          const v = toInsert[ref.column];
+          if (typeof v !== "number") continue; // null / absent → nothing to check
+          if (targetExists(ref.table, v, profileId)) continue;
+          if (ref.onMissing === "drop") {
+            drop = true;
+            break;
+          }
+          toInsert[ref.column] = null; // onMissing === "null"
+        }
+        if (drop) continue;
         const cols = Object.keys(toInsert);
         const info = db
           .prepare(

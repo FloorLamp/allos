@@ -13,6 +13,7 @@ import {
   restoreDeletedRow,
   sweepDeletedRows,
 } from "@/lib/undo-delete-db";
+import { deleteEquipment } from "@/lib/equipment";
 import { seedProfile, type SeededProfile } from "./fixtures";
 
 let p: SeededProfile;
@@ -166,6 +167,92 @@ describe("intake-item delete → undo (full cascade)", () => {
         course!.id
       )
     ).toBe(1);
+  });
+});
+
+// #202: a captured FK target can be deleted between capture and undo. Restore must
+// reconcile the dangling link (null it / drop the join row) instead of throwing on
+// a verbatim re-insert, and the batch path must isolate one poisoned token from the
+// rest.
+describe("resilient restore when a captured FK target was deleted meanwhile", () => {
+  it("nulls a set's equipment_id when the equipment was deleted after the activity", () => {
+    const q = seedProfile("EQUIP-UNDO");
+    // A strength activity whose set references a piece of equipment.
+    const actId = Number(
+      db
+        .prepare(
+          `INSERT INTO activities (profile_id, date, type, title, duration_min)
+           VALUES (?, '2020-02-02', 'strength', 'EQUIP Session', 30)`
+        )
+        .run(q.profileId).lastInsertRowid
+    );
+    const equipId = Number(
+      db
+        .prepare(
+          `INSERT INTO equipment (profile_id, name) VALUES (?, 'EQUIP Barbell')`
+        )
+        .run(q.profileId).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO exercise_sets (activity_id, exercise, set_number, weight_kg, reps, equipment_id)
+       VALUES (?, 'Bench Press', 1, 60, 5, ?)`
+    ).run(actId, equipId);
+
+    // Delete the activity (its set — with equipment_id = equipId — is captured), THEN
+    // delete the equipment. deleteEquipment nulls only LIVE sets, so the captured
+    // copy still carries equipId, which no longer exists.
+    const undoId = captureDelete("activity", q.profileId, actId)!;
+    deleteEquipment(q.profileId, equipId);
+    expect(
+      count("SELECT COUNT(*) c FROM equipment WHERE id = ?", equipId)
+    ).toBe(0);
+
+    // Undo must succeed (no FK throw) and restore the set with equipment_id NULLed.
+    expect(restoreDeletedRow(q.profileId, undoId)).toBe(true);
+    const restored = db
+      .prepare(
+        "SELECT id FROM activities WHERE profile_id = ? AND title = 'EQUIP Session'"
+      )
+      .get(q.profileId) as { id: number };
+    const set = db
+      .prepare("SELECT equipment_id FROM exercise_sets WHERE activity_id = ?")
+      .get(restored.id) as { equipment_id: number | null };
+    expect(set.equipment_id).toBeNull();
+  });
+
+  it("drops a pair whose far endpoint item was deleted, still restoring the item", () => {
+    const q = seedProfile("PAIR-UNDO");
+    // Pair the tracked supplement (X) with the medication (Y).
+    db.prepare(
+      `INSERT INTO intake_item_pairs (a_id, b_id, relation) VALUES (?, ?, 'with')`
+    ).run(q.supplementId, q.medicationId);
+
+    // Delete X (the pair (X,Y) is captured), THEN delete Y so the captured pair's far
+    // endpoint no longer exists.
+    const undoId = captureDelete("intake-item", q.profileId, q.supplementId)!;
+    db.prepare("DELETE FROM intake_items WHERE id = ? AND profile_id = ?").run(
+      q.medicationId,
+      q.profileId
+    );
+    expect(
+      count("SELECT COUNT(*) c FROM intake_items WHERE id = ?", q.medicationId)
+    ).toBe(0);
+
+    // Undo restores X (no FK throw) but drops the now-unrestorable pair.
+    expect(restoreDeletedRow(q.profileId, undoId)).toBe(true);
+    const item = db
+      .prepare(
+        "SELECT id FROM intake_items WHERE profile_id = ? AND name = 'PAIR-UNDO Vitamin D'"
+      )
+      .get(q.profileId) as { id: number };
+    expect(item).toBeTruthy();
+    expect(
+      count(
+        "SELECT COUNT(*) c FROM intake_item_pairs WHERE a_id = ? OR b_id = ?",
+        item.id,
+        item.id
+      )
+    ).toBe(0);
   });
 });
 
