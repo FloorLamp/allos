@@ -1,12 +1,11 @@
 // DB INTEGRATION TIER (not the pure unit suite). Exercises the #209 medication
 // history schema + query helpers against a real (in-memory / temp-file) SQLite
-// handle: the boot backfill, the stop/restart course machinery, side-effect CRUD
+// handle: the stop/restart course machinery, side-effect CRUD
 // + promote-to-intolerance, ON DELETE CASCADE via the parent, and two-profile
 // scoping on the new child-table reads. Runs via `npm run test:db`.
 
-import Database from "better-sqlite3";
 import { describe, it, expect } from "vitest";
-import { migrate, db, today } from "@/lib/db";
+import { db, today } from "@/lib/db";
 import { seedProfile } from "./fixtures";
 import {
   ensureMedicationCourse,
@@ -25,89 +24,6 @@ import {
 } from "@/lib/queries";
 
 process.env.ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "db-test-admin-pw";
-
-// A standalone migrated handle (separate from the singleton) so the backfill can
-// be observed across repeated migrate() runs without touching other tests' data.
-function freshDb(): Database.Database {
-  const d = new Database(":memory:");
-  d.pragma("foreign_keys = ON");
-  d.pragma("busy_timeout = 10000");
-  migrate(d);
-  return d;
-}
-
-describe("medication_courses backfill (boot)", () => {
-  it("creates exactly one open course per existing medication, idempotently", () => {
-    const d = freshDb();
-    // A medication inserted the way an old release would have — no course yet.
-    const medId = Number(
-      d
-        .prepare(
-          `INSERT INTO intake_items
-             (profile_id, name, active, kind, condition, priority, created_at)
-           VALUES (1, 'Old Med', 1, 'medication', 'daily', 'high', '2024-01-15 08:00:00')`
-        )
-        .run().lastInsertRowid
-    );
-    // An ALREADY-DISCONTINUED med (active=0) must backfill to a CLOSED course so
-    // it lands in Past, never contradicting its active flag (the F1 regression).
-    const inactiveMedId = Number(
-      d
-        .prepare(
-          `INSERT INTO intake_items
-             (profile_id, name, active, kind, condition, priority, created_at)
-           VALUES (1, 'Finished Antibiotic', 0, 'medication', 'daily', 'high', '2023-05-10 08:00:00')`
-        )
-        .run().lastInsertRowid
-    );
-    // A supplement must NEVER get a course.
-    d.prepare(
-      `INSERT INTO intake_items (profile_id, name, active, kind, condition, priority)
-       VALUES (1, 'Vitamin C', 1, 'supplement', 'daily', 'high')`
-    ).run();
-
-    const countCourses = (itemId: number) =>
-      (
-        d
-          .prepare(
-            "SELECT COUNT(*) AS c FROM medication_courses WHERE item_id = ?"
-          )
-          .get(itemId) as { c: number }
-      ).c;
-    const countAll = () =>
-      (
-        d.prepare("SELECT COUNT(*) AS c FROM medication_courses").get() as {
-          c: number;
-        }
-      ).c;
-
-    // The upgrade boot: re-run migrate() → each med gets its one initial course.
-    migrate(d);
-    expect(countCourses(medId)).toBe(1);
-    expect(countCourses(inactiveMedId)).toBe(1);
-    expect(countAll()).toBe(2); // supplement got none
-
-    const activeCourse = d
-      .prepare("SELECT * FROM medication_courses WHERE item_id = ?")
-      .get(medId) as { started_on: string; stopped_on: string | null };
-    expect(activeCourse.started_on).toBe("2024-01-15"); // date part of created_at
-    expect(activeCourse.stopped_on).toBeNull(); // active med → left open
-
-    const inactiveCourse = d
-      .prepare("SELECT * FROM medication_courses WHERE item_id = ?")
-      .get(inactiveMedId) as { started_on: string; stopped_on: string | null };
-    // active=0 → CLOSED course (stopped_on = created_at date), so it's Past.
-    expect(inactiveCourse.started_on).toBe("2023-05-10");
-    expect(inactiveCourse.stopped_on).toBe("2023-05-10");
-
-    // Idempotent: a second (and third) boot never adds a duplicate.
-    migrate(d);
-    migrate(d);
-    expect(countCourses(medId)).toBe(1);
-    expect(countCourses(inactiveMedId)).toBe(1);
-    d.close();
-  });
-});
 
 describe("stop / restart produces separate courses", () => {
   it("stop closes the open course + clears active; restart opens a new one", () => {

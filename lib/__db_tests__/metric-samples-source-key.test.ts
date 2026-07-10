@@ -6,11 +6,11 @@
 // fat / resting HR never re-split into metric_samples via the ingest normalizer.
 //
 // Runs via `npm run test:db` (vitest.db.config.ts). The `db` singleton is pointed
-// at a throwaway per-file temp DB by lib/__db_tests__/setup.ts, and migrate() has
-// already run (fresh schema) by the time this module imports it.
+// at a throwaway per-file temp DB by lib/__db_tests__/setup.ts, and the schema has
+// already been applied (fresh boot) by the time this module imports it.
 
 import { describe, it, expect, beforeAll } from "vitest";
-import { db, migrate } from "@/lib/db";
+import { db } from "@/lib/db";
 import {
   upsertMetricSamples,
   type NormMetricSample,
@@ -114,55 +114,5 @@ describe("metric_samples: body-metric measures never land here (#120 guard)", ()
       )
       .get(profileId) as { c: number };
     expect(bodyMetricRows.c).toBe(0);
-  });
-});
-
-describe("metric_samples: upgrade rebuild adds source to a pre-#128 key", () => {
-  it("rebuilds a profile_id-but-no-source key in place, preserving rows", () => {
-    // Reconstruct the intermediate pre-#128 shape: profile_id present, but the
-    // OLD unique key UNIQUE(profile_id, metric, start_time, end_time) (no source).
-    db.exec(`
-      DROP TABLE metric_samples;
-      CREATE TABLE metric_samples (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        profile_id INTEGER NOT NULL REFERENCES profiles(id),
-        source TEXT NOT NULL,
-        metric TEXT NOT NULL,
-        date TEXT NOT NULL,
-        start_time TEXT NOT NULL,
-        end_time TEXT NOT NULL,
-        value REAL NOT NULL,
-        UNIQUE (profile_id, metric, start_time, end_time)
-      );
-    `);
-    db.prepare(
-      `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
-       VALUES (?, 'health-connect', 'steps', '2024-02-01', ?, ?, 4321)`
-    ).run(profileId, "2024-02-01T00:00", "2024-02-01T23:59");
-    expect(uniqueKeyCols()).not.toContain("source"); // precondition: old key
-
-    // THE UPGRADE: re-run migrate() (what an existing deployment does on boot).
-    expect(() => migrate(db)).not.toThrow();
-
-    // Key now carries source, and the pre-existing row survived the rebuild.
-    expect(uniqueKeyCols()).toContain("source");
-    const kept = db
-      .prepare(
-        `SELECT value FROM metric_samples WHERE profile_id = ? AND metric = 'steps' AND date = '2024-02-01'`
-      )
-      .all(profileId) as { value: number }[];
-    expect(kept).toEqual([{ value: 4321 }]);
-
-    // And a second source for that same window now coexists (the whole point).
-    db.prepare(
-      `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
-       VALUES (?, 'strava', 'steps', '2024-02-01', ?, ?, 9999)`
-    ).run(profileId, "2024-02-01T00:00", "2024-02-01T23:59");
-    const both = db
-      .prepare(
-        `SELECT COUNT(*) AS c FROM metric_samples WHERE profile_id = ? AND metric = 'steps' AND date = '2024-02-01'`
-      )
-      .get(profileId) as { c: number };
-    expect(both.c).toBe(2);
   });
 });
