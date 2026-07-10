@@ -496,6 +496,12 @@ export interface Recommendation {
 // FrequencyTargetProgress (lib/queries) structurally satisfies it.
 export interface RoutineTargetProgress {
   target: {
+    // The frequency_targets row id. Optional in the type (test fixtures omit it),
+    // always present in production (FrequencyTargetProgress supplies it) — it's the
+    // identity the Upcoming `training:<id>` finding and the workout nudge line up on
+    // (#245), so the shared signal key can silence the push when the finding is
+    // dismissed.
+    id?: number;
     scope_kind: string; // 'type' | 'region' | 'group'
     scope_value: string;
   };
