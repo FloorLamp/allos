@@ -317,6 +317,8 @@ export type FeedCategory =
   | "appointment"
   | "dose"
   | "refill"
+  | "visit"
+  | "screening"
   | "immunization"
   | "biomarker"
   | "goal"
@@ -327,6 +329,8 @@ export const FEED_CATEGORIES: readonly FeedCategory[] = [
   "appointment",
   "dose",
   "refill",
+  "visit",
+  "screening",
   "immunization",
   "biomarker",
   "goal",
@@ -348,6 +352,8 @@ export const CONCRETE_FEED_CATEGORIES: readonly FeedCategory[] = [
   "refill",
 ];
 export const SUGGESTED_FEED_CATEGORIES: readonly FeedCategory[] = [
+  "visit",
+  "screening",
   "immunization",
   "biomarker",
   "goal",
@@ -363,6 +369,8 @@ const CATEGORY_MINIMAL_LABEL: Record<
 > = {
   dose: "Medication / supplement dose",
   refill: "Refill running low",
+  visit: "Preventive visit due",
+  screening: "Preventive screening due",
   immunization: "Immunization due",
   biomarker: "Lab retest due",
   goal: "Goal deadline",
@@ -375,6 +383,8 @@ export const FEED_CATEGORY_LABELS: Record<FeedCategory, string> = {
   appointment: "Medical appointments",
   dose: "Doses due",
   refill: "Refills running low",
+  visit: "Preventive visits due",
+  screening: "Preventive screenings due",
   immunization: "Immunizations due",
   biomarker: "Biomarker retests",
   goal: "Goal deadlines",

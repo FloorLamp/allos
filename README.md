@@ -11,6 +11,7 @@
 ## Features
 
 - **Timeline** — day-by-day health history across activity, body metrics, labs, medications, documents, visits, goals, and milestones
+- **Upcoming** — one forward-looking list of everything due soon, bucketed by urgency (**Overdue / Today / This week / Later**): supplement/medication doses, low refills, scheduled appointments, **preventive well-visits & screenings** (age/sex-appropriate checkups and screenings from curated general guidelines — mark one **done**, or set it **not applicable** / **declined** — informational only, and shown only once a birthdate is on file), immunizations due, biomarker retests, goal deadlines, and training targets. Any item can be **snoozed** or **dismissed** (and restored later), and the same list feeds the optional Telegram "what's due" digest and the calendar feed
 - **Training** — workout history, goals, strength analysis, cardio records, sport summaries, and per-exercise history; a workout's **⋯ → Merge with…** menu folds two of that day's activities into one for duplicates no auto-detector caught (undoable) — and when the two genuinely disagree on a field (e.g. duration 42 vs 51 min) a quick preview lets you pick which value to keep per field
 - **Trends** — charts and analysis in one place, tab by tab: **Body** (weight, body fat %, resting heart rate, plus a **Log vitals** quick-add for blood pressure, glucose, SpO₂, temperature, sleep, and HRV — the same measures the Health Connect exporter syncs, so manual and synced readings share one home), **Fitness**, **Biomarkers** (including a **Trajectory watch** that warns before a reading crosses a line — a value projected to cross its reference/optimal boundary, a persistent non-optimal pattern, or a fast decline/rise, plus an optional AI **lab-trend interpretation** that reads recent movements against your medications and conditions), **Compare**, and Claude-powered **Insights** (a daily analysis of your activity, metrics, and goals, plus **weekly/monthly recap** narratives)
 - **Household** — for any login that can reach more than one profile (an admin, or a caregiver **member** granted several profiles), a cross-profile overview: one card per person showing today's **attention items** — supplement/medication doses due, low refills, and the next scheduled visit — alongside at-a-glance stats. **Confirm** a due dose for anyone straight from their card **without switching profiles** (the button shows only where you have write access; a read-only grant sees the card but no actions), or tap a card to open that profile. Hidden for single-profile logins.
@@ -292,8 +293,9 @@ and an expired token is rejected exactly like an invalid one.
 
 **Customize what the feed contains** (per profile, right on the setup page): pick
 which categories become calendar events — medical **appointments** (the default),
-plus optional **doses due**, **refills running low**, **immunizations due**,
-**biomarker retests**, **goal deadlines**, and **training targets** — toggle the
+plus optional **doses due**, **refills running low**, **preventive visits &
+screenings due**, **immunizations due**, **biomarker retests**, **goal deadlines**,
+and **training targets** — toggle the
 1-day/1-hour **reminders** on or off, and bound the **past window** and optional
 **future horizon**. A **minimal ↔ full** detail switch controls PHI for every
 category (minimal emits only a neutral label like "Medical appointment"; full sends

@@ -58,14 +58,16 @@ describe("002 edit-lock flags — schema shape", () => {
     db.close();
   });
 
-  it("a v1 DB receives 002 (columns absent before, present after; stamped to 2)", () => {
+  it("a v1 DB receives 002 (columns absent before, present after; stamped to current)", () => {
     const db = v1Db();
     expect(columnNames(db, "body_metrics").has("edited")).toBe(false);
     expect(columnNames(db, "medical_records").has("edited")).toBe(false);
 
     runMigrations(db);
 
-    expect(readVersion(db)).toBe(2);
+    // runMigrations applies every migration after v1 (002 onward), stamping the DB
+    // to the latest known version.
+    expect(readVersion(db)).toBe(MIGRATIONS.length);
     expect(columnNames(db, "body_metrics").has("edited")).toBe(true);
     expect(columnNames(db, "medical_records").has("edited")).toBe(true);
     expect(indexNames(db, "body_metrics").has("idx_body_metrics_source")).toBe(

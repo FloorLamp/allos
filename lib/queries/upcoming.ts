@@ -23,6 +23,13 @@ import {
 } from "../refill";
 import { assessSchedule } from "../immunization-status";
 import {
+  assessCatalog,
+  type PreventiveOverride,
+  type PreventiveOverrideKind,
+  type PreventiveSatisfaction,
+} from "../preventive-status";
+import { preventiveAssessmentToUpcomingItem } from "../preventive-upcoming";
+import {
   isBiomarkerStale,
   retestIntervalDays,
   daysBetween,
@@ -134,18 +141,23 @@ function refillItems(profileId: number, today: string): UpcomingItem[] {
   return items;
 }
 
+// The profile's age in MONTHS for the schedule engines: from the birthdate when
+// known (exact), else the stored bare-age fallback (× 12), else null (unknown).
+// Shared by the immunization and preventive-care assessments so they resolve age
+// identically. Profile-scoped reads (getUserBirthdate/getStoredAge filter profile_id).
+function profileAgeMonths(profileId: number, today: string): number | null {
+  const birthdate = getUserBirthdate(profileId);
+  if (birthdate) return ageInMonthsFromBirthdate(birthdate, today);
+  const storedAge = getStoredAge(profileId);
+  return storedAge != null ? storedAge * 12 : null;
+}
+
 // Vaccines due/overdue on the tracked schedule (reuses assessSchedule + the same
 // age/sex resolution the immunizations page uses). Status-driven, so each item
 // carries an explicit band + due-text rather than a calendar date.
 function immunizationItems(profileId: number, today: string): UpcomingItem[] {
-  const birthdate = getUserBirthdate(profileId);
   const sex = getUserSex(profileId);
-  const storedAge = birthdate ? null : getStoredAge(profileId);
-  const ageMonths = birthdate
-    ? ageInMonthsFromBirthdate(birthdate, today)
-    : storedAge != null
-      ? storedAge * 12
-      : null;
+  const ageMonths = profileAgeMonths(profileId, today);
 
   const summary = assessSchedule(
     getImmunizations(profileId).map((r) => ({
@@ -177,6 +189,97 @@ function immunizationItems(profileId: number, today: string): UpcomingItem[] {
       band: a.status === "overdue" ? ("overdue" as const) : ("today" as const),
       dueText: a.status === "overdue" ? "Overdue" : "Due",
     }));
+}
+
+// ---- Preventive care (issue #82) ------------------------------------------
+// The manual "mark done" SATISFACTION stream for a profile: each row is a rule
+// completed on a date, fed straight into the pure assessor. Profile-scoped.
+export function getPreventiveSatisfactions(
+  profileId: number
+): PreventiveSatisfaction[] {
+  return db
+    .prepare(
+      `SELECT rule_key AS ruleKey, date
+         FROM preventive_events WHERE profile_id = ?`
+    )
+    .all(profileId) as PreventiveSatisfaction[];
+}
+
+// The manual declined / not-applicable overrides for a profile. Each drops its
+// rule out of the actionable set (the pure assessor reads them). Profile-scoped.
+export function getPreventiveOverrides(
+  profileId: number
+): PreventiveOverride[] {
+  return db
+    .prepare(
+      `SELECT rule_key AS ruleKey, kind
+         FROM preventive_overrides WHERE profile_id = ?`
+    )
+    .all(profileId) as PreventiveOverride[];
+}
+
+// Record a manual "mark done": rule `ruleKey` satisfied on `date` (a completed
+// visit or a screening result). Idempotent on (profile_id, rule_key, date, source)
+// so re-confirming the same day is a no-op. `source` is 'manual' for this v1;
+// later record-inference writes into the same stream with its own source.
+export function recordPreventiveDone(
+  profileId: number,
+  ruleKey: string,
+  date: string,
+  source = "manual"
+): void {
+  db.prepare(
+    `INSERT INTO preventive_events (profile_id, rule_key, date, source)
+       VALUES (?, ?, ?, ?)
+     ON CONFLICT(profile_id, rule_key, date, source) DO NOTHING`
+  ).run(profileId, ruleKey, date, source);
+}
+
+// Set a declined / not-applicable override on a preventive rule, upserting on
+// (profile_id, rule_key) so re-setting flips the kind (mirrors the immunization
+// override writer). Profile-scoped.
+export function setPreventiveOverride(
+  profileId: number,
+  ruleKey: string,
+  kind: PreventiveOverrideKind,
+  note: string | null = null
+): void {
+  db.prepare(
+    `INSERT INTO preventive_overrides (profile_id, rule_key, kind, note)
+       VALUES (?, ?, ?, ?)
+     ON CONFLICT(profile_id, rule_key) DO UPDATE SET
+       kind = excluded.kind,
+       note = excluded.note,
+       created_at = datetime('now')`
+  ).run(profileId, ruleKey, kind, note);
+}
+
+// Clear any override on a preventive rule so it re-enters the schedule assessment.
+// Profile-scoped.
+export function clearPreventiveOverride(
+  profileId: number,
+  ruleKey: string
+): void {
+  db.prepare(
+    "DELETE FROM preventive_overrides WHERE profile_id = ? AND rule_key = ?"
+  ).run(profileId, ruleKey);
+}
+
+// Preventive well-visits and screenings that are due/overdue for the profile
+// (reuses the pure catalog assessor with the same age/sex resolution as the
+// immunization schedule). A missing birthdate/age → the assessor emits nothing
+// (its contract), so this returns []. Each actionable assessment maps to a
+// status-driven `visit`/`screening` Upcoming item carrying its rule key for the
+// inline mark-done + override forms.
+function preventiveItems(profileId: number, today: string): UpcomingItem[] {
+  const summary = assessCatalog({
+    ageMonths: profileAgeMonths(profileId, today),
+    sex: getUserSex(profileId),
+    satisfactions: getPreventiveSatisfactions(profileId),
+    overrides: getPreventiveOverrides(profileId),
+    today,
+  });
+  return summary.actionable.map(preventiveAssessmentToUpcomingItem);
 }
 
 // Approximate whole months for a span of days, for the cadence due-text
@@ -277,6 +380,7 @@ function rawUpcoming(profileId: number, today: string): UpcomingItem[] {
     ...doseItems(profileId, today),
     ...refillItems(profileId, today),
     ...appointmentItems(profileId),
+    ...preventiveItems(profileId, today),
     ...immunizationItems(profileId, today),
     ...biomarkerItems(profileId, today),
     ...goalItems(profileId),

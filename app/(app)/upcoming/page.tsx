@@ -3,6 +3,7 @@ import {
   IconPill,
   IconRefresh,
   IconStethoscope,
+  IconMicroscope,
   IconVaccine,
   IconChartLine,
   IconTarget,
@@ -11,11 +12,15 @@ import {
   IconClock,
   IconEyeOff,
   IconArrowBackUp,
+  IconInfoCircle,
+  IconCircleX,
+  IconCircleMinus,
   type TablerIcon,
 } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
 import { collectUpcoming, collectSuppressedUpcoming } from "@/lib/queries";
+import { getUserBirthdate, getStoredAge } from "@/lib/settings";
 import {
   groupUpcoming,
   upcomingDueText,
@@ -25,7 +30,14 @@ import {
 } from "@/lib/upcoming";
 import { PageHeader, EmptyState } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
-import { markTaken, snoozeItem, dismissItem, restoreItem } from "./actions";
+import {
+  markTaken,
+  snoozeItem,
+  dismissItem,
+  restoreItem,
+  markPreventiveDone,
+  overridePreventive,
+} from "./actions";
 
 // Quick-snooze options offered in each item's menu.
 const SNOOZE_OPTIONS: { label: string; days: number }[] = [
@@ -41,6 +53,8 @@ const DOMAIN_ICON: Record<UpcomingDomain, TablerIcon> = {
   dose: IconPill,
   refill: IconRefresh,
   appointment: IconStethoscope,
+  visit: IconStethoscope,
+  screening: IconMicroscope,
   immunization: IconVaccine,
   biomarker: IconChartLine,
   goal: IconTarget,
@@ -62,12 +76,39 @@ export default function UpcomingPage() {
   const groups = groupUpcoming(items, now);
   const suppressed = collectSuppressedUpcoming(profile.id, now);
 
+  // Preventive well-visits/screenings (issue #82) are only assessed when the
+  // profile's age is known; without a birthdate/age they emit nothing. Surface a
+  // one-time pointer instead of silence, and a general-guidelines disclaimer
+  // whenever any preventive item is shown.
+  const hasDemographics =
+    getUserBirthdate(profile.id) != null || getStoredAge(profile.id) != null;
+  const hasPreventive = items.some(
+    (i) => i.domain === "visit" || i.domain === "screening"
+  );
+
   return (
     <div>
       <PageHeader
         title="Upcoming"
-        subtitle="Everything due soon — doses, refills, appointments, vaccines, retests, goals, and training — in one forward-looking list."
+        subtitle="Everything due soon — doses, refills, appointments, preventive visits & screenings, vaccines, retests, goals, and training — in one forward-looking list."
       />
+
+      {!hasDemographics && (
+        <div className="mb-6 flex items-start gap-3 rounded-xl border border-brand-200 bg-brand-50 p-3 text-sm text-brand-800 dark:border-brand-500/30 dark:bg-brand-500/10 dark:text-brand-200">
+          <IconInfoCircle className="mt-0.5 h-5 w-5 shrink-0" stroke={1.75} />
+          <div>
+            Add a birthdate to enable preventive visit &amp; screening
+            reminders.{" "}
+            <Link
+              href="/settings/profile"
+              className="font-medium underline hover:no-underline"
+            >
+              Set it in Profile settings
+            </Link>
+            .
+          </div>
+        </div>
+      )}
 
       {groups.length === 0 ? (
         <EmptyState message="Nothing due. You're all caught up." />
@@ -99,6 +140,72 @@ export default function UpcomingPage() {
       )}
 
       {suppressed.length > 0 && <SuppressedSection items={suppressed} />}
+
+      {hasPreventive && (
+        <p className="mt-8 flex items-start gap-2 text-xs text-slate-400 dark:text-slate-500">
+          <IconInfoCircle
+            className="mt-0.5 h-3.5 w-3.5 shrink-0"
+            stroke={1.75}
+          />
+          <span>
+            Preventive visit &amp; screening suggestions are based on general
+            guidelines and are informational only — your provider&apos;s advice
+            wins.
+          </span>
+        </p>
+      )}
+    </div>
+  );
+}
+
+// Inline controls for a due preventive visit/screening row (issue #82): a fast
+// "Mark done" (records a satisfaction dated today, like a dose "mark taken") plus
+// an override menu to mark the rule Declined or Not applicable — either hides it.
+function PreventiveControls({ ruleKey }: { ruleKey: string }) {
+  return (
+    <div className="flex shrink-0 items-center gap-1">
+      <form action={markPreventiveDone}>
+        <input type="hidden" name="rule_key" value={ruleKey} />
+        <SubmitButton
+          pendingLabel="…"
+          className="rounded-lg border border-black/10 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 disabled:opacity-60 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"
+        >
+          Mark done
+        </SubmitButton>
+      </form>
+      <details className="relative shrink-0">
+        <summary
+          aria-label="Not applicable or declined"
+          title="Not applicable or declined"
+          className="tap-target flex h-8 w-8 cursor-pointer list-none items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-ink-750 dark:hover:text-slate-300 [&::-webkit-details-marker]:hidden"
+        >
+          <IconDotsVertical className="h-4 w-4" stroke={1.75} />
+        </summary>
+        <div className="card absolute right-0 z-10 mt-1 w-44 space-y-0.5 p-1 shadow-lg">
+          <form action={overridePreventive}>
+            <input type="hidden" name="rule_key" value={ruleKey} />
+            <input type="hidden" name="kind" value="not_applicable" />
+            <button
+              type="submit"
+              className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-sm text-slate-700 transition hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-ink-750"
+            >
+              <IconCircleMinus className="h-3.5 w-3.5" stroke={1.75} />
+              Not applicable
+            </button>
+          </form>
+          <form action={overridePreventive}>
+            <input type="hidden" name="rule_key" value={ruleKey} />
+            <input type="hidden" name="kind" value="declined" />
+            <button
+              type="submit"
+              className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-sm text-slate-700 transition hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-ink-750"
+            >
+              <IconCircleX className="h-3.5 w-3.5" stroke={1.75} />
+              Declined
+            </button>
+          </form>
+        </div>
+      </details>
     </div>
   );
 }
@@ -219,7 +326,10 @@ function Row({
 }) {
   const Icon = DOMAIN_ICON[item.domain];
   return (
-    <div className="flex items-center gap-3 rounded-lg px-2 py-2 transition hover:bg-slate-50 dark:hover:bg-ink-850">
+    <div
+      data-testid={`upcoming-item-${item.key}`}
+      className="flex items-center gap-3 rounded-lg px-2 py-2 transition hover:bg-slate-50 dark:hover:bg-ink-850"
+    >
       <Icon
         className="h-5 w-5 shrink-0 text-slate-400 dark:text-slate-500"
         stroke={1.75}
@@ -250,6 +360,9 @@ function Row({
             Mark taken
           </SubmitButton>
         </form>
+      )}
+      {item.preventiveRuleKey != null && (
+        <PreventiveControls ruleKey={item.preventiveRuleKey} />
       )}
       <ItemMenu signalKey={item.key} />
     </div>

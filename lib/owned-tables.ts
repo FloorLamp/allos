@@ -45,6 +45,8 @@ export const OWNED_TABLES = [
   "body_metrics",
   "immunizations",
   "immunization_overrides",
+  "preventive_events",
+  "preventive_overrides",
   "goals",
   "medical_records",
   "medical_documents",
