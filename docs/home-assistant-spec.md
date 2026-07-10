@@ -226,9 +226,11 @@ real HA instance before release:
 
 ## Rollout
 
-1. **PR 1 — ingest** (`/ingest` + registry entry + config page with
-   tokens + Review-inbox wiring + blueprint doc). Smallest, proves the
-   token/guard reuse.
+1. **PR 1 — ingest** (`/ingest` + registry entry + the Connect wizard
+   skeleton (scope → token → generated package → on-page verify, ingest
+   capability only) + Review-inbox wiring + blueprint doc). Smallest,
+   proves the token/guard reuse; the wizard's package grows a section per
+   later PR.
 2. **PR 2 — events** (`/event` + opt-in setting + dedup tests + recipe).
 3. **PR 3 — board** (`/upcoming` + `/dose` + `allow_actions` +
    Lovelace recipes). Depends on #232 for the skip half (ship take-only
