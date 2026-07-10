@@ -49,7 +49,7 @@ async function fetchFeed(
   token: string
 ): Promise<{ status: number; body: string }> {
   const res = await GET(new Request("http://x/api/calendar/" + token), {
-    params: { token },
+    params: Promise.resolve({ token }),
   });
   return { status: res.status, body: await res.text() };
 }

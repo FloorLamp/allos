@@ -27,7 +27,10 @@ const SHARE_RATE_WINDOW_MS = 60 * 1000;
 //   - Security headers (nosniff, no-store) are attached in middleware for /share/*.
 export const dynamic = "force-dynamic";
 
-export default function SharePage({ params }: { params: { token: string } }) {
+export default async function SharePage(props: {
+  params: Promise<{ token: string }>;
+}) {
+  const params = await props.params;
   // Rate-limit on the token before any DB read, so a scraper can't hammer the
   // lookup + passport render. This is a Server Component, so it can't emit a 429
   // status or Retry-After header (that needs a route handler; Edge middleware

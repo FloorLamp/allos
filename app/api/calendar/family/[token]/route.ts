@@ -35,8 +35,9 @@ const CALENDAR_RATE_WINDOW_MS = 60 * 1000;
 
 export async function GET(
   _req: Request,
-  { params }: { params: { token: string } }
+  props: { params: Promise<{ token: string }> }
 ) {
+  const params = await props.params;
   // Accept "<token>" or "<token>.ics" (calendar clients key off the extension).
   const raw = params.token.replace(/\.ics$/i, "");
 

@@ -17,7 +17,7 @@ function strOrNull(raw: FormDataEntryValue | null): string | null {
 }
 
 export async function addBodyMetric(formData: FormData) {
-  const { login, profile } = requireWriteAccess();
+  const { login, profile } = await requireWriteAccess();
   const prefs = getUnitPrefs(login.id);
   const wrote = insertBodyMetric(profile.id, {
     date: String(formData.get("date") ?? "").trim(),
@@ -39,7 +39,7 @@ export async function addBodyMetric(formData: FormData) {
 export async function deleteBodyMetric(
   formData: FormData
 ): Promise<{ undoId: number | null }> {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return { undoId: null };
   // Capture into the undo holding table and delete in one transaction (issue #30)

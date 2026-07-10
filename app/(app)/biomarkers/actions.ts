@@ -8,7 +8,7 @@ import { isBiomarkerStarred } from "@/lib/queries";
 // Star / unstar a biomarker (toggles a starred_biomarkers row). Revalidates the
 // surfaces that show the pinned card: /biomarkers and the dashboard.
 export async function toggleStarBiomarker(formData: FormData) {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const name = String(formData.get("canonical_name") ?? "").trim();
   if (!name) return;
   // Check-then-act as one atomic transaction so concurrent toggles can't both

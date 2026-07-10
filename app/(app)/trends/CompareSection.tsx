@@ -23,7 +23,7 @@ import CompareOverlay from "@/components/CompareOverlay";
 // key to a windowed series, aligns them with the pure lib/trends-compare helpers,
 // and renders a dual-axis (or normalized single-axis) overlay plus a Pearson r
 // read-out.
-export default function CompareSection({
+export default async function CompareSection({
   range,
   a,
   b,
@@ -34,7 +34,7 @@ export default function CompareSection({
   b?: string;
   normalized: boolean;
 }) {
-  const { login, profile } = requireSession();
+  const { login, profile } = await requireSession();
   const restricted = isTrainingRestricted(profile.id);
   const options = listCompareOptions(profile.id, restricted);
 

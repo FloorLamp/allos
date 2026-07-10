@@ -38,8 +38,8 @@ function workoutScheduleSummary(profileId: number): string {
   return `${weekdays.map((d) => WD[d]).join(", ")} ~${at}`;
 }
 
-export default function ProfileSettingsPage() {
-  const { login, profile } = requireSession();
+export default async function ProfileSettingsPage() {
+  const { login, profile } = await requireSession();
   const isAdmin = login.role === "admin";
   const fullName = getUserFullName(profile.id);
   const sex = getUserSex(profile.id);

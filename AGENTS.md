@@ -4,7 +4,7 @@ This file provides guidance to coding agents (Claude Code, etc.) working in this
 
 ## Overview
 
-**Allos** (from _allostasis_ — stability through change) is a **multi-user, login-gated** health tracking and coaching app. Next.js 14 (App Router, Server Actions) with a synchronous **better-sqlite3** backend. Tracks activities (strength/cardio/sport), body metrics, goals, supplements & medications, and a full **medical passport** — labs/biomarkers, conditions, allergies, procedures, family history, immunizations, visits/appointments, and care plans/goals — surfaced across a day-by-day **Timeline**, **Trends** (Body/Fitness/Biomarkers/Insights), and an **Upcoming**/notifications view, with optional Claude-powered insights, medical-document extraction, and health-record import (MyChart CCD/XDM, SMART Health Cards, Epic/Apple Health FHIR bundles).
+**Allos** (from _allostasis_ — stability through change) is a **multi-user, login-gated** health tracking and coaching app. Next.js 15 (App Router, Server Actions) with a synchronous **better-sqlite3** backend. Tracks activities (strength/cardio/sport), body metrics, goals, supplements & medications, and a full **medical passport** — labs/biomarkers, conditions, allergies, procedures, family history, immunizations, visits/appointments, and care plans/goals — surfaced across a day-by-day **Timeline**, **Trends** (Body/Fitness/Biomarkers/Insights), and an **Upcoming**/notifications view, with optional Claude-powered insights, medical-document extraction, and health-record import (MyChart CCD/XDM, SMART Health Cards, Epic/Apple Health FHIR bundles).
 
 **Logins vs profiles.** These are distinct (logins were formerly called accounts):
 

@@ -241,17 +241,16 @@ function EventCard({
   );
 }
 
-export default function TimelinePage({
-  searchParams,
-}: {
-  searchParams: {
+export default async function TimelinePage(props: {
+  searchParams: Promise<{
     category?: string | string[];
     from?: string | string[];
     to?: string | string[];
     show?: string | string[];
-  };
+  }>;
 }) {
-  const { login, profile } = requireSession();
+  const searchParams = await props.searchParams;
+  const { login, profile } = await requireSession();
   const units = getUnitPrefs(login.id);
   const trainingRestricted = isTrainingRestricted(profile.id);
   const visibleCategories = trainingRestricted

@@ -58,12 +58,11 @@ function DetailRow({
   );
 }
 
-export default function EncounterDetailPage({
-  params,
-}: {
-  params: { id: string };
+export default async function EncounterDetailPage(props: {
+  params: Promise<{ id: string }>;
 }) {
-  const { profile } = requireSession();
+  const params = await props.params;
+  const { profile } = await requireSession();
   const id = Number(params.id);
   const encounter = id ? getEncounter(profile.id, id) : null;
   if (!encounter) notFound();

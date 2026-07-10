@@ -21,7 +21,7 @@ function statusOf(raw: unknown): AllergyStatus {
 }
 
 export async function addAllergy(formData: FormData) {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const substance = String(formData.get("substance") ?? "").trim();
   if (!substance) return;
   const reaction = String(formData.get("reaction") ?? "").trim() || null;
@@ -39,7 +39,7 @@ export async function addAllergy(formData: FormData) {
 }
 
 export async function updateAllergy(formData: FormData) {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   const substance = String(formData.get("substance") ?? "").trim();
   if (!id || !substance) return;
@@ -59,7 +59,7 @@ export async function updateAllergy(formData: FormData) {
 }
 
 export async function deleteAllergy(formData: FormData) {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return;
   db.prepare("DELETE FROM allergies WHERE id = ? AND profile_id = ?").run(

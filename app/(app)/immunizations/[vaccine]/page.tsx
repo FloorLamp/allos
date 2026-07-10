@@ -33,12 +33,11 @@ export const dynamic = "force-dynamic";
 // Per-vaccine detail view: full dose history, recommended schedule,
 // relevant titers, the computed status, and the override controls. Profile-scoped
 // like every other read on this route.
-export default function VaccineDetailPage({
-  params,
-}: {
-  params: { vaccine: string };
+export default async function VaccineDetailPage(props: {
+  params: Promise<{ vaccine: string }>;
 }) {
-  const { profile } = requireSession();
+  const params = await props.params;
+  const { profile } = await requireSession();
   // Next already URL-decodes route params; decoding again throws a URIError on a
   // malformed segment (e.g. "/immunizations/%25"). Use it as-is — an unknown code
   // then degrades to the EmptyState below rather than a 500.

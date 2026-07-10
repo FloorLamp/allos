@@ -115,7 +115,7 @@ function safeName(name: string): string {
 }
 
 export async function addRecord(formData: FormData) {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const date = String(formData.get("date") ?? "").trim();
   const category = String(formData.get("category")) as MedicalCategory;
   const name = String(formData.get("name") ?? "").trim();
@@ -161,7 +161,7 @@ export async function addRecord(formData: FormData) {
 
 // Edit a single extracted/manual record (used on the document subpage).
 export async function updateRecord(formData: FormData) {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return;
   const date = String(formData.get("date") ?? "").trim();
@@ -229,7 +229,7 @@ export async function updateRecord(formData: FormData) {
 export async function deleteRecord(
   formData: FormData
 ): Promise<{ undoId: number | null }> {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return { undoId: null };
   // Capture into the undo holding table and delete in one transaction (issue #30)
@@ -352,7 +352,7 @@ function dispatchExtraction(
 // 'processing'), so the document appears immediately; the page polls until
 // extraction finishes and imports its results.
 export async function uploadMedicalDocument(formData: FormData) {
-  const { login, profile } = requireWriteAccess();
+  const { login, profile } = await requireWriteAccess();
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) return;
 
@@ -922,7 +922,7 @@ function revalidateAfterReprocess() {
 // document's records (manual standalone records are untouched). Runs the
 // documents sequentially to stay within API rate limits.
 export async function reprocessAllDocuments(): Promise<ReprocessResult> {
-  const { login, profile } = requireWriteAccess();
+  const { login, profile } = await requireWriteAccess();
   // No blanket API-key gate: health-record documents (CCD/XDM/SHC) reprocess
   // deterministically without a key. reprocessOne marks any AI-only document
   // 'skipped' when the key is missing, so the tally still reflects it.
@@ -975,7 +975,7 @@ export async function reprocessAllDocuments(): Promise<ReprocessResult> {
 // the page and toasts once the background job finishes; the row shows a spinner
 // (status 'processing') in the meantime.
 export async function reprocessDocument(formData: FormData) {
-  const { login, profile } = requireWriteAccess();
+  const { login, profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return;
   const prep = beginReprocess(profile.id, id);
@@ -1154,7 +1154,7 @@ export type PreviewReprocessResult =
 export async function previewReprocess(
   formData: FormData
 ): Promise<PreviewReprocessResult> {
-  const { login, profile } = requireWriteAccess();
+  const { login, profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return { status: "skipped", message: "Unknown document." };
   // Guard the id against another profile before reading its file.
@@ -1188,7 +1188,7 @@ export interface ReassignResult {
 export async function reassignDocument(
   formData: FormData
 ): Promise<ReassignResult> {
-  const session = requireWriteAccess();
+  const session = await requireWriteAccess();
   const src = session.profile.id;
   const id = Number(formData.get("id"));
   const dest = Number(formData.get("destProfileId"));
@@ -1213,7 +1213,7 @@ export async function reassignDocument(
   }
 
   // Pure gate: destination is a real, different, accessible profile.
-  const accessibleProfileIds = getAccessibleProfiles().map((p) => p.id);
+  const accessibleProfileIds = (await getAccessibleProfiles()).map((p) => p.id);
   const decision = canReassignDocument({
     sourceProfileId: src,
     destProfileId: dest,
@@ -1348,7 +1348,7 @@ export interface ExtractionState {
 // lets the client detect status transitions (e.g. processing → done) and show
 // the failure reason on error.
 export async function getExtractionStates(): Promise<ExtractionState[]> {
-  const { profile } = requireSession();
+  const { profile } = await requireSession();
   return db
     .prepare(
       `SELECT id, filename, extraction_status AS status, extracted_count AS count,
@@ -1359,7 +1359,7 @@ export async function getExtractionStates(): Promise<ExtractionState[]> {
 }
 
 export async function deleteMedicalDocument(formData: FormData) {
-  const { login, profile } = requireWriteAccess();
+  const { login, profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return;
   const doc = db

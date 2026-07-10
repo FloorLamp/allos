@@ -25,8 +25,9 @@ export const dynamic = "force-dynamic";
 
 export async function GET(
   _req: Request,
-  { params }: { params: { token: string } }
+  props: { params: Promise<{ token: string }> }
 ) {
+  const params = await props.params;
   // The token may be presented as "<token>" or "<token>.ics" (calendar clients
   // key off the extension) — strip a trailing .ics before resolving.
   const raw = params.token.replace(/\.ics$/i, "");

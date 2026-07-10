@@ -86,7 +86,7 @@ function writeSets(
 
 // Create a new activity, or update an existing one when `id` is present.
 export async function saveActivity(formData: FormData) {
-  const { login, profile } = requireWriteAccess();
+  const { login, profile } = await requireWriteAccess();
   const id = formData.get("id") ? Number(formData.get("id")) : null;
   const type = String(formData.get("type")) as ActivityType;
   const title = String(formData.get("title") ?? "").trim();
@@ -226,7 +226,7 @@ export async function saveActivity(formData: FormData) {
 // entry, so bodyweight lifts can fold it into volume / strength stats. Called from
 // the activity form when a bodyweight exercise is logged with no weight on record.
 export async function logBodyweight(weight: number, date: string) {
-  const { login, profile } = requireWriteAccess();
+  const { login, profile } = await requireWriteAccess();
   const d = date.trim();
   if (!Number.isFinite(weight) || weight <= 0 || !d) return;
   const prefs = getUnitPrefs(login.id);
@@ -258,7 +258,7 @@ export async function mergeActivities(
   formData: FormData
 ): Promise<{ undoId: number | null }> {
   // Merging edits the keeper and deletes the discarded row — a write (issue #33).
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const keepId = Number(formData.get("keep_id"));
   const dropId = Number(formData.get("drop_id"));
   if (!keepId || !dropId || keepId === dropId) return { undoId: null };
@@ -302,7 +302,7 @@ export async function mergeActivities(
 export async function deleteActivity(
   formData: FormData
 ): Promise<{ undoId: number | null }> {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return { undoId: null };
   // Capture the activity + its exercise_sets into the undo holding table and

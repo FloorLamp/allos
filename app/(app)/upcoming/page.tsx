@@ -74,8 +74,8 @@ const BAND_TONE: Record<UrgencyBand, string> = {
   later: "text-slate-500 dark:text-slate-400",
 };
 
-export default function UpcomingPage() {
-  const { profile } = requireSession();
+export default async function UpcomingPage() {
+  const { profile } = await requireSession();
   const now = today(profile.id);
   const items = collectUpcoming(profile.id, now);
   const groups = groupUpcoming(items, now);

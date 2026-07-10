@@ -28,8 +28,8 @@ function recapTitle(kind: "week" | "month", start: string | null, end: string) {
 // the AI weekly/monthly recap narratives (issue #20), and the generate forms for
 // both. Hidden by the hub for age-restricted profiles (AI Insights is an age-gated
 // surface), so these generate forms are only ever rendered for eligible profiles.
-export default function InsightsSection({ range }: { range: DateRange }) {
-  const { profile } = requireSession();
+export default async function InsightsSection({ range }: { range: DateRange }) {
+  const { profile } = await requireSession();
   // Read every insight (ALL_ROWS overrides the default 30-row cap) so an older
   // window isn't silently truncated before filterSeriesByRange windows it.
   const insights = filterSeriesByRange(

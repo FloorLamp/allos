@@ -12,8 +12,8 @@ export const dynamic = "force-dynamic";
 // delete. Each row shows the goal, its target date, and status. NB: these are
 // clinical goals FROM RECORDS — DISTINCT from the user's own fitness/body goals on
 // the "Goals" page (/goals).
-export default function CareGoalsPage() {
-  const { profile } = requireSession();
+export default async function CareGoalsPage() {
+  const { profile } = await requireSession();
   const goals = getCareGoals(profile.id);
 
   return (

@@ -25,9 +25,9 @@ export interface ProfileDataSummary {
   documents: number;
 }
 
-export default function FamilySettingsPage() {
+export default async function FamilySettingsPage() {
   // Login/profile management is admin-only — requireAdmin() redirects a member.
-  const { profile } = requireAdmin();
+  const { profile } = await requireAdmin();
 
   const profiles = db
     .prepare(

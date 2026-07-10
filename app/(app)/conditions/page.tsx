@@ -17,12 +17,11 @@ const FILTERS = [
 
 // Conditions / problem list: the current problem list, with manual
 // add/edit/delete and an active/resolved filter.
-export default function ConditionsPage({
-  searchParams,
-}: {
-  searchParams: { status?: string };
+export default async function ConditionsPage(props: {
+  searchParams: Promise<{ status?: string }>;
 }) {
-  const { profile } = requireSession();
+  const searchParams = await props.searchParams;
+  const { profile } = await requireSession();
   const raw = searchParams.status;
   const status: ConditionStatus | undefined =
     raw === "active" || raw === "resolved" || raw === "inactive"

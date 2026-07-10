@@ -12,7 +12,7 @@ import { restoreDeletedRow } from "@/lib/undo-delete-db";
 // restore re-inserts with NEW ids, so a broad layout revalidate refreshes wherever
 // the row now belongs.
 export async function undoDelete(undoId: number): Promise<{ ok: boolean }> {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   if (!Number.isInteger(undoId) || undoId <= 0) return { ok: false };
   const ok = restoreDeletedRow(profile.id, undoId);
   if (ok) revalidatePath("/", "layout");
@@ -26,7 +26,7 @@ export async function undoDelete(undoId: number): Promise<{ ok: boolean }> {
 export async function undoDeletes(
   undoIds: number[]
 ): Promise<{ restored: number }> {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const ids = (Array.isArray(undoIds) ? undoIds : []).filter(
     (n) => Number.isInteger(n) && n > 0
   );

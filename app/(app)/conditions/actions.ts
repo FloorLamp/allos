@@ -25,7 +25,7 @@ function dateOrNull(raw: unknown): string | null {
 }
 
 export async function addCondition(formData: FormData) {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const name = String(formData.get("name") ?? "").trim();
   if (!name) return;
   const code = String(formData.get("code") ?? "").trim() || null;
@@ -44,7 +44,7 @@ export async function addCondition(formData: FormData) {
 }
 
 export async function updateCondition(formData: FormData) {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   const name = String(formData.get("name") ?? "").trim();
   if (!id || !name) return;
@@ -65,7 +65,7 @@ export async function updateCondition(formData: FormData) {
 }
 
 export async function deleteCondition(formData: FormData) {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return;
   db.prepare("DELETE FROM conditions WHERE id = ? AND profile_id = ?").run(

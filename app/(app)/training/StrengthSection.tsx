@@ -19,8 +19,8 @@ import { EmptyState } from "@/components/ui";
 
 // Strength analytics + coaching. Extracted from the former /workouts page, with
 // a "Recent PRs" card added on top.
-export default function StrengthSection() {
-  const { login, profile } = requireSession();
+export default async function StrengthSection() {
+  const { login, profile } = await requireSession();
   const units = getUnitPrefs(login.id);
   const wu = units.weightUnit;
   const volume = getVolumeByDate(profile.id).map((v) => ({

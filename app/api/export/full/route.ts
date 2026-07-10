@@ -33,7 +33,7 @@ export const dynamic = "force-dynamic";
 // path — restoring an instance uses the snapshot backups (scripts/restore.ts), not
 // this ZIP.
 export async function GET() {
-  const session = getCurrentSession();
+  const session = await getCurrentSession();
   if (!session) {
     return new Response("Unauthorized", { status: 401 });
   }

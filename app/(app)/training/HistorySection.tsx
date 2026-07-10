@@ -35,8 +35,8 @@ import JournalView, {
   type JournalCardData,
 } from "../journal/JournalView";
 
-export default function HistorySection() {
-  const { login, profile } = requireSession();
+export default async function HistorySection() {
+  const { login, profile } = await requireSession();
   const units = getUnitPrefs(login.id);
   const wu = units.weightUnit;
   const activities = getActivities(profile.id);

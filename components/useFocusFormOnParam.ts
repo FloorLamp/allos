@@ -15,7 +15,7 @@ import { useEffect, type RefObject } from "react";
 // `enabled` (default true) lets a shared form component opt a non-create instance
 // out — an edit/prefill variant on the same page must not steal the focus.
 export function useFocusFormOnParam(
-  ref: RefObject<HTMLElement>,
+  ref: RefObject<HTMLElement | null>,
   param: string,
   value?: string,
   enabled = true

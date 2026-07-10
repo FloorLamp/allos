@@ -16,8 +16,8 @@ import EmergencyPrintButton from "@/components/EmergencyPrintButton";
 // any previously-cached copy.
 export const dynamic = "force-dynamic";
 
-export default function EmergencyCardPage() {
-  const { profile } = requireSession();
+export default async function EmergencyCardPage() {
+  const { profile } = await requireSession();
   const enabled = getEmergencyCardEnabled(profile.id);
   const card = enabled ? getEmergencyCard(profile.id, profile.name) : null;
 

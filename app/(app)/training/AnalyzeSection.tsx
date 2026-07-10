@@ -52,7 +52,7 @@ import LineChartCard from "@/components/LineChartCard";
 import SportDetailPanel from "@/components/SportDetailPanel";
 import AnalyzePicker from "./AnalyzePicker";
 
-export default function AnalyzeSection({
+export default async function AnalyzeSection({
   kind,
   item,
   exercise,
@@ -65,7 +65,7 @@ export default function AnalyzeSection({
   metric?: string;
   range?: string;
 }) {
-  const { login, profile } = requireSession();
+  const { login, profile } = await requireSession();
   const units = getUnitPrefs(login.id);
   const wu = units.weightUnit;
   const du = units.distanceUnit;

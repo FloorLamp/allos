@@ -85,7 +85,7 @@ const log = createLogger("settings");
 // Unit display preferences belong to the signed-in login, not the active
 // profile, so they're keyed by login.id and available to every login.
 export async function saveUnitPrefs(formData: FormData) {
-  const { login } = requireSession();
+  const { login } = await requireSession();
   const weightUnit = (
     formData.get("weight_unit") === "lb" ? "lb" : "kg"
   ) as WeightUnit;
@@ -103,7 +103,7 @@ export async function saveUnitPrefs(formData: FormData) {
 // person, so they're keyed by profile.id. Any login acting as the profile may
 // edit them (members included).
 export async function saveProfileSettings(formData: FormData) {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
 
   // Biological sex: drives sex-specific optimal biomarker bands. When it
   // changes, re-derive the stored non-optimal flags so the records table and
@@ -201,7 +201,7 @@ export async function saveProfileSettings(formData: FormData) {
 // (the setter drops the rest); the assessor uses this to activate the risk-gated
 // lung LDCT / AAA screening reminders.
 export async function saveSmokingHistory(formData: FormData) {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const status = parseSmokingStatus(
     String(formData.get("smoking_status") ?? "")
   );
@@ -226,7 +226,7 @@ export async function saveSmokingHistory(formData: FormData) {
 // profile may edit them). setBloodType normalizes/validates the value; a blank or
 // unrecognized blood type clears it.
 export async function saveEmergencyCardSettings(formData: FormData) {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const enabledRaw = formData.get("emergency_enabled");
   setEmergencyCardEnabled(
     profile.id,
@@ -251,7 +251,7 @@ export async function saveEmergencyCardSettings(formData: FormData) {
 export async function changeOwnPassword(
   formData: FormData
 ): Promise<{ ok: true; message: string } | { ok: false; error: string }> {
-  const { login } = requireSession();
+  const { login } = await requireSession();
   const current = String(formData.get("current_password") ?? "");
   const next = String(formData.get("new_password") ?? "");
   // Strength gate (issue #23): raised minimum + class-diversity + no-username,
@@ -271,7 +271,7 @@ export async function changeOwnPassword(
     hash,
     login.id
   );
-  destroyOtherSessionsForCurrent(login.id);
+  await destroyOtherSessionsForCurrent(login.id);
   recordAudit({
     loginId: login.id,
     action: AUDIT_ACTIONS.passwordChange,
@@ -286,7 +286,7 @@ export async function changeOwnPassword(
 // revokeSession scopes the delete to login.id, so a forged/foreign id can only
 // ever end one of the caller's sessions (or nothing).
 export async function revokeSessionAction(formData: FormData) {
-  const { login } = requireSession();
+  const { login } = await requireSession();
   const id = String(formData.get("session_id") ?? "");
   if (id) revokeSession(login.id, id);
   revalidatePath("/settings");
@@ -296,15 +296,15 @@ export async function revokeSessionAction(formData: FormData) {
 // making the request. Standalone counterpart to the eviction that a password
 // change triggers.
 export async function signOutOtherSessions() {
-  const { login } = requireSession();
-  destroyOtherSessionsForCurrent(login.id);
+  const { login } = await requireSession();
+  await destroyOtherSessionsForCurrent(login.id);
   revalidatePath("/settings");
 }
 
 // ---- AI (global, admin-only) ----
 
 export async function saveAiSettings(formData: FormData) {
-  requireAdmin();
+  await requireAdmin();
   // Accept both the "1" our client sends and a native checkbox's "on".
   const on = (key: string) => {
     const v = formData.get(key);
@@ -323,7 +323,7 @@ export async function saveAiSettings(formData: FormData) {
 export async function savePublicUrl(
   formData: FormData
 ): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
-  requireAdmin();
+  await requireAdmin();
   const res = normalizePublicUrl(String(formData.get("public_url") ?? ""));
   if (!res.ok) return res;
   setPublicUrl(res.url);
@@ -336,7 +336,7 @@ export async function savePublicUrl(
 // Seeds new profiles and backstops any profile without its own timezone.
 
 export async function saveInstanceTimezone(formData: FormData) {
-  requireAdmin();
+  await requireAdmin();
   const tz = String(formData.get("timezone") ?? "").trim();
   if (tz && isValidTimezone(tz)) setInstanceTimezone(tz);
   revalidatePath("/settings/server");
@@ -346,7 +346,7 @@ export async function saveInstanceTimezone(formData: FormData) {
 // Nightly SQLite snapshot config + on-demand snapshot. See lib/backup.ts.
 
 export async function saveBackupSettings(formData: FormData) {
-  requireAdmin();
+  await requireAdmin();
   const on = (key: string) => {
     const v = formData.get(key);
     return v === "1" || v === "on";
@@ -374,7 +374,7 @@ export async function backupNow(): Promise<{
   ok: boolean;
   message: string;
 }> {
-  requireAdmin();
+  await requireAdmin();
   try {
     const { name, size, verification } = performBackup();
     revalidatePath("/settings/server");
@@ -403,7 +403,7 @@ export async function backupNow(): Promise<{
 // app layout is revalidated. See lib/age-gate.ts.
 
 export async function saveMinTrainingAge(formData: FormData) {
-  requireAdmin();
+  await requireAdmin();
   const raw = String(formData.get("min_training_age") ?? "").trim();
   setMinTrainingAge(raw === "" ? null : Number(raw));
   revalidatePath("/", "layout");
@@ -416,7 +416,7 @@ export async function saveMinTrainingAge(formData: FormData) {
 // profile, the chat they're sent to, and the send schedule. The global bot
 // credentials are set separately (admin-only, see saveTelegramBotConfig).
 export async function saveNotificationPrefs(formData: FormData) {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const enabledRaw = formData.get("telegram_enabled");
   setProfileTelegram(profile.id, {
     telegramEnabled: enabledRaw === "on" || enabledRaw === "1",
@@ -466,7 +466,7 @@ export async function sendTestNotification(): Promise<{
   ok: boolean;
   message: string;
 }> {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const results = await dispatch(profile.id, {
     title: "Test notification",
     body: "Notifications are working ✅",
@@ -502,7 +502,7 @@ export async function getPushPublicKey(): Promise<{
   ok: boolean;
   publicKey?: string;
 }> {
-  requireSession();
+  await requireSession();
   try {
     return { ok: true, publicKey: ensureVapidKeys() };
   } catch (e) {
@@ -517,7 +517,7 @@ export async function getPushPublicKey(): Promise<{
 export async function savePushSubscriptionAction(
   formData: FormData
 ): Promise<{ ok: boolean; error?: string }> {
-  const { login } = requireSession();
+  const { login } = await requireSession();
   const raw = String(formData.get("subscription") ?? "");
   let parsed: unknown;
   try {
@@ -536,7 +536,7 @@ export async function savePushSubscriptionAction(
 export async function deletePushSubscriptionAction(
   formData: FormData
 ): Promise<{ ok: boolean }> {
-  const { login } = requireSession();
+  const { login } = await requireSession();
   const endpoint = String(formData.get("endpoint") ?? "");
   if (endpoint) deletePushSubscription(login.id, endpoint);
   revalidatePath("/settings");
@@ -548,7 +548,7 @@ export async function sendTestPush(): Promise<{
   ok: boolean;
   message: string;
 }> {
-  const { login } = requireSession();
+  const { login } = await requireSession();
   try {
     const targeted = await sendTestPushToLogin(login.id, {
       title: "Test notification",
@@ -571,7 +571,7 @@ export async function sendTestPush(): Promise<{
 // The bot token and inbound transport mode are app-wide (a single bot serves
 // every profile), so only an admin may change them.
 export async function saveTelegramBotConfig(formData: FormData) {
-  requireAdmin();
+  await requireAdmin();
   const prevMode = getTelegramBotConfig().telegramMode;
   const cfg = setTelegramBotConfig({
     telegramBotToken: String(formData.get("telegram_bot_token") ?? ""),
@@ -600,7 +600,7 @@ export async function registerTelegramWebhook(): Promise<{
   ok: boolean;
   message: string;
 }> {
-  requireAdmin();
+  await requireAdmin();
   const cfg = getTelegramBotConfig();
   if (!cfg.telegramBotToken)
     return { ok: false, message: "Save your bot token first." };
@@ -639,7 +639,7 @@ export async function begin2fa(): Promise<
   | { ok: true; secret: string; otpauthUrl: string }
   | { ok: false; error: string }
 > {
-  const { login } = requireSession();
+  const { login } = await requireSession();
   if (getLoginTotpState(login.id).enabled)
     return { ok: false, error: "Two-factor authentication is already on." };
   const { secret, otpauthUrl } = beginTotpEnrollment(login.id, login.username);
@@ -654,7 +654,7 @@ export async function activate2fa(
 ): Promise<
   { ok: true; recoveryCodes: string[] } | { ok: false; error: string }
 > {
-  const { login } = requireSession();
+  const { login } = await requireSession();
   if (getLoginTotpState(login.id).enabled)
     return { ok: false, error: "Two-factor authentication is already on." };
   const code = String(formData.get("code") ?? "").trim();
@@ -679,7 +679,7 @@ export async function activate2fa(
 export async function disable2fa(
   formData: FormData
 ): Promise<{ ok: true; message: string } | { ok: false; error: string }> {
-  const { login } = requireSession();
+  const { login } = await requireSession();
   if (!getLoginTotpState(login.id).enabled)
     return { ok: false, error: "Two-factor authentication isn't on." };
   const password = String(formData.get("current_password") ?? "");
@@ -710,7 +710,7 @@ export async function regenerate2faRecoveryCodes(
 ): Promise<
   { ok: true; recoveryCodes: string[] } | { ok: false; error: string }
 > {
-  const { login } = requireSession();
+  const { login } = await requireSession();
   if (!getLoginTotpState(login.id).enabled)
     return { ok: false, error: "Two-factor authentication isn't on." };
   const code = String(formData.get("code") ?? "").trim();

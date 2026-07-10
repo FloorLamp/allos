@@ -15,7 +15,7 @@ import { parseQuickLog } from "@/lib/palette-quick-log";
 export async function paletteQuickLog(
   input: string
 ): Promise<{ ok: boolean; message: string }> {
-  const { login, profile } = requireWriteAccess();
+  const { login, profile } = await requireWriteAccess();
   const prefs = getUnitPrefs(login.id);
   const parsed = parseQuickLog(input, prefs.weightUnit);
   if (!parsed) return { ok: false, message: "Unrecognized quick log." };

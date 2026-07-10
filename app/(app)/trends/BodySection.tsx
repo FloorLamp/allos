@@ -57,8 +57,8 @@ import DeleteBodyMetricButton from "./DeleteBodyMetricButton";
 // delete. Weight respects the login's unit preference (dispWeight). Reuses the
 // body-metrics queries/actions and the existing chart components; this tab is NOT
 // age-gated, so every profile reaches it (matching the old page).
-export default function BodySection({ range }: { range: DateRange }) {
-  const { login, profile } = requireSession();
+export default async function BodySection({ range }: { range: DateRange }) {
+  const { login, profile } = await requireSession();
   const units = getUnitPrefs(login.id);
   const wu = units.weightUnit;
 

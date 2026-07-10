@@ -57,8 +57,8 @@ interface Item {
   dose: SupplementDose;
 }
 
-export default function SupplementsPage() {
-  const { profile } = requireSession();
+export default async function SupplementsPage() {
+  const { profile } = await requireSession();
   const supplements = getSupplements(profile.id);
   const suppById = new Map(supplements.map((s) => [s.id, s]));
   const doses = getSupplementDoses(profile.id);

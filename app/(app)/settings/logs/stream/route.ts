@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
   // profile, so it's admin-only — cookie-authoritative gate (the Edge middleware
   // only checks cookie presence). A member gets 404 (not 403) so the endpoint's
   // existence isn't confirmed.
-  const session = getCurrentSession();
+  const session = await getCurrentSession();
   if (!session) {
     return new Response("Unauthorized", { status: 401 });
   }

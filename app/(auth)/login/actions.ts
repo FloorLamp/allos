@@ -72,8 +72,8 @@ function clampAttemptField(s: string): string {
   return s.length > MAX_ATTEMPT_FIELD ? s.slice(0, MAX_ATTEMPT_FIELD) : s;
 }
 
-function clientIp(): string {
-  const h = headers();
+async function clientIp(): Promise<string> {
+  const h = await headers();
   const fwd = h.get("x-forwarded-for");
   if (fwd) return fwd.split(",")[0]!.trim();
   return h.get("x-real-ip")?.trim() || "unknown";
@@ -152,7 +152,7 @@ export async function login(
   }
 
   const usernameKey = clampAttemptField(username.toLowerCase());
-  const ip = clampAttemptField(clientIp());
+  const ip = clampAttemptField(await clientIp());
   pruneOldAttempts();
 
   // Throttle BEFORE the (deliberately expensive) scrypt verify, keyed primarily
@@ -225,7 +225,7 @@ export async function login(
         usernameKey,
         next
       );
-      cookies().set(
+      (await cookies()).set(
         TWO_FACTOR_COOKIE,
         chalToken,
         sessionCookieOptions(maxAgeSec)
@@ -237,9 +237,9 @@ export async function login(
   // Success: forget this username's failures and mint the session.
   clearAttempts(usernameKey);
   purgeExpiredSessions();
-  const userAgent = truncateUserAgent(headers().get("user-agent"));
+  const userAgent = truncateUserAgent((await headers()).get("user-agent"));
   const { token, maxAgeSec } = createSession(loginRow.id, userAgent);
-  cookies().set(SESSION_COOKIE, token, sessionCookieOptions(maxAgeSec));
+  (await cookies()).set(SESSION_COOKIE, token, sessionCookieOptions(maxAgeSec));
   recordAudit({
     loginId: loginRow.id,
     action: AUDIT_ACTIONS.loginSuccess,
@@ -259,19 +259,19 @@ export async function verifyLoginTotp(
   formData: FormData
 ): Promise<LoginState> {
   const code = String(formData.get("code") ?? "").trim();
-  const rawChallenge = cookies().get(TWO_FACTOR_COOKIE)?.value;
+  const rawChallenge = (await cookies()).get(TWO_FACTOR_COOKIE)?.value;
   if (!rawChallenge) {
     // No challenge in flight — bounce back to the password form.
     return { error: "Your sign-in session expired. Please start again." };
   }
   const challenge = getTotpChallenge(rawChallenge);
   if (!challenge) {
-    cookies().delete(TWO_FACTOR_COOKIE);
+    (await cookies()).delete(TWO_FACTOR_COOKIE);
     return { error: "Your sign-in session expired. Please start again." };
   }
 
   const usernameKey = clampAttemptField(challenge.username.toLowerCase());
-  const ip = clampAttemptField(clientIp());
+  const ip = clampAttemptField(await clientIp());
   pruneOldAttempts();
 
   // Reuse the password throttle so brute-forcing a 6-digit code is bounded (and a
@@ -305,12 +305,12 @@ export async function verifyLoginTotp(
   // session, and audit (recovery-code use is recorded distinctly so a spent code
   // is visible in the trail).
   deleteTotpChallenge(rawChallenge);
-  cookies().delete(TWO_FACTOR_COOKIE);
+  (await cookies()).delete(TWO_FACTOR_COOKIE);
   clearAttempts(usernameKey);
   purgeExpiredSessions();
-  const userAgent = truncateUserAgent(headers().get("user-agent"));
+  const userAgent = truncateUserAgent((await headers()).get("user-agent"));
   const { token, maxAgeSec } = createSession(challenge.loginId, userAgent);
-  cookies().set(SESSION_COOKIE, token, sessionCookieOptions(maxAgeSec));
+  (await cookies()).set(SESSION_COOKIE, token, sessionCookieOptions(maxAgeSec));
   if (outcome.viaRecovery) {
     recordAudit({
       loginId: challenge.loginId,

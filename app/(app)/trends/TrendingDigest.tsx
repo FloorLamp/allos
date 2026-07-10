@@ -19,8 +19,8 @@ import { dismissDigest } from "./actions";
 // the pure summarizeTrends, which flags the ones that actually moved (or crossed a
 // reference range) and ranks them. Renders the top few as compact chips. Nothing
 // renders when nothing is meaningfully moving.
-export default function TrendingDigest({ range }: { range: DateRange }) {
-  const { login, profile } = requireSession();
+export default async function TrendingDigest({ range }: { range: DateRange }) {
+  const { login, profile } = await requireSession();
   const restricted = isTrainingRestricted(profile.id);
   const series = buildDigestSeries(profile.id, login.id, range, restricted);
   // Drop chips the user has dismissed (findings bus, #39) — a dismissal keyed by

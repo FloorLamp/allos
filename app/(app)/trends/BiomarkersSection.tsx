@@ -25,7 +25,7 @@ export type BiomarkerFlagFilter = "oor" | "nonoptimal";
 // links into the SHARED per-biomarker detail page (/biomarkers/view) — that page
 // is not split. Filter chips (flag + panel) round-trip through `hrefFor`, which
 // the hub builds to preserve the active tab and window.
-export default function BiomarkersSection({
+export default async function BiomarkersSection({
   range,
   flag,
   panel,
@@ -36,7 +36,7 @@ export default function BiomarkersSection({
   panel?: string;
   hrefFor: (opts: { flag?: BiomarkerFlagFilter; panel?: string }) => string;
 }) {
-  const { profile } = requireSession();
+  const { profile } = await requireSession();
   const now = today(profile.id);
   const records = filterSeriesByRange(
     getMedicalRecords(profile.id, { range: flag, panel, sort: "name" }),

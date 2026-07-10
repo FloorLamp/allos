@@ -67,7 +67,7 @@ function withShareHeaders(res: NextResponse): NextResponse {
 }
 
 // Re-set the session cookie with a fresh 30-day max-age (sliding refresh).
-// Server Components can't set cookies in Next 14, so this is where the browser
+// Server Components can't set cookies, so this is where the browser
 // lifetime is extended on each navigation.
 function withSlidingCookie(res: NextResponse, token: string): NextResponse {
   res.cookies.set(SESSION_COOKIE, token, {

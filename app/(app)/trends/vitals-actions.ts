@@ -17,7 +17,7 @@ import { insertVitals } from "@/lib/offline/writes";
 // external_id NULL and metric_samples rows carry source='manual', so a same-window
 // Health Connect push can never match/overwrite them.
 export async function addVitals(formData: FormData) {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const wrote = insertVitals(
     profile.id,
     String(formData.get("date") ?? "").trim(),

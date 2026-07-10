@@ -29,10 +29,10 @@ const INGEST_PATH = "/api/integrations/health-connect/ingest";
 
 // Configured public URL (Settings → Public app URL) when set, else derived
 // from the request headers (same logic as the Strava url helper).
-function baseUrl(): string {
+async function baseUrl(): Promise<string> {
   const configured = getPublicUrl();
   if (configured) return configured;
-  const h = headers();
+  const h = await headers();
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
   const proto =
     h.get("x-forwarded-proto") ??
@@ -40,14 +40,14 @@ function baseUrl(): string {
   return `${proto}://${host}`;
 }
 
-export default function HealthConnectPage() {
-  const { profile } = requireSession();
+export default async function HealthConnectPage() {
+  const { profile } = await requireSession();
   const def = getIntegration("health-connect")!;
   const conn = getConnection(profile.id, "health-connect");
   const tokenInfo = getHealthConnectTokenInfo(profile.id);
   const token = tokenInfo.token;
   const connected = conn?.status === "connected" && !!token;
-  const endpoint = `${baseUrl()}${INGEST_PATH}`;
+  const endpoint = `${await baseUrl()}${INGEST_PATH}`;
   // Lifecycle status for the DB-backed token (issue #24); the env fallback carries
   // no lifecycle, so it's always "active".
   const status = tokenLifecycleStatus(

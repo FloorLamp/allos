@@ -33,7 +33,7 @@ export default function ModalShell({
   onClose: () => void;
   children: React.ReactNode;
   className?: string;
-  initialFocusRef?: React.RefObject<HTMLElement>;
+  initialFocusRef?: React.RefObject<HTMLElement | null>;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const titleId = useId();

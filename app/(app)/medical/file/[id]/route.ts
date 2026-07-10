@@ -29,11 +29,12 @@ const INLINE_OK = new Set([
 // open/download the original file from the documents list.
 export async function GET(
   _req: Request,
-  { params }: { params: { id: string } }
+  props: { params: Promise<{ id: string }> }
 ) {
+  const params = await props.params;
   // Serves raw lab PDFs/scans by id — cookie-authoritative gate (the Edge
   // middleware only checks cookie presence).
-  const session = getCurrentSession();
+  const session = await getCurrentSession();
   if (!session) {
     return new Response("Unauthorized", { status: 401 });
   }

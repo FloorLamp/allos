@@ -11,8 +11,8 @@ export const dynamic = "force-dynamic";
 // Allergies: documented allergies (CCD Allergies section + manual) merged
 // with lab-derived allergen-specific IgE sensitizations (read-time; RAST /
 // ImmunoCAP). The merged view leads; the stored rows are managed below.
-export default function AllergiesPage() {
-  const { profile } = requireSession();
+export default async function AllergiesPage() {
+  const { profile } = await requireSession();
   const view = getAllergiesView(profile.id);
   const stored = getAllergies(profile.id);
 

@@ -28,8 +28,8 @@ const ATHLETE_URL = "https://www.strava.com/api/v3/athlete";
 // (localhost:3000), so a redirect derived from it bounces the browser to
 // localhost after a successful auth. `appUrl()` uses the configured public URL
 // (else the forwarded host) — the address the user actually reached us on.
-function redirectTo(params?: Record<string, string>) {
-  const url = new URL(appUrl("/integrations/strava"));
+async function redirectTo(params?: Record<string, string>) {
+  const url = new URL(await appUrl("/integrations/strava"));
   for (const [k, v] of Object.entries(params ?? {})) url.searchParams.set(k, v);
   return NextResponse.redirect(url);
 }
@@ -48,9 +48,9 @@ export async function GET(req: Request) {
   // profile, so an anonymous hit has no profile to bind to. The middleware only
   // checks cookie presence (this path is no longer allowlisted), so this is the
   // authoritative check.
-  const session = getCurrentSession();
+  const session = await getCurrentSession();
   if (!session) {
-    return NextResponse.redirect(new URL(appUrl("/login")));
+    return NextResponse.redirect(new URL(await appUrl("/login")));
   }
   const STRAVA_PROFILE_ID = session.profile.id;
 
@@ -64,17 +64,17 @@ export async function GET(req: Request) {
   // carries both a code and a state is a real callback, so read-and-clear the
   // single-use state only then (preserving its single-use property for real
   // attempts). Strava-reported errors and param-less hits are rejected untouched.
-  if (error) return redirectTo({ error });
-  if (!code) return redirectTo({ error: "missing_code" });
-  if (!state) return redirectTo({ error: "state_mismatch" });
+  if (error) return await redirectTo({ error });
+  if (!code) return await redirectTo({ error: "missing_code" });
+  if (!state) return await redirectTo({ error: "state_mismatch" });
   const expectedState = takeStravaOAuthState(STRAVA_PROFILE_ID);
   if (!statesMatch(state, expectedState)) {
-    return redirectTo({ error: "state_mismatch" });
+    return await redirectTo({ error: "state_mismatch" });
   }
 
   const { clientId, clientSecret } = getStravaConfig(STRAVA_PROFILE_ID);
   if (!clientId || !clientSecret) {
-    return redirectTo({ error: "missing_credentials" });
+    return await redirectTo({ error: "missing_credentials" });
   }
 
   // Exchange the code for tokens. The response embeds a summary `athlete`.
@@ -97,7 +97,7 @@ export async function GET(req: Request) {
     });
     if (!res.ok) {
       log.error("strava token exchange failed", { status: res.status });
-      return redirectTo({ error: "token_exchange_failed" });
+      return await redirectTo({ error: "token_exchange_failed" });
     }
     const parsed = (await res.json()) as {
       access_token?: unknown;
@@ -117,7 +117,7 @@ export async function GET(req: Request) {
       !Number.isFinite(parsed.expires_at)
     ) {
       log.error("strava token exchange returned an unexpected shape");
-      return redirectTo({ error: "token_exchange_failed" });
+      return await redirectTo({ error: "token_exchange_failed" });
     }
     tokenJson = {
       access_token: parsed.access_token,
@@ -127,7 +127,7 @@ export async function GET(req: Request) {
     };
   } catch (err) {
     log.error("strava token exchange error", { err: String(err) });
-    return redirectTo({ error: "token_exchange_failed" });
+    return await redirectTo({ error: "token_exchange_failed" });
   }
 
   setStravaTokens(STRAVA_PROFILE_ID, {
@@ -161,5 +161,5 @@ export async function GET(req: Request) {
     log.warn("strava sex backfill skipped", { err: String(err) });
   }
 
-  return redirectTo();
+  return await redirectTo();
 }

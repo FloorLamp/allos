@@ -13,12 +13,12 @@ import PushNotificationSettings from "./PushNotificationSettings";
 
 export const dynamic = "force-dynamic";
 
-export default function SettingsPage() {
-  const { login, profile } = requireSession();
+export default async function SettingsPage() {
+  const { login, profile } = await requireSession();
   const isAdmin = login.role === "admin";
   const prefs = getUnitPrefs(login.id);
   const hideEquipment = isTrainingRestricted(profile.id);
-  const sessions = listLoginSessions(login.id);
+  const sessions = await listLoginSessions(login.id);
   const twofaEnabled = getLoginTotpState(login.id).enabled;
   const recoveryRemaining = twofaEnabled
     ? countUnusedRecoveryCodes(login.id)

@@ -53,7 +53,7 @@ export async function deleteDatasetRows(
   | { ok: true; deleted: number; undoIds: number[] }
   | { ok: false; error: string }
 > {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const resolved = resolve(key);
   if (!resolved) return { ok: false, error: "Unknown dataset." };
 
@@ -103,7 +103,7 @@ export async function deleteAllDatasetRows(
   | { ok: true; deleted: number; undoIds: number[] }
   | { ok: false; error: string }
 > {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const resolved = resolve(key);
   if (!resolved) return { ok: false, error: "Unknown dataset." };
 

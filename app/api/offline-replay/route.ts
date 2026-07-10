@@ -49,7 +49,7 @@ function isIntent(v: unknown): v is QueuedIntent {
 }
 
 export async function POST(req: Request) {
-  const session = getCurrentSession();
+  const session = await getCurrentSession();
   if (!session) {
     // Session expired (possibly while offline) — keep the queue, prompt re-login.
     return Response.json(

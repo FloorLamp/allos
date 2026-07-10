@@ -34,7 +34,7 @@ function boolInt(raw: unknown): number {
 }
 
 export async function addFamilyHistory(formData: FormData) {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const condition = String(formData.get("condition") ?? "").trim();
   if (!condition) return;
   db.prepare(
@@ -56,7 +56,7 @@ export async function addFamilyHistory(formData: FormData) {
 }
 
 export async function updateFamilyHistory(formData: FormData) {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   const condition = String(formData.get("condition") ?? "").trim();
   if (!id || !condition) return;
@@ -80,7 +80,7 @@ export async function updateFamilyHistory(formData: FormData) {
 }
 
 export async function deleteFamilyHistory(formData: FormData) {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return;
   db.prepare("DELETE FROM family_history WHERE id = ? AND profile_id = ?").run(

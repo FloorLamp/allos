@@ -29,9 +29,9 @@ import BackupSettings from "./BackupSettings";
 
 export const dynamic = "force-dynamic";
 
-export default function ServerSettingsPage() {
+export default async function ServerSettingsPage() {
   // Instance-wide settings are admin-only — requireAdmin() redirects a member.
-  const { profile } = requireAdmin();
+  const { profile } = await requireAdmin();
 
   const publicUrl = getPublicUrl();
   const last = getLastBackup();

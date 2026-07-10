@@ -6,10 +6,10 @@ import { getPublicUrl } from "@/lib/settings";
 // reverse proxy, x-forwarded-* carry the real host/proto). Same logic as the
 // Health Connect config page. Used to build the OAuth redirect_uri, which must
 // match the Authorization Callback Domain registered in the Strava app settings.
-export function baseUrl(): string {
+export async function baseUrl(): Promise<string> {
   const configured = getPublicUrl();
   if (configured) return configured;
-  const h = headers();
+  const h = await headers();
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
   const proto =
     h.get("x-forwarded-proto") ??
@@ -19,8 +19,8 @@ export function baseUrl(): string {
 
 export const STRAVA_CALLBACK_PATH = "/api/integrations/strava/callback";
 
-export function stravaCallbackUrl(): string {
-  return `${baseUrl()}${STRAVA_CALLBACK_PATH}`;
+export async function stravaCallbackUrl(): Promise<string> {
+  return `${await baseUrl()}${STRAVA_CALLBACK_PATH}`;
 }
 
 // Build an absolute URL to an in-app path off the externally-visible base URL.
@@ -29,8 +29,8 @@ export function stravaCallbackUrl(): string {
 // internal target (localhost:3000), so a redirect built from it bounces the
 // browser to localhost. `baseUrl()` honors the configured public URL (else the
 // forwarded host), which is the address the user actually reached us on.
-export function appUrl(path: string): string {
-  return `${baseUrl()}${path.startsWith("/") ? path : `/${path}`}`;
+export async function appUrl(path: string): Promise<string> {
+  return `${await baseUrl()}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
 // A callback URL is unusable for OAuth if it resolves to loopback — Strava would

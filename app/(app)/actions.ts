@@ -12,7 +12,7 @@ import { snoozeFinding } from "@/lib/queries";
 // per-profile settings; the layout is merged defensively against the registry on
 // read, so ids aren't validated here.
 export async function saveDashboardLayout(order: string[], hidden: string[]) {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   setDashboardLayout(profile.id, { order, hidden });
   revalidatePath("/");
 }
@@ -23,7 +23,7 @@ export async function saveDashboardLayout(order: string[], hidden: string[]) {
 // coaching namespace so a tampered form can't snooze an arbitrary finding key.
 // Profile-scoped via snoozeFinding.
 export async function snoozeCoaching(formData: FormData) {
-  const { profile } = requireWriteAccess();
+  const { profile } = await requireWriteAccess();
   const dedupeKey = String(formData.get("dedupe_key") ?? "").trim();
   if (!dedupeKey.startsWith("coaching:")) return;
   snoozeFinding(profile.id, dedupeKey, shiftDateStr(today(profile.id), 1));

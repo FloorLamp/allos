@@ -29,10 +29,10 @@ export const dynamic = "force-dynamic";
 // Configured public URL (Settings → Public app URL) when set, else derived from
 // the request headers — same helper the Health Connect setup page uses. This is
 // the base an external calendar client must be able to reach.
-function baseUrl(): string {
+async function baseUrl(): Promise<string> {
   const configured = getPublicUrl();
   if (configured) return configured;
-  const h = headers();
+  const h = await headers();
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
   const proto =
     h.get("x-forwarded-proto") ??
@@ -40,8 +40,8 @@ function baseUrl(): string {
   return `${proto}://${host}`;
 }
 
-export default function CalendarFeedPage() {
-  const { profile, login } = requireSession();
+export default async function CalendarFeedPage() {
+  const { profile, login } = await requireSession();
   const def = getIntegration("calendar-feed")!;
   const feed = getCalendarFeed(profile.id);
 
@@ -75,7 +75,7 @@ export default function CalendarFeedPage() {
   // boundary through the SAME pure selection the family feed route uses, so the
   // preview can't drift from what the .ics serves. The feed token itself is
   // login-scoped (login_settings), so its lifecycle is keyed by login.id.
-  const accessible = getAccessibleProfiles();
+  const accessible = await getAccessibleProfiles();
   const familyFeed = getConsolidatedCalendarFeed(login.id);
   const familyFeeds: ConsolidatedProfileFeed[] = accessible.map((p) => ({
     profileId: p.id,
@@ -107,7 +107,7 @@ export default function CalendarFeedPage() {
           reminders={feed.reminders}
           pastWindowDays={feed.pastWindowDays}
           futureWindowDays={feed.futureWindowDays}
-          baseUrl={baseUrl()}
+          baseUrl={await baseUrl()}
           status={tokenLifecycleStatus(
             {
               hasToken: feed.hasToken,
@@ -163,7 +163,7 @@ export default function CalendarFeedPage() {
           <div className="grid gap-6">
             <ConsolidatedFeedConfig
               enabled={familyFeed.enabled}
-              baseUrl={baseUrl()}
+              baseUrl={await baseUrl()}
               status={tokenLifecycleStatus(
                 {
                   hasToken: familyFeed.hasToken,
