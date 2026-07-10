@@ -2,12 +2,15 @@ import { describe, it, expect } from "vitest";
 import {
   OUTDATED_MESSAGE_TEXT,
   parseAllCallback,
+  parseSkipCallback,
   parseTakeCallback,
   removeButton,
   resolveTapProfile,
   takeMatchesProfile,
   tapAnswerText,
   tapLogged,
+  tapResolved,
+  tapSkipAnswerText,
   type InlineKeyboard,
 } from "../notifications/callback-data";
 
@@ -131,6 +134,58 @@ describe("tap outcome → answer", () => {
   it("has a stale replacement body distinct from the success closer", () => {
     expect(OUTDATED_MESSAGE_TEXT).toMatch(/out of date/);
     expect(OUTDATED_MESSAGE_TEXT).not.toContain("All done");
+  });
+});
+
+// ⏭ Skip button (#232): same token shape as take, "skip" prefix.
+describe("parseSkipCallback", () => {
+  it("parses a well-formed skip token", () => {
+    expect(parseSkipCallback("skip:2:12:34:2026-07-03")).toEqual({
+      profileId: 2,
+      doseId: 12,
+      suppId: 34,
+      date: "2026-07-03",
+    });
+  });
+
+  it("nulls a zero suppId (unlinked dose) like take", () => {
+    expect(parseSkipCallback("skip:1:12:0:2026-07-03")).toEqual({
+      profileId: 1,
+      doseId: 12,
+      suppId: null,
+      date: "2026-07-03",
+    });
+  });
+
+  it("rejects a take token, malformed ids, or a missing date", () => {
+    expect(parseSkipCallback("take:2:12:34:2026-07-03")).toBeNull();
+    expect(parseSkipCallback("skip:1:abc:34:2026-07-03")).toBeNull();
+    expect(parseSkipCallback("skip:1:0:34:2026-07-03")).toBeNull();
+    expect(parseSkipCallback("skip:1:12:34")).toBeNull();
+    expect(parseSkipCallback(undefined)).toBeNull();
+  });
+});
+
+// A ⏭ Skip tap answers honestly per outcome. A skip never overwrites an already-
+// resolved dose, so "already-logged" is still a "Skipped" acknowledgement.
+describe("skip tap outcome → answer", () => {
+  it("answers 'Skipped ⏭' for a fresh skip and an idempotent repeat", () => {
+    expect(tapSkipAnswerText("skipped")).toBe("Skipped ⏭");
+    expect(tapSkipAnswerText("already-logged")).toBe("Skipped ⏭");
+  });
+
+  it("says 'Not logged' for a stale or paused skip tap", () => {
+    expect(tapSkipAnswerText("stale-dose")).toMatch(/^Not logged/);
+    expect(tapSkipAnswerText("inactive")).toMatch(/^Not logged/);
+    expect(tapSkipAnswerText("stale-dose")).not.toContain("Skipped");
+  });
+
+  it("tapResolved is true for any resolution (taken, skipped, repeat) only", () => {
+    expect(tapResolved("logged")).toBe(true);
+    expect(tapResolved("skipped")).toBe(true);
+    expect(tapResolved("already-logged")).toBe(true);
+    expect(tapResolved("stale-dose")).toBe(false);
+    expect(tapResolved("inactive")).toBe(false);
   });
 });
 

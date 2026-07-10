@@ -685,12 +685,20 @@ export interface SupplementDose {
   retired: 0 | 1;
 }
 
-// Outcome of an attempt to log a dose as taken (markDoseTaken). Lets the
-// Telegram callback answer honestly instead of claiming "Logged" for a tap on a
-// button whose dose has since been deleted/retired or whose item was paused.
+// A dose's resolution on a given day. A skip is a first-class LOG ROW (issue
+// #232): a deliberate "chose not to take it" that is neither a taken dose nor a
+// silent miss. Stored in intake_item_logs.status (DEFAULT 'taken', so every
+// pre-#232 row reads as taken).
+export type DoseStatus = "taken" | "skipped";
+
+// Outcome of an attempt to log a dose as taken/skipped (markDoseTaken /
+// markDoseSkipped). Lets the Telegram callback answer honestly instead of
+// claiming "Logged" for a tap on a button whose dose has since been
+// deleted/retired or whose item was paused.
 export type DoseTakenOutcome =
-  | "logged" // a new log row was written
-  | "already-logged" // idempotent repeat — that dose+date was already confirmed
+  | "logged" // a new taken log row was written
+  | "skipped" // a new skipped log row was written (issue #232)
+  | "already-logged" // idempotent repeat — that dose+date was already resolved
   | "stale-dose" // dose deleted/retired (or not this profile's): nothing logged
   | "inactive"; // parent item is paused/stopped: nothing logged
 

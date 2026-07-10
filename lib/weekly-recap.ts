@@ -124,8 +124,9 @@ export interface RecapInput {
   // Personal records (strength + cardio) dated within the current window; labels
   // are short display names ("Bench press", "Running") for the summary line.
   prLabels: string[];
-  // Supplement/medication adherence over the window, or null when nothing was due.
-  adherence: { taken: number; due: number } | null;
+  // Supplement/medication adherence over the window, or null when nothing was
+  // due. `skipped` counts deliberate skips (#232), excluded from the percentage.
+  adherence: { taken: number; skipped: number; due: number } | null;
   // Body weights logged within the window, oldest-first (already sorted by the
   // gather). Used for a robust (median-endpoint) net-change trend.
   weights: RecapWeight[];
@@ -275,15 +276,29 @@ export function buildWeeklyRecap(input: RecapInput): WeeklyRecap {
     });
   }
 
-  // Supplement adherence.
+  // Supplement adherence. Deliberate skips (#232) are excluded from the
+  // denominator (they weren't intended doses) but shown as a trailing note.
   if (input.adherence && input.adherence.due > 0) {
-    const p = Math.round((input.adherence.taken / input.adherence.due) * 100);
-    lines.push({
-      key: "adherence",
-      label: "Adherence",
-      value: `${p}%`,
-      delta: `${input.adherence.taken}/${input.adherence.due} doses`,
-    });
+    const { taken, skipped, due } = input.adherence;
+    const intended = due - skipped;
+    const skipNote = skipped > 0 ? ` · ${skipped} skipped` : "";
+    if (intended > 0) {
+      const p = Math.round((taken / intended) * 100);
+      lines.push({
+        key: "adherence",
+        label: "Adherence",
+        value: `${p}%`,
+        delta: `${taken}/${intended} doses${skipNote}`,
+      });
+    } else {
+      // Every due dose was skipped — no percentage to report, just the count.
+      lines.push({
+        key: "adherence",
+        label: "Adherence",
+        value: `${skipped} skipped`,
+        delta: `${skipped} dose${skipped === 1 ? "" : "s"} skipped`,
+      });
+    }
   }
 
   // Body-weight trend (robust net change over the window).
@@ -356,9 +371,12 @@ export function buildWeeklyRecap(input: RecapInput): WeeklyRecap {
     headParts.push(
       `${input.prLabels.length} PR${input.prLabels.length === 1 ? "" : "s"}`
     );
-  if (headParts.length === 0 && input.adherence && input.adherence.due > 0) {
-    const p = Math.round((input.adherence.taken / input.adherence.due) * 100);
-    headParts.push(`${p}% adherence`);
+  if (headParts.length === 0 && input.adherence) {
+    const intended = input.adherence.due - input.adherence.skipped;
+    if (intended > 0) {
+      const p = Math.round((input.adherence.taken / intended) * 100);
+      headParts.push(`${p}% adherence`);
+    }
   }
   const headline = headParts.join(", ");
 

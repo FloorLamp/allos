@@ -34,7 +34,9 @@ export interface DigestInput {
   goalsDue: DigestGoalDue[]; // frequency targets not yet met this week
   // Yesterday
   activities: DigestActivity[];
-  adherence: { taken: number; due: number } | null; // null when nothing was due
+  // Supplement adherence yesterday, or null when nothing was due. `skipped`
+  // counts deliberate skips (#232), surfaced alongside taken.
+  adherence: { taken: number; skipped: number; due: number } | null;
   weightKg: number | null; // weight logged yesterday (canonical kg)
   // New since the last digest
   newFlaggedBiomarkers: DigestFlaggedBiomarker[];
@@ -83,9 +85,11 @@ export function buildDigest(input: DigestInput): DigestModel | null {
     yLines.push(`🏋️ ${a.title}${activityStat(a)}`);
   }
   if (input.adherence) {
-    yLines.push(
-      `💊 Supplements: ${input.adherence.taken}/${input.adherence.due} taken`
-    );
+    // Skips are excluded from the "of N due" figure (they weren't intended
+    // doses); a nonzero skip count is shown as a trailing note (#232).
+    const { taken, skipped, due } = input.adherence;
+    const skipNote = skipped > 0 ? ` · ${skipped} skipped` : "";
+    yLines.push(`💊 Supplements: ${taken}/${due - skipped} taken${skipNote}`);
   }
   if (input.weightKg != null) {
     yLines.push(`⚖️ Weight: ${input.weightKg} kg`);

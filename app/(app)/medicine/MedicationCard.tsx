@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { IconCheck } from "@tabler/icons-react";
 import type {
   MedicationCourse,
   MedicationSideEffect,
@@ -23,7 +22,7 @@ import {
 import { formatLongDate } from "@/lib/format-date";
 import { getMedicationInfo } from "@/lib/medication-info";
 import SupplementForm from "./SupplementForm";
-import DoseToggleButton from "@/components/DoseToggleButton";
+import DoseStatusControl from "@/components/DoseStatusControl";
 import SubmitButton from "@/components/SubmitButton";
 import OverflowMenu, {
   MENU_ITEM,
@@ -53,6 +52,7 @@ export default function MedicationCard({
   allSupplements,
   pairs,
   takenDoseIds,
+  skippedDoseIds,
   due,
   courses,
   sideEffects,
@@ -64,6 +64,7 @@ export default function MedicationCard({
   allSupplements: { id: number; name: string }[];
   pairs: SupplementPair[];
   takenDoseIds: Set<number>;
+  skippedDoseIds: Set<number>;
   due: boolean;
   courses: MedicationCourse[];
   sideEffects: MedicationSideEffect[];
@@ -237,28 +238,16 @@ export default function MedicationCard({
       {/* Today's dose check-offs — only when the med is current and due. */}
       {current && due && doses.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-2">
-          {doses.map((dose) => {
-            const isTaken = takenDoseIds.has(dose.id);
-            return (
-              <DoseToggleButton
-                key={dose.id}
-                doseId={dose.id}
-                supplementId={s.id}
-                taken={isTaken}
-                ariaLabel={(t) => (t ? "Mark not taken" : "Mark taken")}
-                className={(t) =>
-                  `flex items-center gap-2 rounded-full border px-3 py-1 text-sm transition ${
-                    t
-                      ? "border-brand-600 bg-brand-600 text-white"
-                      : "border-black/10 text-slate-600 hover:border-brand-400 dark:border-white/10 dark:text-slate-300"
-                  }`
-                }
-              >
-                <IconCheck className="h-3.5 w-3.5" stroke={2.5} />
-                {dose.amount || dose.time_of_day || "Dose"}
-              </DoseToggleButton>
-            );
-          })}
+          {doses.map((dose) => (
+            <DoseStatusControl
+              key={dose.id}
+              doseId={dose.id}
+              taken={takenDoseIds.has(dose.id)}
+              skipped={skippedDoseIds.has(dose.id)}
+              variant="pill"
+              label={dose.amount || dose.time_of_day || "Dose"}
+            />
+          ))}
         </div>
       )}
 

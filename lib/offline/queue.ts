@@ -6,23 +6,27 @@
 // so it's unit-tested in lib/__tests__ (the IndexedDB glue lives in
 // lib/offline/queue-db.ts, and the server writes in lib/offline/writes.ts).
 //
-// SCOPE: only three idempotent quick-log flows are queueable — a dose confirm, a
-// body-metric quick-add, and a vitals quick-add. Anything with server-derived
-// state stays online-only. Payloads carry the CAPTURED raw fields + date so a late
-// replay lands on the day the user logged it (issue #28, point 5), never the
-// replay date.
+// SCOPE: only these idempotent quick-log flows are queueable — a dose confirm, a
+// dose SKIP (issue #232), a body-metric quick-add, and a vitals quick-add.
+// Anything with server-derived state stays online-only. Payloads carry the
+// CAPTURED raw fields + date so a late replay lands on the day the user logged it
+// (issue #28, point 5), never the replay date.
 
-export type FlowKind = "dose" | "body-metric" | "vitals";
+export type FlowKind = "dose" | "skip-dose" | "body-metric" | "vitals";
 
 export const FLOW_KINDS: readonly FlowKind[] = [
   "dose",
+  "skip-dose",
   "body-metric",
   "vitals",
 ];
 
-// A dose confirm is a SET-TO-TAKEN intent (not a toggle): replaying it inserts the
-// per-(dose,date) log if absent and is otherwise a no-op, so a queued tap can never
-// flip a dose back off. The date is the client's local date at capture time.
+// A dose confirm ("dose") is a SET-TO-TAKEN intent and a dose skip ("skip-dose",
+// issue #232) is a SET-TO-SKIPPED intent — neither is a toggle: replaying inserts
+// the per-(dose,date) log if absent and is otherwise a no-op, so a queued tap can
+// never flip a resolved dose back off (or overwrite the other resolution). Both
+// share this payload; `flow` discriminates which write core applies. The date is
+// the client's local date at capture time.
 export interface DosePayload {
   doseId: number;
 }

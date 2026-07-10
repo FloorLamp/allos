@@ -2,6 +2,7 @@ import {
   getSupplements,
   getSupplementDoses,
   getTakenDoseIds,
+  getSkippedDoseIds,
   getSupplementLogsInRange,
   getSupplementPairs,
   getRefillRates,
@@ -41,6 +42,7 @@ import SubmitButton from "@/components/SubmitButton";
 import EditableSupplementRow from "./EditableSupplementRow";
 import DismissSuggestionButton from "./DismissSuggestionButton";
 import {
+  aggregateDoseDay,
   indexTakenByDose,
   type AdherenceDot,
 } from "@/lib/supplement-adherence";
@@ -70,6 +72,7 @@ export default async function SupplementsPage() {
   }
 
   const taken = getTakenDoseIds(profile.id, today(profile.id));
+  const skipped = getSkippedDoseIds(profile.id, today(profile.id));
   const activeSituations = new Set(getActiveSituations(profile.id));
   const isWorkoutDay =
     getActivitiesByDate(profile.id, today(profile.id)).length > 0;
@@ -87,11 +90,12 @@ export default async function SupplementsPage() {
   );
   // Per-supplement adherence strip, aggregated across the supplement's doses:
   // a day is "taken" when all its due doses were logged, "partial" when some
-  // were, "missed" when none were (but it was due), and "na" when not due.
+  // were, "skipped" when every due dose was deliberately skipped (#232),
+  // "missed" when none were resolved (but it was due), and "na" when not due.
   const stripBySupp = new Map<number, AdherenceDot[]>();
   for (const s of supplements) {
     const doseIds = (dosesBySupp.get(s.id) ?? []).map((d) => d.id);
-    const total = doseIds.length || 1;
+    const total = doseIds.length;
     stripBySupp.set(
       s.id,
       dates.map((date) => {
@@ -101,12 +105,14 @@ export default async function SupplementsPage() {
         });
         if (!applicable) return { date, state: "na" };
         const takenN = doseIds.reduce(
-          (n, id) => n + (takenByDose.get(id)?.has(date) ? 1 : 0),
+          (n, id) => n + (takenByDose.get(id)?.taken.has(date) ? 1 : 0),
           0
         );
-        const state: AdherenceDot["state"] =
-          takenN === 0 ? "missed" : takenN >= total ? "taken" : "partial";
-        return { date, state };
+        const skippedN = doseIds.reduce(
+          (n, id) => n + (takenByDose.get(id)?.skipped.has(date) ? 1 : 0),
+          0
+        );
+        return { date, state: aggregateDoseDay(total, takenN, skippedN) };
       })
     );
   }
@@ -224,6 +230,7 @@ export default async function SupplementsPage() {
       allSupplements={supplements}
       pairs={pairsFor(it.supplement.id)}
       isTaken={taken.has(it.dose.id)}
+      isSkipped={skipped.has(it.dose.id)}
       due={due}
       strip={stripFor(it.supplement)}
       trainingRestricted={trainingRestricted}
@@ -287,6 +294,7 @@ export default async function SupplementsPage() {
                     allSupplements={supplements}
                     pairs={pairsFor(m.med.id)}
                     takenDoseIds={taken}
+                    skippedDoseIds={skipped}
                     due={medDue(m.med)}
                     courses={m.courses}
                     sideEffects={m.sideEffects}
@@ -312,6 +320,7 @@ export default async function SupplementsPage() {
                     allSupplements={supplements}
                     pairs={pairsFor(m.med.id)}
                     takenDoseIds={taken}
+                    skippedDoseIds={skipped}
                     due={medDue(m.med)}
                     courses={m.courses}
                     sideEffects={m.sideEffects}

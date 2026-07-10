@@ -21,7 +21,7 @@
 - **Medical** — vitals, labs, genomics, biomarkers, conditions, allergies, procedures, family history, immunizations, visits, a Passport summary, and an offline **Emergency Card**. Standard **derived indices** (Non-HDL cholesterol, triglyceride/HDL ratio, HOMA-IR, race-free CKD-EPI 2021 eGFR, and Levine **PhenoAge** — a biological-age estimate in years) are computed from your existing labs and shown alongside them, marked "derived" with their formula (eGFR/HOMA-IR/PhenoAge only appear when the needed labs and age/sex are on file; PhenoAge requires a full nine-analyte draw and an adult profile). PhenoAge is also surfaced as a **biological-age card** pinned above the Biomarkers table: your estimated biological age, how it compares to your calendar age (younger is better), your pace of aging across draws, and the nine inputs it's built from — with a checklist prompt when the panel is incomplete. It's framed as a population-level estimate (Levine 2018, NHANES-validated adults ~20–84), is hidden for child profiles, and is also available as an opt-in **Biological age** dashboard widget (Customize)
 - **Immunizations** — record vaccines and doses, track them against the CDC schedule (due / overdue / up to date), and see immunity titers pulled from your labs
 - **Health-record import** — pull immunizations, labs, and vitals straight from a MyChart “Download Summary” (CCD/XDM), a SMART Health Card, or an Epic / Apple Health FHIR bundle
-- **Supplements & medications** — schedule intake and check it off each day, with adherence and refill tracking
+- **Supplements & medications** — schedule intake and check off each dose as **taken**, **skipped**, or clear (a tri-state — a deliberate skip is a decision, not a missed dose), with adherence and refill tracking. Skips are excluded from the adherence percentage and shown as their own count, never decrement your on-hand supply, and never trigger a missed-dose escalation; each reminder (web and Telegram) offers a **✅ take** and a **⏭ skip** beside each dose
 - **Undo delete** — deleting an activity, body-metrics entry, biomarker record, or supplement/medication offers a one-tap **Undo** toast; the row (and its children) is held for 24 hours and restored intact if you undo, then purged
 - **AI activity log** — every AI call and failure recorded to a file and streamed live in Settings → AI logs
 - **Audit log** — a durable record of who accessed or modified which profile's data (logins in/out, profile switches, medical-file and share-link views, document uploads/deletes, and admin/family changes), reviewable with filters under **Settings → Audit** (admin only); identifiers only, never medical content, retained for a configurable window (default **24 months**, set under **Settings → Server → Audit-log retention**; the hourly notify tick prunes older events)
@@ -55,8 +55,8 @@ card** (the blood type there overrides one derived from lab records).
 
 Logging often happens exactly where the signal doesn't: a set at a gym with dead
 reception, a dose on a flight, a weigh-in during an outage. For a small set of
-**idempotent quick-logs** — confirming a **dose taken** (Supplements & Meds), a
-**body-metric** weigh-in (Trends → Body), and a **vitals** entry (Trends → Body) —
+**idempotent quick-logs** — confirming a **dose taken** or **skipped** (Supplements &
+Meds), a **body-metric** weigh-in (Trends → Body), and a **vitals** entry (Trends → Body) —
 the app no longer fails when you're offline: it **queues the entry on your device**
 (in this browser's IndexedDB) and shows a "Saved offline — will sync when you
 reconnect" confirmation plus a **pending badge** counting the queued writes.

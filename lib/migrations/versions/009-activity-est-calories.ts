@@ -40,7 +40,7 @@ export function up(db: Database.Database): void {
 }
 
 export const migration: Migration = {
-  id: 8,
-  name: "008-activity-est-calories",
+  id: 9,
+  name: "009-activity-est-calories",
   up,
 };

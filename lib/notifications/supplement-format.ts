@@ -14,11 +14,14 @@ import type { NotificationMessage, NotificationAction } from "./types";
 export type ReminderWindow = "Morning" | "Midday" | "Evening" | "Bedtime";
 
 // A dose due in a window, paired with its supplement, whether it's already been
-// logged today, and its adherence over the recent window (streak + percentage).
+// taken or deliberately skipped (#232) today, and its adherence over the recent
+// window (streak + percentage). A dose is "pending" only when neither taken nor
+// skipped — both resolutions clear it from the reminder.
 export interface WindowDose {
   dose: SupplementDose;
   supp: Supplement;
   taken: boolean;
+  skipped: boolean;
   adherence: AdherenceSummary;
 }
 
@@ -46,12 +49,19 @@ function adherenceNotes(a: AdherenceSummary): string[] {
   return notes;
 }
 
-// One body line: ✅ once taken, otherwise the priority marker (🔴 mandatory, •
-// everything else), then the amount and a "·"-separated tail of the take-with
-// condition (pending only — it's guidance for taking) and streak/adherence.
+// One body line: ✅ once taken, ⏭ once deliberately skipped (#232), otherwise the
+// priority marker (🔴 mandatory, • everything else), then the amount and a
+// "·"-separated tail of the take-with condition (pending only — it's guidance for
+// taking) and streak/adherence.
 function doseLine(e: WindowDose, showFood: boolean): string {
   const amt = e.dose.amount ? ` — ${e.dose.amount}` : "";
-  const mark = e.taken ? "✅ " : e.supp.priority === "mandatory" ? "🔴 " : "• ";
+  const mark = e.taken
+    ? "✅ "
+    : e.skipped
+      ? "⏭ "
+      : e.supp.priority === "mandatory"
+        ? "🔴 "
+        : "• ";
   const tail: string[] = [];
   if (showFood) {
     const food = foodNote(e.dose);
@@ -74,33 +84,53 @@ export function renderWindowMessage(
   date: string,
   entries: WindowDose[]
 ): NotificationMessage {
-  const pending = entries.filter((e) => !e.taken).sort(byPriority);
-  const taken = entries.filter((e) => e.taken).sort(byPriority);
+  const pending = entries
+    .filter((e) => !e.taken && !e.skipped)
+    .sort(byPriority);
+  // Resolved doses (taken or skipped) list after the pending ones; ⏭ marks a skip.
+  const resolved = entries.filter((e) => e.taken || e.skipped).sort(byPriority);
 
   if (pending.length === 0) {
-    const body = taken.map((e) => doseLine(e, false)).join("\n");
-    return {
-      title: `💊 ${window} supplements — all ${taken.length} taken ✅`,
-      body,
-    };
+    const takenN = resolved.filter((e) => e.taken).length;
+    const skippedN = resolved.length - takenN;
+    const body = resolved.map((e) => doseLine(e, false)).join("\n");
+    // Title reflects the whole session: "all N taken" when nothing was skipped,
+    // else a taken/skipped breakdown so a skip isn't misread as a take.
+    const title =
+      skippedN === 0
+        ? `💊 ${window} supplements — all ${takenN} taken ✅`
+        : `💊 ${window} supplements — ${takenN} taken · ${skippedN} skipped`;
+    return { title, body };
   }
 
   const body = [
     ...pending.map((e) => doseLine(e, true)),
-    ...taken.map((e) => doseLine(e, false)),
+    ...resolved.map((e) => doseLine(e, false)),
   ].join("\n");
-  // The dose + supplement id and date are baked into the token so a late tap
-  // still logs the correct dose to the correct day.
-  const actions: NotificationAction[] = pending.map(({ dose, supp }) => ({
-    label: `✅ ${supp.name}`,
-    data: `take:${profileId}:${dose.id}:${supp.id}:${date}`,
-  }));
+  // Each pending dose gets a ✅ take and a ⏭ skip button, side by side (same
+  // `row` group). The dose + supplement id and date are baked into each token so
+  // a late tap still resolves the correct dose to the correct day. There is NO
+  // "skip all" — a blanket skip is a footgun (#232); skip stays per-dose only.
+  const actions: NotificationAction[] = [];
   // With more than one dose still pending, offer a single tap that marks the
-  // whole session taken, above the per-dose buttons.
+  // whole session taken, on its own row above the per-dose buttons.
   if (pending.length >= 2) {
-    actions.unshift({
+    actions.push({
       label: `✅ All (${pending.length})`,
       data: `all:${profileId}:${window}:${date}`,
+    });
+  }
+  for (const { dose, supp } of pending) {
+    const row = `dose:${dose.id}`;
+    actions.push({
+      label: `✅ ${supp.name}`,
+      data: `take:${profileId}:${dose.id}:${supp.id}:${date}`,
+      row,
+    });
+    actions.push({
+      label: "⏭ Skip",
+      data: `skip:${profileId}:${dose.id}:${supp.id}:${date}`,
+      row,
     });
   }
   return { title: `💊 ${window} supplements`, body, actions };

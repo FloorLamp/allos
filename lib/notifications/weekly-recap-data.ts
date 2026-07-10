@@ -20,6 +20,7 @@ import {
   getSupplements,
   getSupplementDoses,
   getTakenDoseIds,
+  getSkippedDoseIds,
   getActivitiesByDate,
   getZone2MinutesInWindow,
 } from "../queries";
@@ -66,13 +67,15 @@ function sumVolume(
     .reduce((acc, r) => acc + (r.volume || 0), 0);
 }
 
-// Supplement adherence (taken / due) across the window, using the same due-dose
-// derivation as the digest (isDueOn honoring workout-day + active situations).
+// Supplement adherence (taken / skipped / due) across the window, using the same
+// due-dose derivation as the digest (isDueOn honoring workout-day + active
+// situations). Deliberate skips (#232) are tallied separately so the recap can
+// show them alongside taken and exclude them from the percentage denominator.
 function windowAdherence(
   profileId: number,
   start: string,
   end: string
-): { taken: number; due: number } | null {
+): { taken: number; skipped: number; due: number } | null {
   const active = getSupplements(profileId).filter((s) => s.active);
   if (active.length === 0) return null;
   const suppById = new Map(active.map((s) => [s.id, s]));
@@ -83,6 +86,7 @@ function windowAdherence(
   const situations = new Set(getActiveSituations(profileId));
 
   let taken = 0;
+  let skipped = 0;
   let due = 0;
   for (let d = start; d <= end; d = shiftDateStr(d, 1)) {
     const isWorkoutDay = getActivitiesByDate(profileId, d).length > 0;
@@ -96,10 +100,12 @@ function windowAdherence(
       .map((dose) => dose.id);
     if (dueIds.length === 0) continue;
     const takenSet = getTakenDoseIds(profileId, d);
+    const skippedSet = getSkippedDoseIds(profileId, d);
     due += dueIds.length;
     taken += dueIds.filter((id) => takenSet.has(id)).length;
+    skipped += dueIds.filter((id) => skippedSet.has(id)).length;
   }
-  return due > 0 ? { taken, due } : null;
+  return due > 0 ? { taken, skipped, due } : null;
 }
 
 // Gather the recap facts for one profile over the trailing seven days. weightUnit
