@@ -109,6 +109,67 @@ describe("escalationsDue", () => {
     expect(escalationsDue({ ...base, nowMinutes: 9 * 60 })).toHaveLength(1);
     expect(escalationsDue({ ...base, nowMinutes: 8 * 60 })).toHaveLength(0);
   });
+
+  // #189: the shipped Bedtime slot (22:00) + default 120-min wait computes a raw
+  // threshold of 1440 (midnight), which no hourly tick (max nowMinutes = 1380)
+  // could ever reach — the escalation was silently dead. The clamp to the day's
+  // last tick (23:00) makes it fire once at 23:00 instead of never.
+  const bedtime = () =>
+    candidate({
+      doseId: 42,
+      supplementName: "Warfarin",
+      window: "Bedtime",
+      slotHour: 22,
+      escalateAfterMin: 120,
+    });
+
+  it("escalates a Bedtime+120 critical dose at the day's last tick (#189)", () => {
+    const due = escalationsDue({
+      candidates: [bedtime()],
+      sentWindows: ["Bedtime"],
+      confirmedDoseIds: [],
+      escalatedDoseIds: [],
+      nowMinutes: 23 * 60, // 23:00, the final hourly tick of the day
+    });
+    expect(due.map((d) => d.doseId)).toEqual([42]);
+  });
+
+  it("does not escalate Bedtime+120 before the clamped last tick", () => {
+    const due = escalationsDue({
+      candidates: [bedtime()],
+      sentWindows: ["Bedtime"],
+      confirmedDoseIds: [],
+      escalatedDoseIds: [],
+      nowMinutes: 22 * 60, // 22:00 reminder just went out; not yet 23:00
+    });
+    expect(due).toEqual([]);
+  });
+
+  it("does not escalate a confirmed Bedtime dose even at the last tick", () => {
+    const due = escalationsDue({
+      candidates: [bedtime()],
+      sentWindows: ["Bedtime"],
+      confirmedDoseIds: [42], // taken
+      escalatedDoseIds: [],
+      nowMinutes: 23 * 60,
+    });
+    expect(due).toEqual([]);
+  });
+
+  it("does not double-fire a Bedtime escalation already sent this episode", () => {
+    // The clamp keeps escalation same-day, so the once-per-day dedup marker
+    // (notify_last_esc_<dose> == today) still suppresses a repeat at the 23:00
+    // tick — and, because we never wrap into the next calendar day, it never
+    // leaks a stale marker across midnight to suppress the next day's dose.
+    const due = escalationsDue({
+      candidates: [bedtime()],
+      sentWindows: ["Bedtime"],
+      confirmedDoseIds: [],
+      escalatedDoseIds: [42], // already escalated at 23:00 this day
+      nowMinutes: 23 * 60,
+    });
+    expect(due).toEqual([]);
+  });
 });
 
 describe("renderEscalationMessage", () => {
