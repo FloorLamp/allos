@@ -10,11 +10,6 @@ import { up as baselineUp } from "./migrations/versions/001-baseline";
 // Single shared connection across hot-reloads in dev.
 const globalForDb = globalThis as unknown as { __healthDb?: Database.Database };
 
-// The additive-upgrade surface recorded by `addColumnIfMissing`, defined in and
-// re-exported from the frozen baseline migration (issue #119). Kept exported from
-// here so existing importers (lib/__db_tests__/migrate.test.ts) are unchanged.
-export { ADDITIVE_COLUMNS } from "./migrations/versions/001-baseline";
-
 // The on-disk path of the live database (data/allos.db, or an ALLOS_DB_PATH
 // override). Exported so out-of-process tooling (scripts/restore.ts) can locate
 // the file it must replace without re-deriving the path convention.
@@ -58,14 +53,12 @@ function createDb(): Database.Database {
   return db;
 }
 
-// Back-compat + DB-tier test entry point. Runs the full baseline schema build
-// followed by the per-boot tasks UNCONDITIONALLY (not version-gated), reproducing
-// the pre-runner `migrate()`. The production boot path (createDb) uses the
-// version-gated `runMigrations` + `bootTasks` instead; this wrapper exists for the
-// lib/__db_tests__ suites that build/rebuild the whole schema on a single handle
-// and re-run it to exercise the upgrade / idempotency / enum-drift / index-swap
-// paths — which rely on the baseline body re-running on each call rather than
-// being skipped once user_version is stamped.
+// DB-tier test entry point. Applies the full current schema (the baseline's
+// CREATE ... IF NOT EXISTS set) followed by the per-boot tasks, UNCONDITIONALLY
+// (not version-gated). The production boot path (createDb) uses the version-gated
+// `runMigrations` + `bootTasks` instead; this wrapper exists for the
+// lib/__db_tests__ suites that build the schema on their own in-memory handle
+// (and re-run it to prove the replay is a no-op) without touching user_version.
 export function migrate(db: Database.Database): void {
   baselineUp(db);
   bootTasks(db);

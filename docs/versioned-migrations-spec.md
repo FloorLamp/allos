@@ -2,6 +2,22 @@
 
 Status: **draft** · Owner: TBD · Tracking issue: [#119](https://github.com/FloorLamp/allos/issues/119)
 
+## Revision (2026-07-10)
+
+Owner decision at implementation review: the "no rewriting of history that
+already shipped" non-goal below is **superseded**. Baseline (`001-baseline.ts`)
+is a **clean apply of the current schema** — every table with its final columns,
+CHECKs, and index set — and the pre-runner upgrade machinery was **dropped**, not
+frozen: no rename shims, no `addColumnIfMissing`/`ADDITIVE_COLUMNS`, no
+`ENUM_CHECKS` reconcile, no profile-scoping rebuilds/index swaps, no settings-flag
+one-shots, no legacy data backfills. All deployments are assumed to already be on
+the final schema (baseline replays as a pure `IF NOT EXISTS` no-op before the v1
+stamp); a deployment on an **older** release must first step through the last
+pre-runner release before upgrading to one that carries the runner.
+`backfillProfileIds` was likewise dropped from the boot tasks — on the current
+schema every owned table is born `profile_id NOT NULL` and every write path
+supplies it, so the legacy NULL rows it adopted cannot exist.
+
 ## Problem
 
 `lib/db.ts` has no migration tool: `migrate()` re-applies the whole schema on

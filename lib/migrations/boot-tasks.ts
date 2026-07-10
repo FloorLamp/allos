@@ -4,7 +4,6 @@ import canonicalSeed from "../canonical-biomarkers.json";
 import { computeFlagReconciliation } from "../flag-reconcile";
 import { canonicalFlagsSignature } from "../canonical-flags-version";
 import { hashPasswordSync } from "../password";
-import { backfillProfileIds } from "./profile-scoping";
 import { runBootTx } from "./schema-utils";
 
 // PER-BOOT TASKS (issue #119). These run on EVERY process start, AFTER the
@@ -17,12 +16,6 @@ import { runBootTx } from "./schema-utils";
 //                                  creates the bootstrap admin/profile only when
 //                                  missing. Env-dependent => never deterministic,
 //                                  so it can't be a frozen migration.
-//   • backfillProfileIds         — the deleted-profile-1 RESURRECTION GUARD tied
-//                                  to live inserts (#67 deletion rules). It only
-//                                  (re)creates profile 1 when owned tables hold
-//                                  NULL rows to adopt, so freezing it into a
-//                                  once-only migration would defeat the guard.
-//                                  Judgment call called out in the #119 spec.
 //   • seedCanonicalBiomarkers    — re-UPSERTs canonical_biomarkers from the
 //                                  committed JSON so a range edit shipped in a
 //                                  release with NO schema change still propagates
@@ -37,20 +30,20 @@ import { runBootTx } from "./schema-utils";
 //                                  flight; must run on every process start.
 //   • seedTimezoneFromEnv        — env-dependent first-boot seeding.
 //
+// (The old boot path also carried backfillProfileIds, adopting legacy
+// NULL-profile_id rows onto profile 1. On the current schema every owned table is
+// born profile_id NOT NULL and every write path supplies it, so NULL rows cannot
+// exist and the task was dropped with the rest of the legacy upgrade machinery.)
+//
 // Order matters only in that bootstrapAuth (profile 1) and seedCanonicalBiomarkers
 // (the canonical_biomarkers rows) must precede the flag reconcile, which reads
-// both; and backfillProfileIds must run once profile 1 can exist. This mirrors
-// the relative order these calls had in the pre-runner migrate() tail.
+// both. This mirrors the relative order these calls had in the pre-runner
+// migrate() tail.
 export function bootTasks(db: Database.Database): void {
   // First-run auth bootstrap: create the initial admin login + its profile so a
-  // fresh (or upgraded, pre-auth) database is usable behind the login gate, and so
-  // profile 1 exists before backfillProfileIds / the flag reconcile reference it.
+  // fresh database is usable behind the login gate, and so profile 1 exists
+  // before the flag reconcile references it.
   bootstrapAuth(db);
-
-  // Adopt any NULL-profile_id rows into profile 1 (upgraded DBs). Doubles as the
-  // deleted-profile-1 resurrection guard: only (re)creates profile 1 when there
-  // are actually NULL rows to adopt (see backfillProfileIds).
-  backfillProfileIds(db);
 
   // Re-sync the canonical_biomarkers table from the committed JSON so range edits
   // propagate to existing DBs on boot (see the module header).

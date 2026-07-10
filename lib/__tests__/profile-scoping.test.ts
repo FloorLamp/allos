@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { OWNED_TABLES, BACKFILL_OWNED_TABLES } from "@/lib/owned-tables";
+import { OWNED_TABLES } from "@/lib/owned-tables";
 
 // Static leak-detection for the multi-user conversion (issue #67, Phase 2). This
 // reads the repo's own source as TEXT — no DB, no network, so it stays "pure" in
@@ -82,37 +82,6 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     file: "lib/integrations/normalize.ts",
     includes: "UPDATE activities SET date = ?",
     why: "upsertActivities: the id comes from a profile-scoped find() just above",
-  },
-  // The frozen baseline migration's one-time, pre-profile-scoping data migrations
-  // that intentionally rewrite EVERY profile's rows (vocabulary/file-hash/legacy-
-  // dose migrations run once and are profile-agnostic by design). These moved out
-  // of lib/db.ts into the baseline migration (issue #119) but are unchanged.
-  {
-    file: "lib/migrations/versions/001-baseline.ts",
-    includes:
-      "SELECT id, stored_path FROM medical_documents WHERE content_hash IS NULL",
-    why: "backfillDocumentHashes: hashes files on disk for all documents (global, one-time)",
-  },
-  {
-    file: "lib/migrations/versions/001-baseline.ts",
-    includes: "UPDATE medical_documents SET content_hash = ? WHERE id = ?",
-    why: "backfillDocumentHashes: id from the global SELECT above",
-  },
-  {
-    file: "lib/migrations/versions/001-baseline.ts",
-    includes:
-      "SELECT id, components FROM activities WHERE components IS NOT NULL",
-    why: "migrateLiftMerges: renames legacy lift names across all rows (global, one-time)",
-  },
-  {
-    file: "lib/migrations/versions/001-baseline.ts",
-    includes: "UPDATE activities SET components = ? WHERE id = ?",
-    why: "migrateLiftMerges: id from the global SELECT above",
-  },
-  {
-    file: "lib/migrations/versions/001-baseline.ts",
-    includes: "${dosageSel}",
-    why: "migrateSupplementDoses: reads legacy dosage/time off all supplements once (global)",
   },
   // queries.ts statements whose profile_id lives inside an interpolated fragment
   // (`${clause}` / `${where.join(...)}` always start with `profile_id = ?`; the
@@ -295,11 +264,11 @@ describe("profile scoping: every owned-table query filters by profile_id", () =>
 // carries no ON DELETE CASCADE). This block fails the build if the shared const or
 // its consumers drift.
 
-// The single file holding the entire schema's CREATE TABLE blocks. As of issue
-// #119 these live in the frozen baseline migration (moved verbatim out of
-// lib/db.ts); a NEW table added in a later migration file would also need to be
-// scanned here, but until a post-baseline migration adds a profile-owned table the
-// baseline is the whole schema. (Keep this in sync if that changes.)
+// The single file holding the entire schema's CREATE TABLE blocks: the frozen
+// baseline migration (issue #119). A NEW table added in a later migration file
+// would also need to be scanned here, but until a post-baseline migration adds a
+// profile-owned table the baseline is the whole schema. (Keep this in sync if
+// that changes.)
 const SCHEMA_FILE = "lib/migrations/versions/001-baseline.ts";
 
 // The tables whose CREATE TABLE block in the baseline migration declares a
@@ -371,14 +340,6 @@ describe("owned-table set: single source of truth (no drift)", () => {
     expect(new Set(OWNED_TABLES).size).toBe(OWNED_TABLES.length);
   });
 
-  it("BACKFILL_OWNED_TABLES is a duplicate-free subset of OWNED_TABLES", () => {
-    expect(new Set(BACKFILL_OWNED_TABLES).size).toBe(
-      BACKFILL_OWNED_TABLES.length
-    );
-    const owned = new Set<string>(OWNED_TABLES);
-    for (const t of BACKFILL_OWNED_TABLES) expect(owned.has(t)).toBe(true);
-  });
-
   // The three consumers must reference the shared constants by NAME (they consume
   // them at runtime, verified by typecheck/build), and must not re-introduce a
   // private hand-maintained owned-table list. `"metric_samples"` /
@@ -392,10 +353,5 @@ describe("owned-table set: single source of truth (no drift)", () => {
     const src = read("app/(app)/settings/family/actions.ts");
     expect(src).toContain("OWNED_TABLES");
     for (const s of LIST_SENTINELS) expect(src.includes(s)).toBe(false);
-  });
-
-  it("the baseline migration consumes BACKFILL_OWNED_TABLES for the profile_id backfill", () => {
-    const src = read(SCHEMA_FILE);
-    expect(src).toContain("BACKFILL_OWNED_TABLES");
   });
 });
