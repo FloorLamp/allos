@@ -164,6 +164,19 @@ instance before release:
    to it (entities card with `tap_action` → service call).
 3. Automation blueprint for `/ingest` (scale weight example).
 4. `is_dinnertime` automation example for `/event`.
+5. **Free wins over machinery that already exists** (recipes only, no new
+   endpoints):
+   - **Appointments in HA natively** — HA's calendar integration consumes
+     the existing token-authed `.ics` feed directly: appointment cards on
+     the dashboard plus HA's native "time to leave" departure automations.
+   - **Physical dose logging** — an NFC tag on the pill organizer or a
+     Zigbee button on the nightstand → HA automation → `POST /dose`. Tap
+     the box as you take it (per-dose tags; the outcome union answers a
+     stale/duplicate tap safely).
+   - **Emergency card on a wall panel** — an HA webpage/iframe card
+     pointing at the existing public share link (`/share/*`); the recipe
+     carries a one-line PHI-posture note (anyone at the panel can read
+     it — that is the point of an emergency card).
 
 ## Testing
 
@@ -191,9 +204,17 @@ instance before release:
 
 ## Open questions
 
-1. **Event vocabulary growth** — `meal` only in v1; do `wake`/`bedtime`
-   earn their keep, and do they map to slots or buckets? Decide when a
-   real automation asks.
+1. **Event vocabulary growth** — `meal` only in v1. Anticipated next
+   (each one entry in the event→bucket mapping, added when a real
+   automation asks): `wake` (morning digest when actually up — alarm
+   dismissed/bedroom motion — instead of a clock hour), `bedtime`
+   (evening meds on the wind-down scene), `arrived-home` (evening doses
+   on geofence arrival rather than to an empty house).
+   1b. **Away/travel as a situation trigger** — an `away-start`/`away-end`
+   event pair toggling the existing "Travel" situation
+   (`setActiveSituations`), which already alters supplement schedules.
+   A write, but to an existing model; needs the same opt-in posture as
+   `/event`. Decide with the vocabulary growth.
 2. **`/summary` (stats tiles)** — recent activities, streak, weekly
    counts as HA sensors. Deferred; when wanted it's a formatter over the
    existing digest/weekly-recap models (per the scope rule above), never a
@@ -201,3 +222,16 @@ instance before release:
 3. **Per-token rate-limit tuning** — the HC limiter defaults are sized
    for a phone exporter; a 30s-polling display is chattier. Likely fine;
    measure in PR 3.
+4. **Environmental context ingestion** (bedroom temp/humidity, CO2,
+   PM2.5/AQI via `/ingest`) — needs canonical metric homes first, and its
+   payoff is correlation (protocols/insights, #161). Stage behind demand.
+5. **Household attention sensors** — per-profile attention counts as HA
+   sensors ("Dad: 2 overdue"), letting HA notify whoever is home. A
+   formatter over the dashboard redesign's Tier-1 aggregation — gated on
+   #171 building that model.
+6. **HA as a notification CHANNEL (Allos → HA)** — the one genuinely new
+   piece of machinery in this space: a webhook channel in `dispatch()`'s
+   fan-out beside Telegram/push, letting HA present reminders with what
+   only it knows (who is home, which room) — kitchen-speaker TTS dose
+   announcements, escalation light-flashes. Tracked separately (see the
+   tracking issue's related list); NOT part of this spec's three PRs.
