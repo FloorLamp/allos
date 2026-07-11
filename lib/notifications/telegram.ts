@@ -3,6 +3,7 @@
 
 import { getProfileTelegram, getTelegramBotConfig } from "../settings";
 import type { NotificationChannel, NotificationMessage } from "./types";
+import { splitTelegramHtml, capTelegramKeyboard } from "./telegram-limits";
 
 // A button carries EITHER a callback token (`callback_data`) or a deep-link
 // (`url`) — Telegram rejects a button with both, so exactly one is set.
@@ -100,6 +101,48 @@ async function call(
   return json;
 }
 
+// Deliver a message to a chat id, guarding Telegram's 4096-char message cap and
+// ~100-button keyboard cap in ONE place so every message builder is covered (#379).
+// An oversized body is split on line boundaries into multiple sends with the
+// keyboard riding the LAST chunk; a keyboard past the button cap keeps its leading
+// rows and an explicit "+N more" overflow line replaces the dropped buttons. This
+// never silently swallows a SAFETY-TIER dose reminder: the actionable buttons are
+// preserved (on the final chunk), so the send succeeds and the slot marker can be
+// set instead of the reminder refailing every hour. Counting is on the escaped
+// HTML actually sent.
+async function deliver(
+  chatId: string | number,
+  msg: NotificationMessage
+): Promise<void> {
+  const rawKeyboard = msg.actions?.length ? messageKeyboard(msg) : [];
+  const { keyboard, dropped } = capTelegramKeyboard(rawKeyboard);
+
+  // Compute the overflow note BEFORE splitting so the note is included in the
+  // limit accounting and can't push the final chunk back over the cap.
+  let html = renderMessageHtml(msg);
+  if (dropped > 0) {
+    html += `\n${esc(
+      `⚠️ +${dropped} more — open the app to act on the rest.`
+    )}`;
+  }
+
+  const chunks = splitTelegramHtml(html);
+  for (let i = 0; i < chunks.length; i++) {
+    const isLast = i === chunks.length - 1;
+    const body: Record<string, unknown> = {
+      chat_id: chatId,
+      text: chunks[i],
+      parse_mode: "HTML",
+    };
+    // The keyboard rides only the final chunk (Telegram attaches it to whichever
+    // message carries it; the last one keeps the buttons next to the tail lines).
+    if (isLast && keyboard.length > 0) {
+      body.reply_markup = { inline_keyboard: keyboard };
+    }
+    await call("sendMessage", body);
+  }
+}
+
 export const telegramChannel: NotificationChannel = {
   id: "telegram",
   isConfigured(profileId: number) {
@@ -109,15 +152,7 @@ export const telegramChannel: NotificationChannel = {
   },
   async send(profileId: number, msg: NotificationMessage) {
     const { telegramChatId } = getProfileTelegram(profileId);
-    const body: Record<string, unknown> = {
-      chat_id: telegramChatId,
-      text: renderMessageHtml(msg),
-      parse_mode: "HTML",
-    };
-    if (msg.actions?.length) {
-      body.reply_markup = { inline_keyboard: messageKeyboard(msg) };
-    }
-    await call("sendMessage", body);
+    await deliver(telegramChatId, msg);
   },
 };
 
@@ -129,15 +164,7 @@ export async function sendTelegramMessage(
   chatId: string | number,
   msg: NotificationMessage
 ): Promise<void> {
-  const body: Record<string, unknown> = {
-    chat_id: chatId,
-    text: renderMessageHtml(msg),
-    parse_mode: "HTML",
-  };
-  if (msg.actions?.length) {
-    body.reply_markup = { inline_keyboard: messageKeyboard(msg) };
-  }
-  await call("sendMessage", body);
+  await deliver(chatId, msg);
 }
 
 // ---- Webhook helpers (inbound button taps) ----

@@ -16,3 +16,28 @@
 export function slotDue(slotHour: number, currentHour: number): boolean {
   return currentHour === slotHour || currentHour === slotHour + 1;
 }
+
+// The humane waking window (profile-local hours) the non-time-critical EPISODE
+// nudges are held to (issue #378). Unlike the dose/digest/workout/recap slots,
+// the refill, preventive, and milestone nudges have no slot of their own — they
+// are evaluated on every hourly tick and would otherwise fire the instant an
+// episode becomes due: at the local-midnight date rollover (a preventive rule
+// flips "due"), or 1-3am after a late Strava/Oura sync or a late button-tap that
+// crosses a threshold. None of them is time-critical, so hold them to a waking
+// window; their once-per-episode dedup semantics are unchanged — the FIRST send
+// simply waits for a reasonable hour. Bounds are inclusive: a nudge may land from
+// WAKING_START_HOUR:00 through WAKING_END_HOUR:59 profile-local.
+export const WAKING_START_HOUR = 8;
+export const WAKING_END_HOUR = 21;
+
+// Whether the given profile-local hour (0-23) is inside the waking window. The
+// safety-tier senders (scheduled dose reminders, missed-dose escalation) are NOT
+// gated by this — a possibly-critical medication signal must not be silenced by
+// quiet hours; only the non-safety episode nudges consult it.
+export function inWakingWindow(
+  currentHour: number,
+  startHour = WAKING_START_HOUR,
+  endHour = WAKING_END_HOUR
+): boolean {
+  return currentHour >= startHour && currentHour <= endHour;
+}

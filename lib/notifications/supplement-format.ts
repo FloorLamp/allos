@@ -13,10 +13,41 @@ import {
 } from "../food-drug-interactions";
 import { FOOD_TIMING_LABELS, PRIORITY_ORDER } from "../supplement-schedule";
 import { parseRxcuiIngredients } from "../rxnorm";
-import type { Supplement, SupplementDose } from "../types";
+import type { Supplement, SupplementDose, SupplementKind } from "../types";
 import type { NotificationMessage, NotificationAction } from "./types";
 
 export type ReminderWindow = "Morning" | "Midday" | "Evening" | "Bedtime";
+
+// The noun a reminder/summary uses for its items, chosen from the ACTUAL kinds in
+// the window (#380): a medications-only profile — the archetypal elderly-parent
+// caregiver setup — must not get prescription reminders titled "supplements". Both
+// kinds present reads "supplements & meds" (matching the nav "Supplements & Meds").
+// The bare "&" is escaped by the Telegram HTML renderer at send time.
+export function intakeWindowNoun(kinds: Iterable<SupplementKind>): string {
+  let hasMed = false;
+  let hasSupp = false;
+  for (const k of kinds) {
+    if (k === "medication") hasMed = true;
+    else hasSupp = true;
+  }
+  if (hasMed && hasSupp) return "supplements & meds";
+  if (hasMed) return "medications";
+  return "supplements";
+}
+
+// The SINGULAR adjectival form of the same kinds, for a "N ___ dose(s)" phrasing
+// where the noun modifies "dose" ("3 medication doses", "1 supplement dose").
+export function intakeItemNoun(kinds: Iterable<SupplementKind>): string {
+  let hasMed = false;
+  let hasSupp = false;
+  for (const k of kinds) {
+    if (k === "medication") hasMed = true;
+    else hasSupp = true;
+  }
+  if (hasMed && hasSupp) return "supplement & med";
+  if (hasMed) return "medication";
+  return "supplement";
+}
 
 // A dose due in a window, paired with its supplement, whether it's already been
 // taken or deliberately skipped (#232) today, and its adherence over the recent
@@ -107,6 +138,11 @@ export function renderWindowMessage(
   // Resolved doses (taken or skipped) list after the pending ones; ⏭ marks a skip.
   const resolved = entries.filter((e) => e.taken || e.skipped).sort(byPriority);
 
+  // Name the items by their actual kinds so a medications-only window isn't
+  // titled "supplements" (#380). Derived from every entry in the window (taken +
+  // pending) so the noun is stable across the session's messages.
+  const noun = intakeWindowNoun(entries.map((e) => e.supp.kind));
+
   if (pending.length === 0) {
     const takenN = resolved.filter((e) => e.taken).length;
     const skippedN = resolved.length - takenN;
@@ -115,8 +151,8 @@ export function renderWindowMessage(
     // else a taken/skipped breakdown so a skip isn't misread as a take.
     const title =
       skippedN === 0
-        ? `💊 ${window} supplements — all ${takenN} taken ✅`
-        : `💊 ${window} supplements — ${takenN} taken · ${skippedN} skipped`;
+        ? `💊 ${window} ${noun} — all ${takenN} taken ✅`
+        : `💊 ${window} ${noun} — ${takenN} taken · ${skippedN} skipped`;
     return { title, body };
   }
 
@@ -150,5 +186,5 @@ export function renderWindowMessage(
       row,
     });
   }
-  return { title: `💊 ${window} supplements`, body, actions, kind: "dose" };
+  return { title: `💊 ${window} ${noun}`, body, actions, kind: "dose" };
 }

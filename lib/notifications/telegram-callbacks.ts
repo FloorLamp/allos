@@ -441,7 +441,10 @@ async function handleAllTaken(
       ? "Not logged — this reminder is out of date. Open the app."
       : logged > 0
         ? "All logged ✅"
-        : "Logged ✅"
+        : // Everything due was already resolved (e.g. two caregivers race-tapping
+          // ✅ All) — nothing was inserted, so don't claim "Logged ✅" (#280
+          // outcome-honesty; #380).
+          "Already logged ✓"
   );
 
   const messageId = cq.message?.message_id;
