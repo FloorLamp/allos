@@ -8,7 +8,11 @@ import { db } from "../../db";
 import { formatLongDate } from "../../format-date";
 import type { SetStatus } from "../../journal-format";
 import { judgeTargets, summarizeExercise } from "../../journal-format";
-import { isBodyweight } from "../../lifts";
+import {
+  classifyBodyweightByExercise,
+  isBodyweight,
+  resolveBodyweightKind,
+} from "../../lifts";
 import type { WeightUnit } from "../../settings";
 import { estimate1RM } from "../../strength";
 import { cache, loadWeightsAsc, recentWindowStart } from "./common";
@@ -44,10 +48,10 @@ export interface RecentSession {
 // One exercise's recent history for the activity editor.
 export interface ExerciseHistory {
   // Body is (part of) the load: a catalog bodyweight lift, or an exercise
-  // never logged with an external weight anywhere in its history. Resolved
-  // here (over ALL rows, not just the shipped sessions) so the editor's
-  // next-set suggestion classifies exactly like getStrengthByExercise and the
-  // exercise detail panel.
+  // never logged with an external weight anywhere in its history. Sourced from
+  // getExerciseBodyweightMap (resolved over ALL history, not just this window's
+  // shipped sessions) so the editor's next-set suggestion classifies exactly
+  // like getStrengthByExercise and the exercise detail panel (#331).
   bodyweight: boolean;
   // Most recent sessions, newest first.
   sessions: RecentSession[];
@@ -56,12 +60,41 @@ export interface ExerciseHistory {
 // exercise name (lowercased) -> history
 export type ExerciseHistoryMap = Record<string, ExerciseHistory>;
 
+// Authoritative bodyweight KIND per exercise, resolved over ALL history (not a
+// recent slice), keyed by `exercise.trim().toLowerCase()`. Both strength builders
+// classify through this so a lift last loaded with external weight >12 months ago
+// and bodyweight-only since gets ONE suggestion kind on every surface — the detail
+// panel/coaching and the editor chip can't disagree (#331). Mirrors
+// getStrengthByExercise's row filter (rep-bearing sets) so the shared classifier
+// sees exactly the sets that builder counts; a lift with no rep-bearing set in all
+// history is simply absent, and callers fall back to a name-only classification.
+// cache(): one cheap grouped scan per profile per request.
+export const getExerciseBodyweightMap = cache(function getExerciseBodyweightMap(
+  profileId: number
+): Map<string, boolean> {
+  const rows = db
+    .prepare(
+      `SELECT s.exercise AS exercise,
+              MAX(CASE WHEN s.weight_kg IS NOT NULL OR s.weight_kg_right IS NOT NULL
+                       THEN 1 ELSE 0 END) AS saw
+         FROM exercise_sets s JOIN activities a ON a.id = s.activity_id
+        WHERE a.profile_id = ?
+          AND (s.reps IS NOT NULL OR s.reps_right IS NOT NULL)
+        GROUP BY LOWER(TRIM(s.exercise))`
+    )
+    .all(profileId) as { exercise: string; saw: number }[];
+  return classifyBodyweightByExercise(
+    rows.map((r) => ({ exercise: r.exercise, hasExternalWeight: r.saw === 1 }))
+  );
+});
+
 // cache(): resolved on every app navigation (the layout's activity editor) and
 // again via getRecentByExercise on the journal/strength pages. cache() dedupes to
 // one scan per (profile, perExercise) per request. The scan is bounded to the
 // recent window — the editor only needs the last few sessions, so a session older
-// than 12 months is never shown (and the bodyweight classification below is
-// resolved over that same window rather than all-time).
+// than 12 months is never shown. The bodyweight KIND, however, is resolved over
+// ALL history via getExerciseBodyweightMap, so the editor chip classifies exactly
+// like getStrengthByExercise and the detail panel (#331).
 export const getRecentExerciseHistory = cache(function getRecentExerciseHistory(
   profileId: number,
   perExercise = 3
@@ -98,7 +131,10 @@ export const getRecentExerciseHistory = cache(function getRecentExerciseHistory(
   type AccumSession = Omit<RecentSession, "status">;
   interface AccumExercise {
     addBodyweight: boolean; // catalog bodyweight lift
-    sawExternalWeight: boolean; // any set in the recent window logged a weight
+    // Window-local external-weight sighting, used ONLY as a fallback classifier
+    // for an exercise absent from the all-history bodyweight map (one with no
+    // rep-bearing set anywhere); the shipped flag prefers the map (#331).
+    sawExternalWeight: boolean;
     sessions: AccumSession[];
   }
   const acc = new Map<string, AccumExercise>();
@@ -113,9 +149,8 @@ export const getRecentExerciseHistory = cache(function getRecentExerciseHistory(
       };
       acc.set(key, e);
     }
-    // Tracked across every row in the window — including sessions past the cap
-    // below — so the resolved bodyweight flag reflects all recent history, not
-    // just the shipped sessions.
+    // Fallback-only sighting (see AccumExercise.sawExternalWeight): the shipped
+    // KIND comes from the all-history map below.
     if (r.weight_kg != null || r.weight_kg_right != null)
       e.sawExternalWeight = true;
     let last = e.sessions[e.sessions.length - 1];
@@ -144,10 +179,18 @@ export const getRecentExerciseHistory = cache(function getRecentExerciseHistory(
     });
   }
 
+  // Authoritative all-history classification (#331). An exercise present here but
+  // absent from the map has no rep-bearing set in all history — fall back to its
+  // window-local sighting so the classifier still answers.
+  const bwMap = getExerciseBodyweightMap(profileId);
   const out: ExerciseHistoryMap = {};
   for (const [key, e] of acc) {
     out[key] = {
-      bodyweight: e.addBodyweight || !e.sawExternalWeight,
+      // `key` is the lowercased/trimmed name; isBodyweight (via liftInfo) is
+      // case-insensitive, so it classifies the fallback correctly.
+      bodyweight: bwMap.has(key)
+        ? bwMap.get(key)!
+        : resolveBodyweightKind(key, e.sawExternalWeight),
       sessions: e.sessions.map((sess) => ({
         ...sess,
         status: judgeTargets(sess.sets),
@@ -612,9 +655,12 @@ export const getStrengthByExercise = cache(function getStrengthByExercise(
   return [...map.values()]
     .map((c) => {
       // Show "BW" for catalog bodyweight lifts, and for any exercise logged with
-      // no weight at all. The chart falls back to reps only when there's no
-      // usable load (bodyweight unknown), since weight×reps would be flat zero.
-      const bodyweight = c.addBodyweight || !c.sawExternalWeight;
+      // no weight at all. Routed through the shared classifier over this all-history
+      // sawExternalWeight so the editor's getRecentExerciseHistory (which reads the
+      // same all-history map) can't disagree about the suggestion KIND (#331). The
+      // chart falls back to reps only when there's no usable load (bodyweight
+      // unknown), since weight×reps would be flat zero.
+      const bodyweight = resolveBodyweightKind(c.exercise, c.sawExternalWeight);
       const volumeIsReps = bodyweight && c.topWeightKg === 0;
       return {
         exercise: c.exercise,
