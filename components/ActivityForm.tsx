@@ -71,6 +71,12 @@ import {
 import CustomTypeChips from "./activity-form/CustomTypeChips";
 import CardioFields from "./activity-form/CardioFields";
 import StrengthSets from "./activity-form/StrengthSets";
+import ActivityEquipmentPicker from "./activity-form/ActivityEquipmentPicker";
+import {
+  equipmentForActivityType,
+  pickDefaultActivityEquipment,
+  usesActivityEquipment,
+} from "@/lib/activity-equipment";
 import ActivityProvenance from "@/components/ActivityProvenance";
 import { activityProvenanceLabel } from "@/lib/journal-format";
 import { estimateActivityKcal } from "@/lib/calorie-estimate";
@@ -89,6 +95,7 @@ export default function ActivityForm({
   suggestions,
   history,
   equipment,
+  lastActivityEquipment = {},
   bodyweightKg,
   editData,
   prefill = null,
@@ -99,6 +106,9 @@ export default function ActivityForm({
   suggestions: ActivitySuggestions;
   history: ExerciseHistoryMap;
   equipment: Equipment[];
+  // Last-used session gear per activity type (issue #342) — defaults the
+  // activity-level equipment picker on a new non-strength log.
+  lastActivityEquipment?: Partial<Record<ActivityType, number>>;
   bodyweightKg: number | null;
   editData: ActivityEditData | null;
   // "Log again" / "Repeat last" seed (issue #29): pre-fills the form's initial
@@ -176,6 +186,17 @@ export default function ActivityForm({
     si: number;
     field: "weight" | "weightRight";
   } | null>(null);
+
+  // Session-level equipment link (issue #342): the gear the WHOLE activity used —
+  // a ride's bike, a run's shoes — distinct from the per-set strength implement.
+  // Seeded from a stored/edited (or prefilled) row; on a fresh non-strength log it
+  // auto-defaults to the last-used gear for that type (the effect below), mirroring
+  // the strength picker's recency. `equipmentTouchedRef` records an explicit user
+  // choice so the auto-default never overrides it (incl. an intentional "None").
+  const [activityEquipmentId, setActivityEquipmentId] = useState<number | null>(
+    seed?.equipment_id ?? null
+  );
+  const equipmentTouchedRef = useRef(false);
 
   // Lazy initializers: the fallbacks format dates, no need to redo that work on
   // every render just to discard it.
@@ -285,6 +306,32 @@ export default function ActivityForm({
   });
   const { namedParts, timeError, canSave, canAddPart } = analysis;
   const partIssue = analysis.partFault;
+
+  // The activity-level equipment picker (issue #342) applies only to NON-strength
+  // sessions (strength gear is per-set). Its filter type is the first non-strength
+  // named part's type — a bike/shoes picker for a ride/run, generic gear for sports.
+  // A pure-strength activity has none, so the picker is hidden and no link is saved.
+  const sessionEquipmentType: ActivityType | null =
+    namedParts
+      .map((p) => partType(p))
+      .find((t): t is ActivityType => t != null && usesActivityEquipment(t)) ??
+    null;
+  // Recency default: on a fresh non-strength log (never on an edit), seed the picker
+  // with the last-used gear for its type — but only while the user hasn't chosen and
+  // only when that gear is still a valid option (pickDefaultActivityEquipment).
+  useEffect(() => {
+    if (editData) return;
+    if (equipmentTouchedRef.current || sessionEquipmentType == null) return;
+    const candidates = equipmentForActivityType(
+      equipmentList,
+      sessionEquipmentType
+    );
+    const def = pickDefaultActivityEquipment(
+      candidates,
+      lastActivityEquipment[sessionEquipmentType]
+    );
+    if (def != null) setActivityEquipmentId((cur) => cur ?? def);
+  }, [editData, sessionEquipmentType, equipmentList, lastActivityEquipment]);
 
   const liveTitle = generateActivityTitle(startTime, namedParts, classifier);
   // The name actually saved/shown: the user's title, else the generated one.
@@ -596,6 +643,12 @@ export default function ActivityForm({
     // Estimated calories (issue #151): submit whatever's in the field (auto or
     // overridden). A blank field is omitted, which clears any stored estimate.
     if (estCalories.trim()) fd.set("est_calories", estCalories.trim());
+    // Session-level equipment (issue #342): sent only for a non-strength session
+    // where a piece of gear is linked. Omitting it clears the link server-side (the
+    // UPDATE always writes the column) — so switching a session to None, or to pure
+    // strength, drops the stored gear rather than stranding it.
+    if (sessionEquipmentType != null && activityEquipmentId != null)
+      fd.set("equipment_id", String(activityEquipmentId));
     return fd;
   }
 
@@ -611,6 +664,7 @@ export default function ActivityForm({
         parts,
         title: effectiveTitle,
         estCalories,
+        activityEquipmentId,
       }),
     [
       date,
@@ -621,6 +675,7 @@ export default function ActivityForm({
       parts,
       effectiveTitle,
       estCalories,
+      activityEquipmentId,
     ]
   );
   // The state we last persisted (or loaded). Starts equal to the initial state
@@ -1118,6 +1173,22 @@ export default function ActivityForm({
           })}
         </div>
       </div>
+
+      {/* Session-level equipment (issue #342): the gear the whole non-strength
+          activity used — a ride's bike, a run's shoes. Hidden for pure-strength
+          sessions (gear is per-set there) and when the profile owns no fitting
+          gear. Reusable across every non-strength surface (#339/#344). */}
+      {sessionEquipmentType != null && (
+        <ActivityEquipmentPicker
+          activityType={sessionEquipmentType}
+          equipment={equipmentList}
+          value={activityEquipmentId}
+          onChange={(id) => {
+            equipmentTouchedRef.current = true;
+            setActivityEquipmentId(id);
+          }}
+        />
+      )}
 
       {/* Estimated calories (issue #151). Auto-filled from the MET dataset × this
           profile's bodyweight × duration, and editable — the user can override it.

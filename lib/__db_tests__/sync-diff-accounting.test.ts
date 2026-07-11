@@ -108,6 +108,48 @@ describe("upsert accounting: inserted → unchanged → updated", () => {
     expect(stored.title).toBe("My edited ride");
   });
 
+  it("upsertActivities never clobbers a hand-set activity equipment link (#342)", () => {
+    const bikeId = Number(
+      db
+        .prepare(
+          "INSERT INTO equipment (profile_id, name, category) VALUES (?, 'Sync Bike', 'Bike')"
+        )
+        .run(profileId).lastInsertRowid
+    );
+    const rows: NormActivity[] = [
+      {
+        external_id: "hc:act:gear",
+        date: "2024-06-01",
+        type: "cardio" as const,
+        title: "Ride",
+        duration_min: 40,
+        distance_km: 12,
+        start_time: null,
+        end_time: null,
+      },
+    ];
+    expect(upsertActivities(profileId, rows, SOURCE).inserted).toBe(1);
+    // The user links gear via the app but does NOT otherwise edit the row — proving
+    // equipment_id is outside the sync footprint even on the live UPDATE path (not
+    // just protected by the edited lock).
+    db.prepare(
+      "UPDATE activities SET equipment_id = ? WHERE profile_id = ? AND external_id = ?"
+    ).run(bikeId, profileId, "hc:act:gear");
+    // A genuine metric change forces the UPDATE branch; it must leave equipment_id.
+    const changed = [{ ...rows[0], distance_km: 13 }];
+    expect(upsertActivities(profileId, changed, SOURCE).updated).toBe(1);
+    const stored = db
+      .prepare(
+        "SELECT equipment_id, distance_km FROM activities WHERE profile_id = ? AND external_id = ?"
+      )
+      .get(profileId, "hc:act:gear") as {
+      equipment_id: number | null;
+      distance_km: number;
+    };
+    expect(stored.equipment_id).toBe(bikeId); // gear survived the re-sync UPDATE
+    expect(stored.distance_km).toBe(13); // the metric change did apply
+  });
+
   it("upsertBodyMetrics", () => {
     const rows: NormBodyMetric[] = [
       { date: "2024-05-03", weight_kg: 80, body_fat_pct: 18, resting_hr: 55 },

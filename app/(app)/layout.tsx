@@ -19,6 +19,7 @@ import {
   getRecentExerciseHistory,
   getLatestBodyMetric,
   getImportReviewCount,
+  getLastActivityEquipmentByType,
 } from "@/lib/queries";
 import { getTimelineDates } from "@/lib/timeline";
 
@@ -48,6 +49,9 @@ export default async function AppLayout({
   // logged (which auto-save inserts into its own history) and still shows 3.
   const exerciseHistory = getRecentExerciseHistory(profile.id, 4);
   const equipment = getEquipment(profile.id);
+  // Last-used session gear per activity type (issue #342) — defaults the activity
+  // form's equipment picker on a new non-strength log.
+  const lastActivityEquipment = getLastActivityEquipmentByType(profile.id);
   const bodyweightKg = getLatestBodyMetric(profile.id, "weight");
   const version = getAppVersion();
   // Gates any admin-only nav entries in both surfaces.
@@ -73,6 +77,7 @@ export default async function AppLayout({
               suggestions={suggestions}
               history={exerciseHistory}
               equipment={equipment}
+              lastActivityEquipment={lastActivityEquipment}
               bodyweightKg={bodyweightKg}
             >
               <div className="flex min-h-screen">

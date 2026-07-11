@@ -107,16 +107,22 @@ export function setEquipmentRetired(
   ).run(retired ? 1 : 0, id, profileId);
 }
 
-// Delete an equipment row, first detaching it from any logged sets so their
-// history survives (the column has no FK action, so this is done in code). Both
-// the detach and the delete are scoped to the profile so a leaked id can't reach
-// another profile's rows.
+// Delete an equipment row, first detaching it from any row that links to it so
+// their history survives (the columns have no FK ON DELETE action, so this is done
+// in code — #342 adds the second table). Equipment is gear at BOTH levels: the
+// per-set strength implement (exercise_sets.equipment_id) and the session-level
+// activity link (activities.equipment_id). Every detach and the delete are scoped
+// to the profile so a leaked id can't reach another profile's rows.
 export function deleteEquipment(profileId: number, id: number): void {
   const tx = db.transaction(() => {
     db.prepare(
       `UPDATE exercise_sets SET equipment_id = NULL
         WHERE equipment_id = ?
           AND activity_id IN (SELECT id FROM activities WHERE profile_id = ?)`
+    ).run(id, profileId);
+    db.prepare(
+      `UPDATE activities SET equipment_id = NULL
+        WHERE equipment_id = ? AND profile_id = ?`
     ).run(id, profileId);
     db.prepare("DELETE FROM equipment WHERE id = ? AND profile_id = ?").run(
       id,

@@ -10,7 +10,7 @@ import { decayedWeight } from "../../decay";
 import { LIFT_OPTIONS, baseLiftName } from "../../lifts";
 import { rankByFrequency } from "../../rank-by-frequency";
 import { currentStreak } from "../../streak";
-import type { Activity, ExerciseSet } from "../../types";
+import type { Activity, ActivityType, ExerciseSet } from "../../types";
 import { getLatestBodyMetricDated } from "../metrics";
 import {
   cache,
@@ -108,6 +108,26 @@ export function getActivities(profileId: number, limit?: number): Activity[] {
       "SELECT * FROM activities WHERE profile_id = ? ORDER BY date DESC, id DESC LIMIT ?"
     )
     .all(profileId, limit) as Activity[];
+}
+
+// The most recently linked session gear per activity type (issue #342), used to
+// DEFAULT the activity-level equipment picker on a new log — the same "last-used"
+// convenience the strength implement picker has. Reads the newest activity of each
+// type that carries an equipment_id; returns { cardio: 5, sport: 8, ... } (types
+// with no linked gear are absent). Profile-scoped.
+export function getLastActivityEquipmentByType(
+  profileId: number
+): Partial<Record<ActivityType, number>> {
+  const rows = db
+    .prepare(
+      `SELECT type, equipment_id FROM activities
+        WHERE profile_id = ? AND equipment_id IS NOT NULL
+        ORDER BY date DESC, id DESC`
+    )
+    .all(profileId) as { type: ActivityType; equipment_id: number }[];
+  const out: Partial<Record<ActivityType, number>> = {};
+  for (const r of rows) if (!(r.type in out)) out[r.type] = r.equipment_id;
+  return out;
 }
 
 export interface JournalWeekSummary {

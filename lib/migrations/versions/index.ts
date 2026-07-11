@@ -17,6 +17,7 @@ import { migration as m015 } from "./015-import-job-committing-state";
 import { migration as m016 } from "./016-goal-status-drop-archived";
 import { migration as m017 } from "./017-equipment-retire";
 import { migration as m018 } from "./018-equipment-category-enum";
+import { migration as m019 } from "./019-activity-equipment";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
 // CONTRACT: a migration's position (1-based) must equal its `id`, and the runner
@@ -43,4 +44,5 @@ export const MIGRATIONS: Migration[] = [
   m016,
   m017,
   m018,
+  m019,
 ];

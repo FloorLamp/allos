@@ -330,6 +330,49 @@ describe("mergeActivities", () => {
     expect(getPairDecisions(profile.id, ACTIVITY_DOMAIN).size).toBe(0);
   });
 
+  // Issue #342: the session-level equipment link folds keeper-wins and undo reverts
+  // it — a gap on the keeper is filled from the drop, and undo restores the keeper's
+  // pre-fold gear so nothing lingers on the wrong side.
+  it("folds equipment_id keeper-wins and undo reverts it (#342)", async () => {
+    const login = createLogin();
+    const profile = createProfile("merge-gear", login.id);
+    actAs(login, profile);
+
+    const bikeId = Number(
+      db
+        .prepare(
+          `INSERT INTO equipment (profile_id, name, category) VALUES (?, 'Keeper Bike', 'Bike')`
+        )
+        .run(profile.id).lastInsertRowid
+    );
+
+    // Keeper has NO gear; the drop supplies a bike. Same day so the merge proceeds.
+    const keepId = insertActivity(profile.id, { title: "Ride A" });
+    const dropId = insertActivity(profile.id, { title: "Ride B" });
+    db.prepare("UPDATE activities SET equipment_id = ? WHERE id = ?").run(
+      bikeId,
+      dropId
+    );
+
+    const { undoId } = await mergeActivities(
+      fd({ keep_id: keepId, drop_id: dropId })
+    );
+    // The keeper's gap was filled from the drop.
+    expect(activityRow(keepId)!.equipment_id).toBe(bikeId);
+
+    // Undo restores the keeper's pre-fold state — the gear is off the keeper again,
+    // and the restored drop carries it.
+    const { ok } = await undoDelete(undoId!);
+    expect(ok).toBe(true);
+    expect(activityRow(keepId)!.equipment_id).toBeNull();
+    const restored = db
+      .prepare(
+        "SELECT equipment_id FROM activities WHERE profile_id = ? AND title = 'Ride B'"
+      )
+      .get(profile.id) as { equipment_id: number | null };
+    expect(restored.equipment_id).toBe(bikeId);
+  });
+
   it("refuses a cross-day pair (no-op)", async () => {
     const login = createLogin();
     const profile = createProfile("merge-crossday", login.id);

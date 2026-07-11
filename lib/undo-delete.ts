@@ -125,7 +125,19 @@ export const UNDO_KINDS: Record<string, KindSpec> = {
     kind: "activity",
     ownedTable: "activities",
     entities: [
-      { entity: "activity", table: "activities", fks: [] },
+      {
+        entity: "activity",
+        table: "activities",
+        fks: [],
+        // The session-level gear link (activities.equipment_id, #342) points at an
+        // equipment row OUTSIDE this capture. If that equipment was deleted after the
+        // activity was captured (deleteEquipment nulls only LIVE activities, so this
+        // captured row kept its equipment_id), null it on restore rather than
+        // re-inserting a dangling FK (#202) — same treatment as the per-set link.
+        externalRefs: [
+          { column: "equipment_id", table: "equipment", onMissing: "null" },
+        ],
+      },
       {
         entity: "sets",
         table: "exercise_sets",

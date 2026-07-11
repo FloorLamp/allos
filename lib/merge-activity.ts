@@ -44,6 +44,14 @@ export function writeActivityFold(
   overrideFields: Iterable<string> = []
 ): void {
   const f = foldActivityFieldsWithOverrides(keep, drop, overrideFields);
+  // Session-level equipment link (#342): keeper-wins COALESCE like the fold fields —
+  // the keeper's gear stands, and the discarded row only fills a gap. Handled
+  // explicitly (not via ACTIVITY_FOLD_FIELDS) so the link stays out of the fold's
+  // richness scoring and conflict-preview UI, which are for measurement gap-fill.
+  const foldedEquipmentId =
+    (keep.equipment_id as number | null | undefined) ??
+    (drop.equipment_id as number | null | undefined) ??
+    null;
   // Re-parent the discarded row's sets onto the keeper (#199). exercise_sets is a
   // child table (no profile_id of its own); the caller has already verified both
   // activities belong to the acting profile, so scoping by activity_id is sufficient
@@ -62,6 +70,7 @@ export function writeActivityFold(
             max_speed_kmh = ?, relative_effort = ?, avg_power_w = ?,
             max_power_w = ?, weighted_avg_power_w = ?, avg_cadence = ?,
             avg_temp_c = ?, kilojoules = ?, workout_type = ?,
+            equipment_id = ?,
             edited = 1
       WHERE id = ? AND profile_id = ?`
   ).run(
@@ -85,6 +94,7 @@ export function writeActivityFold(
     f.avg_temp_c,
     f.kilojoules,
     f.workout_type,
+    foldedEquipmentId,
     keepId,
     profileId
   );
@@ -101,6 +111,9 @@ export function snapshotKeeperFold(
   const snap: Record<string, unknown> = {};
   for (const f of ACTIVITY_FOLD_FIELDS) snap[f] = keep[f] ?? null;
   snap.edited = keep.edited ?? 0;
+  // Session-level equipment link (#342): captured alongside the fold fields so undo
+  // restores the keeper's pre-fold gear, undoing any gap-fill the merge applied.
+  snap.equipment_id = keep.equipment_id ?? null;
   return snap;
 }
 
@@ -147,6 +160,7 @@ export function revertActivityMerge(
             max_speed_kmh = ?, relative_effort = ?, avg_power_w = ?,
             max_power_w = ?, weighted_avg_power_w = ?, avg_cadence = ?,
             avg_temp_c = ?, kilojoules = ?, workout_type = ?,
+            equipment_id = ?,
             edited = ?
       WHERE id = ? AND profile_id = ?`
   ).run(
@@ -170,6 +184,7 @@ export function revertActivityMerge(
     before.avg_temp_c ?? null,
     before.kilojoules ?? null,
     before.workout_type ?? null,
+    before.equipment_id ?? null,
     before.edited ?? 0,
     merge.keeperId,
     profileId

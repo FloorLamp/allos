@@ -21,6 +21,7 @@ export default function JournalCard({
   distanceText,
   speedText,
   metrics = [],
+  gear = null,
   parts,
   fault,
   provenance,
@@ -38,6 +39,8 @@ export default function JournalCard({
   speedText: string | null;
   // Compact chips for richer imported metrics (HR, elevation, power, etc.).
   metrics?: string[];
+  // Session-level gear name (issue #342), e.g. a ride's bike; null when unlinked.
+  gear?: string | null;
   parts: DisplayPart[];
   // Why this row can't be re-saved by the editor as-is (imports, legacy
   // data), or null. Required so a new render site can't silently drop the
@@ -100,8 +103,17 @@ export default function JournalCard({
               {distanceText && <span>{distanceText}</span>}
               {speedText && <span>{speedText}</span>}
             </div>
-            {metrics.length > 0 && (
+            {(metrics.length > 0 || gear) && (
               <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {gear && (
+                  <span
+                    data-testid="activity-gear"
+                    className="badge bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300"
+                    title="Equipment used"
+                  >
+                    🚲 {gear}
+                  </span>
+                )}
                 {metrics.map((m, i) => (
                   <span
                     key={i}
