@@ -82,6 +82,14 @@ export interface ImportedRecord {
   // empty it falls back to that single ensure-course. Other record categories
   // leave it unset.
   courses?: ImportedMedicationCourse[] | null;
+  // Structured medication attribution, set ONLY on prescription records by the
+  // CCD/FHIR importers (FHIR requester / dispenseRequest.performer / identifier;
+  // CCD med <author> + <supply>). Threaded into the auto-structured intake_items
+  // row's prescriber / pharmacy / rx_number columns so an imported med carries the
+  // source's own attribution instead of always NULL (#417).
+  prescriber?: string | null;
+  pharmacy?: string | null;
+  rxNumber?: string | null;
 }
 
 // An allergy / intolerance pulled from a CCD Allergies section. Substance

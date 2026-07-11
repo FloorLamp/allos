@@ -46,6 +46,18 @@ const NAME_STRENGTH_RE =
 const NAME_FORM_TAIL_RE =
   /\s+(tablets?|tabs?|capsules?|caps?|pills?|softgels?|lozenges?|patches?|sprays?|drops?|solution|suspension|injection|cream|ointment|gel|elixir|syrup)\b.*$/i;
 
+// Does a string carry any scheduling signal — a frequency token, an "every N
+// hours" interval, or a PRN marker? A dose-shaped `value` that ALSO carries one
+// of these (e.g. a CCD/FHIR sig "Take 1 tablet by mouth daily") is DIRECTIONS,
+// not a bare strength, so it must be routed to the sig (where the schedule is
+// inferred) rather than swallowed whole as the strength (#417).
+export function looksLikeSig(text: string | null | undefined): boolean {
+  if (!text) return false;
+  return (
+    PRN_RE.test(text) || EVERY_HOURS_RE.test(text) || hasFrequencyToken(text)
+  );
+}
+
 // A frequency/timing token that makes a sig schedulable. Its ABSENCE (together
 // with no interval and no PRN marker) is what flags a sig as unparseable, so we
 // don't invent a daily schedule.
@@ -217,6 +229,14 @@ export interface PrescriptionRecordInput {
   value?: string | null;
   unit?: string | null;
   notes?: string | null;
+  // Structured attribution the CCD/FHIR mappers resolve directly from the source
+  // (FHIR requester / dispenseRequest.performer / identifier; CCD med author +
+  // <supply>). When present these WIN over the free-text scraping below, so an
+  // imported medication carries the pharmacy's own attribution rather than always
+  // NULL (#417). Absent on the AI path, which has no structured slots.
+  prescriber?: string | null;
+  pharmacy?: string | null;
+  rxNumber?: string | null;
 }
 
 export interface ParsedPrescription {
@@ -258,14 +278,22 @@ export function parsePrescription(
       ? `${value} ${unit}`
       : value
     : null;
+  // A `value` that carries a scheduling signal (a CCD/FHIR sig like "Take 1
+  // tablet by mouth daily") is DIRECTIONS, not a bare strength — route it to the
+  // sig so its frequency is inferred, and never swallow the whole sentence as the
+  // strength (#417).
+  const valueIsSig = looksLikeSig(value);
   const explicitStrength =
-    valueWithUnit && looksLikeDose(valueWithUnit) ? valueWithUnit : null;
+    valueWithUnit && !valueIsSig && looksLikeDose(valueWithUnit)
+      ? valueWithUnit
+      : null;
 
-  // Sig: free-text directions. A dose-shaped value is a strength, not a sig, so
-  // it's excluded; notes and a non-dose value are joined into the sig text.
+  // Sig: free-text directions. A dose-shaped value with no schedule signal is a
+  // strength, not a sig, so it's excluded; notes, a non-dose value, and a
+  // schedule-bearing value are joined into the sig text.
   const sigParts: string[] = [];
   if (notes) sigParts.push(notes);
-  if (value && !looksLikeDose(value)) sigParts.push(value);
+  if (value && (valueIsSig || !looksLikeDose(value))) sigParts.push(value);
   const sig = sigParts.join("; ") || null;
 
   const parsed = parseSig(sig);
@@ -274,15 +302,22 @@ export function parsePrescription(
 
   const provText = [notes, value].filter(Boolean).join("; ");
 
+  // Structured attribution from the mapper wins; the free-text scrape is only the
+  // fallback for a source that carried the fields inside a note (#417).
+  const structuredPrescriber = rec.prescriber?.trim() || null;
+  const structuredPharmacy = rec.pharmacy?.trim() || null;
+  const structuredRxNumber = rec.rxNumber?.trim() || null;
+
   return {
     name: cleanMedicationName(rawName),
     strength,
     asNeeded: parsed.asNeeded,
     timesPerDay: parsed.timesPerDay,
     timeBuckets: parsed.timeBuckets,
-    prescriber: provText ? prescriberFrom(provText) : null,
-    pharmacy: provText ? pharmacyFrom(provText) : null,
-    rxNumber: provText ? rxNumberFrom(provText) : null,
+    prescriber:
+      structuredPrescriber ?? (provText ? prescriberFrom(provText) : null),
+    pharmacy: structuredPharmacy ?? (provText ? pharmacyFrom(provText) : null),
+    rxNumber: structuredRxNumber ?? (provText ? rxNumberFrom(provText) : null),
     sig,
   };
 }

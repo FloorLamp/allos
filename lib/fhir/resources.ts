@@ -304,6 +304,21 @@ function fhirMedStatusNote(r: any): string | null {
   return null;
 }
 
+// The first non-empty Identifier.value on a resource — used for a prescription's
+// Rx number (MedicationRequest.identifier). Accepts an array or a single object.
+function firstIdentifierValue(identifier: any): string | null {
+  const list = Array.isArray(identifier)
+    ? identifier
+    : identifier != null
+      ? [identifier]
+      : [];
+  for (const id of list) {
+    if (typeof id?.value === "string" && id.value.trim())
+      return id.value.trim();
+  }
+  return null;
+}
+
 export function mapMedicationResource(
   r: any,
   ctx: FhirBundleCtx
@@ -347,6 +362,21 @@ export function mapMedicationResource(
     { note: fhirMedStatusNote(r), fallbackStopDate: date }
   );
   if (courses === null) return null;
+  // Structured attribution (#417): the ordering clinician (requester), the
+  // dispensing pharmacy (dispenseRequest.performer), and the prescription's Rx
+  // number (identifier). providerFromRefs resolves a referenced Practitioner/
+  // Organization or a bare display string.
+  const prescriber =
+    providerFromRefs(r?.requester, ctx, r?.contained, "individual")?.name ??
+    null;
+  const pharmacy =
+    providerFromRefs(
+      r?.dispenseRequest?.performer,
+      ctx,
+      r?.contained,
+      "organization"
+    )?.name ?? null;
+  const rxNumber = firstIdentifierValue(r?.identifier);
   return {
     category: "prescription",
     name: drug,
@@ -357,6 +387,9 @@ export function mapMedicationResource(
     date,
     external_id: medicationExternalId({ name: drug, code, date }),
     courses,
+    prescriber,
+    pharmacy,
+    rxNumber,
   };
 }
 

@@ -221,6 +221,39 @@ describe("FHIR MedicationRequest / MedicationStatement → medication record", (
     expect(m.external_id).toBe("ccda:rx:314076:2023-01-04");
   });
 
+  it("captures prescriber (requester), pharmacy (dispenseRequest.performer), and Rx number (identifier) — #417", () => {
+    const r = parseFhirBundle(
+      bundle([
+        {
+          resourceType: "MedicationRequest",
+          status: "active",
+          authoredOn: "2023-02-01",
+          identifier: [{ system: "urn:rx", value: "RX-555017" }],
+          medicationCodeableConcept: {
+            text: "Metformin 500 MG Oral Tablet",
+            coding: [
+              {
+                system: "http://www.nlm.nih.gov/research/umls/rxnorm",
+                code: "860975",
+              },
+            ],
+          },
+          requester: { display: "Dr. Ada Prescriber" },
+          dispenseRequest: { performer: { display: "Test Pharmacy #12" } },
+          dosageInstruction: [{ text: "Take 1 tablet by mouth twice daily" }],
+        },
+      ])
+    );
+    expect(r.records).toHaveLength(1);
+    expect(r.records[0]).toMatchObject({
+      category: "prescription",
+      name: "Metformin 500 MG Oral Tablet",
+      prescriber: "Dr. Ada Prescriber",
+      pharmacy: "Test Pharmacy #12",
+      rxNumber: "RX-555017",
+    });
+  });
+
   it("resolves a contained medicationReference (MedicationStatement)", () => {
     const r = parseFhirBundle(
       bundle([

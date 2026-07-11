@@ -201,4 +201,56 @@ describe("parsePrescription — full record → structured med", () => {
     expect(p.asNeeded).toBe(false);
     expect(p.strength).toBe("500 mg");
   });
+
+  it("schedules a dose-bearing sig carried in `value` (the CCD/FHIR field) — #417", () => {
+    // FHIR keeps dosageInstruction.text in `value`; the CCD path now does too.
+    // "Take 1 tablet by mouth daily" is dose-SHAPED (has "1 tablet") but carries a
+    // frequency, so it must be read as DIRECTIONS (scheduled daily) rather than
+    // swallowed whole as the strength. Strength still comes from the name.
+    const p = parsePrescription({
+      name: "Lisinopril 10 mg Oral Tablet",
+      value: "Take 1 tablet by mouth daily",
+      unit: null,
+      notes: null,
+    });
+    expect(p.name).toBe("Lisinopril");
+    expect(p.asNeeded).toBe(false);
+    expect(p.timesPerDay).toBe(1);
+    expect(p.strength).toBe("10 mg");
+    // The whole sentence never becomes the strength.
+    expect(p.strength).not.toContain("Take");
+  });
+
+  it("prefers structured attribution over the free-text scrape — #417", () => {
+    // The CCD/FHIR mappers resolve prescriber/pharmacy/Rx directly; those WIN over
+    // whatever a note happens to say, so the pharmacy's own record is authoritative.
+    const p = parsePrescription({
+      name: "Atorvastatin 20 mg",
+      value: "Take 1 tablet at bedtime",
+      unit: null,
+      notes: "Prescriber: Dr. Note Fallback",
+      prescriber: "Dr. Ada Prescriber",
+      pharmacy: "Test Pharmacy #12",
+      rxNumber: "RX-555012",
+    });
+    expect(p.prescriber).toBe("Dr. Ada Prescriber");
+    expect(p.pharmacy).toBe("Test Pharmacy #12");
+    expect(p.rxNumber).toBe("RX-555012");
+    expect(p.timesPerDay).toBe(1);
+    expect(p.timeBuckets).toEqual(["Before sleep"]);
+  });
+
+  it("falls back to scraping a note when no structured attribution is given", () => {
+    const p = parsePrescription({
+      name: "Ibuprofen 200 mg",
+      value: null,
+      unit: null,
+      notes: "Rx# A1234567. Dr. Jane Smith",
+      prescriber: null,
+      pharmacy: null,
+      rxNumber: null,
+    });
+    expect(p.rxNumber).toBe("A1234567");
+    expect(p.prescriber).toContain("Smith");
+  });
 });

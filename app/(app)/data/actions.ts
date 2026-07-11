@@ -5,7 +5,11 @@ import { revalidatePath } from "next/cache";
 import { db, today } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
 import { getUnitPrefs } from "@/lib/settings";
-import { applyImportFollowups } from "@/lib/import-persist";
+import {
+  applyImportFollowups,
+  persistDocumentlessImport,
+} from "@/lib/import-persist";
+import { extractionToPersistInput } from "@/lib/import-shape";
 import { toKg } from "@/lib/units";
 import { ALL_LIFT_NAMES, suggestTitle } from "@/lib/lifts";
 import { getEquipment } from "@/lib/equipment";
@@ -20,7 +24,6 @@ import {
   type ExtractedImmunization,
   type ExtractionMeta,
 } from "@/lib/medical-extract";
-import { immunizationsFromExtraction } from "@/lib/immunization-extract";
 import { getCanonicalVocabulary } from "@/lib/queries";
 import { aiConfigured } from "@/lib/ai-client";
 import { withAiLogContext } from "@/lib/ai-log";
@@ -363,9 +366,23 @@ export async function commitImportJob(
       const parts: string[] = [];
       if (r.count)
         parts.push(`${r.count} biomarker reading${r.count === 1 ? "" : "s"}`);
+      if (r.bodyMetricCount)
+        parts.push(
+          `${r.bodyMetricCount} body metric${r.bodyMetricCount === 1 ? "" : "s"}`
+        );
+      if (r.sampleCount)
+        parts.push(
+          `${r.sampleCount} growth measurement${r.sampleCount === 1 ? "" : "s"}`
+        );
+      if (r.medCount)
+        parts.push(`${r.medCount} medication${r.medCount === 1 ? "" : "s"}`);
       if (r.immCount)
         parts.push(`${r.immCount} immunization${r.immCount === 1 ? "" : "s"}`);
-      message = `Imported ${parts.join(" and ")}.`;
+      // Every projected row was written even if none stayed a plain biomarker
+      // reading (e.g. a weights-only paste), so fall back to a generic count.
+      message = parts.length
+        ? `Imported ${parts.join(", ")}.`
+        : "Import saved.";
     }
   } catch (err) {
     revertToReady();
@@ -471,80 +488,96 @@ export async function commitWorkouts(
   return { ok: true, workouts: nWorkouts, sets: nSets };
 }
 
-// Step 2b: import confirmed biomarkers as standalone records (document_id NULL,
-// like manual entry), then reconcile optimal-band flags and register canonical
-// names for cross-document grouping.
+// Step 2b: import a confirmed paste/CSV extraction. This routes the SAME
+// extraction output a file upload produces through the SAME persist core
+// (persistDocumentlessImport), so a pasted weight/body-fat reading reaches
+// body_metrics (weight charts / growth card), a height/head-circ lands in
+// metric_samples, and a pasted prescription is projected into a structured
+// intake_items medication — none of which the old direct-INSERT paste path did
+// (#418). There is no stored document, so the rows carry a NULL document_id and a
+// NULL/'manual' source (manual-like) and are deliberately exempt from the
+// import-footprint clear/reassign/tally contract (see persistDocumentlessImport).
 export async function commitBiomarkers(
   results: ExtractedResult[],
   meta: ExtractionMeta | null,
   immunizations?: ExtractedImmunization[]
 ): Promise<
-  { ok: true; count: number; immCount: number } | { ok: false; error: string }
+  | {
+      ok: true;
+      count: number;
+      immCount: number;
+      bodyMetricCount: number;
+      medCount: number;
+      sampleCount: number;
+    }
+  | { ok: false; error: string }
 > {
   const { profile } = await requireWriteAccess();
   const rows = Array.isArray(results) ? results : [];
-  // Vaccine doses the extractor found in the same paste land in immunizations
-  // with manual provenance (source NULL) — the paste isn't a stored document.
-  const immRows = immunizationsFromExtraction(
-    immunizations,
-    meta?.document_date ?? null
-  );
-  if (rows.length === 0 && immRows.length === 0)
+  const imms = Array.isArray(immunizations) ? immunizations : [];
+  if (rows.length === 0 && imms.length === 0)
     return { ok: false, error: "Nothing to import." };
 
-  const insert = db.prepare(
-    `INSERT INTO medical_records
-       (date, category, name, value, unit, reference_range, notes, panel, flag, value_num, canonical_name, profile_id)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
-  );
-  const insertImm = db.prepare(
-    `INSERT INTO immunizations (date, vaccine, dose_label, notes, source, profile_id)
-     VALUES (?,?,?,?,NULL,?)`
-  );
   const fallbackDate = isIsoDate(meta?.document_date)
     ? meta.document_date
     : today(profile.id);
-  const ids: number[] = [];
-  // Both writes share one transaction: an immunization-only paste still saves,
-  // and a mid-commit failure rolls back everything so a retry can't duplicate
-  // already-committed biomarker rows.
-  const run = db.transaction(() => {
-    for (const r of rows) {
-      if (!r?.name?.trim()) continue;
-      const info = insert.run(
-        isIsoDate(r.collected_date) ? r.collected_date : fallbackDate,
-        r.category,
-        r.name,
-        r.value,
-        r.unit,
-        r.reference_range,
-        r.notes,
-        r.panel,
-        r.flag,
-        Number.isFinite(r.value_num) ? r.value_num : null,
-        r.canonical_name || r.name,
-        profile.id
-      );
-      ids.push(Number(info.lastInsertRowid));
-    }
-    for (const im of immRows)
-      insertImm.run(im.date, im.vaccine, im.dose_label, im.notes, profile.id);
-  });
-  run();
+
+  // Reduce the raw extraction to the one canonical PersistInput shape — the SAME
+  // adapter the file-upload path uses — so body-metric / height / head-circ /
+  // prescription routing all come for free. `raw`/`model` are unused by the
+  // documentless writer (no medical_documents row) but the "done" shape requires
+  // them, so pass empty placeholders.
+  const input = extractionToPersistInput(
+    {
+      status: "done",
+      meta: meta ?? {
+        document_type: null,
+        source: null,
+        patient_name: null,
+        patient_sex: null,
+        patient_birthdate: null,
+        patient_age: null,
+        document_date: null,
+      },
+      results: rows,
+      immunizations: imms,
+      model: "",
+      raw: "",
+    },
+    fallbackDate
+  );
+
+  // One transaction inside the persist core: an immunization-only paste still
+  // saves, and a mid-commit failure rolls back everything so a retry can't
+  // duplicate already-committed rows.
+  const outcome = persistDocumentlessImport(profile.id, input);
 
   // Register canonical names, backfill the profile (sex/birthdate/name) when
   // unset, and reconcile flags — the same follow-ups every document import runs
   // (shared with lib/import-persist so the two can't drift). These records are
   // standalone (document_id NULL), but the follow-ups are document-agnostic.
   const adopted = applyImportFollowups(profile.id, {
-    demographics: meta,
-    canonicalNames: rows.map((r) => r.canonical_name || r.name),
-    insertedRecordIds: ids,
+    demographics: input.demographics,
+    canonicalNames: input.canonicalNamesToRegister,
+    insertedRecordIds: outcome.insertedRecordIds,
   });
+  const sampleCount = outcome.heightCount + outcome.headCircCount;
   revalidatePath("/biomarkers");
   revalidatePath("/data");
   revalidatePath("/");
-  if (immRows.length) revalidatePath("/immunizations");
+  if (outcome.immCount) revalidatePath("/immunizations");
+  if (outcome.bodyMetricCount || sampleCount) {
+    revalidatePath("/trends");
+    revalidatePath("/body");
+  }
+  if (outcome.medCount) revalidatePath("/medicine");
   if (adopted.changed) revalidatePath("/settings");
-  return { ok: true, count: ids.length, immCount: immRows.length };
+  return {
+    ok: true,
+    count: outcome.recCount,
+    immCount: outcome.immCount,
+    bodyMetricCount: outcome.bodyMetricCount,
+    medCount: outcome.medCount,
+    sampleCount,
+  };
 }

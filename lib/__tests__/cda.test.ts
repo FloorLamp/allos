@@ -297,3 +297,71 @@ describe("parseXdm", () => {
     expect(() => parseXdm(zip)).toThrow(CdaError);
   });
 });
+
+// #417 — CCD medications must carry the attribution the pharmacy's own record
+// holds (prescriber/pharmacy/Rx number) and the sig text FHIR keeps, so the
+// auto-structured medication row isn't left unattributed with no schedule.
+const MED_ATTRIBUTION_CCD = `<?xml version="1.0" encoding="UTF-8"?>
+<ClinicalDocument xmlns="urn:hl7-org:v3">
+  <component><structuredBody>
+    <component><section>
+      <templateId root="2.16.840.1.113883.10.20.22.2.1.1"/>
+      <code code="10160-0" codeSystem="2.16.840.1.113883.6.1"/>
+      <title>Medications</title>
+      <text>
+        <table><tbody>
+          <tr ID="med1sig"><td>Take 1 tablet by mouth once daily</td></tr>
+        </tbody></table>
+      </text>
+      <entry><substanceAdministration classCode="SBADM" moodCode="EVN">
+        <text><reference value="#med1sig"/></text>
+        <effectiveTime type="IVL_TS"><low value="20240101"/></effectiveTime>
+        <doseQuantity value="10" unit="mg"/>
+        <consumable><manufacturedProduct><manufacturedMaterial>
+          <code code="83367" codeSystem="2.16.840.1.113883.6.88" displayName="Atorvastatin"/>
+          <name>Atorvastatin 10 mg tablet</name>
+        </manufacturedMaterial></manufacturedProduct></consumable>
+        <author>
+          <assignedAuthor>
+            <assignedPerson><name><given>Ada</given><family>Prescriber</family></name></assignedPerson>
+          </assignedAuthor>
+        </author>
+        <entryRelationship typeCode="REFR">
+          <supply classCode="SPLY" moodCode="INT">
+            <id extension="RX-555023"/>
+            <performer><assignedEntity>
+              <representedOrganization><name>Test Pharmacy #12</name></representedOrganization>
+            </assignedEntity></performer>
+          </supply>
+        </entryRelationship>
+      </substanceAdministration></entry>
+    </section></component>
+  </structuredBody></component>
+</ClinicalDocument>`;
+
+describe("CCD medication attribution (#417)", () => {
+  it("reads prescriber (author), pharmacy + Rx (<supply>), and the sig into `value`", () => {
+    const rx = parseCcda(MED_ATTRIBUTION_CCD).records.filter(
+      (r) => r.category === "prescription"
+    );
+    expect(rx).toHaveLength(1);
+    expect(rx[0]).toMatchObject({
+      name: "Atorvastatin 10 mg tablet",
+      // The sig text (FHIR's field) now populates `value` instead of the bare
+      // doseQuantity, so schedule inference sees the same shape as FHIR.
+      value: "Take 1 tablet by mouth once daily",
+      prescriber: "Ada Prescriber",
+      pharmacy: "Test Pharmacy #12",
+      rxNumber: "RX-555023",
+    });
+  });
+
+  it("falls back to the doseQuantity string when no sig narrative is present", () => {
+    // The baseline CCD med (no <text> sig) keeps its "10 mg" value — unchanged.
+    const rx = parseCcda(CCD).records.filter(
+      (r) => r.category === "prescription"
+    );
+    expect(rx[0].value).toBe("10 mg");
+    expect(rx[0].prescriber ?? null).toBeNull();
+  });
+});
