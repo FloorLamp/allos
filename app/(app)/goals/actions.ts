@@ -3,13 +3,17 @@ import { requireWriteAccess } from "@/lib/auth";
 
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import type { BodyMetricKind, GoalStatus, GoalMetric } from "@/lib/types";
+import type { BodyMetricKind, GoalMetric } from "@/lib/types";
 import { getUnitPrefs } from "@/lib/settings";
 import { toKg, resolveWeightKg } from "@/lib/units";
 import { parseSeconds } from "@/lib/duration";
-import { BODY_METRIC_LABELS } from "@/lib/goals";
-import { getLatestBodyMetric, dismissFinding } from "@/lib/queries";
-import { GOAL_PACE_PREFIX } from "@/lib/goal-pacing";
+import { BODY_METRIC_LABELS, isGoalStatus } from "@/lib/goals";
+import {
+  getLatestBodyMetric,
+  dismissFinding,
+  restoreFinding,
+} from "@/lib/queries";
+import { GOAL_PACE_PREFIX, goalPaceSignalKey } from "@/lib/goal-pacing";
 
 // Dismiss a goal-pacing finding (issue #45, domain 6): an off-pace goal or the safe-
 // rate weight-loss caution. Hides it through the shared findings-bus suppression
@@ -266,8 +270,8 @@ export async function updateProgress(formData: FormData) {
 export async function setStatus(formData: FormData) {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
-  const status = String(formData.get("status")) as GoalStatus;
-  if (!id || (status !== "active" && status !== "achieved")) return;
+  const status = String(formData.get("status"));
+  if (!id || !isGoalStatus(status)) return;
   db.prepare("UPDATE goals SET status = ? WHERE id = ? AND profile_id = ?").run(
     status,
     id,
@@ -298,6 +302,14 @@ export async function deleteGoal(formData: FormData) {
     id,
     profile.id
   );
+  // Sweep the goal's suppression markers with it (issue #328): the `goal:<id>`
+  // Upcoming/timeline dismissal and the `goal-pace:goal:<id>` off-pace finding
+  // suppression, both keyed by goal id in upcoming_dismissals. Dead rows rather than
+  // wrong suppression (goal ids never recycle), but leaving them stranded is the same
+  // marker-sweep inconsistency this issue closes elsewhere. restoreFinding just drops
+  // the suppression row by key; profile-scoped.
+  restoreFinding(profile.id, `goal:${id}`);
+  restoreFinding(profile.id, goalPaceSignalKey(id));
   revalidatePath("/training");
   revalidatePath("/");
 }

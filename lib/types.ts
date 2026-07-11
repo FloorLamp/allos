@@ -130,8 +130,11 @@ export interface BodyMetricWithSource extends BodyMetric {
 }
 
 // Achievement state. Archiving is a separate flag (Goal.archived) so an achieved
-// goal stays achieved when filed away.
-export type GoalStatus = "active" | "achieved";
+// goal stays achieved when filed away. The runtime array is the single source of
+// truth for the union AND the goals.status CHECK (migration 016); the enum-parity
+// DB test (lib/__db_tests__/enum-parity.test.ts) fails if the two drift.
+export const GOAL_STATUSES = ["active", "achieved"] as const;
+export type GoalStatus = (typeof GOAL_STATUSES)[number];
 
 // Exercise-linked goals measure one of these; progress is auto-derived from sets.
 export type GoalMetric = "weight" | "reps" | "sets" | "hold";
@@ -201,8 +204,14 @@ export interface Provider {
 // A scheduled medical visit. Profile-owned; optionally
 // linked to the shared providers registry via a nullable provider_id FK.
 // `scheduled_at` is a date (YYYY-MM-DD) or datetime; `status` drives whether it
-// still surfaces on the Upcoming page (only 'scheduled' does).
-export type AppointmentStatus = "scheduled" | "completed" | "cancelled";
+// still surfaces on the Upcoming page (only 'scheduled' does). Runtime array is the
+// single source for the union AND the appointments.status CHECK (enum-parity test).
+export const APPOINTMENT_STATUSES = [
+  "scheduled",
+  "completed",
+  "cancelled",
+] as const;
+export type AppointmentStatus = (typeof APPOINTMENT_STATUSES)[number];
 
 // Optional visit category (issue #85). NULL on existing rows and whenever the user
 // leaves it blank — a NULL kind never matches a preventive rule (no fuzzy title
@@ -416,8 +425,10 @@ export interface Immunization {
 
 // Clinical status of an allergy/intolerance. `active` is the default for a
 // documented allergy; `inactive`/`resolved` come from the source's concern-act
-// or clinical-status observation.
-export type AllergyStatus = "active" | "inactive" | "resolved";
+// or clinical-status observation. Runtime array is the single source for the union
+// AND the allergies.status CHECK (enum-parity test).
+export const ALLERGY_STATUSES = ["active", "inactive", "resolved"] as const;
+export type AllergyStatus = (typeof ALLERGY_STATUSES)[number];
 
 // A recorded allergy / intolerance (table: allergies). `substance` is the
 // offending agent (drug/food/environmental) — a name, ideally with a code when
@@ -441,8 +452,10 @@ export interface Allergy {
   created_at: string;
 }
 
-// Clinical status of a problem-list condition.
-export type ConditionStatus = "active" | "inactive" | "resolved";
+// Clinical status of a problem-list condition. Runtime array is the single source
+// for the union AND the conditions.status CHECK (enum-parity test).
+export const CONDITION_STATUSES = ["active", "inactive", "resolved"] as const;
+export type ConditionStatus = (typeof CONDITION_STATUSES)[number];
 
 // A problem-list condition / diagnosis (table: conditions). `name` is the display
 // term, `code`/`code_system` the coded identity (ICD-10 / SNOMED) when present.
@@ -541,6 +554,11 @@ export interface CarePlanItem {
   code_system: string | null;
   category: string | null;
   planned_date: string | null;
+  // FREE-FORM BY DESIGN — deliberately bare TEXT with no DB CHECK (issue #328): the
+  // importers pass FHIR CarePlan.activity status codes through verbatim, and the app
+  // form takes a free-text clinical status. The only app-WRITTEN sentinel is
+  // 'completed' (setCarePlanItemDone, lib/queries/upcoming.ts); every other value is
+  // clinical passthrough. A closed enum here would drop or mangle real record data.
   status: string | null;
   provider_id: number | null;
   provider_name: string | null;
@@ -563,6 +581,11 @@ export interface CareGoal {
   code: string | null;
   code_system: string | null;
   target_date: string | null;
+  // FREE-FORM BY DESIGN — deliberately bare TEXT with no DB CHECK (issue #328): the
+  // importers pass FHIR Goal.lifecycleStatus / achievementStatus codes through
+  // verbatim (proposed / active / achieved / …), and the app form takes a free-text
+  // clinical status. There is no app-written sentinel. A closed enum here would drop
+  // or mangle real record data.
   status: string | null;
   notes: string | null;
   source: string | null;
@@ -810,7 +833,14 @@ export interface MedicationSideEffect {
   created_at: string;
 }
 
-export type SuggestionStatus = "pending" | "accepted" | "dismissed";
+// Runtime array is the single source for the union AND the suggestions.status CHECK
+// (enum-parity test).
+export const SUGGESTION_STATUSES = [
+  "pending",
+  "accepted",
+  "dismissed",
+] as const;
+export type SuggestionStatus = (typeof SUGGESTION_STATUSES)[number];
 
 // An AI-proposed supplement awaiting user review (see intake_item_suggestions).
 export interface SupplementSuggestion {

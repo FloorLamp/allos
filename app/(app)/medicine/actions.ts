@@ -36,6 +36,7 @@ import {
 } from "@/lib/rxnorm";
 import { orderIntakePair } from "@/lib/intake-pairs";
 import { leftRefillTrackedSet, refillMarkerKey } from "@/lib/refill-nudge";
+import { escalationMarkerKey } from "@/lib/notifications/escalation-keys";
 import { withAiLogContext } from "@/lib/ai-log";
 import {
   CONDITIONS,
@@ -675,11 +676,27 @@ export async function deleteSupplement(
   // one transaction (issue #30), so a mis-tapped supplement/med can be restored
   // from the toast. NOTE: refill supply decrements are NOT recomputed on Undo — the
   // item's quantity_on_hand is restored verbatim as it stood at delete time.
+  // Enumerate the item's dose ids BEFORE the cascade delete removes them, so we can
+  // sweep their per-dose escalation markers below (profile-scoped via the parent
+  // JOIN).
+  const doseIds = db
+    .prepare(
+      `SELECT d.id AS id FROM intake_item_doses d
+         JOIN intake_items ii ON ii.id = d.item_id
+        WHERE d.item_id = ? AND ii.profile_id = ?`
+    )
+    .all(id, profile.id) as { id: number }[];
   const undoId = captureDelete("intake-item", profile.id, id);
-  // Drop the item's low-supply episode marker with it (issue #203). This is a
-  // dead row rather than wrong suppression — the id never recycles — but leaving
-  // it strands a `notify_last_refill_<id>` setting the item no longer backs.
+  // Drop the item's low-supply episode marker with it (issue #203) AND its per-dose
+  // escalation dedup markers (issue #328). Both are dead rows rather than wrong
+  // suppression — ids never recycle — but the delete seam sweeping ONE marker family
+  // and not the other was inconsistency, not principle: a stranded
+  // `notify_last_refill_<id>` / `notify_last_esc_<doseId>` setting outlives the item
+  // it backed, so clear both here.
   deleteProfileSetting(profile.id, refillMarkerKey(id));
+  for (const { id: doseId } of doseIds) {
+    deleteProfileSetting(profile.id, escalationMarkerKey(doseId));
+  }
   revalidatePath("/medicine");
   revalidatePath("/");
   return { undoId };
