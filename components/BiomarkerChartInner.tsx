@@ -12,6 +12,7 @@ import {
 } from "recharts";
 import { useChartColors } from "./useChartColors";
 import { biomarkerAxisDomain } from "@/lib/reference-range";
+import { roundChartValue } from "@/lib/chart-format";
 
 export interface BiomarkerBands {
   refLow?: number | null;
@@ -63,9 +64,11 @@ export default function BiomarkerChart({
   );
   const domain: [number, number] = [lo, hi];
   // Cap tick precision so floating-point padding never renders long decimals.
-  const tickFmt = (v: number) => String(Math.round(v * 100) / 100);
+  // The tooltip shares this rounding (issue #403) so the hovered number matches
+  // the axis instead of showing the raw unit-conversion float.
+  const tickFmt = (v: number) => String(roundChartValue(v));
 
-  const fmt = (v: number) => `${v}${unit ? ` ${unit}` : ""}`;
+  const fmt = (v: number) => `${roundChartValue(v)}${unit ? ` ${unit}` : ""}`;
 
   // Hollow dot for bounded readings ("<0.10"), solid for exact ones.
   const renderDot = (props: {

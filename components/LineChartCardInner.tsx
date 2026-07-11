@@ -12,6 +12,7 @@ import {
 } from "recharts";
 import { useChartColors } from "./useChartColors";
 import { formatLongDate } from "@/lib/format-date";
+import { roundChartValue } from "@/lib/chart-format";
 import {
   ANNOTATION_KIND_META,
   snapAnnotationsToDates,
@@ -34,12 +35,16 @@ export default function LineChartCard({
   heightClass = "h-64",
   annotations,
   referenceValue,
+  decimals,
 }: {
   data: { date: string; value: number | null }[];
   dataKey?: string;
   label: string;
   color?: string;
   unit?: string;
+  // Display precision for the tooltip value, so it reads the same rounded number
+  // as the caller's headline/table (issue #403). Omitted → cap at 2 decimals.
+  decimals?: number;
   // Disable per-point dots for dense series (e.g. ~1440 intraday HR points).
   showDots?: boolean;
   // Optional: compact the x-axis tick, and expand the tooltip's date label.
@@ -101,7 +106,10 @@ export default function LineChartCard({
             domain={["auto", "auto"]}
           />
           <Tooltip
-            formatter={(v) => [`${v}${unit}`, label]}
+            formatter={(v) => [
+              `${roundChartValue(Number(v), decimals)}${unit}`,
+              label,
+            ]}
             labelFormatter={labelFmt ? (v) => labelFmt(String(v)) : undefined}
             contentStyle={{
               fontSize: 12,
