@@ -20,10 +20,12 @@ import type { PairDecision } from "@/lib/import-review/detect";
 // these run only from an explicit button press.
 
 // Re-validate the surfaces a merge/dismiss changes: the Review inbox itself and the
-// rollups a folded/deleted row feeds.
+// rollups a folded/deleted row feeds — the Journal on /training, the /trends fitness
+// chart + workout heatmap (issue #333), and the dashboard.
 function revalidateActivitySurfaces() {
   revalidatePath("/data");
   revalidatePath("/training");
+  revalidatePath("/trends");
   revalidatePath("/");
 }
 function revalidateBodyMetricSurfaces() {
