@@ -1259,6 +1259,60 @@ export const administeredMedicationsExtractor: SectionExtractor = {
   },
 };
 
+// Ordered Prescriptions (#268): the prescriptions WRITTEN at the visit — Epic's
+// order list, not the patient's current regimen (the Medications section remains
+// the authority for that). The entries are the same Medication Activity (4.16)
+// shape, so mapMedication parses them nearly unchanged — but in snapshot mode:
+// the section documents an order EVENT, so an active/unstated status is capped to
+// `completed` and an undated order anchors to the document date, meaning an order
+// from a years-old visit can never fabricate a current (open-course) medication.
+// A period with explicit bounds keeps them. Each derived course is tagged
+// "Ordered at visit" so its provenance survives into the app.
+export const orderedPrescriptionsExtractor: SectionExtractor = {
+  key: "orderedPrescriptions",
+  matches: (s) => sectionIs(s, SECTIONS.orderedPrescriptions),
+  extract: (s, documentDate) => {
+    const narrativeIds = buildNarrativeIdMap(s.raw?.text);
+    return {
+      records: s.entries
+        .map((e) =>
+          mapMedication(
+            e?.substanceAdministration,
+            narrativeIds,
+            documentDate,
+            {
+              snapshot: true,
+              courseNote: "Ordered at visit",
+            }
+          )
+        )
+        .filter((x): x is ImportedRecord => x != null),
+    };
+  },
+};
+
+// Functional Status (#268): assessment observations ("ambulates independently",
+// ADL/IADL findings, …) carried as organizer→component or bare observations — the
+// SAME node shapes the Results walker reads, with coded (qualitative) or numeric
+// values, so they route through the shared observation mapper as `lab` records.
+// The assessment LOINC is stripped from the STORED record (after the mapper has
+// used it for the name fallback and the stable external_id): these are assessment
+// instruments, not lab analytes, so carrying the code forward would list every
+// functional-status code in the "Unmapped lab codes" report — inviting canonical
+// biomarker-map additions that would be wrong — and could misroute a coded
+// assessment through the LOINC-keyed vitals/height recognizers.
+export const functionalStatusExtractor: SectionExtractor = {
+  key: "functionalStatus",
+  matches: (s) => sectionIs(s, SECTIONS.functionalStatus),
+  extract: (s) => ({
+    records: observationsFromEntries(
+      s.entries,
+      "lab",
+      buildNarrativeIdMap(s.raw?.text)
+    ).map((r) => ({ ...r, loinc: null })),
+  }),
+};
+
 export const careTeamsExtractor: SectionExtractor = {
   key: "careTeams",
   matches: (s) => sectionIs(s, SECTIONS.careTeams),
@@ -1394,6 +1448,8 @@ export const DEFAULT_EXTRACTORS: SectionExtractor[] = [
   medicationsExtractor,
   dischargeMedicationsExtractor,
   administeredMedicationsExtractor,
+  orderedPrescriptionsExtractor,
+  functionalStatusExtractor,
   careTeamsExtractor,
   allergiesExtractor,
   problemsExtractor,
@@ -1411,8 +1467,8 @@ export const DEFAULT_EXTRACTORS: SectionExtractor[] = [
 // The extractors above silently drop candidates: mapObservation returns null for a
 // null-flavored "Comment(s)" row, mapImmunization for an unmapped vaccine code,
 // mapAllergy for a "no known allergy" negation, and whole sections with no matching
-// extractor (Functional Status / Plan of Treatment / Insurance) are skipped by the
-// walker. This block RECORDS each drop + why, and which sections were / weren't
+// extractor are skipped by the walker (Insurance deliberately so — see SECTIONS).
+// This block RECORDS each drop + why, and which sections were / weren't
 // consumed, WITHOUT changing what imports. It re-runs the same leaf mappers (pure,
 // cheap) and classifies the ones that came back null, so the mappers themselves stay
 // untouched — the report is built at the extractor-framework level.
