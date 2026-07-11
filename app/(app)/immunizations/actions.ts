@@ -8,8 +8,7 @@ import {
   normalizeVaccineName,
   slugifyVaccine,
 } from "@/lib/immunization-catalog";
-import { immunizationCodesLosingBacking } from "@/lib/dismissal-keys";
-import { clearImmunizationDismissals } from "@/lib/queries";
+import { sweepImmunizationDismissals } from "@/lib/queries";
 import { resolveProviderIdByName } from "@/lib/providers-db";
 
 // Immunization writes. Mirrors app/(app)/trends/body-actions.ts: session-scoped,
@@ -68,6 +67,15 @@ export async function updateImmunization(formData: FormData) {
   const providerId = resolveProviderIdByName(
     String(formData.get("provider") ?? "")
   );
+  // Read the prior code before rewriting it: re-coding a dose un-backs the old
+  // code exactly as a delete would, so a stale `immunization:<old code>` dismissal
+  // would otherwise silence the due-nudge forever after the old vaccine is re-added
+  // (issue #376/#203). Captured before the UPDATE so the row still holds the old code.
+  const prev = db
+    .prepare(
+      "SELECT vaccine FROM immunizations WHERE id = ? AND profile_id = ?"
+    )
+    .get(id, profile.id) as { vaccine: string } | undefined;
   db.prepare(
     `UPDATE immunizations SET date = ?, vaccine = ?, dose_label = ?, notes = ?, provider_id = ?
      WHERE id = ? AND profile_id = ?`
@@ -80,6 +88,10 @@ export async function updateImmunization(formData: FormData) {
     id,
     profile.id
   );
+  // Clear the dismissals of any component code the re-code left un-backed. The
+  // sweep reads the post-update remaining doses, so an unchanged code (or one still
+  // credited by a sibling dose) is a no-op.
+  if (prev) sweepImmunizationDismissals(profile.id, [prev.vaccine]);
   revalidateImmunizations();
 }
 
@@ -100,22 +112,10 @@ export async function deleteImmunization(formData: FormData) {
   );
   // If this was the last dose backing a vaccine code, clear that code's due-nudge
   // dismissal — the key is the reusable vaccine code, so a stale row would silence
-  // the nudge again after the immunization is re-added later (issue #203). Scoped
-  // to codes this dose actually un-backed, so a never-recorded vaccine's dismissal
-  // (no backing dose ever) is left intact.
-  if (row) {
-    const remaining = (
-      db
-        .prepare(
-          "SELECT DISTINCT vaccine FROM immunizations WHERE profile_id = ?"
-        )
-        .all(profile.id) as { vaccine: string }[]
-    ).map((r) => r.vaccine);
-    clearImmunizationDismissals(
-      profile.id,
-      immunizationCodesLosingBacking(row.vaccine, remaining)
-    );
-  }
+  // the nudge again after the immunization is re-added later (issue #203). The sweep
+  // is scoped to the codes this dose actually un-backed, so a never-recorded
+  // vaccine's dismissal (no backing dose ever) is left intact.
+  if (row) sweepImmunizationDismissals(profile.id, [row.vaccine]);
   revalidateImmunizations();
 }
 

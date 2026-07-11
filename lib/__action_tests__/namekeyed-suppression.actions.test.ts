@@ -20,8 +20,13 @@ import {
 } from "@/app/(app)/medical/actions";
 import {
   addImmunization,
+  updateImmunization,
   deleteImmunization,
 } from "@/app/(app)/immunizations/actions";
+import {
+  deleteDatasetRows,
+  deleteAllDatasetRows,
+} from "@/app/(app)/data/manage-actions";
 import { dismissFinding } from "@/lib/queries";
 import { seedActor, createLogin, createProfile, actAs, fd } from "./harness";
 
@@ -152,6 +157,92 @@ describe("manifestation 2 — immunization dismissal outlives the dose", () => {
 
     await deleteImmunization(fd({ id: immId(profile.id, "mmr") }));
     expect(dismissalKeys(profile.id)).toContain("immunization:mmr");
+  });
+});
+
+describe("manifestation 2b — immunization dismissal outlives an edit re-code (#376)", () => {
+  it("clears the OLD code's dismissal when a dose is re-coded to a different vaccine", async () => {
+    const { profile } = seedActor();
+    // One dose recorded as HepB; the user dismisses its due-nudge (key immunization:hepb).
+    await addImmunization(fd({ date: "2001-06-01", vaccine: "Hep B" }));
+    dismissFinding(profile.id, "immunization:hepb");
+    expect(dismissalKeys(profile.id)).toContain("immunization:hepb");
+
+    // Correcting a mis-extraction: re-code the same dose HepB -> Hib. HepB now has
+    // no backing dose, so its orphaned dismissal must be swept (a later real HepB
+    // dose would otherwise stay silenced forever).
+    await updateImmunization(
+      fd({ id: immId(profile.id, "hepb"), date: "2001-06-01", vaccine: "Hib" })
+    );
+    expect(dismissalKeys(profile.id)).not.toContain("immunization:hepb");
+  });
+
+  it("keeps the dismissal when the edit does not change the code set", async () => {
+    const { profile } = seedActor();
+    await addImmunization(fd({ date: "2001-06-01", vaccine: "MMR" }));
+    dismissFinding(profile.id, "immunization:mmr");
+
+    // Edit only the date — the code stays 'mmr', so the dismissal is untouched.
+    await updateImmunization(
+      fd({ id: immId(profile.id, "mmr"), date: "2002-06-01", vaccine: "MMR" })
+    );
+    expect(dismissalKeys(profile.id)).toContain("immunization:mmr");
+  });
+
+  it("keeps the dismissal while a sibling dose still credits the re-coded code", async () => {
+    const { profile } = seedActor();
+    await addImmunization(fd({ date: "2001-06-01", vaccine: "MMR" }));
+    await addImmunization(fd({ date: "2005-06-01", vaccine: "MMR" }));
+    dismissFinding(profile.id, "immunization:mmr");
+
+    // Re-code only one of the two mmr doses; the other still backs 'mmr'.
+    await updateImmunization(
+      fd({ id: immId(profile.id, "mmr"), date: "2005-06-01", vaccine: "Hib" })
+    );
+    expect(dismissalKeys(profile.id)).toContain("immunization:mmr");
+  });
+});
+
+describe("manifestation 2c — immunization dismissal outlives a Data → Manage bulk delete (#376)", () => {
+  it("clears the code's dismissal when its last dose is bulk-deleted by id", async () => {
+    const { profile } = seedActor();
+    await addImmunization(fd({ date: "2001-06-01", vaccine: "MMR" }));
+    dismissFinding(profile.id, "immunization:mmr");
+    expect(dismissalKeys(profile.id)).toContain("immunization:mmr");
+
+    const res = await deleteDatasetRows("immunizations", [
+      immId(profile.id, "mmr"),
+    ]);
+    expect(res.ok).toBe(true);
+    expect(dismissalKeys(profile.id)).not.toContain("immunization:mmr");
+  });
+
+  it("keeps a never-recorded vaccine's dismissal through a bulk delete", async () => {
+    const { profile } = seedActor();
+    await addImmunization(fd({ date: "2001-06-01", vaccine: "MMR" }));
+    // 'hpv' has NO backing dose ever — a lasting dismissal, not orphaned by this delete.
+    dismissFinding(profile.id, "immunization:mmr");
+    dismissFinding(profile.id, "immunization:hpv");
+
+    await deleteDatasetRows("immunizations", [immId(profile.id, "mmr")]);
+    const keys = dismissalKeys(profile.id);
+    expect(keys).not.toContain("immunization:mmr"); // un-backed by the delete
+    expect(keys).toContain("immunization:hpv"); // never backed — preserved
+  });
+
+  it("clears every un-backed code on a delete-all", async () => {
+    const { profile } = seedActor();
+    await addImmunization(fd({ date: "2001-06-01", vaccine: "MMR" }));
+    await addImmunization(fd({ date: "2010-06-01", vaccine: "Hep B" }));
+    dismissFinding(profile.id, "immunization:mmr");
+    dismissFinding(profile.id, "immunization:hepb");
+    dismissFinding(profile.id, "immunization:hpv"); // never recorded
+
+    await deleteAllDatasetRows("immunizations");
+    const keys = dismissalKeys(profile.id);
+    expect(keys).not.toContain("immunization:mmr");
+    expect(keys).not.toContain("immunization:hepb");
+    expect(keys).toContain("immunization:hpv"); // no backing dose ever — kept
   });
 });
 
