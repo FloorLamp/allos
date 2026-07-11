@@ -41,7 +41,9 @@ function StateLine({ ev }: { ev: IntegrationSyncEvent }) {
       >
         {ev.ok ? primary : "Sync failed"}
       </span>
-      {ev.ok && skipped > 0 && (
+      {/* ev.ok is a NUMBER (0/1) — a bare `ev.ok &&` would render a literal "0"
+          on failure lines, so coerce it. */}
+      {ev.ok !== 0 && skipped > 0 && (
         <span className="text-amber-600 dark:text-amber-400">
           · {skipped} skipped
         </span>

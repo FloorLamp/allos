@@ -20,10 +20,15 @@ test.describe("Data → Review import inbox", () => {
       review.getByRole("heading", { name: "Imports", exact: true })
     ).toBeVisible();
 
-    // The failing Strava sync is called out under "Needs attention".
+    // The failing Strava sync is called out under "Needs attention". The same
+    // failure message also renders on the Strava source card (by design), so
+    // scope the message assertion to the attention item to avoid a strict-mode
+    // double-match.
     await expect(review.getByText("Needs attention")).toBeVisible();
-    await expect(review.getByText("Strava sync failed")).toBeVisible();
-    await expect(review.getByText(/token refresh failed/)).toBeVisible();
+    const attentionItem = review
+      .getByRole("listitem")
+      .filter({ hasText: "Strava sync failed" });
+    await expect(attentionItem.getByText(/token refresh failed/)).toBeVisible();
 
     // "Connected sources": one card per recurring provider, collapsed to latest state.
     await expect(
@@ -43,7 +48,9 @@ test.describe("Data → Review import inbox", () => {
     await expect(
       stravaCard.getByRole("button", { name: "Sync now" })
     ).toBeVisible();
-    await expect(stravaCard.getByText("Sync failed")).toBeVisible();
+    // "Sync failed" appears in both the collapsed latest-state line and the
+    // recent-history list of the same card — assert the first (latest-state).
+    await expect(stravaCard.getByText("Sync failed").first()).toBeVisible();
 
     // Admin-only raw payload viewer (#9): the seeded Health Connect sync carries a
     // raw_ref, so the admin (the seed logs in as admin) sees a "View raw"
@@ -51,8 +58,17 @@ test.describe("Data → Review import inbox", () => {
     // profile-scoped raw route, which returns the captured provider JSON.
     const viewRaw = hcCard.getByText("View raw").first();
     await expect(viewRaw).toBeVisible();
-    await viewRaw.click();
-    await expect(hcCard.getByText(/"records"/)).toBeVisible();
+    // The click can land while the page is still hydrating (all the assertions
+    // above are satisfied by the SSR HTML alone): the native <details> may open
+    // before React attaches its onToggle, or React may swallow the discrete
+    // event outright. The component now catches up on mount (loads if it finds
+    // itself already open), and this retry covers the swallowed-click case —
+    // re-clicking after hydration settles.
+    const payload = hcCard.getByText(/"records"/);
+    await expect(async () => {
+      if (!(await payload.isVisible())) await viewRaw.click();
+      await expect(payload).toBeVisible({ timeout: 4000 });
+    }).toPass({ timeout: 20_000 });
     await expect(hcCard.getByText(/"Steps"/)).toBeVisible();
   });
 
@@ -83,12 +99,20 @@ test.describe("Data → Review import inbox", () => {
     // "Connected sources" section above.
     await expect(feed.getByText("No new data")).toHaveCount(0);
 
-    // Following the document link lands on its import-detail page.
-    await docLink.click();
-    await expect(page).toHaveURL(/\/import\/\d+/);
+    // Following the document link lands on its import-detail page. The click can
+    // land in the hydration window (React swallows discrete events on a
+    // not-yet-hydrated tree — the URL then never changes), and under `next dev`
+    // the destination compiles on demand, so retry the click and give the
+    // navigation room.
+    await expect(async () => {
+      if (!/\/import\/\d+/.test(page.url())) {
+        await docLink.click({ timeout: 2000 });
+      }
+      await expect(page).toHaveURL(/\/import\/\d+/, { timeout: 4000 });
+    }).toPass({ timeout: 20_000 });
     await expect(
       page.getByRole("link", { name: "Back to Review" })
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 15_000 });
   });
 
   test("the re-extract-all button previews the AI cost before confirming", async ({

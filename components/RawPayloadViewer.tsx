@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 // Admin-only lazy viewer for a sync event's captured raw provider payload (issue
 // #9). Rendered behind a <details> so nothing is fetched until the admin expands
@@ -12,6 +12,7 @@ export default function RawPayloadViewer({ id }: { id: number }) {
     "idle"
   );
   const [text, setText] = useState("");
+  const detailsRef = useRef<HTMLDetailsElement>(null);
 
   async function load() {
     if (state === "loading" || state === "loaded") return;
@@ -27,8 +28,20 @@ export default function RawPayloadViewer({ id }: { id: number }) {
     }
   }
 
+  // Hydration catch-up: a click can land BEFORE React attaches onToggle (a fast
+  // test runner, or a real user on a slow connection while the page is still
+  // hydrating). The native <details> opens without React ever seeing the toggle,
+  // so the fetch never fires and the panel sits open and empty forever. If the
+  // element is already open when this component mounts, run the load it missed.
+  useEffect(() => {
+    if (detailsRef.current?.open) void load();
+    // Mount-only catch-up; load() self-guards against re-entry.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <details
+      ref={detailsRef}
       className="mt-1 w-full"
       onToggle={(e) => {
         if ((e.currentTarget as HTMLDetailsElement).open) void load();
