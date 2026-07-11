@@ -8,7 +8,7 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { reassignDocument } from "@/app/(app)/medical/actions";
+import { reassignDocument } from "@/app/(app)/medical/document-actions";
 import { getReprocessSnapshot, reconcileFlags } from "@/lib/queries";
 import {
   persistDocumentImport,

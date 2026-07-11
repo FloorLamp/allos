@@ -6,6 +6,7 @@ import {
   createEquipment,
   updateEquipment,
   deleteEquipment,
+  setEquipmentRetired,
   equipmentNameExists,
 } from "@/lib/equipment";
 import type { Equipment } from "@/lib/types";
@@ -73,6 +74,18 @@ export async function updateEquipmentAction(
 export async function deleteEquipmentAction(id: number): Promise<{ ok: true }> {
   const { profile } = await requireWriteAccess();
   deleteEquipment(profile.id, id);
+  refresh();
+  return { ok: true };
+}
+
+// Soft-retire / un-retire (issue #341): the reversible alternative to delete that
+// keeps the row and its set links, just hiding it from pickers.
+export async function setEquipmentRetiredAction(
+  id: number,
+  retired: boolean
+): Promise<{ ok: true }> {
+  const { profile } = await requireWriteAccess();
+  setEquipmentRetired(profile.id, id, retired);
   refresh();
   return { ok: true };
 }

@@ -10,6 +10,8 @@ import {
   strengthStanding,
   strengthLevelLabel,
   strengthLevelColor,
+  strengthStandingPhrase,
+  bodyweightMultiple,
 } from "@/lib/strength-standards";
 import { goalsForExercise, goalTargetText } from "@/lib/goals";
 import { formatLongDate, formatRelativeDate } from "@/lib/format-date";
@@ -37,7 +39,7 @@ export function e1rmText(
   wu: UnitPrefs["weightUnit"],
   bodyweightKg: number | null
 ): string {
-  const mult = bodyweightKg && e.e1rmKg > 0 ? e.e1rmKg / bodyweightKg : null;
+  const mult = bodyweightMultiple(e.e1rmKg, bodyweightKg);
   if (e.bodyweight) return mult ? `${mult.toFixed(2)}× BW` : "BW";
   const base = `${dispWeight(e.e1rmKg, wu, 0)} ${wu}`;
   return mult ? `${base} (${mult.toFixed(2)}× BW)` : base;
@@ -116,25 +118,10 @@ export default function ExerciseDetailPanel({
         color: strengthLevelColor(standing.level),
       }
     : null;
-  let standingMsg: string | null = null;
-  if (standing) {
-    const sexWord = sex === "female" ? "women" : "men";
-    if (standing.level === "untrained") {
-      standingMsg = `${fmtWeight(
-        standing.toNextKg ?? 0,
-        wu
-      )} from the beginner standard for ${sexWord} at your bodyweight.`;
-    } else if (standing.nextLevel == null) {
-      standingMsg = `At the elite standard for ${sexWord} at your bodyweight — the top band.`;
-    } else {
-      standingMsg = `At the ${strengthLevelLabel(
-        standing.level
-      ).toLowerCase()} standard for ${sexWord} at your bodyweight — ${fmtWeight(
-        standing.toNextKg ?? 0,
-        wu
-      )} to ${strengthLevelLabel(standing.nextLevel).toLowerCase()}.`;
-    }
-  }
+  // standing is non-null only when sex was set (see the gate above); the extra
+  // `&& sex` narrows the type for strengthStandingPhrase's Sex parameter.
+  const standingMsg =
+    standing && sex ? strengthStandingPhrase(standing, sex, wu) : null;
   const matchedGoals = goals
     ? goalsForExercise(goals, stat.exercise).filter((g) => !g.archived)
     : [];

@@ -11,8 +11,8 @@ import {
   addRecord,
   updateRecord,
   deleteRecord,
-  uploadMedicalDocument,
 } from "@/app/(app)/medical/actions";
+import { uploadMedicalDocument } from "@/app/(app)/medical/document-actions";
 import {
   getMedicalRecords,
   getLatestMedicalRecordByCanonical,

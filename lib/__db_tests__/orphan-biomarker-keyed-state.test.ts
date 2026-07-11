@@ -36,7 +36,7 @@ import {
   deleteMedicalDocument,
   reassignDocument,
   reprocessAllDocuments,
-} from "@/app/(app)/medical/actions";
+} from "@/app/(app)/medical/document-actions";
 import {
   seedActor,
   createLogin,

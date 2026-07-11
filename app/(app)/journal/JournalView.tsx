@@ -10,9 +10,8 @@ import type {
   SportStat,
 } from "@/lib/queries";
 import type { UnitPrefs } from "@/lib/settings";
-import type { ActivityEditData } from "@/components/ActivityForm";
 import { useActivityEditor } from "@/components/ActivityEditorProvider";
-import { regionForExercise } from "@/lib/lifts";
+import { exerciseHistoryKey, regionForExercise } from "@/lib/lifts";
 import { PageHeader, EmptyState } from "@/components/ui";
 import { WeeklyTargets } from "@/components/WeeklyTargets";
 import MobileDetailPage from "@/components/MobileDetailPage";
@@ -20,39 +19,16 @@ import { LG_QUERY, openDetailOnMobile } from "@/components/mobileDetail";
 import ExerciseDetailPanel from "@/components/ExerciseDetailPanel";
 import CardioDetailPanel from "@/components/CardioDetailPanel";
 import SportDetailPanel from "@/components/SportDetailPanel";
-import JournalCard, { type DisplayPart } from "./JournalCard";
+import JournalCard from "./JournalCard";
 import type { MergeSibling } from "./ActivityCardMenu";
 import { detectFieldConflicts } from "@/lib/import-review/conflicts";
 
-export interface JournalCardData {
-  activity: ActivityEditData;
-  durationText: string | null;
-  distanceText: string | null;
-  speedText: string | null;
-  // Compact chips for richer imported metrics (HR, elevation, power, etc.).
-  metrics: string[];
-  parts: DisplayPart[];
-  // Why this row can't be re-saved by the editor as-is (imports, legacy
-  // data), or null. See lib/activity-validate.
-  fault: string | null;
-  // Provenance chip + created/updated timestamps (issue #11).
-  provenance: {
-    // "Manual" | "Strava" | "Google Health Connect" | "Document" | "<Source> · edited"
-    label: string;
-    createdAt: string;
-    // NULL until the row has been edited since creation.
-    updatedAt: string | null;
-  };
-  // The row's fold-field values (issue #100) — the compact payload the manual-merge
-  // conflict preview compares against a same-day sibling. Values are raw canonical
-  // numbers/strings straight off the activity row.
-  foldValues: Record<string, unknown>;
-}
-export interface DayGroup {
-  date: string;
-  label: string;
-  cards: JournalCardData[];
-}
+// JournalCardData / DayGroup moved to lib/journal-card.ts (issue #334), built by the
+// pure buildJournalCards. Re-exported so existing `../journal/JournalView` importers
+// (HistorySection) keep their paths.
+import type { JournalCardData, DayGroup } from "@/lib/journal-card";
+export type { JournalCardData, DayGroup };
+
 export interface TargetChip {
   label: string;
   count: number;
@@ -378,7 +354,7 @@ export default function JournalView({
       units={units}
       goals={goals}
       goalProgress={goalProgress}
-      recent={recentByExercise[selectedStat.exercise.toLowerCase()]}
+      recent={recentByExercise[exerciseHistoryKey(selectedStat.exercise)]}
       onFilterTag={(kind, value) => setTagFilter({ kind, value })}
       headerRight={closeDetailButton}
       sex={sex}

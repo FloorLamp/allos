@@ -7,7 +7,7 @@ import {
   previewReprocess,
   reprocessDocument,
   type PreviewReprocessResult,
-} from "@/app/(app)/medical/actions";
+} from "@/app/(app)/medical/document-actions";
 import type { EntityDiff } from "@/lib/import-diff";
 
 // Reprocess-with-diff. Instead of silently re-extracting and

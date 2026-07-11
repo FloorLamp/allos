@@ -1,10 +1,17 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useId, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { IconPencil, IconTrash, IconPlus, IconX } from "@tabler/icons-react";
-import type { Equipment } from "@/lib/types";
-import { EQUIPMENT_CATEGORIES } from "@/lib/types";
+import {
+  IconPencil,
+  IconTrash,
+  IconPlus,
+  IconX,
+  IconArchive,
+  IconArchiveOff,
+} from "@tabler/icons-react";
+import type { Equipment, EquipmentKind } from "@/lib/types";
+import { EQUIPMENT_CATEGORIES, kindOf } from "@/lib/types";
 import type { WeightUnit } from "@/lib/settings";
 import { kgTo, toKg, round, stripNegative } from "@/lib/units";
 import { EmptyState } from "@/components/ui";
@@ -14,6 +21,7 @@ import {
   createEquipmentAction,
   updateEquipmentAction,
   deleteEquipmentAction,
+  setEquipmentRetiredAction,
 } from "@/app/(app)/settings/equipment/actions";
 
 interface Draft {
@@ -26,17 +34,27 @@ interface Draft {
 // builder); the user can switch it.
 const EMPTY: Draft = { name: "", weight: "", category: "Barbell" };
 
+// The <select> option groups, in kind order. The DB CHECK (migration 018) is the
+// source of truth for the value set; kindOf() places each into its group.
+const KIND_LABELS: { kind: EquipmentKind; label: string }[] = [
+  { kind: "strength", label: "Strength" },
+  { kind: "cardio", label: "Cardio" },
+  { kind: "recovery", label: "Recovery" },
+  { kind: "other", label: "Other" },
+];
+const CATEGORY_GROUPS = KIND_LABELS.map(({ kind, label }) => ({
+  label,
+  options: EQUIPMENT_CATEGORIES.filter((c) => kindOf(c) === kind),
+})).filter((g) => g.options.length > 0);
+
 function toDraft(e: Equipment, unit: WeightUnit): Draft {
-  const cat = (e.category ?? "").trim();
-  const matched = EQUIPMENT_CATEGORIES.find(
-    (c) => c.toLowerCase() === cat.toLowerCase()
-  );
   return {
     name: e.name,
     weight:
       e.weight_kg != null ? String(round(kgTo(e.weight_kg, unit), 2)) : "",
-    // Map any legacy free-text category onto the fixed set.
-    category: matched ?? (cat ? "Other" : "Barbell"),
+    // The DB converged to the fixed set (migration 018), so category is already a
+    // valid option or NULL; fall back to Barbell only for a null.
+    category: e.category ?? "Barbell",
   };
 }
 
@@ -131,6 +149,16 @@ export default function EquipmentManager({
     });
   }
 
+  function toggleRetired(e: Equipment) {
+    const next = e.retired ? false : true;
+    startTransition(async () => {
+      await setEquipmentRetiredAction(e.id, next);
+      if (editingId === e.id) cancel();
+      toast(next ? `Retired ${e.name}` : `Restored ${e.name}`);
+      router.refresh();
+    });
+  }
+
   return (
     <div className="card max-w-2xl space-y-4">
       <div className="flex items-center justify-between">
@@ -186,9 +214,11 @@ export default function EquipmentManager({
             ) : (
               <li
                 key={e.id}
+                data-testid="equipment-row"
+                data-retired={e.retired ? "1" : "0"}
                 className="flex items-center justify-between gap-3 py-3"
               >
-                <div className="min-w-0">
+                <div className={`min-w-0 ${e.retired ? "opacity-60" : ""}`}>
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-medium text-slate-800 dark:text-slate-100">
                       {e.name}
@@ -198,6 +228,11 @@ export default function EquipmentManager({
                         {e.category}
                       </span>
                     )}
+                    {e.retired ? (
+                      <span className="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+                        Retired
+                      </span>
+                    ) : null}
                   </div>
                   <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
                     {e.weight_kg != null
@@ -214,6 +249,20 @@ export default function EquipmentManager({
                     title="Edit"
                   >
                     <IconPencil className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => toggleRetired(e)}
+                    disabled={pending}
+                    data-testid="equipment-retire-toggle"
+                    className="rounded p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                    title={e.retired ? "Restore" : "Retire"}
+                  >
+                    {e.retired ? (
+                      <IconArchiveOff className="h-4 w-4" />
+                    ) : (
+                      <IconArchive className="h-4 w-4" />
+                    )}
                   </button>
                   <button
                     type="button"
@@ -251,12 +300,18 @@ function EquipmentForm({
   pending: boolean;
   error: string | null;
 }) {
+  // The form renders for add AND per-row edit, so label association needs
+  // instance-unique ids (getByLabel in the e2e spec, screen readers generally).
+  const uid = useId();
   return (
     <div className="space-y-3 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
-          <label className="label">Name</label>
+          <label className="label" htmlFor={`${uid}-name`}>
+            Name
+          </label>
           <input
+            id={`${uid}-name`}
             value={draft.name}
             onChange={(e) => setDraft({ ...draft, name: e.target.value })}
             placeholder="Trap bar"
@@ -265,8 +320,11 @@ function EquipmentForm({
           />
         </div>
         <div>
-          <label className="label">Bar weight ({unit})</label>
+          <label className="label" htmlFor={`${uid}-weight`}>
+            Bar weight ({unit})
+          </label>
           <input
+            id={`${uid}-weight`}
             value={draft.weight}
             onChange={(e) =>
               setDraft({ ...draft, weight: stripNegative(e.target.value) })
@@ -277,16 +335,23 @@ function EquipmentForm({
           />
         </div>
         <div>
-          <label className="label">Type</label>
+          <label className="label" htmlFor={`${uid}-category`}>
+            Type
+          </label>
           <select
+            id={`${uid}-category`}
             value={draft.category}
             onChange={(e) => setDraft({ ...draft, category: e.target.value })}
             className="input"
           >
-            {EQUIPMENT_CATEGORIES.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
+            {CATEGORY_GROUPS.map((g) => (
+              <optgroup key={g.label} label={g.label}>
+                {g.options.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </optgroup>
             ))}
           </select>
         </div>

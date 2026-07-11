@@ -9,6 +9,7 @@ import type {
 } from "@/lib/queries";
 import type { Goal, Sex } from "@/lib/types";
 import { strengthStanding } from "@/lib/strength-standards";
+import { exerciseHistoryKey } from "@/lib/lifts";
 import { lastSessionPR } from "@/lib/coaching";
 import { formatRelativeDate } from "@/lib/format-date";
 import { useTimezone } from "@/components/TimezoneProvider";
@@ -154,7 +155,7 @@ export default function StrengthExplorer({
           stat={current}
           bodyweightKg={bodyweightKg}
           units={units}
-          recent={recentByExercise[current.exercise.toLowerCase()]}
+          recent={recentByExercise[exerciseHistoryKey(current.exercise)]}
           goals={goals}
           goalProgress={goalProgress}
           sex={sex}
@@ -170,7 +171,7 @@ export default function StrengthExplorer({
           stat={current}
           bodyweightKg={bodyweightKg}
           units={units}
-          recent={recentByExercise[current.exercise.toLowerCase()]}
+          recent={recentByExercise[exerciseHistoryKey(current.exercise)]}
           goals={goals}
           goalProgress={goalProgress}
           sex={sex}

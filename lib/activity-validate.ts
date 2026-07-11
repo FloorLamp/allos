@@ -1,4 +1,5 @@
 import { isBodyweight, isTimed, variantOf } from "./lifts";
+import { parseComponents } from "./types";
 import type { Activity, ActivityComponent, ExerciseSet } from "./types";
 
 // The row subsets the validator needs. Pick<> so schema evolution in
@@ -108,17 +109,12 @@ export function storedActivityFault(
     else byExercise.set(key, { name: s.exercise, sets: [s] });
   }
 
-  // Parse components; invalid JSON falls back to legacy handling, exactly
-  // like the editor's catch. A stored empty list is NOT legacy: the editor
-  // renders zero parts from it and blocks.
-  let comps: ActivityComponent[] | null = null;
-  if (a.components != null) {
-    try {
-      comps = JSON.parse(a.components);
-    } catch {
-      comps = null;
-    }
-  }
+  // Parse components (shared parseComponents); an absent string stays legacy
+  // (null), a present one is the structured path — a stored empty list is NOT
+  // legacy: the editor renders zero parts from it and blocks.
+  const comps: ActivityComponent[] | null = a.components
+    ? parseComponents(a.components)
+    : null;
 
   // The editor only loads the parts named in components; other set groups
   // never appear in the form (they're judged as orphans below, not by the
