@@ -169,6 +169,13 @@ function isEmptyField(v: unknown): boolean {
   return v == null || v === "" || (Array.isArray(v) && v.length === 0);
 }
 
+// Per-field combiners for mergeDedupe: a listed field is merged with its function
+// (which must handle empties itself and be idempotent) instead of the default
+// empty-only backfill.
+type FieldCombiners<T> = {
+  [K in keyof T]?: (kept: T[K], incoming: T[K]) => T[K];
+};
+
 // De-duplicate by external_id, keeping the FIRST occurrence but BACKFILLING any of
 // its empty fields (null / blank / empty-array) from later duplicates — never
 // overwriting a value the kept row already has. This matters for the multi-document
@@ -180,7 +187,15 @@ function isEmptyField(v: unknown): boolean {
 // backfill recovers the richer data (reason, diagnoses, provider, location, …)
 // without overwriting anything, so it's safe to apply across every record kind and
 // doesn't disturb the largest-first demographics selection.
-function mergeDedupe<T extends { external_id: string }>(rows: T[]): T[] {
+//
+// `combine` overrides the backfill for named fields — used for encounter `notes`,
+// where first-wins loses data: two documents can carry DIFFERENT non-empty notes
+// for the same encounter (issue #262 — a bigger doc's short note would block the
+// smaller doc's full progress note), so notes are line-folded instead.
+function mergeDedupe<T extends { external_id: string }>(
+  rows: T[],
+  combine?: FieldCombiners<T>
+): T[] {
   const byId = new Map<string, T>();
   const order: string[] = [];
   for (const row of rows) {
@@ -191,7 +206,12 @@ function mergeDedupe<T extends { external_id: string }>(rows: T[]): T[] {
       continue;
     }
     for (const k of Object.keys(row) as (keyof T)[]) {
-      if (isEmptyField(kept[k]) && !isEmptyField(row[k])) kept[k] = row[k];
+      const combiner = combine?.[k];
+      if (combiner) {
+        kept[k] = combiner(kept[k], row[k]);
+      } else if (isEmptyField(kept[k]) && !isEmptyField(row[k])) {
+        kept[k] = row[k];
+      }
     }
   }
   return order.map((id) => byId.get(id)!);
@@ -217,6 +237,43 @@ function visitDiagnosisToCondition(
   };
 }
 
+// The MyChart/Epic per-org sharing disclaimer that Health Information Exchange
+// stamps into every shared document as a "Note from <org>" section (issue #262):
+// "This document contains information that was shared with <recipient>. It may not
+// contain the entire record from <org>." It is boilerplate, not clinical content —
+// attaching it as a note pollutes real encounters and, in a document with no
+// encounter section, materializes a spurious note-only encounter. Matched
+// STRUCTURALLY (the two-sentence skeleton with free-form, period-free name spans;
+// minor wording variants tolerated), and ANCHORED to the whole text — a real note
+// that merely mentions sharing, or carries clinical content around the boilerplate,
+// must never match (false negatives are benign; false positives drop real notes).
+const SHARING_DISCLAIMER_RE =
+  /^this document contains (?:health )?information that was shared with [^.!?]{1,160}\. ?it may not (?:contain|include) (?:the |your )?(?:entire|complete|full) (?:health |medical )?records? (?:from|of) [^.!?]{1,160}\.?$/i;
+
+// Whether a note body is, in its ENTIRETY, the sharing-disclaimer boilerplate.
+// Pure; unit-tested in lib/__tests__/cda-notes-diagnoses.test.ts.
+export function isSharingDisclaimer(text: string): boolean {
+  return SHARING_DISCLAIMER_RE.test(text.replace(/\s+/g, " ").trim());
+}
+
+// Fold incoming note lines into an existing free-text block, deduping by line
+// (case-insensitive) so re-folding the same note is idempotent. Returns the merged
+// block, or null when there is nothing.
+function foldNoteLines(
+  existing: string | null,
+  incoming: string[]
+): string | null {
+  const lines = existing ? existing.split("\n") : [];
+  const seen = new Set(lines.map((l) => l.toLowerCase()));
+  for (const line of incoming) {
+    if (!line.trim()) continue;
+    if (seen.has(line.toLowerCase())) continue;
+    seen.add(line.toLowerCase());
+    lines.push(line);
+  }
+  return lines.length ? lines.join("\n") : null;
+}
+
 // A note line for attaching to an encounter that already has its own performer:
 // prefix the authoring clinician's name for attribution when the section named one.
 function attributedNoteLine(n: ClinicalNote): string {
@@ -231,15 +288,20 @@ function mergeEncounterNotes(
   existing: string | null,
   notes: ClinicalNote[]
 ): string | null {
-  const lines = existing ? existing.split("\n") : [];
-  const seen = new Set(lines.map((l) => l.toLowerCase()));
-  for (const n of notes) {
-    const line = attributedNoteLine(n);
-    if (seen.has(line.toLowerCase())) continue;
-    seen.add(line.toLowerCase());
-    lines.push(line);
-  }
-  return lines.length ? lines.join("\n") : null;
+  return foldNoteLines(existing, notes.map(attributedNoteLine));
+}
+
+// mergeDedupe combiner for encounter `notes` across documents: union the DISTINCT
+// note lines (kept-row lines first, then any the incoming copy adds), rather than
+// first-wins or longest-wins. Concatenation is the safe semantics — two documents'
+// copies of one encounter can each carry a real note the other lacks, and
+// longest-wins would still drop the shorter one; the line-level dedup keeps the
+// merge idempotent when the copies share lines (issue #262).
+function mergeNoteBlocks(
+  kept: string | null,
+  incoming: string | null
+): string | null {
+  return foldNoteLines(kept, incoming ? incoming.split("\n") : []);
 }
 
 // An uncorrelatable clinical note → a standalone dated note entry, modeled as a
@@ -354,8 +416,14 @@ export function extractFromCcda(
   // model — the note's author is prefixed for attribution since the encounter carries
   // its own performer); else store each as a standalone dated note (a note-only
   // encounter row, whose provider IS the note author). A note with no date and no
-  // document date can't be placed as a standalone entry and is dropped.
-  const clinicalNotes = clinicalNotesFromSections(leftover);
+  // document date can't be placed as a standalone entry and is dropped. A note that
+  // is entirely the sharing-disclaimer boilerplate is skipped up front (#262): it is
+  // not clinical content, and letting it attach both pollutes the encounter's notes
+  // and — in a document with no encounter section — fabricates a note-only
+  // encounter out of pure boilerplate.
+  const clinicalNotes = clinicalNotesFromSections(leftover).filter(
+    (n) => !isSharingDisclaimer(n.text)
+  );
   if (deduped.length === 1) {
     deduped[0].notes = mergeEncounterNotes(deduped[0].notes, clinicalNotes);
   } else {
@@ -574,9 +642,13 @@ export function mergeImportResults(results: ImportResult[]): ImportResult {
   const keptConditions = mergeDedupe(conditions).sort((a, b) =>
     a.name.localeCompare(b.name)
   );
-  const keptEncounters = mergeDedupe(encounters).sort((a, b) =>
-    b.date.localeCompare(a.date)
-  );
+  // Encounter notes are line-folded (union of distinct lines) instead of
+  // first-wins-backfilled: two documents' copies of one encounter can carry
+  // DIFFERENT non-empty notes, and keeping only the first copy's silently drops
+  // the other's (#262).
+  const keptEncounters = mergeDedupe(encounters, {
+    notes: mergeNoteBlocks,
+  }).sort((a, b) => b.date.localeCompare(a.date));
   const keptProcedures = mergeDedupe(procedures).sort((a, b) =>
     (b.date ?? "").localeCompare(a.date ?? "")
   );

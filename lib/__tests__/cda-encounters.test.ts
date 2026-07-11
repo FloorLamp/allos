@@ -366,3 +366,83 @@ describe("mergeImportResults (multi-document XDM)", () => {
     expect(merged.records).toHaveLength(2);
   });
 });
+
+// ---- encounter notes across documents (#262) ----
+
+// The clinician's full Progress Note (11506-3) — carried only by the SMALLER
+// per-visit document in the failing export. Synthetic narrative.
+const PROGRESS_NOTE = `
+<section>
+  <code code="11506-3" codeSystem="2.16.840.1.113883.6.1"/>
+  <title>Progress Notes</title>
+  <text>Office visit for fever. Exam unremarkable aside from mild pharyngeal erythema. Plan: supportive care, fluids, recheck in three days if not improving.</text>
+</section>`;
+
+// A short but REAL note (recognized by the title heuristic) — proves the merge
+// keeps both distinct notes even when neither is disclaimer boilerplate.
+const SHORT_NOTE = `
+<section>
+  <code code="99997-7" codeSystem="2.16.840.1.113883.6.1"/>
+  <title>Telephone Notes</title>
+  <text>Parent called nurse line; advised alternating antipyretics.</text>
+</section>`;
+
+// The per-org sharing-disclaimer note (#262) — SYNTHETIC org/patient names. Carries
+// an author time so that, absent the disclaimer skip, the standalone path would have
+// a date to materialize a note-only encounter from (this file's doc() helper has no
+// document-level effectiveTime).
+const DISCLAIMER_NOTE = `
+<section>
+  <code code="88888-8" codeSystem="2.16.840.1.113883.6.1"/>
+  <title>Note from Example Health System</title>
+  <author><time value="20260608"/></author>
+  <text>This document contains information that was shared with Robin Sample. It may not contain the entire record from Example Health System.</text>
+</section>`;
+
+describe("encounter notes across merged documents (#262)", () => {
+  const visitOf = (r: ImportResult) =>
+    r.encounters!.find((e) => e.external_id === "ccda:encounter:100000001")!;
+
+  it("keeps the smaller doc's progress note when the larger doc's copy carried only the disclaimer", () => {
+    // The failing shape: the LARGER document (fed first, largest-first) has the same
+    // encounter with only the boilerplate note section; the SMALLER document carries
+    // the real Progress Note. Pre-fix, first-wins notes kept only the disclaimer.
+    const larger = extractFromCcda(doc(ENCOUNTERS, DISCLAIMER_NOTE));
+    const smaller = extractFromCcda(doc(ENCOUNTERS, PROGRESS_NOTE));
+    // The disclaimer is skipped at extraction, so the larger doc's copy has no notes…
+    expect(larger.encounters![0].notes).toBeNull();
+    // …and the merged encounter carries the real note, never the boilerplate.
+    const merged = mergeImportResults([larger, smaller]);
+    expect(visitOf(merged).notes).toBe(
+      "Office visit for fever. Exam unremarkable aside from mild pharyngeal erythema. Plan: supportive care, fluids, recheck in three days if not improving."
+    );
+  });
+
+  it("unions DISTINCT real notes from two documents' copies of one encounter", () => {
+    // Even with the disclaimer skip, first-wins would drop a real short note's
+    // sibling; the notes field is line-folded instead so both survive.
+    const withShort = extractFromCcda(doc(ENCOUNTERS, SHORT_NOTE));
+    const withFull = extractFromCcda(doc(ENCOUNTERS, PROGRESS_NOTE));
+    const merged = mergeImportResults([withShort, withFull]);
+    expect(visitOf(merged).notes).toBe(
+      "Parent called nurse line; advised alternating antipyretics.\n" +
+        "Office visit for fever. Exam unremarkable aside from mild pharyngeal erythema. Plan: supportive care, fluids, recheck in three days if not improving."
+    );
+  });
+
+  it("is idempotent: merging the same noted document twice does not duplicate the note", () => {
+    const withFull = extractFromCcda(doc(ENCOUNTERS, PROGRESS_NOTE));
+    const merged = mergeImportResults([withFull, withFull]);
+    expect(visitOf(merged).notes).toBe(withFull.encounters![0].notes);
+  });
+
+  it("materializes no note-only encounter when a no-encounter doc carries only the disclaimer", () => {
+    // DOC0001-shaped: summary document, no encounter section, disclaimer note.
+    const summary = extractFromCcda(doc(IMMUNIZATIONS, DISCLAIMER_NOTE));
+    expect(summary.encounters).toEqual([]);
+    const perVisit = extractFromCcda(doc(ENCOUNTERS, PROGRESS_NOTE));
+    const merged = mergeImportResults([summary, perVisit]);
+    expect(merged.encounters).toHaveLength(1);
+    expect(merged.encounters![0].external_id).toBe("ccda:encounter:100000001");
+  });
+});
