@@ -105,6 +105,16 @@ function writeSets(
   }
 }
 
+// Re-validate every surface that reads activity-derived data after a create/edit/
+// merge/delete: the Journal feed on /training, the /trends fitness-volume chart +
+// workout heatmap (issue #333), and the dashboard rollups. Kept in one place so the
+// next activity-reading surface is added once, not in each mutation.
+function revalidateActivitySurfaces() {
+  revalidatePath("/training");
+  revalidatePath("/trends");
+  revalidatePath("/");
+}
+
 // Create a new activity, or update an existing one when `id` is present.
 export async function saveActivity(formData: FormData) {
   const { login, profile } = await requireWriteAccess();
@@ -275,8 +285,7 @@ export async function saveActivity(formData: FormData) {
   const activityId = tx();
   if (activityId == null) return;
 
-  revalidatePath("/training");
-  revalidatePath("/");
+  revalidateActivitySurfaces();
   // Return the row id so the auto-saving form can switch from create to update.
   return { id: activityId };
 }
@@ -292,9 +301,9 @@ export async function logBodyweight(weight: number, date: string) {
   db.prepare(
     `INSERT INTO body_metrics (date, weight_kg, source, profile_id) VALUES (?,?,?,?)`
   ).run(d, toKg(weight, prefs.weightUnit), "manual", profile.id);
-  revalidatePath("/training");
-  revalidatePath("/trends");
-  revalidatePath("/");
+  // A bodyweight entry feeds bodyweight-lift volume/strength, so it refreshes the
+  // same fitness surfaces an activity write does (plus /trends body charts).
+  revalidateActivitySurfaces();
 }
 
 // MANUAL pair-merge from the Journal (issue #64): the user picks two activities of
@@ -370,11 +379,10 @@ export async function mergeActivities(
   });
   if (!tx()) return { undoId: null };
 
-  // The Journal feed lives on /training (the "Log" tab); revalidate it plus the
-  // dashboard rollups the folded/deleted row feeds — same surfaces deleteActivity
-  // refreshes.
-  revalidatePath("/training");
-  revalidatePath("/");
+  // Refresh every activity-reading surface the folded/deleted row feeds — the
+  // Journal feed on /training, the /trends fitness chart + heatmap, and the
+  // dashboard rollups (same surfaces deleteActivity refreshes).
+  revalidateActivitySurfaces();
   return { undoId };
 }
 
@@ -388,7 +396,6 @@ export async function deleteActivity(
   // delete it in one transaction (issue #30), so a mis-tap can be undone from the
   // toast. children cascade; captureDelete returns the undo token.
   const undoId = captureDelete("activity", profile.id, id);
-  revalidatePath("/training");
-  revalidatePath("/");
+  revalidateActivitySurfaces();
   return { undoId };
 }
