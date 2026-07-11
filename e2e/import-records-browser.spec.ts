@@ -25,11 +25,12 @@ test.describe("Import detail: tabbed records browser", () => {
     await expect(strip.getByTestId("import-tab-immunizations")).toHaveText(
       "Immunizations 1"
     );
-    // Providers are a COUNT CHIP, not a tab (no provider page to land on until
-    // #275): rendered as a plain element with no link.
+    // Providers are a COUNT CHIP, not a tab (they're the global registry, not this
+    // document's owned rows). Post-#275 the chip links to the /providers index.
     const chip = page.getByTestId("import-providers-chip");
     await expect(chip).toHaveText("Providers 1");
-    expect(await chip.evaluate((el) => el.tagName)).not.toBe("A");
+    expect(await chip.evaluate((el) => el.tagName)).toBe("A");
+    await expect(chip).toHaveAttribute("href", "/providers");
 
     // Default tab (no ?tab=) is the FIRST non-empty tab — Labs — marked current,
     // and its editable table renders the lab rows.

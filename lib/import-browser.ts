@@ -15,8 +15,8 @@ import { fmtWeight } from "./units";
 
 // The non-record tab kinds, in display order (after the record-category tabs).
 // "records" tabs are data-driven from recordsByCategory. Providers are NOT a tab
-// pre-#275 (their rows would have nowhere to link) — they stay a count chip; see
-// ImportTabStrip.providers.
+// — they're a global registry, not this document's owned rows — so they stay a
+// count chip that links to /providers (#275); see ImportTabStrip.providers.
 export type ImportTabKind =
   | "records"
   | "visits"
@@ -43,8 +43,8 @@ export interface ImportTab {
 export interface ImportTabStrip {
   tabs: ImportTab[];
   // Distinct providers this document's rows reference (global registry). A count
-  // chip, not a tab, until #275 gives provider rows a page to link to. Excluded
-  // from extracted_count by design.
+  // chip (linking to /providers, #275), not a tab, since providers aren't this
+  // document's owned rows. Excluded from extracted_count by design.
   providers: number;
 }
 
