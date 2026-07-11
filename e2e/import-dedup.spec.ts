@@ -13,10 +13,12 @@ test.describe("Data → Review duplicate resolver", () => {
     await page.goto("/data?section=review");
     const review = page.getByTestId("review-inbox");
 
-    // The badge sums the always-failing Strava integration (1) and the seeded
-    // unresolved duplicate pair (1) = 2. This spec owns that fixture, so the exact
-    // count is deterministic here.
-    await expect(page.getByTestId("review-badge").first()).toHaveText("2");
+    // The badge sums the two always-failing integrations — Strava (1) and the
+    // Withings connection seeded in a dead-token needs_reauth state (1, issue #326) —
+    // plus the seeded unresolved duplicate pair (1) = 3. Both failing integrations are
+    // constant fixtures no spec mutates, and this spec owns the pair's lifecycle, so
+    // the exact count is deterministic here.
+    await expect(page.getByTestId("review-badge").first()).toHaveText("3");
 
     // The detected pair renders under "Possible duplicates" with both rows and a
     // High-confidence chip.
@@ -49,8 +51,9 @@ test.describe("Data → Review duplicate resolver", () => {
     await expect(page.getByText("Afternoon Run").first()).toBeVisible();
     await expect(page.getByText("Morning run")).toHaveCount(0);
 
-    // The badge drops to 1 (just the still-failing Strava integration).
+    // The badge drops to 2 (the two still-failing integrations — Strava and the
+    // needs_reauth Withings connection — with the duplicate pair now resolved).
     await page.goto("/");
-    await expect(page.getByTestId("review-badge").first()).toHaveText("1");
+    await expect(page.getByTestId("review-badge").first()).toHaveText("2");
   });
 });

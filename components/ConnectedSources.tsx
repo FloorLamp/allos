@@ -74,6 +74,12 @@ function SourceCard({
             <span className="badge inline-flex items-center gap-1 bg-brand-100 text-brand-700 dark:bg-brand-950 dark:text-brand-300">
               Connected
             </span>
+          ) : source.needsReauth ? (
+            // The credential died (dead/revoked token) — a distinct, actionable state
+            // from the benign "Not connected" (issue #326).
+            <span className="badge inline-flex items-center gap-1 bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300">
+              <IconAlertTriangle className="h-3.5 w-3.5" /> Needs reconnect
+            </span>
           ) : (
             <span className="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">
               Not connected
@@ -117,7 +123,8 @@ function SourceCard({
           ) : (
             // A pull source only appears here once it's been set up, so a
             // not-connected card is one that was connected and later removed
-            // (issue #294): offer a Reconnect link back to its setup page.
+            // (issue #294) OR one whose token died and flipped to needs_reauth
+            // (#326): either way, offer a Reconnect link back to its setup page.
             <Link
               href={`/integrations/${source.id}`}
               className="text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"

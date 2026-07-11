@@ -301,6 +301,11 @@ export interface ConnectedSource {
   name: string;
   kind: string; // IntegrationKind: 'push' | 'oauth' | 'token'
   connected: boolean;
+  // The provider's credential died (dead/revoked token) and it flipped to
+  // `needs_reauth` (issue #326) — distinct from a never-configured / user-removed
+  // "not connected". The card surfaces a "Needs reconnect" prompt instead of the
+  // benign "Not connected" one.
+  needsReauth: boolean;
   canSyncNow: boolean;
   latest: IntegrationSyncEvent | null;
   history: IntegrationSyncEvent[];
@@ -325,15 +330,19 @@ export function getConnectedSources(profileId: number): ConnectedSource[] {
       i.status === "available" &&
       (i.kind === "push" || i.kind === "oauth" || i.kind === "token")
   )
-    .map((i) => ({
-      id: i.id,
-      name: i.name,
-      kind: i.kind,
-      connected: getConnection(profileId, i.id)?.status === "connected",
-      canSyncNow: SYNC_NOW_PROVIDERS.has(i.id),
-      latest: getLatestSyncEvent(profileId, i.id),
-      history: getIntegrationSyncEvents(profileId, i.id, 10),
-    }))
+    .map((i) => {
+      const status = getConnection(profileId, i.id)?.status;
+      return {
+        id: i.id,
+        name: i.name,
+        kind: i.kind,
+        connected: status === "connected",
+        needsReauth: status === "needs_reauth",
+        canSyncNow: SYNC_NOW_PROVIDERS.has(i.id),
+        latest: getLatestSyncEvent(profileId, i.id),
+        history: getIntegrationSyncEvents(profileId, i.id, 10),
+      };
+    })
     .filter((s) =>
       shouldShowConnectedSource({
         connected: s.connected,

@@ -166,6 +166,37 @@ ins.run(
   null
 );
 
+// Issue #326: a provider whose token DIED (dead/revoked refresh token) flips to the
+// terminal `needs_reauth` state — the hourly tick then auto-syncs `connected` rows
+// ONLY, so it stops retrying forever. Withings models that: mark it needs_reauth with
+// a preserved config, plus one past failed sync event so the card has history and
+// renders under "Connected sources" with the distinct "Needs reconnect" badge + a
+// Reconnect link (contrast Oura's benign "Not connected"). Its latest event is a
+// failure, so it also surfaces under "Needs attention". Synthetic config only.
+db.prepare(
+  `DELETE FROM integration_sync_events WHERE profile_id = ? AND provider = 'withings'`
+).run(PROFILE_ID);
+upsertConnection(PROFILE_ID, "withings", {
+  status: "needs_reauth",
+  config: { clientId: "e2e-w-client", clientSecret: "e2e-w-secret" },
+});
+ins.run(
+  PROFILE_ID,
+  "withings",
+  "2026-07-09 08:30:00",
+  0,
+  null,
+  null,
+  null,
+  null,
+  null,
+  null,
+  null,
+  null,
+  null, // raw_ref
+  "Withings token refresh failed (401)"
+);
+
 // ── Duplicate/conflict fixtures (issue #10, Phase 2) ──────────────────────────
 // A cross-source ACTIVITY pair on one day: a manually-logged "Morning run" and a
 // Strava-imported run with overlapping clock times — a HIGH-confidence duplicate

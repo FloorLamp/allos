@@ -7,7 +7,9 @@ import {
   setOuraCursor,
   recordSync,
   recordSyncEvent,
+  markConnectionNeedsReauth,
 } from "./connections";
+import { isAuthRefreshFailure } from "./auth-failure";
 import {
   summarizeSplit,
   foldCounts,
@@ -108,6 +110,10 @@ interface PageResult {
   items: Record<string, unknown>[];
   truncated: boolean;
   error?: string;
+  // HTTP status of the failing request (issue #326): a 401 on a data pull means the
+  // personal access token was revoked, so the caller marks the connection
+  // needs_reauth. Null/absent on success or a network error (status 0).
+  status?: number;
 }
 
 // Follow Oura's next_token pagination over a date range, accumulating `data` items.
@@ -134,6 +140,7 @@ async function fetchPages(
         items,
         truncated: false,
         error: `Oura ${path} request failed (${res.status})`,
+        status: res.status,
       };
     }
     const body = (res.json ?? {}) as { data?: unknown; next_token?: unknown };
@@ -198,6 +205,11 @@ export async function runOuraSync(
     endDate
   );
   if (sleep.error) {
+    // A revoked personal access token surfaces as a 401 on the pull — flip to
+    // needs_reauth so the tick stops retrying it forever (issue #326).
+    if (sleep.status != null && isAuthRefreshFailure(sleep.status)) {
+      markConnectionNeedsReauth(profileId, OURA_ID);
+    }
     recordSyncEvent(profileId, OURA_ID, { ok: false, error: sleep.error });
     return { error: sleep.error };
   }
@@ -222,6 +234,9 @@ export async function runOuraSync(
     endDate
   );
   if (workouts.error) {
+    if (workouts.status != null && isAuthRefreshFailure(workouts.status)) {
+      markConnectionNeedsReauth(profileId, OURA_ID);
+    }
     recordSyncEvent(profileId, OURA_ID, { ok: false, error: workouts.error });
     return { error: workouts.error };
   }

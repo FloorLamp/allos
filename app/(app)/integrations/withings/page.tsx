@@ -48,6 +48,8 @@ export default async function WithingsPage(props: {
   const cfg = getWithingsConfig(profile.id);
   const hasCreds = !!(cfg.clientId && cfg.clientSecret);
   const connected = conn?.status === "connected" && !!cfg.accessToken;
+  // The refresh token died/was revoked (issue #326) — surface an actionable notice.
+  const needsReauth = conn?.status === "needs_reauth";
   const callbackUrl = await withingsCallbackUrl();
   const error = searchParams.error
     ? (ERROR_MESSAGES[searchParams.error] ?? "Connection failed. Try again.")
@@ -82,6 +84,17 @@ export default async function WithingsPage(props: {
           data-testid="withings-error"
         >
           {error}
+        </div>
+      )}
+
+      {needsReauth && !connected && (
+        <div
+          className="mb-4 max-w-3xl rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-300"
+          data-testid="withings-needs-reauth"
+        >
+          Your Withings connection expired — the saved token was revoked or is
+          no longer valid, so automatic syncing has stopped. Reconnect with
+          Withings below to resume.
         </div>
       )}
 
