@@ -22,6 +22,34 @@ function providerId(name: string): number {
   }
 }
 
+function withDb<T>(fn: (db: InstanceType<typeof Database>) => T): T {
+  const db = new Database(DB_PATH);
+  try {
+    return fn(db);
+  } finally {
+    db.close();
+  }
+}
+
+// Every provider-link column the merge re-points — mirrors PROVIDER_LINK_COLUMNS
+// in lib/provider-merge.ts (kept literal here: Playwright specs don't share the
+// app's module graph). Used to snapshot/restore the merge test's fixture state.
+const PROVIDER_LINKS: { table: string; column: string }[] = [
+  { table: "medical_records", column: "provider_id" },
+  { table: "immunizations", column: "provider_id" },
+  { table: "intake_items", column: "provider_id" },
+  { table: "encounters", column: "provider_id" },
+  { table: "encounters", column: "location_provider_id" },
+  { table: "procedures", column: "provider_id" },
+  { table: "care_plan_items", column: "provider_id" },
+  { table: "appointments", column: "provider_id" },
+];
+
+// Pre-merge snapshot of the absorbed duplicate + its linked row ids, captured by
+// the merge test and replayed by its afterAll restore.
+let savedDupRow: Record<string, unknown> | undefined;
+let savedLinks: { table: string; column: string; ids: number[] }[] = [];
+
 test.describe("Providers registry", () => {
   // The merge test permanently deletes a seeded duplicate, so these run in order
   // in one worker (the detail read must precede the merge that absorbs it).
@@ -77,6 +105,27 @@ test.describe("Providers registry", () => {
     const survivor = providerId("Dr. Anita Patel");
     const duplicate = providerId("Dr. Anita Patel MD");
 
+    // Snapshot the duplicate row + every row linked to it, so afterAll can undo
+    // the merge (which permanently deletes the duplicate) — a retry of this
+    // serial group, and any later spec, must see the original fixture.
+    savedDupRow = withDb(
+      (db) =>
+        db.prepare("SELECT * FROM providers WHERE id = ?").get(duplicate) as
+          Record<string, unknown> | undefined
+    );
+    if (!savedDupRow) throw new Error("duplicate provider fixture missing");
+    savedLinks = withDb((db) =>
+      PROVIDER_LINKS.map(({ table, column }) => ({
+        table,
+        column,
+        ids: (
+          db
+            .prepare(`SELECT id FROM ${table} WHERE ${column} = ?`)
+            .all(duplicate) as { id: number }[]
+        ).map((r) => r.id),
+      }))
+    );
+
     await page.goto(`/providers/${survivor}`);
     const merge = page.getByTestId("provider-merge");
     await expect(merge).toBeVisible();
@@ -104,8 +153,41 @@ test.describe("Providers registry", () => {
     await detail.getByTestId("activity-summary-procedures").click();
     await expect(detail.getByText("Blood pressure check")).toBeVisible();
 
-    // The absorbed provider is gone — its detail page 404s.
-    const resp = await page.goto(`/providers/${duplicate}`);
-    expect(resp?.status()).toBe(404);
+    // The absorbed provider is gone — its detail renders the not-found page.
+    // The (app) layout streams through a root loading.tsx, so the HTTP status of
+    // the document is always 200 and notFound() can only swap the rendered UI —
+    // that rendered outcome is the observable contract, not the status code.
+    await page.goto(`/providers/${duplicate}`);
+    await expect(page.getByTestId("provider-detail")).toHaveCount(0);
+    await expect(page.getByText(/could not be found/i)).toBeVisible();
+  });
+
+  // Undo the merge so retries of this serial group and later specs see the
+  // original fixture: re-insert the absorbed provider row verbatim (same id and
+  // dedup_key) and point its captured rows back. No-op when the merge test never
+  // captured a snapshot (an earlier test failed) or the row still exists.
+  test.afterAll(() => {
+    if (!savedDupRow) return;
+    const row = savedDupRow;
+    withDb((db) => {
+      const exists = db
+        .prepare("SELECT 1 FROM providers WHERE id = ?")
+        .get(row.id);
+      if (exists) return;
+      const cols = Object.keys(row);
+      db.prepare(
+        `INSERT INTO providers (${cols.join(", ")}) VALUES (${cols
+          .map(() => "?")
+          .join(",")})`
+      ).run(...cols.map((c) => row[c]));
+      for (const { table, column, ids } of savedLinks) {
+        for (const id of ids) {
+          db.prepare(`UPDATE ${table} SET ${column} = ? WHERE id = ?`).run(
+            row.id,
+            id
+          );
+        }
+      }
+    });
   });
 });
