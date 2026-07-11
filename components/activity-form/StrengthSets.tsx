@@ -28,6 +28,7 @@ import {
   nextSetText,
   type NextSet,
 } from "@/lib/coaching";
+import { pickSeedSessions } from "@/lib/exercise-window";
 import {
   dispWeight,
   round,
@@ -126,13 +127,19 @@ export default function StrengthSets({
     : undefined;
   let suggestion: NextSet | null = null;
   if (hist && past?.length) {
-    // All sets of the newest prior session (two same-day activities are one
-    // session, as in getStrengthByExercise) — the anchor plus every working set
-    // so progression judges the session, not the single best set (#330).
-    const newestSets = past
-      .filter((s) => s.date === past[0].date)
-      .flatMap((s) => s.sets);
-    const best = sessionBestSet(newestSets, past[0].baseKg);
+    // Seed off the prior session of the EXACT variant the user is entering
+    // (`p.name`), falling back to the newest session overall — the merged history
+    // (#331) interleaves implements, and a per-hand dumbbell load is a different
+    // progression from a barbell total (#393). pickSeedSessions is the same ONE
+    // decision getStrengthByExercise's lastSessionBest/lastSessionSets use, so the
+    // seed is implement-appropriate identically on both surfaces. Two same-day
+    // activities are still one session (as in getStrengthByExercise) — the anchor
+    // plus every working set so progression judges the session, not the single
+    // best set (#330).
+    const seed = pickSeedSessions(past, p.name);
+    const seedSets = seed.flatMap((s) => s.sets);
+    const seedBase = seed[0]?.baseKg ?? 0;
+    const best = sessionBestSet(seedSets, seedBase);
     // A weighted lift whose newest session carries only weightless sets
     // (possible via imports) has no load to progress from — no suggestion
     // beats a from-zero "add 2.5 kg".
@@ -142,7 +149,7 @@ export default function StrengthSets({
           exercise: p.name,
           bodyweight: hist.bodyweight,
           lastSessionBest: best,
-          lastSessionSets: sessionWorkSets(newestSets, past[0].baseKg),
+          lastSessionSets: sessionWorkSets(seedSets, seedBase),
         },
         units.weightUnit
       );

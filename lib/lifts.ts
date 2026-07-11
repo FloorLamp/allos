@@ -531,6 +531,27 @@ export function exerciseHistoryKey(name: string): string {
   return baseLiftName(name).trim().toLowerCase();
 }
 
+/**
+ * The finite set of logged names that all collapse to `exerciseHistoryKey(name)`
+ * — the canonical key's preimage, lowercased/trimmed. For a catalog variant group
+ * this is the bare base plus every composed equipment variant ("Curl",
+ * "Barbell Curl", "Dumbbell Curl", "Cable Curl", "Machine Curl" → all key "curl");
+ * for a plain catalog lift or a non-catalog custom lift it is just the one name.
+ *
+ * A scan that needs every set of a merged history can push this into SQL —
+ * `WHERE LOWER(TRIM(s.exercise)) IN (...)` — since SQLite can't call baseLiftName,
+ * recovering a bounded, index-friendly scan with semantics identical to filtering
+ * every profile row by exerciseHistoryKey in JS (#394).
+ */
+export function exerciseHistoryNames(name: string): string[] {
+  const v = variantOf(name);
+  if (!v) return [name.trim().toLowerCase()];
+  const g = v.group;
+  return [g.name, ...g.equipment.map((eq) => composeVariant(g, eq))].map((n) =>
+    n.trim().toLowerCase()
+  );
+}
+
 /** Look up a lift by name (case-insensitive, with a loose contains fallback). */
 export function liftInfo(name: string): LiftDef | undefined {
   const key = name.trim().toLowerCase();

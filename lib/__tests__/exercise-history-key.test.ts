@@ -5,6 +5,7 @@ import { shiftDateStr } from "../date";
 import {
   classifyBodyweightByExercise,
   exerciseHistoryKey,
+  exerciseHistoryNames,
   type BodyweightClassifyRow,
 } from "../lifts";
 
@@ -43,6 +44,48 @@ describe("exerciseHistoryKey (#331 defect 2)", () => {
     expect(exerciseHistoryKey("Sled Drag")).not.toBe(
       exerciseHistoryKey("Zercher Carry")
     );
+  });
+});
+
+describe("exerciseHistoryNames — the canonical key's finite preimage (#394)", () => {
+  // getExerciseComparison pushes its variant filter into SQL as `IN (...)`; the
+  // placeholder set is exactly the names that collapse to the canonical key. Every
+  // returned name must in turn map back to the same key, so the SQL scan and the
+  // old JS `exerciseHistoryKey(r.exercise) === key` filter select identical rows.
+  it("expands a variant group to its base plus every composed variant", () => {
+    const names = exerciseHistoryNames("Barbell Curl");
+    expect(new Set(names)).toEqual(
+      new Set([
+        "curl",
+        "barbell curl",
+        "dumbbell curl",
+        "cable curl",
+        "machine curl",
+      ])
+    );
+  });
+
+  it("returns the same preimage whether asked by base or by any variant", () => {
+    const byBase = new Set(exerciseHistoryNames("Curl"));
+    for (const v of ["Barbell Curl", "Dumbbell Curl", "Cable Curl"]) {
+      expect(new Set(exerciseHistoryNames(v))).toEqual(byBase);
+    }
+  });
+
+  it("every name in the preimage maps back to the one canonical key", () => {
+    for (const v of ["Curl", "Barbell Curl", "Row", "Bench Press"]) {
+      const key = exerciseHistoryKey(v);
+      for (const n of exerciseHistoryNames(v)) {
+        expect(exerciseHistoryKey(n)).toBe(key);
+      }
+    }
+  });
+
+  it("keeps a plain catalog lift and a custom lift to just their own name", () => {
+    // Deadlift is a plain (non-variant-group) catalog lift — no equipment variants.
+    expect(exerciseHistoryNames("Deadlift")).toEqual(["deadlift"]);
+    // A non-catalog custom lift is its own single lowercased/trimmed name.
+    expect(exerciseHistoryNames("  Sled Drag ")).toEqual(["sled drag"]);
   });
 });
 

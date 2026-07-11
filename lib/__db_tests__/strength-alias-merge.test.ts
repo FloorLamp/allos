@@ -18,10 +18,15 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { shiftDateStr } from "@/lib/date";
 import { db, today } from "@/lib/db";
 import { exerciseHistoryKey } from "@/lib/lifts";
-import { getRecentExerciseHistory, getStrengthByExercise } from "@/lib/queries";
+import {
+  getExerciseComparison,
+  getRecentExerciseHistory,
+  getStrengthByExercise,
+} from "@/lib/queries";
 
 let profileId: number;
 let staleProfileId: number;
+let mixProfileId: number;
 
 function addSession(
   profile: number,
@@ -67,6 +72,17 @@ beforeAll(() => {
     100,
     5
   );
+
+  mixProfileId = Number(
+    db.prepare("INSERT INTO profiles (name) VALUES ('Mixed Implements')").run()
+      .lastInsertRowid
+  );
+  // Two curl implements logged on the SAME (newest) date — a heavier Barbell Curl
+  // FIRST (lower activity id) and a lighter Dumbbell Curl SECOND (higher id, so
+  // the newest session). The merge (#331) collapses both under "curl".
+  const tm = today(mixProfileId);
+  addSession(mixProfileId, shiftDateStr(tm, -3), "Barbell Curl", 40, 8);
+  addSession(mixProfileId, shiftDateStr(tm, -3), "Dumbbell Curl", 15, 10);
 });
 
 describe("alias-merged history aggregation (#331 defect 2)", () => {
@@ -106,5 +122,47 @@ describe(">1yr-old seed suggests on neither surface (#331)", () => {
   it("the editor shows no chip for a lift last trained >12 months ago", () => {
     const hist = getRecentExerciseHistory(staleProfileId, 4);
     expect(hist["deadlift"]).toBeUndefined();
+  });
+});
+
+describe("seed doesn't mix implements after the variant merge (#393)", () => {
+  it("seeds off the newest session's own implement, not a heavier same-day sibling", () => {
+    const stat = getStrengthByExercise(mixProfileId).find(
+      (s) => exerciseHistoryKey(s.exercise) === "curl"
+    );
+    expect(stat).toBeTruthy();
+    // Both same-day implements aggregate into one history, so the PR is the
+    // heavier Barbell Curl (40).
+    expect(stat!.topWeightKg).toBe(40);
+    // …but the next-set seed comes from the newest logged session (the Dumbbell
+    // Curl at 15), NOT the heavier Barbell Curl that shares the date — pre-#393
+    // sessionBestSet over the mixed rows would have anchored on 40.
+    expect(stat!.lastSessionBest?.weightKg).toBe(15);
+    expect(stat!.lastSessionBest?.reps).toBe(10);
+    expect(stat!.lastSessionSets.map((s) => s.weightKg)).toEqual([15]);
+  });
+});
+
+describe("getExerciseComparison merges variants via the SQL IN-filter (#394)", () => {
+  // Pushing the variant filter into `WHERE LOWER(TRIM(s.exercise)) IN (...)` must
+  // keep the SAME merged series the JS post-filter produced: the Barbell Curl and
+  // the bare Curl session both appear regardless of which variant name is queried.
+  it("returns the whole merged series when queried by the base name", () => {
+    const series = getExerciseComparison(profileId, "Curl", "kg");
+    expect(series).toHaveLength(2);
+    // Ascending by date: the older Barbell Curl (40) then the newer Curl (50).
+    expect(series.map((s) => s.topWeightKg)).toEqual([40, 50]);
+  });
+
+  it("returns the identical series when queried by any equipment variant", () => {
+    const byBase = getExerciseComparison(profileId, "Curl", "kg");
+    // Barbell Curl WAS logged; Dumbbell Curl was NOT — both still resolve to the
+    // full merged curl history because they share the canonical key.
+    for (const name of ["Barbell Curl", "Dumbbell Curl"]) {
+      const series = getExerciseComparison(profileId, name, "kg");
+      expect(series.map((s) => [s.activityId, s.topWeightKg])).toEqual(
+        byBase.map((s) => [s.activityId, s.topWeightKg])
+      );
+    }
   });
 });
