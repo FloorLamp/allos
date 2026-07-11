@@ -13,8 +13,15 @@ import type {
   ExerciseStat,
   SportStat,
 } from "@/lib/queries";
+import type { Sex } from "@/lib/types";
 import { dispWeight, fmtWeight, kmTo, round } from "@/lib/units";
-import { STANDARD_LEVELS, levelFor, type Standard } from "@/lib/strength";
+import {
+  levelFloors,
+  strengthStanding,
+  strengthLevelLabel,
+  strengthLevelColor,
+  type StrengthLevel,
+} from "@/lib/strength-standards";
 
 export type AnalyzeKind = "strength" | "cardio" | "sport";
 
@@ -259,46 +266,79 @@ export function formatIntensity(value: string | null) {
 
 // ---- Strength benchmark card ----
 
+// One rung of the benchmark ladder: a named level floor (absolute kg at the
+// lifter's bodyweight), or the injected "Current" marker when the lifter sits
+// below the beginner floor (untrained).
 export interface BenchmarkRow {
   type: "level" | "current";
   label: string;
-  ratio: number;
+  level: StrengthLevel | null; // null for the injected "current" row
+  valueKg: number; // absolute floor (or current 1RM for the current row)
   color: string;
 }
 
-// The pure state behind BenchmarkCard: the athlete's current bodyweight ratio +
-// ranked level, whether they're below the beginner cut (unranked, so the actual
-// ratio joins the ladder), the label to bold on the ladder, and the sorted rows
-// (each standard level, plus the "Current" marker when unranked). Rendering-only
-// concerns (JSX, timeline dots) stay in the component.
+export interface BenchmarkState {
+  currentLevel: { level: StrengthLevel; label: string; color: string };
+  currentE1rmKg: number;
+  bodyweightKg: number;
+  // The label to bold on the ladder — null when untrained (below the beginner
+  // floor), in which case a "Current" marker joins the ladder instead.
+  rankedLevelLabel: string | null;
+  isUntrained: boolean;
+  rows: BenchmarkRow[];
+}
+
+// The pure state behind BenchmarkCard, from the SINGLE strengthStanding model
+// (issue #152): the lifter's current level (same as the header badge / coaching
+// line), whether they're below the beginner floor (untrained), the label to bold,
+// and the sorted ladder rows (each named level floor in kg, plus the "Current"
+// marker when untrained). Returns null when the lift isn't covered or sex/
+// bodyweight/1RM is missing, so the card HIDES exactly like the badge. Rendering-
+// only concerns (JSX, timeline dots) stay in the component.
 export function benchmarkState(
-  standard: Standard,
+  exercise: string,
+  sex: Sex | null | undefined,
   currentE1rmKg: number,
   bodyweightKg: number | null
-) {
-  const currentRatio =
-    bodyweightKg && currentE1rmKg > 0 ? currentE1rmKg / bodyweightKg : null;
-  const currentLevel =
-    currentRatio == null ? null : levelFor(currentRatio, standard);
-  const isUnranked = currentRatio != null && currentRatio < standard.beginner;
-  const rankedLevelLabel = !isUnranked ? currentLevel?.label : null;
+): BenchmarkState | null {
+  const standing = strengthStanding(exercise, currentE1rmKg, sex, bodyweightKg);
+  if (!standing) return null;
+  const floors = levelFloors(exercise, sex, bodyweightKg);
+  if (!floors) return null;
+
+  const level = standing.level;
+  const isUntrained = level === "untrained";
   const rows: BenchmarkRow[] = [
-    ...STANDARD_LEVELS.map((level) => ({
+    ...floors.floors.map((f) => ({
       type: "level" as const,
-      label: level.label,
-      ratio: standard[level.key],
-      color: level.color,
+      label: strengthLevelLabel(f.level),
+      level: f.level,
+      valueKg: f.floorKg,
+      color: strengthLevelColor(f.level),
     })),
-    ...(!isUnranked || currentRatio == null
-      ? []
-      : [
+    ...(isUntrained
+      ? [
           {
             type: "current" as const,
             label: "Current",
-            ratio: currentRatio,
+            level: null,
+            valueKg: standing.e1rmKg,
             color: "text-brand-700 dark:text-brand-300",
           },
-        ]),
-  ].sort((a, b) => b.ratio - a.ratio);
-  return { currentRatio, currentLevel, isUnranked, rankedLevelLabel, rows };
+        ]
+      : []),
+  ].sort((a, b) => b.valueKg - a.valueKg);
+
+  return {
+    currentLevel: {
+      level,
+      label: strengthLevelLabel(level),
+      color: strengthLevelColor(level),
+    },
+    currentE1rmKg: standing.e1rmKg,
+    bodyweightKg: standing.bodyweightKg,
+    rankedLevelLabel: isUntrained ? null : strengthLevelLabel(level),
+    isUntrained,
+    rows,
+  };
 }

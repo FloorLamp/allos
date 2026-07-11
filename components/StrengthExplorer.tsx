@@ -8,7 +8,7 @@ import type {
   RecentByExercise,
 } from "@/lib/queries";
 import type { Goal, Sex } from "@/lib/types";
-import { standardFor, levelFor } from "@/lib/strength";
+import { strengthStanding } from "@/lib/strength-standards";
 import { lastSessionPR } from "@/lib/coaching";
 import { formatRelativeDate } from "@/lib/format-date";
 import { useTimezone } from "@/components/TimezoneProvider";
@@ -62,10 +62,10 @@ export default function StrengthExplorer({
   const current =
     exercises.find((e) => e.exercise === selected) ?? exercises[0];
 
-  function levelLabel(e: ExerciseStat) {
-    const std = standardFor(e.exercise, sex);
-    if (!std || !bodyweightKg) return null;
-    return levelFor(e.e1rmKg / bodyweightKg, std);
+  // The lifter's standing for an exercise — the SINGLE strength-level model. Null
+  // (⇒ no badge) when the lift isn't covered or sex/bodyweight is unset.
+  function standingFor(e: ExerciseStat) {
+    return strengthStanding(e.exercise, e.e1rmKg, sex, bodyweightKg);
   }
 
   return (
@@ -91,7 +91,7 @@ export default function StrengthExplorer({
             </thead>
             <tbody>
               {exercises.map((e) => {
-                const lvl = levelLabel(e);
+                const standing = standingFor(e);
                 const active = e.exercise === current.exercise;
                 const isPR = lastSessionPR(e).e1rm;
                 return (
@@ -124,12 +124,12 @@ export default function StrengthExplorer({
                       {bestSetText(e, wu)}
                     </td>
                     <td className="td font-medium">
-                      {lvl ? (
+                      {standing ? (
                         <LevelBadge
-                          label={lvl.label}
-                          color={lvl.color}
+                          level={standing.level}
                           exercise={e.exercise}
                           sex={sex}
+                          bodyweightKg={bodyweightKg}
                         />
                       ) : (
                         <span className="text-slate-300 dark:text-slate-600">

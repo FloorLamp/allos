@@ -3,28 +3,37 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { IconX, IconMedal2 } from "@tabler/icons-react";
-import { standardFor } from "@/lib/strength";
+import {
+  strengthLevelLabel,
+  strengthLevelColor,
+  type StrengthLevel,
+} from "@/lib/strength-standards";
 import type { Sex } from "@/lib/types";
 import StrengthStandards from "./StrengthStandards";
 
 // A strength "Level" label that opens the standards reference (modal) on click,
-// highlighting the row for `exercise` and the cell for this level. A medal icon
-// signals the level (and that it's tappable) in place of an underline.
+// highlighting the row for `exercise` and the cell for this level. The label and
+// color come from the single strength-standard model (lib/strength-standards),
+// the SAME computation that placed the lifter — so the badge can never disagree
+// with the coaching line or benchmark card. A medal icon signals the level (and
+// that it's tappable) in place of an underline.
 export default function LevelBadge({
-  label,
-  color,
+  level,
   exercise,
   className,
   sex,
+  bodyweightKg,
 }: {
-  label: string;
-  color?: string;
+  level: StrengthLevel;
   exercise?: string;
   className?: string;
   sex?: Sex | null;
+  // The lifter's bodyweight, so the reference table shows floors adjusted for it.
+  bodyweightKg?: number | null;
 }) {
   const [open, setOpen] = useState(false);
-  const std = exercise ? standardFor(exercise, sex) : undefined;
+  const label = strengthLevelLabel(level);
+  const color = strengthLevelColor(level);
 
   return (
     <>
@@ -35,9 +44,9 @@ export default function LevelBadge({
           setOpen(true);
         }}
         title="See strength standards"
-        className={`inline-flex items-center gap-1 text-sm font-semibold transition hover:opacity-70 ${
-          color ?? ""
-        } ${className ?? ""}`}
+        className={`inline-flex items-center gap-1 text-sm font-semibold transition hover:opacity-70 ${color} ${
+          className ?? ""
+        }`}
       >
         <IconMedal2 className="h-4 w-4" />
         {label}
@@ -70,9 +79,10 @@ export default function LevelBadge({
                 What the per-exercise “Level” labels mean.
               </p>
               <StrengthStandards
-                highlightStandard={std}
-                highlightLevel={label}
+                highlightLift={exercise}
+                highlightLevel={level}
                 sex={sex}
+                bodyweightKg={bodyweightKg}
               />
             </div>
           </div>,

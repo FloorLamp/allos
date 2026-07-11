@@ -19,13 +19,13 @@ import { today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { fmtDistance, fmtKmh, fmtWeight } from "@/lib/units";
 import { formatLongDate } from "@/lib/format-date";
-import { standardFor, type Standard } from "@/lib/strength";
 import { formatMinutes } from "@/lib/duration";
 import {
   RANGES,
   STRENGTH_METRICS,
   CARDIO_METRICS,
   benchmarkState,
+  type BenchmarkState,
   buildAnalyzeOptions,
   cardioMetricValue,
   coerceCardioMetric,
@@ -327,7 +327,12 @@ function strengthView({
   );
   const newest = [...sessions].sort(newestFirst);
   const chartMetric = STRENGTH_METRICS.find((m) => m.id === activeMetric)!;
-  const benchmark = standardFor(stat.exercise, sex);
+  const benchmark = benchmarkState(
+    stat.exercise,
+    sex,
+    stat.e1rmKg,
+    bodyweightKg
+  );
   return {
     name: stat.exercise,
     metric: activeMetric,
@@ -370,9 +375,7 @@ function strengthView({
         {benchmark && (
           <BenchmarkCard
             exercise={stat.exercise}
-            standard={benchmark}
-            currentE1rmKg={stat.e1rmKg}
-            bodyweightKg={bodyweightKg}
+            state={benchmark}
             weightUnit={units.weightUnit}
           />
         )}
@@ -484,22 +487,16 @@ function rangeStart(profileId: number, range: RangeId): string | null {
 
 function BenchmarkCard({
   exercise,
-  standard,
-  currentE1rmKg,
-  bodyweightKg,
+  state,
   weightUnit,
 }: {
   exercise: string;
-  standard: Standard;
-  currentE1rmKg: number;
-  bodyweightKg: number | null;
+  state: BenchmarkState;
   weightUnit: "kg" | "lb";
 }) {
-  const { currentRatio, currentLevel, rankedLevelLabel, rows } = benchmarkState(
-    standard,
-    currentE1rmKg,
-    bodyweightKg
-  );
+  const { currentLevel, rankedLevelLabel, rows, currentE1rmKg, bodyweightKg } =
+    state;
+  const currentRatio = currentE1rmKg / bodyweightKg;
 
   return (
     <div className="card">
@@ -509,19 +506,17 @@ function BenchmarkCard({
             Benchmarks
           </h3>
           <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
-            {exercise} estimated 1RM progression
+            {exercise} estimated 1RM progression · for your bodyweight & sex
           </p>
         </div>
-        {currentRatio != null && currentLevel && (
-          <div className="text-right">
-            <div className={`text-sm font-semibold ${currentLevel.color}`}>
-              {currentLevel.label}
-            </div>
-            <div className="text-xs text-slate-400 dark:text-slate-500">
-              {currentRatio.toFixed(2)}× BW
-            </div>
+        <div className="text-right">
+          <div className={`text-sm font-semibold ${currentLevel.color}`}>
+            {currentLevel.label}
           </div>
-        )}
+          <div className="text-xs text-slate-400 dark:text-slate-500">
+            {currentRatio.toFixed(2)}× BW
+          </div>
+        </div>
       </div>
 
       <div className="relative mt-5">
@@ -578,17 +573,9 @@ function BenchmarkCard({
                   )}
                 </div>
                 <div className="mt-0.5 text-xs font-medium text-slate-400 dark:text-slate-500">
-                  <span>{formatRatio(row.ratio)}× BW</span>
-                  {bodyweightKg && (
-                    <>
-                      <span> · </span>
-                      <span>
-                        {isCurrent
-                          ? fmtWeight(currentE1rmKg, weightUnit)
-                          : fmtWeight(bodyweightKg * row.ratio, weightUnit)}
-                      </span>
-                    </>
-                  )}
+                  <span>{fmtWeight(row.valueKg, weightUnit)}</span>
+                  <span> · </span>
+                  <span>{formatRatio(row.valueKg / bodyweightKg)}× BW</span>
                 </div>
               </div>
             </div>

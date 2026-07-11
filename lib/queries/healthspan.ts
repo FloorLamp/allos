@@ -15,7 +15,10 @@ import {
 } from "./medical";
 import { getBioAgeReadings } from "./derived";
 import { getSleepRegularity, getSleepRegularityTrend } from "./sleep";
+import { getLatestBodyMetric } from "./metrics";
+import { getStrengthByExercise } from "./training";
 import { fitnessContext } from "../fitness-norms";
+import { strengthStanding, bestStanding } from "../strength-standards";
 import { bioAgeDelta, isBioAgeHiddenForAge } from "../bio-age";
 import {
   buildPillars,
@@ -66,6 +69,18 @@ export function getHealthspanPillars(profileId: number): Pillar[] {
       percentile: vo2ctx.percentile,
       fitnessAge: vo2ctx.fitnessAge,
     };
+  }
+
+  // Strength standard (#152) — the strongest standing across the core barbell
+  // lifts the profile has trained, from the SAME strengthStanding computation the
+  // exercise-detail coaching line uses. Hidden without sex or a known bodyweight.
+  const bodyweightKg = getLatestBodyMetric(profileId, "weight");
+  if (sex && bodyweightKg) {
+    const standings = getStrengthByExercise(profileId)
+      .map((e) => strengthStanding(e.exercise, e.e1rmKg, sex, bodyweightKg))
+      .filter((s): s is NonNullable<typeof s> => s != null);
+    const best = bestStanding(standings);
+    if (best) inputs.strength = { level: best.level, lift: best.lift };
   }
 
   // Sleep regularity (#160, SRI).
