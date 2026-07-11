@@ -263,3 +263,20 @@ export function ageInMonthsFromBirthdate(
   if (months < 0 || months > 150 * 12) return null;
   return months;
 }
+
+// The canonical age-in-months POLICY (issue #310), as a pure function so every
+// surface resolves age identically: prefer the birthdate (real calendar month
+// math via ageInMonthsFromBirthdate) — the birthdate ALWAYS wins, even if a bare
+// stored age is also present — else fall back to the stored whole-year age × 12,
+// else null (age unknown). The DB-reading wrapper is profileAgeMonths() in
+// lib/settings.ts; the immunization pages keep their own birthdate/storedAge
+// reads (they display those intermediates) and share only this month-resolution
+// core.
+export function ageMonthsFrom(
+  birthdate: string | null,
+  storedAge: number | null,
+  on: string
+): number | null {
+  if (birthdate) return ageInMonthsFromBirthdate(birthdate, on);
+  return storedAge != null ? storedAge * 12 : null;
+}

@@ -41,11 +41,9 @@ import {
   getDashboardLayout,
   getUnitPrefs,
   getUserAge,
-  getUserBirthdate,
   getUserSex,
-  getStoredAge,
+  profileAgeMonths,
 } from "@/lib/settings";
-import { ageInMonthsFromBirthdate } from "@/lib/date";
 import { assessSchedule } from "@/lib/immunization-status";
 import { dispWeight } from "@/lib/units";
 import { formatLongDate, daysRemainingLabel } from "@/lib/format-date";
@@ -325,13 +323,7 @@ export default async function Dashboard() {
   // work when neither is known (the card then shows a static nudge).
   let immSummary: ReturnType<typeof assessSchedule> | null = null;
   if (has("immunizations")) {
-    const immBirthdate = getUserBirthdate(profile.id);
-    const immStoredAge = immBirthdate ? null : getStoredAge(profile.id);
-    const immAgeMonths = immBirthdate
-      ? ageInMonthsFromBirthdate(immBirthdate, on)
-      : immStoredAge != null
-        ? immStoredAge * 12
-        : null;
+    const immAgeMonths = profileAgeMonths(profile.id, on);
     if (immAgeMonths != null) {
       immSummary = assessSchedule(
         getImmunizations(profile.id).map((r) => ({
