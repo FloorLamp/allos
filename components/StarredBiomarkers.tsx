@@ -46,7 +46,7 @@ export default async function StarredBiomarkers({
     null;
 
   return (
-    <div className="card mb-6">
+    <div className="card mb-6" data-testid="starred-biomarkers">
       <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
         ★ {title}{" "}
         <span className="font-normal text-slate-400 dark:text-slate-500">
