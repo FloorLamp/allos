@@ -45,8 +45,14 @@ test.describe("Visit detail page", () => {
 
   test("the Visits list row links to the detail page", async ({ page }) => {
     await page.goto("/encounters");
+    // EncounterList is a client component; clicking a row's <Link> before it
+    // hydrates swallows the client navigation (the URL never changes). Wait for
+    // the network to settle so hydration has run, then assert the link resolved
+    // to its detail href before clicking — so the click always navigates.
+    await page.waitForLoadState("networkidle");
     const rowLink = page.getByRole("link", { name: "Office Visit" }).first();
     await expect(rowLink).toBeVisible();
+    await expect(rowLink).toHaveAttribute("href", /\/encounters\/\d+$/);
     await rowLink.click();
     await expect(page).toHaveURL(/\/encounters\/\d+$/);
     await expect(page.getByTestId("encounter-detail")).toBeVisible();
