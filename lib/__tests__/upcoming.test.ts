@@ -188,6 +188,40 @@ describe("groupUpcoming", () => {
     expect(band("later")!.items.map((i) => i.key)).toEqual(["appt-later"]);
   });
 
+  it("orders same-day doses by their sortHint (bucket → priority → name), not alphabetically (issue #297)", () => {
+    // All doses land in Today (null due date) and share the `dose` domain, so
+    // before #297 they fell straight through to the alphabetical title tiebreak,
+    // interleaving morning and bedtime. The sortHint now clusters them by bucket.
+    const items = [
+      // sortHints mirror doseSortKey: "<bucketRank><priorityRank>~<name>".
+      item({
+        key: "dose:mel",
+        domain: "dose",
+        title: "Melatonin",
+        sortHint: "32~Melatonin", // Before sleep
+      }),
+      item({
+        key: "dose:asp",
+        domain: "dose",
+        title: "Aspirin",
+        sortHint: "00~Aspirin", // Morning, mandatory
+      }),
+      item({
+        key: "dose:zinc",
+        domain: "dose",
+        title: "Zinc",
+        sortHint: "02~Zinc", // Morning, low
+      }),
+    ];
+    const today = groupUpcoming(items, TODAY).find((g) => g.band === "today")!;
+    // Morning (Aspirin, then Zinc) before the bedtime Melatonin — NOT A→M→Z.
+    expect(today.items.map((i) => i.title)).toEqual([
+      "Aspirin",
+      "Zinc",
+      "Melatonin",
+    ]);
+  });
+
   it("orders an appointment ahead of an immunization sharing the effective date", () => {
     // Both land in Today (the appointment via a null-ish today date, the
     // immunization via its band override), so the DOMAIN_ORDER tiebreak (appointment

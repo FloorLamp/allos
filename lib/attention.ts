@@ -26,6 +26,7 @@ import {
   upcomingDueText,
 } from "./upcoming";
 import { biomarkerFlagDismissalKey } from "./dismissal-keys";
+import { compareSortHint } from "./dose-order";
 import type { DigestFlaggedBiomarker } from "./notifications/digest";
 
 // Four coarse severity bands, most-urgent first. Overdue and Today are the
@@ -110,6 +111,11 @@ export interface AttentionItem {
   suppressible: boolean;
   // Inline "mark taken" fast path for a due dose (mirrors UpcomingItem.doseId).
   doseId: number | null;
+  // Optional within-severity ordering key carried through from the Upcoming item
+  // (issue #297) — dose items set the shared dose-day key so the hero orders them
+  // bucket → priority → name, matching the Upcoming band. Undefined for non-dose
+  // signals (they fall through to the title tiebreak).
+  sortHint?: string;
 }
 
 // A failing/needs-reauth integration provider, reduced to what the strip renders.
@@ -167,6 +173,7 @@ function upcomingToAttention(
     dueText: upcomingDueText(item, today),
     suppressible: true,
     doseId: item.doseId ?? null,
+    sortHint: item.sortHint,
   };
 }
 
@@ -194,7 +201,8 @@ function flaggedToAttention(b: DigestFlaggedBiomarker): AttentionItem {
 }
 
 // Assemble every signal into one severity-ordered list. Within a severity items
-// sort by domain rank then title, so the order is deterministic (unit-testable).
+// sort by domain rank, then the optional dose-day sortHint (#297), then title,
+// so the order is deterministic (unit-testable).
 export function buildAttention(input: AttentionInput): AttentionItem[] {
   const items: AttentionItem[] = [];
 
@@ -236,6 +244,7 @@ export function buildAttention(input: AttentionInput): AttentionItem[] {
     (a, b) =>
       SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity] ||
       domainRank(a.domain) - domainRank(b.domain) ||
+      compareSortHint(a.sortHint, b.sortHint) ||
       a.title.localeCompare(b.title)
   );
   return items;

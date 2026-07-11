@@ -20,7 +20,8 @@ import {
   biomarkerFlagDismissalKey,
   immunizationDismissalKey,
 } from "../dismissal-keys";
-import { isDueOn } from "../supplement-schedule";
+import { isDueOn, timeBucket } from "../supplement-schedule";
+import { doseSortKey } from "../dose-order";
 import {
   daysOfSupplyLeft,
   isLowSupply,
@@ -131,6 +132,18 @@ function doseItems(profileId: number, today: string): UpcomingItem[] {
       detail: detail || null,
       href: "/medicine",
       dueDate: null, // scheduled for today
+      // Bucket label as the due-text ("Morning" / "Evening" / "Before sleep"…):
+      // informative on its own and it explains the ordering to the user (#297).
+      dueText: timeBucket(dose.time_of_day),
+      // Shared dose-day sort key (bucket → priority → stack → name) so morning
+      // and bedtime doses no longer interleave alphabetically within the band —
+      // the SAME ordering /medicine's due-today section uses (#297).
+      sortHint: doseSortKey({
+        timeOfDay: dose.time_of_day,
+        priority: supp.priority,
+        stack: supp.stack,
+        name: supp.name,
+      }),
       doseId: dose.id,
     });
   }
