@@ -408,6 +408,26 @@ next sync. Rate limits (HTTP 429) truncate the run and keep the cursor so the ne
 tick resumes. Naps/rest periods and Oura's baseline-relative **temperature deviation**
 are not imported (the latter has no home in the app's absolute-value metric vocab).
 
+### Comparing sources & picking a primary one
+
+With more than one source reporting the same metric (say Health Connect **and**
+Oura both tracking sleep, HRV, or resting heart rate), every source's stream is
+stored side by side — they never overwrite each other — and the app reconciles
+them on read:
+
+- **Additive metrics** (steps, calories, sleep minutes) are **never summed across
+  sources**: each day keeps one source's total, so two devices can't double your
+  step count or produce a 16-hour night.
+- **Point metrics** (weight, body fat, resting HR, HRV) keep every source's
+  readings for comparison; charts and latest-value readouts resolve to one value.
+- **Trends → Body** grows a **Compare sources** section as soon as any metric has
+  two or more reporting sources: a per-source overlay chart for each such metric,
+  with a **Primary source** picker beside it. "Automatic" (the default) prefers a
+  manual entry, then Health Connect, then Oura, then Strava; picking a source
+  makes it authoritative for that metric's totals, charts, and latest-value
+  surfaces (with a fallback whenever it has no data). The section is invisible
+  until a second source actually shows up.
+
 ## Deploy with Docker
 
 Run the app as a container with Docker + Compose. By default Compose **pulls a

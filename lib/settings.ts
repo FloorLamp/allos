@@ -45,6 +45,14 @@ import {
   type TokenExpiryChoice,
 } from "./token-lifecycle";
 import { clampAuditRetentionMonths } from "./retention";
+import {
+  METRIC_SOURCE_PRIORITY_KEY,
+  isValidSourceId,
+  parseMetricSourcePriority,
+  serializeMetricSourcePriority,
+  withMetricSource,
+  type MetricSourcePriority,
+} from "./metric-source-priority";
 
 // Re-exported for API compatibility: these historically lived in lib/settings and
 // callers across app/ import them from here. The implementation now lives in the
@@ -898,6 +906,48 @@ export function setZone2WeeklyTargetMin(profileId: number, min: number): void {
     profileId,
     "zone2_weekly_target_min",
     String(Math.round(min))
+  );
+}
+
+// ---- Per-metric source priority (issue #14) — profile scope, no migration ----
+// Which source is authoritative ("primary") for a metric when several report it
+// (Health Connect vs Oura vs Strava vs manual). Stored as ONE JSON object in
+// profile_settings; the (de)serialization + preference math is the pure
+// lib/metric-source-priority. Unset metrics fall back to the default provider
+// preference (single-source passthrough) — see the query layer.
+
+export function getMetricSourcePriority(
+  profileId: number
+): MetricSourcePriority {
+  return parseMetricSourcePriority(
+    getProfileSetting(profileId, METRIC_SOURCE_PRIORITY_KEY)
+  );
+}
+
+// Set (or clear, with null/"") the primary source for one metric. The metric key
+// is validated by the CALLER (the server action allowlists COMPARABLE_METRICS);
+// the source id is shape-checked here so a forged post can't store a blob.
+export function setMetricSourcePriorityEntry(
+  profileId: number,
+  metric: string,
+  source: string | null
+): void {
+  if (source != null && source !== "" && !isValidSourceId(source)) {
+    throw new Error(`Invalid source id: ${source}`);
+  }
+  const next = withMetricSource(
+    getMetricSourcePriority(profileId),
+    metric,
+    source
+  );
+  if (Object.keys(next).length === 0) {
+    deleteProfileSetting(profileId, METRIC_SOURCE_PRIORITY_KEY);
+    return;
+  }
+  setProfileSetting(
+    profileId,
+    METRIC_SOURCE_PRIORITY_KEY,
+    serializeMetricSourcePriority(next)
   );
 }
 

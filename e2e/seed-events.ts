@@ -506,6 +506,49 @@ for (let i = 1; i <= 28; i++) {
 }
 console.log("e2e: seeded 28 nightly sleep sessions for profile 1 (SRI, #160)");
 
+// ── Multi-source metric fixture (issue #14) ───────────────────────────────────
+// The SAME metric (nightly HRV) reported by TWO sources — Health Connect and
+// Oura — over the last five nights, so the Trends → Body "Compare sources"
+// overlay has something to render and the primary-source picker can be
+// exercised. HRV is a point (AVG) metric with no standalone Body-tab chart, so
+// this fixture can't disturb the sleep/SRI/zone fixtures above or the seeded
+// charts. Values are plausible synthetic ms figures — no PHI. Idempotent: clear
+// this window's rows for both sources first. Each source keys its own window
+// (source is part of the metric_samples unique key), slightly offset like real
+// devices.
+const insHrv = db.prepare(
+  `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+   VALUES (?, ?, 'hrv_ms', ?, ?, ?, ?)`
+);
+for (let i = 1; i <= 5; i++) {
+  const wakeDay = shiftDateStr(COACH_TODAY, -i);
+  const bedDay = shiftDateStr(wakeDay, -1);
+  db.prepare(
+    `DELETE FROM metric_samples
+      WHERE profile_id = ? AND metric = 'hrv_ms' AND date = ?
+        AND source IN ('health-connect','oura')`
+  ).run(PROFILE_ID, wakeDay);
+  insHrv.run(
+    PROFILE_ID,
+    "health-connect",
+    wakeDay,
+    `${bedDay}T23:00:00Z`,
+    `${wakeDay}T07:00:00Z`,
+    42 + i
+  );
+  insHrv.run(
+    PROFILE_ID,
+    "oura",
+    wakeDay,
+    `${bedDay}T23:05:00Z`,
+    `${wakeDay}T07:10:00Z`,
+    55 + i
+  );
+}
+console.log(
+  "e2e: seeded 5 nights of two-source HRV for profile 1 (compare sources, #14)"
+);
+
 // ── Training HR-zone fixture (issue #159) ─────────────────────────────────────
 // A windowed cardio session with per-minute HR inside its window, so the Trends →
 // Fitness zone section, weekly Zone 2 volume, and polarization split render on the

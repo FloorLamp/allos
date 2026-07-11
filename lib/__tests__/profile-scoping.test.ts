@@ -118,6 +118,11 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     includes: "FROM profile_share_links WHERE token_hash = ?",
     why: "getShareLinkByToken: the ONLY entry point for the unauthenticated public share route — the caller has no profile context yet; the lookup is by the unguessable 256-bit token's SHA-256, and the returned row's profile_id then scopes every downstream read",
   },
+  {
+    file: "lib/migrations/versions/014-hr-minutes-per-source.ts",
+    includes: "PRAGMA table_info(hr_minutes)",
+    why: "migration 013 replay sentinel: a schema-shape PRAGMA (is `source` already in the PRIMARY KEY?) that reads column metadata, never rows",
+  },
 ];
 
 // `.prepare(sql)` sites whose argument is a runtime expression (not a string

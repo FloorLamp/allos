@@ -6,7 +6,7 @@
 // the profile's settings (max-HR override, Zone 2 target, week-start, timezone).
 import { db, today } from "../db";
 import { shiftDateStr, startOfWeekStr } from "../date";
-import { getLatestBodyMetric } from "./metrics";
+import { getHrMinutesInRange, getLatestBodyMetric } from "./metrics";
 import {
   getMaxHrOverride,
   getUserAge,
@@ -47,26 +47,15 @@ function activityWindowInputs(
 }
 
 // Per-minute HR buckets within an inclusive [since, until] date range (until
-// defaults to open-ended). ts is 'YYYY-MM-DDTHH:MM' profile-local.
+// defaults to open-ended). ts is 'YYYY-MM-DDTHH:MM' profile-local. Reads through
+// the shared one-source-per-day HR read (issue #14) so a workout recorded by two
+// HR sources at once can't double its zone minutes.
 function hrBuckets(
   profileId: number,
   since: string,
   until?: string
 ): HrBucket[] {
-  if (until != null) {
-    return db
-      .prepare(
-        `SELECT ts, bpm FROM hr_minutes
-          WHERE profile_id = ? AND substr(ts,1,10) >= ? AND substr(ts,1,10) <= ?`
-      )
-      .all(profileId, since, until) as HrBucket[];
-  }
-  return db
-    .prepare(
-      `SELECT ts, bpm FROM hr_minutes
-        WHERE profile_id = ? AND substr(ts,1,10) >= ?`
-    )
-    .all(profileId, since) as HrBucket[];
+  return getHrMinutesInRange(profileId, since, until);
 }
 
 // The profile's zone model, or null when no max HR can be resolved (no age and no

@@ -11,5 +11,6 @@
   "010-protocols.ts": "8f83fe1d802878afbd957e223eef00401129c22ac9c7903cdbcb10e80552474e",
   "011-intake-schema-debt.ts": "117de16cd785ec4a46c135e295993f3195246aac0952a8b53436f41f0061e88b",
   "012-medication-rxcui.ts": "2a31104910aaaf85088f9a6527156dfd97d450ffd7fa314fa6338073eccf0069",
-  "013-rxcui-ingredients.ts": "e643b4ea89d7d79d81139fe56fc32d6959040f5d8df4a27aae18cefe317161a2"
+  "013-rxcui-ingredients.ts": "e643b4ea89d7d79d81139fe56fc32d6959040f5d8df4a27aae18cefe317161a2",
+  "014-hr-minutes-per-source.ts": "9a70a81084cc203b7c0f92a2ebf7480864053fed06400e9a8cc43343e3cecf28"
 }
