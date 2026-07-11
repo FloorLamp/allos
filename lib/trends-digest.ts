@@ -134,6 +134,60 @@ function buildText(item: Omit<TrendItem, "text">, unitSuffix: string): string {
   return base;
 }
 
+// The robust-endpoint summary of ONE series — the shared core of the digest AND
+// the Overview TrendMiniCard badge (#398), so the tile arrow and the digest chip
+// can never render two different verdicts about the same series on the same screen.
+// Measures the move between ROBUST endpoints (median of the first/last k readings,
+// k = min(3, ⌊n/2⌋); #37) rather than the literal first/last points, and reports
+// whether that move is MATERIAL under the exact same test summarizeTrends uses to
+// admit an item: it clears the per-series (or global) minPctChange bar OR crosses a
+// reference range. Returns null for a series with fewer than 2 finite points.
+export interface RobustSummary {
+  count: number;
+  // Robust endpoint values (median of first/last k), not the literal first/last.
+  first: number;
+  last: number;
+  // last − first (robust), so positive = the metric rose over the window.
+  absChange: number;
+  // (last − first) / |first|, or null when first is 0.
+  pctChange: number | null;
+  direction: "up" | "down" | "flat";
+  // True when the move is worth surfacing: it clears minPctChange, or crossed a
+  // reference range. A material move always has a non-flat direction.
+  material: boolean;
+}
+
+export function robustSeriesSummary(
+  series: Pick<DigestSeries, "range" | "minPctChange"> & {
+    points: readonly { value: number | null }[];
+  },
+  globalMinPct = 0.05
+): RobustSummary | null {
+  const pts = series.points.filter(
+    (p): p is { value: number } => p.value != null && Number.isFinite(p.value)
+  );
+  if (pts.length < 2) return null;
+  const k = Math.min(3, Math.floor(pts.length / 2));
+  const { first, last } = robustEndpoints(pts, k);
+  const absChange = last - first;
+  const pctChange = first !== 0 ? absChange / Math.abs(first) : null;
+  const direction: RobustSummary["direction"] =
+    absChange > 0 ? "up" : absChange < 0 ? "down" : "flat";
+  const { shift } = classifyShift(first, last, series.range);
+  const minPct = series.minPctChange ?? globalMinPct;
+  const relMag = pctChange == null ? 1 : Math.abs(pctChange);
+  const material = absChange !== 0 && (relMag >= minPct || shift != null);
+  return {
+    count: pts.length,
+    first,
+    last,
+    absChange,
+    pctChange,
+    direction,
+    material,
+  };
+}
+
 // Compute the ranked, human-labeled "what's trending" list. Series with fewer
 // than 2 points, or a net change of 0 (flat), are excluded. A move is kept when it
 // changed by at least its threshold (per-series minPctChange, else the global
@@ -152,20 +206,12 @@ export function summarizeTrends(
   for (const s of series) {
     const pts = s.points.filter((p) => Number.isFinite(p.value));
     if (pts.length < 2) continue; // insufficient data
-    // Robust endpoints: median of the first/last k readings. k = min(3, ⌊n/2⌋)
-    // guarantees the two clusters never overlap; for n = 2..3 it's 1, i.e. the
-    // literal first/last values (unchanged short-series behavior).
-    const k = Math.min(3, Math.floor(pts.length / 2));
-    const { first, last } = robustEndpoints(pts, k);
-    const absChange = last - first;
-    if (absChange === 0) continue; // flat
-    const pctChange = first !== 0 ? absChange / Math.abs(first) : null;
+    // Shared robust-endpoint core (#398): the SAME summary the Overview tile badge
+    // renders, so the chip and the tile agree on first/last/delta and materiality.
+    const summary = robustSeriesSummary(s, globalMinPct);
+    if (!summary || !summary.material) continue; // flat or below the bar
+    const { first, last, absChange, pctChange } = summary;
     const { shift, lastStatus } = classifyShift(first, last, s.range);
-
-    // Keep only meaningful moves: a big-enough relative change, or a range cross.
-    const minPct = s.minPctChange ?? globalMinPct;
-    const relMag = pctChange == null ? 1 : Math.abs(pctChange);
-    if (relMag < minPct && shift == null) continue;
 
     const direction: "up" | "down" = absChange > 0 ? "up" : "down";
     const days = daysBetween(pts[0].date, pts[pts.length - 1].date);

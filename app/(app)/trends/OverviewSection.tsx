@@ -67,6 +67,8 @@ export default async function OverviewSection({ range }: { range: DateRange }) {
       unit={t.unit}
       color={t.color}
       decimals={t.decimals}
+      range={t.range}
+      minPctChange={t.minPctChange}
       footer={<PinToggle pinKey={t.key} pinned={isPinned(pins, t.key)} />}
     />
   );
