@@ -4,6 +4,7 @@ import { IconArrowDownRight, IconArrowUpRight } from "@tabler/icons-react";
 import LineChartCard from "./LineChartCard";
 import { round } from "@/lib/units";
 import { robustSeriesSummary } from "@/lib/trends-digest";
+import { biomarkerAxisDomain } from "@/lib/reference-range";
 
 // A compact trend tile for the Trends hub's Overview grid: a linked title, the
 // latest value with a net-change badge over the visible window, and a small
@@ -29,6 +30,7 @@ export default function TrendMiniCard({
   range = null,
   minPctChange,
   footer,
+  applyBiomarkerDomain = false,
 }: {
   title: string;
   href: string;
@@ -40,10 +42,27 @@ export default function TrendMiniCard({
   range?: { low: number | null; high: number | null } | null;
   minPctChange?: number;
   footer?: ReactNode;
+  // For a biomarker-sourced tile (issue #407): thread the SHARED axis-domain policy
+  // through to the sparkline so it scales the same series identically to the detail
+  // chart (0-clamp for a non-negative analyte; a flat/near-flat series gets a small
+  // window) instead of recharts' bare ["auto","auto"]. Metric tiles leave it off.
+  applyBiomarkerDomain?: boolean;
 }) {
   const values = data.map((d) => d.value).filter((v): v is number => v != null);
   const latest = values.length > 0 ? values[values.length - 1] : null;
   const summary = robustSeriesSummary({ points: data, range, minPctChange });
+  // The tile draws no reference bands, so band-inclusion is moot — only the
+  // value-and-range-driven [lo, hi] matters. Skipped when there are no points.
+  const yDomain =
+    applyBiomarkerDomain && values.length > 0
+      ? ((): [number, number] => {
+          const { lo, hi } = biomarkerAxisDomain(values, {
+            refLow: range?.low ?? null,
+            refHigh: range?.high ?? null,
+          });
+          return [lo, hi];
+        })()
+      : undefined;
   const deltaSign = summary && summary.absChange > 0 ? "+" : "";
   return (
     <div className="card" data-testid="trend-mini-card">
@@ -92,6 +111,7 @@ export default function TrendMiniCard({
           color={color}
           decimals={decimals}
           heightClass="h-40"
+          yDomain={yDomain}
         />
       )}
       {footer && <div className="mt-2 flex justify-end">{footer}</div>}

@@ -18,7 +18,6 @@ import {
   getBodyMetricDailySeries,
   getBodyMetricsWithSource,
   getMetricDailyTotals,
-  getLatestMetricValue,
   getSleepStageDailyTotals,
   getSleepRegularity,
   getSleepRegularityTrend,
@@ -29,7 +28,11 @@ import {
   getGoals,
 } from "@/lib/queries";
 import { dispWeight, fmtWeight, round } from "@/lib/units";
-import { buildGrowthProfile, displayWeightGrowth } from "@/lib/growth-series";
+import {
+  buildGrowthProfile,
+  bmiSeriesDatePaired,
+  displayWeightGrowth,
+} from "@/lib/growth-series";
 import { ALL_ROWS, filterSeriesByRange } from "@/lib/trends";
 import { buildTrendAnnotations } from "@/lib/trends-series";
 import { projectGoal, describeEta } from "@/lib/trend-projection";
@@ -371,15 +374,20 @@ export default async function BodySection({ range }: { range: DateRange }) {
     carbs: round(carbs.get(d) ?? 0, 0),
     fat: round(fat.get(d) ?? 0, 0),
   }));
-  // BMI over the weight series, using the most recently synced height.
-  const heightCm = getLatestMetricValue(profile.id, "height_cm");
-  const bmiChart =
-    heightCm && heightCm > 0
-      ? weightSeries.map((w) => ({
-          date: w.date,
-          value: round(w.value / (heightCm / 100) ** 2, 1),
-        }))
-      : [];
+  // BMI over the weight series, pairing each weigh-in with the height in effect
+  // ON OR BEFORE that date — the SAME date-paired derivation the growth card uses
+  // (bmiSeriesDatePaired), so the two BMI charts on a child's Body tab can't
+  // disagree (issue #407). Applying a single "most recent height" backward
+  // inflated early history for a growing child; adults degrade gracefully (height
+  // rarely changes). Reads the whole height series (ALL_ROWS) so an older weigh-in
+  // still finds its contemporaneous height.
+  const bmiChart = bmiSeriesDatePaired(
+    weightSeries.map((w) => ({ date: w.date, value: w.value })),
+    getMetricDailyTotals(profile.id, "height_cm", ALL_ROWS).map((r) => ({
+      date: r.date,
+      value: r.value,
+    }))
+  ).map((p) => ({ date: p.date, value: round(p.value, 1) }));
   const hrChart = getHrDailySummary(profile.id).map((r) => ({
     date: r.date,
     value: Math.round(r.avg),
@@ -564,7 +572,7 @@ export default async function BodySection({ range }: { range: DateRange }) {
             {bmiChart.length > 0 && (
               <div className="card">
                 <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-                  BMI{heightCm ? ` (height ${round(heightCm, 0)} cm)` : ""}
+                  BMI
                 </h2>
                 <LineChartCard data={bmiChart} label="BMI" color="#14b8a6" />
               </div>
