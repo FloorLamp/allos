@@ -5,6 +5,7 @@
 // tick, independently of whether any reminder slot is due this hour.
 
 import { collectWindowDoses } from "./supplements";
+import { escalationMarkerKey } from "./escalation-keys";
 import {
   escalationsDue,
   renderEscalationMessage,
@@ -30,13 +31,10 @@ const WINDOWS: EscalationWindow[] = ["Morning", "Midday", "Evening", "Bedtime"];
 // dose, when the supplement leaves escalate_after_min unset.
 export const DEFAULT_ESCALATE_AFTER_MIN = 120;
 
-// Per-day/slot dedup marker for a dose's escalation, mirroring the notify_last_*
-// slot markers (value = the profile-local date it was last escalated). Exported
-// so the Telegram "👍 I'm on it" ack (issue #233) writes the SAME per-episode
-// marker the tick sets on send — a page/caregiver ack and the tick's dedup are one
-// fact, so an acknowledged episode isn't re-nudged.
-export const escalationMarkerKey = (doseId: number) =>
-  `notify_last_esc_${doseId}`;
+// The per-dose escalation dedup marker key now lives in a pure module (issue #328)
+// so delete seams can sweep it without importing this Telegram-carrying module;
+// re-exported here so the existing `./escalate` import path keeps working.
+export { escalationMarkerKey };
 const escKey = escalationMarkerKey;
 
 // Send any due missed-dose escalations for one profile. Returns whether a send

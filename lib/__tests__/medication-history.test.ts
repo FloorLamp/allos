@@ -15,6 +15,7 @@ import {
   partitionMedications,
   unresolvedCount,
   medicationCourseEvents,
+  medicationMetaLine,
   type MedicationWithHistory,
 } from "../medication-history";
 import type {
@@ -274,5 +275,50 @@ describe("timeline shaping", () => {
       },
     ]);
     expect(stop.tone).toBe("default");
+  });
+});
+
+// Prescriber/pharmacy/Rx meta line, deduped from the two medicine surfaces (#313).
+describe("medicationMetaLine", () => {
+  const base = {
+    prescriber: null,
+    pharmacy: null,
+    rx_number: null,
+    provider_name: null,
+  };
+
+  it("builds the full middot-joined line in order", () => {
+    expect(
+      medicationMetaLine({
+        prescriber: "Smith",
+        pharmacy: "Central Pharmacy",
+        rx_number: "12345",
+        provider_name: "Test Clinic",
+      })
+    ).toBe("Dr. Smith · Central Pharmacy · Rx 12345 · Test Clinic");
+  });
+
+  it("strips a leading Dr./Rx the user may have typed in", () => {
+    expect(
+      medicationMetaLine({
+        ...base,
+        prescriber: "Dr. Smith",
+        rx_number: "Rx 9",
+      })
+    ).toBe("Dr. Smith · Rx 9");
+    // Case-insensitive, optional dot/space.
+    expect(
+      medicationMetaLine({ ...base, prescriber: "dr Jones", rx_number: "rx7" })
+    ).toBe("Dr. Jones · Rx 7");
+  });
+
+  it("drops empty parts", () => {
+    expect(medicationMetaLine({ ...base, pharmacy: "Corner Rx" })).toBe(
+      "Corner Rx"
+    );
+  });
+
+  it("returns an empty string when no metadata is present", () => {
+    expect(medicationMetaLine(base)).toBe("");
   });
 });

@@ -14,6 +14,28 @@ import type {
   Supplement,
 } from "./types";
 
+// Prescriber / pharmacy / Rx meta line (issue #313, deduped from the medicine
+// card + editable row). Builds the middot-joined "Dr. X · Pharmacy · Rx N ·
+// Provider" line, stripping a leading "Dr."/"Rx" the user may have typed into
+// the free-text field so it isn't doubled. Empty parts drop out; an item with no
+// medication metadata yields "". Pure so both surfaces (and any future one) format
+// the identical line.
+export function medicationMetaLine(
+  item: Pick<
+    Supplement,
+    "prescriber" | "pharmacy" | "rx_number" | "provider_name"
+  >
+): string {
+  return [
+    item.prescriber && `Dr. ${item.prescriber.replace(/^dr\.?\s*/i, "")}`,
+    item.pharmacy,
+    item.rx_number && `Rx ${item.rx_number.replace(/^rx\s*/i, "")}`,
+    item.provider_name,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
 // ---- stop_reason (controlled vocabulary) ----
 
 export const STOP_REASONS: MedStopReason[] = [

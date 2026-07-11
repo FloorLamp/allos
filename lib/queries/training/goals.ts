@@ -14,12 +14,15 @@ import { weekWindowStart } from "./common";
 // ---- Goals ----
 export function getGoals(profileId: number): Goal[] {
   // Archived goals sink to the bottom; within each, active before achieved.
+  // status is exactly ('active' | 'achieved') (GoalStatus / migration 016 CHECK),
+  // so the CASE covers the whole set — 'active' first, everything else (achieved)
+  // after; there is no dead third arm.
   return db
     .prepare(
       `SELECT * FROM goals
        WHERE profile_id = ?
        ORDER BY archived ASC,
-                CASE status WHEN 'active' THEN 0 WHEN 'achieved' THEN 1 ELSE 2 END,
+                CASE status WHEN 'active' THEN 0 ELSE 1 END,
                 created_at DESC`
     )
     .all(profileId) as Goal[];

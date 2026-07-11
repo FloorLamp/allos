@@ -13,5 +13,6 @@
   "012-medication-rxcui.ts": "2a31104910aaaf85088f9a6527156dfd97d450ffd7fa314fa6338073eccf0069",
   "013-rxcui-ingredients.ts": "e643b4ea89d7d79d81139fe56fc32d6959040f5d8df4a27aae18cefe317161a2",
   "014-hr-minutes-per-source.ts": "9a70a81084cc203b7c0f92a2ebf7480864053fed06400e9a8cc43343e3cecf28",
-  "015-import-job-committing-state.ts": "86dfc196819febb4810426f93505220f7d89af8cffa6f9a7cfdb8c6d1ea86d22"
+  "015-import-job-committing-state.ts": "86dfc196819febb4810426f93505220f7d89af8cffa6f9a7cfdb8c6d1ea86d22",
+  "016-goal-status-drop-archived.ts": "682969bf242c3044c01249ac22eea550b86956b3b8d0226c817163e4b8f4297e"
 }

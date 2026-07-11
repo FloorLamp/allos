@@ -185,10 +185,12 @@ export const TOGGLEABLE_HA_KINDS: readonly {
   { kind: "milestone", label: "Milestones" },
 ];
 
-// Validate a configured HA webhook URL: a well-formed absolute http(s) URL. HA's
-// built-in webhook trigger lives at `http(s)://<host>:8123/api/webhook/<id>`, so a
-// non-http scheme (or garbage) is rejected before we ever try to POST. Empty is
-// treated as "not configured" (returns false) by callers.
+// Validate a configured HA webhook URL: a well-formed absolute http(s) URL whose
+// path is exactly HA's built-in webhook trigger shape,
+// `http(s)://<host>:8123/api/webhook/<id>`. This keeps the outbound channel from
+// becoming an arbitrary server-side POST primitive: profile editors may point it
+// at their HA webhook, not at any URL the server can reach. Empty is treated as
+// "not configured" (returns false) by callers.
 export function isValidWebhookUrl(url: string): boolean {
   if (!url) return false;
   let u: URL;
@@ -197,5 +199,16 @@ export function isValidWebhookUrl(url: string): boolean {
   } catch {
     return false;
   }
-  return (u.protocol === "http:" || u.protocol === "https:") && !!u.host;
+  if (u.protocol !== "http:" && u.protocol !== "https:") return false;
+  if (!u.host) return false;
+  if (u.username || u.password || u.search || u.hash) return false;
+
+  const parts = u.pathname.split("/");
+  return (
+    parts.length === 4 &&
+    parts[0] === "" &&
+    parts[1] === "api" &&
+    parts[2] === "webhook" &&
+    parts[3].length > 0
+  );
 }

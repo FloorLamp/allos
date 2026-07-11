@@ -194,6 +194,45 @@ export function minutesBetween(start: string, end: string): number | null {
   return diff > 0 ? diff : null;
 }
 
+// One leg of a multisport ("brick") activity, as far as the roll-up cares.
+export interface CompositeComponent {
+  type: ActivityType;
+  distance_km: number | null;
+  duration_min: number | null;
+}
+
+// Multisport roll-up (issue #313, extracted from journal saveActivity). Collapses
+// a composite's legs into the parent activity's overall distance/duration:
+// - distance is the SUM of the legs, but ">0 else null" so a strength-only brick
+//   (no distance) stores NULL rather than a misleading 0 km;
+// - duration prefers the wall-CLOCK span (`clockDurationMin`, from start/end times)
+//   when present — that's the true elapsed time including transitions — and only
+//   falls back to the SUM of the legs' durations otherwise (again ">0 else null").
+// Also reports whether any leg is a strength leg (the parent then gets a set-count).
+// Pure so the journal write path and the Strava leg-grouping importer share it.
+export function compositeRollup(
+  components: CompositeComponent[],
+  clockDurationMin: number | null
+): {
+  distanceKm: number | null;
+  durationMin: number | null;
+  hasStrength: boolean;
+} {
+  const hasStrength = components.some((c) => c.type === "strength");
+  const totalDistanceKm = components.reduce(
+    (sum, c) => sum + (c.distance_km ?? 0),
+    0
+  );
+  const distanceKm = totalDistanceKm > 0 ? totalDistanceKm : null;
+  const partsDuration = components.reduce(
+    (sum, c) => sum + (c.duration_min ?? 0),
+    0
+  );
+  const durationMin =
+    clockDurationMin ?? (partsDuration > 0 ? partsDuration : null);
+  return { distanceKm, durationMin, hasStrength };
+}
+
 /** Title-case lowercase words, leaving words with existing caps (e.g. HIIT). */
 export function titleCase(s: string): string {
   return s.replace(/\b[\w']+/g, (w) =>

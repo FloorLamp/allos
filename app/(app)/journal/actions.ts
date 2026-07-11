@@ -19,7 +19,7 @@ import { parseOverrideFields } from "@/lib/import-review/conflicts";
 import type { ActivityType, SaveActivityOutcome } from "@/lib/types";
 import { getUnitPrefs } from "@/lib/settings";
 import { toKg, toKm, resolveWeightKg } from "@/lib/units";
-import { minutesBetween } from "@/lib/activity-meta";
+import { minutesBetween, compositeRollup } from "@/lib/activity-meta";
 import { isRealIsoDate } from "@/lib/date";
 
 interface SetInput {
@@ -172,20 +172,15 @@ export async function saveActivity(
     });
   const componentsJson = components.length ? JSON.stringify(components) : null;
 
-  const hasStrength = components.some((c) => c.type === "strength");
-  const totalDistanceKm = components.reduce(
-    (s, c) => s + (c.distance_km ?? 0),
-    0
-  );
-  const distanceKm = totalDistanceKm > 0 ? totalDistanceKm : null;
-  // Overall duration: from clock times when present, else the sum of parts.
-  const fromTimes =
+  // Roll the legs up into the parent's distance/duration via the shared
+  // compositeRollup (issue #313): sum-of-parts distance (">0 else null") and
+  // clock-time-wins duration.
+  const clockDurationMin =
     startTime && endTime ? minutesBetween(startTime, endTime) : null;
-  const partsDuration = components.reduce(
-    (s, c) => s + (c.duration_min ?? 0),
-    0
+  const { distanceKm, durationMin, hasStrength } = compositeRollup(
+    components,
+    clockDurationMin
   );
-  const durationMin = fromTimes ?? (partsDuration > 0 ? partsDuration : null);
 
   // Estimated calories (issue #151): the activity form fills this from the MET
   // dataset × nearest bodyweight × duration, and the user can override it. Stored

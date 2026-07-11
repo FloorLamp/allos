@@ -5,6 +5,7 @@ import { requireWriteAccess } from "@/lib/auth";
 import { setDashboardLayout } from "@/lib/settings";
 import { today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
+import { snoozeUntil } from "@/lib/upcoming";
 import { snoozeFinding, dismissFinding, markDoseTaken } from "@/lib/queries";
 
 // Persist the active profile's dashboard customization: the widget
@@ -30,23 +31,16 @@ export async function snoozeCoaching(formData: FormData) {
   revalidatePath("/");
 }
 
-// Snooze durations (days) the "Needs attention" hero offers per item. Clamped so a
-// tampered form can't set an absurd window (parity with the Upcoming page).
-const SNOOZE_MAX_DAYS = 3650;
-
 // Snooze one attention item from the hero: hide it (via the shared findings
 // suppression store) until today + `days`, after which it reappears — matching the
-// Upcoming page's snooze exactly (same key, same store), so a snooze here also
-// silences the Telegram digest/push and the Upcoming list. Profile-scoped.
+// Upcoming page's snooze exactly (same key, same store, same snoozeUntil clamp), so
+// a snooze here also silences the Telegram digest/push and the Upcoming list.
+// Profile-scoped.
 export async function snoozeAttention(formData: FormData) {
   const { profile } = await requireWriteAccess();
   const signalKey = String(formData.get("signal_key") ?? "").trim();
-  const days = Number(formData.get("days"));
-  if (!signalKey || !Number.isFinite(days) || days < 1) return;
-  const until = shiftDateStr(
-    today(profile.id),
-    Math.min(Math.floor(days), SNOOZE_MAX_DAYS)
-  );
+  const until = snoozeUntil(today(profile.id), Number(formData.get("days")));
+  if (!signalKey || until == null) return;
   snoozeFinding(profile.id, signalKey, until);
   revalidatePath("/");
   revalidatePath("/upcoming");

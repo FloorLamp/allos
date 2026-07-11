@@ -19,6 +19,7 @@ import {
   isMedicationCurrent,
   stopReasonLabel,
   unresolvedCount,
+  medicationMetaLine,
 } from "@/lib/medication-history";
 import { formatLongDate } from "@/lib/format-date";
 import { getMedicationInfo } from "@/lib/medication-info";
@@ -113,14 +114,7 @@ export default function MedicationCard({
   const medInfo = getMedicationInfo(s.name);
 
   const subline = [s.brand, s.product].filter(Boolean).join(" · ");
-  const medMeta = [
-    s.prescriber && `Dr. ${s.prescriber.replace(/^dr\.?\s*/i, "")}`,
-    s.pharmacy,
-    s.rx_number && `Rx ${s.rx_number.replace(/^rx\s*/i, "")}`,
-    s.provider_name,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  const medMeta = medicationMetaLine(s);
 
   const fmt = (d: string | null) => (d ? formatLongDate(d) : "unknown");
 
