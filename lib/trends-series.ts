@@ -7,8 +7,7 @@
 // through an already profile-scoped query, so the scoping guard is unaffected.
 
 import {
-  getWeights,
-  getBodyMetricsWithSource,
+  getBodyMetricDailySeries,
   getVolumeByDate,
   getBiomarkerSeriesWithDerived,
   getUsedCanonicalNamesWithDerived,
@@ -140,30 +139,29 @@ export function buildMetricSeries(
 ): TrendSeries[] {
   const wu = getUnitPrefs(loginId).weightUnit;
   const weightUnitSuffix = ` ${wu}`;
-  const bodyMetrics = getBodyMetricsWithSource(profileId, ALL_ROWS);
   // Body fat % is not a datapoint we surface for children (kids growth trends) —
   // drop its tile for a minor, matching the Body tab's age-aware layout.
   const hideBodyFat = !showBodyFat(getUserAge(profileId));
 
   const pointsFor = (id: string): { date: string; value: number }[] => {
     switch (id) {
+      // Weight / body-fat / resting-HR all read through getBodyMetricDailySeries
+      // (the one-source-per-day reconciled series the Body tab charts, #14/#395),
+      // NOT raw all-source rows — so a two-device day can't double back the line
+      // and the tile's latest agrees with the deduped Body chart. Series is already
+      // oldest→newest in canonical units.
       case "weight":
-        return getWeights(profileId, ALL_ROWS)
-          .slice()
-          .reverse()
-          .map((w) => ({ date: w.date, value: dispWeight(w.weight_kg, wu) }));
+        return getBodyMetricDailySeries(profileId, "weight", ALL_ROWS).map(
+          (p) => ({ date: p.date, value: dispWeight(p.value, wu) })
+        );
       case "bodyfat":
-        return bodyMetrics
-          .filter((w) => w.body_fat_pct != null)
-          .slice()
-          .reverse()
-          .map((w) => ({ date: w.date, value: round(w.body_fat_pct!, 1) }));
+        return getBodyMetricDailySeries(profileId, "body_fat", ALL_ROWS).map(
+          (p) => ({ date: p.date, value: round(p.value, 1) })
+        );
       case "resting_hr":
-        return bodyMetrics
-          .filter((w) => w.resting_hr != null)
-          .slice()
-          .reverse()
-          .map((w) => ({ date: w.date, value: Math.round(w.resting_hr!) }));
+        return getBodyMetricDailySeries(profileId, "resting_hr", ALL_ROWS).map(
+          (p) => ({ date: p.date, value: Math.round(p.value) })
+        );
       case "volume":
         return getVolumeByDate(profileId).map((v) => ({
           date: v.date,

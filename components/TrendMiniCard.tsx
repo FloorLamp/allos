@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { IconArrowDownRight, IconArrowUpRight } from "@tabler/icons-react";
 import LineChartCard from "./LineChartCard";
 import { round } from "@/lib/units";
-import { summarizeSeries } from "@/lib/trends";
+import { robustSeriesSummary } from "@/lib/trends-digest";
 
 // A compact trend tile for the Trends hub's Overview grid: a linked title, the
 // latest value with a net-change badge over the visible window, and a small
@@ -11,6 +11,13 @@ import { summarizeSeries } from "@/lib/trends";
 // (the hub converts kg/km at the boundary), so this component only formats and
 // draws it. Reuses LineChartCard for the sparkline. An optional `footer` slot
 // holds per-tile controls (the Phase-2 pin toggle).
+//
+// The change badge is driven by robustSeriesSummary — the SAME robust-endpoint
+// computation the "what's trending" digest above uses (#398) — so the tile's arrow
+// and the digest chip can't disagree: a move below the materiality bar (or a lone
+// noisy endpoint) shows no arrow here just as it produces no chip there. The
+// headline stays the LITERAL latest reading (deduped upstream, #395), not the
+// robust endpoint, so the tile still names the current value.
 export default function TrendMiniCard({
   title,
   href,
@@ -19,6 +26,8 @@ export default function TrendMiniCard({
   unit = "",
   color,
   decimals = 1,
+  range = null,
+  minPctChange,
   footer,
 }: {
   title: string;
@@ -28,12 +37,16 @@ export default function TrendMiniCard({
   unit?: string;
   color?: string;
   decimals?: number;
+  range?: { low: number | null; high: number | null } | null;
+  minPctChange?: number;
   footer?: ReactNode;
 }) {
-  const summary = summarizeSeries(data);
-  const deltaSign = summary && summary.delta > 0 ? "+" : "";
+  const values = data.map((d) => d.value).filter((v): v is number => v != null);
+  const latest = values.length > 0 ? values[values.length - 1] : null;
+  const summary = robustSeriesSummary({ points: data, range, minPctChange });
+  const deltaSign = summary && summary.absChange > 0 ? "+" : "";
   return (
-    <div className="card">
+    <div className="card" data-testid="trend-mini-card">
       <div className="mb-2 flex items-center justify-between gap-2">
         <Link
           href={href}
@@ -41,13 +54,13 @@ export default function TrendMiniCard({
         >
           {title}
         </Link>
-        {summary && (
+        {latest != null && (
           <span className="flex items-center gap-1 whitespace-nowrap text-sm">
             <span className="font-semibold text-slate-900 dark:text-slate-100">
-              {round(summary.last, decimals)}
+              {round(latest, decimals)}
               {unit}
             </span>
-            {summary.direction !== "flat" && summary.count > 1 && (
+            {summary && summary.material && (
               <span
                 className={`flex items-center gap-0.5 text-xs ${
                   summary.direction === "up"
@@ -61,7 +74,7 @@ export default function TrendMiniCard({
                   <IconArrowDownRight className="h-3.5 w-3.5" stroke={2} />
                 )}
                 {deltaSign}
-                {round(summary.delta, decimals)}
+                {round(summary.absChange, decimals)}
               </span>
             )}
           </span>

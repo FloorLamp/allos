@@ -28,6 +28,14 @@ test("direct navigation renders only the requested tab's section (#105)", async 
   await expect(page.getByText(FITNESS_MARKER)).toHaveCount(0);
   await expect(page.getByTestId("trajectory-findings")).toHaveCount(0);
 
+  // The Overview metric tiles render (fed by the deduped one-source-per-day series
+  // and the robust-endpoint change badge — #395/#398). At least the standard
+  // body/training tiles are present, and the "Weight" tile links to the Body tab.
+  await expect(page.getByTestId("trend-mini-card").first()).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Weight", exact: true })
+  ).toBeVisible();
+
   // Insights: its generate form renders; the Fitness link does not.
   await page.goto("/trends?tab=insights");
   await expect(page.getByRole("tab", { name: "Insights" })).toHaveAttribute(

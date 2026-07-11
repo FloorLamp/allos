@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { summarizeTrends, type DigestSeries } from "../trends-digest";
+import {
+  summarizeTrends,
+  robustSeriesSummary,
+  type DigestSeries,
+} from "../trends-digest";
 
 // Two points 10 days apart, so `days` is a predictable 10 in the labels.
 function series(
@@ -280,5 +284,90 @@ describe("summarizeTrends — per-series thresholds (#37)", () => {
       { minPctChange: 0.2 }
     );
     expect(item.key).toBe("w");
+  });
+});
+
+describe("robustSeriesSummary — shared tile/digest core (#398)", () => {
+  it("returns null for fewer than two finite points", () => {
+    expect(robustSeriesSummary({ points: [] })).toBeNull();
+    expect(
+      robustSeriesSummary({ points: [{ value: 5 }, { value: null }] })
+    ).toBeNull();
+  });
+
+  it("uses ROBUST endpoints, not the literal last, so a lone noisy endpoint is not a trend", () => {
+    // #398 failure scenario: resting HR with a watch artifact as the last reading.
+    const points = [
+      { value: 62 },
+      { value: 61 },
+      { value: 62 },
+      { value: 61 },
+      { value: 62 },
+      { value: 55 },
+    ];
+    const summary = robustSeriesSummary({ points, minPctChange: 0.05 });
+    // Literal first−last would be 55−62 = −7 (an 11% "drop"); robust endpoints
+    // (median of first/last 3) barely move, so the tile shows NO arrow…
+    expect(summary?.material).toBe(false);
+    expect(Math.abs(summary!.absChange)).toBeLessThan(2);
+  });
+
+  it("agrees with summarizeTrends: same verdict on the same series", () => {
+    // The whole point of #398 — the tile badge and the digest chip share one core.
+    const noisy: DigestSeries = {
+      key: "metric:resting_hr",
+      label: "Resting heart rate",
+      minPctChange: 0.05,
+      points: [
+        { date: "2024-01-01", value: 62 },
+        { date: "2024-01-02", value: 61 },
+        { date: "2024-01-03", value: 62 },
+        { date: "2024-01-04", value: 61 },
+        { date: "2024-01-05", value: 62 },
+        { date: "2024-01-06", value: 55 },
+      ],
+    };
+    // Digest excludes it (no chip)…
+    expect(summarizeTrends([noisy])).toEqual([]);
+    // …and the tile core reports the same "not material" verdict.
+    expect(robustSeriesSummary(noisy)?.material).toBe(false);
+
+    // A genuine, sustained move: both surfaces agree it IS trending, on the same
+    // robust first/last values summarizeTrends reports.
+    const real: DigestSeries = {
+      key: "metric:resting_hr",
+      label: "Resting heart rate",
+      minPctChange: 0.05,
+      points: [
+        { date: "2024-01-01", value: 62 },
+        { date: "2024-01-02", value: 61 },
+        { date: "2024-01-03", value: 62 },
+        { date: "2024-01-04", value: 54 },
+        { date: "2024-01-05", value: 55 },
+        { date: "2024-01-06", value: 54 },
+      ],
+    };
+    const [item] = summarizeTrends([real]);
+    const summary = robustSeriesSummary(real);
+    expect(summary?.material).toBe(true);
+    expect(item.first).toBe(summary!.first);
+    expect(item.last).toBe(summary!.last);
+    expect(item.absChange).toBe(summary!.absChange);
+  });
+
+  it("honors a reference-range crossing even below the pct bar (parity with the digest)", () => {
+    const s: DigestSeries = {
+      key: "bio:LDL",
+      label: "LDL",
+      minPctChange: 0.5, // absurdly high bar so only the range cross can qualify
+      range: { low: null, high: 100 },
+      points: [
+        { date: "2024-01-01", value: 98 },
+        { date: "2024-01-11", value: 101 },
+      ],
+    };
+    // Small % move but it crossed into high range: digest keeps it, tile agrees.
+    expect(summarizeTrends([s]).length).toBe(1);
+    expect(robustSeriesSummary(s)?.material).toBe(true);
   });
 });

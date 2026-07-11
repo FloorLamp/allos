@@ -18,7 +18,7 @@ import {
   getSupplementLogsForDate,
   getSupplements,
   getRefillRates,
-  getWeights,
+  getBodyMetricDailySeries,
   getImmunizations,
   getImmunityTiters,
   getMedicalRecords,
@@ -46,6 +46,8 @@ import {
 } from "@/lib/settings";
 import { assessSchedule } from "@/lib/immunization-status";
 import { dispWeight } from "@/lib/units";
+import { shiftDateStr } from "@/lib/date";
+import { ALL_ROWS } from "@/lib/trends";
 import { formatLongDate, daysRemainingLabel } from "@/lib/format-date";
 import { currentStreak, flexibleStreak } from "@/lib/streak";
 import { selectLowSupplyItems } from "@/lib/refill";
@@ -91,6 +93,11 @@ import HealthspanPillarsWidget from "@/components/dashboard/HealthspanPillarsWid
 import { saveDashboardLayout } from "./actions";
 
 export const dynamic = "force-dynamic";
+
+// Trailing window for the dashboard weight-trend glance (#395): a deliberate date
+// window, not a row cap, so the widget matches the full deduped Body-tab series it
+// links to instead of silently truncating at N readings.
+const WEIGHT_TREND_WINDOW_DAYS = 90;
 
 export default async function Dashboard() {
   const { login, profile } = await requireSession();
@@ -150,14 +157,17 @@ export default async function Dashboard() {
     ? getSupplementLogsForDate(profile.id, on)
     : null;
 
-  // weight-trend
+  // weight-trend: the deduped one-source-per-day series (getBodyMetricDailySeries,
+  // #14/#395) — NOT raw all-source rows, which double back the line on a two-device
+  // day and disagree with the Body tab this widget links to. Windowed by DATE
+  // (a deliberate trailing-90-day glance) rather than the old undisclosed 60-row cap.
+  const weightTrendSince = shiftDateStr(on, -(WEIGHT_TREND_WINDOW_DAYS - 1));
   const bodyMetrics = has("weight-trend")
-    ? getWeights(profile.id, 60)
-        .slice()
-        .reverse()
-        .map((w) => ({
-          date: w.date,
-          value: dispWeight(w.weight_kg, units.weightUnit),
+    ? getBodyMetricDailySeries(profile.id, "weight", ALL_ROWS)
+        .filter((p) => p.date >= weightTrendSince)
+        .map((p) => ({
+          date: p.date,
+          value: dispWeight(p.value, units.weightUnit),
         }))
     : [];
 
