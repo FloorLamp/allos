@@ -1,9 +1,21 @@
-import type { BodyMetricKind, Goal } from "./types";
+import type { BodyMetricKind, Goal, GoalStatus } from "./types";
+import { GOAL_STATUSES } from "./types";
 import type { GoalProgress } from "./goal-progress";
 import { baseLiftName, variantOf } from "./lifts";
 import { fmtWeight, round } from "./units";
 import type { WeightUnit } from "./settings";
 import { formatSeconds } from "./duration";
+
+// Runtime guard for a goal lifecycle status, single-sourced from GOAL_STATUSES (and
+// thus from the goals.status CHECK — see the enum-parity test). Used by the write
+// action so a status value is validated against the one source of truth instead of a
+// re-typed literal pair that could drift from the union/CHECK (issue #328).
+export function isGoalStatus(value: unknown): value is GoalStatus {
+  return (
+    typeof value === "string" &&
+    (GOAL_STATUSES as readonly string[]).includes(value)
+  );
+}
 
 // The single "what percent complete is this goal?" computation, shared by every
 // surface that renders a goal percentage (the household card via goalHighlights,

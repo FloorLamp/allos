@@ -9,7 +9,9 @@ import {
   goalPct,
   goalsForExercise,
   goalTargetText,
+  isGoalStatus,
 } from "@/lib/goals";
+import { GOAL_STATUSES } from "@/lib/types";
 import type { Goal } from "@/lib/types";
 import type { GoalProgress } from "@/lib/goal-progress";
 
@@ -322,4 +324,25 @@ describe("goalPct cross-surface parity", () => {
       expect(goalsPage).toBe(household);
     });
   }
+});
+
+describe("isGoalStatus — single-sourced from GOAL_STATUSES (#328)", () => {
+  it("accepts exactly the goal lifecycle statuses", () => {
+    for (const s of GOAL_STATUSES) expect(isGoalStatus(s)).toBe(true);
+    expect(GOAL_STATUSES).toEqual(["active", "achieved"]);
+  });
+
+  it("rejects the dropped 'archived' state and any non-status value", () => {
+    for (const bad of [
+      "archived",
+      "paused",
+      "",
+      "ACTIVE",
+      null,
+      undefined,
+      1,
+    ]) {
+      expect(isGoalStatus(bad)).toBe(false);
+    }
+  });
 });
