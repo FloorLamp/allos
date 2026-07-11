@@ -7,6 +7,7 @@
 
 import { daysBetweenDateStr } from "./date";
 import { daysRemainingLabel } from "./format-date";
+import { compareSortHint } from "./dose-order";
 
 // The forward-looking domains we aggregate. Each maps to one existing signal:
 //   dose        — a scheduled supplement/medication dose pending today
@@ -80,6 +81,13 @@ export interface UpcomingItem {
   // Explicit due-text override for status-driven signals ("Overdue", "2/3 this
   // week"); date-driven items fall back to a computed countdown label.
   dueText?: string;
+  // Optional within-band ordering key (issue #297). Generic — any domain that
+  // wants an intra-day order beyond date/domain/title supplies one. Dose items
+  // set it from the shared dose-day sort key (bucket → priority → stack → name),
+  // so morning and bedtime doses no longer interleave alphabetically. Compared
+  // lexically (via compareSortHint) BEFORE the title fallback; an item without
+  // one ("") ties and falls through to title, so non-dose domains are unaffected.
+  sortHint?: string;
   // When set, the page renders an inline "mark taken" form for this dose id
   // (reusing the existing dose check-off path). Only dose items carry one.
   doseId?: number;
@@ -148,9 +156,10 @@ function sortDate(item: UpcomingItem, today: string): string {
 }
 
 // Bucket items into the four urgency bands, each sorted by effective due date
-// ascending (soonest / most-overdue first), then by domain, then title — so the
-// order is deterministic. Empty bands are dropped, and the non-empty bands come
-// back in fixed Overdue → Today → This week → Later order.
+// ascending (soonest / most-overdue first), then by domain, then by the optional
+// per-domain sortHint (dose-day order for doses — issue #297), then title — so
+// the order is deterministic. Empty bands are dropped, and the non-empty bands
+// come back in fixed Overdue → Today → This week → Later order.
 export function groupUpcoming(
   items: UpcomingItem[],
   today: string
@@ -170,6 +179,7 @@ export function groupUpcoming(
       (a, b) =>
         sortDate(a, today).localeCompare(sortDate(b, today)) ||
         DOMAIN_ORDER[a.domain] - DOMAIN_ORDER[b.domain] ||
+        compareSortHint(a.sortHint, b.sortHint) ||
         a.title.localeCompare(b.title)
     );
     groups.push({ band, label: BAND_LABELS[band], items: arr });

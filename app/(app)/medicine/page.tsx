@@ -44,6 +44,7 @@ import {
   priorityClass,
   type TimeBucket,
 } from "@/lib/supplement-schedule";
+import { compareDoseDay, type DoseDayEntry } from "@/lib/dose-order";
 import type { Supplement, SupplementDose } from "@/lib/types";
 import { PageHeader, EmptyState } from "@/components/ui";
 import { IconAlertTriangle } from "@tabler/icons-react";
@@ -179,8 +180,11 @@ export default async function SupplementsPage() {
 
   const takenCount = dueItems.filter((it) => taken.has(it.dose.id)).length;
 
-  // Group due items by time bucket; sort by priority, then stack (clusters
-  // stack members), then name.
+  // Group due items by time bucket; within a bucket use the SHARED dose-day
+  // comparator (priority → stack → name) so this section and the Upcoming /
+  // needs-attention surfaces order a dose day identically (issue #297). The
+  // buckets already partition by time-of-day, so the comparator's leading bucket
+  // key is a constant within each group and the residual order is priority → …
   const byBucket = new Map<TimeBucket, Item[]>();
   for (const it of dueItems) {
     const b = timeBucket(it.dose.time_of_day);
@@ -188,14 +192,14 @@ export default async function SupplementsPage() {
     arr.push(it);
     byBucket.set(b, arr);
   }
+  const doseEntry = (it: Item): DoseDayEntry => ({
+    timeOfDay: it.dose.time_of_day,
+    priority: it.supplement.priority,
+    stack: it.supplement.stack,
+    name: it.supplement.name,
+  });
   for (const arr of byBucket.values())
-    arr.sort(
-      (a, b) =>
-        PRIORITY_ORDER[a.supplement.priority] -
-          PRIORITY_ORDER[b.supplement.priority] ||
-        (a.supplement.stack ?? "~").localeCompare(b.supplement.stack ?? "~") ||
-        a.supplement.name.localeCompare(b.supplement.name)
-    );
+    arr.sort((a, b) => compareDoseDay(doseEntry(a), doseEntry(b)));
 
   // "Keep apart" warnings: a separate-pair whose both supplements have a due
   // dose in the same bucket.

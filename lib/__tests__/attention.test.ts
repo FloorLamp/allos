@@ -178,6 +178,40 @@ describe("buildAttention", () => {
     expect(items.find((i) => i.domain === "review")).toBeUndefined();
   });
 
+  it("orders same-severity doses by their sortHint (bucket → priority → name), not alphabetically (issue #297)", () => {
+    // Three due doses all band as 'today' and share the 'dose' domain rank, so
+    // the sortHint (carried through from the Upcoming item) is what breaks the
+    // tie — bucket-then-priority, never plain A→Z.
+    const items = buildAttention(
+      input({
+        upcoming: [
+          up({
+            key: "dose:1",
+            domain: "dose",
+            title: "Melatonin",
+            doseId: 1,
+            sortHint: "32~Melatonin", // Before sleep
+          }),
+          up({
+            key: "dose:2",
+            domain: "dose",
+            title: "Aspirin",
+            doseId: 2,
+            sortHint: "00~Aspirin", // Morning, mandatory
+          }),
+          up({
+            key: "dose:3",
+            domain: "dose",
+            title: "Zinc",
+            doseId: 3,
+            sortHint: "02~Zinc", // Morning, low
+          }),
+        ],
+      })
+    );
+    expect(items.map((i) => i.title)).toEqual(["Aspirin", "Zinc", "Melatonin"]);
+  });
+
   it("orders by severity first, then by domain rank within a severity", () => {
     const items = buildAttention(
       input({
