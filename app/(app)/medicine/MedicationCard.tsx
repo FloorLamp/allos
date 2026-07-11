@@ -23,6 +23,7 @@ import {
 import { formatLongDate } from "@/lib/format-date";
 import { getMedicationInfo } from "@/lib/medication-info";
 import SupplementForm from "./SupplementForm";
+import FoodGuidance from "./FoodGuidance";
 import DoseStatusControl from "@/components/DoseStatusControl";
 import SubmitButton from "@/components/SubmitButton";
 import OverflowMenu, {
@@ -177,6 +178,9 @@ export default function MedicationCard({
               {s.notes}
             </div>
           )}
+          {/* Food–drug guidance (issue #154): a per-item food note (grapefruit,
+              vitamin K, dairy/minerals, alcohol) — no second med needed. */}
+          <FoodGuidance name={s.name} rxcui={s.rxcui} />
           {medInfo && (
             <details className="group mt-1">
               <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-xs font-medium text-brand-700 hover:underline dark:text-brand-400">

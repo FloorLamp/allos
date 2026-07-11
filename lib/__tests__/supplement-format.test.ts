@@ -211,6 +211,28 @@ describe("renderWindowMessage", () => {
     expect(msg.body).toBe("• Creatine");
   });
 
+  it("carries a food–drug guidance note on a matching pending med (#154), pending only", () => {
+    const msg = renderWindowMessage(1, "Evening", DATE, [
+      // A statin pending → grapefruit guidance appended to the tail.
+      entry({ doseId: 10, suppId: 1, name: "Simvastatin", amount: "40 mg" }),
+      // A taken statin dose drops the guidance (moot once taken).
+      entry({
+        doseId: 11,
+        suppId: 2,
+        name: "Simvastatin",
+        amount: "40 mg",
+        taken: true,
+      }),
+    ]);
+    expect(msg.body).toContain("⚠️");
+    expect(msg.body.toLowerCase()).toContain("grapefruit");
+    // The taken line (after the pending one) carries no guidance.
+    const lines = msg.body.split("\n");
+    expect(lines[0]).toContain("⚠️");
+    expect(lines[1].startsWith("✅ Simvastatin — 40 mg")).toBe(true);
+    expect(lines[1]).not.toContain("⚠️");
+  });
+
   it("appends streak (only once ≥2) and adherence percentage", () => {
     const msg = renderWindowMessage(1, "Morning", DATE, [
       entry({

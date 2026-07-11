@@ -16,6 +16,7 @@ import {
   type DoseRate,
 } from "@/lib/refill";
 import SupplementForm from "./SupplementForm";
+import FoodGuidance from "./FoodGuidance";
 import DoseStatusControl from "@/components/DoseStatusControl";
 import OverflowMenu, {
   MENU_ITEM,
@@ -230,6 +231,9 @@ export default function EditableSupplementRow({
               {s.notes}
             </div>
           )}
+          {/* Food–drug guidance (issue #154): per-item food note for a matching
+              item (e.g. dairy/minerals × iron-binding drugs). */}
+          <FoodGuidance name={s.name} rxcui={s.rxcui} />
           {(adherence.pct !== null || adherence.skippedDays > 0) && (
             <div
               className="mt-1.5 flex items-center gap-1.5 text-xs"

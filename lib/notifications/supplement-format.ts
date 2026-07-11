@@ -7,6 +7,10 @@
 // carries its take-with (food) condition plus a streak + adherence percentage.
 
 import type { AdherenceSummary } from "../supplement-adherence";
+import {
+  matchFoodInteractions,
+  foodGuidanceReminderNote,
+} from "../food-drug-interactions";
 import { FOOD_TIMING_LABELS, PRIORITY_ORDER } from "../supplement-schedule";
 import type { Supplement, SupplementDose } from "../types";
 import type { NotificationMessage, NotificationAction } from "./types";
@@ -66,6 +70,14 @@ function doseLine(e: WindowDose, showFood: boolean): string {
   if (showFood) {
     const food = foodNote(e.dose);
     if (food) tail.push(food);
+    // Food–drug guidance (issue #154): a per-item food note for a matching
+    // medication/supplement (e.g. "⚠️ Avoid grapefruit juice …"). Same pure
+    // matcher the /medicine row + item-form notice format over. Pending doses
+    // only — it's guidance for taking this dose now.
+    const foodDrug = foodGuidanceReminderNote(
+      matchFoodInteractions({ name: e.supp.name, rxcui: e.supp.rxcui })
+    );
+    if (foodDrug) tail.push(foodDrug);
   }
   tail.push(...adherenceNotes(e.adherence));
   const suffix = tail.length ? ` · ${tail.join(" · ")}` : "";
