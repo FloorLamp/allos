@@ -90,6 +90,44 @@ describe("buildDigest", () => {
     const model = buildDigest({ ...empty, doseCount: 1 });
     expect(model?.sections[0].lines[0]).toBe("💊 1 supplement dose scheduled");
   });
+
+  it("titles a medications-only profile 'medications', not 'supplements' (#380)", () => {
+    const model = buildDigest({
+      ...empty,
+      doseCount: 2,
+      intakeKinds: ["medication"],
+      adherence: { taken: 1, skipped: 0, due: 2 },
+    });
+    expect(model?.sections[0].lines[0]).toBe("💊 2 medication doses scheduled");
+    const y = model?.sections.find((s) => s.heading === "Yesterday");
+    expect(y?.lines).toContain("💊 Medications: 1/2 taken");
+  });
+
+  it("uses 'supplements & meds' for a mixed profile (#380)", () => {
+    const model = buildDigest({
+      ...empty,
+      doseCount: 3,
+      intakeKinds: ["supplement", "medication"],
+    });
+    expect(model?.sections[0].lines[0]).toBe(
+      "💊 3 supplement & med doses scheduled"
+    );
+  });
+
+  it("rounds an integration-sourced weight float instead of printing it raw (#380)", () => {
+    const model = buildDigest({ ...empty, weightKg: 78.4523 });
+    const y = model?.sections.find((s) => s.heading === "Yesterday");
+    expect(y?.lines).toEqual(["⚖️ Weight: 78.5 kg"]);
+  });
+
+  it("states skips plainly instead of '0/0 taken' when everything due was skipped (#380 nit)", () => {
+    const model = buildDigest({
+      ...empty,
+      adherence: { taken: 0, skipped: 2, due: 2 },
+    });
+    const y = model?.sections.find((s) => s.heading === "Yesterday");
+    expect(y?.lines).toEqual(["💊 Supplements: 2 skipped"]);
+  });
 });
 
 describe("renderDigestMessage", () => {

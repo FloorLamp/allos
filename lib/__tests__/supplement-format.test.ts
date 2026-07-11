@@ -1,8 +1,11 @@
 import { describe, it, expect } from "vitest";
 import {
   renderWindowMessage,
+  intakeWindowNoun,
+  intakeItemNoun,
   type WindowDose,
 } from "../notifications/supplement-format";
+import type { SupplementKind } from "../types";
 import type { AdherenceSummary } from "../supplement-adherence";
 import type {
   FoodTiming,
@@ -14,7 +17,8 @@ import type {
 function supp(
   id: number,
   name: string,
-  priority: SupplementPriority = "high"
+  priority: SupplementPriority = "high",
+  kind: SupplementKind = "supplement"
 ): Supplement {
   return {
     id,
@@ -33,7 +37,7 @@ function supp(
     escalate_chat_id: null,
     quantity_on_hand: null,
     qty_per_dose: 1,
-    kind: "supplement",
+    kind,
     prescriber: null,
     pharmacy: null,
     rx_number: null,
@@ -82,6 +86,7 @@ function entry(opts: {
   skipped?: boolean;
   priority?: SupplementPriority;
   food?: FoodTiming;
+  kind?: SupplementKind;
   adherence?: Partial<AdherenceSummary>;
 }): WindowDose {
   return {
@@ -91,7 +96,12 @@ function entry(opts: {
       opts.amount ?? null,
       opts.food ?? "any"
     ),
-    supp: supp(opts.suppId, opts.name, opts.priority ?? "high"),
+    supp: supp(
+      opts.suppId,
+      opts.name,
+      opts.priority ?? "high",
+      opts.kind ?? "supplement"
+    ),
     taken: opts.taken ?? false,
     skipped: opts.skipped ?? false,
     adherence: { ...NONE, ...opts.adherence },
@@ -301,5 +311,61 @@ describe("renderWindowMessage", () => {
       "dose:10",
       "dose:10",
     ]);
+  });
+
+  it("titles a medications-only window 'medications', not 'supplements' (#380)", () => {
+    const msg = renderWindowMessage(1, "Morning", DATE, [
+      entry({ doseId: 10, suppId: 1, name: "Lisinopril", kind: "medication" }),
+    ]);
+    expect(msg.title).toBe("💊 Morning medications");
+  });
+
+  it("titles a mixed window 'supplements & meds' (#380)", () => {
+    const msg = renderWindowMessage(1, "Morning", DATE, [
+      entry({ doseId: 10, suppId: 1, name: "Lisinopril", kind: "medication" }),
+      entry({ doseId: 11, suppId: 2, name: "Vitamin D", kind: "supplement" }),
+    ]);
+    expect(msg.title).toBe("💊 Morning supplements & meds");
+  });
+
+  it("uses the kinded noun on the completion summary too (#380)", () => {
+    const msg = renderWindowMessage(1, "Evening", DATE, [
+      entry({
+        doseId: 10,
+        suppId: 1,
+        name: "Metformin",
+        kind: "medication",
+        taken: true,
+      }),
+    ]);
+    expect(msg.title).toBe("💊 Evening medications — all 1 taken ✅");
+  });
+});
+
+describe("intakeWindowNoun", () => {
+  it("returns 'supplements' for supplement-only or empty windows", () => {
+    expect(intakeWindowNoun([])).toBe("supplements");
+    expect(intakeWindowNoun(["supplement", "supplement"])).toBe("supplements");
+  });
+
+  it("returns 'medications' when every item is a medication", () => {
+    expect(intakeWindowNoun(["medication", "medication"])).toBe("medications");
+  });
+
+  it("returns 'supplements & meds' when both kinds are present", () => {
+    expect(intakeWindowNoun(["medication", "supplement"])).toBe(
+      "supplements & meds"
+    );
+  });
+});
+
+describe("intakeItemNoun (singular modifier)", () => {
+  it("gives the singular adjectival form for the 'N ___ dose(s)' phrasing", () => {
+    expect(intakeItemNoun([])).toBe("supplement");
+    expect(intakeItemNoun(["supplement"])).toBe("supplement");
+    expect(intakeItemNoun(["medication"])).toBe("medication");
+    expect(intakeItemNoun(["medication", "supplement"])).toBe(
+      "supplement & med"
+    );
   });
 });

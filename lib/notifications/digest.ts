@@ -7,6 +7,15 @@
 // shared by several profiles (the chat-id ambiguity fix).
 
 import type { NotificationMessage } from "./types";
+import type { SupplementKind } from "../types";
+import { fmtWeight } from "../units";
+import { intakeWindowNoun, intakeItemNoun } from "./supplement-format";
+
+// Capitalize the first letter of a noun for use at the start of a line
+// ("medications" → "Medications").
+function cap(s: string): string {
+  return s.length ? s[0].toUpperCase() + s.slice(1) : s;
+}
 
 export interface DigestActivity {
   title: string;
@@ -55,13 +64,22 @@ export interface DigestInput {
   profileName: string;
   // Today
   doseCount: number; // supplement/medication doses scheduled today
+  // The distinct kinds among the profile's scheduled/adhered intake items,
+  // choosing the reminder noun so a medications-only profile isn't told
+  // "supplements" (#380). Optional/empty ⇒ "supplements" (back-compat default).
+  intakeKinds?: SupplementKind[];
   goalsDue: DigestGoalDue[]; // frequency targets not yet met this week
   // Yesterday
   activities: DigestActivity[];
   // Supplement adherence yesterday, or null when nothing was due. `skipped`
   // counts deliberate skips (#232), surfaced alongside taken.
   adherence: { taken: number; skipped: number; due: number } | null;
-  weightKg: number | null; // weight logged yesterday (canonical kg)
+  // Weight logged yesterday, canonical kg. Rendered in kg by policy: the
+  // notification has no login-unit context (multiple logins, each with its own
+  // weight preference, can watch one profile), so all notification builders emit
+  // canonical kg — the same policy the weekly recap documents. Rounded via the
+  // shared fmtWeight formatter rather than printed as the raw stored float (#380).
+  weightKg: number | null;
   // New since the last digest
   newFlaggedBiomarkers: DigestFlaggedBiomarker[];
   newDocumentLabels: string[];
@@ -91,11 +109,18 @@ function activityStat(a: DigestActivity): string {
 export function buildDigest(input: DigestInput): DigestModel | null {
   const sections: DigestSection[] = [];
 
+  // Name intake items by their actual kinds so a medications-only profile isn't
+  // told "supplements" (#380): `noun` is the plural label ("Medications:"),
+  // `itemNoun` the singular modifier ("N medication doses").
+  const kinds = input.intakeKinds ?? [];
+  const noun = intakeWindowNoun(kinds);
+  const itemNoun = intakeItemNoun(kinds);
+
   // Today: what's on deck.
   const todayLines: string[] = [];
   if (input.doseCount > 0) {
     todayLines.push(
-      `💊 ${input.doseCount} supplement dose${input.doseCount === 1 ? "" : "s"} scheduled`
+      `💊 ${input.doseCount} ${itemNoun} dose${input.doseCount === 1 ? "" : "s"} scheduled`
     );
   }
   for (const g of input.goalsDue) {
@@ -112,11 +137,19 @@ export function buildDigest(input: DigestInput): DigestModel | null {
     // Skips are excluded from the "of N due" figure (they weren't intended
     // doses); a nonzero skip count is shown as a trailing note (#232).
     const { taken, skipped, due } = input.adherence;
-    const skipNote = skipped > 0 ? ` · ${skipped} skipped` : "";
-    yLines.push(`💊 Supplements: ${taken}/${due - skipped} taken${skipNote}`);
+    const intended = due - skipped;
+    if (intended <= 0) {
+      // Everything due was deliberately skipped — a "0/0 taken" line reads as a
+      // bug (#380 nit); state the skips plainly instead.
+      yLines.push(`💊 ${cap(noun)}: ${skipped} skipped`);
+    } else {
+      const skipNote = skipped > 0 ? ` · ${skipped} skipped` : "";
+      yLines.push(`💊 ${cap(noun)}: ${taken}/${intended} taken${skipNote}`);
+    }
   }
   if (input.weightKg != null) {
-    yLines.push(`⚖️ Weight: ${input.weightKg} kg`);
+    // Rounded, kg per the notification unit policy documented on weightKg above.
+    yLines.push(`⚖️ Weight: ${fmtWeight(input.weightKg, "kg")}`);
   }
   if (yLines.length) sections.push({ heading: "Yesterday", lines: yLines });
 

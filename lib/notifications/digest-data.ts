@@ -123,7 +123,8 @@ export function gatherDigestInput(
   };
 
   // Today: doses on deck + frequency targets not yet met this week.
-  const doseCount = dueDoseIds(td).length;
+  const todayDueIds = dueDoseIds(td);
+  const doseCount = todayDueIds.length;
   const goalsDue: DigestGoalDue[] = getFrequencyTargetProgress(profileId)
     .filter((p) => !p.met)
     .map((p) => ({
@@ -142,6 +143,20 @@ export function gatherDigestInput(
     })
   );
   const yDue = dueDoseIds(yd);
+
+  // Distinct kinds among the doses the digest actually mentions (today's "on deck"
+  // + yesterday's adherence), so the reminder noun reflects a medications-only or
+  // mixed profile rather than always saying "supplements" (#380).
+  const doseById = new Map(doses.map((d) => [d.id, d]));
+  const intakeKinds = [
+    ...new Set(
+      [...todayDueIds, ...yDue]
+        .map((id) => doseById.get(id))
+        .filter((d): d is (typeof doses)[number] => d != null)
+        .map((d) => suppById.get(d.item_id)!.kind)
+    ),
+  ];
+
   let adherence: { taken: number; skipped: number; due: number } | null = null;
   if (yDue.length > 0) {
     const taken = getTakenDoseIds(profileId, yd);
@@ -188,6 +203,7 @@ export function gatherDigestInput(
   return {
     profileName,
     doseCount,
+    intakeKinds,
     goalsDue,
     activities,
     adherence,
