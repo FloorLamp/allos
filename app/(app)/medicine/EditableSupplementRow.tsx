@@ -233,7 +233,11 @@ export default function EditableSupplementRow({
           )}
           {/* Food–drug guidance (issue #154): per-item food note for a matching
               item (e.g. dairy/minerals × iron-binding drugs). */}
-          <FoodGuidance name={s.name} rxcui={s.rxcui} />
+          <FoodGuidance
+            name={s.name}
+            rxcui={s.rxcui}
+            rxcuiIngredients={s.rxcui_ingredients}
+          />
           {(adherence.pct !== null || adherence.skippedDays > 0) && (
             <div
               className="mt-1.5 flex items-center gap-1.5 text-xs"

@@ -22,12 +22,19 @@
         "cozaar",
         "diovan",
         "enalapril",
+        "entresto",
+        "hyzaar",
         "lisinopril",
         "losartan",
+        "lotensin",
+        "lotrel",
         "prinivil",
+        "prinzide",
         "ramipril",
         "valsartan",
+        "vaseretic",
         "vasotec",
+        "zestoretic",
         "zestril"
       ]
     },
@@ -285,6 +292,8 @@
       "synonyms": [
         "fortamet",
         "glucophage",
+        "glucovance",
+        "janumet",
         "metformin"
       ]
     },
@@ -346,6 +355,7 @@
         "naproxen",
         "nsaid",
         "toradol",
+        "treximet",
         "voltaren"
       ]
     },
@@ -423,10 +433,13 @@
         "9997"
       ],
       "synonyms": [
+        "aldactazide",
         "aldactone",
         "amiloride",
+        "dyazide",
         "eplerenone",
         "inspra",
+        "maxzide",
         "spironolactone",
         "triamterene"
       ]
@@ -526,10 +539,12 @@
       ],
       "synonyms": [
         "atorvastatin",
+        "caduet",
         "lipitor",
         "lovastatin",
         "mevacor",
         "simvastatin",
+        "vytorin",
         "zocor"
       ]
     },
@@ -545,6 +560,7 @@
         "glimepiride",
         "glipizide",
         "glucotrol",
+        "glucovance",
         "glyburide"
       ]
     },
@@ -574,6 +590,7 @@
         "relpax",
         "rizatriptan",
         "sumatriptan",
+        "treximet",
         "triptan"
       ]
     },

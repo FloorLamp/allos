@@ -17,7 +17,11 @@ import {
   setDoseStatus,
   toggleActive,
 } from "@/app/(app)/medicine/actions";
-import { getSupplements, getSupplementDoses } from "@/lib/queries";
+import {
+  getSupplements,
+  getSupplementDoses,
+  getInteractionWarnings,
+} from "@/lib/queries";
 import { seedActor, fd } from "./harness";
 
 const revalidate = vi.mocked(revalidatePath);
@@ -350,5 +354,77 @@ describe("toggleActive", () => {
 
     await toggleActive(fd({ id }));
     expect(itemRow(id).active).toBe(0);
+  });
+});
+
+// Cached RxNorm ingredient CUIs (issue #279): the write path persists the form's
+// resolved ingredient list through the shape-checking codec, couples it to the
+// confirmed rxcui, and interaction detection reads it back so a combination
+// product matches ingredient-keyed concepts. All codes are public-domain RxNorm
+// vocabulary — no PHI.
+describe("rxcui_ingredients write path (issue #279)", () => {
+  function rxcuiRow(id: number) {
+    return db
+      .prepare("SELECT rxcui, rxcui_ingredients FROM intake_items WHERE id = ?")
+      .get(id) as { rxcui: string | null; rxcui_ingredients: string | null };
+  }
+
+  it("addSupplement persists the confirmed rxcui + its ingredient CUIs", async () => {
+    const { profile } = seedActor();
+    await addSupplement(
+      fd({
+        name: "Combination tablet B",
+        kind: "medication",
+        rxcui: "999999",
+        rxcui_ingredients: '["52175","5487"]',
+      })
+    );
+    const id = getSupplements(profile.id)[0].id;
+    const row = rxcuiRow(id);
+    expect(row.rxcui).toBe("999999");
+    expect(JSON.parse(row.rxcui_ingredients!)).toEqual(["52175", "5487"]);
+
+    // The stored ingredients drive interaction detection: adding potassium
+    // chloride now flags the ace_arb × potassium rule even though the product
+    // rxcui matches no concept and the name matches no synonym.
+    await addSupplement(fd({ name: "Potassium chloride 10 mEq" }));
+    const hits = getInteractionWarnings(profile.id);
+    expect(hits).toHaveLength(1);
+    expect(hits[0].severity).toBe("moderate");
+  });
+
+  it("normalizes a forged/garbage ingredients payload to NULL", async () => {
+    const { profile } = seedActor();
+    await addSupplement(
+      fd({
+        name: "Tablet D",
+        rxcui: "11289",
+        rxcui_ingredients: '["DROP TABLE intake_items", {"x":1}]',
+      })
+    );
+    const id = getSupplements(profile.id)[0].id;
+    expect(rxcuiRow(id).rxcui_ingredients).toBeNull();
+  });
+
+  it("ingredients are coupled to the code: no rxcui ⇒ no cached ingredients", async () => {
+    const { profile } = seedActor();
+    await addSupplement(
+      fd({ name: "Tablet E", rxcui_ingredients: '["52175"]' })
+    );
+    const id = getSupplements(profile.id)[0].id;
+    expect(rxcuiRow(id).rxcui_ingredients).toBeNull();
+
+    // updateSupplement clearing the code also clears the stale ingredient cache.
+    await updateSupplement(
+      fd({
+        id,
+        name: "Tablet E",
+        rxcui: "999999",
+        rxcui_ingredients: '["52175"]',
+      })
+    );
+    expect(rxcuiRow(id).rxcui_ingredients).toBe('["52175"]');
+    await updateSupplement(fd({ id, name: "Tablet E" }));
+    expect(rxcuiRow(id)).toEqual({ rxcui: null, rxcui_ingredients: null });
   });
 });

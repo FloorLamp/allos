@@ -12,14 +12,16 @@
 // Telegram copy are all formatters over matchFoodInteractions() — they can never
 // disagree about a food note.
 //
-// Matching mirrors drug-interactions.ts: RxCUI is authoritative (an exact match
-// against an entry's ingredient CUIs), a normalized name/synonym match is the
-// fallback. INFORMATIONAL, never prescriptive — the framing is "discuss with your
-// prescriber or pharmacist", never "stop taking X"; absence of an entry does NOT
-// mean a food is safe with a drug.
+// Matching mirrors drug-interactions.ts: RxCUI is authoritative (an exact match of
+// ANY of the item's CUIs — the confirmed, possibly product-level rxcui plus its
+// cached active-ingredient CUIs (issue #279) — against an entry's ingredient CUIs),
+// a normalized name/synonym match is the fallback. INFORMATIONAL, never
+// prescriptive — the framing is "discuss with your prescriber or pharmacist",
+// never "stop taking X"; absence of an entry does NOT mean a food is safe with a
+// drug.
 
 import data from "./food-drug-interactions.json";
-import { type Severity, SEVERITY_RANK } from "./drug-interactions";
+import { type Severity, SEVERITY_RANK, itemRxcuis } from "./drug-interactions";
 
 export type { Severity };
 export { SEVERITY_RANK, SEVERITY_LABEL } from "./drug-interactions";
@@ -70,7 +72,8 @@ function nameContains(itemNorm: string, synNorm: string): boolean {
   return ` ${itemNorm} `.includes(` ${synNorm} `);
 }
 
-// The food–drug guidance hits for a single item. RxCUI is authoritative (exact match
+// The food–drug guidance hits for a single item. RxCUI is authoritative (exact
+// match of ANY of the item's CUIs — product-level rxcui or cached ingredient —
 // against an entry's ingredient CUIs); a normalized name/synonym match is the
 // fallback — both collected so a row with only a name still matches. Severity-ranked
 // (major first), then by food, then key, for a deterministic order. Each entry
@@ -78,12 +81,13 @@ function nameContains(itemNorm: string, synNorm: string): boolean {
 export function matchFoodInteractions(item: {
   name: string;
   rxcui: string | null;
+  rxcuiIngredients?: string[] | null;
 }): FoodInteractionHit[] {
-  const rxcui = item.rxcui?.trim();
+  const cuis = itemRxcuis(item);
   const itemNorm = normalize(item.name);
   const hits: FoodInteractionHit[] = [];
   for (const e of ENTRIES) {
-    const byRxcui = !!rxcui && e.rxcuis.includes(rxcui);
+    const byRxcui = e.rxcuis.some((cui) => cuis.has(cui));
     const byName =
       !byRxcui &&
       e.synonyms.some((syn) => nameContains(itemNorm, normalize(syn)));

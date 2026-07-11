@@ -77,3 +77,27 @@ test("the interaction surfaces on Upcoming and stays hidden once dismissed", asy
       .filter({ hasText: "Ibuprofen" })
   ).toHaveCount(0);
 });
+
+// Combination medications (issue #279): the seed's Hyzaar (losartan/HCTZ — a combo
+// BRAND with a product-level RxCUI + cached ingredient CUIs) + Klor-Con (potassium
+// chloride, name-matched) pair must surface the moderate ace_arb × potassium
+// hyperkalemia warning. Before #279 this pair was a silent false negative: the
+// single scalar product rxcui matched no ingredient-keyed concept and no synonym
+// listed the combo brand.
+test("flags the seeded combination-medication pair (Hyzaar + Klor-Con) on /medicine", async ({
+  page,
+}) => {
+  await page.goto("/medicine");
+  const main = page.getByRole("main");
+
+  const warnings = main.getByTestId("interaction-warnings");
+  await expect(warnings).toBeVisible();
+  const row = warnings
+    .locator('[data-testid^="interaction-warning-interaction:"]')
+    .filter({ hasText: "Hyzaar" })
+    .filter({ hasText: "Klor-Con" })
+    .first();
+  await expect(row).toBeVisible();
+  await expect(row).toContainText("MODERATE", { ignoreCase: true });
+  await expect(row).toContainText("potassium", { ignoreCase: true });
+});

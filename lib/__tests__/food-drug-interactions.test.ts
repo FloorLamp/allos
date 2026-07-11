@@ -123,3 +123,33 @@ describe("formatting", () => {
     expect(note!.toLowerCase()).toContain("grapefruit");
   });
 });
+
+// Combination medications (issue #279): the food matcher shares the drug matcher's
+// fix — try every cached ingredient CUI and know the distinct combo brand names.
+describe("combination medications (issue #279)", () => {
+  it("REGRESSION: a combo brand (Hyzaar) gets the salt-substitute guidance by name", () => {
+    const hits = matchFoodInteractions({
+      name: "Hyzaar 100-12.5",
+      rxcui: null,
+    });
+    expect(hits.map((h) => h.key)).toContain("potassium-ace-arb");
+  });
+
+  it("matches through cached ingredient CUIs when the product rxcui is unknown", () => {
+    // 52175 is losartan; "999999" stands in for a product-level code that appears
+    // in no entry's ingredient list.
+    const hits = matchFoodInteractions({
+      name: "Generic combination tablet B",
+      rxcui: "999999",
+      rxcuiIngredients: ["52175", "5487"],
+    });
+    expect(hits.map((h) => h.key)).toContain("potassium-ace-arb");
+  });
+
+  it("a statin combo brand (Vytorin) gets the grapefruit guidance", () => {
+    const hits = matchFoodInteractions({ name: "Vytorin 10/40", rxcui: null });
+    const grapefruit = hits.find((h) => h.key === "grapefruit-statin");
+    expect(grapefruit).toBeTruthy();
+    expect(grapefruit!.severity).toBe("major");
+  });
+});

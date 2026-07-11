@@ -28,6 +28,7 @@ import {
 import MedicationCard from "./MedicationCard";
 import ProviderDatalist from "@/components/ProviderDatalist";
 import { today } from "@/lib/db";
+import { parseRxcuiIngredients } from "@/lib/rxnorm";
 import { requireSession } from "@/lib/auth";
 import { isTrainingRestricted } from "@/lib/age-gate";
 import { lastNDates } from "@/lib/date";
@@ -239,12 +240,14 @@ export default async function SupplementsPage() {
   // twin, issue #144). Severity-ranked; the create/edit inline check + the
   // dismissible Upcoming finding format over the SAME detectInteractions.
   const interactionWarnings = getInteractionWarnings(profile.id);
-  // The item stack (name + cached RxCUI + active) threaded to every form for the
-  // client-side create/edit interaction notice.
+  // The item stack (name + cached RxCUI(s) + active) threaded to every form for
+  // the client-side create/edit interaction notice. Cached ingredient CUIs (issue
+  // #279) keep a combination product matchable against ingredient-keyed concepts.
   const stackItems: InteractionItem[] = supplements.map((s) => ({
     id: s.id,
     name: s.name,
     rxcui: s.rxcui,
+    rxcuiIngredients: parseRxcuiIngredients(s.rxcui_ingredients),
     active: !!s.active,
   }));
 

@@ -60,6 +60,7 @@ function supp(overrides: Partial<Supplement> = {}): Supplement {
     rx_number: null,
     as_needed: 0,
     rxcui: null,
+    rxcui_ingredients: null,
     document_id: null,
     source: null,
     provider_id: null,

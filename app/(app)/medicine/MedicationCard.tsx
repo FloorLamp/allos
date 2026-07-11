@@ -180,7 +180,11 @@ export default function MedicationCard({
           )}
           {/* Food–drug guidance (issue #154): a per-item food note (grapefruit,
               vitamin K, dairy/minerals, alcohol) — no second med needed. */}
-          <FoodGuidance name={s.name} rxcui={s.rxcui} />
+          <FoodGuidance
+            name={s.name}
+            rxcui={s.rxcui}
+            rxcuiIngredients={s.rxcui_ingredients}
+          />
           {medInfo && (
             <details className="group mt-1">
               <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-xs font-medium text-brand-700 hover:underline dark:text-brand-400">
