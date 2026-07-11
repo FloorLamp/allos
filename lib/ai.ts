@@ -32,7 +32,10 @@ import { getUnitPrefs } from "./settings";
 import { quickRanges } from "./timeline-format";
 import {
   composeOfflineNarrative,
+  offlineReasonNote,
+  offlineModelTag,
   type NarrativeInput,
+  type OfflineReason,
 } from "./offline-narrative";
 
 export interface InsightResult {
@@ -217,19 +220,19 @@ function gatherNarrativeInput(
 
 // The offline daily summary: a coherent narrative composed from the day's actual
 // findings (PRs, trending metrics/biomarkers, adherence, upcoming), used whenever
-// the AI path is unavailable (no key / disabled / rate-limited / failed).
+// the AI path is unavailable. Takes the typed reason WHY it fell back so the
+// appended note states the real cause (issue #411) instead of always telling the
+// user to set a key they may already have.
 function fallbackInsight(
   profileId: number,
   date: string,
-  loginId?: number
+  loginId: number | undefined,
+  reason: OfflineReason
 ): string {
   const narrative = composeOfflineNarrative(
     gatherNarrativeInput(profileId, date, loginId)
   );
-  return (
-    narrative +
-    "\n\n(Generated offline — set ANTHROPIC_API_KEY for AI-powered coaching analysis.)"
-  );
+  return narrative + "\n\n" + offlineReasonNote(reason);
 }
 
 export async function generateInsight(
@@ -246,8 +249,8 @@ export async function generateInsight(
       detail: `${date} — AI not configured`,
     });
     return {
-      summary: fallbackInsight(profileId, date, loginId),
-      model: "offline-fallback",
+      summary: fallbackInsight(profileId, date, loginId, "no-key"),
+      model: offlineModelTag("no-key"),
     };
   }
 
@@ -263,9 +266,10 @@ export async function generateInsight(
       status: "skipped",
       detail: `${date} — daily AI insight limit reached`,
     });
+    // The key IS set; the user is rate-limited, not unconfigured (issue #411).
     return {
-      summary: fallbackInsight(profileId, date, loginId),
-      model: "offline-fallback",
+      summary: fallbackInsight(profileId, date, loginId, "cap-exhausted"),
+      model: offlineModelTag("cap-exhausted"),
     };
   }
 
@@ -299,9 +303,11 @@ export async function generateInsight(
         detail: date,
         error: "Truncated at the output limit (600 tokens).",
       });
+      // A configured-but-errored call (truncation) — "temporarily unavailable",
+      // not "set a key" (issue #411).
       return {
-        summary: fallbackInsight(profileId, date, loginId),
-        model: "offline-fallback",
+        summary: fallbackInsight(profileId, date, loginId, "failed"),
+        model: offlineModelTag("failed"),
       };
     }
     recordAiEvent({
@@ -312,8 +318,8 @@ export async function generateInsight(
       detail: capDetail(`${date}` + (LOG_PROMPTS ? `\n${text}` : "")),
     });
     return {
-      summary: text || fallbackInsight(profileId, date, loginId),
-      model: MODEL,
+      summary: text || fallbackInsight(profileId, date, loginId, "failed"),
+      model: text ? MODEL : offlineModelTag("failed"),
     };
   } catch (err) {
     recordAiEvent({
@@ -324,11 +330,12 @@ export async function generateInsight(
       detail: date,
       error: err instanceof Error ? err.message : "unknown error",
     });
+    // The key is set and the call errored — an honest "temporarily unavailable"
+    // note (issue #411), not the misleading "set ANTHROPIC_API_KEY". The specific
+    // error stays in the AI log above, not in the surfaced coaching copy.
     return {
-      summary:
-        fallbackInsight(profileId, date, loginId) +
-        `\n\n(AI request failed: ${err instanceof Error ? err.message : "unknown error"})`,
-      model: "offline-fallback",
+      summary: fallbackInsight(profileId, date, loginId, "failed"),
+      model: offlineModelTag("failed"),
     };
   }
 }

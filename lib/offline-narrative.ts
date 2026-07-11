@@ -50,6 +50,33 @@ export interface NarrativeInput {
   goalCount: number;
 }
 
+// Why the daily insight fell back to the offline composer (issue #411). Threaded
+// from generateInsight so the surfaced copy states the ACTUAL cause instead of
+// always blaming a missing key — the DoseTakenOutcome honesty pattern (#280)
+// applied to the insight fallback: never diagnose a cause you didn't check.
+export type OfflineReason = "no-key" | "cap-exhausted" | "failed";
+
+// The one-line note appended to an offline insight, matched to WHY it ran. The
+// cap-exhausted user already has a key set, so "set ANTHROPIC_API_KEY" would be a
+// lie; the failed path errored mid-call, so "temporarily unavailable" is honest.
+export function offlineReasonNote(reason: OfflineReason): string {
+  switch (reason) {
+    case "no-key":
+      return "(Generated offline — set ANTHROPIC_API_KEY for AI-powered coaching analysis.)";
+    case "cap-exhausted":
+      return "(Generated offline — daily AI limit reached; try again tomorrow.)";
+    case "failed":
+      return "(Generated offline — AI coaching was temporarily unavailable; try again later.)";
+  }
+}
+
+// A distinct stored model tag per offline reason (issue #411), so the Insights
+// list's model badge stays honest after the fact instead of collapsing all three
+// causes into one indistinguishable "offline-fallback".
+export function offlineModelTag(reason: OfflineReason): string {
+  return `offline/${reason}`;
+}
+
 // Max findings named in a single sentence before collapsing to "+N more".
 const MAX_NAMED = 3;
 

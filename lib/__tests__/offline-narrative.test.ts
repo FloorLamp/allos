@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   composeOfflineNarrative,
+  offlineReasonNote,
+  offlineModelTag,
   type NarrativeInput,
 } from "../offline-narrative";
 import {
@@ -301,5 +303,33 @@ describe("trend findings feed the narrative", () => {
     expect(f.tone).toBe("caution");
     const out = composeOfflineNarrative(base({ trends: [f] }));
     expect(out).toContain("LDL ↑ into high range");
+  });
+});
+
+// Issue #411: the offline note states the ACTUAL reason it ran, never a lie about
+// a missing key when the real cause is the daily cap or a failed call.
+describe("offlineReasonNote (#411)", () => {
+  it("tells the unconfigured user to set the key", () => {
+    expect(offlineReasonNote("no-key")).toContain("set ANTHROPIC_API_KEY");
+  });
+
+  it("tells the rate-limited user the daily limit was reached — never to set a key", () => {
+    const note = offlineReasonNote("cap-exhausted");
+    expect(note).toContain("daily AI limit reached");
+    expect(note).toContain("try again tomorrow");
+    // The key IS set — never send them to configure one.
+    expect(note).not.toContain("ANTHROPIC_API_KEY");
+  });
+
+  it("tells the errored user the AI was temporarily unavailable — never to set a key", () => {
+    const note = offlineReasonNote("failed");
+    expect(note).toContain("temporarily unavailable");
+    expect(note).not.toContain("ANTHROPIC_API_KEY");
+  });
+
+  it("gives each reason a distinct, honest model tag", () => {
+    expect(offlineModelTag("no-key")).toBe("offline/no-key");
+    expect(offlineModelTag("cap-exhausted")).toBe("offline/cap-exhausted");
+    expect(offlineModelTag("failed")).toBe("offline/failed");
   });
 });
