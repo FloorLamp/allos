@@ -906,3 +906,38 @@ db.prepare(
 console.log(
   `e2e: seeded import document ${BROWSER_DOC_ID} with labs + prescription + visit + condition + immunization for the records browser (#271)`
 );
+
+// Two due-today doses on the primary profile whose bucket order is the REVERSE of
+// their alphabetical order (issue #297): a MORNING dose named with a leading "Z"
+// and a BEDTIME dose named with a leading "A". Before the fix the Upcoming Today
+// band dropped time_of_day and sorted by title, so the bedtime "A…" came first;
+// after it, the morning "Z…" leads because Morning outranks Before-sleep. Both are
+// daily + active with no taken-log today, so they surface as due. Fully synthetic.
+const DOSE_ORDER_MORNING = "Zeaxanthin Morning (e2e)";
+const DOSE_ORDER_BEDTIME = "Ashwagandha Bedtime (e2e)";
+for (const [name, timeOfDay, amount] of [
+  [DOSE_ORDER_MORNING, "morning", "1 cap"],
+  [DOSE_ORDER_BEDTIME, "bedtime", "300 mg"],
+] as const) {
+  if (
+    !db
+      .prepare("SELECT 1 FROM intake_items WHERE profile_id = ? AND name = ?")
+      .get(PROFILE_ID, name)
+  ) {
+    const supp = db
+      .prepare(
+        `INSERT INTO intake_items
+           (profile_id, name, condition, priority, active, source)
+         VALUES (?, ?, 'daily', 'high', 1, 'manual')`
+      )
+      .run(PROFILE_ID, name);
+    db.prepare(
+      `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+       VALUES (?, ?, ?, 'any', 0)`
+    ).run(Number(supp.lastInsertRowid), amount, timeOfDay);
+  }
+}
+
+console.log(
+  `e2e: seeded morning + bedtime due doses on profile ${PROFILE_ID} for the dose-order spec (#297)`
+);
