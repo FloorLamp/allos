@@ -82,11 +82,11 @@ export default function SourceCompareChartInner({
             domain={["auto", "auto"]}
           />
           <Tooltip
-            formatter={(v: number, name: string) => [
+            formatter={(v, name) => [
               `${v}${unit}`,
-              labelByKey.get(name) ?? name,
+              labelByKey.get(String(name)) ?? name,
             ]}
-            labelFormatter={(v: string) => formatLongDate(v)}
+            labelFormatter={(v) => formatLongDate(String(v))}
             contentStyle={{
               fontSize: 12,
               borderRadius: 8,

@@ -93,11 +93,13 @@ export default function CompareChart({
             />
           )}
           <Tooltip
-            formatter={(v: number, name: string) => [
-              normalized ? pct(v) : `${v}${name === labelA ? unitA : unitB}`,
+            formatter={(v, name) => [
+              normalized
+                ? pct(Number(v))
+                : `${v}${name === labelA ? unitA : unitB}`,
               name,
             ]}
-            labelFormatter={(v: string) => formatLongDate(v)}
+            labelFormatter={(v) => formatLongDate(String(v))}
             contentStyle={{
               fontSize: 12,
               borderRadius: 8,

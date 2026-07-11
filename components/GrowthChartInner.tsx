@@ -144,15 +144,19 @@ export default function GrowthChart({
               domain={["auto", "auto"]}
             />
             <Tooltip
-              formatter={(v: number, name: string) => {
+              formatter={(v, name) => {
                 if (name === "traj") return [`${v}${unit}`, "This profile"];
-                return [`${v}${unit}`, `${name.replace("p", "")}th pct`];
+                return [
+                  `${v}${unit}`,
+                  `${String(name).replace("p", "")}th pct`,
+                ];
               }}
-              labelFormatter={(m: number) =>
-                showYears
-                  ? `Age ${Math.round((m / 12) * 10) / 10} y`
-                  : `Age ${Math.round(m)} mo`
-              }
+              labelFormatter={(m) => {
+                const mo = Number(m);
+                return showYears
+                  ? `Age ${Math.round((mo / 12) * 10) / 10} y`
+                  : `Age ${Math.round(mo)} mo`;
+              }}
               contentStyle={{
                 fontSize: 12,
                 borderRadius: 8,

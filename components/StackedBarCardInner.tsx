@@ -72,8 +72,8 @@ export default function StackedBarCard({
           />
           <Tooltip
             cursor={{ fill: c.grid, fillOpacity: 0.5 }}
-            formatter={(v: number, name: string) => [`${v}${unit}`, name]}
-            labelFormatter={labelFmt}
+            formatter={(v, name) => [`${v}${unit}`, name]}
+            labelFormatter={labelFmt ? (v) => labelFmt(String(v)) : undefined}
             contentStyle={{
               fontSize: 12,
               borderRadius: 8,

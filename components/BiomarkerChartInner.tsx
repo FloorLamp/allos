@@ -142,8 +142,8 @@ export default function BiomarkerChart({
           ) : null}
 
           <Tooltip
-            formatter={(v: number, _name, props: { payload?: ChartPoint }) => [
-              `${props?.payload?.bound ?? ""}${fmt(v)}`,
+            formatter={(v, _name, item) => [
+              `${(item?.payload as ChartPoint | undefined)?.bound ?? ""}${fmt(Number(v))}`,
               "Value",
             ]}
             contentStyle={{
