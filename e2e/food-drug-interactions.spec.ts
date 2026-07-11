@@ -14,7 +14,11 @@ test("shows the seeded Simvastatin grapefruit food-drug guidance on /medicine", 
   const main = page.getByRole("main");
 
   // The medication card for the seeded statin is present.
-  await expect(main.getByText("Simvastatin", { exact: false })).toBeVisible();
+  // Exact match: "Simvastatin" also appears in an interaction-warning line and
+  // the item's notes paragraph — a substring match strict-mode-fails on 3 nodes.
+  await expect(
+    main.getByText("Simvastatin", { exact: true }).first()
+  ).toBeVisible();
 
   // Its food-guidance line names the food and the advice — pick the grapefruit
   // guidance by text (the seed has other food-guidance rows, e.g. warfarin).
