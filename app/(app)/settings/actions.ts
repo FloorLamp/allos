@@ -2,6 +2,7 @@
 import {
   requireSession,
   requireWriteAccess,
+  requireLoginWriteAccess,
   requireAdmin,
   destroyOtherSessionsForCurrent,
   revokeSession,
@@ -287,10 +288,13 @@ export async function saveEmergencyCardSettings(formData: FormData) {
 // password after proving they know the current one. On success every OTHER
 // session for the login is signed out (a password change should evict any
 // stale device) while the current session is kept alive.
+// requireLoginWriteAccess (#278): in demo mode the shared demo login's password
+// is public — letting a visitor rotate it locks everyone else out until the
+// nightly reset, so the demo guard refuses it server-side.
 export async function changeOwnPassword(
   formData: FormData
 ): Promise<{ ok: true; message: string } | { ok: false; error: string }> {
-  const { login } = await requireSession();
+  const { login } = await requireLoginWriteAccess();
   const current = String(formData.get("current_password") ?? "");
   const next = String(formData.get("new_password") ?? "");
   // Strength gate (issue #23): raised minimum + class-diversity + no-username,
@@ -324,8 +328,10 @@ export async function changeOwnPassword(
 // Revoke one of the caller's own live sessions from the active-sessions list.
 // revokeSession scopes the delete to login.id, so a forged/foreign id can only
 // ever end one of the caller's sessions (or nothing).
+// requireLoginWriteAccess (#278): the demo login is SHARED — "the caller's own
+// sessions" are every other visitor's sessions, so demo mode refuses revocation.
 export async function revokeSessionAction(formData: FormData) {
-  const { login } = await requireSession();
+  const { login } = await requireLoginWriteAccess();
   const id = String(formData.get("session_id") ?? "");
   if (id) revokeSession(login.id, id);
   revalidatePath("/settings");
@@ -333,9 +339,9 @@ export async function revokeSessionAction(formData: FormData) {
 
 // "Sign out everywhere else": drop every session for this login except the one
 // making the request. Standalone counterpart to the eviction that a password
-// change triggers.
+// change triggers. Demo-guarded like revokeSessionAction (#278).
 export async function signOutOtherSessions() {
-  const { login } = await requireSession();
+  const { login } = await requireLoginWriteAccess();
   await destroyOtherSessionsForCurrent(login.id);
   revalidatePath("/settings");
 }
@@ -676,11 +682,17 @@ export async function registerTelegramWebhook(): Promise<{
 // ---- Two-factor authentication (login scope, issue #23) ----
 //
 // All four actions operate on the CALLER's OWN login (like change-own-password),
-// so they gate on requireSession() and are allowlisted in the write-access
-// enforcement test on that basis — they touch login-owned auth state, never
-// profile-owned data. Enabling requires verifying a code (proving the secret was
-// imported); disabling requires the current password AND a valid code, so a
-// walk-up attacker with an open session can't strip 2FA off.
+// so they gate on the login scope (not requireWriteAccess) and are allowlisted in
+// the write-access enforcement test on that basis — they touch login-owned auth
+// state, never profile-owned data. Enabling requires verifying a code (proving
+// the secret was imported); disabling requires the current password AND a valid
+// code, so a walk-up attacker with an open session can't strip 2FA off.
+// Enrollment (begin/activate) gates on requireLoginWriteAccess (#278): a demo
+// visitor enrolling 2FA on the shared demo login would lock every other visitor
+// out. disable2fa/regenerate2faRecoveryCodes stay on requireSession() — both
+// require 2FA to already be ON plus a valid code (+ password for disable), which
+// the demo login can never reach once enrollment is refused, and blocking
+// disable would forbid the remediation, not the attack.
 
 // Step 1 of enrollment: mint a pending secret and hand back the otpauth:// URI +
 // the manual base32 key. No code is required yet; the secret isn't enforced until
@@ -689,7 +701,7 @@ export async function begin2fa(): Promise<
   | { ok: true; secret: string; otpauthUrl: string }
   | { ok: false; error: string }
 > {
-  const { login } = await requireSession();
+  const { login } = await requireLoginWriteAccess();
   if (getLoginTotpState(login.id).enabled)
     return { ok: false, error: "Two-factor authentication is already on." };
   const { secret, otpauthUrl } = beginTotpEnrollment(login.id, login.username);
@@ -704,7 +716,7 @@ export async function activate2fa(
 ): Promise<
   { ok: true; recoveryCodes: string[] } | { ok: false; error: string }
 > {
-  const { login } = await requireSession();
+  const { login } = await requireLoginWriteAccess();
   if (getLoginTotpState(login.id).enabled)
     return { ok: false, error: "Two-factor authentication is already on." };
   const code = String(formData.get("code") ?? "").trim();

@@ -687,6 +687,10 @@ With `ALLOS_DEMO_MODE=1`:
   (`requireWriteAccess`) even if a grant is misconfigured, and the PHI-entry
   surfaces are trimmed: no change-password, no Telegram/send-test config, and the
   document-upload input is disabled with a hint.
+- The shared demo login's **account management is locked** too: password change,
+  2FA enrollment, and session revocation are refused server-side
+  (`requireLoginWriteAccess`, and hidden in Settings), so one visitor can't lock
+  every other visitor out of the demo.
 - The **admin login stays fully functional** (for maintaining the instance) and is
   never advertised in the UI. Set a strong `ADMIN_PASSWORD` — it is not read-only.
 

@@ -1,11 +1,13 @@
 import { test, expect } from "@playwright/test";
 
-// Demo-mode surfaces (#181). Runs (via the "demo" project) against the demo
+// Demo-mode surfaces (#181, #278). Runs (via the "demo" project) against the demo
 // webServer booted with ALLOS_DEMO_MODE=1, unauthenticated — it drives the demo
-// login itself. Asserts the three flag effects a browser can see: the persistent
-// banner, the login-page credentials card, and a blocked edit affordance (the
-// disabled medical-upload input). The write-refusal itself is covered at the
-// action tier; the default-mode ABSENCE is asserted in smoke.spec.ts.
+// login itself. Asserts the flag effects a browser can see: the persistent
+// banner, the login-page credentials card, a blocked edit affordance (the
+// disabled medical-upload input), and the trimmed account-management cards on
+// Settings (no change-password, no 2FA enrollment — #278). The write-refusal
+// itself is covered at the action tier; the default-mode ABSENCE is asserted in
+// smoke.spec.ts.
 
 test("login page shows the demo banner and credentials card", async ({
   page,
@@ -43,4 +45,18 @@ test("the demo user can sign in, sees the banner, and uploads are disabled", asy
   await expect(input).toBeVisible();
   await expect(input).toBeDisabled();
   await expect(page.getByTestId("upload-disabled-hint")).toBeVisible();
+
+  // Account-management surfaces are trimmed for the shared demo login (#278):
+  // no 2FA enrollment card and no change-password card — a visitor must not be
+  // able to lock other visitors out. The active-sessions list stays readable
+  // (asserted visible, which also proves the page rendered before the absence
+  // assertions below mean anything).
+  await page.goto("/settings");
+  await expect(
+    page.getByRole("heading", { name: "Active sessions" })
+  ).toBeVisible();
+  await expect(page.getByTestId("twofa-card")).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "Password", exact: true })
+  ).toHaveCount(0);
 });

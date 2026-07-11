@@ -288,8 +288,32 @@ export async function requireWriteAccess(): Promise<CurrentSession> {
   // refused HERE regardless of the grant, so a misconfigured 'write' grant can't
   // let a demo visitor mutate the synthetic data. Admins stay fully functional to
   // maintain the instance. This is independent of the #33 access check below.
-  if (isDemoRestricted(isDemoMode(), session.login.role)) redirect("/");
+  assertNotDemoRestricted(session.login.role);
   if (session.access !== "write") redirect("/");
+  return session;
+}
+
+// The ONE demo-mode refusal, shared by every guard that blocks demo mutations
+// (requireWriteAccess, requireProfileWriteAccess, requireLoginWriteAccess), so
+// "who is locked down in demo" stays a single decision — lib/demo's pure
+// isDemoRestricted — with a single posture: redirect() throws NEXT_REDIRECT, so a
+// forged POST aborts server-side regardless of what the UI renders.
+function assertNotDemoRestricted(role: Role): void {
+  if (isDemoRestricted(isDemoMode(), role)) redirect("/");
+}
+
+// Login-mutation guard (issue #278): the gate for Server Actions that mutate the
+// caller's LOGIN-scoped auth state — 2FA enrollment, change-own-password, session
+// revocation — rather than profile-owned data. requireWriteAccess() is the wrong
+// gate there (those actions legitimately run for read-only members and never
+// touch the acting profile), but demo mode must still refuse them: the shared
+// public demo login would otherwise let any visitor enroll 2FA or rotate the
+// publicly documented password and lock every other visitor out until the
+// nightly reset — or kick concurrent visitors off their sessions. Outside demo
+// mode this is exactly requireSession(); the demo admin stays fully functional.
+export async function requireLoginWriteAccess(): Promise<CurrentSession> {
+  const session = await requireSession();
+  assertNotDemoRestricted(session.login.role);
   return session;
 }
 
@@ -311,7 +335,7 @@ export async function requireProfileWriteAccess(
   // Demo mode (#181): the same belt-and-braces block as requireWriteAccess — a
   // demo member may not mutate ANY profile (active or cross-profile), even with a
   // misconfigured grant. Admins pass.
-  if (isDemoRestricted(isDemoMode(), login.role)) redirect("/");
+  assertNotDemoRestricted(login.role);
   const reachable = accessibleProfiles(login.id, login.role).some(
     (p) => p.id === profileId
   );

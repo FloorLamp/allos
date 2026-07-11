@@ -15,10 +15,15 @@ function fmt(ts: string): string {
 // signed-in login with per-session revoke, plus a standalone "sign out
 // everywhere else". The current device is labelled and can't be revoked from
 // here (use logout for that) so the list can't leave you with nothing.
+// canRevoke=false (demo mode, #278) keeps the list readable but drops the
+// revoke buttons — the SHARED demo login's "other sessions" are other visitors,
+// and the actions refuse server-side anyway (requireLoginWriteAccess).
 export default function ActiveSessions({
   sessions,
+  canRevoke = true,
 }: {
   sessions: SessionSummary[];
+  canRevoke?: boolean;
 }) {
   const otherCount = sessions.filter((s) => !s.current).length;
 
@@ -55,7 +60,7 @@ export default function ActiveSessions({
                 Signed in {fmt(s.createdAt)} · Last seen {fmt(s.lastSeenAt)}
               </p>
             </div>
-            {!s.current && (
+            {!s.current && canRevoke && (
               <form action={revokeSessionAction} className="shrink-0">
                 <input type="hidden" name="session_id" value={s.id} />
                 <SubmitButton className="btn-ghost text-sm" pendingLabel="…">
@@ -67,7 +72,7 @@ export default function ActiveSessions({
         ))}
       </ul>
 
-      {otherCount > 0 && (
+      {otherCount > 0 && canRevoke && (
         <form action={signOutOtherSessions}>
           <SubmitButton className="btn-ghost" pendingLabel="Signing out…">
             Sign out everywhere else

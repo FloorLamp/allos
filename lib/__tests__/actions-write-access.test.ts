@@ -24,7 +24,14 @@ const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 // Allowlisted exported actions that legitimately do NOT call requireWriteAccess()
 // / requireAdmin(), keyed by the file they live in (so an unrelated file can't
 // ride the exemption) and the function name. Keep this list SHORT and justified.
-const ALLOW: { file: string; fn: string; why: string }[] = [
+//
+// `gate` (issue #278): a login-scoped action that mutates the caller's LOGIN auth
+// state (password, 2FA, sessions) must still refuse in demo mode — the shared
+// public demo login would otherwise let one visitor lock everyone else out. Such
+// an entry names the guard its body MUST call (requireLoginWriteAccess); the scan
+// fails if the call disappears, so the demo gate can't silently regress back to a
+// bare requireSession().
+const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
   // --- Read-only actions (return data, mutate nothing) ---
   {
     file: "app/(app)/data/actions.ts",
@@ -55,17 +62,20 @@ const ALLOW: { file: string; fn: string; why: string }[] = [
   {
     file: "app/(app)/settings/actions.ts",
     fn: "changeOwnPassword",
-    why: "login-scoped: changes the caller's own password",
+    why: "login-scoped: changes the caller's own password (demo-gated, #278)",
+    gate: "requireLoginWriteAccess",
   },
   {
     file: "app/(app)/settings/actions.ts",
     fn: "revokeSessionAction",
-    why: "login-scoped: revokes one of the caller's own sessions",
+    why: "login-scoped: revokes one of the caller's own sessions (demo-gated, #278)",
+    gate: "requireLoginWriteAccess",
   },
   {
     file: "app/(app)/settings/actions.ts",
     fn: "signOutOtherSessions",
-    why: "login-scoped: signs out the caller's other sessions",
+    why: "login-scoped: signs out the caller's other sessions (demo-gated, #278)",
+    gate: "requireLoginWriteAccess",
   },
   {
     file: "app/(app)/settings/actions.ts",
@@ -90,12 +100,14 @@ const ALLOW: { file: string; fn: string; why: string }[] = [
   {
     file: "app/(app)/settings/actions.ts",
     fn: "begin2fa",
-    why: "login-scoped: starts 2FA enrollment for the caller's OWN login (mints a pending TOTP secret), not profile-owned data",
+    why: "login-scoped: starts 2FA enrollment for the caller's OWN login (mints a pending TOTP secret), not profile-owned data (demo-gated, #278)",
+    gate: "requireLoginWriteAccess",
   },
   {
     file: "app/(app)/settings/actions.ts",
     fn: "activate2fa",
-    why: "login-scoped: verifies a code and enables 2FA on the caller's OWN login (like change-own-password)",
+    why: "login-scoped: verifies a code and enables 2FA on the caller's OWN login (like change-own-password) (demo-gated, #278)",
+    gate: "requireLoginWriteAccess",
   },
   {
     file: "app/(app)/settings/actions.ts",
@@ -278,6 +290,13 @@ describe("write-access enforcement: every mutating Server Action is gated", () =
         const allow = ALLOW.find((a) => a.file === rel && a.fn === name);
         if (allow) {
           matchedAllow.add(`${allow.file}#${allow.fn}`);
+          // A demo-gated login-scoped mutation (#278) must actually call its
+          // declared guard — the allowlist exemption alone is not enough.
+          if (allow.gate && !new RegExp(`\\b${allow.gate}\\s*\\(`).test(body)) {
+            violations.push(
+              `${rel}#${name}: allowlisted with gate "${allow.gate}" but the body never calls it — the demo-mode guard regressed`
+            );
+          }
           continue;
         }
         violations.push(
