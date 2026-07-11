@@ -55,6 +55,26 @@ export const INTEGRATIONS: IntegrationDef[] = [
     docsUrl: "https://developers.strava.com/",
   },
   {
+    id: "oura",
+    name: "Oura Ring",
+    kind: "token",
+    status: "available",
+    blurb:
+      "Pull sleep, nightly heart-rate variability and resting heart rate, and " +
+      "workouts from your Oura Ring. Create a personal access token in the Oura " +
+      "developer portal and paste it here — no OAuth app or callback URL needed.",
+    dataTypes: [
+      "Sleep",
+      "Sleep stages",
+      "HRV",
+      "Resting HR",
+      "Workouts",
+      "Distance",
+      "Calories",
+    ],
+    docsUrl: "https://cloud.ouraring.com/personal-access-tokens",
+  },
+  {
     id: "garmin",
     name: "Garmin Connect",
     kind: "oauth",
