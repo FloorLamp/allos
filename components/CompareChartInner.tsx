@@ -14,6 +14,14 @@ import { useChartColors } from "./useChartColors";
 import { formatLongDate } from "@/lib/format-date";
 import { roundChartValue } from "@/lib/chart-format";
 import {
+  dateToEpoch,
+  epochToISO,
+  formatTimeTick,
+  spansYearBoundary,
+  timeAxisDomain,
+  timeAxisTicks,
+} from "@/lib/chart-time-axis";
+import {
   ANNOTATION_KIND_META,
   snapAnnotationsToDates,
   type TrendAnnotation,
@@ -72,6 +80,15 @@ export default function CompareChart({
   // " mg/dL"), so compare trimmed. `normalized` always collapses to the shared
   // left axis regardless of units.
   const dualAxis = !normalized && unitA.trim() !== unitB.trim();
+
+  // Time-scaled X axis (issue #402): the Compare tab exists so co-movement is
+  // eyeball-able, but an index axis stretches clustered dates and compresses long
+  // gaps — distorting the very shape it's meant to show. Map each date to an epoch
+  // so both series sit at their true time position; annotations map the same way.
+  const rows = data.map((d) => ({ ...d, t: dateToEpoch(d.date) }));
+  const xDomain = timeAxisDomain(data.map((d) => d.date));
+  const xTicks = timeAxisTicks(xDomain);
+  const withYear = spansYearBoundary(xDomain);
   return (
     <div
       className="h-72 w-full"
@@ -79,16 +96,23 @@ export default function CompareChart({
       // "dual" only for genuinely different units; same-unit (and normalized)
       // pairs share one axis (issue #400) — exposed so the e2e can assert it.
       data-axis-mode={dualAxis ? "dual" : "shared"}
+      // Time-scaled (issue #402), exposed so the e2e can assert the axis is no
+      // longer index-spaced.
+      data-axis-scale="time"
     >
       <ResponsiveContainer width="100%" height="100%">
         <LineChart
-          data={data}
+          data={rows}
           margin={{ top: 10, right: 16, bottom: 0, left: -8 }}
         >
           <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
           <XAxis
-            dataKey="date"
-            tickFormatter={(v: string) => v.slice(5)}
+            dataKey="t"
+            type="number"
+            scale="time"
+            domain={xDomain ?? ["auto", "auto"]}
+            ticks={xTicks.length ? xTicks : undefined}
+            tickFormatter={(v: number) => formatTimeTick(v, withYear)}
             tick={{ fontSize: 11, fill: c.tick }}
             stroke={c.axis}
           />
@@ -117,7 +141,7 @@ export default function CompareChart({
                 : `${roundChartValue(Number(v))}${name === labelA ? unitA : unitB}`,
               name,
             ]}
-            labelFormatter={(v) => formatLongDate(String(v))}
+            labelFormatter={(v) => formatLongDate(epochToISO(Number(v)))}
             contentStyle={{
               fontSize: 12,
               borderRadius: 8,
@@ -132,7 +156,7 @@ export default function CompareChart({
             <ReferenceLine
               key={`ann-${a.kind}-${a.date}-${i}`}
               yAxisId="left"
-              x={a.date}
+              x={dateToEpoch(a.date)}
               stroke={ANNOTATION_KIND_META[a.kind].color}
               strokeDasharray="3 3"
               strokeOpacity={0.85}
