@@ -87,6 +87,50 @@ export async function syncStravaAction() {
   if (failed) redirect("/integrations/strava?error=sync_failed");
 }
 
+export interface SyncNowResult {
+  status: "done" | "error";
+  message: string;
+}
+
+// "Sync now" from the Data → Review "Connected sources" section (issue #208). Unlike
+// syncStravaAction (a form action on the setup page that redirects on failure), this
+// returns a result the button surfaces inline, and revalidates the surfaces a fresh
+// pull feeds (including /data so the sources section updates). Runs the SAME
+// idempotent runStravaSync — a manual tap just advances the same rolling window.
+export async function syncStravaNow(): Promise<SyncNowResult> {
+  const { profile } = await requireWriteAccess();
+  try {
+    const res = await runStravaSync(profile.id);
+    if (res && "error" in res) {
+      const message =
+        res.error === "not connected"
+          ? "Connect Strava first, then sync."
+          : `Sync failed: ${res.error}`;
+      log.error("strava sync-now failed", { error: res.error });
+      return { status: "error", message };
+    }
+    for (const p of [
+      "/",
+      "/training",
+      "/trends",
+      "/integrations/strava",
+      "/data",
+    ]) {
+      revalidatePath(p);
+    }
+    const parts = [
+      `${res.activities} ${res.activities === 1 ? "activity" : "activities"}`,
+    ];
+    if (res.samples > 0)
+      parts.push(`${res.samples} ${res.samples === 1 ? "sample" : "samples"}`);
+    const suffix = res.truncated ? " (more to come next sync)" : "";
+    return { status: "done", message: `Synced ${parts.join(", ")}.${suffix}` };
+  } catch (err) {
+    log.error("strava sync-now threw", { err: String(err) });
+    return { status: "error", message: "Sync failed — please try again." };
+  }
+}
+
 export async function disconnectStravaAction() {
   const { profile } = await requireWriteAccess();
   disconnectStrava(profile.id);

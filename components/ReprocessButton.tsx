@@ -1,25 +1,78 @@
 "use client";
 
+import { useState, useTransition } from "react";
 import { IconRefresh } from "@tabler/icons-react";
-import { reprocessAllDocuments } from "@/app/(app)/medical/actions";
-import { useConfirmedAction } from "@/components/useConfirmedAction";
+import {
+  reprocessAllDocuments,
+  previewReprocessAllCost,
+  type ReprocessResult,
+} from "@/app/(app)/medical/actions";
+import { useConfirm } from "@/components/ConfirmDialog";
+import { formatReprocessCost } from "@/lib/reprocess-cost";
 
-// Re-extracts every uploaded document and replaces its imported records with
-// fresh results — deterministic re-import for health records, AI extraction for
-// scans/PDFs (see reprocessAllDocuments). Destructive for edits made to imported
-// records, so it confirms first. Rendered in the Review feed header (#65). Unlike
-// the single-document reprocess, this awaits the full sequential run and shows a
-// summary of the outcome.
+// "Re-extract all documents" — re-extracts every uploaded document and replaces its
+// imported records with fresh results: deterministic re-import for health records
+// (MyChart CCD/XDM, SMART Health Cards, FHIR), AI extraction for scans/PDFs. It is
+// scoped to DOCUMENTS only (never the recurring syncs), which is why it lives in the
+// Imports section header (issue #208). Before confirming it previews the AI cost —
+// how many documents re-import instantly vs burn a daily extraction unit, and the
+// quota that remains — computed by the pure lib/reprocess-cost (one computation, the
+// dialog formats over it). Destructive for manual edits to imported records, so the
+// AI case confirms first; an all-deterministic run has no cost and skips the confirm.
 export default function ReprocessButton() {
-  const { pending, result, run } = useConfirmedAction(
-    {
-      title: "Reprocess all documents",
-      message:
-        "Re-extract every uploaded document: health records (MyChart CCD/XDM, SMART Health Cards, FHIR) re-import deterministically, and scans/PDFs re-run AI extraction. Each document’s imported records are replaced and any manual edits to them are discarded — records you added by hand are untouched.",
-      confirmLabel: "Reprocess all",
-    },
-    reprocessAllDocuments
-  );
+  const confirm = useConfirm();
+  const [transitionPending, startTransition] = useTransition();
+  const [preparing, setPreparing] = useState(false);
+  const [result, setResult] = useState<ReprocessResult | null>(null);
+  const pending = preparing || transitionPending;
+
+  async function run() {
+    setResult(null);
+    setPreparing(true);
+    let cost;
+    try {
+      cost = await previewReprocessAllCost();
+    } finally {
+      setPreparing(false);
+    }
+
+    if (cost.total === 0) {
+      setResult({
+        status: "done",
+        message: "No uploaded documents to re-extract.",
+      });
+      return;
+    }
+
+    const costLine = formatReprocessCost(cost);
+    // Skip-confirm fast path: an all-deterministic run makes no AI call, replaces
+    // nothing you edited by hand in an irreversible way beyond a re-import, and has
+    // no quota cost — just run it.
+    if (!cost.noAi) {
+      const ok = await confirm({
+        title: "Re-extract all documents",
+        message: (
+          <div className="space-y-2">
+            <p className="font-medium text-slate-700 dark:text-slate-200">
+              {costLine}
+            </p>
+            <p>
+              Each document&apos;s imported records are replaced and any manual
+              edits to them are discarded — records you added by hand are
+              untouched.
+            </p>
+          </div>
+        ),
+        confirmLabel: "Re-extract all",
+      });
+      if (!ok) return;
+    }
+
+    setResult(null);
+    startTransition(async () => {
+      setResult(await reprocessAllDocuments());
+    });
+  }
 
   const tone =
     result?.status === "skipped"
@@ -33,14 +86,18 @@ export default function ReprocessButton() {
         type="button"
         onClick={run}
         disabled={pending}
-        title="Reprocess all documents"
-        aria-label="Reprocess all documents"
-        className="text-slate-400 hover:text-brand-600 disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-500 dark:hover:text-brand-400"
+        data-testid="reprocess-all"
+        title="Re-extract all documents"
+        aria-label="Re-extract all documents"
+        className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-400 hover:text-brand-600 disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-500 dark:hover:text-brand-400"
       >
         {pending ? (
-          <span className="text-sm">Reprocessing…</span>
+          <span>{transitionPending ? "Re-extracting…" : "Checking…"}</span>
         ) : (
-          <IconRefresh className="h-4 w-4" />
+          <>
+            <IconRefresh className="h-4 w-4" />
+            <span>Re-extract all documents</span>
+          </>
         )}
       </button>
     </div>

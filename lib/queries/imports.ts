@@ -17,12 +17,10 @@ import {
 } from "../import-log";
 import {
   mergeFeed,
-  collapseQuietSyncs,
   documentEntry,
   jobEntry,
   type FeedEntry,
 } from "../import-feed";
-import { getRecentSyncEvents } from "./integrations";
 import {
   emptySnapshot,
   recordRow,
@@ -102,28 +100,21 @@ export function getImportLog(profileId: number): ImportLogRow[] {
   ]);
 }
 
-// The unified "all my imported data" feed behind Data → Review: a profile's
-// background integration syncs + uploaded documents + paste/CSV jobs, merged
-// newest-first. Composes the existing profile-scoped reads
-// (getRecentSyncEvents, getImportLogDocuments, getImportLogJobs) — so scoping is
-// inherited — and hands the merge/humanize to the pure lib/import-feed. Capped at
-// `limit` after the merge so one noisy stream can't crowd out the others.
-//
-// Sync events are scanned deeper than `limit` (SYNC_FEED_SCAN) and run through
-// collapseQuietSyncs FIRST (issue #137): a push-based integration that checks in
-// hourly and finds nothing new would otherwise post one "nothing new" row an hour
-// and bury every real import. Consecutive no-op syncs per provider fold into a
-// single "no new data · N checks" line, so the deep scan makes that count honest
-// without letting the noise occupy `limit` feed slots.
-const SYNC_FEED_SCAN = 200;
-
-export function getImportFeed(profileId: number, limit = 40): FeedEntry[] {
-  const syncs = collapseQuietSyncs(
-    getRecentSyncEvents(profileId, SYNC_FEED_SCAN)
-  );
+// The "Imports" feed behind Data → Review: a profile's ONE-OFF imports — uploaded
+// documents + paste/CSV jobs — merged newest-first, where chronology is the point.
+// Background integration syncs are deliberately NOT here (issue #208): recurring
+// per-provider streams live in their own "Connected sources" section
+// (getConnectedSources), collapsed to latest-state, so the hourly sync noise can't
+// drown the occasional document row. Composes the existing profile-scoped reads
+// (getImportLogDocuments, getImportLogJobs) — so scoping is inherited — and hands
+// the merge/humanize to the pure lib/import-feed. Capped at `limit` after the merge.
+export function getImportDocumentsFeed(
+  profileId: number,
+  limit = 40
+): FeedEntry[] {
   const documents = getImportLogDocuments(profileId).map(documentEntry);
   const jobs = getImportLogJobs(profileId).map(jobEntry);
-  return mergeFeed([...syncs, ...documents, ...jobs]).slice(0, limit);
+  return mergeFeed([...documents, ...jobs]).slice(0, limit);
 }
 
 // Read a single scalar COUNT(*) from a prepared statement result.

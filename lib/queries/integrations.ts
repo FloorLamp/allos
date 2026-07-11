@@ -1,6 +1,8 @@
 import { db } from "@/lib/db";
 import type { IntegrationSyncEvent } from "@/lib/types";
 import { currentlyFailingProviders } from "@/lib/integrations/sync-log";
+import { INTEGRATIONS } from "@/lib/integrations/registry";
+import { getConnection } from "@/lib/integrations/connections";
 import {
   findActivityDuplicates,
   findBodyMetricConflicts,
@@ -284,6 +286,42 @@ export function getLatestSyncEvent(
     )
     .get(profileId, provider) as IntegrationSyncEvent | undefined;
   return row ?? null;
+}
+
+// One recurring-stream provider's state for the Data → Review "Connected sources"
+// section (issue #208): its connection status, latest sync outcome, and a recent
+// history tail. `canSyncNow` marks a provider the app can pull on demand (Strava —
+// it has the sync machinery); a push-only provider (Health Connect) explains that
+// instead of offering the button.
+export interface ConnectedSource {
+  id: string;
+  name: string;
+  kind: string; // IntegrationKind: 'push' | 'oauth'
+  connected: boolean;
+  canSyncNow: boolean;
+  latest: IntegrationSyncEvent | null;
+  history: IntegrationSyncEvent[];
+}
+
+// The recurring-stream providers for the "Connected sources" section: every
+// AVAILABLE push/oauth integration (Health Connect, Strava — not the outbound
+// calendar feed, not the 'planned' Garmin), each collapsed to its latest sync
+// outcome plus a short expandable history. Profile-scoped via the per-provider
+// reads it composes (getConnection / getLatestSyncEvent / getIntegrationSyncEvents).
+export function getConnectedSources(profileId: number): ConnectedSource[] {
+  return INTEGRATIONS.filter(
+    (i) => i.status === "available" && (i.kind === "push" || i.kind === "oauth")
+  ).map((i) => ({
+    id: i.id,
+    name: i.name,
+    kind: i.kind,
+    connected: getConnection(profileId, i.id)?.status === "connected",
+    // Only Strava (OAuth pull) has a "Sync now" path today; Health Connect is
+    // push-only, so the row explains the phone exporter drives it.
+    canSyncNow: i.id === "strava",
+    latest: getLatestSyncEvent(profileId, i.id),
+    history: getIntegrationSyncEvents(profileId, i.id, 10),
+  }));
 }
 
 // The captured raw-payload ref for one sync event, scoped to the profile — powers

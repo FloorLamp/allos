@@ -7,22 +7,26 @@ import type { FeedEntry } from "@/lib/import-feed";
 import RelativeTime from "@/components/RelativeTime";
 import RawPayloadViewer from "@/components/RawPayloadViewer";
 import DuplicateReview from "@/components/DuplicateReview";
+import ConnectedSources from "@/components/ConnectedSources";
 import ImportFeed from "@/components/ImportFeed";
 import type {
   ActivityDupRow,
   BodyMetricConflictRow,
+  ConnectedSource,
 } from "@/lib/queries/integrations";
 import type {
   ActivityDupPair,
   BodyMetricConflictPair,
 } from "@/lib/import-review/detect";
 
-// Data → Review: the single "all my imported data" surface for a profile.
-// Surfaces (a) integrations that are currently failing ("Needs attention"),
-// (b) DETECTED duplicate/conflict pairs with merge/keep-both/dismiss actions
-// (issue #10, Phase 2), and (c) one newest-first feed (<ImportFeed>) that merges
-// every import stream — background syncs, uploaded documents, and paste/CSV jobs.
-// Server component — the page reads everything via lib/queries and hands it in.
+// Data → Review: the single "all my imported data" surface for a profile. Two
+// mental models, split into two sections (issue #208), with a shared strip on top:
+// (a) integrations currently failing ("Needs attention") and (b) DETECTED
+// duplicate/conflict pairs (issue #10, Phase 2) span both, then
+// (c) "Connected sources" (<ConnectedSources>) — the RECURRING per-provider streams
+// collapsed to latest-state with a Sync now / push explainer — and
+// (d) "Imports" (<ImportFeed>) — the chronological one-off feed of documents +
+// paste jobs. Server component — the page reads everything via lib/queries.
 
 function providerName(id: string): string {
   return getIntegration(id as IntegrationId)?.name ?? id;
@@ -35,6 +39,7 @@ function providerHref(id: string): string | null {
 
 export default function ReviewInbox({
   issues,
+  sources,
   feed,
   knownNames,
   activityPairs = [],
@@ -43,7 +48,9 @@ export default function ReviewInbox({
   isAdmin = false,
 }: {
   issues: IntegrationSyncEvent[];
-  // The unified import feed (syncs + documents + paste jobs), newest-first.
+  // The recurring per-provider streams for the "Connected sources" section.
+  sources: ConnectedSource[];
+  // The one-off "Imports" feed (documents + paste jobs), newest-first.
   feed: FeedEntry[];
   // The active profile's own name(s), for the document provenance-mismatch flag.
   knownNames: (string | null | undefined)[];
@@ -112,6 +119,8 @@ export default function ReviewInbox({
           </ul>
         </div>
       )}
+
+      <ConnectedSources sources={sources} isAdmin={isAdmin} />
 
       <ImportFeed feed={feed} knownNames={knownNames} isAdmin={isAdmin} />
     </div>
