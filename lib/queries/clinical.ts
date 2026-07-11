@@ -30,13 +30,20 @@ import type {
 // medical_records (no stored duplication) so a lab edit/delete flows straight
 // through to the allergies view.
 
+// The profile's recorded allergies, newest/active first. De-duplicated across
+// documents via ALLERGY_REPRESENTATIVE_IDS (defined with its clinical-list
+// siblings below) — two overlapping CCDs each carrying "Penicillin — hives" would
+// otherwise both show and be counted in the "Recorded allergies (N)" manager,
+// unlike Conditions/Procedures/Visits which hide theirs (#134/#384). The
+// representative subquery's profile_id bind comes after the main WHERE's.
 export function getAllergies(profileId: number): Allergy[] {
   return db
     .prepare(
-      `SELECT * FROM allergies WHERE profile_id = ?
+      `SELECT * FROM allergies
+       WHERE profile_id = ? AND id IN (${ALLERGY_REPRESENTATIVE_IDS})
        ORDER BY (status = 'active') DESC, substance COLLATE NOCASE ASC, id DESC`
     )
-    .all(profileId) as Allergy[];
+    .all(profileId, profileId) as Allergy[];
 }
 
 export function getAllergy(profileId: number, id: number): Allergy | undefined {
@@ -131,6 +138,24 @@ export const FAMILY_HISTORY_REPRESENTATIVE_IDS = `
       ORDER BY (document_id IS NULL) DESC, id DESC
     ) AS rn
     FROM family_history WHERE profile_id = ?
+  ) WHERE rn = 1`;
+
+// Allergies collapse on (substance, reaction, status), all normalized — the same
+// entry stored once per uploaded document (two overlapping CCDs each carrying
+// "Penicillin — hives") collapses to one representative, while a genuinely
+// different reaction or a status change (active vs resolved) stays visible as its
+// own row (conservative identity, like its siblings). The 'sub:'/'rxn:'/'st:'
+// prefixes keep the three namespaces from colliding. Used by getAllergies (#384).
+export const ALLERGY_REPRESENTATIVE_IDS = `
+  SELECT id FROM (
+    SELECT id, ROW_NUMBER() OVER (
+      PARTITION BY profile_id,
+        'sub:' || LOWER(TRIM(substance)),
+        'rxn:' || LOWER(TRIM(COALESCE(reaction, ''))),
+        'st:' || COALESCE(status, '')
+      ORDER BY (document_id IS NULL) DESC, id DESC
+    ) AS rn
+    FROM allergies WHERE profile_id = ?
   ) WHERE rn = 1`;
 
 // Conditions, optionally filtered to a single status (drives the page's
