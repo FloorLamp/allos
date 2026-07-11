@@ -1,10 +1,16 @@
 // Pure helpers for Telegram callback payloads — no DB/network, so they can be
 // unit-tested (lib/__tests__). Consumed by telegram-callbacks.ts.
 
-import type { DoseTakenOutcome } from "../types";
+import type { DoseTakenOutcome, EscalationAckOutcome } from "../types";
 import type { ReminderWindow } from "./supplement-format";
 
-export type InlineKeyboard = { text: string; callback_data: string }[][];
+// A keyboard button carries EITHER a callback token or a deep-link url (issue
+// #233's refill "Open form"); mirrors telegram.ts's InlineKeyboard.
+export type InlineKeyboard = {
+  text: string;
+  callback_data?: string;
+  url?: string;
+}[][];
 
 export interface TakeCallback {
   profileId: number;
@@ -163,4 +169,173 @@ export function removeButton(
   return rows
     .map((r) => r.filter((b) => b.callback_data !== data))
     .filter((r) => r.length > 0);
+}
+
+// Drop the ENTIRE row that the tapped button sits in (issue #233). A preventive
+// item's ✅/🚫/⏰ trio — or a refill item's snooze + deep-link pair — share one
+// row, so consuming any one resolves the whole item: the sibling buttons (and any
+// url button, which has no callback_data to match) go with it. An empty result
+// means that was the last item's row.
+export function removeRowContaining(
+  rows: InlineKeyboard,
+  data: string
+): InlineKeyboard {
+  return rows.filter((r) => !r.some((b) => b.callback_data === data));
+}
+
+// ---- Phase 1: preventive-nudge buttons (issue #233) ----
+// ✅ Done → recordPreventiveDone; 🚫 Not applicable → setPreventiveOverride;
+// ⏰ Remind later → findings-bus snooze (#227). The token carries the profile id
+// (cross-checked against the chat like a dose tap) and the catalog RULE KEY — a
+// stable machine key, never a name, and never recycled — so it fits Telegram's
+// 64-byte limit and the handler re-derives the rule's kind from the catalog.
+
+export type PreventiveAction = "done" | "na" | "later";
+
+export interface PreventiveCallback {
+  profileId: number;
+  ruleKey: string;
+  action: PreventiveAction;
+}
+
+// Parse a "pv<done|na|later>:<profileId>:<ruleKey>" token. Rule keys are the
+// catalog's stable snake_case identifiers (no colons), so the greedy tail is the
+// whole key. The handler still validates it against the catalog. Malformed →
+// null.
+export function parsePreventiveCallback(
+  data: unknown
+): PreventiveCallback | null {
+  if (typeof data !== "string") return null;
+  const m = /^pv(done|na|later):(\d+):(.+)$/.exec(data);
+  if (!m) return null;
+  const profileId = Number(m[2]);
+  const ruleKey = m[3];
+  if (!profileId || !ruleKey) return null;
+  const action: PreventiveAction =
+    m[1] === "done" ? "done" : m[1] === "na" ? "na" : "later";
+  return { profileId, ruleKey, action };
+}
+
+// The outcome a preventive tap answers from. `unknown-rule` covers a tampered or
+// stale token whose rule isn't in the catalog — nothing is written, so the tap is
+// never falsely confirmed.
+export type PreventiveTapOutcome =
+  "done" | "not-applicable" | "reminded" | "unknown-rule";
+
+export function preventiveAnswerText(outcome: PreventiveTapOutcome): string {
+  switch (outcome) {
+    case "done":
+      return "Marked done ✅";
+    case "not-applicable":
+      return "Marked not applicable 🚫";
+    case "reminded":
+      return "Okay — I'll remind you later ⏰";
+    case "unknown-rule":
+    default:
+      return "Not recorded — this reminder is out of date. Open the app.";
+  }
+}
+
+// ---- Phase 3: refill-nudge snooze button (issue #233) ----
+// 📦 Ordered — remind me in 3 days → bus snooze via refillSignalKey (#227). No
+// "mark refilled" button: that needs an amount, which a button handles badly (a
+// deep-link opens the form instead). The token carries the (integer, never-
+// recycled) supplement id.
+
+export interface RefillCallback {
+  profileId: number;
+  suppId: number;
+}
+
+// Parse a "rfsnooze:<profileId>:<suppId>" token. Malformed → null.
+export function parseRefillCallback(data: unknown): RefillCallback | null {
+  if (typeof data !== "string" || !data.startsWith("rfsnooze:")) return null;
+  const [, profStr, suppStr] = data.split(":");
+  const profileId = Number(profStr);
+  const suppId = Number(suppStr);
+  if (!profileId || !suppId) return null;
+  return { profileId, suppId };
+}
+
+export type RefillTapOutcome = "snoozed" | "stale-item";
+
+export function refillAnswerText(outcome: RefillTapOutcome): string {
+  return outcome === "snoozed"
+    ? "Got it 📦 — I'll remind you in 3 days."
+    : "Not recorded — this reminder is out of date. Open the app.";
+}
+
+// ---- Phase 2: escalation buttons (issue #233) ----
+// ✅ Confirmed taken → markDoseTaken (its DoseTakenOutcome answers honestly);
+// 👍 I'm on it → an ack that suppresses re-nudge WITHOUT claiming the dose taken.
+// The token mirrors a dose tap's shape (profile/dose/supp/date) under distinct
+// "esctake"/"escack" prefixes.
+
+export type EscalationAction = "take" | "ack";
+
+export interface EscalationCallback {
+  profileId: number;
+  doseId: number;
+  suppId: number | null;
+  date: string;
+  action: EscalationAction;
+}
+
+// Parse an "esctake:…" / "escack:…" token (same field layout as a dose token).
+// Malformed (wrong prefix, bad ids, missing date) → null.
+export function parseEscalationCallback(
+  data: unknown
+): EscalationCallback | null {
+  if (typeof data !== "string") return null;
+  let action: EscalationAction;
+  if (data.startsWith("esctake:")) action = "take";
+  else if (data.startsWith("escack:")) action = "ack";
+  else return null;
+  const [, profStr, doseStr, suppStr, date] = data.split(":");
+  const profileId = Number(profStr);
+  const doseId = Number(doseStr);
+  if (!profileId || !doseId || !date) return null;
+  return {
+    profileId,
+    doseId,
+    suppId: Number(suppStr) || null,
+    date,
+    action,
+  };
+}
+
+// AUTHORIZATION for an escalation tap (issue #233's recorded design decision).
+// Chat-id auth: a tap is authorized when the chat it came from is one of the
+// chats the escalation could have been delivered to for this profile — the
+// profile's OWN Telegram chat, or the supplement's escalate_chat_id (a caregiver
+// chat). This deliberately means ANYONE in that chat can confirm/ack on the
+// profile's behalf, consistent with the existing dose-button model and intended
+// for household caregiving; the escalation flow logs which chat tapped. Returns
+// the token's profile id when authorized, else null. The caller still passes the
+// resolved id to markDoseTaken, which re-verifies the dose→supplement→profile
+// chain, so a forged dose/supp id from an authorized chat is rejected there.
+export function resolveEscalationTap(
+  token: { profileId: number },
+  tappingChatId: string,
+  authorizedChatIds: readonly (string | null | undefined)[]
+): number | null {
+  if (!tappingChatId) return null;
+  const ok = authorizedChatIds.some(
+    (c) => !!c && c.trim() !== "" && c.trim() === tappingChatId
+  );
+  return ok ? token.profileId : null;
+}
+
+export function escalationAckAnswerText(outcome: EscalationAckOutcome): string {
+  switch (outcome) {
+    case "acknowledged":
+      return "Thanks 👍 — we'll hold off (dose not marked taken).";
+    case "already-taken":
+      return "Already confirmed taken ✅";
+    case "inactive":
+      return "This item is paused — open the app.";
+    case "stale-dose":
+    default:
+      return "This reminder is out of date. Open the app.";
+  }
 }

@@ -107,16 +107,36 @@ export function escalationsDue(
 
 // The escalation message. Always names the profile (escalations may land in a
 // shared/caregiver chat where whose dose it is isn't obvious — see the chat-id
-// ambiguity fix). No action button: an override chat isn't mapped to the profile
-// for tap resolution, so a "taken" button there wouldn't log — this is a nudge.
+// ambiguity fix). Two caregiver buttons (issue #233): ✅ Confirmed taken routes
+// through markDoseTaken's outcome union (a stale tap never falsely logs a critical
+// med), and 👍 I'm on it acknowledges + suppresses re-nudge WITHOUT claiming the
+// dose was taken. Both authorize by chat id — the escalation may go to the supp's
+// escalate_chat_id, which the tap handler now accepts alongside the profile's own
+// chat. The token carries ids only (profile/dose/supp) plus the day, so a late tap
+// still resolves the right dose to the right date.
 export function renderEscalationMessage(
   profileName: string,
-  due: EscalationDue
+  due: EscalationDue,
+  profileId: number,
+  date: string
 ): NotificationMessage {
   const who = profileName ? `${profileName} — ` : "";
   const amt = due.amount ? ` (${due.amount})` : "";
+  const suppId = due.supplementId;
   return {
     title: `⚠️ Missed dose: ${who}${due.supplementName}`,
     body: `The ${due.window.toLowerCase()} dose of ${due.supplementName}${amt} hasn't been confirmed yet. Please check in.`,
+    actions: [
+      {
+        label: "✅ Confirmed taken",
+        data: `esctake:${profileId}:${due.doseId}:${suppId}:${date}`,
+        row: "esc",
+      },
+      {
+        label: "👍 I'm on it",
+        data: `escack:${profileId}:${due.doseId}:${suppId}:${date}`,
+        row: "esc",
+      },
+    ],
   };
 }

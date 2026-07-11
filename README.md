@@ -459,7 +459,16 @@ Configure the bot token and mode under **Settings → Server** (global, admin-on
 enable notifications, set the chat id, and choose per-slot send times per person under
 **Settings → Profile**.
 
-One-tap "✅" buttons reach the app one of two ways (pick under **Button taps**):
+Several nudges carry one-tap action buttons that make the obvious response without
+opening the app: a **dose reminder** has ✅ take / ⏭ skip (and ✅ All); a **preventive**
+nudge has ✅ Done / 🚫 Not applicable / ⏰ Remind later; a **refill** nudge has 📦 Ordered —
+remind me in 3 days (plus a link to the refill form); and a **missed-dose escalation** has
+✅ Confirmed taken / 👍 I'm on it (an acknowledgement that stops the re-nudge without
+claiming the dose was taken — anyone in the caregiver escalate chat can tap it). A snooze
+tapped here is the same fact as a page snooze, so it's silenced everywhere. Buttons whose
+answer needs a number (e.g. "mark refilled") deep-link to the form instead.
+
+These button taps reach the app one of two ways (pick under **Button taps**):
 
 - **Polling** (default) — the notify service long-polls Telegram's `getUpdates`, so it
   works without the app being publicly reachable. The Docker `allos-notify` service

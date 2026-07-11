@@ -4,12 +4,18 @@
 
 export type ChannelId = "telegram" | "push";
 
-// An interactive action attached to a message. `data` is an opaque token the
-// inbound webhook decodes to perform the action (e.g. "take:<doseId>:<suppId>:<date>").
-// Channels that support buttons render it; channels that don't ignore it.
+// An interactive action attached to a message. Either a callback action — `data`
+// is an opaque token the inbound webhook decodes to perform the action (e.g.
+// "take:<doseId>:<suppId>:<date>") — OR a deep-link action, where `url` opens a
+// page in the app instead of firing a callback (issue #233's refill "Open form").
+// Exactly one of `data`/`url` is set. Channels that support buttons render it;
+// channels that don't (push) ignore actions entirely.
 export interface NotificationAction {
   label: string;
-  data: string;
+  data?: string;
+  // A deep-link target (absolute URL). Telegram renders it as a link button; a
+  // deep-link button carries no callback token, so it's never consumed on tap.
+  url?: string;
   // Optional keyboard-row grouping key (#232). Consecutive actions sharing a
   // `row` render side by side on ONE button row (e.g. a dose's ✅ take + ⏭ skip);
   // an action with no `row` gets its own row. Channels without buttons ignore it.

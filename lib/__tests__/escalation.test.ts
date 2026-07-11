@@ -200,30 +200,64 @@ describe("escalationsDue", () => {
 
 describe("renderEscalationMessage", () => {
   it("names the profile and the dose", () => {
-    const msg = renderEscalationMessage("Mom", {
-      doseId: 1,
-      supplementId: 10,
-      supplementName: "Lisinopril",
-      amount: "10 mg",
-      window: "Morning",
-      escalateChatId: null,
-    });
+    const msg = renderEscalationMessage(
+      "Mom",
+      {
+        doseId: 1,
+        supplementId: 10,
+        supplementName: "Lisinopril",
+        amount: "10 mg",
+        window: "Morning",
+        escalateChatId: null,
+      },
+      3,
+      "2026-07-11"
+    );
     expect(msg.title).toContain("Mom");
     expect(msg.title).toContain("Lisinopril");
     expect(msg.body).toContain("morning");
     expect(msg.body).toContain("10 mg");
-    expect(msg.actions).toBeUndefined();
   });
 
   it("omits the amount when absent", () => {
-    const msg = renderEscalationMessage("", {
-      doseId: 1,
-      supplementId: 10,
-      supplementName: "Vitamin D",
-      amount: null,
-      window: "Evening",
-      escalateChatId: null,
-    });
+    const msg = renderEscalationMessage(
+      "",
+      {
+        doseId: 1,
+        supplementId: 10,
+        supplementName: "Vitamin D",
+        amount: null,
+        window: "Evening",
+        escalateChatId: null,
+      },
+      3,
+      "2026-07-11"
+    );
     expect(msg.body).not.toContain("(");
+  });
+
+  // The two caregiver buttons (#233): ✅ Confirmed taken (esctake token) and 👍
+  // I'm on it (escack token), carrying profile/dose/supp ids + the day — never a
+  // name — so a late tap resolves the right dose on the right date.
+  it("carries the ✅ confirm and 👍 ack buttons with id-only tokens", () => {
+    const msg = renderEscalationMessage(
+      "Mom",
+      {
+        doseId: 7,
+        supplementId: 10,
+        supplementName: "Lisinopril",
+        amount: "10 mg",
+        window: "Morning",
+        escalateChatId: null,
+      },
+      3,
+      "2026-07-11"
+    );
+    expect(msg.actions?.map((a) => a.data)).toEqual([
+      "esctake:3:7:10:2026-07-11",
+      "escack:3:7:10:2026-07-11",
+    ]);
+    // Both share one row so they render side by side.
+    expect(new Set(msg.actions?.map((a) => a.row))).toEqual(new Set(["esc"]));
   });
 });

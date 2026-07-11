@@ -7,6 +7,7 @@ import { stackUlWarnings, type StackItem, type UlWarning } from "../dri";
 import type {
   DoseStatus,
   DoseTakenOutcome,
+  EscalationAckOutcome,
   Insight,
   MedicationCourse,
   MedicationSideEffect,
@@ -280,6 +281,74 @@ export function markDoseSkipped(
   ).run(doseId, _supplementId ?? owned.item_id, date);
   // Deliberately no decrementSupply: a skipped dose consumes nothing.
   return "skipped";
+}
+
+// Whether an intake item (supplement/med) exists for this profile — a scoped
+// existence check for the Telegram refill-snooze button (issue #233), so a forged
+// supplement id from a callback can't write a suppression for a row that isn't the
+// profile's. Profile-scoped (WHERE id AND profile_id).
+export function supplementExists(
+  profileId: number,
+  supplementId: number
+): boolean {
+  return !!db
+    .prepare("SELECT 1 FROM intake_items WHERE id = ? AND profile_id = ?")
+    .get(supplementId, profileId);
+}
+
+// The escalate_chat_id (caregiver chat) configured on one of the profile's
+// intake items, or null. Used to AUTHORIZE an escalation-button tap (issue #233):
+// a tap from this chat may confirm/ack on the profile's behalf. Profile-scoped, so
+// a forged supplement id can't leak another profile's escalation chat.
+export function getSupplementEscalateChatId(
+  profileId: number,
+  supplementId: number
+): string | null {
+  const row = db
+    .prepare(
+      "SELECT escalate_chat_id FROM intake_items WHERE id = ? AND profile_id = ?"
+    )
+    .get(supplementId, profileId) as
+    { escalate_chat_id: string | null } | undefined;
+  return row?.escalate_chat_id ?? null;
+}
+
+// Verify a missed-dose escalation ACK (issue #233's "👍 I'm on it") without
+// writing anything: does the dose still belong to this profile, is its item
+// active, and is it already taken for the day? Mirrors markDoseTaken's chain check
+// (dose→item→profile, retired/paused refused) so a stale ack answers honestly, but
+// records NOTHING — an ack must never log the dose as taken. The caller sets the
+// per-episode escalation marker only on "acknowledged". Fully profile-scoped.
+export function escalationAckState(
+  profileId: number,
+  doseId: number,
+  date: string
+): EscalationAckOutcome {
+  const owned = db
+    .prepare(
+      `SELECT s.active AS active
+         FROM intake_item_doses d
+         JOIN intake_items s ON s.id = d.item_id
+        WHERE d.id = ? AND s.profile_id = ? AND d.retired = 0`
+    )
+    .get(doseId, profileId) as { active: number } | undefined;
+  if (!owned) return "stale-dose";
+  if (!owned.active) return "inactive";
+  // A taken log already resolves it — tell the caregiver it's confirmed rather
+  // than acknowledging a chase that's already over. Joined through the dose's
+  // parent so the read stays profile-scoped.
+  const taken = db
+    .prepare(
+      `SELECT 1
+         FROM intake_item_logs l
+         JOIN intake_item_doses d ON d.id = l.dose_id
+         JOIN intake_items s ON s.id = d.item_id
+        WHERE l.dose_id = ? AND l.date = ? AND l.status = 'taken'
+          AND s.profile_id = ?`
+    )
+    .get(doseId, date, profileId);
+  if (taken) return "already-taken";
+  return "acknowledged";
 }
 
 // Per-dose log rows over the last `days` days, for the adherence strip. Each row

@@ -4,7 +4,13 @@
 import { getProfileTelegram, getTelegramBotConfig } from "../settings";
 import type { NotificationChannel, NotificationMessage } from "./types";
 
-export type InlineKeyboard = { text: string; callback_data: string }[][];
+// A button carries EITHER a callback token (`callback_data`) or a deep-link
+// (`url`) — Telegram rejects a button with both, so exactly one is set.
+export type InlineKeyboard = {
+  text: string;
+  callback_data?: string;
+  url?: string;
+}[][];
 
 // The subset of Telegram's Update / CallbackQuery shapes the app consumes —
 // shared by the webhook route and the getUpdates poller.
@@ -43,7 +49,11 @@ export function messageKeyboard(msg: NotificationMessage): InlineKeyboard {
   const rows: InlineKeyboard = [];
   let prevRow: string | undefined;
   for (const a of msg.actions ?? []) {
-    const btn = { text: a.label, callback_data: a.data };
+    // A deep-link action renders as a url button; otherwise a callback button.
+    // Telegram rejects a button carrying both, so pick exactly one.
+    const btn: InlineKeyboard[number][number] = a.url
+      ? { text: a.label, url: a.url }
+      : { text: a.label, callback_data: a.data ?? "" };
     // Merge into the previous row only when both carry the SAME defined group
     // key; an undefined `row` always starts its own row.
     if (a.row !== undefined && a.row === prevRow && rows.length > 0) {
