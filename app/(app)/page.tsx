@@ -17,7 +17,7 @@ import {
   getInsight,
   getSupplementLogsForDate,
   getSupplements,
-  getSupplementDoses,
+  getRefillRates,
   getWeights,
   getImmunizations,
   getImmunityTiters,
@@ -49,7 +49,7 @@ import { assessSchedule } from "@/lib/immunization-status";
 import { dispWeight } from "@/lib/units";
 import { formatLongDate, daysRemainingLabel } from "@/lib/format-date";
 import { currentStreak, flexibleStreak } from "@/lib/streak";
-import { daysOfSupplyLeft, isLowSupply } from "@/lib/refill";
+import { selectLowSupplyItems } from "@/lib/refill";
 import { bandForItem, upcomingDueText } from "@/lib/upcoming";
 import { carePlanUpcomingItems } from "@/lib/care-plan-upcoming";
 import { getWeeklyRecap } from "@/lib/notifications/weekly-recap-data";
@@ -295,31 +295,13 @@ export default async function Dashboard() {
     : [];
 
   // low-supply: items with a tracked quantity running at/below the threshold.
-  // Dosed roughly once per dose row per day (parity with the supplements page).
-  let lowSupplyItems: LowSupplyItem[] = [];
-  if (has("low-supply")) {
-    const doseCount = new Map<number, number>();
-    for (const d of getSupplementDoses(profile.id)) {
-      doseCount.set(d.item_id, (doseCount.get(d.item_id) ?? 0) + 1);
-    }
-    lowSupplyItems = supplements
-      .map((s) => ({
-        s,
-        days: daysOfSupplyLeft(
-          s.quantity_on_hand,
-          s.qty_per_dose,
-          doseCount.get(s.id) ?? 0
-        ),
-      }))
-      .filter((x) => isLowSupply(x.days))
-      .map((x) => ({
-        id: x.s.id,
-        name: x.s.name,
-        daysLeft: x.days as number,
-        kind: x.s.kind,
-      }))
-      .sort((a, b) => a.daysLeft - b.daysLeft);
-  }
+  // Formats over the SHARED getRefillRates rate (the history-aware taken-log
+  // rate — #38) exactly like the /medicine badge, Upcoming, and the Telegram
+  // nudge, so this widget can't disagree with the Needs-attention hero on the
+  // same screen (#301). selectLowSupplyItems is the one pure computation.
+  const lowSupplyItems: LowSupplyItem[] = has("low-supply")
+    ? selectLowSupplyItems(supplements, getRefillRates(profile.id))
+    : [];
 
   // streak — headline is the rest-tolerant flexible streak; the strict
   // consecutive-days streak rides along as secondary context.

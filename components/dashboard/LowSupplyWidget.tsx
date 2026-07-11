@@ -1,11 +1,9 @@
 import WidgetHeader from "./WidgetHeader";
+import type { LowSupplyItem } from "@/lib/refill";
 
-export interface LowSupplyItem {
-  id: number;
-  name: string;
-  daysLeft: number;
-  kind: "supplement" | "medication";
-}
+// The shape lives in lib/refill next to selectLowSupplyItems (the pure list
+// builder) so the widget stays a formatter over the one computation (#301).
+export type { LowSupplyItem };
 
 // Low supply (NEW) — supplements/medications with tracked quantity
 // running at or below the refill threshold, computed via lib/refill. Off by
