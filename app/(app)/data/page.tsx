@@ -12,7 +12,8 @@ import DataExport from "@/components/DataExport";
 import ReviewInbox from "@/components/ReviewInbox";
 import { getImportJobs } from "@/app/(app)/data/actions";
 import {
-  getImportFeed,
+  getImportDocumentsFeed,
+  getConnectedSources,
   getImportIssues,
   getActivityDuplicates,
   getBodyMetricConflicts,
@@ -68,8 +69,10 @@ export default async function DataPage(
     activeSection = (
       <ReviewInbox
         issues={importIssues}
-        // The unified import feed (syncs + documents + paste jobs) behind Review.
-        feed={getImportFeed(profile.id)}
+        // The recurring per-provider streams for the "Connected sources" section.
+        sources={getConnectedSources(profile.id)}
+        // The one-off "Imports" feed (documents + paste jobs) behind Review.
+        feed={getImportDocumentsFeed(profile.id)}
         // The profile's own name(s), for the document provenance-mismatch flag.
         knownNames={[getUserFullName(profile.id), profile.name]}
         activityPairs={activityPairs}

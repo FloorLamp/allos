@@ -21,8 +21,10 @@ import { withAiLogContext } from "@/lib/ai-log";
 import {
   checkAndIncrementAiUsage,
   extractionDailyLimit,
+  getAiUsageCount,
   refundAiUsage,
 } from "@/lib/ai-usage";
+import { computeReprocessCost, type ReprocessCost } from "@/lib/reprocess-cost";
 import { extractionSemaphore, QueueFullError } from "@/lib/ai-concurrency";
 import {
   reconcileFlags,
@@ -944,6 +946,24 @@ function revalidateAfterReprocess() {
   revalidatePath("/trends");
   revalidatePath("/immunizations");
   revalidatePath("/");
+}
+
+// Preview the cost of "Re-extract all documents" BEFORE running it (issue #208):
+// classify each reprocessable document as a deterministic health-record re-import
+// (no AI) vs a scan/PDF AI extraction, and measure the AI count against the
+// profile's remaining daily extraction quota. The confirm dialog formats this into
+// a cost line and takes the skip-confirm fast path when no AI call is involved. The
+// SAME `stored_path`/`processing` filter reprocessAllDocuments uses so the preview
+// counts exactly the set that would run. Read-only — never touches the DB.
+export async function previewReprocessAllCost(): Promise<ReprocessCost> {
+  const { profile } = await requireWriteAccess();
+  const docs = db
+    .prepare(
+      "SELECT source, mime_type FROM medical_documents WHERE profile_id = ? AND stored_path IS NOT NULL AND stored_path != '' AND extraction_status != 'processing'"
+    )
+    .all(profile.id) as { source: string | null; mime_type: string | null }[];
+  const used = getAiUsageCount(profile.id, "extraction");
+  return computeReprocessCost(docs, used, extractionDailyLimit());
 }
 
 // Re-run AI extraction on every uploaded document and replace its imported

@@ -13,13 +13,14 @@ import RelativeTime from "@/components/RelativeTime";
 import RawPayloadViewer from "@/components/RawPayloadViewer";
 import ReprocessButton from "@/components/ReprocessButton";
 
-// Data → Review, "Recent imports": the unified feed of everything that has brought
-// data into this profile — background integration syncs, uploaded documents, and
-// pasted/CSV jobs — merged newest-first. Every stream renders
-// through the ONE <FeedRow> below; the pure lib/import-feed shapes each entry into
-// a common view, so only the stream-specific extras (a document's provenance flag,
-// a sync's admin raw payload) branch here. Server component — the page reads the
-// feed via lib/queries (getImportFeed) and hands it in.
+// Data → Review, "Imports": the chronological feed of ONE-OFF imports into this
+// profile — uploaded documents and pasted/CSV jobs — merged newest-first, where
+// chronology is the point. Recurring per-provider syncs live in their own
+// "Connected sources" section now (issue #208), so this feed no longer commingles
+// hourly sync noise with the occasional document. Every entry renders through the
+// ONE <FeedRow> below; the pure lib/import-feed shapes each into a common view, so
+// only the stream-specific extras (a document's provenance flag) branch here.
+// Server component — the page reads the feed via lib/queries (getImportDocumentsFeed).
 
 function providerName(id: string): string {
   return getIntegration(id as IntegrationId)?.name ?? id;
@@ -142,15 +143,16 @@ export default function ImportFeed({
       <div className="mb-1 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-            Recent imports
+            Imports
           </h2>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            Everything you&apos;ve uploaded, pasted, or synced — newest first.
-            Click an item to verify what it produced.
+            Documents you&apos;ve uploaded and logs you&apos;ve pasted — newest
+            first. Click an item to verify what it produced.
           </p>
         </div>
-        {/* Reprocess-all lives here now that the feed is the single import surface
-            (it re-extracts every uploaded document). */}
+        {/* "Re-extract all documents" lives in THIS header now (issue #208) so its
+            scope reads unambiguously — it re-extracts every uploaded document and
+            never touches the recurring syncs in "Connected sources". */}
         <ReprocessButton />
       </div>
       {feed.length === 0 ? (

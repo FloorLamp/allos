@@ -9,6 +9,7 @@ loadEnvConfig(process.cwd());
 import { db, today } from "../lib/db";
 import { shiftDateStr } from "../lib/date";
 import { writeRawPayload } from "../lib/integrations/raw-log";
+import { upsertConnection } from "../lib/integrations/connections";
 import {
   setDashboardLayout,
   setProfileSetting,
@@ -31,6 +32,16 @@ const PROFILE_ID = 1;
 db.prepare(
   `DELETE FROM integration_sync_events WHERE profile_id = ? AND provider IN ('strava','health-connect')`
 ).run(PROFILE_ID);
+
+// Mark Strava CONNECTED so the Data → Review "Connected sources" card shows the
+// per-provider "Sync now" affordance (issue #208) rather than a "Connect" link.
+// Synthetic config only — the e2e never taps Sync now (it would hit the network), it
+// only asserts the button renders. Health Connect stays unconnected → its card shows
+// the push-only explainer.
+upsertConnection(PROFILE_ID, "strava", {
+  status: "connected",
+  config: { clientId: "e2e-client", accessToken: "e2e-token" },
+});
 
 // Capture a raw payload file for the healthy Health Connect sync so the admin-only
 // "View raw" affordance (#9) has something to fetch. Synthetic fixture content —
@@ -244,7 +255,7 @@ console.log(
 // not just integration syncs. Synthetic filenames/content only — no real PHI.
 // Clear prior e2e fixtures first so re-seeding stays idempotent.
 db.prepare(
-  `DELETE FROM medical_documents WHERE profile_id = ? AND filename IN ('e2e-labs.pdf', 'e2e-broken.txt')`
+  `DELETE FROM medical_documents WHERE profile_id = ? AND filename IN ('e2e-labs.pdf', 'e2e-broken.txt', 'e2e-mychart-export.xml')`
 ).run(PROFILE_ID);
 db.prepare(
   `DELETE FROM import_jobs WHERE profile_id = ? AND summary = 'e2e: 4 readings'`
@@ -273,6 +284,21 @@ db.prepare(
      (profile_id, type, status, summary, created_at, updated_at)
    VALUES (?, 'biomarkers', 'ready', 'e2e: 4 readings',
            '2026-07-08 11:00:00', '2026-07-08 11:00:00')`
+).run(PROFILE_ID);
+
+// A deterministic HEALTH-RECORD document (source='ccda') with a non-empty
+// stored_path so it counts in the "Re-extract all documents" cost preview (issue
+// #208) as a re-imported-instantly, no-AI document — alongside the seed's AI
+// scan/PDF (labcorp-panel.pdf, source='upload'). Together they make the cost line
+// show BOTH kinds. The stored_path is fake (the e2e only opens the confirm dialog
+// and cancels — it never actually re-extracts), so no blob on disk is needed.
+db.prepare(
+  `INSERT INTO medical_documents
+     (profile_id, filename, stored_path, mime_type, size_bytes, doc_type, source,
+      extraction_status, extracted_count, uploaded_at)
+   VALUES (?, 'e2e-mychart-export.xml', 'data/uploads/medical/1/e2e-nonexistent.xml',
+           'application/xml', 8192, 'MyChart export (CCD/XDM)', 'ccda',
+           'done', 5, '2026-07-08 10:30:00')`
 ).run(PROFILE_ID);
 
 console.log(
