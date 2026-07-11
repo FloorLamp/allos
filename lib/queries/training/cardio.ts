@@ -4,7 +4,9 @@ import { formatMinutes } from "../../duration";
 import { formatLongDate } from "../../format-date";
 import type { DistanceUnit } from "../../settings";
 import { getWeekStart } from "../../settings";
+import { assignHashedColors } from "../../trend-colors";
 import { fmtDistance } from "../../units";
+import { weeklyChartWeeks } from "../../weekly-fill";
 import { CARDIO_PALETTE, cache, effortEntries } from "./common";
 
 // One summarized recent cardio session for the cardio detail panel. `text` is
@@ -153,26 +155,30 @@ export function getCardioVolumeByWeek(
       (activityTotals.get(e.name) ?? 0) + e.durationMin
     );
   }
-  // Rank activities by total volume for stable color + legend order.
+  // Color follows the ACTIVITY NAME (a stable hash), NOT its volume rank (issue
+  // #406): after a long ride pushes Cycling ahead of Running, Running must keep its
+  // color, not inherit the color of whatever now sits at its old rank. Rank is used
+  // only for legend/stack ORDER. Colors de-collide within the visible set.
+  const colors = assignHashedColors([...activityTotals.keys()], CARDIO_PALETTE);
   const series = [...activityTotals.entries()]
     .sort((a, b) => b[1] - a[1])
-    .map(([name], i) => ({
+    .map(([name]) => ({
       key: name,
       label: name,
-      color: CARDIO_PALETTE[i % CARDIO_PALETTE.length],
+      color: colors.get(name) ?? CARDIO_PALETTE[0],
     }));
-  const data = [...byWeek.keys()]
-    .sort()
-    .slice(-weeks)
-    .map((wk) => {
-      // Full week-start date (the profile's configured first weekday);
-      // StackedBarCard compacts the axis to MM-DD and expands the tooltip to a
-      // long date.
-      const row: Record<string, number | string> = { date: wk };
-      const m = byWeek.get(wk)!;
-      for (const s of series) row[s.key] = Math.round(m.get(s.key) ?? 0);
-      return row;
-    });
+  // Zero-fill the week range so training GAPS render as empty bars instead of
+  // compressing away (issue #406) — a category BarChart can't otherwise show that
+  // months of zero-minute weeks separate two bars.
+  const data = weeklyChartWeeks([...byWeek.keys()], weeks).map((wk) => {
+    // Full week-start date (the profile's configured first weekday);
+    // StackedBarCard compacts the axis to MM-DD and expands the tooltip to a
+    // long date.
+    const row: Record<string, number | string> = { date: wk };
+    const m = byWeek.get(wk);
+    for (const s of series) row[s.key] = Math.round(m?.get(s.key) ?? 0);
+    return row;
+  });
   return { data, series };
 }
 

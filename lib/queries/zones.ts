@@ -18,6 +18,7 @@ import {
 import {
   activityWindows,
   buildZoneModel,
+  fillZoneWeeks,
   polarizedSplit,
   scopeBucketsToWindows,
   weeklyZoneMinutes,
@@ -116,7 +117,14 @@ export function getTrainingZoneData(
   const weekStart = getWeekStart(profileId);
   const windows = activityWindows(activityWindowInputs(profileId, since));
   const scoped = scopeBucketsToWindows(buckets, windows);
-  const rows = weeklyZoneMinutes(scoped, model, weekStart);
+  // weeklyZoneMinutes returns only weeks with data; zero-fill the gaps so a
+  // training pause renders as empty weeks instead of compressing away (issue #406)
+  // — otherwise a January and a May bar sit adjacent and the Zone-2 target line
+  // implies adherence over months that were actually zero.
+  const rows = fillZoneWeeks(
+    weeklyZoneMinutes(scoped, model, weekStart),
+    weeks
+  );
   // The headline "this week" adherence stat honors the profile's week_mode via the
   // SHARED weekWindow() (#223) and the SAME getZone2MinutesInWindow the weekly
   // recap uses (#397) — so a rolling-week profile's zone card and its recap can't

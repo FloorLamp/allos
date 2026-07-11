@@ -14,6 +14,7 @@
 // override is the escape hatch.
 
 import { shiftDateStr, startOfWeekStr } from "./date";
+import { weeklyChartWeeks } from "./weekly-fill";
 
 // ---- Zone definitions ----
 
@@ -271,6 +272,24 @@ export function weeklyZoneMinutes(
     const minutes = byWeek.get(week)!;
     return { week, minutes, total: minutes.reduce((s, n) => s + n, 0) };
   });
+}
+
+// Zero-fill the gaps in a weekly-zone series so a training pause renders as empty
+// weeks, not a compressed-away gap (issue #406). weeklyZoneMinutes emits only weeks
+// WITH data; this expands to the contiguous week axis (window-bounded via
+// weeklyChartWeeks), inserting an all-zero WeeklyZoneMinutes for every missing
+// week. Input weeks are matched by their week-start key; extra data weeks outside
+// the window are dropped by the axis. Pure — the DB layer feeds it and the section
+// maps the result.
+export function fillZoneWeeks(
+  rows: WeeklyZoneMinutes[],
+  windowWeeks: number
+): WeeklyZoneMinutes[] {
+  if (rows.length === 0) return [];
+  const byWeek = new Map(rows.map((r) => [r.week, r]));
+  return weeklyChartWeeks([...byWeek.keys()], windowWeeks).map(
+    (week) => byWeek.get(week) ?? { week, minutes: emptyZones(), total: 0 }
+  );
 }
 
 // Total minutes in each zone (index 0 = Zone 1 … 4 = Zone 5) across all buckets,
