@@ -212,9 +212,15 @@ const getMedicalRecordsCached = cache(function getMedicalRecordsCached(
     where.push(rangeClause);
   }
   if (filters.q) {
-    where.push("(name LIKE ? ESCAPE '\\' OR panel LIKE ? ESCAPE '\\')");
+    // Match the CANONICAL name too (the row heading the table renders), not just
+    // the raw lab string and panel — so a record shown as "Total Cholesterol"
+    // (imported as "CHOLESTEROL, TOTAL") is findable by its own visible heading
+    // (#383). Raw name still matches so the lab's original string works.
+    where.push(
+      "(name LIKE ? ESCAPE '\\' OR canonical_name LIKE ? ESCAPE '\\' OR panel LIKE ? ESCAPE '\\')"
+    );
     const like = likeContains(filters.q);
-    args.push(like, like);
+    args.push(like, like, like);
   }
   if (filters.current) {
     // Keep only rows with no later reading in the same biomarker group — i.e.

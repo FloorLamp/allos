@@ -54,7 +54,11 @@ export function filterDerivedForTable(
       if (!(isOutOfRange(r.flag) || isNonOptimal(r.flag))) return false;
     }
     if (q) {
-      const hay = `${r.name} ${r.panel ?? ""}`.toLowerCase();
+      // Include the canonical name (the row heading) alongside the raw name and
+      // panel, mirroring the SQL search in getMedicalRecords so a derived row is
+      // findable by the same identity it shows (#383).
+      const hay =
+        `${r.name} ${r.canonical_name ?? ""} ${r.panel ?? ""}`.toLowerCase();
       if (!hay.includes(q)) return false;
     }
     return true;
