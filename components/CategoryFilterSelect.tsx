@@ -5,9 +5,10 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 // The standard medical-record categories, matching the biomarkers filter and the
 // per-row category editor. Offering the fixed set (rather than only categories
 // present in the current view) keeps the control consistent with the biomarkers
-// table wherever it's used. This is the DEFAULT option set — the document view
-// relies on it including 'prescription' so meds stay filterable there; the
-// biomarkers browser passes its own prescription-less list.
+// table wherever it's used. This is the DEFAULT option set; the biomarkers
+// browser passes its own prescription-less list. (The import-detail document
+// view no longer uses this control — its category filter collapsed into the
+// records-browser tab strip, #271.)
 const CATEGORIES = [
   "vitals",
   "lab",
@@ -19,9 +20,8 @@ const CATEGORIES = [
 
 // Category dropdown for a medical records table. Writes the choice into the
 // `category` query param on the current path (preserving other params), so
-// server components read it back. Path-agnostic, so it works on both the
-// biomarkers browser and a per-document results table. `categories` overrides the
-// offered set (defaults to the full list, so the document view is unchanged).
+// server components read it back. Path-agnostic. `categories` overrides the
+// offered set (defaults to the full list).
 export default function CategoryFilterSelect({
   value,
   categories = CATEGORIES,

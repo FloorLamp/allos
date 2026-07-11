@@ -215,7 +215,10 @@ Uploaded medical documents (**Data → Import**) are extracted into
 structured records by the same API; without a key the file is still stored but
 extraction is skipped. Each upload then appears in the **Data → Review** feed —
 click through to verify what it produced, reprocess it, or see the extraction
-error.
+error. The detail view browses everything the import produced in one tabbed
+strip — one tab per type (labs, vitals, prescriptions, visits, conditions,
+allergies, immunizations, procedures, family history, care plan/goals,
+medications, body metrics), each row linking to where it now lives.
 
 ### Local / self-hosted inference (zero external egress)
 

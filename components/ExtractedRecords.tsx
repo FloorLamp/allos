@@ -6,7 +6,6 @@ import { groupContiguous } from "@/lib/table-sort";
 import { EmptyState } from "./ui";
 import EditableRecordRow from "./EditableRecordRow";
 import RangeFilterSelect from "./RangeFilterSelect";
-import CategoryFilterSelect from "./CategoryFilterSelect";
 import SortableHeader from "./SortableHeader";
 import RecordSearch from "./RecordSearch";
 import { useReprocessDocument } from "@/components/useReprocessDocument";
@@ -18,26 +17,31 @@ function nameKey(r: MedicalRecord): string {
   return r.canonical_name?.trim() || r.name;
 }
 
-// The "Extracted records" card on a single document page. Its reprocess button
-// shares the useReprocessDocument hook with the documents-list row button, which
-// flips the document to 'processing' and runs extraction in the background. The
-// action returns immediately; a "Processing…" overlay stays over the table for
-// the whole time the document is `processing` (from this reprocess, or a first
-// upload extraction viewed here), and the app-wide ExtractionToaster
-// refreshes the page and toasts when the background job finishes (clearing it).
+// The editable records table for one medical_records category tab of the
+// import-detail records browser (#271): the old CategoryFilterSelect collapsed
+// into the tab strip, so the host passes the tab's label as `title` and scopes
+// the records itself. Its reprocess button shares the useReprocessDocument hook
+// with the documents-list row button, which flips the document to 'processing'
+// and runs extraction in the background. The action returns immediately; a
+// "Processing…" overlay stays over the table for the whole time the document is
+// `processing` (from this reprocess, or a first upload extraction viewed here),
+// and the app-wide ExtractionToaster refreshes the page and toasts when the
+// background job finishes (clearing it).
 export default function ExtractedRecords({
   docId,
   filename,
+  title = "Extracted records",
   processing,
   records,
   q,
   range,
-  category,
   sort,
   emptyMessage,
 }: {
   docId: number;
   filename: string;
+  // Heading for the table — the active tab's label ("Labs", "Prescriptions"…).
+  title?: string;
   // The document's extraction is still running (from upload or a prior
   // reprocess). Reprocessing now would race that in-flight job, so we show a
   // spinner instead of the reprocess button.
@@ -45,7 +49,6 @@ export default function ExtractedRecords({
   records: MedicalRecord[];
   q?: string;
   range?: "oor" | "nonoptimal";
-  category?: string;
   // Active sort column, so we know whether to render contiguous name groups
   // (only when the table is name-sorted, matching the biomarkers table).
   sort: "name" | "panel" | "date";
@@ -62,13 +65,12 @@ export default function ExtractedRecords({
     <div className="card mb-6 overflow-hidden p-0">
       <div className="flex flex-wrap items-center gap-4 px-5 pt-5">
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-          Extracted records{" "}
+          {title}{" "}
           <span className="font-normal text-slate-400 dark:text-slate-500">
             ({records.length})
           </span>
         </h2>
         <RecordSearch q={q} />
-        <CategoryFilterSelect value={category} />
         <RangeFilterSelect value={range} />
         {processing ? (
           <IconLoader2
@@ -139,11 +141,10 @@ export default function ExtractedRecords({
                         key={r.id}
                         record={r}
                         grouped={{ isGroupStart, isGroupEnd }}
-                        filterCategory
                       />
                     ))
                   : records.map((r) => (
-                      <EditableRecordRow key={r.id} record={r} filterCategory />
+                      <EditableRecordRow key={r.id} record={r} />
                     ))}
               </tbody>
             </table>

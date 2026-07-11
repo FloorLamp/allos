@@ -171,6 +171,34 @@ export function getDocumentProduced(
       )
       .get(profileId, docId)
   );
+  const procedures = scalar(
+    db
+      .prepare(
+        `SELECT COUNT(*) AS c FROM procedures WHERE profile_id = ? AND document_id = ?`
+      )
+      .get(profileId, docId)
+  );
+  const familyHistory = scalar(
+    db
+      .prepare(
+        `SELECT COUNT(*) AS c FROM family_history WHERE profile_id = ? AND document_id = ?`
+      )
+      .get(profileId, docId)
+  );
+  const carePlanItems = scalar(
+    db
+      .prepare(
+        `SELECT COUNT(*) AS c FROM care_plan_items WHERE profile_id = ? AND document_id = ?`
+      )
+      .get(profileId, docId)
+  );
+  const careGoals = scalar(
+    db
+      .prepare(
+        `SELECT COUNT(*) AS c FROM care_goals WHERE profile_id = ? AND document_id = ?`
+      )
+      .get(profileId, docId)
+  );
   const medications = scalar(
     db
       .prepare(
@@ -240,12 +268,194 @@ export function getDocumentProduced(
     allergies,
     conditions,
     encounters,
+    procedures,
+    familyHistory,
+    carePlanItems,
+    careGoals,
     medications,
     bodyMetrics,
     heightSamples,
     headCircSamples,
     providers,
   };
+}
+
+// ---- Per-tab listings for the import-detail records browser (#271) ----
+//
+// The read-only rows one document produced in each non-medical_records table,
+// for the tabbed browser on /import/[id] (medical_records tabs reuse
+// getRecordsForDocument). Each read is profile-scoped AND traced to the document
+// via the exact provenance link the writer stamped — document_id, or
+// documentSource(id) for the source-keyed tables — mirroring getDocumentProduced
+// above, so a tab's rows are exactly the rows its count counted. The page maps
+// these raw rows through the pure shapers in lib/import-browser.ts.
+
+export function getDocumentVisits(profileId: number, docId: number) {
+  return db
+    .prepare(
+      `SELECT id, date, end_date, type, reason FROM encounters
+        WHERE profile_id = ? AND document_id = ?
+        ORDER BY date DESC, id DESC`
+    )
+    .all(profileId, docId) as {
+    id: number;
+    date: string;
+    end_date: string | null;
+    type: string | null;
+    reason: string | null;
+  }[];
+}
+
+export function getDocumentConditions(profileId: number, docId: number) {
+  return db
+    .prepare(
+      `SELECT id, name, status, onset_date, code FROM conditions
+        WHERE profile_id = ? AND document_id = ?
+        ORDER BY name COLLATE NOCASE, id`
+    )
+    .all(profileId, docId) as {
+    id: number;
+    name: string;
+    status: string;
+    onset_date: string | null;
+    code: string | null;
+  }[];
+}
+
+export function getDocumentAllergies(profileId: number, docId: number) {
+  return db
+    .prepare(
+      `SELECT id, substance, reaction, severity, status FROM allergies
+        WHERE profile_id = ? AND document_id = ?
+        ORDER BY substance COLLATE NOCASE, id`
+    )
+    .all(profileId, docId) as {
+    id: number;
+    substance: string;
+    reaction: string | null;
+    severity: string | null;
+    status: string;
+  }[];
+}
+
+export function getDocumentImmunizations(profileId: number, docId: number) {
+  const source = documentSource(docId);
+  return db
+    .prepare(
+      `SELECT id, date, vaccine, dose_label FROM immunizations
+        WHERE profile_id = ? AND source = ?
+        ORDER BY date DESC, id DESC`
+    )
+    .all(profileId, source) as {
+    id: number;
+    date: string;
+    vaccine: string;
+    dose_label: string | null;
+  }[];
+}
+
+export function getDocumentProcedures(profileId: number, docId: number) {
+  return db
+    .prepare(
+      `SELECT id, name, code, date FROM procedures
+        WHERE profile_id = ? AND document_id = ?
+        ORDER BY date DESC, id DESC`
+    )
+    .all(profileId, docId) as {
+    id: number;
+    name: string;
+    code: string | null;
+    date: string | null;
+  }[];
+}
+
+export function getDocumentFamilyHistory(profileId: number, docId: number) {
+  return db
+    .prepare(
+      `SELECT id, relation, condition, onset_age FROM family_history
+        WHERE profile_id = ? AND document_id = ?
+        ORDER BY relation COLLATE NOCASE, condition COLLATE NOCASE, id`
+    )
+    .all(profileId, docId) as {
+    id: number;
+    relation: string | null;
+    condition: string;
+    onset_age: number | null;
+  }[];
+}
+
+export function getDocumentCarePlanItems(profileId: number, docId: number) {
+  return db
+    .prepare(
+      `SELECT id, description, category, planned_date, status FROM care_plan_items
+        WHERE profile_id = ? AND document_id = ?
+        ORDER BY planned_date IS NULL, planned_date, id`
+    )
+    .all(profileId, docId) as {
+    id: number;
+    description: string;
+    category: string | null;
+    planned_date: string | null;
+    status: string | null;
+  }[];
+}
+
+export function getDocumentCareGoals(profileId: number, docId: number) {
+  return db
+    .prepare(
+      `SELECT id, description, target_date, status FROM care_goals
+        WHERE profile_id = ? AND document_id = ?
+        ORDER BY target_date IS NULL, target_date, id`
+    )
+    .all(profileId, docId) as {
+    id: number;
+    description: string;
+    target_date: string | null;
+    status: string | null;
+  }[];
+}
+
+export function getDocumentMedications(profileId: number, docId: number) {
+  return db
+    .prepare(
+      `SELECT id, name, kind FROM intake_items
+        WHERE profile_id = ? AND document_id = ? AND source = 'extracted'
+        ORDER BY name COLLATE NOCASE, id`
+    )
+    .all(profileId, docId) as { id: number; name: string; kind: string }[];
+}
+
+// The three body-sample reads behind the merged "Body metrics" tab.
+export function getDocumentBodyRows(profileId: number, docId: number) {
+  const source = documentSource(docId);
+  const bodyMetrics = db
+    .prepare(
+      `SELECT id, date, weight_kg, body_fat_pct, resting_hr FROM body_metrics
+        WHERE profile_id = ? AND source = ?
+        ORDER BY date DESC, id DESC`
+    )
+    .all(profileId, source) as {
+    id: number;
+    date: string;
+    weight_kg: number | null;
+    body_fat_pct: number | null;
+    resting_hr: number | null;
+  }[];
+  const heights = db
+    .prepare(
+      `SELECT id, date, value FROM metric_samples
+        WHERE profile_id = ? AND source = ? AND metric = 'height_cm'
+        ORDER BY date DESC, id DESC`
+    )
+    .all(profileId, source) as { id: number; date: string; value: number }[];
+  const headCircs = db
+    .prepare(
+      `SELECT id, date, value FROM metric_samples
+        WHERE profile_id = ? AND source = ? AND metric = 'head_circumference_cm'
+        ORDER BY date DESC, id DESC`
+    )
+    .all(profileId, source) as { id: number; date: string; value: number }[];
+  return { bodyMetrics, heights, headCircs };
 }
 
 // The currently-persisted rows a document produced, reduced to the neutral
