@@ -41,6 +41,25 @@ test.describe("Import detail: dropped grouping + unmapped-code report", () => {
     expect(box.scrolls).toBe(true);
   });
 
+  test("lists an ignored section under 'Recognized, not imported', apart from real gaps (#268)", async ({
+    page,
+  }) => {
+    await page.goto("/import/907");
+
+    // The seeded report marks Insurance recognized-but-ignored and leaves a
+    // genuinely unrecognized "E2E Mystery Section" as a real gap — the two must
+    // render in separate coverage groups.
+    const ignored = page.getByTestId("coverage-ignored");
+    await expect(ignored.getByText("Recognized, not imported")).toBeVisible();
+    await expect(ignored.getByText("Insurance")).toBeVisible();
+    await expect(ignored.getByText("intentionally out of scope")).toBeVisible();
+    await expect(ignored.getByText("E2E Mystery Section")).toHaveCount(0);
+
+    const gaps = page.getByTestId("coverage-not-consumed");
+    await expect(gaps.getByText("E2E Mystery Section")).toBeVisible();
+    await expect(gaps.getByText("Insurance")).toHaveCount(0);
+  });
+
   test("offers a code/name/unit-only GitHub report link for unmapped lab codes", async ({
     page,
   }) => {

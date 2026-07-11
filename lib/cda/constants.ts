@@ -93,6 +93,39 @@ export const SECTIONS = {
     loinc: "29549-3",
     templates: ["2.16.840.1.113883.10.20.22.2.38"],
   },
+  // Ordered Prescriptions (#268) — an Epic section (no C-CDA section templateId of
+  // its own; Epic stamps its proprietary 1.2.840.114350.1.72.2.10144) listing the
+  // prescriptions WRITTEN at the visit. Entries are Medication Activity (4.16), the
+  // same shape the Medications extractor parses — but the section documents an
+  // ORDER event, not the patient's current regimen (the Medications section stays
+  // the authority for that), so mapMedication runs in snapshot mode: an
+  // active/unstated status is capped to `completed` and an undated order anchors to
+  // the document date, so a years-old visit's order can never surface as a current
+  // (open-course) medication. Each derived course is tagged "Ordered at visit".
+  orderedPrescriptions: {
+    loinc: "66149-6",
+    templates: ["1.2.840.114350.1.72.2.10144"],
+  },
+  // Functional Status (#268). Entries are functional-status / assessment
+  // observations (organizer→component or bare observation — the SAME node shapes
+  // the Results/Vitals walker reads), typically with coded (qualitative) values
+  // ("Independent", "Uses walker", …). Routed through the shared observation
+  // mapper as qualitative `lab` records; the assessment LOINC is deliberately NOT
+  // carried onto the stored record — see functionalStatusExtractor.
+  functionalStatus: {
+    loinc: "47420-5",
+    templates: ["2.16.840.1.113883.10.20.22.2.14"],
+  },
+  // Insurance / Payers (#268) — Coverage Activity entries (plan names, subscriber
+  // ids, payer contacts). Deliberately OUT OF SCOPE: it's billing/coverage data,
+  // not health readings, and importing subscriber/group identifiers adds risk with
+  // no clinical surface to show them on. Recognized so the coverage report lists
+  // it as "recognized, not imported" instead of an unrecognized-section gap — see
+  // buildCcdaCoverage. No extractor.
+  insurance: {
+    loinc: "48768-6",
+    templates: ["2.16.840.1.113883.10.20.22.2.18"],
+  },
   // Encounters / visit history. The "History of
   // Hospitalizations + Outpatient visits" section; each entry is an Encounter
   // Activity (templateId 4.49) carrying the visit's date/period, type/class,
@@ -192,6 +225,7 @@ export const CLINICAL_NOTE_LOINCS = new Set<string>([
   "18842-5", // Discharge summary
   "8648-8", // Hospital course / Discharge Summaries (IHE 1.3.6.1.4.1.19376.1.5.3.1.3.5, Note Activity entries) — #266
   "8653-8", // Discharge Instructions (2.16.840.1.113883.10.20.22.2.41, Instruction entries) — #266
+  "69730-0", // Patient Instructions (2.16.840.1.113883.10.20.22.2.45, Instruction entries) — #268
   "28570-0", // Procedure note
   "34109-9", // Note
   "34111-5", // Emergency department note
@@ -351,6 +385,9 @@ export const KNOWN_SECTION_TITLES: Record<string, string> = {
   [SECTIONS.admissionDiagnoses.loinc]: "Admitting Diagnoses",
   [SECTIONS.dischargeMedications.loinc]: "Discharge Medications",
   [SECTIONS.administeredMedications.loinc]: "Administered Medications",
+  [SECTIONS.orderedPrescriptions.loinc]: "Ordered Prescriptions",
+  [SECTIONS.functionalStatus.loinc]: "Functional Status",
+  [SECTIONS.insurance.loinc]: "Insurance",
   [SECTIONS.encounters.loinc]: "Encounters",
   [SECTIONS.procedures.loinc]: "Procedures",
   [SECTIONS.familyHistory.loinc]: "Family History",
@@ -360,7 +397,8 @@ export const KNOWN_SECTION_TITLES: Record<string, string> = {
   [SECTIONS.socialHistory.loinc]: "Social History",
   [SECTIONS.visitDiagnoses.loinc]: "Visit Diagnoses",
   [SECTIONS.progressNotes.loinc]: "Progress Notes",
-  // Clinical-note section codes with no SECTIONS spec of their own (#266).
+  // Clinical-note section codes with no SECTIONS spec of their own (#266/#268).
   "8648-8": "Discharge Summaries",
   "8653-8": "Discharge Instructions",
+  "69730-0": "Patient Instructions",
 };

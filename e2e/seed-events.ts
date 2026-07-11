@@ -668,6 +668,22 @@ const dropReport = {
   ],
   coverage: [
     { key: "results", title: "Results", consumed: true, present: 272 },
+    // Recognized-but-ignored (#268): must render under "Recognized, not
+    // imported", NOT as a present-but-not-consumed gap.
+    {
+      key: "insurance",
+      title: "Insurance",
+      consumed: false,
+      present: 4,
+      ignored: true,
+    },
+    // A genuinely unrecognized section stays in "Present but not consumed".
+    {
+      key: "E2E Mystery Section",
+      title: "E2E Mystery Section",
+      consumed: false,
+      present: 2,
+    },
   ],
   imported: 12,
   considered: 272,

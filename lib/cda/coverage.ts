@@ -224,7 +224,11 @@ function collectSectionDrops(
 ): void {
   const ids = buildNarrativeIdMap(section.raw?.text);
   const title = sectionTitle(section);
-  if (key === "results" || key === "vitals") {
+  // functionalStatus (#268) routes through the SAME observation walk/mapper as
+  // Results (as qualitative `lab` records — the stored-record loinc strip in its
+  // extractor doesn't change whether an observation maps), so its drops are
+  // itemized identically.
+  if (key === "results" || key === "vitals" || key === "functionalStatus") {
     const cat = key === "vitals" ? "vitals" : "lab";
     for (const o of observationNodesOf(section.entries)) {
       if (mapObservation(o, cat, ids)) continue;
@@ -239,7 +243,8 @@ function collectSectionDrops(
   } else if (
     key === "medications" ||
     key === "dischargeMedications" ||
-    key === "administeredMedications"
+    key === "administeredMedications" ||
+    key === "orderedPrescriptions"
   ) {
     for (const e of section.entries) {
       const sa = e?.substanceAdministration;
@@ -360,6 +365,11 @@ export function buildCcdaCoverage(
       SECTIONS.admissionDiagnoses
     );
     const isClinicalNote = !ex && isClinicalNoteSection(section);
+    // Insurance / Payers (#268) is recognized-but-IGNORED: coverage data is
+    // deliberately out of scope (see SECTIONS.insurance), so the section is
+    // neither consumed nor an unrecognized-section gap — it gets an `ignored`
+    // coverage entry the debug view lists as "recognized, not imported".
+    const isInsurance = !ex && sectionIs(section, SECTIONS.insurance);
     const consumed =
       !!ex ||
       (isReasonForVisit && reasonForVisitConsumed) ||
@@ -376,20 +386,25 @@ export function buildCcdaCoverage(
             ? "admissionDiagnoses"
             : isClinicalNote
               ? "clinicalNotes"
-              : "");
+              : isInsurance
+                ? "insurance"
+                : "");
     coverage.push({
       key: key || title,
       title,
       consumed,
       present: section.entries.length,
+      ...(isInsurance ? { ignored: true } : {}),
     });
     if (!consumed) {
-      drops.push({
-        kind: "section",
-        label: title,
-        reason: "unrecognized_section",
-        section: title,
-      });
+      if (!isInsurance) {
+        drops.push({
+          kind: "section",
+          label: title,
+          reason: "unrecognized_section",
+          section: title,
+        });
+      }
       continue;
     }
     if (ex) collectSectionDrops(section, ex.key, drops, documentDate);

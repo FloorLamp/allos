@@ -172,14 +172,44 @@ describe("summarizeCoverage", () => {
       { key: "ins", title: "Insurance", consumed: false, present: 1 },
       { key: "func", title: "Functional Status", consumed: false, present: 1 },
     ];
-    const { consumed, notConsumed } = summarizeCoverage(coverage);
+    const { consumed, ignored, notConsumed } = summarizeCoverage(coverage);
     expect(consumed.map((c) => c.title)).toEqual(["Results"]);
     expect(consumed[0].present).toBe(5);
+    // No `ignored` flag on these (older stored reports) → they stay notConsumed.
+    expect(ignored).toEqual([]);
     // Sorted by title.
     expect(notConsumed.map((c) => c.title)).toEqual([
       "Functional Status",
       "Insurance",
     ]);
+  });
+
+  it("routes recognized-but-ignored entries to their own bucket (#268)", () => {
+    const coverage: CoverageEntry[] = [
+      { key: "results", title: "Results", consumed: true, present: 5 },
+      {
+        key: "insurance",
+        title: "Insurance",
+        consumed: false,
+        present: 2,
+        ignored: true,
+      },
+      { key: "Mystery", title: "Mystery", consumed: false, present: 1 },
+      // A section consumed by one document and flagged ignored by another
+      // stays CONSUMED — reading it into a sink wins.
+      {
+        key: "goals",
+        title: "Goals",
+        consumed: false,
+        present: 1,
+        ignored: true,
+      },
+      { key: "goals", title: "Goals", consumed: true, present: 1 },
+    ];
+    const { consumed, ignored, notConsumed } = summarizeCoverage(coverage);
+    expect(consumed.map((c) => c.title)).toEqual(["Goals", "Results"]);
+    expect(ignored.map((c) => c.title)).toEqual(["Insurance"]);
+    expect(notConsumed.map((c) => c.title)).toEqual(["Mystery"]);
   });
 });
 
@@ -331,7 +361,8 @@ describe("parseCcda → import report", () => {
     expect(byReason.null_flavor).toBe(1);
     expect(byReason.no_value).toBe(1);
     expect(byReason.negated).toBe(1);
-    expect(byReason.unrecognized_section).toBe(1); // Insurance
+    // Insurance is recognized-but-ignored (#268), not an unrecognized gap.
+    expect(byReason.unrecognized_section).toBeUndefined();
   });
 
   it("captures the null-flavored Comment(s) row as null_flavor", () => {
@@ -359,16 +390,19 @@ describe("parseCcda → import report", () => {
     }
   });
 
-  it("lists Insurance as present-but-not-consumed", () => {
-    const { consumed, notConsumed } = summarizeCoverage(report.coverage);
+  it("lists Insurance as recognized-but-ignored, not a gap (#268)", () => {
+    const { consumed, ignored, notConsumed } = summarizeCoverage(
+      report.coverage
+    );
     expect(consumed.map((c) => c.title)).toContain("Results");
-    expect(notConsumed.map((c) => c.title)).toContain("Insurance");
-    // The unconsumed section is also an unrecognized_section drop.
+    expect(ignored.map((c) => c.title)).toEqual(["Insurance"]);
+    expect(notConsumed).toEqual([]);
+    // The deliberately-ignored section is NOT an unrecognized_section drop.
     expect(
       report.drops.some(
         (d) => d.reason === "unrecognized_section" && d.label === "Insurance"
       )
-    ).toBe(true);
+    ).toBe(false);
   });
 });
 

@@ -298,8 +298,32 @@ export default async function ImportDetailPage(props: {
                 </div>
               </div>
             )}
+            {/* Recognized-but-ignored (#268): known section types the app
+                deliberately does not import (e.g. Insurance/Payers) — listed
+                separately so they never read as a missing-importer gap. */}
+            {coverage.ignored.length > 0 && (
+              <div className="mb-3" data-testid="coverage-ignored">
+                <div className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                  Recognized, not imported
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {coverage.ignored.map((c) => (
+                    <span
+                      key={c.key + c.title}
+                      className="badge inline-flex items-center gap-1 bg-slate-100 text-slate-500 dark:bg-ink-800 dark:text-slate-400"
+                    >
+                      {c.title}
+                    </span>
+                  ))}
+                </div>
+                <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">
+                  These sections are recognized but intentionally out of scope
+                  (billing / coverage details, not health readings).
+                </p>
+              </div>
+            )}
             {coverage.notConsumed.length > 0 && (
-              <div>
+              <div data-testid="coverage-not-consumed">
                 <div className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
                   Present but not consumed
                 </div>

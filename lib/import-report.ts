@@ -71,6 +71,11 @@ export interface CoverageEntry {
   title: string; // human title
   consumed: boolean; // did an extractor / mapper route this to a stored sink?
   present: number; // entries / resources present
+  // Recognized but DELIBERATELY not imported (#268 — Insurance/Payers): the
+  // section is a known, intentionally-out-of-scope type, so it's neither a
+  // consumed sink nor an unrecognized gap. Optional so stored reports from before
+  // this field (where it was simply not-consumed) parse unchanged.
+  ignored?: boolean;
 }
 
 // The full per-document report persisted on medical_documents.import_report.
@@ -273,12 +278,16 @@ export function collapseDrops(drops: ImportDrop[]): CollapsedDrop[] {
 
 export interface CoverageSummary {
   consumed: CoverageEntry[]; // sections/types the app read into a sink
+  // Recognized but deliberately not imported (#268 — e.g. Insurance/Payers):
+  // known types the app chooses not to store, so they don't read as a gap.
+  ignored: CoverageEntry[];
   notConsumed: CoverageEntry[]; // present in the document but nothing consumed them
 }
 
-// Split coverage into consumed vs present-but-not-consumed, each de-duplicated by
-// title (an XDM package's merged report can list a section from several documents)
-// and sorted by title for a stable display.
+// Split coverage into consumed vs recognized-but-ignored vs
+// present-but-not-consumed, each de-duplicated by title (an XDM package's merged
+// report can list a section from several documents) and sorted by title for a
+// stable display.
 export function summarizeCoverage(coverage: CoverageEntry[]): CoverageSummary {
   const byTitle = new Map<string, CoverageEntry>();
   for (const c of coverage) {
@@ -287,8 +296,9 @@ export function summarizeCoverage(coverage: CoverageEntry[]): CoverageSummary {
     if (!prev) {
       byTitle.set(key, { ...c });
     } else {
-      // OR consumed together; keep the max present count.
+      // OR consumed (and ignored) together; keep the max present count.
       prev.consumed = prev.consumed || c.consumed;
+      prev.ignored = prev.ignored || c.ignored;
       prev.present = Math.max(prev.present, c.present);
     }
   }
@@ -297,7 +307,10 @@ export function summarizeCoverage(coverage: CoverageEntry[]): CoverageSummary {
   );
   return {
     consumed: all.filter((c) => c.consumed),
-    notConsumed: all.filter((c) => !c.consumed),
+    // Consumed wins over ignored (a section one document consumed and another
+    // flagged ignored is still a read section).
+    ignored: all.filter((c) => !c.consumed && c.ignored),
+    notConsumed: all.filter((c) => !c.consumed && !c.ignored),
   };
 }
 
