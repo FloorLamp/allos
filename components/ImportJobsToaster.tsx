@@ -4,6 +4,11 @@ import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { getImportJobStates } from "@/app/(app)/data/actions";
 import { useToast } from "@/components/Toast";
+import { diffCompletions, shouldResetSeed } from "@/lib/toaster-diff";
+
+// The import-job statuses that count as terminal (extraction no longer running).
+const isImportTerminal = (status: string) =>
+  status === "ready" || status === "failed" || status === "skipped";
 
 // App-wide watcher for async paste/CSV import jobs. Polls their status (fast
 // while something is extracting, slow otherwise) and, when a job transitions out
@@ -13,14 +18,33 @@ import { useToast } from "@/components/Toast";
 // navigated away from /import while the extraction ran. Uses the shared useToast
 // (unlike the
 // bespoke ExtractionToaster for medical documents).
-export default function ImportJobsToaster() {
+//
+// `profileId` is the session's active profile — the profile `getImportJobStates`
+// is scoped to. Like ExtractionToaster it's a dep of the poll effect and resets
+// the seed on a switch (#296) so the new profile's pre-existing terminal jobs
+// aren't announced as freshly finished.
+export default function ImportJobsToaster({
+  profileId,
+}: {
+  profileId: number;
+}) {
   const router = useRouter();
   const toast = useToast();
   // Last seen status per job id; null until the first poll (which seeds without
   // toasting, so pre-existing ready/failed jobs don't re-announce on load).
   const prev = useRef<Map<number, string> | null>(null);
+  // The profile the current seed was built for; drives shouldResetSeed below.
+  const seededFor = useRef<number | null>(null);
 
   useEffect(() => {
+    // Discard the previous profile's seed on a switch so the new profile re-seeds
+    // silently instead of spamming its whole terminal job history (#296). See
+    // ExtractionToaster for the full rationale.
+    if (shouldResetSeed(seededFor.current, profileId)) {
+      prev.current = null;
+    }
+    seededFor.current = profileId;
+
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
 
@@ -48,26 +72,18 @@ export default function ImportJobsToaster() {
       }
       if (!active) return;
 
-      const cur = new Map(jobs.map((j) => [j.id, j.status]));
-
-      if (prev.current === null) {
-        prev.current = cur;
-      } else {
-        let changed = cur.size !== prev.current.size;
-        for (const j of jobs) {
-          const before = prev.current.get(j.id);
-          if (before === undefined || before !== j.status) changed = true;
-          const terminal =
-            j.status === "ready" ||
-            j.status === "failed" ||
-            j.status === "skipped";
-          // Announce a job when it finishes. `before === "processing"` is the
-          // normal case; `before === undefined` covers a job that started AND
-          // finished within a single poll interval (so we never saw it
-          // processing) — a real risk for small pastes. Jobs already present at
-          // seed time have a `before` status, so they never re-announce on load.
-          if (!terminal || (before !== "processing" && before !== undefined))
-            continue;
+      // Announce a job when it finishes. The `before === undefined` terminal case
+      // (a job that started AND finished within a single poll interval — a real
+      // risk for small pastes) and the silent first-poll seed both live in
+      // diffCompletions — see its comment.
+      const { finished, changed, next, seeded } = diffCompletions(
+        prev.current,
+        jobs,
+        isImportTerminal
+      );
+      prev.current = next;
+      if (!seeded) {
+        for (const j of finished) {
           if (j.status === "ready") {
             toast(
               `Extracted ${j.summary ?? "your import"}. Review, then save.`,
@@ -87,7 +103,6 @@ export default function ImportJobsToaster() {
             });
           }
         }
-        prev.current = cur;
         if (changed) router.refresh();
       }
 
@@ -100,7 +115,7 @@ export default function ImportJobsToaster() {
       active = false;
       clearTimeout(timer);
     };
-  }, [router, toast]);
+  }, [router, toast, profileId]);
 
   return null;
 }

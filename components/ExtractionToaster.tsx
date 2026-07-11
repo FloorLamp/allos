@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { getExtractionStates } from "@/app/(app)/medical/actions";
+import { diffCompletions, shouldResetSeed } from "@/lib/toaster-diff";
 import {
   IconAlertTriangle,
   IconArrowRight,
@@ -22,14 +23,32 @@ interface Toast {
 
 let toastSeq = 0;
 
+// The document statuses `getExtractionStates` reports as terminal (no longer
+// processing). `done` toasts as a success; `failed`/`skipped` as an error.
+const isExtractionTerminal = (status: string) =>
+  status === "done" || status === "failed" || status === "skipped";
+
 // App-wide watcher for background medical-document extraction. Polls the
 // extraction status (faster while something is processing), and when a document
 // transitions out of `processing` it (a) refreshes the current route so the
 // /medical table updates, and (b) shows a toast. Lives in the root layout so the
 // toast still fires if the user has navigated away from /medical.
-export default function ExtractionToaster() {
+//
+// `profileId` is the session's active profile — the profile `getExtractionStates`
+// is scoped to. It's a dep of the poll effect and resets the seed on a switch
+// (#296): the polled set is per-profile but this client component survives a
+// profile switch (router.refresh() re-renders server components, not the layout's
+// client tree), so without the reset the new profile's entire terminal document
+// history reads as `before === undefined` and ghost-toasts as freshly finished.
+export default function ExtractionToaster({
+  profileId,
+}: {
+  profileId: number;
+}) {
   const router = useRouter();
   const prev = useRef<Map<number, string> | null>(null);
+  // The profile the current seed was built for; drives shouldResetSeed below.
+  const seededFor = useRef<number | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   const dismiss = useCallback((key: number) => {
@@ -37,6 +56,16 @@ export default function ExtractionToaster() {
   }, []);
 
   useEffect(() => {
+    // A profile switch re-runs this effect (profileId is a dep). Discard the
+    // previous profile's seed so the new profile's first poll re-seeds silently
+    // instead of announcing its whole terminal document history as freshly
+    // finished (#296). A fresh mount (seededFor null) is not a reset — prev is
+    // already null and the first poll seeds it.
+    if (shouldResetSeed(seededFor.current, profileId)) {
+      prev.current = null;
+    }
+    seededFor.current = profileId;
+
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
 
@@ -66,53 +95,35 @@ export default function ExtractionToaster() {
       }
       if (!active) return;
 
-      const cur = new Map(docs.map((d) => [d.id, d.status]));
-
-      if (prev.current === null) {
-        // First poll: seed without toasting for already-finished documents.
-        prev.current = cur;
-      } else {
-        const fresh: Toast[] = [];
-        let changed = cur.size !== prev.current.size;
-        for (const d of docs) {
-          const before = prev.current.get(d.id);
-          if (before === undefined || before !== d.status) changed = true;
-          // A document is "newly finished" when it reaches a terminal state either
-          // from 'processing' (the async AI-extraction path) OR from not-yet-seen
-          // (before === undefined). The undefined case is essential: a small
-          // deterministic health-record import (CCD/XDM/SHC/FHIR under the sync
-          // threshold) lands 'done' SYNCHRONOUSLY during the upload action, and a
-          // rejected upload (unsupported/oversized/magic-byte mismatch #58, or a
-          // skipped duplicate) is inserted straight into a terminal state — neither
-          // is ever observed as 'processing', so without this they'd never toast.
-          // The first poll seeds prev.current, so pre-existing docs never re-toast
-          // on load.
-          const finishedNow =
-            (before === "processing" || before === undefined) &&
-            (d.status === "done" ||
-              d.status === "failed" ||
-              d.status === "skipped");
-          if (!finishedNow) continue;
-          if (d.status === "done") {
-            fresh.push({
-              key: ++toastSeq,
-              tone: "success",
-              docId: d.id,
-              filename: d.filename,
-              count: d.count,
-            });
-          } else {
-            fresh.push({
-              key: ++toastSeq,
-              tone: "error",
-              docId: d.id,
-              filename: d.filename,
-              count: 0,
-              error: d.error,
-            });
-          }
-        }
-        prev.current = cur;
+      // Diff against the seed. The `before === undefined` terminal case (a small
+      // sync CCD/XDM/SHC/FHIR import that lands terminal within one poll, or a
+      // rejected/duplicate upload inserted straight into a terminal state) and the
+      // silent first-poll seed both live in diffCompletions — see its comment.
+      const { finished, changed, next, seeded } = diffCompletions(
+        prev.current,
+        docs,
+        isExtractionTerminal
+      );
+      prev.current = next;
+      if (!seeded) {
+        const fresh: Toast[] = finished.map((d) =>
+          d.status === "done"
+            ? {
+                key: ++toastSeq,
+                tone: "success",
+                docId: d.id,
+                filename: d.filename,
+                count: d.count,
+              }
+            : {
+                key: ++toastSeq,
+                tone: "error",
+                docId: d.id,
+                filename: d.filename,
+                count: 0,
+                error: d.error,
+              }
+        );
         if (fresh.length) setToasts((list) => [...list, ...fresh]);
         if (changed) router.refresh();
       }
@@ -126,7 +137,7 @@ export default function ExtractionToaster() {
       active = false;
       clearTimeout(timer);
     };
-  }, [router]);
+  }, [router, profileId]);
 
   if (toasts.length === 0) return null;
   return (

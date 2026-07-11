@@ -371,6 +371,45 @@ console.log(
   `e2e: seeded household profile ${HOUSEHOLD_PROFILE_ID} (${HOUSEHOLD_PROFILE_NAME}) with two due-today supplement doses`
 );
 
+// ── Profile-switch toaster fixtures (issue #296) ──────────────────────────────
+// The ExtractionToaster/ImportJobsToaster poll the ACTIVE profile's document/job
+// history and toast terminal transitions, seeding silently on the first poll.
+// Before #296 a profile switch didn't reset that seed, so the new profile's whole
+// terminal history ghost-toasted as "just finished". To prove the fix, the second
+// profile (id 2, "Sam Rivers") needs its own pre-existing TERMINAL rows: switching
+// to it must produce ZERO toasts (the fix reseeds silently). Synthetic filenames/
+// content only — no real PHI. Idempotent: clear prior fixtures first.
+db.prepare(
+  `DELETE FROM medical_documents WHERE profile_id = ? AND filename IN ('e2e-p2-labs.pdf', 'e2e-p2-broken.txt')`
+).run(HOUSEHOLD_PROFILE_ID);
+db.prepare(
+  `DELETE FROM import_jobs WHERE profile_id = ? AND summary = 'e2e-p2: 3 readings'`
+).run(HOUSEHOLD_PROFILE_ID);
+db.prepare(
+  `INSERT INTO medical_documents
+     (profile_id, filename, stored_path, mime_type, size_bytes, doc_type,
+      extraction_status, extracted_count, uploaded_at)
+   VALUES (?, 'e2e-p2-labs.pdf', '', 'application/pdf', 4096, 'Lab report',
+           'done', 9, '2026-07-07 09:00:00')`
+).run(HOUSEHOLD_PROFILE_ID);
+db.prepare(
+  `INSERT INTO medical_documents
+     (profile_id, filename, stored_path, mime_type, size_bytes,
+      extraction_status, extraction_error, uploaded_at)
+   VALUES (?, 'e2e-p2-broken.txt', '', 'text/plain', 12,
+           'failed', 'Unsupported file type.', '2026-07-07 08:30:00')`
+).run(HOUSEHOLD_PROFILE_ID);
+db.prepare(
+  `INSERT INTO import_jobs
+     (profile_id, type, status, summary, created_at, updated_at)
+   VALUES (?, 'biomarkers', 'ready', 'e2e-p2: 3 readings',
+           '2026-07-07 08:00:00', '2026-07-07 08:00:00')`
+).run(HOUSEHOLD_PROFILE_ID);
+
+console.log(
+  `e2e: seeded profile ${HOUSEHOLD_PROFILE_ID} terminal document/job history for the profile-switch toaster spec (#296)`
+);
+
 // ── Consolidated "family" calendar fixtures ───────────────────────────────────
 // A SECOND profile with its own upcoming appointment so the family-calendar feed +
 // preview have two profiles' data to merge. The e2e login is the bootstrap admin,
