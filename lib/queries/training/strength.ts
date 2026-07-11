@@ -4,12 +4,15 @@ import {
   sessionWorkSets,
   type SessionWorkSet,
 } from "../../coaching";
-import { db } from "../../db";
+import { db, today } from "../../db";
+import { isSeedFresh, pickSeedSessions } from "../../exercise-window";
 import { formatLongDate } from "../../format-date";
 import type { SetStatus } from "../../journal-format";
 import { judgeTargets, summarizeExercise } from "../../journal-format";
 import {
   classifyBodyweightByExercise,
+  exerciseHistoryKey,
+  exerciseHistoryNames,
   isBodyweight,
   resolveBodyweightKind,
 } from "../../lifts";
@@ -19,6 +22,11 @@ import { cache, loadWeightsAsc, recentWindowStart } from "./common";
 
 export interface RecentSession {
   date: string;
+  // The exact exercise name logged for this session's sets. History now merges a
+  // lift's variants under one canonical key (#331), so each session carries its
+  // own logged name — the only place the specific variant spelling survives the
+  // merge, so the editor can still recover the last-used variant/implement.
+  exercise: string;
   // The activity this session belongs to (for linking to it in the journal).
   activityId: number;
   // User-defined implement used in the session (first non-null), else null.
@@ -50,24 +58,28 @@ export interface ExerciseHistory {
   // Body is (part of) the load: a catalog bodyweight lift, or an exercise
   // never logged with an external weight anywhere in its history. Sourced from
   // getExerciseBodyweightMap (resolved over ALL history, not just this window's
-  // shipped sessions) so the editor's next-set suggestion classifies exactly
-  // like getStrengthByExercise and the exercise detail panel (#331).
+  // shipped sessions, and keyed by the canonical exerciseHistoryKey) so the
+  // editor's next-set suggestion classifies exactly like getStrengthByExercise
+  // and the exercise detail panel (#331).
   bodyweight: boolean;
   // Most recent sessions, newest first.
   sessions: RecentSession[];
 }
 
-// exercise name (lowercased) -> history
+// exercise history key (canonical, variant-collapsed) -> history
 export type ExerciseHistoryMap = Record<string, ExerciseHistory>;
 
 // Authoritative bodyweight KIND per exercise, resolved over ALL history (not a
-// recent slice), keyed by `exercise.trim().toLowerCase()`. Both strength builders
-// classify through this so a lift last loaded with external weight >12 months ago
-// and bodyweight-only since gets ONE suggestion kind on every surface — the detail
-// panel/coaching and the editor chip can't disagree (#331). Mirrors
-// getStrengthByExercise's row filter (rep-bearing sets) so the shared classifier
-// sees exactly the sets that builder counts; a lift with no rep-bearing set in all
-// history is simply absent, and callers fall back to a name-only classification.
+// recent slice), keyed by the canonical exerciseHistoryKey so a variant and its
+// base classify as one lift. Both strength builders classify through this so a
+// lift last loaded with external weight >12 months ago and bodyweight-only since
+// gets ONE suggestion kind on every surface — the detail panel/coaching and the
+// editor chip can't disagree (#331). Mirrors getStrengthByExercise's row filter
+// (rep-bearing sets) so the shared classifier sees exactly the sets that builder
+// counts; a lift with no rep-bearing set in all history is simply absent, and
+// callers fall back to a name-only classification. The SQL pre-groups by raw
+// lowercased name; classifyBodyweightByExercise then re-groups by the canonical
+// key and ORs the external-weight sighting across variants.
 // cache(): one cheap grouped scan per profile per request.
 export const getExerciseBodyweightMap = cache(function getExerciseBodyweightMap(
   profileId: number
@@ -139,7 +151,9 @@ export const getRecentExerciseHistory = cache(function getRecentExerciseHistory(
   }
   const acc = new Map<string, AccumExercise>();
   for (const r of rows) {
-    const key = r.exercise.trim().toLowerCase();
+    // Canonical, variant-collapsed key so "Barbell Curl"/"Curl" merge into one
+    // history here exactly as in getStrengthByExercise (#331).
+    const key = exerciseHistoryKey(r.exercise);
     let e = acc.get(key);
     if (!e) {
       e = {
@@ -157,6 +171,7 @@ export const getRecentExerciseHistory = cache(function getRecentExerciseHistory(
     if (!last || last.activityId !== r.activity_id) {
       if (e.sessions.length >= perExercise) continue; // have enough sessions
       last = {
+        exercise: r.exercise,
         activityId: r.activity_id,
         date: r.date,
         equipment: null,
@@ -258,8 +273,17 @@ export function getExerciseComparison(
   exercise: string,
   unit: WeightUnit
 ): ExerciseCompareSession[] {
-  const key = exercise.trim().toLowerCase();
+  // Canonical, variant-collapsed key so the comparison series merges a lift's
+  // variants ("Barbell Curl"/"Curl") into one history like the other builders
+  // (#331). SQLite can't call baseLiftName, but the key's preimage is a small
+  // finite name set (the variant group's composed names + bare base, or just the
+  // one name for a non-catalog lift), so push the filter back into SQL as an
+  // `IN (...)` bound scan instead of scanning every profile row and filtering in
+  // JS — identical semantics, still profile-scoped via the JOIN (#394).
+  const key = exerciseHistoryKey(exercise);
   if (!key) return [];
+  const names = exerciseHistoryNames(exercise);
+  const placeholders = names.map(() => "?").join(", ");
 
   const rows = db
     .prepare(
@@ -269,10 +293,10 @@ export function getExerciseComparison(
               eq.name AS equipment
        FROM exercise_sets s JOIN activities a ON a.id = s.activity_id
        LEFT JOIN equipment eq ON eq.id = s.equipment_id
-       WHERE a.profile_id = ? AND LOWER(TRIM(s.exercise)) = ?
+       WHERE a.profile_id = ? AND LOWER(TRIM(s.exercise)) IN (${placeholders})
        ORDER BY a.date ASC, a.id ASC, s.set_number ASC`
     )
-    .all(profileId, key) as {
+    .all(profileId, ...names) as {
     exercise: string;
     date: string;
     activity_id: number;
@@ -562,6 +586,11 @@ export const getStrengthByExercise = cache(function getStrengthByExercise(
     bestDate: string;
     lastDate: string;
     lastActivityId: number;
+    // The exact logged name of the newest session (highest date+id). Since #331
+    // a base's implements merge under one key, so the newest date can interleave
+    // variants (a Barbell Curl and a Dumbbell Curl activity same day); this is the
+    // implement pickSeedSessions prefers so the seed doesn't mix them (#393).
+    newestExercise: string;
     // Raw rows of the most recent session (same date, across activities),
     // ranked into lastSessionBest by sessionBestSet at the end — the single
     // shared definition of a session's seeding set (lib/coaching).
@@ -569,9 +598,14 @@ export const getStrengthByExercise = cache(function getStrengthByExercise(
     volByDate: Map<string, number>;
     repsByDate: Map<string, number>;
   }
+  const t = today(profileId);
   const map = new Map<string, Acc>();
   for (const r of rows) {
-    const key = r.exercise.trim().toLowerCase();
+    // Canonical, variant-collapsed key: a variant and its base ("Barbell Curl"
+    // vs "Curl") aggregate into ONE history — sessions, PRs, and the progression
+    // seed no longer split on a rename (#331). getRecentExerciseHistory /
+    // getExerciseBodyweightMap key the same way, so every surface agrees.
+    const key = exerciseHistoryKey(r.exercise);
     let cur = map.get(key);
     if (!cur) {
       cur = {
@@ -590,6 +624,7 @@ export const getStrengthByExercise = cache(function getStrengthByExercise(
         bestDate: r.date,
         lastDate: r.date,
         lastActivityId: r.activity_id,
+        newestExercise: r.exercise,
         lastSessionRows: [],
         volByDate: new Map(),
         repsByDate: new Map(),
@@ -608,6 +643,10 @@ export const getStrengthByExercise = cache(function getStrengthByExercise(
     } else if (r.date === cur.lastDate) {
       cur.lastActivityId = r.activity_id; // keep the latest activity id for the day
     }
+    // Rows are date+id ascending, so after the advance r.date === cur.lastDate and
+    // the last row processed is the newest activity — its name is the implement
+    // pickSeedSessions seeds from (#393).
+    cur.newestExercise = r.exercise;
     cur.lastSessionRows.push(r); // r.date === cur.lastDate after the advance
     if (r.weight_kg != null || r.weight_kg_right != null)
       cur.sawExternalWeight = true;
@@ -662,6 +701,18 @@ export const getStrengthByExercise = cache(function getStrengthByExercise(
       // unknown), since weight×reps would be flat zero.
       const bodyweight = resolveBodyweightKind(c.exercise, c.sawExternalWeight);
       const volumeIsReps = bodyweight && c.topWeightKg === 0;
+      // A next-set seed only fires off a session inside the recent window. When
+      // the newest session is >1yr old the editor already shows no chip (its scan
+      // is windowed); withhold the seed here too so a stale year-old session
+      // suggests a next set on NEITHER surface (#331). Historical stats below are
+      // unaffected — only the forward-looking seed is dropped.
+      const seedFresh = isSeedFresh(c.lastDate, t);
+      // Seed off the newest session's own implement, never a heavier/lighter
+      // sibling variant that happens to share the newest date (#393). All buffered
+      // rows share lastDate, so pickSeedSessions filters that date to the newest
+      // logged name — the same ONE decision the editor chip uses.
+      const seedRows = pickSeedSessions(c.lastSessionRows, c.newestExercise);
+      const seedBase = c.addBodyweight ? (bwAsOf(c.lastDate) ?? 0) : 0;
       return {
         exercise: c.exercise,
         sessions: c.dates.size,
@@ -673,15 +724,8 @@ export const getStrengthByExercise = cache(function getStrengthByExercise(
         bestReps: c.bestReps,
         bestDate: c.bestDate,
         lastActivityId: c.lastActivityId,
-        // All buffered rows share lastDate, so the bodyweight base is constant.
-        lastSessionBest: sessionBestSet(
-          c.lastSessionRows,
-          c.addBodyweight ? (bwAsOf(c.lastDate) ?? 0) : 0
-        ),
-        lastSessionSets: sessionWorkSets(
-          c.lastSessionRows,
-          c.addBodyweight ? (bwAsOf(c.lastDate) ?? 0) : 0
-        ),
+        lastSessionBest: seedFresh ? sessionBestSet(seedRows, seedBase) : null,
+        lastSessionSets: seedFresh ? sessionWorkSets(seedRows, seedBase) : [],
         lastDate: c.lastDate,
         bodyweight,
         volumeIsReps,

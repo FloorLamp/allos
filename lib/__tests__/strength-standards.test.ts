@@ -4,8 +4,11 @@ import {
   strengthLevelLabel,
   strengthTone,
   bestStanding,
+  strengthStandingPhrase,
+  bodyweightMultiple,
   STRENGTH_STANDARD_LIFTS,
 } from "@/lib/strength-standards";
+import { fmtWeight } from "@/lib/units";
 
 // Pure lookup tests for the baked bodyweight-band strength standards (issue #152).
 // The reference bodyweight for men is 80 kg, where the baked thresholds equal the
@@ -194,5 +197,63 @@ describe("labels, tone, ranking, and best standing", () => {
     expect(strengthStanding("Chin Up", 90, "male", 80)!.bodyweightLift).toBe(
       true
     );
+  });
+});
+
+// The coaching sentence beneath the level badge (issue #314) — one phrase over the
+// SINGLE standing, tier-boundary cases pinned. Bench Press male @80 kg floors are
+// [40, 60, 80, 120, 160] for [beginner, novice, intermediate, advanced, elite].
+describe("strengthStandingPhrase — tier-boundary sentences", () => {
+  it("untrained: distance to the beginner standard", () => {
+    const s = strengthStanding("Bench Press", 30, "male", 80)!;
+    expect(strengthStandingPhrase(s, "male", "kg")).toBe(
+      "10 kg from the beginner standard for men at your bodyweight."
+    );
+  });
+
+  it("a middle tier: current standard plus distance to the next level", () => {
+    const s = strengthStanding("Bench Press", 100, "male", 80)!;
+    expect(strengthStandingPhrase(s, "male", "kg")).toBe(
+      "At the intermediate standard for men at your bodyweight — 20 kg to advanced."
+    );
+  });
+
+  it("elite: the top band, no next level", () => {
+    const s = strengthStanding("Bench Press", 200, "male", 80)!;
+    expect(strengthStandingPhrase(s, "male", "kg")).toBe(
+      "At the elite standard for men at your bodyweight — the top band."
+    );
+  });
+
+  it("uses the sex-appropriate word for women", () => {
+    const s = strengthStanding("Bench Press", 100, "male", 80)!;
+    expect(strengthStandingPhrase(s, "female", "kg")).toContain(
+      "for women at your bodyweight"
+    );
+  });
+
+  it("renders distances in the requested weight unit", () => {
+    const s = strengthStanding("Bench Press", 100, "male", 80)!;
+    // toNextKg is 20 kg here → formatted through fmtWeight in lb.
+    expect(strengthStandingPhrase(s, "male", "lb")).toBe(
+      `At the intermediate standard for men at your bodyweight — ${fmtWeight(
+        20,
+        "lb"
+      )} to advanced.`
+    );
+  });
+});
+
+describe("bodyweightMultiple — 1RM ÷ bodyweight", () => {
+  it("computes the ratio when bodyweight is known", () => {
+    expect(bodyweightMultiple(120, 80)).toBeCloseTo(1.5, 10);
+  });
+  it("is null without a bodyweight", () => {
+    expect(bodyweightMultiple(120, null)).toBeNull();
+    expect(bodyweightMultiple(120, undefined)).toBeNull();
+    expect(bodyweightMultiple(120, 0)).toBeNull();
+  });
+  it("is null for a non-positive 1RM", () => {
+    expect(bodyweightMultiple(0, 80)).toBeNull();
   });
 });

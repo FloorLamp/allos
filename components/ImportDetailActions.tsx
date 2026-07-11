@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { IconTrash } from "@tabler/icons-react";
 import { useConfirm } from "@/components/ConfirmDialog";
 import ReprocessDiffPanel from "@/components/ReprocessDiffPanel";
-import { deleteMedicalDocument } from "@/app/(app)/medical/actions";
+import { deleteMedicalDocument } from "@/app/(app)/medical/document-actions";
 
 // The reprocess + delete actions on the import-detail page. Reprocess
 // is now preview-first (ReprocessDiffPanel: preview the diff, then confirm the

@@ -44,7 +44,7 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     why: "read-only: status snapshot the client poller reads on an interval",
   },
   {
-    file: "app/(app)/medical/actions.ts",
+    file: "app/(app)/medical/document-actions.ts",
     fn: "getExtractionStates",
     why: "read-only: per-document extraction status snapshot",
   },

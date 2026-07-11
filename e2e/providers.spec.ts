@@ -59,6 +59,11 @@ test.describe("Providers registry", () => {
     page,
   }) => {
     await page.goto("/providers");
+    // ProvidersIndex is a client component (search + type filter); wait for the
+    // network to settle so it has hydrated before we click a row's <Link> —
+    // clicking pre-hydration swallows the client navigation (the URL never
+    // changes), which flaked the detail-link click below.
+    await page.waitForLoadState("networkidle");
     const list = page.getByTestId("provider-list");
     await expect(list).toBeVisible();
     await expect(

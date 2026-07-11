@@ -1,0 +1,316 @@
+import crypto from "node:crypto";
+import { db } from "../db";
+import type { NotificationKind } from "../notifications/types";
+import {
+  parseDisabledKinds,
+  serializeDisabledKinds,
+} from "../notifications/home-assistant-core";
+import {
+  getSetting,
+  setSetting,
+  getProfileSetting,
+  setProfileSetting,
+} from "./kv";
+
+// How inbound Telegram button taps reach the app: "poll" long-polls getUpdates
+// (works without a public URL), "webhook" has Telegram POST to /api/telegram/webhook.
+// Mutually exclusive on Telegram's side — getUpdates 409s while a webhook is set.
+export type TelegramMode = "poll" | "webhook";
+
+// Global Telegram bot credentials (the bot token, inbound-webhook secret, and
+// transport mode are app-wide — a single bot serves every profile).
+export interface TelegramBotConfig {
+  telegramBotToken: string;
+  telegramMode: TelegramMode;
+  // Authenticates inbound webhook calls from Telegram (sent as the
+  // x-telegram-bot-api-secret-token header). Auto-generated on first save.
+  telegramWebhookSecret: string;
+}
+
+export function getTelegramBotConfig(): TelegramBotConfig {
+  return {
+    telegramBotToken: getSetting("telegram_bot_token") ?? "",
+    telegramMode:
+      getSetting("telegram_mode") === "webhook" ? "webhook" : "poll",
+    telegramWebhookSecret: getSetting("telegram_webhook_secret") ?? "",
+  };
+}
+
+// Per-profile Telegram delivery target (whether reminders are on for this profile
+// and the chat they're sent to).
+export interface ProfileTelegram {
+  telegramEnabled: boolean;
+  telegramChatId: string;
+}
+
+export function getProfileTelegram(profileId: number): ProfileTelegram {
+  return {
+    telegramEnabled: getProfileSetting(profileId, "telegram_enabled") === "1",
+    telegramChatId: getProfileSetting(profileId, "telegram_chat_id") ?? "",
+  };
+}
+
+// Resolve every profile a Telegram chat id belongs to. A single chat (e.g. a
+// family group) can be the delivery target for several profiles, so this returns
+// all of them — inbound button taps carry only a chat id, and the callback
+// handler picks the one the button token names (rejecting taps from an unknown
+// chat). The chat id is stored as a string in profile_settings; callers stringify.
+export function getProfilesByTelegramChatId(chatId: string): number[] {
+  if (!chatId) return [];
+  const rows = db
+    .prepare(
+      "SELECT profile_id FROM profile_settings WHERE key = 'telegram_chat_id' AND value = ?"
+    )
+    .all(chatId) as { profile_id: number }[];
+  return rows.map((r) => r.profile_id);
+}
+
+// Merged view (global bot config + this profile's delivery target), for the
+// settings page and outbound notifications.
+export interface NotificationConfig
+  extends TelegramBotConfig, ProfileTelegram {}
+
+export function getNotificationConfig(profileId: number): NotificationConfig {
+  return { ...getTelegramBotConfig(), ...getProfileTelegram(profileId) };
+}
+
+// Persist this profile's Telegram delivery target (enable toggle + chat id).
+// Per-profile, so any login acting as the profile may set it (member-safe).
+export function setProfileTelegram(
+  profileId: number,
+  cfg: { telegramEnabled: boolean; telegramChatId: string }
+): ProfileTelegram {
+  setProfileSetting(
+    profileId,
+    "telegram_enabled",
+    cfg.telegramEnabled ? "1" : "0"
+  );
+  setProfileSetting(profileId, "telegram_chat_id", cfg.telegramChatId.trim());
+  return getProfileTelegram(profileId);
+}
+
+// ---- Home Assistant notification channel (per profile, issue #248) ----
+// A per-profile outbound webhook so Home Assistant can present reminders with what
+// only IT knows — who is home, which room — as kitchen-speaker TTS, escalation
+// light-flashes, presence-aware delivery. Mirrors the Telegram split: this is the
+// per-profile delivery TARGET (enable + webhook URL + optional shared secret + which
+// kinds to forward). There is no global HA config — every household points at its own
+// HA instance per profile. Stored as discrete profile_settings keys:
+//   ha_notify_enabled        "1" | "0"
+//   ha_notify_webhook_url     the HA webhook URL (http(s)://host:8123/api/webhook/<id>)
+//   ha_notify_secret          optional shared secret echoed as the X-Allos-Webhook-Secret header
+//   ha_notify_disabled_kinds  JSON string[] of NotificationKind held OUT of this channel
+
+export interface ProfileHomeAssistant {
+  enabled: boolean;
+  webhookUrl: string;
+  secret: string;
+  disabledKinds: NotificationKind[]; // kinds NOT forwarded (absence = all forwarded)
+}
+
+export function getProfileHomeAssistant(
+  profileId: number
+): ProfileHomeAssistant {
+  return {
+    enabled: getProfileSetting(profileId, "ha_notify_enabled") === "1",
+    webhookUrl: getProfileSetting(profileId, "ha_notify_webhook_url") ?? "",
+    secret: getProfileSetting(profileId, "ha_notify_secret") ?? "",
+    disabledKinds: parseDisabledKinds(
+      getProfileSetting(profileId, "ha_notify_disabled_kinds")
+    ),
+  };
+}
+
+// Persist this profile's HA delivery target. Per-profile, so any login with write
+// access to the profile may set it (member-safe). The URL/secret are trimmed; the
+// disabled-kinds set is validated + serialized by the pure core.
+export function setProfileHomeAssistant(
+  profileId: number,
+  cfg: {
+    enabled: boolean;
+    webhookUrl: string;
+    secret: string;
+    disabledKinds: readonly NotificationKind[];
+  }
+): ProfileHomeAssistant {
+  const write = db.transaction(() => {
+    setProfileSetting(profileId, "ha_notify_enabled", cfg.enabled ? "1" : "0");
+    setProfileSetting(
+      profileId,
+      "ha_notify_webhook_url",
+      cfg.webhookUrl.trim()
+    );
+    setProfileSetting(profileId, "ha_notify_secret", cfg.secret.trim());
+    setProfileSetting(
+      profileId,
+      "ha_notify_disabled_kinds",
+      serializeDisabledKinds(cfg.disabledKinds)
+    );
+  });
+  write();
+  return getProfileHomeAssistant(profileId);
+}
+
+// Persist the global bot credentials (token + inbound transport mode). App-wide,
+// so this is an admin-only operation — a single bot serves every profile.
+export function setTelegramBotConfig(cfg: {
+  telegramBotToken: string;
+  telegramMode: TelegramMode;
+}): TelegramBotConfig {
+  // Write the token, mode, and one-time webhook secret as one transaction (mirrors
+  // setUnitPrefs) so a partial failure can't leave the config half-updated.
+  const write = db.transaction(() => {
+    setSetting("telegram_bot_token", cfg.telegramBotToken.trim());
+    setSetting("telegram_mode", cfg.telegramMode);
+    // Generate a stable webhook secret once, so inbound calls can be authenticated.
+    if (!getSetting("telegram_webhook_secret")) {
+      setSetting("telegram_webhook_secret", crypto.randomUUID());
+    }
+  });
+  write();
+  return getTelegramBotConfig();
+}
+
+// When each notification slot is sent. Supplement windows have a fixed hour
+// (0-23, interpreted in the profile's own timezone — see getTimezone, which the
+// scheduler resolves against, not the container's local time) or null = off; the
+// workout reminder's timing is derived from the user's history (see
+// inferWorkoutSchedule), so it's just on/off here.
+export interface NotifySchedule {
+  supplementHours: {
+    Morning: number | null;
+    Midday: number | null;
+    Evening: number | null;
+    Bedtime: number | null;
+  };
+  workoutEnabled: boolean;
+  // Morning digest: the hour (0-23, this profile's timezone) to send
+  // the once-a-day summary, or null = off. Off by default.
+  digestHour: number | null;
+  // Weekly recap (issue #32): the weekday (0=Sun … 6=Sat, this profile's timezone)
+  // to send the seven-day summary, or null = off. Off by default. The recap fires
+  // at weeklyRecapHour on that weekday.
+  weeklyRecapDay: number | null;
+  weeklyRecapHour: number | null; // hour 0-23; defaults to 9 when a day is set
+  // Milestone alerts (issue #32): whether to notify when a milestone fires. On by
+  // default — milestones are always recorded to the timeline regardless; this only
+  // gates the (quiet) push/Telegram alert.
+  milestonesEnabled: boolean;
+  // Preventive-care reminders (issue #87): whether due/overdue preventive visits &
+  // screenings send a proactive nudge AND appear in the "what's due" digest. On by
+  // default. Off suppresses both push paths; the Upcoming page still lists them
+  // (that's a pull surface, not a push).
+  preventiveEnabled: boolean;
+}
+
+const SUPP_HOUR_KEYS = {
+  Morning: "notify_supp_morning_hour",
+  Midday: "notify_supp_midday_hour",
+  Evening: "notify_supp_evening_hour",
+  Bedtime: "notify_supp_bedtime_hour",
+} as const;
+const SUPP_HOUR_DEFAULTS = {
+  Morning: 8,
+  Midday: 13,
+  Evening: 20,
+  Bedtime: 22,
+} as const;
+
+function parseHour(
+  raw: string | undefined,
+  fallback: number | null
+): number | null {
+  if (raw === undefined) return fallback; // unset → default
+  if (raw === "") return null; // explicitly off
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 0 && n <= 23 ? n : fallback;
+}
+
+export function getNotifySchedule(profileId: number): NotifySchedule {
+  return {
+    supplementHours: {
+      Morning: parseHour(
+        getProfileSetting(profileId, SUPP_HOUR_KEYS.Morning),
+        SUPP_HOUR_DEFAULTS.Morning
+      ),
+      Midday: parseHour(
+        getProfileSetting(profileId, SUPP_HOUR_KEYS.Midday),
+        SUPP_HOUR_DEFAULTS.Midday
+      ),
+      Evening: parseHour(
+        getProfileSetting(profileId, SUPP_HOUR_KEYS.Evening),
+        SUPP_HOUR_DEFAULTS.Evening
+      ),
+      Bedtime: parseHour(
+        getProfileSetting(profileId, SUPP_HOUR_KEYS.Bedtime),
+        SUPP_HOUR_DEFAULTS.Bedtime
+      ),
+    },
+    workoutEnabled:
+      (getProfileSetting(profileId, "notify_workout_enabled") ?? "1") === "1",
+    // Off by default (fallback null) — the digest is opt-in.
+    digestHour: parseHour(
+      getProfileSetting(profileId, "notify_digest_hour"),
+      null
+    ),
+    // Weekly recap — off by default (opt-in). Weekday 0-6, else null.
+    weeklyRecapDay: parseWeekday(
+      getProfileSetting(profileId, "notify_recap_day")
+    ),
+    weeklyRecapHour:
+      parseHour(getProfileSetting(profileId, "notify_recap_hour"), 9) ?? 9,
+    // Milestone alerts on unless explicitly disabled.
+    milestonesEnabled:
+      (getProfileSetting(profileId, "notify_milestones") ?? "1") === "1",
+    // Preventive-care reminders on unless explicitly disabled.
+    preventiveEnabled:
+      (getProfileSetting(profileId, "notify_preventive") ?? "1") === "1",
+  };
+}
+
+// Parse a stored weekday (0=Sun … 6=Sat); "" / unset / out-of-range → null (off).
+function parseWeekday(raw: string | undefined): number | null {
+  if (raw === undefined || raw === "") return null;
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 0 && n <= 6 ? n : null;
+}
+
+export function setNotifySchedule(
+  profileId: number,
+  sched: NotifySchedule
+): void {
+  for (const k of ["Morning", "Midday", "Evening", "Bedtime"] as const) {
+    const h = sched.supplementHours[k];
+    setProfileSetting(profileId, SUPP_HOUR_KEYS[k], h == null ? "" : String(h));
+  }
+  setProfileSetting(
+    profileId,
+    "notify_workout_enabled",
+    sched.workoutEnabled ? "1" : "0"
+  );
+  setProfileSetting(
+    profileId,
+    "notify_digest_hour",
+    sched.digestHour == null ? "" : String(sched.digestHour)
+  );
+  setProfileSetting(
+    profileId,
+    "notify_recap_day",
+    sched.weeklyRecapDay == null ? "" : String(sched.weeklyRecapDay)
+  );
+  setProfileSetting(
+    profileId,
+    "notify_recap_hour",
+    sched.weeklyRecapHour == null ? "9" : String(sched.weeklyRecapHour)
+  );
+  setProfileSetting(
+    profileId,
+    "notify_milestones",
+    sched.milestonesEnabled ? "1" : "0"
+  );
+  setProfileSetting(
+    profileId,
+    "notify_preventive",
+    sched.preventiveEnabled ? "1" : "0"
+  );
+}

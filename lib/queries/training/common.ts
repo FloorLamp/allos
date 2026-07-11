@@ -2,9 +2,11 @@ import * as React from "react";
 import { shiftDateStr } from "../../date";
 import { db, today } from "../../db";
 import { decayedWeight } from "../../decay";
+import { RECENT_WINDOW_DAYS } from "../../exercise-window";
 import { getWeekMode, getWeekStart } from "../../settings";
 import { weekWindow } from "../../week-window";
 import type { ActivityComponent } from "../../types";
+import { parseComponents } from "../../types";
 
 // React's per-request cache() exists only in the canary React that Next vendors
 // for server components. The plain `react` package that tsx entrypoints
@@ -19,9 +21,9 @@ export const cache: typeof React.cache =
 // the editor's per-exercise history. Both only need recent data — a name or a
 // session older than a year is irrelevant to what to suggest next — so bounding
 // the underlying full-table scans to the last 12 months is semantically invisible
-// while turning an all-history scan into a small windowed one.
-const RECENT_WINDOW_DAYS = 365;
-
+// while turning an all-history scan into a small windowed one. RECENT_WINDOW_DAYS
+// lives in lib/exercise-window.ts (pure) so it's the single boundary the seed-
+// freshness gate (isSeedFresh) shares with this windowed scan (#331).
 export function recentWindowStart(profileId: number): string {
   return shiftDateStr(today(profileId), -RECENT_WINDOW_DAYS);
 }
@@ -106,15 +108,7 @@ export const effortEntries = cache(function effortEntries(
 
   const out: EffortEntry[] = [];
   for (const r of rows) {
-    let comps: ActivityComponent[] = [];
-    if (r.components) {
-      try {
-        const parsed = JSON.parse(r.components);
-        if (Array.isArray(parsed)) comps = parsed;
-      } catch {
-        /* malformed components JSON — fall through to the row-level fallback */
-      }
-    }
+    const comps: ActivityComponent[] = parseComponents(r.components);
     const matching = comps.filter(
       (c) =>
         c?.type === targetType && typeof c.name === "string" && c.name.trim()

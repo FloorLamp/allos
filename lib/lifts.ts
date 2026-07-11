@@ -500,6 +500,58 @@ export function baseLiftName(name: string): string {
   return COMPOSED.get(name.trim().toLowerCase())?.group.name ?? name;
 }
 
+/**
+ * The canonical aggregation key for a logged exercise's history — the key under
+ * which its sessions, PRs, session counts, and next-set progression seed
+ * accumulate. Collapses a composed equipment variant onto its base
+ * ("Barbell Curl"/"Dumbbell Curl"/"Curl" → "curl") then trims/lowercases, so a
+ * variant and its bare base are ONE history rather than two: renaming
+ * "Barbell Curl" → "Curl" (or logging a lift under two variant spellings) no
+ * longer silently splits its progression history into independent tracks that
+ * each reset PRs and the seed to whichever exact name was logged last (#331).
+ * The names-recycle half of the row-ops convention: `exercise` is a name-keyed
+ * join across sets, so it must be re-keyed to a canonical form at aggregation.
+ *
+ * A truly custom lift (not in the catalog) keeps its own trimmed/lowercased key,
+ * so distinct customs stay distinct. EVERY strength history builder keys through
+ * this ONE function — getStrengthByExercise (detail panel / coaching / Telegram),
+ * getExerciseBodyweightMap (the shared bodyweight-KIND classifier),
+ * getRecentExerciseHistory / getRecentByExercise (the editor chip), and
+ * getExerciseComparison — so all surfaces see one merged history and can't
+ * disagree. Consumers that look a lift up in one of those maps (the detail panel
+ * join, the editor's typed-name lookup) must derive their key through this too.
+ *
+ * Note: because a bare base ("Curl") is equipment-ambiguous, collapsing to the
+ * base necessarily also folds the catalog's separate equipment variants
+ * ("Barbell Curl" and "Dumbbell Curl") into one history. That is the intended
+ * merge here (a single progression track per base lift); goal CREDIT keeps its
+ * finer, asymmetric variant matching separately in goalMatchesExercise.
+ */
+export function exerciseHistoryKey(name: string): string {
+  return baseLiftName(name).trim().toLowerCase();
+}
+
+/**
+ * The finite set of logged names that all collapse to `exerciseHistoryKey(name)`
+ * — the canonical key's preimage, lowercased/trimmed. For a catalog variant group
+ * this is the bare base plus every composed equipment variant ("Curl",
+ * "Barbell Curl", "Dumbbell Curl", "Cable Curl", "Machine Curl" → all key "curl");
+ * for a plain catalog lift or a non-catalog custom lift it is just the one name.
+ *
+ * A scan that needs every set of a merged history can push this into SQL —
+ * `WHERE LOWER(TRIM(s.exercise)) IN (...)` — since SQLite can't call baseLiftName,
+ * recovering a bounded, index-friendly scan with semantics identical to filtering
+ * every profile row by exerciseHistoryKey in JS (#394).
+ */
+export function exerciseHistoryNames(name: string): string[] {
+  const v = variantOf(name);
+  if (!v) return [name.trim().toLowerCase()];
+  const g = v.group;
+  return [g.name, ...g.equipment.map((eq) => composeVariant(g, eq))].map((n) =>
+    n.trim().toLowerCase()
+  );
+}
+
 /** Look up a lift by name (case-insensitive, with a loose contains fallback). */
 export function liftInfo(name: string): LiftDef | undefined {
   const key = name.trim().toLowerCase();
@@ -562,21 +614,24 @@ export interface BodyweightClassifyRow {
 
 /**
  * Fold a set of (possibly per-row) classification inputs into a
- * lowercased-name → resolved-bodyweight-kind map, OR-ing hasExternalWeight across
+ * canonical-key → resolved-bodyweight-kind map, OR-ing hasExternalWeight across
  * every row that shares a key. The pure core both strength builders route through
  * so their bodyweight KIND agrees by construction over the same all-history rows
- * (#331). Keyed exactly like the builders (`exercise.trim().toLowerCase()`).
+ * (#331). Keyed by exerciseHistoryKey — variant-collapsed — exactly like the
+ * builders, so a variant and its base classify as ONE lift here too.
  */
 export function classifyBodyweightByExercise(
   rows: BodyweightClassifyRow[]
 ): Map<string, boolean> {
   const saw = new Map<string, { name: string; sawExternalWeight: boolean }>();
   for (const r of rows) {
-    const key = r.exercise.trim().toLowerCase();
+    const key = exerciseHistoryKey(r.exercise);
     const cur = saw.get(key);
     if (!cur)
       saw.set(key, {
-        name: r.exercise,
+        // Resolve the KIND off the canonical base name so isBodyweight sees the
+        // catalog lift, not an arbitrary first-seen variant spelling.
+        name: baseLiftName(r.exercise),
         sawExternalWeight: r.hasExternalWeight,
       });
     else if (r.hasExternalWeight) cur.sawExternalWeight = true;
