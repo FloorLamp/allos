@@ -55,7 +55,7 @@ import { sweepDeletedRows } from "../lib/undo-delete-db";
 import { sweepReplayedKeys } from "../lib/offline/writes";
 import { reapStuckExtractions } from "../lib/extraction-reaper";
 import { inferWorkoutSchedule, runCoachingEpisode } from "../lib/queries";
-import { slotDue } from "../lib/notifications/schedule";
+import { slotDue, inWakingWindow } from "../lib/notifications/schedule";
 import { db, today, checkpointWal } from "../lib/db";
 import { hourInTz, weekdayInTz } from "../lib/date";
 import { createLogger } from "../lib/log";
@@ -288,32 +288,46 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
     anyFailed = true;
   }
 
-  // Low-supply refill nudge: runs every hour; its own per-item
+  // The non-time-critical episode nudges (refill, preventive, milestone) have no
+  // slot of their own and would otherwise fire the instant an episode becomes due
+  // — commonly the local-midnight date rollover, or 1-3am after a late sync / a
+  // late button-tap that crosses a threshold (#378). Hold them to a humane
+  // profile-local waking window; their once-per-episode dedup is unchanged (a held
+  // nudge simply isn't sent yet, and re-evaluates on the next in-window tick). The
+  // safety-tier senders above (dose reminders, escalation) stay ungated.
+  const waking = inWakingWindow(hour);
+
+  // Low-supply refill nudge: runs every waking-hour tick; its own per-item
   // "once per low-supply episode" dedup (cleared when an item is refilled) keeps
   // it from re-nagging daily.
-  try {
-    const rf = await runRefills(profile.id, profile.name, date);
-    if (rf.failed) anyFailed = true;
-  } catch (e) {
-    log.error("refill check failed", {
-      profile: profile.id,
-      err: e instanceof Error ? e : String(e),
-    });
-    anyFailed = true;
+  if (waking) {
+    try {
+      const rf = await runRefills(profile.id, profile.name, date);
+      if (rf.failed) anyFailed = true;
+    } catch (e) {
+      log.error("refill check failed", {
+        profile: profile.id,
+        err: e instanceof Error ? e : String(e),
+      });
+      anyFailed = true;
+    }
   }
 
-  // Preventive-care nudge (#87): runs every hour; its own per-rule "once per due
-  // episode" dedup (cleared when an item is satisfied / no longer due) keeps it
-  // from re-nagging daily. Gated by the per-profile preventive toggle.
-  try {
-    const pv = await runPreventive(profile.id, profile.name, date);
-    if (pv.failed) anyFailed = true;
-  } catch (e) {
-    log.error("preventive check failed", {
-      profile: profile.id,
-      err: e instanceof Error ? e : String(e),
-    });
-    anyFailed = true;
+  // Preventive-care nudge (#87): runs every waking-hour tick; its own per-rule
+  // "once per due episode" dedup (cleared when an item is satisfied / no longer
+  // due) keeps it from re-nagging daily. Gated by the per-profile preventive
+  // toggle.
+  if (waking) {
+    try {
+      const pv = await runPreventive(profile.id, profile.name, date);
+      if (pv.failed) anyFailed = true;
+    } catch (e) {
+      log.error("preventive check failed", {
+        profile: profile.id,
+        err: e instanceof Error ? e : String(e),
+      });
+      anyFailed = true;
+    }
   }
 
   // Coaching rest-episode continuity (#44 item 3b): advance/clear the persisted
@@ -392,19 +406,26 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
     }
   }
 
-  // Milestones (#32): runs every hour like the refill/escalation checks. The
-  // milestones table IS the once-only fired marker, so re-running is idempotent —
-  // an already-recorded milestone never re-fires; a newly-crossed one is recorded
-  // to the timeline and (unless the profile opted out) announced once.
-  try {
-    const ms = await runMilestones(profile.id, profile.name, date);
-    if (ms.failed) anyFailed = true;
-  } catch (e) {
-    log.error("milestone check failed", {
-      profile: profile.id,
-      err: e instanceof Error ? e : String(e),
-    });
-    anyFailed = true;
+  // Milestones (#32): runs every waking-hour tick (#378). The milestones table IS
+  // the once-only fired marker, so re-running is idempotent — an already-recorded
+  // milestone never re-fires; a newly-crossed one is recorded to the timeline and
+  // (unless the profile opted out) announced once. Recording + announcing are
+  // gated together on the waking window rather than announcing-only: the table is
+  // the fired marker, so recording a crossing at 3am then skipping the send would
+  // permanently suppress the announcement (it'd read as "already fired" next
+  // tick). Cumulative milestones can't regress within a day, so deferring the
+  // record to a waking hour never loses one.
+  if (waking) {
+    try {
+      const ms = await runMilestones(profile.id, profile.name, date);
+      if (ms.failed) anyFailed = true;
+    } catch (e) {
+      log.error("milestone check failed", {
+        profile: profile.id,
+        err: e instanceof Error ? e : String(e),
+      });
+      anyFailed = true;
+    }
   }
 
   return anyFailed;
