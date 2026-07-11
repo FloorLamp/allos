@@ -55,3 +55,6 @@ next-env.d.ts
 # PHI-scan optional denylist of real names/orgs (see scripts/phi-scan.ts).
 # Must never be committed — it would itself introduce PHI.
 .phi-denylist
+
+# Next 16: separate distDir for the e2e demo dev instance
+/.next-demo/

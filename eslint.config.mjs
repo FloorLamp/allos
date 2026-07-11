@@ -14,7 +14,7 @@ const config = [
   // Global ignores — mirror the old ignorePatterns. Build output, deps, and the
   // runtime data dir are never linted.
   {
-    ignores: [".next/", "node_modules/", "data/"],
+    ignores: [".next/", ".next-demo/", "node_modules/", "data/"],
   },
   // ESLint 9 flat config defaults linterOptions.reportUnusedDisableDirectives to
   // "warn", but the old `.eslintrc.json` + `next lint` path left it off — keep it

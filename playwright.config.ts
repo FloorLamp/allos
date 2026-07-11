@@ -113,6 +113,10 @@ export default defineConfig({
         ADMIN_USERNAME: "admin",
         ADMIN_PASSWORD: "e2e-admin-pass",
         NODE_ENV: process.env.CI ? "production" : "development",
+        // Next 16 dev takes a per-project single-instance lock, so the demo dev
+        // server needs its own distDir (see next.config.js). CI runs `next start`
+        // (no lock) off the one shared .next build, so this stays dev-only.
+        ...(process.env.CI ? {} : { NEXT_DIST_DIR: ".next-demo" }),
       },
     },
   ],
