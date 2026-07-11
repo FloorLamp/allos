@@ -875,10 +875,19 @@ export interface IntegrationDef {
 }
 
 // Persisted connection state for a provider (integration_connections table).
+// `needs_reauth` (issue #326) is the terminal-until-user-acts state a provider lands
+// in after a DEFINITIVE auth failure (a dead/revoked refresh token or PAT): the
+// hourly tick only auto-syncs `connected` rows, so it stops re-attempting forever,
+// and the UI surfaces a "Reconnect" prompt. Stored in the existing bare-TEXT `status`
+// column (no schema change); the value set is enforced at the single upsertConnection
+// writer.
+export type IntegrationConnectionStatus =
+  "connected" | "disconnected" | "needs_reauth";
+
 export interface IntegrationConnection {
   profile_id: number;
   provider: string;
-  status: "connected" | "disconnected";
+  status: IntegrationConnectionStatus;
   config: string | null; // JSON: { token } for push; OAuth tokens for pull
   last_sync_at: string | null;
   last_sync_summary: string | null; // JSON counts

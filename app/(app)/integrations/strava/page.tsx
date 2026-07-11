@@ -45,6 +45,9 @@ export default async function StravaPage(props: {
   const cfg = getStravaConfig(profile.id);
   const hasCreds = !!(cfg.clientId && cfg.clientSecret);
   const connected = conn?.status === "connected" && !!cfg.accessToken;
+  // The refresh token died/was revoked (issue #326): show an actionable notice above
+  // the reconnect form instead of leaving the user with a silent, forever-failing sync.
+  const needsReauth = conn?.status === "needs_reauth";
   const callbackUrl = await stravaCallbackUrl();
   const callbackDomain = new URL(await baseUrl()).host;
   const error = searchParams.error
@@ -78,6 +81,17 @@ export default async function StravaPage(props: {
       {error && (
         <div className="mb-4 max-w-3xl rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-300">
           {error}
+        </div>
+      )}
+
+      {needsReauth && !connected && (
+        <div
+          className="mb-4 max-w-3xl rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-300"
+          data-testid="strava-needs-reauth"
+        >
+          Your Strava connection expired — the saved token was revoked or is no
+          longer valid, so automatic syncing has stopped. Reconnect with Strava
+          below to resume.
         </div>
       )}
 

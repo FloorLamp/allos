@@ -1,8 +1,12 @@
 import crypto from "node:crypto";
 import { db } from "@/lib/db";
 import { log } from "@/lib/log";
-import type { IntegrationConnection } from "@/lib/types";
+import type {
+  IntegrationConnection,
+  IntegrationConnectionStatus,
+} from "@/lib/types";
 import { matchTokenToProfile, type TokenCandidate } from "./token-match";
+import { isAuthRefreshFailure } from "./auth-failure";
 import {
   expiresAtFromChoice,
   isTokenExpired,
@@ -25,9 +29,19 @@ export function getConnection(
 }
 
 interface ConnectionPatch {
-  status?: "connected" | "disconnected";
+  status?: IntegrationConnectionStatus;
   config?: Record<string, unknown> | null;
 }
+
+// The DB `status` column is bare TEXT (no CHECK — a rebuild isn't worth it for a
+// three-value set), so this is where the TS union is enforced at runtime: the single
+// writer refuses any status outside the set (issue #326). An out-of-set value is a
+// programming error, not user input, so throwing is correct — it fails the test/build.
+const VALID_STATUSES: ReadonlySet<IntegrationConnectionStatus> = new Set([
+  "connected",
+  "disconnected",
+  "needs_reauth",
+]);
 
 // Insert-or-update a connection row, bumping updated_at. `config` is stored as JSON.
 export function upsertConnection(
@@ -37,6 +51,9 @@ export function upsertConnection(
 ) {
   const existing = getConnection(profileId, provider);
   const status = patch.status ?? existing?.status ?? "disconnected";
+  if (!VALID_STATUSES.has(status)) {
+    throw new Error(`upsertConnection: invalid status "${status}"`);
+  }
   const config =
     patch.config !== undefined
       ? patch.config === null
@@ -51,6 +68,18 @@ export function upsertConnection(
        config = excluded.config,
        updated_at = datetime('now')`
   ).run(profileId, provider, status, config);
+}
+
+// Flip a connection into `needs_reauth` after a DEFINITIVE auth failure (a dead or
+// revoked refresh token / PAT — see isAuthRefreshFailure). Preserves the existing
+// config (creds and now-dead tokens are kept so the setup page can show which
+// account was linked and the user can reconnect without re-pasting), changing only
+// the status. Because the hourly tick auto-syncs `connected` rows ONLY, this ends the
+// unbounded failing-forever refresh loop (issue #326) until the user reconnects — at
+// which point setStravaTokens/setOuraToken/setWithingsTokens flip it back to
+// `connected`. Idempotent: a row already in `needs_reauth` just bumps updated_at.
+export function markConnectionNeedsReauth(profileId: number, provider: string) {
+  upsertConnection(profileId, provider, { status: "needs_reauth" });
 }
 
 // Record the result of a sync (timestamp + per-type counts as JSON).
@@ -417,9 +446,15 @@ export async function getStravaAccessToken(
     }),
   });
   if (!res.ok) {
-    throw new Error(
-      `Strava token refresh failed (${res.status}): ${await res.text()}`
-    );
+    const body = await res.text();
+    // A definitive auth failure (invalid_grant / 401) means the refresh token is
+    // dead — mark the connection needs_reauth so the tick stops retrying it forever
+    // (issue #326). A transient failure (429/5xx/network) leaves it `connected` to
+    // retry next tick. Either way we throw so the sync records an ok:0 event.
+    if (isAuthRefreshFailure(res.status, body)) {
+      markConnectionNeedsReauth(profileId, STRAVA_ID);
+    }
+    throw new Error(`Strava token refresh failed (${res.status}): ${body}`);
   }
   const json = (await res.json()) as {
     access_token: string;
@@ -689,10 +724,27 @@ export async function getWithingsAccessToken(
     }).toString(),
   });
   if (!res.ok) {
+    if (isAuthRefreshFailure(res.status)) {
+      markConnectionNeedsReauth(profileId, WITHINGS_ID);
+    }
     throw new Error(`Withings token refresh failed (${res.status})`);
   }
-  const parsed = parseWithingsTokenResponse(await res.json());
+  // Withings rides errors in its { status, body } envelope over HTTP 200, so a dead
+  // refresh token surfaces as an envelope status (401) that parseWithingsTokenResponse
+  // rejects. Inspect that envelope status to mark needs_reauth on an auth failure
+  // (issue #326) rather than losing it as a generic "unexpected shape".
+  const json: unknown = await res.json();
+  const parsed = parseWithingsTokenResponse(json);
   if (!parsed) {
+    const envStatus =
+      json &&
+      typeof json === "object" &&
+      typeof (json as { status?: unknown }).status === "number"
+        ? (json as { status: number }).status
+        : -1;
+    if (isAuthRefreshFailure(envStatus)) {
+      markConnectionNeedsReauth(profileId, WITHINGS_ID);
+    }
     throw new Error("Withings token refresh returned an unexpected shape");
   }
   patchWithingsConfig(profileId, {

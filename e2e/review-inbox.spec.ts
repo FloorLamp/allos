@@ -99,6 +99,29 @@ test.describe("Data → Review import inbox", () => {
     await expect(oura.getByRole("button", { name: "Sync now" })).toHaveCount(0);
   });
 
+  test("a dead-token source shows a 'Needs reconnect' card, distinct from 'Not connected' (issue #326)", async ({
+    page,
+  }) => {
+    await page.goto("/data?section=review");
+    const review = page.getByTestId("review-inbox");
+
+    // Withings' refresh token died in the seed → the connection flipped to
+    // needs_reauth. Its card surfaces the distinct, actionable "Needs reconnect"
+    // badge (contrast Oura's benign "Not connected") plus a Reconnect link back to
+    // its setup page — never a live Sync now button.
+    const withings = review.getByTestId("source-withings");
+    await expect(withings).toBeVisible();
+    await expect(withings.getByText("Needs reconnect")).toBeVisible();
+    const reconnect = withings.getByRole("link", {
+      name: /Reconnect Withings/,
+    });
+    await expect(reconnect).toBeVisible();
+    await expect(reconnect).toHaveAttribute("href", "/integrations/withings");
+    await expect(
+      withings.getByRole("button", { name: "Sync now" })
+    ).toHaveCount(0);
+  });
+
   test("the Imports feed merges uploaded documents and paste jobs, not syncs", async ({
     page,
   }) => {
