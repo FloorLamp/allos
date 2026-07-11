@@ -92,7 +92,7 @@ describe("training reads", () => {
     const dash = getDashboardStats(fx.profileId);
     expect(dash.activityCount).toBe(2);
     expect(dash.activeGoals).toBe(1);
-    expect(dash.latestWeight?.weight_kg).toBe(fx.weightKg);
+    expect(dash.latestWeight?.value).toBe(fx.weightKg);
   });
 
   it("getGoals returns the seeded active goal", () => {

@@ -2,7 +2,6 @@ import { StatCard } from "@/components/ui";
 import { fmtWeight } from "@/lib/units";
 import { formatLongDate } from "@/lib/format-date";
 import type { WeightUnit } from "@/lib/settings";
-import type { BodyMetric } from "@/lib/types";
 
 // The 4-up stat tiles (extracted from the old page.tsx block). The widget itself
 // is always eligible (fitness:false — Weight + Supplements are universal), but its
@@ -20,7 +19,9 @@ export default function QuickStatsWidget({
   restricted: boolean;
   last7: number;
   activityCount: number;
-  latestWeight: BodyMetric | null;
+  // Reconciled current weight (value + measured date) from the canonical reader,
+  // which applies the profile's primary-source priority (#302).
+  latestWeight: { value: number; date: string } | null;
   activeGoals: number;
   takenCount: number;
   supplementCount: number;
@@ -41,9 +42,7 @@ export default function QuickStatsWidget({
       )}
       <StatCard
         label="Current weight"
-        value={
-          latestWeight ? fmtWeight(latestWeight.weight_kg, weightUnit) : "—"
-        }
+        value={latestWeight ? fmtWeight(latestWeight.value, weightUnit) : "—"}
         sub={
           latestWeight
             ? `on ${formatLongDate(latestWeight.date)}`
