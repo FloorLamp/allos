@@ -1,4 +1,6 @@
 import { test, expect } from "@playwright/test";
+import Database from "better-sqlite3";
+import path from "node:path";
 
 // Issue #45 (domains 4–6): three deterministic, dismissible observational-findings
 // surfaces, each fed by a pure lib rule over data the app already stores and each
@@ -39,9 +41,31 @@ test("Training → Goals shows an off-pace goal finding (#45)", async ({
   await expect(card).toContainText(/off pace/i);
 });
 
+// Clears any body-hygiene dismissal so the finding is guaranteed visible before
+// the dismiss test — regardless of retries or prior runs against the shared
+// seeded DB (the resetPreventiveFixture pattern from #206: a dismissal persists
+// in upcoming_dismissals, so a retried test would otherwise find the finding
+// already gone at its first assertion). Short-lived connection, busy timeout
+// so it never contends with the running server (WAL).
+function resetBodyHygieneDismissals(): void {
+  const dbPath =
+    process.env.ALLOS_DB_PATH ??
+    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const db = new Database(dbPath);
+  try {
+    db.pragma("busy_timeout = 5000");
+    db.prepare(
+      "DELETE FROM upcoming_dismissals WHERE signal_key LIKE 'body-hygiene:%'"
+    ).run();
+  } finally {
+    db.close();
+  }
+}
+
 // Suppression — dismissing a body-hygiene finding hides it via the shared findings-
 // bus store (dismissBodyHygiene → dismissFinding), so it stops rendering.
 test("a body-hygiene finding can be dismissed (#45)", async ({ page }) => {
+  resetBodyHygieneDismissals();
   await page.goto("/trends?tab=body");
   const main = page.getByRole("main");
   const finding = main
