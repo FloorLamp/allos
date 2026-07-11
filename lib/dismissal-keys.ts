@@ -21,6 +21,15 @@ export function biomarkerDismissalKey(name: string): string {
   return `biomarker:${name.trim().toLowerCase()}`;
 }
 
+// The dashboard hero keys a newly-flagged biomarker on
+// `biomarker-flag:<lowercased name>` (lib/attention.ts), on the SAME
+// canonical-preferred name identity the retest nudge uses — so the flag
+// dismissal follows the analyte, and the #203 cleanup/re-key seams below the
+// retest key cover this key too (issue #283).
+export function biomarkerFlagDismissalKey(name: string): string {
+  return `biomarker-flag:${name.trim().toLowerCase()}`;
+}
+
 // The Upcoming immunization nudge keys on `immunization:<catalog code>`
 // (lib/queries/upcoming.ts). The code is an assessment component code, not the
 // raw stored vaccine string (a combo dose credits several component codes).

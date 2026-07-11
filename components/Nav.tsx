@@ -90,7 +90,9 @@ const RECORDS: Group = {
 
 // The sidebar consolidation (folding Insights → Trends "Insights" tab, Body
 // Metrics → Trends "Body" tab, and Integrations → the Import hub) trimmed three
-// standalone entries; each old route now redirects to its new home (next.config).
+// standalone entries. The old routes were REMOVED outright — next.config.js
+// defines no redirects — so anything still linking one 404s; the nav-routes and
+// due-signal href guards (lib/__tests__/nav-routes.test.ts) catch that in CI.
 const entries: Entry[] = [
   { href: "/", label: "Dashboard", icon: IconLayoutDashboard },
   { href: "/timeline", label: "Timeline", icon: IconTimelineEvent },

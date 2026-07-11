@@ -7,10 +7,12 @@
 // Upcoming findings, and the review badge:
 //   - the Upcoming findings engine (doses, refills/low-supply, appointments,
 //     care-plan items, preventive visits/screenings, immunizations, biomarker
-//     retests, goals, training) — already snooze/dismiss-filtered by collectUpcoming
-//   - newly-flagged biomarkers — the SAME rows the Telegram morning digest reports
-//     (lib/notifications/digest-data.getNewlyFlaggedBiomarkers), so the hero and the
-//     bot never drift
+//     retests, goals, training) — already snooze/dismiss-filtered by collectUpcoming,
+//     with the far-future `later` band excluded here (issue #283)
+//   - newly-flagged biomarkers — the SAME read the Telegram morning digest reports
+//     (lib/notifications/digest-data.getNewlyFlaggedBiomarkers) so WHICH rows are
+//     flagged never drifts, but over the hero's own stable window (issue #283:
+//     the digest's send-cursor window made items vanish whenever a digest sent)
 //   - failing / reauth integrations (getImportIssues)
 //   - unresolved review-inbox items (getReviewPairCount)
 //
@@ -23,11 +25,12 @@ import {
   bandForItem,
   upcomingDueText,
 } from "./upcoming";
+import { biomarkerFlagDismissalKey } from "./dismissal-keys";
 import type { DigestFlaggedBiomarker } from "./notifications/digest";
 
 // Four coarse severity bands, most-urgent first. Overdue and Today are the
-// act-now bands; Soon is this-week runway; Info is low-stakes housekeeping
-// (review inbox, non-optimal reads) that's still worth a glance.
+// act-now bands; Soon is this-week runway; Info ("For review") is low-stakes
+// housekeeping (the review inbox) that's still worth a glance.
 export type AttentionSeverity = "overdue" | "today" | "soon" | "info";
 
 export const SEVERITY_ORDER: AttentionSeverity[] = [
@@ -52,12 +55,19 @@ const SEVERITY_RANK: Record<AttentionSeverity, number> = {
 };
 
 // Upcoming urgency band → attention severity. Overdue/today map straight through;
-// the week band is "soon" runway and anything further out ("later") is quiet info.
-const BAND_SEVERITY: Record<UrgencyBand, AttentionSeverity> = {
+// the week band is "soon" runway. The `later` band is deliberately EXCLUDED
+// (issue #283): an appointment weeks out or a screening due in months is exactly
+// what the hero must NOT flood with — those stay on the Upcoming page (matching
+// #171's "appointments within N days" intent), and the household count derived
+// from this model excludes them too. "For review" (info) is reserved for the
+// genuinely informational structural signals (review inbox).
+const BAND_SEVERITY: Record<
+  Exclude<UrgencyBand, "later">,
+  AttentionSeverity
+> = {
   overdue: "overdue",
   today: "today",
   week: "soon",
-  later: "info",
 };
 
 // Stable within-severity ordering. Clinical/medication signals sort ahead of the
@@ -94,8 +104,9 @@ export interface AttentionItem {
   // Short right-aligned status text ("Overdue", "2 days left", flag name…).
   dueText: string | null;
   // Whether this item supports snooze/dismiss through the shared findings store.
-  // Upcoming-derived items do; the review/integration signals are structural (you
-  // resolve them, you don't snooze them) so they're not suppressible.
+  // Upcoming-derived items and biomarker flags do; the review/integration signals
+  // are structural (you resolve them, you don't snooze them) so they're not
+  // suppressible.
   suppressible: boolean;
   // Inline "mark taken" fast path for a due dose (mirrors UpcomingItem.doseId).
   doseId: number | null;
@@ -136,13 +147,20 @@ function flagLabel(flag: string): string {
   return "Non-optimal";
 }
 
-// One Upcoming due-signal → an attention item. The band decides severity; the
-// dedupeKey (item.key) carries through so snooze/dismiss lines up with Upcoming.
-function upcomingToAttention(item: UpcomingItem, today: string): AttentionItem {
+// One Upcoming due-signal → an attention item, or null for a `later`-band item
+// (far-future signals never reach the hero — see BAND_SEVERITY). The band decides
+// severity; the dedupeKey (item.key) carries through so snooze/dismiss lines up
+// with Upcoming.
+function upcomingToAttention(
+  item: UpcomingItem,
+  today: string
+): AttentionItem | null {
+  const band = bandForItem(item, today);
+  if (band === "later") return null;
   return {
     key: item.key,
     domain: item.domain,
-    severity: BAND_SEVERITY[bandForItem(item, today)],
+    severity: BAND_SEVERITY[band],
     title: item.title,
     detail: item.detail ?? null,
     href: item.href,
@@ -152,19 +170,25 @@ function upcomingToAttention(item: UpcomingItem, today: string): AttentionItem {
   };
 }
 
-// A newly-flagged biomarker → an attention item. Not suppressible: the flag clears
-// itself once a fresh in-range reading lands, so there's nothing to snooze.
+// A newly-flagged biomarker → an attention item. Suppressible through the shared
+// findings bus (issue #283) keyed on `biomarker-flag:<name>` — a dismiss/snooze
+// from the hero hides the analyte's flag like any other finding (the query layer
+// filters on the same key). The href gates like biomarkerItems (upcoming.ts): a
+// canonicalized reading deep-links to its series (the view page treats ?name= as
+// the canonical name), an uncanonicalized one falls back to the biomarkers list.
 function flaggedToAttention(b: DigestFlaggedBiomarker): AttentionItem {
   const val = b.value ? ` ${b.value}` : "";
   return {
-    key: `biomarker-flag:${b.name.toLowerCase()}`,
+    key: biomarkerFlagDismissalKey(b.name),
     domain: "biomarker-flag",
     severity: flagSeverity(b.flag),
     title: b.name,
     detail: `Flagged result${val}`,
-    href: `/biomarkers/view?name=${encodeURIComponent(b.name)}`,
+    href: b.canonicalName
+      ? `/biomarkers/view?name=${encodeURIComponent(b.name)}`
+      : "/biomarkers",
     dueText: flagLabel(b.flag),
-    suppressible: false,
+    suppressible: true,
     doseId: null,
   };
 }
@@ -175,7 +199,8 @@ export function buildAttention(input: AttentionInput): AttentionItem[] {
   const items: AttentionItem[] = [];
 
   for (const u of input.upcoming) {
-    items.push(upcomingToAttention(u, input.today));
+    const item = upcomingToAttention(u, input.today);
+    if (item) items.push(item);
   }
   for (const b of input.flaggedBiomarkers) {
     items.push(flaggedToAttention(b));
@@ -220,11 +245,24 @@ export interface AttentionGroup {
   severity: AttentionSeverity;
   label: string;
   items: AttentionItem[];
+  // Items beyond the per-severity cap (issue #283): count only — the hero renders
+  // a "+N more" link to Upcoming instead of the rows, so a pathological day
+  // (a giant lab import, a backlog of overdue visits) can't blow the layout.
+  overflow: number;
 }
+
+// Defensive per-severity row cap for the hero (issue #283). High enough that a
+// normal day never trips it; low enough that a flood collapses to a link.
+export const ATTENTION_GROUP_CAP = 8;
 
 // Group the ordered items by severity, dropping empty bands, in fixed
 // Overdue → Today → This week → For review order — for the hero's section layout.
-export function groupAttention(items: AttentionItem[]): AttentionGroup[] {
+// Each group keeps at most `cap` rows (most urgent first — the input is already
+// severity/domain-ordered) and reports the rest as `overflow`.
+export function groupAttention(
+  items: AttentionItem[],
+  cap: number = ATTENTION_GROUP_CAP
+): AttentionGroup[] {
   const bySeverity = new Map<AttentionSeverity, AttentionItem[]>();
   for (const item of items) {
     const arr = bySeverity.get(item.severity);
@@ -235,7 +273,12 @@ export function groupAttention(items: AttentionItem[]): AttentionGroup[] {
   for (const severity of SEVERITY_ORDER) {
     const arr = bySeverity.get(severity);
     if (!arr || arr.length === 0) continue;
-    groups.push({ severity, label: SEVERITY_LABELS[severity], items: arr });
+    groups.push({
+      severity,
+      label: SEVERITY_LABELS[severity],
+      items: arr.slice(0, cap),
+      overflow: Math.max(0, arr.length - cap),
+    });
   }
   return groups;
 }

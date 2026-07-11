@@ -22,9 +22,33 @@ export interface DigestGoalDue {
 }
 
 export interface DigestFlaggedBiomarker {
+  // Canonical-preferred display name: the reading's canonical name when it has
+  // one, else its raw stored name (issue #283 — the hero deep-links by canonical
+  // name, so the two must agree).
   name: string;
+  // The canonical name when the reading is canonicalized, else null — gates
+  // whether a per-analyte series deep-link exists (mirrors biomarkerItems).
+  canonicalName?: string | null;
   value: string | null;
   flag: string;
+}
+
+// Collapse repeat flags of one analyte to its NEWEST reading (issue #283): the
+// input is newest-first (the read orders by created_at DESC), so keep the first
+// occurrence per lowercased name. Without this, two flagged readings of one
+// analyte yielded duplicate React keys on the hero and duplicate digest lines.
+export function dedupeFlaggedByAnalyte(
+  rows: DigestFlaggedBiomarker[]
+): DigestFlaggedBiomarker[] {
+  const seen = new Set<string>();
+  const out: DigestFlaggedBiomarker[] = [];
+  for (const r of rows) {
+    const key = r.name.trim().toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(r);
+  }
+  return out;
 }
 
 export interface DigestInput {

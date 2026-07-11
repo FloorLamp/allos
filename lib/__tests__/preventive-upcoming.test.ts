@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { preventiveAssessmentToUpcomingItem } from "../preventive-upcoming";
+import {
+  preventiveAssessmentToUpcomingItem,
+  preventiveHref,
+} from "../preventive-upcoming";
 import { assessCatalog } from "../preventive-status";
 import type { PreventiveAssessment } from "../preventive-status";
 import type { Citation } from "../preventive-catalog";
@@ -30,6 +33,32 @@ function mkAssessment(
 }
 
 const TODAY = "2026-07-10";
+
+describe("preventiveHref", () => {
+  it("visits always act through the appointments surface", () => {
+    expect(preventiveHref("visit", "adult_physical")).toBe("/appointments");
+    expect(preventiveHref("visit", "dental_cleaning")).toBe("/appointments");
+  });
+
+  it("derives a screening's surface from what satisfies it (issue #283)", () => {
+    // Lab-satisfied (the concept map lists canonical biomarkers) → biomarkers.
+    expect(preventiveHref("screening", "lipid_screening")).toBe("/biomarkers");
+    expect(preventiveHref("screening", "diabetes_screening")).toBe(
+      "/biomarkers"
+    );
+    // Procedure/coded-satisfied → procedures.
+    expect(preventiveHref("screening", "colorectal_cancer")).toBe(
+      "/procedures"
+    );
+    expect(preventiveHref("screening", "osteoporosis")).toBe("/procedures");
+  });
+
+  it("falls back to the passport for a rule the concept map can't satisfy", () => {
+    // Manual-only rules (e.g. the risk-gated lung LDCT) have no concept-map
+    // entry; their completion is recorded on the passport.
+    expect(preventiveHref("screening", "lung_cancer_ldct")).toBe("/profile");
+  });
+});
 
 describe("preventiveAssessmentToUpcomingItem", () => {
   it("maps a due VISIT to a status-driven Today item with the visit domain", () => {
@@ -71,7 +100,9 @@ describe("preventiveAssessmentToUpcomingItem", () => {
     expect(item.key).toBe("screening:colorectal_cancer");
     expect(item.band).toBe("overdue");
     expect(item.dueText).toBe("Overdue");
-    expect(item.href).toBe("/medical");
+    // Satisfaction-derived (issue #283): a colonoscopy-satisfied screening links
+    // to the procedures surface (the removed /medical page was a dead link).
+    expect(item.href).toBe("/procedures");
     // Falls back to detail when nextLabel is null.
     expect(item.detail).toBe("Recommended, none on record");
     expect(item.bookHref).toContain("kind=screening");

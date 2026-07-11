@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   biomarkerDismissalKey,
+  biomarkerFlagDismissalKey,
   immunizationDismissalKey,
   immunizationCodesLosingBacking,
 } from "../dismissal-keys";
@@ -11,6 +12,24 @@ describe("biomarkerDismissalKey", () => {
     expect(biomarkerDismissalKey("  Vitamin D, 25-Hydroxy  ")).toBe(
       "biomarker:vitamin d, 25-hydroxy"
     );
+  });
+});
+
+describe("biomarkerFlagDismissalKey", () => {
+  it("lowercases and trims to match the hero's flagged-result key (issue #283)", () => {
+    expect(biomarkerFlagDismissalKey("LDL Cholesterol")).toBe(
+      "biomarker-flag:ldl cholesterol"
+    );
+    expect(biomarkerFlagDismissalKey("  Glucose ")).toBe(
+      "biomarker-flag:glucose"
+    );
+  });
+
+  it("never collides with the retest key namespace", () => {
+    expect(biomarkerFlagDismissalKey("x")).not.toBe(biomarkerDismissalKey("x"));
+    // The orphan sweep matches the retest keys with LIKE 'biomarker:%' — the
+    // flag prefix must not fall inside that pattern.
+    expect(biomarkerFlagDismissalKey("x").startsWith("biomarker:")).toBe(false);
   });
 });
 

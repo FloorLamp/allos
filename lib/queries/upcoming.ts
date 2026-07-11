@@ -17,6 +17,7 @@ import {
 } from "../upcoming-suppress";
 import {
   biomarkerDismissalKey,
+  biomarkerFlagDismissalKey,
   immunizationDismissalKey,
 } from "../dismissal-keys";
 import { isDueOn } from "../supplement-schedule";
@@ -525,7 +526,8 @@ function appointmentItems(profileId: number): UpcomingItem[] {
 
 // Active goals with a target date (reuses getGoals). The deadline drives the
 // band, so an overdue deadline reads as Overdue and an approaching one as
-// Today/This week/Later.
+// Today/This week/Later. Goals live on the Training hub's Goals tab — the old
+// standalone /goals route has no page (issue #283 found the dead link).
 function goalItems(profileId: number): UpcomingItem[] {
   return getGoals(profileId)
     .filter((g) => !g.archived && g.status === "active" && g.target_date)
@@ -534,7 +536,7 @@ function goalItems(profileId: number): UpcomingItem[] {
       domain: "goal" as const,
       title: g.title,
       detail: g.category ? `${g.category} goal` : "Goal deadline",
-      href: "/goals",
+      href: "/training?tab=goals",
       dueDate: g.target_date,
     }));
 }
@@ -673,12 +675,13 @@ export function restoreFinding(profileId: number, dedupeKey: string): void {
 // delete/rename seams, mirroring cleanupOrphanStars on the star store. Each is
 // profile-scoped.
 
-// Drop biomarker retest dismissals (`biomarker:<name>`) whose backing readings are
+// Drop biomarker retest dismissals (`biomarker:<name>`) AND flagged-result
+// dismissals (`biomarker-flag:<name>`, issue #283) whose backing readings are
 // all gone, so dismissing a nudge → deleting every reading → re-adding the marker
-// later re-surfaces the nudge instead of it being suppressed by the stale row. The
-// nudge keys on lower(canonical_name || name); a dismissal with no matching reading
+// later re-surfaces the nudge instead of it being suppressed by the stale row.
+// Both key on lower(canonical_name || name); a dismissal with no matching reading
 // can never fire again, so removing it is a pure de-orphan (mirrors
-// cleanupOrphanStars). 11 = length('biomarker:') + 1.
+// cleanupOrphanStars). 11 = length('biomarker:') + 1; 16 = length('biomarker-flag:') + 1.
 export function cleanupOrphanBiomarkerDismissals(profileId: number): void {
   db.prepare(
     `DELETE FROM upcoming_dismissals
@@ -689,14 +692,25 @@ export function cleanupOrphanBiomarkerDismissals(profileId: number): void {
              FROM medical_records WHERE profile_id = ?
          )`
   ).run(profileId, profileId);
+  db.prepare(
+    `DELETE FROM upcoming_dismissals
+       WHERE profile_id = ?
+         AND signal_key LIKE 'biomarker-flag:%'
+         AND substr(signal_key, 16) NOT IN (
+           SELECT lower(COALESCE(NULLIF(trim(canonical_name), ''), name))
+             FROM medical_records WHERE profile_id = ?
+         )`
+  ).run(profileId, profileId);
 }
 
-// Re-key a biomarker's star + retest dismissal when its canonical name is renamed:
-// the user's pin/snooze intent follows the reading to its new name rather than
-// orphaning under the old (manifestations 3 & 4). UPDATE OR IGNORE so a collision
-// with an existing star/dismissal already under the new name is a no-op; the caller
-// then runs the orphan sweeps to drop any leftover old row. The star store matches
-// COLLATE NOCASE (as its writers do); the dismissal keys are already lowercased.
+// Re-key a biomarker's star + retest/flag dismissals when its canonical name is
+// renamed: the user's pin/snooze intent follows the reading to its new name rather
+// than orphaning under the old (manifestations 3 & 4). UPDATE OR IGNORE so a
+// collision with an existing star/dismissal already under the new name is a no-op;
+// the caller then runs the orphan sweeps to drop any leftover old row. The star
+// store matches COLLATE NOCASE (as its writers do); the dismissal keys are already
+// lowercased. The `biomarker-flag:` key (the hero's flagged-result dismissal,
+// issue #283) rides the same lifecycle.
 export function migrateRenamedBiomarker(
   profileId: number,
   oldName: string,
@@ -707,14 +721,20 @@ export function migrateRenamedBiomarker(
         SET canonical_name = ?
       WHERE profile_id = ? AND canonical_name = ? COLLATE NOCASE`
   ).run(newName, profileId, oldName);
-  db.prepare(
+  const rekey = db.prepare(
     `UPDATE OR IGNORE upcoming_dismissals
         SET signal_key = ?
       WHERE profile_id = ? AND signal_key = ?`
-  ).run(
+  );
+  rekey.run(
     biomarkerDismissalKey(newName),
     profileId,
     biomarkerDismissalKey(oldName)
+  );
+  rekey.run(
+    biomarkerFlagDismissalKey(newName),
+    profileId,
+    biomarkerFlagDismissalKey(oldName)
   );
 }
 

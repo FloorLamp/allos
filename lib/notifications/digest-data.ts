@@ -23,6 +23,7 @@ import {
 import { dispatch } from "./index";
 import {
   buildDigest,
+  dedupeFlaggedByAnalyte,
   renderDigestMessage,
   type DigestActivity,
   type DigestFlaggedBiomarker,
@@ -38,11 +39,13 @@ const MAX_NEW_DOCS = 5;
 const MAX_FLAGGED = 8;
 
 // The "since" cursor for the "new since last digest" reads: the stored last-digest
-// timestamp, or 24h ago on the first run so the first digest (and the dashboard
-// hero) don't dump the entire history of flagged results. created_at/uploaded_at
-// are datetime('now') UTC strings, so this is computed in the same format for a
-// correct string comparison. Shared so the Telegram digest and the dashboard
-// "Needs attention" hero read the SAME window — one source of truth, no drift.
+// timestamp, or 24h ago on the first run so the first digest doesn't dump the
+// entire history of flagged results. created_at/uploaded_at are datetime('now')
+// UTC strings, so this is computed in the same format for a correct string
+// comparison. This cursor is the DIGEST's window only (it advances on every send)
+// — the dashboard hero passes its own stable window into
+// getNewlyFlaggedBiomarkers (lib/queries/attention.ts), so sending a digest never
+// changes what the hero shows (issue #283).
 export function digestSince(profileId: number): string {
   return (
     db
@@ -56,30 +59,40 @@ export function digestSince(profileId: number): string {
 // Out-of-range biomarkers newly flagged since `since` (profile-scoped). This is the
 // single read behind BOTH the digest's "New" section and the dashboard hero's
 // flagged-biomarker attention items, so the two can never disagree on which results
-// are "newly flagged".
+// are "newly flagged" — each surface passes its OWN window (`since`): the digest
+// its send cursor, the hero a stable trailing window (issue #283). Names are
+// canonical-preferred (COALESCE) so links/dedupe key on the same identity the
+// biomarker view page resolves, and repeat flags of one analyte collapse to the
+// newest reading (dedupeFlaggedByAnalyte) BEFORE the limit is applied.
 export function getNewlyFlaggedBiomarkers(
   profileId: number,
   since: string,
   limit = MAX_FLAGGED
 ): DigestFlaggedBiomarker[] {
-  return (
-    db
-      .prepare(
-        `SELECT name, value, flag FROM medical_records
-          WHERE profile_id = ? AND created_at > ?
-            AND flag IS NOT NULL AND flag != 'normal'
-          ORDER BY created_at DESC LIMIT ?`
-      )
-      .all(profileId, since, limit) as {
-      name: string;
-      value: string | null;
-      flag: string;
-    }[]
-  ).map((r): DigestFlaggedBiomarker => ({
-    name: r.name,
-    value: r.value,
-    flag: r.flag,
-  }));
+  const rows = db
+    .prepare(
+      `SELECT COALESCE(NULLIF(trim(canonical_name), ''), name) AS name,
+              NULLIF(trim(canonical_name), '') AS canonical_name,
+              value, flag
+         FROM medical_records
+        WHERE profile_id = ? AND created_at > ?
+          AND flag IS NOT NULL AND flag != 'normal'
+        ORDER BY created_at DESC`
+    )
+    .all(profileId, since) as {
+    name: string;
+    canonical_name: string | null;
+    value: string | null;
+    flag: string;
+  }[];
+  return dedupeFlaggedByAnalyte(
+    rows.map((r): DigestFlaggedBiomarker => ({
+      name: r.name,
+      canonicalName: r.canonical_name,
+      value: r.value,
+      flag: r.flag,
+    }))
+  ).slice(0, limit);
 }
 
 // Gather the digest facts for one profile. `since` bounds the "new since last

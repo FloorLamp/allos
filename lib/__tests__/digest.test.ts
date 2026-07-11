@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   buildDigest,
+  dedupeFlaggedByAnalyte,
   renderDigestMessage,
   type DigestInput,
 } from "../notifications/digest";
@@ -103,5 +104,29 @@ describe("renderDigestMessage", () => {
     expect(msg.body).toContain("Today\n• 💊 1 supplement dose scheduled");
     expect(msg.body).toContain("Yesterday\n• ⚖️ Weight: 70 kg");
     expect(msg.actions).toBeUndefined();
+  });
+});
+
+describe("dedupeFlaggedByAnalyte", () => {
+  it("collapses repeat flags of one analyte to the newest (first) reading — issue #283", () => {
+    // The read orders newest-first, so the first occurrence per analyte wins.
+    const rows = [
+      { name: "LDL Cholesterol", value: "160 mg/dL", flag: "high" },
+      { name: "LDL Cholesterol", value: "155 mg/dL", flag: "high" },
+      { name: "Ferritin", value: "20", flag: "low" },
+    ];
+    expect(dedupeFlaggedByAnalyte(rows)).toEqual([
+      { name: "LDL Cholesterol", value: "160 mg/dL", flag: "high" },
+      { name: "Ferritin", value: "20", flag: "low" },
+    ]);
+  });
+
+  it("keys case-insensitively and trims — two casings of one analyte are one flag", () => {
+    const rows = [
+      { name: "Glucose", value: "130", flag: "high" },
+      { name: " glucose ", value: "125", flag: "high" },
+    ];
+    expect(dedupeFlaggedByAnalyte(rows)).toHaveLength(1);
+    expect(dedupeFlaggedByAnalyte([])).toEqual([]);
   });
 });
