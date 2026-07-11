@@ -169,15 +169,30 @@ describe("labels, tone, ranking, and best standing", () => {
     expect(bestStanding([])).toBeNull();
   });
 
-  it("exposes exactly the five core lifts", () => {
+  it("exposes the covered lifts (five core + three retired-model carryovers)", () => {
     expect(STRENGTH_STANDARD_LIFTS.sort()).toEqual(
       [
         "Back Squat",
         "Bench Press",
+        "Chin Up",
         "Deadlift",
+        "Front Squat",
+        "Incline Bench Press",
         "Overhead Press",
         "Pull Up",
       ].sort()
+    );
+  });
+
+  it("covers the lifts the retired flat-ratio model used to level", () => {
+    // Front Squat / Incline Bench / Chin Up were carried over so unifying onto the
+    // new model doesn't drop a lift that used to show a level.
+    expect(strengthStanding("Front Squat", 120, "male", 80)).not.toBeNull();
+    expect(
+      strengthStanding("Incline Bench Press", 80, "male", 80)
+    ).not.toBeNull();
+    expect(strengthStanding("Chin Up", 90, "male", 80)!.bodyweightLift).toBe(
+      true
     );
   });
 });

@@ -6,8 +6,11 @@ import type { ExerciseStat, GoalProgress } from "@/lib/queries";
 import type { Goal, Sex } from "@/lib/types";
 import { dispWeight, fmtWeight } from "@/lib/units";
 import { liftInfo } from "@/lib/lifts";
-import { standardFor, levelFor } from "@/lib/strength";
-import { strengthStanding, strengthLevelLabel } from "@/lib/strength-standards";
+import {
+  strengthStanding,
+  strengthLevelLabel,
+  strengthLevelColor,
+} from "@/lib/strength-standards";
 import { goalsForExercise, goalTargetText } from "@/lib/goals";
 import { formatLongDate, formatRelativeDate } from "@/lib/format-date";
 import { useTimezone } from "@/components/TimezoneProvider";
@@ -96,19 +99,23 @@ export default function ExerciseDetailPanel({
   const todayStr = dateStrInTz(useTimezone());
   const wu = units.weightUnit;
   const info = liftInfo(stat.exercise);
-  const std = standardFor(stat.exercise, sex);
-  const ratio = bodyweightKg ? stat.e1rmKg / bodyweightKg : null;
-  const lvl = showLevel && std && ratio ? levelFor(ratio, std) : null;
 
-  // Bodyweight-band strength standing (#152) — a coaching-framed context line
-  // turning the estimated 1RM into progress against the standards for this sex +
-  // bodyweight. Hidden entirely when sex or bodyweight is unset, or the lift isn't
-  // one of the core barbell lifts. Gated on showLevel so it doesn't double up with
-  // the Analyze tab's Benchmarks card. See lib/strength-standards.ts.
+  // Bodyweight-band strength standing (#152) — the SINGLE strength-level source.
+  // Both the header level badge AND the coaching line below derive from this one
+  // computation (no more flat-ratio second model that could disagree by a tier).
+  // Hidden entirely when sex or bodyweight is unset, or the lift isn't covered.
+  // Gated on showLevel so it doesn't double up with the Analyze Benchmarks card.
   const standing =
     showLevel && sex && bodyweightKg
       ? strengthStanding(stat.exercise, stat.e1rmKg, sex, bodyweightKg)
       : null;
+  const badge = standing
+    ? {
+        level: standing.level,
+        label: strengthLevelLabel(standing.level),
+        color: strengthLevelColor(standing.level),
+      }
+    : null;
   let standingMsg: string | null = null;
   if (standing) {
     const sexWord = sex === "female" ? "women" : "men";
@@ -178,14 +185,14 @@ export default function ExerciseDetailPanel({
             info.region,
             "bg-slate-100 text-slate-500 dark:bg-ink-800 dark:text-slate-400"
           )}
-        {(lvl || headerRight) && (
+        {(badge || headerRight) && (
           <div className="ml-auto flex items-center gap-2">
-            {lvl && (
+            {badge && (
               <LevelBadge
-                label={lvl.label}
-                color={lvl.color}
+                level={badge.level}
                 exercise={stat.exercise}
                 sex={sex}
+                bodyweightKg={bodyweightKg}
               />
             )}
             {headerRight}

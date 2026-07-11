@@ -21,12 +21,15 @@ describe("strength-standards.json dataset", () => {
     expect(committed).toBe(generated);
   });
 
-  it("declares the five core barbell/bodyweight lifts with canonical-name keys", () => {
+  it("declares the covered barbell/bodyweight lifts with canonical-name keys", () => {
     expect(Object.keys(standardsJson.lifts).sort()).toEqual(
       [
         "Back Squat",
         "Bench Press",
+        "Chin Up",
         "Deadlift",
+        "Front Squat",
+        "Incline Bench Press",
         "Overhead Press",
         "Pull Up",
       ].sort()

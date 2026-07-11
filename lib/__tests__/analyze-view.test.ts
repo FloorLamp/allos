@@ -18,7 +18,6 @@ import {
   strengthMetricValue,
 } from "@/lib/analyze-view";
 import type { CardioStat, SportStat, ExerciseStat } from "@/lib/queries";
-import type { Standard } from "@/lib/strength";
 
 // Minimal fixtures — only the fields the pure helpers actually read.
 const cardio = (o: Partial<CardioStat> & { activity: string }): CardioStat =>
@@ -241,38 +240,37 @@ describe("formatIntensity / formatRatio", () => {
   });
 });
 
-describe("benchmarkState", () => {
-  const standard: Standard = {
-    beginner: 1,
-    intermediate: 1.5,
-    advanced: 2,
-    elite: 2.5,
-  };
-  it("ranks an athlete above the beginner cut and flags the ranked row", () => {
-    const st = benchmarkState(standard, 180, 100); // ratio 1.8 → Intermediate
-    expect(st.currentRatio).toBeCloseTo(1.8);
-    expect(st.currentLevel?.label).toBe("Intermediate");
-    expect(st.isUnranked).toBe(false);
+describe("benchmarkState (bodyweight-band model)", () => {
+  // Bench Press male @80 kg floors = [40, 60, 80, 120, 160] for
+  // beginner/novice/intermediate/advanced/elite.
+  it("places the lifter and flags the ranked level (interior)", () => {
+    const st = benchmarkState("Bench Press", "male", 100, 80)!; // clears 80, not 120
+    expect(st).not.toBeNull();
+    expect(st.currentLevel.level).toBe("intermediate");
+    expect(st.currentLevel.label).toBe("Intermediate");
+    expect(st.isUntrained).toBe(false);
     expect(st.rankedLevelLabel).toBe("Intermediate");
-    // Only the four standard levels, sorted by ratio descending.
+    // The five named level floors, sorted by kg descending, no injected current.
     expect(st.rows.map((r) => r.type)).toEqual([
       "level",
       "level",
       "level",
       "level",
+      "level",
     ]);
-    expect(st.rows[0].ratio).toBeGreaterThan(st.rows[3].ratio);
+    expect(st.rows[0].valueKg).toBeGreaterThan(st.rows[4].valueKg);
   });
-  it("injects a Current row (and no ranked label) when below the beginner cut", () => {
-    const st = benchmarkState(standard, 50, 100); // ratio 0.5 < beginner
-    expect(st.isUnranked).toBe(true);
+
+  it("injects a Current row (and no ranked label) when untrained", () => {
+    const st = benchmarkState("Bench Press", "male", 30, 80)!; // below the 40 floor
+    expect(st.isUntrained).toBe(true);
     expect(st.rankedLevelLabel).toBeNull();
     expect(st.rows.some((r) => r.type === "current")).toBe(true);
   });
-  it("has no ratio without a bodyweight", () => {
-    const st = benchmarkState(standard, 180, null);
-    expect(st.currentRatio).toBeNull();
-    expect(st.currentLevel).toBeNull();
-    expect(st.rows.every((r) => r.type === "level")).toBe(true);
+
+  it("hides (null) without a bodyweight, sex, or for an uncovered lift", () => {
+    expect(benchmarkState("Bench Press", "male", 180, null)).toBeNull();
+    expect(benchmarkState("Bench Press", null, 180, 80)).toBeNull();
+    expect(benchmarkState("Dumbbell Curl", "male", 180, 80)).toBeNull();
   });
 });

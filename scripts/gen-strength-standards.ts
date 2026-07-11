@@ -109,6 +109,13 @@ const r = (
 // "Overhead Press" are the variant BASE names (the lookup maps a barbell/bare
 // variant onto them, exactly like lib/strength.standardFor). Back Squat, Deadlift
 // and Pull Up are plain catalog lifts.
+// The novice/intermediate/advanced/elite anchors reuse lib/strength.ts's former
+// STANDARDS / STANDARDS_FEMALE ratios verbatim; `beginner` is the added sub-novice
+// tier (~0.6-0.85× the novice ratio, a documented rule-of-thumb, not a scraped
+// value). The first five (squat/bench/OHP/deadlift/pull-up) are the issue's core
+// lifts; the last three (front squat / incline bench / chin up) were also covered
+// by the retired ratio model, kept here — via the identical allometric method — so
+// unifying onto this dataset doesn't drop a lift that used to show a level.
 const LIFTS: Record<string, LiftSpec> = {
   "Bench Press": {
     male: r(0.5, 0.75, 1.0, 1.5, 2.0),
@@ -132,6 +139,20 @@ const LIFTS: Record<string, LiftSpec> = {
     bodyweight: true,
     male: r(0.85, 1.0, 1.25, 1.5, 1.9),
     female: r(0.6, 0.8, 1.0, 1.25, 1.6),
+  },
+  // Previously-covered lifts (retired ratio model) — same allometric derivation.
+  "Front Squat": {
+    male: r(0.5, 0.85, 1.25, 1.7, 2.3),
+    female: r(0.4, 0.65, 1.0, 1.4, 1.85),
+  },
+  "Incline Bench Press": {
+    male: r(0.35, 0.6, 0.85, 1.25, 1.65),
+    female: r(0.25, 0.4, 0.6, 0.85, 1.2),
+  },
+  "Chin Up": {
+    bodyweight: true,
+    male: r(0.85, 1.0, 1.3, 1.6, 2.0),
+    female: r(0.6, 0.8, 1.05, 1.3, 1.65),
   },
 };
 

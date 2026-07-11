@@ -41,6 +41,27 @@ const LIFTS = (standardsJson as { lifts: Record<string, LiftStandards> }).lifts;
 // The canonical lift names that carry standards (match the JSON keys / lib/lifts).
 export const STRENGTH_STANDARD_LIFTS = Object.keys(LIFTS);
 
+// Curated display order for the reference table (core lifts first, then the
+// previously-ratio-modeled extras). A subset/reorder of STRENGTH_STANDARD_LIFTS.
+export const DISPLAYED_STRENGTH_LIFTS = [
+  "Back Squat",
+  "Front Squat",
+  "Bench Press",
+  "Incline Bench Press",
+  "Overhead Press",
+  "Deadlift",
+  "Pull Up",
+  "Chin Up",
+];
+
+// Reference bodyweights (kg) per sex — the pivot of the allometric scaling, mirrors
+// scripts/gen-strength-standards REF_BW. Used ONLY as a display fallback for the
+// reference table when a bodyweight isn't known (every placing surface requires a
+// real bodyweight, so this never affects a lifter's actual standing).
+export function referenceBodyweight(sex: Sex): number {
+  return sex === "female" ? 65 : 80;
+}
+
 // The five named levels plus the implicit below-beginner "untrained" standing.
 export type StrengthLevel =
   "untrained" | "beginner" | "novice" | "intermediate" | "advanced" | "elite";
@@ -58,6 +79,22 @@ const LEVEL_LABELS: Record<StrengthLevel, string> = {
 // consistency test can pin that a pillar/line label equals the computed level.
 export function strengthLevelLabel(level: StrengthLevel): string {
   return LEVEL_LABELS[level];
+}
+
+// Tailwind color classes per level, shared by every badge/label so the color is
+// part of the ONE computation (never re-picked per surface). Ascending tiers warm
+// then cool: untrained/beginner muted → novice amber → intermediate brand → sky →
+// elite violet.
+const LEVEL_COLORS: Record<StrengthLevel, string> = {
+  untrained: "text-slate-400 dark:text-slate-500",
+  beginner: "text-slate-500 dark:text-slate-400",
+  novice: "text-amber-600 dark:text-amber-400",
+  intermediate: "text-brand-600 dark:text-brand-400",
+  advanced: "text-sky-600 dark:text-sky-400",
+  elite: "text-violet-600 dark:text-violet-400",
+};
+export function strengthLevelColor(level: StrengthLevel): string {
+  return LEVEL_COLORS[level];
 }
 
 // A resolved standing for a lift at the lifter's sex + bodyweight.
@@ -209,6 +246,77 @@ export function strengthStanding(
     bodyweightLift: resolved.t.bodyweight,
     clampedBodyweight: clamped,
     ...placed,
+  };
+}
+
+// The badge every "Level" surface renders (table cell, panel header, explorer
+// row): the level + its label + color, all from the SINGLE strengthStanding
+// computation. Null (⇒ no badge) when the lift isn't covered or sex/bodyweight/1RM
+// is missing — the exact same gate as the standing itself. This is what keeps the
+// badge, the coaching line, the benchmark card, and the pillar from ever
+// disagreeing about a lifter's level ("one question, one computation").
+export interface StrengthBadge {
+  level: StrengthLevel;
+  label: string;
+  color: string;
+}
+export function strengthBadge(
+  exercise: string,
+  e1rmKg: number | null | undefined,
+  sex: Sex | null | undefined,
+  bodyweightKg: number | null | undefined
+): StrengthBadge | null {
+  const standing = strengthStanding(exercise, e1rmKg, sex, bodyweightKg);
+  if (!standing) return null;
+  return {
+    level: standing.level,
+    label: strengthLevelLabel(standing.level),
+    color: strengthLevelColor(standing.level),
+  };
+}
+
+// One level's interpolated floor (kg) at a bodyweight — the row shape behind the
+// reference table and the benchmark ladder.
+export interface LevelFloor {
+  level: StrengthLevel;
+  floorKg: number;
+}
+export interface LiftFloors {
+  lift: string;
+  bodyweightKg: number;
+  bodyweightLift: boolean;
+  floors: LevelFloor[];
+  clampedBodyweight: "low" | "high" | null;
+}
+
+// The five named level floors (kg) for a lift at the lifter's sex + bodyweight,
+// interpolated between bodyweight bands. Reused by the reference table and the
+// benchmark card so their thresholds match the placing computation. Bodyweight
+// falls back to the sex reference bodyweight only for the reference table (a real
+// placing always passes a known bodyweight). Null when the lift/sex has no table.
+export function levelFloors(
+  exercise: string,
+  sex: Sex | null | undefined,
+  bodyweightKg: number | null | undefined
+): LiftFloors | null {
+  const resolved = tableFor(exercise);
+  if (!resolved || !sex) return null;
+  const sn = resolved.t.sexes[sex];
+  if (!sn) return null;
+  const bw =
+    bodyweightKg != null && Number.isFinite(bodyweightKg) && bodyweightKg > 0
+      ? bodyweightKg
+      : referenceBodyweight(sex);
+  const { values, clamped } = valuesAtBodyweight(sn.bands, bw);
+  return {
+    lift: resolved.name,
+    bodyweightKg: bw,
+    bodyweightLift: resolved.t.bodyweight,
+    clampedBodyweight: clamped,
+    floors: sn.levels.map((level, i) => ({
+      level: level as StrengthLevel,
+      floorKg: values[i],
+    })),
   };
 }
 

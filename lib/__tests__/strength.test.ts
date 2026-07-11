@@ -1,12 +1,10 @@
 import { describe, expect, it } from "vitest";
-import {
-  E1RM_REP_CAP,
-  STANDARDS,
-  STANDARDS_FEMALE,
-  estimate1RM,
-  levelFor,
-  standardFor,
-} from "@/lib/strength";
+import { E1RM_REP_CAP, estimate1RM } from "@/lib/strength";
+
+// The strength LEVEL/standard logic (levelFor/standardFor/STANDARDS/…) was retired
+// in favor of the single bodyweight-band model in lib/strength-standards.ts (#152);
+// its tests live in lib/__tests__/strength-standards*.test.ts. Only 1RM estimation
+// remains here.
 
 describe("estimate1RM (Epley, capped)", () => {
   it("returns the lifted weight for a single rep", () => {
@@ -40,75 +38,5 @@ describe("estimate1RM (Epley, capped)", () => {
 
   it("is still monotonic up to the cap", () => {
     expect(estimate1RM(100, 12)).toBeGreaterThan(estimate1RM(100, 11));
-  });
-});
-
-describe("standardFor", () => {
-  it("looks up case- and whitespace-insensitively", () => {
-    expect(standardFor("Bench Press")).toBe(STANDARDS["bench press"]);
-    expect(standardFor("  squat  ")).toBe(STANDARDS["squat"]);
-  });
-
-  it("resolves known aliases and the newer lifts", () => {
-    expect(standardFor("back squat")).toBeDefined();
-    expect(standardFor("front squat")).toBeDefined();
-    expect(standardFor("incline bench press")).toBeDefined();
-    expect(standardFor("chin up")).toBeDefined();
-  });
-
-  it("maps barbell (and bare) variants to the base lift's standard", () => {
-    expect(standardFor("Barbell Bench Press")).toBe(STANDARDS["bench press"]);
-    expect(standardFor("Barbell Overhead Press")).toBe(
-      STANDARDS["overhead press"]
-    );
-  });
-
-  it("does not apply a barbell standard to other equipment variants", () => {
-    expect(standardFor("Dumbbell Bench Press")).toBeUndefined();
-    expect(standardFor("Dumbbell Curl")).toBeUndefined();
-  });
-
-  it("returns undefined for an unknown exercise", () => {
-    expect(standardFor("nordic curl")).toBeUndefined();
-  });
-
-  it("defaults to the male/unspecified table when no sex is given (backward compatible)", () => {
-    expect(standardFor("bench press")).toBe(STANDARDS["bench press"]);
-    expect(standardFor("bench press", null)).toBe(STANDARDS["bench press"]);
-    expect(standardFor("bench press", "male")).toBe(STANDARDS["bench press"]);
-  });
-
-  it("uses the female table for a female profile", () => {
-    expect(standardFor("bench press", "female")).toBe(
-      STANDARDS_FEMALE["bench press"]
-    );
-    // Female standards sit below male ones at every level (common-chart split).
-    const m = STANDARDS["bench press"];
-    const f = STANDARDS_FEMALE["bench press"];
-    expect(f.beginner).toBeLessThan(m.beginner);
-    expect(f.elite).toBeLessThan(m.elite);
-  });
-
-  it("maps barbell variants through the sex-appropriate table", () => {
-    expect(standardFor("Barbell Bench Press", "female")).toBe(
-      STANDARDS_FEMALE["bench press"]
-    );
-  });
-});
-
-describe("levelFor", () => {
-  const s = standardFor("bench press")!; // 0.75 / 1.0 / 1.5 / 2.0
-
-  it("labels by ascending threshold", () => {
-    expect(levelFor(0.5, s).label).toBe("Beginner");
-    expect(levelFor(0.8, s).label).toBe("Novice");
-    expect(levelFor(1.2, s).label).toBe("Intermediate");
-    expect(levelFor(1.7, s).label).toBe("Advanced");
-    expect(levelFor(2.5, s).label).toBe("Elite");
-  });
-
-  it("treats a threshold boundary as the higher tier (>=)", () => {
-    expect(levelFor(2.0, s).label).toBe("Elite");
-    expect(levelFor(0.75, s).label).toBe("Novice");
   });
 });
