@@ -138,7 +138,10 @@ export async function saveActivity(
   const startTime = (formData.get("start_time") as string)?.trim() || null;
   const endTime = (formData.get("end_time") as string)?.trim() || null;
 
-  // Components: [{ name, type, distance (user unit) | null, duration_min | null }]
+  // Components: [{ name, type, distance (user unit) | null, duration_min | null }].
+  // NOT parseComponents (issue #334): this is the untrusted FORM payload whose
+  // `distance` is in the user's unit and gets converted to `distance_km` below — a
+  // different shape from the stored ActivityComponent[] that parseComponents returns.
   let rawComponents: {
     name: string;
     type: ActivityType;

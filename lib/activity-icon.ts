@@ -11,6 +11,8 @@
 // bug where a bike ride showed a bike icon in the form but a running icon in the
 // journal.
 
+import { parseComponents } from "./types";
+
 export type ActivityIconKey =
   | "barbell"
   | "run"
@@ -150,14 +152,7 @@ export function pickActivityIconKey(
 export function activityComponentSportNames(
   componentsJson: string | null | undefined
 ): string[] {
-  if (!componentsJson) return [];
-  try {
-    const parsed = JSON.parse(componentsJson);
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .filter((c) => c && typeof c.name === "string" && c.type !== "strength")
-      .map((c) => c.name as string);
-  } catch {
-    return [];
-  }
+  return parseComponents(componentsJson)
+    .filter((c) => c && typeof c.name === "string" && c.type !== "strength")
+    .map((c) => c.name);
 }
