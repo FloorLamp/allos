@@ -64,7 +64,12 @@ export function getAllergy(profileId: number, id: number): Allergy | undefined {
 // Conditions collapse on the coded identity when present ('code:<code>'), else the
 // normalized name ('name:<lower(name)>'). The 'code:'/'name:' prefixes keep the two
 // namespaces from ever colliding; NULLIF(TRIM(code),'') makes a blank code fall
-// through to the name branch.
+// through to the name branch. This COALESCE is the SQL mirror of the pure
+// conditionCollapseKey() in lib/icd10.ts (#155) — the ICD-10-CM entry-suggestion that
+// fills a code on a previously code-less row strengthens this natural key (code
+// equality beats name-string equality across documents from different providers); a
+// db-tier test pins that the SQL groups rows exactly as conditionCollapseKey() keys
+// them so the two can't drift.
 //
 // Representative ORDER (#193): an ACTIVE-status row wins the representative slot
 // BEFORE the manual-over-imported / newest tiebreakers, so when a same-name twin
