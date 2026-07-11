@@ -6,22 +6,14 @@ import { ActivityTypeIcon, IntensityBadge } from "@/components/ui";
 import ActivityProvenance from "@/components/ActivityProvenance";
 import type { ActivityEditData } from "@/components/ActivityForm";
 import type { UnitPrefs } from "@/lib/settings";
-import { SET_STATUS_TITLES, type SetStatus } from "@/lib/journal-format";
+import { SET_STATUS_TITLES } from "@/lib/journal-format";
 import { activityComponentSportNames } from "@/lib/activity-icon";
+// DisplayPart moved to lib/journal-card.ts (issue #334); re-exported here so the
+// existing `./JournalCard` import path keeps working.
+import type { DisplayPart } from "@/lib/journal-card";
 import ActivityCardMenu, { type MergeSibling } from "./ActivityCardMenu";
 
-export type DisplayPart =
-  | {
-      kind: "strength";
-      name: string;
-      muscle: string | null;
-      text: string;
-      status: SetStatus;
-      // User-defined implement used for this exercise (e.g. "Trap Bar"), or null.
-      equipment?: string | null;
-    }
-  | { kind: "cardio"; name: string; detail: string }
-  | { kind: "sport"; name: string; detail: string };
+export type { DisplayPart };
 
 export default function JournalCard({
   activity,

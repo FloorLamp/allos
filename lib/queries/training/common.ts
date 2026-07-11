@@ -6,6 +6,7 @@ import { RECENT_WINDOW_DAYS } from "../../exercise-window";
 import { getWeekMode, getWeekStart } from "../../settings";
 import { weekWindow } from "../../week-window";
 import type { ActivityComponent } from "../../types";
+import { parseComponents } from "../../types";
 
 // React's per-request cache() exists only in the canary React that Next vendors
 // for server components. The plain `react` package that tsx entrypoints
@@ -107,15 +108,7 @@ export const effortEntries = cache(function effortEntries(
 
   const out: EffortEntry[] = [];
   for (const r of rows) {
-    let comps: ActivityComponent[] = [];
-    if (r.components) {
-      try {
-        const parsed = JSON.parse(r.components);
-        if (Array.isArray(parsed)) comps = parsed;
-      } catch {
-        /* malformed components JSON — fall through to the row-level fallback */
-      }
-    }
+    const comps: ActivityComponent[] = parseComponents(r.components);
     const matching = comps.filter(
       (c) =>
         c?.type === targetType && typeof c.name === "string" && c.name.trim()

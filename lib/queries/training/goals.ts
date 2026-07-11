@@ -8,6 +8,7 @@ import { goalMatchesExercise } from "../../goals";
 import type { BodyGroup, MuscleRegion } from "../../lifts";
 import { regionForExercise, regionsForGroup } from "../../lifts";
 import type { BodyMetricKind, FrequencyTarget, Goal } from "../../types";
+import { parseComponents } from "../../types";
 import { getLatestBodyMetric } from "../metrics";
 import { weekWindowStart } from "./common";
 
@@ -178,14 +179,8 @@ export function getFrequencyTargetProgress(
   };
   for (const a of actRows) {
     addType(a.type, a.date);
-    if (a.components) {
-      try {
-        const comps = JSON.parse(a.components) as { type: string }[];
-        for (const c of comps) if (c?.type) addType(c.type, a.date);
-      } catch {
-        // ignore malformed components JSON
-      }
-    }
+    for (const c of parseComponents(a.components))
+      if (c?.type) addType(c.type, a.date);
   }
 
   return targets.map((t) => {

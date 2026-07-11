@@ -7,7 +7,8 @@ import {
   deleteActivity,
   logBodyweight,
 } from "@/app/(app)/journal/actions";
-import type { ActivityType, ActivityComponent, Equipment } from "@/lib/types";
+import type { ActivityType, Equipment } from "@/lib/types";
+import { parseComponents } from "@/lib/types";
 import type { UnitPrefs } from "@/lib/settings";
 import {
   muscleFor,
@@ -211,39 +212,37 @@ export default function ActivityForm({
   const [parts, setParts] = useState<PartEntry[]>(() => {
     if (!seed) return [blankPart()];
     if (seed.components) {
-      try {
-        const comps: ActivityComponent[] = JSON.parse(seed.components);
-        const grouped = groupEditSets(seed.sets, units.weightUnit);
-        return comps.map((c) => {
-          if (c.type === "strength") {
-            const g = grouped.find(
-              (e) => e.name.toLowerCase() === c.name.toLowerCase()
-            );
-            // Spread the reconstructed part wholesale (keeping the component's
-            // casing for the name) so new EditedPart fields can't be missed.
-            return g
-              ? { ...blankPart(), ...g, name: c.name }
-              : { ...blankPart(), name: c.name };
-          }
-          // Any non-curated cardio/sport name is a custom activity: load it
-          // committed and typed as stored, whether or not the suggestions
-          // know it yet — so its chips and distance field survive re-edits.
-          const custom = !isCuratedActivity(c.name);
-          return {
-            ...blankPart(),
-            name: c.name,
-            custom,
-            customType: custom ? c.type : null,
-            distance:
-              c.distance_km != null
-                ? String(round(kmTo(c.distance_km, units.distanceUnit), 2))
-                : "",
-            durationMin: c.duration_min != null ? String(c.duration_min) : "",
-          };
-        });
-      } catch {
-        // fall through to legacy handling
-      }
+      // Shared parseComponents (issue #334): a stored components string is always
+      // a valid non-empty array (saveActivity writes NULL for an empty list), so
+      // this loads the structured parts; a malformed blob yields [] here.
+      const grouped = groupEditSets(seed.sets, units.weightUnit);
+      return parseComponents(seed.components).map((c) => {
+        if (c.type === "strength") {
+          const g = grouped.find(
+            (e) => e.name.toLowerCase() === c.name.toLowerCase()
+          );
+          // Spread the reconstructed part wholesale (keeping the component's
+          // casing for the name) so new EditedPart fields can't be missed.
+          return g
+            ? { ...blankPart(), ...g, name: c.name }
+            : { ...blankPart(), name: c.name };
+        }
+        // Any non-curated cardio/sport name is a custom activity: load it
+        // committed and typed as stored, whether or not the suggestions
+        // know it yet — so its chips and distance field survive re-edits.
+        const custom = !isCuratedActivity(c.name);
+        return {
+          ...blankPart(),
+          name: c.name,
+          custom,
+          customType: custom ? c.type : null,
+          distance:
+            c.distance_km != null
+              ? String(round(kmTo(c.distance_km, units.distanceUnit), 2))
+              : "",
+          durationMin: c.duration_min != null ? String(c.duration_min) : "",
+        };
+      });
     }
     if (seed.type === "strength") {
       const g = groupEditSets(seed.sets, units.weightUnit);
