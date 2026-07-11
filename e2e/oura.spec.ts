@@ -21,8 +21,10 @@ test.describe("Oura Ring integration", () => {
     await expect(main.getByTestId("oura-connect")).toBeVisible();
 
     // The setup card explains the personal-access-token flow.
+    // Exact match — the phrase also appears inside the provider blurb, so a
+    // substring match strict-mode-fails on two nodes.
     await expect(
-      main.getByText("create a personal access token")
+      main.getByText("create a personal access token", { exact: true })
     ).toBeVisible();
   });
 
