@@ -218,6 +218,52 @@ describe("pickNextAppointment", () => {
     const chosen = pickNextAppointment([appt(1, null), appt(2, "2026-07-15")]);
     expect(chosen?.key).toBe("appointment:2");
   });
+
+  it("keeps the first item on a same-day tie (feeds ordered by scheduled_at)", () => {
+    const chosen = pickNextAppointment([
+      appt(5, "2026-07-15"),
+      appt(6, "2026-07-15"),
+    ]);
+    expect(chosen?.key).toBe("appointment:5");
+  });
+
+  // Fixture-parity guard for issue #303: the dashboard needs-attention hero and the
+  // household card must select the SAME appointment from the same source. Both derive
+  // from getScheduledAppointments (ordered scheduled_at ASC, id ASC) — the household
+  // maps each row to an UpcomingItem { dueDate }, the dashboard to { appt, dueDate } —
+  // so this pins that pickNextAppointment picks the identical row from either shape.
+  describe("dashboard vs household parity", () => {
+    // Raw scheduled appointments in getScheduledAppointments order, with the
+    // issue's disagreement case (an overdue visit alongside a future one) plus a
+    // same-day pair to exercise the tie-break.
+    const rawScheduled = [
+      { id: 10, scheduled_at: "2026-06-27T09:00:00" }, // overdue, ~2 weeks ago
+      { id: 11, scheduled_at: "2026-07-18T14:30:00" }, // next week
+      { id: 12, scheduled_at: "2026-07-18T08:00:00" }, // same day, earlier slot
+    ];
+
+    // Household surface: appointmentItems maps rows to UpcomingItems keyed by id.
+    const householdItems: UpcomingItem[] = rawScheduled.map((a) => ({
+      key: `appointment:${a.id}`,
+      domain: "appointment",
+      title: `Visit ${a.id}`,
+      href: "/appointments",
+      dueDate: a.scheduled_at.slice(0, 10),
+    }));
+
+    // Dashboard surface: the page wraps each row with its calendar dueDate.
+    const dashboardItems = rawScheduled.map((a) => ({
+      appt: a,
+      dueDate: a.scheduled_at.slice(0, 10),
+    }));
+
+    it("both surfaces pick the same appointment id", () => {
+      const household = pickNextAppointment(householdItems);
+      const dashboard = pickNextAppointment(dashboardItems);
+      expect(household?.key).toBe("appointment:10");
+      expect(dashboard?.appt.id).toBe(10);
+    });
+  });
 });
 
 describe("goalHighlights", () => {

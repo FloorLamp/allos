@@ -32,6 +32,7 @@ import {
   getHealthspanPillars,
 } from "@/lib/queries";
 import { recommendCoaching } from "@/lib/coaching";
+import { pickNextAppointment } from "@/lib/household";
 import { activeByKey, coachingDedupeKey } from "@/lib/findings";
 import { requireSession, getAccessibleProfiles } from "@/lib/auth";
 import { isTrainingRestricted } from "@/lib/age-gate";
@@ -214,18 +215,22 @@ export default async function Dashboard() {
       });
   }
 
-  // next-appointment (medical): the soonest scheduled visit — a future one if any,
-  // else the most-recent still-scheduled (missed) one worth chasing.
+  // next-appointment (medical): the single most attention-worthy scheduled visit,
+  // via the SHARED pickNextAppointment (issue #303 — the dashboard hero and the
+  // household card must answer "the profile's next appointment" identically). Its
+  // policy is overdue-first: a still-scheduled past visit outranks a future one.
   let nextAppt: NextAppointment | null = null;
   let hasScheduledAppt = false;
   if (has("next-appointment")) {
-    const scheduled = getScheduledAppointments(profile.id)
-      .slice()
-      .sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at));
+    // getScheduledAppointments already orders by scheduled_at ASC, id ASC, so the
+    // picker's same-day tie-break lands on the earliest slot — matching the household
+    // card, which feeds the same source ordering.
+    const scheduled = getScheduledAppointments(profile.id).map((a) => ({
+      appt: a,
+      dueDate: a.scheduled_at.slice(0, 10),
+    }));
     hasScheduledAppt = scheduled.length > 0;
-    const soonest =
-      scheduled.find((a) => a.scheduled_at.slice(0, 10) >= on) ??
-      scheduled[scheduled.length - 1];
+    const soonest = pickNextAppointment(scheduled)?.appt;
     if (soonest) {
       const d = soonest.scheduled_at.slice(0, 10);
       const detailParts = [soonest.provider_name, soonest.location].filter(
