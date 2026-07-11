@@ -1,5 +1,11 @@
 import { isRealIsoDate, shiftDateStr, zonedDateParts } from "./date";
 
+// Tone for a single biomarker result flag: out-of-range reads as "bad", a
+// non-optimal read as "warn", everything else neutral. Re-exported from the
+// canonical flag classifier (issue #306) so the timeline shares the one tier
+// decision (its FlagTone is a subset of TimelineEvent["tone"]).
+export { flagTone } from "./reference-range";
+
 export const TIMELINE_CATEGORIES = [
   "activity",
   "body",
@@ -226,16 +232,6 @@ export function isAllTimeRange(range: DateRange): boolean {
 // Pure event-shaping helpers (extracted from lib/timeline.ts so they can be unit
 // tested without a DB). timeline.ts imports these to build TimelineEvents.
 // ---------------------------------------------------------------------------
-
-// Tone for a single biomarker result flag: out-of-range reads as "bad", a
-// non-optimal read as "warn", everything else neutral.
-export function flagTone(
-  flag: string | null | undefined
-): TimelineEvent["tone"] {
-  if (flag === "high" || flag === "low" || flag === "abnormal") return "bad";
-  if (flag?.startsWith("non-optimal")) return "warn";
-  return "default";
-}
 
 // Tone for a grouped panel from its abnormal / non-optimal counts.
 export function countTone(

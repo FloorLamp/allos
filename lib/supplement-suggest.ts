@@ -19,7 +19,7 @@ import {
   TIME_BUCKETS,
   FOOD_TIMINGS,
 } from "./supplement-schedule";
-import { isNonOptimal } from "./reference-range";
+import { isNonOptimal, isOutOfRange } from "./reference-range";
 import { getAiPrefs } from "./settings";
 import { AI_MODEL, aiConfigured, createAiClient } from "./ai-client";
 import { createLogger } from "./log";
@@ -422,11 +422,10 @@ export async function autoSuggestFromBiomarkers(
     )
     .all(profileId, ...recordIds) as MedicalRecord[];
 
-  const isOutOfRange = (r: MedicalRecord) =>
-    r.flag === "low" ||
-    r.flag === "high" ||
-    r.flag === "abnormal" ||
-    isNonOptimal(r.flag);
+  // "Flagged" here means clinically out-of-range OR merely non-optimal — a
+  // relevant reading either way (broader than the shared isOutOfRange predicate).
+  const isFlagged = (r: MedicalRecord) =>
+    isOutOfRange(r.flag) || isNonOptimal(r.flag);
 
   // "New" = this canonical name has only one reading total (this one). Count
   // by the same identity key the biomarkers table groups on, so legacy rows
@@ -435,7 +434,7 @@ export async function autoSuggestFromBiomarkers(
     `SELECT COUNT(*) AS c FROM medical_records WHERE profile_id = ? AND ${biomarkerNameKey()} = ? COLLATE NOCASE`
   );
   const relevant = records.filter((r) => {
-    if (isOutOfRange(r)) return true;
+    if (isFlagged(r)) return true;
     const key = (r.canonical_name ?? "").trim() || r.name;
     const c = (countStmt.get(profileId, key) as { c: number }).c;
     return c <= 1;
