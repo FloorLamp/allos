@@ -13,10 +13,7 @@ import {
   snapCanonicalName,
   distinguishVitaminDIsoform,
 } from "@/lib/canonical-name";
-import {
-  curateBiomarkers,
-  CURATED_LABS,
-} from "@/scripts/gen-canonical-biomarkers";
+import { curateBiomarkers, CURATED_LABS } from "@/lib/curated-biomarkers";
 
 // The committed JSON is the seed for CanonicalBiomarker rows; treat it as such
 // (rows omit fields that are null in the DB, so a structural cast is fine here).
