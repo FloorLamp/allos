@@ -117,8 +117,8 @@ export default async function AppLayout({
                 profileName={session.profile.name}
                 weightUnit={units.weightUnit}
               />
-              <ExtractionToaster />
-              <ImportJobsToaster />
+              <ExtractionToaster profileId={profile.id} />
+              <ImportJobsToaster profileId={profile.id} />
               <VersionWatcher current={version.sha} />
             </ActivityEditorProvider>
           </OfflineQueueProvider>
