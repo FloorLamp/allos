@@ -62,6 +62,7 @@ import { hourInTz, weekdayInTz } from "../lib/date";
 import { createLogger } from "../lib/log";
 import { getConnection } from "../lib/integrations/connections";
 import { runStravaSync } from "../lib/integrations/strava-sync";
+import { runOuraSync } from "../lib/integrations/oura-sync";
 
 const log = createLogger("notify");
 
@@ -183,6 +184,17 @@ async function syncIntegrations(profileId: number) {
     }
   } catch (e) {
     log.error("strava sync failed", {
+      profile: profileId,
+      err: e instanceof Error ? e : String(e),
+    });
+  }
+  try {
+    if (getConnection(profileId, "oura")?.status === "connected") {
+      const r = await runOuraSync(profileId);
+      log.info("oura sync", { profile: profileId, ...(r as object) });
+    }
+  } catch (e) {
+    log.error("oura sync failed", {
       profile: profileId,
       err: e instanceof Error ? e : String(e),
     });

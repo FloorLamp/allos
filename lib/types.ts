@@ -832,13 +832,16 @@ export interface Narrative {
 // Connect via an exporter app), 'oauth' (we connect and pull, e.g. Strava/Garmin),
 // or 'feed' (we EXPOSE data for an external subscriber to pull — the calendar
 // subscribe feed, where a calendar client polls our token-authed .ics URL).
-export type IntegrationKind = "push" | "oauth" | "feed";
+// 'push' = phone exporter POSTs to us (Health Connect); 'oauth' = OAuth pull with a
+// redirect/callback (Strava); 'token' = pull with a pasted personal access token, no
+// OAuth app/redirect/callback (Oura); 'feed' = outbound subscription (calendar).
+export type IntegrationKind = "push" | "oauth" | "token" | "feed";
 
 // 'available' integrations can be configured now; 'planned' render as a preview.
 export type IntegrationStatus = "available" | "planned";
 
 export type IntegrationId =
-  "health-connect" | "strava" | "garmin" | "calendar-feed";
+  "health-connect" | "strava" | "oura" | "garmin" | "calendar-feed";
 
 // A row in the integrations registry — the Integrations page renders from these.
 export interface IntegrationDef {

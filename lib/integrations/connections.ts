@@ -433,3 +433,75 @@ export async function getStravaAccessToken(
   });
   return json.access_token;
 }
+
+// ---- Oura personal access token ----
+
+export const OURA_ID = "oura";
+
+// Oura is a TOKEN-kind integration: the self-hoster mints a personal access token in
+// the Oura developer portal and pastes it here — no OAuth app, redirect, or callback.
+// Everything we persist lives in the connection's `config` JSON: the pasted token,
+// the (optional) whoami identity captured at connect time for display, and the
+// incremental sync cursor (the newest local day we've fully processed).
+export interface OuraConfig {
+  token?: string;
+  // Captured from the personal_info whoami on connect, purely to show the user which
+  // account is linked. Never contains anything we key on.
+  personalInfo?: { id?: string; email?: string } | null;
+  lastDay?: string; // YYYY-MM-DD — newest local day fully synced (the cursor)
+}
+
+export function getOuraConfig(profileId: number): OuraConfig {
+  return readConfig(getConnection(profileId, OURA_ID)) as OuraConfig;
+}
+
+function patchOuraConfig(
+  profileId: number,
+  patch: Partial<OuraConfig>,
+  status?: "connected" | "disconnected"
+) {
+  const next = { ...getOuraConfig(profileId), ...patch };
+  upsertConnection(profileId, OURA_ID, { status, config: next });
+}
+
+export function getOuraToken(profileId: number): string | null {
+  const t = getOuraConfig(profileId).token;
+  return typeof t === "string" && t ? t : null;
+}
+
+export function hasOuraToken(profileId: number): boolean {
+  return !!getOuraToken(profileId);
+}
+
+// Store the pasted token (and the whoami identity), marking the connection connected.
+// A freshly pasted token replaces the whole config — dropping any prior cursor — so a
+// new token backfills from scratch rather than resuming a stale window.
+export function setOuraToken(
+  profileId: number,
+  token: string,
+  personalInfo?: { id?: string; email?: string } | null
+) {
+  upsertConnection(profileId, OURA_ID, {
+    status: "connected",
+    config: { token: token.trim(), personalInfo: personalInfo ?? null },
+  });
+}
+
+export function getOuraCursor(profileId: number): string | null {
+  const d = getOuraConfig(profileId).lastDay;
+  return typeof d === "string" && d ? d : null;
+}
+
+export function setOuraCursor(profileId: number, day: string) {
+  patchOuraConfig(profileId, { lastDay: day });
+}
+
+// Disconnect: clear the token/cursor/identity outright and mark disconnected. Unlike
+// Strava (which keeps the entered client id/secret), the Oura token IS the whole
+// credential, so there's nothing to retain — reconnecting means pasting a fresh token.
+export function disconnectOura(profileId: number) {
+  upsertConnection(profileId, OURA_ID, {
+    status: "disconnected",
+    config: null,
+  });
+}

@@ -296,29 +296,34 @@ export function getLatestSyncEvent(
 export interface ConnectedSource {
   id: string;
   name: string;
-  kind: string; // IntegrationKind: 'push' | 'oauth'
+  kind: string; // IntegrationKind: 'push' | 'oauth' | 'token'
   connected: boolean;
   canSyncNow: boolean;
   latest: IntegrationSyncEvent | null;
   history: IntegrationSyncEvent[];
 }
 
+// Pull-integration ids the app can sync on demand ("Sync now"): Strava (OAuth) and
+// Oura (personal-access-token) both have a REST pull path; Health Connect is
+// push-only, so it shows an explainer instead of the button.
+const SYNC_NOW_PROVIDERS = new Set(["strava", "oura"]);
+
 // The recurring-stream providers for the "Connected sources" section: every
-// AVAILABLE push/oauth integration (Health Connect, Strava — not the outbound
+// AVAILABLE pull/push integration (Health Connect, Strava, Oura — not the outbound
 // calendar feed, not the 'planned' Garmin), each collapsed to its latest sync
 // outcome plus a short expandable history. Profile-scoped via the per-provider
 // reads it composes (getConnection / getLatestSyncEvent / getIntegrationSyncEvents).
 export function getConnectedSources(profileId: number): ConnectedSource[] {
   return INTEGRATIONS.filter(
-    (i) => i.status === "available" && (i.kind === "push" || i.kind === "oauth")
+    (i) =>
+      i.status === "available" &&
+      (i.kind === "push" || i.kind === "oauth" || i.kind === "token")
   ).map((i) => ({
     id: i.id,
     name: i.name,
     kind: i.kind,
     connected: getConnection(profileId, i.id)?.status === "connected",
-    // Only Strava (OAuth pull) has a "Sync now" path today; Health Connect is
-    // push-only, so the row explains the phone exporter drives it.
-    canSyncNow: i.id === "strava",
+    canSyncNow: SYNC_NOW_PROVIDERS.has(i.id),
     latest: getLatestSyncEvent(profileId, i.id),
     history: getIntegrationSyncEvents(profileId, i.id, 10),
   }));

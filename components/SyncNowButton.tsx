@@ -3,22 +3,29 @@
 import { useTransition } from "react";
 import { IconRefresh } from "@tabler/icons-react";
 import { syncStravaNow } from "@/app/(app)/integrations/strava/actions";
+import { syncOuraNow } from "@/app/(app)/integrations/oura/actions";
 import { useToast } from "@/components/Toast";
 
 // Per-provider "Sync now" for the Data → Review "Connected sources" section (issue
-// #208). Pulls the recurring stream on demand (the same idempotent runStravaSync the
-// hourly tick runs) and toasts the outcome; the action revalidates /data so the
-// source card's latest-state line refreshes. Only rendered for a provider with a
-// pull path (Strava today — Health Connect is push-only and shows an explainer
+// #208). Pulls the recurring stream on demand (the same idempotent sync the hourly
+// tick runs) and toasts the outcome; the action revalidates /data so the source
+// card's latest-state line refreshes. Only rendered for a provider with a pull path
+// (Strava and Oura today — Health Connect is push-only and shows an explainer
 // instead), gated on the button's provider id.
 export default function SyncNowButton({ provider }: { provider: string }) {
   const [pending, start] = useTransition();
   const toast = useToast();
 
   function run() {
-    if (provider !== "strava") return;
+    const sync =
+      provider === "strava"
+        ? syncStravaNow
+        : provider === "oura"
+          ? syncOuraNow
+          : null;
+    if (!sync) return;
     start(async () => {
-      const res = await syncStravaNow();
+      const res = await sync();
       toast(res.message, {
         tone: res.status === "error" ? "error" : "success",
       });

@@ -27,7 +27,7 @@
 - **Undo delete** — deleting an activity, body-metrics entry, biomarker record, or supplement/medication offers a one-tap **Undo** toast; the row (and its children) is held for 24 hours and restored intact if you undo, then purged
 - **AI activity log** — every AI call and failure recorded to a file and streamed live in Settings → AI logs
 - **Audit log** — a durable record of who accessed or modified which profile's data (logins in/out, profile switches, medical-file and share-link views, document uploads/deletes, and admin/family changes), reviewable with filters under **Settings → Audit** (admin only); identifiers only, never medical content, retained for a configurable window (default **24 months**, set under **Settings → Server → Audit-log retention**; the hourly notify tick prunes older events)
-- **Data hub** — bring data in (upload documents, paste logs, connect a device or service) under **Data → Import**, then see everything that has ever imported in one place under **Data → Review**, split into two sections that match how you actually read them: **Connected sources** collapses each recurring provider (Health Connect, Strava) to one card showing its latest sync outcome + relative time + the new/changed/unchanged split, with an expandable recent-sync history, a per-provider **Sync now** for Strava (Health Connect is push-only, so its card explains the phone exporter drives it), and an admin **View raw** to inspect the exact provider payload; **Imports** is the chronological one-off feed of uploaded documents + pasted/CSV jobs, each showing what it produced and linking to its detail/verify view, with a **Re-extract all documents** button in its header that previews the AI cost before running (e.g. "9 health records re-imported instantly, no AI · 5 scans/PDFs — 5 AI extractions, 43 of 50 daily remaining"; an all–health-record run has no AI cost and skips the confirm). Spanning both sections at the top: any integration that's **currently failing**, and **possible duplicates** — a Strava run and a manual/Health Connect run on the same day, two same-source imports of one workout (upstream double-feeding, e.g. Strava ingesting the same session from both Garmin and Health Connect), or two body-metric rows that would double-count, detected across sources and resolved by **Merge**, **Keep both**, or **Dismiss** (Merge shows a per-field preview when the two rows disagree on a value), with the decision remembered so a later re-sync won't undo it — all surfaced with a badge on the profile menu. Finally, browse and export everything you've logged under **Data → Manage & Export** — the "Export all my data" download is one portable ZIP (every dataset as JSON + CSV, the clinical passport as a FHIR bundle, and copies of your uploaded files), captured as a consistent point-in-time snapshot; it is a **portability artifact you can read or take elsewhere, not the restore path** — restoring an instance uses the [server backups](#backups) (`npm run restore`), not this ZIP. Integrations available today are **Google Health Connect** and **Strava** (Garmin planned)
+- **Data hub** — bring data in (upload documents, paste logs, connect a device or service) under **Data → Import**, then see everything that has ever imported in one place under **Data → Review**, split into two sections that match how you actually read them: **Connected sources** collapses each recurring provider (Health Connect, Strava, Oura Ring) to one card showing its latest sync outcome + relative time + the new/changed/unchanged split, with an expandable recent-sync history, a per-provider **Sync now** for the pull providers (Strava and Oura; Health Connect is push-only, so its card explains the phone exporter drives it), and an admin **View raw** to inspect the exact provider payload; **Imports** is the chronological one-off feed of uploaded documents + pasted/CSV jobs, each showing what it produced and linking to its detail/verify view, with a **Re-extract all documents** button in its header that previews the AI cost before running (e.g. "9 health records re-imported instantly, no AI · 5 scans/PDFs — 5 AI extractions, 43 of 50 daily remaining"; an all–health-record run has no AI cost and skips the confirm). Spanning both sections at the top: any integration that's **currently failing**, and **possible duplicates** — a Strava run and a manual/Health Connect run on the same day, two same-source imports of one workout (upstream double-feeding, e.g. Strava ingesting the same session from both Garmin and Health Connect), or two body-metric rows that would double-count, detected across sources and resolved by **Merge**, **Keep both**, or **Dismiss** (Merge shows a per-field preview when the two rows disagree on a value), with the decision remembered so a later re-sync won't undo it — all surfaced with a badge on the profile menu. Finally, browse and export everything you've logged under **Data → Manage & Export** — the "Export all my data" download is one portable ZIP (every dataset as JSON + CSV, the clinical passport as a FHIR bundle, and copies of your uploaded files), captured as a consistent point-in-time snapshot; it is a **portability artifact you can read or take elsewhere, not the restore path** — restoring an instance uses the [server backups](#backups) (`npm run restore`), not this ZIP. Integrations available today are **Google Health Connect**, **Strava**, and **Oura Ring** (Garmin planned)
 
 ## Emergency card (offline)
 
@@ -184,7 +184,7 @@ suggestions, insights) and its outcome is also appended to
 them), not just in the console.
 
 For debugging integration syncs, each sync can capture the raw provider payload
-(the Health Connect POST body, the Strava activity JSON) under
+(the Health Connect POST body, the Strava activity JSON, the Oura sleep/workout JSON) under
 `data/integration-payloads/<profileId>/`. These are byte-capped, retained
 newest-N per provider, and gitignored (part of `/data`). They're **admin-only**
 and profile-scoped: expand **View raw** on a sync in **Data → Review** to fetch
@@ -258,8 +258,8 @@ interactions still match by name. Nothing about interaction detection, the
 
 Connect outside services under **Data → Import** so your health data syncs
 automatically. Each provider has its own setup page (linked from the Import tab's
-"Connect a device or service" card). **Google Health Connect** and **Strava** are
-available today; **Garmin** is scaffolded as "coming soon".
+"Connect a device or service" card). **Google Health Connect**, **Strava**, and
+**Oura Ring** are available today; **Garmin** is scaffolded as "coming soon".
 
 ### Google Health Connect
 
@@ -372,6 +372,39 @@ power/cadence.
    **Connect with Strava** and authorize.
 4. Hit **Sync now** to pull recent activities; new ones sync automatically
    afterward. Manually entered rows are never overwritten.
+
+### Oura Ring
+
+Oura's API v2 supports **personal access tokens** — so there's no OAuth app,
+redirect, or callback URL to set up. You paste a token and the app pulls your data
+from Oura's REST API on the hourly tick (and on demand).
+
+1. Sign in to the [Oura developer portal](https://cloud.ouraring.com/personal-access-tokens)
+   and **create a personal access token**.
+2. Go to **Data → Import → Oura Ring** and paste the token, then click **Connect
+   Oura**. The token is validated with an Oura whoami call (`GET
+/v2/usercollection/personal_info`) before it's saved — a bad or expired token is
+   rejected up front.
+3. Sleep, HRV, resting heart rate, and workouts then sync automatically every hour;
+   hit **Sync now** any time. **Disconnect** clears the stored token.
+
+**What gets imported** (mapped from the Oura API v2 responses):
+
+| Oura data                                | Where it lands                                                                                                     |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Sleep (nightly `long_sleep`)             | **Trends → Body** charts: total per night + a deep/REM/light/awake stage breakdown (attributed to the wake-up day) |
+| Nightly HRV (average RMSSD)              | **Trends → Body** (stored per day)                                                                                 |
+| Resting heart rate (lowest during sleep) | **Trends → Body** charts                                                                                           |
+| Workouts                                 | **Training history** (cardio / strength / sport, with distance + calories)                                         |
+
+The sync is **incremental and idempotent**: a per-profile cursor tracks the newest
+synced day, each run re-scans a short trailing window (so a night Oura finalizes a
+day late isn't missed), and every row dedups on its natural key (the sleep bedtime
+window, or `oura:<workout-id>`) so re-fetches never double-count. **Manually entered
+rows are never overwritten**, and a row you've hand-edited is left untouched on the
+next sync. Rate limits (HTTP 429) truncate the run and keep the cursor so the next
+tick resumes. Naps/rest periods and Oura's baseline-relative **temperature deviation**
+are not imported (the latter has no home in the app's absolute-value metric vocab).
 
 ## Deploy with Docker
 
