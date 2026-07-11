@@ -86,7 +86,11 @@ test.describe("Providers registry", () => {
       .getByTestId("provider-merge-select")
       .selectOption(String(duplicate));
     await page.getByTestId("provider-merge-button").click();
-    await page.getByRole("button", { name: "Merge" }).click();
+    // Scope to the confirm dialog — the opener button is also named "Merge".
+    await page
+      .getByLabel(/^Merge into /)
+      .getByRole("button", { name: "Merge" })
+      .click();
 
     // Redirects back to the survivor with a merged marker.
     await expect(page).toHaveURL(
