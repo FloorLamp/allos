@@ -42,9 +42,11 @@ import {
 } from "@/lib/medical-pipeline";
 import type { ReprocessCost } from "@/lib/reprocess-cost";
 
-// Re-export the pipeline result types from the action module so client components
-// keep importing them alongside the actions they annotate.
-export type { ReprocessResult, PreviewReprocessResult };
+// NOTE: no type re-exports from this module. Next 16's "use server" transform
+// registers EVERY export name as a server reference before type erasure, so even
+// an `export type { ... }` here becomes a dangling runtime reference in the
+// production build (ReferenceError: ReprocessResult is not defined). Client
+// components import these result types from @/lib/medical-pipeline directly.
 
 const log = createLogger("medical");
 
