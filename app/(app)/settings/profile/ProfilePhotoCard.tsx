@@ -10,8 +10,12 @@ import { uploadProfilePhoto, removeProfilePhoto } from "../photo-actions";
 // other people's photos from the Family screen instead.
 export default function ProfilePhotoCard({
   profile,
+  // Demo mode (#181): disable the picker for the read-only demo member. The
+  // upload action is already blocked server-side; this is the UX on top of it.
+  disabled = false,
 }: {
   profile: AvatarProfile;
+  disabled?: boolean;
 }) {
   const router = useRouter();
 
@@ -24,6 +28,7 @@ export default function ProfilePhotoCard({
         <Avatar profile={profile} size="md" />
         <PhotoPicker
           hasPhoto={!!profile.photo_path}
+          disabled={disabled}
           onUpload={(file) => {
             const fd = new FormData();
             fd.set("file", file);
@@ -34,8 +39,9 @@ export default function ProfilePhotoCard({
         />
       </div>
       <p className="text-xs text-slate-400 dark:text-slate-500">
-        PNG, JPEG, or WebP, up to 5 MB. Shown as your avatar in the profile
-        switcher.
+        {disabled
+          ? "Photo changes are disabled in demo."
+          : "PNG, JPEG, or WebP, up to 5 MB. Shown as your avatar in the profile switcher."}
       </p>
     </div>
   );

@@ -29,11 +29,22 @@ const PORT = Number(process.env.E2E_PORT ?? 3100);
 const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
 const executablePath = preinstalledChromium();
 
+// A SECOND app instance booted with ALLOS_DEMO_MODE=1 (#181), on its own port +
+// isolated DB, so the demo-mode surfaces (banner, credentials card, disabled
+// upload) can be asserted against a real demo boot WITHOUT running the whole suite
+// in demo mode — the default-instance specs keep their normal, non-demo server.
+const DEMO_PORT = Number(process.env.E2E_DEMO_PORT ?? 3101);
+const DEMO_DB_PATH =
+  process.env.ALLOS_DEMO_DB_PATH ?? "./e2e/.data/e2e-demo.db";
+
 // Local uses `next dev` (compiles on demand — no prior build needed); CI runs an
 // explicit `next build` step first, then `next start` for a production-like run.
 const startCmd = process.env.CI
   ? `next start -p ${PORT}`
   : `next dev -p ${PORT}`;
+const demoStartCmd = process.env.CI
+  ? `next start -p ${DEMO_PORT}`
+  : `next dev -p ${DEMO_PORT}`;
 
 export default defineConfig({
   testDir: "./e2e",
@@ -54,26 +65,55 @@ export default defineConfig({
     {
       name: "chromium",
       dependencies: ["setup"],
-      testIgnore: /auth\.setup\.ts/,
+      // Exclude the demo spec (it targets the separate demo server/baseURL below).
+      testIgnore: [/auth\.setup\.ts/, /demo\.spec\.ts/],
       use: {
         browserName: "chromium",
         viewport: { width: 1280, height: 900 },
         storageState: "e2e/.auth/state.json",
       },
     },
+    // Demo-mode specs run against the demo webServer (ALLOS_DEMO_MODE=1) on its own
+    // baseURL, unauthenticated (they drive the demo login flow themselves).
+    {
+      name: "demo",
+      testMatch: /demo\.spec\.ts/,
+      use: {
+        browserName: "chromium",
+        viewport: { width: 1280, height: 900 },
+        baseURL: `http://localhost:${DEMO_PORT}`,
+      },
+    },
   ],
   // Reset + seed the isolated DB, then boot the app against it. seed.ts imports
   // lib/db, which bootstraps the admin login from ADMIN_USERNAME/ADMIN_PASSWORD.
-  webServer: {
-    command: `rm -f "${DB_PATH}" "${DB_PATH}-shm" "${DB_PATH}-wal" && tsx scripts/seed.ts && tsx e2e/seed-events.ts && ${startCmd}`,
-    url: `http://localhost:${PORT}/login`,
-    reuseExistingServer: !process.env.CI,
-    timeout: 240_000,
-    env: {
-      ALLOS_DB_PATH: DB_PATH,
-      ADMIN_USERNAME: "admin",
-      ADMIN_PASSWORD: "e2e-admin-pass",
-      NODE_ENV: process.env.CI ? "production" : "development",
+  webServer: [
+    {
+      command: `rm -f "${DB_PATH}" "${DB_PATH}-shm" "${DB_PATH}-wal" && tsx scripts/seed.ts && tsx e2e/seed-events.ts && ${startCmd}`,
+      url: `http://localhost:${PORT}/login`,
+      reuseExistingServer: !process.env.CI,
+      timeout: 240_000,
+      env: {
+        ALLOS_DB_PATH: DB_PATH,
+        ADMIN_USERNAME: "admin",
+        ADMIN_PASSWORD: "e2e-admin-pass",
+        NODE_ENV: process.env.CI ? "production" : "development",
+      },
     },
-  },
+    // Demo instance (#181): same seed + image, booted with ALLOS_DEMO_MODE=1 so the
+    // seed also creates the read-only demo login. Isolated DB + port.
+    {
+      command: `rm -f "${DEMO_DB_PATH}" "${DEMO_DB_PATH}-shm" "${DEMO_DB_PATH}-wal" && tsx scripts/seed.ts && ${demoStartCmd}`,
+      url: `http://localhost:${DEMO_PORT}/login`,
+      reuseExistingServer: !process.env.CI,
+      timeout: 240_000,
+      env: {
+        ALLOS_DB_PATH: DEMO_DB_PATH,
+        ALLOS_DEMO_MODE: "1",
+        ADMIN_USERNAME: "admin",
+        ADMIN_PASSWORD: "e2e-admin-pass",
+        NODE_ENV: process.env.CI ? "production" : "development",
+      },
+    },
+  ],
 });

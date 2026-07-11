@@ -8,6 +8,8 @@ import { shiftDateStr } from "../lib/date";
 import { reconcileFlags } from "../lib/queries";
 import { providerDedupKey } from "../lib/providers";
 import { orderIntakePair } from "../lib/intake-pairs";
+import { hashPasswordSync } from "../lib/password";
+import { isDemoMode, DEMO_USERNAME, DEMO_PASSWORD } from "../lib/demo";
 import {
   diffSituations,
   serializeSituationEvents,
@@ -1600,6 +1602,41 @@ for (let i = 1; i <= 30; i++) {
     ? `${wakeDay}T08:${String(wakeMin).padStart(2, "0")}:00Z`
     : `${wakeDay}T07:${String(Math.max(0, jitter + 30)).padStart(2, "0")}:00Z`;
   insSleep.run(SEED_PROFILE_ID, wakeDay, start, end, 480);
+}
+
+// ── Demo mode (#181): a public read-only demo login ──────────────────────────
+// When ALLOS_DEMO_MODE is set, create the "demo" MEMBER login with VIEW-ONLY
+// grants (login_profiles.access = 'read', the #33 machinery) to every seeded
+// profile. No new permission model — demo mode is presentation plus a
+// belt-and-braces write block; #33's read-only grant is the enforcement. Public
+// credentials by design; idempotent (skips if the login already exists).
+if (isDemoMode()) {
+  const existingDemo = db
+    .prepare("SELECT id FROM logins WHERE username = ? COLLATE NOCASE")
+    .get(DEMO_USERNAME) as { id: number } | undefined;
+  if (existingDemo) {
+    console.log(
+      `Demo mode: "${DEMO_USERNAME}" login already exists — skipping.`
+    );
+  } else {
+    const demoLoginId = Number(
+      db
+        .prepare(
+          "INSERT INTO logins (username, password_hash, role) VALUES (?, ?, 'member')"
+        )
+        .run(DEMO_USERNAME, hashPasswordSync(DEMO_PASSWORD)).lastInsertRowid
+    );
+    const grant = db.prepare(
+      "INSERT OR IGNORE INTO login_profiles (login_id, profile_id, access) VALUES (?, ?, 'read')"
+    );
+    const allProfiles = db.prepare("SELECT id FROM profiles").all() as {
+      id: number;
+    }[];
+    for (const p of allProfiles) grant.run(demoLoginId, p.id);
+    console.log(
+      `Demo mode: created read-only member login "${DEMO_USERNAME}" (password "${DEMO_PASSWORD}") with view-only grants to ${allProfiles.length} profile(s).`
+    );
+  }
 }
 
 console.log("✅ Seeded sample health data.");

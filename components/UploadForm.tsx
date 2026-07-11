@@ -22,7 +22,7 @@ import SubmitButton from "@/components/SubmitButton";
 // returns we (a) clear the file input so re-selecting the SAME file re-fires the
 // change event, and (b) toast a confirmation pointing at the Review tab, where
 // the unified import feed tracks extraction through to completion.
-export default function UploadForm() {
+export default function UploadForm({ demo = false }: { demo?: boolean }) {
   const [hasFile, setHasFile] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const toast = useToast();
@@ -59,12 +59,21 @@ export default function UploadForm() {
         data-testid="medical-upload-input"
         accept=".pdf,.xlsx,.csv,image/*,.zip,.xdm,.xml,.smart-health-card,application/zip,text/xml,application/xml,application/json,.json"
         required
+        disabled={demo}
         onChange={(e) => setHasFile(!!e.target.files?.length)}
-        className="block w-full cursor-pointer rounded-xl border-2 border-dashed border-black/10 bg-slate-50 p-8 text-sm text-slate-500 transition hover:border-brand-400 hover:bg-brand-50 file:mr-4 file:cursor-pointer file:rounded-md file:border-0 file:bg-brand-600 file:px-4 file:py-2 file:font-medium file:text-white hover:file:bg-brand-700 dark:border-white/10 dark:bg-ink-900 dark:text-slate-400 dark:hover:bg-brand-950"
+        className="block w-full cursor-pointer rounded-xl border-2 border-dashed border-black/10 bg-slate-50 p-8 text-sm text-slate-500 transition hover:border-brand-400 hover:bg-brand-50 file:mr-4 file:cursor-pointer file:rounded-md file:border-0 file:bg-brand-600 file:px-4 file:py-2 file:font-medium file:text-white hover:file:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-black/10 disabled:hover:bg-slate-50 dark:border-white/10 dark:bg-ink-900 dark:text-slate-400 dark:hover:bg-brand-950"
       />
+      {demo && (
+        <p
+          data-testid="upload-disabled-hint"
+          className="text-sm text-amber-700 dark:text-amber-400"
+        >
+          File upload is disabled in demo — this is a read-only demo instance.
+        </p>
+      )}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <SubmitButton
-          disabled={!hasFile}
+          disabled={demo || !hasFile}
           pendingLabel="Uploading…"
           data-testid="medical-upload-submit"
           className="btn disabled:cursor-not-allowed disabled:opacity-50"

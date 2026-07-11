@@ -6,6 +6,7 @@ import { db } from "./db";
 import { recordAudit } from "./audit";
 import { AUDIT_ACTIONS } from "./audit-actions";
 import { SESSION_COOKIE, SESSION_COOKIE_SECURE } from "./session-cookie";
+import { isDemoMode, isDemoRestricted } from "./demo";
 
 // Re-exported so existing importers (the login action, etc.) keep resolving the
 // cookie name from lib/auth. The single source of truth is lib/session-cookie.ts,
@@ -283,6 +284,11 @@ export async function requireAdmin(): Promise<CurrentSession> {
 // action forgets to call this.
 export async function requireWriteAccess(): Promise<CurrentSession> {
   const session = await requireSession();
+  // Demo mode (#181): belt-and-braces. In a public demo every non-admin write is
+  // refused HERE regardless of the grant, so a misconfigured 'write' grant can't
+  // let a demo visitor mutate the synthetic data. Admins stay fully functional to
+  // maintain the instance. This is independent of the #33 access check below.
+  if (isDemoRestricted(isDemoMode(), session.login.role)) redirect("/");
   if (session.access !== "write") redirect("/");
   return session;
 }
@@ -302,6 +308,10 @@ export async function requireProfileWriteAccess(
 ): Promise<CurrentSession> {
   const session = await requireSession();
   const { login } = session;
+  // Demo mode (#181): the same belt-and-braces block as requireWriteAccess — a
+  // demo member may not mutate ANY profile (active or cross-profile), even with a
+  // misconfigured grant. Admins pass.
+  if (isDemoRestricted(isDemoMode(), login.role)) redirect("/");
   const reachable = accessibleProfiles(login.id, login.role).some(
     (p) => p.id === profileId
   );

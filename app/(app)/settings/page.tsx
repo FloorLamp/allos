@@ -1,5 +1,6 @@
 import { getUnitPrefs } from "@/lib/settings";
 import { requireSession, listLoginSessions } from "@/lib/auth";
+import { isDemoMode, isDemoRestricted } from "@/lib/demo";
 import { getLoginTotpState, countUnusedRecoveryCodes } from "@/lib/two-factor";
 import { isTrainingRestricted } from "@/lib/age-gate";
 import { PageHeader } from "@/components/ui";
@@ -16,6 +17,9 @@ export const dynamic = "force-dynamic";
 export default async function SettingsPage() {
   const { login, profile } = await requireSession();
   const isAdmin = login.role === "admin";
+  // In a public demo the read-only demo member can't change its (public,
+  // nightly-reset) password — hide the form entirely (#181). Admins keep it.
+  const demoRestricted = isDemoRestricted(isDemoMode(), login.role);
   const prefs = getUnitPrefs(login.id);
   const hideEquipment = isTrainingRestricted(profile.id);
   const sessions = await listLoginSessions(login.id);
@@ -33,7 +37,7 @@ export default async function SettingsPage() {
       <SettingsTabs isAdmin={isAdmin} hideEquipment={hideEquipment} />
       <UnitPrefsForm prefs={prefs} />
       <PushNotificationSettings />
-      <ChangePasswordSettings username={login.username} />
+      {!demoRestricted && <ChangePasswordSettings username={login.username} />}
       <TwoFactorSettings
         enabled={twofaEnabled}
         recoveryRemaining={recoveryRemaining}

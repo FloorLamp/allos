@@ -19,6 +19,7 @@
     "phi-scan": "tsx scripts/phi-scan.ts",
     "schema:dump": "tsx scripts/schema-dump.ts",
     "seed": "tsx scripts/seed.ts",
+    "demo-reset": "tsx scripts/demo-reset.ts",
     "notify": "tsx scripts/notify.ts",
     "backup": "tsx scripts/backup.ts",
     "restore": "tsx scripts/restore.ts",

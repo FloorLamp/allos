@@ -2,7 +2,9 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { ToastProvider } from "@/components/Toast";
 import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
+import DemoBanner from "@/components/DemoBanner";
 import { getAppVersion } from "@/lib/version";
+import { isDemoMode } from "@/lib/demo";
 
 export const metadata: Metadata = {
   title: "Allos",
@@ -69,6 +71,7 @@ export default function RootLayout({
       </head>
       <body>
         <ServiceWorkerRegister version={sha ?? "dev"} />
+        {isDemoMode() && <DemoBanner />}
         <ToastProvider>{children}</ToastProvider>
       </body>
     </html>
