@@ -5,6 +5,7 @@ import Anthropic, {
 } from "@anthropic-ai/sdk";
 import ExcelJS from "exceljs";
 import type { MedicalCategory, MedicalFlag, Sex } from "./types";
+import { MEDICAL_CATEGORIES, MEDICAL_FLAGS } from "./medical-categories";
 import { AI_MODEL, aiConfigured, createAiClient } from "./ai-client";
 import { createLogger } from "./log";
 import { recordAiEvent, capDetail, LOG_PROMPTS } from "./ai-log";
@@ -51,18 +52,13 @@ const MODEL = AI_MODEL;
 // so allow plenty of room. Override with HEALTH_AI_MAX_TOKENS if needed.
 const MAX_TOKENS = Number(process.env.HEALTH_AI_MAX_TOKENS) || 16000;
 
-const CATEGORIES: MedicalCategory[] = [
-  "vitals",
-  "lab",
-  "genomics",
-  "biomarker",
-  "scan",
-  "prescription",
-];
-// The AI emits only clinical flags from the lab's reference range. "non-optimal"
-// is NOT here on purpose: it's a DERIVED flag we reconcile from the canonical
-// optimal band, so the model can't set it (which would contradict that band).
-const FLAGS: MedicalFlag[] = ["normal", "high", "low", "abnormal"];
+// The category whitelist and the clinical-flag whitelist come from the single
+// shared source (lib/medical-categories.ts) so this extractor and the medical
+// write action can't drift. MEDICAL_FLAGS deliberately excludes the DERIVED
+// "non-optimal*" flags: those are reconciled in code from the canonical optimal
+// band, so the model must never set one (it would contradict that band).
+const CATEGORIES = MEDICAL_CATEGORIES;
+const FLAGS = MEDICAL_FLAGS;
 
 export interface ExtractedResult {
   category: MedicalCategory;
