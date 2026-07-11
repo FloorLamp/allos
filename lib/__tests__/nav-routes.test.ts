@@ -95,7 +95,9 @@ function navHrefs(): string[] {
 // → /biomarkers/view).
 const DUE_SIGNAL_SOURCES = [
   ["lib", "attention.ts"],
-  ["lib", "queries", "upcoming.ts"],
+  // The Upcoming item builders (their href literals) live in the generators
+  // submodule since the #316 barrel split of lib/queries/upcoming.ts.
+  ["lib", "queries", "upcoming", "generators.ts"],
   ["lib", "preventive-upcoming.ts"],
   ["lib", "care-plan-upcoming.ts"],
 ].map((parts) => path.join(REPO, ...parts));
