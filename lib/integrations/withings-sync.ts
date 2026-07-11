@@ -238,6 +238,9 @@ export async function runWithingsSync(
     }
     if (mapped.bodyMetric) bodyMetrics.push(mapped.bodyMetric);
     vitals.push(...mapped.vitals);
+    // Body-composition point samples (lean/muscle/bone mass, body water) ride the
+    // same metric_samples upsert as sleep below (issue #419).
+    samples.push(...mapped.samples);
   }
 
   // ---- sleep summaries (trailing ymd window) ----

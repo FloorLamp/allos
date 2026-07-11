@@ -76,6 +76,12 @@ export const METRIC_BOUNDS: Record<string, MetricBound> = {
 
   // ---- metric_samples: body composition (point) ----
   lean_mass_kg: { min: 1, max: 300 },
+  // Skeletal muscle mass is a subset of lean mass; the heaviest humans carry well
+  // under 100 kg of it, so 1–300 mirrors lean_mass_kg's generous envelope.
+  muscle_mass_kg: { min: 1, max: 300 },
+  // Total body water (Withings type 77), kg — roughly 50–65 % of body weight, so it
+  // tracks the weight envelope; 0.2–650 rejects only the physically impossible.
+  body_water_kg: { min: 0.2, max: 650 },
   // Adult skeletal mass ≈2–4 kg; 0.05–20 clears infants through the heaviest adult.
   bone_mass_kg: { min: 0.05, max: 20 },
   // BMR ≈1200–2000 kcal/day typically; 200–20 000 rejects only nonsense.
