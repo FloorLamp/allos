@@ -33,6 +33,28 @@ describe("biomarkerFlagDismissalKey", () => {
   });
 });
 
+describe("biomarker key prefixes stay in lock-step with the orphan sweep offsets", () => {
+  // cleanupOrphanBiomarkerDismissals (lib/queries/upcoming.ts) compares
+  // `substr(signal_key, 11)` against the record names for the retest keys and
+  // `substr(signal_key, 16)` for the flag keys — where 11 = len('biomarker:') + 1
+  // and 16 = len('biomarker-flag:') + 1. If either prefix is ever renamed without
+  // updating those SQL offsets, the sweep would slice the name mid-string and
+  // stop matching (silently keeping every orphan). Lock the prefix lengths here so
+  // that coupling can't drift unnoticed.
+  it("retest prefix is 'biomarker:' (len 10 → substr offset 11)", () => {
+    const key = biomarkerDismissalKey("Glucose");
+    expect(key.indexOf(":")).toBe(9); // 0-based colon → prefix length 10
+    expect("biomarker:".length + 1).toBe(11);
+    expect(key.slice(10)).toBe("glucose"); // substr(_, 11) in SQLite (1-based)
+  });
+
+  it("flag prefix is 'biomarker-flag:' (len 15 → substr offset 16)", () => {
+    const key = biomarkerFlagDismissalKey("Glucose");
+    expect("biomarker-flag:".length + 1).toBe(16);
+    expect(key.slice(15)).toBe("glucose"); // substr(_, 16) in SQLite (1-based)
+  });
+});
+
 describe("immunizationDismissalKey", () => {
   it("prefixes the raw catalog code", () => {
     expect(immunizationDismissalKey("mmr")).toBe("immunization:mmr");

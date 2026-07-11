@@ -32,7 +32,7 @@ import {
   getCanonicalVocabulary,
   getMedicalDocument,
   getReprocessSnapshot,
-  cleanupOrphanBiomarkerDismissals,
+  cleanupOrphanBiomarkerKeyedState,
   migrateRenamedBiomarker,
 } from "@/lib/queries";
 import { resolveProviderIdByName } from "@/lib/providers-db";
@@ -248,8 +248,7 @@ export async function updateRecord(formData: FormData) {
   // name change so a plain value/date edit stays a no-op.
   if (oldCanonical && oldCanonical.toLowerCase() !== canonical.toLowerCase()) {
     migrateRenamedBiomarker(profile.id, oldCanonical, canonical);
-    cleanupOrphanStars(profile.id);
-    cleanupOrphanBiomarkerDismissals(profile.id);
+    cleanupOrphanBiomarkerKeyedState(profile.id);
   }
   revalidateMedical();
 }
@@ -264,14 +263,13 @@ export async function deleteRecord(
   // so the record can be restored from the toast.
   const undoId = captureDelete("biomarker-record", profile.id, id);
   // Deleting the last reading for a starred biomarker would leave the star
-  // pointing at nothing (an empty pinned tile) — drop any now-orphaned stars.
-  // NOTE (consciously scoped out of undo): a star orphan-cleaned here is NOT
-  // re-created on Undo — the reading returns but the pinned-tile star stays gone.
-  cleanupOrphanStars(profile.id);
-  // Same shape for the retest dismissal: deleting the last reading of a biomarker
-  // clears its `biomarker:<name>` snooze so re-adding that marker later re-nudges
-  // instead of being silenced by the stale, name-keyed row (issue #203).
-  cleanupOrphanBiomarkerDismissals(profile.id);
+  // pointing at nothing (an empty pinned tile), and its `biomarker:<name>` retest
+  // snooze pointing at a gone reading — sweep BOTH name-keyed side-stores so
+  // re-adding that marker later re-nudges/re-pins instead of being silenced by a
+  // stale row (issues #203/#327).
+  // NOTE (consciously scoped out of undo): a star/dismissal orphan-cleaned here is
+  // NOT re-created on Undo — the reading returns but the pinned-tile star stays gone.
+  cleanupOrphanBiomarkerKeyedState(profile.id);
   revalidateMedical();
   return { undoId };
 }
@@ -935,18 +933,6 @@ async function reprocessOne(
   }
 }
 
-// Re-extraction may change canonical names — drop any now-orphaned stars.
-function cleanupOrphanStars(profileId: number) {
-  db.prepare(
-    `DELETE FROM starred_biomarkers
-     WHERE profile_id = ?
-       AND canonical_name NOT IN (
-         SELECT canonical_name FROM medical_records
-          WHERE profile_id = ? AND canonical_name IS NOT NULL
-       )`
-  ).run(profileId, profileId);
-}
-
 function revalidateAfterReprocess() {
   revalidatePath("/data");
   revalidatePath("/import/[id]", "page");
@@ -1014,7 +1000,7 @@ export async function reprocessAllDocuments(): Promise<ReprocessResult> {
     else failed++;
   }
 
-  cleanupOrphanStars(profile.id);
+  cleanupOrphanBiomarkerKeyedState(profile.id);
   revalidateAfterReprocess();
 
   const parts = [`Reprocessed ${done} document${done === 1 ? "" : "s"}`];
@@ -1046,7 +1032,7 @@ export async function reprocessDocument(formData: FormData) {
   // Small files run inline; large ones defer so the action returns immediately.
   if (detectHealthRecord(prep.buffer)) {
     runHealthImport(profile.id, id, prep.buffer, () => {
-      cleanupOrphanStars(profile.id);
+      cleanupOrphanBiomarkerKeyedState(profile.id);
       revalidateAfterReprocess();
     });
     return;
@@ -1083,7 +1069,7 @@ export async function reprocessDocument(formData: FormData) {
     )
   )
     .then(() => {
-      cleanupOrphanStars(profile.id);
+      cleanupOrphanBiomarkerKeyedState(profile.id);
       revalidateAfterReprocess();
     })
     .catch((err) => {
@@ -1305,16 +1291,11 @@ export async function reassignDocument(
       "UPDATE medical_documents SET profile_id = ? WHERE id = ? AND profile_id = ?"
     ).run(dest, id, src);
     moveImportedDocumentRows(src, dest, id);
-    // A star on the source profile may now point at a biomarker with no remaining
-    // records there — drop any orphaned ones (mirrors deleteMedicalDocument).
-    db.prepare(
-      `DELETE FROM starred_biomarkers
-        WHERE profile_id = ?
-          AND canonical_name NOT IN (
-            SELECT canonical_name FROM medical_records
-             WHERE profile_id = ? AND canonical_name IS NOT NULL
-          )`
-    ).run(src, src);
+    // A star OR a retest/flag dismissal on the SOURCE profile may now point at a
+    // biomarker with no remaining records there — sweep both name-keyed side-stores
+    // (#327). Only the source can orphan: the destination only GAINS records here,
+    // so no dest pin/snooze can lose its backing. (mirrors deleteMedicalDocument.)
+    cleanupOrphanBiomarkerKeyedState(src);
   });
   move();
 
@@ -1422,16 +1403,10 @@ export async function deleteMedicalDocument(formData: FormData) {
     db.prepare(
       "DELETE FROM medical_documents WHERE id = ? AND profile_id = ?"
     ).run(id, profile.id);
-    // Drop stars whose biomarker no longer has any remaining records, so the
-    // pinned card stays clean.
-    db.prepare(
-      `DELETE FROM starred_biomarkers
-       WHERE profile_id = ?
-         AND canonical_name NOT IN (
-           SELECT canonical_name FROM medical_records
-            WHERE profile_id = ? AND canonical_name IS NOT NULL
-         )`
-    ).run(profile.id, profile.id);
+    // Drop stars AND retest/flag dismissals whose biomarker no longer has any
+    // remaining records, so a later document reintroducing that name re-pins/
+    // re-nudges instead of inheriting the stale, name-keyed side-state (#327).
+    cleanupOrphanBiomarkerKeyedState(profile.id);
   });
   removeAll();
 

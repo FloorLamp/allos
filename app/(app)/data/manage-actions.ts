@@ -8,10 +8,7 @@ import {
   DELETE_POLICY,
   type DatasetDeletePolicy,
 } from "@/lib/export";
-import {
-  cleanupOrphanStars,
-  cleanupOrphanBiomarkerDismissals,
-} from "@/lib/queries";
+import { cleanupOrphanBiomarkerKeyedState } from "@/lib/queries";
 import { undoKindForDataset } from "@/lib/dataset-undo";
 import { captureDelete } from "@/lib/undo-delete-db";
 
@@ -37,11 +34,11 @@ function afterDelete(
   profileId: number
 ) {
   if (policy.cleanupStars) {
-    cleanupOrphanStars(profileId);
     // The same subject-delete that can orphan a star can orphan a biomarker
-    // retest dismissal — sweep both so a bulk delete of every reading doesn't
-    // leave a name-keyed snooze to silence a later re-add (issue #203).
-    cleanupOrphanBiomarkerDismissals(profileId);
+    // retest/flag dismissal — sweep both name-keyed side-stores so a bulk delete of
+    // every reading doesn't leave a stale pin/snooze to silence a later re-add
+    // (issues #203/#327).
+    cleanupOrphanBiomarkerKeyedState(profileId);
   }
   // Always refresh the Data page (the management table lives there).
   revalidatePath("/data");
