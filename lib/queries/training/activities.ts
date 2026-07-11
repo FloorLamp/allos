@@ -10,7 +10,8 @@ import { decayedWeight } from "../../decay";
 import { LIFT_OPTIONS, baseLiftName } from "../../lifts";
 import { rankByFrequency } from "../../rank-by-frequency";
 import { currentStreak } from "../../streak";
-import type { Activity, BodyMetric, ExerciseSet } from "../../types";
+import type { Activity, ExerciseSet } from "../../types";
+import { getLatestBodyMetricDated } from "../metrics";
 import {
   cache,
   effortNameCounts,
@@ -270,8 +271,10 @@ export function getDashboardStats(profileId: number) {
       .prepare("SELECT COUNT(*) c FROM activities WHERE profile_id = ?")
       .get(profileId) as { c: number }
   ).c;
-  // Inclusive 7-day window (today + the prior 6 days), matching the journal week
-  // summary. -7 would span 8 days.
+  // Hard rolling 7-day window (today + the prior 6 days) behind the "Activities
+  // (7d)" tile. This is intentionally NOT the journal week summary, which is now
+  // week_mode-aware (lib/week-window.ts, #223) — the tile's label says "7d", so
+  // keep the fixed window and don't "align" the two.
   const last7 = (
     db
       .prepare(
@@ -279,14 +282,12 @@ export function getDashboardStats(profileId: number) {
       )
       .get(profileId, shiftDateStr(today(profileId), -6)) as { c: number }
   ).c;
-  // Latest row that actually carries a weight (weightless HR/body-fat rows are
-  // skipped). Tie-break same-date rows by id so the newest wins (matches
-  // getLatestBodyMetric).
-  const latestWeight = db
-    .prepare(
-      "SELECT * FROM body_metrics WHERE profile_id = ? AND weight_kg IS NOT NULL ORDER BY date DESC, id DESC LIMIT 1"
-    )
-    .get(profileId) as BodyMetric | undefined;
+  // Current weight routed through the canonical reconciled reader so it honors the
+  // profile's primary-source priority (#14) — the same value the passport, goals,
+  // and strength bodyweight calcs show. A raw newest-row query here silently
+  // disagreed with every other "current weight" surface (#302); one question, one
+  // computation.
+  const latestWeight = getLatestBodyMetricDated(profileId, "weight");
   const activeGoals = (
     db
       .prepare(
