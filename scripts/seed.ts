@@ -814,6 +814,20 @@ med.run(
 );
 med.run(daysAgo(30), "lab", "Measles IgG", "Immune", null, null, null);
 
+// A synthetic allergen-specific IgE result (RAST class 3) — surfaces as a "Birch"
+// sensitization in the allergies view AND anchors the #153 cross-reactivity note
+// (birch pollen → apple / cherry / hazelnut, oral allergy syndrome). Obviously
+// fake reference data, no PHI.
+med.run(
+  daysAgo(20),
+  "lab",
+  "Birch IgE",
+  "Class 3",
+  "kU/L",
+  "Class 0",
+  "Pollen sensitization; oral allergy syndrome pattern"
+);
+
 // Supplements — scheduling context, priority, brand/product, stacks, food
 // timing, split dosing, a situational example, and an interaction pair so every
 // feature is demoable.

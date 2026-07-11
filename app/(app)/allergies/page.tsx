@@ -1,6 +1,10 @@
 import Link from "next/link";
 import { requireSession } from "@/lib/auth";
-import { getAllergies, getAllergiesView } from "@/lib/queries";
+import {
+  getAllergies,
+  getAllergiesView,
+  getCrossReactivityNotes,
+} from "@/lib/queries";
 import { PageHeader } from "@/components/ui";
 import AllergyForm from "./AllergyForm";
 import AllergyList from "./AllergyList";
@@ -15,6 +19,7 @@ export default async function AllergiesPage() {
   const { profile } = await requireSession();
   const view = getAllergiesView(profile.id);
   const stored = getAllergies(profile.id);
+  const crossReactivity = getCrossReactivityNotes(profile.id);
 
   return (
     <div>
@@ -77,6 +82,38 @@ export default async function AllergiesPage() {
               </ul>
             )}
           </div>
+
+          {crossReactivity.length > 0 && (
+            <div className="card" data-testid="cross-reactivity">
+              <h2 className="mb-1 font-semibold text-slate-800 dark:text-slate-100">
+                Cross-reactivity
+              </h2>
+              <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
+                Allergens on record that are commonly associated with reactions
+                to related substances. Informational reference only — a
+                documented cross-reactivity does not mean you will react.
+              </p>
+              <ul className="space-y-3">
+                {crossReactivity.map((c) => (
+                  <li key={c.familyId} data-testid="cross-reactivity-item">
+                    <div className="text-sm text-slate-800 dark:text-slate-100">
+                      <span className="font-medium">
+                        {c.triggers.join(", ")}
+                      </span>{" "}
+                      commonly cross-reacts with{" "}
+                      <span className="text-slate-600 dark:text-slate-300">
+                        {c.related.join(", ")}
+                      </span>
+                      .
+                    </div>
+                    <div className="text-xs text-slate-400 dark:text-slate-500">
+                      {c.label} · {c.citation}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           <div>
             <h2 className="mb-2 font-semibold text-slate-800 dark:text-slate-100">
