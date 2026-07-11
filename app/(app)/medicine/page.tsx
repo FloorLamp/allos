@@ -60,6 +60,7 @@ import {
 import { separatePairWarnings } from "@/lib/intake-pairs";
 import SupplementForm from "./SupplementForm";
 import SuggestionsForm from "./SuggestionsForm";
+import AdherenceFindings from "./AdherenceFindings";
 import { addSupplement, toggleSituation, acceptSuggestion } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -355,6 +356,11 @@ export default async function SupplementsPage() {
           ))}
         </div>
       )}
+
+      {/* Adherence-pattern observations (issue #45, domain 3) */}
+      <div className="mb-4">
+        <AdherenceFindings />
+      </div>
 
       {supplements.length === 0 ? (
         <EmptyState message="Nothing here yet. Add a supplement or medication below." />

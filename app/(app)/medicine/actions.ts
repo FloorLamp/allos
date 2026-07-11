@@ -54,6 +54,8 @@ import type {
 } from "@/lib/types";
 import { strOrNull } from "@/lib/parse";
 import { isRealIsoDate } from "@/lib/date";
+import { dismissFinding } from "@/lib/queries";
+import { ADHERENCE_PREFIX } from "@/lib/adherence-patterns";
 
 // Supplement-level fields (timing/amount/food live on doses).
 function fields(formData: FormData) {
@@ -841,4 +843,18 @@ export async function lookupRxcui(
 export async function lookupRxcuiIngredients(rxcui: string): Promise<string[]> {
   await requireWriteAccess();
   return lookupRxNormIngredients(rxcui);
+}
+
+// Dismiss an adherence-pattern observation (issue #45, domain 3): a weekday-specific
+// or weekend miss cluster for a scheduled dose. Hides it through the shared
+// findings-bus suppression store, keyed by its `adherence:<kind>:<doseId>…`
+// dedupeKey. Guarded to the adherence namespace (like dismissTrainingObservation)
+// so this action can only ever silence an adherence-pattern key; profile-scoped via
+// dismissFinding.
+export async function dismissAdherencePattern(formData: FormData) {
+  const { profile } = await requireWriteAccess();
+  const dedupeKey = String(formData.get("dedupe_key") ?? "").trim();
+  if (!dedupeKey.startsWith(ADHERENCE_PREFIX)) return;
+  dismissFinding(profile.id, dedupeKey);
+  revalidatePath("/medicine");
 }

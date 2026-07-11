@@ -1,6 +1,6 @@
 // Server-side assembly for the deterministic rule domains added in issue #45
-// (domains 4–6): training balance/plateau, body-metric data hygiene, and goal
-// pacing. Mirrors lib/trajectory-series.ts — each builder reads through already
+// (domains 4–6: training balance/plateau, body-metric data hygiene, goal pacing;
+// domain 3: adherence pattern detection). Mirrors lib/trajectory-series.ts — each builder reads through already
 // PROFILE-SCOPED queries + per-profile/-login settings, runs the pure detection
 // (lib/training-observations, lib/weight-anomaly, lib/goal-pacing), and maps the
 // results into the shared Finding envelope (lib/findings) so the page surfaces filter
@@ -18,8 +18,13 @@ import {
   getExerciseE1rmSeries,
   getWeights,
   getGoals,
+  getSupplements,
+  getSupplementDoses,
+  getSupplementLogsInRange,
+  getActivityDates,
 } from "./queries";
-import { shiftDateStr } from "./date";
+import { getActiveSituations } from "./settings";
+import { shiftDateStr, lastNDates } from "./date";
 import { fmtWeight, round } from "./units";
 import { formatLongDate } from "./format-date";
 import { describeEta } from "./trend-projection";
@@ -43,6 +48,14 @@ import {
   goalPaceSignalKey,
   weightLossRateSignalKey,
 } from "./goal-pacing";
+import {
+  detectAdherencePatterns,
+  ADHERENCE_PATTERN_DAYS,
+  type AdherencePattern,
+  type DoseAdherenceInput,
+} from "./adherence-patterns";
+import { doseStrip, indexTakenByDose } from "./supplement-adherence";
+import { isDueOn, timeBucket } from "./supplement-schedule";
 
 // ---- Domain 4: training balance + plateau (Training → Overview) -----------
 
@@ -222,4 +235,71 @@ export function buildGoalPacingFindings(
   }
 
   return findings;
+}
+
+// ---- Domain 3: adherence pattern detection (Supplements & Meds) ------------
+
+// An adherence-pattern observation → the shared Finding envelope. Calm/observational
+// ("info" tone, like a stale-exercise FYI), deep-linking to the medicine page where
+// the dose can be re-timed.
+function adherencePatternToFinding(p: AdherencePattern): Finding {
+  return {
+    domain: `adherence-${p.kind}`,
+    dedupeKey: p.key,
+    title: p.title,
+    detail: p.detail,
+    tone: "info",
+    actionHref: "/medicine",
+    actionLabel: "View schedule",
+  };
+}
+
+// Every adherence-pattern finding for a profile: scheduled doses whose misses
+// cluster on a specific weekday ("most Fridays") or on weekends, each suggesting a
+// concrete schedule edit. Reuses the same doseStrip / isDueOn machinery the medicine
+// page's adherence strip is built from (one question, one computation) over a longer
+// ADHERENCE_PATTERN_DAYS window, so a pattern and the strip it summarizes can't
+// disagree. PRN/paused items and retired doses are excluded (they're never
+// scheduled-due). Not suppression-filtered — the caller applies the shared
+// findings-bus filter. No owned SQL is added here (it reads through profile-scoped
+// queries), so the profile-scoping guard is unaffected.
+export function buildAdherencePatternFindings(
+  profileId: number,
+  today: string
+): Finding[] {
+  const supplements = getSupplements(profileId);
+  const suppById = new Map(supplements.map((s) => [s.id, s]));
+  const doses = getSupplementDoses(profileId);
+  const takenByDose = indexTakenByDose(
+    getSupplementLogsInRange(profileId, ADHERENCE_PATTERN_DAYS)
+  );
+  const dates = lastNDates(today, ADHERENCE_PATTERN_DAYS);
+  const workoutDays = new Set(getActivityDates(profileId));
+  const activeSituations = new Set(getActiveSituations(profileId));
+
+  const inputs: DoseAdherenceInput[] = [];
+  for (const d of doses) {
+    const supp = suppById.get(d.item_id);
+    // Only active, scheduled (non-PRN) items produce due days to miss.
+    if (!supp || !supp.active || supp.as_needed) continue;
+    const status = takenByDose.get(d.id);
+    const strip = doseStrip(
+      dates,
+      (date) =>
+        isDueOn(supp, {
+          isWorkoutDay: workoutDays.has(date),
+          activeSituations,
+        }),
+      status?.taken ?? new Set(),
+      status?.skipped ?? new Set()
+    );
+    inputs.push({
+      doseId: d.id,
+      supplementName: supp.name,
+      bucket: timeBucket(d.time_of_day),
+      strip,
+    });
+  }
+
+  return detectAdherencePatterns(inputs).map(adherencePatternToFinding);
 }
