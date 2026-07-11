@@ -10,8 +10,11 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { captureDelete } from "@/lib/undo-delete-db";
 import { isRealIsoDate } from "@/lib/date";
-import type { MedicalCategory } from "@/lib/types";
-import { MEDICAL_CATEGORIES, MEDICAL_FLAGS } from "@/lib/medical-categories";
+import {
+  MEDICAL_CATEGORIES,
+  BIOMARKER_CATEGORIES,
+  MEDICAL_FLAGS,
+} from "@/lib/medical-categories";
 import {
   reconcileFlags,
   cleanupOrphanBiomarkerKeyedState,
@@ -44,7 +47,19 @@ function sanitizeCanonical(raw: string | null | undefined): string | null {
 export async function addRecord(formData: FormData) {
   const { profile } = await requireWriteAccess();
   const date = String(formData.get("date") ?? "").trim();
-  const category = String(formData.get("category")) as MedicalCategory;
+  // Validate the category server-side, exactly as updateRecord does — an absent
+  // field (String(null) === "null") or a crafted/stale POST would otherwise flow
+  // straight into the CHECK (category IN (...)) and 500 (#385, the #323 class:
+  // a state writable in TS but forbidden by the CHECK). The add form only offers
+  // BIOMARKER_CATEGORIES (no 'prescription' — meds live on the document view /
+  // Supplements & Meds), so enforce that same set here and fall back to 'lab',
+  // closing the client-only prescription gate the page's option list can't.
+  const categoryRaw = String(formData.get("category") ?? "");
+  const category = (BIOMARKER_CATEGORIES as readonly string[]).includes(
+    categoryRaw
+  )
+    ? categoryRaw
+    : "lab";
   const name = String(formData.get("name") ?? "").trim();
   // Reject a non-ISO / impossible date so it can't land in a YYYY-MM-DD column.
   if (!isRealIsoDate(date) || !name) return;

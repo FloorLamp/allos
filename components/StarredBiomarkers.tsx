@@ -46,7 +46,7 @@ export default async function StarredBiomarkers({
     null;
 
   return (
-    <div className="card mb-6">
+    <div className="card mb-6" data-testid="starred-biomarkers">
       <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
         ★ {title}{" "}
         <span className="font-normal text-slate-400 dark:text-slate-500">
@@ -70,9 +70,12 @@ export default async function StarredBiomarkers({
             reproductiveStatus
           );
           const meta = RANGE_BADGE_META[badge];
+          // Judge staleness on the latest RECORD's category (not the canonical
+          // entry's), matching the detail page and table — so a genomics result
+          // fires the never-stale rule here too (#381).
           const stale = isBiomarkerStale(
             b.latest_date,
-            b.canonical?.category,
+            b.latest_category,
             today(profile.id)
           );
           const ageDays = b.latest_date

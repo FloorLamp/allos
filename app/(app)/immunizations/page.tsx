@@ -315,7 +315,7 @@ export default async function ImmunizationsPage(props: {
                   >
                     <div className="min-w-0">
                       <Link
-                        href="/biomarkers/view"
+                        href={`/biomarkers/view?name=${encodeURIComponent(t.marker)}`}
                         className="truncate text-sm font-medium text-slate-800 hover:underline dark:text-slate-100"
                       >
                         {t.marker}

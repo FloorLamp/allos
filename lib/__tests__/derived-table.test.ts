@@ -84,6 +84,26 @@ describe("filterDerivedForTable", () => {
     expect(out.map((r) => r.name)).toEqual(["eGFR"]);
   });
 
+  it("free-text q matches the CANONICAL name (the row heading), not just the raw name (#383)", () => {
+    const canonicalRows = [
+      rec({
+        id: -3,
+        name: "CHOLESTEROL, TOTAL",
+        canonical_name: "Total Cholesterol",
+        derived: true,
+      }),
+    ];
+    // Searching by the visible heading finds the row even though the raw lab
+    // string differs.
+    expect(
+      filterDerivedForTable(canonicalRows, { q: "total cholesterol" })
+    ).toHaveLength(1);
+    // The lab's original raw string still matches.
+    expect(
+      filterDerivedForTable(canonicalRows, { q: "cholesterol, total" })
+    ).toHaveLength(1);
+  });
+
   it("respects excludeCategories", () => {
     expect(
       filterDerivedForTable(rows, { excludeCategories: ["lab"] })

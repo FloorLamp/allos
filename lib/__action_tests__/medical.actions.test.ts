@@ -75,6 +75,49 @@ describe("addRecord", () => {
     await addRecord(fd({ date: "2026-01-15", category: "lab", name: "  " }));
     expect(recordRows(profile.id)).toHaveLength(0);
   });
+
+  it("validates the category server-side instead of 500-ing on the CHECK (#385)", async () => {
+    const { profile } = seedActor();
+    // A crafted/stale category the CHECK forbids would otherwise raise a
+    // SqliteError; the action now falls back to 'lab' (as updateRecord does),
+    // writing a valid row rather than throwing.
+    await addRecord(
+      fd({
+        date: "2026-01-15",
+        category: "bogus",
+        name: "Glucose",
+        value: "90",
+      })
+    );
+    const rows = recordRows(profile.id);
+    expect(rows).toHaveLength(1);
+    expect(
+      db
+        .prepare("SELECT category FROM medical_records WHERE id = ?")
+        .get(rows[0].id)
+    ).toEqual({ category: "lab" });
+  });
+
+  it("does not let 'prescription' be created from the Biomarkers add path (#385)", async () => {
+    const { profile } = seedActor();
+    // The add form only offers BIOMARKER_CATEGORIES (no 'prescription'); a crafted
+    // POST is coerced to 'lab' so meds can't sneak into the biomarkers browser.
+    await addRecord(
+      fd({
+        date: "2026-01-15",
+        category: "prescription",
+        name: "Atorvastatin",
+        value: "10mg",
+      })
+    );
+    const rows = recordRows(profile.id);
+    expect(rows).toHaveLength(1);
+    expect(
+      db
+        .prepare("SELECT category FROM medical_records WHERE id = ?")
+        .get(rows[0].id)
+    ).toEqual({ category: "lab" });
+  });
 });
 
 describe("updateRecord", () => {

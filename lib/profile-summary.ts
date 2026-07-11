@@ -179,6 +179,13 @@ export interface ProfileSummaryInput {
   // Latest 'ABO Blood Group' and 'Rh Type' record VALUES (strings as stored).
   aboValue: string | null;
   rhValue: string | null;
+  // The manually-entered blood type (profile setting), when set. It WINS over the
+  // lab-derived value — the same precedence the Emergency Card uses — so the
+  // passport and the break-glass card can never disagree on blood type (#385). A
+  // person who typed their own type asserts it deliberately; without this the
+  // passport could only read ABO/Rh labs and showed "Unknown" while the card
+  // showed the typed value.
+  manualBloodType: string | null;
   heightCm: number | null;
   weightKg: number | null;
   bodyFatPct: number | null;
@@ -331,7 +338,11 @@ export function buildProfileSummary(
       name: input.name,
       age: input.age,
       sex: input.sex,
-      bloodType: resolveBloodType(input.aboValue, input.rhValue),
+      // Manual blood type wins over the lab-derived one (same precedence as the
+      // Emergency Card), so both surfaces agree (#385).
+      bloodType:
+        (input.manualBloodType?.trim() || null) ??
+        resolveBloodType(input.aboValue, input.rhValue),
       hasBirthdate: input.hasBirthdate,
       birthdate: input.birthdate,
     },

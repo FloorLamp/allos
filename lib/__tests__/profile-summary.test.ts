@@ -165,6 +165,7 @@ describe("buildProfileSummary", () => {
     birthdate: "1986-01-15",
     aboValue: "O",
     rhValue: "Positive",
+    manualBloodType: null,
     heightCm: 165,
     weightKg: 60,
     bodyFatPct: 24,
@@ -259,6 +260,26 @@ describe("buildProfileSummary", () => {
     expect(s.identity.hasBirthdate).toBe(false);
     expect(s.identity.bloodType).toBeNull();
     expect(s.body.bmi).toBeNull();
+  });
+
+  it("shows the manual blood type when no ABO/Rh lab exists (#385 — matches the Emergency Card)", () => {
+    const s = buildProfileSummary({
+      ...base,
+      aboValue: null,
+      rhValue: null,
+      manualBloodType: "O+",
+    });
+    expect(s.identity.bloodType).toBe("O+");
+  });
+
+  it("the manual blood type WINS over a lab-derived one (#385)", () => {
+    const s = buildProfileSummary({
+      ...base,
+      aboValue: "A",
+      rhValue: "Negative",
+      manualBloodType: "AB+",
+    });
+    expect(s.identity.bloodType).toBe("AB+");
   });
 });
 

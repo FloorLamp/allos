@@ -1015,3 +1015,65 @@ for (const [name, timeOfDay, amount] of [
 console.log(
   `e2e: seeded morning + bedtime due doses on profile ${PROFILE_ID} for the dose-order spec (#297)`
 );
+
+// ---- Medical/passport UI-audit fixtures (#381, #383, #384) ----
+// All idempotent (delete-then-insert on unique e2e identifiers) and fully
+// synthetic. Layered on profile 1 for the medical-smalls specs.
+
+// #381 — a STARRED genomics biomarker whose only reading is ~2 years old. The
+// canonical name has no canonical_biomarkers row, so before the fix the pinned
+// tile judged staleness on the (null) canonical category and mislabelled a
+// genotype "stale"; after the fix it judges on the RECORD's 'genomics' category
+// (never stale). The starred-biomarker-stale spec asserts the tile shows no
+// "stale" note.
+const APOE_MARKER = "E2E APOE Genotype";
+db.prepare(
+  `DELETE FROM medical_records WHERE profile_id = ? AND canonical_name = ?`
+).run(PROFILE_ID, APOE_MARKER);
+db.prepare(
+  `INSERT INTO medical_records
+     (profile_id, date, category, name, value, canonical_name, source)
+   VALUES (?, '2023-05-01', 'genomics', ?, 'e3/e4', ?, 'manual')`
+).run(PROFILE_ID, APOE_MARKER, APOE_MARKER);
+db.prepare(
+  `DELETE FROM starred_biomarkers WHERE profile_id = ? AND canonical_name = ?`
+).run(PROFILE_ID, APOE_MARKER);
+db.prepare(
+  `INSERT INTO starred_biomarkers (profile_id, canonical_name) VALUES (?, ?)`
+).run(PROFILE_ID, APOE_MARKER);
+
+// #383 — a lab whose raw name ("...CHOLESTEROL, TOTAL") differs from its
+// displayed canonical heading ("...Total Cholesterol"), so the biomarker search
+// must match the canonical name a user actually sees.
+const CHOL_RAW = "E2E CHOLESTEROL, TOTAL";
+const CHOL_CANONICAL = "E2E Total Cholesterol";
+db.prepare(
+  `DELETE FROM medical_records WHERE profile_id = ? AND canonical_name = ?`
+).run(PROFILE_ID, CHOL_CANONICAL);
+db.prepare(
+  `INSERT INTO medical_records
+     (profile_id, date, category, name, value, value_num, unit, canonical_name, source)
+   VALUES (?, '2026-06-20', 'lab', ?, '185', 185, 'mg/dL', ?, 'manual')`
+).run(PROFILE_ID, CHOL_RAW, CHOL_CANONICAL);
+
+// #384 — two overlapping documents' twin of the same allergy (a unique synthetic
+// substance so the assertion is deterministic): one manual, one imported from the
+// e2e browser document. The "Recorded allergies" manager must collapse them to a
+// single row, like its clinical-list siblings.
+const RAGWEED = "E2E Ragweed";
+db.prepare(`DELETE FROM allergies WHERE profile_id = ? AND substance = ?`).run(
+  PROFILE_ID,
+  RAGWEED
+);
+db.prepare(
+  `INSERT INTO allergies (profile_id, substance, reaction, status, document_id)
+   VALUES (?, ?, 'Sneezing', 'active', NULL)`
+).run(PROFILE_ID, RAGWEED);
+db.prepare(
+  `INSERT INTO allergies (profile_id, substance, reaction, status, document_id)
+   VALUES (?, ?, 'Sneezing', 'active', ?)`
+).run(PROFILE_ID, RAGWEED, BROWSER_DOC_ID);
+
+console.log(
+  `e2e: seeded medical-smalls fixtures on profile ${PROFILE_ID} (#381 starred genomics, #383 canonical search, #384 allergy twins)`
+);

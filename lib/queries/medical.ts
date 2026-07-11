@@ -212,9 +212,15 @@ const getMedicalRecordsCached = cache(function getMedicalRecordsCached(
     where.push(rangeClause);
   }
   if (filters.q) {
-    where.push("(name LIKE ? ESCAPE '\\' OR panel LIKE ? ESCAPE '\\')");
+    // Match the CANONICAL name too (the row heading the table renders), not just
+    // the raw lab string and panel — so a record shown as "Total Cholesterol"
+    // (imported as "CHOLESTEROL, TOTAL") is findable by its own visible heading
+    // (#383). Raw name still matches so the lab's original string works.
+    where.push(
+      "(name LIKE ? ESCAPE '\\' OR canonical_name LIKE ? ESCAPE '\\' OR panel LIKE ? ESCAPE '\\')"
+    );
     const like = likeContains(filters.q);
-    args.push(like, like);
+    args.push(like, like, like);
   }
   if (filters.current) {
     // Keep only rows with no later reading in the same biomarker group — i.e.
@@ -538,6 +544,12 @@ export interface StarredBiomarker {
   latest_unit: string | null;
   latest_flag: MedicalFlag | null;
   latest_date: string | null;
+  // The latest reading's own record category (e.g. 'genomics') — carried so the
+  // tile judges staleness on the RECORD's category, exactly like the detail page
+  // (latest.category) and the table (r.category). The canonical entry's category
+  // is null for AI-registered rows and never 'genomics', so it could never fire
+  // the never-stale genomics rule from the tile (#381).
+  latest_category: string | null;
   // Reference entry (ranges/direction) joined in so the chip needs no extra query.
   canonical: CanonicalBiomarker | null;
 }
@@ -554,8 +566,16 @@ export function getStarredBiomarkers(profileId: number): StarredBiomarker[] {
   ).map((r) => r.canonical_name);
   if (stars.length === 0) return [];
 
+  // The latest reading, chosen over the DE-DUPED id set so it agrees with the
+  // detail page / table (which read via getBiomarkerSeries / getMedicalRecords):
+  // when a manual reading and its imported twin share content-identity, dedup's
+  // representative rule (prefer the manual, unflagged row) wins here too, so the
+  // tile's flag chip matches the representative the other surfaces show (#381).
+  // Binds profile_id (for DEDUP_IDS_CTE), then profile_id + canonical name.
   const latestStmt = db.prepare(
-    `SELECT * FROM medical_records WHERE profile_id = ? AND canonical_name = ? COLLATE NOCASE
+    `WITH ${DEDUP_IDS_CTE}
+     SELECT * FROM medical_records
+     WHERE profile_id = ? AND canonical_name = ? COLLATE NOCASE AND ${IN_DEDUPED}
      ORDER BY date DESC, id DESC LIMIT 1`
   );
 
@@ -571,7 +591,8 @@ export function getStarredBiomarkers(profileId: number): StarredBiomarker[] {
   const cbByName = new Map(cbRows.map((c) => [c.name.toLowerCase(), c]));
 
   return stars.map((name) => {
-    const latest = latestStmt.get(profileId, name) as MedicalRecord | undefined;
+    const latest = latestStmt.get(profileId, profileId, name) as
+      MedicalRecord | undefined;
     const cb = cbByName.get(name.toLowerCase()) ?? null;
     return {
       canonical_name: name,
@@ -580,6 +601,7 @@ export function getStarredBiomarkers(profileId: number): StarredBiomarker[] {
       latest_unit: latest?.unit ?? null,
       latest_flag: latest?.flag ?? null,
       latest_date: latest?.date ?? null,
+      latest_category: latest?.category ?? null,
       canonical: cb,
     };
   });
