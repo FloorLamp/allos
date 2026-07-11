@@ -5,6 +5,7 @@ import { IconFlame } from "@tabler/icons-react";
 import type { Supplement, SupplementDose, SupplementPair } from "@/lib/types";
 import type { InteractionItem } from "@/lib/drug-interactions";
 import { CONDITION_LABELS, FOOD_TIMING_HINTS } from "@/lib/supplement-schedule";
+import { medicationMetaLine } from "@/lib/medication-history";
 import {
   adherenceSummary,
   type AdherenceDot,
@@ -105,17 +106,7 @@ export default function EditableSupplementRow({
   // Medication identity: the stricter affordances (Rx/PRN/escalate
   // badges above, prescriber/pharmacy/Rx line below).
   const isMed = s.kind === "medication";
-  const medMeta = isMed
-    ? [
-        s.prescriber && `Dr. ${s.prescriber.replace(/^dr\.?\s*/i, "")}`,
-        s.pharmacy,
-        s.rx_number && `Rx ${s.rx_number.replace(/^rx\s*/i, "")}`,
-        // The linked provider from the shared registry.
-        s.provider_name,
-      ]
-        .filter(Boolean)
-        .join(" · ")
-    : "";
+  const medMeta = isMed ? medicationMetaLine(s) : "";
 
   return (
     <div

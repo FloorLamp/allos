@@ -2,16 +2,12 @@ import Link from "next/link";
 import WidgetHeader from "@/components/dashboard/WidgetHeader";
 import { flagLabel, flagTone } from "@/lib/reference-range";
 import type { MedicalFlag } from "@/lib/types";
+import type { RecentLabRow } from "@/lib/recent-labs";
 
-// One latest lab/biomarker reading, flattened for display by the page.
-export interface RecentLabRow {
-  name: string;
-  value: string | null;
-  unit: string | null;
-  flag: MedicalFlag | null;
-  date: string;
-  href: string;
-}
+// One latest lab/biomarker reading, flattened for display by the page. The shape
+// and its selection policy live in lib/recent-labs (issue #313); re-exported here
+// so existing import sites (the dashboard page) stay unchanged.
+export type { RecentLabRow };
 
 const BADGE_BAD =
   "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300";

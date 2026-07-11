@@ -3,6 +3,13 @@
 // supplement's recent adherence as a streak + percentage instead of a per-day
 // dot strip.
 
+import type { Supplement } from "./types";
+import { isDueOn } from "./supplement-schedule";
+
+// How many days the per-supplement adherence strip spans (the medicine page and
+// any windowed-history consumer share the window length).
+export const STRIP_DAYS = 14;
+
 // "skipped" (issue #232) is a DELIBERATE decision, distinct from "missed" (a
 // lapse): it is excluded from the adherence denominator and, like "na", is
 // transparent to the streak — it neither counts as follow-through nor breaks it.
@@ -97,6 +104,42 @@ export function doseStrip(
           ? "skipped"
           : "missed",
   }));
+}
+
+// Per-supplement windowed adherence strip (issue #313, extracted from the medicine
+// page). Over `dates` (oldest-first), aggregate a supplement's doses into one state
+// per day: "na" on days it isn't due (its condition + that date's workout context),
+// else `aggregateDoseDay` over how many of its doses were taken vs deliberately
+// skipped on that date. The per-day workout context comes from `workoutDays` (a set
+// of the dates that had activity) so a workout/rest-day supplement's due-ness varies
+// across the window. `takenByDose` is the per-dose taken/skipped index from
+// `indexTakenByDose`. `lib/household.supplementAdherenceToday` is the today-only
+// sibling; this is the windowed version a weekly recap or history surface wants.
+export function supplementAdherenceStrip(
+  supp: Supplement,
+  doseIds: number[],
+  dates: string[],
+  workoutDays: ReadonlySet<string>,
+  activeSituations: Set<string>,
+  takenByDose: Map<number, DoseDateStatus>
+): AdherenceDot[] {
+  const total = doseIds.length;
+  return dates.map((date) => {
+    const applicable = isDueOn(supp, {
+      isWorkoutDay: workoutDays.has(date),
+      activeSituations,
+    });
+    if (!applicable) return { date, state: "na" };
+    const takenN = doseIds.reduce(
+      (n, id) => n + (takenByDose.get(id)?.taken.has(date) ? 1 : 0),
+      0
+    );
+    const skippedN = doseIds.reduce(
+      (n, id) => n + (takenByDose.get(id)?.skipped.has(date) ? 1 : 0),
+      0
+    );
+    return { date, state: aggregateDoseDay(total, takenN, skippedN) };
+  });
 }
 
 export function adherenceSummary(strip: AdherenceDot[]): AdherenceSummary {

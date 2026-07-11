@@ -51,6 +51,7 @@ import { currentStreak, flexibleStreak } from "@/lib/streak";
 import { selectLowSupplyItems } from "@/lib/refill";
 import { bandForItem, upcomingDueText } from "@/lib/upcoming";
 import { carePlanUpcomingItems } from "@/lib/care-plan-upcoming";
+import { recentLabHighlights } from "@/lib/recent-labs";
 import { getWeeklyRecap } from "@/lib/notifications/weekly-recap-data";
 import { resolveWidgetList } from "@/lib/dashboard-widgets";
 import { PageHeader } from "@/components/ui";
@@ -90,10 +91,6 @@ import HealthspanPillarsWidget from "@/components/dashboard/HealthspanPillarsWid
 import { saveDashboardLayout } from "./actions";
 
 export const dynamic = "force-dynamic";
-
-// Lab-ish medical categories the Recent labs widget surfaces (parity with the
-// Upcoming retest signal): actual labs/biomarkers, not vitals/scans/prescriptions.
-const LAB_CATEGORIES = new Set(["lab", "biomarker"]);
 
 export default async function Dashboard() {
   const { login, profile } = await requireSession();
@@ -186,31 +183,13 @@ export default async function Dashboard() {
     : [];
 
   // recent-labs (medical): the current reading per lab/biomarker marker, flagged
-  // markers surfaced first so an out-of-range result is the headline.
+  // markers surfaced first so an out-of-range result is the headline. Selection
+  // policy is the shared recentLabHighlights (issue #313).
   let labRows: RecentLabRow[] = [];
   if (has("recent-labs")) {
-    labRows = getMedicalRecords(profile.id, { current: true })
-      .filter((r) => LAB_CATEGORIES.has(r.category))
-      .slice()
-      .sort((a, b) => {
-        const af = a.flag && a.flag !== "normal" ? 0 : 1;
-        const bf = b.flag && b.flag !== "normal" ? 0 : 1;
-        return af - bf || b.date.localeCompare(a.date);
-      })
-      .slice(0, 6)
-      .map((r) => {
-        const name = r.canonical_name?.trim() || r.name;
-        return {
-          name,
-          value: r.value,
-          unit: r.unit,
-          flag: r.flag,
-          date: r.date,
-          href: r.canonical_name?.trim()
-            ? `/biomarkers/view?name=${encodeURIComponent(name)}`
-            : "/biomarkers",
-        };
-      });
+    labRows = recentLabHighlights(
+      getMedicalRecords(profile.id, { current: true })
+    );
   }
 
   // next-appointment (medical): the single most attention-worthy scheduled visit,
