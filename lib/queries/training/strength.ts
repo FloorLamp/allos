@@ -322,6 +322,93 @@ export function getExerciseComparison(
   });
 }
 
+// Set counts per exercise since `since` (YYYY-MM-DD, inclusive), for the training-
+// balance observation (issue #45, domain 4): the push/pull volume split over a
+// trailing window. One exercise_sets row = one set (a per-side set counts once). The
+// pure lib/training-observations maps each exercise → movement pattern and sums.
+// Profile-scoped via the activities JOIN.
+export function getExerciseSetCountsSince(
+  profileId: number,
+  since: string
+): { exercise: string; sets: number }[] {
+  return db
+    .prepare(
+      `SELECT s.exercise AS exercise, COUNT(*) AS sets
+         FROM exercise_sets s JOIN activities a ON a.id = s.activity_id
+        WHERE a.profile_id = ? AND a.date >= ?
+        GROUP BY s.exercise`
+    )
+    .all(profileId, since) as { exercise: string; sets: number }[];
+}
+
+// Per-exercise dated estimated-1RM series (best e1RM per session date, ascending),
+// for plateau detection (issue #45, domain 4). Mirrors getStrengthByExercise's
+// per-set e1RM math (Epley, with bodyweight folded into the load for catalog
+// bodyweight lifts) but keyed by session DATE so the pure lib/training-observations
+// can fit a robust slope over the recent window. Sessions whose best e1RM is 0
+// (bodyweight lifts with no known bodyweight) are omitted — a flat-zero series is not
+// a plateau. Profile-scoped via the activities JOIN.
+export function getExerciseE1rmSeries(
+  profileId: number
+): { exercise: string; points: { date: string; value: number }[] }[] {
+  const rows = db
+    .prepare(
+      `SELECT s.exercise, a.date,
+              s.weight_kg, s.reps, s.weight_kg_right, s.reps_right
+         FROM exercise_sets s JOIN activities a ON a.id = s.activity_id
+        WHERE a.profile_id = ? AND (s.reps IS NOT NULL OR s.reps_right IS NOT NULL)
+        ORDER BY a.date ASC`
+    )
+    .all(profileId) as {
+    exercise: string;
+    date: string;
+    weight_kg: number | null;
+    reps: number | null;
+    weight_kg_right: number | null;
+    reps_right: number | null;
+  }[];
+
+  const weights = loadWeightsAsc(profileId);
+  // exercise (lower) -> { display name, date -> best e1rm }
+  const acc = new Map<
+    string,
+    { exercise: string; addBodyweight: boolean; byDate: Map<string, number> }
+  >();
+  for (const r of rows) {
+    const key = r.exercise.trim().toLowerCase();
+    let e = acc.get(key);
+    if (!e) {
+      e = {
+        exercise: r.exercise,
+        addBodyweight: isBodyweight(r.exercise),
+        byDate: new Map(),
+      };
+      acc.set(key, e);
+    }
+    const base = e.addBodyweight ? (bodyweightAsOf(weights, r.date) ?? 0) : 0;
+    const sides: number[] = [];
+    if (r.reps != null)
+      sides.push(estimate1RM(base + (r.weight_kg ?? 0), r.reps));
+    if (r.reps_right != null)
+      sides.push(estimate1RM(base + (r.weight_kg_right ?? 0), r.reps_right));
+    for (const e1rm of sides) {
+      const prev = e.byDate.get(r.date) ?? 0;
+      if (e1rm > prev) e.byDate.set(r.date, e1rm);
+    }
+  }
+
+  const out: { exercise: string; points: { date: string; value: number }[] }[] =
+    [];
+  for (const e of acc.values()) {
+    const points = [...e.byDate.entries()]
+      .filter(([, v]) => v > 0)
+      .map(([date, value]) => ({ date, value }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+    if (points.length > 0) out.push({ exercise: e.exercise, points });
+  }
+  return out;
+}
+
 export function getVolumeByDate(profileId: number) {
   return db
     .prepare(

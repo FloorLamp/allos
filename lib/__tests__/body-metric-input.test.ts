@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { validateBodyMetricInput } from "@/lib/body-metric-input";
+import {
+  validateBodyMetricInput,
+  MAX_PLAUSIBLE_WEIGHT,
+} from "@/lib/body-metric-input";
 
 describe("validateBodyMetricInput", () => {
   const ok = { weight: "80", bodyFatPct: null, restingHr: null };
@@ -53,6 +56,24 @@ describe("validateBodyMetricInput", () => {
     expect(validateBodyMetricInput({ ...ok, restingHr: "-5" })).toMatch(/hr/i);
     expect(validateBodyMetricInput({ ...ok, restingHr: "500" })).toMatch(/hr/i);
     expect(validateBodyMetricInput({ ...ok, restingHr: "60" })).toBeNull();
+  });
+
+  it("rejects an impossibly high weight (entry error) but accepts a real one", () => {
+    // Impossible in either unit (heaviest human ever ~635 kg / ~1400 lb).
+    expect(
+      validateBodyMetricInput({
+        ...ok,
+        weight: String(MAX_PLAUSIBLE_WEIGHT + 1),
+      })
+    ).toMatch(/too high/i);
+    expect(validateBodyMetricInput({ ...ok, weight: "8000" })).toMatch(
+      /too high/i
+    );
+    // A real weigh-in — heavy but plausible — passes.
+    expect(
+      validateBodyMetricInput({ ...ok, weight: String(MAX_PLAUSIBLE_WEIGHT) })
+    ).toBeNull();
+    expect(validateBodyMetricInput({ ...ok, weight: "300" })).toBeNull();
   });
 
   it("reports the weight error first when multiple fields are invalid", () => {
