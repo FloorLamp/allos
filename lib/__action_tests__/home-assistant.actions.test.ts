@@ -73,6 +73,18 @@ describe("saveHomeAssistantPrefs", () => {
     expect(getProfileHomeAssistant(profile.id).enabled).toBe(false);
   });
 
+  it("rejects non-Home Assistant webhook targets when enabling", async () => {
+    const login = createLogin();
+    const profile = createProfile("ssrf-url", login.id);
+    actAs(login, profile);
+
+    const res = await saveHomeAssistantPrefs(
+      fd({ ha_enabled: "1", ha_webhook_url: "http://127.0.0.1:8080/admin" })
+    );
+    expect(res.ok).toBe(false);
+    expect(getProfileHomeAssistant(profile.id).enabled).toBe(false);
+  });
+
   it("refuses a read-only member (requireWriteAccess gate)", async () => {
     const login = createLogin({ role: "member" });
     const profile = createProfile("readonly", login.id);
