@@ -13,6 +13,11 @@ import {
   SEVERITY_LABEL,
   type InteractionItem,
 } from "@/lib/drug-interactions";
+import {
+  matchFoodInteractions,
+  foodGuidanceLine,
+  foodGuidanceDetail,
+} from "@/lib/food-drug-interactions";
 import { SUPPLEMENT_CATALOG } from "@/lib/supplement-catalog";
 import { SUPPLEMENT_BRANDS } from "@/lib/supplement-brands";
 import {
@@ -136,6 +141,14 @@ export default function SupplementForm({
     const others = stackItems.filter((x) => x.id !== s?.id);
     return interactionsForCandidate({ name, rxcui }, others);
   }, [name, rxcui, stackItems, s?.id]);
+
+  // Food–drug guidance for the item being entered/edited (issue #154) — needs no
+  // second item, just this one's name + confirmed RxCUI. Same pure matcher the
+  // /medicine row line and the dose-reminder copy format over.
+  const candidateFoodInteractions = useMemo(() => {
+    if (!name.trim()) return [];
+    return matchFoodInteractions({ name, rxcui });
+  }, [name, rxcui]);
 
   const [condition, setCondition] = useState(s?.condition ?? "daily");
   const [brand, setBrand] = useState(s?.brand ?? "");
@@ -379,6 +392,34 @@ export default function SupplementForm({
                 Informational only — discuss with your prescriber or pharmacist.
                 You can still save this item.
               </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {candidateFoodInteractions.length > 0 && (
+        <div
+          data-testid="food-notice"
+          className="sm:col-span-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200"
+        >
+          <div className="flex items-start gap-1.5">
+            <IconAlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <div className="space-y-1">
+              <p className="font-semibold">Food guidance for this item</p>
+              {candidateFoodInteractions.map((hit) => (
+                <div
+                  key={hit.key}
+                  className="text-amber-700 dark:text-amber-300"
+                >
+                  <p>
+                    <span className="font-medium">{hit.food}:</span>{" "}
+                    {foodGuidanceLine(hit)}
+                  </p>
+                  <p className="text-xs text-amber-600 dark:text-amber-400">
+                    {foodGuidanceDetail(hit)}
+                  </p>
+                </div>
+              ))}
             </div>
           </div>
         </div>

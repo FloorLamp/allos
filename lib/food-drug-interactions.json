@@ -1,0 +1,239 @@
+{
+  "$comment": "Baked FOOD–DRUG interaction dataset (issue #154, extends #144). Per-ITEM food guidance — unlike the drug–drug checker (lib/drug-interactions.json) each entry fires off a SINGLE item (a medication or supplement), needing no second drug. HAND-MAINTAINED (a few dozen canonical, high-severity pairs cover the ground — no generator, mirroring the supplement-catalog style); keep it human-reviewable and cited. Facts from PUBLIC-DOMAIN sources: FDA Structured Product Labeling / DailyMed (the label's drug-interactions / patient-counseling sections are a public-domain U.S. Government work), NIH MedlinePlus / NLM, and RxNorm ingredient CUIs (public-domain NLM vocabulary). No copyrighted commercial database (Micromedex/Lexicomp/FDB/Multum) is vendored. Each entry is keyed on RxNorm ingredient CUIs (authoritative) with a normalized name/synonym fallback, mirroring lib/drug-interactions.json. INFORMATIONAL, never prescriptive — 'discuss with your prescriber or pharmacist'; absence of an entry does NOT mean a food is safe with a drug.",
+  "version": 1,
+  "severities": ["major", "moderate", "minor"],
+  "interactions": [
+    {
+      "key": "grapefruit-statin",
+      "drugLabel": "Statins (simvastatin, lovastatin, atorvastatin)",
+      "rxcuis": ["36567", "6472", "83367"],
+      "synonyms": [
+        "simvastatin",
+        "zocor",
+        "lovastatin",
+        "mevacor",
+        "atorvastatin",
+        "lipitor"
+      ],
+      "food": "Grapefruit",
+      "severity": "major",
+      "advice": "Avoid grapefruit and grapefruit juice — they raise statin blood levels and the risk of muscle injury.",
+      "mechanism": "Grapefruit inhibits intestinal CYP3A4, slowing statin breakdown so more drug reaches the bloodstream and myopathy/rhabdomyolysis becomes more likely.",
+      "source": "FDA simvastatin prescribing information (DailyMed)"
+    },
+    {
+      "key": "grapefruit-ccb",
+      "drugLabel": "Calcium-channel blockers (felodipine, nisoldipine, nicardipine)",
+      "rxcuis": [],
+      "synonyms": [
+        "felodipine",
+        "plendil",
+        "nisoldipine",
+        "sular",
+        "nicardipine",
+        "cardene",
+        "nimodipine"
+      ],
+      "food": "Grapefruit",
+      "severity": "major",
+      "advice": "Avoid grapefruit juice — it can sharply raise blood levels and cause a large drop in blood pressure.",
+      "mechanism": "Grapefruit inhibits intestinal CYP3A4, increasing exposure to these dihydropyridine calcium-channel blockers and the risk of hypotension.",
+      "source": "FDA felodipine prescribing information (DailyMed)"
+    },
+    {
+      "key": "grapefruit-immunosuppressant",
+      "drugLabel": "Calcineurin inhibitors (tacrolimus, cyclosporine)",
+      "rxcuis": [],
+      "synonyms": [
+        "tacrolimus",
+        "prograf",
+        "cyclosporine",
+        "cyclosporin",
+        "neoral",
+        "sandimmune"
+      ],
+      "food": "Grapefruit",
+      "severity": "major",
+      "advice": "Avoid grapefruit — it sharply raises drug levels and the risk of toxicity.",
+      "mechanism": "Grapefruit inhibits intestinal CYP3A4, increasing exposure to these narrow-therapeutic-index immunosuppressants.",
+      "source": "FDA tacrolimus prescribing information (DailyMed)"
+    },
+    {
+      "key": "vitamin-k-warfarin",
+      "drugLabel": "Warfarin",
+      "rxcuis": ["11289"],
+      "synonyms": ["warfarin", "coumadin", "jantoven"],
+      "food": "Vitamin K–rich foods (leafy greens)",
+      "severity": "moderate",
+      "advice": "Keep vitamin K intake steady — don't suddenly increase leafy greens (kale, spinach, broccoli); big swings change how well warfarin works.",
+      "mechanism": "Vitamin K directly opposes warfarin's anticoagulant effect, so inconsistent dietary intake destabilizes the INR.",
+      "source": "FDA warfarin prescribing information (DailyMed)"
+    },
+    {
+      "key": "alcohol-warfarin",
+      "drugLabel": "Warfarin",
+      "rxcuis": ["11289"],
+      "synonyms": ["warfarin", "coumadin", "jantoven"],
+      "food": "Alcohol",
+      "severity": "moderate",
+      "advice": "Limit alcohol — it can unpredictably raise or lower warfarin's effect and add to bleeding risk.",
+      "mechanism": "Alcohol alters warfarin metabolism (acutely inhibiting, chronically inducing) and independently impairs clotting, destabilizing the INR.",
+      "source": "NIH MedlinePlus — Warfarin"
+    },
+    {
+      "key": "dairy-levothyroxine",
+      "drugLabel": "Levothyroxine",
+      "rxcuis": ["10582"],
+      "synonyms": [
+        "levothyroxine",
+        "synthroid",
+        "levoxyl",
+        "euthyrox",
+        "unithroid",
+        "thyroxine"
+      ],
+      "food": "Coffee, dairy, calcium, and high-fiber foods",
+      "severity": "moderate",
+      "advice": "Take on an empty stomach with water 30–60 min before eating; keep coffee, dairy, calcium, and iron ≥4 hours apart — they cut absorption.",
+      "mechanism": "Food, coffee, and polyvalent cations (calcium, iron) bind levothyroxine in the gut and reduce how much is absorbed, lowering its effect.",
+      "source": "FDA levothyroxine prescribing information (DailyMed)"
+    },
+    {
+      "key": "dairy-tetracycline",
+      "drugLabel": "Tetracyclines (doxycycline, tetracycline, minocycline)",
+      "rxcuis": ["3640", "10395", "6960"],
+      "synonyms": [
+        "doxycycline",
+        "vibramycin",
+        "doryx",
+        "tetracycline",
+        "sumycin",
+        "minocycline",
+        "minocin"
+      ],
+      "food": "Dairy, calcium, iron, and antacids",
+      "severity": "moderate",
+      "advice": "Don't take with dairy, calcium, iron, or antacids — they bind the antibiotic and can make it fail. Separate by ≥2 hours.",
+      "mechanism": "Calcium, magnesium, iron, and other polyvalent cations chelate tetracyclines in the gut, sharply reducing absorption.",
+      "source": "FDA doxycycline prescribing information (DailyMed)"
+    },
+    {
+      "key": "dairy-fluoroquinolone",
+      "drugLabel": "Fluoroquinolones (ciprofloxacin, levofloxacin)",
+      "rxcuis": ["2551", "82122"],
+      "synonyms": [
+        "ciprofloxacin",
+        "cipro",
+        "levofloxacin",
+        "levaquin",
+        "moxifloxacin",
+        "ofloxacin"
+      ],
+      "food": "Dairy, calcium, iron, magnesium, and antacids",
+      "severity": "moderate",
+      "advice": "Separate from dairy, calcium, iron, magnesium, and antacids by ≥2 hours — they bind the antibiotic and reduce absorption.",
+      "mechanism": "Polyvalent cations chelate fluoroquinolones in the gut, markedly reducing absorption and antibacterial effect.",
+      "source": "FDA ciprofloxacin prescribing information (DailyMed)"
+    },
+    {
+      "key": "alcohol-metronidazole",
+      "drugLabel": "Metronidazole / tinidazole",
+      "rxcuis": ["6922"],
+      "synonyms": ["metronidazole", "flagyl", "tinidazole", "tindamax"],
+      "food": "Alcohol",
+      "severity": "major",
+      "advice": "Avoid all alcohol during treatment and for 3 days after — the combination causes flushing, nausea, vomiting, and a racing heartbeat.",
+      "mechanism": "Metronidazole inhibits acetaldehyde dehydrogenase, producing a disulfiram-like reaction when alcohol is consumed.",
+      "source": "FDA metronidazole prescribing information (DailyMed)"
+    },
+    {
+      "key": "tyramine-maoi",
+      "drugLabel": "MAO inhibitors (phenelzine, tranylcypromine, selegiline)",
+      "rxcuis": ["8123", "10734", "36117", "6011"],
+      "synonyms": [
+        "phenelzine",
+        "nardil",
+        "tranylcypromine",
+        "parnate",
+        "isocarboxazid",
+        "marplan",
+        "selegiline",
+        "emsam"
+      ],
+      "food": "Tyramine-rich foods (aged cheese, cured meats, draft beer)",
+      "severity": "major",
+      "advice": "Avoid tyramine-rich foods — aged cheeses, cured or smoked meats, fermented soy, and draft beer — they can trigger a dangerous blood-pressure spike.",
+      "mechanism": "MAO inhibitors block the breakdown of dietary tyramine, which can release stored norepinephrine and cause a hypertensive crisis.",
+      "source": "FDA MAO inhibitor prescribing information (DailyMed)"
+    },
+    {
+      "key": "potassium-ace-arb",
+      "drugLabel": "ACE inhibitors / ARBs (lisinopril, losartan, …)",
+      "rxcuis": ["29046", "3827", "52175", "83515"],
+      "synonyms": [
+        "lisinopril",
+        "prinivil",
+        "zestril",
+        "losartan",
+        "cozaar",
+        "valsartan",
+        "diovan",
+        "enalapril",
+        "ramipril",
+        "benazepril"
+      ],
+      "food": "Salt substitutes & very high-potassium intake",
+      "severity": "moderate",
+      "advice": "Go easy on potassium-based salt substitutes and large amounts of high-potassium foods — with an ACE inhibitor/ARB they can push potassium too high.",
+      "mechanism": "ACE inhibitors and ARBs reduce potassium excretion, so a big potassium load (especially salt substitutes) can cause hyperkalemia.",
+      "source": "FDA lisinopril prescribing information (DailyMed)"
+    },
+    {
+      "key": "potassium-diuretic",
+      "drugLabel": "Potassium-sparing diuretics (spironolactone, triamterene)",
+      "rxcuis": ["10763", "644", "9997"],
+      "synonyms": [
+        "spironolactone",
+        "aldactone",
+        "triamterene",
+        "amiloride",
+        "eplerenone",
+        "inspra"
+      ],
+      "food": "Salt substitutes & very high-potassium intake",
+      "severity": "moderate",
+      "advice": "Avoid potassium-based salt substitutes and go easy on high-potassium foods — these diuretics already raise potassium and the combination can become dangerous.",
+      "mechanism": "Potassium-sparing diuretics retain potassium, so an added dietary potassium load can cause hyperkalemia and arrhythmia.",
+      "source": "FDA spironolactone prescribing information (DailyMed)"
+    },
+    {
+      "key": "alcohol-acetaminophen",
+      "drugLabel": "Acetaminophen",
+      "rxcuis": ["161"],
+      "synonyms": ["acetaminophen", "tylenol", "paracetamol"],
+      "food": "Alcohol",
+      "severity": "moderate",
+      "advice": "Avoid regular or heavy alcohol — combined with acetaminophen it raises the risk of liver damage. Stay within the daily acetaminophen limit.",
+      "mechanism": "Chronic alcohol induces CYP2E1, increasing the toxic acetaminophen metabolite (NAPQI) and the risk of liver injury.",
+      "source": "FDA acetaminophen labeling (DailyMed)"
+    },
+    {
+      "key": "food-bisphosphonate",
+      "drugLabel": "Oral bisphosphonates (alendronate, risedronate, ibandronate)",
+      "rxcuis": [],
+      "synonyms": [
+        "alendronate",
+        "fosamax",
+        "risedronate",
+        "actonel",
+        "ibandronate",
+        "boniva"
+      ],
+      "food": "Any food or drink except plain water; calcium and coffee",
+      "severity": "moderate",
+      "advice": "Take first thing in the morning with plain water only, stay upright, and wait ≥30 minutes before any food, coffee, or calcium — food blocks nearly all absorption.",
+      "mechanism": "Oral bisphosphonates are very poorly absorbed; any food, coffee, or calcium in the gut reduces the already-low absorption to almost nothing.",
+      "source": "FDA alendronate prescribing information (DailyMed)"
+    }
+  ]
+}

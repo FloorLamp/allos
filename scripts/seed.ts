@@ -1046,6 +1046,34 @@ db.prepare("UPDATE intake_items SET as_needed = 1 WHERE id = ?").run(
 medDose.run(ibuprofenId, "200 mg", "Anytime", "with_food", 0);
 courseIns.run(ibuprofenId, daysAgo(30), null, null, "PRN for pain");
 
+// A FOOD–DRUG demo (issue #154): Simvastatin (a CYP3A4 statin) — active, scheduled
+// in the evening, carrying its RxNorm ingredient CUI (36567). It needs no second
+// drug to flag: /medicine shows a "Grapefruit: Avoid grapefruit juice …" guidance
+// line, the add/edit form shows the same food notice, and the evening dose reminder
+// carries the food note. Synthetic prescriber ("Dr. Test Provider") — no real PHI.
+const simvastatinId = Number(
+  medIns.run(
+    "Simvastatin",
+    "Statin — take in the evening",
+    "daily",
+    "high",
+    "Dr. Test Provider",
+    1
+  ).lastInsertRowid
+);
+db.prepare("UPDATE intake_items SET rxcui = ? WHERE id = ?").run(
+  "36567",
+  simvastatinId
+);
+medDose.run(simvastatinId, "40 mg", "Evening", "any", 0);
+courseIns.run(
+  simvastatinId,
+  daysAgo(75),
+  null,
+  null,
+  "Ongoing for cholesterol"
+);
+
 // Log adherence per dose over the last week.
 const allDoses = db
   .prepare("SELECT id, item_id FROM intake_item_doses")
