@@ -15,6 +15,7 @@ import {
   monthNames,
   monthGridCells,
   ageInMonthsFromBirthdate,
+  ageMonthsFrom,
 } from "@/lib/date";
 
 // A single instant that lands on different calendar dates / weekdays / hours
@@ -327,5 +328,71 @@ describe("ageInMonthsFromBirthdate", () => {
     expect(ageInMonthsFromBirthdate("2026-06-01", "2026-06-10")).toBe(0);
     expect(ageInMonthsFromBirthdate("2026-06-01", "2026-05-01")).toBeNull();
     expect(ageInMonthsFromBirthdate("1990", "2026-06-15")).toBeNull();
+  });
+});
+
+// The canonical age-in-months POLICY (issue #310), shared by the schedule engines,
+// the dashboard immunizations widget, and the immunization pages so every surface
+// agrees which vaccines are due. This is the ONE computation those four sites now
+// route through.
+describe("ageMonthsFrom (canonical age-in-months policy)", () => {
+  it("prefers the birthdate with real calendar month math", () => {
+    // Matches ageInMonthsFromBirthdate exactly — birthdate is the exact source.
+    expect(ageMonthsFrom("2026-01-01", null, "2026-03-01")).toBe(2);
+    expect(ageMonthsFrom("2020-06-01", null, "2026-06-01")).toBe(72);
+  });
+
+  it("honors the day-of-month boundary via the birthdate path", () => {
+    // The edge the issue flags: not yet the 15th → still the prior whole month.
+    expect(ageMonthsFrom("2026-01-15", null, "2026-03-14")).toBe(1);
+    expect(ageMonthsFrom("2026-01-15", null, "2026-03-15")).toBe(2);
+  });
+
+  it("falls back to the stored whole-year age × 12 when no birthdate", () => {
+    expect(ageMonthsFrom(null, 0, "2026-06-15")).toBe(0);
+    expect(ageMonthsFrom(null, 1, "2026-06-15")).toBe(12);
+    expect(ageMonthsFrom(null, 40, "2026-06-15")).toBe(480);
+  });
+
+  it("lets the birthdate WIN even when a stored age is also present", () => {
+    // The drift the issue warns about: a copy could let the stale age leak in.
+    // The birthdate must always take precedence; the stored age is ignored.
+    expect(ageMonthsFrom("2020-06-01", 3, "2026-06-01")).toBe(72);
+    expect(ageMonthsFrom("2026-01-15", 99, "2026-03-14")).toBe(1);
+  });
+
+  it("returns null when neither a birthdate nor a stored age is known", () => {
+    expect(ageMonthsFrom(null, null, "2026-06-15")).toBeNull();
+  });
+
+  it("returns null for an unparseable/future birthdate (no silent age fallback)", () => {
+    // A malformed or future birthdate resolves to null — it does NOT quietly
+    // fall through to the stored age, so an invalid DOB reads as unknown age.
+    expect(ageMonthsFrom("1990", 30, "2026-06-15")).toBeNull();
+    expect(ageMonthsFrom("2026-06-01", 5, "2026-05-01")).toBeNull();
+  });
+
+  it("reproduces the exact math the three pages previously inlined", () => {
+    // Pin that the shared core equals the old per-site fallback chain for the
+    // representative cases the dashboard/immunization pages exercised.
+    const inline = (
+      birthdate: string | null,
+      storedAge: number | null,
+      on: string
+    ) =>
+      birthdate
+        ? ageInMonthsFromBirthdate(birthdate, on)
+        : storedAge != null
+          ? storedAge * 12
+          : null;
+    const cases: [string | null, number | null, string][] = [
+      ["2024-02-10", null, "2026-07-11"],
+      [null, 2, "2026-07-11"],
+      [null, null, "2026-07-11"],
+      ["2026-07-11", null, "2026-07-11"],
+    ];
+    for (const [bd, sa, on] of cases) {
+      expect(ageMonthsFrom(bd, sa, on)).toBe(inline(bd, sa, on));
+    }
   });
 });

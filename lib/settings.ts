@@ -10,7 +10,7 @@ import { db, today, invalidateTimezoneMemo } from "./db";
 // per-request dedup is meaningless outside Next). Mirrors lib/queries/training.ts.
 const cache: typeof React.cache =
   (React as { cache?: typeof React.cache }).cache ?? ((fn) => fn);
-import { ageFromBirthdate } from "./date";
+import { ageFromBirthdate, ageMonthsFrom } from "./date";
 import { hashShareToken } from "./share-token";
 import { DEFAULT_TIMEZONE, isValidTimezone, resolveTimezone } from "./timezone";
 import type { Sex, ReproductiveStatus } from "./types";
@@ -904,6 +904,21 @@ export function setStoredAge(profileId: number, age: number | null) {
     return;
   }
   setProfileSetting(profileId, "age", String(Math.round(age)));
+}
+
+// The profile's age in MONTHS for the schedule engines (issue #310): the
+// canonical policy — birthdate wins (exact calendar month math), else the stored
+// whole-year age × 12, else null (unknown). Shared by the immunization and
+// preventive-care assessments (via Upcoming) and the dashboard/immunization
+// pages so every surface agrees which vaccines are due. The month-resolution
+// math is the pure ageMonthsFrom() in lib/date.ts; this wrapper adds the
+// profile-scoped reads (getUserBirthdate/getStoredAge filter profile_id).
+export function profileAgeMonths(profileId: number, on: string): number | null {
+  return ageMonthsFrom(
+    getUserBirthdate(profileId),
+    getStoredAge(profileId),
+    on
+  );
 }
 
 // The profile's current age in whole years: derived from the birthdate when set,

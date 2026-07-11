@@ -8,7 +8,7 @@
 // in lib/__db_tests__/upcoming.scoping.test.ts.
 
 import { db } from "../db";
-import { ageInMonthsFromBirthdate, shiftDateStr } from "../date";
+import { shiftDateStr } from "../date";
 import { isTrainingRestricted } from "../age-gate";
 import {
   signalKey,
@@ -54,8 +54,7 @@ import { retestDaysForBiomarker } from "../biomarker-retest";
 import { frequencyScopeLabel } from "../goals";
 import {
   getUserSex,
-  getUserBirthdate,
-  getStoredAge,
+  profileAgeMonths,
   getActiveSituations,
   getSmokingHistory,
 } from "../settings";
@@ -225,17 +224,6 @@ function interactionItems(profileId: number): UpcomingItem[] {
     band: "today" as const,
     dueText: "Review",
   }));
-}
-
-// The profile's age in MONTHS for the schedule engines: from the birthdate when
-// known (exact), else the stored bare-age fallback (× 12), else null (unknown).
-// Shared by the immunization and preventive-care assessments so they resolve age
-// identically. Profile-scoped reads (getUserBirthdate/getStoredAge filter profile_id).
-function profileAgeMonths(profileId: number, today: string): number | null {
-  const birthdate = getUserBirthdate(profileId);
-  if (birthdate) return ageInMonthsFromBirthdate(birthdate, today);
-  const storedAge = getStoredAge(profileId);
-  return storedAge != null ? storedAge * 12 : null;
 }
 
 // Vaccines due/overdue on the tracked schedule (reuses assessSchedule + the same

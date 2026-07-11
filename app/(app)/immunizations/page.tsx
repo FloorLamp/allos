@@ -9,7 +9,7 @@ import {
 } from "@/lib/queries";
 import ProviderDatalist from "@/components/ProviderDatalist";
 import { getUserBirthdate, getUserSex, getStoredAge } from "@/lib/settings";
-import { ageInMonthsFromBirthdate } from "@/lib/date";
+import { ageMonthsFrom } from "@/lib/date";
 import {
   assessSchedule,
   filterCategoryFor,
@@ -85,13 +85,9 @@ export default async function ImmunizationsPage(props: {
   // Age drives the schedule: prefer the birthdate, but fall back to the stored
   // whole-year age (a profile can set an age without a DOB) so adult
   // recommendations still work — only per-band dose placement on the grid
-  // genuinely needs a birthdate.
-  const storedAge = birthdate ? null : getStoredAge(profile.id);
-  const ageMonths = birthdate
-    ? ageInMonthsFromBirthdate(birthdate, now)
-    : storedAge != null
-      ? storedAge * 12
-      : null;
+  // genuinely needs a birthdate. Shares the canonical month-resolution policy
+  // (issue #310) so every surface agrees which vaccines are due.
+  const ageMonths = ageMonthsFrom(birthdate, getStoredAge(profile.id), now);
   const hasAge = ageMonths != null;
 
   const records = getImmunizations(profile.id);
