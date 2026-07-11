@@ -644,3 +644,39 @@ db.prepare(
 console.log(
   `e2e: seeded import document ${DROP_DOC_ID} with a 260-drop report + an unmapped LOINC (#270)`
 );
+
+// ── Percent-strength medication fixture (issue #272) ─────────────────────────
+// A topical med whose name carries a PERCENT strength ("Hydrocortisone 2.5%
+// Cream"). Its educational "What is this?" explainer only renders when the name
+// normalizer strips the percent strength before the description lookup — the
+// regression this fixture pins in the browser. PRN (as_needed=1, the Ibuprofen
+// precedent) so it adds no scheduled-due dose to reminder/digest fixtures, and
+// hydrocortisone appears in no interaction dataset, so other specs are
+// undisturbed. Synthetic prescriber — no real PHI.
+const PCT_MED_NAME = "Hydrocortisone 2.5% Cream";
+if (
+  !db
+    .prepare("SELECT 1 FROM intake_items WHERE profile_id = ? AND name = ?")
+    .get(PROFILE_ID, PCT_MED_NAME)
+) {
+  const pctMed = db
+    .prepare(
+      `INSERT INTO intake_items
+         (profile_id, name, notes, condition, priority, kind, prescriber,
+          active, as_needed)
+       VALUES (?, ?, 'Topical steroid — apply to affected area', 'daily',
+               'low', 'medication', 'Dr. Test Provider', 1, 1)`
+    )
+    .run(PROFILE_ID, PCT_MED_NAME);
+  const pctMedId = Number(pctMed.lastInsertRowid);
+  db.prepare(
+    `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+     VALUES (?, 'thin layer', 'Anytime', 'any', 0)`
+  ).run(pctMedId);
+  db.prepare(
+    `INSERT INTO medication_courses (item_id, started_on, stopped_on, stop_reason, notes)
+     VALUES (?, ?, NULL, NULL, 'PRN for eczema flare')`
+  ).run(pctMedId, shiftDateStr(today(PROFILE_ID), -14));
+}
+
+console.log(`e2e: seeded percent-strength medication "${PCT_MED_NAME}" (#272)`);

@@ -73,6 +73,15 @@ describe("getMedicationInfo", () => {
     expect(getMedicationInfo("Advil 200 mg tablet")?.generic).toBe("Ibuprofen");
   });
 
+  it("strips a percent strength before matching (#272)", () => {
+    expect(getMedicationInfo("Hydrocortisone 2.5%")?.generic).toBe(
+      "Hydrocortisone"
+    );
+    expect(getMedicationInfo("Hydrocortisone 2.5% Cream")?.generic).toBe(
+      "Hydrocortisone"
+    );
+  });
+
   it("resolves common salt-form aliases", () => {
     expect(getMedicationInfo("Levothyroxine Sodium")?.generic).toBe(
       "Levothyroxine"

@@ -208,3 +208,24 @@ test("supplements page shows a refill days-left estimate with its basis (#38)", 
   await expect(badge).toContainText(/days?\s+left/);
   await expect(badge).toContainText(/based on (your last 30 days|schedule)/);
 });
+
+// #272: a medication whose name carries a PERCENT strength ("Hydrocortisone
+// 2.5% Cream", seeded in e2e/seed-events.ts) must still resolve its educational
+// "What is this?" explainer — the dead `%\b` regex never stripped percent
+// strengths, so every topical/cream/drop silently lost its description.
+test("percent-strength medication resolves its 'What is this?' explainer (#272)", async ({
+  page,
+}) => {
+  await page.goto("/medicine");
+  const card = page
+    .locator(".card", { hasText: "Hydrocortisone 2.5% Cream" })
+    .first();
+  await expect(card).toBeVisible();
+  await card.getByText("What is this?").click();
+  // Generic + drug class from lib/medication-descriptions.json — only rendered
+  // when the normalized lookup lands on the hydrocortisone entry.
+  await expect(card).toContainText("Corticosteroid");
+  await expect(card).toContainText(
+    /corticosteroid used to reduce inflammation/i
+  );
+});

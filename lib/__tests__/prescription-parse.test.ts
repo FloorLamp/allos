@@ -107,6 +107,15 @@ describe("cleanMedicationName — grouping name", () => {
       "Atorvastatin"
     );
   });
+  it("strips a percent strength (with or without a trailing form)", () => {
+    // `%` is a non-word char, so a `%\b`-style regex can never match a real
+    // percent strength — this pins the fixed alternation (#272).
+    expect(cleanMedicationName("Hydrocortisone 2.5%")).toBe("Hydrocortisone");
+    expect(cleanMedicationName("Hydrocortisone 2.5% Cream")).toBe(
+      "Hydrocortisone"
+    );
+    expect(cleanMedicationName("Ketoconazole 2% Shampoo")).toBe("Ketoconazole");
+  });
   it("leaves a bare drug name untouched", () => {
     expect(cleanMedicationName("Lisinopril")).toBe("Lisinopril");
     expect(cleanMedicationName("  Aspirin  ")).toBe("Aspirin");
@@ -128,6 +137,18 @@ describe("parsePrescription — full record → structured med", () => {
     expect(p.strength).toBe("10 mg");
     expect(p.asNeeded).toBe(false);
     expect(p.timesPerDay).toBe(1);
+  });
+
+  it("recovers a percent strength packed into the name (#272)", () => {
+    const p = parsePrescription({
+      name: "Hydrocortisone 2.5% Cream",
+      value: null,
+      unit: null,
+      notes: "apply to affected area twice daily",
+    });
+    expect(p.name).toBe("Hydrocortisone");
+    expect(p.strength).toBe("2.5%");
+    expect(p.timesPerDay).toBe(2);
   });
 
   it("takes strength from value+unit when present", () => {
