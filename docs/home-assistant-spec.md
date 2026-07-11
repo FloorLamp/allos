@@ -57,7 +57,12 @@ New registry entry `home-assistant` (`lib/integrations/registry.ts`),
 endpoints under `app/api/integrations/home-assistant/`, all sharing the
 Health Connect guard stack: rate limit **before** auth
 (`lib/rate-limit.ts`), timing-safe per-profile token resolution, streaming
-body cap, per-request `integration_sync_events` where applicable.
+body cap. **Sync events are write-path only** (`/ingest` records them like
+every provider; `/event` records send outcomes): the board-feed read at a
+30–60s poll cadence must never append `integration_sync_events` — it would
+flood the Review feed. Reads instead touch `integration_connections.last_sync_at`
+(throttled to ~1/min), which powers the wizard's "last seen" and the
+provider row.
 
 ### Tokens and the actuation scope
 
@@ -105,7 +110,10 @@ distinction is explicit:
   no-op.
 - Per-profile **opt-in** (`profile_settings`), off by default; the
   integration page explains the pairing (HA sends the event, Allos still
-  owns the message and channels).
+  owns the message and channels). A household "dinner" is one HA
+  automation calling the endpoint **once per opted-in profile token** —
+  the generated package (see Onboarding) emits one `rest_command` per
+  profile, so the automation just lists the services.
 - Nothing due → 200 with `{sent: false}`; never an error (automations
   fire unconditionally).
 
@@ -122,7 +130,13 @@ existing banded model**:
 - `GET /upcoming?domains=doses` → the medication board (dose entries carry
   `doseId`, dose label, bucket/slot, food timing, and status
   `due | taken | skipped` so the card can pair each row with `/dose`
-  actuation).
+  actuation). **Status honesty note:** the Upcoming bus deliberately drops
+  resolved doses, so the doses domain is served from the **morning-digest
+  dose model** (the same shared computation the dashboard's today-actions
+  widget renders — due doses + logged status via the digest's reads); the
+  other domains come from the banded Upcoming model. Two existing
+  computations, no new engine — the convention holds because both payloads
+  mirror models other surfaces already render.
 - `GET /upcoming?domains=all` (or a comma list) → the family board:
   appointments, care-plan items, preventive due, refill warnings — banded
   overdue/today/week/later exactly as the Upcoming page shows them.
@@ -174,6 +188,9 @@ file.
 2. **Optional HA base URL** — only needed for the outbound announcement
    webhook and absolute-URL templating.
 3. **Generate** — Allos issues the token(s) and renders one `allos.yaml`
+   plus a **`secrets.yaml` snippet**: the package references tokens as
+   `!secret allos_token_<profile>` so the shareable package file carries no
+   credentials —
    for HA's `packages/` dir: the `/upcoming` REST sensors, `/dose` +
    `/event` `rest_command`s, a commented dinnertime-automation stub, the
    ingest blueprint reference, and (when the HA URL was given) the inbound
@@ -221,8 +238,9 @@ real HA instance before release:
 
 ## Testing
 
-- **Pure tier:** ingest adapter mapping, event→bucket selection, schedule
-  serialization (status derivation), outcome-union → response mapping.
+- **Pure tier:** ingest adapter mapping, event→bucket selection,
+  board-feed serialization (band + dose-status derivation from the digest
+  model), outcome-union → response mapping.
 - **Action/DB tier:** each endpoint end-to-end against the in-memory DB —
   token scoping (wrong-profile token 401s), `allow_actions` enforcement,
   ingest idempotency + bounds, event dedup against the slot markers, dose
