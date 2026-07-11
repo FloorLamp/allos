@@ -66,8 +66,13 @@ export default async function HistorySection() {
     activities.map((a) => a.id)
   );
   // Resolve per-set equipment_id -> implement name for the journal's labels.
+  // includeRetired: a retired implement must still label the historical sets it
+  // was logged against (issue #341).
   const equipName = new Map(
-    getEquipment(profile.id).map((e) => [e.id, e.name])
+    getEquipment(profile.id, { includeRetired: true }).map((e) => [
+      e.id,
+      e.name,
+    ])
   );
   const setsByActivity = new Map<number, typeof sets>();
   for (const s of sets) {

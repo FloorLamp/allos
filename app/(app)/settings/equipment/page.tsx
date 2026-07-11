@@ -14,7 +14,8 @@ export default async function EquipmentSettingsPage() {
   // Age-restricted profiles can't reach Equipment even by direct URL — the tab
   // is hidden for them; bounce them back to Preferences (see lib/age-gate.ts).
   if (isTrainingRestricted(profile.id)) redirect("/settings");
-  const equipment = getEquipment(profile.id);
+  // includeRetired: the manager lists retired gear too (with an Unretire action).
+  const equipment = getEquipment(profile.id, { includeRetired: true });
   const units = getUnitPrefs(login.id);
   return (
     <div>
