@@ -4,6 +4,7 @@ import {
   getUserSex,
   getUserBirthdate,
   getUserFullName,
+  getBloodType,
 } from "./settings";
 import { ageInMonthsFromBirthdate } from "./date";
 import {
@@ -279,6 +280,7 @@ export function getProfileSummary(
     birthdate,
     aboValue: abo?.value ?? null,
     rhValue: rh?.value ?? null,
+    manualBloodType: getBloodType(profileId),
     heightCm: height?.value ?? null,
     weightKg: weight?.value ?? null,
     bodyFatPct: bodyFat?.value ?? null,
