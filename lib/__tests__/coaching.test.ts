@@ -18,7 +18,9 @@ import {
   restEpisodeDay,
   withRestContinuity,
   DEFAULT_COACHING_THRESHOLDS,
+  sessionWorkSets,
   type ExerciseSummary,
+  type SessionWorkSet,
   type CardioSummary,
   type CoachingInput,
   type RestEpisode,
@@ -253,6 +255,199 @@ describe("suggestNextSet", () => {
         ex({ lastSessionBest: { weightKg: 80, reps: 8, toFailure: true } })
       )!.targetReps
     ).toBeNull();
+  });
+});
+
+// Session-level progression (#330): the suggestion judges the WORKING sets (the
+// full session, warmups filtered out by load), not just the single best set.
+describe("suggestNextSet — working-set progression (#330)", () => {
+  // A working set at a given load/reps, no declared intent unless overridden.
+  function ws(over: Partial<SessionWorkSet> = {}): SessionWorkSet {
+    return {
+      weightKg: 80,
+      reps: 8,
+      targetReps: null,
+      toFailure: false,
+      ...over,
+    };
+  }
+
+  it("holds and builds to the target when a 3×8 went 8/6/5 (target-driven)", () => {
+    // The 8-rep set wins the e1RM ranking and meets its own target, but two of
+    // the three working sets missed the declared 8 → hold weight, build to 8.
+    const ns = suggestNextSet(
+      ex({
+        lastSessionBest: { weightKg: 80, reps: 8, targetReps: 8 },
+        lastSessionSets: [
+          ws({ reps: 8, targetReps: 8 }),
+          ws({ reps: 6, targetReps: 8 }),
+          ws({ reps: 5, targetReps: 8 }),
+        ],
+      })
+    )!;
+    expect(ns).toMatchObject({ weightKg: 80, reps: 8, targetReps: 8 });
+    expect(ns.rationale).toContain("8-rep target");
+  });
+
+  it("holds and consolidates at the range top when a 3×8 went 8/6/5 (heuristic)", () => {
+    // No declared target: the best set hit the 8-rep range top but the others
+    // lagged → hold weight, get every set to 8 (not add weight off the one set).
+    const ns = suggestNextSet(
+      ex({
+        lastSessionBest: { weightKg: 80, reps: 8 },
+        lastSessionSets: [ws({ reps: 8 }), ws({ reps: 6 }), ws({ reps: 5 })],
+      })
+    )!;
+    expect(ns).toMatchObject({ weightKg: 80, reps: 8, targetReps: null });
+    expect(ns.rationale).toContain("get all sets to 8");
+  });
+
+  it("adds weight only once every working set meets its target", () => {
+    const ns = suggestNextSet(
+      ex({
+        lastSessionBest: { weightKg: 80, reps: 5, targetReps: 5 },
+        lastSessionSets: [
+          ws({ reps: 5, targetReps: 5 }),
+          ws({ reps: 5, targetReps: 5 }),
+          ws({ reps: 6, targetReps: 5 }),
+        ],
+      })
+    )!;
+    expect(ns).toMatchObject({ weightKg: 82.5, reps: 5, targetReps: 5 });
+    expect(ns.rationale).toContain("every set");
+  });
+
+  it("adds weight only once every working set reaches the range top (heuristic)", () => {
+    const ns = suggestNextSet(
+      ex({
+        lastSessionBest: { weightKg: 80, reps: 8 },
+        lastSessionSets: [ws({ reps: 8 }), ws({ reps: 8 }), ws({ reps: 9 })],
+      })
+    )!;
+    expect(ns).toMatchObject({ weightKg: 82.5, reps: 5, targetReps: null });
+  });
+
+  it("excludes a warmup set (by load) so it can't fail the session", () => {
+    // A lighter warmup single that inherits the part's 8-rep target must not
+    // sink a session whose three working sets all hit 8 — it's below the
+    // ~90%-of-anchor working-set load floor, so it's ignored → add weight.
+    const ns = suggestNextSet(
+      ex({
+        lastSessionBest: { weightKg: 80, reps: 8, targetReps: 8 },
+        lastSessionSets: [
+          ws({ weightKg: 50, reps: 5, targetReps: 8 }), // warmup — excluded
+          ws({ weightKg: 80, reps: 8, targetReps: 8 }),
+          ws({ weightKg: 80, reps: 8, targetReps: 8 }),
+          ws({ weightKg: 80, reps: 8, targetReps: 8 }),
+        ],
+      })
+    )!;
+    expect(ns).toMatchObject({ weightKg: 82.5, reps: 8, targetReps: 8 });
+  });
+
+  it("counts a back-off set within ~10% of the anchor as a working set", () => {
+    // 80 → 75 is inside the load floor (72), so the 75×5 back-off is a working
+    // set and its miss of the 8-rep target holds the weight.
+    const ns = suggestNextSet(
+      ex({
+        lastSessionBest: { weightKg: 80, reps: 8, targetReps: 8 },
+        lastSessionSets: [
+          ws({ weightKg: 80, reps: 8, targetReps: 8 }),
+          ws({ weightKg: 75, reps: 5, targetReps: 8 }),
+        ],
+      })
+    )!;
+    expect(ns).toMatchObject({ weightKg: 80, reps: 8 });
+  });
+
+  it("judges a full bodyweight session, not just the best set", () => {
+    // Pull-ups 10/7/6 against a declared 10-rep target: the best set met it but
+    // the others didn't → build to 10 (no rep beat off the single best set).
+    const ns = suggestNextSet(
+      ex({
+        exercise: "Pull Up",
+        bodyweight: true,
+        lastSessionBest: { weightKg: 75, reps: 10, targetReps: 10 },
+        lastSessionSets: [
+          ws({ weightKg: 75, reps: 10, targetReps: 10 }),
+          ws({ weightKg: 75, reps: 7, targetReps: 10 }),
+          ws({ weightKg: 75, reps: 6, targetReps: 10 }),
+        ],
+      })
+    )!;
+    expect(ns).toMatchObject({ weightKg: 0, reps: 10, bodyweight: true });
+  });
+
+  it("still adds weight off a deload day that met every target (deload selection is out of #330 scope)", () => {
+    // A 60 kg technique/deload session after a heavier block that meets all its
+    // targets still seeds add-weight: the session rule judges the sets it's
+    // given, it does not decide WHICH session to seed from. Which session to
+    // anchor on (deload poisoning) is the orthogonal concern the issue calls
+    // out as NOT fixed here — this pins that boundary.
+    const ns = suggestNextSet(
+      ex({
+        lastSessionBest: { weightKg: 60, reps: 5, targetReps: 5 },
+        lastSessionSets: [
+          ws({ weightKg: 60, reps: 5, targetReps: 5 }),
+          ws({ weightKg: 60, reps: 5, targetReps: 5 }),
+        ],
+      })
+    )!;
+    expect(ns).toMatchObject({ weightKg: 62.5, reps: 5, targetReps: 5 });
+  });
+
+  it("falls back to the anchor set when no session list is supplied", () => {
+    // Hand-built and pre-#330 seeds carry only lastSessionBest; the suggestion
+    // then judges that single anchor exactly as before.
+    const ns = suggestNextSet(
+      ex({
+        lastSessionBest: { weightKg: 80, reps: 8 },
+        lastSessionSets: undefined,
+      })
+    )!;
+    expect(ns).toMatchObject({ weightKg: 82.5, reps: 5 });
+  });
+});
+
+describe("sessionWorkSets", () => {
+  it("flattens rep-bearing sets, folds bodyweight, and carries intent", () => {
+    const sets = sessionWorkSets(
+      [
+        {
+          weight_kg: 10,
+          reps: 8,
+          weight_kg_right: null,
+          reps_right: null,
+          target_reps: 8,
+          to_failure: 0,
+        },
+        {
+          weight_kg: 20,
+          reps: 5,
+          weight_kg_right: null,
+          reps_right: null,
+          target_reps: null,
+          to_failure: 1,
+        },
+        { weight_kg: 50, reps: null, weight_kg_right: null, reps_right: null }, // rep-less → dropped
+      ],
+      80 // bodyweight base
+    );
+    expect(sets).toEqual([
+      { weightKg: 90, reps: 8, targetReps: 8, toFailure: false },
+      { weightKg: 100, reps: 5, targetReps: null, toFailure: true },
+    ]);
+  });
+
+  it("treats each side of a per-side set as its own working set", () => {
+    expect(
+      sessionWorkSets([
+        { weight_kg: 20, reps: 8, weight_kg_right: 25, reps_right: 7 },
+      ])
+    ).toEqual([
+      { weightKg: 20, reps: 8, targetReps: null, toFailure: false },
+      { weightKg: 25, reps: 7, targetReps: null, toFailure: false },
+    ]);
   });
 });
 
