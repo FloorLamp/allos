@@ -1,11 +1,18 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { IconX } from "@tabler/icons-react";
+import { IconX, IconAlertTriangle } from "@tabler/icons-react";
 import SupplementCombobox from "./SupplementCombobox";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
+import { lookupRxcui } from "./actions";
+import {
+  interactionsForCandidate,
+  interactionTitle,
+  SEVERITY_LABEL,
+  type InteractionItem,
+} from "@/lib/drug-interactions";
 import { SUPPLEMENT_CATALOG } from "@/lib/supplement-catalog";
 import { SUPPLEMENT_BRANDS } from "@/lib/supplement-brands";
 import {
@@ -59,6 +66,7 @@ export default function SupplementForm({
   supplement,
   doses: initialDoses,
   allSupplements = [],
+  stackItems = [],
   pairs: initialPairs = [],
   onDone,
   trainingRestricted = false,
@@ -67,6 +75,11 @@ export default function SupplementForm({
   supplement?: Supplement;
   doses?: SupplementDose[];
   allSupplements?: { id: number; name: string }[];
+  // The profile's other items (name + cached RxCUI + active) for the create/edit
+  // interaction check (issue #144). The pure detector runs client-side over the
+  // bundled dataset, so the inline notice is a formatter over the SAME computation
+  // the /medicine warnings + Upcoming finding use.
+  stackItems?: InteractionItem[];
   pairs?: SupplementPair[];
   onDone?: () => void;
   trainingRestricted?: boolean;
@@ -84,6 +97,46 @@ export default function SupplementForm({
   const formRef = useRef<HTMLFormElement>(null);
 
   const [name, setName] = useState(s?.name ?? "");
+  // Cached RxNorm concept id (issue #144) — confirmed from the lookup affordance,
+  // saved into the hidden `rxcui` field. Null → the interaction matcher uses name.
+  const [rxcui, setRxcui] = useState<string | null>(s?.rxcui ?? null);
+  const [rxCandidates, setRxCandidates] = useState<
+    { rxcui: string; name: string; score: number }[] | null
+  >(null);
+  const [rxLoading, setRxLoading] = useState(false);
+  const [rxError, setRxError] = useState<string | null>(null);
+
+  async function findRxcui() {
+    const term = name.trim();
+    if (!term) return;
+    setRxLoading(true);
+    setRxError(null);
+    try {
+      const candidates = await lookupRxcui(term);
+      setRxCandidates(candidates);
+      if (candidates.length === 0) {
+        setRxError(
+          "No RxNorm match found (the lookup may be offline). You can still save — interactions will match by name."
+        );
+      }
+    } catch {
+      setRxError("Couldn't reach the RxNorm lookup. You can still save.");
+      setRxCandidates([]);
+    } finally {
+      setRxLoading(false);
+    }
+  }
+
+  // Interactions of the item being entered/edited against the rest of the ACTIVE
+  // stack (excluding this row itself). One pure computation, client-side over the
+  // bundled dataset — the inline notice can never disagree with the /medicine
+  // section or the Upcoming finding.
+  const candidateInteractions = useMemo(() => {
+    if (!name.trim()) return [];
+    const others = stackItems.filter((x) => x.id !== s?.id);
+    return interactionsForCandidate({ name, rxcui }, others);
+  }, [name, rxcui, stackItems, s?.id]);
+
   const [condition, setCondition] = useState(s?.condition ?? "daily");
   const [brand, setBrand] = useState(s?.brand ?? "");
   // Medication identity — a medication reveals prescriber/pharmacy/
@@ -161,6 +214,9 @@ export default function SupplementForm({
     else {
       formRef.current?.reset();
       setName("");
+      setRxcui(null);
+      setRxCandidates(null);
+      setRxError(null);
       setCondition("daily");
       setBrand("");
       setKind("supplement");
@@ -175,6 +231,7 @@ export default function SupplementForm({
     <form ref={formRef} action={handle} className="grid gap-4 sm:grid-cols-2">
       {s && <input type="hidden" name="id" value={s.id} />}
       <input type="hidden" name="kind" value={kind} />
+      <input type="hidden" name="rxcui" value={rxcui ?? ""} />
 
       {/* Kind toggle — Supplement vs Medication */}
       <div className="sm:col-span-2">
@@ -204,12 +261,128 @@ export default function SupplementForm({
           name="name"
           ariaLabel="Name"
           value={name}
-          onChange={setName}
+          onChange={(v) => {
+            setName(v);
+            // A name edit invalidates a previously-confirmed code.
+            if (rxcui) setRxcui(null);
+            setRxCandidates(null);
+            setRxError(null);
+          }}
           onPick={onPickName}
           options={CATALOG_NAMES}
           placeholder="e.g. Vitamin D3"
         />
+        {/* RxNorm normalization (issue #144): confirm an RxCUI so interactions match
+            on a stable code, not just the name. The lookup is the only network call
+            in the feature and sends just the term. */}
+        <div
+          data-testid="rxcui-affordance"
+          className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400"
+        >
+          {rxcui ? (
+            <span
+              data-testid="rxcui-current"
+              className="inline-flex items-center gap-1"
+            >
+              RxNorm code{" "}
+              <span className="font-medium text-slate-700 dark:text-slate-200">
+                {rxcui}
+              </span>
+              <button
+                type="button"
+                data-testid="rxcui-clear"
+                className="btn-ghost px-1.5 py-0.5 text-xs"
+                onClick={() => {
+                  setRxcui(null);
+                  setRxCandidates(null);
+                }}
+              >
+                Clear
+              </button>
+            </span>
+          ) : (
+            <button
+              type="button"
+              data-testid="rxcui-lookup"
+              className="btn-ghost px-2 py-0.5 text-xs"
+              onClick={findRxcui}
+              disabled={rxLoading || !name.trim()}
+            >
+              {rxLoading ? "Looking up…" : "Find RxNorm code"}
+            </button>
+          )}
+        </div>
+        {rxError && (
+          <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+            {rxError}
+          </p>
+        )}
+        {rxCandidates && rxCandidates.length > 0 && !rxcui && (
+          <div
+            data-testid="rxcui-candidates"
+            className="mt-1.5 space-y-1 rounded-lg border border-slate-200 p-2 dark:border-slate-700"
+          >
+            {rxCandidates.map((c) => (
+              <div
+                key={c.rxcui}
+                className="flex flex-wrap items-center gap-2 text-xs"
+              >
+                <span className="text-slate-600 dark:text-slate-300">
+                  {c.name || "(unnamed)"}{" "}
+                  <span className="text-slate-400 dark:text-slate-500">
+                    · {c.rxcui}
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  data-testid={`rxcui-use-${c.rxcui}`}
+                  className="btn-ghost px-2 py-0.5 text-xs"
+                  onClick={() => {
+                    setRxcui(c.rxcui);
+                    setRxCandidates(null);
+                    setRxError(null);
+                  }}
+                >
+                  Use
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
+
+      {candidateInteractions.length > 0 && (
+        <div
+          data-testid="interaction-notice"
+          className="sm:col-span-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200"
+        >
+          <div className="flex items-start gap-1.5">
+            <IconAlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <div className="space-y-1">
+              <p className="font-semibold">
+                Possible interaction
+                {candidateInteractions.length > 1 ? "s" : ""} with your current
+                stack
+              </p>
+              {candidateInteractions.map((hit) => (
+                <p
+                  key={hit.dedupeKey}
+                  className="text-amber-700 dark:text-amber-300"
+                >
+                  <span className="font-medium">
+                    {SEVERITY_LABEL[hit.severity]}:
+                  </span>{" "}
+                  {interactionTitle(hit)} — {hit.mechanism}
+                </p>
+              ))}
+              <p className="text-xs text-amber-600 dark:text-amber-400">
+                Informational only — discuss with your prescriber or pharmacist.
+                You can still save this item.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div>
         <label className="label" htmlFor={`supp-when-${fid}`}>

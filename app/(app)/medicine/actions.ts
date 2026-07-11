@@ -28,6 +28,7 @@ import {
   normalizeSeverity,
 } from "@/lib/medication-history";
 import { resolveProviderIdByName } from "@/lib/providers-db";
+import { lookupRxNormCandidates } from "@/lib/rxnorm";
 import { orderIntakePair } from "@/lib/intake-pairs";
 import { withAiLogContext } from "@/lib/ai-log";
 import {
@@ -98,6 +99,9 @@ function fields(formData: FormData) {
     (formData.get("as_needed") === "1" || formData.get("as_needed") === "on")
       ? 1
       : 0;
+  // Cached RxNorm concept id (issue #144) — user-confirmed on the form; kept for both
+  // kinds since supplement-drug interactions are a first-class case here.
+  const rxcui = str("rxcui");
   return {
     notes: str("notes"),
     brand: str("brand"),
@@ -116,6 +120,7 @@ function fields(formData: FormData) {
     pharmacy,
     rxNumber,
     asNeeded,
+    rxcui,
   };
 }
 
@@ -240,8 +245,8 @@ export async function addSupplement(formData: FormData) {
            (name, notes, condition, priority, brand, product, situation, stack,
             critical, escalate_after_min, escalate_chat_id,
             quantity_on_hand, qty_per_dose,
-            kind, prescriber, pharmacy, rx_number, as_needed, provider_id, source, profile_id)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'manual',?)`
+            kind, prescriber, pharmacy, rx_number, as_needed, rxcui, provider_id, source, profile_id)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'manual',?)`
       )
       .run(
         name,
@@ -262,6 +267,7 @@ export async function addSupplement(formData: FormData) {
         f.pharmacy,
         f.rxNumber,
         f.asNeeded,
+        f.rxcui,
         providerId,
         profile.id
       );
@@ -308,7 +314,7 @@ export async function updateSupplement(formData: FormData) {
              critical = ?, escalate_after_min = ?, escalate_chat_id = ?,
              quantity_on_hand = ?, qty_per_dose = ?,
              kind = ?, prescriber = ?, pharmacy = ?, rx_number = ?, as_needed = ?,
-             provider_id = ?
+             rxcui = ?, provider_id = ?
        WHERE id = ? AND profile_id = ?`
     ).run(
       name,
@@ -329,6 +335,7 @@ export async function updateSupplement(formData: FormData) {
       f.pharmacy,
       f.rxNumber,
       f.asNeeded,
+      f.rxcui,
       providerId,
       id,
       profile.id
@@ -745,4 +752,17 @@ export async function dismissSuggestion(formData: FormData) {
     "UPDATE intake_item_suggestions SET status = 'dismissed' WHERE id = ? AND profile_id = ?"
   ).run(id, profile.id);
   revalidatePath("/medicine");
+}
+
+// Look up RxNorm candidates for a free-text name (issue #144) — the ONLY network
+// egress of the interaction feature, and it sends just the term (no PHI). Called
+// from the item form's "Find RxNorm code" affordance; the user CONFIRMS a candidate,
+// which fills the hidden `rxcui` field saved by add/updateSupplement. Degrades to []
+// (name-only matching) on any timeout/error. requireWriteAccess gates it to a
+// session with write access; nothing is stored here.
+export async function lookupRxcui(
+  name: string
+): Promise<{ rxcui: string; name: string; score: number }[]> {
+  await requireWriteAccess();
+  return lookupRxNormCandidates(name);
 }

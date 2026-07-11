@@ -4,6 +4,11 @@ import { consumptionRate, RATE_WINDOW_DAYS, type DoseRate } from "../refill";
 import { normalizeSeverity, SEVERITY_LABELS } from "../medication-history";
 import { getUserSex, getUserBirthdate, getStoredAge } from "../settings";
 import { stackUlWarnings, type StackItem, type UlWarning } from "../dri";
+import {
+  detectInteractions,
+  type InteractionHit,
+  type InteractionItem,
+} from "../drug-interactions";
 import type {
   DoseStatus,
   DoseTakenOutcome,
@@ -424,6 +429,21 @@ export function getDietaryLimitWarnings(
   const sex = getUserSex(profileId);
 
   return stackUlWarnings(items, ageYears, sex);
+}
+
+// Known drug-/supplement-interactions among the profile's ACTIVE stack (issue #144).
+// Reuses the pure detectInteractions over each item's name + cached RxCUI + active
+// flag — the SAME computation the /medicine warnings, the create/edit inline notice,
+// and the dismissible Upcoming finding all format over. Profile-scoped (getSupplements
+// filters profile_id); inactive/paused rows are dropped by the pure detector.
+export function getInteractionWarnings(profileId: number): InteractionHit[] {
+  const items: InteractionItem[] = getSupplements(profileId).map((s) => ({
+    id: s.id,
+    name: s.name,
+    rxcui: s.rxcui,
+    active: !!s.active,
+  }));
+  return detectInteractions(items);
 }
 
 // ---- Medication history / lifecycle ----

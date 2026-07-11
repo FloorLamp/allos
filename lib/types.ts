@@ -649,6 +649,10 @@ export interface Supplement {
   pharmacy: string | null;
   rx_number: string | null;
   as_needed: number;
+  // Cached RxNorm concept id (RxCUI) for this item's name (issue #144), resolved
+  // via NLM's approximateTerm API and user-confirmed on the edit form; NULL when
+  // never resolved (the interaction matcher then falls back to name matching).
+  rxcui: string | null;
   // Provenance. source is 'manual' for
   // hand-entered rows and 'extracted' for medications auto-structured from an
   // uploaded prescription document; document_id points at that source document

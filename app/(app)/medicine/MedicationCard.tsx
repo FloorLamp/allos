@@ -8,6 +8,7 @@ import type {
   SupplementDose,
   SupplementPair,
 } from "@/lib/types";
+import type { InteractionItem } from "@/lib/drug-interactions";
 import {
   STOP_REASONS,
   STOP_REASON_LABELS,
@@ -50,6 +51,7 @@ export default function MedicationCard({
   supplement,
   doses,
   allSupplements,
+  stackItems,
   pairs,
   takenDoseIds,
   skippedDoseIds,
@@ -62,6 +64,7 @@ export default function MedicationCard({
   supplement: Supplement;
   doses: SupplementDose[];
   allSupplements: { id: number; name: string }[];
+  stackItems: InteractionItem[];
   pairs: SupplementPair[];
   takenDoseIds: Set<number>;
   skippedDoseIds: Set<number>;
@@ -95,6 +98,7 @@ export default function MedicationCard({
           supplement={s}
           doses={doses}
           allSupplements={allSupplements}
+          stackItems={stackItems}
           pairs={pairs}
           onDone={() => setEditing(false)}
           trainingRestricted={trainingRestricted}

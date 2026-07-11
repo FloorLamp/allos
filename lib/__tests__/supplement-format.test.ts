@@ -38,6 +38,7 @@ function supp(
     pharmacy: null,
     rx_number: null,
     as_needed: 0,
+    rxcui: null,
     document_id: null,
     source: null,
     provider_id: null,

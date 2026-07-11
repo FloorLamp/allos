@@ -1005,6 +1005,47 @@ courseIns.run(
   "10-day course"
 );
 
+// A KNOWN-INTERACTING pair (issue #144): Warfarin (anticoagulant) + Ibuprofen (an
+// NSAID) — a MAJOR bleeding-risk interaction that surfaces on /medicine, the
+// create/edit notice, and a dismissible Upcoming finding. Synthetic prescriber
+// ("Dr. Test Provider") — no real PHI. Warfarin carries its RxNorm ingredient CUI
+// (11289) to demo rxcui-KEYED matching; ibuprofen has none, demoing NAME-fallback
+// matching — both resolve, so the pair is detected.
+const warfarinId = Number(
+  medIns.run(
+    "Warfarin",
+    "Anticoagulant — keep vitamin K intake consistent",
+    "daily",
+    "high",
+    "Dr. Test Provider",
+    1
+  ).lastInsertRowid
+);
+db.prepare("UPDATE intake_items SET rxcui = ? WHERE id = ?").run(
+  "11289",
+  warfarinId
+);
+medDose.run(warfarinId, "5 mg", "Evening", "any", 0);
+courseIns.run(warfarinId, daysAgo(90), null, null, "Ongoing anticoagulation");
+
+// Ibuprofen as an as-needed (PRN) OTC medication — active, so it's in the stack
+// for interaction detection even though it's never scheduled-due.
+const ibuprofenId = Number(
+  medIns.run(
+    "Ibuprofen",
+    "OTC NSAID — as needed for pain",
+    "daily",
+    "low",
+    "Dr. Test Provider",
+    1
+  ).lastInsertRowid
+);
+db.prepare("UPDATE intake_items SET as_needed = 1 WHERE id = ?").run(
+  ibuprofenId
+);
+medDose.run(ibuprofenId, "200 mg", "Anytime", "with_food", 0);
+courseIns.run(ibuprofenId, daysAgo(30), null, null, "PRN for pain");
+
 // Log adherence per dose over the last week.
 const allDoses = db
   .prepare("SELECT id, item_id FROM intake_item_doses")

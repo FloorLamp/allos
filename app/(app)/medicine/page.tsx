@@ -13,8 +13,14 @@ import {
   getMedicationCourses,
   getMedicationSideEffects,
   getDietaryLimitWarnings,
+  getInteractionWarnings,
 } from "@/lib/queries";
 import { ulWarningTitle, ulWarningDetail, ulWarningEvidence } from "@/lib/dri";
+import {
+  interactionTitle,
+  SEVERITY_LABEL,
+  type InteractionItem,
+} from "@/lib/drug-interactions";
 import {
   partitionMedications,
   type MedicationWithHistory,
@@ -229,6 +235,19 @@ export default async function SupplementsPage() {
   // never prescriptive.
   const ulWarnings = getDietaryLimitWarnings(profile.id, todayStr);
 
+  // Known drug-/supplement-interactions among the ACTIVE stack (issue #148's drug
+  // twin, issue #144). Severity-ranked; the create/edit inline check + the
+  // dismissible Upcoming finding format over the SAME detectInteractions.
+  const interactionWarnings = getInteractionWarnings(profile.id);
+  // The item stack (name + cached RxCUI + active) threaded to every form for the
+  // client-side create/edit interaction notice.
+  const stackItems: InteractionItem[] = supplements.map((s) => ({
+    id: s.id,
+    name: s.name,
+    rxcui: s.rxcui,
+    active: !!s.active,
+  }));
+
   const renderRow = (it: Item, due: boolean) => (
     <EditableSupplementRow
       key={it.dose.id}
@@ -236,6 +255,7 @@ export default async function SupplementsPage() {
       dose={it.dose}
       doses={dosesBySupp.get(it.supplement.id) ?? []}
       allSupplements={supplements}
+      stackItems={stackItems}
       pairs={pairsFor(it.supplement.id)}
       isTaken={taken.has(it.dose.id)}
       isSkipped={skipped.has(it.dose.id)}
@@ -310,6 +330,38 @@ export default async function SupplementsPage() {
         </div>
       )}
 
+      {/* Drug-/supplement-interaction warnings (issue #144) */}
+      {interactionWarnings.length > 0 && (
+        <div className="mb-4 space-y-2" data-testid="interaction-warnings">
+          {interactionWarnings.map((hit) => (
+            <div
+              key={hit.dedupeKey}
+              data-testid={`interaction-warning-${hit.dedupeKey}`}
+              className="rounded-lg border border-rose-300 bg-rose-50 px-3 py-2.5 text-sm text-rose-800 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-200"
+            >
+              <div className="flex items-start gap-1.5">
+                <IconAlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                <div>
+                  <p className="font-semibold">
+                    <span className="uppercase">
+                      {SEVERITY_LABEL[hit.severity]}
+                    </span>{" "}
+                    · {interactionTitle(hit)}
+                  </p>
+                  <p className="mt-0.5 text-rose-700 dark:text-rose-300">
+                    {hit.mechanism}
+                  </p>
+                  <p className="mt-1 text-xs text-rose-600 dark:text-rose-400">
+                    Informational, not medical advice — discuss with your
+                    prescriber or pharmacist. Source: {hit.source}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {supplements.length === 0 ? (
         <EmptyState message="Nothing here yet. Add a supplement or medication below." />
       ) : (
@@ -326,6 +378,7 @@ export default async function SupplementsPage() {
                     supplement={m.med}
                     doses={dosesBySupp.get(m.med.id) ?? []}
                     allSupplements={supplements}
+                    stackItems={stackItems}
                     pairs={pairsFor(m.med.id)}
                     takenDoseIds={taken}
                     skippedDoseIds={skipped}
@@ -352,6 +405,7 @@ export default async function SupplementsPage() {
                     supplement={m.med}
                     doses={dosesBySupp.get(m.med.id) ?? []}
                     allSupplements={supplements}
+                    stackItems={stackItems}
                     pairs={pairsFor(m.med.id)}
                     takenDoseIds={taken}
                     skippedDoseIds={skipped}
@@ -491,6 +545,7 @@ export default async function SupplementsPage() {
         <SupplementForm
           action={addSupplement}
           allSupplements={supplements}
+          stackItems={stackItems}
           trainingRestricted={trainingRestricted}
         />
       </div>

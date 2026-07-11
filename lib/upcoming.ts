@@ -11,6 +11,7 @@ import { daysRemainingLabel } from "./format-date";
 // The forward-looking domains we aggregate. Each maps to one existing signal:
 //   dose        — a scheduled supplement/medication dose pending today
 //   refill      — a tracked med/supplement running low on supply
+//   interaction — two active stack items with a known drug interaction (issue #144)
 //   appointment — a scheduled medical visit on its calendar date
 //   visit       — a preventive well-visit due/overdue (issue #82, satisfied by a visit)
 //   screening   — a preventive screening due/overdue (issue #82, satisfied by a result)
@@ -23,6 +24,7 @@ export type UpcomingDomain =
   | "dose"
   | "refill"
   | "dietary-limit"
+  | "interaction"
   | "appointment"
   | "visit"
   | "screening"
@@ -37,14 +39,15 @@ const DOMAIN_ORDER: Record<UpcomingDomain, number> = {
   dose: 0,
   refill: 1,
   "dietary-limit": 2,
-  appointment: 3,
-  careplan: 4,
-  visit: 5,
-  screening: 6,
-  immunization: 7,
-  biomarker: 8,
-  goal: 9,
-  training: 10,
+  interaction: 3,
+  appointment: 4,
+  careplan: 5,
+  visit: 6,
+  screening: 7,
+  immunization: 8,
+  biomarker: 9,
+  goal: 10,
+  training: 11,
 };
 
 export type UrgencyBand = "overdue" | "today" | "week" | "later";
