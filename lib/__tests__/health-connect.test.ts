@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { parseHealthConnectPayload } from "@/lib/integrations/health-connect";
+import {
+  parseHealthConnectPayload,
+  countUnknownRecords,
+  KNOWN_HEALTH_CONNECT_KEYS,
+} from "@/lib/integrations/health-connect";
 
 // The exporter sends absolute timestamps (Z / offset). Day + minute attribution
 // happens in an explicit IANA zone passed by the caller (the app's configured
@@ -23,10 +27,55 @@ describe("parseHealthConnectPayload — guards", () => {
     expect(parse(42)).toEqual(empty);
   });
 
-  it("ignores unknown keys", () => {
-    const out = parse({ something_else: [{ a: 1 }] });
-    expect(out.skipped).toBe(0);
+  it("counts unknown record types as skipped instead of silently dropping them (#419)", () => {
+    // Health Connect types with no model home (FloorsClimbed, ElevationGained, Power,
+    // Speed, cadence, the menstrual family, …) map to nothing — but their records must
+    // show up in the received/skipped tally, not vanish.
+    const out = parse({
+      floors_climbed: [{ floors: 12 }, { floors: 8 }],
+      elevation_gained: [{ meters: 40 }],
+      menstruation_period: [{ time: "2026-06-15T00:00:00Z" }],
+    });
+    expect(out.skipped).toBe(4);
     expect(out.samples).toHaveLength(0);
+    expect(out.activities).toHaveLength(0);
+  });
+
+  it("non-array metadata keys are never counted", () => {
+    const out = parse({
+      timestamp: "2026-06-15T08:00:00Z",
+      app_version: "1.2.3",
+      unknown_scalar: 42,
+      unknown_object: { nested: [1, 2, 3] },
+    });
+    expect(out.skipped).toBe(0);
+  });
+
+  it("a known record type is consumed, not counted as an unknown drop", () => {
+    const out = parse({
+      weight: [{ time: "2026-06-15T08:00:00Z", kilograms: 80 }],
+      floors_climbed: [{ floors: 5 }],
+    });
+    expect(out.bodyMetrics).toHaveLength(1);
+    // Only the one unknown floors_climbed record counts as skipped.
+    expect(out.skipped).toBe(1);
+  });
+});
+
+describe("countUnknownRecords", () => {
+  it("sums lengths of only the top-level array keys with no home", () => {
+    expect(countUnknownRecords({ floors_climbed: [1, 2], power: [3] })).toBe(3);
+    expect(countUnknownRecords(null)).toBe(0);
+    expect(countUnknownRecords({ steps: [1, 2, 3] })).toBe(0); // known → 0
+    expect(countUnknownRecords({ note: "hi", count: 5 })).toBe(0); // non-arrays
+  });
+
+  it("every key the parser consumes is registered as known", () => {
+    // Guards against the parser gaining a record type while the known-set (and thus
+    // the skipped tally) forgets it — a payload of only known types must score 0.
+    for (const key of KNOWN_HEALTH_CONNECT_KEYS) {
+      expect(countUnknownRecords({ [key]: [{}, {}] })).toBe(0);
+    }
   });
 });
 
