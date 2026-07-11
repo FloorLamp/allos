@@ -14,6 +14,7 @@ import { db, today } from "@/lib/db";
 import { captureDelete } from "@/lib/undo-delete-db";
 import { isRealIsoDate } from "@/lib/date";
 import type { MedicalCategory } from "@/lib/types";
+import { MEDICAL_CATEGORIES, MEDICAL_FLAGS } from "@/lib/medical-categories";
 import { extractMedicalDocument, isSupportedFile } from "@/lib/medical-extract";
 import { sniffUploadType } from "@/lib/file-sniff";
 import { aiConfigured } from "@/lib/ai-client";
@@ -72,16 +73,6 @@ const log = createLogger("medical");
 
 const UPLOAD_DIR = path.join(process.cwd(), "data", "uploads", "medical");
 const MAX_BYTES = 32 * 1024 * 1024; // 32MB (Anthropic request cap)
-
-const MEDICAL_CATEGORIES = [
-  "vitals",
-  "lab",
-  "genomics",
-  "biomarker",
-  "scan",
-  "prescription",
-];
-const MEDICAL_FLAGS = ["normal", "high", "low", "abnormal"];
 
 // Model-supplied dates are only *asked* to be ISO — validate before storing so a
 // hallucinated "Friday" or "2026-13-45" can't land in a YYYY-MM-DD column.
@@ -179,11 +170,16 @@ export async function updateRecord(formData: FormData) {
     return v ? v : null;
   };
   const categoryRaw = String(formData.get("category") ?? "");
-  const category = MEDICAL_CATEGORIES.includes(categoryRaw)
+  const category = (MEDICAL_CATEGORIES as readonly string[]).includes(
+    categoryRaw
+  )
     ? categoryRaw
     : "lab";
   const flagRaw = str("flag");
-  const flag = flagRaw && MEDICAL_FLAGS.includes(flagRaw) ? flagRaw : null;
+  const flag =
+    flagRaw && (MEDICAL_FLAGS as readonly string[]).includes(flagRaw)
+      ? flagRaw
+      : null;
   const value = str("value");
   // Keep value_num in sync so charts/aggregates stay correct.
   const valueNum =
