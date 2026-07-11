@@ -38,7 +38,8 @@ describe("saveActivity estimated calories (issue #151)", () => {
         est_calories: "784",
       })
     );
-    const id = (res as { id: number }).id;
+    if (!res.ok) throw new Error(`expected save to succeed, got ${res.reason}`);
+    const id = res.id;
     expect(estCalories(id)).toBe(784);
   });
 
@@ -57,7 +58,8 @@ describe("saveActivity estimated calories (issue #151)", () => {
         est_calories: "500",
       })
     );
-    const id = (res as { id: number }).id;
+    if (!res.ok) throw new Error(`expected save to succeed, got ${res.reason}`);
+    const id = res.id;
     expect(estCalories(id)).toBe(500);
 
     // Re-save with an override.

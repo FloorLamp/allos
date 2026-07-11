@@ -28,6 +28,7 @@ import {
 import { isCuratedActivity } from "@/lib/activities-catalog";
 import { biasByCompanions } from "@/lib/companions";
 import { dispWeight, kmTo, round } from "@/lib/units";
+import { saveOutcomeMessage } from "@/lib/activity-save-outcome";
 import { type NextSet } from "@/lib/coaching";
 import {
   IconX,
@@ -653,13 +654,16 @@ export default function ActivityForm({
     if (mountedRef.current) setStatus("saving");
     try {
       const res = await saveActivity(buildFormData());
-      if (
-        res &&
-        typeof res === "object" &&
-        "id" in res &&
-        res.id != null &&
-        savableId() == null
-      ) {
+      // Nothing persisted (invalid title/date or an id the active profile doesn't
+      // own — e.g. after a profile switch). Do NOT advance savedSigRef: the form
+      // stays dirty so the edit survives, the auto-saver can retry, and closing it
+      // still prompts. Surface the failure instead of a false "Saved ✓" (#332).
+      if (!res.ok) {
+        if (mountedRef.current) setStatus("error");
+        else toast(saveOutcomeMessage(res.reason));
+        return;
+      }
+      if (res.id != null && savableId() == null) {
         createdIdRef.current = res.id; // ref first, so a trailing save UPDATEs
         if (mountedRef.current) setCreatedId(res.id);
       }
