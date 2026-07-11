@@ -6,6 +6,7 @@ import { getSetting, setSetting } from "../settings";
 import type { ChannelId, NotificationMessage } from "./types";
 import { telegramChannel } from "./telegram";
 import { pushChannel } from "./push";
+import { homeAssistantChannel } from "./home-assistant";
 import { decideMarker, type NotifyErrorMarker } from "./delivery-status";
 
 const log = createLogger("notifications");
@@ -62,15 +63,15 @@ function recordDeliveryOutcome(results: DispatchResult[]): void {
   }
 }
 
-// The channels dispatch() fans a message out to. Both are tried on every send;
-// each gates itself via isConfigured(profileId), so an instance with only one set
-// up silently uses just that one. NOTE the per-slot dedup in scripts/notify.ts is
+// The channels dispatch() fans a message out to. All are tried on every send; each
+// gates itself via isConfigured(profileId), so an instance with only one set up
+// silently uses just that one. NOTE the per-slot dedup in scripts/notify.ts is
 // intentionally channel-AGNOSTIC: dispatch() delivers to every configured channel
-// in a single call, so a profile with BOTH Telegram and push enabled gets both
-// within the same tick; the marker ("delivered" = at least one channel ok) only
-// guards against re-sending on later hours, never against multi-channel fan-out.
+// in a single call, so a profile with Telegram + push + Home Assistant enabled gets
+// all three within the same tick; the marker ("delivered" = at least one channel ok)
+// only guards against re-sending on later hours, never against multi-channel fan-out.
 export function getChannels() {
-  return [telegramChannel, pushChannel];
+  return [telegramChannel, pushChannel, homeAssistantChannel];
 }
 
 export interface DispatchResult {

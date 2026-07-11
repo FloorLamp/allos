@@ -150,5 +150,5 @@ export function renderWindowMessage(
       row,
     });
   }
-  return { title: `💊 ${window} supplements`, body, actions };
+  return { title: `💊 ${window} supplements`, body, actions, kind: "dose" };
 }

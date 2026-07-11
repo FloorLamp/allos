@@ -2,7 +2,26 @@
 // supplement reminder) and dispatched to every configured channel; the core
 // knows nothing about supplements and channels know nothing about features.
 
-export type ChannelId = "telegram" | "push";
+export type ChannelId = "telegram" | "push" | "home-assistant";
+
+// A machine-readable classification of what a notification IS, carried on the
+// message so a structured channel (Home Assistant, #248) can route/announce it and
+// a per-kind delivery toggle can gate it. Purely a delivery hint — it never changes
+// what's decided upstream (the findings-suppression bus, safety-tier rules) — so an
+// unset kind is legal and treated as "other". Kept as a small, stable union;
+// growing it is additive.
+export type NotificationKind =
+  | "dose" // scheduled supplement/medication dose reminder
+  | "escalation" // missed-dose escalation (safety)
+  | "refill" // low-supply refill nudge
+  | "preventive" // preventive-care nudge
+  | "workout" // training/workout reminder
+  | "digest" // morning digest
+  | "upcoming" // "what's due" upcoming digest
+  | "weekly-recap" // weekly recap summary
+  | "milestone" // milestone reached
+  | "test" // a send-test from Settings
+  | "other"; // unclassified / default
 
 // An interactive action attached to a message. Either a callback action — `data`
 // is an opaque token the inbound webhook decodes to perform the action (e.g.
@@ -26,6 +45,11 @@ export interface NotificationMessage {
   title: string;
   body: string;
   actions?: NotificationAction[];
+  // Machine-readable classification (#248). Optional — channels that don't care
+  // (Telegram/push) ignore it; the Home Assistant channel forwards it so an
+  // automation can route by kind and a per-kind toggle can gate delivery. Unset
+  // reads as "other".
+  kind?: NotificationKind;
 }
 
 export interface NotificationChannel {

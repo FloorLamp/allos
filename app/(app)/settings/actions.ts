@@ -36,6 +36,8 @@ import {
   setProfileTelegram,
   setTelegramBotConfig,
   setNotifySchedule,
+  getProfileHomeAssistant,
+  setProfileHomeAssistant,
   getPublicUrl,
   setPublicUrl,
   isValidTimezone,
@@ -77,6 +79,12 @@ import {
   sendTestPushToLogin,
 } from "@/lib/notifications/push";
 import { parsePushSubscription } from "@/lib/notifications/push-core";
+import { sendHomeAssistantTest } from "@/lib/notifications/home-assistant";
+import {
+  isValidWebhookUrl,
+  TOGGLEABLE_HA_KINDS,
+} from "@/lib/notifications/home-assistant-core";
+import type { NotificationKind } from "@/lib/notifications/types";
 import type { ReproductiveStatus, Sex } from "@/lib/types";
 import { recordAudit } from "@/lib/audit";
 import { AUDIT_ACTIONS } from "@/lib/audit-actions";
@@ -526,6 +534,7 @@ export async function sendTestNotification(): Promise<{
   const results = await dispatch(profile.id, {
     title: "Test notification",
     body: "Notifications are working ✅",
+    kind: "test",
   });
   if (results.length === 0)
     return {
@@ -540,6 +549,69 @@ export async function sendTestNotification(): Promise<{
       message: failed.map((f) => `${f.id}: ${f.error}`).join("; "),
     };
   return { ok: true, message: "Sent ✅ — check your Telegram." };
+}
+
+// ---- Notifications: Home Assistant channel (profile scope, issue #248) ----
+
+// The per-profile Home Assistant webhook target: enable toggle, webhook URL,
+// optional shared secret, and which notification kinds to forward (a household may
+// want doses announced but not weekly recaps). Profile-scoped like the Telegram
+// delivery target, so any login with write access to the profile may edit it.
+// Rejects a malformed URL when enabling so a typo can't silently disable delivery.
+export async function saveHomeAssistantPrefs(
+  formData: FormData
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { profile } = await requireWriteAccess();
+  const enabled =
+    formData.get("ha_enabled") === "on" || formData.get("ha_enabled") === "1";
+  const webhookUrl = String(formData.get("ha_webhook_url") ?? "").trim();
+  const secret = String(formData.get("ha_secret") ?? "").trim();
+
+  if (enabled && !isValidWebhookUrl(webhookUrl)) {
+    return {
+      ok: false,
+      error:
+        "Enter a valid Home Assistant webhook URL (http(s)://host:8123/api/webhook/<id>).",
+    };
+  }
+
+  // A checkbox per toggleable kind: checked ("1") = forward; the DISABLED set is the
+  // kinds NOT checked. Absent field also reads as disabled (an unchecked box submits
+  // nothing), so the form must render every kind.
+  const disabledKinds: NotificationKind[] = TOGGLEABLE_HA_KINDS.filter(
+    ({ kind }) => formData.get(`ha_kind_${kind}`) !== "1"
+  ).map(({ kind }) => kind);
+
+  setProfileHomeAssistant(profile.id, {
+    enabled,
+    webhookUrl,
+    secret,
+    disabledKinds,
+  });
+  revalidatePath("/settings/profile");
+  return { ok: true };
+}
+
+// Send a test announcement to the profile's HA webhook, independent of the
+// Telegram/push test (a household may run only HA). Reports the failure verbatim so
+// a wrong URL / unreachable HA is visible.
+export async function sendTestHomeAssistant(): Promise<{
+  ok: boolean;
+  message: string;
+}> {
+  const { profile } = await requireWriteAccess();
+  try {
+    const result = await sendHomeAssistantTest(profile.id);
+    if (result === "not-configured")
+      return {
+        ok: false,
+        message:
+          "No Home Assistant webhook configured — enable it and paste your HA webhook URL first.",
+      };
+    return { ok: true, message: "Sent ✅ — check Home Assistant." };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) };
+  }
 }
 
 // ---- Web Push (login scope, issue #17) ----

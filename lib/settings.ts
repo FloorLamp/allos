@@ -32,6 +32,11 @@ import {
   type SituationEvent,
 } from "./trend-annotations";
 import { normalizeBloodType } from "./emergency-card";
+import type { NotificationKind } from "./notifications/types";
+import {
+  parseDisabledKinds,
+  serializeDisabledKinds,
+} from "./notifications/home-assistant-core";
 import {
   parsePackYears,
   parseQuitYear,
@@ -380,6 +385,68 @@ export function setProfileTelegram(
   );
   setProfileSetting(profileId, "telegram_chat_id", cfg.telegramChatId.trim());
   return getProfileTelegram(profileId);
+}
+
+// ---- Home Assistant notification channel (per profile, issue #248) ----
+// A per-profile outbound webhook so Home Assistant can present reminders with what
+// only IT knows — who is home, which room — as kitchen-speaker TTS, escalation
+// light-flashes, presence-aware delivery. Mirrors the Telegram split: this is the
+// per-profile delivery TARGET (enable + webhook URL + optional shared secret + which
+// kinds to forward). There is no global HA config — every household points at its own
+// HA instance per profile. Stored as discrete profile_settings keys:
+//   ha_notify_enabled        "1" | "0"
+//   ha_notify_webhook_url     the HA webhook URL (http(s)://host:8123/api/webhook/<id>)
+//   ha_notify_secret          optional shared secret echoed as the X-Allos-Webhook-Secret header
+//   ha_notify_disabled_kinds  JSON string[] of NotificationKind held OUT of this channel
+
+export interface ProfileHomeAssistant {
+  enabled: boolean;
+  webhookUrl: string;
+  secret: string;
+  disabledKinds: NotificationKind[]; // kinds NOT forwarded (absence = all forwarded)
+}
+
+export function getProfileHomeAssistant(
+  profileId: number
+): ProfileHomeAssistant {
+  return {
+    enabled: getProfileSetting(profileId, "ha_notify_enabled") === "1",
+    webhookUrl: getProfileSetting(profileId, "ha_notify_webhook_url") ?? "",
+    secret: getProfileSetting(profileId, "ha_notify_secret") ?? "",
+    disabledKinds: parseDisabledKinds(
+      getProfileSetting(profileId, "ha_notify_disabled_kinds")
+    ),
+  };
+}
+
+// Persist this profile's HA delivery target. Per-profile, so any login with write
+// access to the profile may set it (member-safe). The URL/secret are trimmed; the
+// disabled-kinds set is validated + serialized by the pure core.
+export function setProfileHomeAssistant(
+  profileId: number,
+  cfg: {
+    enabled: boolean;
+    webhookUrl: string;
+    secret: string;
+    disabledKinds: readonly NotificationKind[];
+  }
+): ProfileHomeAssistant {
+  const write = db.transaction(() => {
+    setProfileSetting(profileId, "ha_notify_enabled", cfg.enabled ? "1" : "0");
+    setProfileSetting(
+      profileId,
+      "ha_notify_webhook_url",
+      cfg.webhookUrl.trim()
+    );
+    setProfileSetting(profileId, "ha_notify_secret", cfg.secret.trim());
+    setProfileSetting(
+      profileId,
+      "ha_notify_disabled_kinds",
+      serializeDisabledKinds(cfg.disabledKinds)
+    );
+  });
+  write();
+  return getProfileHomeAssistant(profileId);
 }
 
 // Persist the global bot credentials (token + inbound transport mode). App-wide,

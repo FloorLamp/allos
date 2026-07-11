@@ -147,6 +147,36 @@ describe("decideMarker (channel-aware clearing, #192)", () => {
     });
   });
 
+  // --- Home Assistant channel (#248): the marker is channel-agnostic, so the same
+  // channel-aware clearing rules must hold for a third channel id. ---
+
+  it("HA: sets a home-assistant failure like any other channel", () => {
+    expect(
+      decideMarker(
+        [
+          { id: "telegram", ok: true },
+          { id: "home-assistant", ok: false, error: "HTTP 404" },
+        ],
+        ""
+      )
+    ).toEqual({
+      action: "set",
+      failure: { channel: "home-assistant", error: "HTTP 404" },
+    });
+  });
+
+  it("HA: a Telegram-only profile does NOT clear a home-assistant failure it never attempted", () => {
+    expect(
+      decideMarker([{ id: "telegram", ok: true }], "home-assistant")
+    ).toEqual({ action: "keep" });
+  });
+
+  it("HA: a later successful home-assistant send clears the home-assistant failure", () => {
+    expect(
+      decideMarker([{ id: "home-assistant", ok: true }], "home-assistant")
+    ).toEqual({ action: "clear" });
+  });
+
   it("overwrites an existing failure with a newly-failing channel", () => {
     // push was broken; now push is ok but telegram fails → record telegram.
     expect(

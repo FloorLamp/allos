@@ -37,7 +37,11 @@ export function formatWorkoutReminder(
       lines.push(`When you're ready: ${rec.exercises.join(", ")}`);
     else if (rec.focus.length)
       lines.push(`When you're ready: ${rec.focus.join(", ")}`);
-    return { title: `🛌 ${rec.rest.title}`, body: lines.join("\n") };
+    return {
+      title: `🛌 ${rec.rest.title}`,
+      body: lines.join("\n"),
+      kind: "workout",
+    };
   }
 
   const lines: string[] = [];
@@ -55,5 +59,6 @@ export function formatWorkoutReminder(
         ? `🏋️ Today's workout — ${focusLabel}`
         : "🏋️ Today's workout",
     body: lines.join("\n"),
+    kind: "workout",
   };
 }

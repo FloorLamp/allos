@@ -529,9 +529,9 @@ it by hand or from a host cron/systemd timer. If the GHCR package is private,
 ## Notifications
 
 Reminders (supplements due in a window, and a workout nudge when you're behind on a
-weekly target) are delivered over two channels — **Telegram** and **Web Push** — that
-share the same schedule and per-day/slot dedup. Enable either, or both; a profile with
-both configured gets each reminder on both.
+weekly target) are delivered over three channels — **Telegram**, **Web Push**, and a
+**Home Assistant** webhook — that share the same schedule and per-day/slot dedup. Enable
+any or all; a profile with several configured gets each reminder on each.
 
 Beyond reminders, two opt-in retention nudges ride the same channels: a **weekly recap**
 — a quiet once-a-week summary of your week (workouts + volume, PRs, supplement
@@ -610,6 +610,36 @@ the app when tapped. Notes:
 - **Zero setup.** The instance's VAPID keypair is generated automatically the first
   time anyone enables push; the private key stays on the server. Payloads carry only a
   title + short body (the same text Telegram would show) and a link — no record detail.
+
+### Home Assistant (presence/room-aware reminders)
+
+If you run **Home Assistant** on the same LAN, Allos can send each reminder to an HA
+**webhook** so HA presents it with what only it knows — _who is home, and which room_:
+kitchen-speaker **TTS dose announcements** when the person is actually in the kitchen
+(the accessibility win for a household member who'll never install Telegram), **escalation
+theatrics** (a critical dose left unconfirmed flashes the lights / announces on the
+caregiver's floor), and **presence-aware delivery** (hold an announcement until someone's
+home, or suppress the phone push once the wall panel has spoken). Configure it per person
+under **Settings → Profile → Notifications (Home Assistant)**: enable it, paste your HA
+webhook URL (`http(s)://<host>:8123/api/webhook/<id>` — HA's built-in
+[webhook trigger](https://www.home-assistant.io/docs/automation/trigger/#webhook-trigger),
+no custom component needed), optionally set a shared secret, choose which reminder kinds to
+forward (a household may want doses announced but not weekly recaps), and **Send test**.
+Allos joins the same channel-aware delivery-health marker, so a wrong URL / unreachable HA
+surfaces on **Settings → Server**.
+
+- **Payload.** A JSON POST with `title`, `body`, a machine-readable `kind`
+  (`dose`/`escalation`/`refill`/…), the profile display `name`, and — for actionable dose
+  reminders — the `doses` (`dose_id` + `date` + `taken`/`skipped`) so an HA automation can
+  wire a voice/button confirmation back to the Allos `POST /dose` endpoint. Full shape and
+  copy-paste automation recipes (TTS announcement + confirm-to-`/dose`; escalation lights)
+  are in [`docs/home-assistant-notifications.md`](docs/home-assistant-notifications.md).
+- **PHI posture.** The body contains medication names and usually travels LAN-to-LAN. Use
+  an `https` HA URL when the instances aren't co-located, and set a shared secret (sent as
+  the `X-Allos-Webhook-Secret` header) so an HA automation can reject calls without it.
+- **Delivery only, not a decision surface.** Snooze/dismiss (the "dismiss once, silence
+  everywhere" bus) and the safety-tier rules apply _upstream_ of this channel exactly as
+  they do for Telegram — a suppressed reminder never reaches HA either.
 
 Sending is driven by a tick that runs **every hour**. Each tick sends whatever is scheduled
 for the current hour (supplement windows at their configured hours; the workout reminder on
@@ -807,9 +837,11 @@ with no paths, versions, or PHI, since the endpoint is unauthenticated — detai
 server logs. `lastBackupAgeHours` reports hours since the last successful backup (null when
 never backed up).
 
-**Notification delivery failures.** A failed Telegram/push send is also persisted as a
-global marker (`notify_last_error`, cleared on the next successful send) and surfaced on
-**Settings → Server → Telegram bot**, so a revoked bot token or wrong chat id is visible
+**Notification delivery failures.** A failed Telegram, push, or Home Assistant send is
+also persisted as a global marker (`notify_last_error`, naming the channel that failed,
+cleared on the next successful send to that channel) and surfaced on
+**Settings → Server → Telegram bot**, so a revoked bot token, wrong chat id, or an
+unreachable HA webhook is visible
 instead of only appearing as a notify-tick exit code. The per-profile **Send test** button
 on **Settings → Profile** is the remediation path — a successful test clears the marker.
 
