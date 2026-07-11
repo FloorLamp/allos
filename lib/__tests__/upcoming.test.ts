@@ -5,6 +5,7 @@ import {
   bandForItem,
   upcomingDueText,
   groupUpcoming,
+  snoozeUntil,
   BAND_ORDER,
   type UpcomingItem,
 } from "../upcoming";
@@ -237,5 +238,34 @@ describe("groupUpcoming", () => {
     ];
     const today = groupUpcoming(items, TODAY).find((g) => g.band === "today")!;
     expect(today.items.map((i) => i.key)).toEqual(["appt", "imm"]);
+  });
+});
+
+describe("snoozeUntil", () => {
+  it("shifts today by the requested whole days", () => {
+    expect(snoozeUntil(TODAY, 1)).toBe("2026-07-09");
+    expect(snoozeUntil(TODAY, 7)).toBe("2026-07-15");
+  });
+
+  it("floors fractional days", () => {
+    expect(snoozeUntil(TODAY, 7.9)).toBe("2026-07-15");
+  });
+
+  it("clamps to the 3650-day (10y) maximum", () => {
+    // The max lands exactly 3650 days out; anything larger clamps to the same date.
+    const atMax = snoozeUntil(TODAY, 3650);
+    expect(snoozeUntil(TODAY, 3651)).toBe(atMax);
+    expect(snoozeUntil(TODAY, 1_000_000)).toBe(atMax);
+  });
+
+  it("returns null for days below the 1-day minimum", () => {
+    expect(snoozeUntil(TODAY, 0)).toBeNull();
+    expect(snoozeUntil(TODAY, 0.5)).toBeNull();
+    expect(snoozeUntil(TODAY, -3)).toBeNull();
+  });
+
+  it("returns null for non-finite requests (tampered forms → NaN/Infinity)", () => {
+    expect(snoozeUntil(TODAY, NaN)).toBeNull();
+    expect(snoozeUntil(TODAY, Infinity)).toBeNull();
   });
 });
