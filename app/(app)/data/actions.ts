@@ -407,8 +407,13 @@ export async function commitWorkouts(
 
   const prefs = getUnitPrefs(login.id);
   // Resolve the extracted equipment name to a user-defined row (case-insensitive).
+  // includeRetired: an imported set that names retired gear should still link to
+  // the existing row rather than losing its implement (issue #341).
   const equipByName = new Map(
-    getEquipment(profile.id).map((e) => [e.name.trim().toLowerCase(), e])
+    getEquipment(profile.id, { includeRetired: true }).map((e) => [
+      e.name.trim().toLowerCase(),
+      e,
+    ])
   );
   const insertActivity = db.prepare(
     `INSERT INTO activities (date, type, title, notes, profile_id) VALUES (?, 'strength', ?, ?, ?)`

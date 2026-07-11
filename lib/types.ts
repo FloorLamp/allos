@@ -110,13 +110,60 @@ export interface Equipment {
   name: string;
   weight_kg: number | null;
   category: string | null;
+  // Soft-retire flag (0/1), mirroring intake_item_doses.retired: a retired row is
+  // hidden from pickers/recency-defaulting but keeps labelling historical sets
+  // (see lib/equipment.ts). Sold/broken gear is retired, not deleted, so "which bar
+  // did I PR on" survives. Hard delete stays available for genuine mistakes.
+  retired: number;
   created_at: string;
 }
 
-// Equipment types. Only "Barbell" enables the plate builder. Stored in
-// equipment.category (kept free-text in the DB for back-compat).
-export const EQUIPMENT_CATEGORIES = ["Barbell", "Machine", "Other"] as const;
+// Equipment types — ONE deliberate, fixed set (issue #341), enforced by a DB CHECK
+// on equipment.category (migration 018) so the TS union and the DB constraint can't
+// drift (parity pinned in lib/__db_tests__/enum-parity.test.ts). Grouped by kind via
+// kindOf() below: strength, cardio, recovery, other. Only "Barbell" enables the
+// plate builder (isBarbell). NULL is a legal stored value (category unknown).
+export const EQUIPMENT_CATEGORIES = [
+  "Barbell",
+  "Dumbbell",
+  "Kettlebell",
+  "Machine",
+  "Bike",
+  "Shoes",
+  "Sauna",
+  "Cold plunge",
+  "Red light",
+  "Massage device",
+  "Other",
+] as const;
 export type EquipmentCategory = (typeof EQUIPMENT_CATEGORIES)[number];
+
+// The functional grouping a category belongs to. Lets pickers filter by context
+// (a strength log offers strength implements; #345's recommendations reason over
+// recovery gear) without hard-coding category lists at each call site.
+export type EquipmentKind = "strength" | "cardio" | "recovery" | "other";
+
+const EQUIPMENT_KIND: Record<EquipmentCategory, EquipmentKind> = {
+  Barbell: "strength",
+  Dumbbell: "strength",
+  Kettlebell: "strength",
+  Machine: "strength",
+  Bike: "cardio",
+  Shoes: "cardio",
+  Sauna: "recovery",
+  "Cold plunge": "recovery",
+  "Red light": "recovery",
+  "Massage device": "recovery",
+  Other: "other",
+};
+
+// The kind of an equipment category (case-insensitive). An unknown/NULL category
+// reads as "other" — the safe default for legacy or unclassified rows.
+export function kindOf(category: string | null | undefined): EquipmentKind {
+  const c = (category ?? "").trim().toLowerCase();
+  const match = EQUIPMENT_CATEGORIES.find((x) => x.toLowerCase() === c);
+  return match ? EQUIPMENT_KIND[match] : "other";
+}
 
 // Whether an equipment row is a barbell (case-insensitive); gates plate builder.
 export function isBarbell(category: string | null | undefined): boolean {

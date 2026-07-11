@@ -12,10 +12,20 @@ export interface EquipmentInput {
 // Equipment is per-profile: deleteEquipment() nulls
 // exercise_sets.equipment_id, so a shared row would let one profile's cleanup
 // corrupt another's set history.
-export function getEquipment(profileId: number): Equipment[] {
+//
+// By default RETIRED rows are excluded — the common caller is a picker or
+// recency-defaulting, which must not offer sold/broken gear (issue #341, mirroring
+// getSupplementDoses excluding retired doses). Callers that need every row —
+// the settings manager (to Unretire) and history label maps (retired gear still
+// labels old sets) — pass { includeRetired: true }.
+export function getEquipment(
+  profileId: number,
+  opts?: { includeRetired?: boolean }
+): Equipment[] {
+  const where = opts?.includeRetired ? "" : " AND retired = 0";
   return db
     .prepare(
-      "SELECT * FROM equipment WHERE profile_id = ? ORDER BY name COLLATE NOCASE"
+      `SELECT * FROM equipment WHERE profile_id = ?${where} ORDER BY name COLLATE NOCASE`
     )
     .all(profileId) as Equipment[];
 }
@@ -81,6 +91,20 @@ export function updateEquipment(
     id,
     profileId
   );
+}
+
+// Soft-retire (or un-retire) an equipment row — the reversible alternative to
+// delete (issue #341). A retired row drops out of pickers/recency-defaulting but
+// keeps its id, so historical sets that reference it still resolve their implement
+// label. Scoped to the profile so a leaked id can't reach another profile's rows.
+export function setEquipmentRetired(
+  profileId: number,
+  id: number,
+  retired: boolean
+): void {
+  db.prepare(
+    `UPDATE equipment SET retired = ? WHERE id = ? AND profile_id = ?`
+  ).run(retired ? 1 : 0, id, profileId);
 }
 
 // Delete an equipment row, first detaching it from any logged sets so their

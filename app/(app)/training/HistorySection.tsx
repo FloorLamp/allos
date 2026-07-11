@@ -46,8 +46,13 @@ export default async function HistorySection() {
     activities.map((a) => a.id)
   );
   // Resolve per-set equipment_id -> implement name for the journal's labels.
+  // includeRetired: a retired implement must still label the historical sets it
+  // was logged against (issue #341).
   const equipmentNames = new Map(
-    getEquipment(profile.id).map((e) => [e.id, e.name])
+    getEquipment(profile.id, { includeRetired: true }).map((e) => [
+      e.id,
+      e.name,
+    ])
   );
 
   // Build the day-grouped feed cards (set-grouping, components-vs-legacy parts,

@@ -14,5 +14,7 @@
   "013-rxcui-ingredients.ts": "e643b4ea89d7d79d81139fe56fc32d6959040f5d8df4a27aae18cefe317161a2",
   "014-hr-minutes-per-source.ts": "9a70a81084cc203b7c0f92a2ebf7480864053fed06400e9a8cc43343e3cecf28",
   "015-import-job-committing-state.ts": "86dfc196819febb4810426f93505220f7d89af8cffa6f9a7cfdb8c6d1ea86d22",
-  "016-goal-status-drop-archived.ts": "682969bf242c3044c01249ac22eea550b86956b3b8d0226c817163e4b8f4297e"
+  "016-goal-status-drop-archived.ts": "682969bf242c3044c01249ac22eea550b86956b3b8d0226c817163e4b8f4297e",
+  "017-equipment-retire.ts": "d02249f09502f53ba328ef66d066bfabbcb33cbfd08f8c746cc375e70635ee81",
+  "018-equipment-category-enum.ts": "b2445a9fbae5f1e54ff3d8791b2769420e49a09e3d6d15e2e3f0e507f448e115"
 }
