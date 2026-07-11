@@ -68,18 +68,20 @@ test("a body-hygiene finding can be dismissed (#45)", async ({ page }) => {
   resetBodyHygieneDismissals();
   await page.goto("/trends?tab=body");
   const main = page.getByRole("main");
+  // Target the SEEDED 92 kg anomaly specifically: in the full suite other specs
+  // (offline-queue, manual-vitals) log weights of their own before this file runs,
+  // which can trip additional >3% findings — a bare "Unusual weight reading"
+  // filter then strict-mode-fails on multiple matches.
   const finding = main
     .getByTestId("body-hygiene-findings-item")
-    .filter({ hasText: "Unusual weight reading" });
+    .filter({ hasText: "92 kg" });
   await expect(finding).toBeVisible();
 
   await finding.getByTestId("body-hygiene-findings-dismiss").click();
 
-  // After the server action + re-render, that finding is gone (only the one seeded
-  // anomaly exists, so the whole card unmounts).
+  // After the server action + re-render, THIS finding is gone — other specs'
+  // incidental weight findings (if any) legitimately remain.
   await expect(
-    main
-      .getByTestId("body-hygiene-findings-item")
-      .filter({ hasText: "Unusual weight reading" })
+    main.getByTestId("body-hygiene-findings-item").filter({ hasText: "92 kg" })
   ).toHaveCount(0);
 });
