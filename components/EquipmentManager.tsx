@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useId, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   IconPencil,
@@ -300,12 +300,18 @@ function EquipmentForm({
   pending: boolean;
   error: string | null;
 }) {
+  // The form renders for add AND per-row edit, so label association needs
+  // instance-unique ids (getByLabel in the e2e spec, screen readers generally).
+  const uid = useId();
   return (
     <div className="space-y-3 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
-          <label className="label">Name</label>
+          <label className="label" htmlFor={`${uid}-name`}>
+            Name
+          </label>
           <input
+            id={`${uid}-name`}
             value={draft.name}
             onChange={(e) => setDraft({ ...draft, name: e.target.value })}
             placeholder="Trap bar"
@@ -314,8 +320,11 @@ function EquipmentForm({
           />
         </div>
         <div>
-          <label className="label">Bar weight ({unit})</label>
+          <label className="label" htmlFor={`${uid}-weight`}>
+            Bar weight ({unit})
+          </label>
           <input
+            id={`${uid}-weight`}
             value={draft.weight}
             onChange={(e) =>
               setDraft({ ...draft, weight: stripNegative(e.target.value) })
@@ -326,8 +335,11 @@ function EquipmentForm({
           />
         </div>
         <div>
-          <label className="label">Type</label>
+          <label className="label" htmlFor={`${uid}-category`}>
+            Type
+          </label>
           <select
+            id={`${uid}-category`}
             value={draft.category}
             onChange={(e) => setDraft({ ...draft, category: e.target.value })}
             className="input"
