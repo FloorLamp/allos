@@ -1,4 +1,4 @@
-import { goalBarClass } from "@/lib/goals";
+import { goalBarClass, goalPct } from "@/lib/goals";
 import type { Goal } from "@/lib/types";
 import type { GoalProgress } from "@/lib/goal-progress";
 import WidgetHeader from "./WidgetHeader";
@@ -25,15 +25,7 @@ export default function ActiveGoalsWidget({
       ) : (
         <ul className="space-y-3">
           {goals.map((g) => {
-            const pct =
-              g.metric || g.body_metric
-                ? (goalProgress.get(g.id)?.pct ?? 0)
-                : g.target_value && g.current_value != null
-                  ? Math.min(
-                      100,
-                      Math.round((g.current_value / g.target_value) * 100)
-                    )
-                  : null;
+            const pct = goalPct(g, goalProgress.get(g.id));
             return (
               <li key={g.id}>
                 <div className="flex items-center justify-between text-sm">

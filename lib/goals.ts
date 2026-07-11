@@ -1,8 +1,37 @@
 import type { BodyMetricKind, Goal } from "./types";
+import type { GoalProgress } from "./goal-progress";
 import { baseLiftName, variantOf } from "./lifts";
 import { fmtWeight, round } from "./units";
 import type { WeightUnit } from "./settings";
 import { formatSeconds } from "./duration";
+
+// The single "what percent complete is this goal?" computation, shared by every
+// surface that renders a goal percentage (the household card via goalHighlights,
+// the dashboard's ActiveGoalsWidget, and the training GoalsManager) so they can
+// never disagree (issue #307 — this was re-derived inline in three places, and
+// the goals page's auto-vs-manual test had drifted).
+//
+// A goal's percentage has one of three bases, in priority order:
+//   1. Derived progress — for exercise-linked and body-metric goals, whose
+//      progress is computed upstream (getGoalProgressMap) and passed in. 0 when
+//      not yet computed (no matching sets / no reading).
+//   2. Manual current/target — a freeform goal with a numeric target, capped at
+//      100.
+//   3. No numeric basis → null (render no bar).
+//
+// A goal is "derived" iff it is exercise-linked (BOTH `exercise` AND `metric`
+// set — the definition in lib/types.ts) OR body-linked (`body_metric` set). This
+// is exactly the set getGoalProgressMap builds progress for; a `metric` set
+// WITHOUT an `exercise` is not a well-formed exercise goal, has no progress
+// entry, and so falls through to the freeform current/target basis (issue #307's
+// user-visible bug: the household/dashboard copies tested `metric || body_metric`
+// and showed such a goal a bogus 0%, while the goals page showed current/target).
+export function goalPct(g: Goal, progress?: GoalProgress): number | null {
+  if ((g.exercise && g.metric) || g.body_metric) return progress?.pct ?? 0;
+  if (g.target_value && g.current_value != null)
+    return Math.min(100, Math.round((g.current_value / g.target_value) * 100));
+  return null;
+}
 
 export const BODY_METRIC_LABELS: Record<BodyMetricKind, string> = {
   weight: "Bodyweight",

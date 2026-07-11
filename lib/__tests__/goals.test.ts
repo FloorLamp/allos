@@ -6,10 +6,12 @@ import {
   goalBarClass,
   goalBodyTargetText,
   goalMatchesExercise,
+  goalPct,
   goalsForExercise,
   goalTargetText,
 } from "@/lib/goals";
 import type { Goal } from "@/lib/types";
+import type { GoalProgress } from "@/lib/goal-progress";
 
 // Minimal Goal factory: freeform by default; override the linked fields per test.
 function makeGoal(overrides: Partial<Goal> = {}): Goal {
@@ -203,4 +205,121 @@ describe("goalTargetText", () => {
     expect(goalTargetText(makeGoal(), "kg")).toBeNull();
     expect(goalTargetText(makeGoal({ exercise: "Squat" }), "kg")).toBeNull();
   });
+});
+
+describe("goalPct", () => {
+  const prog = (pct: number): GoalProgress => ({
+    current: pct,
+    target: 100,
+    pct,
+    done: pct >= 100,
+  });
+
+  it("uses derived progress for exercise-linked goals (0 when uncomputed)", () => {
+    const g = makeGoal({ exercise: "Bench", metric: "weight" });
+    expect(goalPct(g, prog(80))).toBe(80);
+    expect(goalPct(g, undefined)).toBe(0);
+  });
+
+  it("uses derived progress for body-metric goals", () => {
+    const g = makeGoal({ body_metric: "weight" });
+    expect(goalPct(g, prog(42))).toBe(42);
+    expect(goalPct(g, undefined)).toBe(0);
+  });
+
+  it("uses current/target for manual numeric goals, capped at 100", () => {
+    expect(goalPct(makeGoal({ target_value: 200, current_value: 50 }))).toBe(
+      25
+    );
+    expect(goalPct(makeGoal({ target_value: 100, current_value: 250 }))).toBe(
+      100
+    );
+  });
+
+  it("returns null for a goal with no numeric basis", () => {
+    expect(goalPct(makeGoal())).toBeNull();
+  });
+
+  // Issue #307: a `metric` WITHOUT an `exercise` is not a well-formed exercise
+  // goal (getGoalProgressMap builds no progress entry for it), so it is manual
+  // freeform — it must read current/target, NOT a bogus derived 0%. This is the
+  // branch the household/dashboard copies got wrong (they tested `metric ||
+  // body_metric`).
+  it("treats a metric-without-exercise goal as manual, not derived", () => {
+    const g = makeGoal({
+      metric: "weight",
+      exercise: null,
+      target_value: 200,
+      current_value: 100,
+    });
+    // No progress entry exists for such a goal; freeform basis applies.
+    expect(goalPct(g, undefined)).toBe(50);
+    // Not the derived-0% the old `metric || body_metric` test would have given.
+    expect(goalPct(g, undefined)).not.toBe(0);
+  });
+});
+
+// One question, one computation (issue #307): the household card, the dashboard
+// ActiveGoalsWidget, and the training GoalsManager all render a goal percentage
+// by calling goalPct. This pins that they resolve the SAME number for the same
+// fixture — replicating each surface's exact call expression, including the
+// GoalsManager quirk of only passing progress for `auto` (derived) goals.
+describe("goalPct cross-surface parity", () => {
+  const fixtures: { name: string; goal: Goal; prog?: GoalProgress }[] = [
+    {
+      name: "exercise-linked (derived)",
+      goal: makeGoal({ id: 1, exercise: "Bench", metric: "weight" }),
+      prog: { current: 80, target: 100, pct: 80, done: false },
+    },
+    {
+      name: "body-metric (derived)",
+      goal: makeGoal({ id: 2, body_metric: "weight" }),
+      prog: { current: 42, target: 100, pct: 42, done: false },
+    },
+    {
+      name: "freeform numeric (manual)",
+      goal: makeGoal({ id: 3, target_value: 200, current_value: 50 }),
+    },
+    {
+      name: "metric-without-exercise (manual)",
+      goal: makeGoal({
+        id: 4,
+        metric: "weight",
+        exercise: null,
+        target_value: 200,
+        current_value: 100,
+      }),
+    },
+    {
+      name: "no numeric basis (null)",
+      goal: makeGoal({ id: 5 }),
+    },
+  ];
+
+  for (const f of fixtures) {
+    it(`agrees across surfaces: ${f.name}`, () => {
+      const progressMap = new Map<number, GoalProgress>();
+      if (f.prog) progressMap.set(f.goal.id, f.prog);
+      const progressRecord: Record<number, GoalProgress> = f.prog
+        ? { [f.goal.id]: f.prog }
+        : {};
+
+      // Household card (goalHighlights) and ActiveGoalsWidget both pass the
+      // progress-map lookup directly.
+      const household = goalPct(f.goal, progressMap.get(f.goal.id));
+      const widget = goalPct(f.goal, progressMap.get(f.goal.id));
+
+      // GoalsManager only passes progress for goals it classifies as `auto`
+      // (exercise-linked or body-metric); freeform goals get undefined.
+      const isExercise = f.goal.metric != null && f.goal.exercise != null;
+      const auto = isExercise || f.goal.body_metric != null;
+      const goalsPage = goalPct(
+        f.goal,
+        auto ? progressRecord[f.goal.id] : undefined
+      );
+
+      expect(widget).toBe(household);
+      expect(goalsPage).toBe(household);
+    });
+  }
 });

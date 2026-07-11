@@ -5,6 +5,7 @@
 // any new cross-profile SQL and the logic stays unit-testable.
 
 import { isDueOn } from "./supplement-schedule";
+import { goalPct } from "./goals";
 import type { Goal, Supplement } from "./types";
 import type { GoalProgress } from "./goal-progress";
 
@@ -64,17 +65,6 @@ export function weightTrend(
 }
 
 // ---- Goal highlights ----
-
-// Percent-complete for a goal, mirroring the dashboard's rule: exercise-linked
-// and body-metric goals use their derived progress (0 when not yet computed);
-// manual goals with a numeric target use current/target (capped at 100); goals
-// with no numeric basis have no percentage.
-export function goalPct(g: Goal, progress?: GoalProgress): number | null {
-  if (g.metric || g.body_metric) return progress?.pct ?? 0;
-  if (g.target_value && g.current_value != null)
-    return Math.min(100, Math.round((g.current_value / g.target_value) * 100));
-  return null;
-}
 
 export interface GoalHighlight {
   id: number;
