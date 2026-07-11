@@ -54,6 +54,45 @@ export const SECTIONS = {
       "2.16.840.1.113883.10.20.22.2.5.1",
     ],
   },
+  // History of Past Illness (#265) — Epic titles it "Resolved Problems". The
+  // entries are the SAME Problem Concern Act shape the Problems section carries,
+  // just for past/resolved problems (resolved status observations, effectiveTime
+  // highs). Routed through the same condition mapper with a section-level default
+  // of `resolved`: the section's semantics ("past illness") beat the concern act's
+  // tracking statusCode, but an explicit clinical-status observation (4.6) is
+  // still authoritative.
+  pastIllness: {
+    loinc: "11348-0",
+    templates: ["2.16.840.1.113883.10.20.22.2.20"],
+  },
+  // Hospital Admitting Diagnoses (#266). Entries are a Hospital Admission
+  // Diagnosis act wrapping Problem Observations (4.4) — the same deep-walk shape
+  // as Visit Diagnoses. Not an extractor of its own: read at the document level
+  // and routed into the SAME visit-diagnosis handling (correlated onto the
+  // same-document encounter when there is a single one, else landed as
+  // problem-list conditions with visit-diagnosis provenance).
+  admissionDiagnoses: {
+    loinc: "46241-6",
+    templates: ["2.16.840.1.113883.10.20.22.2.43"],
+  },
+  // Medications at Time of Discharge (#266) — the take-home regimen snapshot on an
+  // inpatient discharge document. Entries are Medication Activity (4.16), the same
+  // shape the Medications extractor parses; the entry's own coded status is
+  // trusted (it IS the intended ongoing med list), and each derived course is
+  // tagged "At hospital discharge" for provenance.
+  dischargeMedications: {
+    loinc: "10183-2",
+    templates: ["2.16.840.1.113883.10.20.22.2.11"],
+  },
+  // Administered Medications (#266) — meds GIVEN during the encounter/stay, not an
+  // ongoing regimen. Same Medication Activity (4.16) entries, but mapped in
+  // snapshot mode: an active/unstated status is capped to `completed` so a
+  // one-off inpatient administration can never surface as a current (open-course)
+  // medication.
+  administeredMedications: {
+    loinc: "29549-3",
+    templates: ["2.16.840.1.113883.10.20.22.2.38"],
+  },
   // Encounters / visit history. The "History of
   // Hospitalizations + Outpatient visits" section; each entry is an Encounter
   // Activity (templateId 4.49) carrying the visit's date/period, type/class,
@@ -151,6 +190,8 @@ export const CLINICAL_NOTE_LOINCS = new Set<string>([
   "11488-4", // Consultation note
   "34117-2", // History and physical note
   "18842-5", // Discharge summary
+  "8648-8", // Hospital course / Discharge Summaries (IHE 1.3.6.1.4.1.19376.1.5.3.1.3.5, Note Activity entries) — #266
+  "8653-8", // Discharge Instructions (2.16.840.1.113883.10.20.22.2.41, Instruction entries) — #266
   "28570-0", // Procedure note
   "34109-9", // Note
   "34111-5", // Emergency department note
@@ -306,6 +347,10 @@ export const KNOWN_SECTION_TITLES: Record<string, string> = {
   [SECTIONS.careTeams.loinc]: "Care Teams",
   [SECTIONS.allergies.loinc]: "Allergies",
   [SECTIONS.problems.loinc]: "Problems",
+  [SECTIONS.pastIllness.loinc]: "Resolved Problems",
+  [SECTIONS.admissionDiagnoses.loinc]: "Admitting Diagnoses",
+  [SECTIONS.dischargeMedications.loinc]: "Discharge Medications",
+  [SECTIONS.administeredMedications.loinc]: "Administered Medications",
   [SECTIONS.encounters.loinc]: "Encounters",
   [SECTIONS.procedures.loinc]: "Procedures",
   [SECTIONS.familyHistory.loinc]: "Family History",
@@ -315,4 +360,7 @@ export const KNOWN_SECTION_TITLES: Record<string, string> = {
   [SECTIONS.socialHistory.loinc]: "Social History",
   [SECTIONS.visitDiagnoses.loinc]: "Visit Diagnoses",
   [SECTIONS.progressNotes.loinc]: "Progress Notes",
+  // Clinical-note section codes with no SECTIONS spec of their own (#266).
+  "8648-8": "Discharge Summaries",
+  "8653-8": "Discharge Instructions",
 };

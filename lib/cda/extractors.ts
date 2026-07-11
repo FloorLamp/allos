@@ -244,10 +244,20 @@ export function narrativeDrugName(
   return firstLine.length > 0 && firstLine.length <= 150 ? firstLine : null;
 }
 
+// `opts` (#266) tunes the two inpatient medication-section flavors without
+// touching the ambulatory med-list behavior:
+//   - `snapshot`: the section documents what ALREADY HAPPENED (Administered
+//     Medications — meds given during the stay), not an ongoing regimen. An
+//     active/unstated lifecycle status is capped to `completed` so a one-off
+//     administration never opens an open (current) course, and an undated entry's
+//     course is anchored to the document date instead of staying open-undated.
+//   - `courseNote`: a short provenance note put on the derived course(s) (e.g.
+//     "At hospital discharge"), so the course's origin survives into the app.
 export function mapMedication(
   sa: any,
   narrativeIds: Record<string, string> = {},
-  documentDate: string | null = null
+  documentDate: string | null = null,
+  opts: { snapshot?: boolean; courseNote?: string | null } = {}
 ): ImportedRecord | null {
   if (!sa || truthyNegation(sa["@_negationInd"])) return null;
   const mat = sa?.consumable?.manufacturedProduct?.manufacturedMaterial;
@@ -280,10 +290,23 @@ export function mapMedication(
       ? `${dq["@_value"]}${dq["@_unit"] ? ` ${dq["@_unit"]}` : ""}`
       : null;
   const periods = medEffectivePeriods(sa.effectiveTime);
+  let status = ccdaMedStatus(sa);
+  // Snapshot sections (#266): an administration already happened — cap an
+  // active/unstated status to `completed` so it can never open a current course.
+  if (opts.snapshot && (status === "active" || status === "unknown"))
+    status = "completed";
   const courses = coursesFromImportedMedication(
-    periods.length ? periods : [{ low: date, high: null }],
-    ccdaMedStatus(sa),
-    { fallbackStopDate: date }
+    // A snapshot entry with no date of its own is anchored to the document date
+    // (the encounter is when it happened); a regular med-list entry keeps the
+    // open-undated behavior (#Fix 2 — never fabricate a start from the doc date).
+    periods.length
+      ? periods
+      : [{ low: date ?? (opts.snapshot ? documentDate : null), high: null }],
+    status,
+    {
+      fallbackStopDate: opts.snapshot ? (date ?? documentDate) : date,
+      note: opts.courseNote ?? null,
+    }
   );
   // A nullified / entered-in-error med → drop it entirely.
   if (courses === null) return null;
@@ -308,9 +331,17 @@ export function mapMedication(
 
 // Map one Problem Concern Act (template 4.3) to an ImportedCondition, or null when
 // it carries no productive problem (nullFlavored / "no active problems").
+//
+// `sectionDefaultStatus` (#265): a History of Past Illness / Resolved Problems
+// section passes "resolved" — the SECTION asserts the problem is past, so the
+// concern act's tracking statusCode (often still "active" while the resolved
+// problem is tracked) is ignored, while an explicit clinical-status observation
+// (template 4.6) on the problem stays authoritative. The Problems section passes
+// nothing and keeps the existing clinical-status ?? concern-status resolution.
 export function mapCondition(
   act: any,
-  narrativeIds: Record<string, string>
+  narrativeIds: Record<string, string>,
+  sectionDefaultStatus?: ImportedCondition["status"]
 ): ImportedCondition | null {
   if (!act) return null;
   const concernStatus = act?.statusCode?.["@_code"] ?? null;
@@ -331,9 +362,13 @@ export function mapCondition(
     codedDisplayName(obs?.code, narrativeIds);
   if (!name || isNoKnownProblemText(name)) return null;
   const { code, system } = pickCode(value);
-  const status = toConditionStatus(
-    clinicalStatusFromEntryRelationships(obs) ?? concernStatus
-  );
+  const clinicalStatus = clinicalStatusFromEntryRelationships(obs);
+  const status =
+    sectionDefaultStatus != null
+      ? clinicalStatus != null
+        ? toConditionStatus(clinicalStatus)
+        : sectionDefaultStatus
+      : toConditionStatus(clinicalStatus ?? concernStatus);
   const onset = effTime(obs.effectiveTime);
   // effectiveTime high = resolution date (only meaningful once resolved).
   const highRaw = asArray(obs.effectiveTime)
@@ -683,13 +718,23 @@ export interface StandaloneVisitDiagnosis {
 // narrative, then a coded displayName; dedups by name; drops "no active problems"
 // placeholders. Read at the document level (like chiefComplaintsFromSections) so the
 // caller can correlate it onto the same-document encounter.
+//
+// Admitting Diagnoses sections (#266) route through the SAME walk: their Hospital
+// Admission Diagnosis acts wrap the same Problem Observations (4.4), and an
+// admitting diagnosis is a visit diagnosis of the same-document (inpatient)
+// encounter — so it correlates/lands identically, and one diagnosis packaged both
+// ways dedups by name here.
 export function visitDiagnosesFromSections(
   sections: CdaSection[]
 ): StandaloneVisitDiagnosis[] {
   const out: StandaloneVisitDiagnosis[] = [];
   const seen = new Set<string>();
   for (const s of sections) {
-    if (!sectionIs(s, SECTIONS.visitDiagnoses)) continue;
+    if (
+      !sectionIs(s, SECTIONS.visitDiagnoses) &&
+      !sectionIs(s, SECTIONS.admissionDiagnoses)
+    )
+      continue;
     const ids = buildNarrativeIdMap(s.raw?.text);
     const walk = (node: any): void => {
       if (node == null || typeof node !== "object") return;
@@ -756,7 +801,13 @@ export interface ClinicalNote {
 export function isClinicalNoteSection(section: CdaSection): boolean {
   const code = section.code ?? undefined;
   if (code && CLINICAL_NOTE_LOINCS.has(code)) return true;
-  if (code === SECTIONS.visitDiagnoses.loinc) return false;
+  // A diagnoses section routes to its own document-level handler even if titled
+  // "… Notes" — never let the title heuristic double-process it as a note.
+  if (
+    code === SECTIONS.visitDiagnoses.loinc ||
+    sectionIs(section, SECTIONS.admissionDiagnoses)
+  )
+    return false;
   const title = section.title?.trim().toLowerCase();
   return !!title && /\bnotes?\b/.test(title);
 }
@@ -1154,6 +1205,60 @@ export const medicationsExtractor: SectionExtractor = {
   },
 };
 
+// Medications at Time of Discharge (#266): the take-home regimen on an inpatient
+// discharge document — the closest analog of the ambulatory med list, so the
+// entry's own coded status/effectiveTime are trusted (an "active" discharge med IS
+// the intended ongoing medication); each derived course is tagged with an
+// "At hospital discharge" provenance note.
+export const dischargeMedicationsExtractor: SectionExtractor = {
+  key: "dischargeMedications",
+  matches: (s) => sectionIs(s, SECTIONS.dischargeMedications),
+  extract: (s, documentDate) => {
+    const narrativeIds = buildNarrativeIdMap(s.raw?.text);
+    return {
+      records: s.entries
+        .map((e) =>
+          mapMedication(
+            e?.substanceAdministration,
+            narrativeIds,
+            documentDate,
+            {
+              courseNote: "At hospital discharge",
+            }
+          )
+        )
+        .filter((x): x is ImportedRecord => x != null),
+    };
+  },
+};
+
+// Administered Medications (#266): meds GIVEN during the stay — a snapshot of
+// past administrations, never an ongoing regimen, so mapMedication runs in
+// snapshot mode (active/unstated status capped to `completed`; undated entries
+// anchored to the document date) with an "Administered during encounter" note.
+export const administeredMedicationsExtractor: SectionExtractor = {
+  key: "administeredMedications",
+  matches: (s) => sectionIs(s, SECTIONS.administeredMedications),
+  extract: (s, documentDate) => {
+    const narrativeIds = buildNarrativeIdMap(s.raw?.text);
+    return {
+      records: s.entries
+        .map((e) =>
+          mapMedication(
+            e?.substanceAdministration,
+            narrativeIds,
+            documentDate,
+            {
+              snapshot: true,
+              courseNote: "Administered during encounter",
+            }
+          )
+        )
+        .filter((x): x is ImportedRecord => x != null),
+    };
+  },
+};
+
 export const careTeamsExtractor: SectionExtractor = {
   key: "careTeams",
   matches: (s) => sectionIs(s, SECTIONS.careTeams),
@@ -1184,6 +1289,22 @@ export const problemsExtractor: SectionExtractor = {
     return {
       conditions: s.entries
         .map((e) => mapCondition(e?.act, narrativeIds))
+        .filter((x): x is ImportedCondition => x != null),
+    };
+  },
+};
+
+// History of Past Illness / "Resolved Problems" (#265): the same Problem Concern
+// Act entries as the Problems section, landed in the conditions store with a
+// section-level default status of `resolved` (see mapCondition).
+export const pastIllnessExtractor: SectionExtractor = {
+  key: "pastIllness",
+  matches: (s) => sectionIs(s, SECTIONS.pastIllness),
+  extract: (s) => {
+    const narrativeIds = buildNarrativeIdMap(s.raw?.text);
+    return {
+      conditions: s.entries
+        .map((e) => mapCondition(e?.act, narrativeIds, "resolved"))
         .filter((x): x is ImportedCondition => x != null),
     };
   },
@@ -1271,9 +1392,12 @@ export const DEFAULT_EXTRACTORS: SectionExtractor[] = [
   labResultsExtractor,
   vitalSignsExtractor,
   medicationsExtractor,
+  dischargeMedicationsExtractor,
+  administeredMedicationsExtractor,
   careTeamsExtractor,
   allergiesExtractor,
   problemsExtractor,
+  pastIllnessExtractor,
   encountersExtractor,
   proceduresExtractor,
   familyHistoryExtractor,
