@@ -277,7 +277,9 @@ export function unmappedLoincsFromRecords(records: ImportedRecord[]) {
   return tallyUnmappedLoincs(
     records
       .filter((r) => isUnmappedLabLoinc(r.loinc))
-      .map((r) => ({ loinc: r.loinc, name: r.name }))
+      // unit is catalog identity (it rides into the "Report unmapped code"
+      // prefill) — never the measured value itself.
+      .map((r) => ({ loinc: r.loinc, name: r.name, unit: r.unit }))
   );
 }
 
@@ -288,19 +290,37 @@ export function recordDropKind(category: string): DropKind {
   return "lab";
 }
 
+// The source-path chip for a deduped medical_records row (#270: every drop kind
+// carries a `section` so the Dropped list always shows where a row came from).
+// Deduped rows have lost their originating <section> node by the time dedupe()
+// runs, so this names the standard CCD section their category maps to.
+export function recordDropSection(category: string): string {
+  if (category === "vitals") return "Vital Signs";
+  if (category === "prescription") return "Medications";
+  return "Results";
+}
+
 // Drops for the rows dedupe() removes: dedupe() keeps the FIRST occurrence of each
 // external_id, so every subsequent same-key row is a `deduped` drop. Mirrors
 // dedupe()'s semantics exactly so the report matches what actually happened.
+// `sectionOf` names the source path (#270) — for CDA rows the standard section
+// title of the row's kind, since the original section node is gone by now.
 export function dedupeDrops<T extends { external_id: string }>(
   rows: T[],
   kindOf: (r: T) => DropKind,
-  labelOf: (r: T) => string
+  labelOf: (r: T) => string,
+  sectionOf: (r: T) => string
 ): ImportDrop[] {
   const seen = new Set<string>();
   const out: ImportDrop[] = [];
   for (const r of rows) {
     if (seen.has(r.external_id))
-      out.push({ kind: kindOf(r), label: labelOf(r), reason: "deduped" });
+      out.push({
+        kind: kindOf(r),
+        label: labelOf(r),
+        reason: "deduped",
+        section: sectionOf(r),
+      });
     else seen.add(r.external_id);
   }
   return out;

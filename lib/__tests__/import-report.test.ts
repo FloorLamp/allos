@@ -4,6 +4,7 @@ import { parseFhirBundle } from "@/lib/fhir";
 import {
   emptyReport,
   groupDropsByReason,
+  collapseDrops,
   summarizeCoverage,
   mergeReports,
   reasonLabel,
@@ -11,6 +12,8 @@ import {
   isRowDrop,
   parseImportReport,
   serializeImportReport,
+  tallyUnmappedLoincs,
+  unmappedCodeIssueUrl,
   type ImportDrop,
   type CoverageEntry,
   type ImportReport,
@@ -39,6 +42,124 @@ describe("groupDropsByReason", () => {
     ]);
     expect(groups[0].drops).toHaveLength(2);
     expect(groups[0].label).toBe(reasonLabel("no_value"));
+  });
+});
+
+// #270: hundreds of near-identical drops (the real-world CCD case that made the
+// page unusable) must collapse to a handful of ×N rows.
+describe("collapseDrops", () => {
+  it("collapses a hundreds-of-duplicates group into one ×N row per (label, section)", () => {
+    const drops: ImportDrop[] = [];
+    // 300 identical "Comment(s)" rows from Results — the Epic per-panel noise.
+    for (let i = 0; i < 300; i++)
+      drops.push({
+        kind: "lab",
+        label: "Comment(s)",
+        reason: "null_flavor",
+        section: "Results",
+      });
+    // 150 identical rows of the same label from a DIFFERENT section — must stay
+    // a separate row (the source path distinguishes them).
+    for (let i = 0; i < 150; i++)
+      drops.push({
+        kind: "vitals",
+        label: "Comment(s)",
+        reason: "null_flavor",
+        section: "Vital Signs",
+      });
+    // One singleton.
+    drops.push({
+      kind: "lab",
+      label: "Rare Analyte",
+      reason: "null_flavor",
+      section: "Results",
+    });
+    const collapsed = collapseDrops(drops);
+    expect(collapsed).toEqual([
+      { kind: "lab", label: "Comment(s)", section: "Results", count: 300 },
+      {
+        kind: "vitals",
+        label: "Comment(s)",
+        section: "Vital Signs",
+        count: 150,
+      },
+      { kind: "lab", label: "Rare Analyte", section: "Results", count: 1 },
+    ]);
+    // Counts sum back to the raw total, so the group-header badge stays truthful.
+    expect(collapsed.reduce((n, d) => n + d.count, 0)).toBe(drops.length);
+  });
+
+  it("preserves first-seen order and treats a missing section as its own bucket", () => {
+    const drops: ImportDrop[] = [
+      { kind: "lab", label: "B", reason: "deduped" },
+      { kind: "lab", label: "A", reason: "deduped", section: "Results" },
+      { kind: "lab", label: "B", reason: "deduped" },
+      { kind: "lab", label: "A", reason: "deduped" },
+    ];
+    expect(collapseDrops(drops)).toEqual([
+      { kind: "lab", label: "B", section: undefined, count: 2 },
+      { kind: "lab", label: "A", section: "Results", count: 1 },
+      { kind: "lab", label: "A", section: undefined, count: 1 },
+    ]);
+  });
+});
+
+// #270: the "Report unmapped code" prefill. The PHI guard is the point of these
+// tests — the URL must carry the code/name/unit catalog identity and NOTHING else.
+describe("unmappedCodeIssueUrl", () => {
+  it("builds a prefilled new-issue URL containing exactly code, name, and unit", () => {
+    const url = unmappedCodeIssueUrl({
+      loinc: "55555-5",
+      name: "Novel Marker",
+      unit: "ng/mL",
+    });
+    const parsed = new URL(url);
+    expect(parsed.origin + parsed.pathname).toBe(
+      "https://github.com/FloorLamp/allos/issues/new"
+    );
+    // Exactly the two prefill params — nothing else rides along.
+    expect([...parsed.searchParams.keys()].sort()).toEqual(["body", "title"]);
+    expect(parsed.searchParams.get("title")).toBe(
+      "Unmapped LOINC 55555-5: Novel Marker"
+    );
+    // Pin the FULL body so no field can sneak in unnoticed: only the code, the
+    // display name, and the unit appear — never values/dates/ranges/patient or
+    // provider strings.
+    expect(parsed.searchParams.get("body")).toBe(
+      [
+        "A health-record import surfaced a lab code with no canonical mapping, so its readings don't group with a canonical biomarker or pick up its reference band.",
+        "",
+        "- LOINC: `55555-5`",
+        "- Display name: Novel Marker",
+        "- Unit: `ng/mL`",
+        "",
+        "Please consider adding this code to the canonical biomarker map (`scripts/gen-canonical-biomarkers.ts` / `lib/biomarker-loinc.ts`).",
+      ].join("\n")
+    );
+  });
+
+  it("tolerates a missing unit (older stored reports) without leaking anything", () => {
+    const url = unmappedCodeIssueUrl({ loinc: "12345-6", name: "Some Assay" });
+    const body = new URL(url).searchParams.get("body")!;
+    expect(body).toContain("- LOINC: `12345-6`");
+    expect(body).toContain("- Display name: Some Assay");
+    expect(body).toContain("- Unit: (none carried)");
+  });
+});
+
+// #270: the unit rides the unmapped-code tally (catalog identity for the report
+// prefill), keeping the first non-null unit per code.
+describe("tallyUnmappedLoincs units", () => {
+  it("carries the first non-null unit per code through the tally", () => {
+    const tallied = tallyUnmappedLoincs([
+      { loinc: "55555-5", name: "Novel Marker", unit: null },
+      { loinc: "55555-5", name: "Novel Marker", unit: "ng/mL" },
+      { loinc: "12345-6", name: "Some Assay" },
+    ]);
+    expect(tallied).toEqual([
+      { loinc: "55555-5", name: "Novel Marker", count: 2, unit: "ng/mL" },
+      { loinc: "12345-6", name: "Some Assay", count: 1, unit: null },
+    ]);
   });
 });
 
@@ -230,6 +351,14 @@ describe("parseCcda → import report", () => {
     ).toBe(true);
   });
 
+  // #270: the source-path chip must always render — every drop kind populates
+  // `section`, including the classifier paths exercised by this CCD.
+  it("populates section on every drop", () => {
+    for (const d of report.drops) {
+      expect(d.section, `${d.reason}:${d.label}`).toBeTruthy();
+    }
+  });
+
   it("lists Insurance as present-but-not-consumed", () => {
     const { consumed, notConsumed } = summarizeCoverage(report.coverage);
     expect(consumed.map((c) => c.title)).toContain("Results");
@@ -408,6 +537,8 @@ describe("parseFhirBundle → dedupe fidelity (c)", () => {
     const deduped = report.drops.filter((d) => d.reason === "deduped");
     expect(deduped).toHaveLength(1);
     expect(deduped[0].label).toBe("Heart rate");
+    // #270: deduped drops carry the source path too.
+    expect(deduped[0].section).toBe("Observation");
     expect(report.imported).toBe(1);
     expect(rowDropCount(report)).toBe(1);
   });
@@ -478,7 +609,7 @@ describe("parseCcda → unmapped lab LOINC surfacing (Fix 3)", () => {
 
   it("lists only the unmapped LOINC, not the canonicalized one", () => {
     expect(report.unmappedLoincs).toEqual([
-      { loinc: "55555-5", name: "Novel Marker", count: 1 },
+      { loinc: "55555-5", name: "Novel Marker", count: 1, unit: "ng/mL" },
     ]);
     // The unmapped lab is imported, not dropped.
     expect(report.drops.some((d) => d.label === "Novel Marker")).toBe(false);

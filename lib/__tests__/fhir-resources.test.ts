@@ -571,7 +571,7 @@ describe("FHIR unmapped-LOINC surfacing", () => {
     expect(r.records.map((x) => x.name)).toEqual(["Exotic Assay"]);
     // And surfaced as an unmapped LOINC — not dropped.
     expect(r.report!.unmappedLoincs).toEqual([
-      { loinc: "99999-9", name: "Exotic Assay", count: 1 },
+      { loinc: "99999-9", name: "Exotic Assay", count: 1, unit: "ng/mL" },
     ]);
     expect(r.report!.drops.some((d) => d.label === "Exotic Assay")).toBe(false);
   });

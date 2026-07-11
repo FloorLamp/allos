@@ -595,3 +595,52 @@ db.prepare(
 console.log(
   `e2e: seeded a 6-week Skullcrusher plateau and a weight jump on ${jumpDate} (#45)`
 );
+
+// ── Import-detail drop-report fixture (issue #270) ────────────────────────────
+// A 'done' document carrying a stored import_report with (a) a reason-group of
+// HUNDREDS of identical drops (the real-world CCD noise that made the Dropped
+// section unusable) that must collapse to one ×N row, (b) enough DISTINCT drops
+// that the collapsed list still overflows the card's viewport bound (proving the
+// scroll containment), and (c) an unmapped lab code driving the "Report unmapped
+// code" prefill. Fixed id so the spec can navigate straight to /import/907.
+// All content synthetic — fictional analyte names, no values/dates/PHI in drops.
+const DROP_DOC_ID = 907;
+db.prepare(`DELETE FROM medical_documents WHERE id = ?`).run(DROP_DOC_ID);
+const dropReport = {
+  drops: [
+    // 220 identical null-flavored "Comment(s)" rows from Results → one ×220 row.
+    ...Array.from({ length: 220 }, () => ({
+      kind: "lab",
+      label: "Comment(s)",
+      reason: "null_flavor",
+      section: "Results",
+    })),
+    // 40 distinct value-less labs → 40 collapsed rows (the list must scroll).
+    ...Array.from({ length: 40 }, (_, i) => ({
+      kind: "lab",
+      label: `E2E Panel Item ${String(i + 1).padStart(2, "0")}`,
+      reason: "no_value",
+      section: "Results",
+    })),
+  ],
+  coverage: [
+    { key: "results", title: "Results", consumed: true, present: 272 },
+  ],
+  imported: 12,
+  considered: 272,
+  unmappedLoincs: [
+    { loinc: "11111-1", name: "E2E Novel Marker", unit: "ng/mL", count: 3 },
+  ],
+};
+db.prepare(
+  `INSERT INTO medical_documents
+     (id, profile_id, filename, stored_path, mime_type, size_bytes, doc_type,
+      source, extraction_status, extracted_count, import_report, uploaded_at)
+   VALUES (?, ?, 'e2e-drop-report.xml', '', 'application/xml', 2048,
+           'MyChart export (CCD/XDM)', 'ccda', 'done', 12, ?,
+           '2026-07-08 09:45:00')`
+).run(DROP_DOC_ID, PROFILE_ID, JSON.stringify(dropReport));
+
+console.log(
+  `e2e: seeded import document ${DROP_DOC_ID} with a 260-drop report + an unmapped LOINC (#270)`
+);
