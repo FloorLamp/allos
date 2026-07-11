@@ -5,11 +5,13 @@
 // (lib/training-zones); this layer only fetches profile-scoped rows and threads in
 // the profile's settings (max-HR override, Zone 2 target, week-start, timezone).
 import { db, today } from "../db";
-import { shiftDateStr, startOfWeekStr } from "../date";
+import { shiftDateStr } from "../date";
+import { weekWindow } from "../week-window";
 import { getHrMinutesInRange, getLatestBodyMetric } from "./metrics";
 import {
   getMaxHrOverride,
   getUserAge,
+  getWeekMode,
   getWeekStart,
   getZone2WeeklyTargetMin,
 } from "../settings";
@@ -20,7 +22,6 @@ import {
   scopeBucketsToWindows,
   weeklyZoneMinutes,
   zone2Adherence,
-  zone2Minutes,
   zoneMinuteTotals,
   AEROBIC_THRESHOLD_ZONE,
   type ActivityWindowInput,
@@ -116,10 +117,15 @@ export function getTrainingZoneData(
   const windows = activityWindows(activityWindowInputs(profileId, since));
   const scoped = scopeBucketsToWindows(buckets, windows);
   const rows = weeklyZoneMinutes(scoped, model, weekStart);
-  const currentWeek = startOfWeekStr(td, weekStart);
-  const currentRow = rows.find((r) => r.week === currentWeek);
+  // The headline "this week" adherence stat honors the profile's week_mode via the
+  // SHARED weekWindow() (#223) and the SAME getZone2MinutesInWindow the weekly
+  // recap uses (#397) — so a rolling-week profile's zone card and its recap can't
+  // report two different Zone 2 numbers for one target. The chart's calendar
+  // buckets (rows) stay calendar-anchored: "this week so far" and "each calendar
+  // week" are different questions.
+  const win = weekWindow(td, getWeekMode(profileId), weekStart);
   const currentWeekZone2 = zone2Adherence(
-    zone2Minutes(currentRow),
+    getZone2MinutesInWindow(profileId, win.start, win.end) ?? 0,
     zone2Target
   );
   const split = polarizedSplit(scoped, model);
