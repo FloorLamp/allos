@@ -79,7 +79,13 @@ test.describe("Providers registry", () => {
     await expect(
       list.getByText("Dr. Anita Patel", { exact: true })
     ).toHaveCount(0);
-    await list.getByText("Quest Diagnostics").click();
+    // The filter is a synchronous client re-render, so target the row's <a>
+    // (role=link) and wait for the list to settle to the single match before
+    // clicking — clicking the inner text span mid-reconciliation raced the Next
+    // Link handler and left the page on /providers (flaky nav).
+    const questRow = list.getByRole("link", { name: /Quest Diagnostics/ });
+    await expect(questRow).toHaveCount(1);
+    await questRow.click();
     await expect(page).toHaveURL(/\/providers\/\d+$/);
     await expect(page.getByTestId("provider-detail")).toBeVisible();
   });
