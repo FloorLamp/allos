@@ -264,6 +264,26 @@ export function ageInMonthsFromBirthdate(
   return months;
 }
 
+// FRACTIONAL age in months (issue #405), for a continuous growth-chart x-axis.
+// ageInMonthsFromBirthdate returns WHOLE months, so several measurements inside one
+// calendar month collapse to the same age — a growth trajectory keyed by it drops
+// all but the last (and quantizes day-1 vs day-30 onto one pixel). This returns
+// months as a real number (elapsed days ÷ 30.4375, the mean Gregorian month) so
+// each measurement plots at its true age. Null for unparseable/future/implausible
+// dates (mirrors ageInMonthsFromBirthdate's guards). Whole-month math still drives
+// percentile SCORING; this drives only plotting/keying.
+export function ageInMonthsExact(birthdate: string, on: string): number | null {
+  const b = /^(\d{4})-(\d{2})-(\d{2})$/.exec(birthdate.trim());
+  const o = /^(\d{4})-(\d{2})-(\d{2})$/.exec(on.trim());
+  if (!b || !o) return null;
+  const days =
+    (Date.UTC(+o[1], +o[2] - 1, +o[3]) - Date.UTC(+b[1], +b[2] - 1, +b[3])) /
+    86_400_000;
+  const months = days / 30.4375;
+  if (months < 0 || months > 150 * 12) return null;
+  return months;
+}
+
 // The canonical age-in-months POLICY (issue #310), as a pure function so every
 // surface resolves age identically: prefer the birthdate (real calendar month
 // math via ageInMonthsFromBirthdate) — the birthdate ALWAYS wins, even if a bare

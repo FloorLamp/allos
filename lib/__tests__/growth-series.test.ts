@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   buildGrowthProfile,
+  bmiSeriesDatePaired,
   displayWeightGrowth,
   growthBadge,
 } from "../growth-series";
@@ -117,6 +118,105 @@ describe("BMI trajectory pairs each weight with the height then in effect", () =
   });
 });
 
+describe("fractional age keeps same-month measurements distinct (issue #405)", () => {
+  it("plots every weigh-in in one calendar month, not just the last", () => {
+    const p = buildGrowthProfile({
+      sex: "male",
+      birthdate: "2024-01-01",
+      today: "2024-04-01",
+      heights: [],
+      // Four weigh-ins all in month 2 (age ~2 whole months) — must stay 4 points.
+      weights: [
+        { date: "2024-03-04", value: 6.0 },
+        { date: "2024-03-11", value: 6.1 },
+        { date: "2024-03-18", value: 6.2 },
+        { date: "2024-03-25", value: 6.3 },
+      ],
+    });
+    const weight = p!.metrics.find((m) => m.metric === "weight")!;
+    expect(weight.points).toHaveLength(4);
+    // Whole-month age is the same (2) for all — the scoring input.
+    expect(weight.points.map((pt) => pt.ageMonths)).toEqual([2, 2, 2, 2]);
+    // …but the fractional ages are strictly increasing, so they don't collapse.
+    const xs = weight.points.map((pt) => pt.ageMonthsExact);
+    expect(new Set(xs).size).toBe(4);
+    for (let i = 1; i < xs.length; i++)
+      expect(xs[i]).toBeGreaterThan(xs[i - 1]);
+  });
+});
+
+describe("out-of-range point keeps the axis + points (issue #405)", () => {
+  it("extends maxMonths to cover a head-circ measured past the WHO 0–24mo band", () => {
+    const p = buildGrowthProfile({
+      sex: "male",
+      birthdate: "2022-01-01",
+      today: "2024-08-01",
+      heights: [],
+      weights: [],
+      // 30 months — beyond WHO head-circ range (0–24), still a real US measurement.
+      headCircs: [
+        { date: "2022-07-01", value: 44 }, // ~6 mo (in range)
+        { date: "2024-07-01", value: 50 }, // ~30 mo (out of band range)
+      ],
+    });
+    const hc = p!.metrics.find((m) => m.metric === "head_circumference")!;
+    // Both measurements are still plotted (nothing dropped).
+    expect(hc.points).toHaveLength(2);
+    // The axis now extends to cover the 30-month point (was clamped to 24).
+    expect(hc.maxMonths).toBeGreaterThan(24);
+    expect(hc.maxMonths).toBeGreaterThanOrEqual(
+      hc.points[hc.points.length - 1].ageMonthsExact
+    );
+    // Bands still exist and clamp to their own reference range (≤ 24 mo).
+    expect(hc.bands.length).toBeGreaterThan(0);
+    for (const band of hc.bands) {
+      for (const bp of band.points)
+        expect(bp.ageMonths).toBeLessThanOrEqual(24);
+    }
+  });
+});
+
+describe("bmiSeriesDatePaired (issue #407)", () => {
+  it("pairs each weigh-in with the height in effect on/before that date", () => {
+    const out = bmiSeriesDatePaired(
+      [
+        { date: "2025-01-01", value: 16 }, // height 1.00 m → BMI 16
+        { date: "2025-07-01", value: 18.375 }, // height 1.05 m → BMI ~16.67
+      ],
+      [
+        { date: "2024-12-01", value: 100 },
+        { date: "2025-06-01", value: 105 },
+      ]
+    );
+    expect(out).toHaveLength(2);
+    expect(out[0].value).toBeCloseTo(16, 2);
+    expect(out[1].value).toBeCloseTo(18.375 / 1.05 ** 2, 2);
+  });
+
+  it("skips a weigh-in with no prior height (no BMI derivable)", () => {
+    const out = bmiSeriesDatePaired(
+      [{ date: "2025-01-01", value: 16 }],
+      [{ date: "2025-06-01", value: 100 }]
+    );
+    expect(out).toEqual([]);
+  });
+
+  it("sorts defensively (unordered input still date-pairs correctly)", () => {
+    const out = bmiSeriesDatePaired(
+      [
+        { date: "2025-07-01", value: 18.375 },
+        { date: "2025-01-01", value: 16 },
+      ],
+      [
+        { date: "2025-06-01", value: 105 },
+        { date: "2024-12-01", value: 100 },
+      ]
+    );
+    expect(out.map((p) => p.date)).toEqual(["2025-01-01", "2025-07-01"]);
+    expect(out[0].value).toBeCloseTo(16, 2);
+  });
+});
+
 describe("growthBadge", () => {
   it("is null for a null profile", () => {
     expect(growthBadge(null)).toBeNull();
@@ -149,7 +249,13 @@ describe("displayWeightGrowth (issue #194)", () => {
       },
     ],
     points: [
-      { date: "2026-07-01", ageMonths: 18, value: 10.9, percentile: 42 },
+      {
+        date: "2026-07-01",
+        ageMonths: 18,
+        ageMonthsExact: 18,
+        value: 10.9,
+        percentile: 42,
+      },
     ],
   };
 

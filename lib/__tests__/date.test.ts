@@ -15,6 +15,7 @@ import {
   monthNames,
   monthGridCells,
   ageInMonthsFromBirthdate,
+  ageInMonthsExact,
   ageMonthsFrom,
 } from "@/lib/date";
 
@@ -328,6 +329,28 @@ describe("ageInMonthsFromBirthdate", () => {
     expect(ageInMonthsFromBirthdate("2026-06-01", "2026-06-10")).toBe(0);
     expect(ageInMonthsFromBirthdate("2026-06-01", "2026-05-01")).toBeNull();
     expect(ageInMonthsFromBirthdate("1990", "2026-06-15")).toBeNull();
+  });
+});
+
+describe("ageInMonthsExact (issue #405 — fractional growth-chart age)", () => {
+  it("returns a real number that distinguishes days within one month", () => {
+    const a = ageInMonthsExact("2024-01-01", "2024-03-04")!;
+    const b = ageInMonthsExact("2024-01-01", "2024-03-25")!;
+    expect(a).toBeGreaterThan(0);
+    expect(b).toBeGreaterThan(a); // 21 days later ⇒ a larger fractional age
+    // Same whole month (2), but distinct fractional ages.
+    expect(ageInMonthsFromBirthdate("2024-01-01", "2024-03-04")).toBe(2);
+    expect(ageInMonthsFromBirthdate("2024-01-01", "2024-03-25")).toBe(2);
+  });
+
+  it("approximates whole-month math at a month boundary", () => {
+    // ~6 calendar months ≈ 6 fractional months (± a fraction from month lengths).
+    expect(ageInMonthsExact("2024-01-15", "2024-07-15")!).toBeCloseTo(6, 0);
+  });
+
+  it("returns null for malformed or future dates", () => {
+    expect(ageInMonthsExact("2026-06-01", "2026-05-01")).toBeNull();
+    expect(ageInMonthsExact("1990", "2026-06-15")).toBeNull();
   });
 });
 

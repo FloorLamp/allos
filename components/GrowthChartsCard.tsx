@@ -33,7 +33,19 @@ export default function GrowthChartsCard({
   // "WHO" (0–2 y) or "CDC" (2–20 y) — which reference the current age uses.
   source: string;
 }) {
-  const [active, setActive] = useState(views[0]?.metric ?? "weight");
+  // The selected metric is DERIVED against the current `views`, not just seeded
+  // from them (issue #405): switching profiles hands this persistent client
+  // component a new `views` prop, and a stale selection (e.g. "head_circumference"
+  // from an infant, absent for an older child) would render views[0]'s chart with
+  // NO tab highlighted. Fall back to the first view whenever the selection isn't in
+  // the current set, so the highlighted tab always matches the chart.
+  const [selected, setSelected] = useState<GrowthMetricView["metric"] | null>(
+    null
+  );
+  const active =
+    selected != null && views.some((v) => v.metric === selected)
+      ? selected
+      : (views[0]?.metric ?? null);
   const view = views.find((v) => v.metric === active) ?? views[0];
   if (!view) return null;
 
@@ -48,7 +60,7 @@ export default function GrowthChartsCard({
             <button
               key={v.metric}
               type="button"
-              onClick={() => setActive(v.metric)}
+              onClick={() => setSelected(v.metric)}
               className={`rounded-md px-2.5 py-1 text-sm font-medium transition ${
                 v.metric === active
                   ? "bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-slate-100"
