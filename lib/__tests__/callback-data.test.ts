@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest";
 import {
   OUTDATED_MESSAGE_TEXT,
   escalationAckAnswerText,
+  escalationAckCloseText,
+  escalationTakeCloseText,
   parseAllCallback,
   parseEscalationCallback,
   parsePreventiveCallback,
@@ -120,16 +122,24 @@ describe("resolveTapProfile", () => {
 // what actually happened — "Logged ✅" is only honest for a real (or idempotent
 // repeat) confirmation.
 describe("tap outcome → answer", () => {
-  it("acknowledges only real confirmations as logged", () => {
+  it("acknowledges only real TAKEN confirmations as logged", () => {
     expect(tapLogged("logged")).toBe(true);
-    expect(tapLogged("already-logged")).toBe(true);
+    expect(tapLogged("already-taken")).toBe(true);
+    // Resolved, but NOT as taken (#280) — a ✅ tap on a skipped dose logged nothing.
+    expect(tapLogged("already-skipped")).toBe(false);
     expect(tapLogged("stale-dose")).toBe(false);
     expect(tapLogged("inactive")).toBe(false);
   });
 
   it("answers 'Logged ✅' for confirmations and idempotent repeats", () => {
     expect(tapAnswerText("logged")).toBe("Logged ✅");
-    expect(tapAnswerText("already-logged")).toBe("Logged ✅");
+    expect(tapAnswerText("already-taken")).toBe("Logged ✅");
+  });
+
+  it("a ✅ tap on a dose meanwhile SKIPPED names the skip, not 'Logged' (#280)", () => {
+    expect(tapAnswerText("already-skipped")).toMatch(/^Not logged/);
+    expect(tapAnswerText("already-skipped")).toMatch(/skipped/i);
+    expect(tapAnswerText("already-skipped")).not.toContain("Logged ✅");
   });
 
   it("says 'Not logged' for a stale or paused tap (never claims success)", () => {
@@ -175,11 +185,19 @@ describe("parseSkipCallback", () => {
 });
 
 // A ⏭ Skip tap answers honestly per outcome. A skip never overwrites an already-
-// resolved dose, so "already-logged" is still a "Skipped" acknowledgement.
+// resolved dose, and (#280) the acknowledgement must match the status that
+// actually stands: "Skipped ⏭" only for a fresh skip or a repeat of one — a
+// stale ⏭ tap on a dose already logged as TAKEN must never read as a skip.
 describe("skip tap outcome → answer", () => {
   it("answers 'Skipped ⏭' for a fresh skip and an idempotent repeat", () => {
     expect(tapSkipAnswerText("skipped")).toBe("Skipped ⏭");
-    expect(tapSkipAnswerText("already-logged")).toBe("Skipped ⏭");
+    expect(tapSkipAnswerText("already-skipped")).toBe("Skipped ⏭");
+  });
+
+  it("a ⏭ tap on a dose meanwhile TAKEN names the taken log, not 'Skipped' (#280)", () => {
+    expect(tapSkipAnswerText("already-taken")).toMatch(/^Not skipped/);
+    expect(tapSkipAnswerText("already-taken")).toMatch(/taken/i);
+    expect(tapSkipAnswerText("already-taken")).not.toContain("Skipped ⏭");
   });
 
   it("says 'Not logged' for a stale or paused skip tap", () => {
@@ -188,10 +206,11 @@ describe("skip tap outcome → answer", () => {
     expect(tapSkipAnswerText("stale-dose")).not.toContain("Skipped");
   });
 
-  it("tapResolved is true for any resolution (taken, skipped, repeat) only", () => {
+  it("tapResolved is true for any standing resolution (either status) only", () => {
     expect(tapResolved("logged")).toBe(true);
     expect(tapResolved("skipped")).toBe(true);
-    expect(tapResolved("already-logged")).toBe(true);
+    expect(tapResolved("already-taken")).toBe(true);
+    expect(tapResolved("already-skipped")).toBe(true);
     expect(tapResolved("stale-dose")).toBe(false);
     expect(tapResolved("inactive")).toBe(false);
   });
@@ -381,5 +400,45 @@ describe("escalationAckAnswerText", () => {
     expect(escalationAckAnswerText("inactive")).toMatch(/paused/i);
     expect(escalationAckAnswerText("stale-dose")).toMatch(/out of date/i);
     expect(escalationAckAnswerText("acknowledged")).not.toMatch(/✅/);
+  });
+
+  it("a dose meanwhile SKIPPED reads as resolved-by-skip, not a fresh ack (#280)", () => {
+    expect(escalationAckAnswerText("already-skipped")).toMatch(/skipped/i);
+    expect(escalationAckAnswerText("already-skipped")).not.toMatch(
+      /hold off|taken ✅/i
+    );
+  });
+});
+
+// #280: the replacement message bodies come from the same outcome the toast
+// does, so the two can never disagree — and neither may claim a resolution
+// that isn't the one persisted.
+describe("escalation close texts", () => {
+  it("✅ Confirmed-taken close says taken only when a taken log stands", () => {
+    expect(escalationTakeCloseText("logged")).toBe("Confirmed taken ✅");
+    expect(escalationTakeCloseText("already-taken")).toBe("Confirmed taken ✅");
+  });
+
+  it("✅ close on a dose meanwhile SKIPPED names the skip, never 'Confirmed taken'", () => {
+    expect(escalationTakeCloseText("already-skipped")).toMatch(/skipped/i);
+    expect(escalationTakeCloseText("already-skipped")).not.toContain(
+      "Confirmed taken"
+    );
+  });
+
+  it("✅ close falls back to the outdated body for stale/paused taps", () => {
+    expect(escalationTakeCloseText("stale-dose")).toBe(OUTDATED_MESSAGE_TEXT);
+    expect(escalationTakeCloseText("inactive")).toBe(OUTDATED_MESSAGE_TEXT);
+  });
+
+  it("👍 ack close mirrors the ack outcome (hold off / taken / skipped / outdated)", () => {
+    expect(escalationAckCloseText("acknowledged")).toMatch(/hold off/i);
+    expect(escalationAckCloseText("already-taken")).toMatch(/taken ✅/);
+    expect(escalationAckCloseText("already-skipped")).toMatch(/skipped/i);
+    expect(escalationAckCloseText("already-skipped")).not.toMatch(
+      /taken ✅|hold off/i
+    );
+    expect(escalationAckCloseText("stale-dose")).toBe(OUTDATED_MESSAGE_TEXT);
+    expect(escalationAckCloseText("inactive")).toBe(OUTDATED_MESSAGE_TEXT);
   });
 });

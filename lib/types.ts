@@ -705,11 +705,16 @@ export type DoseStatus = "taken" | "skipped";
 // Outcome of an attempt to log a dose as taken/skipped (markDoseTaken /
 // markDoseSkipped). Lets the Telegram callback answer honestly instead of
 // claiming "Logged" for a tap on a button whose dose has since been
-// deleted/retired or whose item was paused.
+// deleted/retired or whose item was paused. An already-resolved dose carries
+// the prior log's ACTUAL status (issue #280) — never a flat "already logged":
+// a stale ⏭ tap on a taken dose (or ✅ on a skipped one) writes nothing, so
+// the answer must state what is really persisted instead of letting each
+// button type confirm its own action against the other's log.
 export type DoseTakenOutcome =
   | "logged" // a new taken log row was written
   | "skipped" // a new skipped log row was written (issue #232)
-  | "already-logged" // idempotent repeat — that dose+date was already resolved
+  | "already-taken" // dose+date already resolved as TAKEN; nothing written
+  | "already-skipped" // dose+date already resolved as SKIPPED; nothing written
   | "stale-dose" // dose deleted/retired (or not this profile's): nothing logged
   | "inactive"; // parent item is paused/stopped: nothing logged
 
@@ -718,10 +723,13 @@ export type DoseTakenOutcome =
 // markDoseTaken and logs the dose), an ack NEVER claims the dose was taken — it
 // only records that the episode is being handled, so the tick stops re-nudging.
 // The staleness/paused cases mirror DoseTakenOutcome so a stale tap is answered
-// honestly, and "already-taken" tells the caregiver the dose is in fact confirmed.
+// honestly; "already-taken" tells the caregiver the dose is in fact confirmed,
+// and "already-skipped" (issue #280) that it was deliberately skipped — an
+// episode that's over must not be answered as a fresh "we'll hold off".
 export type EscalationAckOutcome =
   | "acknowledged" // episode marked handled; dose NOT logged as taken
   | "already-taken" // a taken log already exists for the day — nothing to chase
+  | "already-skipped" // a skipped log already resolves the day — nothing to chase
   | "stale-dose" // dose deleted/retired (or not this profile's): nothing recorded
   | "inactive"; // parent item is paused/stopped: nothing recorded
 

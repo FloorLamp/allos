@@ -167,8 +167,8 @@ stop.
 - Payload: `{ doseId, date, action: "taken" | "skipped" }` — ids only,
   never names. Requires `allow_actions`.
 - Routes through `markDoseTaken` / `markDoseSkipped` (#232) and returns
-  the **outcome union** verbatim (`logged | already-logged | stale-dose |
-inactive | skipped`), exactly the Telegram-callback contract: a stale
+  the **outcome union** verbatim (`logged | skipped | already-taken |
+already-skipped | stale-dose | inactive`), exactly the Telegram-callback contract: a stale
   button can never falsely confirm. The HA card renders the outcome text.
 - Supply decrement/restore, per-(dose,date) dedup, and skip semantics all
   come from the shared write cores — nothing HA-specific in the write
