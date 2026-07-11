@@ -12,7 +12,7 @@ import type {
 import type { UnitPrefs } from "@/lib/settings";
 import type { ActivityEditData } from "@/components/ActivityForm";
 import { useActivityEditor } from "@/components/ActivityEditorProvider";
-import { regionForExercise } from "@/lib/lifts";
+import { exerciseHistoryKey, regionForExercise } from "@/lib/lifts";
 import { PageHeader, EmptyState } from "@/components/ui";
 import { WeeklyTargets } from "@/components/WeeklyTargets";
 import MobileDetailPage from "@/components/MobileDetailPage";
@@ -378,7 +378,7 @@ export default function JournalView({
       units={units}
       goals={goals}
       goalProgress={goalProgress}
-      recent={recentByExercise[selectedStat.exercise.toLowerCase()]}
+      recent={recentByExercise[exerciseHistoryKey(selectedStat.exercise)]}
       onFilterTag={(kind, value) => setTagFilter({ kind, value })}
       headerRight={closeDetailButton}
       sex={sex}

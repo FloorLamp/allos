@@ -12,6 +12,7 @@ import {
   variantOf,
   composeVariant,
   defaultEquipment,
+  exerciseHistoryKey,
 } from "@/lib/lifts";
 import { isValidDuration } from "@/lib/duration";
 import { formatLongDate } from "@/lib/format-date";
@@ -107,7 +108,9 @@ export default function StrengthSets({
   // exercise so three priors still show); in edit it's the row being edited,
   // and `editedDate` also drops any session logged after it so the panel stays
   // "previous".
-  const hist = p.name.trim() ? history[p.name.trim().toLowerCase()] : undefined;
+  // Canonical, variant-collapsed key so a typed variant ("Barbell Curl") finds
+  // its merged history keyed under the base (#331).
+  const hist = p.name.trim() ? history[exerciseHistoryKey(p.name)] : undefined;
   const recent = recentSessionsForForm(
     hist?.sessions,
     currentActivityId,
