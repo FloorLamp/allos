@@ -18,7 +18,11 @@ test("exercise detail shows the bodyweight-band strength standard line (#152)", 
   await page.goto("/trends?tab=fitness");
 
   const main = page.getByRole("main");
-  // The detail panel opens on the strongest lift (highest est. 1RM) by default.
+  // Open a COVERED core lift's detail panel. The panel opens by default on the
+  // strongest lift by est. 1RM — which in the seed is an accessory (Leg Press) that
+  // carries no barbell standard — so click the Back Squat row (a dataset lift) to
+  // surface the standard line.
+  await main.getByRole("cell", { name: /Back Squat/ }).click();
   const standard = main.getByTestId("strength-standard").first();
   await expect(standard).toBeVisible();
   await expect(standard).toContainText("Strength standard");
@@ -30,8 +34,10 @@ test("the Analyze Benchmarks card renders the unified bodyweight-band tiers (#15
   page,
 }) => {
   // Training → Analyze (strength) renders the Benchmarks ladder, now driven by the
-  // same strength-standard model as the detail line and pillar.
-  await page.goto("/training?tab=analyze&kind=strength");
+  // same strength-standard model as the detail line and pillar. Pin a COVERED core
+  // lift via ?item — the default item is the strongest lift (an accessory like Leg
+  // Press) with no barbell standard, so it would show no Benchmarks card.
+  await page.goto("/training?tab=analyze&kind=strength&item=Back%20Squat");
 
   const main = page.getByRole("main");
   await expect(main.getByText("Benchmarks", { exact: true })).toBeVisible();
