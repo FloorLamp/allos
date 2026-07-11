@@ -207,24 +207,23 @@ test("a failed activity save surfaces an error, never a false 'Saved ✓' (#332)
 }) => {
   await page.goto("/training"); // default "Log" tab renders the Journal feed
 
-  // Force the NEXT saveActivity call to fail. saveActivity runs as a Server
-  // Action — a POST to the page carrying a `next-action` header — so failing the
-  // first such POST makes persist() take its failure path. The #332 regression was
-  // that a save that didn't persist still advanced the form to "Saved ✓"; the fix
-  // must instead show the honest "Couldn’t save" indicator. Fulfilling with a 500
-  // is the deterministic way to exercise the failure surface in the browser
-  // (a not-owned outcome needs a stale foreign id that the single-profile e2e DB
-  // can't naturally produce; the action tier pins that path directly).
-  let failedOnce = false;
+  // Force every saveActivity call to fail at the network layer. saveActivity runs
+  // as a Server Action — a POST to the page carrying a `next-action` header; the
+  // service worker passes non-GET straight through (public/sw.js), so this is an
+  // ordinary browser request page.route intercepts. We ABORT it (rather than
+  // fulfill a 500 — a non-flight body makes Next fall back to a full-page reload,
+  // which would unmount the form before the indicator paints); an aborted fetch
+  // rejects, so `await saveActivity()` throws into persist()'s failure handling.
+  // Aborting *every* such POST (not just the first) guarantees no later autosave
+  // can flip the form back to "Saved ✓". The #332 regression was that a save which
+  // didn't persist still advanced the form to "Saved ✓"; the fix must instead show
+  // the honest "Couldn’t save" indicator (the exact { ok: false } not-owned/invalid
+  // branches are pinned directly at the action tier — the single-profile e2e DB
+  // can't naturally produce a stale foreign id).
   await page.route("**/*", async (route) => {
     const req = route.request();
-    if (
-      !failedOnce &&
-      req.method() === "POST" &&
-      req.headers()["next-action"]
-    ) {
-      failedOnce = true;
-      await route.fulfill({ status: 500, contentType: "text/plain", body: "" });
+    if (req.method() === "POST" && req.headers()["next-action"]) {
+      await route.abort("failed");
       return;
     }
     await route.continue();
@@ -242,7 +241,7 @@ test("a failed activity save surfaces an error, never a false 'Saved ✓' (#332)
     .getByRole("button", { name: "Running", exact: true })
     .click();
   // A duration makes the activity savable, so the debounced auto-save fires — and
-  // hits the forced 500.
+  // hits the aborted request.
   await page.getByTestId("cardio-duration").fill("30");
 
   // The failure must surface as the error indicator (SaveStatus, aria-label
