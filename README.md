@@ -27,7 +27,7 @@
 - **Undo delete** — deleting an activity, body-metrics entry, biomarker record, or supplement/medication offers a one-tap **Undo** toast; the row (and its children) is held for 24 hours and restored intact if you undo, then purged
 - **AI activity log** — every AI call and failure recorded to a file and streamed live in Settings → AI logs
 - **Audit log** — a durable record of who accessed or modified which profile's data (logins in/out, profile switches, medical-file and share-link views, document uploads/deletes, and admin/family changes), reviewable with filters under **Settings → Audit** (admin only); identifiers only, never medical content, retained for a configurable window (default **24 months**, set under **Settings → Server → Audit-log retention**; the hourly notify tick prunes older events)
-- **Data hub** — bring data in (upload documents, paste logs, connect a device or service) under **Data → Import**, then see everything that has ever imported in one place under **Data → Review**, split into two sections that match how you actually read them: **Connected sources** collapses each recurring provider (Health Connect, Strava, Oura Ring) to one card showing its latest sync outcome + relative time + the new/changed/unchanged split, with an expandable recent-sync history, a per-provider **Sync now** for the pull providers (Strava and Oura; Health Connect is push-only, so its card explains the phone exporter drives it), and an admin **View raw** to inspect the exact provider payload; **Imports** is the chronological one-off feed of uploaded documents + pasted/CSV jobs, each showing what it produced and linking to its detail/verify view, with a **Re-extract all documents** button in its header that previews the AI cost before running (e.g. "9 health records re-imported instantly, no AI · 5 scans/PDFs — 5 AI extractions, 43 of 50 daily remaining"; an all–health-record run has no AI cost and skips the confirm). Spanning both sections at the top: any integration that's **currently failing**, and **possible duplicates** — a Strava run and a manual/Health Connect run on the same day, two same-source imports of one workout (upstream double-feeding, e.g. Strava ingesting the same session from both Garmin and Health Connect), or two body-metric rows that would double-count, detected across sources and resolved by **Merge**, **Keep both**, or **Dismiss** (Merge shows a per-field preview when the two rows disagree on a value), with the decision remembered so a later re-sync won't undo it — all surfaced with a badge on the profile menu. Finally, browse and export everything you've logged under **Data → Manage & Export** — the "Export all my data" download is one portable ZIP (every dataset as JSON + CSV, the clinical passport as a FHIR bundle, and copies of your uploaded files), captured as a consistent point-in-time snapshot; it is a **portability artifact you can read or take elsewhere, not the restore path** — restoring an instance uses the [server backups](#backups) (`npm run restore`), not this ZIP. Integrations available today are **Google Health Connect**, **Strava**, and **Oura Ring** (Garmin planned)
+- **Data hub** — bring data in (upload documents, paste logs, connect a device or service) under **Data → Import**, then see everything that has ever imported in one place under **Data → Review**, split into two sections that match how you actually read them: **Connected sources** collapses each recurring provider (Health Connect, Strava, Oura Ring, Withings) to one card showing its latest sync outcome + relative time + the new/changed/unchanged split, with an expandable recent-sync history, a per-provider **Sync now** for the pull providers (Strava, Oura, and Withings; Health Connect is push-only, so its card explains the phone exporter drives it), and an admin **View raw** to inspect the exact provider payload; **Imports** is the chronological one-off feed of uploaded documents + pasted/CSV jobs, each showing what it produced and linking to its detail/verify view, with a **Re-extract all documents** button in its header that previews the AI cost before running (e.g. "9 health records re-imported instantly, no AI · 5 scans/PDFs — 5 AI extractions, 43 of 50 daily remaining"; an all–health-record run has no AI cost and skips the confirm). Spanning both sections at the top: any integration that's **currently failing**, and **possible duplicates** — a Strava run and a manual/Health Connect run on the same day, two same-source imports of one workout (upstream double-feeding, e.g. Strava ingesting the same session from both Garmin and Health Connect), or two body-metric rows that would double-count, detected across sources and resolved by **Merge**, **Keep both**, or **Dismiss** (Merge shows a per-field preview when the two rows disagree on a value), with the decision remembered so a later re-sync won't undo it — all surfaced with a badge on the profile menu. Finally, browse and export everything you've logged under **Data → Manage & Export** — the "Export all my data" download is one portable ZIP (every dataset as JSON + CSV, the clinical passport as a FHIR bundle, and copies of your uploaded files), captured as a consistent point-in-time snapshot; it is a **portability artifact you can read or take elsewhere, not the restore path** — restoring an instance uses the [server backups](#backups) (`npm run restore`), not this ZIP. Integrations available today are **Google Health Connect**, **Strava**, **Oura Ring**, and **Withings** (Garmin planned)
 
 ## Emergency card (offline)
 
@@ -263,8 +263,9 @@ interactions still match by name. Nothing about interaction detection, the
 
 Connect outside services under **Data → Import** so your health data syncs
 automatically. Each provider has its own setup page (linked from the Import tab's
-"Connect a device or service" card). **Google Health Connect**, **Strava**, and
-**Oura Ring** are available today; **Garmin** is scaffolded as "coming soon".
+"Connect a device or service" card). **Google Health Connect**, **Strava**,
+**Oura Ring**, and **Withings** are available today; **Garmin** is scaffolded as
+"coming soon".
 
 ### Google Health Connect
 
@@ -411,6 +412,46 @@ next sync. Rate limits (HTTP 429) truncate the run and keep the cursor so the ne
 tick resumes. Naps/rest periods and Oura's baseline-relative **temperature deviation**
 are not imported (the latter has no home in the app's absolute-value metric vocab).
 
+### Withings
+
+Withings makes the clinical home devices — smart **scales**, **blood-pressure
+cuffs**, and sleep sensors — and its developer API is open to individual
+registration (no partner program), so you can connect it with your own OAuth app.
+The app pulls your measurements from Withings' REST API on the hourly tick (and on
+demand), so no public webhook is required.
+
+1. Register an application in the [Withings developer dashboard](https://developer.withings.com/dashboard/)
+   and set its **Callback URI** to the URL shown on the setup page
+   (`https://<your-app-domain>/api/integrations/withings/callback`). The callback
+   carries your session cookie (SameSite=Lax), so it binds to the active profile and
+   requires a live session — it is **not** a public endpoint. Set the **Public app
+   URL** in **Settings → Server** first if you're behind a reverse proxy, so the
+   callback resolves to a reachable address rather than localhost.
+2. Go to **Data → Import → Withings**, enter the Client ID and Secret, then click
+   **Connect with Withings** and authorize (scope `user.metrics,user.activity`).
+3. Measurements then sync automatically every hour; hit **Sync now** any time.
+   **Disconnect** clears the stored tokens but keeps your entered credentials so you
+   can reconnect without re-pasting them.
+
+**What gets imported** (mapped from the Withings measure + sleep APIs):
+
+| Withings data                         | Where it lands                                                                               |
+| ------------------------------------- | -------------------------------------------------------------------------------------------- |
+| Weight, body fat %                    | **Trends → Body** charts (stored per day, source `withings`)                                 |
+| Heart pulse (scale / BP cuff)         | **Trends → Body** resting heart rate                                                         |
+| Blood pressure (systolic + diastolic) | **Vitals** (`medical_records`) — appears in **Trends → Biomarkers** like manually-entered BP |
+| SpO₂, body temperature                | **Vitals** (temperature converted °C → °F canonical)                                         |
+| Sleep (deep / REM / light / awake)    | **Trends → Body** — total per night + stage breakdown (attributed to the wake day)           |
+
+The sync is **incremental and idempotent**: measures use Withings' `lastupdate`
+cursor (its `updatetime` echo is the next cursor), sleep uses a trailing date
+window, and every row dedups on its natural key — `(date, source)` for body metrics,
+`withings:<grpid>:<analyte>` for vitals, and the sleep window for sleep samples — so
+re-fetches never double-count. **Manually entered rows are never overwritten**, and a
+row you've hand-edited is left untouched on the next sync. Rate limits truncate the
+run and keep the cursor so the next tick resumes. Blood pressure lands as vitals and
+is reference-range flagged exactly like a manual reading.
+
 ### Comparing sources & picking a primary one
 
 With more than one source reporting the same metric (say Health Connect **and**
@@ -426,7 +467,7 @@ them on read:
 - **Trends → Body** grows a **Compare sources** section as soon as any metric has
   two or more reporting sources: a per-source overlay chart for each such metric,
   with a **Primary source** picker beside it. "Automatic" (the default) prefers a
-  manual entry, then Health Connect, then Oura, then Strava; picking a source
+  manual entry, then Health Connect, then Oura, then Withings, then Strava; picking a source
   makes it authoritative for that metric's totals, charts, and latest-value
   surfaces (with a fallback whenever it has no data). The section is invisible
   until a second source actually shows up.

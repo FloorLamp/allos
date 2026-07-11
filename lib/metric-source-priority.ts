@@ -155,6 +155,7 @@ export const SOURCE_COLORS: Record<string, string> = {
   "health-connect": "#0284c7",
   oura: "#7c3aed",
   strava: "#ea580c",
+  withings: "#db2777",
 };
 
 export const SOURCE_FALLBACK_COLOR = "#0d9488";

@@ -16,6 +16,7 @@ export const PROVIDER_PREFERENCE = [
   "manual",
   "health-connect",
   "oura",
+  "withings",
   "strava",
 ];
 

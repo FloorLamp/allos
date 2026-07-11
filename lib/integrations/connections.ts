@@ -505,3 +505,201 @@ export function disconnectOura(profileId: number) {
     config: null,
   });
 }
+
+// ---- Withings OAuth ----
+
+export const WITHINGS_ID = "withings";
+// Withings' single OAuth2 endpoint serves both the authorization-code exchange and
+// the refresh (distinguished by grant_type); every API response is wrapped in
+// { status, body } with status 0 = success.
+const WITHINGS_TOKEN_URL = "https://wbsapi.withings.net/v2/oauth2";
+
+// Everything we persist for the Withings connection lives in the connection's
+// `config` JSON: the app-registration credentials (entered in the UI), the transient
+// OAuth `state`, the access/refresh tokens, and the incremental sync cursor.
+export interface WithingsConfig {
+  clientId?: string;
+  clientSecret?: string;
+  oauthState?: string;
+  accessToken?: string;
+  refreshToken?: string;
+  expiresAt?: number; // epoch seconds
+  userId?: string; // Withings userid, captured for display
+  lastUpdate?: number; // epoch seconds — measures `updatetime` cursor
+}
+
+export function getWithingsConfig(profileId: number): WithingsConfig {
+  return readConfig(getConnection(profileId, WITHINGS_ID)) as WithingsConfig;
+}
+
+function patchWithingsConfig(
+  profileId: number,
+  patch: Partial<WithingsConfig>,
+  status?: "connected" | "disconnected"
+) {
+  const next = { ...getWithingsConfig(profileId), ...patch };
+  upsertConnection(profileId, WITHINGS_ID, { status, config: next });
+}
+
+export function setWithingsCredentials(
+  profileId: number,
+  clientId: string,
+  clientSecret: string
+) {
+  patchWithingsConfig(profileId, {
+    clientId: clientId.trim(),
+    clientSecret: clientSecret.trim(),
+  });
+}
+
+export function hasWithingsCredentials(profileId: number): boolean {
+  const c = getWithingsConfig(profileId);
+  return !!(c.clientId && c.clientSecret);
+}
+
+export function setWithingsOAuthState(profileId: number, state: string) {
+  patchWithingsConfig(profileId, { oauthState: state });
+}
+
+// Read and clear the one-time CSRF state (single use).
+export function takeWithingsOAuthState(profileId: number): string | undefined {
+  const state = getWithingsConfig(profileId).oauthState;
+  patchWithingsConfig(profileId, { oauthState: undefined });
+  return state;
+}
+
+// Store freshly-obtained tokens and mark the connection connected.
+export function setWithingsTokens(
+  profileId: number,
+  tokens: {
+    accessToken: string;
+    refreshToken: string;
+    expiresAt: number;
+    userId?: string;
+  }
+) {
+  patchWithingsConfig(
+    profileId,
+    {
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      expiresAt: tokens.expiresAt,
+      ...(tokens.userId != null ? { userId: tokens.userId } : {}),
+    },
+    "connected"
+  );
+}
+
+export function getWithingsCursor(profileId: number): number {
+  return getWithingsConfig(profileId).lastUpdate ?? 0;
+}
+
+export function setWithingsCursor(profileId: number, epochSeconds: number) {
+  patchWithingsConfig(profileId, { lastUpdate: epochSeconds });
+}
+
+// Disconnect: clear tokens/state/cursor and mark disconnected, but KEEP the entered
+// client id/secret so the user can reconnect without re-pasting them (mirrors Strava).
+export function disconnectWithings(profileId: number) {
+  const { clientId, clientSecret } = getWithingsConfig(profileId);
+  upsertConnection(profileId, WITHINGS_ID, {
+    status: "disconnected",
+    config: {
+      ...(clientId ? { clientId } : {}),
+      ...(clientSecret ? { clientSecret } : {}),
+    },
+  });
+}
+
+// The subset of a Withings OAuth token response we validate + persist. Withings
+// returns expires_in (seconds), so callers compute expiresAt = now + expires_in.
+export interface WithingsTokenResponse {
+  access_token: string;
+  refresh_token: string;
+  expires_in: number;
+  userid?: string | number;
+}
+
+// Parse + shape-validate the { status, body } envelope of a Withings OAuth token
+// response. Returns the token fields on success (status 0 with a well-formed body),
+// or null for any error status / malformed body — so a 200 carrying an error object
+// is treated as a failure, never stored as blank/NaN credentials. Pure (no I/O), so
+// the callback + refresh paths share ONE validator and it's unit-testable.
+export function parseWithingsTokenResponse(
+  json: unknown
+): WithingsTokenResponse | null {
+  if (!json || typeof json !== "object") return null;
+  const env = json as Record<string, unknown>;
+  if (env.status !== 0) return null;
+  const body =
+    env.body && typeof env.body === "object"
+      ? (env.body as Record<string, unknown>)
+      : null;
+  if (!body) return null;
+  const access = body.access_token;
+  const refresh = body.refresh_token;
+  const expires = body.expires_in;
+  if (
+    typeof access !== "string" ||
+    !access ||
+    typeof refresh !== "string" ||
+    !refresh ||
+    typeof expires !== "number" ||
+    !Number.isFinite(expires)
+  ) {
+    return null;
+  }
+  const userid = body.userid;
+  return {
+    access_token: access,
+    refresh_token: refresh,
+    expires_in: expires,
+    userid:
+      typeof userid === "string" || typeof userid === "number"
+        ? userid
+        : undefined,
+  };
+}
+
+// Return a valid access token, refreshing it first when it's missing or within a
+// 5-minute margin of expiry. Withings rotates the refresh token on refresh, so we
+// persist whatever comes back. Returns null when the connection isn't usable (no
+// credentials or no refresh token yet); throws on a refresh HTTP/shape failure so
+// the sync records a failed event (mirrors getStravaAccessToken).
+export async function getWithingsAccessToken(
+  profileId: number
+): Promise<string | null> {
+  const c = getWithingsConfig(profileId);
+  if (!c.clientId || !c.clientSecret) return null;
+  const nowSec = Math.floor(Date.now() / 1000);
+  if (c.accessToken && c.expiresAt && c.expiresAt - nowSec > 300) {
+    return c.accessToken;
+  }
+  if (!c.refreshToken) return null;
+
+  const res = await fetch(WITHINGS_TOKEN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      action: "requesttoken",
+      grant_type: "refresh_token",
+      client_id: c.clientId,
+      client_secret: c.clientSecret,
+      refresh_token: c.refreshToken,
+    }).toString(),
+  });
+  if (!res.ok) {
+    throw new Error(`Withings token refresh failed (${res.status})`);
+  }
+  const parsed = parseWithingsTokenResponse(await res.json());
+  if (!parsed) {
+    throw new Error("Withings token refresh returned an unexpected shape");
+  }
+  patchWithingsConfig(profileId, {
+    accessToken: parsed.access_token,
+    refreshToken: parsed.refresh_token,
+    expiresAt: nowSec + parsed.expires_in,
+    ...(parsed.userid != null ? { userId: String(parsed.userid) } : {}),
+  });
+  return parsed.access_token;
+}
