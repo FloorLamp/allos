@@ -51,6 +51,7 @@ import {
   SEX_AT_BIRTH_LOINC,
   SEX_LOINC,
   SMOKING_STATUS_LOINC,
+  VALUE_PLACEHOLDERS,
 } from "./constants";
 import type { CdaSection, SectionExtractor } from "./constants";
 import {
@@ -667,16 +668,39 @@ function mapEncounter(
   };
 }
 
+// Reduce a section's <text> narrative to a single clean line, dropping bare
+// placeholders. Used as the fallback content source for a section whose clinical
+// meaning lives ONLY in the printed narrative (no structured entries) — e.g. the
+// narrative-only Reason for Visit some hospital systems emit (issue #267).
+export function sectionNarrativeText(sectionRaw: any): string | null {
+  const t = collectText(sectionRaw?.text).replace(/\s+/g, " ").trim();
+  if (!t) return null;
+  if (VALUE_PLACEHOLDERS.has(t.toLowerCase())) return null;
+  return t;
+}
+
 // Document-level chief complaint(s) from the Reason for Visit section (29299-5,
 // chief complaint 8661-1). Not a stored record — correlated onto the encounter in
 // extractFromCcda. Prefers the printed originalText/narrative over the SNOMED
 // displayName (which reads "O/E - FEVER" rather than the plain "Fever"). Dedups.
+// When a section carries NO usable structured complaint (a narrative-only Reason
+// for Visit — a ~50-word <text> blob with zero entries, seen on some hospital
+// systems, issue #267), falls back to the stripped section narrative so the reason
+// still imports rather than being dropped.
 export function chiefComplaintsFromSections(sections: CdaSection[]): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
+  const add = (name: string | null): void => {
+    if (!name) return;
+    const key = name.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(name);
+  };
   for (const s of sections) {
     if (!sectionIs(s, SECTIONS.reasonForVisit)) continue;
     const ids = buildNarrativeIdMap(s.raw?.text);
+    let fromEntries = 0;
     for (const entry of s.entries) {
       const obs = entry?.observation;
       if (!obs) continue;
@@ -688,14 +712,71 @@ export function chiefComplaintsFromSections(sections: CdaSection[]): string[] {
           : null) ||
         resolveNarrativeText(obs?.text, ids);
       if (!name) continue;
-      const key = name.toLowerCase();
-      if (!seen.has(key)) {
-        seen.add(key);
-        out.push(name);
-      }
+      fromEntries++;
+      add(name);
     }
+    // Narrative-only fallback: only when the section produced no structured
+    // complaint (so an entry-bearing section never double-counts its narrative).
+    if (fromEntries === 0) add(sectionNarrativeText(s.raw));
   }
   return out;
+}
+
+// The document's encompassing visit (componentOf/encompassingEncounter): the single
+// real encounter a hospital/visit document is ABOUT. Its stable source id (matched to
+// an Encounter Activity's external_id) and period let the reason-for-visit
+// correlation pick the right encounter when a document ships several Encounter
+// Activities (the visit plus a companion event-type activity — issue #267).
+export interface EncompassingEncounterInfo {
+  externalId: string | null; // "ccda:encounter:<id>" — comparable to an ImportedEncounter
+  start: string | null;
+  end: string | null;
+}
+
+export function encompassingEncounterInfo(
+  cd: any
+): EncompassingEncounterInfo | null {
+  const ee = Array.isArray(cd?.componentOf)
+    ? cd.componentOf[0]?.encompassingEncounter
+    : cd?.componentOf?.encompassingEncounter;
+  if (!ee) return null;
+  const idExt = firstEncounterId(ee);
+  const { start, end } = hl7Period(ee?.effectiveTime);
+  return {
+    externalId: idExt ? `ccda:encounter:${idExt}` : null,
+    start: start ?? effTime(ee?.effectiveTime),
+    end,
+  };
+}
+
+// Choose which encounter the document-level Reason for Visit should attach to, or -1
+// when it can't be attributed reliably (issue #267). Only reason-less encounters are
+// eligible (a reason of their own is never overwritten). One eligible encounter → it.
+// Several → prefer the document's encompassing visit, matched by stable source id
+// first (strongest), else by matching start date; ambiguity (no encompassing hint, or
+// several encounters sharing the encompassing period) yields -1 rather than guessing.
+export function selectReasonTarget(
+  encounters: ImportedEncounter[],
+  encompassing: EncompassingEncounterInfo | null
+): number {
+  const eligible = encounters
+    .map((e, i) => ({ e, i }))
+    .filter((x) => !x.e.reason);
+  if (eligible.length === 0) return -1;
+  if (eligible.length === 1) return eligible[0].i;
+  if (encompassing) {
+    if (encompassing.externalId) {
+      const byId = eligible.filter(
+        (x) => x.e.external_id === encompassing.externalId
+      );
+      if (byId.length === 1) return byId[0].i;
+    }
+    if (encompassing.start) {
+      const byDate = eligible.filter((x) => x.e.date === encompassing.start);
+      if (byDate.length === 1) return byDate[0].i;
+    }
+  }
+  return -1;
 }
 
 // ---- standalone visit diagnoses (top-level "Diagnosis" section, 29308-4) ----
