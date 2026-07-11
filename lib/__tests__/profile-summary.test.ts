@@ -176,6 +176,7 @@ describe("buildProfileSummary", () => {
     flagged: [vital({ name: "LDL", flag: "high", value: "160" })],
     starred: [vital({ name: "HDL", starred: true, value: "70" })],
     allergies: [],
+    crossReactivity: [],
     conditions: [],
     familyHistory: [],
     medications: [

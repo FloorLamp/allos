@@ -26,6 +26,7 @@ import {
 import {
   getAllergiesView,
   getConditions,
+  getCrossReactivityNotes,
   getFamilyHistory,
 } from "./queries/clinical";
 import { assessSchedule } from "./immunization-status";
@@ -36,6 +37,7 @@ import {
   medicationStartDate,
   type ProfileSummary,
   type SummaryAllergy,
+  type SummaryCrossReactivity,
   type SummaryCondition,
   type SummaryFamilyHistory,
   type SummaryVital,
@@ -233,6 +235,17 @@ export function getProfileSummary(
         }`
       : null,
   }));
+  // Informational allergen cross-reactivity notes over the SAME merged allergen
+  // set (shared pure matcher — the Allergies page uses the identical query).
+  const crossReactivity: SummaryCrossReactivity[] = getCrossReactivityNotes(
+    profileId
+  ).map((c) => ({
+    familyId: c.familyId,
+    triggers: c.triggers,
+    related: c.related,
+    label: c.label,
+    citation: c.citation,
+  }));
   const conditions: SummaryCondition[] = getConditions(profileId, {
     status: "active",
   }).map((c) => ({
@@ -277,6 +290,7 @@ export function getProfileSummary(
     flagged,
     starred,
     allergies,
+    crossReactivity,
     conditions,
     familyHistory,
     medications,

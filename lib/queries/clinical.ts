@@ -9,6 +9,10 @@ import {
   type IgESensitizationInput,
   type AllergyViewItem,
 } from "../allergy-ige";
+import {
+  findCrossReactivity,
+  type CrossReactivityMatch,
+} from "../allergen-cross-reactivity";
 import type {
   Allergy,
   AllergyStatus,
@@ -291,4 +295,15 @@ export function getAllergiesView(profileId: number): AllergyViewItem[] {
       documentId: a.document_id,
     }));
   return buildAllergiesView(stored, getAllergenSensitizations(profileId));
+}
+
+// Informational allergen cross-reactivity notes derived from the merged allergies
+// view (documented allergies + lab-derived IgE sensitizations). Pure matcher over
+// a curated dataset (lib/allergen-cross-reactivity) — the ONE computation shared
+// by the Allergies page and the profile passport (one-question-one-computation).
+export function getCrossReactivityNotes(
+  profileId: number
+): CrossReactivityMatch[] {
+  const substances = getAllergiesView(profileId).map((a) => a.substance);
+  return findCrossReactivity(substances);
 }
