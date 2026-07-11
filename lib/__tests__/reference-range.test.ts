@@ -581,6 +581,16 @@ describe("age-banded reference ranges", () => {
     // A child value below the pediatric floor is still caught.
     expect(reconciledFlag(null, 100, "U/L", alp, null, 5)).toBe("low");
   });
+
+  it("flips at the band's upper age cutoff — 9 in-band, 10 adult (max_age exclusive)", () => {
+    // The childhood band is [1,10): age 9 keeps the 140–420 range (300 normal),
+    // but at age 10 it falls through to the adult 40–129 range (300 → high). The
+    // just-under / just-over pair pins the half-open boundary in the flag path.
+    expect(reconciledFlag(null, 300, "U/L", alp, null, 9)).toBeUndefined();
+    expect(reconciledFlag(null, 300, "U/L", alp, null, 10)).toBe("high");
+    // Clearing a stale adult "high" once the child re-enters the band at age 9.
+    expect(reconciledFlag("high", 300, "U/L", alp, null, 9)).toBeNull();
+  });
 });
 
 describe("daysBetween / staleness / humanizeAge", () => {

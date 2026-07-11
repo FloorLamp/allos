@@ -1509,6 +1509,55 @@ if (!existingChild) {
     [0, 47.8],
   ];
   for (const [ago, cm] of headCircs) point("head_circumference_cm", ago, cm);
+
+  // Pediatric labs + vitals so the age-aware interpretation (#150) has a subject:
+  //  • ALP 300 U/L — flags "high" against the ADULT 40–129 range but is perfectly
+  //    NORMAL for a 1-year-old (age-band 140–420), the canonical false-"high".
+  //    reconcileFlags (below) resolves it against the child's age band, so no flag.
+  //  • Blood pressure 101/52 — read by the AAP 2017 age/sex/height percentile
+  //    (Elevated systolic for age; normal diastolic) instead of the adult cutoffs.
+  const insChildMed = db.prepare(
+    `INSERT INTO medical_records
+       (profile_id, date, category, name, value, unit, reference_range, value_num, canonical_name, panel)
+     VALUES (?,?,?,?,?,?,?,?,?,?)`
+  );
+  const childLab = (
+    canonical: string,
+    value: number,
+    unit: string,
+    ref: string,
+    category: string,
+    panel: string | null
+  ): number =>
+    Number(
+      insChildMed.run(
+        childId,
+        childDaysAgo(7),
+        category,
+        canonical,
+        String(value),
+        unit,
+        ref,
+        value,
+        canonical,
+        panel
+      ).lastInsertRowid
+    );
+  const alpId = childLab(
+    "Alkaline Phosphatase",
+    300,
+    "U/L",
+    "40-129",
+    "lab",
+    "Metabolic"
+  );
+  childLab("Blood Pressure Systolic", 101, "mmHg", "90-120", "vitals", null);
+  childLab("Blood Pressure Diastolic", 52, "mmHg", "60-80", "vitals", null);
+  // Derive the ALP flag against the child's age band (300 → normal-for-age),
+  // exactly like a real import would after boot's flag reconcile. BP is left
+  // unflagged: a child's blood pressure is judged by the AAP 2017 age/sex/height
+  // percentile (rendered on the biomarker page), NOT the adult reference flags.
+  reconcileFlags(childId, [alpId]);
 }
 
 // ── Sleep sessions → Sleep Regularity Index (#160) ────────────────────────────
