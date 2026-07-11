@@ -739,6 +739,49 @@ console.log(
   `e2e: seeded a 6-week Skullcrusher plateau and a weight jump on ${jumpDate} (#45)`
 );
 
+// Domain 3 — an adherence PATTERN: a daily Evening supplement taken every day for
+// ~8 weeks EXCEPT every Friday. The weekday-miss rule then flags "you miss your
+// evening dose most Fridays" and suggests moving it earlier, on Supplements & Meds.
+// Fully synthetic. Idempotent: re-created from scratch each boot (the item + its
+// dose + logs), so today-relative dates stay correct across days.
+const ADHERE_ITEM = "Evening Vitamin C (e2e)";
+db.prepare(`DELETE FROM intake_items WHERE profile_id = ? AND name = ?`).run(
+  PROFILE_ID,
+  ADHERE_ITEM
+);
+const adhereItemId = Number(
+  db
+    .prepare(
+      `INSERT INTO intake_items
+         (profile_id, name, condition, priority, active, source)
+       VALUES (?, ?, 'daily', 'high', 1, 'manual')`
+    )
+    .run(PROFILE_ID, ADHERE_ITEM).lastInsertRowid
+);
+const adhereDoseId = Number(
+  db
+    .prepare(
+      `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+       VALUES (?, '500 mg', 'Evening', 'any', 0)`
+    )
+    .run(adhereItemId).lastInsertRowid
+);
+const insAdhereLog = db.prepare(
+  `INSERT OR IGNORE INTO intake_item_logs (dose_id, item_id, date, status)
+   VALUES (?, ?, ?, 'taken')`
+);
+// 63 days back → nine Fridays in the window; log taken on every non-Friday.
+for (let i = 1; i <= 63; i++) {
+  const date = shiftDateStr(today(PROFILE_ID), -i);
+  const weekday = new Date(`${date}T00:00:00Z`).getUTCDay();
+  if (weekday === 5) continue; // Friday → missed (no taken-log)
+  insAdhereLog.run(adhereDoseId, adhereItemId, date);
+}
+
+console.log(
+  `e2e: seeded an every-Friday evening-dose miss pattern for ${ADHERE_ITEM} (#45 domain 3)`
+);
+
 // ── Import-detail drop-report fixture (issue #270) ────────────────────────────
 // A 'done' document carrying a stored import_report with (a) a reason-group of
 // HUNDREDS of identical drops (the real-world CCD noise that made the Dropped
