@@ -154,22 +154,23 @@ the app and the `npm run seed` script, and is gitignored:
 cp .env.example .env.local   # then edit in your values
 ```
 
-| Variable               | Description                                                                                                                                                                                                                                                                                                          |
-| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ADMIN_USERNAME`       | Optional. Username for the bootstrap admin login created on first boot (default `admin`). Read only when no login exists yet.                                                                                                                                                                                        |
-| `ADMIN_PASSWORD`       | Password for the bootstrap admin login. If unset on first boot, a random one is generated and printed to the log **once** — capture it. Read only when no login exists yet.                                                                                                                                          |
-| `ALLOS_DISABLE_2FA`    | Optional bootstrap-recovery escape hatch. Comma-separated username(s) whose TOTP second factor is **skipped** at login (for an admin locked out after losing their authenticator + recovery codes). Every bypass is logged loudly and audited (`login.2fa-bypass`). Remove it and re-enroll once access is restored. |
-| `ANTHROPIC_API_KEY`    | Enables Claude-powered insights and medical-document extraction. Optional when `AI_BASE_URL` points at a local server that ignores keys.                                                                                                                                                                             |
-| `AI_BASE_URL`          | Optional. Point the app at a self-hosted / local inference server exposing an Anthropic-compatible API (Ollama, a proxy, …) for zero external egress. Set alone, or with a key it forwards.                                                                                                                          |
-| `HEALTH_AI_MODEL`      | Optional. Override the AI model (defaults to `claude-sonnet-5`).                                                                                                                                                                                                                                                     |
-| `HEALTH_AI_MAX_TOKENS` | Optional. Max output tokens for document extraction (default `16000`).                                                                                                                                                                                                                                               |
-| `LOG_LEVEL`            | Optional. `debug`/`info`/`warn`/`error` (default `info`).                                                                                                                                                                                                                                                            |
-| `LOG_FORMAT`           | Optional. `text` or `json`. Defaults to `text` in dev, `json` in prod.                                                                                                                                                                                                                                               |
-| `AI_LOG_PROMPTS`       | Optional. Set `0` to keep prompts/responses out of the AI activity log.                                                                                                                                                                                                                                              |
-| `PORT`                 | Optional (Docker). Host port to expose (container listens on `3000`).                                                                                                                                                                                                                                                |
-| `TZ`                   | Optional. Timezone is DB-backed — the instance default under **Settings → Server**, per-profile under **Settings → Profile**; a `TZ` env only seeds the instance default on first boot.                                                                                                                              |
-| `DATA_DIR`             | Optional (Docker). Host path for persistent data — see **Deploy with Docker**.                                                                                                                                                                                                                                       |
-| `BACKUP_DEST_DIR`      | Optional. A **second mounted directory** to copy each verified snapshot to (and mirror `data/uploads/` to), so backups survive loss of the `DATA_DIR` volume — see **[Backups → Off-volume backups](#off-volume-backups-backup_dest_dir)**.                                                                          |
+| Variable               | Description                                                                                                                                                                                                                                                                                                                                 |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ADMIN_USERNAME`       | Optional. Username for the bootstrap admin login created on first boot (default `admin`). Read only when no login exists yet.                                                                                                                                                                                                               |
+| `ADMIN_PASSWORD`       | Password for the bootstrap admin login. If unset on first boot, a random one is generated and printed to the log **once** — capture it. Read only when no login exists yet.                                                                                                                                                                 |
+| `ALLOS_DISABLE_2FA`    | Optional bootstrap-recovery escape hatch. Comma-separated username(s) whose TOTP second factor is **skipped** at login (for an admin locked out after losing their authenticator + recovery codes). Every bypass is logged loudly and audited (`login.2fa-bypass`). Remove it and re-enroll once access is restored.                        |
+| `ALLOS_DEMO_MODE`      | Optional. Set to `1` to run this instance as a **public read-only demo** — login-page demo credentials, a persistent "synthetic data — do not enter real health information" banner on every page, and every non-admin write refused. Leave **unset** for any real deployment. See **[Running a demo instance](#running-a-demo-instance)**. |
+| `ANTHROPIC_API_KEY`    | Enables Claude-powered insights and medical-document extraction. Optional when `AI_BASE_URL` points at a local server that ignores keys.                                                                                                                                                                                                    |
+| `AI_BASE_URL`          | Optional. Point the app at a self-hosted / local inference server exposing an Anthropic-compatible API (Ollama, a proxy, …) for zero external egress. Set alone, or with a key it forwards.                                                                                                                                                 |
+| `HEALTH_AI_MODEL`      | Optional. Override the AI model (defaults to `claude-sonnet-5`).                                                                                                                                                                                                                                                                            |
+| `HEALTH_AI_MAX_TOKENS` | Optional. Max output tokens for document extraction (default `16000`).                                                                                                                                                                                                                                                                      |
+| `LOG_LEVEL`            | Optional. `debug`/`info`/`warn`/`error` (default `info`).                                                                                                                                                                                                                                                                                   |
+| `LOG_FORMAT`           | Optional. `text` or `json`. Defaults to `text` in dev, `json` in prod.                                                                                                                                                                                                                                                                      |
+| `AI_LOG_PROMPTS`       | Optional. Set `0` to keep prompts/responses out of the AI activity log.                                                                                                                                                                                                                                                                     |
+| `PORT`                 | Optional (Docker). Host port to expose (container listens on `3000`).                                                                                                                                                                                                                                                                       |
+| `TZ`                   | Optional. Timezone is DB-backed — the instance default under **Settings → Server**, per-profile under **Settings → Profile**; a `TZ` env only seeds the instance default on first boot.                                                                                                                                                     |
+| `DATA_DIR`             | Optional (Docker). Host path for persistent data — see **Deploy with Docker**.                                                                                                                                                                                                                                                              |
+| `BACKUP_DEST_DIR`      | Optional. A **second mounted directory** to copy each verified snapshot to (and mirror `data/uploads/` to), so backups survive loss of the `DATA_DIR` volume — see **[Backups → Off-volume backups](#off-volume-backups-backup_dest_dir)**.                                                                                                 |
 
 You can also `export` these directly instead of using a file.
 
@@ -610,6 +611,53 @@ You can still restore by hand if you prefer: stop the container, `cp
 data/backups/allos-<stamp>.db data/allos.db`, delete any `data/allos.db-wal` /
 `data/allos.db-shm`, and start it again.
 
+## Running a demo instance
+
+Allos can run as a **public, read-only demo** so people can explore the data model
+before self-hosting. Set one env flag and reseed:
+
+```bash
+ALLOS_DEMO_MODE=1 npm run seed   # creates the read-only "demo" login + grants
+ALLOS_DEMO_MODE=1 npm start      # (or set it in .env for Docker)
+```
+
+With `ALLOS_DEMO_MODE=1`:
+
+- The **login page** shows the demo credentials — username `demo`, password `demo`.
+- A **persistent, non-dismissible banner** appears on every page: _"Public demo —
+  synthetic data — resets nightly — do not enter real health information."_
+- The **demo login is a read-only member** (view-only grants, issue #33) to the
+  seeded profiles. Every non-admin write is refused at the auth boundary
+  (`requireWriteAccess`) even if a grant is misconfigured, and the PHI-entry
+  surfaces are trimmed: no change-password, no Telegram/send-test config, and the
+  document-upload input is disabled with a hint.
+- The **admin login stays fully functional** (for maintaining the instance) and is
+  never advertised in the UI. Set a strong `ADMIN_PASSWORD` — it is not read-only.
+
+Same seed, same GHCR image, same boot as a normal deploy — demo mode is presentation
+plus a belt-and-braces write block, so the demo doubles as a release smoke test.
+
+### Nightly reset
+
+Return the demo to a pristine state on a schedule with `npm run demo-reset` — it
+wipes the live DB (and its `-wal`/`-shm` sidecars), clears `data/uploads`, reseeds a
+fresh demo database, and integrity-checks the result. Run it with the app **stopped**
+(stop-reset-start), e.g. a host cron:
+
+```bash
+# 4am daily: stop, reset, start (adjust to your process manager / compose setup)
+0 4 * * *  cd /srv/allos && docker compose stop app && ALLOS_DEMO_MODE=1 npm run demo-reset -- --yes && docker compose start app
+```
+
+`demo-reset` **refuses to run unless `ALLOS_DEMO_MODE` is set** (so it can never wipe
+a real instance by accident); `--force` overrides that single refusal, `--yes` skips
+the confirmation prompt for non-interactive cron.
+
+> **Isolation warning.** A demo instance is destructive by design — the nightly reset
+> deletes its entire database and all uploads. **Never co-host a demo with a real
+> family instance**, and never point `ALLOS_DEMO_MODE` at a `DATA_DIR` that holds real
+> records. Run the demo as its own container with its own volume.
+
 ### Health endpoint
 
 The container healthcheck hits `GET /api/health`. It returns
@@ -641,15 +689,16 @@ on **Settings → Profile** is the remediation path — a successful test clears
 
 ## Scripts
 
-| Command            | Description                                        |
-| ------------------ | -------------------------------------------------- |
-| `npm run dev`      | Start the development server                       |
-| `npm run build`    | Production build                                   |
-| `npm start`        | Run the production build                           |
-| `npm run seed`     | Seed the database with sample data                 |
-| `npm run notify`   | Send due notifications for the current hour (cron) |
-| `npm test`         | Pure unit tests (vitest)                           |
-| `npm run test:e2e` | Playwright browser tests (isolated seeded DB)      |
+| Command              | Description                                        |
+| -------------------- | -------------------------------------------------- |
+| `npm run dev`        | Start the development server                       |
+| `npm run build`      | Production build                                   |
+| `npm start`          | Run the production build                           |
+| `npm run seed`       | Seed the database with sample data                 |
+| `npm run demo-reset` | Wipe + reseed a demo instance (nightly cron)       |
+| `npm run notify`     | Send due notifications for the current hour (cron) |
+| `npm test`           | Pure unit tests (vitest)                           |
+| `npm run test:e2e`   | Playwright browser tests (isolated seeded DB)      |
 
 ## Tech
 

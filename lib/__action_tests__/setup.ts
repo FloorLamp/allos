@@ -35,6 +35,10 @@ vi.mock("next/cache", () => ({
 vi.mock("@/lib/auth", async () => {
   const { getActingSession } = await import("./session-state");
   const { db } = await import("@/lib/db");
+  // Demo-mode guard (#181): the mock applies the SAME pure predicate the real
+  // requireWriteAccess() uses, reading process.env.ALLOS_DEMO_MODE each call, so a
+  // demo-mode write-refusal test exercises the guard faithfully (see demo.actions.test.ts).
+  const { isDemoMode, isDemoRestricted } = await import("@/lib/demo");
   // Faithful accessibility: admins reach every profile, members only their
   // granted set (login_profiles) — the same rule accessibleProfiles() enforces in
   // prod. Reads the REAL temp DB so reassign/access tests exercise genuine grants.
@@ -68,6 +72,9 @@ vi.mock("@/lib/auth", async () => {
     // 'write', so this is transparent unless a test opts into a read grant.
     requireWriteAccess: () => {
       const s = getActingSession();
+      if (isDemoRestricted(isDemoMode(), s.login.role)) {
+        throw new Error("requireWriteAccess: blocked in demo mode");
+      }
       if (s.access === "read") {
         throw new Error("requireWriteAccess: acting session is read-only");
       }

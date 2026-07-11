@@ -2,6 +2,7 @@ import Link from "next/link";
 import { IconArrowRight } from "@tabler/icons-react";
 import { getUnitPrefs, getUserFullName } from "@/lib/settings";
 import { requireSession } from "@/lib/auth";
+import { isDemoMode, isDemoRestricted } from "@/lib/demo";
 import { PageHeader } from "@/components/ui";
 import Tabs from "@/components/Tabs";
 import NavTabs from "@/components/NavTabs";
@@ -46,6 +47,9 @@ export default async function DataPage(
   const { login, profile } = await requireSession();
   const units = getUnitPrefs(login.id);
   const section = parseSection(searchParams.section);
+  // Demo mode (#181): disable the medical-upload input (a PHI-entry vector) with a
+  // hint. The write is already blocked server-side; this is the UX on top.
+  const demo = isDemoRestricted(isDemoMode(), login.role);
 
   // The Review tab's badge count is cheap (duplicate/conflict detection over the
   // activities/body_metrics tables) and needed on the tab strip regardless of the
@@ -101,7 +105,7 @@ export default async function DataPage(
                       <h2 className="font-semibold text-slate-800 dark:text-slate-100">
                         Upload a lab report, scan, or health-record export
                       </h2>
-                      <UploadForm />
+                      <UploadForm demo={demo} />
                     </div>
                   ),
                 },

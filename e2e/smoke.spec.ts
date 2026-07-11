@@ -15,6 +15,19 @@ const ROUTES = [
   "/settings",
 ];
 
+// #181: with ALLOS_DEMO_MODE unset (the default webServer env), demo mode is fully
+// inert — the persistent demo banner must be absent on both the login page and an
+// authenticated page, and the login page shows no demo-credentials card. The
+// present-in-demo-mode assertions live in demo.spec.ts (its own demo webServer).
+test("no demo banner or credentials by default (#181)", async ({ page }) => {
+  await page.goto("/login");
+  await expect(page.getByTestId("demo-banner")).toHaveCount(0);
+  await expect(page.getByTestId("demo-credentials")).toHaveCount(0);
+
+  await page.goto("/");
+  await expect(page.getByTestId("demo-banner")).toHaveCount(0);
+});
+
 for (const route of ROUTES) {
   test(`renders ${route}`, async ({ page }) => {
     const resp = await page.goto(route);

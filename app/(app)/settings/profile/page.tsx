@@ -19,6 +19,7 @@ import {
 } from "@/lib/settings";
 import { inferWorkoutSchedule } from "@/lib/queries";
 import { requireSession } from "@/lib/auth";
+import { isDemoMode, isDemoRestricted } from "@/lib/demo";
 import { isTrainingRestricted } from "@/lib/age-gate";
 import { estimateMaxHr } from "@/lib/training-zones";
 import { PageHeader } from "@/components/ui";
@@ -45,6 +46,9 @@ function workoutScheduleSummary(profileId: number): string {
 export default async function ProfileSettingsPage() {
   const { login, profile } = await requireSession();
   const isAdmin = login.role === "admin";
+  // Demo mode (#181): the read-only demo member can't configure Telegram/send-test
+  // (no bot is configured anyway) or change the profile photo — trim those.
+  const demoRestricted = isDemoRestricted(isDemoMode(), login.role);
   const fullName = getUserFullName(profile.id);
   const sex = getUserSex(profile.id);
   const reproductiveStatus = getUserReproductiveStatus(profile.id);
@@ -66,7 +70,7 @@ export default async function ProfileSettingsPage() {
         isAdmin={isAdmin}
         hideEquipment={isTrainingRestricted(profile.id)}
       />
-      <ProfilePhotoCard profile={profile} />
+      <ProfilePhotoCard profile={profile} disabled={demoRestricted} />
       <ProfileForm
         fullName={fullName}
         sex={sex}
@@ -85,12 +89,14 @@ export default async function ProfileSettingsPage() {
         />
       )}
       <SmokingHistoryForm history={getSmokingHistory(profile.id)} />
-      <ProfileNotificationSettings
-        telegram={telegram}
-        botConfigured={botConfigured}
-        schedule={getNotifySchedule(profile.id)}
-        workoutSummary={workoutScheduleSummary(profile.id)}
-      />
+      {!demoRestricted && (
+        <ProfileNotificationSettings
+          telegram={telegram}
+          botConfigured={botConfigured}
+          schedule={getNotifySchedule(profile.id)}
+          workoutSummary={workoutScheduleSummary(profile.id)}
+        />
+      )}
       <EmergencyCardSettings
         enabled={getEmergencyCardEnabled(profile.id)}
         bloodType={getBloodType(profile.id)}
