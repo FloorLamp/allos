@@ -16,6 +16,7 @@ import {
 import type { CdaSection, SectionExtractor } from "./constants";
 import {
   isClinicalNoteSection,
+  isVisitDiagnosesSection,
   mapAllergy,
   mapCondition,
   mapImmunization,
@@ -355,8 +356,11 @@ export function buildCcdaCoverage(
     // a condition, and a note attaches to the encounter OR becomes a standalone note —
     // so recognizing the section (not a runtime flag) is the right consumed signal.
     // `!!ex` keeps precedence, so a real content section titled "… Notes" stays owned
-    // by its extractor and is never mis-attributed here.
-    const isVisitDiagnoses = sectionIs(section, SECTIONS.visitDiagnoses);
+    // by its extractor and is never mis-attributed here. isVisitDiagnosesSection also
+    // recognizes the narrative-only Assessment (51848-0 / 2.2.8) packaging and a
+    // "Visit Diagnoses"-titled section (#263), so those are consumed, not flagged
+    // unrecognized, even when they carry only a narrative table.
+    const isVisitDiagnoses = isVisitDiagnosesSection(section);
     // Admitting Diagnoses (#266) route through the same document-level
     // visit-diagnosis handling (correlate-or-land), so like Visit Diagnoses the
     // section is always consumed when recognized.
