@@ -35,6 +35,7 @@ import {
   detectStaleExercises,
   detectPlateaus,
   BALANCE_WINDOW_DAYS,
+  PLATEAU_WINDOW_DAYS,
   type TrainingObservation,
 } from "./training-observations";
 import {
@@ -92,7 +93,12 @@ export function buildTrainingObservationFindings(
   const stats = getStrengthByExercise(profileId);
   const since = shiftDateStr(today, -(BALANCE_WINDOW_DAYS - 1));
   const setCounts = getExerciseSetCountsSince(profileId, since);
-  const e1rmSeries = getExerciseE1rmSeries(profileId);
+  // detectPlateaus only inspects points within the trailing PLATEAU_WINDOW_DAYS, so
+  // bound the (otherwise all-history) rep-bearing scan to that same window (#389).
+  const e1rmSeries = getExerciseE1rmSeries(
+    profileId,
+    shiftDateStr(today, -PLATEAU_WINDOW_DAYS)
+  );
 
   const observations: TrainingObservation[] = [];
   const imbalance = detectPushPullImbalance(setCounts);

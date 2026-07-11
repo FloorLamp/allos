@@ -8,6 +8,7 @@
 // in lib/__db_tests__/upcoming.scoping.test.ts.
 
 import { db } from "../../db";
+import { cache } from "../../request-cache";
 import { shiftDateStr } from "../../date";
 import { isTrainingRestricted } from "../../age-gate";
 import {
@@ -372,7 +373,18 @@ export function markCarePlanItemDone(profileId: number, id: number): void {
 
 // Every forward-looking due-signal for the active profile, BEFORE snooze/dismiss
 // filtering. `today` is resolved by the caller in the profile's timezone.
-function rawUpcoming(profileId: number, today: string): UpcomingItem[] {
+//
+// Wrapped in request-scoped cache() (issue #389): the /upcoming page runs BOTH
+// collectUpcoming and collectSuppressedUpcoming, and each independently fans out the
+// full generator set (2× assessProfilePreventive's medical_records/encounters/
+// appointments/procedures/care-plan reads, 2× everything else). cache() collapses
+// the two calls in one request to a single fan-out. Outside a server request (the
+// notify tick, DB tests) cache() degrades to a plain passthrough, so behavior is
+// unchanged — the digest reuse still recomputes per call as before.
+const rawUpcoming = cache(function rawUpcoming(
+  profileId: number,
+  today: string
+): UpcomingItem[] {
   return [
     ...doseItems(profileId, today),
     ...refillItems(profileId, today),
@@ -386,7 +398,7 @@ function rawUpcoming(profileId: number, today: string): UpcomingItem[] {
     ...goalItems(profileId),
     ...trainingItems(profileId),
   ];
-}
+});
 
 // Whether an item is currently hidden by a snooze/dismiss row in `map`.
 function isItemSuppressed(

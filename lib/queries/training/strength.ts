@@ -419,8 +419,14 @@ export function getExerciseSetCountsSince(
 // can fit a robust slope over the recent window. Sessions whose best e1RM is 0
 // (bodyweight lifts with no known bodyweight) are omitted — a flat-zero series is not
 // a plateau. Profile-scoped via the activities JOIN.
+// `since` (YYYY-MM-DD, inclusive) optionally bounds the scan to a trailing window.
+// The only caller (buildTrainingObservationFindings → detectPlateaus) windows each
+// series to the last PLATEAU_WINDOW_DAYS anyway, so passing that cutoff makes the
+// rep-bearing-history scan a free win (issue #389) with no change to the plateau
+// output. Omit `since` for the full lifetime series.
 export function getExerciseE1rmSeries(
-  profileId: number
+  profileId: number,
+  since?: string
 ): { exercise: string; points: { date: string; value: number }[] }[] {
   const rows = db
     .prepare(
@@ -428,9 +434,10 @@ export function getExerciseE1rmSeries(
               s.weight_kg, s.reps, s.weight_kg_right, s.reps_right
          FROM exercise_sets s JOIN activities a ON a.id = s.activity_id
         WHERE a.profile_id = ? AND (s.reps IS NOT NULL OR s.reps_right IS NOT NULL)
+          AND (? IS NULL OR a.date >= ?)
         ORDER BY a.date ASC`
     )
-    .all(profileId) as {
+    .all(profileId, since ?? null, since ?? null) as {
     exercise: string;
     date: string;
     weight_kg: number | null;
