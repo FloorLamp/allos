@@ -18,7 +18,10 @@ export default async function SettingsPage() {
   const { login, profile } = await requireSession();
   const isAdmin = login.role === "admin";
   // In a public demo the read-only demo member can't change its (public,
-  // nightly-reset) password — hide the form entirely (#181). Admins keep it.
+  // nightly-reset) password, enroll 2FA, or revoke other visitors' sessions —
+  // hide those affordances (#181, #278). The Server Actions refuse server-side
+  // too (requireLoginWriteAccess); this trimming is only the convenience layer.
+  // Admins keep everything.
   const demoRestricted = isDemoRestricted(isDemoMode(), login.role);
   const prefs = getUnitPrefs(login.id);
   const hideEquipment = isTrainingRestricted(profile.id);
@@ -38,11 +41,13 @@ export default async function SettingsPage() {
       <UnitPrefsForm prefs={prefs} />
       <PushNotificationSettings />
       {!demoRestricted && <ChangePasswordSettings username={login.username} />}
-      <TwoFactorSettings
-        enabled={twofaEnabled}
-        recoveryRemaining={recoveryRemaining}
-      />
-      <ActiveSessions sessions={sessions} />
+      {!demoRestricted && (
+        <TwoFactorSettings
+          enabled={twofaEnabled}
+          recoveryRemaining={recoveryRemaining}
+        />
+      )}
+      <ActiveSessions sessions={sessions} canRevoke={!demoRestricted} />
       <footer className="mt-10 border-t border-black/10 pt-4 text-xs text-slate-400 dark:border-white/10 dark:text-slate-500">
         Version <AppVersion />
       </footer>

@@ -80,7 +80,24 @@ vi.mock("@/lib/auth", async () => {
       }
       return s;
     },
+    // Faithful to the login-mutation guard (#278): same pure predicate as prod
+    // (a demo-restricted login's account-management writes are refused; prod
+    // redirects, here we throw loudly). No access check — login-scoped actions
+    // legitimately run for read-only members.
+    requireLoginWriteAccess: () => {
+      const s = getActingSession();
+      if (isDemoRestricted(isDemoMode(), s.login.role)) {
+        throw new Error("requireLoginWriteAccess: blocked in demo mode");
+      }
+      return s;
+    },
     requireAdmin: () => getActingSession(),
+    // Session-teardown helpers some login-scoped actions call after their write
+    // (change-own-password evicts other devices; the revoke actions delegate
+    // here). Prod reads the live cookie token, which doesn't exist in this tier,
+    // so they're inert spies — tests assert the DB writes, not the eviction.
+    destroyOtherSessionsForCurrent: vi.fn(async () => {}),
+    revokeSession: vi.fn(),
     getCurrentSession: () => getActingSession(),
     getAccessibleProfiles,
     // Faithful to prod accessForProfile: admins are implicit all-write; a member
