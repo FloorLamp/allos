@@ -20,6 +20,10 @@ export interface TelegramCallbackQuery {
   message?: {
     message_id?: number;
     chat?: { id?: number | string };
+    // The message's plain text (HTML already stripped by Telegram). Used to
+    // retain the original title line in a consumed-tap replacement so shared-chat
+    // reminders stay attributable (issue #377).
+    text?: string;
     reply_markup?: { inline_keyboard?: InlineKeyboard };
   };
 }

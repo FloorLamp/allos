@@ -45,12 +45,15 @@ import {
   refillAnswerText,
   removeButton,
   removeRowContaining,
+  replacementWithTitle,
   resolveEscalationTap,
   resolveTapProfile,
   tapAnswerText,
   tapResolved,
   tapSkipAnswerText,
 } from "./callback-data";
+import { prefixForProfile } from "./index";
+import { prefixMessage } from "./types";
 import { collectWindowDoses, windowSessionForDose } from "./supplements";
 import { renderWindowMessage } from "./supplement-format";
 import {
@@ -133,7 +136,13 @@ async function consumeRow(
   if (chatId == null || messageId == null || rows.length === 0) return;
   const remaining = removeRowContaining(rows, cq.data as string);
   if (remaining.length === 0) {
-    await editMessageText(chatId, messageId, closingText);
+    // Retain the original title line so a shared-chat message stays attributable
+    // once its buttons are gone (#377).
+    await editMessageText(
+      chatId,
+      messageId,
+      replacementWithTitle(cq.message?.text, closingText)
+    );
   } else {
     await editMessageReplyMarkup(chatId, messageId, remaining);
   }
@@ -149,7 +158,13 @@ async function replaceMessage(
   const messageId = cq.message?.message_id;
   const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
   if (chatId == null || messageId == null || rows.length === 0) return;
-  await editMessageText(chatId, messageId, text);
+  // Retain the original title line (which med / whose escalation) above the
+  // closing so a shared-chat escalation stays attributable once consumed (#377).
+  await editMessageText(
+    chatId,
+    messageId,
+    replacementWithTitle(cq.message?.text, text)
+  );
 }
 
 // Apply a preventive tap to the SAME server functions the Upcoming page uses, so
@@ -349,11 +364,12 @@ async function handleDoseTap(
   // buttons).
   const session = windowSessionForDose(profileId, tap.doseId, tap.date);
   if (session && session.entries.length > 0) {
-    const msg = renderWindowMessage(
-      profileId,
-      session.window,
-      tap.date,
-      session.entries
+    // Re-apply the SAME "[Name] " prefix the tick's send site added
+    // (prefixForProfile — one computation, #377), so a shared-chat rebuild keeps
+    // the profile label instead of collapsing to an unattributable title.
+    const msg = prefixMessage(
+      renderWindowMessage(profileId, session.window, tap.date, session.entries),
+      prefixForProfile(profileId)
     );
     await editMessageText(chatId, messageId, renderMessageHtml(msg), {
       keyboard: messageKeyboard(msg),
@@ -367,12 +383,16 @@ async function handleDoseTap(
   // rebuild — just drop the tapped button. Once none remain, the closing text
   // must match the truth: "All done" only when this tap actually resolved the
   // dose; otherwise say the reminder is stale so the user knows nothing changed.
+  // Retain the original title line so the collapsed message stays attributable.
   const remaining = removeButton(rows, cq.data as string);
   if (remaining.length === 0) {
     await editMessageText(
       chatId,
       messageId,
-      tapResolved(outcome) ? "All done 💊✅" : OUTDATED_MESSAGE_TEXT
+      replacementWithTitle(
+        cq.message?.text,
+        tapResolved(outcome) ? "All done 💊✅" : OUTDATED_MESSAGE_TEXT
+      )
     );
   } else {
     await editMessageReplyMarkup(chatId, messageId, remaining);
@@ -433,10 +453,19 @@ async function handleAllTaken(
   // this tap came from one) so it stops advertising doses that no longer exist.
   const refreshed = collectWindowDoses(profileId, all.window, all.date);
   if (refreshed.length === 0) {
-    await editMessageText(chatId, messageId, OUTDATED_MESSAGE_TEXT);
+    await editMessageText(
+      chatId,
+      messageId,
+      replacementWithTitle(cq.message?.text, OUTDATED_MESSAGE_TEXT)
+    );
     return;
   }
-  const msg = renderWindowMessage(profileId, all.window, all.date, refreshed);
+  // Re-apply the send-time "[Name] " prefix (one computation, #377) so the
+  // rebuilt completion summary stays attributable in a shared chat.
+  const msg = prefixMessage(
+    renderWindowMessage(profileId, all.window, all.date, refreshed),
+    prefixForProfile(profileId)
+  );
   await editMessageText(chatId, messageId, renderMessageHtml(msg), {
     keyboard: messageKeyboard(msg),
     parseMode: "HTML",

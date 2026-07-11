@@ -25,10 +25,9 @@ import {
   type ReminderWindow,
 } from "../lib/notifications/supplements";
 import { buildWorkoutTargetReminder } from "../lib/notifications/workouts";
-import { dispatch } from "../lib/notifications";
+import { dispatch, prefixForProfile } from "../lib/notifications";
 import {
   prefixMessage,
-  profileMessagePrefix,
   type NotificationMessage,
 } from "../lib/notifications/types";
 import {
@@ -121,9 +120,7 @@ async function manual(arg: string, profileId: number) {
     log.info("nothing due", { kind: arg, profile: profileId });
     process.exit(0);
   }
-  const profiles = allProfiles();
-  const name = profiles.find((p) => p.id === profileId)?.name ?? "";
-  msg = prefixMessage(msg, profileMessagePrefix(name, profiles.length));
+  msg = prefixMessage(msg, prefixForProfile(profileId));
   const { failed } = await send(profileId, msg);
   process.exit(failed ? 1 : 0);
 }
@@ -216,10 +213,7 @@ async function syncIntegrations(profileId: number) {
 // Evaluate + send this hour's due slots for a single profile. Returns true if any
 // configured channel failed. Never throws for an ordinary send failure (so one
 // profile can't stop the loop); a thrown error is caught by the caller.
-async function tickProfile(
-  profile: ProfileRow,
-  profileCount: number
-): Promise<boolean> {
+async function tickProfile(profile: ProfileRow): Promise<boolean> {
   // Runs every hour regardless of which notification slots are due.
   await syncIntegrations(profile.id);
 
@@ -253,7 +247,7 @@ async function tickProfile(
       });
   }
 
-  const prefix = profileMessagePrefix(profile.name, profileCount);
+  const prefix = prefixForProfile(profile.id);
   let anyFailed = false;
   for (const { slot, build } of dueSlots) {
     const key = `notify_last_${slot}`;
@@ -424,7 +418,7 @@ async function tick() {
   let anyFailed = false;
   for (const p of profiles) {
     try {
-      if (await tickProfile(p, profiles.length)) anyFailed = true;
+      if (await tickProfile(p)) anyFailed = true;
     } catch (e) {
       log.error("profile tick failed", {
         profile: p.id,
