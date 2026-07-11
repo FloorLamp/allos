@@ -177,6 +177,12 @@ export default function HomeAssistantNotificationSettings({
       )}
 
       <div className="flex flex-wrap items-center gap-2">
+        {/* NOT labeled "Save": the Telegram card above already has a "Save"
+            button, and Playwright's getByRole name matching is case-insensitive
+            SUBSTRING matching — so any accessible name containing "Save" (even
+            "Save Home Assistant") would make pre-existing bare
+            getByRole("button", { name: "Save" }) clicks on this page ambiguous
+            (strict-mode failure). Distinct verb keeps every spec unambiguous. */}
         <button
           type="button"
           onClick={save}
@@ -184,7 +190,7 @@ export default function HomeAssistantNotificationSettings({
           className="btn"
           data-testid="ha-save"
         >
-          Save
+          Apply Home Assistant settings
         </button>
         {enabled && (
           <button

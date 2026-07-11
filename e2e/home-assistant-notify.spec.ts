@@ -17,6 +17,16 @@ test.describe("Home Assistant notification settings", () => {
     const card = page.getByTestId("ha-settings");
     await expect(card).toBeVisible();
 
+    // Guard: this card's submit button is deliberately NOT named "Save" — role
+    // name matching is substring-based, and pre-existing specs (e.g.
+    // preventive-nudge.spec.ts) click a bare "Save" on this page. Exactly one
+    // "Save"-named button (the Telegram card's) must exist, or those clicks turn
+    // strict-mode ambiguous.
+    await expect(page.getByRole("button", { name: "Save" })).toHaveCount(1);
+    await expect(
+      card.getByRole("button", { name: "Apply Home Assistant settings" })
+    ).toBeVisible();
+
     // Enable reveals the URL field + per-kind toggles.
     await page.getByTestId("ha-enable").check();
     await expect(page.getByTestId("ha-webhook-url")).toBeVisible();
