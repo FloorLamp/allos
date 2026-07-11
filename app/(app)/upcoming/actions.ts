@@ -12,7 +12,7 @@ import {
   setPreventiveOverride,
   markCarePlanItemDone,
 } from "@/lib/queries";
-import { shiftDateStr } from "@/lib/date";
+import { snoozeUntil } from "@/lib/upcoming";
 import { preventiveRuleByKey } from "@/lib/preventive-catalog";
 
 // Inline "mark taken" for a due dose surfaced on the Upcoming page. Reuses the
@@ -75,23 +75,17 @@ export async function overridePreventive(formData: FormData) {
   revalidatePath("/");
 }
 
-// Quick-snooze durations (days) the Upcoming UI offers per item. Clamped in the
-// action so a tampered form can't set an absurd window.
-const SNOOZE_MAX_DAYS = 3650;
-
 // Snooze a single due-item: hide it until `today + days`, after which it
-// reappears. Delegates to the shared findings-suppression writer (upserts on the
+// reappears. The window is validated + clamped by the shared snoozeUntil helper
+// (one source of truth for the snooze policy, shared with the dashboard hero).
+// Delegates to the shared findings-suppression writer (upserts on the
 // (profile_id, signal_key) index so re-snoozing — or snoozing a previously-
 // dismissed item — just moves the date and clears any dismiss). Profile-scoped.
 export async function snoozeItem(formData: FormData) {
   const { profile } = await requireWriteAccess();
   const signalKey = String(formData.get("signal_key") ?? "").trim();
-  const days = Number(formData.get("days"));
-  if (!signalKey || !Number.isFinite(days) || days < 1) return;
-  const until = shiftDateStr(
-    today(profile.id),
-    Math.min(Math.floor(days), SNOOZE_MAX_DAYS)
-  );
+  const until = snoozeUntil(today(profile.id), Number(formData.get("days")));
+  if (!signalKey || until == null) return;
   snoozeFinding(profile.id, signalKey, until);
   revalidatePath("/upcoming");
 }

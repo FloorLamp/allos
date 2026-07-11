@@ -5,9 +5,25 @@
 // and sorts them. Keeping the banding/sorting here (not inline in the page) means
 // it's unit-tested in lib/__tests__ and the page stays a thin composition.
 
-import { daysBetweenDateStr } from "./date";
+import { daysBetweenDateStr, shiftDateStr } from "./date";
 import { daysRemainingLabel } from "./format-date";
 import { compareSortHint } from "./dose-order";
+
+// The longest a user-requested snooze can push a finding out (~10 years). Clamped
+// so a tampered form can't set an absurd `snooze_until`. Baked into snoozeUntil so
+// every snooze writer (the dashboard hero, the Upcoming quick-snooze, and any
+// future surface) shares one max — see snoozeUntil.
+const SNOOZE_MAX_DAYS = 3650;
+
+// The `snooze_until` date for snoozing a finding `days` days from `today`
+// (YYYY-MM-DD). One source of truth for the snooze policy shared by every snooze
+// writer: validates the request (finite, at least 1 day) and clamps to
+// SNOOZE_MAX_DAYS, flooring fractional days. Returns null for an invalid request
+// so callers reject it uniformly instead of each re-deriving the same guard.
+export function snoozeUntil(today: string, days: number): string | null {
+  if (!Number.isFinite(days) || days < 1) return null;
+  return shiftDateStr(today, Math.min(Math.floor(days), SNOOZE_MAX_DAYS));
+}
 
 // The forward-looking domains we aggregate. Each maps to one existing signal:
 //   dose        — a scheduled supplement/medication dose pending today
