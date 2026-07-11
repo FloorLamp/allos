@@ -13,6 +13,15 @@ import {
 import { useChartColors } from "./useChartColors";
 import { biomarkerAxisDomain } from "@/lib/reference-range";
 import { roundChartValue } from "@/lib/chart-format";
+import { formatLongDate } from "@/lib/format-date";
+import {
+  dateToEpoch,
+  epochToISO,
+  formatTimeTick,
+  spansYearBoundary,
+  timeAxisDomain,
+  timeAxisTicks,
+} from "@/lib/chart-time-axis";
 
 export interface BiomarkerBands {
   refLow?: number | null;
@@ -70,6 +79,14 @@ export default function BiomarkerChart({
 
   const fmt = (v: number) => `${roundChartValue(v)}${unit ? ` ${unit}` : ""}`;
 
+  // Time-scaled X axis (issue #402): map each reading date to an epoch so a
+  // 4-year lab gap renders four years wide, not one index step. Lab draws are the
+  // sparsest, most-distorted series, so this chart leads the migration.
+  const rows = data.map((d) => ({ ...d, t: dateToEpoch(d.date) }));
+  const xDomain = timeAxisDomain(data.map((d) => d.date));
+  const xTicks = timeAxisTicks(xDomain);
+  const withYear = spansYearBoundary(xDomain);
+
   // Hollow dot for bounded readings ("<0.10"), solid for exact ones.
   const renderDot = (props: {
     cx?: number;
@@ -98,12 +115,17 @@ export default function BiomarkerChart({
     <div className="h-64 w-full">
       <ResponsiveContainer width="100%" height="100%">
         <LineChart
-          data={data}
+          data={rows}
           margin={{ top: 10, right: 16, bottom: 0, left: -8 }}
         >
           <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
           <XAxis
-            dataKey="date"
+            dataKey="t"
+            type="number"
+            scale="time"
+            domain={xDomain ?? ["auto", "auto"]}
+            ticks={xTicks.length ? xTicks : undefined}
+            tickFormatter={(v: number) => formatTimeTick(v, withYear)}
             tick={{ fontSize: 11, fill: c.tick }}
             stroke={c.axis}
           />
@@ -149,6 +171,7 @@ export default function BiomarkerChart({
               `${(item?.payload as ChartPoint | undefined)?.bound ?? ""}${fmt(Number(v))}`,
               "Value",
             ]}
+            labelFormatter={(v) => formatLongDate(epochToISO(Number(v)))}
             contentStyle={{
               fontSize: 12,
               borderRadius: 8,

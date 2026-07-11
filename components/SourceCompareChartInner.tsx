@@ -11,6 +11,14 @@ import {
 } from "recharts";
 import { useChartColors } from "./useChartColors";
 import { formatLongDate } from "@/lib/format-date";
+import {
+  dateToEpoch,
+  epochToISO,
+  formatTimeTick,
+  spansYearBoundary,
+  timeAxisDomain,
+  timeAxisTicks,
+} from "@/lib/chart-time-axis";
 
 // Multi-series line chart grouped by SOURCE (issue #14): one line per provider
 // reporting the same metric, so overlapping devices can be compared instead of
@@ -45,13 +53,21 @@ export default function SourceCompareChartInner({
     (s) => new Map(s.data.map((d) => [d.date, d.value]))
   );
   const rows = dates.map((date) => {
-    const row: Record<string, string | number | null> = { date };
+    // Time-scaled X (issue #402): `t` (epoch) is the numeric axis key so an
+    // irregular multi-source series sits at true time positions, not index steps.
+    const row: Record<string, string | number | null> = {
+      date,
+      t: dateToEpoch(date),
+    };
     series.forEach((s, i) => {
       row[s.key] = lookups[i].get(date) ?? null;
     });
     return row;
   });
   const labelByKey = new Map(series.map((s) => [s.key, s.label]));
+  const xDomain = timeAxisDomain(dates);
+  const xTicks = timeAxisTicks(xDomain);
+  const withYear = spansYearBoundary(xDomain);
 
   if (rows.length === 0) {
     return (
@@ -71,8 +87,12 @@ export default function SourceCompareChartInner({
         >
           <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
           <XAxis
-            dataKey="date"
-            tickFormatter={(v: string) => v.slice(5)}
+            dataKey="t"
+            type="number"
+            scale="time"
+            domain={xDomain ?? ["auto", "auto"]}
+            ticks={xTicks.length ? xTicks : undefined}
+            tickFormatter={(v: number) => formatTimeTick(v, withYear)}
             tick={{ fontSize: 11, fill: c.tick }}
             stroke={c.axis}
           />
@@ -86,7 +106,7 @@ export default function SourceCompareChartInner({
               `${v}${unit}`,
               labelByKey.get(String(name)) ?? name,
             ]}
-            labelFormatter={(v) => formatLongDate(String(v))}
+            labelFormatter={(v) => formatLongDate(epochToISO(Number(v)))}
             contentStyle={{
               fontSize: 12,
               borderRadius: 8,

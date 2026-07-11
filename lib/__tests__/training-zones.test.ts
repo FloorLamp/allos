@@ -5,6 +5,7 @@ import {
   buildZoneModel,
   classifyPolarization,
   estimateMaxHr,
+  fillZoneWeeks,
   polarizedSplit,
   resolveMaxHr,
   scopeBucketsToWindows,
@@ -224,6 +225,53 @@ describe("weeklyZoneMinutes (week boundaries)", () => {
     // 06-29 opens week 06-29. Two distinct weeks.
     const mon = weeklyZoneMinutes(scoped, model, 1);
     expect(mon.map((w) => w.week)).toEqual(["2026-06-22", "2026-06-29"]);
+  });
+});
+
+describe("fillZoneWeeks (issue #406 — zero-fill gaps)", () => {
+  const wk = (week: string, z2: number) => ({
+    week,
+    minutes: [0, z2, 0, 0, 0],
+    total: z2,
+  });
+
+  it("inserts all-zero weeks between two distant data weeks", () => {
+    const filled = fillZoneWeeks(
+      [wk("2026-01-04", 30), wk("2026-02-15", 45)],
+      12
+    );
+    expect(filled.map((r) => r.week)).toEqual([
+      "2026-01-04",
+      "2026-01-11",
+      "2026-01-18",
+      "2026-01-25",
+      "2026-02-01",
+      "2026-02-08",
+      "2026-02-15",
+    ]);
+    // The interior weeks are genuinely zero (a training pause), not carried over.
+    const jan18 = filled.find((r) => r.week === "2026-01-18")!;
+    expect(jan18.total).toBe(0);
+    expect(jan18.minutes).toEqual([0, 0, 0, 0, 0]);
+    // Real data weeks keep their values.
+    expect(filled.find((r) => r.week === "2026-02-15")!.total).toBe(45);
+  });
+
+  it("gives each empty week its own minutes array (no shared reference)", () => {
+    // 2026-01-04 … 2026-02-01 with data only at the ends ⇒ 3 interior empties.
+    const filled = fillZoneWeeks(
+      [wk("2026-01-04", 10), wk("2026-02-01", 20)],
+      12
+    );
+    const empties = filled.filter((r) => r.total === 0);
+    expect(empties.length).toBeGreaterThan(1);
+    empties[0].minutes[0] = 99;
+    // Mutating one empty week must not bleed into the others.
+    expect(filled.filter((r) => r.minutes[0] === 99)).toHaveLength(1);
+  });
+
+  it("is empty when there are no data weeks", () => {
+    expect(fillZoneWeeks([], 12)).toEqual([]);
   });
 });
 

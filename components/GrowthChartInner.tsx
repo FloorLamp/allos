@@ -21,6 +21,9 @@ export interface GrowthBand {
 export interface GrowthPlotPoint {
   date: string;
   ageMonths: number;
+  // Fractional age (issue #405) — the continuous x used for plotting, so two
+  // measurements in one calendar month stay distinct instead of collapsing.
+  ageMonthsExact: number;
   value: number;
   percentile: number | null;
 }
@@ -51,16 +54,18 @@ export default function GrowthChart({
   // Merge every band-sample age and every measurement age into one sorted axis,
   // then build a row per age with a column per band percentile plus the trajectory.
   // Bands are dense; the trajectory is sparse (nulls bridged with connectNulls).
+  // Bands sample at (mostly integer) ages; the trajectory keys by its FRACTIONAL
+  // age (issue #405) so several measurements in one month stay distinct rows.
   const xs = new Set<number>();
   for (const b of bands) for (const p of b.points) xs.add(p.ageMonths);
-  for (const p of points) xs.add(p.ageMonths);
+  for (const p of points) xs.add(p.ageMonthsExact);
   const ages = [...xs].sort((a, b) => a - b);
 
   const bandMaps = bands.map((b) => ({
     percentile: b.percentile,
     map: new Map(b.points.map((p) => [p.ageMonths, p.value])),
   }));
-  const trajMap = new Map(points.map((p) => [p.ageMonths, p]));
+  const trajMap = new Map(points.map((p) => [p.ageMonthsExact, p]));
 
   const round = (v: number) =>
     Math.round(v * 10 ** valueRound) / 10 ** valueRound;
@@ -76,7 +81,19 @@ export default function GrowthChart({
     row.traj = t ? round(t.value) : null;
     return row;
   });
-  const lastIndex = data.length - 1;
+
+  // The index of each band's OWN last non-null sample (issue #405). A trajectory
+  // point past a band's reference-age range extends `ages` beyond where the band
+  // curve ends, so the global last row has null band columns — anchoring every
+  // end-label there made them all vanish. Anchor each label at its band's real end.
+  const bandLastIndex = new Map<number, number>();
+  for (const bm of bandMaps) {
+    let last = -1;
+    for (let i = 0; i < data.length; i++) {
+      if (data[i][`p${bm.percentile}`] != null) last = i;
+    }
+    bandLastIndex.set(bm.percentile, last);
+  }
 
   const showYears = maxMonths > 24;
   const tickFmt = (m: number) =>
@@ -94,7 +111,7 @@ export default function GrowthChart({
     const render = (props: { cx?: number; cy?: number; index?: number }) => {
       const { cx, cy, index } = props;
       const key = `lbl-${percentile}`;
-      if (cx == null || cy == null || index !== lastIndex)
+      if (cx == null || cy == null || index !== bandLastIndex.get(percentile))
         return <g key={key} />;
       return (
         <text

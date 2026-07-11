@@ -40,4 +40,15 @@ test.describe("Compare tab axis policy", () => {
     await expect(chart).toBeVisible();
     await expect(chart).toHaveAttribute("data-axis-mode", "shared");
   });
+
+  // Issue #402: the date axis is time-scaled (type=number scale=time), not an
+  // index-spaced category axis, so an irregular series' gaps render proportionally.
+  test("date axis is time-scaled (#402)", async ({ page }) => {
+    await page.goto(
+      "/trends?tab=compare&cmpA=metric:weight&cmpB=metric:volume"
+    );
+    const chart = page.getByTestId("compare-chart");
+    await expect(chart).toBeVisible();
+    await expect(chart).toHaveAttribute("data-axis-scale", "time");
+  });
 });

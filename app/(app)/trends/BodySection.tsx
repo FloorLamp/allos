@@ -18,7 +18,6 @@ import {
   getBodyMetricDailySeries,
   getBodyMetricsWithSource,
   getMetricDailyTotals,
-  getLatestMetricValue,
   getSleepStageDailyTotals,
   getSleepRegularity,
   getSleepRegularityTrend,
@@ -29,7 +28,11 @@ import {
   getGoals,
 } from "@/lib/queries";
 import { dispWeight, fmtWeight, round } from "@/lib/units";
-import { buildGrowthProfile, displayWeightGrowth } from "@/lib/growth-series";
+import {
+  buildGrowthProfile,
+  bmiSeriesDatePaired,
+  displayWeightGrowth,
+} from "@/lib/growth-series";
 import { ALL_ROWS, filterSeriesByRange } from "@/lib/trends";
 import { buildTrendAnnotations } from "@/lib/trends-series";
 import { projectGoal, describeEta } from "@/lib/trend-projection";
@@ -111,18 +114,24 @@ export default async function BodySection({ range }: { range: DateRange }) {
   // Height + head-circumference series (canonical cm, from metric_samples — the
   // same store the growth charts read). Charted on the Body tab for minors so a
   // height/head-circ history always surfaces even without the full growth card.
+  // Read the WHOLE series (ALL_ROWS) before windowing (issue #399): the default
+  // 180-row cap in getMetricDailyTotals hides an older window entirely — Health
+  // Connect syncs height on every export, so ~daily samples fill 180 rows in ~6
+  // months and last year's window rendered an empty "no data" chart that lied.
   const heightChart = filterSeriesByRange(
-    getMetricDailyTotals(profile.id, "height_cm").map((r) => ({
+    getMetricDailyTotals(profile.id, "height_cm", ALL_ROWS).map((r) => ({
       date: r.date,
       value: round(r.value, 1),
     })),
     range
   );
   const headCircChart = filterSeriesByRange(
-    getMetricDailyTotals(profile.id, "head_circumference_cm").map((r) => ({
-      date: r.date,
-      value: round(r.value, 1),
-    })),
+    getMetricDailyTotals(profile.id, "head_circumference_cm", ALL_ROWS).map(
+      (r) => ({
+        date: r.date,
+        value: round(r.value, 1),
+      })
+    ),
     range
   );
 
@@ -236,18 +245,27 @@ export default async function BodySection({ range }: { range: DateRange }) {
   // Pediatric growth percentiles — reuses the exact build the Body Metrics page
   // uses; returns null unless the profile has a known sex + birthdate and is in
   // chart range. Age-based, so it isn't windowed by the shared range.
+  // The growth card plots the child's WHOLE trajectory (each measurement at the age
+  // it was taken), so its inputs must be unbounded (ALL_ROWS) — the default 180-row
+  // cap silently started the percentile track ~6 months ago on a daily-synced
+  // child, losing the entire earlier arc that is the chart's whole point (#399).
+  // weightSeries is already read with ALL_ROWS above.
   const growth = buildGrowthProfile({
     sex: getUserSex(profile.id),
     birthdate: getUserBirthdate(profile.id),
     today: today(profile.id),
-    heights: getMetricDailyTotals(profile.id, "height_cm").map((r) => ({
-      date: r.date,
-      value: r.value,
-    })),
-    weights: weightSeries.map((w) => ({ date: w.date, value: w.value })),
-    headCircs: getMetricDailyTotals(profile.id, "head_circumference_cm").map(
-      (r) => ({ date: r.date, value: r.value })
+    heights: getMetricDailyTotals(profile.id, "height_cm", ALL_ROWS).map(
+      (r) => ({
+        date: r.date,
+        value: r.value,
+      })
     ),
+    weights: weightSeries.map((w) => ({ date: w.date, value: w.value })),
+    headCircs: getMetricDailyTotals(
+      profile.id,
+      "head_circumference_cm",
+      ALL_ROWS
+    ).map((r) => ({ date: r.date, value: r.value })),
   });
   const growthMeta: Record<
     "height" | "weight" | "bmi" | "head_circumference",
@@ -295,8 +313,9 @@ export default async function BodySection({ range }: { range: DateRange }) {
     ) : null;
 
   // Synced-from-integrations daily metrics (steps, sleep, body composition,
-  // intake, heart rate). These show the full series (not windowed) — matching the
-  // former standalone page — so an occasional sync isn't hidden by a short range.
+  // intake, heart rate). These are NOT windowed by the shared range; they show the
+  // most recent ~6 months (the queries' default 180-row cap), captioned honestly
+  // below (issue #399 — no silent caps) rather than claiming a full series.
   const stepsChart = getMetricDailyTotals(profile.id, "steps").map((r) => ({
     date: r.date,
     value: Math.round(r.value),
@@ -355,15 +374,20 @@ export default async function BodySection({ range }: { range: DateRange }) {
     carbs: round(carbs.get(d) ?? 0, 0),
     fat: round(fat.get(d) ?? 0, 0),
   }));
-  // BMI over the weight series, using the most recently synced height.
-  const heightCm = getLatestMetricValue(profile.id, "height_cm");
-  const bmiChart =
-    heightCm && heightCm > 0
-      ? weightSeries.map((w) => ({
-          date: w.date,
-          value: round(w.value / (heightCm / 100) ** 2, 1),
-        }))
-      : [];
+  // BMI over the weight series, pairing each weigh-in with the height in effect
+  // ON OR BEFORE that date — the SAME date-paired derivation the growth card uses
+  // (bmiSeriesDatePaired), so the two BMI charts on a child's Body tab can't
+  // disagree (issue #407). Applying a single "most recent height" backward
+  // inflated early history for a growing child; adults degrade gracefully (height
+  // rarely changes). Reads the whole height series (ALL_ROWS) so an older weigh-in
+  // still finds its contemporaneous height.
+  const bmiChart = bmiSeriesDatePaired(
+    weightSeries.map((w) => ({ date: w.date, value: w.value })),
+    getMetricDailyTotals(profile.id, "height_cm", ALL_ROWS).map((r) => ({
+      date: r.date,
+      value: r.value,
+    }))
+  ).map((p) => ({ date: p.date, value: round(p.value, 1) }));
   const hrChart = getHrDailySummary(profile.id).map((r) => ({
     date: r.date,
     value: Math.round(r.avg),
@@ -420,210 +444,221 @@ export default async function BodySection({ range }: { range: DateRange }) {
       {!plan.growthCardFirst && growthCard}
 
       {hasSynced && (
-        <div className="grid gap-6 lg:grid-cols-2">
-          {stepsChart.length > 0 && (
-            <div className="card">
-              <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-                Steps per day
-              </h2>
-              <LineChartCard data={stepsChart} label="Steps" color="#0ea5e9" />
-            </div>
-          )}
-          {sleepChart.length > 0 && (
-            <div className="card">
-              <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-                Sleep per night
-              </h2>
-              <LineChartCard
-                data={sleepChart}
-                label="Sleep"
-                color="#6366f1"
-                unit=" h"
-              />
-            </div>
-          )}
-          {sleepReg != null && (
-            <div className="card" data-testid="sleep-regularity">
-              <div className="mb-3 flex items-baseline justify-between gap-2">
-                <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-                  Sleep regularity
+        <div className="space-y-3">
+          <p className="text-xs text-slate-400 dark:text-slate-500">
+            Synced daily metrics — most recent ~6 months (not filtered by the
+            date range above).
+          </p>
+          <div className="grid gap-6 lg:grid-cols-2">
+            {stepsChart.length > 0 && (
+              <div className="card">
+                <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
+                  Steps per day
                 </h2>
-                <span className="text-xs text-slate-500 dark:text-slate-400">
-                  SRI · last {sleepReg.nights} nights
-                </span>
+                <LineChartCard
+                  data={stepsChart}
+                  label="Steps"
+                  color="#0ea5e9"
+                />
               </div>
-              <div className="flex items-baseline gap-2">
-                <span
-                  className="text-3xl font-bold text-indigo-600 dark:text-indigo-300"
-                  data-testid="sri-value"
-                >
-                  {Math.round(sleepReg.sri)}
-                </span>
-                <span className="text-sm text-slate-500 dark:text-slate-400">
-                  / 100
-                </span>
+            )}
+            {sleepChart.length > 0 && (
+              <div className="card">
+                <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
+                  Sleep per night
+                </h2>
+                <LineChartCard
+                  data={sleepChart}
+                  label="Sleep"
+                  color="#6366f1"
+                  unit=" h"
+                />
               </div>
-              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                Consistency of your sleep/wake timing (higher is steadier).
-                Bedtime ±{sleepReg.bedtimeSdMin} min, wake ±
-                {sleepReg.waketimeSdMin} min
-                {sleepReg.socialJetlagMin != null
-                  ? `, ${(sleepReg.socialJetlagMin / 60).toFixed(1)} h weekend shift`
-                  : ""}
-                .
-              </p>
-              {sleepRegInsight && (
-                <p
-                  className="mt-2 rounded bg-amber-50 px-2 py-1 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
-                  data-testid="sri-insight"
-                >
-                  {sleepRegInsight}
-                </p>
-              )}
-              {sleepRegTrend.length > 1 && (
-                <div className="mt-3">
-                  <LineChartCard
-                    data={sleepRegTrend}
-                    label="SRI"
-                    color="#6366f1"
-                  />
+            )}
+            {sleepReg != null && (
+              <div className="card" data-testid="sleep-regularity">
+                <div className="mb-3 flex items-baseline justify-between gap-2">
+                  <h2 className="font-semibold text-slate-800 dark:text-slate-100">
+                    Sleep regularity
+                  </h2>
+                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                    SRI · last {sleepReg.nights} nights
+                  </span>
                 </div>
-              )}
-            </div>
-          )}
-          {sleepStages.length > 0 && (
-            <div className="card lg:col-span-2">
-              <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-                Sleep stages
-              </h2>
-              <StackedBarCard
-                data={sleepStages}
-                unit=" h"
-                series={[
-                  { key: "deep", label: "Deep", color: "#4f46e5" },
-                  { key: "rem", label: "REM", color: "#a855f7" },
-                  { key: "light", label: "Light", color: "#38bdf8" },
-                  { key: "awake", label: "Awake", color: "#f59e0b" },
-                ]}
-              />
-            </div>
-          )}
-          {hrChart.length > 0 && (
-            <div className="card">
-              <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-                Heart rate (daily avg)
-              </h2>
-              <LineChartCard
-                data={hrChart}
-                label="Avg HR"
-                color="#f43f5e"
-                unit=" bpm"
-              />
-            </div>
-          )}
-          {hrIntraday.length > 0 && (
-            <div className="card lg:col-span-2">
-              <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-                Heart rate over the day{latestHrDay ? ` — ${latestHrDay}` : ""}
-              </h2>
-              <LineChartCard
-                data={hrIntraday}
-                label="HR"
-                color="#f43f5e"
-                unit=" bpm"
-                showDots={false}
-              />
-            </div>
-          )}
-          {bmiChart.length > 0 && (
-            <div className="card">
-              <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-                BMI{heightCm ? ` (height ${round(heightCm, 0)} cm)` : ""}
-              </h2>
-              <LineChartCard data={bmiChart} label="BMI" color="#14b8a6" />
-            </div>
-          )}
-          {leanMassChart.length > 0 && (
-            <div className="card">
-              <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-                Lean body mass
-              </h2>
-              <LineChartCard
-                data={leanMassChart}
-                label="Lean mass"
-                color="#10b981"
-                unit=" kg"
-              />
-            </div>
-          )}
-          {boneMassChart.length > 0 && (
-            <div className="card">
-              <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-                Bone mass
-              </h2>
-              <LineChartCard
-                data={boneMassChart}
-                label="Bone mass"
-                color="#64748b"
-                unit=" kg"
-              />
-            </div>
-          )}
-          {bmrChart.length > 0 && (
-            <div className="card">
-              <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-                Basal metabolic rate
-              </h2>
-              <LineChartCard
-                data={bmrChart}
-                label="BMR"
-                color="#ef4444"
-                unit=" kcal"
-              />
-            </div>
-          )}
-          {hydrationChart.length > 0 && (
-            <div className="card">
-              <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-                Hydration
-              </h2>
-              <LineChartCard
-                data={hydrationChart}
-                label="Water"
-                color="#06b6d4"
-                unit=" L"
-              />
-            </div>
-          )}
-          {caloriesChart.length > 0 && (
-            <div className="card">
-              <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-                Calories (intake)
-              </h2>
-              <LineChartCard
-                data={caloriesChart}
-                label="Calories"
-                color="#f97316"
-                unit=" kcal"
-              />
-            </div>
-          )}
-          {macrosChart.length > 0 && (
-            <div className="card lg:col-span-2">
-              <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-                Macros (protein / carbs / fat)
-              </h2>
-              <StackedBarCard
-                data={macrosChart}
-                unit=" g"
-                series={[
-                  { key: "protein", label: "Protein", color: "#6366f1" },
-                  { key: "carbs", label: "Carbs", color: "#f59e0b" },
-                  { key: "fat", label: "Fat", color: "#ef4444" },
-                ]}
-              />
-            </div>
-          )}
+                <div className="flex items-baseline gap-2">
+                  <span
+                    className="text-3xl font-bold text-indigo-600 dark:text-indigo-300"
+                    data-testid="sri-value"
+                  >
+                    {Math.round(sleepReg.sri)}
+                  </span>
+                  <span className="text-sm text-slate-500 dark:text-slate-400">
+                    / 100
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  Consistency of your sleep/wake timing (higher is steadier).
+                  Bedtime ±{sleepReg.bedtimeSdMin} min, wake ±
+                  {sleepReg.waketimeSdMin} min
+                  {sleepReg.socialJetlagMin != null
+                    ? `, ${(sleepReg.socialJetlagMin / 60).toFixed(1)} h weekend shift`
+                    : ""}
+                  .
+                </p>
+                {sleepRegInsight && (
+                  <p
+                    className="mt-2 rounded bg-amber-50 px-2 py-1 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
+                    data-testid="sri-insight"
+                  >
+                    {sleepRegInsight}
+                  </p>
+                )}
+                {sleepRegTrend.length > 1 && (
+                  <div className="mt-3">
+                    <LineChartCard
+                      data={sleepRegTrend}
+                      label="SRI"
+                      color="#6366f1"
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+            {sleepStages.length > 0 && (
+              <div className="card lg:col-span-2">
+                <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
+                  Sleep stages
+                </h2>
+                <StackedBarCard
+                  data={sleepStages}
+                  unit=" h"
+                  series={[
+                    { key: "deep", label: "Deep", color: "#4f46e5" },
+                    { key: "rem", label: "REM", color: "#a855f7" },
+                    { key: "light", label: "Light", color: "#38bdf8" },
+                    { key: "awake", label: "Awake", color: "#f59e0b" },
+                  ]}
+                />
+              </div>
+            )}
+            {hrChart.length > 0 && (
+              <div className="card">
+                <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
+                  Heart rate (daily avg)
+                </h2>
+                <LineChartCard
+                  data={hrChart}
+                  label="Avg HR"
+                  color="#f43f5e"
+                  unit=" bpm"
+                />
+              </div>
+            )}
+            {hrIntraday.length > 0 && (
+              <div className="card lg:col-span-2">
+                <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
+                  Heart rate over the day
+                  {latestHrDay ? ` — ${latestHrDay}` : ""}
+                </h2>
+                <LineChartCard
+                  data={hrIntraday}
+                  label="HR"
+                  color="#f43f5e"
+                  unit=" bpm"
+                  showDots={false}
+                />
+              </div>
+            )}
+            {bmiChart.length > 0 && (
+              <div className="card">
+                <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
+                  BMI
+                </h2>
+                <LineChartCard data={bmiChart} label="BMI" color="#14b8a6" />
+              </div>
+            )}
+            {leanMassChart.length > 0 && (
+              <div className="card">
+                <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
+                  Lean body mass
+                </h2>
+                <LineChartCard
+                  data={leanMassChart}
+                  label="Lean mass"
+                  color="#10b981"
+                  unit=" kg"
+                />
+              </div>
+            )}
+            {boneMassChart.length > 0 && (
+              <div className="card">
+                <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
+                  Bone mass
+                </h2>
+                <LineChartCard
+                  data={boneMassChart}
+                  label="Bone mass"
+                  color="#64748b"
+                  unit=" kg"
+                />
+              </div>
+            )}
+            {bmrChart.length > 0 && (
+              <div className="card">
+                <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
+                  Basal metabolic rate
+                </h2>
+                <LineChartCard
+                  data={bmrChart}
+                  label="BMR"
+                  color="#ef4444"
+                  unit=" kcal"
+                />
+              </div>
+            )}
+            {hydrationChart.length > 0 && (
+              <div className="card">
+                <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
+                  Hydration
+                </h2>
+                <LineChartCard
+                  data={hydrationChart}
+                  label="Water"
+                  color="#06b6d4"
+                  unit=" L"
+                />
+              </div>
+            )}
+            {caloriesChart.length > 0 && (
+              <div className="card">
+                <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
+                  Calories (intake)
+                </h2>
+                <LineChartCard
+                  data={caloriesChart}
+                  label="Calories"
+                  color="#f97316"
+                  unit=" kcal"
+                />
+              </div>
+            )}
+            {macrosChart.length > 0 && (
+              <div className="card lg:col-span-2">
+                <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
+                  Macros (protein / carbs / fat)
+                </h2>
+                <StackedBarCard
+                  data={macrosChart}
+                  unit=" g"
+                  series={[
+                    { key: "protein", label: "Protein", color: "#6366f1" },
+                    { key: "carbs", label: "Carbs", color: "#f59e0b" },
+                    { key: "fat", label: "Fat", color: "#ef4444" },
+                  ]}
+                />
+              </div>
+            )}
+          </div>
         </div>
       )}
 

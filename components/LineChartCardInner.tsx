@@ -36,12 +36,19 @@ export default function LineChartCard({
   annotations,
   referenceValue,
   decimals,
+  yDomain,
 }: {
   data: { date: string; value: number | null }[];
   dataKey?: string;
   label: string;
   color?: string;
   unit?: string;
+  // An explicit numeric Y domain [lo, hi] (issue #407). When set it replaces
+  // recharts' ["auto","auto"] — the biomarker sparkline threads the SHARED
+  // axis-domain policy (biomarkerAxisDomain) through so a pinned-biomarker tile and
+  // the biomarker DETAIL chart scale the same series identically (0-clamped for a
+  // non-negative analyte; a flat series gets a small window). Omitted → auto.
+  yDomain?: [number, number];
   // Display precision for the tooltip value, so it reads the same rounded number
   // as the caller's headline/table (issue #403). Omitted → cap at 2 decimals.
   decimals?: number;
@@ -103,7 +110,7 @@ export default function LineChartCard({
           <YAxis
             tick={{ fontSize: 11, fill: c.tick }}
             stroke={c.axis}
-            domain={["auto", "auto"]}
+            domain={yDomain ?? ["auto", "auto"]}
           />
           <Tooltip
             formatter={(v) => [

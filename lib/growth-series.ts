@@ -6,7 +6,7 @@
 // measurement at the age it was taken, plus the current-age percentile for the
 // passport badge. REFERENCE CURVES — NOT MEDICAL ADVICE.
 
-import { ageInMonthsFromBirthdate } from "./date";
+import { ageInMonthsFromBirthdate, ageInMonthsExact } from "./date";
 import { kgTo } from "./units";
 import type { WeightUnit } from "./settings";
 import {
@@ -29,6 +29,10 @@ export interface DatedValue {
 export interface TrajectoryPoint {
   date: string;
   ageMonths: number;
+  // Fractional age in months (issue #405) — the x used for PLOTTING/keying, so two
+  // measurements in one calendar month stay distinct points at their true ages.
+  // ageMonths (whole) still drives percentile scoring and the badge.
+  ageMonthsExact: number;
   value: number;
   // Percentile against the age/sex reference, or null when out of chart range.
   percentile: number | null;
@@ -65,6 +69,27 @@ function byDateAsc(a: DatedValue, b: DatedValue): number {
   return a.date < b.date ? -1 : a.date > b.date ? 1 : 0;
 }
 
+// The date-paired BMI series (issue #407): each weigh-in paired with the height in
+// effect ON OR BEFORE that date, so historical BMI reflects the child's height at
+// the time — not a single "most recent height" applied backward, which inflates
+// early history for a growing child. The ONE derivation shared by the growth card
+// AND the Body tab's synced BMI chart, so the two can't disagree. A weigh-in with
+// no prior height is skipped (no BMI derivable). Adults degrade gracefully — height
+// rarely changes, so date-pairing ≈ latest height. Pure; sorts defensively.
+export function bmiSeriesDatePaired(
+  weights: DatedValue[],
+  heights: DatedValue[]
+): DatedValue[] {
+  const h = [...heights].sort(byDateAsc);
+  const out: DatedValue[] = [];
+  for (const w of [...weights].sort(byDateAsc)) {
+    const height = latestOnOrBefore(h, w.date);
+    const bmi = bmiFrom(w.value, height);
+    if (bmi != null) out.push({ date: w.date, value: bmi });
+  }
+  return out;
+}
+
 // Build one metric's trajectory: map every raw measurement to the age on ITS OWN
 // date and score it against the sex/age reference. Points whose age falls outside
 // the chart range keep a null percentile (still plotted as raw values).
@@ -80,30 +105,41 @@ function buildMetric(
     const ageMonths = ageInMonthsFromBirthdate(birthdate, r.date);
     if (ageMonths == null || ageMonths < 0 || ageMonths > MAX_AGE_MONTHS)
       continue;
+    // Fractional age for plotting; fall back to the whole-month value if the
+    // exact parse somehow fails (same guarded inputs, so effectively never).
+    const ageMonthsExact = ageInMonthsExact(birthdate, r.date) ?? ageMonths;
     const res = measurementPercentile(sex, ageMonths, metric, r.value);
     points.push({
       date: r.date,
       ageMonths,
+      ageMonthsExact,
       value: r.value,
       percentile: res ? res.percentile : null,
     });
   }
-  points.sort((a, b) => a.ageMonths - b.ageMonths);
+  points.sort((a, b) => a.ageMonthsExact - b.ageMonthsExact);
 
   const range = ageRangeFor(sex, metric);
   const plottedMin = points.length
-    ? points[0].ageMonths
+    ? points[0].ageMonthsExact
     : (range?.minMonths ?? 0);
   const plottedMax = points.length
-    ? points[points.length - 1].ageMonths
+    ? points[points.length - 1].ageMonthsExact
     : (range?.maxMonths ?? MAX_AGE_MONTHS);
-  // Pad the window a little around the data so the trajectory isn't flush to the edge.
+  // Pad the window a little around the data so the trajectory isn't flush to the
+  // edge. The axis is bounded by the plotted DATA (clamped to [0, MAX_AGE_MONTHS]),
+  // NOT the metric's band range (issue #405): a point past the band's reference-age
+  // range — e.g. a 30-month head circ, WHO bands stop at 24 — must stay INSIDE the
+  // domain (else it plots into the margin and nulls the right-edge percentile
+  // labels). The band curves still clamp to their own range in bandCurves, so
+  // extending the axis only adds empty space past the last band sample.
   const pad = 3;
-  const minMonths = Math.max(range?.minMonths ?? 0, plottedMin - pad);
-  const maxMonths = Math.min(
-    range?.maxMonths ?? MAX_AGE_MONTHS,
-    plottedMax + pad
-  );
+  const minMonths = points.length
+    ? Math.max(0, plottedMin - pad)
+    : Math.max(0, range?.minMonths ?? 0);
+  const maxMonths = points.length
+    ? Math.min(MAX_AGE_MONTHS, plottedMax + pad)
+    : Math.min(MAX_AGE_MONTHS, range?.maxMonths ?? MAX_AGE_MONTHS);
 
   const bands = bandCurves(sex, metric, { minMonths, maxMonths, stepMonths });
   // "Latest" for the badge = the newest in-range measurement. Age is monotonic in
@@ -140,13 +176,9 @@ export function buildGrowthProfile(input: {
   const weights = [...input.weights].sort(byDateAsc);
   const headCircs = [...(input.headCircs ?? [])].sort(byDateAsc);
 
-  // BMI trajectory: for each weigh-in, pair it with the height in effect that day.
-  const bmiRaw: DatedValue[] = [];
-  for (const w of weights) {
-    const h = latestOnOrBefore(heights, w.date);
-    const bmi = bmiFrom(w.value, h);
-    if (bmi != null) bmiRaw.push({ date: w.date, value: bmi });
-  }
+  // BMI trajectory: for each weigh-in, pair it with the height in effect that day
+  // (the shared date-paired derivation the Body tab's BMI chart also uses).
+  const bmiRaw = bmiSeriesDatePaired(weights, heights);
 
   const metrics: GrowthMetricSeries[] = [
     buildMetric("height", sex, birthdate, heights, step),

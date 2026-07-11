@@ -69,6 +69,7 @@ export default async function OverviewSection({ range }: { range: DateRange }) {
       decimals={t.decimals}
       range={t.range}
       minPctChange={t.minPctChange}
+      applyBiomarkerDomain={t.kind === "biomarker"}
       footer={<PinToggle pinKey={t.key} pinned={isPinned(pins, t.key)} />}
     />
   );
