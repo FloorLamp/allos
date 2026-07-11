@@ -198,21 +198,35 @@ export function shouldShowConnectedSource(s: {
   return s.connected || s.hasHistory;
 }
 
-// Given sync events ordered NEWEST-FIRST (as the queries return them), keep only
-// the most recent event per provider whose latest outcome is a failure — i.e. the
-// integrations that are *currently* broken. A later successful sync drops a
-// provider off automatically, so this is self-clearing and safe to drive a
-// "needs attention" badge/count from. Pure → unit-testable; structurally typed so
-// it doesn't drag @/lib/db or the full row type into the pure tier.
+// Given sync events ordered NEWEST-FIRST (as the queries return them), collapse to
+// the single most recent event per provider — each integration's CURRENT state. This
+// is the pure counterpart to the SQL `getLatestSyncEventPerProvider` read: what keeps
+// failure-detection honest is feeding this the TRUE latest row per provider rather
+// than a global-N window that a chatty provider can push a stale failure out of
+// (issue #304). Pure → unit-testable; structurally typed so it doesn't drag @/lib/db
+// or the full row type into the pure tier.
+export function latestEventPerProvider<T extends { provider: string }>(
+  eventsNewestFirst: T[]
+): T[] {
+  const seen = new Set<string>();
+  const latest: T[] = [];
+  for (const e of eventsNewestFirst) {
+    if (seen.has(e.provider)) continue; // a newer event already represents this provider
+    seen.add(e.provider);
+    latest.push(e);
+  }
+  return latest;
+}
+
+// The integrations that are *currently* broken: providers whose most recent event is
+// a failure (ok = 0). A later successful sync drops a provider off automatically, so
+// this is self-clearing and safe to drive a "needs attention" badge/count from. A
+// provider flipped to `needs_reauth` (issue #326) records an ok:0 sync event the
+// moment its token dies, so it surfaces here too — as long as the caller feeds the
+// provider's TRUE latest event (getLatestSyncEventPerProvider), not a windowed slice
+// that could have aged that failure out (issue #304). Pure → unit-testable.
 export function currentlyFailingProviders<
   T extends { provider: string; ok: number },
 >(eventsNewestFirst: T[]): T[] {
-  const seen = new Set<string>();
-  const failing: T[] = [];
-  for (const e of eventsNewestFirst) {
-    if (seen.has(e.provider)) continue; // a newer event already decided this provider
-    seen.add(e.provider);
-    if (!e.ok) failing.push(e);
-  }
-  return failing;
+  return latestEventPerProvider(eventsNewestFirst).filter((e) => !e.ok);
 }
