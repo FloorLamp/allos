@@ -24,11 +24,17 @@ import {
   recordDropSection,
   unmappedLoincsFromRecords,
 } from "./coverage";
-import type { ClinicalNote, StandaloneVisitDiagnosis } from "./extractors";
+import type {
+  ClinicalNote,
+  EncompassingEncounterInfo,
+  StandaloneVisitDiagnosis,
+} from "./extractors";
 import {
   DEFAULT_EXTRACTORS,
   chiefComplaintsFromSections,
   clinicalNotesFromSections,
+  encompassingEncounterInfo,
+  selectReasonTarget,
   socialHistorySex,
   visitDiagnosesFromSections,
 } from "./extractors";
@@ -114,6 +120,10 @@ export function parseCcdaDocument(xml: string): {
   // fallback date for a medication-list entry that carries no effectiveTime of its
   // own (#Fix 2), so a plain med list still imports rather than dropping.
   documentDate: string | null;
+  // The document's encompassing visit (componentOf/encompassingEncounter), used to
+  // pick which encounter the Reason for Visit attaches to when a hospital document
+  // carries several Encounter Activities (issue #267). Null when absent.
+  encompassingEncounter: EncompassingEncounterInfo | null;
 } {
   // Reject a hostile internal DTD subset (#135 item 5) before parsing — no
   // legitimate C-CDA declares custom entities, so a `<!ENTITY>` is an attack shape.
@@ -148,6 +158,7 @@ export function parseCcdaDocument(xml: string): {
     sections,
     demographics: mapDemographics(cd),
     documentDate: effTime(cd?.effectiveTime),
+    encompassingEncounter: encompassingEncounterInfo(cd),
   };
 }
 
@@ -338,7 +349,8 @@ export function extractFromCcda(
   xml: string,
   extractors: SectionExtractor[] = DEFAULT_EXTRACTORS
 ): ImportResult {
-  const { sections, demographics, documentDate } = parseCcdaDocument(xml);
+  const { sections, demographics, documentDate, encompassingEncounter } =
+    parseCcdaDocument(xml);
   const immunizations: ImportedImmunization[] = [];
   const records: ImportedRecord[] = [];
   const providers: ImportedProvider[] = [];
@@ -373,17 +385,20 @@ export function extractFromCcda(
   // Correlate the document-level Reason for Visit / chief complaint onto the
   // encounter when the encounter carries none of its own. In an Epic per-visit CCD
   // the reason section describes the single encounter in the same document; a
-  // document with several encounters can't be attributed reliably, so we skip.
+  // hospital document that ships several Encounter Activities (the visit plus a
+  // companion event-type activity — #267) is disambiguated by the document's
+  // encompassing visit (selectReasonTarget). Genuinely ambiguous cases still skip.
   const deduped = dedupe(encounters);
   // Whether the Reason-for-Visit section was actually consumed (correlated). Only
-  // true when there's exactly one reason-less encounter to attach the chief
-  // complaint to AND the section carried one — the same condition the coverage
-  // report reflects (F2).
+  // true when selectReasonTarget resolves a single reason-less encounter to attach
+  // the chief complaint to AND the section carried one — the same condition the
+  // coverage report reflects (F2).
   let reasonForVisitConsumed = false;
-  if (deduped.length === 1 && !deduped[0].reason) {
+  const reasonTarget = selectReasonTarget(deduped, encompassingEncounter);
+  if (reasonTarget >= 0) {
     const reasons = chiefComplaintsFromSections(sections);
     if (reasons.length) {
-      deduped[0].reason = reasons.join("; ");
+      deduped[reasonTarget].reason = reasons.join("; ");
       reasonForVisitConsumed = true;
     }
   }
