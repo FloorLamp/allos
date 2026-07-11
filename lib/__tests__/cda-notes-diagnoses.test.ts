@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractFromCcda } from "../cda";
+import { extractFromCcda, isSharingDisclaimer } from "../cda";
 
 // Wrap section XML in a minimal ClinicalDocument (with an effectiveTime so a
 // standalone note has a document date to fall back to). All fixtures are SYNTHETIC:
@@ -223,6 +223,89 @@ describe("Progress Notes + per-clinician Notes", () => {
       "Patient reports feeling much better. Throat pain resolving. Continue supportive care."
     );
     expect(e.diagnoses).toEqual([]);
+  });
+});
+
+// The Health Information Exchange per-org sharing disclaimer that Epic/MyChart
+// stamps into shared documents as a "Note from <org>" section (#262). All names
+// SYNTHETIC. Boilerplate, not clinical content — must never become a note.
+const DISCLAIMER_NOTE = `
+<section>
+  <code code="88888-8" codeSystem="2.16.840.1.113883.6.1"/>
+  <title>Note from Example Health System</title>
+  <text>This document contains information that was shared with Robin Sample. It may not contain the entire record from Example Health System.</text>
+</section>`;
+
+describe("sharing-disclaimer boilerplate (#262)", () => {
+  it("does not attach the disclaimer to the same-document encounter", () => {
+    const r = extractFromCcda(doc(ENCOUNTER, DISCLAIMER_NOTE));
+    expect(r.encounters).toHaveLength(1);
+    expect(r.encounters![0].notes).toBeNull();
+  });
+
+  it("attaches only the real note when the disclaimer rides along", () => {
+    const r = extractFromCcda(doc(ENCOUNTER, DISCLAIMER_NOTE, PROGRESS_NOTES));
+    expect(r.encounters![0].notes).toBe(
+      "Patient reports feeling much better. Throat pain resolving. Continue supportive care."
+    );
+  });
+
+  it("creates NO note-only encounter from a disclaimer in a document without an encounter section", () => {
+    // Without the skip this materializes a fake "visit" dated at the document date
+    // whose entire content is boilerplate.
+    const r = extractFromCcda(doc(DISCLAIMER_NOTE));
+    expect(r.encounters).toEqual([]);
+  });
+});
+
+describe("isSharingDisclaimer", () => {
+  it("matches the boilerplate regardless of the recipient/org names", () => {
+    expect(
+      isSharingDisclaimer(
+        "This document contains information that was shared with Robin Sample. It may not contain the entire record from Example Health System."
+      )
+    ).toBe(true);
+    expect(
+      isSharingDisclaimer(
+        "This document contains information that was shared with Springfield Community Care. It may not contain the entire record from Sample Pediatrics"
+      )
+    ).toBe(true);
+  });
+
+  it("matches minor wording variants and case/whitespace noise", () => {
+    expect(
+      isSharingDisclaimer(
+        "THIS DOCUMENT CONTAINS HEALTH INFORMATION THAT WAS SHARED WITH DANA EXAMPLE.  It may not include your complete medical records from Sample Clinic."
+      )
+    ).toBe(true);
+  });
+
+  it("does NOT match a real note that merely mentions sharing", () => {
+    expect(
+      isSharingDisclaimer(
+        "Discussed that this document contains information that was shared with the specialist. Patient consented to the exchange."
+      )
+    ).toBe(false);
+  });
+
+  it("does NOT match when clinical content surrounds the boilerplate", () => {
+    expect(
+      isSharingDisclaimer(
+        "This document contains information that was shared with Robin Sample. It may not contain the entire record from Example Health System. Patient seen today for cough; lungs clear."
+      )
+    ).toBe(false);
+    expect(
+      isSharingDisclaimer(
+        "Seen in clinic today. This document contains information that was shared with Robin Sample. It may not contain the entire record from Example Health System."
+      )
+    ).toBe(false);
+  });
+
+  it("does NOT match unrelated or empty text", () => {
+    expect(isSharingDisclaimer("")).toBe(false);
+    expect(
+      isSharingDisclaimer("Follow-up in one week; continue supportive care.")
+    ).toBe(false);
   });
 });
 

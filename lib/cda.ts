@@ -23,6 +23,7 @@ export {
   parseCcdaDocument,
   extractFromCcda,
   parseCcda,
+  isSharingDisclaimer,
   mergeImportResults,
   parseXdm,
 } from "./cda/parse";
