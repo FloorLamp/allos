@@ -22,6 +22,8 @@ import {
   getSupplementDoses,
   getInteractionWarnings,
 } from "@/lib/queries";
+import { getProfileSetting, setProfileSetting } from "@/lib/settings";
+import { refillMarkerKey } from "@/lib/refill-nudge";
 import { seedActor, fd } from "./harness";
 
 const revalidate = vi.mocked(revalidatePath);
@@ -354,6 +356,94 @@ describe("toggleActive", () => {
 
     await toggleActive(fd({ id }));
     expect(itemRow(id).active).toBe(0);
+  });
+});
+
+// Refill-episode marker cleanup on state change (issue #325). A low-supply nudge
+// leaves a `notify_last_refill_<id>` marker that must be CLEARED the moment the item
+// leaves the refill-tracked set (paused, or quantity tracking turned off) — otherwise
+// re-tracking a still-low item is silently silenced. The write seams clear eagerly,
+// mirroring the delete seam; the tick self-heals the rest.
+describe("refill episode marker cleanup on state change (#325)", () => {
+  async function seedTrackedWithMarker() {
+    const { profile } = seedActor();
+    await addSupplement(
+      fd({ name: "Vitamin D", quantity_on_hand: 30, qty_per_dose: 1 })
+    );
+    const id = getSupplements(profile.id)[0].id;
+    // Simulate a prior low-supply nudge having fired.
+    setProfileSetting(profile.id, refillMarkerKey(id), "2026-07-01");
+    expect(getProfileSetting(profile.id, refillMarkerKey(id))).toBe(
+      "2026-07-01"
+    );
+    return { profile, id };
+  }
+
+  it("updateSupplement clears the marker when quantity tracking is turned off", async () => {
+    const { profile, id } = await seedTrackedWithMarker();
+    // Re-save with a blank quantity_on_hand → tracking off (null).
+    await updateSupplement(
+      fd({ id, name: "Vitamin D", quantity_on_hand: "", qty_per_dose: 1 })
+    );
+    expect(itemRow(id).quantity_on_hand).toBeNull();
+    expect(getProfileSetting(profile.id, refillMarkerKey(id))).toBeUndefined();
+  });
+
+  it("updateSupplement leaves the marker while the item stays tracked", async () => {
+    const { profile, id } = await seedTrackedWithMarker();
+    // Still tracked (a mere quantity edit) → marker must survive; the tick owns the
+    // low→recovered clear, not the write seam.
+    await updateSupplement(
+      fd({ id, name: "Vitamin D", quantity_on_hand: 25, qty_per_dose: 1 })
+    );
+    expect(itemRow(id).quantity_on_hand).toBe(25);
+    expect(getProfileSetting(profile.id, refillMarkerKey(id))).toBe(
+      "2026-07-01"
+    );
+  });
+
+  it("toggleActive clears the marker on pause and does not recreate it on resume", async () => {
+    const { profile, id } = await seedTrackedWithMarker();
+    // Pause: leaves the tracked set → marker cleared.
+    await toggleActive(fd({ id }));
+    expect(itemRow(id).active).toBe(0);
+    expect(getProfileSetting(profile.id, refillMarkerKey(id))).toBeUndefined();
+
+    // Resume: re-enters the tracked set but the write path never re-creates a marker
+    // (a fresh nudge is the tick's job once it's low again).
+    await toggleActive(fd({ id }));
+    expect(itemRow(id).active).toBe(1);
+    expect(getProfileSetting(profile.id, refillMarkerKey(id))).toBeUndefined();
+  });
+
+  it("toggleActive on an UNtracked item leaves any unrelated marker untouched", async () => {
+    const { profile } = seedActor();
+    await addSupplement(fd({ name: "Magnesium" })); // no quantity tracking
+    const id = getSupplements(profile.id)[0].id;
+    // A stray marker on this untracked item is not this seam's concern; pausing an
+    // item that was never in the tracked set is not a "left the set" transition.
+    setProfileSetting(profile.id, refillMarkerKey(id), "2026-07-01");
+    await toggleActive(fd({ id }));
+    expect(getProfileSetting(profile.id, refillMarkerKey(id))).toBe(
+      "2026-07-01"
+    );
+  });
+
+  it("pausing a tracked MEDICATION also clears its marker", async () => {
+    const { profile } = seedActor();
+    await addSupplement(
+      fd({
+        name: "Lisinopril",
+        kind: "medication",
+        quantity_on_hand: 30,
+        qty_per_dose: 1,
+      })
+    );
+    const id = getSupplements(profile.id)[0].id;
+    setProfileSetting(profile.id, refillMarkerKey(id), "2026-07-01");
+    await toggleActive(fd({ id }));
+    expect(itemRow(id).active).toBe(0);
+    expect(getProfileSetting(profile.id, refillMarkerKey(id))).toBeUndefined();
   });
 });
 
