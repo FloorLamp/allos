@@ -11,6 +11,7 @@ import {
   YAxis,
 } from "recharts";
 import { useChartColors } from "./useChartColors";
+import { biomarkerAxisDomain } from "@/lib/reference-range";
 
 export interface BiomarkerBands {
   refLow?: number | null;
@@ -51,28 +52,15 @@ export default function BiomarkerChart({
 
   const { refLow, refHigh, optimalLow, optimalHigh } = bands;
 
-  // Build a Y domain that comfortably contains both the data and any band
-  // bounds, with ~8% padding, so the bands are always visible.
-  const candidates: number[] = data.map((d) => d.value);
-  for (const b of [refLow, refHigh, optimalLow, optimalHigh])
-    if (b != null) candidates.push(b);
-  let min = Math.min(...candidates);
-  let max = Math.max(...candidates);
-  if (min === max) {
-    // Flat series/single point — open up a small window so the line shows.
-    min -= 1;
-    max += 1;
-  }
-  const span = max - min;
-  const pad = span * 0.08;
-  // For wide-ranging values, snap the domain to whole numbers so recharts picks
-  // clean integer ticks; keep decimals only for small-span biomarkers (HbA1c).
-  const wide = span >= 3;
-  let lo = wide ? Math.floor(min - pad) : min - pad;
-  const hi = wide ? Math.ceil(max + pad) : max + pad;
-  // Biomarker concentrations can't be negative, so don't let the bottom padding
-  // pull the axis below 0 (e.g. a "lower_better" toxin whose optimal is 0).
-  if (min >= 0) lo = Math.max(0, lo);
+  // Build a Y domain that comfortably contains both the data and any band bounds
+  // (default 8% padding), so the bands are always visible. Shared policy (issue
+  // #311); `snapWideToIntegers` snaps wide spans to whole-number tick bounds and
+  // reports `wide` for `allowDecimals`.
+  const { lo, hi, wide } = biomarkerAxisDomain(
+    data.map((d) => d.value),
+    { refLow, refHigh, optimalLow, optimalHigh },
+    { snapWideToIntegers: true }
+  );
   const domain: [number, number] = [lo, hi];
   // Cap tick precision so floating-point padding never renders long decimals.
   const tickFmt = (v: number) => String(Math.round(v * 100) / 100);

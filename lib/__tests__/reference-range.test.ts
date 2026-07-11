@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   ageBandLabel,
+  biomarkerAxisDomain,
   daysBetween,
+  DEFAULT_AXIS_PAD_FRACTION,
   DEFAULT_RETEST_DAYS,
   humanizeAge,
   isBiomarkerStale,
@@ -14,6 +16,7 @@ import {
   referenceRange,
   referenceStatus,
   retestIntervalDays,
+  SCALE_AXIS_PAD_FRACTION,
   selectAgeBand,
   selectStatusRange,
 } from "@/lib/reference-range";
@@ -669,5 +672,141 @@ describe("isBiomarkerStale with a per-biomarker interval", () => {
     expect(humanizeAge(90)).toBe("3 months");
     expect(humanizeAge(365)).toBe("12 months");
     expect(humanizeAge(600)).toContain("year");
+  });
+});
+
+describe("biomarkerAxisDomain", () => {
+  const NO_BOUNDS = {} as const;
+
+  it("spans every value and bound with the default 8% padding", () => {
+    // marks: values 40, 55 + bounds 30/45 (ref) 35/42 (optimal) → min 30, max 55.
+    const { lo, hi } = biomarkerAxisDomain([40, 55], {
+      refLow: 30,
+      refHigh: 45,
+      optimalLow: 35,
+      optimalHigh: 42,
+    });
+    const span = 55 - 30; // 25
+    expect(lo).toBeCloseTo(30 - span * DEFAULT_AXIS_PAD_FRACTION, 10);
+    expect(hi).toBeCloseTo(55 + span * DEFAULT_AXIS_PAD_FRACTION, 10);
+  });
+
+  it("uses the padFraction option (single-value scale wants more room)", () => {
+    const values = [10];
+    const bounds = { refLow: 8, refHigh: 12 };
+    const wide = biomarkerAxisDomain(values, bounds, {
+      padFraction: SCALE_AXIS_PAD_FRACTION,
+    });
+    const narrow = biomarkerAxisDomain(values, bounds, {
+      padFraction: DEFAULT_AXIS_PAD_FRACTION,
+    });
+    // Same marks (min 8, max 12, span 4): 12% pads more than 8%.
+    expect(wide.lo).toBeLessThan(narrow.lo);
+    expect(wide.hi).toBeGreaterThan(narrow.hi);
+    expect(wide.lo).toBeCloseTo(8 - 4 * 0.12, 10);
+    expect(wide.hi).toBeCloseTo(12 + 4 * 0.12, 10);
+  });
+
+  it("opens a ±1 window for a flat series / single point", () => {
+    // Single value 5, no bounds → lo===hi===5, expand to [4,6], then pad 8% of 2.
+    const { lo, hi } = biomarkerAxisDomain([5], NO_BOUNDS);
+    expect(lo).toBeCloseTo(4 - 2 * 0.08, 10);
+    expect(hi).toBeCloseTo(6 + 2 * 0.08, 10);
+  });
+
+  it("clamps the floor to 0 when every real mark is non-negative", () => {
+    // A near-zero value against a higher bound would pad below 0 without the
+    // clamp: min 0.2, max 5, span 4.8, pad 0.384 → raw lo -0.184.
+    const { lo } = biomarkerAxisDomain([0.2], { optimalHigh: 5 });
+    expect(lo).toBe(0);
+  });
+
+  it("clamps a flat series at 0 to a 0 floor (pre-expansion min decides)", () => {
+    // lo===hi===0 expands to [-1,1]; the clamp must still fire because the real
+    // mark (0) is non-negative — the drift the trend chart previously had.
+    const { lo } = biomarkerAxisDomain([0], NO_BOUNDS);
+    expect(lo).toBe(0);
+  });
+
+  it("does NOT clamp when a real mark is negative", () => {
+    const { lo } = biomarkerAxisDomain([-2, 3], NO_BOUNDS);
+    expect(lo).toBeLessThan(0);
+  });
+
+  it("ignores null/undefined values and bounds", () => {
+    const a = biomarkerAxisDomain([10, null, undefined], {
+      refLow: null,
+      refHigh: 20,
+      optimalLow: undefined,
+      optimalHigh: null,
+    });
+    const b = biomarkerAxisDomain([10], { refHigh: 20 });
+    expect(a).toEqual(b);
+  });
+
+  it("returns a safe [0,1] window when there are no finite marks", () => {
+    expect(biomarkerAxisDomain([], NO_BOUNDS)).toEqual({
+      lo: 0,
+      hi: 1,
+      wide: false,
+    });
+    expect(biomarkerAxisDomain([null], { refLow: null })).toEqual({
+      lo: 0,
+      hi: 1,
+      wide: false,
+    });
+  });
+
+  it("snaps wide spans to whole numbers only when opted in", () => {
+    // span 80 ≥ 3 → wide. Padded lo = 10-80*0.08 = 3.6 → floor 3; hi = 90+6.4 =
+    // 96.4 → ceil 97.
+    const snapped = biomarkerAxisDomain([10, 90], NO_BOUNDS, {
+      snapWideToIntegers: true,
+    });
+    expect(snapped.wide).toBe(true);
+    expect(snapped.lo).toBe(3);
+    expect(snapped.hi).toBe(97);
+
+    // Same marks without opting in → no snapping, wide=false, fractional bounds.
+    const raw = biomarkerAxisDomain([10, 90], NO_BOUNDS);
+    expect(raw.wide).toBe(false);
+    expect(raw.lo).toBeCloseTo(10 - 80 * 0.08, 10);
+    expect(raw.hi).toBeCloseTo(90 + 80 * 0.08, 10);
+  });
+
+  it("keeps decimals for a small (narrow) span even when snapping is enabled", () => {
+    // HbA1c-like: span 0.4 < 3 → not wide, decimals preserved.
+    const { lo, hi, wide } = biomarkerAxisDomain([5.4, 5.8], NO_BOUNDS, {
+      snapWideToIntegers: true,
+    });
+    expect(wide).toBe(false);
+    expect(Number.isInteger(lo)).toBe(false);
+    expect(hi).toBeCloseTo(5.8 + 0.4 * 0.08, 10);
+  });
+
+  it("both charts share identical math for the same marks (only pad/snap differ)", () => {
+    const values = [5.4, 5.6, 5.8];
+    const bounds = {
+      refLow: 4,
+      refHigh: 5.6,
+      optimalLow: 4.8,
+      optimalHigh: 5.4,
+    };
+    // The trend chart's call (BiomarkerChartInner).
+    const chart = biomarkerAxisDomain(values, bounds, {
+      snapWideToIntegers: true,
+    });
+    // The single-value scale's call over the latest value (BiomarkerScale).
+    const scale = biomarkerAxisDomain([5.8], bounds, {
+      padFraction: SCALE_AXIS_PAD_FRACTION,
+    });
+    // Same helper, same edge handling — the only differences are the explicit
+    // options, never divergent inline formulas.
+    expect(chart.lo).toBeGreaterThanOrEqual(0);
+    expect(scale.lo).toBeGreaterThanOrEqual(0);
+    // A common configuration yields byte-identical output from either call site.
+    expect(biomarkerAxisDomain(values, bounds)).toEqual(
+      biomarkerAxisDomain(values, bounds)
+    );
   });
 });

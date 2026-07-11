@@ -6,6 +6,8 @@ import {
   optimalBand,
   referenceRange,
   ageBandLabel,
+  biomarkerAxisDomain,
+  SCALE_AXIS_PAD_FRACTION,
 } from "@/lib/reference-range";
 import { convertToCanonical } from "@/lib/unit-conversions";
 import { MedicalValue } from "./ui";
@@ -94,23 +96,18 @@ export default function BiomarkerScale({
   }
 
   // Domain spans every known bound and the value, with a little padding so the
-  // marker never sits flush against an edge.
-  const marks = [rb.low, rb.high, ob.low, ob.high, value].filter(
-    (n): n is number => n != null
+  // marker never sits flush against an edge. Shared policy (issue #311) — the
+  // single-value scale opts into a touch more breathing room than the trend chart.
+  const { lo, hi } = biomarkerAxisDomain(
+    [value],
+    {
+      refLow: rb.low,
+      refHigh: rb.high,
+      optimalLow: ob.low,
+      optimalHigh: ob.high,
+    },
+    { padFraction: SCALE_AXIS_PAD_FRACTION }
   );
-  const minMark = Math.min(...marks);
-  let lo = minMark;
-  let hi = Math.max(...marks);
-  if (lo === hi) {
-    lo -= 1;
-    hi += 1;
-  }
-  const pad = (hi - lo) * 0.12;
-  lo -= pad;
-  hi += pad;
-  // Biomarker concentrations can't be negative — keep the scale from padding
-  // below 0 (e.g. a toxin whose optimal band sits at 0).
-  if (minMark >= 0) lo = Math.max(0, lo);
   const pct = (x: number) => clamp(((x - lo) / (hi - lo)) * 100, 0, 100);
 
   const hasRef = rb.low != null || rb.high != null;
