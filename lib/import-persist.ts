@@ -199,15 +199,137 @@ export function persistDocumentImport(
   docId: number,
   input: PersistInput
 ): PersistOutcome {
-  const docSource = documentSource(docId);
+  const providerIdFor = buildProviderResolver(input.providers);
 
-  // Resolve every captured provider (per-record/immunization performers + the
-  // section-level Care Teams) into the shared GLOBAL registry, memoized by dedup
-  // key so one INSERT per distinct provider. Done up front, outside
-  // the per-document transaction, because the providers table is global and its
-  // resolve-or-create is independently idempotent — a reprocess re-resolves to the
-  // same rows and never coins a duplicate. Returns the shared row id to stamp onto
-  // the profile-owned immunization/record row's provider_id.
+  const result = db.transaction(() => {
+    // Replace this document's prior rows (a no-op on first import; on reprocess
+    // it clears the old set) across every table an import writes — including the
+    // previously auto-structured meds, cleared here before the existing-meds set
+    // is read below so a reprocess replaces (never duplicates) them. This is the
+    // SAME shared helper deleteMedicalDocument runs, so the two delete-sets can't
+    // drift. Manual rows are never touched.
+    clearImportedDocumentRows(profileId, docId);
+    // Smoking status is single-valued: a profile keeps AT MOST ONE
+    // social-history smoking-status condition, and the latest import wins. This
+    // supersession is IMPORT-specific — it deletes OTHER documents' smoking rows —
+    // so it stays here, out of the shared per-document helper. The per-document
+    // delete-set above + the source-scoped external_id don't supersede ACROSS
+    // documents, so re-uploading an older CCD ("Current smoker") then a newer one
+    // ("Former smoker") as separate documents would otherwise leave two
+    // contradictory active rows. When THIS document carries a smoking status, clear
+    // EVERY prior social-smoking condition for the profile (across documents/sources)
+    // first; the freshly-imported status is then inserted by the conditions loop
+    // below. Strictly scoped to profile_id AND the social-smoking external_id
+    // namespace — real ccda:condition:* problem-list rows are never touched. The
+    // stored external_id is source-prefixed ("<source>|ccda:social-smoking:<code>"),
+    // hence the leading-% match. Idempotent: reimporting the same document clears
+    // then re-inserts the same single row.
+    const hasSmokingStatus = input.conditions.some((c) =>
+      c.external_id?.startsWith("ccda:social-smoking:")
+    );
+    if (hasSmokingStatus) {
+      db.prepare(
+        "DELETE FROM conditions WHERE profile_id = ? AND external_id LIKE '%ccda:social-smoking:%'"
+      ).run(profileId);
+    }
+
+    const counts = insertImportRows(profileId, docId, input, providerIdFor);
+
+    // The toast + Review feed report ONE "N items imported" number. Tally it off
+    // the footprint tables here — after every insert loop — so it counts every
+    // clinical kind an import wrote, not just the immunizations + records the old
+    // `immCount + recCount` saw (#212).
+    const extractedCount = countImportedDocumentRows(profileId, docId);
+    db.prepare(
+      `UPDATE medical_documents
+         SET extraction_status = 'done', extracted_count = ?, doc_type = ?,
+             source = ?, document_date = ?, patient_name = ?, raw_extraction = ?,
+             model = ?, import_report = ?, extraction_error = NULL
+       WHERE id = ? AND profile_id = ?`
+    ).run(
+      extractedCount,
+      input.meta.docType,
+      input.meta.source,
+      input.meta.documentDate,
+      input.meta.patientName,
+      input.meta.raw,
+      input.meta.model,
+      // The import DEBUGGER report — refreshed on every
+      // reprocess so it always reflects the current parse (idempotent).
+      input.meta.importReport,
+      docId,
+      profileId
+    );
+    return { counts, extractedCount };
+  })();
+
+  return {
+    immCount: result.counts.immCount,
+    recCount: result.counts.recCount,
+    extractedCount: result.extractedCount,
+    insertedRecordIds: result.counts.insertedRecordIds,
+  };
+}
+
+// The rows a documentless import (the /data paste/CSV commit) wrote. There is NO
+// document row — so the counts are returned directly (not tallied off a document's
+// footprint), and the rows carry NO document_id / a NULL-or-'manual' source, which
+// is exactly why they're EXEMPT from the import-footprint contract
+// (clearImportedDocumentRows / moveImportedDocumentRows / countImportedDocumentRows
+// all key off a docId this import doesn't have). See persistDocumentlessImport.
+export interface DocumentlessOutcome {
+  recCount: number;
+  immCount: number;
+  medCount: number;
+  bodyMetricCount: number;
+  heightCount: number;
+  headCircCount: number;
+  insertedRecordIds: number[];
+}
+
+// Persist a paste/CSV import — the SAME extraction output a file upload produces,
+// but with no stored document behind it. It runs the IDENTICAL projection +
+// insert loops as persistDocumentImport (body-metric routing, height/head-circ →
+// metric_samples, prescription → structured intake_items), so a pasted reading
+// reaches the weight charts / growth card / medication list exactly like an
+// uploaded one did — closing the "same text, two outcomes" gap (#418).
+//
+// Footprint contract: a documentless import is DELIBERATELY exempt from the
+// clear/reassign/tally footprint helpers. With no document id its rows carry a
+// NULL document_id and a NULL (medical_records/body_metrics/immunizations) or
+// 'manual' (height/head-circ metric_samples) source — indistinguishable from a
+// hand-entered row, and therefore never touched by a document delete/reassign,
+// by design. There is nothing to delete or reassign because there is no document.
+export function persistDocumentlessImport(
+  profileId: number,
+  input: PersistInput
+): DocumentlessOutcome {
+  const providerIdFor = buildProviderResolver(input.providers);
+  const counts = db.transaction(() =>
+    insertImportRows(profileId, null, input, providerIdFor)
+  )();
+  return {
+    recCount: counts.recCount,
+    immCount: counts.immCount,
+    medCount: counts.medCount,
+    bodyMetricCount: counts.bodyMetricCount,
+    heightCount: counts.heightCount,
+    headCircCount: counts.headCircCount,
+    insertedRecordIds: counts.insertedRecordIds,
+  };
+}
+
+// Resolve every captured provider (per-record/immunization performers + the
+// section-level Care Teams) into the shared GLOBAL registry, memoized by dedup
+// key so one INSERT per distinct provider. Done up front, outside the
+// per-document transaction, because the providers table is global and its
+// resolve-or-create is independently idempotent — a reprocess re-resolves to the
+// same rows and never coins a duplicate. Returns the shared row id to stamp onto
+// the profile-owned immunization/record row's provider_id. Shared by both the
+// document and the documentless import paths.
+function buildProviderResolver(
+  seed: ImportedProvider[]
+): (p: ImportedProvider | null | undefined) => number | null {
   const providerIdCache = new Map<string, number | null>();
   const providerIdFor = (
     p: ImportedProvider | null | undefined
@@ -222,7 +344,43 @@ export function persistDocumentImport(
   };
   // Seed the registry with the care-team providers even though they aren't linked
   // to a specific row.
-  for (const p of input.providers) providerIdFor(p);
+  for (const p of seed) providerIdFor(p);
+  return providerIdFor;
+}
+
+// Per-kind counts of what an import's insert loops actually wrote (deferred /
+// deduped rows aren't counted). The document path folds these into the footprint
+// tally; the documentless path returns them directly for its toast.
+interface ImportInsertCounts {
+  immCount: number;
+  recCount: number;
+  medCount: number;
+  bodyMetricCount: number;
+  heightCount: number;
+  headCircCount: number;
+  insertedRecordIds: number[];
+}
+
+// THE shared insert loops — every table an import writes, run identically by the
+// document path (docId set) and the documentless paste path (docId null). MUST run
+// inside a transaction the caller opens (so a document import can clear + finalize
+// around it, and both roll back atomically). `docId` null routes rows as
+// documentless: NULL document_id, NULL record/immunization/body_metric source, and
+// a 'manual' metric_samples source (matching the manual growth writer), so pasted
+// rows are indistinguishable from hand-entered ones.
+function insertImportRows(
+  profileId: number,
+  docId: number | null,
+  input: PersistInput,
+  providerIdFor: (p: ImportedProvider | null | undefined) => number | null
+): ImportInsertCounts {
+  // A document import stamps document_id + source='document:<id>'; a documentless
+  // (paste) import stamps NULL for the record/immunization/body-metric source and
+  // 'manual' for the height/head-circ metric_samples source (the metric_samples
+  // source column is NOT NULL-conventioned — its manual provenance is the literal
+  // 'manual', per the growth writer).
+  const docSource = docId != null ? documentSource(docId) : null;
+  const sampleSource = docSource ?? "manual";
 
   const insImm = db.prepare(
     `INSERT OR IGNORE INTO immunizations
@@ -281,8 +439,11 @@ export function persistDocumentImport(
   // document that legitimately still contains it. Prefixing with the document
   // source keeps dedup within a document (and across its reprocesses) while
   // giving each document its own physical row, so a delete never orphans another.
+  // A documentless import (no docSource) has no external_id dedup to scope — its
+  // rows are manual-like — so it always stores NULL, matching the paste path's
+  // prior direct inserts.
   const scopedExternalId = (raw: string | null): string | null =>
-    raw == null ? null : `${docSource}|${raw}`;
+    raw == null || docSource == null ? null : `${docSource}|${raw}`;
 
   // One insert covers every record type (lab / vital / prescription / …).
   // external_id is nullable — the deterministic path sets it (dedup via the
@@ -386,288 +547,256 @@ export function persistDocumentImport(
   const insertedRecordIds: number[] = [];
   let immCount = 0;
   let recCount = 0;
-  let extractedCount = 0;
+  let bodyMetricCount = 0;
+  let heightCount = 0;
+  let headCircCount = 0;
 
-  const tx = db.transaction(() => {
-    // Replace this document's prior rows (a no-op on first import; on reprocess
-    // it clears the old set) across every table an import writes — including the
-    // previously auto-structured meds, cleared here before the existing-meds set
-    // is read below so a reprocess replaces (never duplicates) them. This is the
-    // SAME shared helper deleteMedicalDocument runs, so the two delete-sets can't
-    // drift. Manual rows are never touched.
-    clearImportedDocumentRows(profileId, docId);
-    // Smoking status is single-valued: a profile keeps AT MOST ONE
-    // social-history smoking-status condition, and the latest import wins. This
-    // supersession is IMPORT-specific — it deletes OTHER documents' smoking rows —
-    // so it stays here, out of the shared per-document helper. The per-document
-    // delete-set above + the source-scoped external_id don't supersede ACROSS
-    // documents, so re-uploading an older CCD ("Current smoker") then a newer one
-    // ("Former smoker") as separate documents would otherwise leave two
-    // contradictory active rows. When THIS document carries a smoking status, clear
-    // EVERY prior social-smoking condition for the profile (across documents/sources)
-    // first; the freshly-imported status is then inserted by the conditions loop
-    // below. Strictly scoped to profile_id AND the social-smoking external_id
-    // namespace — real ccda:condition:* problem-list rows are never touched. The
-    // stored external_id is source-prefixed ("<source>|ccda:social-smoking:<code>"),
-    // hence the leading-% match. Idempotent: reimporting the same document clears
-    // then re-inserts the same single row.
-    const hasSmokingStatus = input.conditions.some((c) =>
-      c.external_id?.startsWith("ccda:social-smoking:")
+  for (const im of input.immunizations) {
+    const info = insImm.run(
+      im.date,
+      im.vaccine,
+      im.dose_label,
+      im.notes,
+      docSource,
+      scopedExternalId(im.external_id),
+      providerIdFor(im.provider),
+      profileId
     );
-    if (hasSmokingStatus) {
-      db.prepare(
-        "DELETE FROM conditions WHERE profile_id = ? AND external_id LIKE '%ccda:social-smoking:%'"
-      ).run(profileId);
-    }
-
-    for (const im of input.immunizations) {
-      const info = insImm.run(
-        im.date,
-        im.vaccine,
-        im.dose_label,
-        im.notes,
-        docSource,
-        scopedExternalId(im.external_id),
-        providerIdFor(im.provider),
-        profileId
-      );
-      if (info.changes > 0) immCount++;
-    }
-    // A document defers to existing body-metrics rows on the same date (manual,
-    // integration, or another document) so a retrospective scan can't stack a
-    // duplicate point or outrank a manual entry — but only per measure: a
-    // document's weight for a date that only has an integration resting-HR row is
-    // still stored (undeferredBodyMetrics, tested). `coverage` is the DB probe.
-    const rowsToInsert = undeferredBodyMetrics(input.bodyMetrics, (date) => {
-      const c = coverage.get(date, profileId) as
-        { w: number | null; bf: number | null; rhr: number | null } | undefined;
-      return {
-        weight_kg: !!c?.w,
-        body_fat_pct: !!c?.bf,
-        resting_hr: !!c?.rhr,
-      };
-    });
-    for (const w of rowsToInsert) {
-      insMetric.run(
-        w.date,
-        w.weight_kg,
-        w.body_fat_pct,
-        w.resting_hr,
-        docSource,
-        profileId
-      );
-    }
-    // Body-height samples → metric_samples. Defer a date another source
-    // already covers (never overwrite manual/integration/another-document height),
-    // else insert a point sample keyed by the date. heightsFromReadings already
-    // reduced to one plausible value per date.
-    for (const h of input.heights) {
-      if (heightCovered.get(profileId, h.date)) continue;
-      insHeight.run(profileId, docSource, h.date, h.date, h.date, h.height_cm);
-    }
-    // Head-circumference samples → metric_samples, same defer-then-insert
-    // rule as height: never overwrite a date another source already covers.
-    for (const h of input.headCircs) {
-      if (headCircCovered.get(profileId, h.date)) continue;
-      insHeadCirc.run(
-        profileId,
-        docSource,
-        h.date,
-        h.date,
-        h.date,
-        h.head_circumference_cm
-      );
-    }
-    for (const r of input.records) {
-      const info = insRec.run(
-        r.date,
-        r.category,
-        r.name,
-        r.value,
-        r.value_num,
-        r.unit,
-        r.reference_range,
-        r.notes,
-        r.panel,
-        r.flag,
-        r.canonical,
-        docId,
-        r.source,
-        scopedExternalId(r.external_id),
-        providerIdFor(r.provider),
-        profileId
-      );
-      if (info.changes > 0) {
-        recCount++;
-        insertedRecordIds.push(Number(info.lastInsertRowid));
-      }
-    }
-    for (const a of input.allergies) {
-      insAllergy.run(
-        a.substance,
-        a.substance_code,
-        a.substance_code_system,
-        a.reaction,
-        a.severity,
-        a.status,
-        a.onset_date,
-        docSource,
-        docId,
-        scopedExternalId(a.external_id),
-        profileId
-      );
-    }
-    for (const c of input.conditions) {
-      insCondition.run(
-        c.name,
-        c.code,
-        c.code_system,
-        c.status,
-        c.onset_date,
-        c.resolved_date,
-        docSource,
-        docId,
-        scopedExternalId(c.external_id),
-        profileId
-      );
-    }
-    // Seed the STRUCTURED smoking record (#83) from the imported social-history
-    // smoking condition, so the risk-gated screening rules (lung LDCT / AAA) read
-    // structured data without a re-derivation drift. The condition row stays the
-    // /conditions display artifact; adoptSmokingStatusFromImport skips a manual
-    // entry (a user correction always wins) and otherwise seeds status only —
-    // pack-years aren't in a CCD. Single-valued per profile, so one winning row.
-    const smokingCond = input.conditions.find((c) =>
-      c.external_id?.startsWith("ccda:social-smoking:")
+    if (info.changes > 0) immCount++;
+  }
+  // An import defers to existing body-metrics rows on the same date (manual,
+  // integration, or another document) so a retrospective scan can't stack a
+  // duplicate point or outrank a manual entry — but only per measure: an
+  // import's weight for a date that only has an integration resting-HR row is
+  // still stored (undeferredBodyMetrics, tested). `coverage` is the DB probe.
+  const rowsToInsert = undeferredBodyMetrics(input.bodyMetrics, (date) => {
+    const c = coverage.get(date, profileId) as
+      { w: number | null; bf: number | null; rhr: number | null } | undefined;
+    return {
+      weight_kg: !!c?.w,
+      body_fat_pct: !!c?.bf,
+      resting_hr: !!c?.rhr,
+    };
+  });
+  for (const w of rowsToInsert) {
+    insMetric.run(
+      w.date,
+      w.weight_kg,
+      w.body_fat_pct,
+      w.resting_hr,
+      docSource,
+      profileId
     );
-    if (smokingCond) {
-      adoptSmokingStatusFromImport(
-        profileId,
-        smokingStatusToStructured({
-          code: smokingCond.code,
-          display: smokingCond.name,
-        })
-      );
+    bodyMetricCount++;
+  }
+  // Body-height samples → metric_samples. Defer a date another source
+  // already covers (never overwrite manual/integration/another-document height),
+  // else insert a point sample keyed by the date. heightsFromReadings already
+  // reduced to one plausible value per date.
+  for (const h of input.heights) {
+    if (heightCovered.get(profileId, h.date)) continue;
+    const info = insHeight.run(
+      profileId,
+      sampleSource,
+      h.date,
+      h.date,
+      h.date,
+      h.height_cm
+    );
+    if (info.changes > 0) heightCount++;
+  }
+  // Head-circumference samples → metric_samples, same defer-then-insert
+  // rule as height: never overwrite a date another source already covers.
+  for (const h of input.headCircs) {
+    if (headCircCovered.get(profileId, h.date)) continue;
+    const info = insHeadCirc.run(
+      profileId,
+      sampleSource,
+      h.date,
+      h.date,
+      h.date,
+      h.head_circumference_cm
+    );
+    if (info.changes > 0) headCircCount++;
+  }
+  for (const r of input.records) {
+    const info = insRec.run(
+      r.date,
+      r.category,
+      r.name,
+      r.value,
+      r.value_num,
+      r.unit,
+      r.reference_range,
+      r.notes,
+      r.panel,
+      r.flag,
+      r.canonical,
+      docId,
+      r.source,
+      scopedExternalId(r.external_id),
+      providerIdFor(r.provider),
+      profileId
+    );
+    if (info.changes > 0) {
+      recCount++;
+      insertedRecordIds.push(Number(info.lastInsertRowid));
     }
-    for (const e of input.encounters) {
-      insEncounter.run(
-        e.date,
-        e.end_date,
-        e.type,
-        e.class_code,
-        e.reason,
-        e.diagnoses.length ? e.diagnoses.join("; ") : null,
-        e.notes,
-        providerIdFor(e.provider),
-        providerIdFor(e.location),
-        docSource,
-        docId,
-        scopedExternalId(e.external_id),
-        profileId
-      );
-    }
-    for (const p of input.procedures) {
-      insProcedure.run(
-        p.name,
-        p.code,
-        p.code_system,
-        p.date,
-        providerIdFor(p.provider),
-        docSource,
-        docId,
-        scopedExternalId(p.external_id),
-        profileId
-      );
-    }
-    for (const f of input.familyHistory) {
-      insFamilyHistory.run(
-        f.relation,
-        f.condition,
-        f.code,
-        f.code_system,
-        f.onset_age,
-        f.deceased,
-        docSource,
-        docId,
-        scopedExternalId(f.external_id),
-        profileId
-      );
-    }
-    for (const c of input.carePlanItems) {
-      insCarePlanItem.run(
-        c.description,
-        c.code,
-        c.code_system,
-        c.category,
-        c.planned_date,
-        c.status,
-        providerIdFor(c.provider),
-        docSource,
-        docId,
-        scopedExternalId(c.external_id),
-        profileId
-      );
-    }
-    for (const g of input.careGoals) {
-      insCareGoal.run(
-        g.description,
-        g.code,
-        g.code_system,
-        g.target_date,
-        g.status,
-        docSource,
-        docId,
-        scopedExternalId(g.external_id),
-        profileId
-      );
-    }
-    // Project each prescription record into a structured medication row. The
-    // name-dedup set starts from the meds that survived the delete-set (manual +
-    // other documents') and grows as we insert, so neither a manual med nor a
-    // repeated prescription within this document produces a duplicate. Skipped
-    // rows still live on in medical_records (inserted above); the passport's
-    // name-based fallback shows them until/unless they're structured.
-    persistExtractedMedications(profileId, docId, input.records, {
+  }
+  for (const a of input.allergies) {
+    insAllergy.run(
+      a.substance,
+      a.substance_code,
+      a.substance_code_system,
+      a.reaction,
+      a.severity,
+      a.status,
+      a.onset_date,
+      docSource,
+      docId,
+      scopedExternalId(a.external_id),
+      profileId
+    );
+  }
+  for (const c of input.conditions) {
+    insCondition.run(
+      c.name,
+      c.code,
+      c.code_system,
+      c.status,
+      c.onset_date,
+      c.resolved_date,
+      docSource,
+      docId,
+      scopedExternalId(c.external_id),
+      profileId
+    );
+  }
+  // Seed the STRUCTURED smoking record (#83) from the imported social-history
+  // smoking condition, so the risk-gated screening rules (lung LDCT / AAA) read
+  // structured data without a re-derivation drift. The condition row stays the
+  // /conditions display artifact; adoptSmokingStatusFromImport skips a manual
+  // entry (a user correction always wins) and otherwise seeds status only —
+  // pack-years aren't in a CCD. Single-valued per profile, so one winning row.
+  const smokingCond = input.conditions.find((c) =>
+    c.external_id?.startsWith("ccda:social-smoking:")
+  );
+  if (smokingCond) {
+    adoptSmokingStatusFromImport(
+      profileId,
+      smokingStatusToStructured({
+        code: smokingCond.code,
+        display: smokingCond.name,
+      })
+    );
+  }
+  for (const e of input.encounters) {
+    insEncounter.run(
+      e.date,
+      e.end_date,
+      e.type,
+      e.class_code,
+      e.reason,
+      e.diagnoses.length ? e.diagnoses.join("; ") : null,
+      e.notes,
+      providerIdFor(e.provider),
+      providerIdFor(e.location),
+      docSource,
+      docId,
+      scopedExternalId(e.external_id),
+      profileId
+    );
+  }
+  for (const p of input.procedures) {
+    insProcedure.run(
+      p.name,
+      p.code,
+      p.code_system,
+      p.date,
+      providerIdFor(p.provider),
+      docSource,
+      docId,
+      scopedExternalId(p.external_id),
+      profileId
+    );
+  }
+  for (const f of input.familyHistory) {
+    insFamilyHistory.run(
+      f.relation,
+      f.condition,
+      f.code,
+      f.code_system,
+      f.onset_age,
+      f.deceased,
+      docSource,
+      docId,
+      scopedExternalId(f.external_id),
+      profileId
+    );
+  }
+  for (const c of input.carePlanItems) {
+    insCarePlanItem.run(
+      c.description,
+      c.code,
+      c.code_system,
+      c.category,
+      c.planned_date,
+      c.status,
+      providerIdFor(c.provider),
+      docSource,
+      docId,
+      scopedExternalId(c.external_id),
+      profileId
+    );
+  }
+  for (const g of input.careGoals) {
+    insCareGoal.run(
+      g.description,
+      g.code,
+      g.code_system,
+      g.target_date,
+      g.status,
+      docSource,
+      docId,
+      scopedExternalId(g.external_id),
+      profileId
+    );
+  }
+  // Project each prescription record into a structured medication row. The
+  // name-dedup set starts from the meds that survived the delete-set (manual +
+  // other documents') and grows as we insert, so neither a manual med nor a
+  // repeated prescription within this import produces a duplicate. Skipped
+  // rows still live on in medical_records (inserted above); the passport's
+  // name-based fallback shows them until/unless they're structured.
+  const medCount = persistExtractedMedications(
+    profileId,
+    docId,
+    input.records,
+    {
       existing: existingMeds.all(profileId) as { name: string }[],
       insMed,
       insMedDose,
-    });
-    // The toast + Review feed report ONE "N items imported" number. Tally it off
-    // the footprint tables here — after every insert loop — so it counts every
-    // clinical kind an import wrote, not just the immunizations + records the old
-    // `immCount + recCount` saw (#212).
-    extractedCount = countImportedDocumentRows(profileId, docId);
-    db.prepare(
-      `UPDATE medical_documents
-         SET extraction_status = 'done', extracted_count = ?, doc_type = ?,
-             source = ?, document_date = ?, patient_name = ?, raw_extraction = ?,
-             model = ?, import_report = ?, extraction_error = NULL
-       WHERE id = ? AND profile_id = ?`
-    ).run(
-      extractedCount,
-      input.meta.docType,
-      input.meta.source,
-      input.meta.documentDate,
-      input.meta.patientName,
-      input.meta.raw,
-      input.meta.model,
-      // The import DEBUGGER report — refreshed on every
-      // reprocess so it always reflects the current parse (idempotent).
-      input.meta.importReport,
-      docId,
-      profileId
-    );
-  });
-  tx();
+    }
+  );
 
-  return { immCount, recCount, extractedCount, insertedRecordIds };
+  return {
+    immCount,
+    recCount,
+    medCount,
+    bodyMetricCount,
+    heightCount,
+    headCircCount,
+    insertedRecordIds,
+  };
 }
 
 type Stmt = Database.Statement;
 
-// Project a document's prescription records into structured kind='medication'
-// intake_items rows (+ their dose rows). Runs inside persistDocumentImport's
-// transaction, after this document's prior extracted meds were cleared.
+// Project an import's prescription records into structured kind='medication'
+// intake_items rows (+ their dose rows). Runs inside insertImportRows' caller
+// transaction; for a document import, after this document's prior extracted meds
+// were cleared. `docId` is null for a documentless (paste) import — the med row
+// then carries a NULL document_id, manual-like. Returns the count of meds created.
 //
 // Dedup: an extracted med whose cleaned/grouping name already belongs to an
 // existing medication (manual or from another document) is SKIPPED — it stays a
@@ -678,12 +807,12 @@ type Stmt = Database.Statement;
 // (never scheduled-due) rather than a fabricated daily reminder.
 function persistExtractedMedications(
   profileId: number,
-  docId: number,
+  docId: number | null,
   records: PersistRecord[],
   ctx: { existing: { name: string }[]; insMed: Stmt; insMedDose: Stmt }
-): void {
+): number {
   const prescriptions = records.filter((r) => r.category === "prescription");
-  if (prescriptions.length === 0) return;
+  if (prescriptions.length === 0) return 0;
 
   const seen = new Set(
     ctx.existing.map((m) => cleanMedicationName(m.name).toLowerCase())
@@ -710,6 +839,12 @@ function persistExtractedMedications(
       value: r.value,
       unit: r.unit,
       notes: r.notes,
+      // Structured attribution the CCD/FHIR mappers resolved — wins over the
+      // free-text scrape so an imported med carries its real prescriber/pharmacy/
+      // Rx number instead of NULL (#417).
+      prescriber: r.prescriber ?? null,
+      pharmacy: r.pharmacy ?? null,
+      rxNumber: r.rxNumber ?? null,
     });
     const key = med.name.toLowerCase();
     if (seen.has(key)) continue; // already a manual/other-doc med — don't duplicate
@@ -761,6 +896,7 @@ function persistExtractedMedications(
       ctx.insMedDose.run(medId, med.strength, null, 0);
     }
   }
+  return order.length;
 }
 
 // The best-effort follow-ups every import runs after its rows are committed:

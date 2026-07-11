@@ -89,6 +89,10 @@ function makeInput(): PersistInput {
         external_id: "med:rx",
         loinc: null,
         provider: null,
+        // Structured attribution resolved by the CCD/FHIR mappers (#417).
+        prescriber: "Dr. Ada Prescriber",
+        pharmacy: "Test Pharmacy #12",
+        rxNumber: "RX-555031",
       },
     ],
     immunizations: [
@@ -473,6 +477,23 @@ describe("per-tab document listings", () => {
     const meds = getDocumentMedications(profileA, docA);
     expect(meds).toHaveLength(1);
     expect(meds[0].kind).toBe("medication");
+    // #417: the structured prescriber / pharmacy / Rx number the mapper resolved
+    // land on the intake_items row (not left NULL).
+    const medRow = db
+      .prepare(
+        `SELECT prescriber, pharmacy, rx_number FROM intake_items
+           WHERE profile_id = ? AND kind = 'medication' AND document_id = ?`
+      )
+      .get(profileA, docA) as {
+      prescriber: string | null;
+      pharmacy: string | null;
+      rx_number: string | null;
+    };
+    expect(medRow).toMatchObject({
+      prescriber: "Dr. Ada Prescriber",
+      pharmacy: "Test Pharmacy #12",
+      rx_number: "RX-555031",
+    });
 
     const body = getDocumentBodyRows(profileA, docA);
     expect(body.bodyMetrics).toMatchObject([{ date: DATE, weight_kg: 82 }]);
