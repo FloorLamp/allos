@@ -739,3 +739,101 @@ if (
 }
 
 console.log(`e2e: seeded percent-strength medication "${PCT_MED_NAME}" (#272)`);
+
+// ── Import-detail tabbed records-browser fixture (issue #271) ─────────────────
+// A 'done' document that produced rows across several kinds — labs + a
+// prescription (medical_records), a visit, a condition, an immunization, and a
+// referenced provider — so the records browser has a multi-tab strip to render:
+// default tab, ?tab= selection, category-correct row links (the prescription →
+// /medicine regression), the read-only visit listing deep-linking to
+// /encounters/[id], and the non-link Providers chip. Fixed id 908; all content
+// synthetic (fictional analytes/clinic/patient — no real PHI).
+const BROWSER_DOC_ID = 908;
+const BROWSER_DOC_SOURCE = `document:${BROWSER_DOC_ID}`;
+db.prepare(`DELETE FROM medical_records WHERE document_id = ?`).run(
+  BROWSER_DOC_ID
+);
+db.prepare(`DELETE FROM encounters WHERE document_id = ?`).run(BROWSER_DOC_ID);
+db.prepare(`DELETE FROM conditions WHERE document_id = ?`).run(BROWSER_DOC_ID);
+db.prepare(`DELETE FROM immunizations WHERE source = ?`).run(
+  BROWSER_DOC_SOURCE
+);
+db.prepare(`DELETE FROM medical_documents WHERE id = ?`).run(BROWSER_DOC_ID);
+db.prepare(
+  `INSERT INTO medical_documents
+     (id, profile_id, filename, stored_path, mime_type, size_bytes, doc_type,
+      source, extraction_status, extracted_count, uploaded_at)
+   VALUES (?, ?, 'e2e-records-browser.xml', '', 'application/xml', 4096,
+           'MyChart export (CCD/XDM)', 'ccda', 'done', 6, '2026-07-08 09:50:00')`
+).run(BROWSER_DOC_ID, PROFILE_ID);
+// A provider referenced by one lab row → the Providers count chip shows 1.
+db.prepare(
+  `DELETE FROM providers WHERE dedup_key = 'e2e-browser-clinic'`
+).run();
+const browserProviderId = Number(
+  db
+    .prepare(
+      `INSERT INTO providers (name, type, dedup_key)
+       VALUES ('E2E Browser Clinic', 'organization', 'e2e-browser-clinic')`
+    )
+    .run().lastInsertRowid
+);
+const insBrowserRecord = db.prepare(
+  `INSERT INTO medical_records
+     (profile_id, date, category, name, value, value_num, unit, panel,
+      canonical_name, document_id, provider_id, source)
+   VALUES (?, '2026-06-20', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ccda')`
+);
+insBrowserRecord.run(
+  PROFILE_ID,
+  "lab",
+  "Ferritin",
+  "95",
+  95,
+  "ng/mL",
+  "E2E Iron Panel",
+  "Ferritin",
+  BROWSER_DOC_ID,
+  browserProviderId
+);
+insBrowserRecord.run(
+  PROFILE_ID,
+  "lab",
+  "E2E Novel Lab",
+  "1.2",
+  1.2,
+  "mg/L",
+  "E2E Iron Panel",
+  null,
+  BROWSER_DOC_ID,
+  null
+);
+insBrowserRecord.run(
+  PROFILE_ID,
+  "prescription",
+  "E2E Amoxicillin 500 mg",
+  null,
+  null,
+  null,
+  null,
+  "E2E Amoxicillin 500 mg",
+  BROWSER_DOC_ID,
+  null
+);
+db.prepare(
+  `INSERT INTO encounters
+     (profile_id, date, type, class_code, reason, document_id, source)
+   VALUES (?, '2026-06-20', 'Office Visit', 'AMB', 'E2E annual physical', ?, 'ccda')`
+).run(PROFILE_ID, BROWSER_DOC_ID);
+db.prepare(
+  `INSERT INTO conditions (profile_id, name, status, document_id, source)
+   VALUES (?, 'E2E Hay fever', 'active', ?, 'ccda')`
+).run(PROFILE_ID, BROWSER_DOC_ID);
+db.prepare(
+  `INSERT INTO immunizations (profile_id, date, vaccine, dose_label, source)
+   VALUES (?, '2026-06-20', 'E2E Tdap', 'booster', ?)`
+).run(PROFILE_ID, BROWSER_DOC_SOURCE);
+
+console.log(
+  `e2e: seeded import document ${BROWSER_DOC_ID} with labs + prescription + visit + condition + immunization for the records browser (#271)`
+);

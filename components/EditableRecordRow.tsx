@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
 import type { MedicalRecord } from "@/lib/types";
+import { recordNameLink } from "@/lib/import-browser";
 import { Tag, MedicalValue } from "./ui";
 import RecordForm from "./RecordForm";
 import OverflowMenu, { MENU_ITEM, MENU_ITEM_DANGER } from "./OverflowMenu";
@@ -14,7 +14,6 @@ import { updateRecord, deleteRecord } from "@/app/(app)/medical/actions";
 export default function EditableRecordRow({
   record,
   grouped,
-  filterCategory = false,
 }: {
   record: MedicalRecord;
   // When the table is name-sorted it groups contiguous same-name rows (like the
@@ -22,28 +21,17 @@ export default function EditableRecordRow({
   // group-closing border falls only on its end row. Omit for ungrouped tables,
   // where every row shows its name and draws a border.
   grouped?: { isGroupStart: boolean; isGroupEnd: boolean };
-  // When true, the category chip becomes a filter link that sets `?category=` on
-  // the current path (preserving other params) — matching the biomarkers table.
-  // Opt-in so a host without a category filter renders a static chip.
-  filterCategory?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const confirm = useConfirm();
   const undoable = useUndoableDelete();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
   const r = record;
 
-  // Href that filters this table to the row's category while preserving sort/dir/
-  // range/q (mirrors the biomarkers category link). Null when not filterable.
-  const categoryHref = (() => {
-    if (!filterCategory) return null;
-    const sp = new URLSearchParams(searchParams.toString());
-    sp.set("category", r.category);
-    const s = sp.toString();
-    return s ? `${pathname}?${s}` : pathname;
-  })();
+  // Category-correct name link (#271): series categories link to the biomarker
+  // series view, prescriptions to /medicine, scans/notes get NO link rather than
+  // a wrong one. Pure decision in lib/import-browser.
+  const nameLink = recordNameLink(r.category, r.canonical_name);
 
   if (!editing) {
     const showName = grouped ? grouped.isGroupStart : true;
@@ -54,11 +42,11 @@ export default function EditableRecordRow({
     return (
       <tr className={rowBorder}>
         <td className="td font-medium">
-          {!showName ? null : r.canonical_name ? (
+          {!showName ? null : nameLink ? (
             <Link
-              href={`/biomarkers/view?name=${encodeURIComponent(r.canonical_name)}`}
+              href={nameLink.href}
               className="text-brand-700 hover:underline dark:text-brand-400"
-              title={`View ${r.canonical_name} over time`}
+              title={nameLink.title}
             >
               {r.name}
             </Link>
@@ -85,17 +73,7 @@ export default function EditableRecordRow({
           {r.notes ?? ""}
         </td>
         <td className="td">
-          {categoryHref ? (
-            <Link
-              href={categoryHref}
-              title={`Filter by ${r.category}`}
-              className="hover:opacity-80"
-            >
-              <Tag value={r.category} />
-            </Link>
-          ) : (
-            <Tag value={r.category} />
-          )}
+          <Tag value={r.category} />
         </td>
         <td className="td whitespace-nowrap">{r.date}</td>
         <td className="td">

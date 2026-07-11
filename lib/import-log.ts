@@ -151,9 +151,13 @@ export function interleaveImportLog<
   });
 }
 
-// ---- "What it produced" breakdown ----
+// ---- "What it produced" counts ----
 
 // Raw per-kind counts a document import produced (from lib/queries/imports.ts).
+// One field per IMPORT_FOOTPRINT_TABLES entry (lib/import-persist.ts) — the same
+// footprint extracted_count totals (#212) — plus the provider-reference count.
+// The tabbed records browser (lib/import-browser.ts) turns this into its tab
+// strip, so the tab counts and the toast/Review-feed tally share one source.
 export interface DocumentProducedCounts {
   // medical_records grouped by their `category` column.
   recordsByCategory: { category: string; count: number }[];
@@ -161,6 +165,10 @@ export interface DocumentProducedCounts {
   allergies: number;
   conditions: number;
   encounters: number;
+  procedures: number;
+  familyHistory: number;
+  carePlanItems: number;
+  careGoals: number;
   medications: number;
   bodyMetrics: number;
   heightSamples: number;
@@ -169,80 +177,12 @@ export interface DocumentProducedCounts {
   providers: number;
 }
 
-// A shaped, display-ready breakdown row: a label, the count, and where those rows
-// now live (null when there's no dedicated destination — e.g. providers).
-export interface ProducedRow {
-  key: string;
-  label: string;
-  count: number;
-  href: string | null;
-}
-
-// Display label + destination for a medical_records category.
-function categoryTarget(category: string): { label: string; href: string } {
-  switch (category) {
-    case "lab":
-      return { label: "Labs", href: "/biomarkers" };
-    case "biomarker":
-      return { label: "Biomarkers", href: "/biomarkers" };
-    case "genomics":
-      return { label: "Genomics", href: "/biomarkers" };
-    case "vitals":
-      return { label: "Vitals", href: "/biomarkers" };
-    case "scan":
-      return { label: "Imaging / scans", href: "/biomarkers" };
-    case "prescription":
-      return { label: "Prescriptions", href: "/medicine" };
-    default:
-      return { label: category, href: "/biomarkers" };
-  }
-}
-
-// Turn raw counts into an ordered list of non-zero display rows, each linking to
-// where the produced rows now live. The total (below) drives the empty state.
-export function shapeProducedBreakdown(
-  counts: DocumentProducedCounts
-): ProducedRow[] {
-  const rows: ProducedRow[] = [];
-  for (const r of counts.recordsByCategory) {
-    if (r.count <= 0) continue;
-    const t = categoryTarget(r.category);
-    rows.push({
-      key: `records:${r.category}`,
-      label: t.label,
-      count: r.count,
-      href: t.href,
-    });
-  }
-  const add = (
-    key: string,
-    label: string,
-    count: number,
-    href: string | null
-  ) => {
-    if (count > 0) rows.push({ key, label, count, href });
-  };
-  add("immunizations", "Immunizations", counts.immunizations, "/immunizations");
-  add("allergies", "Allergies", counts.allergies, "/allergies");
-  add("conditions", "Conditions", counts.conditions, "/conditions");
-  add("encounters", "Visits", counts.encounters, "/encounters");
-  add("medications", "Medications", counts.medications, "/medicine");
-  add("bodyMetrics", "Body metrics", counts.bodyMetrics, "/trends?tab=body");
-  add("height", "Height", counts.heightSamples, "/trends?tab=body");
-  add(
-    "headCirc",
-    "Head circumference",
-    counts.headCircSamples,
-    "/trends?tab=body"
-  );
-  // Providers live in a shared global registry with no dedicated page — surfaced
-  // as a count only (no link).
-  add("providers", "Providers", counts.providers, null);
-  return rows;
-}
-
-// Sum of everything a breakdown produced, so the detail view can show an empty
-// state when an import created no rows (e.g. a failed extraction).
+// Sum of everything an import produced, so the detail view can show an empty
+// state when an import created no rows (e.g. a failed extraction). Providers are
+// deliberately excluded — they're global-registry references, not per-profile
+// rows, and are likewise excluded from extracted_count (#212). This must agree
+// with the stored extracted_count for a freshly-persisted document (pinned by a
+// DB-tier test against countImportedDocumentRows).
 export function producedTotal(counts: DocumentProducedCounts): number {
   return (
     counts.recordsByCategory.reduce((n, r) => n + r.count, 0) +
@@ -250,6 +190,10 @@ export function producedTotal(counts: DocumentProducedCounts): number {
     counts.allergies +
     counts.conditions +
     counts.encounters +
+    counts.procedures +
+    counts.familyHistory +
+    counts.carePlanItems +
+    counts.careGoals +
     counts.medications +
     counts.bodyMetrics +
     counts.heightSamples +
