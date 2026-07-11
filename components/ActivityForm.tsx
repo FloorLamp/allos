@@ -16,6 +16,7 @@ import {
   variantOf,
   composeVariant,
   baseLiftName,
+  exerciseHistoryKey,
 } from "@/lib/lifts";
 import { formatLongDate } from "@/lib/format-date";
 import type { ActivitySuggestions, ExerciseHistoryMap } from "@/lib/queries";
@@ -371,7 +372,7 @@ export default function ActivityForm({
         if (!isUnilateral(name))
           return { ...p, ...extra, name, perSide: false };
         if (isEdit) return { ...p, ...extra, name }; // keep the toggle as loaded
-        const latest = history[name.trim().toLowerCase()]?.sessions[0];
+        const latest = history[exerciseHistoryKey(name)]?.sessions[0];
         const perSide = !!latest?.sets.some(
           (s) =>
             s.weight_kg_right != null ||
@@ -384,37 +385,38 @@ export default function ActivityForm({
   }
   // The most recent implement used for a variant base (across all its variants):
   // the composed variant name plus any custom implement id, or null if untrained.
+  // History merges a base's variants under one canonical key (#331), so the base's
+  // most recent session is history[exerciseHistoryKey(base)].sessions[0]; that
+  // session's own logged name recovers which concrete variant was last used.
   function lastUsedVariant(
     base: string
   ): { name: string; equipmentId: number | null } | null {
-    const baseKey = base.trim().toLowerCase();
-    let best: { date: string; key: string; equipment: string | null } | null =
-      null;
-    for (const [key, h] of Object.entries(history)) {
-      if (!h.sessions.length || baseLiftName(key).toLowerCase() !== baseKey)
-        continue;
-      const s = h.sessions[0];
-      if (!best || s.date > best.date)
-        best = { date: s.date, key, equipment: s.equipment };
-    }
-    if (!best) return null;
-    const v = variantOf(best.key);
+    const s = history[exerciseHistoryKey(base)]?.sessions[0];
+    if (!s) return null;
+    const v = variantOf(s.exercise);
     const name = v
       ? v.equipment
         ? composeVariant(v.group, v.equipment)
         : v.group.name
-      : best.key;
-    const equipmentId = best.equipment
+      : s.exercise;
+    const equipmentId = s.equipment
       ? (equipmentList.find(
-          (e) => e.name.toLowerCase() === best!.equipment!.toLowerCase()
+          (e) => e.name.toLowerCase() === s.equipment!.toLowerCase()
         )?.id ?? null)
       : null;
     return { name, equipmentId };
   }
-  // The custom implement id used in the most recent session of an exact exercise
-  // name, or null.
+  // The custom implement id used in the most recent session of an exercise. The
+  // merged history is keyed by the canonical base (#331); prefer the newest
+  // session logged under the exact name, else the base's newest session.
   function lastEquipmentId(name: string): number | null {
-    const eqName = history[name.trim().toLowerCase()]?.sessions[0]?.equipment;
+    const sessions = history[exerciseHistoryKey(name)]?.sessions;
+    if (!sessions?.length) return null;
+    const exact = name.trim().toLowerCase();
+    const s =
+      sessions.find((se) => se.exercise.trim().toLowerCase() === exact) ??
+      sessions[0];
+    const eqName = s.equipment;
     if (!eqName) return null;
     return (
       equipmentList.find((e) => e.name.toLowerCase() === eqName.toLowerCase())

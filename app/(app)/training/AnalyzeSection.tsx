@@ -13,6 +13,7 @@ import {
   type SportStat,
 } from "@/lib/queries";
 import { requireSession } from "@/lib/auth";
+import { exerciseHistoryKey } from "@/lib/lifts";
 import { getUnitPrefs, getUserSex } from "@/lib/settings";
 import type { Sex } from "@/lib/types";
 import { today } from "@/lib/db";
@@ -363,7 +364,7 @@ function strengthView({
             stat={stat}
             bodyweightKg={bodyweightKg}
             units={units}
-            recent={recentByExercise[stat.exercise.toLowerCase()]}
+            recent={recentByExercise[exerciseHistoryKey(stat.exercise)]}
             goals={goals}
             goalProgress={goalProgress}
             showTrend={false}
