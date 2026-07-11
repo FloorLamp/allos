@@ -526,7 +526,9 @@ export function entriesToImportResult(
   const unmappedLoincs = tallyUnmappedLoincs(
     records
       .filter((rec) => isUnmappedLabLoinc(rec.loinc))
-      .map((rec) => ({ loinc: rec.loinc, name: rec.name }))
+      // unit is catalog identity (it rides into the "Report unmapped code"
+      // prefill) — never the measured value itself.
+      .map((rec) => ({ loinc: rec.loinc, name: rec.name, unit: rec.unit }))
   );
   const report: ImportReport = {
     drops,

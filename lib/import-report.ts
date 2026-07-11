@@ -57,6 +57,10 @@ export interface UnmappedLoinc {
   loinc: string;
   name: string; // the printed / display name the reading imported under
   count: number;
+  // The unit the readings carried (catalog identity, like the code and name — NOT
+  // the user's measured value). Optional: reports stored before this field, and
+  // unit-less readings, leave it unset. Used by the "Report unmapped code" prefill.
+  unit?: string | null;
 }
 
 // One section (CDA) or resource type (FHIR) the document contained, and whether
@@ -100,23 +104,63 @@ export function emptyReport(): ImportReport {
 // unmapped codes" reads straight off the list. Used both by the parsers (each
 // reading counts once) and by mergeReports (summing the per-document tallies).
 export function tallyUnmappedLoincs(
-  items: { loinc: string | null | undefined; name: string; count?: number }[]
+  items: {
+    loinc: string | null | undefined;
+    name: string;
+    count?: number;
+    unit?: string | null;
+  }[]
 ): UnmappedLoinc[] {
   const byLoinc = new Map<string, UnmappedLoinc>();
   for (const it of items) {
     if (!it.loinc) continue;
     const prev = byLoinc.get(it.loinc);
-    if (prev) prev.count += it.count ?? 1;
-    else
+    if (prev) {
+      prev.count += it.count ?? 1;
+      // Keep the first unit seen for the code (a code's unit is stable in practice).
+      if (prev.unit == null && it.unit != null) prev.unit = it.unit;
+    } else
       byLoinc.set(it.loinc, {
         loinc: it.loinc,
         name: it.name,
         count: it.count ?? 1,
+        unit: it.unit ?? null,
       });
   }
   return [...byLoinc.values()].sort(
     (a, b) => b.count - a.count || a.loinc.localeCompare(b.loinc)
   );
+}
+
+// ---- "Report unmapped code" prefill (#270) ----
+
+// The public repo's new-issue endpoint the "Report unmapped code" action opens.
+const NEW_ISSUE_URL = "https://github.com/FloorLamp/allos/issues/new";
+
+// Build the prefilled GitHub new-issue URL for one unmapped code.
+//
+// PHI GUARD (hard requirement, #270): the prefill contains ONLY the LOINC code,
+// the analyte display name, and the unit — catalog identity, the same fields the
+// public LOINC database publishes. It must NEVER include measured values, dates,
+// reference ranges, or provider/patient strings: the URL opens a PUBLIC GitHub
+// issue. The parameter type is deliberately narrowed to exactly those three
+// fields, and lib/__tests__/import-report.test.ts pins the emitted field set.
+export function unmappedCodeIssueUrl(u: {
+  loinc: string;
+  name: string;
+  unit?: string | null;
+}): string {
+  const title = `Unmapped LOINC ${u.loinc}: ${u.name}`;
+  const body = [
+    "A health-record import surfaced a lab code with no canonical mapping, so its readings don't group with a canonical biomarker or pick up its reference band.",
+    "",
+    `- LOINC: \`${u.loinc}\``,
+    `- Display name: ${u.name}`,
+    `- Unit: ${u.unit ? `\`${u.unit}\`` : "(none carried)"}`,
+    "",
+    "Please consider adding this code to the canonical biomarker map (`scripts/gen-canonical-biomarkers.ts` / `lib/biomarker-loinc.ts`).",
+  ].join("\n");
+  return `${NEW_ISSUE_URL}?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
 }
 
 // ---- drop counting ----
@@ -190,6 +234,39 @@ export function groupDropsByReason(drops: ImportDrop[]): DropGroup[] {
     }
   }
   return groups;
+}
+
+// One collapsed row in the Dropped list: every drop in a reason-group sharing the
+// same (label, section) folded into a single row with a ×count (#270 — a
+// real-world CCD produces hundreds of near-identical drops, e.g. the same
+// null-flavored "Comment(s)" row once per panel).
+export interface CollapsedDrop {
+  kind: DropKind;
+  label: string;
+  section?: string;
+  count: number;
+}
+
+// Collapse a reason-group's drops per (label, section), preserving first-seen
+// order. `kind` follows the first occurrence (drops sharing a label+section within
+// one reason are the same candidate shape in practice). The counts sum back to
+// drops.length, so the group-header badge can keep showing the true total.
+export function collapseDrops(drops: ImportDrop[]): CollapsedDrop[] {
+  const byKey = new Map<string, CollapsedDrop>();
+  for (const d of drops) {
+    // \u0000 can't occur in a label/section, so the key can't collide across fields.
+    const key = `${d.label}\u0000${d.section ?? ""}`;
+    const prev = byKey.get(key);
+    if (prev) prev.count += 1;
+    else
+      byKey.set(key, {
+        kind: d.kind,
+        label: d.label,
+        section: d.section,
+        count: 1,
+      });
+  }
+  return [...byKey.values()];
 }
 
 // ---- coverage summary ----

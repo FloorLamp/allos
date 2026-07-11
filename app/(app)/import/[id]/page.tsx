@@ -31,8 +31,10 @@ import {
   parseImportReport,
   summarizeCoverage,
   groupDropsByReason,
+  collapseDrops,
   rowDropCount,
   isRowDrop,
+  unmappedCodeIssueUrl,
 } from "@/lib/import-report";
 
 export const dynamic = "force-dynamic";
@@ -323,18 +325,22 @@ export default async function ImportDetailPage(props: {
         {/* Unmapped lab codes (import debugger, Fix 3): imported, but under their
             raw name because their LOINC has no canonical mapping yet. */}
         {report && unmappedLoincs.length > 0 && (
-          <div className="card">
+          <div className="card" data-testid="unmapped-loincs-card">
             <h2 className="mb-1 font-semibold text-slate-800 dark:text-slate-100">
               Unmapped lab codes ({unmappedLoincs.length})
             </h2>
             <p className="mb-3 text-xs text-slate-400 dark:text-slate-500">
-              These labs imported under their printed name, but their LOINC has
-              no entry in the canonical map — so they don’t group with the
-              matching biomarker or pick up its reference band. Add the code to{" "}
+              These labs <strong>are imported</strong> under their printed name
+              — nothing was lost — but their LOINC has no entry in the canonical
+              map, so they don’t trend with the matching biomarker or pick up
+              its reference band. Add the code to{" "}
               <code className="rounded bg-slate-100 px-1 dark:bg-ink-800">
                 lib/biomarker-loinc.ts
               </code>{" "}
-              to canonicalize them.
+              to canonicalize them, or report it below.{" "}
+              <strong>Report unmapped code</strong> opens a{" "}
+              <em>public GitHub issue</em> prefilled with only the code, name,
+              and unit — never your values, dates, or personal details.
             </p>
             <ul className="text-sm text-slate-600 dark:text-slate-300">
               {unmappedLoincs.map((u) => (
@@ -346,11 +352,26 @@ export default async function ImportDetailPage(props: {
                     {u.loinc}
                   </code>
                   <span>{u.name}</span>
+                  {u.unit && (
+                    <span className="text-xs text-slate-400 dark:text-slate-500">
+                      {u.unit}
+                    </span>
+                  )}
                   {u.count > 1 && (
                     <span className="text-xs text-slate-400 dark:text-slate-500">
                       ×{u.count}
                     </span>
                   )}
+                  <a
+                    href={unmappedCodeIssueUrl(u)}
+                    target="_blank"
+                    rel="noopener"
+                    data-testid="report-unmapped-code"
+                    className="ml-auto inline-flex items-center gap-1 text-xs text-brand-700 hover:underline dark:text-brand-400"
+                  >
+                    Report unmapped code{" "}
+                    <IconExternalLink className="h-3.5 w-3.5" />
+                  </a>
                 </li>
               ))}
             </ul>
@@ -359,7 +380,7 @@ export default async function ImportDetailPage(props: {
 
         {/* Dropped candidates (import debugger) */}
         {report && dropGroups.length > 0 && (
-          <div className="card">
+          <div className="card" data-testid="dropped-card">
             <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
               Dropped ({droppedRows})
             </h2>
@@ -368,12 +389,19 @@ export default async function ImportDetailPage(props: {
               allergies and problems (plus duplicates). Encounters, social
               history and some retracted resources aren’t itemized yet, and
               “imported” counts parsed rows before body-metric deferral — so
-              these totals are indicative, not exhaustive.
+              these totals are indicative, not exhaustive. Identical rows are
+              collapsed with a ×N count.
             </p>
-            <div className="space-y-4">
+            {/* Viewport-bounded body (#270): a real-world CCD drops hundreds of
+                rows — the card scrolls internally instead of dominating the page,
+                with each reason header sticky while its group scrolls by. */}
+            <div
+              className="max-h-[50vh] space-y-4 overflow-y-auto"
+              data-testid="dropped-scroll"
+            >
               {dropGroups.map((g) => (
-                <div key={g.reason}>
-                  <div className="mb-1 flex items-center gap-2">
+                <div key={g.reason} data-testid="drop-group">
+                  <div className="sticky top-0 z-10 -mx-1 flex items-center gap-2 rounded bg-white/90 px-1 py-1 backdrop-blur-sm dark:bg-ink-900/90">
                     <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
                       {g.label}
                     </span>
@@ -382,15 +410,24 @@ export default async function ImportDetailPage(props: {
                     </span>
                   </div>
                   <ul className="space-y-0.5 text-sm text-slate-600 dark:text-slate-300">
-                    {g.drops.map((d, i) => (
+                    {collapseDrops(g.drops).map((d) => (
                       <li
-                        key={`${d.label}-${i}`}
+                        key={`${d.label}-${d.section ?? ""}`}
+                        data-testid="drop-row"
                         className="flex flex-wrap items-baseline gap-x-2 border-b border-black/5 py-1 last:border-0 dark:border-white/10"
                       >
                         <span className="font-medium">{d.label}</span>
                         {d.section && (
                           <span className="text-xs text-slate-400 dark:text-slate-500">
                             {d.section}
+                          </span>
+                        )}
+                        {d.count > 1 && (
+                          <span
+                            data-testid="drop-row-count"
+                            className="tabular-nums text-xs text-slate-400 dark:text-slate-500"
+                          >
+                            ×{d.count}
                           </span>
                         )}
                       </li>

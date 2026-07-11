@@ -21,6 +21,7 @@ import {
   buildCcdaCoverage,
   dedupeDrops,
   recordDropKind,
+  recordDropSection,
   unmappedLoincsFromRecords,
 } from "./coverage";
 import type { ClinicalNote, StandaloneVisitDiagnosis } from "./extractors";
@@ -419,47 +420,56 @@ export function extractFromCcda(
     ...dedupeDrops(
       records,
       (r) => recordDropKind(r.category),
-      (r) => r.name
+      (r) => r.name,
+      (r) => recordDropSection(r.category)
     ),
     ...dedupeDrops(
       immunizations,
       () => "immunization",
-      (i) => i.code
+      (i) => i.code,
+      () => "Immunizations"
     ),
     ...dedupeDrops(
       allergies,
       () => "allergy",
-      (a) => a.substance
+      (a) => a.substance,
+      () => "Allergies"
     ),
     ...dedupeDrops(
       conditions,
       () => "condition",
-      (c) => c.name
+      (c) => c.name,
+      () => "Problems"
     ),
     ...dedupeDrops(
       encounters,
       () => "encounter",
-      (e) => e.type ?? e.date
+      (e) => e.type ?? e.date,
+      () => "Encounters"
     ),
     ...dedupeDrops(
       procedures,
       () => "procedure",
-      (p) => p.name
+      (p) => p.name,
+      () => "Procedures"
     ),
     ...dedupeDrops(
       familyHistory,
       () => "family_history",
-      (f) => `${f.relation ?? "Relative"}: ${f.condition}`
+      (f) => `${f.relation ?? "Relative"}: ${f.condition}`,
+      () => "Family History"
     ),
     ...dedupeDrops(
       carePlanItems,
       () => "care_plan",
-      (c) => c.description
+      (c) => c.description,
+      () => "Care Plan"
     ),
     ...dedupeDrops(
       careGoals,
       () => "care_goal",
-      (g) => g.description
+      (g) => g.description,
+      () => "Goals"
     )
   );
   const imported =
@@ -598,47 +608,56 @@ export function mergeImportResults(results: ImportResult[]): ImportResult {
     ...dedupeDrops(
       records,
       (r) => recordDropKind(r.category),
-      (r) => r.name
+      (r) => r.name,
+      (r) => recordDropSection(r.category)
     ),
     ...dedupeDrops(
       immunizations,
       () => "immunization",
-      (i) => i.code
+      (i) => i.code,
+      () => "Immunizations"
     ),
     ...dedupeDrops(
       allergies,
       () => "allergy",
-      (a) => a.substance
+      (a) => a.substance,
+      () => "Allergies"
     ),
     ...dedupeDrops(
       conditions,
       () => "condition",
-      (c) => c.name
+      (c) => c.name,
+      () => "Problems"
     ),
     ...dedupeDrops(
       encounters,
       () => "encounter",
-      (e) => e.type ?? e.date
+      (e) => e.type ?? e.date,
+      () => "Encounters"
     ),
     ...dedupeDrops(
       procedures,
       () => "procedure",
-      (p) => p.name
+      (p) => p.name,
+      () => "Procedures"
     ),
     ...dedupeDrops(
       familyHistory,
       () => "family_history",
-      (f) => `${f.relation ?? "Relative"}: ${f.condition}`
+      (f) => `${f.relation ?? "Relative"}: ${f.condition}`,
+      () => "Family History"
     ),
     ...dedupeDrops(
       carePlanItems,
       () => "care_plan",
-      (c) => c.description
+      (c) => c.description,
+      () => "Care Plan"
     ),
     ...dedupeDrops(
       careGoals,
       () => "care_goal",
-      (g) => g.description
+      (g) => g.description,
+      () => "Goals"
     ),
   ];
   const perDoc = results
