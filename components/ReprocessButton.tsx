@@ -6,7 +6,7 @@ import {
   reprocessAllDocuments,
   previewReprocessAllCost,
   type ReprocessResult,
-} from "@/app/(app)/medical/actions";
+} from "@/app/(app)/medical/document-actions";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { formatReprocessCost } from "@/lib/reprocess-cost";
 

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { getExtractionStates } from "@/app/(app)/medical/actions";
+import { getExtractionStates } from "@/app/(app)/medical/document-actions";
 import { diffCompletions, shouldResetSeed } from "@/lib/toaster-diff";
 import {
   IconAlertTriangle,
