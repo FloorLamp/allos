@@ -6,3 +6,4 @@ lib/canonical-biomarkers.json
 lib/fitness-norms.json
 lib/strength-standards.json
 lib/icd10-common.json
+lib/bp-percentiles.json

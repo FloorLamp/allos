@@ -27,6 +27,7 @@
     "gen:dri": "tsx scripts/gen-dri.ts",
     "gen:growth": "tsx scripts/gen-growth-charts.ts",
     "gen:fitness-norms": "tsx scripts/gen-fitness-norms.ts",
+    "gen:bp-percentiles": "tsx scripts/gen-bp-percentiles.ts",
     "gen:strength-standards": "tsx scripts/gen-strength-standards.ts",
     "gen:icd10": "tsx scripts/gen-icd10.ts",
     "prepare": "husky"

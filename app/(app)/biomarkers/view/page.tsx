@@ -7,7 +7,7 @@ import {
   getMedicalDocumentsByIds,
   isBiomarkerStarred,
 } from "@/lib/queries";
-import type { CanonicalBiomarker } from "@/lib/types";
+import type { CanonicalBiomarker, Sex } from "@/lib/types";
 import {
   rangeBadge,
   RANGE_BADGE_META,
@@ -25,9 +25,19 @@ import { convertToCanonical, sameUnit } from "@/lib/unit-conversions";
 import { getBiomarkerInfo } from "@/lib/biomarker-info";
 import {
   getUserAgeOn,
+  getUserBirthdate,
   getUserReproductiveStatus,
   getUserSex,
 } from "@/lib/settings";
+import { getLatestMetricSample } from "@/lib/queries";
+import { ageInMonthsFromBirthdate } from "@/lib/date";
+import { measurementPercentile } from "@/lib/growth";
+import {
+  bpComponentFor,
+  pediatricBpContext,
+  type PediatricBpContext,
+} from "@/lib/bp-percentiles";
+import { PediatricBpCard } from "@/components/PediatricBpCard";
 import { today } from "@/lib/db";
 import { requireSession } from "@/lib/auth";
 import { PageHeader, EmptyState, MedicalValue } from "@/components/ui";
@@ -56,6 +66,24 @@ function formatRange(
   if (high != null) return `≤ ${high}${u}`;
   if (low != null) return `≥ ${low}${u}`;
   return null;
+}
+
+// The profile's latest height as a growth-chart percentile (WHO/CDC LMS), for the
+// pediatric BP interpretation (#150). Null when sex/height/birthdate is missing —
+// pediatricBpContext then assumes the 50th height percentile.
+function latestHeightPercentile(
+  profileId: number,
+  sex: Sex | null
+): number | null {
+  if (sex !== "male" && sex !== "female") return null;
+  const h = getLatestMetricSample(profileId, "height_cm");
+  if (!h) return null;
+  const birthdate = getUserBirthdate(profileId);
+  const months = birthdate ? ageInMonthsFromBirthdate(birthdate, h.date) : null;
+  if (months == null) return null;
+  return (
+    measurementPercentile(sex, months, "height", h.value)?.percentile ?? null
+  );
 }
 
 export default async function BiomarkerDetailPage(props: {
@@ -146,6 +174,26 @@ export default async function BiomarkerDetailPage(props: {
     ? plottable[plottable.length - 1]
     : null;
 
+  // Pediatric BP interpretation (#150): for a CHILD, a blood-pressure reading is
+  // judged by the AAP 2017 age/sex/height percentile, not the adult thresholds
+  // (which mis-classify children). When it applies we render the percentile +
+  // category card and SUPPRESS the adult reference range, optimal band, status
+  // badge, and chart bands. Null (→ adult behavior) for any non-BP marker or adult.
+  const bpComponent = bpComponentFor(canonical);
+  let bpCtx: PediatricBpContext | null = null;
+  if (bpComponent && latestPlottable) {
+    bpCtx = pediatricBpContext(
+      bpComponent,
+      convertToCanonical(latestPlottable.value, latestPlottable.r.unit, cb),
+      {
+        sex,
+        ageYears: age,
+        heightPercentile: latestHeightPercentile(profile.id, sex),
+      }
+    );
+  }
+  const pediatricBp = bpCtx != null;
+
   // Charting unit + points + bands. When the biomarker has a canonical unit, we
   // chart in THAT unit, converting every reading we can (so mg/dL and mmol/L
   // results sit on one axis) and drawing the dataset's bands. Readings whose unit
@@ -170,7 +218,7 @@ export default async function BiomarkerDetailPage(props: {
         converted.filter((x) => x.v == null).map((x) => x.r.unit ?? "—")
       ),
     ];
-    if (cbHasRange) {
+    if (cbHasRange && !pediatricBp) {
       bands = {
         refLow: ref.low,
         refHigh: ref.high,
@@ -394,29 +442,35 @@ export default async function BiomarkerDetailPage(props: {
             as of {latest.date}
           </div>
         </div>
-        {referenceEntries.map((e) => (
-          <div key={e.label}>
-            <div className="label">{e.label}</div>
-            <div className="text-sm font-medium text-slate-700 dark:text-slate-200">
-              {e.range}
+        {!pediatricBp &&
+          referenceEntries.map((e) => (
+            <div key={e.label}>
+              <div className="label">{e.label}</div>
+              <div className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                {e.range}
+              </div>
             </div>
-          </div>
-        ))}
-        {optimalEntries.map((e) => (
-          <div key={e.label}>
-            <div className="label">{e.label}</div>
-            <div className="text-sm font-medium text-emerald-700 dark:text-emerald-400">
-              {e.range}
+          ))}
+        {!pediatricBp &&
+          optimalEntries.map((e) => (
+            <div key={e.label}>
+              <div className="label">{e.label}</div>
+              <div className="text-sm font-medium text-emerald-700 dark:text-emerald-400">
+                {e.range}
+              </div>
             </div>
-          </div>
-        ))}
-        {badge !== "unknown" && (
+          ))}
+        {!pediatricBp && badge !== "unknown" && (
           <div>
             <div className="label">Status</div>
             <span className={`badge ${badgeMeta.chip}`}>{badgeMeta.label}</span>
           </div>
         )}
       </div>
+
+      {/* Pediatric BP percentile + AAP category (#150) — child BP readings only,
+          shown INSTEAD OF the adult thresholds; hidden for adults/non-BP markers. */}
+      <PediatricBpCard ctx={bpCtx} />
 
       {/* Age/sex percentile + fitness age (#158) — fitness markers only, hidden
           when sex/age unset. */}
