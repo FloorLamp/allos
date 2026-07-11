@@ -46,6 +46,12 @@ export interface Activity {
   // can't shadow a measured value. Distinct from `kilojoules` (Strava mechanical
   // work). See lib/calorie-estimate.ts.
   est_calories: number | null;
+  // The piece of gear the whole SESSION was performed with (Equipment.id), or NULL
+  // (issue #342). Session-level — a ride's bike, a run's shoes, a sauna session's
+  // sauna — distinct from the per-set implement link (exercise_sets.equipment_id),
+  // which stays for strength. deleteEquipment nulls this so a removed row's history
+  // survives; the FK is enforced (migration 019).
+  equipment_id: number | null;
 }
 
 // A single component of a (possibly multi-type) activity. Strength components

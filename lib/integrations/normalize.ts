@@ -455,6 +455,12 @@ export function upsertActivities(
        (profile_id, date, type, title, duration_min, distance_km, start_time, end_time, ${metricCols}, components, source, external_id)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ${metricPlaceholders}, ?, ?, ?)`
   );
+  // NOTE (#342): equipment_id is deliberately absent from BOTH this UPDATE's column
+  // set and the compareCols above, so a re-sync never clobbers a hand-set session
+  // gear link — the picker is app-only, providers don't supply it. A user who links
+  // gear on an imported row also flips `edited` (saveActivity), so the found.edited
+  // guard below already short-circuits the whole write; this keeps it safe even if
+  // that lock ever changed. Keep equipment_id out of the sync footprint.
   const update = db.prepare(
     `UPDATE activities
        SET date = ?, type = ?, title = ?, duration_min = ?, distance_km = ?,

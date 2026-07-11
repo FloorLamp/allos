@@ -34,6 +34,10 @@ export interface ActivityEditData {
   // Stored estimated calories for a MANUAL activity (issue #151), so an edit
   // preloads the saved value instead of recomputing it. NULL/absent otherwise.
   est_calories?: number | null;
+  // Session-level equipment link (issue #342): the gear the whole activity used
+  // (Equipment.id), or null. Preloads the activity-level picker on edit; distinct
+  // from the per-set implement below (sets[].equipment_id).
+  equipment_id?: number | null;
   sets: {
     exercise: string;
     set_number: number;

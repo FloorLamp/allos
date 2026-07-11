@@ -52,6 +52,10 @@ export interface JournalCardData {
   speedText: string | null;
   // Compact chips for richer imported metrics (HR, elevation, power, etc.).
   metrics: string[];
+  // Session-level gear name (issue #342), e.g. "Road Bike" for a ride — resolved
+  // from activity.equipment_id via the equipmentNames map (retired gear still
+  // labels), or null when the activity has no gear linked.
+  gear: string | null;
   parts: DisplayPart[];
   // Why this row can't be re-saved by the editor as-is (imports, legacy
   // data), or null. See lib/activity-validate.
@@ -263,6 +267,7 @@ export function buildJournalCards({
       created_at: a.created_at,
       updated_at: a.updated_at,
       est_calories: a.est_calories,
+      equipment_id: a.equipment_id,
       sets: aSets.map((s) => ({
         exercise: s.exercise,
         set_number: s.set_number,
@@ -299,6 +304,10 @@ export function buildJournalCards({
         // no estimate can be computed.
         activityEstimateKcal(a, nearestBodyweightKg(weights, a.date))
       ),
+      gear:
+        a.equipment_id != null
+          ? (equipmentNames.get(a.equipment_id) ?? null)
+          : null,
       parts,
       // Flag rows the editor couldn't re-save as-is (imports, legacy data).
       fault: storedActivityFault(a, aSets),

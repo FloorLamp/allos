@@ -195,6 +195,21 @@ export async function saveActivity(
     return n != null && n >= 0 ? Math.round(n) : null;
   })();
 
+  // Session-level equipment link (issue #342): the gear the whole activity used —
+  // a bike for a ride, shoes for a run. Untrusted, so resolve it to an id THIS
+  // profile actually owns (equipment is profile-owned); a blank/foreign/garbage
+  // value becomes null rather than writing a dangling or cross-profile FK.
+  const equipmentId = (() => {
+    const raw = formData.get("equipment_id");
+    if (raw == null || String(raw).trim() === "") return null;
+    const n = Number(raw);
+    if (!Number.isInteger(n) || n <= 0) return null;
+    const owned = db
+      .prepare("SELECT 1 FROM equipment WHERE id = ? AND profile_id = ?")
+      .get(n, profile.id);
+    return owned ? n : null;
+  })();
+
   const tx = db.transaction((): number | null => {
     let activityId: number;
     let storedSets: StoredSetWeights | undefined;
@@ -209,6 +224,7 @@ export async function saveActivity(
         `UPDATE activities
          SET date = ?, type = ?, title = ?, notes = ?, duration_min = ?, distance_km = ?,
              intensity = ?, start_time = ?, end_time = ?, components = ?,
+             equipment_id = ?,
              -- Estimated calories (issue #151): only for MANUAL rows (source +
              -- external_id null) so an estimate never overwrites an imported row's
              -- device energy; imported rows keep their existing value untouched.
@@ -233,6 +249,7 @@ export async function saveActivity(
         startTime,
         endTime,
         componentsJson,
+        equipmentId,
         estCalories,
         id,
         profile.id
@@ -263,8 +280,8 @@ export async function saveActivity(
       const res = db
         .prepare(
           `INSERT INTO activities
-             (date, type, title, notes, duration_min, distance_km, intensity, start_time, end_time, components, est_calories, profile_id)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
+             (date, type, title, notes, duration_min, distance_km, intensity, start_time, end_time, components, equipment_id, est_calories, profile_id)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
         )
         .run(
           date,
@@ -277,6 +294,7 @@ export async function saveActivity(
           startTime,
           endTime,
           componentsJson,
+          equipmentId,
           estCalories,
           profile.id
         );

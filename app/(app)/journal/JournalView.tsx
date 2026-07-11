@@ -525,6 +525,7 @@ export default function JournalView({
                         distanceText={c.distanceText}
                         speedText={c.speedText}
                         metrics={c.metrics}
+                        gear={c.gear}
                         parts={c.parts}
                         fault={c.fault}
                         provenance={c.provenance}

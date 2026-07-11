@@ -12,7 +12,7 @@ import { createPortal } from "react-dom";
 import { useHistoryBackClose } from "./useHistoryBackClose";
 import type { UnitPrefs } from "@/lib/settings";
 import type { ActivitySuggestions, ExerciseHistoryMap } from "@/lib/queries";
-import type { Equipment } from "@/lib/types";
+import type { ActivityType, Equipment } from "@/lib/types";
 import ActivityOverlay from "./ActivityOverlay";
 import ActivityForm, { type ActivityEditData } from "./ActivityForm";
 import { buildRepeatPrefill, todayStr } from "./activity-form/model";
@@ -50,6 +50,7 @@ export default function ActivityEditorProvider({
   suggestions,
   history,
   equipment,
+  lastActivityEquipment = {},
   bodyweightKg,
   children,
 }: {
@@ -57,6 +58,9 @@ export default function ActivityEditorProvider({
   suggestions: ActivitySuggestions;
   history: ExerciseHistoryMap;
   equipment: Equipment[];
+  // Last-used session gear per activity type (issue #342) — defaults the form's
+  // activity-level equipment picker on a new non-strength log.
+  lastActivityEquipment?: Partial<Record<ActivityType, number>>;
   bodyweightKg: number | null;
   children: React.ReactNode;
 }) {
@@ -159,6 +163,7 @@ export default function ActivityEditorProvider({
               suggestions={suggestions}
               history={history}
               equipment={equipment}
+              lastActivityEquipment={lastActivityEquipment}
               bodyweightKg={bodyweightKg}
               editData={editData}
               prefill={prefill}
@@ -173,6 +178,7 @@ export default function ActivityEditorProvider({
             suggestions={suggestions}
             history={history}
             equipment={equipment}
+            lastActivityEquipment={lastActivityEquipment}
             bodyweightKg={bodyweightKg}
             editData={editData}
             prefill={prefill}

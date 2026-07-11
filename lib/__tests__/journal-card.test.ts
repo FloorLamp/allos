@@ -43,6 +43,7 @@ function activity(over: Partial<Activity> & { id: number }): Activity {
     kilojoules: null,
     workout_type: null,
     est_calories: null,
+    equipment_id: null,
     ...over,
   };
 }

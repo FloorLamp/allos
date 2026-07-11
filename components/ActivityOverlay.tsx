@@ -3,7 +3,7 @@
 import { createPortal } from "react-dom";
 import type { UnitPrefs } from "@/lib/settings";
 import type { ActivitySuggestions, ExerciseHistoryMap } from "@/lib/queries";
-import type { Equipment } from "@/lib/types";
+import type { ActivityType, Equipment } from "@/lib/types";
 import ActivityForm, { type ActivityEditData } from "./ActivityForm";
 import { useLockBodyScroll } from "./useLockBodyScroll";
 
@@ -15,6 +15,7 @@ export default function ActivityOverlay({
   suggestions,
   history,
   equipment,
+  lastActivityEquipment = {},
   bodyweightKg,
   editData,
   prefill = null,
@@ -24,6 +25,7 @@ export default function ActivityOverlay({
   suggestions: ActivitySuggestions;
   history: ExerciseHistoryMap;
   equipment: Equipment[];
+  lastActivityEquipment?: Partial<Record<ActivityType, number>>;
   bodyweightKg: number | null;
   editData: ActivityEditData | null;
   prefill?: ActivityEditData | null;
@@ -48,6 +50,7 @@ export default function ActivityOverlay({
           suggestions={suggestions}
           history={history}
           equipment={equipment}
+          lastActivityEquipment={lastActivityEquipment}
           bodyweightKg={bodyweightKg}
           editData={editData}
           prefill={prefill}

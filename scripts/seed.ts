@@ -186,6 +186,23 @@ logEffort(
   "moderate"
 );
 
+// Session-level equipment (issue #342): a couple of pieces of gear + a linked
+// cardio session, so the Journal renders the gear chip and the Settings → Equipment
+// page has cardio/recovery categories to show. Distinct from strength implements
+// (which live per-set on exercise_sets).
+const insertEquipment = db.prepare(
+  `INSERT INTO equipment (profile_id, name, weight_kg, category) VALUES (1,?,?,?)`
+);
+const roadBikeId = Number(
+  insertEquipment.run("Road Bike", null, "Bike").lastInsertRowid
+);
+insertEquipment.run("Trail Shoes", null, "Shoes");
+// Link the Zone 2 ride to the road bike so a gear chip renders in the Journal.
+db.prepare(
+  `UPDATE activities SET equipment_id = ?
+     WHERE profile_id = 1 AND type = 'cardio' AND title = 'Zone 2 bike'`
+).run(roadBikeId);
+
 // A Strava-imported ride (issue #11): provenance chip reads "Strava". Carries a
 // source + external_id like the real Strava pull, so the Journal's provenance
 // surface has an integration-sourced row to render (the manual seed rows all
