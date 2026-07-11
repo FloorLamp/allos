@@ -75,6 +75,27 @@ export const INTEGRATIONS: IntegrationDef[] = [
     docsUrl: "https://cloud.ouraring.com/personal-access-tokens",
   },
   {
+    id: "withings",
+    name: "Withings",
+    kind: "oauth",
+    status: "available",
+    blurb:
+      "Pull weight and body composition, blood pressure, SpO2, temperature, resting " +
+      "heart rate, and sleep from your Withings scale, blood-pressure cuff, and sleep " +
+      "sensors. Connect once with OAuth and measurements sync automatically — blood " +
+      "pressure lands as vitals alongside manual readings.",
+    dataTypes: [
+      "Weight",
+      "Body composition",
+      "Blood pressure",
+      "SpO2",
+      "Temperature",
+      "Resting HR",
+      "Sleep",
+    ],
+    docsUrl: "https://developer.withings.com/",
+  },
+  {
     id: "garmin",
     name: "Garmin Connect",
     kind: "oauth",

@@ -4,6 +4,7 @@ import { useTransition } from "react";
 import { IconRefresh } from "@tabler/icons-react";
 import { syncStravaNow } from "@/app/(app)/integrations/strava/actions";
 import { syncOuraNow } from "@/app/(app)/integrations/oura/actions";
+import { syncWithingsNow } from "@/app/(app)/integrations/withings/actions";
 import { useToast } from "@/components/Toast";
 
 // Per-provider "Sync now" for the Data → Review "Connected sources" section (issue
@@ -22,7 +23,9 @@ export default function SyncNowButton({ provider }: { provider: string }) {
         ? syncStravaNow
         : provider === "oura"
           ? syncOuraNow
-          : null;
+          : provider === "withings"
+            ? syncWithingsNow
+            : null;
     if (!sync) return;
     start(async () => {
       const res = await sync();

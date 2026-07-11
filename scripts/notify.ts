@@ -63,6 +63,7 @@ import { createLogger } from "../lib/log";
 import { getConnection } from "../lib/integrations/connections";
 import { runStravaSync } from "../lib/integrations/strava-sync";
 import { runOuraSync } from "../lib/integrations/oura-sync";
+import { runWithingsSync } from "../lib/integrations/withings-sync";
 
 const log = createLogger("notify");
 
@@ -195,6 +196,17 @@ async function syncIntegrations(profileId: number) {
     }
   } catch (e) {
     log.error("oura sync failed", {
+      profile: profileId,
+      err: e instanceof Error ? e : String(e),
+    });
+  }
+  try {
+    if (getConnection(profileId, "withings")?.status === "connected") {
+      const r = await runWithingsSync(profileId);
+      log.info("withings sync", { profile: profileId, ...(r as object) });
+    }
+  } catch (e) {
+    log.error("withings sync failed", {
       profile: profileId,
       err: e instanceof Error ? e : String(e),
     });

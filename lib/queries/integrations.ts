@@ -303,10 +303,10 @@ export interface ConnectedSource {
   history: IntegrationSyncEvent[];
 }
 
-// Pull-integration ids the app can sync on demand ("Sync now"): Strava (OAuth) and
-// Oura (personal-access-token) both have a REST pull path; Health Connect is
-// push-only, so it shows an explainer instead of the button.
-const SYNC_NOW_PROVIDERS = new Set(["strava", "oura"]);
+// Pull-integration ids the app can sync on demand ("Sync now"): Strava (OAuth),
+// Oura (personal-access-token), and Withings (OAuth) all have a REST pull path;
+// Health Connect is push-only, so it shows an explainer instead of the button.
+const SYNC_NOW_PROVIDERS = new Set(["strava", "oura", "withings"]);
 
 // The recurring-stream providers for the "Connected sources" section: every
 // AVAILABLE pull/push integration (Health Connect, Strava, Oura — not the outbound

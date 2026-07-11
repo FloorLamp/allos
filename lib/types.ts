@@ -856,7 +856,12 @@ export type IntegrationKind = "push" | "oauth" | "token" | "feed";
 export type IntegrationStatus = "available" | "planned";
 
 export type IntegrationId =
-  "health-connect" | "strava" | "oura" | "garmin" | "calendar-feed";
+  | "health-connect"
+  | "strava"
+  | "oura"
+  | "withings"
+  | "garmin"
+  | "calendar-feed";
 
 // A row in the integrations registry — the Integrations page renders from these.
 export interface IntegrationDef {
