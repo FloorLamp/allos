@@ -73,7 +73,7 @@ import CardioFields from "./activity-form/CardioFields";
 import StrengthSets from "./activity-form/StrengthSets";
 import ActivityEquipmentPicker from "./activity-form/ActivityEquipmentPicker";
 import {
-  equipmentForActivityType,
+  equipmentForActivity,
   pickDefaultActivityEquipment,
   usesActivityEquipment,
 } from "@/lib/activity-equipment";
@@ -95,7 +95,7 @@ export default function ActivityForm({
   suggestions,
   history,
   equipment,
-  lastActivityEquipment = {},
+  recentActivityEquipment = [],
   bodyweightKg,
   editData,
   prefill = null,
@@ -106,9 +106,10 @@ export default function ActivityForm({
   suggestions: ActivitySuggestions;
   history: ExerciseHistoryMap;
   equipment: Equipment[];
-  // Last-used session gear per activity type (issue #342) — defaults the
-  // activity-level equipment picker on a new non-strength log.
-  lastActivityEquipment?: Partial<Record<ActivityType, number>>;
+  // Recently-used session gear, most-recent-first (issues #342/#339) — defaults the
+  // activity-level equipment picker on a new non-strength log. The form narrows it
+  // per-activity (last-used shoes for a run, last-used bike for a ride).
+  recentActivityEquipment?: number[];
   bodyweightKg: number | null;
   editData: ActivityEditData | null;
   // "Log again" / "Repeat last" seed (issue #29): pre-fills the form's initial
@@ -308,30 +309,43 @@ export default function ActivityForm({
   const partIssue = analysis.partFault;
 
   // The activity-level equipment picker (issue #342) applies only to NON-strength
-  // sessions (strength gear is per-set). Its filter type is the first non-strength
-  // named part's type — a bike/shoes picker for a ride/run, generic gear for sports.
+  // sessions (strength gear is per-set). It's driven by the first non-strength named
+  // part — its TYPE picks the gear kinds and, for cardio, its NAME narrows further
+  // (issue #339): a run offers shoes, a ride offers bikes, generic gear for sports.
   // A pure-strength activity has none, so the picker is hidden and no link is saved.
-  const sessionEquipmentType: ActivityType | null =
-    namedParts
-      .map((p) => partType(p))
-      .find((t): t is ActivityType => t != null && usesActivityEquipment(t)) ??
-    null;
+  const sessionEquipmentPart =
+    namedParts.find((p) => {
+      const t = partType(p);
+      return t != null && usesActivityEquipment(t);
+    }) ?? null;
+  const sessionEquipmentType: ActivityType | null = sessionEquipmentPart
+    ? partType(sessionEquipmentPart)
+    : null;
+  const sessionEquipmentName = sessionEquipmentPart?.name ?? null;
   // Recency default: on a fresh non-strength log (never on an edit), seed the picker
-  // with the last-used gear for its type — but only while the user hasn't chosen and
-  // only when that gear is still a valid option (pickDefaultActivityEquipment).
+  // with the most-recent gear that's a valid candidate for THIS activity — narrowed
+  // by equipmentForActivity, so a run picks up the last-used shoes and a ride the
+  // last-used bike — but only while the user hasn't chosen (pickDefaultActivityEquipment).
   useEffect(() => {
     if (editData) return;
     if (equipmentTouchedRef.current || sessionEquipmentType == null) return;
-    const candidates = equipmentForActivityType(
+    const candidates = equipmentForActivity(
       equipmentList,
-      sessionEquipmentType
+      sessionEquipmentType,
+      sessionEquipmentName
     );
     const def = pickDefaultActivityEquipment(
       candidates,
-      lastActivityEquipment[sessionEquipmentType]
+      recentActivityEquipment
     );
     if (def != null) setActivityEquipmentId((cur) => cur ?? def);
-  }, [editData, sessionEquipmentType, equipmentList, lastActivityEquipment]);
+  }, [
+    editData,
+    sessionEquipmentType,
+    sessionEquipmentName,
+    equipmentList,
+    recentActivityEquipment,
+  ]);
 
   const liveTitle = generateActivityTitle(startTime, namedParts, classifier);
   // The name actually saved/shown: the user's title, else the generated one.
@@ -1181,6 +1195,7 @@ export default function ActivityForm({
       {sessionEquipmentType != null && (
         <ActivityEquipmentPicker
           activityType={sessionEquipmentType}
+          activityName={sessionEquipmentName}
           equipment={equipmentList}
           value={activityEquipmentId}
           onChange={(id) => {

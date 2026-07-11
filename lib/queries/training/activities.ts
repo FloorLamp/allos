@@ -110,23 +110,30 @@ export function getActivities(profileId: number, limit?: number): Activity[] {
     .all(profileId, limit) as Activity[];
 }
 
-// The most recently linked session gear per activity type (issue #342), used to
+// The profile's session gear, most-recently-used first (issues #342/#339), used to
 // DEFAULT the activity-level equipment picker on a new log — the same "last-used"
-// convenience the strength implement picker has. Reads the newest activity of each
-// type that carries an equipment_id; returns { cardio: 5, sport: 8, ... } (types
-// with no linked gear are absent). Profile-scoped.
-export function getLastActivityEquipmentByType(
-  profileId: number
-): Partial<Record<ActivityType, number>> {
+// convenience the strength implement picker has. Returns a de-duplicated, recency-
+// ordered list of every equipment id linked to a past activity; the form's pure
+// pickDefaultActivityEquipment then takes the first id that's a valid candidate for
+// the CURRENT activity, so a run defaults to the last-used shoes and a ride to the
+// last-used bike (the candidate set is narrowed per-activity — issue #339), each
+// remembering its own gear rather than sharing one per-type slot. Profile-scoped.
+export function getRecentActivityEquipmentIds(profileId: number): number[] {
   const rows = db
     .prepare(
-      `SELECT type, equipment_id FROM activities
+      `SELECT equipment_id FROM activities
         WHERE profile_id = ? AND equipment_id IS NOT NULL
         ORDER BY date DESC, id DESC`
     )
-    .all(profileId) as { type: ActivityType; equipment_id: number }[];
-  const out: Partial<Record<ActivityType, number>> = {};
-  for (const r of rows) if (!(r.type in out)) out[r.type] = r.equipment_id;
+    .all(profileId) as { equipment_id: number }[];
+  const out: number[] = [];
+  const seen = new Set<number>();
+  for (const r of rows) {
+    if (!seen.has(r.equipment_id)) {
+      seen.add(r.equipment_id);
+      out.push(r.equipment_id);
+    }
+  }
   return out;
 }
 
