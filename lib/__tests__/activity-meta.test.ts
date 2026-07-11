@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  compositeRollup,
   inferFreeTextType,
   legacyActivityName,
   minutesBetween,
@@ -190,5 +191,61 @@ describe("titleCase", () => {
   it("leaves words that already contain capitals untouched", () => {
     expect(titleCase("HIIT session")).toBe("HIIT Session");
     expect(titleCase("McRun")).toBe("McRun");
+  });
+});
+
+// Multisport ("brick") roll-up (issue #313): collapse the legs into the parent's
+// distance/duration — sum-of-parts distance (">0 else null"), clock-time-wins
+// duration — plus a "does any leg lift" flag.
+describe("compositeRollup", () => {
+  const swim = { type: "cardio" as const, distance_km: 1, duration_min: 20 };
+  const bike = { type: "cardio" as const, distance_km: 20, duration_min: 40 };
+  const lift = {
+    type: "strength" as const,
+    distance_km: null,
+    duration_min: 30,
+  };
+
+  it("sums leg distances", () => {
+    expect(compositeRollup([swim, bike], null).distanceKm).toBe(21);
+  });
+
+  it("collapses a zero total distance to null (strength-only brick)", () => {
+    expect(compositeRollup([lift], null).distanceKm).toBeNull();
+  });
+
+  it("prefers the clock span over the sum of leg durations", () => {
+    // legs sum to 60, but the wall clock says 75 (includes transitions).
+    expect(compositeRollup([swim, bike], 75).durationMin).toBe(75);
+  });
+
+  it("falls back to the sum of leg durations when there is no clock span", () => {
+    expect(compositeRollup([swim, bike], null).durationMin).toBe(60);
+  });
+
+  it("collapses a zero summed duration to null with no clock span", () => {
+    const noDur = {
+      type: "cardio" as const,
+      distance_km: 5,
+      duration_min: null,
+    };
+    expect(compositeRollup([noDur], null).durationMin).toBeNull();
+  });
+
+  it("uses the clock span even when it is shorter than the parts", () => {
+    expect(compositeRollup([swim, bike], 10).durationMin).toBe(10);
+  });
+
+  it("reports hasStrength when any leg is a strength leg", () => {
+    expect(compositeRollup([swim, lift], null).hasStrength).toBe(true);
+    expect(compositeRollup([swim, bike], null).hasStrength).toBe(false);
+  });
+
+  it("handles an empty component list", () => {
+    expect(compositeRollup([], null)).toEqual({
+      distanceKm: null,
+      durationMin: null,
+      hasStrength: false,
+    });
   });
 });

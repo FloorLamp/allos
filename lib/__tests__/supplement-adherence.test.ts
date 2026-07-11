@@ -4,8 +4,11 @@ import {
   aggregateDoseDay,
   doseStrip,
   indexTakenByDose,
+  supplementAdherenceStrip,
+  STRIP_DAYS,
   type AdherenceState,
 } from "@/lib/supplement-adherence";
+import type { Supplement, SupplementCondition } from "@/lib/types";
 
 // Build a strip (oldest-first) from a compact state string: each char maps to a
 // state, so "mttt" is [missed, taken, taken, taken] with the last as today.
@@ -225,5 +228,120 @@ describe("aggregateDoseDay", () => {
     expect(aggregateDoseDay(2, 0, 0)).toBe("missed");
     // one skipped, one neither taken nor skipped → an unhandled miss remains
     expect(aggregateDoseDay(2, 0, 1)).toBe("missed");
+  });
+});
+
+// Per-supplement windowed adherence strip (issue #313): compose isDueOn (per-date
+// workout/situational context) with aggregateDoseDay over the supplement's doses.
+describe("supplementAdherenceStrip", () => {
+  function supp(over: Partial<Supplement> = {}): Supplement {
+    return {
+      condition: "daily" as SupplementCondition,
+      situation: null,
+      as_needed: 0,
+      ...over,
+    } as Supplement;
+  }
+
+  it("exposes STRIP_DAYS = 14", () => {
+    expect(STRIP_DAYS).toBe(14);
+  });
+
+  it("marks each date taken/partial/missed by aggregating the doses", () => {
+    const dates = ["d0", "d1", "d2"];
+    const takenByDose = indexTakenByDose([
+      { dose_id: 1, date: "d0", status: "taken" },
+      { dose_id: 2, date: "d0", status: "taken" }, // d0: both taken → taken
+      { dose_id: 1, date: "d1", status: "taken" }, // d1: one of two → partial
+      // d2: neither → missed
+    ]);
+    const strip = supplementAdherenceStrip(
+      supp(),
+      [1, 2],
+      dates,
+      new Set(),
+      new Set(),
+      takenByDose
+    );
+    expect(strip).toEqual([
+      { date: "d0", state: "taken" },
+      { date: "d1", state: "partial" },
+      { date: "d2", state: "missed" },
+    ]);
+  });
+
+  it("marks a date na when the supplement is not due (rest-day on a workout day)", () => {
+    const strip = supplementAdherenceStrip(
+      supp({ condition: "rest_day" as SupplementCondition }),
+      [1],
+      ["d0", "d1"],
+      new Set(["d0"]), // d0 was a workout day → rest_day supp not due
+      new Set(),
+      indexTakenByDose([{ dose_id: 1, date: "d1", status: "taken" }])
+    );
+    expect(strip).toEqual([
+      { date: "d0", state: "na" },
+      { date: "d1", state: "taken" },
+    ]);
+  });
+
+  it("marks a deliberately-skipped day skipped, not missed (#232)", () => {
+    const strip = supplementAdherenceStrip(
+      supp(),
+      [1],
+      ["d0"],
+      new Set(),
+      new Set(),
+      indexTakenByDose([{ dose_id: 1, date: "d0", status: "skipped" }])
+    );
+    expect(strip).toEqual([{ date: "d0", state: "skipped" }]);
+  });
+
+  it("respects active situations for a situational supplement", () => {
+    const dates = ["d0", "d1"];
+    const s = supp({
+      condition: "situational" as SupplementCondition,
+      situation: "travel",
+    });
+    // Situational due-ness is date-independent here (driven by activeSituations),
+    // so an active situation makes every date due.
+    const active = supplementAdherenceStrip(
+      s,
+      [1],
+      dates,
+      new Set(),
+      new Set(["travel"]),
+      indexTakenByDose([{ dose_id: 1, date: "d0", status: "taken" }])
+    );
+    expect(active.map((d) => d.state)).toEqual(["taken", "missed"]);
+
+    const inactive = supplementAdherenceStrip(
+      s,
+      [1],
+      dates,
+      new Set(),
+      new Set(),
+      indexTakenByDose([])
+    );
+    expect(inactive.map((d) => d.state)).toEqual(["na", "na"]);
+  });
+
+  it("feeds adherenceSummary end-to-end", () => {
+    const dates = ["d0", "d1", "d2"];
+    const strip = supplementAdherenceStrip(
+      supp(),
+      [1],
+      dates,
+      new Set(),
+      new Set(),
+      indexTakenByDose([
+        { dose_id: 1, date: "d0", status: "taken" },
+        { dose_id: 1, date: "d1", status: "taken" },
+        // d2 = today, not logged → pending
+      ])
+    );
+    const r = adherenceSummary(strip);
+    expect(r.streak).toBe(2);
+    expect(r.pct).toBe(100);
   });
 });

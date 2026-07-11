@@ -52,17 +52,17 @@ import SubmitButton from "@/components/SubmitButton";
 import EditableSupplementRow from "./EditableSupplementRow";
 import DismissSuggestionButton from "./DismissSuggestionButton";
 import {
-  aggregateDoseDay,
   indexTakenByDose,
+  supplementAdherenceStrip,
+  STRIP_DAYS,
   type AdherenceDot,
 } from "@/lib/supplement-adherence";
+import { separatePairWarnings } from "@/lib/intake-pairs";
 import SupplementForm from "./SupplementForm";
 import SuggestionsForm from "./SuggestionsForm";
 import { addSupplement, toggleSituation, acceptSuggestion } from "./actions";
 
 export const dynamic = "force-dynamic";
-
-const STRIP_DAYS = 14;
 
 interface Item {
   supplement: Supplement;
@@ -102,28 +102,20 @@ export default async function SupplementsPage() {
   // a day is "taken" when all its due doses were logged, "partial" when some
   // were, "skipped" when every due dose was deliberately skipped (#232),
   // "missed" when none were resolved (but it was due), and "na" when not due.
+  // Policy lives in the shared supplementAdherenceStrip (issue #313).
   const stripBySupp = new Map<number, AdherenceDot[]>();
   for (const s of supplements) {
     const doseIds = (dosesBySupp.get(s.id) ?? []).map((d) => d.id);
-    const total = doseIds.length;
     stripBySupp.set(
       s.id,
-      dates.map((date) => {
-        const applicable = isDueOn(s, {
-          isWorkoutDay: workoutDays.has(date),
-          activeSituations,
-        });
-        if (!applicable) return { date, state: "na" };
-        const takenN = doseIds.reduce(
-          (n, id) => n + (takenByDose.get(id)?.taken.has(date) ? 1 : 0),
-          0
-        );
-        const skippedN = doseIds.reduce(
-          (n, id) => n + (takenByDose.get(id)?.skipped.has(date) ? 1 : 0),
-          0
-        );
-        return { date, state: aggregateDoseDay(total, takenN, skippedN) };
-      })
+      supplementAdherenceStrip(
+        s,
+        doseIds,
+        dates,
+        workoutDays,
+        activeSituations,
+        takenByDose
+      )
     );
   }
   const stripFor = (s: Supplement): AdherenceDot[] =>
@@ -202,19 +194,14 @@ export default async function SupplementsPage() {
     arr.sort((a, b) => compareDoseDay(doseEntry(a), doseEntry(b)));
 
   // "Keep apart" warnings: a separate-pair whose both supplements have a due
-  // dose in the same bucket.
+  // dose in the same bucket. Policy lives in the shared separatePairWarnings
+  // (issue #313); this surface just supplies the bucket's supplement ids.
   const pairs = getSupplementPairs(profile.id);
-  function bucketWarnings(items: Item[]): string[] {
-    const ids = new Set(items.map((it) => it.supplement.id));
-    return pairs
-      .filter(
-        (p) => p.relation === "separate" && ids.has(p.a_id) && ids.has(p.b_id)
-      )
-      .map(
-        (p) =>
-          `Keep apart: ${p.a_name} and ${p.b_name}${p.note ? ` — ${p.note}` : ""}`
-      );
-  }
+  const bucketWarnings = (items: Item[]): string[] =>
+    separatePairWarnings(
+      items.map((it) => it.supplement.id),
+      pairs
+    );
 
   const situationChips = [
     ...new Set([
