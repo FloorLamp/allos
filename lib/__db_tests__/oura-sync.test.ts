@@ -43,6 +43,7 @@ const WORKOUT = {
   distance: 24000,
   start_datetime: "2024-06-02T18:00:00-07:00",
   end_datetime: "2024-06-02T19:00:00-07:00",
+  intensity: "hard",
   label: null,
 };
 
@@ -97,7 +98,7 @@ describe("Oura sync upsert/dedup", () => {
     // The workout landed with the right source + external id and grouping component.
     const act = db
       .prepare(
-        "SELECT type, title, source, external_id, distance_km, components FROM activities WHERE profile_id = ? AND external_id = ?"
+        "SELECT type, title, source, external_id, distance_km, intensity, components FROM activities WHERE profile_id = ? AND external_id = ?"
       )
       .get(profileId, "oura:workout-e2e-1") as {
       type: string;
@@ -105,11 +106,14 @@ describe("Oura sync upsert/dedup", () => {
       source: string;
       external_id: string;
       distance_km: number;
+      intensity: string | null;
       components: string;
     };
     expect(act.type).toBe("cardio");
     expect(act.source).toBe("oura");
     expect(act.distance_km).toBe(24);
+    // Oura's effort level landed in the activities.intensity column.
+    expect(act.intensity).toBe("hard");
     expect(JSON.parse(act.components)[0].name).toBe("Cycling");
 
     // Resting HR landed in body_metrics under source 'oura', keyed on the wake day.
@@ -163,6 +167,30 @@ describe("Oura sync upsert/dedup", () => {
     )();
     expect(res.updated).toBe(1); // only sleep_min changed
     expect(res.inserted).toBe(0);
+  });
+
+  it("a changed workout intensity flips the activity to updated, then re-dedups", () => {
+    apply();
+    // Clear any edit lock a prior test set so the change isn't skipped.
+    db.prepare(
+      "UPDATE activities SET edited = 0 WHERE profile_id = ? AND external_id = ?"
+    ).run(profileId, "oura:workout-e2e-1");
+    const w = mapOuraWorkout({ ...WORKOUT, intensity: "moderate" })!;
+    const changed = db.transaction(() =>
+      upsertActivities(profileId, [w.activity], OURA_ID)
+    )();
+    expect(changed).toEqual({ inserted: 0, updated: 1, unchanged: 0 });
+    const stored = db
+      .prepare(
+        "SELECT intensity FROM activities WHERE profile_id = ? AND external_id = ?"
+      )
+      .get(profileId, "oura:workout-e2e-1") as { intensity: string };
+    expect(stored.intensity).toBe("moderate");
+    // Re-applying the same (moderate) intensity is now a no-op → unchanged.
+    const again = db.transaction(() =>
+      upsertActivities(profileId, [w.activity], OURA_ID)
+    )();
+    expect(again).toEqual({ inserted: 0, updated: 0, unchanged: 1 });
   });
 
   it("does not touch a manual body-metrics row for the same date (source-scoped)", () => {

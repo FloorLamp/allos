@@ -62,6 +62,11 @@ export interface NormActivity {
   avg_temp_c?: number | null;
   kilojoules?: number | null;
   workout_type?: string | null;
+  // Session effort level on the app's manual-entry scale ('easy' | 'moderate' |
+  // 'hard'), the one column an integration can fill in activities.intensity (Oura
+  // reports it directly). NULL for providers that don't supply it (Strava, Health
+  // Connect) — see mapOuraWorkout.
+  intensity?: string | null;
   // Structured components (e.g. a single canonical-sport entry for a Strava ride)
   // persisted to the activities.components JSON column. Cardio/sport summaries group
   // by component name (see effortEntries/getCardioByActivity), so a Strava row with a
@@ -87,6 +92,7 @@ const ACTIVITY_METRIC_COLS = [
   "avg_temp_c",
   "kilojoules",
   "workout_type",
+  "intensity",
 ] as const;
 
 function activityMetricValues(r: NormActivity): (number | string | null)[] {

@@ -4,6 +4,7 @@ import {
   mapOuraWorkout,
   classifyOuraActivity,
   ouraSportName,
+  ouraIntensity,
   titleizeActivity,
 } from "@/lib/integrations/oura";
 
@@ -119,10 +120,27 @@ describe("mapOuraWorkout", () => {
     expect(a.components).toEqual([
       { name: "Running", type: "cardio", distance_km: 8, duration_min: 45 },
     ]);
+    // Oura's effort level rides through to activities.intensity.
+    expect(a.intensity).toBe("moderate");
     // Calories → one active_kcal sample keyed on the workout instant window.
     expect(res!.samples).toHaveLength(1);
     expect(res!.samples[0].metric).toBe("active_kcal");
     expect(res!.samples[0].value).toBe(480);
+  });
+
+  it("maps each intensity level and nulls an unknown/absent one", () => {
+    expect(
+      mapOuraWorkout(workoutRec({ intensity: "easy" }))!.activity.intensity
+    ).toBe("easy");
+    expect(
+      mapOuraWorkout(workoutRec({ intensity: "HARD" }))!.activity.intensity
+    ).toBe("hard");
+    expect(
+      mapOuraWorkout(workoutRec({ intensity: "extreme" }))!.activity.intensity
+    ).toBeNull();
+    expect(
+      mapOuraWorkout(workoutRec({ intensity: null }))!.activity.intensity
+    ).toBeNull();
   });
 
   it("prefers a freeform label as the title when present", () => {
@@ -182,5 +200,17 @@ describe("ouraSportName / titleizeActivity", () => {
 
   it("titleizes tokens", () => {
     expect(titleizeActivity("indoor_cycling")).toBe("Indoor Cycling");
+  });
+});
+
+describe("ouraIntensity", () => {
+  it("accepts the three scale values (case-insensitive), rejects everything else", () => {
+    expect(ouraIntensity("easy")).toBe("easy");
+    expect(ouraIntensity("Moderate")).toBe("moderate");
+    expect(ouraIntensity("hard")).toBe("hard");
+    expect(ouraIntensity("vigorous")).toBeNull();
+    expect(ouraIntensity("")).toBeNull();
+    expect(ouraIntensity(null)).toBeNull();
+    expect(ouraIntensity(3)).toBeNull();
   });
 });

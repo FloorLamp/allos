@@ -205,6 +205,15 @@ export function ouraSportName(activity: unknown): string {
   return OURA_SPORT_NAMES[raw.toLowerCase()] ?? titleizeActivity(raw);
 }
 
+// Oura's workout `intensity` enum ("easy" | "moderate" | "hard") maps 1:1 onto the
+// app's manual-entry intensity scale (lib/activity-form-model.INTENSITIES), so an
+// imported workout carries the same effort label a hand-entered one would and feeds
+// the calorie-estimate MET tiers. Any other/absent value → null (unknown effort).
+export function ouraIntensity(v: unknown): string | null {
+  const s = (str(v) ?? "").toLowerCase();
+  return s === "easy" || s === "moderate" || s === "hard" ? s : null;
+}
+
 // Map a single Oura workout into a normalized activity plus any calorie sample.
 // Returns null when unusable (no id/start, or a physiologically-impossible core
 // distance/duration — the whole record is rejected and the caller counts it skipped,
@@ -263,6 +272,8 @@ export function mapOuraWorkout(
     ],
     start_time: start.hhmm,
     end_time: end?.hhmm ?? null,
+    // Oura's easy/moderate/hard effort → the app's intensity scale (see ouraIntensity).
+    intensity: ouraIntensity(rec.intensity),
   };
 
   // Calories → active_kcal metric_sample keyed on the workout's instant window, so a
