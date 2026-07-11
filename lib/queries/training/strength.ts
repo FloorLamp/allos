@@ -1,5 +1,9 @@
 import { bodyweightAsOf } from "../../bodyweight";
-import { sessionBestSet } from "../../coaching";
+import {
+  sessionBestSet,
+  sessionWorkSets,
+  type SessionWorkSet,
+} from "../../coaching";
 import { db } from "../../db";
 import { formatLongDate } from "../../format-date";
 import type { SetStatus } from "../../journal-format";
@@ -449,6 +453,11 @@ export interface ExerciseStat {
     targetReps: number | null;
     toFailure: boolean;
   } | null;
+  // Every rep-bearing set of the most recent session (bodyweight folded into the
+  // load, each side of a per-side set its own entry), so next-set progression
+  // can judge the whole session's working sets rather than the single best set
+  // (#330). Empty when the newest session had no usable set.
+  lastSessionSets: SessionWorkSet[];
   // Activity id of the most recent session, for linking to its journal entry.
   lastActivityId: number;
   // Body itself is the load (pull ups, dips), so per-set numbers show "BW".
@@ -620,6 +629,10 @@ export const getStrengthByExercise = cache(function getStrengthByExercise(
         lastActivityId: c.lastActivityId,
         // All buffered rows share lastDate, so the bodyweight base is constant.
         lastSessionBest: sessionBestSet(
+          c.lastSessionRows,
+          c.addBodyweight ? (bwAsOf(c.lastDate) ?? 0) : 0
+        ),
+        lastSessionSets: sessionWorkSets(
           c.lastSessionRows,
           c.addBodyweight ? (bwAsOf(c.lastDate) ?? 0) : 0
         ),

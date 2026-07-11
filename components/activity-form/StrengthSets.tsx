@@ -23,6 +23,7 @@ import {
 import {
   suggestNextSet,
   sessionBestSet,
+  sessionWorkSets,
   nextSetText,
   type NextSet,
 } from "@/lib/coaching";
@@ -122,10 +123,13 @@ export default function StrengthSets({
     : undefined;
   let suggestion: NextSet | null = null;
   if (hist && past?.length) {
-    const best = sessionBestSet(
-      past.filter((s) => s.date === past[0].date).flatMap((s) => s.sets),
-      past[0].baseKg
-    );
+    // All sets of the newest prior session (two same-day activities are one
+    // session, as in getStrengthByExercise) — the anchor plus every working set
+    // so progression judges the session, not the single best set (#330).
+    const newestSets = past
+      .filter((s) => s.date === past[0].date)
+      .flatMap((s) => s.sets);
+    const best = sessionBestSet(newestSets, past[0].baseKg);
     // A weighted lift whose newest session carries only weightless sets
     // (possible via imports) has no load to progress from — no suggestion
     // beats a from-zero "add 2.5 kg".
@@ -135,6 +139,7 @@ export default function StrengthSets({
           exercise: p.name,
           bodyweight: hist.bodyweight,
           lastSessionBest: best,
+          lastSessionSets: sessionWorkSets(newestSets, past[0].baseKg),
         },
         units.weightUnit
       );
