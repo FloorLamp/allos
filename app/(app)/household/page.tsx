@@ -15,7 +15,7 @@ import {
   getSupplements,
   getSupplementDoses,
   getTakenDoseIds,
-  getWeights,
+  getBodyMetricDailySeries,
   collectHouseholdRollup,
 } from "@/lib/queries";
 import { getActiveSituations, getUnitPrefs } from "@/lib/settings";
@@ -72,10 +72,19 @@ export default async function HouseholdPage() {
     const recent = getActivities(pid, 1)[0];
     const stats = getDashboardStats(pid);
 
-    // Two newest weigh-ins → latest value + trend arrow.
-    const weights = getWeights(pid, 2);
-    const latest = weights[0];
-    const trend = weightTrend(latest?.weight_kg, weights[1]?.weight_kg);
+    // Current weight = the primary-source-aware value the dashboard QuickStats
+    // shows (getLatestBodyMetricDated, #302/#396) — never a raw newest row, which
+    // can disagree with every other "current weight" surface. The trend arrow
+    // compares the two newest DAYS of the deduped one-source-per-day series
+    // (getBodyMetricDailySeries, #14) so it measures change over time, not two
+    // devices reporting the same day.
+    const latestWeight = stats.latestWeight;
+    const dailyWeights = getBodyMetricDailySeries(pid, "weight");
+    const dwLen = dailyWeights.length;
+    const trend = weightTrend(
+      dailyWeights[dwLen - 1]?.value,
+      dailyWeights[dwLen - 2]?.value
+    );
 
     // Biomarkers whose current (latest) reading is out of the lab reference range.
     const oorBiomarkers = getMedicalRecords(pid, {
@@ -105,8 +114,12 @@ export default async function HouseholdPage() {
         ? { title: recent.title, when: formatRelativeDate(recent.date, day) }
         : null,
       activities7d: stats.last7,
-      weightLabel: latest ? fmtWeight(latest.weight_kg, weightUnit) : null,
-      weightWhen: latest ? formatRelativeDate(latest.date, day) : null,
+      weightLabel: latestWeight
+        ? fmtWeight(latestWeight.value, weightUnit)
+        : null,
+      weightWhen: latestWeight
+        ? formatRelativeDate(latestWeight.date, day)
+        : null,
       trend,
       weightUnit,
       oorBiomarkers,
