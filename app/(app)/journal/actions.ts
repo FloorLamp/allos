@@ -402,6 +402,22 @@ export async function deleteActivity(
   // Capture the activity + its exercise_sets into the undo holding table and
   // delete it in one transaction (issue #30), so a mis-tap can be undone from the
   // toast. children cascade; captureDelete returns the undo token.
+  //
+  // PAIR-DECISION POLICY (issue #334). A plain delete DELIBERATELY leaves any
+  // recorded import-pair decision this row took part in (`import_pair_decisions`,
+  // keyed on the stable pair signature) in place — it does NOT clear `ext:` or
+  // `id:` signature rows. This is the same durability contract the whole pair-
+  // decision system is built on (lib/import-review/detect.ts): a decision is keyed
+  // on natural identity (external_id for sourced rows, row id for manual) PRECISELY
+  // so it survives the row's re-creation. Deleting a sourced activity is transient —
+  // the rolling 48h re-sync re-inserts it under the same external_id, re-forming the
+  // identical pair, where the prior resolution should still apply; and a manual row's
+  // `id:` token never recycles, so its leftover is a harmless dead row. A plain delete
+  // means "remove this row", not "un-resolve a duplicate I separately decided" — so it
+  // must not retroactively invert a merge/kept-both/dismissed decision. (A MERGE's undo
+  // DOES clear its own just-recorded decision — that's inverting its own side effect,
+  // #200 — which is a different operation from this bare delete.) Pinned by
+  // lib/__action_tests__/delete-pair-decision.actions.test.ts.
   const undoId = captureDelete("activity", profile.id, id);
   revalidateActivitySurfaces();
   return { undoId };
