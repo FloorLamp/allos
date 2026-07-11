@@ -8,8 +8,11 @@
 //   - notify_last_refill_<supplementId> is set (to the send date) once a nudge
 //     goes out, and suppresses further nudges while the item stays low.
 //   - The marker is CLEARED the moment the item is no longer low (refilled above
-//     the threshold, or quantity tracking turned off), so the next time it runs
-//     low a fresh nudge fires. Without this the marker would silence it forever.
+//     the threshold, or quantity tracking turned off / the item paused), so the next
+//     time it runs low a fresh nudge fires. Without this the marker would silence it
+//     forever. The clear is self-healing: markedIds is the FULL set of live markers
+//     (not just the current candidates), so planRefillNudges sweeps a marker whose
+//     item has left the tracked set entirely (issue #325).
 
 import { getSupplements, getRefillRates } from "../queries";
 import { getFindingSuppressions } from "../queries/upcoming";
@@ -21,13 +24,16 @@ import {
 import {
   planRefillNudges,
   refillSignalKey,
+  refillMarkerKey,
+  refillIdFromMarker,
+  REFILL_MARKER_PREFIX,
   type RefillCandidate,
 } from "../refill-nudge";
 import { isSuppressed } from "../upcoming-suppress";
 import {
-  getProfileSetting,
   setProfileSetting,
   deleteProfileSetting,
+  getProfileSettingKeysWithPrefix,
   getPublicUrl,
 } from "../settings";
 import { dispatch } from "./index";
@@ -35,9 +41,6 @@ import type { NotificationAction, NotificationMessage } from "./types";
 import { createLogger } from "../log";
 
 const log = createLogger("notify");
-
-const refillKey = (supplementId: number) =>
-  `notify_last_refill_${supplementId}`;
 
 interface LowItem {
   id: number;
@@ -126,9 +129,16 @@ export async function runRefills(
   // dismissed/snoozed on the Upcoming page (keyed by the identical `refill:<id>`
   // signal) is held out of the push too. `date` is the profile-local today.
   const suppressions = getFindingSuppressions(profileId);
-  const markedIds = candidates
-    .filter((c) => !!getProfileSetting(profileId, refillKey(c.id)))
-    .map((c) => c.id);
+  // The FULL set of live episode markers — NOT just the ids among `candidates` — so a
+  // marker whose item has left the tracked set (paused / quantity tracking turned off)
+  // still reaches planRefillNudges' self-healing clear (issue #325). Mirrors the
+  // preventive nudge's getProfileSettingKeysWithPrefix read.
+  const markedIds = getProfileSettingKeysWithPrefix(
+    profileId,
+    REFILL_MARKER_PREFIX
+  )
+    .map(refillIdFromMarker)
+    .filter((id) => Number.isInteger(id) && id > 0);
   const suppressedIds = candidates
     .filter((c) => {
       const rec = suppressions.get(refillSignalKey(c.id));
@@ -142,8 +152,9 @@ export async function runRefills(
     suppressedIds
   );
 
-  // End any recovered episodes first — cheap, and never depends on a send.
-  for (const id of toClear) deleteProfileSetting(profileId, refillKey(id));
+  // End any recovered/untracked episodes first — cheap, and never depends on a send.
+  for (const id of toClear)
+    deleteProfileSetting(profileId, refillMarkerKey(id));
 
   if (toSend.length === 0) return { failed: false };
 
@@ -160,7 +171,7 @@ export async function runRefills(
   const failed = results.some((r) => !r.ok);
   if (delivered) {
     for (const it of toSend) {
-      setProfileSetting(profileId, refillKey(it.id), date);
+      setProfileSetting(profileId, refillMarkerKey(it.id), date);
       log.info("refill nudge sent", {
         profile: profileId,
         supp: it.name,

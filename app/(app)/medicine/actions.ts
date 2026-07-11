@@ -35,6 +35,7 @@ import {
   serializeRxcuiIngredients,
 } from "@/lib/rxnorm";
 import { orderIntakePair } from "@/lib/intake-pairs";
+import { leftRefillTrackedSet, refillMarkerKey } from "@/lib/refill-nudge";
 import { withAiLogContext } from "@/lib/ai-log";
 import {
   CONDITIONS,
@@ -316,10 +317,15 @@ export async function updateSupplement(formData: FormData) {
       : null;
   const tx = db.transaction(() => {
     // Verify ownership before touching the supplement or its child rows — the
-    // form id is untrusted. Bail (no-op) when it isn't owned.
+    // form id is untrusted. Bail (no-op) when it isn't owned. Also snapshot the
+    // prior refill-tracked state (active + quantity_on_hand) so an edit that turns
+    // quantity tracking off can clear the low-supply episode marker (issue #325).
     const owned = db
-      .prepare("SELECT 1 FROM intake_items WHERE id = ? AND profile_id = ?")
-      .get(id, profile.id);
+      .prepare(
+        "SELECT active, quantity_on_hand FROM intake_items WHERE id = ? AND profile_id = ?"
+      )
+      .get(id, profile.id) as
+      { active: number; quantity_on_hand: number | null } | undefined;
     if (!owned) return;
     db.prepare(
       `UPDATE intake_items
@@ -355,6 +361,18 @@ export async function updateSupplement(formData: FormData) {
       id,
       profile.id
     );
+    // Turning quantity tracking off removes the item from the refill-nudge tracked
+    // set; drop its low-supply episode marker so a later re-track re-fires a fresh
+    // nudge instead of being silenced by a stale marker (issue #325). An edit never
+    // changes `active`, so the prior active flag carries through unchanged.
+    if (
+      leftRefillTrackedSet(
+        { active: !!owned.active, quantityOnHand: owned.quantity_on_hand },
+        { active: !!owned.active, quantityOnHand: f.quantityOnHand }
+      )
+    ) {
+      deleteProfileSetting(profile.id, refillMarkerKey(id));
+    }
     // Reconcile doses: update those with an id, insert new ones, and remove the
     // rest from the schedule. Updating in place (rather than delete-all +
     // re-insert) preserves the adherence logs keyed on dose_id AND keeps any
@@ -516,9 +534,11 @@ export async function toggleActive(formData: FormData) {
   if (!id) return;
   const row = db
     .prepare(
-      "SELECT active, kind FROM intake_items WHERE id = ? AND profile_id = ?"
+      "SELECT active, kind, quantity_on_hand FROM intake_items WHERE id = ? AND profile_id = ?"
     )
-    .get(id, profile.id) as { active: number; kind: string } | undefined;
+    .get(id, profile.id) as
+    | { active: number; kind: string; quantity_on_hand: number | null }
+    | undefined;
   if (!row) return;
   const nextActive: 0 | 1 = row.active ? 0 : 1;
   if (row.kind === "medication") {
@@ -529,6 +549,17 @@ export async function toggleActive(formData: FormData) {
     db.prepare(
       "UPDATE intake_items SET active = ? WHERE id = ? AND profile_id = ?"
     ).run(nextActive, id, profile.id);
+  }
+  // Pausing a tracked item removes it from the refill-nudge tracked set; drop its
+  // low-supply episode marker so resuming it while still low re-fires a fresh nudge
+  // (issue #325). No-op on resume, or when the item wasn't refill-tracked.
+  if (
+    leftRefillTrackedSet(
+      { active: !!row.active, quantityOnHand: row.quantity_on_hand },
+      { active: !!nextActive, quantityOnHand: row.quantity_on_hand }
+    )
+  ) {
+    deleteProfileSetting(profile.id, refillMarkerKey(id));
   }
   revalidatePath("/medicine");
   revalidatePath("/");
@@ -648,7 +679,7 @@ export async function deleteSupplement(
   // Drop the item's low-supply episode marker with it (issue #203). This is a
   // dead row rather than wrong suppression — the id never recycles — but leaving
   // it strands a `notify_last_refill_<id>` setting the item no longer backs.
-  deleteProfileSetting(profile.id, `notify_last_refill_${id}`);
+  deleteProfileSetting(profile.id, refillMarkerKey(id));
   revalidatePath("/medicine");
   revalidatePath("/");
   return { undoId };
