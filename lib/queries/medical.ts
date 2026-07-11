@@ -1,4 +1,5 @@
 import { db } from "../db";
+import { cache } from "../request-cache";
 import {
   getStoredAge,
   getUserBirthdate,
@@ -163,10 +164,24 @@ function medicalOrderBy(
   return fallback;
 }
 
-export function getMedicalRecords(
+// Stable, order-independent serialization of the filter object so the
+// request-scoped cache() below keys on a primitive. Plain object args are
+// compared by reference, so two call sites building an equivalent filter (e.g.
+// { current: true }) would never share a cache entry; serializing collapses them.
+function medicalFiltersKey(filters: MedicalRecordFilters): string {
+  return JSON.stringify(filters, Object.keys(filters).sort());
+}
+
+// cache(): one dashboard render fans the same profile's medical_records dedup
+// window out ~4× (upcoming biomarker items + preventive inference + the recent-
+// labs widget + healthspan pillars), each a full-table scan + sort partitioned by
+// a non-indexable name expression (#386). Keyed on (profileId, serialized
+// filters) so equivalent calls collapse to a single scan per request.
+const getMedicalRecordsCached = cache(function getMedicalRecordsCached(
   profileId: number,
-  filters: MedicalRecordFilters = {}
+  filtersKey: string
 ): MedicalRecord[] {
+  const filters = JSON.parse(filtersKey) as MedicalRecordFilters;
   // Cross-source de-dup: the list always shows ONE representative per
   // content-identity (see DEDUP_IDS_CTE), so a reading uploaded in two documents —
   // or a manual reading plus its imported twin — is never double-counted.
@@ -221,6 +236,13 @@ export function getMedicalRecords(
               (${LATEST_IN_GROUP}) AS is_latest FROM medical_records ${clause} ORDER BY ${orderBy}`
     )
     .all(profileId, profileId, ...args) as MedicalRecord[];
+});
+
+export function getMedicalRecords(
+  profileId: number,
+  filters: MedicalRecordFilters = {}
+): MedicalRecord[] {
+  return getMedicalRecordsCached(profileId, medicalFiltersKey(filters));
 }
 
 export function getMedicalDocuments(profileId: number): MedicalDocument[] {
@@ -392,7 +414,12 @@ export function getLatestMedicalRecordByCanonical(
 // manual reading plus its imported twin) appears ONCE on the chart/table, while a
 // genuinely differing value for the same date stays visible as its own point. The
 // deduped CTE binds profile_id first, then the main WHERE binds it again.
-export function getBiomarkerSeries(
+// cache(): the derived-index and bio-age paths each request one series per input
+// analyte (~10-20 per render), and the same analyte is often charted again on the
+// same request — each call re-runs the O(N log N) dedup window over the profile's
+// whole lab history (#386). Primitive args, so cache() dedupes per (profile,
+// canonical) per request with no key gymnastics.
+export const getBiomarkerSeries = cache(function getBiomarkerSeries(
   profileId: number,
   canonical: string
 ): MedicalRecord[] {
@@ -404,7 +431,7 @@ export function getBiomarkerSeries(
        ORDER BY date ASC, id ASC`
     )
     .all(profileId, profileId, canonical) as MedicalRecord[];
-}
+});
 
 // Every canonically-named reading for a profile in ONE deduped pass, ordered so
 // each analyte's rows are contiguous and oldest-first — the bulk companion to
@@ -799,7 +826,13 @@ export const ENCOUNTER_REPRESENTATIVE_IDS = `
 // unlinked/absent provider just shows blank). Profile-scoped on the encounters row,
 // de-duplicated across documents via ENCOUNTER_REPRESENTATIVE_IDS. The deduped
 // subquery binds profile_id first, then the main WHERE binds it again.
-export function getEncounters(profileId: number): Encounter[] {
+// cache(): the dashboard's upcoming/preventive fan-out reads the visit history
+// several times per render (window passes over the same deduped set), each a
+// window-partition scan of the encounters table (#386). Single primitive arg, so
+// cache() collapses those to one scan per profile per request.
+export const getEncounters = cache(function getEncounters(
+  profileId: number
+): Encounter[] {
   return db
     .prepare(
       `SELECT e.id, e.date, e.end_date, e.type, e.class_code, e.reason,
@@ -813,7 +846,7 @@ export function getEncounters(profileId: number): Encounter[] {
         ORDER BY e.date DESC, e.id DESC`
     )
     .all(profileId, profileId) as Encounter[];
-}
+});
 
 // A single visit for the detail page (/encounters/[id]). Profile-scoped on BOTH id
 // AND profile_id, so a member can never open another profile's visit by guessing an

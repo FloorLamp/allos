@@ -6,14 +6,18 @@
 // biomarker detail page, and the Trends surfaces render like any other analyte.
 //
 // No raw SQL lives here — every read goes through an already-scoped query
-// (getBiomarkerSeries / getCanonicalBiomarker) or lib/settings — so the
-// profile-scoping guard is unaffected. Nothing is written; the records are ephemeral.
+// (getAllBiomarkerSeries / getBiomarkerSeries / getCanonicalBiomarker) or
+// lib/settings — so the profile-scoping guard is unaffected. Nothing is written;
+// the records are ephemeral.
 
 import {
+  getAllBiomarkerSeries,
   getBiomarkerSeries,
   getCanonicalBiomarker,
   getUsedCanonicalNames,
 } from "./medical";
+import { canonicalGroupKey, groupByCanonicalName } from "../biomarker-group";
+import { cache } from "../request-cache";
 import {
   getUserSex,
   getUserAgeOn,
@@ -72,11 +76,18 @@ function toVirtualRecord(
 export function getDerivedBiomarkerReadings(
   profileId: number
 ): MedicalRecord[] {
-  // Load each component series once (profile-scoped), reduced to exact numeric
-  // readings — an arithmetic index can't consume a bounded/qualitative value.
+  // One deduped read of every analyte's series, grouped in JS (lib/biomarker-
+  // group) — a per-analyte getBiomarkerSeries here would re-run the dedup window
+  // over the profile's whole lab history once per input AND per derived name,
+  // O(analytes × records) per request (#105/#386). Mirrors buildTrajectoryFindings.
+  const grouped = groupByCanonicalName(getAllBiomarkerSeries(profileId));
+
+  // Load each component series once, reduced to exact numeric readings — an
+  // arithmetic index can't consume a bounded/qualitative value. Keyed by the exact
+  // input canonical name (computeDerivedReadings looks up by spec.canonical).
   const seriesByCanonical = new Map<string, ComponentReading[]>();
   for (const canonical of derivedInputCanonicalNames()) {
-    const rows = getBiomarkerSeries(profileId, canonical)
+    const rows = (grouped.get(canonicalGroupKey(canonical)) ?? [])
       .filter((r) => r.value_num != null)
       .map((r) => ({
         date: r.date,
@@ -90,7 +101,7 @@ export function getDerivedBiomarkerReadings(
   const storedDatesByName: Partial<Record<DerivedName, Set<string>>> = {};
   for (const name of DERIVED_NAMES) {
     const dates = new Set(
-      getBiomarkerSeries(profileId, name).map((r) => r.date)
+      (grouped.get(canonicalGroupKey(name)) ?? []).map((r) => r.date)
     );
     if (dates.size) storedDatesByName[name] = dates;
   }
@@ -192,7 +203,13 @@ export interface BioAgeDraw {
 // is the DB seam over the pure lib/bio-age + lib/derived-biomarkers math; nothing is
 // written, and every read goes through an already profile-scoped query, so the
 // profile-scoping guard is unaffected.
-export function getBioAgeReadings(profileId: number): {
+// cache(): the dashboard renders the bio-age hero AND the healthspan pillars, each
+// calling this once per render — and internally it reads ~10 PhenoAge input series,
+// each a full dedup scan (#386). Single primitive arg, so cache() collapses the two
+// render calls (and their ~10 scans) to one per profile per request.
+export const getBioAgeReadings = cache(function getBioAgeReadings(
+  profileId: number
+): {
   draws: BioAgeDraw[];
   presentInputs: string[];
 } {
@@ -240,4 +257,4 @@ export function getBioAgeReadings(profileId: number): {
 
   const presentInputs = PHENOAGE_INPUT_NAMES.filter((n) => present.has(n));
   return { draws, presentInputs };
-}
+});
