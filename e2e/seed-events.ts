@@ -550,3 +550,48 @@ insHr.run(`${zoneDate}T12:00`, 62);
 console.log(
   `e2e: seeded a windowed HR-zone ride for profile 1 on ${zoneDate} (50 min Z2 + 10 min Z4)`
 );
+
+// ---- issue #45 rule-domain fixtures (domains 4–6) --------------------------
+// Deterministic fixtures so the new observational-findings surfaces have something
+// to render in e2e. Goal pacing (domain 6) is already covered by the base seed's
+// off-pace "Reach 74 kg" / "Cut to 78 kg" weight goals; these add the training
+// plateau (domain 4) and the body-metric weight jump (domain 5). All idempotent.
+
+// Domain 4 — a PLATEAUED lift: six weekly Skullcrusher sessions at a FIXED 30 kg × 10,
+// so the estimated 1RM is flat across ~5 weeks and the plateau rule fires on
+// Training → Overview. Skullcrusher is outside the seeded PPL routine, so it doesn't
+// disturb the progressing lifts.
+db.prepare(
+  `DELETE FROM activities WHERE profile_id = ? AND external_id LIKE 'e2e:plateau-%'`
+).run(PROFILE_ID);
+const insPlateauAct = db.prepare(
+  `INSERT INTO activities (profile_id, date, type, title, duration_min, intensity, source, external_id)
+   VALUES (1, ?, 'strength', 'Arms — Skullcrusher', 30, 'hard', 'manual', ?)`
+);
+const insPlateauSet = db.prepare(
+  `INSERT INTO exercise_sets (activity_id, exercise, set_number, weight_kg, reps)
+   VALUES (?, 'Skullcrusher', ?, 30, 10)`
+);
+for (let w = 0; w < 6; w++) {
+  const date = shiftDateStr(today(PROFILE_ID), -(w * 7 + 2));
+  const actId = Number(
+    insPlateauAct.run(date, `e2e:plateau-${w}`).lastInsertRowid
+  );
+  for (let s = 1; s <= 3; s++) insPlateauSet.run(actId, s);
+}
+
+// Domain 5 — a probable-error weight JUMP: one outlier reading (92 kg) three days
+// after the prior weekly weigh-in (~80.5 kg), ~14% above it — a scale-glitch
+// signature the body-hygiene rule flags on Trends → Body.
+const jumpDate = shiftDateStr(today(PROFILE_ID), -12);
+db.prepare(
+  `DELETE FROM body_metrics WHERE profile_id = ? AND notes = 'e2e:weight-jump'`
+).run(PROFILE_ID);
+db.prepare(
+  `INSERT INTO body_metrics (profile_id, date, weight_kg, notes)
+   VALUES (1, ?, 92, 'e2e:weight-jump')`
+).run(jumpDate);
+
+console.log(
+  `e2e: seeded a 6-week Skullcrusher plateau and a weight jump on ${jumpDate} (#45)`
+);

@@ -9,6 +9,7 @@ import { requireSession } from "@/lib/auth";
 import { frequencyScopeLabel } from "@/lib/goals";
 import FrequencyTargets from "@/app/(app)/goals/FrequencyTargets";
 import GoalsManager from "./GoalsManager";
+import GoalPacingFindings from "./GoalPacingFindings";
 
 // Goals (with a create/edit modal) on top, weekly frequency targets below.
 export default async function GoalsSection() {
@@ -29,6 +30,12 @@ export default async function GoalsSection() {
       id="goals"
       className="scroll-mt-[calc(5rem+env(safe-area-inset-top))]"
     >
+      {/* Goal-pacing findings (issue #45, domain 6): off-pace goals + safe-rate
+          weight-loss caution, above the goal cards. */}
+      <div className="mb-6">
+        <GoalPacingFindings />
+      </div>
+
       <GoalsManager
         goals={goals}
         goalProgress={goalProgress}
