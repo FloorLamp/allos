@@ -45,13 +45,14 @@ const OTHER_CHAT = "5550299";
 // A minimal callback_query as Telegram delivers it: a tapped button carrying
 // `data`, in a message with `chatId` and a one-button keyboard so the rebuild path
 // has something to consume.
-function cq(data: string, chatId: string) {
+function cq(data: string, chatId: string, text?: string) {
   return {
     id: "cbq-1",
     data,
     message: {
       message_id: 42,
       chat: { id: chatId },
+      ...(text != null ? { text } : {}),
       reply_markup: { inline_keyboard: [[{ text: "x", callback_data: data }]] },
     },
   };
@@ -409,5 +410,61 @@ describe("stale dose-button taps answer with the standing status (#280)", () => 
     expect(lastAnswerText()).toMatch(/^Not logged/);
     expect(lastAnswerText()).toMatch(/skipped/i);
     expect(lastAnswerText()).not.toContain("Logged ✅");
+  });
+});
+
+// ---- Shared-chat attribution: the [ProfileName] prefix survives a tap (#377) ----
+// The tick prefixes a slot send with "[Name] " when the instance tracks more than
+// one profile, so a family chat can tell two kids' identical "💊 Morning
+// supplements" apart. The tap-rebuild paths re-render from scratch and must
+// re-apply the SAME prefix (prefixForProfile — one computation) or the message
+// collapses to an unattributable title with live ✅/⏭/✅-All buttons — a parent
+// could then confirm the WRONG child's remaining doses (the safety-tier worst case).
+describe("shared-chat attribution survives a tap (#377)", () => {
+  // A sibling profile so the instance has >1 profile → the prefix applies. Both
+  // profiles share the same family chat, matching the issue's scenario.
+  beforeAll(() => {
+    const sib = seedProfile("TG377sib");
+    setProfileSetting(sib.profileId, "telegram_chat_id", OWN_CHAT);
+    setProfileSetting(sib.profileId, "telegram_enabled", "1");
+  });
+
+  it("a dose ✅ rebuild keeps the [Name] label on the rebuilt title", async () => {
+    const date = today(p.profileId);
+    await handleCallbackQuery(
+      cq(
+        `take:${p.profileId}:${p.supplementDoseId}:${p.supplementId}:${date}`,
+        OWN_CHAT
+      )
+    );
+    // The rebuilt (HTML) message keeps the profile label so it stays attributable.
+    expect(lastEditedText()).toContain("[TG233]");
+  });
+
+  it("a ✅-All rebuild keeps the [Name] label too", async () => {
+    const date = today(p.profileId);
+    await handleCallbackQuery(
+      cq(`all:${p.profileId}:Morning:${date}`, OWN_CHAT)
+    );
+    expect(lastEditedText()).toContain("[TG233]");
+  });
+
+  it("a consumed escalation retains the original title line above the closing", async () => {
+    const date = today(p.profileId);
+    db.prepare("DELETE FROM intake_item_logs WHERE dose_id = ?").run(
+      criticalDoseId
+    );
+    await handleCallbackQuery(
+      cq(
+        `esctake:${p.profileId}:${criticalDoseId}:${criticalSuppId}:${date}`,
+        OWN_CHAT,
+        "[TG233] ⚠️ Missed dose: Warfarin\nTake it when you can."
+      )
+    );
+    // The replacement keeps WHO/WHICH med the tap resolved (chat-history context),
+    // not a bare "Confirmed taken ✅" identical across family members.
+    const edited = lastEditedText() ?? "";
+    expect(edited).toContain("[TG233] ⚠️ Missed dose: Warfarin");
+    expect(edited).toContain("Confirmed taken ✅");
   });
 });

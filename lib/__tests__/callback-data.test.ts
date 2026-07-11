@@ -14,6 +14,7 @@ import {
   refillAnswerText,
   removeButton,
   removeRowContaining,
+  replacementWithTitle,
   resolveEscalationTap,
   resolveTapProfile,
   takeMatchesProfile,
@@ -440,5 +441,58 @@ describe("escalation close texts", () => {
     );
     expect(escalationAckCloseText("stale-dose")).toBe(OUTDATED_MESSAGE_TEXT);
     expect(escalationAckCloseText("inactive")).toBe(OUTDATED_MESSAGE_TEXT);
+  });
+});
+
+// A consumed escalation/preventive/refill (or collapsed dose) message must keep
+// its original title line above the closing so shared-chat history stays
+// attributable — a bare "Confirmed taken ✅" erases WHO/WHICH med the tap
+// resolved (issue #377).
+describe("replacementWithTitle", () => {
+  it("keeps the original title line (incl. a [Name] prefix) above the closing", () => {
+    expect(
+      replacementWithTitle(
+        "[Ada] ⚠️ Missed dose: Vitamin D\nTake it when you can.",
+        "Confirmed taken ✅"
+      )
+    ).toBe("[Ada] ⚠️ Missed dose: Vitamin D\nConfirmed taken ✅");
+  });
+
+  it("uses only the first line of a multi-line original", () => {
+    expect(
+      replacementWithTitle(
+        "[Ben] 💊 Morning supplements\nD3\nMagnesium",
+        "done"
+      )
+    ).toBe("[Ben] 💊 Morning supplements\ndone");
+  });
+
+  it("trims surrounding whitespace on the title line", () => {
+    expect(
+      replacementWithTitle("  [Ada] Refill: Fish oil  \n…", "snoozed")
+    ).toBe("[Ada] Refill: Fish oil\nsnoozed");
+  });
+
+  it("falls back to the bare closing when there is no original text", () => {
+    expect(replacementWithTitle(undefined, "Confirmed taken ✅")).toBe(
+      "Confirmed taken ✅"
+    );
+    expect(replacementWithTitle(null, "done")).toBe("done");
+    expect(replacementWithTitle("", "done")).toBe("done");
+    expect(replacementWithTitle("   \n…", "done")).toBe("done");
+  });
+
+  it("keeps two family members' consumed messages distinguishable", () => {
+    const ada = replacementWithTitle(
+      "[Ada] 💊 Morning supplements",
+      "All done 💊✅"
+    );
+    const ben = replacementWithTitle(
+      "[Ben] 💊 Morning supplements",
+      "All done 💊✅"
+    );
+    expect(ada).not.toBe(ben);
+    expect(ada).toContain("[Ada]");
+    expect(ben).toContain("[Ben]");
   });
 });

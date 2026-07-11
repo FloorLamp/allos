@@ -169,6 +169,22 @@ export function tapSkipAnswerText(outcome: DoseTakenOutcome): string {
 export const OUTDATED_MESSAGE_TEXT =
   "This reminder is out of date — check the app for your current schedule.";
 
+// Compose a consumed-tap REPLACEMENT body that keeps the original message's title
+// line above the closing line (issue #377). When a shared-chat reminder was sent
+// with a "[Name] " prefix (or just a "💊 …" / "⚠️ Missed dose: …" title naming the
+// med), a bare closing line like "Confirmed taken ✅" erases WHO/WHICH med the tap
+// resolved — visually identical across two family members. Retaining the first
+// line (Telegram delivers the message text plain, HTML already stripped) keeps the
+// chat history attributable. Falls back to the bare closing when no original text
+// is available (an older client update, or a message with no text).
+export function replacementWithTitle(
+  originalText: string | null | undefined,
+  closing: string
+): string {
+  const title = (originalText ?? "").split("\n")[0]?.trim() ?? "";
+  return title ? `${title}\n${closing}` : closing;
+}
+
 // Drop the tapped button from an inline keyboard, removing rows that become
 // empty. An empty result means the tap consumed the last button.
 export function removeButton(
