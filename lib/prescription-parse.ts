@@ -37,8 +37,12 @@ const LEAD_VERB_RE = /^\s*(take|takes|taking|give|apply|inject|use|instill)\b/i;
 // "Lisinopril 10 mg" or "Metformin 500mg tablet". Used to derive a clean
 // grouping name (so an extracted "Lisinopril 10 mg" dedups against a manual
 // "Lisinopril") and to recover a strength when no separate value was extracted.
+// The `\b` guards only the LETTER units (so "g" can't eat a "g..." word
+// prefix); `%` sits outside it — `%` is a non-word char, so `%\b` would only
+// match when a letter follows immediately ("2.5%cream"), never in a real
+// percent strength like "Hydrocortisone 2.5%".
 const NAME_STRENGTH_RE =
-  /\s+\d+(?:\.\d+)?\s*(?:mg|mcg|µg|ug|g|ml|iu|units?|meq|%)\b.*$/i;
+  /\s+\d+(?:\.\d+)?\s*(?:(?:mg|mcg|µg|ug|g|ml|iu|units?|meq)\b|%).*$/i;
 const NAME_FORM_TAIL_RE =
   /\s+(tablets?|tabs?|capsules?|caps?|pills?|softgels?|lozenges?|patches?|sprays?|drops?|solution|suspension|injection|cream|ointment|gel|elixir|syrup)\b.*$/i;
 
@@ -103,10 +107,12 @@ export function cleanMedicationName(raw: string): string {
 }
 
 // Pull the strength out of a drug name ("Lisinopril 10 mg" → "10 mg"), when the
-// extractor packed it into the name instead of a separate value/unit.
+// extractor packed it into the name instead of a separate value/unit. Same
+// unit alternation as NAME_STRENGTH_RE: `%` lives outside the `\b`-terminated
+// letter-unit group (see the comment there).
 function strengthFromName(raw: string): string | null {
   const m = raw.match(
-    /\b\d+(?:\.\d+)?\s*(?:mg|mcg|µg|ug|g|ml|iu|units?|meq|%)\b/i
+    /\b\d+(?:\.\d+)?\s*(?:(?:mg|mcg|µg|ug|g|ml|iu|units?|meq)\b|%)/i
   );
   return m ? m[0].replace(/\s{2,}/g, " ").trim() : null;
 }
