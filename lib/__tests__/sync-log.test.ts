@@ -4,6 +4,7 @@ import {
   dateWindow,
   formatWindow,
   currentlyFailingProviders,
+  latestEventPerProvider,
   emptyCounts,
   foldCounts,
   summarizeSplit,
@@ -309,6 +310,53 @@ describe("currentlyFailingProviders", () => {
 
   it("returns an empty array when there are no events", () => {
     expect(currentlyFailingProviders([])).toEqual([]);
+  });
+
+  // A needs_reauth provider (issue #326) records an ok:0 sync event the moment its
+  // token dies and the tick then stops re-syncing it, so its most-recent event stays
+  // that failure — it must still be reported as currently failing when it's the
+  // provider's latest event (issue #304's "compose" requirement).
+  it("catches a needs_reauth provider whose latest event is the auth failure", () => {
+    const events = [
+      { provider: "health-connect", ok: 1 }, // chatty provider, currently fine
+      { provider: "strava", ok: 0 }, // dead token → needs_reauth, latest is the failure
+    ];
+    expect(currentlyFailingProviders(events)).toEqual([
+      { provider: "strava", ok: 0 },
+    ]);
+  });
+});
+
+describe("latestEventPerProvider", () => {
+  // Events are newest-first, as the queries return them.
+  it("keeps exactly one (the newest) event per provider", () => {
+    const events = [
+      { provider: "strava", ok: 0, id: 5 }, // newest strava
+      { provider: "health-connect", ok: 1, id: 4 },
+      { provider: "strava", ok: 1, id: 3 }, // older strava — dropped
+      { provider: "health-connect", ok: 1, id: 2 }, // older HC — dropped
+    ];
+    expect(latestEventPerProvider(events)).toEqual([
+      { provider: "strava", ok: 0, id: 5 },
+      { provider: "health-connect", ok: 1, id: 4 },
+    ]);
+  });
+
+  it("preserves newest-first order across providers", () => {
+    const events = [
+      { provider: "a", id: 3 },
+      { provider: "b", id: 2 },
+      { provider: "c", id: 1 },
+    ];
+    expect(latestEventPerProvider(events).map((e) => e.provider)).toEqual([
+      "a",
+      "b",
+      "c",
+    ]);
+  });
+
+  it("returns an empty array when there are no events", () => {
+    expect(latestEventPerProvider([])).toEqual([]);
   });
 });
 

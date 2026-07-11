@@ -58,30 +58,41 @@ export function getLastSuccessfulSyncAt(
   return row?.at ?? null;
 }
 
-// All recent sync events for a profile across EVERY provider, newest first — the
-// feed behind the Data → Review tab (contrast getIntegrationSyncEvents, which is
-// per-provider). Profile-scoped.
-export function getRecentSyncEvents(
-  profileId: number,
-  limit = 30
+// The single most recent event (any outcome) for EACH provider the profile has any
+// sync history for — one row per provider, newest-first overall. Unlike a window-
+// capped "N newest across all providers" read, this is uncapped PER PROVIDER by
+// construction (a correlated `id = latest-for-this-provider` match), so a provider
+// whose latest event is a failure is never lost behind a chattier provider's flood of
+// recent rows (issue #304). This is the failure detector's feed: it matches, row for
+// row, what each grid card shows via getLatestSyncEvent, so the badge/hero and the
+// per-provider card can no longer disagree. Profile-scoped.
+export function getLatestSyncEventPerProvider(
+  profileId: number
 ): IntegrationSyncEvent[] {
   return db
     .prepare(
-      `SELECT * FROM integration_sync_events
-        WHERE profile_id = ?
-        ORDER BY at DESC, id DESC
-        LIMIT ?`
+      `SELECT e.* FROM integration_sync_events e
+        WHERE e.profile_id = ?
+          AND e.id = (
+            SELECT e2.id FROM integration_sync_events e2
+             WHERE e2.profile_id = e.profile_id AND e2.provider = e.provider
+             ORDER BY e2.at DESC, e2.id DESC
+             LIMIT 1
+          )
+        ORDER BY e.at DESC, e.id DESC`
     )
-    .all(profileId, limit) as IntegrationSyncEvent[];
+    .all(profileId) as IntegrationSyncEvent[];
 }
 
 // How many items the Data → Review inbox wants the user's attention on — the count
 // behind the profile-menu badge. Two contributions (issue #10): integrations
 // CURRENTLY in a failed state (self-clearing on the next good sync) PLUS unresolved
-// detected duplicate/conflict pairs. Both are profile-scoped.
+// detected duplicate/conflict pairs. Both are profile-scoped. The failing set is read
+// per-provider (issue #304) so a broken integration can't be missed just because a
+// chatty provider crowds a global-N window.
 export function getImportReviewCount(profileId: number): number {
   return (
-    currentlyFailingProviders(getRecentSyncEvents(profileId, 100)).length +
+    currentlyFailingProviders(getLatestSyncEventPerProvider(profileId)).length +
     getReviewPairCount(profileId)
   );
 }
@@ -269,9 +280,11 @@ export function getReviewPairCount(profileId: number): number {
 }
 
 // The failing-integration events (most recent per currently-broken provider), for
-// the Review tab's "Issues" section. Profile-scoped via getRecentSyncEvents.
+// the Review tab's "Issues" section and the dashboard "Needs attention" hero.
+// Profile-scoped via getLatestSyncEventPerProvider — per-provider, so it can't miss a
+// broken provider whose failure has aged out of a global recent-events window (#304).
 export function getImportIssues(profileId: number): IntegrationSyncEvent[] {
-  return currentlyFailingProviders(getRecentSyncEvents(profileId, 100));
+  return currentlyFailingProviders(getLatestSyncEventPerProvider(profileId));
 }
 
 // The single most recent event (any outcome) for a provider, or null — the grid
