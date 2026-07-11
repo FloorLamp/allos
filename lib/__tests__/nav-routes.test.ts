@@ -86,6 +86,46 @@ function navHrefs(): string[] {
   return [...hrefs];
 }
 
+// The due-signal builders whose href literals must point at real pages (issue
+// #283: goal items linked the removed /goals route and screenings the removed
+// /medical route for months — nothing guarded item links the way nav links are).
+// These are the sources feeding the Upcoming page, the dashboard "Needs
+// attention" hero, and the preventive adapter. Static targets only: a template
+// literal contributes its static path prefix (e.g. `/biomarkers/view?name=${…}`
+// → /biomarkers/view).
+const DUE_SIGNAL_SOURCES = [
+  ["lib", "attention.ts"],
+  ["lib", "queries", "upcoming.ts"],
+  ["lib", "preventive-upcoming.ts"],
+  ["lib", "care-plan-upcoming.ts"],
+].map((parts) => path.join(REPO, ...parts));
+
+// Strip comments so a route mentioned in prose (e.g. "the old `/medical` target
+// was removed") doesn't register as a link target. Coarse but sufficient here:
+// none of the scanned sources embed `//` or `/*` inside string literals.
+function stripComments(src: string): string {
+  return src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+}
+
+// Every `/`-rooted string literal (double-quoted or template) in a due-signal
+// source, reduced to its static path: query/hash and template expressions are
+// cut. This deliberately over-collects rather than keying on `href:` — the
+// builders also hold route strings in maps and helper returns (HREF_BY_KIND's
+// successor, preventiveHref), and a missed literal is exactly how the dead
+// links survived.
+function dueSignalPaths(file: string): string[] {
+  const src = stripComments(fs.readFileSync(file, "utf8"));
+  const out = new Set<string>();
+  const re = /"(\/[^"\n]*)"|`(\/[^`\n]*)`/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(src)) !== null) {
+    const raw = m[1] ?? m[2];
+    const staticPath = raw.split(/[?#]|\$\{/)[0];
+    if (staticPath) out.add(staticPath);
+  }
+  return [...out];
+}
+
 // Extract internal redirect destinations from next.config.js. Source-scanned
 // (not executed) to keep this test pure and side-effect-free. We dropped the
 // legacy redirects, so today there are none — the empty case is expected and
@@ -142,5 +182,22 @@ describe("nav ↔ route consistency", () => {
       missing,
       `redirect destinations with no matching page: ${missing.join(", ")}`
     ).toEqual([]);
+  });
+
+  it("every due-signal href literal (Upcoming / attention / preventive) resolves to a real page (issue #283)", () => {
+    for (const file of DUE_SIGNAL_SOURCES) {
+      const paths = dueSignalPaths(file);
+      // Sanity anchor per file: the extractor must not go quietly empty (every
+      // scanned source links at least one route today).
+      expect(
+        paths.length,
+        `no route literals found in ${file} — extractor broken?`
+      ).toBeGreaterThan(0);
+      const missing = paths.filter((p) => !resolves(p));
+      expect(
+        missing,
+        `${path.relative(REPO, file)} links routes with no matching page under app/: ${missing.join(", ")}`
+      ).toEqual([]);
+    }
   });
 });

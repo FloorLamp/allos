@@ -147,6 +147,29 @@ test.describe("preventive care in Upcoming (issues #82 + #86 + #85)", () => {
     await expect(main.getByTestId(DEPRESSION_KEY)).toBeVisible();
   });
 
+  test("a screening item links to a real satisfying surface, never the removed /medical (issue #283)", async ({
+    page,
+  }) => {
+    test.slow();
+
+    await page.goto("/upcoming");
+    const main = page.getByRole("main");
+
+    // The depression screening is procedure-coded in the concept map, so its
+    // satisfaction-derived link is the procedures surface. Read-only (a click),
+    // so it runs BEFORE the later test in this serial group declines the rule.
+    const depression = main.getByTestId(DEPRESSION_KEY);
+    await expect(depression).toBeVisible();
+    await depression
+      .getByRole("link", { name: "Depression screening", exact: true })
+      .click();
+
+    await expect(page).toHaveURL(/\/procedures/);
+    await expect(
+      page.getByRole("main").getByText("Procedures").first()
+    ).toBeVisible();
+  });
+
   test("a due preventive visit shows the disclaimer, marks done, and clears", async ({
     page,
   }) => {

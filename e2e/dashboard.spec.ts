@@ -29,6 +29,53 @@ test("the Needs attention hero renders with the seeded profile's items", async (
   ).toBeVisible();
 });
 
+test("far-future (Later-band) items stay off the hero but remain on Upcoming (issue #283)", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const hero = page.getByRole("main").getByTestId("needs-attention");
+  await expect(hero).toBeVisible();
+
+  // The seeded +4-day "Echocardiogram" is This-week runway → still on the hero…
+  await expect(
+    hero.getByRole("link", { name: "Echocardiogram", exact: true })
+  ).toBeVisible();
+  // …but the seeded +45-day "Physical exam" appointment (Later band) must NOT
+  // flood it — the hero used to render every far-future Upcoming item.
+  await expect(
+    hero.getByRole("link", { name: "Physical exam", exact: true })
+  ).toHaveCount(0);
+
+  // The same item still lives on the Upcoming page (its home surface).
+  await page.goto("/upcoming");
+  await expect(
+    page
+      .getByRole("main")
+      .getByRole("link", { name: "Physical exam", exact: true })
+  ).toBeVisible();
+});
+
+test("a goal deadline item links to the Training → Goals tab, not the removed /goals route (issue #283)", async ({
+  page,
+}) => {
+  // Click from the Upcoming page: the hero shows the same item with the same
+  // href (one computation), but its per-severity cap makes WHICH rows render
+  // seed-dependent, while Upcoming lists every item uncapped.
+  await page.goto("/upcoming");
+  const goalLink = page
+    .getByRole("main")
+    .getByRole("link", { name: "Reach 74 kg", exact: true });
+  await expect(goalLink).toBeVisible();
+  await goalLink.click();
+
+  // Lands on the real Training hub with the Goals tab selected — a real page,
+  // not the pageless /goals directory that 404'd.
+  await expect(page).toHaveURL(/\/training\?tab=goals/);
+  await expect(
+    page.getByRole("main").getByText("Reach 74 kg").first()
+  ).toBeVisible();
+});
+
 test("the household strip shows the caregiver's other profiles", async ({
   page,
 }) => {

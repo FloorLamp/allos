@@ -192,6 +192,18 @@ export default function NeedsAttentionHero({
                     tone={SEVERITY_TONE[group.severity]}
                   />
                 ))}
+                {/* Defensive per-severity cap (issue #283): a pathological day
+                (a giant flagged import, an overdue backlog) collapses to a link
+                instead of blowing the layout. */}
+                {group.overflow > 0 && (
+                  <Link
+                    href="/upcoming"
+                    data-testid={`attention-overflow-${group.severity}`}
+                    className="block rounded-lg px-2 py-1.5 text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
+                  >
+                    +{group.overflow} more in Upcoming
+                  </Link>
+                )}
               </div>
             </div>
           ))}

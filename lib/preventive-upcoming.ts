@@ -18,14 +18,25 @@ import {
   appointmentKindForRule,
   suggestedBookDate,
 } from "./preventive-appointment";
+import { PREVENTIVE_CONCEPT_MAP } from "./preventive-concept-map";
 
-// Where a preventive row links to for follow-through. A visit is acted on by
-// booking/logging an appointment; a screening by its result in the medical
-// passport. Neither has a bespoke page — these reuse existing surfaces.
-const HREF_BY_KIND: Record<PreventiveAssessment["kind"], string> = {
-  visit: "/appointments",
-  screening: "/medical",
-};
+// Where a preventive row links to for follow-through — always an EXISTING surface
+// (there is no bespoke preventive page, and the old `/medical` target was removed;
+// issue #283 found the dead link). A visit is acted on by booking/logging an
+// appointment. A screening links to the surface that shows what SATISFIES it,
+// which the concept map already knows per rule: a lab-satisfied screening (lipids,
+// A1c, BP) → the biomarkers list, a procedure-satisfied one (colonoscopy, DEXA,
+// mammogram) → the procedures list, and an unmapped (manual-only) rule → the
+// passport, where its completion is recorded.
+export function preventiveHref(
+  kind: PreventiveAssessment["kind"],
+  ruleKey: string
+): string {
+  if (kind === "visit") return "/appointments";
+  const matcher = PREVENTIVE_CONCEPT_MAP.find((m) => m.ruleKey === ruleKey);
+  if (!matcher) return "/profile";
+  return matcher.canonicalBiomarkers.length > 0 ? "/biomarkers" : "/procedures";
+}
 
 // The stable suppression/identity key for a preventive rule: `<kind>:<ruleKey>`
 // (e.g. "screening:colorectal_cancer"). Namespaced by kind so it never collides
@@ -90,8 +101,9 @@ export function preventiveAssessmentToUpcomingItem(
     title: a.name,
     detail: a.nextLabel ?? a.detail,
     // A rule-specific override (e.g. the lung prompt → Settings) wins; otherwise
-    // the kind-based default (visit → appointments, screening → passport).
-    href: a.href ?? HREF_BY_KIND[a.kind],
+    // the satisfaction-derived default (visit → appointments, screening → the
+    // surface its satisfying record lives on).
+    href: a.href ?? preventiveHref(a.kind, a.key),
     dueDate: null,
     band,
     dueText: overdue ? "Overdue" : "Due",
