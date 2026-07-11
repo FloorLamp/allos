@@ -7,7 +7,6 @@
 import { isDueOn } from "./supplement-schedule";
 import type { Goal, Supplement } from "./types";
 import type { GoalProgress } from "./goal-progress";
-import type { UpcomingItem } from "./upcoming";
 
 // ---- Supplement adherence (today) ----
 
@@ -102,16 +101,23 @@ export function goalHighlights(
 
 // ---- Household rollup (issue #31) ----
 
-// The single "next" appointment to surface on a household card: the soonest by
-// calendar date (a still-scheduled past visit sorts first — it's the most
-// attention-worthy — then the nearest future one). Null for an empty list. Pure
-// pick over the appointment UpcomingItems collectHouseholdRollup produces, kept
-// here (not inline in the DB helper) so it stays unit-tested. Items missing a
-// dueDate sort last (treated as far future) so a dated visit always wins.
-export function pickNextAppointment(
-  items: UpcomingItem[]
-): UpcomingItem | null {
-  let best: UpcomingItem | null = null;
+// The single "next appointment" pick, shared by BOTH the dashboard needs-attention
+// hero and the household card so they can never disagree (issue #303 — they used to
+// run independent pickers with opposite overdue policies). Policy: the most
+// attention-worthy scheduled visit — soonest by calendar date, so a still-scheduled
+// PAST visit (overdue/unlogged, worth chasing — the same "Overdue" framing the
+// Upcoming banding uses) sorts ahead of a future one, and the nearest future visit
+// wins when none are overdue. Items missing a dueDate sort last (treated as far
+// future) so a dated visit always wins; null for an empty list. Ties (same calendar
+// day) keep the first item, so a caller that feeds appointments already ordered by
+// scheduled_at ASC, id ASC gets the earliest same-day slot. Generic over `{ dueDate }`
+// so the household UpcomingItem set and the dashboard's raw scheduled-appointment set
+// resolve to the identical row (see the fixture-parity test). Kept here (not inline in
+// the DB helper) so it stays unit-tested.
+export function pickNextAppointment<T extends { dueDate: string | null }>(
+  items: T[]
+): T | null {
+  let best: T | null = null;
   for (const item of items) {
     if (best === null) {
       best = item;
