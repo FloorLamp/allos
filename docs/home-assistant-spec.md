@@ -42,7 +42,13 @@ a general `/api/v1` namespace.
 - **No general record access** — the board feed + dose actuation + ingest +
   events only. No labs, conditions, documents, or search over these
   endpoints.
-- **No HA add-on packaging** (Allos already ships as a container).
+- **No HA add-on packaging in THIS spec** — reconsidered and tracked
+  separately (#257): distributing the same GHCR image through the HA
+  add-on store is a deploy-channel artifact, not part of the integration's
+  three PRs. It composes with this spec (add-on install → Connect wizard →
+  done) and inherits HA-snapshot backups, but its engineering questions
+  (single-container s6 layout, pre-backup snapshot hook, no-ingress v1)
+  live in that issue.
 
 ## Architecture
 
