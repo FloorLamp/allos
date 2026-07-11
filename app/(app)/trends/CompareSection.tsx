@@ -4,6 +4,7 @@ import {
   listCompareOptions,
   resolveSeriesByKey,
   buildTrendAnnotations,
+  deCollideColor,
   type TrendSeries,
 } from "@/lib/trends-series";
 import {
@@ -54,6 +55,10 @@ export default async function CompareSection({
   // Event annotations for the overlay, windowed to the shared range (profile-scoped
   // reads only). The client CompareOverlay owns the per-type toggle.
   const annotations = buildTrendAnnotations(profile.id, range);
+  // Two biomarkers can hash to the same palette color; nudge B off A so the
+  // overlay's two lines (and legend dots) stay distinguishable (issue #400).
+  const colorB =
+    seriesA && seriesB ? deCollideColor(seriesB.color, seriesA.color) : null;
 
   return (
     <div className="space-y-6">
@@ -91,7 +96,7 @@ export default async function CompareSection({
               <span className="flex items-center gap-1.5">
                 <span
                   className="inline-block h-2.5 w-2.5 rounded-full"
-                  style={{ background: seriesB.color }}
+                  style={{ background: colorB ?? seriesB.color }}
                 />
                 {seriesB.label}
                 {seriesB.unit ? (
@@ -122,7 +127,7 @@ export default async function CompareSection({
             labelA={seriesA.label}
             labelB={seriesB.label}
             colorA={seriesA.color}
-            colorB={seriesB.color}
+            colorB={colorB ?? seriesB.color}
             unitA={seriesA.unit}
             unitB={seriesB.unit}
             normalized={normalized}

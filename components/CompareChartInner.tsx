@@ -12,6 +12,7 @@ import {
 } from "recharts";
 import { useChartColors } from "./useChartColors";
 import { formatLongDate } from "@/lib/format-date";
+import { roundChartValue } from "@/lib/chart-format";
 import {
   ANNOTATION_KIND_META,
   snapAnnotationsToDates,
@@ -19,11 +20,15 @@ import {
 } from "@/lib/trend-annotations";
 
 // Dual-series overlay for the Trends Compare tab. Plots two
-// date-aligned series on one time axis so correlation is eyeball-able. When the
-// units differ we use a DUAL Y-axis (A left, B right); when `normalized`, both
-// series are already min-max scaled to 0–1 by the caller, so they share ONE 0–100%
-// axis. Nulls (a date where only one series has a reading) are bridged with
-// connectNulls. Styling matches LineChartCard.
+// date-aligned series on one time axis so correlation is eyeball-able. Axis
+// policy (issue #400): when `normalized`, both series are already min-max scaled
+// to 0–1 by the caller, so they share ONE 0–100% axis; when the two series carry
+// the SAME unit they also share ONE auto-scaled axis whose domain spans both, so
+// the raw magnitudes stay comparable (LDL vs HDL, both mg/dL, don't get two
+// contradictory scales that make the lines appear to cross); only genuinely
+// DIFFERENT units get a DUAL Y-axis (A left, B right). This matches the tab copy
+// ("Different units get their own axis"). Nulls (a date where only one series has
+// a reading) are bridged with connectNulls. Styling matches LineChartCard.
 export default function CompareChart({
   data,
   labelA,
@@ -62,8 +67,19 @@ export default function CompareChart({
     );
   }
   const pct = (v: number) => `${Math.round(v * 100)}%`;
+  // Same-unit series share one auto-scaled axis; only genuinely different units
+  // get the second (right) axis. Units carry the caller's display suffix (e.g.
+  // " mg/dL"), so compare trimmed. `normalized` always collapses to the shared
+  // left axis regardless of units.
+  const dualAxis = !normalized && unitA.trim() !== unitB.trim();
   return (
-    <div className="h-72 w-full">
+    <div
+      className="h-72 w-full"
+      data-testid="compare-chart"
+      // "dual" only for genuinely different units; same-unit (and normalized)
+      // pairs share one axis (issue #400) — exposed so the e2e can assert it.
+      data-axis-mode={dualAxis ? "dual" : "shared"}
+    >
       <ResponsiveContainer width="100%" height="100%">
         <LineChart
           data={data}
@@ -78,12 +94,14 @@ export default function CompareChart({
           />
           <YAxis
             yAxisId="left"
-            tick={{ fontSize: 11, fill: normalized ? c.tick : colorA }}
-            stroke={normalized ? c.axis : colorA}
+            // Color the axis after series A only when it belongs to A alone (the
+            // dual-unit case); a shared axis stays neutral since it serves both.
+            tick={{ fontSize: 11, fill: dualAxis ? colorA : c.tick }}
+            stroke={dualAxis ? colorA : c.axis}
             domain={normalized ? [0, 1] : ["auto", "auto"]}
             tickFormatter={normalized ? pct : undefined}
           />
-          {!normalized && (
+          {dualAxis && (
             <YAxis
               yAxisId="right"
               orientation="right"
@@ -96,7 +114,7 @@ export default function CompareChart({
             formatter={(v, name) => [
               normalized
                 ? pct(Number(v))
-                : `${v}${name === labelA ? unitA : unitB}`,
+                : `${roundChartValue(Number(v))}${name === labelA ? unitA : unitB}`,
               name,
             ]}
             labelFormatter={(v) => formatLongDate(String(v))}
@@ -137,7 +155,7 @@ export default function CompareChart({
             connectNulls
           />
           <Line
-            yAxisId={normalized ? "left" : "right"}
+            yAxisId={dualAxis ? "right" : "left"}
             type="monotone"
             dataKey="b"
             name={labelB}

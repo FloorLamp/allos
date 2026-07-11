@@ -77,6 +77,7 @@ export default function TrendMiniCard({
           label={label}
           unit={unit}
           color={color}
+          decimals={decimals}
           heightClass="h-40"
         />
       )}

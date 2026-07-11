@@ -36,6 +36,7 @@ import {
 import { convertToCanonical, sameUnit } from "./unit-conversions";
 import { ALL_ROWS, filterSeriesByRange } from "./trends";
 import { bioPinKey, metricPinKey } from "./trend-pins";
+import { bioColor } from "./trend-colors";
 import type { DateRange } from "./timeline-format";
 
 export interface TrendSeries {
@@ -67,23 +68,11 @@ export interface TrendOption {
   kind: "metric" | "biomarker";
 }
 
-// A small deterministic palette so a biomarker gets a stable color across renders.
-const BIO_COLORS = [
-  "#2563eb",
-  "#dc2626",
-  "#7c3aed",
-  "#0891b2",
-  "#ca8a04",
-  "#db2777",
-  "#059669",
-  "#ea580c",
-];
-
-function bioColor(name: string): string {
-  let h = 0;
-  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
-  return BIO_COLORS[h % BIO_COLORS.length];
-}
+// Deterministic biomarker colors live in the pure lib/trend-colors module (no DB
+// imports) so the Compare color logic stays unit-testable; re-exported here so
+// existing import sites keep working (bioColor is also imported above for local
+// use, since a re-export alone doesn't bind it in module scope).
+export { deCollideColor, BIO_COLORS } from "./trend-colors";
 
 interface MetricDef {
   id: string; // "weight" — the metricPinKey suffix
