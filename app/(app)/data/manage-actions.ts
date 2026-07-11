@@ -8,7 +8,10 @@ import {
   DELETE_POLICY,
   type DatasetDeletePolicy,
 } from "@/lib/export";
-import { cleanupOrphanBiomarkerKeyedState } from "@/lib/queries";
+import {
+  cleanupOrphanBiomarkerKeyedState,
+  sweepImmunizationDismissals,
+} from "@/lib/queries";
 import { undoKindForDataset } from "@/lib/dataset-undo";
 import { captureDelete } from "@/lib/undo-delete-db";
 
@@ -31,7 +34,8 @@ function resolve(key: string) {
 function afterDelete(
   key: string,
   policy: DatasetDeletePolicy,
-  profileId: number
+  profileId: number,
+  removedVaccines: string[] = []
 ) {
   if (policy.cleanupStars) {
     // The same subject-delete that can orphan a star can orphan a biomarker
@@ -39,6 +43,14 @@ function afterDelete(
     // every reading doesn't leave a stale pin/snooze to silence a later re-add
     // (issues #203/#327).
     cleanupOrphanBiomarkerKeyedState(profileId);
+  }
+  if (policy.cleanupImmunizations) {
+    // Bulk-deleting immunization doses un-backs their component codes exactly as the
+    // per-dose delete does — sweep any orphaned `immunization:<code>` due-nudge
+    // dismissal so a clean re-import re-surfaces previously-dismissed nudges (#376).
+    // removedVaccines is captured BEFORE the delete (the rows are gone by now); the
+    // sweep reads the post-delete remaining doses to decide which codes lost backing.
+    sweepImmunizationDismissals(profileId, removedVaccines);
   }
   // Always refresh the Data page (the management table lives there).
   revalidatePath("/data");
@@ -89,6 +101,18 @@ export async function deleteDatasetRows(
   }
 
   const placeholders = clean.map(() => "?").join(",");
+  // Capture the vaccine codes about to be un-backed BEFORE the delete — the rows are
+  // gone afterward and the sweep needs their pre-images (issue #376). Empty for every
+  // non-immunizations dataset.
+  const removedVaccines = resolved.policy.cleanupImmunizations
+    ? (
+        db
+          .prepare(
+            `SELECT DISTINCT vaccine FROM ${resolved.table} WHERE id IN (${placeholders}) AND profile_id = ?`
+          )
+          .all(...clean, profile.id) as { vaccine: string }[]
+      ).map((r) => r.vaccine)
+    : [];
   // Scope the delete to this profile's rows — the whitelisted tables are all
   // profile-owned, so an id belonging to another profile must not be touched.
   const info = db
@@ -97,7 +121,7 @@ export async function deleteDatasetRows(
     )
     .run(...clean, profile.id);
 
-  afterDelete(key, resolved.policy, profile.id);
+  afterDelete(key, resolved.policy, profile.id, removedVaccines);
   return { ok: true, deleted: info.changes, undoIds: [] };
 }
 
@@ -113,6 +137,16 @@ export async function deleteAllDatasetRows(
   const resolved = resolve(key);
   if (!resolved) return { ok: false, error: "Unknown dataset." };
 
+  // Capture the vaccine codes about to be un-backed before wiping the table (#376).
+  const removedVaccines = resolved.policy.cleanupImmunizations
+    ? (
+        db
+          .prepare(
+            `SELECT DISTINCT vaccine FROM ${resolved.table} WHERE profile_id = ?`
+          )
+          .all(profile.id) as { vaccine: string }[]
+      ).map((r) => r.vaccine)
+    : [];
   // "Delete all" is still scoped to this profile — never wipe another profile's
   // rows from the shared table. It is intentionally NOT undoable (the confirm
   // says so): capturing an entire table into the holding store could be huge.
@@ -120,6 +154,6 @@ export async function deleteAllDatasetRows(
     .prepare(`DELETE FROM ${resolved.table} WHERE profile_id = ?`)
     .run(profile.id);
 
-  afterDelete(key, resolved.policy, profile.id);
+  afterDelete(key, resolved.policy, profile.id, removedVaccines);
   return { ok: true, deleted: info.changes, undoIds: [] };
 }

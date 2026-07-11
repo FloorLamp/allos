@@ -8,7 +8,7 @@ import crypto from "node:crypto";
 import { getTelegramBotConfig } from "@/lib/settings";
 import { handleCallbackQuery } from "@/lib/notifications/telegram-callbacks";
 import { createLogger } from "@/lib/log";
-import { checkRateLimit } from "@/lib/rate-limit";
+import { checkRateLimit, forwardedClientIdentity } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -21,19 +21,22 @@ const log = createLogger("notifications");
 const WEBHOOK_RATE_LIMIT = 120;
 const WEBHOOK_RATE_WINDOW_MS = 60 * 1000;
 
-// Client IP from X-Forwarded-For, the most specific identity available for this
-// shared-secret endpoint. Use the RIGHTMOST hop: proxies APPEND the real client on
-// the right, so leftmost entries are attacker-supplied and spoofable. This assumes
-// a single trusted reverse proxy in front of the app — the rightmost value is the
-// address that proxy actually observed and set.
+// X-Forwarded-For is only trustworthy behind a reverse proxy that APPENDS the real
+// client (making the rightmost hop the address the proxy observed). Direct-to-Node
+// exposure lets any caller spoof it and mint unlimited distinct rate-limit buckets,
+// defeating the throttle (issue #390). So we trust the rightmost XFF entry ONLY when
+// TRUST_PROXY marks a proxy as present; otherwise all traffic shares one bucket,
+// still capping total throughput per process. The parse/decide is the pure
+// forwardedClientIdentity (unit-tested); this reads the deploy invariant from env.
+function trustProxyConfigured(): boolean {
+  const v = process.env.TRUST_PROXY?.trim().toLowerCase();
+  return v === "1" || v === "true" || v === "yes";
+}
+
 function clientIp(req: Request): string {
-  const xff = req.headers.get("x-forwarded-for") ?? "";
-  return (
-    xff
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean)
-      .pop() ?? "unknown"
+  return forwardedClientIdentity(
+    req.headers.get("x-forwarded-for"),
+    trustProxyConfigured()
   );
 }
 

@@ -11,6 +11,7 @@ import {
   biomarkerDismissalKey,
   biomarkerFlagDismissalKey,
   immunizationDismissalKey,
+  immunizationCodesLosingBacking,
 } from "../../dismissal-keys";
 import { cleanupOrphanStars } from "../medical";
 
@@ -182,4 +183,32 @@ export function clearImmunizationDismissals(
     `DELETE FROM upcoming_dismissals
        WHERE profile_id = ? AND signal_key IN (${placeholders})`
   ).run(profileId, ...codes.map(immunizationDismissalKey));
+}
+
+// The ONE immunization dismissal sweep behind every path that un-backs a vaccine
+// code — a per-dose delete, an edit that re-codes a dose, and a Data → Manage bulk
+// delete (issue #376). Given the vaccine strings of the doses just removed (or
+// re-coded away from), it reads the doses that REMAIN for the profile and clears
+// the `immunization:<code>` dismissal of any component code whose last backing dose
+// is now gone — so a later re-add re-surfaces the due nudge instead of hitting a
+// stale suppression (issue #203). Scoped to the removed doses' component codes on
+// purpose, so a vaccine the profile has never recorded keeps its lasting dismissal.
+// Must be called AFTER the delete/update so "remaining" reflects the new state, and
+// with the removed vaccines captured BEFORE it (their rows are gone afterward).
+export function sweepImmunizationDismissals(
+  profileId: number,
+  removedVaccines: string[]
+): void {
+  if (removedVaccines.length === 0) return;
+  const remaining = (
+    db
+      .prepare(
+        "SELECT DISTINCT vaccine FROM immunizations WHERE profile_id = ?"
+      )
+      .all(profileId) as { vaccine: string }[]
+  ).map((r) => r.vaccine);
+  const lost = new Set<string>();
+  for (const v of removedVaccines)
+    for (const c of immunizationCodesLosingBacking(v, remaining)) lost.add(c);
+  clearImmunizationDismissals(profileId, [...lost]);
 }

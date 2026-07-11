@@ -495,6 +495,11 @@ export const DATASETS: ExportDataset[] = [
 export interface DatasetDeletePolicy {
   revalidate: string[];
   cleanupStars?: boolean;
+  // Whether removing rows can orphan an `immunization:<code>` due-nudge dismissal
+  // (upcoming_dismissals) — set for the immunizations dataset so a bulk delete runs
+  // the same losing-backing sweep the per-dose delete/edit paths do (issue #376).
+  // Same name-recycling class as cleanupStars, one table over.
+  cleanupImmunizations?: boolean;
 }
 
 export const DELETE_POLICY: Record<string, DatasetDeletePolicy> = {
@@ -505,7 +510,10 @@ export const DELETE_POLICY: Record<string, DatasetDeletePolicy> = {
     revalidate: ["/biomarkers", "/biomarkers/view", "/import/[id]", "/"],
     cleanupStars: true,
   },
-  immunizations: { revalidate: ["/immunizations", "/"] },
+  immunizations: {
+    revalidate: ["/immunizations", "/"],
+    cleanupImmunizations: true,
+  },
   goals: { revalidate: ["/training", "/"] },
   supplements: { revalidate: ["/medicine", "/"] },
   allergies: { revalidate: ["/allergies", "/"] },
