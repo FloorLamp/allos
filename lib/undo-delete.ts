@@ -48,6 +48,11 @@ export interface ExternalRefSpec {
   table: string;
   // What to do when the referenced row no longer exists at restore.
   onMissing: "null" | "drop";
+  // When the referenced table is GLOBAL (no profile_id column) — e.g. `providers`,
+  // which is shared across the whole family/instance — the existence probe is by id
+  // ALONE. Default (absent/false): the target is profile-owned (equipment,
+  // medical_documents) and the probe adds the acting profile_id as defense in depth.
+  global?: boolean;
 }
 
 export interface EntitySpec {
@@ -164,7 +169,37 @@ export const UNDO_KINDS: Record<string, KindSpec> = {
   "biomarker-record": {
     kind: "biomarker-record",
     ownedTable: "medical_records",
-    entities: [{ entity: "record", table: "medical_records", fks: [] }],
+    entities: [
+      {
+        entity: "record",
+        table: "medical_records",
+        fks: [],
+        // document_id → medical_documents and provider_id → providers are REAL
+        // enforced FKs since migration 006 (foreign_keys = ON) that point OUTSIDE
+        // this single-row capture. Deleting the source document
+        // (clearImportedDocumentRows) or merging/deleting the provider
+        // (mergeProviders re-points only LIVE rows) AFTER the record was captured
+        // leaves the captured copy holding a dead id, so a verbatim re-insert would
+        // violate the FK and abort the undo — leaving the record permanently
+        // unrestorable (#375). Null the now-dangling link on restore: the record
+        // survives, its provenance link is honestly gone — the same treatment the
+        // sibling activity/equipment_id link got for the #202 class. `providers` is a
+        // GLOBAL (family-shared) table with no profile_id, so it's probed by id alone.
+        externalRefs: [
+          {
+            column: "document_id",
+            table: "medical_documents",
+            onMissing: "null",
+          },
+          {
+            column: "provider_id",
+            table: "providers",
+            onMissing: "null",
+            global: true,
+          },
+        ],
+      },
+    ],
   },
 
   // Supplement OR medication (both live in intake_items). Captures the full

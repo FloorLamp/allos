@@ -220,6 +220,63 @@ describe("resilient restore when a captured FK target was deleted meanwhile", ()
     expect(set.equipment_id).toBeNull();
   });
 
+  it("nulls a biomarker record's document_id + provider_id when both targets were deleted after capture (#375)", () => {
+    const q = seedProfile("BIO-UNDO");
+    // A global provider (no profile_id) and a biomarker record linked to BOTH the
+    // seeded source document and that provider — the two real enforced FKs migration
+    // 006 added to medical_records.
+    const providerId = Number(
+      db
+        .prepare(
+          `INSERT INTO providers (name, type, dedup_key) VALUES ('BIO Clinic', 'organization', ?)`
+        )
+        .run(`bio-clinic-${q.profileId}`).lastInsertRowid
+    );
+    const recId = Number(
+      db
+        .prepare(
+          `INSERT INTO medical_records
+             (profile_id, date, category, name, value, unit, canonical_name, value_num, provider_id, document_id)
+           VALUES (?, '2020-03-03', 'lab', 'Glucose', '95', 'mg/dL', 'Glucose', 95, ?, ?)`
+        )
+        .run(q.profileId, providerId, q.documentId).lastInsertRowid
+    );
+
+    // Delete the record (captured with its live document_id + provider_id), THEN delete
+    // the source document and the provider — mirroring "delete a record, then delete
+    // its whole document" and "merge/delete the provider". The captured copy still
+    // holds both now-dead ids.
+    const undoId = captureDelete("biomarker-record", q.profileId, recId)!;
+    db.prepare(
+      "DELETE FROM medical_documents WHERE id = ? AND profile_id = ?"
+    ).run(q.documentId, q.profileId);
+    db.prepare("DELETE FROM providers WHERE id = ?").run(providerId);
+    expect(
+      count(
+        "SELECT COUNT(*) c FROM medical_documents WHERE id = ?",
+        q.documentId
+      )
+    ).toBe(0);
+    expect(
+      count("SELECT COUNT(*) c FROM providers WHERE id = ?", providerId)
+    ).toBe(0);
+
+    // Undo must succeed (no FK throw) and restore the record with BOTH provenance links
+    // NULLed rather than re-inserting a dangling FK.
+    expect(restoreDeletedRow(q.profileId, undoId)).toBe(true);
+    const rec = db
+      .prepare(
+        "SELECT document_id, provider_id FROM medical_records WHERE profile_id = ? AND date = '2020-03-03' AND canonical_name = 'Glucose'"
+      )
+      .get(q.profileId) as {
+      document_id: number | null;
+      provider_id: number | null;
+    };
+    expect(rec).toBeTruthy();
+    expect(rec.document_id).toBeNull();
+    expect(rec.provider_id).toBeNull();
+  });
+
   it("drops a pair whose far endpoint item was deleted, still restoring the item", () => {
     const q = seedProfile("PAIR-UNDO");
     // Pair the tracked supplement (X) with the medication (Y).

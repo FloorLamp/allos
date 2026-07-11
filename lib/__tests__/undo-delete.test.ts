@@ -73,6 +73,23 @@ describe("undo-delete registry", () => {
       { column: "b_id", table: "intake_items", onMissing: "drop" },
     ]);
 
+    // #375: the biomarker record's document_id / provider_id are real enforced FKs
+    // (migration 006) that dangle when the document is deleted or the provider is
+    // merged/deleted after capture — both null on restore. providers is a GLOBAL
+    // (no-profile_id) table, so its ref carries global: true.
+    const record = getKindSpec("biomarker-record").entities.find(
+      (e) => e.entity === "record"
+    )!;
+    expect(record.externalRefs).toEqual([
+      { column: "document_id", table: "medical_documents", onMissing: "null" },
+      {
+        column: "provider_id",
+        table: "providers",
+        onMissing: "null",
+        global: true,
+      },
+    ]);
+
     // Every externalRef target is a real table name and its onMissing is one of the
     // two supported actions.
     for (const spec of Object.values(UNDO_KINDS))

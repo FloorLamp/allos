@@ -13,6 +13,7 @@ import {
   parsePayload,
   remapRow,
   serializePayload,
+  type ExternalRefSpec,
   type IdMaps,
   type MergeUndoContext,
   type Row,
@@ -28,17 +29,24 @@ const KIND_LABELS: Record<string, string> = {
   "intake-item": "intake item",
 };
 
-// Does a row with this id still exist for this profile? Used at restore to reconcile
-// captured external FK links (equipment_id, pair endpoints) whose target may have
-// been deleted since capture (#202). `table` comes from the pure ExternalRefSpec
-// registry (a constant, never user input); ids never recycle (AUTOINCREMENT), so an
-// id match is the same row, and the profile_id scope is defense-in-depth.
-function targetExists(table: string, id: number, profileId: number): boolean {
-  return (
-    db
-      .prepare(`SELECT 1 FROM ${table} WHERE id = ? AND profile_id = ?`)
-      .get(id, profileId) !== undefined
-  );
+// Does the referenced row still exist? Used at restore to reconcile captured external
+// FK links (equipment_id, pair endpoints, medical_records' document_id/provider_id)
+// whose target may have been deleted since capture (#202, #375). `ref.table` comes
+// from the pure ExternalRefSpec registry (a constant, never user input); ids never
+// recycle (AUTOINCREMENT), so an id match is the same row. A profile-owned target adds
+// the profile_id scope as defense-in-depth; a GLOBAL target (`providers`, which has no
+// profile_id — #375) is probed by id ALONE.
+function targetExists(
+  ref: ExternalRefSpec,
+  id: number,
+  profileId: number
+): boolean {
+  const row = ref.global
+    ? db.prepare(`SELECT 1 FROM ${ref.table} WHERE id = ?`).get(id)
+    : db
+        .prepare(`SELECT 1 FROM ${ref.table} WHERE id = ? AND profile_id = ?`)
+        .get(id, profileId);
+  return row !== undefined;
 }
 
 // Capture a profile-owned row + its cascade children into the undo holding table
@@ -129,7 +137,7 @@ export function restoreDeletedRow(profileId: number, undoId: number): boolean {
         for (const ref of entity.externalRefs ?? []) {
           const v = toInsert[ref.column];
           if (typeof v !== "number") continue; // null / absent → nothing to check
-          if (targetExists(ref.table, v, profileId)) continue;
+          if (targetExists(ref, v, profileId)) continue;
           if (ref.onMissing === "drop") {
             drop = true;
             break;
