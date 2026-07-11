@@ -14,7 +14,18 @@ import { restoreDeletedRow } from "@/lib/undo-delete-db";
 export async function undoDelete(undoId: number): Promise<{ ok: boolean }> {
   const { profile } = await requireWriteAccess();
   if (!Number.isInteger(undoId) || undoId <= 0) return { ok: false };
-  const ok = restoreDeletedRow(profile.id, undoId);
+  // Parity with the batch path (#202): restoreDeletedRow reconciles the captured
+  // external-FK links it knows about, but any other integrity surprise inside its
+  // transaction would otherwise surface as an unhandled server-action error. Catch it
+  // and report ok=false (the toast simply reports the undo didn't take) rather than
+  // throwing an unhandled error at the caller.
+  let ok = false;
+  try {
+    ok = restoreDeletedRow(profile.id, undoId);
+  } catch (err) {
+    console.error(`undoDelete: token ${undoId} failed to restore`, err);
+    return { ok: false };
+  }
   if (ok) revalidatePath("/", "layout");
   return { ok };
 }
