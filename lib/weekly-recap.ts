@@ -426,6 +426,7 @@ export function renderRecapMessage(
   return {
     title: `📊 Weekly recap${who}`,
     body: `${recapRangeLabel(recap.start, recap.end)}\n${body}`,
+    kind: "weekly-recap",
   };
 }
 

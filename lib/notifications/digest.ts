@@ -147,5 +147,5 @@ export function renderDigestMessage(model: DigestModel): NotificationMessage {
   const body = model.sections
     .map((s) => [s.heading, ...s.lines.map((l) => `• ${l}`)].join("\n"))
     .join("\n\n");
-  return { title: model.title, body };
+  return { title: model.title, body, kind: "digest" };
 }

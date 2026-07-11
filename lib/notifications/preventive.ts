@@ -86,6 +86,7 @@ export function renderPreventiveMessage(
       "\n"
     )}\n\nInformational only — not medical advice.`,
     actions,
+    kind: "preventive",
   };
 }
 

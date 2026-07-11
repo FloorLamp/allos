@@ -93,5 +93,5 @@ export function buildUpcomingDigest(
 export function renderUpcomingDigestMessage(
   model: UpcomingDigestModel
 ): NotificationMessage {
-  return { title: model.title, body: model.lines.join("\n") };
+  return { title: model.title, body: model.lines.join("\n"), kind: "upcoming" };
 }

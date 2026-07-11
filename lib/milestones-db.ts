@@ -141,7 +141,7 @@ export function renderMilestoneMessage(
       ? milestones[0].title
       : `${milestones.length} milestones reached`;
   const body = milestones.map((m) => `• ${m.title}`).join("\n");
-  return { title: `🏁 Milestone${who}: ${head}`, body };
+  return { title: `🏁 Milestone${who}: ${head}`, body, kind: "milestone" };
 }
 
 // Detect + record + (optionally) announce this profile's milestones. Recording

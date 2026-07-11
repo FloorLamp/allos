@@ -5,6 +5,7 @@ import {
   getUserAge,
   getUserFullName,
   getProfileTelegram,
+  getProfileHomeAssistant,
   getTelegramBotConfig,
   getNotifySchedule,
   getTimezone,
@@ -27,6 +28,7 @@ import SettingsTabs from "../SettingsTabs";
 import ProfileForm from "./ProfileForm";
 import ProfilePhotoCard from "./ProfilePhotoCard";
 import ProfileNotificationSettings from "./ProfileNotificationSettings";
+import HomeAssistantNotificationSettings from "./HomeAssistantNotificationSettings";
 import EmergencyCardSettings from "./EmergencyCardSettings";
 import SmokingHistoryForm from "./SmokingHistoryForm";
 import TrainingZonesForm from "./TrainingZonesForm";
@@ -90,12 +92,17 @@ export default async function ProfileSettingsPage() {
       )}
       <SmokingHistoryForm history={getSmokingHistory(profile.id)} />
       {!demoRestricted && (
-        <ProfileNotificationSettings
-          telegram={telegram}
-          botConfigured={botConfigured}
-          schedule={getNotifySchedule(profile.id)}
-          workoutSummary={workoutScheduleSummary(profile.id)}
-        />
+        <>
+          <ProfileNotificationSettings
+            telegram={telegram}
+            botConfigured={botConfigured}
+            schedule={getNotifySchedule(profile.id)}
+            workoutSummary={workoutScheduleSummary(profile.id)}
+          />
+          <HomeAssistantNotificationSettings
+            config={getProfileHomeAssistant(profile.id)}
+          />
+        </>
       )}
       <EmergencyCardSettings
         enabled={getEmergencyCardEnabled(profile.id)}

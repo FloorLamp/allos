@@ -84,6 +84,7 @@ export function renderRefillMessage(
     title: `🔄 Refill due: ${who}${head}`,
     body: `Running low on supply — time to reorder:\n${lines.join("\n")}`,
     actions,
+    kind: "refill",
   };
 }
 
