@@ -18,6 +18,7 @@ const COLUMNS: RecordColumn<CarePlanItem>[] = [
         {c.provider_name ? (
           <ProviderName
             name={c.provider_name}
+            providerId={c.provider_id}
             size="sm"
             className="ml-2 text-xs font-normal text-slate-400"
           />

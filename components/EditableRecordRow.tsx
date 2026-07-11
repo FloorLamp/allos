@@ -53,10 +53,19 @@ export default function EditableRecordRow({
           ) : (
             r.name
           )}
-          {/* Performing provider, as a muted sub-line. */}
+          {/* Performing provider, as a muted sub-line (links to the registry). */}
           {r.provider_name ? (
             <div className="text-xs font-normal text-slate-400 dark:text-slate-500">
-              {r.provider_name}
+              {r.provider_id ? (
+                <Link
+                  href={`/providers/${r.provider_id}`}
+                  className="hover:text-brand-700 hover:underline dark:hover:text-brand-300"
+                >
+                  {r.provider_name}
+                </Link>
+              ) : (
+                r.provider_name
+              )}
             </div>
           ) : null}
         </td>

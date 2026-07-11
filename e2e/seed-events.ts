@@ -815,7 +815,7 @@ console.log(`e2e: seeded percent-strength medication "${PCT_MED_NAME}" (#272)`);
 // referenced provider — so the records browser has a multi-tab strip to render:
 // default tab, ?tab= selection, category-correct row links (the prescription →
 // /medicine regression), the read-only visit listing deep-linking to
-// /encounters/[id], and the non-link Providers chip. Fixed id 908; all content
+// /encounters/[id], and the Providers chip (linking to /providers). Fixed id 908; all content
 // synthetic (fictional analytes/clinic/patient — no real PHI).
 const BROWSER_DOC_ID = 908;
 const BROWSER_DOC_SOURCE = `document:${BROWSER_DOC_ID}`;

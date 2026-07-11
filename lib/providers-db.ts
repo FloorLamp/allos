@@ -5,6 +5,12 @@ import {
   providerDedupKey,
   type ProviderInput,
 } from "./providers";
+import {
+  PROVIDER_LINK_COLUMNS,
+  planProviderMerge,
+  providerLinkTables,
+  type ProviderMergeImpact,
+} from "./provider-merge";
 
 // The shared providers registry data layer. GLOBAL, like
 // logins/profiles — a family shares one "Quest Diagnostics" / "Dr. Smith", so
@@ -77,4 +83,86 @@ export function getProvider(id: number): Provider | undefined {
 // Just the display names, for the datalist that powers the create-on-type picker.
 export function getProviderNames(): string[] {
   return getProviders().map((p) => p.name);
+}
+
+// Update a shared provider's identity fields (issue #275). GLOBAL mutation — the
+// providers row is shared across every profile, so the caller (the server action)
+// gates on requireAdmin(), the same posture as the other global settings writes.
+// The dedup_key is recomputed so a corrected NPI/name keeps the row deduplicating
+// correctly against future imports; a UNIQUE(dedup_key) collision with a DIFFERENT
+// existing provider surfaces as a thrown error the action turns into a friendly
+// "already exists — merge instead" message.
+export function updateProviderIdentity(id: number, input: ProviderInput): void {
+  const p = cleanProviderInput(input);
+  if (!p) throw new Error("A provider needs a name.");
+  const key = providerDedupKey(p);
+  const clash = db
+    .prepare("SELECT id FROM providers WHERE dedup_key = ? AND id <> ?")
+    .get(key, id) as { id: number } | undefined;
+  if (clash)
+    throw new Error(
+      "Another provider already matches this identity — merge the duplicates instead."
+    );
+  db.prepare(
+    `UPDATE providers
+        SET name = ?, type = ?, npi = ?, identifier = ?, phone = ?, address = ?, dedup_key = ?
+      WHERE id = ?`
+  ).run(p.name, p.type, p.npi, p.identifier, p.phone, p.address, key, id);
+}
+
+// Count-only impact of absorbing `duplicateId` (issue #275 confirm dialog). GLOBAL
+// by design: it counts DISTINCT rows per linked table across EVERY profile plus the
+// number of distinct profiles touched — the admin-only merge shows this as counts
+// only ("14 records · 3 visits across 2 profiles"), never cross-profile detail. The
+// per-table statements interpolate the bound PROVIDER_LINK_COLUMNS table/columns,
+// so no literal owned-table name appears — these are deliberately global aggregates
+// (across every profile), not per-profile reads, and carry no profile_id filter.
+export function getProviderMergeImpact(
+  duplicateId: number
+): ProviderMergeImpact {
+  const perTable: { table: string; count: number }[] = [];
+  const profiles = new Set<number>();
+  let total = 0;
+  for (const { table, columns } of providerLinkTables()) {
+    const pred = columns.map((c) => `${c} = ?`).join(" OR ");
+    const args = columns.map(() => duplicateId);
+    const row = db
+      .prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE ${pred}`)
+      .get(...args) as { n: number };
+    perTable.push({ table, count: row.n });
+    total += row.n;
+    const pids = db
+      .prepare(`SELECT DISTINCT profile_id AS pid FROM ${table} WHERE ${pred}`)
+      .all(...args) as { pid: number }[];
+    for (const { pid } of pids) profiles.add(pid);
+  }
+  return { perTable, profiles: profiles.size, total };
+}
+
+// Merge one provider into another (issue #275). Re-points EVERY provider link
+// (provider_id AND encounters.location_provider_id) from the absorbed row to the
+// survivor in ONE transaction, then deletes the absorbed row — the row-ops
+// convention (#199/#201): a merge that forgot a link column would strand rows on a
+// deleted provider. GLOBAL operation (re-points across all profiles), so the caller
+// gates on requireAdmin(). The re-point UPDATE is a runtime expression over the
+// bound PROVIDER_LINK_COLUMNS list (allowlisted in the profile-scoping test — the
+// merge is intentionally profile-agnostic). Idempotent link-wise: a survivor that
+// already owns some rows is unaffected. Throws on a self-merge or a missing row.
+export function mergeProviders(survivorId: number, duplicateId: number): void {
+  const plan = planProviderMerge(survivorId, duplicateId);
+  if (!plan.ok) throw new Error(plan.reason);
+  const both = db
+    .prepare("SELECT id FROM providers WHERE id IN (?, ?)")
+    .all(survivorId, duplicateId) as { id: number }[];
+  if (both.length !== 2) throw new Error("Both providers must exist to merge.");
+  const tx = db.transaction(() => {
+    for (const { table, column } of PROVIDER_LINK_COLUMNS) {
+      db.prepare(`UPDATE ${table} SET ${column} = ? WHERE ${column} = ?`).run(
+        survivorId,
+        duplicateId
+      );
+    }
+    db.prepare("DELETE FROM providers WHERE id = ?").run(duplicateId);
+  });
+  tx();
 }

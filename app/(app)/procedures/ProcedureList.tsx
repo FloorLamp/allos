@@ -51,7 +51,7 @@ const COLUMNS: RecordColumn<Procedure>[] = [
     cellClassName: "hidden whitespace-nowrap md:table-cell",
     cell: (p) =>
       p.provider_name ? (
-        <ProviderName name={p.provider_name} />
+        <ProviderName name={p.provider_name} providerId={p.provider_id} />
       ) : (
         <span className="text-slate-400">—</span>
       ),
