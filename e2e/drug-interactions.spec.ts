@@ -62,9 +62,9 @@ test("the interaction surfaces on Upcoming and stays hidden once dismissed", asy
     .first();
   await expect(finding).toBeVisible();
 
-  // Open its snooze/dismiss menu and dismiss it.
-  await finding.getByRole("button", { name: "Snooze or dismiss" }).click();
-  await finding.getByRole("button", { name: "Dismiss" }).click();
+  // The Upcoming item renders its actions inline (Review · Snooze · … · Dismiss)
+  // — there is no two-step menu; click Dismiss directly.
+  await finding.getByRole("button", { name: "Dismiss", exact: true }).click();
 
   // After the server action + reload, THIS pair's finding is gone — the other
   // seeded interaction pairs legitimately remain.
