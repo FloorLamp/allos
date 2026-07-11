@@ -805,6 +805,53 @@ export interface StandaloneVisitDiagnosis {
 // admitting diagnosis is a visit diagnosis of the same-document (inpatient)
 // encounter — so it correlates/lands identically, and one diagnosis packaged both
 // ways dedups by name here.
+// Whether a section is a Standalone Visit Diagnoses surface. Three packagings, all
+// routed into the same visit-diagnosis handling: the 29308-4 "Diagnosis" section
+// (#249), the Assessment Section (LOINC 51848-0 / templateId 2.2.8) Epic emits its
+// narrative-only Visit Diagnoses as (#263), and — as a last-resort catch for a
+// deployment-specific code we haven't catalogued — any section titled "Visit
+// Diagnos(es/is)". Admitting Diagnoses (#266) route through the same walk too but are
+// matched separately (matchesAdmission) so they keep their own provenance/act shape.
+export function isVisitDiagnosesSection(section: CdaSection): boolean {
+  if (
+    sectionIs(section, SECTIONS.visitDiagnoses) ||
+    sectionIs(section, SECTIONS.assessments)
+  )
+    return true;
+  const title = section.title?.trim().toLowerCase();
+  return !!title && /\bvisit diagnos(?:i|e)s\b/.test(title);
+}
+
+// Diagnosis names read from a section's narrative <table> — the fallback for a
+// narrative-only Visit Diagnoses / Assessment section (#263) whose clinical content
+// lives ONLY in an HTML table of diagnosis names, with ZERO structured entries (so
+// the Problem-Observation deep-walk finds nothing). Reads the first cell of each body
+// <tr> (Epic's Visit Diagnoses table leads with the diagnosis name), skipping header
+// rows (which carry <th>, not <td>) and "no known problems" placeholders. A section
+// with no <table> (free-text prose) yields nothing, so a genuine narrative assessment
+// is never mis-parsed into fabricated diagnoses. Dedups within the section.
+export function narrativeDiagnosisNames(sectionRaw: any): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const table of asArray(sectionRaw?.text?.table)) {
+    // Body rows: prefer an explicit <tbody>, else the <tr> directly under <table>.
+    const bodyRows = table?.tbody
+      ? asArray(table.tbody).flatMap((b: any) => asArray(b?.tr))
+      : asArray(table?.tr);
+    for (const tr of bodyRows) {
+      const cells = asArray(tr?.td);
+      if (cells.length === 0) continue; // header row (<th> only) or empty
+      const name = collectText(cells[0]).replace(/\s+/g, " ").trim();
+      if (!name || isNoKnownProblemText(name)) continue;
+      const key = name.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(name);
+    }
+  }
+  return out;
+}
+
 export function visitDiagnosesFromSections(
   sections: CdaSection[]
 ): StandaloneVisitDiagnosis[] {
@@ -812,11 +859,12 @@ export function visitDiagnosesFromSections(
   const seen = new Set<string>();
   for (const s of sections) {
     if (
-      !sectionIs(s, SECTIONS.visitDiagnoses) &&
+      !isVisitDiagnosesSection(s) &&
       !sectionIs(s, SECTIONS.admissionDiagnoses)
     )
       continue;
     const ids = buildNarrativeIdMap(s.raw?.text);
+    let fromEntries = 0;
     const walk = (node: any): void => {
       if (node == null || typeof node !== "object") return;
       if (Array.isArray(node)) {
@@ -839,6 +887,7 @@ export function visitDiagnosesFromSections(
           const key = name.toLowerCase();
           if (!seen.has(key)) {
             seen.add(key);
+            fromEntries++;
             const { code, system } = pickCode(value);
             out.push({
               name,
@@ -856,6 +905,19 @@ export function visitDiagnosesFromSections(
       }
     };
     walk(s.entries);
+    // Narrative-only fallback (#263): a section that yielded NO structured Problem
+    // Observation is the Assessment/"Visit Diagnoses" flavor whose diagnoses live only
+    // in the printed <table>. Read the diagnosis names out of it (no code/onset — the
+    // narrative carries none), deduped against everything captured so far so a CCD that
+    // ships BOTH packagings never double-lists.
+    if (fromEntries === 0) {
+      for (const name of narrativeDiagnosisNames(s.raw)) {
+        const key = name.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push({ name, code: null, code_system: null, onset_date: null });
+      }
+    }
   }
   return out;
 }
@@ -883,9 +945,11 @@ export function isClinicalNoteSection(section: CdaSection): boolean {
   const code = section.code ?? undefined;
   if (code && CLINICAL_NOTE_LOINCS.has(code)) return true;
   // A diagnoses section routes to its own document-level handler even if titled
-  // "… Notes" — never let the title heuristic double-process it as a note.
+  // "… Notes" — never let the title heuristic double-process it as a note. Covers the
+  // 29308-4 / Assessment (51848-0) / "Visit Diagnoses"-titled surfaces (#263) and
+  // Admitting Diagnoses (#266).
   if (
-    code === SECTIONS.visitDiagnoses.loinc ||
+    isVisitDiagnosesSection(section) ||
     sectionIs(section, SECTIONS.admissionDiagnoses)
   )
     return false;

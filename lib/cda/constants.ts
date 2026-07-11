@@ -199,6 +199,19 @@ export const SECTIONS = {
     loinc: "29308-4",
     templates: [],
   },
+  // Assessments (LOINC 51848-0, C-CDA Assessment Section templateId
+  // 2.16.840.1.113883.10.20.22.2.8). The packaging Epic/MyChart Encounter Summary
+  // CCDs use for a TOP-LEVEL "Visit Diagnoses" surface that is NARRATIVE-ONLY — an
+  // HTML table of diagnosis names with ZERO structured entries, so the 29308-4
+  // Problem-Observation deep-walk finds nothing (issue #263). Routed into the SAME
+  // visit-diagnosis handling as 29308-4: matched here (plus a "Visit Diagnoses" title
+  // heuristic in isVisitDiagnosesSection) and consumed by parsing the narrative table
+  // rows as a fallback, correlated onto the same-document encounter (else landed as
+  // problem-list conditions). No extractor of its own.
+  assessments: {
+    loinc: "51848-0",
+    templates: ["2.16.840.1.113883.10.20.22.2.8"],
+  },
   // Progress Notes (LOINC 11506-3). A per-visit clinician progress note emitted as a
   // TOP-LEVEL narrative section (the note text lives in the section <text>), not the
   // encounter-nested Comment Activity the encounter walk already reads. Handled with
@@ -396,6 +409,7 @@ export const KNOWN_SECTION_TITLES: Record<string, string> = {
   [SECTIONS.reasonForVisit.loinc]: "Reason for Visit",
   [SECTIONS.socialHistory.loinc]: "Social History",
   [SECTIONS.visitDiagnoses.loinc]: "Visit Diagnoses",
+  [SECTIONS.assessments.loinc]: "Assessments",
   [SECTIONS.progressNotes.loinc]: "Progress Notes",
   // Clinical-note section codes with no SECTIONS spec of their own (#266/#268).
   "8648-8": "Discharge Summaries",
