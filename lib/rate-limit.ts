@@ -52,6 +52,28 @@ export function decideRateLimit(
   return { ok: false, retryAfterSec, state: existing };
 }
 
+// Resolve the rate-limit identity for a shared-secret endpoint (e.g. the Telegram
+// webhook) from its X-Forwarded-For header. XFF is client-controlled and only
+// trustworthy behind a reverse proxy that APPENDS the real client, so the RIGHTMOST
+// entry is the address that proxy actually observed. When NO trusted proxy is
+// configured (`trustProxy` false), the header is fully spoofable — a caller could
+// mint unlimited distinct buckets and defeat the throttle — so every request shares
+// ONE bucket ("direct") instead, which still caps total throughput per process. A
+// safe DoS guard when the client can't be attributed (issue #390). Pure so the
+// policy is unit-testable without a Request/env.
+export function forwardedClientIdentity(
+  xffHeader: string | null,
+  trustProxy: boolean
+): string {
+  if (!trustProxy) return "direct";
+  const rightmost = (xffHeader ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .pop();
+  return rightmost ?? "unknown";
+}
+
 const store = new Map<string, RateLimitState>();
 
 // Lazy, amortized eviction: sweep expired entries at most once per sweep interval.

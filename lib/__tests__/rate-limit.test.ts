@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { decideRateLimit, checkRateLimit } from "@/lib/rate-limit";
+import {
+  decideRateLimit,
+  checkRateLimit,
+  forwardedClientIdentity,
+} from "@/lib/rate-limit";
 
 describe("decideRateLimit", () => {
   const limit = 3;
@@ -70,5 +74,30 @@ describe("checkRateLimit", () => {
     expect(checkRateLimit(a, opts).ok).toBe(true);
     expect(checkRateLimit(a, opts).ok).toBe(false); // a exhausted
     expect(checkRateLimit(b, opts).ok).toBe(true); // b still fresh
+  });
+});
+
+describe("forwardedClientIdentity", () => {
+  it("trusts the RIGHTMOST XFF hop when behind a proxy", () => {
+    // Proxies append the real client on the right; leftmost entries are
+    // attacker-supplied, so the rightmost is what the trusted proxy observed.
+    expect(forwardedClientIdentity("1.2.3.4, 5.6.7.8, 9.9.9.9", true)).toBe(
+      "9.9.9.9"
+    );
+    expect(forwardedClientIdentity("203.0.113.7", true)).toBe("203.0.113.7");
+  });
+
+  it("falls back to 'unknown' behind a proxy with no/blank XFF", () => {
+    expect(forwardedClientIdentity(null, true)).toBe("unknown");
+    expect(forwardedClientIdentity("", true)).toBe("unknown");
+    expect(forwardedClientIdentity("  ,  ", true)).toBe("unknown");
+  });
+
+  it("collapses everything to one 'direct' bucket when no proxy is trusted", () => {
+    // Without a trusted proxy XFF is fully spoofable, so distinct forged values
+    // must NOT mint distinct buckets — they all share the single 'direct' key.
+    expect(forwardedClientIdentity("1.1.1.1", false)).toBe("direct");
+    expect(forwardedClientIdentity("2.2.2.2", false)).toBe("direct");
+    expect(forwardedClientIdentity(null, false)).toBe("direct");
   });
 });
