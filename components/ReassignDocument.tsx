@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { IconArrowsExchange } from "@tabler/icons-react";
 import { useConfirm } from "@/components/ConfirmDialog";
-import { reassignDocument } from "@/app/(app)/medical/actions";
+import { reassignDocument } from "@/app/(app)/medical/document-actions";
 
 // "Move to profile…" control. Shown only when the acting
 // login can reach ≥2 profiles. Picks a destination among the login's OTHER

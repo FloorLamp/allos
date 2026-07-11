@@ -28,7 +28,7 @@ import {
 } from "@/lib/import-persist";
 import { documentSource } from "@/lib/body-metric-extract";
 import type { PersistInput } from "@/lib/import-shape";
-import { deleteMedicalDocument } from "@/app/(app)/medical/actions";
+import { deleteMedicalDocument } from "@/app/(app)/medical/document-actions";
 import { seedActor, fd } from "@/lib/__action_tests__/harness";
 
 const DATE = "2020-05-01";

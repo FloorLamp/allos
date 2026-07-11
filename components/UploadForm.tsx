@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { uploadMedicalDocument } from "@/app/(app)/medical/actions";
+import { uploadMedicalDocument } from "@/app/(app)/medical/document-actions";
 import { useToast } from "@/components/Toast";
 import SubmitButton from "@/components/SubmitButton";
 

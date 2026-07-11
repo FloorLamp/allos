@@ -1,6 +1,6 @@
 "use client";
 
-import { reprocessDocument } from "@/app/(app)/medical/actions";
+import { reprocessDocument } from "@/app/(app)/medical/document-actions";
 import { useConfirmedAction } from "@/components/useConfirmedAction";
 
 // Shared behavior for the two "reprocess this document" triggers — the row
