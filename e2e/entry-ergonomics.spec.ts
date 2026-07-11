@@ -202,6 +202,57 @@ test("logging a manual cardio activity auto-fills an editable estimated-calorie 
     .click();
 });
 
+test("a failed activity save surfaces an error, never a false 'Saved ✓' (#332)", async ({
+  page,
+}) => {
+  await page.goto("/training"); // default "Log" tab renders the Journal feed
+
+  // Force every saveActivity call to fail at the network layer. saveActivity runs
+  // as a Server Action — a POST to the page carrying a `next-action` header; the
+  // service worker passes non-GET straight through (public/sw.js), so this is an
+  // ordinary browser request page.route intercepts. We ABORT it (rather than
+  // fulfill a 500 — a non-flight body makes Next fall back to a full-page reload,
+  // which would unmount the form before the indicator paints); an aborted fetch
+  // rejects, so `await saveActivity()` throws into persist()'s failure handling.
+  // Aborting *every* such POST (not just the first) guarantees no later autosave
+  // can flip the form back to "Saved ✓". The #332 regression was that a save which
+  // didn't persist still advanced the form to "Saved ✓"; the fix must instead show
+  // the honest "Couldn’t save" indicator (the exact { ok: false } not-owned/invalid
+  // branches are pinned directly at the action tier — the single-profile e2e DB
+  // can't naturally produce a stale foreign id).
+  await page.route("**/*", async (route) => {
+    const req = route.request();
+    if (req.method() === "POST" && req.headers()["next-action"]) {
+      await route.abort("failed");
+      return;
+    }
+    await route.continue();
+  });
+
+  // Open a fresh create form and fill it enough to be savable (same flow as the
+  // est-calories spec — see its note on why fields are addressed by testid/role).
+  await page
+    .getByRole("main")
+    .getByRole("button", { name: "New activity" })
+    .click();
+  await page.getByPlaceholder(/What did you do/).fill("Running");
+  await page
+    .getByRole("listbox")
+    .getByRole("button", { name: "Running", exact: true })
+    .click();
+  // A duration makes the activity savable, so the debounced auto-save fires — and
+  // hits the aborted request.
+  await page.getByTestId("cardio-duration").fill("30");
+
+  // The failure must surface as the error indicator (SaveStatus, aria-label
+  // "Couldn’t save"), and the success check must never appear.
+  await expect(page.getByLabel("Couldn’t save")).toBeVisible();
+  await expect(page.getByLabel("Saved")).toHaveCount(0);
+
+  // Nothing persisted (the save was forced to fail), so there is no draft row to
+  // clean up — the shared seed DB is left untouched.
+});
+
 test("bulk-delete rows in Data → Manage, then Undo restores them (#29)", async ({
   page,
 }) => {

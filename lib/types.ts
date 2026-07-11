@@ -702,6 +702,20 @@ export interface SupplementDose {
 // pre-#232 row reads as taken).
 export type DoseStatus = "taken" | "skipped";
 
+// Outcome of saveActivity (issue #332). The activity form auto-saves, so it must
+// confirm ONLY a save that actually persisted. Previously a validation failure
+// (`return;`) or a failed ownership check (`return null`) reached the client as
+// `undefined`, which persist() read as success — it advanced its saved signature,
+// showed "Saved ✓" and marked the form clean, so the auto-saver never retried and
+// the user's edits were silently lost. The action now answers with the persisted
+// outcome (same principle as the DoseTakenOutcome convention below): never
+// unconditionally confirm; report what really happened.
+export type SaveActivityOutcome =
+  | { ok: true; id: number } // row inserted/updated; `id` is its row id
+  | { ok: false; reason: "invalid" | "not-owned" };
+//    "invalid"   → title/date failed the server-side guard; nothing written
+//    "not-owned" → the untrusted form id isn't the active profile's; nothing written
+
 // Outcome of an attempt to log a dose as taken/skipped (markDoseTaken /
 // markDoseSkipped). Lets the Telegram callback answer honestly instead of
 // claiming "Logged" for a tap on a button whose dose has since been

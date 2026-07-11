@@ -52,7 +52,7 @@ describe("activity writes revalidate /trends (#333)", () => {
       fd({ type: "cardio", title: "Evening run", date: "2026-05-02" })
     );
 
-    expect(res).toEqual({ id: expect.any(Number) });
+    expect(res).toEqual({ ok: true, id: expect.any(Number) });
     expect(revalidatedPaths()).toEqual(new Set(["/training", "/trends", "/"]));
   });
 

@@ -16,7 +16,7 @@ import {
   pairSignature,
 } from "@/lib/import-review/detect";
 import { parseOverrideFields } from "@/lib/import-review/conflicts";
-import type { ActivityType } from "@/lib/types";
+import type { ActivityType, SaveActivityOutcome } from "@/lib/types";
 import { getUnitPrefs } from "@/lib/settings";
 import { toKg, toKm, resolveWeightKg } from "@/lib/units";
 import { minutesBetween } from "@/lib/activity-meta";
@@ -115,8 +115,14 @@ function revalidateActivitySurfaces() {
   revalidatePath("/");
 }
 
-// Create a new activity, or update an existing one when `id` is present.
-export async function saveActivity(formData: FormData) {
+// Create a new activity, or update an existing one when `id` is present. Returns
+// a typed SaveActivityOutcome (issue #332): a validation or ownership failure must
+// reach the auto-saving form as an explicit `{ ok: false }` — never `undefined`,
+// which the client read as success and confirmed with "Saved ✓" while nothing
+// persisted (silently losing the edit).
+export async function saveActivity(
+  formData: FormData
+): Promise<SaveActivityOutcome> {
   const { login, profile } = await requireWriteAccess();
   const id = formData.get("id") ? Number(formData.get("id")) : null;
   const type = String(formData.get("type")) as ActivityType;
@@ -124,7 +130,7 @@ export async function saveActivity(formData: FormData) {
   const date = String(formData.get("date") ?? "").trim();
   // Reject non-ISO dates server-side too: the client gates on this, but the
   // action must not persist "2026-07" / "Friday" if a bad value slips through.
-  if (!title || !isRealIsoDate(date)) return;
+  if (!title || !isRealIsoDate(date)) return { ok: false, reason: "invalid" };
 
   const prefs = getUnitPrefs(login.id);
   const notes = (formData.get("notes") as string)?.trim() || null;
@@ -283,11 +289,14 @@ export async function saveActivity(formData: FormData) {
     return activityId;
   });
   const activityId = tx();
-  if (activityId == null) return;
+  // The tx returns null when the (untrusted) form id isn't this profile's — the
+  // ownership check bailed, so nothing was written. Report it instead of a silent
+  // no-op the form would confirm as "Saved ✓".
+  if (activityId == null) return { ok: false, reason: "not-owned" };
 
   revalidateActivitySurfaces();
   // Return the row id so the auto-saving form can switch from create to update.
-  return { id: activityId };
+  return { ok: true, id: activityId };
 }
 
 // Record the user's bodyweight (entered in their preferred unit) as a body-metrics
