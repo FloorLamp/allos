@@ -142,6 +142,10 @@ const CYCLING_SPORT_TYPES = new Set([
   "VirtualRide",
 ]);
 
+// Running sport types. Strava reports run cadence in the SAME `average_cadence`
+// field as cycling, so it can share the sport-agnostic avg_cadence column (#419).
+const RUNNING_SPORT_TYPES = new Set(["Run", "TrailRun", "VirtualRun"]);
+
 // Strava workout_type integer codes → label. Run: 0 default, 1 race, 2 long run,
 // 3 workout. Ride: 10 default, 11 race, 12 workout. Everything else → null.
 function workoutTypeLabel(code: unknown): string | null {
@@ -190,6 +194,7 @@ export function mapStravaActivity(
   }
 
   const isCycling = CYCLING_SPORT_TYPES.has(str(sportType) ?? "");
+  const isRunning = RUNNING_SPORT_TYPES.has(str(sportType) ?? "");
   // Outdoor = not on a trainer and not a virtual sport. Temperature is recorded
   // by outdoor GPS devices only.
   const isOutdoor =
@@ -260,9 +265,16 @@ export function mapStravaActivity(
     weighted_avg_power_w: isCycling
       ? boundedOrNull("power_w", roundOrNull(num(rec.weighted_average_watts)))
       : null,
-    avg_cadence: isCycling
-      ? boundedOrNull("cadence_rpm", roundOrNull(num(rec.average_cadence)))
-      : null,
+    // Cadence for cycling (crank RPM) AND running. UNIT DECISION (#419): Strava
+    // reports run cadence per-leg ("half-steps", ~85–95), NOT full steps/min — we
+    // store that provider-raw value unchanged, exactly like cycling RPM, rather than
+    // doubling it. This keeps the shared avg_cadence/"rpm" column one consistent
+    // "limb cycles per minute" quantity across sports (both ≈80–100) and within the
+    // cadence_rpm 0–300 envelope; a run therefore shows its per-leg cadence.
+    avg_cadence:
+      isCycling || isRunning
+        ? boundedOrNull("cadence_rpm", roundOrNull(num(rec.average_cadence)))
+        : null,
     kilojoules: isCycling
       ? boundedOrNull("kilojoules", roundOrNull(num(rec.kilojoules)))
       : null,

@@ -5,6 +5,8 @@
 export const AVERAGED_METRICS = new Set([
   "hrv_ms",
   "lean_mass_kg",
+  "muscle_mass_kg",
+  "body_water_kg",
   "bone_mass_kg",
   "bmr_kcal",
   "height_cm",

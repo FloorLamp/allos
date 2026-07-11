@@ -153,6 +153,73 @@ describe("mapWithingsMeasureGroup", () => {
     );
     expect(res).toBeNull();
   });
+
+  it("maps body-composition types to point samples keyed on the group instant (#419)", () => {
+    const res = mapWithingsMeasureGroup(
+      measureGroup({
+        grpid: 100004,
+        measures: [
+          { value: 70500, type: 1, unit: -3 }, // 70.5 kg weight
+          { value: 55000, type: 5, unit: -3 }, // 55.0 kg lean (fat-free) mass
+          { value: 52000, type: 76, unit: -3 }, // 52.0 kg muscle mass
+          { value: 3200, type: 88, unit: -3 }, // 3.2 kg bone mass
+          { value: 40000, type: 77, unit: -3 }, // 40.0 kg total body water
+        ],
+      }),
+      "UTC"
+    );
+    const byMetric = Object.fromEntries(
+      res!.samples.map((s) => [s.metric, s.value])
+    );
+    expect(byMetric).toEqual({
+      lean_mass_kg: 55,
+      muscle_mass_kg: 52,
+      bone_mass_kg: 3.2,
+      body_water_kg: 40,
+    });
+    // Point samples: start == end == the group's instant (the dedup key).
+    for (const s of res!.samples) {
+      expect(s.date).toBe("2023-11-14");
+      expect(s.start_time).toBe("2023-11-14T22:13:20.000Z");
+      expect(s.end_time).toBe(s.start_time);
+    }
+    // Weight still lands in body_metrics; composition never touches it.
+    expect(res!.bodyMetric).toMatchObject({ weight_kg: 70.5 });
+  });
+
+  it("maps VO2 max to the biomarker vital (#419)", () => {
+    const res = mapWithingsMeasureGroup(
+      measureGroup({
+        grpid: 100005,
+        measures: [{ value: 48, type: 123, unit: 0 }], // 48 mL/kg/min
+      }),
+      "UTC"
+    );
+    const vo2 = res!.vitals.find((v) => v.canonical === "VO2 Max");
+    expect(vo2).toMatchObject({
+      external_id: `${WITHINGS_ID}:100005:VO2 Max`,
+      category: "biomarker",
+      value_num: 48,
+      unit: "mL/kg/min",
+      date: "2023-11-14",
+    });
+  });
+
+  it("drops an out-of-range composition value but keeps the plausible ones (#132)", () => {
+    const res = mapWithingsMeasureGroup(
+      measureGroup({
+        grpid: 100006,
+        measures: [
+          { value: 999000, type: 88, unit: -3 }, // 999 kg bone mass — impossible
+          { value: 55000, type: 5, unit: -3 }, // 55 kg lean mass — kept
+        ],
+      }),
+      "UTC"
+    );
+    const metrics = res!.samples.map((s) => s.metric);
+    expect(metrics).toContain("lean_mass_kg");
+    expect(metrics).not.toContain("bone_mass_kg");
+  });
 });
 
 describe("mapWithingsSleep", () => {

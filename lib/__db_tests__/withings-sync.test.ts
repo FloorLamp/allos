@@ -38,6 +38,10 @@ const WEIGH_IN = {
     { value: 70500, type: 1, unit: -3 }, // 70.5 kg
     { value: 185, type: 6, unit: -1 }, // 18.5 %
     { value: 61, type: 11, unit: 0 }, // 61 bpm heart pulse → resting HR
+    { value: 55000, type: 5, unit: -3 }, // 55.0 kg lean mass → lean_mass_kg
+    { value: 52000, type: 76, unit: -3 }, // 52.0 kg muscle mass → muscle_mass_kg
+    { value: 3200, type: 88, unit: -3 }, // 3.2 kg bone mass → bone_mass_kg
+    { value: 40000, type: 77, unit: -3 }, // 40.0 kg body water → body_water_kg
   ],
 };
 // The BP cuff carries only the two pressures → vitals (no body-metrics row).
@@ -80,6 +84,7 @@ function batch(): {
     const m = mapWithingsMeasureGroup(g, TZ)!;
     if (m.bodyMetric) body.push(m.bodyMetric);
     vitals.push(...m.vitals);
+    samples.push(...m.samples);
   }
   const s = mapWithingsSleep(SLEEP, TZ)!;
   samples.push(...s.samples);
@@ -113,8 +118,9 @@ describe("Withings sync upsert/dedup", () => {
       updated: 0,
       unchanged: 0,
     });
-    // sleep_min + 4 stages = 5 samples.
-    expect(first.samples).toEqual({ inserted: 5, updated: 0, unchanged: 0 });
+    // sleep_min + 4 stages = 5 sleep samples, plus 4 composition point samples
+    // (lean/muscle/bone mass + body water) from the weigh-in = 9.
+    expect(first.samples).toEqual({ inserted: 9, updated: 0, unchanged: 0 });
 
     const second = apply();
     expect(second.body).toEqual({ inserted: 0, updated: 0, unchanged: 1 });
@@ -123,7 +129,7 @@ describe("Withings sync upsert/dedup", () => {
       updated: 0,
       unchanged: 2,
     });
-    expect(second.samples).toEqual({ inserted: 0, updated: 0, unchanged: 5 });
+    expect(second.samples).toEqual({ inserted: 0, updated: 0, unchanged: 9 });
   });
 
   it("BP lands as vitals in medical_records like a manual reading", () => {
@@ -147,6 +153,58 @@ describe("Withings sync upsert/dedup", () => {
     expect(sys.unit).toBe("mmHg");
     expect(sys.canonical_name).toBe("Blood Pressure Systolic");
     expect(sys.source).toBe("withings");
+  });
+
+  it("lands body-composition types in metric_samples like other point metrics (#419)", () => {
+    apply();
+    const rows = db
+      .prepare(
+        `SELECT metric, value FROM metric_samples
+           WHERE profile_id = ? AND source = ?
+             AND metric IN ('lean_mass_kg','muscle_mass_kg','bone_mass_kg','body_water_kg')
+           ORDER BY metric`
+      )
+      .all(profileId, WITHINGS_ID) as { metric: string; value: number }[];
+    expect(Object.fromEntries(rows.map((r) => [r.metric, r.value]))).toEqual({
+      body_water_kg: 40,
+      bone_mass_kg: 3.2,
+      lean_mass_kg: 55,
+      muscle_mass_kg: 52,
+    });
+  });
+
+  it("lands VO2 max as a biomarker vital in medical_records (#419)", () => {
+    const VO2 = {
+      grpid: 900009,
+      date: 1700000000,
+      category: 1,
+      timezone: TZ,
+      measures: [{ value: 48, type: 123, unit: 0 }], // 48 mL/kg/min
+    };
+    const m = mapWithingsMeasureGroup(VO2, TZ)!;
+    const first = db.transaction(() =>
+      upsertVitals(profileId, m.vitals, WITHINGS_ID)
+    )();
+    expect(first.counts).toEqual({ inserted: 1, updated: 0, unchanged: 0 });
+    const vo2 = db
+      .prepare(
+        `SELECT category, value_num, unit, canonical_name FROM medical_records
+           WHERE profile_id = ? AND external_id = ?`
+      )
+      .get(profileId, "withings:900009:VO2 Max") as {
+      category: string;
+      value_num: number;
+      unit: string;
+      canonical_name: string;
+    };
+    expect(vo2.category).toBe("biomarker");
+    expect(vo2.value_num).toBe(48);
+    expect(vo2.unit).toBe("mL/kg/min");
+    // A re-push of the same reading dedups on external_id.
+    const second = db.transaction(() =>
+      upsertVitals(profileId, m.vitals, WITHINGS_ID)
+    )();
+    expect(second.counts).toEqual({ inserted: 0, updated: 0, unchanged: 1 });
   });
 
   it("writes weight, body fat, and heart pulse to one body-metrics row", () => {

@@ -440,6 +440,9 @@ demand), so no public webhook is required.
 | ------------------------------------- | -------------------------------------------------------------------------------------------- |
 | Weight, body fat %                    | **Trends → Body** charts (stored per day, source `withings`)                                 |
 | Heart pulse (scale / BP cuff)         | **Trends → Body** resting heart rate                                                         |
+| Lean & bone mass                      | **Trends → Body** composition charts (`metric_samples`, one reading per weigh-in)            |
+| Muscle mass, total body water         | `metric_samples` (`muscle_mass_kg` / `body_water_kg`) — captured per weigh-in                |
+| VO₂ max                               | **Vitals** biomarker (`medical_records`) — appears in **Trends → Biomarkers**                |
 | Blood pressure (systolic + diastolic) | **Vitals** (`medical_records`) — appears in **Trends → Biomarkers** like manually-entered BP |
 | SpO₂, body temperature                | **Vitals** (temperature converted °C → °F canonical)                                         |
 | Sleep (deep / REM / light / awake)    | **Trends → Body** — total per night + stage breakdown (attributed to the wake day)           |

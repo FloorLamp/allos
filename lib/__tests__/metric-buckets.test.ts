@@ -10,6 +10,8 @@ describe("metric bucket membership", () => {
     const averaged = [
       "hrv_ms",
       "lean_mass_kg",
+      "muscle_mass_kg",
+      "body_water_kg",
       "bone_mass_kg",
       "bmr_kcal",
       "height_cm",
@@ -25,11 +27,13 @@ describe("metric bucket membership", () => {
     expect([...AVERAGED_METRICS].sort()).toEqual(
       [
         "bmr_kcal",
+        "body_water_kg",
         "bone_mass_kg",
         "head_circumference_cm",
         "height_cm",
         "hrv_ms",
         "lean_mass_kg",
+        "muscle_mass_kg",
       ].sort()
     );
   });

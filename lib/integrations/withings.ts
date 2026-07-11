@@ -20,22 +20,35 @@ export const WITHINGS_ID = "withings";
 // ---- Withings measure type codes (getmeas `type`) ----
 // https://developer.withings.com/api-reference/#tag/measure
 export const MEAS_WEIGHT = 1; // kg
+export const MEAS_LEAN_MASS = 5; // kg (fat-free mass) → metric_samples lean_mass_kg
 export const MEAS_FAT_RATIO = 6; // %
 export const MEAS_DIASTOLIC_BP = 9; // mmHg
 export const MEAS_SYSTOLIC_BP = 10; // mmHg
 export const MEAS_HEART_PULSE = 11; // bpm
 export const MEAS_SPO2 = 54; // %
 export const MEAS_BODY_TEMP = 71; // °C (stored canonical as °F)
+export const MEAS_MUSCLE_MASS = 76; // kg → metric_samples muscle_mass_kg
+export const MEAS_HYDRATION = 77; // kg (total body water) → metric_samples body_water_kg
+export const MEAS_BONE_MASS = 88; // kg → metric_samples bone_mass_kg
+export const MEAS_VO2MAX = 123; // mL/kg/min → VO2 Max biomarker vital
 
-// The measure types we request (a focused `meastypes` CSV keeps responses lean).
+// The measure types we request (a focused `meastypes` CSV keeps responses lean). The
+// body-composition types (lean/muscle/bone mass, hydration, VO2max) join weight/fat%
+// so a body-comp scale user gets the full composition set the device measures, not
+// just weight + body fat (issue #419).
 export const WITHINGS_MEAS_TYPES = [
   MEAS_WEIGHT,
+  MEAS_LEAN_MASS,
   MEAS_FAT_RATIO,
   MEAS_DIASTOLIC_BP,
   MEAS_SYSTOLIC_BP,
   MEAS_HEART_PULSE,
   MEAS_SPO2,
   MEAS_BODY_TEMP,
+  MEAS_MUSCLE_MASS,
+  MEAS_HYDRATION,
+  MEAS_BONE_MASS,
+  MEAS_VO2MAX,
 ] as const;
 
 // The sleep-summary data fields we request (v2/sleep getsummary `data_fields`).
@@ -111,7 +124,11 @@ function measureValue(m: unknown): { type: number; value: number } | null {
 export function mapWithingsMeasureGroup(
   group: unknown,
   defaultTz: string
-): { bodyMetric: NormBodyMetric | null; vitals: NormVital[] } | null {
+): {
+  bodyMetric: NormBodyMetric | null;
+  vitals: NormVital[];
+  samples: NormMetricSample[];
+} | null {
   if (!group || typeof group !== "object") return null;
   const rec = group as Record<string, unknown>;
   const grpid = num(rec.grpid);
@@ -148,18 +165,59 @@ export function mapWithingsMeasureGroup(
       : null;
 
   const vitals: NormVital[] = [];
-  const pushVital = (canonical: string, unit: string, value: number | null) => {
+  const pushVital = (
+    canonical: string,
+    unit: string,
+    value: number | null,
+    category: "vitals" | "biomarker" = "vitals"
+  ) => {
     if (value == null) return;
     vitals.push({
       external_id: `${WITHINGS_ID}:${grpid}:${canonical}`,
       date: loc.date,
-      category: "vitals",
+      category,
       name: canonical,
       canonical,
       value_num: value,
       unit,
     });
   };
+
+  // Point body-composition metrics (one reading per weigh-in) → metric_samples,
+  // keyed on the group's instant so a re-fetch dedups in the shared upsert. lean/bone
+  // mass reuse the existing metric vocab (charted on Trends → Body); muscle mass and
+  // total body water are captured under their own metric strings (issue #419).
+  const samples: NormMetricSample[] = [];
+  const pushSample = (metric: string, value: number | null) => {
+    if (value == null) return;
+    samples.push({
+      metric,
+      date: loc.date,
+      start_time: loc.iso,
+      end_time: loc.iso,
+      value,
+    });
+  };
+  pushSample(
+    "lean_mass_kg",
+    boundedOrNull("lean_mass_kg", byType.get(MEAS_LEAN_MASS) ?? null)
+  );
+  pushSample(
+    "bone_mass_kg",
+    boundedOrNull("bone_mass_kg", byType.get(MEAS_BONE_MASS) ?? null)
+  );
+  pushSample(
+    "muscle_mass_kg",
+    boundedOrNull("muscle_mass_kg", byType.get(MEAS_MUSCLE_MASS) ?? null)
+  );
+  // Withings type 77 "Hydration" is TOTAL BODY WATER in kg (value × 10^unit), NOT
+  // drinking-water intake — so it maps to its own body_water_kg metric, never the
+  // intake-oriented hydration_l vocab (whose 0–40 L envelope + additive semantics
+  // would mislabel a ~40 kg body-water reading as 40 L drunk).
+  pushSample(
+    "body_water_kg",
+    boundedOrNull("body_water_kg", byType.get(MEAS_HYDRATION) ?? null)
+  );
 
   pushVital(
     "Blood Pressure Systolic",
@@ -192,9 +250,17 @@ export function mapWithingsMeasureGroup(
       tempC != null ? Math.round(((tempC * 9) / 5 + 32) * 10) / 10 : null
     )
   );
+  // VO2 max → the supported biomarker vital (same canonical + category as the Health
+  // Connect vo2_max mapping), so a scale/watch estimate lands with lab/manual readings.
+  pushVital(
+    "VO2 Max",
+    "mL/kg/min",
+    boundedOrNull("VO2 Max", byType.get(MEAS_VO2MAX) ?? null),
+    "biomarker"
+  );
 
-  if (!bodyMetric && vitals.length === 0) return null;
-  return { bodyMetric, vitals };
+  if (!bodyMetric && vitals.length === 0 && samples.length === 0) return null;
+  return { bodyMetric, vitals, samples };
 }
 
 // ---- sleep ----

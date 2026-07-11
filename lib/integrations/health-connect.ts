@@ -18,6 +18,55 @@ import type {
 
 export const HEALTH_CONNECT_ID = "health-connect";
 
+// Every top-level payload key the parser below CONSUMES. A Health Connect record
+// type NOT in this set (FloorsClimbed, ElevationGained, Power, Speed, the cycling/
+// running-cadence records, the menstrual-cycle family, …) has no model home yet — it
+// is dropped, but its records must still be COUNTED as skipped so the Data → Review
+// feed reflects that a push carried record types we discarded, rather than honestly
+// reporting "N new · N changed · N unchanged" for a batch that silently vanished data
+// (issue #419, the "no silent caps" rule applied to ingest). Non-array keys
+// (`timestamp`, `app_version`, …) are metadata, never counted. When a new record type
+// gains a home below, add its key here so it stops counting as skipped.
+export const KNOWN_HEALTH_CONNECT_KEYS = new Set<string>([
+  "weight",
+  "body_fat",
+  "resting_heart_rate",
+  "steps",
+  "distance",
+  "active_calories",
+  "total_calories",
+  "hydration",
+  "nutrition",
+  "lean_body_mass",
+  "bone_mass",
+  "basal_metabolic_rate",
+  "height",
+  "blood_pressure",
+  "blood_glucose",
+  "oxygen_saturation",
+  "body_temperature",
+  "respiratory_rate",
+  "vo2_max",
+  "heart_rate_variability",
+  "sleep",
+  "heart_rate",
+  "exercise",
+]);
+
+// Count the records carried under top-level array keys the parser does NOT consume.
+// Pure and defensive: a non-object body, a non-array value, or a known key all
+// contribute 0. This is the "unknown record type" tally that folds into out.skipped
+// so dropped types are visible in the Review feed (issue #419).
+export function countUnknownRecords(body: unknown): number {
+  if (!body || typeof body !== "object") return 0;
+  let total = 0;
+  for (const [key, value] of Object.entries(body as Record<string, unknown>)) {
+    if (KNOWN_HEALTH_CONNECT_KEYS.has(key)) continue;
+    if (Array.isArray(value)) total += value.length;
+  }
+  return total;
+}
+
 export interface ParsedPayload {
   bodyMetrics: NormBodyMetric[];
   samples: NormMetricSample[];
@@ -153,6 +202,11 @@ export function parseHealthConnectPayload(
     return out;
   }
   const payload = body as Record<string, unknown>;
+
+  // Records of a type the parser has no home for are dropped but COUNTED (issue #419)
+  // so the Review feed's received/skipped tally reflects them instead of silently
+  // vanishing them (mirrors the plausibility skip path #132).
+  out.skipped += countUnknownRecords(payload);
 
   // --- weight / body fat % / resting HR → one body_metrics row per local day ---
   // All three share the body_metrics home: weight is last-wins per day;

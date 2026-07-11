@@ -75,6 +75,38 @@ describe("mapStravaActivity — title vs grouping component (issue #15)", () => 
   });
 });
 
+describe("mapStravaActivity — cadence (#419)", () => {
+  it("stores cadence for a run (provider-raw per-leg value), not just cycling", () => {
+    const res = mapStravaActivity(
+      stravaRec({ sport_type: "Run", average_cadence: 89.6 })
+    );
+    // Rounded, stored raw (per-leg) — not doubled to steps/min.
+    expect(res!.activity.avg_cadence).toBe(90);
+  });
+
+  it("stores cadence for cycling as before", () => {
+    const res = mapStravaActivity(
+      stravaRec({ sport_type: "Ride", average_cadence: 92 })
+    );
+    expect(res!.activity.avg_cadence).toBe(92);
+  });
+
+  it("leaves cadence null for a non-run/non-ride sport", () => {
+    const res = mapStravaActivity(
+      stravaRec({ sport_type: "Swim", average_cadence: 30 })
+    );
+    expect(res!.activity.avg_cadence).toBeNull();
+  });
+
+  it("drops an out-of-range run cadence but keeps the activity (#132)", () => {
+    const res = mapStravaActivity(
+      stravaRec({ sport_type: "TrailRun", average_cadence: 5000 })
+    );
+    expect(res).not.toBeNull();
+    expect(res!.activity.avg_cadence).toBeNull();
+  });
+});
+
 describe("stravaSportName", () => {
   it("maps the known cycling variants all to 'Cycling'", () => {
     for (const t of ["Ride", "GravelRide", "EBikeRide", "VirtualRide"]) {
