@@ -8,6 +8,7 @@
 //
 // Kept pure (no DB) so the merge/sort/latest logic is unit-tested in isolation.
 
+import { isNonOptimal, isOutOfRange } from "./reference-range";
 import type { MedicalRecord } from "./types";
 import type { MedicalSortColumn, SortDirection } from "./queries/medical";
 import type { RangeFilter } from "./queries/medical";
@@ -48,17 +49,9 @@ export function filterDerivedForTable(
     if (filters.excludeCategories?.includes(r.category)) return false;
     if (filters.panel) return false; // derived rows carry no panel
     if (filters.range === "oor") {
-      if (!(r.flag === "high" || r.flag === "low" || r.flag === "abnormal"))
-        return false;
+      if (!isOutOfRange(r.flag)) return false;
     } else if (filters.range === "nonoptimal") {
-      const ok =
-        r.flag === "high" ||
-        r.flag === "low" ||
-        r.flag === "abnormal" ||
-        r.flag === "non-optimal" ||
-        r.flag === "non-optimal-high" ||
-        r.flag === "non-optimal-low";
-      if (!ok) return false;
+      if (!(isOutOfRange(r.flag) || isNonOptimal(r.flag))) return false;
     }
     if (q) {
       const hay = `${r.name} ${r.panel ?? ""}`.toLowerCase();

@@ -1,4 +1,4 @@
-import { isNonOptimal } from "./reference-range";
+import { isNonOptimal, isOutOfRange } from "./reference-range";
 import { currentGrowthBadge, type GrowthBadge } from "./growth-series";
 import type { AllergyStatus, ConditionStatus, MedicalFlag, Sex } from "./types";
 import {
@@ -277,7 +277,7 @@ export function medicationStartDate(
 // Severity rank for ordering vitals: out-of-range (high/low/abnormal) first, then
 // non-optimal, then everything else. Lower sorts earlier.
 function flagRank(flag: MedicalFlag | null): number {
-  if (flag === "high" || flag === "low" || flag === "abnormal") return 0;
+  if (isOutOfRange(flag)) return 0;
   if (isNonOptimal(flag)) return 1;
   return 2;
 }

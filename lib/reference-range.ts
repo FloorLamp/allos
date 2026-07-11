@@ -452,6 +452,61 @@ export function isNonOptimal(flag: string | null | undefined): boolean {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Canonical flag classification (issue #306). A stored biomarker flag partitions
+// into three display tiers — out-of-range (clinical, red/"bad"), non-optimal
+// (amber/"warn"), and everything else (neutral/"default"). This predicate + the
+// label + the tone below are the ONE source of truth; every surface (dashboard
+// hero, Recent-labs widget, timeline, biomarker cells, attention strip,
+// supplement suggestions) routes through them instead of re-deriving the same
+// three-way split by hand. Re-tiering a flag (or adding one) is a single edit here.
+// ---------------------------------------------------------------------------
+
+// The out-of-range (clinical) predicate: a lab flagged the value outside its
+// standard reference range in either direction, or qualitatively abnormal. This
+// is the red/"bad" tier — distinct from isNonOptimal, which is inside the
+// reference range but outside our tighter optimal band (amber/"warn").
+export function isOutOfRange(flag: string | null | undefined): boolean {
+  return flag === "high" || flag === "low" || flag === "abnormal";
+}
+
+// The shared color tier for a flag. Out-of-range takes precedence over
+// non-optimal; anything unrecognized/normal/null is neutral. Components map this
+// tone onto their own Tailwind classes (the class strings stay local; the tier
+// decision is shared). A subset of TimelineEvent["tone"], so it slots into
+// timeline events directly.
+export type FlagTone = "bad" | "warn" | "default";
+
+export function flagTone(flag: string | null | undefined): FlagTone {
+  if (isOutOfRange(flag)) return "bad";
+  if (isNonOptimal(flag)) return "warn";
+  return "default";
+}
+
+// The single human label for a flag. Every recognized MedicalFlag maps here; the
+// one deliberate fallback for an unrecognized / normal / null flag is "Normal"
+// (its tone is "default" — we never label a value we didn't actually flag as
+// "Non-optimal"). This replaces the two drifted flagLabel copies whose catch-alls
+// disagreed ("Non-optimal" vs "Normal"); "Normal" is the tone-consistent choice.
+export function flagLabel(flag: string | null | undefined): string {
+  switch (flag) {
+    case "high":
+      return "High";
+    case "low":
+      return "Low";
+    case "abnormal":
+      return "Abnormal";
+    case "non-optimal-high":
+      return "Above optimal";
+    case "non-optimal-low":
+      return "Below optimal";
+    case "non-optimal":
+      return "Non-optimal";
+    default:
+      return "Normal";
+  }
+}
+
 // Full status of a value for a badge: out of range (red) takes precedence over
 // non-optimal (amber), which takes precedence over optimal (green). Pass a value
 // already converted to the canonical unit.

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { IconCaretUpFilled, IconCaretDownFilled } from "@tabler/icons-react";
 import ActivityIcon from "@/components/ActivityIcon";
-import { isNonOptimal } from "@/lib/reference-range";
+import { flagTone } from "@/lib/reference-range";
 
 export function PageHeader({
   title,
@@ -98,13 +98,16 @@ export function Tag({ value }: { value: string }) {
 // flag. Shared by the medical history table and the per-document subpage so
 // out-of-range styling stays consistent in one place.
 function medicalValueClass(flag: string | null): string {
-  // Out of range, either direction (high/low/abnormal) → red.
-  if (flag === "high" || flag === "low" || flag === "abnormal")
-    return "font-semibold text-rose-600 dark:text-rose-400";
-  // Outside the optimal band, either direction → amber.
-  if (isNonOptimal(flag))
-    return "font-semibold text-amber-600 dark:text-amber-400";
-  return "";
+  switch (flagTone(flag)) {
+    // Out of range, either direction (high/low/abnormal) → red.
+    case "bad":
+      return "font-semibold text-rose-600 dark:text-rose-400";
+    // Outside the optimal band, either direction → amber.
+    case "warn":
+      return "font-semibold text-amber-600 dark:text-amber-400";
+    default:
+      return "";
+  }
 }
 
 export function MedicalValue({

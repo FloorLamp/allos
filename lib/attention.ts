@@ -26,6 +26,7 @@ import {
   upcomingDueText,
 } from "./upcoming";
 import { biomarkerFlagDismissalKey } from "./dismissal-keys";
+import { flagLabel, isOutOfRange } from "./reference-range";
 import { compareSortHint } from "./dose-order";
 import type { DigestFlaggedBiomarker } from "./notifications/digest";
 
@@ -139,18 +140,7 @@ export interface AttentionInput {
 // An out-of-range flag (high/low/abnormal) is act-now "today"; a non-optimal read
 // is softer "soon" runway.
 function flagSeverity(flag: string): AttentionSeverity {
-  if (flag === "high" || flag === "low" || flag === "abnormal") return "today";
-  return "soon";
-}
-
-// Human label for a biomarker flag, for the right-aligned status text.
-function flagLabel(flag: string): string {
-  if (flag === "high") return "High";
-  if (flag === "low") return "Low";
-  if (flag === "abnormal") return "Abnormal";
-  if (flag === "non-optimal-high") return "Above optimal";
-  if (flag === "non-optimal-low") return "Below optimal";
-  return "Non-optimal";
+  return isOutOfRange(flag) ? "today" : "soon";
 }
 
 // One Upcoming due-signal → an attention item, or null for a `later`-band item
