@@ -115,11 +115,14 @@ function SourceCard({
           source.connected ? (
             <SyncNowButton provider={source.id} />
           ) : (
+            // A pull source only appears here once it's been set up, so a
+            // not-connected card is one that was connected and later removed
+            // (issue #294): offer a Reconnect link back to its setup page.
             <Link
               href={`/integrations/${source.id}`}
               className="text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
             >
-              Connect {source.name} →
+              Reconnect {source.name} →
             </Link>
           )
         ) : (

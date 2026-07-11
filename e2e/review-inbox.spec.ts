@@ -72,6 +72,33 @@ test.describe("Data → Review import inbox", () => {
     await expect(hcCard.getByText(/"Steps"/)).toBeVisible();
   });
 
+  test("shows a removed source's history with a Reconnect link, and hides never-set-up sources (issue #294)", async ({
+    page,
+  }) => {
+    await page.goto("/data?section=review");
+    const review = page.getByTestId("review-inbox");
+
+    // Only sources that have been set up appear: Health Connect (has sync history)
+    // and Strava (connected) both render.
+    await expect(review.getByTestId("source-health-connect")).toBeVisible();
+    await expect(review.getByTestId("source-strava")).toBeVisible();
+
+    // Oura was connected and later removed — it stays visible because it still has
+    // historical logs, but as a "Not connected" card with a Reconnect link back to
+    // its setup page (instead of a live Sync now button). A provider with neither a
+    // connection nor any sync history is filtered out entirely.
+    const oura = review.getByTestId("source-oura");
+    await expect(oura).toBeVisible();
+    await expect(oura.getByText("Not connected")).toBeVisible();
+    const reconnect = oura.getByRole("link", { name: /Reconnect Oura Ring/ });
+    await expect(reconnect).toBeVisible();
+    await expect(reconnect).toHaveAttribute("href", "/integrations/oura");
+    // Its historical sync split is still shown (8 new · 4 changed).
+    await expect(oura.getByText("8 new · 4 changed")).toBeVisible();
+    // A disconnected source offers no Sync now button.
+    await expect(oura.getByRole("button", { name: "Sync now" })).toHaveCount(0);
+  });
+
   test("the Imports feed merges uploaded documents and paste jobs, not syncs", async ({
     page,
   }) => {

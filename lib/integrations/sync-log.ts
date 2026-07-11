@@ -185,6 +185,19 @@ export function isNoOpSyncEvent(ev: {
   return (ev.inserted ?? 0) + (ev.updated ?? 0) === 0;
 }
 
+// Which recurring providers belong in the Data → Review "Connected sources" section
+// (issue #294). A provider is shown when it is CURRENTLY connected OR it has any
+// historical sync events — a source that was connected and later removed keeps
+// showing its logs (with a "Not connected" status + a Reconnect link). A provider
+// that was never set up and has no sync history is hidden entirely, rather than
+// listing every available integration whether configured or not. Pure → unit-testable.
+export function shouldShowConnectedSource(s: {
+  connected: boolean;
+  hasHistory: boolean;
+}): boolean {
+  return s.connected || s.hasHistory;
+}
+
 // Given sync events ordered NEWEST-FIRST (as the queries return them), keep only
 // the most recent event per provider whose latest outcome is a failure — i.e. the
 // integrations that are *currently* broken. A later successful sync drops a

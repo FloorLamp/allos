@@ -1,6 +1,9 @@
 import { db } from "@/lib/db";
 import type { IntegrationSyncEvent } from "@/lib/types";
-import { currentlyFailingProviders } from "@/lib/integrations/sync-log";
+import {
+  currentlyFailingProviders,
+  shouldShowConnectedSource,
+} from "@/lib/integrations/sync-log";
 import { INTEGRATIONS } from "@/lib/integrations/registry";
 import { getConnection } from "@/lib/integrations/connections";
 import {
@@ -313,20 +316,30 @@ const SYNC_NOW_PROVIDERS = new Set(["strava", "oura", "withings"]);
 // calendar feed, not the 'planned' Garmin), each collapsed to its latest sync
 // outcome plus a short expandable history. Profile-scoped via the per-provider
 // reads it composes (getConnection / getLatestSyncEvent / getIntegrationSyncEvents).
+// A provider is only surfaced once it's been set up: currently connected, or
+// carrying historical sync events (issue #294) — a never-configured integration is
+// hidden rather than shown as an empty "Not connected" card.
 export function getConnectedSources(profileId: number): ConnectedSource[] {
   return INTEGRATIONS.filter(
     (i) =>
       i.status === "available" &&
       (i.kind === "push" || i.kind === "oauth" || i.kind === "token")
-  ).map((i) => ({
-    id: i.id,
-    name: i.name,
-    kind: i.kind,
-    connected: getConnection(profileId, i.id)?.status === "connected",
-    canSyncNow: SYNC_NOW_PROVIDERS.has(i.id),
-    latest: getLatestSyncEvent(profileId, i.id),
-    history: getIntegrationSyncEvents(profileId, i.id, 10),
-  }));
+  )
+    .map((i) => ({
+      id: i.id,
+      name: i.name,
+      kind: i.kind,
+      connected: getConnection(profileId, i.id)?.status === "connected",
+      canSyncNow: SYNC_NOW_PROVIDERS.has(i.id),
+      latest: getLatestSyncEvent(profileId, i.id),
+      history: getIntegrationSyncEvents(profileId, i.id, 10),
+    }))
+    .filter((s) =>
+      shouldShowConnectedSource({
+        connected: s.connected,
+        hasHistory: s.history.length > 0,
+      })
+    );
 }
 
 // The captured raw-payload ref for one sync event, scoped to the profile — powers
