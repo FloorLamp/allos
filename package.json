@@ -30,6 +30,7 @@
     "gen:bp-percentiles": "tsx scripts/gen-bp-percentiles.ts",
     "gen:strength-standards": "tsx scripts/gen-strength-standards.ts",
     "gen:icd10": "tsx scripts/gen-icd10.ts",
+    "gen:screenings": "tsx scripts/gen-screenings.ts",
     "prepare": "husky"
   },
   "lint-staged": {

@@ -63,6 +63,7 @@ describe("preventive catalog", () => {
       "blood_pressure",
       "lipid_screening",
       "diabetes_screening",
+      "depression_screening",
       "osteoporosis",
       "hepatitis_c",
       "lung_cancer_ldct",
@@ -274,6 +275,37 @@ describe("one-time screening (hepatitis C)", () => {
       satisfactions: [{ ruleKey: "hepatitis_c", date: "2015-01-01" }],
     });
     expect(statusOf("hepatitis_c", s)?.status).toBe("up_to_date");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Depression screening (issue #149) — all sexes, adolescents + adults
+// ---------------------------------------------------------------------------
+describe("depression screening", () => {
+  // depression_screening: 12–120, interval 12mo, grace 6 → due at the 12y edge,
+  // overdue once well past it with nothing on record.
+  it("is due at the age-12 window edge with nothing on record, regardless of sex", () => {
+    expect(
+      statusOf("depression_screening", assess({ ageMonths: 12 * Y }))?.status
+    ).toBe("due");
+  });
+  it("is overdue for an adult who has never been screened", () => {
+    expect(
+      statusOf("depression_screening", assess({ ageMonths: 40 * Y }))?.status
+    ).toBe("overdue");
+  });
+  it("is not_recommended for a young child below the window", () => {
+    expect(
+      statusOf("depression_screening", assess({ ageMonths: 5 * Y }))?.status
+    ).toBe("not_recommended");
+  });
+  it("is satisfied for a year after a recorded screen (annual cadence)", () => {
+    const s = assess({
+      ageMonths: 40 * Y,
+      satisfactions: [{ ruleKey: "depression_screening", date: "2026-06-01" }],
+      today: "2026-07-10",
+    });
+    expect(statusOf("depression_screening", s)?.status).toBe("up_to_date");
   });
 });
 
