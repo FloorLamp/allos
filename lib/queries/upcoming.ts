@@ -88,6 +88,7 @@ import {
   getImmunityTiters,
   getImmunizationOverrides,
   getEncounters,
+  cleanupOrphanStars,
 } from "./medical";
 import {
   hasImportedSmokingHistory,
@@ -714,6 +715,21 @@ export function cleanupOrphanBiomarkerDismissals(profileId: number): void {
              FROM medical_records WHERE profile_id = ?
          )`
   ).run(profileId, profileId);
+}
+
+// One call that sweeps BOTH name-keyed biomarker side-stores — the star pins
+// (starred_biomarkers) and the retest/flag dismissals (upcoming_dismissals) — of
+// any row whose backing readings are all gone. Both stores key on a REUSABLE
+// canonical name, so every operation that removes readings (a record delete, a
+// document delete/reprocess/reassign) can orphan either one, and a name that later
+// recycles silently re-attaches the stale pin/snooze (AGENTS.md row-ops: "names and
+// codes DO recycle" — the #203/#283 class). The per-record edit/delete paths already
+// swept both, but the document-level resets swept only stars (#327); bundling the
+// two here means the next document-level operation can't clean one and forget the
+// other (same disease as the import-footprint two-lists rule). Profile-scoped.
+export function cleanupOrphanBiomarkerKeyedState(profileId: number): void {
+  cleanupOrphanStars(profileId);
+  cleanupOrphanBiomarkerDismissals(profileId);
 }
 
 // Re-key a biomarker's star + retest/flag dismissals when its canonical name is
