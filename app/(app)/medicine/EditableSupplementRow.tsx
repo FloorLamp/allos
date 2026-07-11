@@ -10,7 +10,7 @@ import {
   type AdherenceDot,
 } from "@/lib/supplement-adherence";
 import {
-  daysOfSupplyLeft,
+  daysOfSupplyForItem,
   isLowSupply,
   refillBasisLabel,
   type DoseRate,
@@ -91,12 +91,13 @@ export default function EditableSupplementRow({
   // doses/day rate comes from the shared refill estimate (#38) — the ACTUAL
   // taken-log rate when the item has enough history, else the scheduled-dose-count
   // estimate — with the basis surfaced in the badge's tooltip. Only shown when the
-  // item opts into quantity tracking (quantity_on_hand set).
-  const dosesPerDay = refillRate?.dosesPerDay ?? doses.length;
-  const daysLeft = daysOfSupplyLeft(
+  // item opts into quantity tracking (quantity_on_hand set). daysOfSupplyForItem
+  // is the one computation the dashboard Low-supply widget also formats over (#301).
+  const daysLeft = daysOfSupplyForItem(
     s.quantity_on_hand,
     s.qty_per_dose,
-    dosesPerDay
+    refillRate,
+    doses.length
   );
   const lowSupply = isLowSupply(daysLeft);
   const refillBasis = refillBasisLabel(refillRate?.basis ?? "schedule");

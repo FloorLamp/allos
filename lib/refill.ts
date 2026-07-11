@@ -98,3 +98,72 @@ export function isLowSupply(
 ): boolean {
   return daysLeft != null && daysLeft <= thresholdDays;
 }
+
+// One item's "≈N days of supply left", as EVERY refill surface computes it
+// (issue #301). The doses/day comes from the SHARED getRefillRates DoseRate —
+// its history-aware taken-log rate, or the schedule-count fallback baked into
+// getRefillRates — dropping to `fallbackDosesPerDay` only when the item has no
+// rate at all (e.g. quantity tracked but no doses and no history). The /medicine
+// row badge and the dashboard Low-supply widget both format over this, so they
+// can never disagree about how long an item lasts ("one question, one
+// computation": lib/refill is the engine, surfaces are formatters).
+export function daysOfSupplyForItem(
+  quantityOnHand: number | null,
+  qtyPerDose: number,
+  rate: DoseRate | null,
+  fallbackDosesPerDay = 0
+): number | null {
+  return daysOfSupplyLeft(
+    quantityOnHand,
+    qtyPerDose,
+    rate?.dosesPerDay ?? fallbackDosesPerDay
+  );
+}
+
+// Minimal shape the low-supply selection needs off an intake item.
+export interface RefillTrackedItem {
+  id: number;
+  name: string;
+  kind: "supplement" | "medication";
+  quantity_on_hand: number | null;
+  qty_per_dose: number;
+}
+
+// One item flagged as running low, for the dashboard widget.
+export interface LowSupplyItem {
+  id: number;
+  name: string;
+  kind: "supplement" | "medication";
+  daysLeft: number;
+}
+
+// The dashboard Low-supply widget's list — a PURE formatter over the shared
+// getRefillRates rates (issue #301), so it agrees with the /medicine badge,
+// Upcoming, and the Telegram nudge instead of hand-rolling a schedule-count
+// rate from the raw dose-row count (the deprecated method the header warns
+// against). Keeps only items whose estimated days-left is at/below the
+// threshold, most-urgent first. Each item's days-left is `daysOfSupplyForItem`,
+// the SAME computation the /medicine row uses.
+export function selectLowSupplyItems(
+  items: RefillTrackedItem[],
+  rates: Map<number, DoseRate>,
+  thresholdDays: number = DEFAULT_LOW_SUPPLY_DAYS
+): LowSupplyItem[] {
+  return items
+    .map((s) => ({
+      s,
+      days: daysOfSupplyForItem(
+        s.quantity_on_hand,
+        s.qty_per_dose,
+        rates.get(s.id) ?? null
+      ),
+    }))
+    .filter((x) => isLowSupply(x.days, thresholdDays))
+    .map((x) => ({
+      id: x.s.id,
+      name: x.s.name,
+      kind: x.s.kind,
+      daysLeft: x.days as number,
+    }))
+    .sort((a, b) => a.daysLeft - b.daysLeft);
+}

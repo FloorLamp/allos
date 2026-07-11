@@ -4,10 +4,14 @@ import {
   MIN_HISTORY_DAYS,
   RATE_WINDOW_DAYS,
   consumptionRate,
+  daysOfSupplyForItem,
   daysOfSupplyLeft,
   isLowSupply,
   refillBasisLabel,
+  selectLowSupplyItems,
   unitsPerDay,
+  type DoseRate,
+  type RefillTrackedItem,
 } from "@/lib/refill";
 
 describe("unitsPerDay", () => {
@@ -160,5 +164,120 @@ describe("refillBasisLabel", () => {
   it("names the basis for the days-left tooltip", () => {
     expect(refillBasisLabel("history")).toBe("based on your last 30 days");
     expect(refillBasisLabel("schedule")).toBe("based on schedule");
+  });
+});
+
+describe("daysOfSupplyForItem", () => {
+  it("uses the shared DoseRate's doses/day, not a schedule count", () => {
+    // A workout-only item taken ~2×/week: history rate 0.28/day → many days
+    // left, NOT the 2-scheduled-rows → 45 days a raw dose count would give.
+    const rate: DoseRate = { dosesPerDay: 8 / 30, basis: "history" };
+    expect(daysOfSupplyForItem(60, 1, rate)).toBe(225);
+    // The same 60 units at the schedule-count rate of 2/day would read 30 days.
+    expect(daysOfSupplyLeft(60, 1, 2)).toBe(30);
+  });
+
+  it("falls back to the given rate only when the item has NO rate at all", () => {
+    // No DoseRate (item absent from getRefillRates) → the caller's fallback.
+    expect(daysOfSupplyForItem(30, 1, null, 1)).toBe(30);
+    // Default fallback is 0 → nothing consumed → unestimable (null).
+    expect(daysOfSupplyForItem(30, 1, null)).toBeNull();
+  });
+
+  it("passes through the null cases of daysOfSupplyLeft", () => {
+    const rate: DoseRate = { dosesPerDay: 1, basis: "history" };
+    expect(daysOfSupplyForItem(null, 1, rate)).toBeNull(); // untracked qty
+    expect(
+      daysOfSupplyForItem(10, 1, { dosesPerDay: 0, basis: "schedule" })
+    ).toBeNull();
+  });
+});
+
+describe("selectLowSupplyItems", () => {
+  const items: RefillTrackedItem[] = [
+    // Taken twice a week (~0.28/day) → 60 units last ~225 days: NOT low, even
+    // though it has 2 scheduled dose rows (the old count-based bug flagged it).
+    {
+      id: 1,
+      name: "Creatine",
+      kind: "supplement",
+      quantity_on_hand: 60,
+      qty_per_dose: 1,
+    },
+    // Daily, 5 pills left → 5 days: low.
+    {
+      id: 2,
+      name: "Lisinopril",
+      kind: "medication",
+      quantity_on_hand: 5,
+      qty_per_dose: 1,
+    },
+    // Daily, 2 left → 2 days: low, and more urgent than #2.
+    {
+      id: 3,
+      name: "Vitamin D",
+      kind: "supplement",
+      quantity_on_hand: 2,
+      qty_per_dose: 1,
+    },
+    // Quantity not tracked → never low.
+    {
+      id: 4,
+      name: "Fish Oil",
+      kind: "supplement",
+      quantity_on_hand: null,
+      qty_per_dose: 1,
+    },
+  ];
+  const rates = new Map<number, DoseRate>([
+    [1, { dosesPerDay: 8 / 30, basis: "history" }],
+    [2, { dosesPerDay: 1, basis: "history" }],
+    [3, { dosesPerDay: 1, basis: "history" }],
+  ]);
+
+  it("keeps only at/below-threshold items, most urgent first", () => {
+    const low = selectLowSupplyItems(items, rates);
+    expect(low.map((x) => x.name)).toEqual(["Vitamin D", "Lisinopril"]);
+    expect(low.map((x) => x.daysLeft)).toEqual([2, 5]);
+    expect(low[0].kind).toBe("supplement");
+    expect(low[1].kind).toBe("medication");
+  });
+
+  it("does NOT flag the workout-only item the schedule-count method would", () => {
+    // With the deprecated dose-row count (2/day) Creatine would read 30 days —
+    // above threshold here, but the point is history-rate keeps it well clear.
+    const low = selectLowSupplyItems(items, rates);
+    expect(low.find((x) => x.name === "Creatine")).toBeUndefined();
+  });
+
+  it("honors a custom threshold", () => {
+    const low = selectLowSupplyItems(items, rates, 3);
+    expect(low.map((x) => x.name)).toEqual(["Vitamin D"]);
+  });
+
+  it("agrees item-for-item with the /medicine row computation (parity, #301)", () => {
+    // The /medicine row (EditableSupplementRow) computes each badge as
+    // daysOfSupplyForItem(qty, perDose, rate, scheduledDoseCount) + isLowSupply.
+    // The dashboard widget must reach the identical verdict for every item, so
+    // the two surfaces can never disagree on the same screen.
+    const scheduledDoseCount = new Map<number, number>([
+      [1, 2], // 2 scheduled rows, yet taken twice a week
+      [2, 1],
+      [3, 1],
+    ]);
+    const widget = selectLowSupplyItems(items, rates);
+    const widgetById = new Map(widget.map((x) => [x.id, x.daysLeft]));
+
+    for (const item of items) {
+      const rowDaysLeft = daysOfSupplyForItem(
+        item.quantity_on_hand,
+        item.qty_per_dose,
+        rates.get(item.id) ?? null,
+        scheduledDoseCount.get(item.id) ?? 0
+      );
+      const rowIsLow = isLowSupply(rowDaysLeft);
+      expect(widgetById.has(item.id)).toBe(rowIsLow);
+      if (rowIsLow) expect(widgetById.get(item.id)).toBe(rowDaysLeft);
+    }
   });
 });
