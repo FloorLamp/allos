@@ -17,6 +17,7 @@ import type { MedicalCategory } from "@/lib/types";
 import { extractMedicalDocument, isSupportedFile } from "@/lib/medical-extract";
 import { sniffUploadType } from "@/lib/file-sniff";
 import { aiConfigured } from "@/lib/ai-client";
+import { claimDocumentForExtraction } from "@/lib/extraction-claim";
 import { withAiLogContext } from "@/lib/ai-log";
 import {
   checkAndIncrementAiUsage,
@@ -511,25 +512,34 @@ export async function uploadMedicalDocument(formData: FormData) {
       existing.stored_path &&
       (healthKind || aiConfigured())
     ) {
-      db.prepare(
-        "UPDATE medical_documents SET extraction_status = 'processing', extraction_error = NULL, processing_started_at = datetime('now') WHERE id = ? AND profile_id = ?"
-      ).run(existing.id, profile.id);
-      if (healthKind) {
-        runHealthImport(profile.id, existing.id, buffer);
-      } else {
-        // Re-read the stored file inside the job (#135 item 2) — pass the path, not
-        // the bytes. existing.stored_path is guaranteed non-null by the guard above.
-        dispatchExtraction(
-          login.id,
-          profile.id,
-          existing.id,
-          existing.stored_path,
-          storedMime,
-          existing.filename
-        );
-        revalidatePath("/data");
+      // Claim the failed row atomically BEFORE dispatching a fresh extraction
+      // (issue #324): flip to 'processing' only if it isn't already, exactly the
+      // contract beginReprocess uses (same shared claim). The `existing.status ===
+      // 'failed'` read above is not atomic with this write, so two concurrent
+      // duplicate uploads (double-click, two tabs) could both see 'failed'; without
+      // the claim both would dispatch — double-charging the daily AI quota and
+      // running two extractions on one docId. The loser (claim returns false) falls
+      // through to the plain duplicate alert rather than starting a second run.
+      if (claimDocumentForExtraction(profile.id, existing.id)) {
+        if (healthKind) {
+          runHealthImport(profile.id, existing.id, buffer);
+        } else {
+          // Re-read the stored file inside the job (#135 item 2) — pass the path, not
+          // the bytes. existing.stored_path is guaranteed non-null by the guard above.
+          dispatchExtraction(
+            login.id,
+            profile.id,
+            existing.id,
+            existing.stored_path,
+            storedMime,
+            existing.filename
+          );
+          revalidatePath("/data");
+        }
+        return;
       }
-      return;
+      // Claim lost: a concurrent upload already claimed it — fall through to the
+      // duplicate alert below rather than starting a second extraction.
     }
     insertDuplicateDoc(
       profile.id,
@@ -850,12 +860,10 @@ function beginReprocess(
   }
   // Claim the document atomically: flip to 'processing' only if it isn't already,
   // so two concurrent reprocess calls can't both run extraction on the same row.
-  const claimed = db
-    .prepare(
-      "UPDATE medical_documents SET extraction_status = 'processing', extraction_error = NULL, processing_started_at = datetime('now') WHERE id = ? AND profile_id = ? AND extraction_status != 'processing'"
-    )
-    .run(docId, profileId);
-  if (claimed.changes === 0) return { status: "processing" }; // already in flight
+  // Shared with the duplicate-upload re-extraction path (issue #324) so the two
+  // claims can't drift.
+  if (!claimDocumentForExtraction(profileId, docId))
+    return { status: "processing" }; // already in flight
   let buffer: Buffer;
   try {
     buffer = fs.readFileSync(path.join(process.cwd(), d.stored_path));
