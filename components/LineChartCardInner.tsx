@@ -101,8 +101,8 @@ export default function LineChartCard({
             domain={["auto", "auto"]}
           />
           <Tooltip
-            formatter={(v: number) => [`${v}${unit}`, label]}
-            labelFormatter={labelFmt}
+            formatter={(v) => [`${v}${unit}`, label]}
+            labelFormatter={labelFmt ? (v) => labelFmt(String(v)) : undefined}
             contentStyle={{
               fontSize: 12,
               borderRadius: 8,

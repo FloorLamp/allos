@@ -5,8 +5,8 @@ import { IconRefresh } from "@tabler/icons-react";
 import {
   reprocessAllDocuments,
   previewReprocessAllCost,
-  type ReprocessResult,
 } from "@/app/(app)/medical/document-actions";
+import type { ReprocessResult } from "@/lib/medical-pipeline";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { formatReprocessCost } from "@/lib/reprocess-cost";
 

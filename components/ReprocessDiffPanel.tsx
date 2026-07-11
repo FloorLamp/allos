@@ -6,8 +6,8 @@ import { IconRefresh } from "@tabler/icons-react";
 import {
   previewReprocess,
   reprocessDocument,
-  type PreviewReprocessResult,
 } from "@/app/(app)/medical/document-actions";
+import type { PreviewReprocessResult } from "@/lib/medical-pipeline";
 import type { EntityDiff } from "@/lib/import-diff";
 
 // Reprocess-with-diff. Instead of silently re-extracting and

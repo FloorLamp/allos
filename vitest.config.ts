@@ -50,11 +50,18 @@ export default defineConfig({
       // with the excludes above) are noted next to each; re-measure with
       // `npm run test:coverage` and bump the floors up (never down toward 0)
       // if the covered baseline rises meaningfully.
+      //
+      // Recalibrated for vitest 4 / @vitest/coverage-v8 4 (#125): the v4 provider
+      // uses AST-aware branch/function remapping, so the SAME passing suite now
+      // measures differently — lines/statements rose (~56% -> ~64%) while branches
+      // (~86% -> ~63%) and functions (~78% -> ~60%) fell. This is a measurement-
+      // methodology change, not a coverage regression; the floors below are re-
+      // anchored ~5 points under the v4 baseline to keep the tripwire meaningful.
       thresholds: {
-        lines: 50, // measured 56.44%
-        statements: 50, // measured 56.44%
-        branches: 82, // measured 86.02%
-        functions: 73, // measured 77.79%
+        lines: 58, // measured 63.91% (vitest 4)
+        statements: 58, // measured 63.92% (vitest 4)
+        branches: 58, // measured 63.36% (vitest 4)
+        functions: 55, // measured 60.49% (vitest 4)
       },
     },
   },

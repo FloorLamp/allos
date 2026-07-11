@@ -57,6 +57,12 @@ const SECURITY_HEADERS = [
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Next 16's dev server takes a per-project single-instance lock (.next/dev/lock),
+  // so the e2e demo instance (#181) can no longer `next dev` from the same dir as
+  // the main instance. An env-driven distDir gives the demo dev server its own
+  // build dir (playwright.config.ts sets NEXT_DIST_DIR=.next-demo, dev only —
+  // CI's two `next start` instances share the one .next build and take no lock).
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   async headers() {
     return [{ source: "/:path*", headers: SECURITY_HEADERS }];
   },

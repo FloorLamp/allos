@@ -75,8 +75,8 @@ export default function ZoneMinutesCardInner({
           />
           <Tooltip
             cursor={{ fill: c.grid, fillOpacity: 0.5 }}
-            formatter={(v: number, name: string) => [`${v} min`, name]}
-            labelFormatter={labelFmt}
+            formatter={(v, name) => [`${v} min`, name]}
+            labelFormatter={labelFmt ? (v) => labelFmt(String(v)) : undefined}
             contentStyle={{
               fontSize: 12,
               borderRadius: 8,
