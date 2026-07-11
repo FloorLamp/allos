@@ -70,9 +70,12 @@ export default async function StarredBiomarkers({
             reproductiveStatus
           );
           const meta = RANGE_BADGE_META[badge];
+          // Judge staleness on the latest RECORD's category (not the canonical
+          // entry's), matching the detail page and table — so a genomics result
+          // fires the never-stale rule here too (#381).
           const stale = isBiomarkerStale(
             b.latest_date,
-            b.canonical?.category,
+            b.latest_category,
             today(profile.id)
           );
           const ageDays = b.latest_date
