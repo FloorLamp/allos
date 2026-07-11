@@ -80,7 +80,7 @@ offline still shows the reconnect screen.
 
 ## Requirements
 
-- **Node.js ≥ 24** (Next.js 15 requires ≥ 18.18; this repo is pinned to Node 24 via `.nvmrc`)
+- **Node.js ≥ 24** (Next.js 16 requires ≥ 20.9; this repo is pinned to Node 24 via `.nvmrc`)
 
 ```bash
 nvm use            # picks up Node 24 from .nvmrc
@@ -860,7 +860,7 @@ on **Settings → Profile** is the remediation path — a successful test clears
 
 ## Tech
 
-- Next.js 15 (App Router, Server Actions)
+- Next.js 16 (App Router, Server Actions)
 - better-sqlite3 (synchronous SQLite, schema auto-migrated on boot)
 - Tailwind CSS
 - Recharts for charts
