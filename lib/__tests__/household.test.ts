@@ -1,13 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   goalHighlights,
-  goalPct,
   pickNextAppointment,
   supplementAdherenceToday,
   weightTrend,
 } from "@/lib/household";
 import type { Goal, Supplement } from "@/lib/types";
-import type { GoalProgress } from "@/lib/goal-progress";
 import type { UpcomingItem } from "@/lib/upcoming";
 
 // Minimal Goal factory (freeform by default), matching goals.test.ts.
@@ -159,28 +157,6 @@ describe("weightTrend", () => {
   it("honors a custom tolerance", () => {
     expect(weightTrend(72.5, 72, 1)?.dir).toBe("flat");
     expect(weightTrend(72.5, 72, 0.1)?.dir).toBe("up");
-  });
-});
-
-describe("goalPct", () => {
-  it("uses derived progress for metric/body goals (0 when uncomputed)", () => {
-    const g = makeGoal({ exercise: "Bench", metric: "weight" });
-    const p: GoalProgress = { current: 80, target: 100, pct: 80, done: false };
-    expect(goalPct(g, p)).toBe(80);
-    expect(goalPct(g, undefined)).toBe(0);
-  });
-
-  it("uses current/target for manual numeric goals, capped at 100", () => {
-    expect(goalPct(makeGoal({ target_value: 200, current_value: 50 }))).toBe(
-      25
-    );
-    expect(goalPct(makeGoal({ target_value: 100, current_value: 250 }))).toBe(
-      100
-    );
-  });
-
-  it("returns null for a goal with no numeric basis", () => {
-    expect(goalPct(makeGoal())).toBeNull();
   });
 });
 

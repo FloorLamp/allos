@@ -7,6 +7,7 @@ import type { GoalProgress } from "@/lib/queries";
 import type { WeightUnit } from "@/lib/settings";
 import {
   goalBarClass,
+  goalPct,
   goalTargetText,
   goalBodyTargetText,
   fmtBodyMetric,
@@ -109,14 +110,7 @@ export default function GoalsManager({
             const isBody = g.body_metric != null;
             const auto = isExercise || isBody; // progress derived automatically
             const prog = auto ? goalProgress[g.id] : undefined;
-            const freeformPct =
-              g.target_value && g.current_value != null
-                ? Math.min(
-                    100,
-                    Math.round((g.current_value / g.target_value) * 100)
-                  )
-                : null;
-            const pct = auto ? (prog?.pct ?? 0) : freeformPct;
+            const pct = goalPct(g, prog);
 
             return (
               <div
