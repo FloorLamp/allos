@@ -103,20 +103,22 @@ export function resolveTapProfile(
     : null;
 }
 
-// True when a tap actually resulted in a confirmed dose (new or idempotent
-// repeat) — the only outcomes a "Logged ✅" acknowledgement is honest for.
+// True when a tap actually resulted in a confirmed TAKEN dose (new or idempotent
+// repeat) — the only outcomes a "Logged ✅" acknowledgement is honest for. An
+// "already-skipped" dose is resolved, but NOT as taken (issue #280).
 export function tapLogged(outcome: DoseTakenOutcome): boolean {
-  return outcome === "logged" || outcome === "already-logged";
+  return outcome === "logged" || outcome === "already-taken";
 }
 
-// True when a tap left the dose RESOLVED (taken, skipped, or an idempotent repeat
-// of either) — used to pick honest closing text once a message runs out of
-// buttons, regardless of which resolution it was.
+// True when a tap left the dose RESOLVED (taken, skipped, or an already-standing
+// resolution of either kind) — used to pick honest closing text once a message
+// runs out of buttons, regardless of which resolution it was.
 export function tapResolved(outcome: DoseTakenOutcome): boolean {
   return (
     outcome === "logged" ||
     outcome === "skipped" ||
-    outcome === "already-logged"
+    outcome === "already-taken" ||
+    outcome === "already-skipped"
   );
 }
 
@@ -125,11 +127,15 @@ export function tapResolved(outcome: DoseTakenOutcome): boolean {
 // dose may have been deleted/retired by an edit, or its item paused — those
 // taps log NOTHING and must say so instead of claiming "Logged ✅" (the old
 // behavior, which falsely confirmed doses of possibly-critical medications).
+// Likewise a dose meanwhile resolved as SKIPPED (issue #280): the ✅ tap wrote
+// nothing, so the answer names the status that actually stands.
 export function tapAnswerText(outcome: DoseTakenOutcome): string {
   switch (outcome) {
     case "logged":
-    case "already-logged":
+    case "already-taken": // idempotent repeat of a taken log — honest
       return "Logged ✅";
+    case "already-skipped":
+      return "Not logged — already marked skipped ⏭. Open the app to change it.";
     case "inactive":
       return "Not logged — this item is paused. Open the app to log it.";
     case "stale-dose":
@@ -139,14 +145,17 @@ export function tapAnswerText(outcome: DoseTakenOutcome): string {
 }
 
 // The Telegram callback-answer toast for a ⏭ Skip tap (#232), per markDoseSkipped
-// outcome. "already-logged" means the dose was already resolved (a skip button
-// never overwrites a taken dose), so "Skipped" is honest for a fresh skip or an
-// idempotent repeat; the paused/stale cases mirror tapAnswerText.
+// outcome. "Skipped ⏭" is honest for a fresh skip or an idempotent repeat of one
+// ("already-skipped"); a dose meanwhile resolved as TAKEN (issue #280) was NOT
+// overwritten, so the answer says the taken log stands instead of falsely
+// confirming a skip. The paused/stale cases mirror tapAnswerText.
 export function tapSkipAnswerText(outcome: DoseTakenOutcome): string {
   switch (outcome) {
     case "skipped":
-    case "already-logged":
+    case "already-skipped": // idempotent repeat of a skip — honest
       return "Skipped ⏭";
+    case "already-taken":
+      return "Not skipped — already logged as taken ✅. Open the app to change it.";
     case "inactive":
       return "Not logged — this item is paused. Open the app to log it.";
     case "stale-dose":
@@ -332,10 +341,43 @@ export function escalationAckAnswerText(outcome: EscalationAckOutcome): string {
       return "Thanks 👍 — we'll hold off (dose not marked taken).";
     case "already-taken":
       return "Already confirmed taken ✅";
+    case "already-skipped":
+      return "Already resolved — this dose was marked skipped ⏭.";
     case "inactive":
       return "This item is paused — open the app.";
     case "stale-dose":
     default:
       return "This reminder is out of date. Open the app.";
+  }
+}
+
+// Replacement message body after an escalation ✅ Confirmed-taken tap, per
+// markDoseTaken outcome. "Confirmed taken ✅" is only honest when a taken log
+// actually stands (fresh or idempotent repeat); a dose meanwhile resolved as
+// SKIPPED (issue #280) is resolved-but-not-taken and must say so — the old
+// tapResolved gate rendered "Confirmed taken ✅" over a skipped log.
+export function escalationTakeCloseText(outcome: DoseTakenOutcome): string {
+  if (tapLogged(outcome)) return "Confirmed taken ✅";
+  if (outcome === "already-skipped") {
+    return "This dose was marked skipped ⏭ — check the app.";
+  }
+  return OUTDATED_MESSAGE_TEXT;
+}
+
+// Replacement message body after an escalation 👍 I'm-on-it tap, per
+// escalationAckState outcome. Kept alongside escalationAckAnswerText so the
+// toast and the rebuilt message can never disagree about what stands.
+export function escalationAckCloseText(outcome: EscalationAckOutcome): string {
+  switch (outcome) {
+    case "acknowledged":
+      return "Acknowledged 👍 — we'll hold off.";
+    case "already-taken":
+      return "Already confirmed taken ✅";
+    case "already-skipped":
+      return "This dose was marked skipped ⏭ — check the app.";
+    case "inactive":
+    case "stale-dose":
+    default:
+      return OUTDATED_MESSAGE_TEXT;
   }
 }

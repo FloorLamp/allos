@@ -233,10 +233,17 @@ export function markDoseTaken(
   // a lingering reminder can't silently log doses (and burn supply) for an item
   // the user has deliberately paused.
   if (!owned.active) return "inactive";
+  // An existing log resolves the day; report its ACTUAL status (issue #280) so
+  // a ✅ tap on a dose meanwhile marked skipped is never answered "Logged".
   const existing = db
-    .prepare("SELECT 1 FROM intake_item_logs WHERE dose_id = ? AND date = ?")
-    .get(doseId, date);
-  if (existing) return "already-logged"; // don't re-decrement supply
+    .prepare(
+      "SELECT status FROM intake_item_logs WHERE dose_id = ? AND date = ?"
+    )
+    .get(doseId, date) as { status: DoseStatus } | undefined;
+  if (existing) {
+    // Don't re-decrement supply, and never overwrite a deliberate skip.
+    return existing.status === "skipped" ? "already-skipped" : "already-taken";
+  }
   // Snapshot the dose amount at confirm time: history must keep showing what
   // was actually taken even after a later dosage edit rewrites the dose row.
   db.prepare(
@@ -255,8 +262,10 @@ export function markDoseTaken(
 // (stale-dose) or a paused item (inactive). Idempotent, and — because a
 // taken→skipped change must be an explicit UI toggle, never a stale-button
 // overwrite — it does NOT flip an already-resolved dose: any existing log row
-// for (dose,date) returns "already-logged" and is left untouched. Returns what
-// actually happened so the tap handler answers honestly.
+// for (dose,date) is left untouched and reported by its ACTUAL status
+// ("already-taken" / "already-skipped", issue #280), so a stale ⏭ tap on a
+// taken dose is never answered "Skipped". Returns what actually happened so
+// the tap handler answers honestly.
 export function markDoseSkipped(
   profileId: number,
   doseId: number,
@@ -276,11 +285,16 @@ export function markDoseSkipped(
   // Any existing log (taken OR skipped) means this dose is already resolved for
   // the day. A stale ⏭ tap must not overwrite a taken dose (the explicit
   // taken→skipped toggle lives in the web setDoseStatus action); an already-
-  // skipped dose is an idempotent no-op. Either way: leave it, report as such.
+  // skipped dose is an idempotent no-op. Either way: leave it, and report the
+  // status that actually stands (issue #280).
   const existing = db
-    .prepare("SELECT 1 FROM intake_item_logs WHERE dose_id = ? AND date = ?")
-    .get(doseId, date);
-  if (existing) return "already-logged";
+    .prepare(
+      "SELECT status FROM intake_item_logs WHERE dose_id = ? AND date = ?"
+    )
+    .get(doseId, date) as { status: DoseStatus } | undefined;
+  if (existing) {
+    return existing.status === "skipped" ? "already-skipped" : "already-taken";
+  }
   db.prepare(
     "INSERT INTO intake_item_logs (dose_id, item_id, date, amount, status) VALUES (?,?,?,NULL,'skipped')"
   ).run(doseId, _supplementId ?? owned.item_id, date);
@@ -320,10 +334,13 @@ export function getSupplementEscalateChatId(
 
 // Verify a missed-dose escalation ACK (issue #233's "👍 I'm on it") without
 // writing anything: does the dose still belong to this profile, is its item
-// active, and is it already taken for the day? Mirrors markDoseTaken's chain check
-// (dose→item→profile, retired/paused refused) so a stale ack answers honestly, but
-// records NOTHING — an ack must never log the dose as taken. The caller sets the
-// per-episode escalation marker only on "acknowledged". Fully profile-scoped.
+// active, and is it already resolved for the day? Mirrors markDoseTaken's chain
+// check (dose→item→profile, retired/paused refused) so a stale ack answers
+// honestly, but records NOTHING — an ack must never log the dose as taken. Any
+// existing log ends the chase and is reported by its ACTUAL status (issue
+// #280): a dose deliberately skipped before the caregiver tapped must not be
+// answered as a fresh "we'll hold off". The caller sets the per-episode
+// escalation marker only on "acknowledged". Fully profile-scoped.
 export function escalationAckState(
   profileId: number,
   doseId: number,
@@ -339,20 +356,21 @@ export function escalationAckState(
     .get(doseId, profileId) as { active: number } | undefined;
   if (!owned) return "stale-dose";
   if (!owned.active) return "inactive";
-  // A taken log already resolves it — tell the caregiver it's confirmed rather
-  // than acknowledging a chase that's already over. Joined through the dose's
-  // parent so the read stays profile-scoped.
-  const taken = db
+  // Any log (taken OR skipped) already resolves it — tell the caregiver how it
+  // was resolved rather than acknowledging a chase that's already over. Joined
+  // through the dose's parent so the read stays profile-scoped.
+  const existing = db
     .prepare(
-      `SELECT 1
+      `SELECT l.status AS status
          FROM intake_item_logs l
          JOIN intake_item_doses d ON d.id = l.dose_id
          JOIN intake_items s ON s.id = d.item_id
-        WHERE l.dose_id = ? AND l.date = ? AND l.status = 'taken'
-          AND s.profile_id = ?`
+        WHERE l.dose_id = ? AND l.date = ? AND s.profile_id = ?`
     )
-    .get(doseId, date, profileId);
-  if (taken) return "already-taken";
+    .get(doseId, date, profileId) as { status: DoseStatus } | undefined;
+  if (existing) {
+    return existing.status === "skipped" ? "already-skipped" : "already-taken";
+  }
   return "acknowledged";
 }
 

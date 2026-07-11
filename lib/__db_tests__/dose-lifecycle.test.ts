@@ -4,9 +4,13 @@
 // corrupting its adherence history and lets stale Telegram taps be answered
 // honestly:
 //
-//   • markDoseTaken returns a DoseTakenOutcome (logged / already-logged /
-//     stale-dose / inactive) instead of silently no-oping, refuses retired
-//     doses and paused items, and snapshots the dose amount onto the log.
+//   • markDoseTaken returns a DoseTakenOutcome (logged / already-taken /
+//     already-skipped / stale-dose / inactive) instead of silently no-oping,
+//     refuses retired doses and paused items, and snapshots the dose amount
+//     onto the log. An already-resolved dose reports the status that ACTUALLY
+//     stands (#280), so a stale cross-action tap (⏭ on a taken dose, ✅ on a
+//     skipped one) — and the Telegram answer text rendered from it — can never
+//     falsely confirm the other action.
 //   • getSupplementDoses (the "current schedule" read every page/reminder
 //     consumer goes through) excludes retired doses.
 //   • The amount snapshot keeps history stable across a later dosage edit.
@@ -22,7 +26,12 @@ import {
   getSkippedDoseIds,
   markDoseTaken,
   markDoseSkipped,
+  escalationAckState,
 } from "@/lib/queries";
+import {
+  tapAnswerText,
+  tapSkipAnswerText,
+} from "@/lib/notifications/callback-data";
 import { confirmDoseTaken, skipDose } from "@/lib/offline/writes";
 
 let seq = 0;
@@ -94,9 +103,9 @@ describe("markDoseTaken outcomes", () => {
     expect(logRow(doseId, DATE)?.amount).toBe("500 mg");
     expect(onHand(itemId)).toBe(9);
 
-    // Idempotent repeat: reported as already-logged, supply untouched.
+    // Idempotent repeat: reported as already-taken, supply untouched.
     expect(markDoseTaken(profileId, doseId, itemId, DATE)).toBe(
-      "already-logged"
+      "already-taken"
     );
     expect(onHand(itemId)).toBe(9);
   });
@@ -195,23 +204,60 @@ describe("markDoseSkipped outcomes (#232)", () => {
     const itemId = seedItem(profileId, { quantityOnHand: 10 });
     const doseId = seedDose(itemId, "500 mg");
 
-    // First skip logs; a repeat is already-logged.
+    // First skip logs; a repeat reports the standing skip.
     expect(markDoseSkipped(profileId, doseId, itemId, DATE)).toBe("skipped");
     expect(markDoseSkipped(profileId, doseId, itemId, DATE)).toBe(
-      "already-logged"
+      "already-skipped"
     );
 
     // A stale ⏭ tap must NOT flip an already-TAKEN dose to skipped: taken first…
     const doseB = seedDose(itemId, "250 mg");
     expect(markDoseTaken(profileId, doseB, itemId, DATE)).toBe("logged");
     expect(onHand(itemId)).toBe(9);
-    // …then a skip tap is refused as already-logged; the taken row and the supply
-    // decrement both stand.
+    // …then a skip tap is refused, reporting the TAKEN log that stands (#280);
+    // the taken row and the supply decrement both survive.
     expect(markDoseSkipped(profileId, doseB, itemId, DATE)).toBe(
-      "already-logged"
+      "already-taken"
     );
     expect(logRow(doseB, DATE)?.status).toBe("taken");
     expect(onHand(itemId)).toBe(9);
+  });
+
+  // The #280 regression pair: the DISPLAYED Telegram answer for a stale
+  // cross-action tap must name the status that actually stands — asserting the
+  // outcome enum alone let "Skipped ⏭" render over a taken log (and vice versa).
+  it("a stale ⏭ tap on a TAKEN dose is never answered 'Skipped' (#280)", () => {
+    const profileId = seedProfileRow();
+    const itemId = seedItem(profileId, { quantityOnHand: 10 });
+    const doseId = seedDose(itemId, "500 mg");
+
+    // Dose marked taken out-of-band (web UI / another device)…
+    expect(markDoseTaken(profileId, doseId, itemId, DATE)).toBe("logged");
+    // …then the stale Telegram ⏭ button is tapped.
+    const answer = tapSkipAnswerText(
+      markDoseSkipped(profileId, doseId, itemId, DATE)
+    );
+    expect(answer).toMatch(/^Not skipped/);
+    expect(answer).toMatch(/taken/i);
+    expect(answer).not.toContain("Skipped ⏭");
+    expect(logRow(doseId, DATE)?.status).toBe("taken");
+  });
+
+  it("a stale ✅ tap on a SKIPPED dose is never answered 'Logged' (#280)", () => {
+    const profileId = seedProfileRow();
+    const itemId = seedItem(profileId, { quantityOnHand: 10 });
+    const doseId = seedDose(itemId, "500 mg");
+
+    expect(markDoseSkipped(profileId, doseId, itemId, DATE)).toBe("skipped");
+    const answer = tapAnswerText(
+      markDoseTaken(profileId, doseId, itemId, DATE)
+    );
+    expect(answer).toMatch(/^Not logged/);
+    expect(answer).toMatch(/skipped/i);
+    expect(answer).not.toContain("Logged ✅");
+    // The skip stands untouched, and no supply was burned by the stale ✅.
+    expect(logRow(doseId, DATE)?.status).toBe("skipped");
+    expect(onHand(itemId)).toBe(10);
   });
 
   it("refuses a retired dose (stale) and a paused item (inactive)", () => {
@@ -228,6 +274,43 @@ describe("markDoseSkipped outcomes (#232)", () => {
       "inactive"
     );
     expect(logRow(pausedDose, DATE)).toBeUndefined();
+  });
+});
+
+// escalationAckState (#233's 👍 I'm-on-it verification) is status-aware (#280):
+// an episode resolved by EITHER log status ends the chase and is reported by the
+// status that stands — a deliberately-skipped critical dose must not be answered
+// as a fresh "we'll hold off" (nor as confirmed taken).
+describe("escalationAckState status-awareness (#280)", () => {
+  it("acknowledges an unresolved dose, refuses retired/paused ones", () => {
+    const profileId = seedProfileRow();
+    const itemId = seedItem(profileId);
+    const doseId = seedDose(itemId, "5 mg");
+    expect(escalationAckState(profileId, doseId, DATE)).toBe("acknowledged");
+
+    const retired = seedDose(itemId, "5 mg", 1);
+    expect(escalationAckState(profileId, retired, DATE)).toBe("stale-dose");
+
+    const pausedItem = seedItem(profileId, { active: 0 });
+    const pausedDose = seedDose(pausedItem, "5 mg");
+    expect(escalationAckState(profileId, pausedDose, DATE)).toBe("inactive");
+  });
+
+  it("reports a taken dose as already-taken and a skipped one as already-skipped", () => {
+    const profileId = seedProfileRow();
+    const itemId = seedItem(profileId);
+
+    const takenDose = seedDose(itemId, "5 mg");
+    markDoseTaken(profileId, takenDose, itemId, DATE);
+    expect(escalationAckState(profileId, takenDose, DATE)).toBe(
+      "already-taken"
+    );
+
+    const skippedDose = seedDose(itemId, "5 mg");
+    markDoseSkipped(profileId, skippedDose, itemId, DATE);
+    expect(escalationAckState(profileId, skippedDose, DATE)).toBe(
+      "already-skipped"
+    );
   });
 });
 

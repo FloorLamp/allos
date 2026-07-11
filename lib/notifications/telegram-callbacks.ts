@@ -33,6 +33,8 @@ import {
   type TakeCallback,
   OUTDATED_MESSAGE_TEXT,
   escalationAckAnswerText,
+  escalationAckCloseText,
+  escalationTakeCloseText,
   parseAllCallback,
   parseEscalationCallback,
   parsePreventiveCallback,
@@ -275,33 +277,26 @@ async function handleEscalationTap(
 
   if (esc.action === "take") {
     // ✅ Confirmed taken → the outcome-typed markDoseTaken; a stale/paused tap
-    // logs NOTHING and is answered as such (never falsely confirms a critical med).
+    // logs NOTHING and is answered as such (never falsely confirms a critical
+    // med), and a dose meanwhile resolved as skipped (#280) is answered by the
+    // status that actually stands — the toast and the replacement body come from
+    // the same outcome so they can't disagree.
     const outcome = markDoseTaken(profileId, esc.doseId, esc.suppId, esc.date);
     await answerCallbackQuery(cq.id, tapAnswerText(outcome));
-    await replaceMessage(
-      cq,
-      tapResolved(outcome) ? "Confirmed taken ✅" : OUTDATED_MESSAGE_TEXT
-    );
+    await replaceMessage(cq, escalationTakeCloseText(outcome));
     return;
   }
 
   // 👍 I'm on it → acknowledge WITHOUT logging the dose. On a real ack, write the
   // per-episode escalation marker (the same key the tick sets on send), so the
-  // episode isn't re-nudged; a taken/stale/paused dose is answered honestly and
-  // nothing is written.
+  // episode isn't re-nudged; a taken/skipped/stale/paused dose is answered
+  // honestly and nothing is written.
   const ack = escalationAckState(profileId, esc.doseId, esc.date);
   if (ack === "acknowledged") {
     setProfileSetting(profileId, escalationMarkerKey(esc.doseId), esc.date);
   }
   await answerCallbackQuery(cq.id, escalationAckAnswerText(ack));
-  await replaceMessage(
-    cq,
-    ack === "acknowledged"
-      ? "Acknowledged 👍 — we'll hold off."
-      : ack === "already-taken"
-        ? "Already confirmed taken ✅"
-        : OUTDATED_MESSAGE_TEXT
-  );
+  await replaceMessage(cq, escalationAckCloseText(ack));
 }
 
 // Apply a single ✅ take or ⏭ skip tap: resolve the acting profile from the chat,

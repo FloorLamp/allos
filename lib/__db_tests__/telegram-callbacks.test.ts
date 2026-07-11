@@ -29,10 +29,14 @@ import { preventiveSignalKey } from "@/lib/preventive-upcoming";
 import { refillSignalKey } from "@/lib/refill-nudge";
 import { escalationMarkerKey } from "@/lib/notifications/escalate";
 import { handleCallbackQuery } from "@/lib/notifications/telegram-callbacks";
-import { answerCallbackQuery } from "@/lib/notifications/telegram";
+import {
+  answerCallbackQuery,
+  editMessageText,
+} from "@/lib/notifications/telegram";
 import { seedProfile, type SeededProfile } from "./fixtures";
 
 const answerMock = vi.mocked(answerCallbackQuery);
+const editTextMock = vi.mocked(editMessageText);
 
 const OWN_CHAT = "5550100";
 const CARE_CHAT = "5550199";
@@ -56,6 +60,11 @@ function cq(data: string, chatId: string) {
 function lastAnswerText(): string | undefined {
   const call = answerMock.mock.calls.at(-1);
   return call?.[1];
+}
+
+function lastEditedText(): string | undefined {
+  const call = editTextMock.mock.calls.at(-1);
+  return call?.[2] as string | undefined;
 }
 
 let p: SeededProfile;
@@ -90,6 +99,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   answerMock.mockClear();
+  editTextMock.mockClear();
 });
 
 // ---- Phase 1: preventive ----
@@ -259,6 +269,55 @@ describe("escalation buttons (caregiver two-way)", () => {
     expect(lastAnswerText()).toMatch(/taken ✅/);
   });
 
+  it("👍 on an already-SKIPPED dose reports the skip, never a fresh ack (#280)", async () => {
+    clearDoseLogs();
+    const date = today(p.profileId);
+    db.prepare(
+      `INSERT INTO intake_item_logs (dose_id, item_id, date, status) VALUES (?,?,?,'skipped')`
+    ).run(criticalDoseId, criticalSuppId, date);
+    await handleCallbackQuery(
+      cq(
+        `escack:${p.profileId}:${criticalDoseId}:${criticalSuppId}:${date}`,
+        CARE_CHAT
+      )
+    );
+    // The chase is over (resolved by a deliberate skip): no marker, and the
+    // answer names the skip — not "we'll hold off" and not "taken".
+    expect(
+      getProfileSetting(p.profileId, escalationMarkerKey(criticalDoseId))
+    ).toBeFalsy();
+    expect(lastAnswerText()).toMatch(/skipped/i);
+    expect(lastAnswerText()).not.toMatch(/hold off|taken ✅/i);
+    // The replacement body agrees with the toast.
+    expect(lastEditedText()).toMatch(/skipped/i);
+  });
+
+  it("✅ Confirmed-taken on an already-SKIPPED dose never answers 'Logged' (#280)", async () => {
+    clearDoseLogs();
+    const date = today(p.profileId);
+    db.prepare(
+      `INSERT INTO intake_item_logs (dose_id, item_id, date, status) VALUES (?,?,?,'skipped')`
+    ).run(criticalDoseId, criticalSuppId, date);
+    await handleCallbackQuery(
+      cq(
+        `esctake:${p.profileId}:${criticalDoseId}:${criticalSuppId}:${date}`,
+        OWN_CHAT
+      )
+    );
+    // The skip stands (never overwritten), and both the toast and the rebuilt
+    // message say so instead of "Logged ✅"/"Confirmed taken ✅".
+    const row = db
+      .prepare(
+        `SELECT status FROM intake_item_logs WHERE dose_id = ? AND date = ?`
+      )
+      .get(criticalDoseId, date) as { status: string } | undefined;
+    expect(row?.status).toBe("skipped");
+    expect(lastAnswerText()).toMatch(/^Not logged/);
+    expect(lastAnswerText()).toMatch(/skipped/i);
+    expect(lastEditedText()).toMatch(/skipped/i);
+    expect(lastEditedText()).not.toContain("Confirmed taken");
+  });
+
   it("a tap from an unrelated chat is refused (no log, bare ack)", async () => {
     clearDoseLogs();
     const date = today(p.profileId);
@@ -295,5 +354,60 @@ describe("escalation buttons (caregiver two-way)", () => {
     db.prepare("UPDATE intake_item_doses SET retired = 0 WHERE id = ?").run(
       criticalDoseId
     );
+  });
+});
+
+// ---- Dose reminder ✅/⏭ buttons: stale cross-action taps (#280) ----
+// A reminder message is a frozen snapshot, so its button pair survives an
+// out-of-band resolution (web UI, another device). The stale tap writes nothing
+// — and the toast must name the status that actually stands, not confirm the
+// tapped action.
+describe("stale dose-button taps answer with the standing status (#280)", () => {
+  it("⏭ Skip on a dose already TAKEN never answers 'Skipped'", async () => {
+    // The fixture already logged the supplement dose as taken today.
+    const date = today(p.profileId);
+    await handleCallbackQuery(
+      cq(
+        `skip:${p.profileId}:${p.supplementDoseId}:${p.supplementId}:${date}`,
+        OWN_CHAT
+      )
+    );
+    const row = db
+      .prepare(
+        `SELECT status FROM intake_item_logs WHERE dose_id = ? AND date = ?`
+      )
+      .get(p.supplementDoseId, date) as { status: string } | undefined;
+    expect(row?.status).toBe("taken");
+    expect(lastAnswerText()).toMatch(/^Not skipped/);
+    expect(lastAnswerText()).toMatch(/taken/i);
+    expect(lastAnswerText()).not.toContain("Skipped ⏭");
+  });
+
+  it("✅ Take on a dose already SKIPPED never answers 'Logged'", async () => {
+    const date = today(p.profileId);
+    // A second dose on the same item, resolved as skipped out-of-band.
+    const doseB = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+           VALUES (?, '1 cap', 'evening', 'any', 1)`
+        )
+        .run(p.supplementId).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO intake_item_logs (dose_id, item_id, date, status) VALUES (?,?,?,'skipped')`
+    ).run(doseB, p.supplementId, date);
+    await handleCallbackQuery(
+      cq(`take:${p.profileId}:${doseB}:${p.supplementId}:${date}`, OWN_CHAT)
+    );
+    const row = db
+      .prepare(
+        `SELECT status FROM intake_item_logs WHERE dose_id = ? AND date = ?`
+      )
+      .get(doseB, date) as { status: string } | undefined;
+    expect(row?.status).toBe("skipped");
+    expect(lastAnswerText()).toMatch(/^Not logged/);
+    expect(lastAnswerText()).toMatch(/skipped/i);
+    expect(lastAnswerText()).not.toContain("Logged ✅");
   });
 });
