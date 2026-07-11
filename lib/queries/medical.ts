@@ -168,8 +168,15 @@ function medicalOrderBy(
 // request-scoped cache() below keys on a primitive. Plain object args are
 // compared by reference, so two call sites building an equivalent filter (e.g.
 // { current: true }) would never share a cache entry; serializing collapses them.
+// Sorted via Object.fromEntries rather than a stringify replacer ARRAY — an array
+// replacer key-filters at EVERY depth, so a future nested-object filter value
+// would be silently stripped from the key (two different filters, one cache slot).
 function medicalFiltersKey(filters: MedicalRecordFilters): string {
-  return JSON.stringify(filters, Object.keys(filters).sort());
+  return JSON.stringify(
+    Object.fromEntries(
+      Object.entries(filters).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    )
+  );
 }
 
 // cache(): one dashboard render fans the same profile's medical_records dedup
