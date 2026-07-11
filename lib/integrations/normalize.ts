@@ -270,34 +270,36 @@ export function upsertMetricSamples(
 // every 1-minute aggregate from that batch's raw samples, so the incoming row is
 // already the authoritative value for its minute — merging by count-weighted
 // average would double `n` (and freeze the average) on every resend of the rolling
-// 48h window. REPLACE-by-key keeps re-ingest idempotent.
+// 48h window. REPLACE-by-key keeps re-ingest idempotent. The key is
+// (profile_id, ts, source) — migration 013, issue #14 — so a resend from the SAME
+// source replaces its own bucket while two different sources reporting the same
+// minute coexist instead of clobbering each other.
 export function upsertHrMinutes(
   profileId: number,
   rows: NormHrMinute[],
   source: string
 ): UpsertCounts {
-  // Pre-image on (profile_id, ts): the exporter recomputes each minute bucket from
-  // that batch's raw samples and replaces the row outright, so a resend of an
-  // identical minute (same bpm/min/max/n/source) is unchanged, not a write.
+  // Pre-image on (profile_id, ts, source): the exporter recomputes each minute
+  // bucket from that batch's raw samples and replaces the row outright, so a
+  // resend of an identical minute (same bpm/min/max/n) is unchanged, not a write.
   const find = db.prepare(
-    "SELECT bpm, bpm_min, bpm_max, n, source FROM hr_minutes WHERE profile_id = ? AND ts = ?"
+    "SELECT bpm, bpm_min, bpm_max, n FROM hr_minutes WHERE profile_id = ? AND ts = ? AND source = ?"
   );
   const stmt = db.prepare(
     `INSERT INTO hr_minutes (profile_id, ts, bpm, bpm_min, bpm_max, n, source)
        VALUES (?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(profile_id, ts) DO UPDATE SET
+     ON CONFLICT(profile_id, ts, source) DO UPDATE SET
        bpm = excluded.bpm, bpm_min = excluded.bpm_min, bpm_max = excluded.bpm_max,
-       n = excluded.n, source = excluded.source`
+       n = excluded.n`
   );
   const counts = emptyCounts();
   for (const r of rows) {
-    const found = find.get(profileId, r.ts) as
+    const found = find.get(profileId, r.ts, source) as
       | {
           bpm: number;
           bpm_min: number;
           bpm_max: number;
           n: number;
-          source: string;
         }
       | undefined;
     stmt.run(profileId, r.ts, r.bpm, r.bpm_min, r.bpm_max, r.n, source);
@@ -306,8 +308,7 @@ export function upsertHrMinutes(
       found.bpm === r.bpm &&
       found.bpm_min === r.bpm_min &&
       found.bpm_max === r.bpm_max &&
-      found.n === r.n &&
-      found.source === source
+      found.n === r.n
     )
       counts.unchanged++;
     else counts.updated++;

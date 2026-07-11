@@ -15,7 +15,7 @@ import {
   type BodyChartKey,
 } from "@/lib/growth-metrics";
 import {
-  getWeights,
+  getBodyMetricDailySeries,
   getBodyMetricsWithSource,
   getMetricDailyTotals,
   getLatestMetricValue,
@@ -51,6 +51,7 @@ import VitalsQuickAdd from "./VitalsQuickAdd";
 import GrowthQuickAdd from "./GrowthQuickAdd";
 import DeleteBodyMetricButton from "./DeleteBodyMetricButton";
 import BodyHygieneFindings from "./BodyHygieneFindings";
+import SourceComparison from "./SourceComparison";
 
 // The Trends hub's Body section: the full Body Metrics surface (absorbed here in
 // the sidebar consolidation — the standalone /body-metrics page was retired and
@@ -68,30 +69,29 @@ export default async function BodySection({ range }: { range: DateRange }) {
 
   // Read the whole series (ALL_ROWS overrides the default 365-row cap) so an
   // older window isn't silently truncated before filterSeriesByRange windows it.
-  const weights = getWeights(profile.id, ALL_ROWS);
+  // The chart series read one value per day through getBodyMetricDailySeries
+  // (issue #14): when several sources report the same day, the profile's primary
+  // source (else the default preference) wins, so a two-device day doesn't
+  // zig-zag the trend. The history table below keeps every row (all sources).
+  const weightSeries = getBodyMetricDailySeries(profile.id, "weight", ALL_ROWS);
   const bodyMetrics = getBodyMetricsWithSource(profile.id, ALL_ROWS);
 
   const weightChart = filterSeriesByRange(
-    weights
-      .slice()
-      .reverse()
-      .map((w) => ({ date: w.date, value: dispWeight(w.weight_kg, wu) })),
+    weightSeries.map((w) => ({ date: w.date, value: dispWeight(w.value, wu) })),
     range
   );
   const bodyFatChart = filterSeriesByRange(
-    bodyMetrics
-      .filter((w) => w.body_fat_pct != null)
-      .slice()
-      .reverse()
-      .map((w) => ({ date: w.date, value: round(w.body_fat_pct!, 1) })),
+    getBodyMetricDailySeries(profile.id, "body_fat", ALL_ROWS).map((w) => ({
+      date: w.date,
+      value: round(w.value, 1),
+    })),
     range
   );
   const restingHrChart = filterSeriesByRange(
-    bodyMetrics
-      .filter((w) => w.resting_hr != null)
-      .slice()
-      .reverse()
-      .map((w) => ({ date: w.date, value: Math.round(w.resting_hr!) })),
+    getBodyMetricDailySeries(profile.id, "resting_hr", ALL_ROWS).map((w) => ({
+      date: w.date,
+      value: Math.round(w.value),
+    })),
     range
   );
 
@@ -244,7 +244,7 @@ export default async function BodySection({ range }: { range: DateRange }) {
       date: r.date,
       value: r.value,
     })),
-    weights: weights.map((w) => ({ date: w.date, value: w.weight_kg })),
+    weights: weightSeries.map((w) => ({ date: w.date, value: w.value })),
     headCircs: getMetricDailyTotals(profile.id, "head_circumference_cm").map(
       (r) => ({ date: r.date, value: r.value })
     ),
@@ -359,13 +359,10 @@ export default async function BodySection({ range }: { range: DateRange }) {
   const heightCm = getLatestMetricValue(profile.id, "height_cm");
   const bmiChart =
     heightCm && heightCm > 0
-      ? weights
-          .slice()
-          .reverse()
-          .map((w) => ({
-            date: w.date,
-            value: round(w.weight_kg / (heightCm / 100) ** 2, 1),
-          }))
+      ? weightSeries.map((w) => ({
+          date: w.date,
+          value: round(w.value / (heightCm / 100) ** 2, 1),
+        }))
       : [];
   const hrChart = getHrDailySummary(profile.id).map((r) => ({
     date: r.date,
@@ -629,6 +626,10 @@ export default async function BodySection({ range }: { range: DateRange }) {
           )}
         </div>
       )}
+
+      {/* Per-source comparison + primary-source pickers (issue #14). Renders
+          nothing unless at least one metric is reported by 2+ sources. */}
+      <SourceComparison profileId={profile.id} weightUnit={wu} />
 
       <div className="card">
         <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">

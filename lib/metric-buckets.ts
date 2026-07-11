@@ -15,8 +15,9 @@ export const AVERAGED_METRICS = new Set([
 ]);
 
 // The per-day aggregation a metric uses: AVG for instantaneous point metrics,
-// SUM for additive ones. (Multi-provider additive metrics are picked one provider
-// per day upstream before summing — see MULTI_PROVIDER_METRICS.)
+// SUM for additive ones. (Every additive metric is collapsed to one source per
+// day upstream before summing — see pickOneProviderPerDay in lib/metric-providers
+// and the source-priority handling in lib/queries/metrics.ts, issue #14.)
 export function metricAggregation(metric: string): "AVG" | "SUM" {
   return AVERAGED_METRICS.has(metric) ? "AVG" : "SUM";
 }
