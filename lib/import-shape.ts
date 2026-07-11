@@ -65,6 +65,13 @@ export interface PersistRecord {
   // structured period/status). The persist layer creates medication_courses from
   // these. Optional so existing PersistRecord constructors need no change.
   courses?: ImportedMedicationCourse[] | null;
+  // Structured medication attribution (prescriber / pharmacy / Rx number) resolved
+  // by the deterministic CCD/FHIR mappers; threaded into the auto-structured
+  // intake_items row so an imported medication carries the source's own attribution
+  // instead of always NULL (#417). Null/absent on the AI path.
+  prescriber?: string | null;
+  pharmacy?: string | null;
+  rxNumber?: string | null;
 }
 
 export interface PersistImmunization {
@@ -404,6 +411,10 @@ export function healthRecordToPersistInput(
     provider: r.provider ?? null,
     // Derived medication courses ride on prescription records.
     courses: r.courses ?? null,
+    // Structured attribution rides on prescription records (#417).
+    prescriber: r.prescriber ?? null,
+    pharmacy: r.pharmacy ?? null,
+    rxNumber: r.rxNumber ?? null,
   }));
   // Project body-metric records (weight / body fat / resting HR) into body_metrics
   // — the same single-home rule the AI path uses.

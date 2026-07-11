@@ -290,6 +290,25 @@ export function mapMedication(
     dq?.["@_value"] != null
       ? `${dq["@_value"]}${dq["@_unit"] ? ` ${dq["@_unit"]}` : ""}`
       : null;
+  // The sig / directions text (Epic ships the printed instructions in the
+  // section narrative, referenced by <text><reference value="#…"/>). FHIR keeps
+  // its dosageInstruction.text in the record's `value`; capture the CCD sig into
+  // the SAME field so parsePrescription's schedule inference sees identical input
+  // from both formats (#417). Fall back to the doseQuantity string when no sig
+  // narrative is present, preserving the prior strength-only value.
+  const sig = resolveNarrativeText(sa?.text, narrativeIds);
+  // Attribution (#417): the ordering clinician (med <author>) and, when a
+  // <supply> dispense act is present, the dispensing pharmacy + Rx number.
+  const author = asArray(sa?.author)[0]?.assignedAuthor;
+  const prescriber =
+    providerFromAssignedEntity(author, "individual")?.name ?? null;
+  const supply = asArray(sa?.entryRelationship)
+    .map((er: any) => er?.supply)
+    .find((s: any) => s != null);
+  const pharmacy = supply
+    ? (providerFromPerformer(supply, "organization")?.name ?? null)
+    : null;
+  const rxNumber = supply ? supplyRxNumber(supply) : null;
   const periods = medEffectivePeriods(sa.effectiveTime);
   let status = ccdaMedStatus(sa);
   // Snapshot sections (#266): an administration already happened — cap an
@@ -315,7 +334,7 @@ export function mapMedication(
     category: "prescription",
     name: String(name),
     canonical: String(name),
-    value: dose,
+    value: sig ?? dose,
     value_num: null,
     unit: null,
     date: recordDate,
@@ -325,7 +344,20 @@ export function mapMedication(
       date: recordDate,
     }),
     courses,
+    prescriber,
+    pharmacy,
+    rxNumber,
   };
+}
+
+// The Rx number carried on a <supply> dispense act's <id extension="…"/>, else
+// null. First non-empty extension wins.
+function supplyRxNumber(supply: any): string | null {
+  for (const id of asArray(supply?.id)) {
+    const ext = id?.["@_extension"];
+    if (typeof ext === "string" && ext.trim()) return ext.trim();
+  }
+  return null;
 }
 
 // ---- allergies + problem-list conditions ----
