@@ -81,7 +81,7 @@ test.describe("Import detail: tabbed records browser", () => {
     ).toBeVisible();
     const item = listing.getByTestId("produced-item");
     await expect(item).toHaveCount(1);
-    await expect(item).toContainText("Office Visit");
+    await expect(item).toContainText("E2E Browser Visit");
     await expect(item).toContainText("E2E annual physical");
     const link = item.getByRole("link");
     await expect(link).toHaveAttribute("href", /^\/encounters\/\d+$/);

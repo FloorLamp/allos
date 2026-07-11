@@ -823,7 +823,7 @@ insBrowserRecord.run(
 db.prepare(
   `INSERT INTO encounters
      (profile_id, date, type, class_code, reason, document_id, source)
-   VALUES (?, '2026-06-20', 'Office Visit', 'AMB', 'E2E annual physical', ?, 'ccda')`
+   VALUES (?, '2026-06-20', 'E2E Browser Visit', 'AMB', 'E2E annual physical', ?, 'ccda')`
 ).run(PROFILE_ID, BROWSER_DOC_ID);
 db.prepare(
   `INSERT INTO conditions (profile_id, name, status, document_id, source)
