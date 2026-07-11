@@ -11,6 +11,7 @@ import {
   rowsEqual,
   isEditLocked,
   isNoOpSyncEvent,
+  shouldShowConnectedSource,
 } from "@/lib/integrations/sync-log";
 
 describe("isEditLocked", () => {
@@ -308,5 +309,33 @@ describe("currentlyFailingProviders", () => {
 
   it("returns an empty array when there are no events", () => {
     expect(currentlyFailingProviders([])).toEqual([]);
+  });
+});
+
+describe("shouldShowConnectedSource", () => {
+  it("shows a currently-connected source with no history yet", () => {
+    // Just connected, no sync landed — still belongs in the section.
+    expect(
+      shouldShowConnectedSource({ connected: true, hasHistory: false })
+    ).toBe(true);
+  });
+
+  it("shows a connected source that also has history", () => {
+    expect(
+      shouldShowConnectedSource({ connected: true, hasHistory: true })
+    ).toBe(true);
+  });
+
+  it("shows a disconnected source that still has historical logs (Reconnect case)", () => {
+    // Was connected, later removed: keep its logs visible with a Reconnect link.
+    expect(
+      shouldShowConnectedSource({ connected: false, hasHistory: true })
+    ).toBe(true);
+  });
+
+  it("hides a source that was never set up (not connected, no history)", () => {
+    expect(
+      shouldShowConnectedSource({ connected: false, hasHistory: false })
+    ).toBe(false);
   });
 });

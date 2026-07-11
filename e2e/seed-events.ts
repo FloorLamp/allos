@@ -136,6 +136,36 @@ ins.run(
   "Strava token refresh failed (401): unauthorized"
 );
 
+// Issue #294: a source that was CONNECTED and later removed keeps showing its
+// historical logs under "Connected sources" — as a "Not connected" card with a
+// Reconnect link — instead of vanishing. Oura models that removed-but-historical
+// case: mark it disconnected but seed one past successful sync so its card renders
+// with the Reconnect affordance. (A provider with NEITHER a connection nor any sync
+// history — the never-set-up case — is filtered out entirely, which is the behavior
+// the issue asked for; that decision is unit-tested in sync-log.test.ts.) The
+// disconnected + ok=1 shape keeps this off the "currently failing" surface, so the
+// review badge count is unaffected.
+db.prepare(
+  `DELETE FROM integration_sync_events WHERE profile_id = ? AND provider = 'oura'`
+).run(PROFILE_ID);
+upsertConnection(PROFILE_ID, "oura", { status: "disconnected", config: null });
+ins.run(
+  PROFILE_ID,
+  "oura",
+  "2026-07-05 06:00:00",
+  1,
+  "2026-07-01",
+  "2026-07-05",
+  12, // received
+  12, // written
+  8, // inserted
+  4, // updated
+  0, // unchanged
+  0, // skipped
+  null, // raw_ref
+  null
+);
+
 // ── Duplicate/conflict fixtures (issue #10, Phase 2) ──────────────────────────
 // A cross-source ACTIVITY pair on one day: a manually-logged "Morning run" and a
 // Strava-imported run with overlapping clock times — a HIGH-confidence duplicate
