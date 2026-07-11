@@ -10,13 +10,8 @@ import {
   IconTarget,
   IconBarbell,
   IconClipboardList,
-  IconDotsVertical,
-  IconClock,
-  IconEyeOff,
   IconArrowBackUp,
   IconInfoCircle,
-  IconCircleX,
-  IconCircleMinus,
   IconCalendarPlus,
   IconCalendarCheck,
   type TablerIcon,
@@ -34,22 +29,16 @@ import {
 } from "@/lib/upcoming";
 import { PageHeader, EmptyState } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
+import SnoozeDismissMenu from "@/components/SnoozeDismissMenu";
+import PreventiveOverrideMenu from "./PreventiveOverrideMenu";
 import {
   markTaken,
   snoozeItem,
   dismissItem,
   restoreItem,
   markPreventiveDone,
-  overridePreventive,
   markCarePlanDone,
 } from "./actions";
-
-// Quick-snooze options offered in each item's menu.
-const SNOOZE_OPTIONS: { label: string; days: number }[] = [
-  { label: "1 day", days: 1 },
-  { label: "1 week", days: 7 },
-  { label: "1 month", days: 30 },
-];
 
 export const dynamic = "force-dynamic";
 
@@ -169,6 +158,7 @@ export default async function UpcomingPage() {
 // Inline controls for a due preventive visit/screening row (issue #82): a fast
 // "Mark done" (records a satisfaction dated today, like a dose "mark taken") plus
 // an override menu to mark the rule Declined or Not applicable — either hides it.
+// The override menu is the shared OverflowMenu-based popover (issue #281).
 function PreventiveControls({ ruleKey }: { ruleKey: string }) {
   return (
     <div className="flex shrink-0 items-center gap-1">
@@ -181,39 +171,7 @@ function PreventiveControls({ ruleKey }: { ruleKey: string }) {
           Mark done
         </SubmitButton>
       </form>
-      <details className="relative shrink-0">
-        <summary
-          aria-label="Not applicable or declined"
-          title="Not applicable or declined"
-          className="tap-target flex h-8 w-8 cursor-pointer list-none items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-ink-750 dark:hover:text-slate-300 [&::-webkit-details-marker]:hidden"
-        >
-          <IconDotsVertical className="h-4 w-4" stroke={1.75} />
-        </summary>
-        <div className="card absolute right-0 z-10 mt-1 w-44 space-y-0.5 p-1 shadow-lg">
-          <form action={overridePreventive}>
-            <input type="hidden" name="rule_key" value={ruleKey} />
-            <input type="hidden" name="kind" value="not_applicable" />
-            <button
-              type="submit"
-              className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-sm text-slate-700 transition hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-ink-750"
-            >
-              <IconCircleMinus className="h-3.5 w-3.5" stroke={1.75} />
-              Not applicable
-            </button>
-          </form>
-          <form action={overridePreventive}>
-            <input type="hidden" name="rule_key" value={ruleKey} />
-            <input type="hidden" name="kind" value="declined" />
-            <button
-              type="submit"
-              className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-sm text-slate-700 transition hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-ink-750"
-            >
-              <IconCircleX className="h-3.5 w-3.5" stroke={1.75} />
-              Declined
-            </button>
-          </form>
-        </div>
-      </details>
+      <PreventiveOverrideMenu ruleKey={ruleKey} />
     </div>
   );
 }
@@ -271,53 +229,6 @@ function SuppressedSection({
             </div>
           );
         })}
-      </div>
-    </details>
-  );
-}
-
-// Per-item snooze/dismiss menu — a native <details> popover (no client JS) with
-// the quick-snooze options + a dismiss. Each control is a server-action form.
-function ItemMenu({ signalKey }: { signalKey: string }) {
-  return (
-    <details className="relative shrink-0">
-      <summary
-        aria-label="Snooze or dismiss"
-        title="Snooze or dismiss"
-        className="tap-target flex h-8 w-8 cursor-pointer list-none items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-ink-750 dark:hover:text-slate-300 [&::-webkit-details-marker]:hidden"
-      >
-        <IconDotsVertical className="h-4 w-4" stroke={1.75} />
-      </summary>
-      <div className="card absolute right-0 z-10 mt-1 w-40 space-y-0.5 p-1 shadow-lg">
-        <div className="flex items-center gap-1 px-2 py-1 text-[0.65rem] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
-          <IconClock className="h-3 w-3" stroke={1.75} />
-          Snooze
-        </div>
-        {SNOOZE_OPTIONS.map((opt) => (
-          <form action={snoozeItem} key={opt.days}>
-            <input type="hidden" name="signal_key" value={signalKey} />
-            <input type="hidden" name="days" value={opt.days} />
-            <button
-              type="submit"
-              className="w-full rounded-md px-2 py-1 text-left text-sm text-slate-700 transition hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-ink-750"
-            >
-              {opt.label}
-            </button>
-          </form>
-        ))}
-        <form
-          action={dismissItem}
-          className="border-t border-black/5 pt-0.5 dark:border-white/5"
-        >
-          <input type="hidden" name="signal_key" value={signalKey} />
-          <button
-            type="submit"
-            className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-sm text-slate-700 transition hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-ink-750"
-          >
-            <IconEyeOff className="h-3.5 w-3.5" stroke={1.75} />
-            Dismiss
-          </button>
-        </form>
       </div>
     </details>
   );
@@ -405,7 +316,13 @@ function Row({
           </SubmitButton>
         </form>
       )}
-      <ItemMenu signalKey={item.key} />
+      {/* Per-item snooze/dismiss popover — the shared OverflowMenu-based menu
+      (issue #281), identical to the dashboard hero's. */}
+      <SnoozeDismissMenu
+        signalKey={item.key}
+        snoozeAction={snoozeItem}
+        dismissAction={dismissItem}
+      />
     </div>
   );
 }

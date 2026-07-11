@@ -62,11 +62,14 @@ test("the interaction surfaces on Upcoming and stays hidden once dismissed", asy
     .first();
   await expect(finding).toBeVisible();
 
-  // The item's menu is a native <details> popover whose trigger is a SUMMARY
-  // element (aria-label "Snooze or dismiss") — not a button role — with the
-  // Dismiss server-action submit inside it. Open the popover, then dismiss.
-  await finding.locator('summary[aria-label="Snooze or dismiss"]').click();
-  await finding.getByRole("button", { name: "Dismiss" }).click();
+  // The item's menu is the shared OverflowMenu popover (#281): its trigger is a
+  // button, and the panel is portaled to <body> — so the Dismiss item is located
+  // from the page-level menu role, not inside the row. Open, then dismiss.
+  await finding.getByRole("button", { name: "Snooze or dismiss" }).click();
+  await page
+    .getByRole("menu")
+    .getByRole("menuitem", { name: "Dismiss" })
+    .click();
 
   // After the server action + reload, THIS pair's finding is gone — the other
   // seeded interaction pairs legitimately remain.

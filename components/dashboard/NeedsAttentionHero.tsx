@@ -14,12 +14,10 @@ import {
   IconInbox,
   IconAlertTriangle,
   IconCircleCheck,
-  IconDotsVertical,
-  IconClock,
-  IconEyeOff,
   type TablerIcon,
 } from "@tabler/icons-react";
 import SubmitButton from "@/components/SubmitButton";
+import SnoozeDismissMenu from "@/components/SnoozeDismissMenu";
 import {
   groupAttention,
   type AttentionItem,
@@ -65,61 +63,6 @@ const SEVERITY_TONE: Record<AttentionSeverity, string> = {
   info: "text-slate-500 dark:text-slate-400",
 };
 
-const SNOOZE_OPTIONS: { label: string; days: number }[] = [
-  { label: "1 day", days: 1 },
-  { label: "1 week", days: 7 },
-  { label: "1 month", days: 30 },
-];
-
-// Per-item snooze/dismiss menu — a native <details> popover (no client JS), each
-// control a server-action form keyed by the item's signal key. Only rendered for
-// suppressible items (Upcoming-derived); structural signals (review/integration)
-// are resolved, not snoozed.
-function ItemMenu({ signalKey }: { signalKey: string }) {
-  return (
-    <details className="relative shrink-0">
-      <summary
-        aria-label="Snooze or dismiss"
-        title="Snooze or dismiss"
-        className="tap-target flex h-8 w-8 cursor-pointer list-none items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-ink-750 dark:hover:text-slate-300 [&::-webkit-details-marker]:hidden"
-      >
-        <IconDotsVertical className="h-4 w-4" stroke={1.75} />
-      </summary>
-      <div className="card absolute right-0 z-10 mt-1 w-40 space-y-0.5 p-1 shadow-lg">
-        <div className="flex items-center gap-1 px-2 py-1 text-[0.65rem] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
-          <IconClock className="h-3 w-3" stroke={1.75} />
-          Snooze
-        </div>
-        {SNOOZE_OPTIONS.map((opt) => (
-          <form action={snoozeAttention} key={opt.days}>
-            <input type="hidden" name="signal_key" value={signalKey} />
-            <input type="hidden" name="days" value={opt.days} />
-            <button
-              type="submit"
-              className="w-full rounded-md px-2 py-1 text-left text-sm text-slate-700 transition hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-ink-750"
-            >
-              {opt.label}
-            </button>
-          </form>
-        ))}
-        <form
-          action={dismissAttention}
-          className="border-t border-black/5 pt-0.5 dark:border-white/5"
-        >
-          <input type="hidden" name="signal_key" value={signalKey} />
-          <button
-            type="submit"
-            className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-sm text-slate-700 transition hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-ink-750"
-          >
-            <IconEyeOff className="h-3.5 w-3.5" stroke={1.75} />
-            Dismiss
-          </button>
-        </form>
-      </div>
-    </details>
-  );
-}
-
 function Row({ item, tone }: { item: AttentionItem; tone: string }) {
   const Icon = DOMAIN_ICON[item.domain] ?? IconAlertTriangle;
   return (
@@ -163,7 +106,17 @@ function Row({ item, tone }: { item: AttentionItem; tone: string }) {
           </SubmitButton>
         </form>
       )}
-      {item.suppressible && <ItemMenu signalKey={item.key} />}
+      {/* Per-item snooze/dismiss popover — the shared OverflowMenu-based menu
+      (issue #281), so it matches every other popover in the app. Only rendered
+      for suppressible items (Upcoming-derived); structural signals
+      (review/integration) are resolved, not snoozed. */}
+      {item.suppressible && (
+        <SnoozeDismissMenu
+          signalKey={item.key}
+          snoozeAction={snoozeAttention}
+          dismissAction={dismissAttention}
+        />
+      )}
     </div>
   );
 }
