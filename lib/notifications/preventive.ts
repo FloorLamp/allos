@@ -46,11 +46,15 @@ const markerKey = (ruleKey: string) => `${MARKER_PREFIX}${ruleKey}`;
 const ruleKeyFromMarker = (key: string) => key.slice(MARKER_PREFIX.length);
 
 // The preventive nudge. Names the profile (a shared/caregiver chat may carry
-// several profiles) and lists each due/overdue item. A nudge, so no action button —
-// following through means booking a visit / logging a result in the app.
+// several profiles) and lists each due/overdue item. Each item carries three
+// buttons (issue #233) mapping 1:1 onto the SAME functions the Upcoming page uses
+// — ✅ Done → recordPreventiveDone, 🚫 Not applicable → setPreventiveOverride,
+// ⏰ Remind later → findings-bus snooze (#227) — grouped one row per rule (its
+// stable catalog key, never a name, is the token payload and the row key).
 export function renderPreventiveMessage(
   profileName: string,
-  items: PreventiveNudgeItem[]
+  items: PreventiveNudgeItem[],
+  profileId: number
 ): NotificationMessage {
   const who = profileName ? `${profileName} — ` : "";
   const head =
@@ -60,11 +64,28 @@ export function renderPreventiveMessage(
     const extra = it.detail ? ` — ${it.detail}` : "";
     return `• ${it.name}: ${tag}${extra}`;
   });
+  const actions = items.flatMap((it) => {
+    const row = `pv:${it.ruleKey}`;
+    return [
+      { label: "✅ Done", data: `pvdone:${profileId}:${it.ruleKey}`, row },
+      {
+        label: "🚫 Not applicable",
+        data: `pvna:${profileId}:${it.ruleKey}`,
+        row,
+      },
+      {
+        label: "⏰ Remind later",
+        data: `pvlater:${profileId}:${it.ruleKey}`,
+        row,
+      },
+    ];
+  });
   return {
     title: `🩺 Preventive care: ${who}${head}`,
     body: `Recommended preventive care is due:\n${lines.join(
       "\n"
     )}\n\nInformational only — not medical advice.`,
+    actions,
   };
 }
 
@@ -135,7 +156,7 @@ export async function runPreventive(
 
   const results = await dispatch(
     profileId,
-    renderPreventiveMessage(profileName, toSend)
+    renderPreventiveMessage(profileName, toSend, profileId)
   );
   if (results.length === 0) {
     // No channel configured — leave markers unset so it can send once configured.

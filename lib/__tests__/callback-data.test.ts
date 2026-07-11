@@ -1,10 +1,18 @@
 import { describe, it, expect } from "vitest";
 import {
   OUTDATED_MESSAGE_TEXT,
+  escalationAckAnswerText,
   parseAllCallback,
+  parseEscalationCallback,
+  parsePreventiveCallback,
+  parseRefillCallback,
   parseSkipCallback,
   parseTakeCallback,
+  preventiveAnswerText,
+  refillAnswerText,
   removeButton,
+  removeRowContaining,
+  resolveEscalationTap,
   resolveTapProfile,
   takeMatchesProfile,
   tapAnswerText,
@@ -210,5 +218,168 @@ describe("removeButton", () => {
 
   it("leaves the keyboard alone for an unknown token", () => {
     expect(removeButton(kb, "take:1:9:9:2026-07-03")).toEqual(kb);
+  });
+});
+
+// #233: a preventive item's ✅/🚫/⏰ trio (and a refill item's snooze + deep-link
+// pair) share ONE row, so consuming any button resolves the whole item — its
+// siblings, and any url button (no callback_data to match), drop with it.
+describe("removeRowContaining", () => {
+  const kb: InlineKeyboard = [
+    [
+      { text: "✅ Done", callback_data: "pvdone:1:colorectal_cancer" },
+      { text: "🚫", callback_data: "pvna:1:colorectal_cancer" },
+      { text: "⏰", callback_data: "pvlater:1:colorectal_cancer" },
+    ],
+    [
+      { text: "📦 Ordered", callback_data: "rfsnooze:1:7" },
+      { text: "Open form", url: "https://x/medicine" },
+    ],
+  ];
+
+  it("drops the whole row the tapped button sits in (siblings + url button)", () => {
+    expect(removeRowContaining(kb, "pvna:1:colorectal_cancer")).toEqual([
+      kb[1],
+    ]);
+    expect(removeRowContaining(kb, "rfsnooze:1:7")).toEqual([kb[0]]);
+  });
+
+  it("returns empty when the last remaining row is consumed", () => {
+    expect(removeRowContaining([kb[0]], "pvdone:1:colorectal_cancer")).toEqual(
+      []
+    );
+  });
+
+  it("leaves the keyboard alone for an unknown token", () => {
+    expect(removeRowContaining(kb, "pvdone:1:other")).toEqual(kb);
+  });
+});
+
+// ---- Phase 1: preventive-nudge buttons (#233) ----
+describe("parsePreventiveCallback", () => {
+  it("parses each action, carrying the profile id and stable rule key", () => {
+    expect(parsePreventiveCallback("pvdone:2:colorectal_cancer")).toEqual({
+      profileId: 2,
+      ruleKey: "colorectal_cancer",
+      action: "done",
+    });
+    expect(parsePreventiveCallback("pvna:1:blood_pressure")).toEqual({
+      profileId: 1,
+      ruleKey: "blood_pressure",
+      action: "na",
+    });
+    expect(parsePreventiveCallback("pvlater:3:adult_physical")).toEqual({
+      profileId: 3,
+      ruleKey: "adult_physical",
+      action: "later",
+    });
+  });
+
+  it("rejects unknown prefixes, a zero profile, and malformed tokens", () => {
+    expect(parsePreventiveCallback("take:1:12:34:2026-07-03")).toBeNull();
+    expect(parsePreventiveCallback("pvdone:0:colorectal_cancer")).toBeNull();
+    expect(parsePreventiveCallback("pvdone:1:")).toBeNull(); // no rule key
+    expect(parsePreventiveCallback("pvmaybe:1:x")).toBeNull(); // not an action
+    expect(parsePreventiveCallback(undefined)).toBeNull();
+  });
+});
+
+describe("preventiveAnswerText", () => {
+  it("confirms each action and never claims success for an unknown rule", () => {
+    expect(preventiveAnswerText("done")).toMatch(/done/i);
+    expect(preventiveAnswerText("not-applicable")).toMatch(/not applicable/i);
+    expect(preventiveAnswerText("reminded")).toMatch(/later/i);
+    expect(preventiveAnswerText("unknown-rule")).toMatch(/^Not recorded/);
+    expect(preventiveAnswerText("unknown-rule")).not.toMatch(/✅/);
+  });
+});
+
+// ---- Phase 3: refill-nudge snooze button (#233) ----
+describe("parseRefillCallback", () => {
+  it("parses a well-formed snooze token", () => {
+    expect(parseRefillCallback("rfsnooze:2:7")).toEqual({
+      profileId: 2,
+      suppId: 7,
+    });
+  });
+
+  it("rejects a zero id, wrong prefix, or missing field", () => {
+    expect(parseRefillCallback("rfsnooze:0:7")).toBeNull();
+    expect(parseRefillCallback("rfsnooze:2:0")).toBeNull();
+    expect(parseRefillCallback("rfsnooze:2")).toBeNull();
+    expect(parseRefillCallback("take:1:12:34:2026-07-03")).toBeNull();
+    expect(parseRefillCallback(undefined)).toBeNull();
+  });
+});
+
+describe("refillAnswerText", () => {
+  it("acknowledges a snooze and never claims success for a stale item", () => {
+    expect(refillAnswerText("snoozed")).toMatch(/3 days/);
+    expect(refillAnswerText("stale-item")).toMatch(/^Not recorded/);
+  });
+});
+
+// ---- Phase 2: escalation buttons (#233) ----
+describe("parseEscalationCallback", () => {
+  it("parses the confirm and ack tokens (dose-token shape)", () => {
+    expect(parseEscalationCallback("esctake:3:7:10:2026-07-11")).toEqual({
+      profileId: 3,
+      doseId: 7,
+      suppId: 10,
+      date: "2026-07-11",
+      action: "take",
+    });
+    expect(parseEscalationCallback("escack:3:7:10:2026-07-11")).toEqual({
+      profileId: 3,
+      doseId: 7,
+      suppId: 10,
+      date: "2026-07-11",
+      action: "ack",
+    });
+  });
+
+  it("nulls a zero supp id and rejects malformed/foreign tokens", () => {
+    expect(
+      parseEscalationCallback("escack:3:7:0:2026-07-11")?.suppId
+    ).toBeNull();
+    expect(parseEscalationCallback("esctake:3:0:10:2026-07-11")).toBeNull();
+    expect(parseEscalationCallback("esctake:3:7:10")).toBeNull(); // no date
+    expect(parseEscalationCallback("take:3:7:10:2026-07-11")).toBeNull();
+    expect(parseEscalationCallback(undefined)).toBeNull();
+  });
+});
+
+// AUTHORIZATION (#233): a tap is authorized when its chat is the profile's own
+// delivery chat OR the supp's escalate_chat_id — anyone in that chat may act
+// (household caregiving). A chat outside the authorized set is refused.
+describe("resolveEscalationTap", () => {
+  const token = { profileId: 3 };
+
+  it("authorizes a tap from the profile's own chat", () => {
+    expect(resolveEscalationTap(token, "111", ["111", null])).toBe(3);
+  });
+
+  it("authorizes a tap from the supplement's escalate (caregiver) chat", () => {
+    expect(resolveEscalationTap(token, "999", ["111", "999"])).toBe(3);
+  });
+
+  it("refuses a tap from an unrelated chat, or when no chats are configured", () => {
+    expect(resolveEscalationTap(token, "222", ["111", "999"])).toBeNull();
+    expect(
+      resolveEscalationTap(token, "111", [null, "", undefined])
+    ).toBeNull();
+    expect(resolveEscalationTap(token, "", ["111"])).toBeNull();
+  });
+});
+
+describe("escalationAckAnswerText", () => {
+  it("acknowledges without claiming taken, and answers stale/taken honestly", () => {
+    expect(escalationAckAnswerText("acknowledged")).toMatch(
+      /not marked taken/i
+    );
+    expect(escalationAckAnswerText("already-taken")).toMatch(/taken ✅/);
+    expect(escalationAckAnswerText("inactive")).toMatch(/paused/i);
+    expect(escalationAckAnswerText("stale-dose")).toMatch(/out of date/i);
+    expect(escalationAckAnswerText("acknowledged")).not.toMatch(/✅/);
   });
 });

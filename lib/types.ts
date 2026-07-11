@@ -702,6 +702,18 @@ export type DoseTakenOutcome =
   | "stale-dose" // dose deleted/retired (or not this profile's): nothing logged
   | "inactive"; // parent item is paused/stopped: nothing logged
 
+// Outcome of a caregiver's "👍 I'm on it" acknowledgement on a missed-dose
+// escalation (issue #233). Unlike "✅ Confirmed taken" (which routes through
+// markDoseTaken and logs the dose), an ack NEVER claims the dose was taken — it
+// only records that the episode is being handled, so the tick stops re-nudging.
+// The staleness/paused cases mirror DoseTakenOutcome so a stale tap is answered
+// honestly, and "already-taken" tells the caregiver the dose is in fact confirmed.
+export type EscalationAckOutcome =
+  | "acknowledged" // episode marked handled; dose NOT logged as taken
+  | "already-taken" // a taken log already exists for the day — nothing to chase
+  | "stale-dose" // dose deleted/retired (or not this profile's): nothing recorded
+  | "inactive"; // parent item is paused/stopped: nothing recorded
+
 // A relationship between two supplements: take them together (synergy) or keep
 // them apart (antagonism). `separate` pairs raise a warning when both land in
 // the same time bucket.

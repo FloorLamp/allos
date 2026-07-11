@@ -28,9 +28,10 @@ import {
   getProfileSetting,
   setProfileSetting,
   deleteProfileSetting,
+  getPublicUrl,
 } from "../settings";
 import { dispatch } from "./index";
-import type { NotificationMessage } from "./types";
+import type { NotificationAction, NotificationMessage } from "./types";
 import { createLogger } from "../log";
 
 const log = createLogger("notify");
@@ -45,11 +46,17 @@ interface LowItem {
 }
 
 // The refill nudge. Names the profile (a shared/caregiver chat may carry several
-// profiles) and lists each low item with its remaining days. A nudge,
-// so no action button.
+// profiles) and lists each low item with its remaining days. Each item gets a
+// "📦 Ordered — remind me in 3 days" button (issue #233) that snoozes its
+// `refill:<id>` finding on the shared bus (#227), plus — when a public URL is
+// configured — a deep link to the refill form (a real "mark refilled" needs an
+// amount, which a button handles badly, so the form is the actuator). One row per
+// item so a snooze consumes just that item.
 export function renderRefillMessage(
   profileName: string,
-  items: LowItem[]
+  items: LowItem[],
+  profileId: number,
+  deepLinkBase = ""
 ): NotificationMessage {
   const who = profileName ? `${profileName} — ` : "";
   const head =
@@ -58,9 +65,25 @@ export function renderRefillMessage(
     (it) =>
       `• ${it.name}: ≈${it.daysLeft} day${it.daysLeft === 1 ? "" : "s"} left`
   );
+  const base = deepLinkBase.replace(/\/$/, "");
+  const actions: NotificationAction[] = items.flatMap((it) => {
+    const row = `rf:${it.id}`;
+    const perItem: NotificationAction[] = [
+      {
+        label: "📦 Ordered — remind me in 3 days",
+        data: `rfsnooze:${profileId}:${it.id}`,
+        row,
+      },
+    ];
+    if (base) {
+      perItem.push({ label: "Open refill form", url: `${base}/medicine`, row });
+    }
+    return perItem;
+  });
   return {
     title: `🔄 Refill due: ${who}${head}`,
     body: `Running low on supply — time to reorder:\n${lines.join("\n")}`,
+    actions,
   };
 }
 
@@ -125,7 +148,7 @@ export async function runRefills(
 
   const results = await dispatch(
     profileId,
-    renderRefillMessage(profileName, toSend)
+    renderRefillMessage(profileName, toSend, profileId, getPublicUrl())
   );
   if (results.length === 0) {
     // No channel configured — leave markers unset so it can send once configured.

@@ -31,8 +31,13 @@ const WINDOWS: EscalationWindow[] = ["Morning", "Midday", "Evening", "Bedtime"];
 export const DEFAULT_ESCALATE_AFTER_MIN = 120;
 
 // Per-day/slot dedup marker for a dose's escalation, mirroring the notify_last_*
-// slot markers (value = the profile-local date it was last escalated).
-const escKey = (doseId: number) => `notify_last_esc_${doseId}`;
+// slot markers (value = the profile-local date it was last escalated). Exported
+// so the Telegram "👍 I'm on it" ack (issue #233) writes the SAME per-episode
+// marker the tick sets on send — a page/caregiver ack and the tick's dedup are one
+// fact, so an acknowledged episode isn't re-nudged.
+export const escalationMarkerKey = (doseId: number) =>
+  `notify_last_esc_${doseId}`;
+const escKey = escalationMarkerKey;
 
 // Send any due missed-dose escalations for one profile. Returns whether a send
 // failed (so the tick can aggregate into its exit code). Never throws for an
@@ -111,7 +116,7 @@ export async function runEscalations(
     try {
       await sendTelegramMessage(
         target,
-        renderEscalationMessage(profileName, d)
+        renderEscalationMessage(profileName, d, profileId, date)
       );
       setProfileSetting(profileId, escKey(d.doseId), date);
       log.info("escalated missed dose", {
