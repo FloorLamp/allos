@@ -255,6 +255,33 @@ export default function ProfilePassport({
             ) : (
               <Empty>No known allergies recorded.</Empty>
             )}
+            {summary.crossReactivity.length > 0 && (
+              <div
+                className="mt-3 border-t border-black/5 pt-3 dark:border-white/5"
+                data-testid="cross-reactivity"
+              >
+                <div className="mb-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">
+                  Cross-reactivity (informational)
+                </div>
+                <ul className="space-y-1.5">
+                  {summary.crossReactivity.map((c) => (
+                    <li
+                      key={c.familyId}
+                      className="text-xs text-slate-600 dark:text-slate-300"
+                      data-testid="cross-reactivity-item"
+                    >
+                      <span className="font-medium text-slate-700 dark:text-slate-200">
+                        {c.triggers.join(", ")}
+                      </span>{" "}
+                      commonly cross-reacts with {c.related.join(", ")}.{" "}
+                      <span className="text-slate-400 dark:text-slate-500">
+                        ({c.label})
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </Section>
         )}
 

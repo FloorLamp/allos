@@ -103,6 +103,17 @@ export interface SummaryAllergy {
   evidence: string | null;
 }
 
+// One allergen cross-reactivity note on the passport (issue #153). Derived from
+// the merged allergies view by the shared pure matcher (lib/allergen-cross-
+// reactivity), so the passport and the Allergies page can never disagree.
+export interface SummaryCrossReactivity {
+  familyId: string;
+  triggers: string[];
+  related: string[];
+  label: string;
+  citation: string;
+}
+
 export interface SummaryCondition {
   name: string;
   code: string | null;
@@ -147,6 +158,7 @@ export interface ProfileSummary {
   };
   vitals: SummaryVital[];
   allergies: SummaryAllergy[];
+  crossReactivity: SummaryCrossReactivity[];
   conditions: SummaryCondition[];
   familyHistory: SummaryFamilyHistory[];
   medications: SummaryMedication[];
@@ -180,6 +192,7 @@ export interface ProfileSummaryInput {
   flagged: SummaryVital[];
   starred: SummaryVital[];
   allergies: SummaryAllergy[];
+  crossReactivity: SummaryCrossReactivity[];
   conditions: SummaryCondition[];
   familyHistory: SummaryFamilyHistory[];
   medications: SummaryMedication[];
@@ -341,6 +354,7 @@ export function buildProfileSummary(
     },
     vitals: mergeVitals(input.flagged, input.starred),
     allergies: input.allergies,
+    crossReactivity: input.crossReactivity,
     conditions: input.conditions,
     familyHistory: input.familyHistory,
     medications: input.medications,
