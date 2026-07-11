@@ -1,4 +1,3 @@
-import * as React from "react";
 import { shiftDateStr } from "../../date";
 import { db, today } from "../../db";
 import { decayedWeight } from "../../decay";
@@ -7,15 +6,11 @@ import { getWeekMode, getWeekStart } from "../../settings";
 import { weekWindow } from "../../week-window";
 import type { ActivityComponent } from "../../types";
 import { parseComponents } from "../../types";
+import { cache } from "../../request-cache";
 
-// React's per-request cache() exists only in the canary React that Next vendors
-// for server components. The plain `react` package that tsx entrypoints
-// (scripts/notify.ts, scripts/seed.ts) resolve doesn't export it, so importing
-// the named binding crashes the notify sidecar at module load. Fall back to
-// identity there: those scripts run each query at most once per tick, so
-// per-request dedup is meaningless outside Next anyway.
-export const cache: typeof React.cache =
-  (React as { cache?: typeof React.cache }).cache ?? ((fn) => fn);
+// Re-export the shared request-scoped cache() shim (lib/request-cache) so the
+// training submodules keep importing `cache` from this common module unchanged.
+export { cache };
 
 // Window for the "recent" scans that back the activity picker's suggestions and
 // the editor's per-exercise history. Both only need recent data — a name or a
