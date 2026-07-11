@@ -28,7 +28,12 @@ import {
   normalizeSeverity,
 } from "@/lib/medication-history";
 import { resolveProviderIdByName } from "@/lib/providers-db";
-import { lookupRxNormCandidates } from "@/lib/rxnorm";
+import {
+  lookupRxNormCandidates,
+  lookupRxNormIngredients,
+  parseRxcuiIngredients,
+  serializeRxcuiIngredients,
+} from "@/lib/rxnorm";
 import { orderIntakePair } from "@/lib/intake-pairs";
 import { withAiLogContext } from "@/lib/ai-log";
 import {
@@ -102,6 +107,13 @@ function fields(formData: FormData) {
   // Cached RxNorm concept id (issue #144) — user-confirmed on the form; kept for both
   // kinds since supplement-drug interactions are a first-class case here.
   const rxcui = str("rxcui");
+  // The confirmed concept's active-ingredient RxCUIs (issue #279), resolved by the
+  // form at confirm time. Untrusted client text → parse/re-serialize through the
+  // shape-checking codec (anything implausible is dropped); coupled to the code
+  // (no rxcui ⇒ no ingredient cache, so a cleared code can't leave stale CUIs).
+  const rxcuiIngredients = rxcui
+    ? serializeRxcuiIngredients(parseRxcuiIngredients(str("rxcui_ingredients")))
+    : null;
   return {
     notes: str("notes"),
     brand: str("brand"),
@@ -121,6 +133,7 @@ function fields(formData: FormData) {
     rxNumber,
     asNeeded,
     rxcui,
+    rxcuiIngredients,
   };
 }
 
@@ -245,8 +258,8 @@ export async function addSupplement(formData: FormData) {
            (name, notes, condition, priority, brand, product, situation, stack,
             critical, escalate_after_min, escalate_chat_id,
             quantity_on_hand, qty_per_dose,
-            kind, prescriber, pharmacy, rx_number, as_needed, rxcui, provider_id, source, profile_id)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'manual',?)`
+            kind, prescriber, pharmacy, rx_number, as_needed, rxcui, rxcui_ingredients, provider_id, source, profile_id)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'manual',?)`
       )
       .run(
         name,
@@ -268,6 +281,7 @@ export async function addSupplement(formData: FormData) {
         f.rxNumber,
         f.asNeeded,
         f.rxcui,
+        f.rxcuiIngredients,
         providerId,
         profile.id
       );
@@ -314,7 +328,7 @@ export async function updateSupplement(formData: FormData) {
              critical = ?, escalate_after_min = ?, escalate_chat_id = ?,
              quantity_on_hand = ?, qty_per_dose = ?,
              kind = ?, prescriber = ?, pharmacy = ?, rx_number = ?, as_needed = ?,
-             rxcui = ?, provider_id = ?
+             rxcui = ?, rxcui_ingredients = ?, provider_id = ?
        WHERE id = ? AND profile_id = ?`
     ).run(
       name,
@@ -336,6 +350,7 @@ export async function updateSupplement(formData: FormData) {
       f.rxNumber,
       f.asNeeded,
       f.rxcui,
+      f.rxcuiIngredients,
       providerId,
       id,
       profile.id
@@ -765,4 +780,17 @@ export async function lookupRxcui(
 ): Promise<{ rxcui: string; name: string; score: number }[]> {
   await requireWriteAccess();
   return lookupRxNormCandidates(name);
+}
+
+// Resolve a confirmed RxCUI to its ACTIVE-INGREDIENT RxCUIs (issue #279) — the
+// only other network egress of the interaction feature, and it sends just the CODE
+// (no name, no PHI) to RxNav's `/rxcui/{id}/related?tty=IN`. Called by the item
+// form when the user confirms a candidate: a combination product's product-level
+// code never appears in the ingredient-keyed interaction datasets, so the resolved
+// ingredient CUIs fill the hidden `rxcui_ingredients` field saved by add/
+// updateSupplement and both matchers try each of them. Degrades to [] (product-
+// rxcui + name matching) on any timeout/error. Nothing is stored here.
+export async function lookupRxcuiIngredients(rxcui: string): Promise<string[]> {
+  await requireWriteAccess();
+  return lookupRxNormIngredients(rxcui);
 }

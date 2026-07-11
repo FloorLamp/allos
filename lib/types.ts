@@ -653,6 +653,13 @@ export interface Supplement {
   // via NLM's approximateTerm API and user-confirmed on the edit form; NULL when
   // never resolved (the interaction matcher then falls back to name matching).
   rxcui: string | null;
+  // Cached ACTIVE-INGREDIENT RxCUIs for the confirmed rxcui (issue #279): a JSON
+  // array of code strings resolved via RxNav `/rxcui/{id}/related?tty=IN` at
+  // confirm time. A combination product's single product-level rxcui never appears
+  // in the ingredient-keyed interaction datasets, so both matchers also try each
+  // of these. NULL when unresolved (product-rxcui + name matching still apply).
+  // Decode with parseRxcuiIngredients (lib/rxnorm.ts).
+  rxcui_ingredients: string | null;
   // Provenance. source is 'manual' for
   // hand-entered rows and 'extracted' for medications auto-structured from an
   // uploaded prescription document; document_id points at that source document

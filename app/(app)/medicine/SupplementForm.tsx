@@ -6,7 +6,8 @@ import { IconX, IconAlertTriangle } from "@tabler/icons-react";
 import SupplementCombobox from "./SupplementCombobox";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
-import { lookupRxcui } from "./actions";
+import { lookupRxcui, lookupRxcuiIngredients } from "./actions";
+import { parseRxcuiIngredients, serializeRxcuiIngredients } from "@/lib/rxnorm";
 import {
   interactionsForCandidate,
   interactionTitle,
@@ -105,11 +106,48 @@ export default function SupplementForm({
   // Cached RxNorm concept id (issue #144) — confirmed from the lookup affordance,
   // saved into the hidden `rxcui` field. Null → the interaction matcher uses name.
   const [rxcui, setRxcui] = useState<string | null>(s?.rxcui ?? null);
+  // The confirmed concept's ACTIVE-INGREDIENT RxCUIs (issue #279), resolved from
+  // RxNav when a candidate is confirmed and saved into the hidden
+  // `rxcui_ingredients` field. A combination product's product-level rxcui never
+  // appears in the ingredient-keyed datasets, so the matchers also try each of
+  // these. Null → product-rxcui + name matching only (graceful degradation).
+  const [rxcuiIngredients, setRxcuiIngredients] = useState<string[] | null>(
+    () => {
+      const stored = parseRxcuiIngredients(s?.rxcui_ingredients ?? null);
+      return stored.length > 0 ? stored : null;
+    }
+  );
   const [rxCandidates, setRxCandidates] = useState<
     { rxcui: string; name: string; score: number }[] | null
   >(null);
   const [rxLoading, setRxLoading] = useState(false);
   const [rxError, setRxError] = useState<string | null>(null);
+
+  // Latest confirmed code — guards the async ingredient resolve against a stale
+  // response landing after the user cleared or re-confirmed a different code.
+  const rxcuiRef = useRef<string | null>(s?.rxcui ?? null);
+  function applyRxcui(code: string | null, ingredients: string[] | null) {
+    rxcuiRef.current = code;
+    setRxcui(code);
+    setRxcuiIngredients(ingredients);
+  }
+  // Confirm a candidate: set the code immediately, then resolve its active-
+  // ingredient CUIs (issue #279) in the background so a combination product
+  // matches each ingredient's interaction concept. Degrades silently — on
+  // timeout/error the item keeps product-rxcui + name matching.
+  async function confirmRxcui(code: string) {
+    applyRxcui(code, null);
+    setRxCandidates(null);
+    setRxError(null);
+    try {
+      const ingredients = await lookupRxcuiIngredients(code);
+      if (rxcuiRef.current === code && ingredients.length > 0) {
+        setRxcuiIngredients(ingredients);
+      }
+    } catch {
+      // Keep product-rxcui + name matching.
+    }
+  }
 
   async function findRxcui() {
     const term = name.trim();
@@ -139,16 +177,16 @@ export default function SupplementForm({
   const candidateInteractions = useMemo(() => {
     if (!name.trim()) return [];
     const others = stackItems.filter((x) => x.id !== s?.id);
-    return interactionsForCandidate({ name, rxcui }, others);
-  }, [name, rxcui, stackItems, s?.id]);
+    return interactionsForCandidate({ name, rxcui, rxcuiIngredients }, others);
+  }, [name, rxcui, rxcuiIngredients, stackItems, s?.id]);
 
   // Food–drug guidance for the item being entered/edited (issue #154) — needs no
-  // second item, just this one's name + confirmed RxCUI. Same pure matcher the
+  // second item, just this one's name + confirmed RxCUI(s). Same pure matcher the
   // /medicine row line and the dose-reminder copy format over.
   const candidateFoodInteractions = useMemo(() => {
     if (!name.trim()) return [];
-    return matchFoodInteractions({ name, rxcui });
-  }, [name, rxcui]);
+    return matchFoodInteractions({ name, rxcui, rxcuiIngredients });
+  }, [name, rxcui, rxcuiIngredients]);
 
   const [condition, setCondition] = useState(s?.condition ?? "daily");
   const [brand, setBrand] = useState(s?.brand ?? "");
@@ -245,6 +283,11 @@ export default function SupplementForm({
       {s && <input type="hidden" name="id" value={s.id} />}
       <input type="hidden" name="kind" value={kind} />
       <input type="hidden" name="rxcui" value={rxcui ?? ""} />
+      <input
+        type="hidden"
+        name="rxcui_ingredients"
+        value={serializeRxcuiIngredients(rxcuiIngredients ?? []) ?? ""}
+      />
 
       {/* Kind toggle — Supplement vs Medication */}
       <div className="sm:col-span-2">
@@ -276,8 +319,9 @@ export default function SupplementForm({
           value={name}
           onChange={(v) => {
             setName(v);
-            // A name edit invalidates a previously-confirmed code.
-            if (rxcui) setRxcui(null);
+            // A name edit invalidates a previously-confirmed code (and its
+            // resolved ingredients).
+            if (rxcui) applyRxcui(null, null);
             setRxCandidates(null);
             setRxError(null);
           }}
@@ -306,7 +350,7 @@ export default function SupplementForm({
                 data-testid="rxcui-clear"
                 className="btn-ghost px-1.5 py-0.5 text-xs"
                 onClick={() => {
-                  setRxcui(null);
+                  applyRxcui(null, null);
                   setRxCandidates(null);
                 }}
               >
@@ -350,11 +394,7 @@ export default function SupplementForm({
                   type="button"
                   data-testid={`rxcui-use-${c.rxcui}`}
                   className="btn-ghost px-2 py-0.5 text-xs"
-                  onClick={() => {
-                    setRxcui(c.rxcui);
-                    setRxCandidates(null);
-                    setRxError(null);
-                  }}
+                  onClick={() => void confirmRxcui(c.rxcui)}
                 >
                   Use
                 </button>

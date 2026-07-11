@@ -12,6 +12,7 @@ import {
   foodGuidanceReminderNote,
 } from "../food-drug-interactions";
 import { FOOD_TIMING_LABELS, PRIORITY_ORDER } from "../supplement-schedule";
+import { parseRxcuiIngredients } from "../rxnorm";
 import type { Supplement, SupplementDose } from "../types";
 import type { NotificationMessage, NotificationAction } from "./types";
 
@@ -75,7 +76,11 @@ function doseLine(e: WindowDose, showFood: boolean): string {
     // matcher the /medicine row + item-form notice format over. Pending doses
     // only — it's guidance for taking this dose now.
     const foodDrug = foodGuidanceReminderNote(
-      matchFoodInteractions({ name: e.supp.name, rxcui: e.supp.rxcui })
+      matchFoodInteractions({
+        name: e.supp.name,
+        rxcui: e.supp.rxcui,
+        rxcuiIngredients: parseRxcuiIngredients(e.supp.rxcui_ingredients),
+      })
     );
     if (foodDrug) tail.push(foodDrug);
   }

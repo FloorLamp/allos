@@ -200,3 +200,101 @@ describe("formatting + keys", () => {
     expect(detail.toLowerCase()).not.toContain("stop taking");
   });
 });
+
+// Combination medications (issue #279): a combo product's single product-level
+// rxcui can't match the ingredient-only concept CUIs, so matching must also try
+// the cached ingredient CUIs — and a distinct combo BRAND name (Hyzaar, Glucovance)
+// must resolve through the synonym vocabulary. All names/codes synthetic or
+// public-domain RxNorm vocabulary — no PHI.
+describe("combination medications (issue #279)", () => {
+  it("matches a combo product through its cached ingredient CUIs when the product rxcui is unknown", () => {
+    // "999999" stands in for a product-level SCD/SBD code that appears in no
+    // concept's ingredient list; 52175 is losartan (an ARB ingredient).
+    expect(
+      matchConceptKeys({
+        name: "Generic combination tablet B",
+        rxcui: "999999",
+        rxcuiIngredients: ["52175", "5487"],
+      })
+    ).toContain("ace_arb");
+  });
+
+  it("matches a single-ingredient PRODUCT-level pick through its one ingredient CUI", () => {
+    // The same mechanism fixes a non-combo product-level rxcui (e.g. an SCD like
+    // "lisinopril 10 MG Oral Tablet") whose code is not ingredient-level either.
+    expect(
+      matchConceptKeys({
+        name: "Generic tablet C",
+        rxcui: "999998",
+        rxcuiIngredients: ["29046"],
+      })
+    ).toContain("ace_arb");
+  });
+
+  it("matches a combination BRAND name via the synonym fallback (no rxcui at all)", () => {
+    expect(
+      matchConceptKeys({ name: "Hyzaar 100-12.5", rxcui: null })
+    ).toContain("ace_arb");
+    expect(
+      matchConceptKeys({ name: "Zestoretic 20/25", rxcui: null })
+    ).toContain("ace_arb");
+  });
+
+  it("maps a combo brand to EVERY member concept (Glucovance → metformin + sulfonylurea)", () => {
+    const keys = matchConceptKeys({ name: "Glucovance", rxcui: null });
+    expect(keys).toContain("metformin");
+    expect(keys).toContain("sulfonylurea");
+  });
+
+  it("a slash-joined generic combo name already matches through its ingredient tokens", () => {
+    // The normalizer collapses punctuation, so each ingredient is a word-boundary
+    // token — pinned here so the tokenizer behavior can't regress.
+    expect(
+      matchConceptKeys({
+        name: "Losartan/Hydrochlorothiazide 100-25",
+        rxcui: null,
+      })
+    ).toContain("ace_arb");
+  });
+
+  it("REGRESSION: Hyzaar + Klor-Con flags the ace_arb × potassium hyperkalemia interaction", () => {
+    // The issue's concrete false negative: losartan/HCTZ (combo brand) plus
+    // potassium chloride. Must surface the moderate hyperkalemia-risk rule.
+    const hits = detectInteractions([
+      item(1, "Hyzaar 100-12.5"),
+      item(2, "Klor-Con 10 mEq"),
+    ]);
+    expect(hits).toHaveLength(1);
+    expect(hits[0].severity).toBe("moderate");
+    expect(hits[0].mechanism.toLowerCase()).toContain("potassium");
+    expect(hits[0].dedupeKey).toBe("interaction:1-2");
+  });
+
+  it("REGRESSION: the same pair flags via cached ingredient CUIs with an unhelpful name", () => {
+    const hits = detectInteractions([
+      {
+        id: 1,
+        name: "Combination tablet B",
+        rxcui: "999999",
+        rxcuiIngredients: ["52175", "5487"],
+        active: true,
+      },
+      item(2, "Klor-Con 10 mEq"),
+    ]);
+    expect(hits).toHaveLength(1);
+    expect(hits[0].severity).toBe("moderate");
+  });
+
+  it("interactionsForCandidate sees a combo candidate's ingredients (inline form notice)", () => {
+    const hits = interactionsForCandidate(
+      {
+        name: "Combination tablet B",
+        rxcui: "999999",
+        rxcuiIngredients: ["52175"],
+      },
+      [item(7, "Klor-Con 10 mEq")]
+    );
+    expect(hits).toHaveLength(1);
+    expect(hits[0].bId === 7 || hits[0].aId === 7).toBe(true);
+  });
+});

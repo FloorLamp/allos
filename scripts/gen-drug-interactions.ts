@@ -71,6 +71,15 @@ export interface RawInteraction {
 // ---- Concept vocabulary --------------------------------------------------
 // RxCUIs are RxNorm INGREDIENT concepts (public domain). Synonyms are lowercased by
 // the builder; include generic + common US brand names for name-fallback matching.
+//
+// COMBINATION BRANDS (issue #279): a combination product sold under its OWN brand
+// name ("Hyzaar" = losartan/HCTZ, "Vytorin" = ezetimibe/simvastatin) contains no
+// member-ingredient token, so the name fallback never resolved it — list such a
+// brand as a synonym under EVERY concept one of its ingredients belongs to (e.g.
+// "glucovance" under both metformin and sulfonylurea). "Brand HCT"-style suffixed
+// names (Diovan HCT) already match through the base brand token and need no entry.
+// Slash/space-joined generic names ("losartan/hydrochlorothiazide") also already
+// match — the normalizer collapses punctuation, so each ingredient token matches.
 const CONCEPTS: RawConcept[] = [
   // Anticoagulants / antiplatelets
   {
@@ -128,6 +137,8 @@ const CONCEPTS: RawConcept[] = [
       "celecoxib",
       "celebrex",
       "nsaid",
+      // Combination brand containing an NSAID (issue #279).
+      "treximet", // sumatriptan/naproxen — also under triptan
     ],
   },
   // Antidepressants / serotonergic
@@ -200,6 +211,8 @@ const CONCEPTS: RawConcept[] = [
       "triptan",
       "eletriptan",
       "relpax",
+      // Combination brand containing a triptan (issue #279).
+      "treximet", // sumatriptan/naproxen — also under nsaid
     ],
   },
   // Cardiac / metabolic
@@ -215,6 +228,9 @@ const CONCEPTS: RawConcept[] = [
       "mevacor",
       "atorvastatin",
       "lipitor",
+      // Combination brands containing a CYP3A4 statin (issue #279).
+      "vytorin", // ezetimibe/simvastatin
+      "caduet", // amlodipine/atorvastatin
     ],
   },
   {
@@ -278,6 +294,15 @@ const CONCEPTS: RawConcept[] = [
       "valsartan",
       "diovan",
       "benazepril",
+      "lotensin",
+      // Combination brands containing an ACE inhibitor/ARB (issue #279) — the
+      // combo name carries no ingredient token, so it must be listed itself.
+      "zestoretic", // lisinopril/HCTZ
+      "prinzide", // lisinopril/HCTZ
+      "hyzaar", // losartan/HCTZ
+      "vaseretic", // enalapril/HCTZ
+      "lotrel", // amlodipine/benazepril
+      "entresto", // sacubitril/valsartan
     ],
   },
   {
@@ -291,6 +316,10 @@ const CONCEPTS: RawConcept[] = [
       "amiloride",
       "eplerenone",
       "inspra",
+      // Combination brands containing a potassium-sparing diuretic (issue #279).
+      "aldactazide", // spironolactone/HCTZ
+      "dyazide", // triamterene/HCTZ
+      "maxzide", // triamterene/HCTZ
     ],
   },
   {
@@ -325,13 +354,28 @@ const CONCEPTS: RawConcept[] = [
     key: "metformin",
     label: "Metformin",
     rxcuis: ["6809"],
-    synonyms: ["metformin", "glucophage", "fortamet"],
+    synonyms: [
+      "metformin",
+      "glucophage",
+      "fortamet",
+      // Combination brands containing metformin (issue #279).
+      "glucovance", // glyburide/metformin — also under sulfonylurea
+      "janumet", // sitagliptin/metformin
+    ],
   },
   {
     key: "sulfonylurea",
     label: "Sulfonylureas (glipizide, glyburide, …)",
     rxcuis: ["4821", "25789"],
-    synonyms: ["glipizide", "glucotrol", "glyburide", "glimepiride", "amaryl"],
+    synonyms: [
+      "glipizide",
+      "glucotrol",
+      "glyburide",
+      "glimepiride",
+      "amaryl",
+      // Combination brand containing a sulfonylurea (issue #279).
+      "glucovance", // glyburide/metformin — also under metformin
+    ],
   },
   {
     key: "nitrate",

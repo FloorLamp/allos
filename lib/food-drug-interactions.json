@@ -13,7 +13,9 @@
         "lovastatin",
         "mevacor",
         "atorvastatin",
-        "lipitor"
+        "lipitor",
+        "vytorin",
+        "caduet"
       ],
       "food": "Grapefruit",
       "severity": "major",
@@ -180,7 +182,14 @@
         "diovan",
         "enalapril",
         "ramipril",
-        "benazepril"
+        "benazepril",
+        "lotensin",
+        "zestoretic",
+        "prinzide",
+        "hyzaar",
+        "vaseretic",
+        "lotrel",
+        "entresto"
       ],
       "food": "Salt substitutes & very high-potassium intake",
       "severity": "moderate",
@@ -198,7 +207,10 @@
         "triamterene",
         "amiloride",
         "eplerenone",
-        "inspra"
+        "inspra",
+        "aldactazide",
+        "dyazide",
+        "maxzide"
       ],
       "food": "Salt substitutes & very high-potassium intake",
       "severity": "moderate",

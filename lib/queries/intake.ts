@@ -9,6 +9,7 @@ import {
   type InteractionHit,
   type InteractionItem,
 } from "../drug-interactions";
+import { parseRxcuiIngredients } from "../rxnorm";
 import type {
   DoseStatus,
   DoseTakenOutcome,
@@ -432,15 +433,18 @@ export function getDietaryLimitWarnings(
 }
 
 // Known drug-/supplement-interactions among the profile's ACTIVE stack (issue #144).
-// Reuses the pure detectInteractions over each item's name + cached RxCUI + active
-// flag — the SAME computation the /medicine warnings, the create/edit inline notice,
-// and the dismissible Upcoming finding all format over. Profile-scoped (getSupplements
-// filters profile_id); inactive/paused rows are dropped by the pure detector.
+// Reuses the pure detectInteractions over each item's name + cached RxCUI(s) +
+// active flag — the SAME computation the /medicine warnings, the create/edit inline
+// notice, and the dismissible Upcoming finding all format over. Cached ingredient
+// CUIs (issue #279) let a combination product match each ingredient's concept.
+// Profile-scoped (getSupplements filters profile_id); inactive/paused rows are
+// dropped by the pure detector.
 export function getInteractionWarnings(profileId: number): InteractionHit[] {
   const items: InteractionItem[] = getSupplements(profileId).map((s) => ({
     id: s.id,
     name: s.name,
     rxcui: s.rxcui,
+    rxcuiIngredients: parseRxcuiIngredients(s.rxcui_ingredients),
     active: !!s.active,
   }));
   return detectInteractions(items);

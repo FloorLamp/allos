@@ -1074,6 +1074,46 @@ courseIns.run(
   "Ongoing for cholesterol"
 );
 
+// A COMBINATION-medication interacting pair (issue #279): Hyzaar (losartan/
+// hydrochlorothiazide, a combo BRAND whose name carries no ingredient token and
+// whose product-level RxCUI appears in no ingredient-keyed concept) + Klor-Con
+// (potassium chloride) — the moderate ace_arb × potassium hyperkalemia
+// interaction. Hyzaar carries a product-level SCD code plus its cached
+// ACTIVE-INGREDIENT CUIs (losartan 52175, HCTZ 5487) to demo ingredient-keyed
+// matching; Klor-Con has no code, demoing the combo-aware NAME fallback. Both are
+// marked as-needed (the Ibuprofen precedent) so they join the interaction stack
+// without adding scheduled-due doses to reminder/digest fixtures. Synthetic
+// prescriber — no real PHI; RxCUIs are public-domain RxNorm vocabulary codes.
+const hyzaarId = Number(
+  medIns.run(
+    "Hyzaar",
+    "Combination antihypertensive (losartan/HCTZ)",
+    "daily",
+    "high",
+    "Dr. Test Provider",
+    1
+  ).lastInsertRowid
+);
+db.prepare(
+  "UPDATE intake_items SET rxcui = ?, rxcui_ingredients = ?, as_needed = 1 WHERE id = ?"
+).run("979464", '["52175","5487"]', hyzaarId);
+medDose.run(hyzaarId, "50-12.5 mg", "Anytime", "any", 0);
+courseIns.run(hyzaarId, daysAgo(40), null, null, "Ongoing for blood pressure");
+
+const klorConId = Number(
+  medIns.run(
+    "Klor-Con",
+    "Potassium chloride supplement",
+    "daily",
+    "low",
+    "Dr. Test Provider",
+    1
+  ).lastInsertRowid
+);
+db.prepare("UPDATE intake_items SET as_needed = 1 WHERE id = ?").run(klorConId);
+medDose.run(klorConId, "10 mEq", "Anytime", "with_food", 0);
+courseIns.run(klorConId, daysAgo(40), null, null, "Ongoing potassium support");
+
 // Log adherence per dose over the last week.
 const allDoses = db
   .prepare("SELECT id, item_id FROM intake_item_doses")

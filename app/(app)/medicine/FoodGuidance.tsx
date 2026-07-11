@@ -5,6 +5,7 @@ import {
   matchFoodInteractions,
   foodGuidanceLine,
 } from "@/lib/food-drug-interactions";
+import { parseRxcuiIngredients } from "@/lib/rxnorm";
 
 // Food–drug guidance line(s) for one intake item (issue #154). Rendered on the
 // /medicine medication + supplement rows: a per-item food note like "Grapefruit:
@@ -16,11 +17,20 @@ import {
 export default function FoodGuidance({
   name,
   rxcui,
+  rxcuiIngredients = null,
 }: {
   name: string;
   rxcui: string | null;
+  // The raw intake_items.rxcui_ingredients column (a JSON array of ingredient
+  // RxCUIs, issue #279) — decoded here so a combination product matches each
+  // ingredient's guidance entry.
+  rxcuiIngredients?: string | null;
 }) {
-  const hits = matchFoodInteractions({ name, rxcui });
+  const hits = matchFoodInteractions({
+    name,
+    rxcui,
+    rxcuiIngredients: parseRxcuiIngredients(rxcuiIngredients),
+  });
   if (hits.length === 0) return null;
   return (
     <div data-testid="food-guidance" className="mt-1 space-y-0.5">
