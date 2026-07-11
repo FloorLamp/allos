@@ -162,7 +162,7 @@ describe("per-kind toggle", () => {
 });
 
 describe("isValidWebhookUrl", () => {
-  it("accepts absolute http(s) URLs", () => {
+  it("accepts absolute http(s) Home Assistant webhook URLs", () => {
     expect(
       isValidWebhookUrl("http://homeassistant.local:8123/api/webhook/allos-mom")
     ).toBe(true);
@@ -176,5 +176,24 @@ describe("isValidWebhookUrl", () => {
     expect(isValidWebhookUrl("ftp://ha/api/webhook/x")).toBe(false);
     expect(isValidWebhookUrl("just-a-string")).toBe(false);
     expect(isValidWebhookUrl("/api/webhook/x")).toBe(false);
+  });
+
+  it("rejects arbitrary server-side POST targets", () => {
+    expect(isValidWebhookUrl("http://127.0.0.1:8080/admin")).toBe(false);
+    expect(
+      isValidWebhookUrl("http://ha.local/api/services/light/turn_on")
+    ).toBe(false);
+    expect(isValidWebhookUrl("http://ha.local/api/webhook")).toBe(false);
+    expect(isValidWebhookUrl("http://ha.local/api/webhook/")).toBe(false);
+    expect(isValidWebhookUrl("http://ha.local/api/webhook/x/extra")).toBe(
+      false
+    );
+    expect(isValidWebhookUrl("http://user:pass@ha.local/api/webhook/x")).toBe(
+      false
+    );
+    expect(
+      isValidWebhookUrl("http://ha.local/api/webhook/x?target=admin")
+    ).toBe(false);
+    expect(isValidWebhookUrl("http://ha.local/api/webhook/x#frag")).toBe(false);
   });
 });
