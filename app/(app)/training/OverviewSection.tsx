@@ -30,6 +30,7 @@ import LogActivityButton from "@/components/LogActivityButton";
 import PrCard from "@/components/PrCard";
 import StackedBarCard from "@/components/StackedBarCard";
 import { WeeklyTargets } from "@/components/WeeklyTargets";
+import TrainingFindings from "./TrainingFindings";
 
 const KIND_LABEL: Record<CardioPR["kind"], string> = {
   distance: "longest",
@@ -96,6 +97,10 @@ export default async function OverviewSection() {
 
   return (
     <section className="space-y-6">
+      {/* Observational training-balance findings (issue #45, domain 4) — distinct
+          from the next-workout recommendation below. */}
+      <TrainingFindings />
+
       <div className="card">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>

@@ -50,6 +50,7 @@ import BodyQuickAdd from "./BodyQuickAdd";
 import VitalsQuickAdd from "./VitalsQuickAdd";
 import GrowthQuickAdd from "./GrowthQuickAdd";
 import DeleteBodyMetricButton from "./DeleteBodyMetricButton";
+import BodyHygieneFindings from "./BodyHygieneFindings";
 
 // The Trends hub's Body section: the full Body Metrics surface (absorbed here in
 // the sidebar consolidation — the standalone /body-metrics page was retired and
@@ -407,6 +408,10 @@ export default async function BodySection({ range }: { range: DateRange }) {
       <p className="text-sm text-slate-500 dark:text-slate-400">
         Body-composition trends over the selected window.
       </p>
+
+      {/* Body-metric data-hygiene findings (issue #45, domain 5): probable-error
+          day-over-day weight jumps, before they skew the charts below. */}
+      <BodyHygieneFindings />
 
       {/* For a child the growth-percentile card is the headline, so it floats
           above the body-composition charts (plan.growthCardFirst); adults keep

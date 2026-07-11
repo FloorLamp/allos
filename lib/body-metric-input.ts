@@ -11,6 +11,14 @@ export interface BodyMetricRawInput {
   restingHr: string | null;
 }
 
+// Upper bound on a plausible human body weight, as the RAW number the user typed —
+// which is in their display unit (kg OR lb), so the ceiling is chosen to be
+// physically impossible in EITHER: the heaviest person on record was ~635 kg
+// (~1400 lb), so 2000 rejects a gross entry error (an extra digit, or a value typed
+// in grams) while never rejecting a real kg or lb weigh-in. Catching it at entry
+// protects every downstream trend/goal from a wild outlier (issue #45, domain 5).
+export const MAX_PLAUSIBLE_WEIGHT = 2000;
+
 // Returns a human-readable error for the first invalid field, or null if the
 // input is acceptable. Weight is required; body fat and resting HR are optional
 // but, when provided, must be in range.
@@ -21,6 +29,9 @@ export function validateBodyMetricInput(
   const weight = Number(weightRaw);
   if (weightRaw.trim() === "" || !Number.isFinite(weight) || weight <= 0) {
     return "Enter a weight greater than 0.";
+  }
+  if (weight > MAX_PLAUSIBLE_WEIGHT) {
+    return "That weight looks too high to be real — please check the value.";
   }
 
   const bodyFatRaw = input.bodyFatPct ?? "";

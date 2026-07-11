@@ -8,7 +8,22 @@ import { getUnitPrefs } from "@/lib/settings";
 import { toKg, resolveWeightKg } from "@/lib/units";
 import { parseSeconds } from "@/lib/duration";
 import { BODY_METRIC_LABELS } from "@/lib/goals";
-import { getLatestBodyMetric } from "@/lib/queries";
+import { getLatestBodyMetric, dismissFinding } from "@/lib/queries";
+import { GOAL_PACE_PREFIX } from "@/lib/goal-pacing";
+
+// Dismiss a goal-pacing finding (issue #45, domain 6): an off-pace goal or the safe-
+// rate weight-loss caution. Hides it through the shared findings-bus suppression
+// store, keyed by its `goal-pace:…` dedupeKey. Guarded to the goal-pace namespace so
+// this action can only silence a goal-pacing key; profile-scoped via dismissFinding.
+// The Goals findings surface on the Training page's goals tab, so it revalidates
+// /training.
+export async function dismissGoalPacing(formData: FormData) {
+  const { profile } = await requireWriteAccess();
+  const dedupeKey = String(formData.get("dedupe_key") ?? "").trim();
+  if (!dedupeKey.startsWith(GOAL_PACE_PREFIX)) return;
+  dismissFinding(profile.id, dedupeKey);
+  revalidatePath("/training");
+}
 
 // All goal columns parsed from the create/edit form, or null when the input is
 // invalid (so create/update can bail without writing). Shared by createGoal and

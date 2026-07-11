@@ -126,6 +126,19 @@ export async function dismissTrajectory(formData: FormData) {
   revalidatePath("/trends");
 }
 
+// Dismiss a body-metric hygiene finding (issue #45, domain 5): a probable-error
+// day-over-day weight jump. Hides it through the shared suppression store keyed by
+// "body-hygiene:weight-jump:<id>". Guarded to the body-hygiene namespace (like
+// dismissTrajectory) so this action can only silence a body-hygiene key; profile-
+// scoped via dismissFinding.
+export async function dismissBodyHygiene(formData: FormData) {
+  const { profile } = await requireWriteAccess();
+  const dedupeKey = String(formData.get("dedupe_key") ?? "").trim();
+  if (!dedupeKey.startsWith("body-hygiene:")) return;
+  dismissFinding(profile.id, dedupeKey);
+  revalidatePath("/trends");
+}
+
 // Pin / unpin a Trends-Overview tile for the active profile.
 // The pin key ("metric:weight" | "bio:LDL Cholesterol") toggles in the per-profile
 // `trend_pins` list; pinned tiles render first on the Overview. profileId is
