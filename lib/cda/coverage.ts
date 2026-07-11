@@ -236,11 +236,17 @@ function collectSectionDrops(
       if (!sa || mapImmunization(sa)) continue;
       drops.push(classifyImmunizationDrop(sa, title));
     }
-  } else if (key === "medications") {
+  } else if (
+    key === "medications" ||
+    key === "dischargeMedications" ||
+    key === "administeredMedications"
+  ) {
     for (const e of section.entries) {
       const sa = e?.substanceAdministration;
       // Re-run the SAME mapper the kept-path uses (same narrative ids + doc-date
       // fallback) so a now-imported undated med isn't miscounted as a drop (#Fix 2).
+      // The #266 snapshot/note opts don't change whether a med maps (only its
+      // course status), so the plain call is a faithful kept/dropped signal.
       if (!sa || mapMedication(sa, ids, documentDate)) continue;
       drops.push(classifyMedicationDrop(sa, ids, title));
     }
@@ -253,9 +259,11 @@ function collectSectionDrops(
       if (!act || mapAllergy(act, ids, narrative)) continue;
       drops.push(classifyAllergyDrop(act, ids, narrative, title));
     }
-  } else if (key === "problems") {
+  } else if (key === "problems" || key === "pastIllness") {
     for (const e of section.entries) {
       const act = e?.act;
+      // The #265 section-default status doesn't change whether a concern act maps
+      // (only which status it lands with), so the plain call is faithful here too.
       if (!act || mapCondition(act, ids)) continue;
       drops.push(classifyConditionDrop(act, ids, title));
     }
@@ -324,11 +332,19 @@ export function buildCcdaCoverage(
     // `!!ex` keeps precedence, so a real content section titled "… Notes" stays owned
     // by its extractor and is never mis-attributed here.
     const isVisitDiagnoses = sectionIs(section, SECTIONS.visitDiagnoses);
+    // Admitting Diagnoses (#266) route through the same document-level
+    // visit-diagnosis handling (correlate-or-land), so like Visit Diagnoses the
+    // section is always consumed when recognized.
+    const isAdmissionDiagnoses = sectionIs(
+      section,
+      SECTIONS.admissionDiagnoses
+    );
     const isClinicalNote = !ex && isClinicalNoteSection(section);
     const consumed =
       !!ex ||
       (isReasonForVisit && reasonForVisitConsumed) ||
       isVisitDiagnoses ||
+      isAdmissionDiagnoses ||
       isClinicalNote;
     const key =
       ex?.key ??
@@ -336,9 +352,11 @@ export function buildCcdaCoverage(
         ? "reasonForVisit"
         : isVisitDiagnoses
           ? "visitDiagnoses"
-          : isClinicalNote
-            ? "clinicalNotes"
-            : "");
+          : isAdmissionDiagnoses
+            ? "admissionDiagnoses"
+            : isClinicalNote
+              ? "clinicalNotes"
+              : "");
     coverage.push({
       key: key || title,
       title,
