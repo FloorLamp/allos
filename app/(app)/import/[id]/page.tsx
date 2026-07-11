@@ -11,22 +11,49 @@ import {
   getRecordsForDocument,
   getCanonicalAutocomplete,
   getProviderNames,
+  getDocumentVisits,
+  getDocumentConditions,
+  getDocumentAllergies,
+  getDocumentImmunizations,
+  getDocumentProcedures,
+  getDocumentFamilyHistory,
+  getDocumentCarePlanItems,
+  getDocumentCareGoals,
+  getDocumentMedications,
+  getDocumentBodyRows,
 } from "@/lib/queries";
-import { getUserFullName } from "@/lib/settings";
+import { getUserFullName, getUnitPrefs } from "@/lib/settings";
 import { requireSession, getAccessibleProfiles } from "@/lib/auth";
 import { parseSortColumn, parseSortDir } from "@/lib/table-sort";
 import { PageHeader } from "@/components/ui";
 import ImportDetailActions from "@/components/ImportDetailActions";
 import ReassignDocument from "@/components/ReassignDocument";
 import ExtractedRecords from "@/components/ExtractedRecords";
+import ImportTabStrip from "@/components/ImportTabStrip";
+import ProducedListing from "@/components/ProducedListing";
 import ProviderDatalist from "@/components/ProviderDatalist";
 import {
   documentFormatLabel,
   isProvenanceMismatch,
-  shapeProducedBreakdown,
   producedTotal,
   formatRawExtraction,
 } from "@/lib/import-log";
+import {
+  buildImportTabs,
+  resolveImportTab,
+  visitItem,
+  conditionItem,
+  allergyItem,
+  immunizationItem,
+  procedureItem,
+  familyHistoryItem,
+  carePlanItemRow,
+  careGoalItem,
+  medicationItem,
+  bodyItems,
+  type ImportTab,
+  type ProducedItem,
+} from "@/lib/import-browser";
 import {
   parseImportReport,
   summarizeCoverage,
@@ -39,17 +66,6 @@ import {
 
 export const dynamic = "force-dynamic";
 
-// The standard medical-record categories, matching the biomarkers filter; the
-// category param is validated against this set before it reaches the query.
-const CATEGORIES = [
-  "vitals",
-  "lab",
-  "genomics",
-  "biomarker",
-  "scan",
-  "prescription",
-] as const;
-
 const STATUS_STYLE: Record<string, string> = {
   done: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300",
   processing:
@@ -58,6 +74,40 @@ const STATUS_STYLE: Record<string, string> = {
   skipped: "bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300",
   failed: "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300",
 };
+
+// The read-only rows for one non-medical_records tab: the profile-scoped,
+// document-traced DB read for the tab's kind, mapped through its pure shaper.
+function listingItems(
+  tab: ImportTab,
+  profileId: number,
+  docId: number,
+  weightUnit: "kg" | "lb"
+): ProducedItem[] {
+  switch (tab.kind) {
+    case "visits":
+      return getDocumentVisits(profileId, docId).map(visitItem);
+    case "conditions":
+      return getDocumentConditions(profileId, docId).map(conditionItem);
+    case "allergies":
+      return getDocumentAllergies(profileId, docId).map(allergyItem);
+    case "immunizations":
+      return getDocumentImmunizations(profileId, docId).map(immunizationItem);
+    case "procedures":
+      return getDocumentProcedures(profileId, docId).map(procedureItem);
+    case "family-history":
+      return getDocumentFamilyHistory(profileId, docId).map(familyHistoryItem);
+    case "care-plan":
+      return getDocumentCarePlanItems(profileId, docId).map(carePlanItemRow);
+    case "care-goals":
+      return getDocumentCareGoals(profileId, docId).map(careGoalItem);
+    case "medications":
+      return getDocumentMedications(profileId, docId).map(medicationItem);
+    case "body":
+      return bodyItems(getDocumentBodyRows(profileId, docId), weightUnit);
+    case "records":
+      return []; // records tabs render the editable table, not a listing
+  }
+}
 
 function ProvenanceRow({ label, value }: { label: string; value: string }) {
   return (
@@ -70,13 +120,14 @@ function ProvenanceRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-// Import detail: for one uploaded document — provenance,
-// a "what it produced" verify breakdown (counts per kind, each linking to where
-// those rows live), basic debug (error + raw extraction), and reprocess/delete.
+// Import detail: for one uploaded document — provenance, a tabbed per-category
+// records browser (#271: one tab per produced type, ?tab=-selected; record tabs
+// are the editable table, the rest read-only deep-linking listings, providers a
+// count chip until #275), basic debug (error + raw extraction), reprocess/delete.
 export default async function ImportDetailPage(props: {
   params: Promise<{ id: string }>;
   searchParams: Promise<{
-    category?: string;
+    tab?: string;
     range?: string;
     q?: string;
     sort?: string;
@@ -85,14 +136,18 @@ export default async function ImportDetailPage(props: {
 }) {
   const searchParams = await props.searchParams;
   const params = await props.params;
-  const { profile } = await requireSession();
+  const { login, profile } = await requireSession();
   const id = Number(params.id);
   const doc = id ? getMedicalDocument(profile.id, id) : undefined;
   if (!doc) notFound();
 
+  // The tabbed records browser (#271): one tab per non-empty produced type,
+  // built from the SAME counts source the toast/extracted_count uses (#212);
+  // ?tab= selects the panel, defaulting to the first non-empty tab.
   const counts = getDocumentProduced(profile.id, id);
-  const produced = shapeProducedBreakdown(counts);
+  const strip = buildImportTabs(counts);
   const total = producedTotal(counts);
+  const activeTab = resolveImportTab(strip.tabs, searchParams.tab);
   const mismatch = isProvenanceMismatch(doc.patient_name, [
     getUserFullName(profile.id),
     profile.name,
@@ -123,12 +178,10 @@ export default async function ImportDetailPage(props: {
     .filter((p) => p.id !== profile.id)
     .map((p) => ({ id: p.id, name: p.name }));
 
-  // Extracted-records browser (folded in from the old /medical/[id] view): the
-  // editable table + its SearchParams-driven category/range/q/sort filters, plus
-  // the inline file preview. All reads stay profile-scoped.
-  const category = CATEGORIES.includes(searchParams.category as any)
-    ? searchParams.category
-    : undefined;
+  // Records-tab filters (folded in from the old /medical/[id] view): the
+  // editable table's SearchParams-driven range/q/sort filters. The old
+  // ?category= filter collapsed into the tab strip — a records tab scopes the
+  // query to its own category. All reads stay profile-scoped.
   const range =
     searchParams.range === "oor"
       ? "oor"
@@ -144,13 +197,27 @@ export default async function ImportDetailPage(props: {
     "name"
   );
   const dir = parseSortDir(searchParams.dir);
-  const records = getRecordsForDocument(profile.id, id, {
-    category,
-    range,
-    q,
-    sort,
-    dir,
-  });
+  const records =
+    activeTab?.kind === "records"
+      ? getRecordsForDocument(profile.id, id, {
+          category: activeTab.category,
+          range,
+          q,
+          sort,
+          dir,
+        })
+      : [];
+  // The active non-records tab's read-only rows, shaped for display (weight in
+  // the login's display unit).
+  const items =
+    activeTab && activeTab.kind !== "records"
+      ? listingItems(
+          activeTab,
+          profile.id,
+          id,
+          getUnitPrefs(login.id).weightUnit
+        )
+      : [];
   const canonicalOptions = getCanonicalAutocomplete(profile.id);
   const src = `/medical/file/${id}`;
   const mime = doc.mime_type ?? "";
@@ -218,8 +285,10 @@ export default async function ImportDetailPage(props: {
           )}
         </div>
 
-        {/* What it produced (verify) */}
-        <div className="card">
+        {/* What it produced (#271): the tab strip IS the summary — one tab per
+            non-empty produced type (label + count), Providers as a count chip
+            until #275 gives them a page — followed by the active tab's panel. */}
+        <div className="card" data-testid="records-browser">
           <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
             What it produced
           </h2>
@@ -230,36 +299,40 @@ export default async function ImportDetailPage(props: {
                 : "This import produced no records."}
             </p>
           ) : (
-            <div className="flex flex-wrap gap-2">
-              {produced.map((row) => {
-                const inner = (
-                  <>
-                    <span className="tabular-nums font-semibold">
-                      {row.count}
-                    </span>{" "}
-                    {row.label}
-                  </>
-                );
-                return row.href ? (
-                  <Link
-                    key={row.key}
-                    href={row.href}
-                    className="badge inline-flex items-center gap-1 bg-slate-100 text-slate-700 transition hover:bg-brand-100 hover:text-brand-700 dark:bg-ink-800 dark:text-slate-200 dark:hover:bg-brand-950 dark:hover:text-brand-300"
-                  >
-                    {inner}
-                  </Link>
-                ) : (
-                  <span
-                    key={row.key}
-                    className="badge inline-flex items-center gap-1 bg-slate-100 text-slate-700 dark:bg-ink-800 dark:text-slate-200"
-                  >
-                    {inner}
-                  </span>
-                );
-              })}
-            </div>
+            <ImportTabStrip
+              docId={id}
+              tabs={strip.tabs}
+              activeKey={activeTab?.key}
+              providers={strip.providers}
+            />
           )}
         </div>
+
+        {/* The active tab's panel: the editable records table for a
+            medical_records category tab, a read-only deep-linking listing for
+            every other produced type. */}
+        {activeTab &&
+          (activeTab.kind === "records" ? (
+            <ExtractedRecords
+              docId={id}
+              filename={doc.filename}
+              title={activeTab.label}
+              processing={doc.extraction_status === "processing"}
+              records={records}
+              q={q}
+              range={range}
+              sort={sort}
+              emptyMessage={
+                q || range
+                  ? "No records in this document match these filters."
+                  : doc.extraction_status === "processing"
+                    ? "Extraction is still running…"
+                    : "No records were extracted from this document."
+              }
+            />
+          ) : (
+            <ProducedListing title={activeTab.label} items={items} />
+          ))}
 
         {/* Coverage (import debugger) */}
         {report && coverage && (
@@ -462,25 +535,6 @@ export default async function ImportDetailPage(props: {
             </div>
           </div>
         )}
-
-        {/* Extracted records (editable) — folded in from the old /medical/[id] view */}
-        <ExtractedRecords
-          docId={id}
-          filename={doc.filename}
-          processing={doc.extraction_status === "processing"}
-          records={records}
-          q={q}
-          range={range}
-          category={category}
-          sort={sort}
-          emptyMessage={
-            q || range || category
-              ? "No records in this document match these filters."
-              : doc.extraction_status === "processing"
-                ? "Extraction is still running…"
-                : "No records were extracted from this document."
-          }
-        />
 
         {/* Inline document preview */}
         <div className="card">

@@ -8,11 +8,11 @@ import {
   jobFormatLabel,
   isProvenanceMismatch,
   interleaveImportLog,
-  shapeProducedBreakdown,
   producedTotal,
   formatRawExtraction,
   type DocumentProducedCounts,
 } from "../import-log";
+import { EMPTY_PRODUCED_COUNTS } from "./produced-counts-fixture";
 
 describe("documentLogStatus", () => {
   it("maps pending/processing to processing", () => {
@@ -129,61 +129,32 @@ describe("interleaveImportLog", () => {
   });
 });
 
-const emptyCounts: DocumentProducedCounts = {
-  recordsByCategory: [],
-  immunizations: 0,
-  allergies: 0,
-  conditions: 0,
-  encounters: 0,
-  medications: 0,
-  bodyMetrics: 0,
-  heightSamples: 0,
-  headCircSamples: 0,
-  providers: 0,
-};
-
-describe("shapeProducedBreakdown / producedTotal", () => {
-  it("returns no rows and zero total for an empty import", () => {
-    expect(shapeProducedBreakdown(emptyCounts)).toEqual([]);
-    expect(producedTotal(emptyCounts)).toBe(0);
+describe("producedTotal", () => {
+  it("is zero for an empty import", () => {
+    expect(producedTotal(EMPTY_PRODUCED_COUNTS)).toBe(0);
   });
-  it("shapes categories and per-kind counts with destinations", () => {
+  it("sums every produced kind EXCEPT providers (which extracted_count also excludes)", () => {
     const counts: DocumentProducedCounts = {
-      ...emptyCounts,
       recordsByCategory: [
         { category: "lab", count: 12 },
         { category: "prescription", count: 2 },
       ],
       immunizations: 3,
+      allergies: 1,
+      conditions: 1,
       encounters: 1,
+      procedures: 1,
+      familyHistory: 1,
+      carePlanItems: 1,
+      careGoals: 1,
       medications: 2,
+      bodyMetrics: 1,
+      heightSamples: 1,
+      headCircSamples: 1,
       providers: 4,
     };
-    const rows = shapeProducedBreakdown(counts);
-    const byKey = Object.fromEntries(rows.map((r) => [r.key, r]));
-    expect(byKey["records:lab"]).toMatchObject({
-      label: "Labs",
-      count: 12,
-      href: "/biomarkers",
-    });
-    expect(byKey["records:prescription"]).toMatchObject({
-      label: "Prescriptions",
-      href: "/medicine",
-    });
-    expect(byKey["immunizations"].href).toBe("/immunizations");
-    expect(byKey["encounters"].href).toBe("/encounters");
-    // Providers count is surfaced without a link (global registry, no page).
-    expect(byKey["providers"]).toMatchObject({ count: 4, href: null });
-    // providers is excluded from the produced total (it's a reference, not a row).
-    expect(producedTotal(counts)).toBe(12 + 2 + 3 + 1 + 2);
-  });
-  it("omits zero-count kinds", () => {
-    const rows = shapeProducedBreakdown({
-      ...emptyCounts,
-      allergies: 0,
-      conditions: 5,
-    });
-    expect(rows.map((r) => r.key)).toEqual(["conditions"]);
+    // 14 records + 3 imms + 7 clinical singles + 2 meds + 3 body samples.
+    expect(producedTotal(counts)).toBe(14 + 3 + 7 + 2 + 3);
   });
 });
 

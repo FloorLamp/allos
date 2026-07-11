@@ -13,11 +13,22 @@ import {
   getImportLogJobs,
   getDocumentProduced,
   getMedicalDocument,
+  getDocumentVisits,
+  getDocumentConditions,
+  getDocumentAllergies,
+  getDocumentImmunizations,
+  getDocumentProcedures,
+  getDocumentFamilyHistory,
+  getDocumentCarePlanItems,
+  getDocumentCareGoals,
+  getDocumentMedications,
+  getDocumentBodyRows,
 } from "@/lib/queries";
 import {
   persistDocumentImport,
   countImportedDocumentRows,
 } from "@/lib/import-persist";
+import { producedTotal } from "@/lib/import-log";
 import type { PersistInput } from "@/lib/import-shape";
 import { db } from "@/lib/db";
 
@@ -148,8 +159,28 @@ function makeInput(): PersistInput {
         external_id: "ccda:famhx:father:44054006",
       },
     ],
-    carePlanItems: [],
-    careGoals: [],
+    carePlanItems: [
+      {
+        description: "Follow-up lipid panel",
+        code: "57698-3",
+        code_system: "LOINC",
+        category: "observation",
+        planned_date: "2020-06-15",
+        status: "planned",
+        provider: null,
+        external_id: "ccda:careplan:57698-3",
+      },
+    ],
+    careGoals: [
+      {
+        description: "HbA1c below 6.5%",
+        code: "4548-4",
+        code_system: "LOINC",
+        target_date: "2020-09-01",
+        status: "active",
+        external_id: "ccda:caregoal:4548-4",
+      },
+    ],
     bodyMetrics: [
       { date: DATE, weight_kg: 82, body_fat_pct: null, resting_hr: null },
     ],
@@ -271,6 +302,10 @@ describe("getDocumentProduced", () => {
     expect(p.allergies).toBe(1);
     expect(p.conditions).toBe(1);
     expect(p.encounters).toBe(1);
+    expect(p.procedures).toBe(1);
+    expect(p.familyHistory).toBe(1);
+    expect(p.carePlanItems).toBe(1);
+    expect(p.careGoals).toBe(1);
     // The prescription record was projected into a structured medication row.
     expect(p.medications).toBe(1);
     expect(p.bodyMetrics).toBe(1);
@@ -280,6 +315,21 @@ describe("getDocumentProduced", () => {
     expect(p.providers).toBe(1);
   });
 
+  it("agrees with extracted_count: the tab counts and the toast tally share one total (#271/#212)", () => {
+    // producedTotal over getDocumentProduced (what the tab strip shows) must
+    // equal BOTH the live footprint count and the stored extracted_count for a
+    // fixture that writes every footprint table — so the browser can never
+    // count differently from the toast/Review feed.
+    const total = producedTotal(getDocumentProduced(profileA, docA));
+    expect(total).toBe(countImportedDocumentRows(profileA, docA));
+    const row = db
+      .prepare(
+        "SELECT extracted_count AS n FROM medical_documents WHERE id = ? AND profile_id = ?"
+      )
+      .get(docA, profileA) as { n: number };
+    expect(total).toBe(row.n);
+  });
+
   it("is profile-scoped: asking A about B's document finds nothing", () => {
     const cross = getDocumentProduced(profileA, docB);
     expect(cross.recordsByCategory).toEqual([]);
@@ -287,6 +337,10 @@ describe("getDocumentProduced", () => {
     expect(cross.allergies).toBe(0);
     expect(cross.conditions).toBe(0);
     expect(cross.encounters).toBe(0);
+    expect(cross.procedures).toBe(0);
+    expect(cross.familyHistory).toBe(0);
+    expect(cross.carePlanItems).toBe(0);
+    expect(cross.careGoals).toBe(0);
     expect(cross.medications).toBe(0);
     expect(cross.bodyMetrics).toBe(0);
     expect(cross.heightSamples).toBe(0);
@@ -309,18 +363,19 @@ describe("extracted_count (toast + Review-feed tally)", () => {
   it("stores the full footprint total on the document row, not immCount+recCount", () => {
     // The cross-domain makeInput() writes: 3 medical_records (2 lab + 1
     // prescription) + 1 immunization + 1 allergy + 1 condition + 1 encounter +
-    // 1 procedure + 1 family-history + 1 structured medication (the prescription
-    // projected into intake_items) + 1 body-metric + 1 height + 1 head-circ = 13.
-    // The old tally (immCount + recCount = 1 + 3 = 4) missed the other nine.
+    // 1 procedure + 1 family-history + 1 care-plan item + 1 care goal + 1
+    // structured medication (the prescription projected into intake_items) +
+    // 1 body-metric + 1 height + 1 head-circ = 15.
+    // The old tally (immCount + recCount = 1 + 3 = 4) missed the rest.
     const row = db
       .prepare(
         "SELECT extracted_count AS n FROM medical_documents WHERE id = ? AND profile_id = ?"
       )
       .get(docA, profileA) as { n: number };
-    expect(row.n).toBe(13);
+    expect(row.n).toBe(15);
     // And it equals the live footprint count the writer derives off
     // IMPORT_FOOTPRINT_TABLES, so the stored value can't silently drift.
-    expect(countImportedDocumentRows(profileA, docA)).toBe(13);
+    expect(countImportedDocumentRows(profileA, docA)).toBe(15);
   });
 
   it("counts an encounter-only import as 1 item (the reported repro)", () => {
@@ -376,5 +431,68 @@ describe("extracted_count (toast + Review-feed tally)", () => {
       )
       .get(doc, profile) as { n: number };
     expect(row.n).toBe(1);
+  });
+});
+
+// #271: the per-tab listing reads behind the import-detail records browser.
+// Each must return exactly the document's own rows (traced via the writer's
+// provenance link) and NOTHING for a cross-profile document id.
+describe("per-tab document listings", () => {
+  it("lists each kind the import produced, with its display fields", () => {
+    const visits = getDocumentVisits(profileA, docA);
+    expect(visits).toHaveLength(1);
+    expect(visits[0]).toMatchObject({
+      date: DATE,
+      type: "Office Visit",
+      reason: "Annual physical",
+    });
+    expect(visits[0].id).toBeGreaterThan(0);
+
+    expect(getDocumentConditions(profileA, docA)).toMatchObject([
+      { name: "Hypertension", status: "active", code: "I10" },
+    ]);
+    expect(getDocumentAllergies(profileA, docA)).toMatchObject([
+      { substance: "Penicillin", reaction: "Hives", severity: "moderate" },
+    ]);
+    expect(getDocumentImmunizations(profileA, docA)).toMatchObject([
+      { date: DATE, vaccine: "mmr", dose_label: "1" },
+    ]);
+    expect(getDocumentProcedures(profileA, docA)).toMatchObject([
+      { name: "Appendectomy", code: "44970", date: DATE },
+    ]);
+    expect(getDocumentFamilyHistory(profileA, docA)).toMatchObject([
+      { relation: "Father", condition: "Type 2 diabetes", onset_age: 55 },
+    ]);
+    expect(getDocumentCarePlanItems(profileA, docA)).toMatchObject([
+      { description: "Follow-up lipid panel", planned_date: "2020-06-15" },
+    ]);
+    expect(getDocumentCareGoals(profileA, docA)).toMatchObject([
+      { description: "HbA1c below 6.5%", status: "active" },
+    ]);
+    // The auto-structured medication row (from the prescription record).
+    const meds = getDocumentMedications(profileA, docA);
+    expect(meds).toHaveLength(1);
+    expect(meds[0].kind).toBe("medication");
+
+    const body = getDocumentBodyRows(profileA, docA);
+    expect(body.bodyMetrics).toMatchObject([{ date: DATE, weight_kg: 82 }]);
+    expect(body.heights).toMatchObject([{ date: DATE, value: 178 }]);
+    expect(body.headCircs).toMatchObject([{ date: DATE, value: 47 }]);
+  });
+
+  it("every listing is profile-scoped: A sees nothing of B's document", () => {
+    expect(getDocumentVisits(profileA, docB)).toEqual([]);
+    expect(getDocumentConditions(profileA, docB)).toEqual([]);
+    expect(getDocumentAllergies(profileA, docB)).toEqual([]);
+    expect(getDocumentImmunizations(profileA, docB)).toEqual([]);
+    expect(getDocumentProcedures(profileA, docB)).toEqual([]);
+    expect(getDocumentFamilyHistory(profileA, docB)).toEqual([]);
+    expect(getDocumentCarePlanItems(profileA, docB)).toEqual([]);
+    expect(getDocumentCareGoals(profileA, docB)).toEqual([]);
+    expect(getDocumentMedications(profileA, docB)).toEqual([]);
+    const body = getDocumentBodyRows(profileA, docB);
+    expect(body.bodyMetrics).toEqual([]);
+    expect(body.heights).toEqual([]);
+    expect(body.headCircs).toEqual([]);
   });
 });
