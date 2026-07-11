@@ -7,45 +7,18 @@ import { IconX, IconRotateClockwise } from "@tabler/icons-react";
 import type { Equipment } from "@/lib/types";
 import type { WeightUnit } from "@/lib/settings";
 import { kgTo, toKg, round, stripNegative } from "@/lib/units";
+import {
+  PLATE_DENOMINATIONS,
+  STANDARD_BAR_WEIGHT,
+  MAX_PLATES_PER_SIDE,
+  platesForWeight,
+  platesPerSideWeight,
+  barbellTotal,
+} from "@/lib/plates";
 import { createEquipmentAction } from "@/app/(app)/settings/equipment/actions";
-
-// Common plate denominations per side, largest first, in each display unit.
-const PLATES: Record<WeightUnit, number[]> = {
-  kg: [25, 20, 15, 10, 5, 2.5, 1.25],
-  lb: [45, 35, 25, 10, 5, 2.5, 1.25],
-};
-
-// The default Olympic bar, by convention 20 kg / 45 lb. (These differ slightly
-// in absolute terms, but each is "the standard bar" in its own unit system.)
-// It's a UI default rather than a saved implement, so selecting it tags no
-// equipment (barId stays null).
-const STANDARD_BAR: Record<WeightUnit, number> = { kg: 20, lb: 45 };
 
 // select() sentinel for the "create a custom barbell" row at the bottom.
 const NEW_BAR = "__new__";
-
-const MAX_PLATES_PER_SIDE = 10;
-
-// Greedy plate breakdown for a target total: the fewest plates per side (largest
-// denomination first) that reach `target` without going over, given the bar's
-// weight. Used to pre-load the builder from a weight already typed into the set.
-function platesForWeight(
-  target: number,
-  barWeight: number,
-  unit: WeightUnit
-): number[] {
-  let perSide = round((target - barWeight) / 2, 2);
-  if (!(perSide > 0)) return [];
-  const out: number[] = [];
-  for (const p of PLATES[unit]) {
-    while (perSide >= p && out.length < MAX_PLATES_PER_SIDE) {
-      out.push(p);
-      perSide = round(perSide - p, 2);
-    }
-    if (out.length >= MAX_PLATES_PER_SIDE) break;
-  }
-  return out;
-}
 
 // Plate fill colors, following IPF/competition plate conventions so each
 // denomination is recognizable at a glance. Falls back to slate for any unknown.
@@ -88,7 +61,7 @@ function BarbellSvg({
   const gripHalf = 58; // half-width of the central knurl (longer shaft = wider bar)
   const collarW = 8; // inner collar block
   const sleeveTip = 16; // bar sticking out past the last plate
-  const maxDenom = PLATES[unit][0];
+  const maxDenom = PLATE_DENOMINATIONS[unit][0];
   const colors = PLATE_COLORS[unit];
 
   const sorted = [...platesPerSide].sort((a, b) => b - a); // largest loads inner
@@ -290,7 +263,7 @@ export default function PlateBuilderModal({
     const initBarWeight =
       initBar?.weight_kg != null
         ? round(kgTo(initBar.weight_kg, unit), 2)
-        : STANDARD_BAR[unit];
+        : STANDARD_BAR_WEIGHT[unit];
     return platesForWeight(initialWeight, initBarWeight, unit);
   }); // per side, display unit
 
@@ -301,12 +274,8 @@ export default function PlateBuilderModal({
   const [error, setError] = useState<string | null>(null);
 
   const bar = bars.find((b) => b.id === barId) ?? null;
-  // Round the per-side sum so repeated fractional plates (e.g. 1.25 + 2.5) don't
-  // accumulate float drift into the total or the breakdown line.
-  const perSide = round(
-    plates.reduce((s, p) => s + p, 0),
-    2
-  );
+  // Per-side plate sum (re-rounded so repeated fractional plates don't drift).
+  const perSide = platesPerSideWeight(plates);
   const platesSorted = [...plates].sort((a, b) => b - a);
   const atPlateLimit = plates.length >= MAX_PLATES_PER_SIDE;
 
@@ -327,8 +296,8 @@ export default function PlateBuilderModal({
       : 0
     : bar?.weight_kg != null
       ? round(kgTo(bar.weight_kg, unit), 2)
-      : STANDARD_BAR[unit];
-  const total = round(effBarWeight + perSide * 2, 2);
+      : STANDARD_BAR_WEIGHT[unit];
+  const total = barbellTotal(effBarWeight, plates);
 
   function addPlate(p: number) {
     setPlates((prev) =>
@@ -382,7 +351,7 @@ export default function PlateBuilderModal({
       const created = await createBar();
       if (!created) return;
       const bw = round(kgTo(created.weight_kg as number, unit), 2);
-      const t = round(bw + perSide * 2, 2);
+      const t = barbellTotal(bw, plates);
       if (t <= 0) return;
       onUse(t, created.id);
       return;
@@ -432,7 +401,7 @@ export default function PlateBuilderModal({
               className="input"
             >
               <option value="standard">
-                Standard Barbell — {STANDARD_BAR[unit]} {unit}
+                Standard Barbell — {STANDARD_BAR_WEIGHT[unit]} {unit}
               </option>
               {bars.map((b) => (
                 <option key={b.id} value={b.id}>
@@ -498,7 +467,7 @@ export default function PlateBuilderModal({
         <div className="mt-4">
           <label className="label">Add plates (per side)</label>
           <div className="flex flex-wrap gap-2">
-            {PLATES[unit].map((p) => (
+            {PLATE_DENOMINATIONS[unit].map((p) => (
               <button
                 key={p}
                 type="button"

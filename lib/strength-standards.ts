@@ -19,6 +19,8 @@
 // computation").
 
 import type { Sex } from "@/lib/types";
+import type { WeightUnit } from "@/lib/settings";
+import { fmtWeight } from "@/lib/units";
 import { variantOf } from "@/lib/lifts";
 import standardsJson from "@/lib/strength-standards.json";
 
@@ -273,6 +275,45 @@ export function strengthBadge(
     label: strengthLevelLabel(standing.level),
     color: strengthLevelColor(standing.level),
   };
+}
+
+// The coaching sentence beneath the level badge, derived from the SINGLE standing
+// (issue #314). One phrase, three tiers: UNTRAINED → distance to the beginner
+// standard; ELITE (no next level) → "the top band"; every middle tier → "at the
+// {level} standard … {toNext} to {nextLevel}". Sex wording ("men"/"women") and the
+// distance are folded in here so the exercise-detail line and the Analyze
+// Benchmarks card render the identical sentence instead of re-deriving it.
+export function strengthStandingPhrase(
+  standing: StrengthStanding,
+  sex: Sex,
+  weightUnit: WeightUnit
+): string {
+  const sexWord = sex === "female" ? "women" : "men";
+  if (standing.level === "untrained") {
+    return `${fmtWeight(
+      standing.toNextKg ?? 0,
+      weightUnit
+    )} from the beginner standard for ${sexWord} at your bodyweight.`;
+  }
+  if (standing.nextLevel == null) {
+    return `At the elite standard for ${sexWord} at your bodyweight — the top band.`;
+  }
+  return `At the ${strengthLevelLabel(
+    standing.level
+  ).toLowerCase()} standard for ${sexWord} at your bodyweight — ${fmtWeight(
+    standing.toNextKg ?? 0,
+    weightUnit
+  )} to ${strengthLevelLabel(standing.nextLevel).toLowerCase()}.`;
+}
+
+// The estimated-1RM ÷ bodyweight multiple ("1.30× BW") — the domain quantity the
+// exercise-detail and explorer Est. 1RM lines append. Null when bodyweight is
+// unknown or the 1RM is non-positive (the surfaces then omit the multiple).
+export function bodyweightMultiple(
+  e1rmKg: number,
+  bodyweightKg: number | null | undefined
+): number | null {
+  return bodyweightKg && e1rmKg > 0 ? e1rmKg / bodyweightKg : null;
 }
 
 // One level's interpolated floor (kg) at a bodyweight — the row shape behind the
