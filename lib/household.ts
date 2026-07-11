@@ -22,7 +22,7 @@ export interface Adherence {
 // supplements page and the notifier). Doses whose supplement is missing from
 // `activeSuppById` (inactive/deleted) are skipped.
 export function supplementAdherenceToday(
-  doses: { id: number; supplement_id: number }[],
+  doses: { id: number; item_id: number }[],
   activeSuppById: Map<number, Pick<Supplement, "condition" | "situation">>,
   ctx: { isWorkoutDay: boolean; activeSituations: Set<string> },
   takenDoseIds: Set<number>
@@ -30,7 +30,7 @@ export function supplementAdherenceToday(
   let due = 0;
   let taken = 0;
   for (const dose of doses) {
-    const supp = activeSuppById.get(dose.supplement_id);
+    const supp = activeSuppById.get(dose.item_id);
     if (!supp) continue;
     if (!isDueOn(supp, ctx)) continue;
     due++;

@@ -60,6 +60,12 @@ export interface EntitySpec {
   // Captured FK columns pointing OUTSIDE this capture whose target may have been
   // deleted since capture — reconciled (null/drop) on restore. Absent when none.
   externalRefs?: ExternalRefSpec[];
+  // Two columns that must stay canonically ordered (col[0] < col[1]) on the row —
+  // e.g. intake_item_pairs (a_id, b_id), which carries CHECK (a_id < b_id) since
+  // issue #97. Remapping a captured endpoint to a restored item's NEW (larger) id
+  // can invert the order, so restore re-canonicalizes these two columns after the
+  // remap. Absent when the entity has no ordered pair.
+  orderedPair?: [string, string];
   // For a CHILD entity, how to select its rows given the root id: a WHERE fragment
   // and how many times the root id is bound into it. Omitted for the root (which is
   // captured by `id = ? AND profile_id = ?`). Static SQL — no user input.
@@ -161,8 +167,8 @@ export const UNDO_KINDS: Record<string, KindSpec> = {
       {
         entity: "doses",
         table: "intake_item_doses",
-        fks: [{ column: "supplement_id", ref: "item" }],
-        childWhere: "supplement_id = ?",
+        fks: [{ column: "item_id", ref: "item" }],
+        childWhere: "item_id = ?",
         childBinds: 1,
       },
       {
@@ -185,6 +191,9 @@ export const UNDO_KINDS: Record<string, KindSpec> = {
           { column: "a_id", table: "intake_items", onMissing: "drop" },
           { column: "b_id", table: "intake_items", onMissing: "drop" },
         ],
+        // Remapping the near endpoint to the restored item's new id can make a_id >
+        // b_id; re-canonicalize so the CHECK (a_id < b_id) holds (issue #97).
+        orderedPair: ["a_id", "b_id"],
         childWhere: "a_id = ? OR b_id = ?",
         childBinds: 2,
       },
@@ -201,9 +210,9 @@ export const UNDO_KINDS: Record<string, KindSpec> = {
         // Re-inserted after `doses` (its dose_id target) and `item`.
         fks: [
           { column: "dose_id", ref: "doses" },
-          { column: "supplement_id", ref: "item" },
+          { column: "item_id", ref: "item" },
         ],
-        childWhere: "supplement_id = ?",
+        childWhere: "item_id = ?",
         childBinds: 1,
       },
       {

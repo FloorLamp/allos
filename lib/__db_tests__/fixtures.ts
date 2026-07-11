@@ -141,13 +141,13 @@ export function seedProfile(tag: string, opts: SeedOpts = {}): SeededProfile {
       db
         .prepare(
           `INSERT INTO intake_item_doses
-             (supplement_id, amount, time_of_day, food_timing, sort)
+             (item_id, amount, time_of_day, food_timing, sort)
            VALUES (?, '1 cap', 'morning', 'any', 0)`
         )
         .run(supplementId).lastInsertRowid
     );
     db.prepare(
-      `INSERT INTO intake_item_logs (dose_id, supplement_id, date) VALUES (?, ?, ?)`
+      `INSERT INTO intake_item_logs (dose_id, item_id, date) VALUES (?, ?, ?)`
     ).run(supplementDoseId, supplementId, todayStr);
 
     const medicationId = Number(
@@ -161,7 +161,7 @@ export function seedProfile(tag: string, opts: SeedOpts = {}): SeededProfile {
     );
     db.prepare(
       `INSERT INTO intake_item_doses
-         (supplement_id, amount, time_of_day, food_timing, sort)
+         (item_id, amount, time_of_day, food_timing, sort)
        VALUES (?, '10 mg', 'morning', 'any', 0)`
     ).run(medicationId);
 

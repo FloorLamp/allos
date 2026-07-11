@@ -392,7 +392,7 @@ function collectEvents(
                 '||'
               ) AS dose_details
          FROM intake_item_logs l
-         JOIN intake_items ii ON ii.id = l.supplement_id
+         JOIN intake_items ii ON ii.id = l.item_id
          LEFT JOIN intake_item_doses d ON d.id = l.dose_id
         WHERE ii.profile_id = ?${intakeBounds.clause}
         GROUP BY l.date, ii.kind
@@ -813,7 +813,7 @@ export function getTimelineDates(
       WHERE profile_id = @profileId`,
     `SELECT l.date AS date
        FROM intake_item_logs l
-       JOIN intake_items ii ON ii.id = l.supplement_id
+       JOIN intake_items ii ON ii.id = l.item_id
       WHERE ii.profile_id = @profileId`,
     "SELECT date FROM immunizations WHERE profile_id = @profileId",
     `SELECT COALESCE(resolved_date, onset_date, substr(created_at, 1, 10)) AS date

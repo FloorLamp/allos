@@ -173,7 +173,7 @@ function shapeActivities(
 }
 
 type DoseRow = {
-  supplement_id: number;
+  item_id: number;
   amount: string | null;
   time_of_day: string | null;
   food_timing: string | null;
@@ -185,10 +185,10 @@ const ITEMS_SELECT = `SELECT id, name, brand, product, condition, priority, situ
           stack, active, notes
    FROM intake_items WHERE profile_id = ?`;
 // Dose-schedule read, scoped to the profile through the intake_items JOIN. The
-// page reader appends `AND d.supplement_id IN (...)` to fetch only the shown
+// page reader appends `AND d.item_id IN (...)` to fetch only the shown
 // items' doses.
-const DOSES_SELECT = `SELECT d.supplement_id, d.amount, d.time_of_day, d.food_timing
-   FROM intake_item_doses d JOIN intake_items ii ON ii.id = d.supplement_id
+const DOSES_SELECT = `SELECT d.item_id, d.amount, d.time_of_day, d.food_timing
+   FROM intake_item_doses d JOIN intake_items ii ON ii.id = d.item_id
    WHERE ii.profile_id = ?`;
 
 // Fold each item's dose rows into a readable `schedule` summary. Shared by the
@@ -207,9 +207,9 @@ function shapeSupplements(
     let piece = time && amount ? `${time} × ${amount}` : time || amount;
     if (food) piece = piece ? `${piece} (${food})` : food;
     if (!piece) continue; // fully empty dose row contributes nothing
-    const list = byItem.get(d.supplement_id);
+    const list = byItem.get(d.item_id);
     if (list) list.push(piece);
-    else byItem.set(d.supplement_id, [piece]);
+    else byItem.set(d.item_id, [piece]);
   }
 
   return items.map((it) => ({
@@ -380,7 +380,7 @@ export const DATASETS: ExportDataset[] = [
       const ph = items.map(() => "?").join(",");
       const doses = db
         .prepare(
-          `${DOSES_SELECT} AND d.supplement_id IN (${ph})
+          `${DOSES_SELECT} AND d.item_id IN (${ph})
            ORDER BY ii.name, d.sort, d.id`
         )
         .all(profileId, ...items.map((it) => it.id)) as DoseRow[];
@@ -389,17 +389,17 @@ export const DATASETS: ExportDataset[] = [
   },
   tableDataset({
     // Adherence log: one row per confirmed dose on a date. A child of
-    // intake_items (joined via supplement_id), so browse/export-only.
+    // intake_items (joined via item_id), so browse/export-only.
     key: "intake_log",
     label: "Supplement & medication log",
     table: "intake_item_logs",
     deletable: false,
     columns: ["date", "item", "taken_at"],
     select: `SELECT l.id, l.date, ii.name AS item, l.taken_at
-       FROM intake_item_logs l JOIN intake_items ii ON ii.id = l.supplement_id
+       FROM intake_item_logs l JOIN intake_items ii ON ii.id = l.item_id
        WHERE ii.profile_id = ? ORDER BY l.date DESC, ii.name`,
     countSql: `SELECT COUNT(*) AS n
-       FROM intake_item_logs l JOIN intake_items ii ON ii.id = l.supplement_id
+       FROM intake_item_logs l JOIN intake_items ii ON ii.id = l.item_id
        WHERE ii.profile_id = ?`,
   }),
   tableDataset({

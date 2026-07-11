@@ -7,6 +7,7 @@ import { db, today } from "../lib/db";
 import { shiftDateStr } from "../lib/date";
 import { reconcileFlags } from "../lib/queries";
 import { providerDedupKey } from "../lib/providers";
+import { orderIntakePair } from "../lib/intake-pairs";
 import {
   diffSituations,
   serializeSituationEvents,
@@ -822,7 +823,7 @@ const sup = db.prepare(
    VALUES (1,?,?,?,?,?,?,?,?)`
 );
 const dose = db.prepare(
-  `INSERT INTO intake_item_doses (supplement_id, amount, time_of_day, food_timing, sort)
+  `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
    VALUES (?,?,?,?,?)`
 );
 type DoseSeed = { amount: string | null; time: string | null; food: string };
@@ -930,8 +931,7 @@ addSupp(
 db.prepare(
   `INSERT OR IGNORE INTO intake_item_pairs (a_id, b_id, relation, note) VALUES (?,?,?,?)`
 ).run(
-  Math.min(calId, ironId),
-  Math.max(calId, ironId),
+  ...orderIntakePair(calId, ironId),
   "separate",
   "Calcium blocks iron absorption"
 );
@@ -953,7 +953,7 @@ const sideEffectIns = db.prepare(
    VALUES (?,?,?,?,?,?)`
 );
 const medDose = db.prepare(
-  `INSERT INTO intake_item_doses (supplement_id, amount, time_of_day, food_timing, sort)
+  `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
    VALUES (?,?,?,?,?)`
 );
 
@@ -991,14 +991,14 @@ courseIns.run(
 
 // Log adherence per dose over the last week.
 const allDoses = db
-  .prepare("SELECT id, supplement_id FROM intake_item_doses")
-  .all() as { id: number; supplement_id: number }[];
+  .prepare("SELECT id, item_id FROM intake_item_doses")
+  .all() as { id: number; item_id: number }[];
 const supLog = db.prepare(
-  `INSERT OR IGNORE INTO intake_item_logs (dose_id, supplement_id, date) VALUES (?,?,?)`
+  `INSERT OR IGNORE INTO intake_item_logs (dose_id, item_id, date) VALUES (?,?,?)`
 );
 for (let d = 6; d >= 1; d--) {
   for (const dd of allDoses) {
-    if (Math.random() > 0.2) supLog.run(dd.id, dd.supplement_id, daysAgo(d));
+    if (Math.random() > 0.2) supLog.run(dd.id, dd.item_id, daysAgo(d));
   }
 }
 

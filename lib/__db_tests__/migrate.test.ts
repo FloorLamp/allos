@@ -70,8 +70,17 @@ describe("migrate() — fresh boot", () => {
     expect(columnNames(db, "integration_sync_events").has("raw_ref")).toBe(
       true
     );
-    // The final intake_item_logs shape keys logs on the dose.
+    // The final intake_item_logs shape keys logs on the dose, and migration 011
+    // renamed its (and intake_item_doses') supplement_id link to item_id.
     expect(columnNames(db, "intake_item_logs").has("dose_id")).toBe(true);
+    expect(columnNames(db, "intake_item_logs").has("item_id")).toBe(true);
+    expect(columnNames(db, "intake_item_logs").has("supplement_id")).toBe(
+      false
+    );
+    expect(columnNames(db, "intake_item_doses").has("item_id")).toBe(true);
+    expect(columnNames(db, "intake_item_doses").has("supplement_id")).toBe(
+      false
+    );
 
     // Boot tasks ran: the bootstrap admin + profile 1 and the canonical seed.
     expect(

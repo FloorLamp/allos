@@ -28,6 +28,7 @@ import {
   normalizeSeverity,
 } from "@/lib/medication-history";
 import { resolveProviderIdByName } from "@/lib/providers-db";
+import { orderIntakePair } from "@/lib/intake-pairs";
 import { withAiLogContext } from "@/lib/ai-log";
 import {
   CONDITIONS,
@@ -148,7 +149,7 @@ function parseDoses(formData: FormData): DoseInput[] {
 
 const insertDoseStmt = () =>
   db.prepare(
-    `INSERT INTO intake_item_doses (supplement_id, amount, time_of_day, food_timing, sort)
+    `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
      VALUES (?,?,?,?,?)`
   );
 
@@ -212,9 +213,9 @@ function reconcilePairs(suppId: number, pairs: PairInput[], profileId: number) {
   for (const p of pairs) {
     if (p.otherId === suppId) continue;
     if (!owned.get(p.otherId, profileId)) continue;
-    // Normalize order so the pair is direction-independent (UNIQUE dedups).
-    const [a, b] =
-      suppId < p.otherId ? [suppId, p.otherId] : [p.otherId, suppId];
+    // Normalize order so the pair is direction-independent (UNIQUE dedups; the
+    // CHECK (a_id < b_id) requires it) — the one shared orderIntakePair helper.
+    const [a, b] = orderIntakePair(suppId, p.otherId);
     ins.run(a, b, p.relation, p.note);
   }
 }
@@ -341,7 +342,7 @@ export async function updateSupplement(formData: FormData) {
     const ins = insertDoseStmt();
     const upd = db.prepare(
       `UPDATE intake_item_doses SET amount = ?, time_of_day = ?, food_timing = ?, sort = ?
-       WHERE id = ? AND supplement_id = ? AND retired = 0`
+       WHERE id = ? AND item_id = ? AND retired = 0`
     );
     const keptIds: number[] = [];
     doses.forEach((d, i) => {
@@ -361,13 +362,13 @@ export async function updateSupplement(formData: FormData) {
     const placeholders = keptIds.map(() => "?").join(",");
     db.prepare(
       `UPDATE intake_item_doses SET retired = 1
-        WHERE supplement_id = ? AND retired = 0 AND id NOT IN (${placeholders})
+        WHERE item_id = ? AND retired = 0 AND id NOT IN (${placeholders})
           AND EXISTS (SELECT 1 FROM intake_item_logs l
                        WHERE l.dose_id = intake_item_doses.id)`
     ).run(id, ...keptIds);
     db.prepare(
       `DELETE FROM intake_item_doses
-        WHERE supplement_id = ? AND retired = 0 AND id NOT IN (${placeholders})`
+        WHERE item_id = ? AND retired = 0 AND id NOT IN (${placeholders})`
     ).run(id, ...keptIds);
     reconcilePairs(id, pairs, profile.id);
     // Ensure-course invariant: if this row is (or just became) a
@@ -395,7 +396,7 @@ type DoseStatusTarget = "taken" | "skipped" | "clear";
 // skipped ↔ clear flip never touches supply. The amount is snapshotted on a taken
 // row (history must survive a later dosage edit) and NULL on a skipped one
 // (nothing was consumed). Verifies the dose belongs to a supplement this profile
-// owns and uses the row's own supplement_id, never trusting the caller; a retired
+// owns and uses the row's own item_id, never trusting the caller; a retired
 // dose is refused (the UI never renders a control for one). Idempotent per target.
 function applyDoseStatus(
   profileId: number,
@@ -405,12 +406,12 @@ function applyDoseStatus(
 ): void {
   const dose = db
     .prepare(
-      `SELECT supplement_id, amount FROM intake_item_doses
+      `SELECT item_id, amount FROM intake_item_doses
        WHERE id = ? AND retired = 0
-         AND supplement_id IN (SELECT id FROM intake_items WHERE profile_id = ?)`
+         AND item_id IN (SELECT id FROM intake_items WHERE profile_id = ?)`
     )
     .get(doseId, profileId) as
-    { supplement_id: number; amount: string | null } | undefined;
+    { item_id: number; amount: string | null } | undefined;
   if (!dose) return;
   const existing = db
     .prepare(
@@ -426,10 +427,10 @@ function applyDoseStatus(
     ).run(doseId, date);
   } else if (!existing) {
     db.prepare(
-      "INSERT INTO intake_item_logs (dose_id, supplement_id, date, amount, status) VALUES (?,?,?,?,?)"
+      "INSERT INTO intake_item_logs (dose_id, item_id, date, amount, status) VALUES (?,?,?,?,?)"
     ).run(
       doseId,
-      dose.supplement_id,
+      dose.item_id,
       date,
       target === "taken" ? dose.amount : null,
       target
@@ -441,9 +442,9 @@ function applyDoseStatus(
   }
 
   if (current !== "taken" && target === "taken") {
-    decrementSupply(profileId, dose.supplement_id);
+    decrementSupply(profileId, dose.item_id);
   } else if (current === "taken" && target !== "taken") {
-    incrementSupply(profileId, dose.supplement_id);
+    incrementSupply(profileId, dose.item_id);
   }
 }
 

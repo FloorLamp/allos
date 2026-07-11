@@ -35,7 +35,7 @@ import type {
 // log only when absent (the UNIQUE(dose_id,date) natural key), and decrements
 // on-hand supply ONLY on a real insert — so replaying the same confirm never
 // double-logs or double-decrements. Verifies the dose belongs to a supplement the
-// profile owns (the id is untrusted), using the row's own supplement_id. Returns
+// profile owns (the id is untrusted), using the row's own item_id. Returns
 // {ok:false} when the dose isn't owned or the date is malformed (a permanent
 // rejection); {ok:true, inserted} otherwise.
 export function confirmDoseTaken(
@@ -50,12 +50,12 @@ export function confirmDoseTaken(
   // permanent rejection, same as a deleted one — its history must stay frozen.
   const dose = db
     .prepare(
-      `SELECT supplement_id, amount FROM intake_item_doses
+      `SELECT item_id, amount FROM intake_item_doses
        WHERE id = ? AND retired = 0
-         AND supplement_id IN (SELECT id FROM intake_items WHERE profile_id = ?)`
+         AND item_id IN (SELECT id FROM intake_items WHERE profile_id = ?)`
     )
     .get(doseId, profileId) as
-    { supplement_id: number; amount: string | null } | undefined;
+    { item_id: number; amount: string | null } | undefined;
   if (!dose) return { ok: false, inserted: false };
   const existing = db
     .prepare("SELECT id FROM intake_item_logs WHERE dose_id = ? AND date = ?")
@@ -63,9 +63,9 @@ export function confirmDoseTaken(
   if (existing) return { ok: true, inserted: false };
   // Amount snapshotted at confirm time (matches toggleTaken/markDoseTaken).
   db.prepare(
-    "INSERT INTO intake_item_logs (dose_id, supplement_id, date, amount) VALUES (?,?,?,?)"
-  ).run(doseId, dose.supplement_id, date, dose.amount);
-  decrementSupply(profileId, dose.supplement_id);
+    "INSERT INTO intake_item_logs (dose_id, item_id, date, amount) VALUES (?,?,?,?)"
+  ).run(doseId, dose.item_id, date, dose.amount);
+  decrementSupply(profileId, dose.item_id);
   return { ok: true, inserted: true };
 }
 
@@ -88,19 +88,19 @@ export function skipDose(
   }
   const dose = db
     .prepare(
-      `SELECT supplement_id FROM intake_item_doses
+      `SELECT item_id FROM intake_item_doses
        WHERE id = ? AND retired = 0
-         AND supplement_id IN (SELECT id FROM intake_items WHERE profile_id = ?)`
+         AND item_id IN (SELECT id FROM intake_items WHERE profile_id = ?)`
     )
-    .get(doseId, profileId) as { supplement_id: number } | undefined;
+    .get(doseId, profileId) as { item_id: number } | undefined;
   if (!dose) return { ok: false, inserted: false };
   const existing = db
     .prepare("SELECT id FROM intake_item_logs WHERE dose_id = ? AND date = ?")
     .get(doseId, date);
   if (existing) return { ok: true, inserted: false };
   db.prepare(
-    "INSERT INTO intake_item_logs (dose_id, supplement_id, date, amount, status) VALUES (?,?,?,NULL,'skipped')"
-  ).run(doseId, dose.supplement_id, date);
+    "INSERT INTO intake_item_logs (dose_id, item_id, date, amount, status) VALUES (?,?,?,NULL,'skipped')"
+  ).run(doseId, dose.item_id, date);
   // Deliberately no decrementSupply: a skipped dose consumes nothing.
   return { ok: true, inserted: true };
 }

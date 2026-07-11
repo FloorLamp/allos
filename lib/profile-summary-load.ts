@@ -120,9 +120,9 @@ export function getProfileSummary(
   const medDoseAmounts = new Map<number, string[]>();
   for (const d of getSupplementDoses(profileId)) {
     if (!d.amount) continue;
-    const arr = medDoseAmounts.get(d.supplement_id) ?? [];
+    const arr = medDoseAmounts.get(d.item_id) ?? [];
     arr.push(d.amount);
-    medDoseAmounts.set(d.supplement_id, arr);
+    medDoseAmounts.set(d.item_id, arr);
   }
   // Group each medication's courses by item so the passport can date a med by its
   // current open course (the med's active course), per medicationStartDate().

@@ -68,9 +68,9 @@ export default async function SupplementsPage() {
   const doses = getSupplementDoses(profile.id);
   const dosesBySupp = new Map<number, SupplementDose[]>();
   for (const d of doses) {
-    const arr = dosesBySupp.get(d.supplement_id) ?? [];
+    const arr = dosesBySupp.get(d.item_id) ?? [];
     arr.push(d);
-    dosesBySupp.set(d.supplement_id, arr);
+    dosesBySupp.set(d.item_id, arr);
   }
 
   const taken = getTakenDoseIds(profile.id, today(profile.id));

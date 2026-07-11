@@ -198,7 +198,7 @@ describe("intake / supplement reads", () => {
       (s) => s.id === fx.supplementId
     )!;
     const dosesPerDay = getSupplementDoses(fx.profileId).filter(
-      (d) => d.supplement_id === fx.supplementId
+      (d) => d.item_id === fx.supplementId
     ).length;
     const daysLeft = daysOfSupplyLeft(
       supp.quantity_on_hand,
