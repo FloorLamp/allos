@@ -1,0 +1,187 @@
+{
+  "$comment": "Baked USPSTF preventive-screening dataset (issue #149) read by lib/preventive-catalog.ts. Curated PUBLIC USPSTF grade A/B recommendations — see scripts/gen-screenings.ts for per-row sourcing. Committed + HUMAN-REVIEWABLE; regenerate with `npm run gen:screenings`. SIMPLIFIED and INFORMATIONAL for personal/household tracking, NOT clinical software or medical advice. `reviewed` dates the whole dataset; risk-gated rows stay inert until the risk input exists.",
+  "reviewed": "2026-07",
+  "screenings": [
+    {
+      "key": "blood_pressure",
+      "name": "Blood pressure screening",
+      "description": "Screening for high blood pressure (hypertension).",
+      "graceMonths": 6,
+      "citation": {
+        "source": "USPSTF",
+        "summary": "Screen adults 18+ for hypertension; frequency varies by age and prior readings (annual default used here).",
+        "grade": "A"
+      },
+      "schedule": {
+        "startMonths": 216,
+        "endMonths": 1440,
+        "intervalMonths": 12
+      }
+    },
+    {
+      "key": "lipid_screening",
+      "name": "Cholesterol (lipid) screening",
+      "description": "Blood lipid panel to assess cardiovascular risk.",
+      "graceMonths": 6,
+      "citation": {
+        "source": "USPSTF",
+        "summary": "Lipid screening supports statin-use decisions in adults ~40–75; broader periodic screening is common (every ~5 years used here).",
+        "grade": "B"
+      },
+      "schedule": {
+        "startMonths": 420,
+        "endMonths": 912,
+        "intervalMonths": 60
+      }
+    },
+    {
+      "key": "colorectal_cancer",
+      "name": "Colorectal cancer screening",
+      "description": "Screening for colorectal cancer (e.g. colonoscopy or stool-based test). Interval depends on the test used.",
+      "graceMonths": 6,
+      "citation": {
+        "source": "USPSTF",
+        "summary": "Screen adults 45–75 for colorectal cancer; 76–85 is individualized. Multiple strategies (colonoscopy ~10y, annual stool-based, etc.).",
+        "grade": "A/B"
+      },
+      "schedule": {
+        "startMonths": 540,
+        "endMonths": 912,
+        "intervalMonths": 120
+      }
+    },
+    {
+      "key": "diabetes_screening",
+      "name": "Diabetes / prediabetes screening",
+      "description": "Blood glucose or A1c screening for type 2 diabetes and prediabetes. USPSTF targets overweight/obese adults.",
+      "graceMonths": 6,
+      "bmiGated": true,
+      "citation": {
+        "source": "USPSTF",
+        "summary": "Screen adults 35–70 who are overweight or obese for prediabetes and type 2 diabetes, about every 3 years.",
+        "grade": "B"
+      },
+      "schedule": {
+        "startMonths": 420,
+        "endMonths": 840,
+        "intervalMonths": 36
+      }
+    },
+    {
+      "key": "depression_screening",
+      "name": "Depression screening",
+      "description": "Screening for depression (e.g. a PHQ-2 / PHQ-9 questionnaire) in adolescents and adults.",
+      "graceMonths": 6,
+      "citation": {
+        "source": "USPSTF",
+        "summary": "Screen adolescents 12–18 and adults 18+ (including during pregnancy and postpartum) for depression where follow-up care is available. Optimal rescreening interval is not established (annual default used here).",
+        "grade": "B"
+      },
+      "schedule": {
+        "startMonths": 144,
+        "endMonths": 1440,
+        "intervalMonths": 12
+      }
+    },
+    {
+      "key": "hepatitis_c",
+      "name": "Hepatitis C screening",
+      "description": "One-time blood test for hepatitis C infection.",
+      "graceMonths": 12,
+      "citation": {
+        "source": "USPSTF",
+        "summary": "Screen adults 18–79 for hepatitis C infection at least once.",
+        "grade": "B"
+      },
+      "schedule": {
+        "startMonths": 216,
+        "endMonths": 948
+      }
+    },
+    {
+      "key": "cervical_cancer",
+      "name": "Cervical cancer screening",
+      "description": "Cervical cancer screening (Pap cytology and/or HPV testing). Interval depends on the test used.",
+      "sex": "female",
+      "graceMonths": 6,
+      "citation": {
+        "source": "USPSTF",
+        "summary": "Screen women 21–65: cytology every 3 years (21–65), or HPV / co-testing every 5 years (30–65).",
+        "grade": "A"
+      },
+      "schedule": {
+        "startMonths": 252,
+        "endMonths": 780,
+        "intervalMonths": 36
+      }
+    },
+    {
+      "key": "mammography",
+      "name": "Mammography (breast cancer screening)",
+      "description": "Breast cancer screening with mammography, typically every 2 years.",
+      "sex": "female",
+      "graceMonths": 6,
+      "citation": {
+        "source": "USPSTF",
+        "summary": "Screen women 40–74 with biennial mammography.",
+        "grade": "B"
+      },
+      "schedule": {
+        "startMonths": 480,
+        "endMonths": 900,
+        "intervalMonths": 24
+      }
+    },
+    {
+      "key": "osteoporosis",
+      "name": "Osteoporosis screening (bone density)",
+      "description": "Bone-density (DEXA) screening for osteoporosis.",
+      "sex": "female",
+      "graceMonths": 12,
+      "citation": {
+        "source": "USPSTF",
+        "summary": "Screen women 65+ for osteoporosis with bone measurement testing. The optimal rescreening interval is uncertain.",
+        "grade": "B"
+      },
+      "schedule": {
+        "startMonths": 780,
+        "endMonths": 1440,
+        "intervalMonths": 60
+      }
+    },
+    {
+      "key": "lung_cancer_ldct",
+      "name": "Lung cancer screening (low-dose CT)",
+      "description": "Annual low-dose CT for adults 50–80 with a significant smoking history. Requires smoking history — inactive until that is recorded.",
+      "graceMonths": 6,
+      "riskGated": true,
+      "citation": {
+        "source": "USPSTF",
+        "summary": "Annual low-dose CT for adults 50–80 with a 20 pack-year history who currently smoke or quit within 15 years.",
+        "grade": "B"
+      },
+      "schedule": {
+        "startMonths": 600,
+        "endMonths": 960,
+        "intervalMonths": 12
+      }
+    },
+    {
+      "key": "aaa_ultrasound",
+      "name": "Abdominal aortic aneurysm screening",
+      "description": "One-time ultrasound for men 65–75 who have ever smoked. Requires smoking history — inactive until that is recorded.",
+      "sex": "male",
+      "graceMonths": 12,
+      "riskGated": true,
+      "citation": {
+        "source": "USPSTF",
+        "summary": "One-time abdominal ultrasound for men 65–75 who have ever smoked.",
+        "grade": "B"
+      },
+      "schedule": {
+        "startMonths": 780,
+        "endMonths": 900
+      }
+    }
+  ]
+}

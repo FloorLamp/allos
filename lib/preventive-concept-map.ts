@@ -185,6 +185,24 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
     canonicalBiomarkers: ["Hemoglobin A1c", "Glucose"],
   },
   {
+    ruleKey: "depression_screening",
+    kind: "screening",
+    // A recorded depression screen (PHQ-2/PHQ-9) satisfies it; the annual default
+    // means it re-surfaces yearly, so an old screen never suppresses it for long.
+    codes: [
+      "96127", // CPT brief emotional/behavioral assessment (e.g. PHQ)
+      "G0444", // HCPCS annual depression screening
+      "171207006", // SNOMED depression screening
+    ],
+    names: [
+      "depression screening",
+      "phq 9",
+      "phq 2",
+      "patient health questionnaire",
+    ],
+    canonicalBiomarkers: [],
+  },
+  {
     ruleKey: "hepatitis_c",
     kind: "screening",
     // No tracked HCV biomarker, so this infers from a coded/named test only.

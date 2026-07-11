@@ -60,6 +60,12 @@ import Database from "better-sqlite3";
 const VISIT_KEY = "upcoming-item-visit:dental_cleaning";
 const SCREENING_KEY = "upcoming-item-screening:hepatitis_c";
 
+// The baked USPSTF depression screening (issue #149): due for the seeded ~40yo,
+// not infer-satisfied by any seeded record, and used by NO other spec, so
+// overriding it can't disturb the mark-done (dental) / override (hepatitis C) /
+// booking (skin) specs. Its override is cleared by resetPreventiveFixture.
+const DEPRESSION_KEY = "upcoming-item-screening:depression_screening";
+
 // Rules the seeded records infer-satisfy (issue #86) — must NOT render.
 const INFERRED_VISIT_KEY = "upcoming-item-visit:adult_physical";
 const INFERRED_SCREENING_KEY = "upcoming-item-screening:blood_pressure";
@@ -134,6 +140,11 @@ test.describe("preventive care in Upcoming (issues #82 + #86 + #85)", () => {
     // satisfy the BP screening — neither needs a manual mark-done.
     await expect(main.getByTestId(INFERRED_VISIT_KEY)).toHaveCount(0);
     await expect(main.getByTestId(INFERRED_SCREENING_KEY)).toHaveCount(0);
+
+    // The baked USPSTF depression screening (issue #149) surfaces for the seeded
+    // ~40yo — no PHQ/depression record is seeded, so it stays actionable and
+    // renders end-to-end from lib/screenings.json through the shared engine.
+    await expect(main.getByTestId(DEPRESSION_KEY)).toBeVisible();
   });
 
   test("a due preventive visit shows the disclaimer, marks done, and clears", async ({
@@ -173,6 +184,25 @@ test.describe("preventive care in Upcoming (issues #82 + #86 + #85)", () => {
     await screening.getByRole("button", { name: "Not applicable" }).click();
 
     await expect(main.getByTestId(SCREENING_KEY)).toHaveCount(0);
+  });
+
+  test("a baked USPSTF depression screening surfaces and can be declined (issue #149)", async ({
+    page,
+  }) => {
+    test.slow();
+
+    await page.goto("/upcoming");
+    const main = page.getByRole("main");
+
+    const depression = main.getByTestId(DEPRESSION_KEY);
+    await expect(depression).toBeVisible();
+    await expect(depression).toContainText("Depression screening");
+
+    // Declining it (the override affordance) hides it and it stays hidden.
+    await depression.getByLabel("Not applicable or declined").click();
+    await depression.getByRole("button", { name: "Declined" }).click();
+
+    await expect(main.getByTestId(DEPRESSION_KEY)).toHaveCount(0);
   });
 
   test("the Book CTA prefills the appointment form and booking quiets the item to Scheduled (issue #85)", async ({

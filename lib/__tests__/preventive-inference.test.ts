@@ -113,6 +113,15 @@ describe("matchRuleKeys", () => {
     ).toEqual([]);
   });
 
+  it("matches a depression screen by PHQ code and whole-word name", () => {
+    expect(matchRuleKeys({ code: "G0444" }, ["screening"])).toEqual([
+      "depression_screening",
+    ]);
+    expect(
+      matchRuleKeys({ name: "PHQ-9 depression screening" }, ["screening"])
+    ).toEqual(["depression_screening"]);
+  });
+
   it("matches mammography and DEXA the issue calls out", () => {
     expect(matchRuleKeys({ code: "77067" }, ["screening"])).toEqual([
       "mammography",

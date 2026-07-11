@@ -1,9 +1,18 @@
 import type { Sex } from "./types";
+import screeningsData from "./screenings.json";
 
 // Curated preventive-care catalog: age/sex-banded well-visit milestones and a
 // small, USPSTF-derived screening subset. This is the single static source the
 // pure assessor (`lib/preventive-status.ts`) reads from, mirroring the
 // immunization catalog's typed-rules pattern (`lib/immunization-catalog.ts`).
+//
+// The SCREENING rules are baked (issue #149): their curated table lives in
+// `scripts/gen-screenings.ts` and is committed as `lib/screenings.json`, loaded
+// below — the same regenerable-dataset pattern the biomarker/fitness-norm tables
+// use. The well-child milestones and recurring visits stay as typed TS literals
+// here (they are not USPSTF screenings). Everything downstream — the pure
+// assessor, record-driven satisfaction inference, Upcoming surfacing + snooze/
+// dismiss suppression, and the Telegram nudge — is unchanged and shared.
 //
 // This is a SIMPLIFIED, informational subset for personal tracking — it is NOT
 // clinical software and does NOT constitute medical advice. It deliberately does
@@ -239,221 +248,67 @@ const RECURRING_VISITS: RecurringVisitRule[] = [
 ];
 
 // ---------------------------------------------------------------------------
-// Screenings (satisfied by a result/procedure). Curated USPSTF-derived subset.
+// Screenings (satisfied by a result/procedure). Curated USPSTF grade A/B subset,
+// BAKED (issue #149): the data lives in scripts/gen-screenings.ts → the committed
+// lib/screenings.json loaded below and reconstructed into typed ScreeningRules.
 // Intervals are conservative single-number stand-ins; modality-specific and
 // result-aware intervals (colonoscopy 10y vs FIT annual, cytology vs HPV
 // co-test) are refined by a later record-aware layer — this catalog defaults to
 // the standard interval. NOT clinical guidance.
 // ---------------------------------------------------------------------------
-const SCREENINGS: ScreeningRule[] = [
-  {
-    key: "colorectal_cancer",
-    name: "Colorectal cancer screening",
-    kind: "screening",
-    description:
-      "Screening for colorectal cancer (e.g. colonoscopy or stool-based test). Interval depends on the test used.",
-    graceMonths: 6,
-    citation: {
-      source: "USPSTF",
-      summary:
-        "Screen adults 45–75 for colorectal cancer; 76–85 is individualized. Multiple strategies (colonoscopy ~10y, annual stool-based, etc.).",
-      reviewed: CATALOG_REVIEWED,
-      grade: "A/B",
-    },
-    // Standard colonoscopy interval as the default; 45 through 75.
-    schedule: {
-      type: "screening",
-      startMonths: 45 * Y,
-      endMonths: 76 * Y,
-      intervalMonths: 120,
-    },
+
+// The on-disk shape of one baked screening row (mirrors ScreeningRow in the
+// generator): a ScreeningRule minus the constant `kind`/`schedule.type`
+// discriminants and the dataset-level `reviewed` date, all re-injected here.
+interface BakedScreeningRow {
+  key: string;
+  name: string;
+  description: string;
+  sex?: Sex;
+  graceMonths: number;
+  riskGated?: boolean;
+  bmiGated?: boolean;
+  citation: { source: string; summary: string; grade?: string };
+  schedule: { startMonths: number; endMonths: number; intervalMonths?: number };
+}
+
+const SCREENINGS_DATASET = screeningsData as unknown as {
+  reviewed: string;
+  screenings: BakedScreeningRow[];
+};
+
+// The month the screening dataset was last reviewed against USPSTF (from the
+// baked JSON). Exported for audit surfaces the way CATALOG_REVIEWED is.
+export const SCREENINGS_REVIEWED = SCREENINGS_DATASET.reviewed;
+
+// Reconstruct the fully-typed screening rules from the baked rows, re-attaching
+// the constant `kind`/`schedule.type` discriminants and the dataset `reviewed`
+// date onto each citation. Optional flags are only set when truthy so the shape
+// matches the previous inline literals byte-for-byte for downstream consumers.
+const SCREENINGS: ScreeningRule[] = SCREENINGS_DATASET.screenings.map((r) => ({
+  key: r.key,
+  name: r.name,
+  kind: "screening",
+  description: r.description,
+  ...(r.sex ? { sex: r.sex } : {}),
+  graceMonths: r.graceMonths,
+  ...(r.riskGated ? { riskGated: true } : {}),
+  ...(r.bmiGated ? { bmiGated: true } : {}),
+  citation: {
+    source: r.citation.source,
+    summary: r.citation.summary,
+    reviewed: SCREENINGS_DATASET.reviewed,
+    ...(r.citation.grade ? { grade: r.citation.grade } : {}),
   },
-  {
-    key: "mammography",
-    name: "Mammography (breast cancer screening)",
-    kind: "screening",
-    description:
-      "Breast cancer screening with mammography, typically every 2 years.",
-    sex: "female",
-    graceMonths: 6,
-    citation: {
-      source: "USPSTF",
-      summary: "Screen women 40–74 with biennial mammography.",
-      reviewed: CATALOG_REVIEWED,
-      grade: "B",
-    },
-    // Biennial, 40 through 74.
-    schedule: {
-      type: "screening",
-      startMonths: 40 * Y,
-      endMonths: 75 * Y,
-      intervalMonths: 24,
-    },
+  schedule: {
+    type: "screening",
+    startMonths: r.schedule.startMonths,
+    endMonths: r.schedule.endMonths,
+    ...(r.schedule.intervalMonths != null
+      ? { intervalMonths: r.schedule.intervalMonths }
+      : {}),
   },
-  {
-    key: "cervical_cancer",
-    name: "Cervical cancer screening",
-    kind: "screening",
-    description:
-      "Cervical cancer screening (Pap cytology and/or HPV testing). Interval depends on the test used.",
-    sex: "female",
-    graceMonths: 6,
-    citation: {
-      source: "USPSTF",
-      summary:
-        "Screen women 21–65: cytology every 3 years (21–65), or HPV / co-testing every 5 years (30–65).",
-      reviewed: CATALOG_REVIEWED,
-      grade: "A",
-    },
-    // Conservative cytology default (3y); 21 through 65.
-    schedule: {
-      type: "screening",
-      startMonths: 21 * Y,
-      endMonths: 65 * Y,
-      intervalMonths: 36,
-    },
-  },
-  {
-    key: "blood_pressure",
-    name: "Blood pressure screening",
-    kind: "screening",
-    description: "Screening for high blood pressure (hypertension).",
-    graceMonths: 6,
-    citation: {
-      source: "USPSTF",
-      summary:
-        "Screen adults 18+ for hypertension; frequency varies by age and prior readings (annual default used here).",
-      reviewed: CATALOG_REVIEWED,
-      grade: "A",
-    },
-    schedule: {
-      type: "screening",
-      startMonths: 18 * Y,
-      endMonths: 120 * Y,
-      intervalMonths: 12,
-    },
-  },
-  {
-    key: "lipid_screening",
-    name: "Cholesterol (lipid) screening",
-    kind: "screening",
-    description: "Blood lipid panel to assess cardiovascular risk.",
-    graceMonths: 6,
-    citation: {
-      source: "USPSTF",
-      summary:
-        "Lipid screening supports statin-use decisions in adults ~40–75; broader periodic screening is common (every ~5 years used here).",
-      reviewed: CATALOG_REVIEWED,
-      grade: "B",
-    },
-    schedule: {
-      type: "screening",
-      startMonths: 35 * Y,
-      endMonths: 76 * Y,
-      intervalMonths: 60,
-    },
-  },
-  {
-    key: "diabetes_screening",
-    name: "Diabetes / prediabetes screening",
-    kind: "screening",
-    description:
-      "Blood glucose or A1c screening for type 2 diabetes and prediabetes. USPSTF targets overweight/obese adults.",
-    graceMonths: 6,
-    bmiGated: true,
-    citation: {
-      source: "USPSTF",
-      summary:
-        "Screen adults 35–70 who are overweight or obese for prediabetes and type 2 diabetes, about every 3 years.",
-      reviewed: CATALOG_REVIEWED,
-      grade: "B",
-    },
-    schedule: {
-      type: "screening",
-      startMonths: 35 * Y,
-      endMonths: 70 * Y,
-      intervalMonths: 36,
-    },
-  },
-  {
-    key: "osteoporosis",
-    name: "Osteoporosis screening (bone density)",
-    kind: "screening",
-    description: "Bone-density (DEXA) screening for osteoporosis.",
-    sex: "female",
-    graceMonths: 12,
-    citation: {
-      source: "USPSTF",
-      summary:
-        "Screen women 65+ for osteoporosis with bone measurement testing. The optimal rescreening interval is uncertain.",
-      reviewed: CATALOG_REVIEWED,
-      grade: "B",
-    },
-    // Open-ended above 65; conservative rescreen stand-in (interval uncertain).
-    schedule: {
-      type: "screening",
-      startMonths: 65 * Y,
-      endMonths: 120 * Y,
-      intervalMonths: 60,
-    },
-  },
-  {
-    key: "hepatitis_c",
-    name: "Hepatitis C screening",
-    kind: "screening",
-    description: "One-time blood test for hepatitis C infection.",
-    graceMonths: 12,
-    citation: {
-      source: "USPSTF",
-      summary: "Screen adults 18–79 for hepatitis C infection at least once.",
-      reviewed: CATALOG_REVIEWED,
-      grade: "B",
-    },
-    // Once-in-window (no interval).
-    schedule: { type: "screening", startMonths: 18 * Y, endMonths: 79 * Y },
-  },
-  // ---- Risk-gated (inert until a structured smoking record exists) ----
-  {
-    key: "lung_cancer_ldct",
-    name: "Lung cancer screening (low-dose CT)",
-    kind: "screening",
-    description:
-      "Annual low-dose CT for adults 50–80 with a significant smoking history. Requires smoking history — inactive until that is recorded.",
-    graceMonths: 6,
-    riskGated: true,
-    citation: {
-      source: "USPSTF",
-      summary:
-        "Annual low-dose CT for adults 50–80 with a 20 pack-year history who currently smoke or quit within 15 years.",
-      reviewed: CATALOG_REVIEWED,
-      grade: "B",
-    },
-    schedule: {
-      type: "screening",
-      startMonths: 50 * Y,
-      endMonths: 80 * Y,
-      intervalMonths: 12,
-    },
-  },
-  {
-    key: "aaa_ultrasound",
-    name: "Abdominal aortic aneurysm screening",
-    kind: "screening",
-    description:
-      "One-time ultrasound for men 65–75 who have ever smoked. Requires smoking history — inactive until that is recorded.",
-    sex: "male",
-    graceMonths: 12,
-    riskGated: true,
-    citation: {
-      source: "USPSTF",
-      summary:
-        "One-time abdominal ultrasound for men 65–75 who have ever smoked.",
-      reviewed: CATALOG_REVIEWED,
-      grade: "B",
-    },
-    schedule: { type: "screening", startMonths: 65 * Y, endMonths: 75 * Y },
-  },
-];
+}));
 
 // The full curated catalog — well-child milestones, recurring visits, then
 // screenings. Order is display-friendly (pediatric → adult).
