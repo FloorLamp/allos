@@ -75,6 +75,22 @@ export function bootTasks(db: Database.Database): void {
      WHERE status = 'processing'`
   );
 
+  // And for jobs a crash stranded mid-commit (issue #323). commitImportJob claims a
+  // job by flipping 'ready' → 'committing' before writing rows; a crash between that
+  // claim and the row-delete would strand it in 'committing' forever — it can't be
+  // re-claimed (the claim requires status='ready') and only a manual Discard exits.
+  // Reap it to 'failed' with an explanatory error, mirroring the 'processing' reset.
+  // We do NOT revert to 'ready' for auto-retry: the crash may have landed after the
+  // inner commit transaction (data already imported), so the safe move is to fail it
+  // and let the user review — a deliberate re-import is deduped by the importers.
+  db.exec(
+    `UPDATE import_jobs
+       SET status = 'failed',
+           error = 'Saving this import was interrupted (server restarted). Some or all of its data may already have been imported — check your data before retrying, then discard this job.',
+           updated_at = datetime('now')
+     WHERE status = 'committing'`
+  );
+
   // One-time bootstrap: timezone moved from the `TZ` env into a DB setting. If no
   // timezone is stored yet but a TZ env is present and valid, seed the setting from
   // it so upgrading deploys keep their zone instead of snapping to UTC. This reads

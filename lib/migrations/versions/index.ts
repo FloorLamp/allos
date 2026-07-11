@@ -13,6 +13,7 @@ import { migration as m011 } from "./011-intake-schema-debt";
 import { migration as m012 } from "./012-medication-rxcui";
 import { migration as m013 } from "./013-rxcui-ingredients";
 import { migration as m014 } from "./014-hr-minutes-per-source";
+import { migration as m015 } from "./015-import-job-committing-state";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
 // CONTRACT: a migration's position (1-based) must equal its `id`, and the runner
@@ -35,4 +36,5 @@ export const MIGRATIONS: Migration[] = [
   m012,
   m013,
   m014,
+  m015,
 ];
