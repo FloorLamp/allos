@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { IconFlame } from "@tabler/icons-react";
 import type { Supplement, SupplementDose, SupplementPair } from "@/lib/types";
+import type { InteractionItem } from "@/lib/drug-interactions";
 import { CONDITION_LABELS, FOOD_TIMING_HINTS } from "@/lib/supplement-schedule";
 import {
   adherenceSummary,
@@ -32,6 +33,7 @@ export default function EditableSupplementRow({
   dose,
   doses,
   allSupplements,
+  stackItems,
   pairs,
   isTaken,
   isSkipped,
@@ -44,6 +46,7 @@ export default function EditableSupplementRow({
   dose: SupplementDose;
   doses: SupplementDose[];
   allSupplements: { id: number; name: string }[];
+  stackItems: InteractionItem[];
   pairs: SupplementPair[];
   isTaken: boolean;
   isSkipped: boolean;
@@ -66,6 +69,7 @@ export default function EditableSupplementRow({
           supplement={s}
           doses={doses}
           allSupplements={allSupplements}
+          stackItems={stackItems}
           pairs={pairs}
           onDone={() => setEditing(false)}
           trainingRestricted={trainingRestricted}

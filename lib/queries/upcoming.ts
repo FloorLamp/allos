@@ -66,8 +66,10 @@ import {
   getTakenDoseIds,
   getRefillRates,
   getDietaryLimitWarnings,
+  getInteractionWarnings,
 } from "./intake";
 import { dietaryLimitSignalKey, ulWarningTitle, ulWarningDetail } from "../dri";
+import { interactionTitle, interactionDetail } from "../drug-interactions";
 import {
   getAppointments,
   getScheduledAppointments,
@@ -182,6 +184,27 @@ function dietaryLimitItems(profileId: number, today: string): UpcomingItem[] {
     domain: "dietary-limit" as const,
     title: ulWarningTitle(w),
     detail: ulWarningDetail(w),
+    href: "/medicine",
+    dueDate: null,
+    band: "today" as const,
+    dueText: "Review",
+  }));
+}
+
+// Known drug-/supplement-interactions among the profile's ACTIVE stack (issue #144).
+// Reuses the shared getInteractionWarnings gather (same pure detectInteractions the
+// /medicine warning rows format over), so each interacting PAIR surfaces as a
+// dismissible finding keyed by `interaction:<lo>-<hi>` — it goes through
+// getFindingSuppressions like every other finding, so a dismiss/snooze on Upcoming
+// silences it ("dismiss once, silence everywhere"). Standing informational findings
+// (no due date): banded to Today, framed "discuss with your prescriber", never
+// prescriptive.
+function interactionItems(profileId: number): UpcomingItem[] {
+  return getInteractionWarnings(profileId).map((hit) => ({
+    key: hit.dedupeKey,
+    domain: "interaction" as const,
+    title: interactionTitle(hit),
+    detail: interactionDetail(hit),
     href: "/medicine",
     dueDate: null,
     band: "today" as const,
@@ -563,6 +586,7 @@ function rawUpcoming(profileId: number, today: string): UpcomingItem[] {
     ...doseItems(profileId, today),
     ...refillItems(profileId, today),
     ...dietaryLimitItems(profileId, today),
+    ...interactionItems(profileId),
     ...appointmentItems(profileId),
     ...carePlanItems(profileId),
     ...preventiveItems(profileId, today),
