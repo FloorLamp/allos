@@ -532,6 +532,61 @@ export function isBodyweight(name: string): boolean {
   return liftInfo(name)?.bodyweight === true;
 }
 
+/**
+ * Resolve whether an exercise's own bodyweight is (part of) the load — the single
+ * definition of the suggestion KIND shared by every strength builder
+ * (getStrengthByExercise for the detail panel/coaching/Telegram, and the editor's
+ * getRecentExerciseHistory seed). True for a catalog bodyweight lift, or for any
+ * exercise never logged with an external weight.
+ *
+ * `sawExternalWeight` MUST be computed over the same window in every caller —
+ * resolve it over ALL history, never a recent slice — so one dataset yields one
+ * suggestion kind on every surface. An exercise last loaded with external weight
+ * >12 months ago and bodyweight-only since (weighted dips → bodyweight dips) must
+ * classify identically whether the classifier looks at the last year or all time
+ * (#331). One question, one computation.
+ */
+export function resolveBodyweightKind(
+  name: string,
+  sawExternalWeight: boolean
+): boolean {
+  return isBodyweight(name) || !sawExternalWeight;
+}
+
+/** One exercise's classification input: its logged name and whether the row (or
+ * an already-OR'd group of rows) carried an external weight. */
+export interface BodyweightClassifyRow {
+  exercise: string;
+  hasExternalWeight: boolean;
+}
+
+/**
+ * Fold a set of (possibly per-row) classification inputs into a
+ * lowercased-name → resolved-bodyweight-kind map, OR-ing hasExternalWeight across
+ * every row that shares a key. The pure core both strength builders route through
+ * so their bodyweight KIND agrees by construction over the same all-history rows
+ * (#331). Keyed exactly like the builders (`exercise.trim().toLowerCase()`).
+ */
+export function classifyBodyweightByExercise(
+  rows: BodyweightClassifyRow[]
+): Map<string, boolean> {
+  const saw = new Map<string, { name: string; sawExternalWeight: boolean }>();
+  for (const r of rows) {
+    const key = r.exercise.trim().toLowerCase();
+    const cur = saw.get(key);
+    if (!cur)
+      saw.set(key, {
+        name: r.exercise,
+        sawExternalWeight: r.hasExternalWeight,
+      });
+    else if (r.hasExternalWeight) cur.sawExternalWeight = true;
+  }
+  const out = new Map<string, boolean>();
+  for (const [key, v] of saw)
+    out.set(key, resolveBodyweightKind(v.name, v.sawExternalWeight));
+  return out;
+}
+
 // Plain (non-variant) lifts performed on a plate-loaded barbell. Variant lifts
 // (Curl/Row/Bench Press/Overhead Press) are detected via their "Barbell" chip.
 const BARBELL_LIFTS = new Set(
