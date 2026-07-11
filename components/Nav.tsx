@@ -83,6 +83,7 @@ const RECORDS: Group = {
     { href: "/immunizations", label: "Immunizations", icon: IconVaccine },
     { href: "/encounters", label: "Visits", icon: IconCalendarEvent },
     { href: "/appointments", label: "Appointments", icon: IconCalendarPlus },
+    { href: "/providers", label: "Providers", icon: IconStethoscope },
     { href: "/profile", label: "Passport", icon: IconId },
     { href: "/emergency", label: "Emergency Card", icon: IconEmergencyBed },
   ],

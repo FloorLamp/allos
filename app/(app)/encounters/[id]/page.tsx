@@ -122,19 +122,36 @@ export default async function EncounterDetailPage(props: {
 
           {encounter.provider_name ? (
             <DetailRow label="Provider">
-              <ProviderName name={encounter.provider_name} className="" />
+              <ProviderName
+                name={encounter.provider_name}
+                providerId={encounter.provider_id}
+                className=""
+              />
             </DetailRow>
           ) : null}
 
           {encounter.location_name ? (
             <DetailRow label="Facility">
-              <span className="inline-flex items-center gap-1.5">
-                <IconBuildingHospital
-                  className="h-4 w-4 shrink-0"
-                  stroke={1.75}
-                />
-                {encounter.location_name}
-              </span>
+              {encounter.location_provider_id ? (
+                <Link
+                  href={`/providers/${encounter.location_provider_id}`}
+                  className="inline-flex items-center gap-1.5 hover:text-brand-700 hover:underline dark:hover:text-brand-300"
+                >
+                  <IconBuildingHospital
+                    className="h-4 w-4 shrink-0"
+                    stroke={1.75}
+                  />
+                  {encounter.location_name}
+                </Link>
+              ) : (
+                <span className="inline-flex items-center gap-1.5">
+                  <IconBuildingHospital
+                    className="h-4 w-4 shrink-0"
+                    stroke={1.75}
+                  />
+                  {encounter.location_name}
+                </span>
+              )}
             </DetailRow>
           ) : null}
 

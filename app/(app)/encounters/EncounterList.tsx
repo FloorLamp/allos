@@ -88,16 +88,33 @@ const COLUMNS: RecordColumn<Encounter>[] = [
       e.provider_name || e.location_name ? (
         <div className="flex flex-col gap-1 text-slate-500 dark:text-slate-400">
           {e.provider_name ? (
-            <ProviderName name={e.provider_name} className="" />
+            <ProviderName
+              name={e.provider_name}
+              providerId={e.provider_id}
+              className=""
+            />
           ) : null}
           {e.location_name ? (
-            <span className="inline-flex items-center gap-1.5">
-              <IconBuildingHospital
-                className="h-4 w-4 shrink-0"
-                stroke={1.75}
-              />
-              {e.location_name}
-            </span>
+            e.location_provider_id ? (
+              <Link
+                href={`/providers/${e.location_provider_id}`}
+                className="inline-flex items-center gap-1.5 hover:text-brand-700 hover:underline dark:hover:text-brand-300"
+              >
+                <IconBuildingHospital
+                  className="h-4 w-4 shrink-0"
+                  stroke={1.75}
+                />
+                {e.location_name}
+              </Link>
+            ) : (
+              <span className="inline-flex items-center gap-1.5">
+                <IconBuildingHospital
+                  className="h-4 w-4 shrink-0"
+                  stroke={1.75}
+                />
+                {e.location_name}
+              </span>
+            )
           ) : null}
         </div>
       ) : (

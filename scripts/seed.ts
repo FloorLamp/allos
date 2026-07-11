@@ -1175,6 +1175,13 @@ const clinic = addProvider("Northside Family Medicine", "organization", {
   address: "120 Elm St, Springfield",
   phone: "(415) 555-0100",
 });
+// An import-minted near-duplicate of "Dr. Anita Patel" (same clinician, spelled
+// differently, no NPI so it's a distinct dedup_key) — exercises the /providers
+// duplicate-merge feature (issue #275). Linked to a visit + procedure below so the
+// merge has records to re-point onto the survivor.
+const drPatelDup = addProvider("Dr. Anita Patel MD", "individual", {
+  phone: "(415) 555-0132",
+});
 
 // ── Appointments ──────────────────────────────────────────────────────
 // One completed (history) plus scheduled rows spread so the Upcoming urgency
@@ -1320,6 +1327,18 @@ encIns.run(
   null,
   "Referred for lipid management"
 );
+// A visit attributed to the duplicate provider row (#275 merge fixture).
+encIns.run(
+  daysAgo(90),
+  null,
+  "Office Visit",
+  "AMB",
+  "Follow-up",
+  "Essential hypertension",
+  drPatelDup,
+  null,
+  null
+);
 
 // ── Procedures / surgical history ────────────────────────────────────────────
 const procIns = db.prepare(
@@ -1341,6 +1360,15 @@ procIns.run(
   daysAgo(420),
   drLee,
   "No polyps; repeat in 10 years"
+);
+// A procedure attributed to the duplicate provider row (#275 merge fixture).
+procIns.run(
+  "Blood pressure check",
+  "99213",
+  "CPT",
+  daysAgo(90),
+  drPatelDup,
+  null
 );
 
 // ── Family history ───────────────────────────────────────────────────────────
