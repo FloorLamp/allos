@@ -3,14 +3,14 @@
 // Proves the migration-019 column exists with a real (enforced) FK, that
 // deleteEquipment nulls the new activities link the same way it nulls the set link,
 // that a deleted activity round-trips through undo (nulling the gear link if the
-// equipment died meanwhile), and that getLastActivityEquipmentByType reads the most
-// recent per-type gear used to default the picker.
+// equipment died meanwhile), and that getRecentActivityEquipmentIds reads the
+// recency-ordered gear used to default the picker (issue #339).
 
 import { describe, it, expect, beforeAll } from "vitest";
 import { db } from "@/lib/db";
 import { deleteEquipment } from "@/lib/equipment";
 import { captureDelete, restoreDeletedRow } from "@/lib/undo-delete-db";
-import { getLastActivityEquipmentByType } from "@/lib/queries";
+import { getRecentActivityEquipmentIds } from "@/lib/queries";
 import { seedProfile, type SeededProfile } from "./fixtures";
 
 let p: SeededProfile;
@@ -106,38 +106,41 @@ describe("undo restore reconciles a dangling gear link (#342 / #202)", () => {
   });
 });
 
-describe("getLastActivityEquipmentByType", () => {
-  it("returns the most recent gear id per activity type, profile-scoped", () => {
+describe("getRecentActivityEquipmentIds", () => {
+  it("returns distinct gear ids most-recent-first, profile-scoped (#339)", () => {
     const other = seedProfile("ACTEQUIP2");
-    const rowerId = Number(
+    const otherBike = Number(
       db
         .prepare(
           `INSERT INTO equipment (profile_id, name, category) VALUES (?, 'Rower', 'Bike')`
         )
         .run(other.profileId).lastInsertRowid
     );
-    // Two cardio activities; the newer one (later id) wins.
+    const otherShoes = Number(
+      db
+        .prepare(
+          `INSERT INTO equipment (profile_id, name, category) VALUES (?, 'Race Flats', 'Shoes')`
+        )
+        .run(other.profileId).lastInsertRowid
+    );
+    // Oldest ride (bike), then a run (shoes), then a newer ride (bike again). The
+    // bike is de-duplicated to its most-recent appearance, ordered ahead of the run.
     db.prepare(
       `INSERT INTO activities (profile_id, date, type, title, equipment_id)
        VALUES (?, '2026-01-01', 'cardio', 'Old ride', ?)`
-    ).run(other.profileId, rowerId);
-    const newerId = Number(
-      db
-        .prepare(
-          `INSERT INTO activities (profile_id, date, type, title, equipment_id)
-           VALUES (?, '2026-06-01', 'cardio', 'New ride', ?)`
-        )
-        .run(other.profileId, rowerId).lastInsertRowid
-    );
-    expect(newerId).toBeGreaterThan(0);
+    ).run(other.profileId, otherBike);
+    db.prepare(
+      `INSERT INTO activities (profile_id, date, type, title, equipment_id)
+       VALUES (?, '2026-03-01', 'cardio', 'A run', ?)`
+    ).run(other.profileId, otherShoes);
+    db.prepare(
+      `INSERT INTO activities (profile_id, date, type, title, equipment_id)
+       VALUES (?, '2026-06-01', 'cardio', 'New ride', ?)`
+    ).run(other.profileId, otherBike);
 
-    const map = getLastActivityEquipmentByType(other.profileId);
-    expect(map.cardio).toBe(rowerId);
-    // No sport gear linked → absent.
-    expect(map.sport).toBeUndefined();
-    // Isolation: the other profile's map doesn't see this profile's gear.
-    expect(getLastActivityEquipmentByType(p.profileId).cardio).not.toBe(
-      rowerId
-    );
+    const ids = getRecentActivityEquipmentIds(other.profileId);
+    expect(ids).toEqual([otherBike, otherShoes]);
+    // Isolation: the other profile's list doesn't see this profile's gear.
+    expect(getRecentActivityEquipmentIds(p.profileId)).not.toContain(otherBike);
   });
 });

@@ -1,7 +1,7 @@
 "use client";
 
 import type { ActivityType, Equipment } from "@/lib/types";
-import { equipmentForActivityType } from "@/lib/activity-equipment";
+import { equipmentForActivity } from "@/lib/activity-equipment";
 
 // The session-level equipment picker (issue #342): one piece of gear for a whole
 // non-strength activity — a bike for a ride, shoes for a run, recovery gear for a
@@ -9,23 +9,26 @@ import { equipmentForActivityType } from "@/lib/activity-equipment";
 // beyond) so the cardio picker (#339) and the recovery picker (#344) are the SAME
 // component over the SAME activities.equipment_id link, not parallel one-offs.
 //
-// It filters the profile's equipment to the kinds that fit the activity type
-// (equipmentForActivityType) and renders a plain <select> with a "None" option.
-// When the profile owns no gear of a fitting kind the picker renders nothing — a
-// user with no bikes/shoes never sees an empty control. Recency defaulting lives in
-// the parent (it seeds `value`), keeping this component a pure controlled select.
+// It filters the profile's equipment to the gear that fits the activity
+// (equipmentForActivity — cardio narrows by name to shoes for a run, bikes for a
+// ride per issue #339) and renders a plain <select> with a "None" option. When the
+// profile owns no fitting gear the picker renders nothing — a user with no
+// bikes/shoes never sees an empty control. Recency defaulting lives in the parent
+// (it seeds `value`), keeping this component a pure controlled select.
 export default function ActivityEquipmentPicker({
   activityType,
+  activityName = null,
   equipment,
   value,
   onChange,
 }: {
   activityType: ActivityType;
+  activityName?: string | null;
   equipment: Equipment[];
   value: number | null;
   onChange: (id: number | null) => void;
 }) {
-  const options = equipmentForActivityType(equipment, activityType);
+  const options = equipmentForActivity(equipment, activityType, activityName);
   // A previously-linked row that no longer fits the filter (e.g. its category was
   // changed) must still be selectable so an edit doesn't silently drop the link.
   const selectedMissing =
