@@ -57,6 +57,26 @@ export interface ActivityComponent {
   duration_min: number | null;
 }
 
+// Parse an activity's stored `components` JSON into a components array. Centralizes
+// the try/catch + array-guard that was open-coded at every read site (the journal
+// feed, the editor seed, the validator, the icon resolver, the goal/effort queries).
+// Absent (null/empty), malformed, or non-array JSON all yield [] — a caller that
+// must distinguish "no components list at all" from "an empty list" checks the raw
+// string's presence itself (`raw ? parseComponents(raw) : null`), since a valid
+// stored "[]" and a malformed blob both parse to []. The elements are trusted to be
+// ActivityComponent-shaped (we only ever write JSON.stringify(ActivityComponent[])).
+export function parseComponents(
+  json: string | null | undefined
+): ActivityComponent[] {
+  if (!json) return [];
+  try {
+    const parsed = JSON.parse(json);
+    return Array.isArray(parsed) ? (parsed as ActivityComponent[]) : [];
+  } catch {
+    return [];
+  }
+}
+
 export interface ExerciseSet {
   id: number;
   activity_id: number;
