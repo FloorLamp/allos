@@ -181,6 +181,84 @@ describe("buildHealthStatus", () => {
     expect(r.lastBackupAgeHours).toBeNull();
   });
 
+  // --- Never-backed-up alarm (#464) ---
+
+  it("flags backups-never-ran when enabled, no snapshot ever, past the grace window", () => {
+    const r = buildHealthStatus({
+      readOk: true,
+      writeOk: true,
+      backupsEnabled: true,
+      lastBackupAt: null,
+      instanceAgeHours: 100, // > 72h grace
+      neverRanGraceHours: 72,
+      now,
+    });
+    expect(r.ok).toBe(false);
+    expect(r.reason).toBe("backups-never-ran");
+    expect(r.httpStatus).toBe(503);
+  });
+
+  it("exempts a fresh install still inside the grace window", () => {
+    const r = buildHealthStatus({
+      readOk: true,
+      writeOk: true,
+      backupsEnabled: true,
+      lastBackupAt: null,
+      instanceAgeHours: 10, // < 72h grace
+      neverRanGraceHours: 72,
+      now,
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  it("never flags backups-never-ran when backups are disabled", () => {
+    const r = buildHealthStatus({
+      readOk: true,
+      writeOk: true,
+      backupsEnabled: false,
+      lastBackupAt: null,
+      instanceAgeHours: 1000,
+      now,
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  it("does not flag never-ran once a snapshot exists (that's backup-stale's job)", () => {
+    const r = buildHealthStatus({
+      readOk: true,
+      writeOk: true,
+      backupsEnabled: true,
+      lastBackupAt: "2026-07-09T06:00:00Z", // a backup exists, fresh
+      instanceAgeHours: 1000,
+      now,
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  it("stays exempt when instance age is unknown (marker missing)", () => {
+    const r = buildHealthStatus({
+      readOk: true,
+      writeOk: true,
+      backupsEnabled: true,
+      lastBackupAt: null,
+      instanceAgeHours: null,
+      now,
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  it("uses the 72h default grace when none is passed", () => {
+    const r = buildHealthStatus({
+      readOk: true,
+      writeOk: true,
+      backupsEnabled: true,
+      lastBackupAt: null,
+      instanceAgeHours: 80, // > 72h default
+      now,
+    });
+    expect(r.reason).toBe("backups-never-ran");
+  });
+
   it("prefers integrity-failed over backup-stale", () => {
     const r = buildHealthStatus({
       readOk: true,

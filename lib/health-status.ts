@@ -13,6 +13,7 @@ export type HealthReason =
   | "write-failed"
   | "integrity-failed"
   | "backup-stale"
+  | "backups-never-ran"
   | "offsite-stale";
 
 export interface HealthResult {
@@ -28,6 +29,13 @@ export interface HealthResult {
 // schedule a full missed day plus slack before it flips. Overridable per-instance
 // via the `backup_staleness_hours` global setting.
 export const DEFAULT_BACKUP_STALENESS_HOURS = 48;
+
+// Grace window (#464) before a backups-enabled instance that has NEVER taken a
+// snapshot is flagged `backups-never-ran`. A fresh install legitimately has no
+// backup until its first scheduled run; this covers that plus slack. Past it, a
+// still-empty backup dir means NO scheduler is running (notify sidecar dropped, no
+// cron) — the disaster the old permanent never-backed-up exemption hid.
+export const DEFAULT_BACKUPS_NEVER_RAN_GRACE_HOURS = 72;
 
 // Build the health response. A failed read probe (DB unreachable), failed write
 // probe (read-only / full disk), a cached failed live-integrity check, or a stale
@@ -53,6 +61,12 @@ export function buildHealthStatus(opts: {
   backupsEnabled?: boolean;
   stalenessThresholdHours?: number;
   lastBackupAt?: string | null;
+  // Instance age + grace (#464): how long since first boot, and the grace window
+  // before a backups-enabled instance with NO snapshot ever is flagged. Lets the
+  // never-backed-up exemption EXPIRE (a fresh install is exempt; a months-old
+  // instance with an empty backup dir — no scheduler — is not).
+  instanceAgeHours?: number | null;
+  neverRanGraceHours?: number;
   // Off-volume replication (#130/#463): when a secondary destination is configured,
   // its own staleness folds into health so a mirror that has failed every night for
   // months is visible to an uptime monitor (not just the admin card). Same threshold
@@ -83,6 +97,21 @@ export function buildHealthStatus(opts: {
     lastBackupAgeHours > threshold
   ) {
     return degraded("backup-stale");
+  }
+
+  // Never-backed-up alarm (#464): backups enabled, NO snapshot ever, and the
+  // instance is past the grace window → no scheduler is taking backups. Distinct
+  // from backup-stale (which needs a prior snapshot); the grace expiry is what
+  // stops the fresh-install exemption from covering a perpetually-unbackuped box.
+  const graceHours =
+    opts.neverRanGraceHours ?? DEFAULT_BACKUPS_NEVER_RAN_GRACE_HOURS;
+  if (
+    opts.backupsEnabled &&
+    lastBackupAgeHours === null &&
+    opts.instanceAgeHours != null &&
+    opts.instanceAgeHours > graceHours
+  ) {
+    return degraded("backups-never-ran");
   }
 
   // Off-volume staleness is the least severe (a mirror lag is less urgent than the

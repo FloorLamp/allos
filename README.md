@@ -853,8 +853,14 @@ container unhealthy:
   `integrity_check` itself, so it stays cheap enough for a frequent uptime poll.
 - **`backup-stale`** — backups are enabled and the newest snapshot is older than the
   staleness threshold (**48h** by default; override with the `backup_staleness_hours`
-  global setting). A never-backed-up instance (fresh install, or backups just enabled) is
-  **not** flagged, so this only catches a schedule that ran and then silently died.
+  global setting). A brand-new instance inside its grace window is **not** flagged here — see
+  `backups-never-ran` below for the perpetually-unbackuped case.
+- **`backups-never-ran`** — backups are enabled but **no snapshot has ever been taken** and
+  the instance is older than a short grace period (**72h**). This catches a deployment with
+  no backup scheduler at all (the notify sidecar dropped and no cron replacing it) —
+  previously such an instance stayed permanently green because the never-backed-up exemption
+  never expired. A genuinely fresh install is exempt until it crosses the grace window
+  (instance age comes from an `install_first_boot_at` marker seeded on first boot).
 - **`offsite-stale`** — an off-volume destination (`BACKUP_DEST_DIR`) is configured and its
   last successful replica is older than the staleness threshold, so a mirror that silently
   stopped is visible to uptime monitors (a never-succeeded mirror surfaces instead as an

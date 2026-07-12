@@ -23,6 +23,7 @@ import {
   buildHealthStatus,
   DEFAULT_BACKUP_STALENESS_HOURS,
 } from "@/lib/health-status";
+import { backupAgeHours } from "@/lib/backup-verify";
 
 export const dynamic = "force-dynamic";
 
@@ -61,11 +62,19 @@ export async function GET() {
   let stalenessThresholdHours = DEFAULT_BACKUP_STALENESS_HOURS;
   let offsiteConfigured = false;
   let lastOffsiteAt: string | null = null;
+  let instanceAgeHours: number | null = null;
+  const now = new Date();
   try {
     const { db } = await import("@/lib/db");
     db.prepare("SELECT 1").get();
     const { getSetting, getBackupSettings } = await import("@/lib/settings");
     lastBackupAt = getSetting("backup_last_at") ?? null;
+    // Instance age (#464): seeded once at first boot; lets the never-backed-up
+    // exemption expire so a scheduler-less deployment is eventually flagged.
+    instanceAgeHours = backupAgeHours(
+      getSetting("install_first_boot_at") ?? null,
+      now
+    );
     // Cached weekly integrity verdict: "0" = corruption found, "1" = ok,
     // undefined = never run yet (treated as not-a-failure). No PRAGMA here.
     const integrityRaw = getSetting("backup_live_integrity_ok");
@@ -95,9 +104,10 @@ export async function GET() {
     backupsEnabled,
     stalenessThresholdHours,
     lastBackupAt,
+    instanceAgeHours,
     offsiteConfigured,
     lastOffsiteAt,
-    now: new Date(),
+    now,
   });
 
   return Response.json(
