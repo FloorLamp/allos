@@ -158,6 +158,11 @@ export interface RiskRule {
   names?: string[];
   nameContains?: string[];
   screeningRules?: string[];
+  // Vaccine catalog codes this rule ranks up (issue #553) — the immunization arm
+  // of #517. A rule targeting `immunizationCodes` carries no cadence/analyte side
+  // (cadenceMultiplier 1, no `names`/`screeningRules`), so it feeds ONLY
+  // immunizationPriorityFor and never touches the retest or screening dimensions.
+  immunizationCodes?: string[];
   cadenceMultiplier: number;
   priority: number;
   reason: string;
@@ -266,6 +271,59 @@ export const RISK_RULES: RiskRule[] = [
   // remind. Omitted under the conservative-curation caveat until a defensible,
   // targeted input exists — the same "documented out-of-scope" discipline the
   // screening catalog uses for risk-defined recommendations.
+
+  // ---- Immunization priority (issue #553) --------------------------------------
+  // The immunization arm of #517: the same curated risk factors that tighten a
+  // retest / rank a screening also rank up the vaccines ACIP flags for a person
+  // with that factor, so a risk-elevated DUE/OVERDUE vaccine leads within its band
+  // on Upcoming, the immunization page, the attention card, and the digest. These
+  // rules carry ONLY an `immunizationCodes` target (cadenceMultiplier 1, no
+  // analyte/screening keys), so they feed immunizationPriorityFor alone. Deliberately
+  // conservative + informational, mirroring the screening rules' discipline; each
+  // factor targets only the vaccines with a clear ACIP indication for it. A code is
+  // ranked up only when it actually surfaces as due (an age-inappropriate one, e.g.
+  // adult childhood-PCV, is already `not_recommended` per #552 and never appears).
+  //
+  // Immunocompromising conditions / asplenia / functional-asplenia → pneumococcal
+  // and meningococcal are indicated regardless of the age-based routine.
+  {
+    factor: "immunocompromised",
+    immunizationCodes: ["pneumo_adult", "pcv", "menacwy", "menb"],
+    cadenceMultiplier: 1,
+    priority: 2,
+    reason: "Immunocompromised",
+    source: "ACIP (informational)",
+  },
+  // On dialysis (advanced kidney disease) → pneumococcal + meningococcal as above,
+  // plus Hepatitis B (hemodialysis patients are a core ACIP HepB indication, with a
+  // higher-dose/added-dose schedule).
+  {
+    factor: "dialysis",
+    immunizationCodes: ["pneumo_adult", "pcv", "menacwy", "menb", "hepb"],
+    cadenceMultiplier: 1,
+    priority: 2,
+    reason: "On dialysis",
+    source: "ACIP (informational)",
+  },
+  // Healthcare personnel → Hepatitis B, annual influenza, and documented MMR /
+  // varicella immunity (ACIP HCP schedule).
+  {
+    factor: "healthcare-worker",
+    immunizationCodes: ["hepb", "influenza", "mmr", "varicella"],
+    cadenceMultiplier: 1,
+    priority: 2,
+    reason: "Healthcare worker",
+    source: "ACIP (informational)",
+  },
+  // Pregnancy → Tdap in EACH pregnancy (27–36 weeks) and influenza (any trimester).
+  {
+    factor: "pregnant",
+    immunizationCodes: ["tdap", "influenza"],
+    cadenceMultiplier: 1,
+    priority: 2,
+    reason: "Pregnancy",
+    source: "ACIP / ACOG (informational)",
+  },
 ];
 
 // Whether a rule targets the given analyte (by exact canonical name or substring).
@@ -315,6 +373,24 @@ export function screeningPriorityFor(
 ): { priority: number; reasons: string[] } {
   const matched = RISK_RULES.filter(
     (r) => factors.has(r.factor) && r.screeningRules?.includes(ruleKey)
+  );
+  if (matched.length === 0) return { priority: 0, reasons: [] };
+  return {
+    priority: Math.max(...matched.map((r) => r.priority)),
+    reasons: uniqueReasons(matched),
+  };
+}
+
+// The priority + reasons a vaccine earns from the active factors (issue #553).
+// Mirrors screeningPriorityFor: no cadence side — this only ranks a due/overdue
+// vaccine up within its band and explains WHY in a calm line. priority 0 with no
+// reasons when nothing matched. `code` is a catalog vaccine code (VaccineEntry.code).
+export function immunizationPriorityFor(
+  code: string,
+  factors: ReadonlySet<RiskFactor>
+): { priority: number; reasons: string[] } {
+  const matched = RISK_RULES.filter(
+    (r) => factors.has(r.factor) && r.immunizationCodes?.includes(code)
   );
   if (matched.length === 0) return { priority: 0, reasons: [] };
   return {

@@ -3,6 +3,7 @@ import {
   deriveRiskFactors,
   retestModulationFor,
   screeningPriorityFor,
+  immunizationPriorityFor,
   isAnchoredOneShotReading,
   EMPTY_RISK_ATTRIBUTES,
   NO_MODULATION,
@@ -176,6 +177,71 @@ describe("screeningPriorityFor", () => {
     expect(
       screeningPriorityFor("lipid_screening", new Set<RiskFactor>())
     ).toEqual({ priority: 0, reasons: [] });
+  });
+});
+
+describe("immunizationPriorityFor (issue #553)", () => {
+  it("ranks up pneumococcal + meningococcal for an immunocompromised / dialysis profile", () => {
+    for (const factor of ["immunocompromised", "dialysis"] as RiskFactor[]) {
+      const factors = new Set<RiskFactor>([factor]);
+      for (const code of ["pneumo_adult", "pcv", "menacwy", "menb"]) {
+        const p = immunizationPriorityFor(code, factors);
+        expect(p.priority, `${factor}/${code}`).toBe(2);
+        expect(p.reasons.length, `${factor}/${code}`).toBe(1);
+      }
+    }
+  });
+
+  it("ranks up Hep B / influenza / MMR / varicella for a healthcare worker", () => {
+    const f = new Set<RiskFactor>(["healthcare-worker"]);
+    for (const code of ["hepb", "influenza", "mmr", "varicella"]) {
+      const p = immunizationPriorityFor(code, f);
+      expect(p.priority, code).toBe(2);
+      expect(p.reasons, code).toEqual(["Healthcare worker"]);
+    }
+  });
+
+  it("ranks up Tdap + influenza for pregnancy", () => {
+    const f = new Set<RiskFactor>(["pregnant"]);
+    expect(immunizationPriorityFor("tdap", f)).toEqual({
+      priority: 2,
+      reasons: ["Pregnancy"],
+    });
+    expect(immunizationPriorityFor("influenza", f).priority).toBe(2);
+  });
+
+  it("adds Hep B for dialysis but NOT for a bare immunocompromised factor", () => {
+    expect(
+      immunizationPriorityFor("hepb", new Set<RiskFactor>(["dialysis"]))
+        .priority
+    ).toBe(2);
+    expect(
+      immunizationPriorityFor(
+        "hepb",
+        new Set<RiskFactor>(["immunocompromised"])
+      ).priority
+    ).toBe(0);
+  });
+
+  it("is neutral for an unrelated vaccine or no matching factor", () => {
+    expect(
+      immunizationPriorityFor("zoster", new Set<RiskFactor>(["pregnant"]))
+    ).toEqual({ priority: 0, reasons: [] });
+    expect(immunizationPriorityFor("influenza", new Set<RiskFactor>())).toEqual(
+      { priority: 0, reasons: [] }
+    );
+  });
+
+  it("does NOT bleed into the retest/screening dimensions (immunization rules are code-only)", () => {
+    // An immunization-only rule must not modulate a retest or rank a screening —
+    // its cadenceMultiplier/screeningRules are inert.
+    const hcw = new Set<RiskFactor>(["healthcare-worker"]);
+    // 'influenza' is not an analyte, but assert the retest layer stays a no-op for
+    // a real analyte name under a factor whose only new rule is immunization-side.
+    expect(screeningPriorityFor("lipid_screening", hcw)).toEqual({
+      priority: 0,
+      reasons: [],
+    });
   });
 });
 

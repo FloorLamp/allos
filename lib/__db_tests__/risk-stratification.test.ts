@@ -154,6 +154,68 @@ describe("issue #517 — cadence modulation & one-shots via collectUpcoming", ()
     expect(item!.title).toBe("Retest Total Bilirubin");
   });
 
+  it("elevates a due vaccine for a healthcare worker (immunization arm, #553)", () => {
+    const pid = makeProfile("HCW", "1985-01-01");
+    // No influenza dose this season → the annual vaccine reads `due`.
+    // Baseline (no risk factor): the item surfaces but carries no priority.
+    const before = collectUpcoming(pid, now).find(
+      (i) => i.key === "immunization:influenza"
+    );
+    expect(before, "influenza due at baseline").toBeTruthy();
+    expect(before!.priority ?? 0).toBe(0);
+
+    setRiskAttributes(pid, {
+      ...EMPTY_RISK_ATTRIBUTES,
+      healthcareWorker: true,
+    });
+
+    const after = collectUpcoming(pid, now).find(
+      (i) => i.key === "immunization:influenza"
+    );
+    expect(after, "influenza still due").toBeTruthy();
+    expect(after!.priority).toBe(2);
+    expect(after!.detail).toContain("Healthcare worker");
+  });
+
+  it("elevates pneumococcal for an immunocompromised older adult (#553)", () => {
+    // 66-year-old: the adult pneumococcal vaccine (from 65) with no record reads
+    // `due`; the immunocompromised factor ranks it up.
+    const pid = makeProfile("Immuno 66", shiftDateStr(now, -66 * 365));
+    setRiskAttributes(pid, {
+      ...EMPTY_RISK_ATTRIBUTES,
+      immunocompromised: true,
+    });
+    const item = collectUpcoming(pid, now).find(
+      (i) => i.key === "immunization:pneumo_adult"
+    );
+    expect(item, "adult pneumococcal due").toBeTruthy();
+    expect(item!.priority).toBe(2);
+    expect(item!.detail).toContain("Immunocompromised");
+  });
+
+  it("the SAME RiskFactors gather elevates BOTH a biomarker retest and an immunization (#553 end-to-end)", () => {
+    // One profile, two risk factors: family cardiac history (biomarker arm) +
+    // healthcare worker (immunization arm). A single getRiskFactors gather must
+    // reach BOTH engines — the invariant #517 violated by wiring only retest +
+    // screening and leaving immunizations out.
+    const pid = makeProfile("Multi-domain", "1980-01-01");
+    insertLab(pid, "LDL Cholesterol", shiftDateStr(now, -200));
+    db.prepare(
+      `INSERT INTO family_history (profile_id, relation, condition)
+         VALUES (?, 'father', 'Coronary artery disease')`
+    ).run(pid);
+    setRiskAttributes(pid, {
+      ...EMPTY_RISK_ATTRIBUTES,
+      healthcareWorker: true,
+    });
+
+    const items = collectUpcoming(pid, now);
+    const lipid = items.find((i) => i.key === "biomarker:ldl cholesterol");
+    const flu = items.find((i) => i.key === "immunization:influenza");
+    expect(lipid?.priority ?? 0, "lipid retest ranked up").toBeGreaterThan(0);
+    expect(flu?.priority ?? 0, "influenza ranked up").toBeGreaterThan(0);
+  });
+
   it("does not modulate when the matching condition is RESOLVED, not active", () => {
     const pid = makeProfile("Resolved CKD", "1980-01-01");
     insertLab(pid, "Creatinine", shiftDateStr(now, -200));

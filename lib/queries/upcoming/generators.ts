@@ -43,6 +43,7 @@ import {
 import {
   retestModulationFor,
   screeningPriorityFor,
+  immunizationPriorityFor,
   isAnchoredOneShotReading,
 } from "../../risk-stratification";
 import { lifeStage } from "../../life-stage";
@@ -230,9 +231,17 @@ function interactionItems(profileId: number): UpcomingItem[] {
 // Vaccines due/overdue on the tracked schedule (reuses assessSchedule + the same
 // age/sex resolution the immunizations page uses). Status-driven, so each item
 // carries an explicit band + due-text rather than a calendar date.
+//
+// Risk-stratified priority (issue #553 — the immunization arm of #517): a vaccine
+// the profile's risk factors make more important (immunocompromised → pneumococcal/
+// meningococcal, healthcare worker → HepB/flu/MMR/varicella, pregnancy → Tdap/flu)
+// ranks up within its band and says why, in a calm line — the SAME shared
+// RiskFactors gather + pure priority machinery the biomarker/preventive generators
+// use, so the surfaces can't diverge on which vaccines matter.
 function immunizationItems(profileId: number, today: string): UpcomingItem[] {
   const sex = getUserSex(profileId);
   const ageMonths = profileAgeMonths(profileId, today);
+  const riskFactors = getRiskFactors(profileId);
 
   const summary = assessSchedule(
     getImmunizations(profileId).map((r) => ({
@@ -254,16 +263,29 @@ function immunizationItems(profileId: number, today: string): UpcomingItem[] {
 
   return summary.assessments
     .filter((a) => a.status === "overdue" || a.status === "due")
-    .map((a) => ({
-      key: `immunization:${a.code}`,
-      domain: "immunization" as const,
-      title: a.name,
-      detail: a.nextLabel ?? a.detail,
-      href: "/immunizations",
-      dueDate: null,
-      band: a.status === "overdue" ? ("overdue" as const) : ("today" as const),
-      dueText: a.status === "overdue" ? "Overdue" : "Due",
-    }));
+    .map((a) => {
+      const item: UpcomingItem = {
+        key: `immunization:${a.code}`,
+        domain: "immunization" as const,
+        title: a.name,
+        detail: a.nextLabel ?? a.detail,
+        href: "/immunizations",
+        dueDate: null,
+        band:
+          a.status === "overdue" ? ("overdue" as const) : ("today" as const),
+        dueText: a.status === "overdue" ? "Overdue" : "Due",
+      };
+      const { priority, reasons } = immunizationPriorityFor(
+        a.code,
+        riskFactors
+      );
+      if (priority > 0) {
+        item.priority = priority;
+        const suffix = reasons.join(", ");
+        item.detail = item.detail ? `${item.detail} · ${suffix}` : suffix;
+      }
+      return item;
+    });
 }
 
 // Maps the preventive actionable slice into Upcoming items, adding the prefilled
