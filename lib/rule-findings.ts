@@ -23,6 +23,7 @@ import {
   getSupplementDoses,
   getSupplementLogsInRange,
   getActivityDates,
+  getFoodSuggestions,
 } from "./queries";
 import { getActiveSituations } from "./settings";
 import { isGoalLive } from "./goals";
@@ -31,7 +32,8 @@ import { fmtWeight, round } from "./units";
 import { formatLongDate } from "./format-date";
 import { describeEta } from "./trend-projection";
 import type { Finding } from "./findings";
-import type { AppRoute } from "./hrefs";
+import { biomarkerViewHref, type AppRoute } from "./hrefs";
+import type { FoodSuggestion } from "./food-suggest";
 import type { WeightUnit } from "./settings";
 import {
   detectPushPullImbalance,
@@ -92,7 +94,43 @@ export function collectCoachingFindings(
     ...buildBodyHygieneFindings(profileId, today, wu),
     ...buildGoalPacingFindings(profileId, today),
     ...buildAdherencePatternFindings(profileId, today),
+    ...buildFoodSuggestionFindings(profileId),
   ];
+}
+
+// ---- Nutrition output (#577): deterministic biomarker→food suggestions ------
+
+// One coaching finding per safety-screened food suggestion. Informational, food-first
+// (#576): "Because your … is low, here's a food source." The dedupeKey is family-keyed
+// on the nutrient (food-suggest:<key>), so a dismiss covers the nutrient regardless of
+// which flagged member is newest (#482). Reads through getFoodSuggestions (the ONE
+// computation the biomarker detail page also formats), so a finding and the page card
+// can never disagree ("one question, one computation"). No owned SQL here.
+export function buildFoodSuggestionFindings(profileId: number): Finding[] {
+  return getFoodSuggestions(profileId).map(foodSuggestionToFinding);
+}
+
+function foodSuggestionToFinding(s: FoodSuggestion): Finding {
+  const because =
+    s.triggeredBy.length > 0
+      ? `Because your ${s.triggeredBy.join(", ")} ${s.triggeredBy.length > 1 ? "are" : "is"} low`
+      : "Food sources";
+  const foodLine = s.foods.map((f) => `${f.food} — ${f.serving}`).join(" ");
+  const cautions = s.safetyNotes.map((n) => n.text);
+  const detail = [because + ".", foodLine, ...cautions, s.caveat]
+    .filter(Boolean)
+    .join(" ");
+  return {
+    domain: "food-suggest",
+    dedupeKey: s.dedupeKey,
+    title: `Food for ${s.label}`,
+    detail,
+    // Calm, informational lifestyle guidance — never a red attention flag.
+    tone: "info",
+    evidence: `${s.evidence} Source: ${s.source}. Informational, not medical advice.`,
+    actionHref: biomarkerViewHref(s.triggeredBy[0] ?? null),
+    actionLabel: "View biomarker",
+  };
 }
 
 // ---- Domain 4: training balance + plateau (Training → Overview) -----------

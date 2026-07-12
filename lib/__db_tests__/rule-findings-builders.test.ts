@@ -23,8 +23,10 @@ import {
   buildTrainingObservationFindings,
   buildGoalPacingFindings,
   buildBodyHygieneFindings,
+  buildFoodSuggestionFindings,
   collectCoachingFindings,
 } from "@/lib/rule-findings";
+import { foodSuggestSignalKey } from "@/lib/food-suggest";
 import {
   weekdayMissSignalKey,
   ADHERENCE_PREFIX,
@@ -437,6 +439,58 @@ describe("episode-anchored dedupe keys (#436)", () => {
   });
 });
 
+// ---- #577: deterministic biomarker→food suggestions -------------------------
+// The builder's INPUT LAYER (the current-reading filter #557, the family collapse, the
+// allergy/medication/condition gathers) is exactly what the pure tier can't see — this
+// seeds a real fixture and asserts the end-to-end finding.
+describe("buildFoodSuggestionFindings (#577)", () => {
+  const insertReading = (
+    profileId: number,
+    name: string,
+    flag: string,
+    date: string
+  ) =>
+    db
+      .prepare(
+        `INSERT INTO medical_records
+           (profile_id, date, category, name, value, unit, canonical_name, flag)
+         VALUES (?, ?, 'lab', ?, '3.0', '% by wt', ?, ?)`
+      )
+      .run(profileId, date, name, name, flag);
+
+  it("low omega-3 → a food-suggest:omega-3 finding (fatty fish)", () => {
+    const { profileId, anchor } = makeProfile("food-omega3");
+    insertReading(profileId, "Omega-3 Total (OmegaCheck)", "low", anchor);
+
+    const findings = buildFoodSuggestionFindings(profileId);
+    expect(findings).toHaveLength(1);
+    expect(findings[0].dedupeKey).toBe(foodSuggestSignalKey("omega-3"));
+    expect(findings[0].detail?.toLowerCase()).toContain("fatty fish");
+    expect(findings[0].evidence?.toLowerCase()).toContain("not medical advice");
+  });
+
+  it("a SUPERSEDED low reading (a later normal) does not trigger — current-reading filter #557", () => {
+    const { profileId, anchor } = makeProfile("food-superseded");
+    insertReading(profileId, "Ferritin", "low", shiftDateStr(anchor, -200));
+    insertReading(profileId, "Ferritin", "normal", anchor);
+
+    expect(buildFoodSuggestionFindings(profileId)).toEqual([]);
+  });
+
+  it("a fish allergy swaps fatty fish for the alternative on the same finding", () => {
+    const { profileId, anchor } = makeProfile("food-allergy");
+    insertReading(profileId, "Omega-3 EPA", "low", anchor);
+    db.prepare(
+      `INSERT INTO allergies (profile_id, substance, status) VALUES (?, 'fish', 'active')`
+    ).run(profileId);
+
+    const findings = buildFoodSuggestionFindings(profileId);
+    expect(findings).toHaveLength(1);
+    expect(findings[0].detail?.toLowerCase()).toMatch(/walnut|flax|algae/);
+    expect(findings[0].detail?.toLowerCase()).not.toContain("salmon");
+  });
+});
+
 // ---- Reflection guard: every builder key parses against the registry --------
 
 describe("rule-findings builders — dedupeKey prefix registry (#448)", () => {
@@ -515,11 +569,19 @@ describe("rule-findings builders — dedupeKey prefix registry (#448)", () => {
        VALUES (?, 'Ref Cut', 'body', 'active', 0, 'weight', 84, ?, 90)`
     ).run(profileId, shiftDateStr(anchor, 60));
 
+    // (e) nutrition output: a currently-low omega-3 → a food-suggest finding.
+    db.prepare(
+      `INSERT INTO medical_records
+         (profile_id, date, category, name, value, unit, canonical_name, flag)
+       VALUES (?, ?, 'lab', 'Omega-3 EPA', '0.3', '% by wt', 'Omega-3 EPA', 'low')`
+    ).run(profileId, anchor);
+
     const keys = [
       ...buildAdherencePatternFindings(profileId, anchor),
       ...buildTrainingObservationFindings(profileId, anchor),
       ...buildGoalPacingFindings(profileId, anchor),
       ...buildBodyHygieneFindings(profileId, anchor, "kg"),
+      ...buildFoodSuggestionFindings(profileId),
     ].map((f) => f.dedupeKey);
 
     // At least one finding fired in each domain, and EVERY key parses against the
@@ -574,6 +636,7 @@ describe("collectCoachingFindings — the #449 unified rollup", () => {
       ...buildBodyHygieneFindings(profileId, anchor, "kg"),
       ...buildGoalPacingFindings(profileId, anchor),
       ...buildAdherencePatternFindings(profileId, anchor),
+      ...buildFoodSuggestionFindings(profileId),
     ].map((f) => f.dedupeKey);
 
     const rolled = collectCoachingFindings(profileId, anchor, "kg").map(

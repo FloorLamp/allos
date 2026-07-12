@@ -5,8 +5,10 @@ import {
   getBiomarkerSeriesWithDerived,
   getCanonicalBiomarker,
   getMedicalDocumentsByIds,
+  getFoodSuggestions,
   isBiomarkerStarred,
 } from "@/lib/queries";
+import FoodSuggestions from "@/components/FoodSuggestions";
 import type { CanonicalBiomarker, Sex } from "@/lib/types";
 import {
   rangeBadge,
@@ -121,6 +123,14 @@ export default async function BiomarkerDetailPage(props: {
 
   const cb: CanonicalBiomarker | undefined = getCanonicalBiomarker(canonical);
   const info = getBiomarkerInfo(canonical);
+  // Deterministic food suggestions for THIS biomarker (issue #577): the same
+  // getFoodSuggestions computation the coaching rollup reads, filtered to the
+  // suggestions this flagged biomarker triggered. Food-first, safety-screened,
+  // informational. Shown only when this reading is currently flagged low.
+  const canonicalLower = canonical.toLowerCase();
+  const foodSuggestions = getFoodSuggestions(profile.id).filter((s) =>
+    s.triggeredBy.some((n) => n.toLowerCase() === canonicalLower)
+  );
   // A read-time DERIVED index (issue #40): its readings are computed from other
   // labs, not measured. Surface the formula so the value is transparent. Newest
   // derived reading carries the most representative substituted formula.
@@ -531,6 +541,21 @@ export default async function BiomarkerDetailPage(props: {
           >
             See immunity status →
           </Link>
+        </div>
+      )}
+
+      {/* Deterministic food suggestions (#577): food-first, safety-screened guidance
+          when this diet-responsive biomarker reads low. Informational, not medical
+          advice; hidden when nothing applies. */}
+      {foodSuggestions.length > 0 && (
+        <div
+          data-testid="biomarker-food-suggestions"
+          className="card mb-6 border-l-4 border-l-emerald-300 dark:border-l-emerald-700"
+        >
+          <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
+            Food sources
+          </h2>
+          <FoodSuggestions suggestions={foodSuggestions} />
         </div>
       )}
 

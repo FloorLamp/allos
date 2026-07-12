@@ -1,0 +1,218 @@
+{
+  "$comment": "Baked biomarker→nutrient→food map for the DETERMINISTIC food-recommendation engine (issue #577): when a diet-responsive biomarker family reads low, the curated food sources that address it, each with an evidence note + source, contraindication tags, and an allergy alternative. Committed + HUMAN-REVIEWABLE. Regenerate with `npm run gen:nutrient-food-map`. INFORMATIONAL food-first guidance, NOT medical advice — every suggestion is safety-screened before it renders and cites the flagged biomarker as its reason.",
+  "entries": [
+    {
+      "key": "omega-3",
+      "label": "Omega-3 (EPA/DHA)",
+      "biomarkers": [
+        "Omega-3 Total (OmegaCheck)",
+        "Omega-3 EPA",
+        "Omega-3 DHA",
+        "Omega-3 DPA"
+      ],
+      "direction": "low",
+      "foods": [
+        {
+          "food": "Fatty fish (salmon, sardines, mackerel, herring)",
+          "foodGroup": "fatty_fish",
+          "serving": "About 2 servings a week (roughly 8 oz total)."
+        }
+      ],
+      "evidence": "Fatty fish is the richest dietary source of the long-chain omega-3s EPA and DHA that the omega-3 index reflects; two servings a week is the commonly cited target.",
+      "source": "NIH ODS Omega-3 Fatty Acids fact sheet; Dietary Guidelines for Americans (seafood 8 oz/week)",
+      "contraindications": [
+        {
+          "match": "pregnan",
+          "caution": "During pregnancy, prefer low-mercury species (salmon, sardines) and keep to ~8–12 oz/week; avoid high-mercury fish."
+        }
+      ],
+      "allergyAlternative": {
+        "food": "Walnuts, ground flaxseed, chia (ALA) or algae-oil omega-3",
+        "foodGroup": "nuts_seeds",
+        "serving": "A daily small handful of walnuts / tablespoon of ground flax; algae oil supplies EPA/DHA directly without fish."
+      },
+      "caveat": "Plant ALA (flax, walnuts) converts to EPA/DHA only weakly — algae oil is the fish-free way to get EPA/DHA directly."
+    },
+    {
+      "key": "iron",
+      "label": "Iron",
+      "biomarkers": [
+        "Ferritin",
+        "Iron"
+      ],
+      "direction": "low",
+      "foods": [
+        {
+          "food": "Lean red meat, poultry, shellfish (heme iron)",
+          "foodGroup": "red_meat",
+          "serving": "Heme iron from animal foods is absorbed far better than plant iron; a couple of servings a week helps rebuild stores."
+        },
+        {
+          "food": "Legumes, lentils, tofu, dark leafy greens (non-heme iron)",
+          "foodGroup": "legumes",
+          "serving": "Pair plant iron with a vitamin-C food (citrus, peppers, tomatoes) in the same meal to boost absorption.",
+          "foodDrugKeys": [
+            "vitamin-k-warfarin"
+          ]
+        }
+      ],
+      "evidence": "Low ferritin/iron responds to dietary iron; heme iron (meat) is best absorbed, and pairing plant iron with vitamin C markedly improves uptake.",
+      "source": "NIH ODS Iron fact sheet",
+      "contraindications": [],
+      "allergyAlternative": null,
+      "caveat": "A vitamin-C food in the same meal (and avoiding tea/coffee with it) meaningfully raises non-heme iron absorption."
+    },
+    {
+      "key": "vitamin-b12",
+      "label": "Vitamin B12",
+      "biomarkers": [
+        "Vitamin B12"
+      ],
+      "direction": "low",
+      "foods": [
+        {
+          "food": "Fish, meat, eggs, dairy (and fortified foods)",
+          "foodGroup": "red_meat",
+          "serving": "B12 occurs naturally only in animal foods; fortified cereals or nutritional yeast cover a plant-based diet."
+        }
+      ],
+      "evidence": "B12 is found naturally only in animal foods; a plant-based diet relies on fortified foods or a supplement.",
+      "source": "NIH ODS Vitamin B12 fact sheet",
+      "contraindications": [],
+      "allergyAlternative": {
+        "food": "Fortified cereals, fortified plant milks, nutritional yeast",
+        "foodGroup": null,
+        "serving": "The reliable B12 route on a diet that excludes animal foods."
+      },
+      "caveat": "Absorption falls with age and with acid-lowering medication — a persistent low often needs a supplement, not just food."
+    },
+    {
+      "key": "folate",
+      "label": "Folate",
+      "biomarkers": [
+        "Folate",
+        "Folate, RBC"
+      ],
+      "direction": "low",
+      "foods": [
+        {
+          "food": "Legumes, lentils, and dark leafy greens",
+          "foodGroup": "legumes",
+          "serving": "Legumes and leafy greens are among the densest natural folate sources; include them most days."
+        },
+        {
+          "food": "Leafy greens (spinach, romaine), asparagus, avocado",
+          "foodGroup": "leafy_greens",
+          "serving": "A daily serving of greens adds meaningful folate.",
+          "foodDrugKeys": [
+            "vitamin-k-warfarin"
+          ]
+        }
+      ],
+      "evidence": "Folate is highest in legumes and leafy greens (the vitamin is named for foliage); fortified grains add more.",
+      "source": "NIH ODS Folate fact sheet",
+      "contraindications": [],
+      "allergyAlternative": null,
+      "caveat": null
+    },
+    {
+      "key": "magnesium",
+      "label": "Magnesium",
+      "biomarkers": [
+        "Magnesium",
+        "Magnesium, RBC"
+      ],
+      "direction": "low",
+      "foods": [
+        {
+          "food": "Nuts, seeds (pumpkin, almonds), and whole grains",
+          "foodGroup": "nuts_seeds",
+          "serving": "A daily small handful of nuts or seeds is a dense magnesium source."
+        },
+        {
+          "food": "Legumes and dark leafy greens",
+          "foodGroup": "legumes",
+          "serving": "Beans, lentils, and greens add steady magnesium."
+        }
+      ],
+      "evidence": "Magnesium is concentrated in nuts, seeds, whole grains, legumes, and leafy greens — a whole-food-forward pattern covers it.",
+      "source": "NIH ODS Magnesium fact sheet",
+      "contraindications": [
+        {
+          "match": "chronic kidney",
+          "caution": "With reduced kidney function, magnesium can accumulate — check with your clinician before increasing intake.",
+          "severity": "drop"
+        }
+      ],
+      "allergyAlternative": {
+        "food": "Whole grains, legumes, and leafy greens",
+        "foodGroup": "whole_grains",
+        "serving": "Covers magnesium without nuts or seeds for a nut/seed allergy."
+      },
+      "caveat": null
+    },
+    {
+      "key": "potassium",
+      "label": "Potassium",
+      "biomarkers": [
+        "Potassium"
+      ],
+      "direction": "low",
+      "foods": [
+        {
+          "food": "Fruits (bananas, oranges), potatoes, and legumes",
+          "foodGroup": "legumes",
+          "serving": "Potassium is spread across produce — fruit, potatoes, beans, and greens most days."
+        },
+        {
+          "food": "Leafy greens and tomatoes",
+          "foodGroup": "leafy_greens",
+          "serving": "Greens and tomato products are potassium-dense.",
+          "foodDrugKeys": [
+            "vitamin-k-warfarin"
+          ]
+        }
+      ],
+      "evidence": "Potassium is widespread in fruit, vegetables, potatoes, and legumes; a produce-forward pattern raises it.",
+      "source": "NIH ODS Potassium fact sheet",
+      "contraindications": [
+        {
+          "match": "chronic kidney",
+          "caution": "With reduced kidney function, extra potassium can be dangerous — do NOT increase intake without your clinician's guidance.",
+          "severity": "drop"
+        },
+        {
+          "match": "hyperkalemia",
+          "caution": "With high potassium, do not increase potassium-rich foods — this is a clinician-guided restriction.",
+          "severity": "drop"
+        }
+      ],
+      "allergyAlternative": null,
+      "caveat": null
+    },
+    {
+      "key": "vitamin-d",
+      "label": "Vitamin D",
+      "biomarkers": [
+        "Vitamin D, 25-Hydroxy"
+      ],
+      "direction": "low",
+      "foods": [
+        {
+          "food": "Fatty fish, egg yolks, and fortified milk/cereals",
+          "foodGroup": "fatty_fish",
+          "serving": "Fatty fish and fortified foods add some vitamin D, but food alone rarely corrects a real deficiency."
+        }
+      ],
+      "evidence": "Few foods contain much vitamin D; fatty fish and fortified products are the main dietary sources.",
+      "source": "NIH ODS Vitamin D fact sheet",
+      "contraindications": [],
+      "allergyAlternative": {
+        "food": "Fortified plant milks and cereals; UV-exposed mushrooms",
+        "foodGroup": null,
+        "serving": "Fish-free dietary vitamin D, though modest."
+      },
+      "caveat": "Food is a MINOR lever for vitamin D — sunlight and supplements dominate. A flagged-low 25-OH-D usually needs sun exposure or a supplement, not just diet."
+    }
+  ]
+}
