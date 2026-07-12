@@ -64,6 +64,8 @@ function dose(
     food_timing: foodTiming,
     sort: 0,
     retired: 0,
+    created_at: null,
+    updated_at: null,
   };
 }
 

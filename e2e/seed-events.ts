@@ -749,22 +749,27 @@ db.prepare(`DELETE FROM intake_items WHERE profile_id = ? AND name = ?`).run(
   PROFILE_ID,
   ADHERE_ITEM
 );
+// Backdated created_at: the #430 lifetime clamp bounds each dose's adherence
+// strip to max(item created, dose created/re-timed), so the item + dose must
+// PREDATE the 63-day backfilled log window or the pattern rules see no history.
+const adhereBorn = `${shiftDateStr(today(PROFILE_ID), -70)} 08:00:00`;
 const adhereItemId = Number(
   db
     .prepare(
       `INSERT INTO intake_items
-         (profile_id, name, condition, priority, active, source)
-       VALUES (?, ?, 'daily', 'high', 1, 'manual')`
+         (profile_id, name, condition, priority, active, source, created_at)
+       VALUES (?, ?, 'daily', 'high', 1, 'manual', ?)`
     )
-    .run(PROFILE_ID, ADHERE_ITEM).lastInsertRowid
+    .run(PROFILE_ID, ADHERE_ITEM, adhereBorn).lastInsertRowid
 );
 const adhereDoseId = Number(
   db
     .prepare(
-      `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
-       VALUES (?, '500 mg', 'Evening', 'any', 0)`
+      `INSERT INTO intake_item_doses
+         (item_id, amount, time_of_day, food_timing, sort, created_at, updated_at)
+       VALUES (?, '500 mg', 'Evening', 'any', 0, ?, ?)`
     )
-    .run(adhereItemId).lastInsertRowid
+    .run(adhereItemId, adhereBorn, adhereBorn).lastInsertRowid
 );
 const insAdhereLog = db.prepare(
   `INSERT OR IGNORE INTO intake_item_logs (dose_id, item_id, date, status)

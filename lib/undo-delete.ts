@@ -210,7 +210,28 @@ export const UNDO_KINDS: Record<string, KindSpec> = {
     kind: "intake-item",
     ownedTable: "intake_items",
     entities: [
-      { entity: "item", table: "intake_items", fks: [] },
+      {
+        entity: "item",
+        table: "intake_items",
+        fks: [],
+        // provider_id → providers is a REAL enforced FK since migration 006
+        // (foreign_keys = ON) that points OUTSIDE this capture. Merging or deleting
+        // the prescriber (mergeProviders re-points only LIVE rows) AFTER the item
+        // was captured leaves the captured copy holding a dead id, so a verbatim
+        // re-insert would violate the FK and abort the undo — leaving the
+        // supplement/medication permanently unrestorable (the #375 class, here for
+        // intake_items). Null the now-dangling link on restore: the item survives,
+        // its prescriber link is honestly gone. `providers` is a GLOBAL
+        // (family-shared) table with no profile_id, so it's probed by id alone.
+        externalRefs: [
+          {
+            column: "provider_id",
+            table: "providers",
+            onMissing: "null",
+            global: true,
+          },
+        ],
+      },
       {
         entity: "doses",
         table: "intake_item_doses",

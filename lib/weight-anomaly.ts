@@ -88,6 +88,15 @@ function looksLikeUnitError(a: number, b: number): boolean {
 // independent); consecutive readings within WEIGHT_JUMP_MAX_GAP_DAYS whose relative
 // change exceeds WEIGHT_JUMP_FRACTION are flagged, newest first, limited to the
 // recent lookback window. Each anomaly names the LATER reading (the one to fix).
+//
+// Out-and-back collapse (#434): a single bad entry (e.g. an lb value typed as kg —
+// 80.0 → 176.4 → 80.2) trips the consecutive scan TWICE — once on the jump up, again
+// on the return down — and the second pair accuses the user's CORRECT recovery
+// reading (80.2), even labeling it a unit error since 80.2 : 176.4 also sits near the
+// kg/lb ratio. When two consecutive anomalies form an out-and-back (a jump then a
+// near-return to the pre-jump level), they describe ONE bad row — the middle one — so
+// we keep only the jump anomaly (which already names the middle reading) and drop the
+// recovery, leaving exactly one finding pointed at the row to fix.
 export function detectWeightAnomalies(
   weights: readonly DatedWeight[],
   today: string
@@ -97,7 +106,9 @@ export function detectWeightAnomalies(
   const asc = [...weights].sort((x, y) =>
     x.date === y.date ? x.id - y.id : x.date.localeCompare(y.date)
   );
-  const out: WeightAnomaly[] = [];
+  // Every consecutive-pair anomaly, chronological (so an out-and-back is two
+  // adjacent entries), pre-lookback-filter.
+  const raw: WeightAnomaly[] = [];
   for (let i = 1; i < asc.length; i++) {
     const prev = asc[i - 1];
     const cur = asc[i];
@@ -105,9 +116,7 @@ export function detectWeightAnomalies(
     if (prev.weightKg <= 0) continue;
     const changeFraction = (cur.weightKg - prev.weightKg) / prev.weightKg;
     if (Math.abs(changeFraction) <= WEIGHT_JUMP_FRACTION) continue;
-    const ago = daysSince(cur.date, today);
-    if (ago < 0 || ago > ANOMALY_LOOKBACK_DAYS) continue;
-    out.push({
+    raw.push({
       id: cur.id,
       date: cur.date,
       prevDate: prev.date,
@@ -117,6 +126,31 @@ export function detectWeightAnomalies(
       suspectedUnitError: looksLikeUnitError(cur.weightKg, prev.weightKg),
     });
   }
+
+  // Collapse out-and-back pairs. anomaly `a` (pre→mid) and the next anomaly `b`
+  // (mid→post) share the middle reading when b's "from" is a's "to"; if they point
+  // opposite directions AND the post reading has returned near the pre level, the
+  // pair is one glitch. Drop `b` (the recovery) and keep `a` (which names the
+  // middle, suspect row).
+  const dropped = new Set<number>(); // indices into raw
+  for (let i = 0; i + 1 < raw.length; i++) {
+    if (dropped.has(i)) continue;
+    const a = raw[i];
+    const b = raw[i + 1];
+    const sharesMiddle = b.prevDate === a.date && b.prevWeightKg === a.weightKg;
+    const opposite = a.changeFraction * b.changeFraction < 0;
+    const returnedNearPre =
+      a.prevWeightKg > 0 &&
+      Math.abs(b.weightKg - a.prevWeightKg) / a.prevWeightKg <=
+        WEIGHT_JUMP_FRACTION;
+    if (sharesMiddle && opposite && returnedNearPre) dropped.add(i + 1);
+  }
+
+  const out = raw.filter((a, i) => {
+    if (dropped.has(i)) return false;
+    const ago = daysSince(a.date, today);
+    return ago >= 0 && ago <= ANOMALY_LOOKBACK_DAYS;
+  });
   // Newest suspect first.
   return out.sort((a, b) => b.date.localeCompare(a.date));
 }

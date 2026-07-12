@@ -1,14 +1,9 @@
 // Channel registry + dispatch. Adding a channel = implement NotificationChannel
 // and list it here.
 
-import { db } from "../db";
 import { createLogger } from "../log";
 import { getSetting, setSetting } from "../settings";
-import {
-  profileMessagePrefix,
-  type ChannelId,
-  type NotificationMessage,
-} from "./types";
+import { type ChannelId, type NotificationMessage } from "./types";
 import { telegramChannel } from "./telegram";
 import { pushChannel } from "./push";
 import { homeAssistantChannel } from "./home-assistant";
@@ -16,26 +11,13 @@ import { decideMarker, type NotifyErrorMarker } from "./delivery-status";
 
 const log = createLogger("notifications");
 
-// The "[Name] " title prefix for a profile's outbound message, computed the SAME
-// way the hourly tick computes it at send time (issue #377): label the title with
-// the profile's name when the instance tracks more than one profile, else "".
-// Centralized here so the tick's initial send AND the Telegram tap-rebuild paths
-// (telegram-callbacks.ts) draw the prefix from ONE computation — a rebuild must
-// not silently drop the label a shared-chat message was sent with, which would
-// make a dose reminder unattributable once its buttons are tapped (two kids'
-// "[Ada]"/"[Ben] 💊 Morning supplements" both collapsing to a bare, identical
-// "💊 Morning supplements"). `profiles` is a global (non-profile-scoped) table, so
-// the count/name reads aren't profile-filtered — same basis as the tick's
-// allProfiles() count.
-export function prefixForProfile(profileId: number): string {
-  const row = db
-    .prepare("SELECT name FROM profiles WHERE id = ?")
-    .get(profileId) as { name: string } | undefined;
-  const { c } = db.prepare("SELECT COUNT(*) AS c FROM profiles").get() as {
-    c: number;
-  };
-  return profileMessagePrefix(row?.name ?? "", c);
-}
+// Re-exported for the existing `from "@/lib/notifications"` import path. The
+// derivation itself lives in ./attribution (issue #454) so the Telegram channel
+// chokepoint can own applying it at the edit/rebuild boundary without importing
+// index.ts (which would form a cycle). One computation, shared by the tick's send
+// site and the callback rebuild, so a rebuilt shared-chat message can't drop the
+// "[Name] " label it was sent with (#377/#429).
+export { prefixForProfile } from "./attribution";
 
 // Global marker keys mirroring backup_last_* (#131): the last delivery failure,
 // its ISO timestamp, and which channel failed. Cleared on the next all-OK send.
