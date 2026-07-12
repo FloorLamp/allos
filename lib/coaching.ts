@@ -20,6 +20,7 @@ import {
 } from "./workout-recommendation";
 import type { EquipmentAvailability } from "./equipment-availability";
 import type { WeightUnit } from "./settings";
+import type { AppRoute } from "./hrefs";
 
 // Re-exported so existing importers of the variety window keep working — its
 // single definition now lives with the unified next-workout core (#221).
@@ -618,7 +619,7 @@ export interface Recommendation {
   title: string;
   detail: string;
   tone: CoachingTone;
-  actionHref?: string;
+  actionHref?: AppRoute;
   actionLabel?: string;
   // Optional next-set hint ("62.5 kg × 5") for the Training next-workout card's
   // "Target" line. Only strength recommendations set it; other surfaces ignore it.

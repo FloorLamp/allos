@@ -13,6 +13,12 @@ import {
   PROCEDURE_REPRESENTATIVE_IDS,
   FAMILY_HISTORY_REPRESENTATIVE_IDS,
 } from "./clinical";
+import {
+  biomarkerViewHref,
+  encounterHref,
+  importHref,
+  type AppRoute,
+} from "../hrefs";
 
 // Global (Cmd-K) search fan-out. One entry point, searchAll(),
 // runs a small capped LIKE query per domain — each PROFILE-SCOPED (every
@@ -74,7 +80,7 @@ function biomarkerHits(profileId: number, like: string): SearchHit[] {
     title: r.title,
     subtitle:
       [r.value, r.unit].filter(Boolean).join(" ").trim() || isoDate(r.date),
-    href: `/biomarkers/view?name=${encodeURIComponent(r.title)}`,
+    href: biomarkerViewHref(r.title),
     date: isoDate(r.date),
   }));
 }
@@ -108,7 +114,7 @@ function documentHits(profileId: number, like: string): SearchHit[] {
       key: `document:${r.id}`,
       title,
       subtitle: title !== r.filename ? r.filename : (r.doc_type ?? date),
-      href: `/import/${r.id}`,
+      href: importHref(r.id),
       date,
     };
   });
@@ -380,7 +386,7 @@ function encounterHits(profileId: number, like: string): SearchHit[] {
       key: `encounter:${r.id}`,
       title,
       subtitle,
-      href: `/encounters/${r.id}`,
+      href: encounterHref(r.id),
       date: isoDate(r.date),
     };
   });
@@ -522,7 +528,7 @@ function careGoalHits(profileId: number, like: string): SearchHit[] {
 // Nav's RESTRICTED_HREFS).
 const PAGES: {
   title: string;
-  href: string;
+  href: AppRoute;
   keywords?: string;
   restricted?: boolean;
 }[] = [

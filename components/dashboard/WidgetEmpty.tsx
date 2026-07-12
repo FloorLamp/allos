@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { IconArrowRight, type TablerIcon } from "@tabler/icons-react";
+import type { AppRoute } from "@/lib/hrefs";
 
 // The data-aware onboarding empty state (issue #171). When a data-aware widget's
 // domain has no data yet, the page renders this compact CTA instead of a blank
@@ -17,7 +18,7 @@ export default function WidgetEmpty({
   icon: TablerIcon;
   message: string;
   ctaLabel: string;
-  ctaHref: string;
+  ctaHref: AppRoute;
 }) {
   return (
     <div className="card h-full" data-testid="widget-empty">

@@ -14,6 +14,7 @@ import type {
   SportStat,
 } from "@/lib/queries";
 import type { Sex } from "@/lib/types";
+import type { AppRoute } from "@/lib/hrefs";
 import { dispWeight, fmtWeight, kmTo, round } from "@/lib/units";
 import {
   levelFloors,
@@ -59,7 +60,7 @@ export interface AnalyzeOption {
   kind: AnalyzeKind;
   item: string;
   label: string;
-  href: string;
+  href: AppRoute;
 }
 
 export interface AnalyzeView {

@@ -13,6 +13,7 @@ import { getFindingSuppressions } from "@/lib/queries";
 import { activeByKey, digestDedupeKey } from "@/lib/findings";
 import type { DateRange } from "@/lib/timeline-format";
 import { dismissDigest } from "./actions";
+import { biomarkerViewHref, type AppRoute } from "@/lib/hrefs";
 
 // "What's trending" digest for the Trends Overview. Feeds
 // every candidate series (metrics + biomarkers, windowed to the shared range) to
@@ -33,9 +34,9 @@ export default async function TrendingDigest({ range }: { range: DateRange }) {
   );
   if (items.length === 0) return null;
 
-  const hrefFor = (item: TrendItem): string | null =>
+  const hrefFor = (item: TrendItem): AppRoute | null =>
     item.key.startsWith("bio:")
-      ? `/biomarkers/view?name=${encodeURIComponent(item.key.slice("bio:".length))}`
+      ? biomarkerViewHref(item.key.slice("bio:".length))
       : null;
 
   // A range crossing is what matters clinically, so color those; otherwise the

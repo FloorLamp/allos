@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { currentPathHref } from "@/lib/hrefs";
 
 // Generic tab shell. Panels are server-rendered and passed in as slots; all
 // stay mounted (visibility toggled) so switching tabs preserves panel state
@@ -41,7 +42,9 @@ export default function Tabs({
     params.set(paramKey, id);
     // replace (not push) to avoid stacking history on every tab click; keep the
     // scroll position so switching tabs doesn't jump to the top.
-    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    router.replace(currentPathHref(`${pathname}?${params.toString()}`), {
+      scroll: false,
+    });
   }
 
   return (

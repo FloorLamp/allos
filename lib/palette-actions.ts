@@ -7,6 +7,8 @@
 // the labels/keywords/targets are unit-testable and stay in one place; the
 // palette component maps `icon`/`target` to real behavior.
 
+import type { AppRoute } from "./hrefs";
+
 export type PaletteActionTarget =
   // Open the activity editor overlay via the ActivityEditor context (no nav).
   | { kind: "activity" }
@@ -18,7 +20,7 @@ export type PaletteActionTarget =
   | { kind: "repeat" }
   // Navigate to a route; the destination form focuses itself from the param
   // baked into `href` (see components/useFocusFormOnParam).
-  | { kind: "navigate"; href: string };
+  | { kind: "navigate"; href: AppRoute };
 
 export interface PaletteAction {
   id: string;

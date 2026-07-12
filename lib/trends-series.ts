@@ -37,6 +37,7 @@ import { ALL_ROWS, filterSeriesByRange } from "./trends";
 import { bioPinKey, metricPinKey } from "./trend-pins";
 import { bioColor } from "./trend-colors";
 import type { DateRange } from "./timeline-format";
+import { biomarkerViewHref, type AppRoute } from "./hrefs";
 
 export interface TrendSeries {
   key: string; // "metric:weight" | "bio:LDL Cholesterol" — also the pin key
@@ -45,7 +46,7 @@ export interface TrendSeries {
   // "" when the metric has none.
   unit: string;
   color: string;
-  href: string;
+  href: AppRoute;
   kind: "metric" | "biomarker";
   decimals: number;
   // Windowed, chronological (oldest → newest), non-null points in the series' own
@@ -78,7 +79,7 @@ interface MetricDef {
   label: string;
   unit: string;
   color: string;
-  href: string;
+  href: AppRoute;
   decimals: number;
   restricted?: boolean; // a training surface (hidden for age-restricted profiles)
   // Metric-aware digest "trending" threshold (#37); omitted → digest default
@@ -252,7 +253,7 @@ export function buildBiomarkerSeries(
     label: canonical,
     unit: unit ? ` ${unit}` : "",
     color: bioColor(canonical),
-    href: `/biomarkers/view?name=${encodeURIComponent(canonical)}`,
+    href: biomarkerViewHref(canonical),
     kind: "biomarker",
     decimals: 1,
     points: windowed,
@@ -271,7 +272,7 @@ export function placeholderBiomarkerTile(canonical: string): TrendSeries {
     label: canonical,
     unit: "",
     color: bioColor(canonical),
-    href: `/biomarkers/view?name=${encodeURIComponent(canonical)}`,
+    href: biomarkerViewHref(canonical),
     kind: "biomarker",
     decimals: 1,
     points: [],

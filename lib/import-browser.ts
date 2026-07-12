@@ -12,6 +12,7 @@
 import type { DocumentProducedCounts } from "./import-log";
 import type { WeightUnit } from "./settings";
 import { fmtWeight } from "./units";
+import { biomarkerViewHref, encounterHref, type AppRoute } from "./hrefs";
 
 // The non-record tab kinds, in display order (after the record-category tabs).
 // "records" tabs are data-driven from recordsByCategory. Providers are NOT a tab
@@ -170,7 +171,7 @@ export function resolveImportTab(
 export function recordNameLink(
   category: string,
   canonicalName: string | null | undefined
-): { href: string; title: string } | null {
+): { href: AppRoute; title: string } | null {
   switch (category) {
     case "lab":
     case "biomarker":
@@ -179,7 +180,7 @@ export function recordNameLink(
       const name = canonicalName?.trim();
       if (!name) return null;
       return {
-        href: `/biomarkers/view?name=${encodeURIComponent(name)}`,
+        href: biomarkerViewHref(name),
         title: `View ${name} over time`,
       };
     }
@@ -199,7 +200,7 @@ export interface ProducedItem {
   title: string;
   detail: string | null;
   date: string | null;
-  href: string;
+  href: AppRoute;
 }
 
 // Join non-empty fragments into one muted detail line.
@@ -220,7 +221,7 @@ export function visitItem(row: {
     title: row.type?.trim() || "Visit",
     detail: detailLine(row.reason),
     date: row.end_date ? `${row.date} – ${row.end_date}` : row.date,
-    href: `/encounters/${row.id}`,
+    href: encounterHref(row.id),
   };
 }
 

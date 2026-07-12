@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { IconCheck, IconArrowRight } from "@tabler/icons-react";
 import { INTEGRATIONS } from "@/lib/integrations/registry";
+import { integrationDetailHref } from "@/lib/hrefs";
 import { getConnection } from "@/lib/integrations/connections";
 import { getLatestSyncEvent } from "@/lib/queries";
 import RelativeTime from "./RelativeTime";
@@ -83,10 +84,11 @@ export default function IntegrationsGrid({ profileId }: { profileId: number }) {
           </div>
         );
 
-        return planned ? (
+        const detailHref = integrationDetailHref(it.id);
+        return planned || !detailHref ? (
           <div key={it.id}>{card}</div>
         ) : (
-          <Link key={it.id} href={`/integrations/${it.id}`}>
+          <Link key={it.id} href={detailHref}>
             {card}
           </Link>
         );

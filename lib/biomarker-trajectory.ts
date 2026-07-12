@@ -28,6 +28,7 @@ import { daysBetween, humanizeAge, referenceStatus } from "./reference-range";
 import { round } from "./units";
 import type { BiomarkerDirection } from "./types";
 import type { Finding } from "./findings";
+import type { AppRoute } from "./hrefs";
 
 // ---- Thresholds (exported so the tests pin the exact boundaries) ----
 
@@ -77,7 +78,7 @@ export interface TrajectoryInput {
   // Today (YYYY-MM-DD) — only used to keep humanized spans/projections stable.
   today: string;
   // Optional detail-page link ("schedule a retest" affordance).
-  href?: string;
+  href?: AppRoute;
 }
 
 // Where a single value sits, combining the reference range and the optimal band.

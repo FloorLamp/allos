@@ -17,6 +17,7 @@ import {
   humanizeAge,
 } from "@/lib/reference-range";
 import { BIOMARKER_CATEGORIES } from "@/lib/medical-categories";
+import { biomarkerViewHref, importHref, type AppRoute } from "@/lib/hrefs";
 
 // The active-filter context threaded through to build the panel/category filter
 // links (each preserves the current sort/range/etc., matching the server-built
@@ -32,7 +33,7 @@ interface FilterCtx {
 }
 
 // Build a /biomarkers URL from the active filters, dropping empty ones.
-function qs(params: Record<string, string | undefined>): string {
+function qs(params: Record<string, string | undefined>): AppRoute {
   const sp = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) if (v) sp.set(k, v);
   const s = sp.toString();
@@ -98,7 +99,7 @@ function nameCell(r: {
   return (
     <span>
       <Link
-        href={`/biomarkers/view?name=${encodeURIComponent(r.canonical_name)}`}
+        href={biomarkerViewHref(r.canonical_name)}
         className="font-medium text-brand-700 hover:underline dark:text-brand-400"
         title={`View ${r.canonical_name} over time`}
       >
@@ -123,7 +124,7 @@ function dateCell(
     <span className="whitespace-nowrap">
       {r.document_id ? (
         <Link
-          href={`/import/${r.document_id}`}
+          href={importHref(r.document_id)}
           className="text-brand-700 hover:underline dark:text-brand-400"
         >
           {r.date}

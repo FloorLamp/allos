@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { AppRoute } from "@/lib/hrefs";
 import {
   IconActivity,
   IconAlertTriangle,
@@ -98,7 +99,7 @@ function filterHref(
   category?: TimelineCategory,
   range: { from?: string; to?: string } = {},
   show?: number
-): string {
+): AppRoute {
   const sp = new URLSearchParams();
   if (category) sp.set("category", category);
   if (range.from) sp.set("from", range.from);

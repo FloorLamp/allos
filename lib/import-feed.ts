@@ -20,6 +20,7 @@ import {
   documentFormatLabel,
   jobTitle,
 } from "./import-log";
+import { dataSectionHref, importHref, type AppRoute } from "./hrefs";
 
 // Structural shapes of the three source rows. Deliberately minimal (and mirrored
 // from lib/types IntegrationSyncEvent / lib/queries/imports.ts) so this module
@@ -175,7 +176,7 @@ export interface FeedItemView {
   // The row's headline — a provider name, a document filename, or a job title.
   title: string;
   // Where the title links, or null for an unlinked row (integration syncs).
-  href: string | null;
+  href: AppRoute | null;
   // The primary count/status text and whether it renders muted (mirrors
   // formatSplitLabel so "nothing new" stays de-emphasized).
   detail: string;
@@ -308,7 +309,7 @@ export function feedItemView(
       key: `doc:${doc.id}`,
       tone: documentTone(documentLogStatus(doc.extraction_status)),
       title: doc.filename,
-      href: `/import/${doc.id}`,
+      href: importHref(doc.id),
       detail,
       detailMuted: muted,
       skipped: 0,
@@ -322,7 +323,7 @@ export function feedItemView(
     key: `job:${job.id}`,
     tone: jobTone(jobLogStatus(job.status)),
     title: jobTitle(job.type),
-    href: "/data?section=import#paste-import",
+    href: dataSectionHref("import", "paste-import"),
     detail,
     detailMuted: muted,
     skipped: 0,

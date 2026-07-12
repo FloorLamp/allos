@@ -7,12 +7,13 @@ import {
   quickRanges,
   type DateRange,
 } from "@/lib/timeline-format";
+import type { AppRoute } from "@/lib/hrefs";
 
 // A link that takes {href, className, children}. Defaults to next/link's Link;
 // the Timeline passes its scroll-restoring TimelineFilterLink so its quick-range
 // pills keep the feed's scroll position (Trends just uses plain links).
 type LinkLike = ComponentType<{
-  href: string;
+  href: AppRoute;
   className: string;
   children: ReactNode;
 }>;
@@ -55,7 +56,7 @@ export default function DateRangeControl({
   range: DateRange;
   todayStr: string;
   hiddenParams?: Record<string, string | undefined>;
-  buildHref: (range: DateRange) => string;
+  buildHref: (range: DateRange) => AppRoute;
   LinkComponent?: LinkLike;
   rightSlot?: ReactNode;
   idPrefix?: string;

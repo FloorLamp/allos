@@ -10,6 +10,7 @@ import {
   deleteAllDatasetRows,
 } from "@/app/(app)/data/manage-actions";
 import { undoDeletes } from "@/app/(app)/undo/actions";
+import { currentPathHref } from "@/lib/hrefs";
 
 // How long the bulk-delete "Undo" toast stays up (ms) — the holding rows live
 // ~24h, but the toast is the only affordance, so it lingers past a normal toast.
@@ -73,7 +74,9 @@ export default function DataTableManager({
   function goToPage(p: number) {
     const params = new URLSearchParams(Array.from(searchParams.entries()));
     params.set(pageParam, String(p));
-    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    router.replace(currentPathHref(`${pathname}?${params.toString()}`), {
+      scroll: false,
+    });
   }
 
   const visibleIds = useMemo(

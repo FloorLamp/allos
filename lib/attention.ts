@@ -41,6 +41,7 @@ import {
   compareWithinBand,
 } from "./upcoming";
 import { biomarkerFlagDismissalKey } from "./dismissal-keys";
+import { biomarkerViewHref, dataSectionHref, type AppRoute } from "./hrefs";
 import { biomarkerFlagTitle, biomarkerFlagDetail } from "./biomarker-flag-copy";
 import { flagLabel, isOutOfRange } from "./reference-range";
 import type { DigestFlaggedBiomarker } from "./notifications/digest";
@@ -82,9 +83,9 @@ export function buildFlaggedItem(b: DigestFlaggedBiomarker): UpcomingItem {
     signalGroup: "flagged",
     title: biomarkerFlagTitle(b.name),
     detail: biomarkerFlagDetail(b.flag, b.value),
-    href: b.canonicalName
-      ? `/biomarkers/view?name=${encodeURIComponent(b.name)}`
-      : "/biomarkers",
+    // #283 bug 5: link the CANONICAL name (not the raw display name) — the view
+    // page resolves ?name= as canonical. Shared with biomarkerItems via the helper.
+    href: biomarkerViewHref(b.canonicalName, b.name),
     dueDate: null,
     dueText: flagLabel(b.flag),
     suppressible: true,
@@ -102,7 +103,7 @@ function integrationToItem(i: AttentionIntegration): UpcomingItem {
     signalGroup: "review",
     title: `${i.provider} sync needs attention`,
     detail: i.detail ?? "Reconnect to resume syncing.",
-    href: "/data?section=review",
+    href: dataSectionHref("review"),
     dueDate: null,
     dueText: "Reconnect",
     suppressible: false,
@@ -119,7 +120,7 @@ function reviewToItem(count: number): UpcomingItem | null {
     signalGroup: "review",
     title: `${count} import ${count === 1 ? "item" : "items"} to review`,
     detail: "Duplicates or conflicts detected in synced data.",
-    href: "/data?section=review",
+    href: dataSectionHref("review"),
     dueDate: null,
     dueText: "Review",
     suppressible: false,
@@ -354,14 +355,14 @@ const CARD_BAND_ANCHOR: Record<CardBand, string | null> = {
   review: null,
 };
 
-function upcomingHref(anchor: string | null): string {
+function upcomingHref(anchor: string | null): AppRoute {
   return anchor ? `/upcoming#${anchor}` : "/upcoming";
 }
 
 export interface AttentionMoreLink {
   count: number;
   text: string;
-  href: string;
+  href: AppRoute;
 }
 
 export interface AttentionMoreLinks {

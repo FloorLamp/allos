@@ -31,6 +31,7 @@ import { fmtWeight, round } from "./units";
 import { formatLongDate } from "./format-date";
 import { describeEta } from "./trend-projection";
 import type { Finding } from "./findings";
+import type { AppRoute } from "./hrefs";
 import type { WeightUnit } from "./settings";
 import {
   detectPushPullImbalance,
@@ -98,7 +99,7 @@ export function collectCoachingFindings(
 
 // The deep link a stale/plateau exercise finding points at — the Analyze tab focused
 // on that exercise (same link coaching's strength recs use).
-function exerciseHref(exercise: string): string {
+function exerciseHref(exercise: string): AppRoute {
   return `/training?tab=analyze&kind=strength&item=${encodeURIComponent(exercise)}`;
 }
 

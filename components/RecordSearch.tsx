@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { currentPathHref } from "@/lib/hrefs";
 
 // Debounced free-text search box that filters medical records by name or panel.
 // Writes the query into the `q` param on the current path (preserving the other
@@ -21,7 +22,7 @@ export default function RecordSearch({ q }: { q?: string }) {
       if (trimmed) sp.set("q", trimmed);
       else sp.delete("q");
       const s = sp.toString();
-      router.replace(s ? `${pathname}?${s}` : pathname);
+      router.replace(currentPathHref(s ? `${pathname}?${s}` : pathname));
     }, 300);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps

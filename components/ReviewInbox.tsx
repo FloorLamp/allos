@@ -3,6 +3,7 @@ import { IconAlertTriangle } from "@tabler/icons-react";
 import type { IntegrationSyncEvent, IntegrationId } from "@/lib/types";
 import type { UnitPrefs } from "@/lib/settings";
 import { getIntegration } from "@/lib/integrations/registry";
+import { integrationDetailHref, type AppRoute } from "@/lib/hrefs";
 import type { FeedEntry } from "@/lib/import-feed";
 import RelativeTime from "@/components/RelativeTime";
 import RawPayloadViewer from "@/components/RawPayloadViewer";
@@ -33,8 +34,8 @@ function providerName(id: string): string {
 }
 
 // Only providers with a real setup page are linkable (/integrations/<id>).
-function providerHref(id: string): string | null {
-  return getIntegration(id as IntegrationId) ? `/integrations/${id}` : null;
+function providerHref(id: string): AppRoute | null {
+  return integrationDetailHref(id as IntegrationId);
 }
 
 export default function ReviewInbox({

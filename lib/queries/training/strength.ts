@@ -1,4 +1,6 @@
 import { bodyweightAsOf } from "../../bodyweight";
+import { journalActivityHref } from "../../timeline-format";
+import type { AppRoute } from "../../hrefs";
 import {
   sessionBestSet,
   sessionWorkSets,
@@ -226,7 +228,7 @@ export const getRecentExerciseHistory = cache(function getRecentExerciseHistory(
 // preformatted so the (client) panel needs no units or formatting.
 export interface RecentSessionSummary {
   date: string;
-  href: string;
+  href: AppRoute;
   equipment: string | null;
   text: string;
 }
@@ -248,7 +250,7 @@ export function getRecentByExercise(
   )) {
     out[key] = h.sessions.map((s) => ({
       date: formatLongDate(s.date),
-      href: `/training?tab=log#activity-${s.activityId}`,
+      href: journalActivityHref(s.activityId),
       equipment: s.equipment,
       text: summarizeExercise(s.sets, unit).text,
     }));

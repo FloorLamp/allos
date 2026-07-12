@@ -1,4 +1,5 @@
 import { db } from "../db";
+import { encounterHref, type AppRoute } from "../hrefs";
 
 // PER-PROFILE activity reads for the provider detail/index pages (issue #275).
 //
@@ -16,7 +17,7 @@ export interface ProviderActivityItem {
   date: string | null;
   label: string;
   sublabel: string | null;
-  href: string;
+  href: AppRoute;
 }
 
 // Count chips shown on the detail page + index, all scoped to the active profile.
@@ -211,7 +212,7 @@ export function getProviderVisits(
     date: r.date,
     label: r.type || "Visit",
     sublabel: r.reason,
-    href: `/encounters/${r.id}`,
+    href: encounterHref(r.id),
   }));
 }
 

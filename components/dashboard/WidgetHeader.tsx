@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { IconArrowRight } from "@tabler/icons-react";
+import type { AppRoute } from "@/lib/hrefs";
 
 // Shared card header for dashboard widgets: the title on the left and a small
 // "go to the full page" link on the right. Extracted so the widgets that used to
@@ -10,7 +11,7 @@ export default function WidgetHeader({
   linkLabel,
 }: {
   title: string;
-  href: string;
+  href: AppRoute;
   linkLabel: string;
 }) {
   return (

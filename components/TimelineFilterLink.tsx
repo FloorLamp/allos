@@ -2,6 +2,7 @@
 
 import { useEffect, type ReactNode } from "react";
 import Link from "next/link";
+import type { AppRoute } from "@/lib/hrefs";
 
 declare global {
   interface Window {
@@ -104,7 +105,7 @@ export default function TimelineFilterLink({
   className,
   children,
 }: {
-  href: string;
+  href: AppRoute;
   className: string;
   children: ReactNode;
 }) {

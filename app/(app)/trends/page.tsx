@@ -20,6 +20,7 @@ import BiomarkersSection, {
 import BodySection from "./BodySection";
 import FitnessSection from "./FitnessSection";
 import InsightsSection from "./InsightsSection";
+import type { AppRoute } from "@/lib/hrefs";
 
 export const dynamic = "force-dynamic";
 
@@ -111,7 +112,7 @@ export default async function TrendsPage(props: {
     cmpA?: string;
     cmpB?: string;
     cmpn?: boolean;
-  }): string {
+  }): AppRoute {
     const sp = new URLSearchParams();
     if (params.tab && params.tab !== "overview") sp.set("tab", params.tab);
     if (params.from) sp.set("from", params.from);

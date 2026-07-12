@@ -2,6 +2,7 @@ import Link from "next/link";
 import { IconCaretUpFilled, IconCaretDownFilled } from "@tabler/icons-react";
 import ActivityIcon from "@/components/ActivityIcon";
 import { flagTone } from "@/lib/reference-range";
+import type { AppRoute } from "@/lib/hrefs";
 
 export function PageHeader({
   title,
@@ -38,7 +39,7 @@ export function StatCard({
   label: string;
   value: string;
   sub?: string;
-  href?: string;
+  href?: AppRoute;
 }) {
   const inner = (
     <div className="card transition hover:shadow-md">

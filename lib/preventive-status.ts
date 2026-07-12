@@ -1,4 +1,5 @@
 import type { Sex } from "./types";
+import type { AppRoute } from "./hrefs";
 import {
   PREVENTIVE_CATALOG,
   type Citation,
@@ -73,7 +74,7 @@ export interface PreventiveAssessment {
   // kind-based default (e.g. a screening links to the passport). Used by the
   // risk-gated lung prompt to point at Settings → Profile, where the missing
   // pack-years are entered.
-  href: string | null;
+  href: AppRoute | null;
   // The override in effect, if any (status is then not_recommended). Null when
   // the status is purely schedule-derived.
   override: PreventiveOverrideKind | null;
@@ -286,7 +287,7 @@ function assessSchedule(rule: PreventiveRule, ctx: Ctx): PreventiveAssessment {
 }
 
 // Where the risk-gated lung prompt sends the user to fill in the missing input.
-const SMOKING_SETTINGS_HREF = "/settings/profile";
+const SMOKING_SETTINGS_HREF: AppRoute = "/settings/profile";
 
 // Assess a risk-gated rule (issue #83) against the resolved smoking facts. Age/sex
 // still gate first: the schedule assessment runs, and if the profile is OUTSIDE the
