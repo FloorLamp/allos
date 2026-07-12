@@ -10,11 +10,12 @@
 // double-progression engine's vocabulary (lib/coaching.ts): a deload (drop the load
 // and rebuild) or a variation to restart progression.
 //
-// Pure and client-safe — no DB/network. The DB gather lives in
-// lib/queries/upcoming.ts, which maps each finding to an UpcomingItem carrying the
-// stable dedupeKey below so a page dismiss/snooze silences it (issue #227). Every
-// threshold is a named constant with its rationale; the boundaries are unit-tested
-// in lib/__tests__/training-observations.test.ts.
+// Pure and client-safe — no DB/network. The DB gather lives in lib/rule-findings.ts
+// (buildTrainingObservationFindings), which maps each finding into the shared Finding
+// envelope carrying the stable dedupeKey below so a page dismiss/snooze silences it
+// (issue #227); these render on the Training tab. Every threshold is a named constant
+// with its rationale; the boundaries are unit-tested in
+// lib/__tests__/training-observations.test.ts.
 
 import { liftInfo, type MovementPattern } from "./lifts";
 import { theilSenSlopePerDay, median, type DatedPoint } from "./robust-stats";
@@ -204,10 +205,24 @@ export const PLATEAU_MIN_SPAN_DAYS = 21;
 // weeks is indistinguishable from no progress.
 export const PLATEAU_FLAT_FRACTION = 0.015;
 
+// The rep-progression escape hatch (#432.2). estimate1RM caps its rep bonus at
+// E1RM_REP_CAP (12), so a fixed-load HIGH-REP progression (12→15→18 reps at the same
+// weight — lateral raises, curls, calf work) produces a capped-FLAT e1RM series that
+// isPlateau would call a plateau, telling a genuinely-progressing lifter to deload.
+// When reps at the top load are trending up by at least this many across the window,
+// the "flat" e1RM is a cap artifact, not a stall — skip the finding. Two reps over
+// six weeks is a real, sustained rep gain (not session-to-session noise).
+export const PLATEAU_REP_PROGRESSION_MIN = 2;
+
 // One exercise's dated best-per-session estimated 1RM (kg), for plateau detection.
+// Each point also carries the rep count of that day's best set, so the rep-progression
+// escape hatch can distinguish a true plateau from cap-flattened high-rep progression.
+export interface E1rmPoint extends DatedPoint {
+  reps?: number; // reps of the best-e1RM set that day (for the escape hatch)
+}
 export interface E1rmSeries {
   exercise: string;
-  points: DatedPoint[]; // { date, value: e1rmKg }, any order
+  points: E1rmPoint[]; // { date, value: e1rmKg, reps }, any order
 }
 
 // Whether a single lift's windowed e1RM series is flat (a plateau). Pure over the
@@ -225,6 +240,20 @@ export function isPlateau(points: readonly DatedPoint[]): boolean {
   return modeledChange < PLATEAU_FLAT_FRACTION * level;
 }
 
+// Whether reps are genuinely trending UP across the window — the signal that a
+// cap-flattened e1RM series is high-rep progression, not a stall (#432.2). Fits the
+// robust slope over the per-day rep counts and asks whether the modeled gain clears
+// PLATEAU_REP_PROGRESSION_MIN. Returns false when reps aren't tracked on the points.
+export function repsProgressing(points: readonly E1rmPoint[]): boolean {
+  const repPoints: DatedPoint[] = points
+    .filter((p) => p.reps != null && p.reps > 0)
+    .map((p) => ({ date: p.date, value: p.reps as number }));
+  if (repPoints.length < PLATEAU_MIN_POINTS) return false;
+  const slope = theilSenSlopePerDay(repPoints);
+  if (slope == null || slope <= 0) return false;
+  return slope * PLATEAU_WINDOW_DAYS >= PLATEAU_REP_PROGRESSION_MIN;
+}
+
 // Plateaued lifts: established series whose windowed e1RM is flat. `today` windows
 // each series to the trailing PLATEAU_WINDOW_DAYS. Alphabetical for deterministic
 // ordering across surfaces.
@@ -240,6 +269,9 @@ export function detectPlateaus(
       return ago >= 0 && ago <= cutoffAgo && p.value > 0;
     });
     if (!isPlateau(windowed)) continue;
+    // A flat e1RM with rising reps at a fixed load is progression the rep cap hid,
+    // not a stall — don't advise a deload (#432.2).
+    if (repsProgressing(windowed)) continue;
     out.push({
       kind: "plateau",
       key: plateauSignalKey(s.exercise),

@@ -419,16 +419,24 @@ export function getExerciseSetCountsSince(
 // can fit a robust slope over the recent window. Sessions whose best e1RM is 0
 // (bodyweight lifts with no known bodyweight) are omitted — a flat-zero series is not
 // a plateau. Profile-scoped via the activities JOIN.
-export function getExerciseE1rmSeries(
-  profileId: number
-): { exercise: string; points: { date: string; value: number }[] }[] {
+//
+// Keyed by the canonical exerciseHistoryKey — the SAME #331 merge getStrengthByExercise
+// uses (#432): "Barbell Curl"/"Curl" are ONE plateau series, not two sub-series that
+// each fall under PLATEAU_MIN_POINTS and hide a real plateau. Each point also carries
+// `reps` — the rep count of the best-e1RM set that day — so the plateau detector can
+// tell a genuine flat lift from high-rep progression the E1RM_REP_CAP flattens
+// (12→15→18 reps at fixed load caps to one e1RM; the rising reps are the escape hatch).
+export function getExerciseE1rmSeries(profileId: number): {
+  exercise: string;
+  points: { date: string; value: number; reps: number }[];
+}[] {
   const rows = db
     .prepare(
       `SELECT s.exercise, a.date,
               s.weight_kg, s.reps, s.weight_kg_right, s.reps_right
          FROM exercise_sets s JOIN activities a ON a.id = s.activity_id
         WHERE a.profile_id = ? AND (s.reps IS NOT NULL OR s.reps_right IS NOT NULL)
-        ORDER BY a.date ASC`
+        ORDER BY a.date ASC, a.id ASC`
     )
     .all(profileId) as {
     exercise: string;
@@ -440,13 +448,19 @@ export function getExerciseE1rmSeries(
   }[];
 
   const weights = loadWeightsAsc(profileId);
-  // exercise (lower) -> { display name, date -> best e1rm }
+  // canonical key -> { display name (first-seen), date -> best (e1rm, reps) }
   const acc = new Map<
     string,
-    { exercise: string; addBodyweight: boolean; byDate: Map<string, number> }
+    {
+      exercise: string;
+      addBodyweight: boolean;
+      byDate: Map<string, { e1rm: number; reps: number }>;
+    }
   >();
   for (const r of rows) {
-    const key = r.exercise.trim().toLowerCase();
+    // Canonical, variant-collapsed key so a lift's variants merge into ONE series
+    // exactly as getStrengthByExercise aggregates them (#331/#432).
+    const key = exerciseHistoryKey(r.exercise);
     let e = acc.get(key);
     if (!e) {
       e = {
@@ -457,23 +471,38 @@ export function getExerciseE1rmSeries(
       acc.set(key, e);
     }
     const base = e.addBodyweight ? (bodyweightAsOf(weights, r.date) ?? 0) : 0;
-    const sides: number[] = [];
+    const sides: { e1rm: number; reps: number }[] = [];
     if (r.reps != null)
-      sides.push(estimate1RM(base + (r.weight_kg ?? 0), r.reps));
+      sides.push({
+        e1rm: estimate1RM(base + (r.weight_kg ?? 0), r.reps),
+        reps: r.reps,
+      });
     if (r.reps_right != null)
-      sides.push(estimate1RM(base + (r.weight_kg_right ?? 0), r.reps_right));
-    for (const e1rm of sides) {
-      const prev = e.byDate.get(r.date) ?? 0;
-      if (e1rm > prev) e.byDate.set(r.date, e1rm);
+      sides.push({
+        e1rm: estimate1RM(base + (r.weight_kg_right ?? 0), r.reps_right),
+        reps: r.reps_right,
+      });
+    for (const side of sides) {
+      const prev = e.byDate.get(r.date);
+      // Best e1RM that day; on a tie (e.g. reps past the cap, or bodyweight lifts)
+      // keep the higher rep count so the rep-progression escape hatch can see it.
+      if (
+        !prev ||
+        side.e1rm > prev.e1rm ||
+        (side.e1rm === prev.e1rm && side.reps > prev.reps)
+      )
+        e.byDate.set(r.date, side);
     }
   }
 
-  const out: { exercise: string; points: { date: string; value: number }[] }[] =
-    [];
+  const out: {
+    exercise: string;
+    points: { date: string; value: number; reps: number }[];
+  }[] = [];
   for (const e of acc.values()) {
     const points = [...e.byDate.entries()]
-      .filter(([, v]) => v > 0)
-      .map(([date, value]) => ({ date, value }))
+      .filter(([, v]) => v.e1rm > 0)
+      .map(([date, v]) => ({ date, value: v.e1rm, reps: v.reps }))
       .sort((a, b) => a.date.localeCompare(b.date));
     if (points.length > 0) out.push({ exercise: e.exercise, points });
   }
