@@ -20,6 +20,7 @@ import SubmitButton from "@/components/SubmitButton";
 import SnoozeDismissMenu from "@/components/SnoozeDismissMenu";
 import {
   groupAttention,
+  attentionCountLabel,
   type AttentionItem,
   type AttentionSeverity,
 } from "@/lib/attention";
@@ -181,7 +182,7 @@ export default function NeedsAttentionHero({
               >
                 {group.label}
                 <span className="ml-1 text-slate-400 dark:text-slate-500">
-                  ({group.items.length})
+                  ({attentionCountLabel(group.items.length, group.overflow)})
                 </span>
               </div>
               <div className="space-y-0.5">

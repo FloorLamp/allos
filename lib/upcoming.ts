@@ -132,6 +132,15 @@ export interface BandGroup {
   items: UpcomingItem[];
 }
 
+// Total item count across all bands (issue #512): the Upcoming page had no total
+// anywhere, so the dashboard hero's "+N more in Upcoming" had no number to
+// reconcile against. This sums the banded groups (every collected item lands in
+// exactly one band, so it equals the collected count) and is the one figure the
+// page header shows.
+export function totalUpcomingCount(groups: BandGroup[]): number {
+  return groups.reduce((sum, g) => sum + g.items.length, 0);
+}
+
 // Whole days from `today` to a due date: negative = overdue, 0 = today, positive
 // = future. A null due date counts as today (0). Calendar-based (timezone-
 // independent) — the caller resolves `today` in the profile's timezone.

@@ -254,6 +254,16 @@ export interface AttentionGroup {
 // normal day never trips it; low enough that a flood collapses to a link.
 export const ATTENTION_GROUP_CAP = 8;
 
+// The honest per-band count label for the hero (issue #512). When the per-band
+// cap truncated the rendered rows, the badge must show BOTH the shown count and
+// the true pre-cap total — "8 of 11" — so the card reconciles with the Upcoming
+// page (which shows the full band count) instead of reading as a bare "8" that
+// silently means the cap. No overflow → the plain count. Pure so it's unit-tested
+// and the hero component is a formatter over it.
+export function attentionCountLabel(shown: number, overflow: number): string {
+  return overflow > 0 ? `${shown} of ${shown + overflow}` : `${shown}`;
+}
+
 // Group the ordered items by severity, dropping empty bands, in fixed
 // Overdue → Today → This week → For review order — for the hero's section layout.
 // Each group keeps at most `cap` rows (most urgent first — the input is already

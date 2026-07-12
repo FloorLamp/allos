@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   ATTENTION_GROUP_CAP,
+  attentionCountLabel,
   buildAttention,
   groupAttention,
   SEVERITY_ORDER,
@@ -294,5 +295,20 @@ describe("groupAttention", () => {
     const [tight] = groupAttention(items, 2);
     expect(tight.items).toHaveLength(2);
     expect(tight.overflow).toBe(10);
+  });
+});
+
+// Issue #512 — the honest per-band count label so the card reconciles with the
+// Upcoming page instead of showing a bare capped count.
+describe("attentionCountLabel", () => {
+  it("shows the plain count when nothing overflows", () => {
+    expect(attentionCountLabel(5, 0)).toBe("5");
+    expect(attentionCountLabel(0, 0)).toBe("0");
+  });
+
+  it("shows 'shown of total' when the cap truncated the band", () => {
+    // The reported case: 8 shown of 11 true → "8 of 11", not a bare "8".
+    expect(attentionCountLabel(8, 3)).toBe("8 of 11");
+    expect(attentionCountLabel(2, 10)).toBe("2 of 12");
   });
 });
