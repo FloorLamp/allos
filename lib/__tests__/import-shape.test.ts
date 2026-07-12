@@ -24,6 +24,14 @@ function doneExtraction(
     },
     results: [],
     immunizations: [],
+    conditions: [],
+    allergies: [],
+    procedures: [],
+    encounters: [],
+    familyHistory: [],
+    carePlanItems: [],
+    careGoals: [],
+    drops: [],
     ...over,
   };
 }
@@ -350,6 +358,185 @@ describe("extractionToPersistInput (AI path)", () => {
     );
     expect(input.heights).toEqual([]);
     expect(input.records.map((r) => r.name)).toEqual(["Body Height"]);
+  });
+
+  it("maps clinical domains, normalizing allergy/condition status to the CHECK set", () => {
+    const input = extractionToPersistInput(
+      doneExtraction({
+        conditions: [
+          {
+            name: "Type 2 diabetes mellitus",
+            code: "E11.9",
+            code_system: "ICD-10-CM",
+            status: "Resolved", // → resolved
+            onset_date: "2019-05-01",
+            resolved_date: null,
+          },
+        ],
+        allergies: [
+          {
+            substance: "Penicillin",
+            substance_code: null,
+            substance_code_system: null,
+            reaction: "Hives",
+            severity: "moderate",
+            status: "garbage-status", // unknown → active
+            onset_date: null,
+          },
+        ],
+        procedures: [
+          {
+            name: "Appendectomy",
+            code: "44970",
+            code_system: "CPT",
+            date: "2010-08-01",
+          },
+        ],
+        familyHistory: [
+          {
+            relation: "mother",
+            condition: "Breast cancer",
+            code: null,
+            code_system: null,
+            onset_age: 52,
+            deceased: 1,
+          },
+        ],
+        carePlanItems: [
+          {
+            description: "Follow up in 3 months",
+            code: null,
+            code_system: null,
+            category: "encounter",
+            planned_date: "2024-05-01",
+            status: "planned",
+          },
+        ],
+        careGoals: [
+          {
+            description: "A1c < 7.0%",
+            code: null,
+            code_system: null,
+            target_date: null,
+            status: "active",
+          },
+        ],
+      }),
+      "2024-02-01"
+    );
+    expect(input.conditions).toEqual([
+      {
+        name: "Type 2 diabetes mellitus",
+        code: "E11.9",
+        code_system: "ICD-10-CM",
+        status: "resolved",
+        onset_date: "2019-05-01",
+        resolved_date: null,
+        external_id: null,
+      },
+    ]);
+    expect(input.allergies[0].status).toBe("active"); // unknown normalized to active
+    expect(input.procedures[0]).toMatchObject({
+      name: "Appendectomy",
+      code: "44970",
+      provider: null,
+      external_id: null,
+    });
+    expect(input.familyHistory[0]).toMatchObject({
+      relation: "mother",
+      condition: "Breast cancer",
+      onset_age: 52,
+      deceased: 1,
+    });
+    expect(input.carePlanItems[0]).toMatchObject({
+      description: "Follow up in 3 months",
+      category: "encounter",
+      status: "planned", // free-text passthrough
+      provider: null,
+    });
+    expect(input.careGoals[0]).toMatchObject({ description: "A1c < 7.0%" });
+  });
+
+  it("resolves an encounter's provider + facility names into ImportedProviders", () => {
+    const input = extractionToPersistInput(
+      doneExtraction({
+        encounters: [
+          {
+            date: "2024-02-01",
+            end_date: "2024-02-01",
+            type: "Office Visit",
+            class_code: "AMB",
+            reason: "Fever",
+            diagnoses: ["Fever"],
+            provider: "Grace Hopper, MD",
+            location: "Sample Pediatrics",
+            notes: null,
+          },
+        ],
+      }),
+      "2024-02-01"
+    );
+    expect(input.encounters).toHaveLength(1);
+    expect(input.encounters[0]).toMatchObject({
+      date: "2024-02-01",
+      type: "Office Visit",
+      diagnoses: ["Fever"],
+      external_id: null,
+    });
+    expect(input.encounters[0].provider).toEqual({
+      name: "Grace Hopper, MD",
+      type: "individual",
+      npi: null,
+      identifier: null,
+      phone: null,
+      address: null,
+    });
+    expect(input.encounters[0].location?.name).toBe("Sample Pediatrics");
+    expect(input.encounters[0].location?.type).toBe("organization");
+  });
+
+  it("registers meta.source as an organization provider", () => {
+    const input = extractionToPersistInput(
+      doneExtraction({ meta: { ...doneExtraction().meta, source: "LabCorp" } }),
+      "2024-02-01"
+    );
+    expect(input.providers).toEqual([
+      {
+        name: "LabCorp",
+        type: "organization",
+        npi: null,
+        identifier: null,
+        phone: null,
+        address: null,
+      },
+    ]);
+  });
+
+  it("produces an import report carrying the extraction's drop accounting", () => {
+    const input = extractionToPersistInput(
+      doneExtraction({
+        conditions: [
+          {
+            name: "Hypertension",
+            code: null,
+            code_system: null,
+            status: null,
+            onset_date: null,
+            resolved_date: null,
+          },
+        ],
+        drops: [
+          { kind: "allergy", label: "(unnamed allergy)", reason: "no_value" },
+        ],
+      }),
+      "2024-02-01"
+    );
+    const report = JSON.parse(input.meta.importReport!);
+    expect(report.imported).toBe(1); // one condition landed
+    expect(report.considered).toBe(2); // + one row-level drop
+    expect(report.drops).toEqual([
+      { kind: "allergy", label: "(unnamed allergy)", reason: "no_value" },
+    ]);
   });
 });
 

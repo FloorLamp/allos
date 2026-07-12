@@ -3,6 +3,7 @@ import {
   normalizeSex,
   normalizeBirthdate,
   normalizeAge,
+  normalizeClinicalDomains,
 } from "@/lib/medical-extract";
 
 describe("normalizeSex", () => {
@@ -65,5 +66,95 @@ describe("normalizeAge", () => {
     expect(normalizeAge("")).toBeNull();
     expect(normalizeAge("old")).toBeNull();
     expect(normalizeAge(null)).toBeNull();
+  });
+});
+
+describe("normalizeClinicalDomains", () => {
+  it("returns empty arrays + no drops for absent/garbage input", () => {
+    const out = normalizeClinicalDomains({});
+    expect(out.conditions).toEqual([]);
+    expect(out.allergies).toEqual([]);
+    expect(out.procedures).toEqual([]);
+    expect(out.encounters).toEqual([]);
+    expect(out.familyHistory).toEqual([]);
+    expect(out.carePlanItems).toEqual([]);
+    expect(out.careGoals).toEqual([]);
+    expect(out.drops).toEqual([]);
+    // A non-array field is tolerated (treated as empty), not thrown on.
+    expect(normalizeClinicalDomains({ conditions: "nope" }).conditions).toEqual(
+      []
+    );
+  });
+
+  it("coerces shapes and keeps the model's raw status (normalized downstream)", () => {
+    const out = normalizeClinicalDomains({
+      conditions: [
+        {
+          name: "  Asthma  ",
+          code: "J45.909",
+          code_system: "ICD-10-CM",
+          status: "Active",
+          onset_date: "2015-01-01",
+          resolved_date: "not-a-date",
+        },
+      ],
+    });
+    expect(out.conditions).toEqual([
+      {
+        name: "Asthma",
+        code: "J45.909",
+        code_system: "ICD-10-CM",
+        status: "Active", // raw — enum normalization happens in import-shape
+        onset_date: "2015-01-01",
+        resolved_date: null, // junk date dropped to null
+      },
+    ]);
+  });
+
+  it("drops entries missing their required identifier, with a reported reason", () => {
+    const out = normalizeClinicalDomains({
+      conditions: [{ name: "  " }, { name: "Diabetes" }],
+      allergies: [{ reaction: "Hives" }], // no substance
+      procedures: [{ code: "44970" }], // no name
+      encounters: [{ type: "Office Visit" }], // no date
+      family_history: [{ relation: "mother" }], // no condition
+      care_plan: [{ status: "planned" }], // no description
+      care_goals: [{ code: "x" }], // no description
+    });
+    expect(out.conditions.map((c) => c.name)).toEqual(["Diabetes"]);
+    expect(out.drops.map((d) => d.kind).sort()).toEqual([
+      "allergy",
+      "care_goal",
+      "care_plan",
+      "condition",
+      "encounter",
+      "family_history",
+      "procedure",
+    ]);
+    expect(out.drops.every((d) => d.reason === "no_value")).toBe(true);
+    // The undated encounter's drop keeps its type as the label.
+    expect(out.drops.find((d) => d.kind === "encounter")?.label).toBe(
+      "Office Visit"
+    );
+  });
+
+  it("coerces encounter diagnoses + deceased flag", () => {
+    const out = normalizeClinicalDomains({
+      encounters: [
+        {
+          date: "2024-02-01",
+          diagnoses: ["Fever", "", null, "Cough"],
+          provider: "Grace Hopper",
+          location: "Sample Clinic",
+        },
+      ],
+      family_history: [
+        { condition: "Stroke", deceased: "yes", onset_age: "70" },
+      ],
+    });
+    expect(out.encounters[0].diagnoses).toEqual(["Fever", "Cough"]);
+    expect(out.encounters[0].provider).toBe("Grace Hopper");
+    expect(out.familyHistory[0].deceased).toBe(1);
+    expect(out.familyHistory[0].onset_age).toBe(70);
   });
 });

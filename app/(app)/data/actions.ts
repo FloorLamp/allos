@@ -544,6 +544,16 @@ export async function commitBiomarkers(
       },
       results: rows,
       immunizations: imms,
+      // The paste/CSV path carries tabular results + immunizations only — no
+      // clinical-narrative domains (those come from the AI document extractor).
+      conditions: [],
+      allergies: [],
+      procedures: [],
+      encounters: [],
+      familyHistory: [],
+      carePlanItems: [],
+      careGoals: [],
+      drops: [],
       model: "",
       raw: "",
     },

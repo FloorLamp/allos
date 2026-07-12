@@ -221,8 +221,13 @@ they fall back to a deterministic offline summary. Their per-profile daily cap i
 `AI_DAILY_NARRATIVE_LIMIT` (default 30).
 
 Uploaded medical documents (**Data → Import**) are extracted into
-structured records by the same API; without a key the file is still stored but
-extraction is skipped. Each upload then appears in the **Data → Review** feed —
+structured records by the same API — not just labs, vitals, and immunizations but
+the full clinical narrative a scanned/photographed summary carries: **conditions,
+allergies, procedures, visits, family history, and care-plan items & goals**, the
+same domains the MyChart/FHIR importer produces (a discharge or after-visit summary
+with no numeric analytes no longer imports as "0 records"). Without a key the file
+is still stored but extraction is skipped. Each upload then appears in the **Data →
+Review** feed —
 click through to verify what it produced, reprocess it, or see the extraction
 error. The detail view browses everything the import produced in one tabbed
 strip — one tab per type (labs, vitals, prescriptions, visits, conditions,
