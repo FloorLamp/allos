@@ -85,15 +85,45 @@ describe("Oura sync upsert/dedup", () => {
   it("first push inserts everything; an identical re-push is all-unchanged", () => {
     const first = apply();
     // 6 sleep samples (total + 4 stages + hrv) + 1 workout kcal sample = 7 samples.
-    expect(first.samples).toEqual({ inserted: 7, updated: 0, unchanged: 0 });
-    expect(first.acts).toEqual({ inserted: 1, updated: 0, unchanged: 0 });
-    expect(first.body).toEqual({ inserted: 1, updated: 0, unchanged: 0 });
+    expect(first.samples).toEqual({
+      inserted: 7,
+      updated: 0,
+      unchanged: 0,
+      suppressed: 0,
+    });
+    expect(first.acts).toEqual({
+      inserted: 1,
+      updated: 0,
+      unchanged: 0,
+      suppressed: 0,
+    });
+    expect(first.body).toEqual({
+      inserted: 1,
+      updated: 0,
+      unchanged: 0,
+      suppressed: 0,
+    });
 
     // Re-push the same rolling window → every row dedups on its natural key.
     const second = apply();
-    expect(second.samples).toEqual({ inserted: 0, updated: 0, unchanged: 7 });
-    expect(second.acts).toEqual({ inserted: 0, updated: 0, unchanged: 1 });
-    expect(second.body).toEqual({ inserted: 0, updated: 0, unchanged: 1 });
+    expect(second.samples).toEqual({
+      inserted: 0,
+      updated: 0,
+      unchanged: 7,
+      suppressed: 0,
+    });
+    expect(second.acts).toEqual({
+      inserted: 0,
+      updated: 0,
+      unchanged: 1,
+      suppressed: 0,
+    });
+    expect(second.body).toEqual({
+      inserted: 0,
+      updated: 0,
+      unchanged: 1,
+      suppressed: 0,
+    });
 
     // The workout landed with the right source + external id and grouping component.
     const act = db
@@ -134,7 +164,12 @@ describe("Oura sync upsert/dedup", () => {
       "UPDATE activities SET edited = 1, title = 'My hand-titled ride' WHERE profile_id = ? AND external_id = ?"
     ).run(profileId, "oura:workout-e2e-1");
     const res = apply();
-    expect(res.acts).toEqual({ inserted: 0, updated: 0, unchanged: 1 });
+    expect(res.acts).toEqual({
+      inserted: 0,
+      updated: 0,
+      unchanged: 1,
+      suppressed: 0,
+    });
     const stored = db
       .prepare(
         "SELECT title FROM activities WHERE profile_id = ? AND external_id = ?"
@@ -149,7 +184,12 @@ describe("Oura sync upsert/dedup", () => {
       "UPDATE body_metrics SET edited = 1, resting_hr = 44 WHERE profile_id = ? AND date = ? AND source IS ?"
     ).run(profileId, "2024-06-02", OURA_ID);
     const res = apply();
-    expect(res.body).toEqual({ inserted: 0, updated: 0, unchanged: 1 });
+    expect(res.body).toEqual({
+      inserted: 0,
+      updated: 0,
+      unchanged: 1,
+      suppressed: 0,
+    });
     const bm = db
       .prepare(
         "SELECT resting_hr FROM body_metrics WHERE profile_id = ? AND date = ? AND source IS ?"
@@ -179,7 +219,12 @@ describe("Oura sync upsert/dedup", () => {
     const changed = db.transaction(() =>
       upsertActivities(profileId, [w.activity], OURA_ID)
     )();
-    expect(changed).toEqual({ inserted: 0, updated: 1, unchanged: 0 });
+    expect(changed).toEqual({
+      inserted: 0,
+      updated: 1,
+      unchanged: 0,
+      suppressed: 0,
+    });
     const stored = db
       .prepare(
         "SELECT intensity FROM activities WHERE profile_id = ? AND external_id = ?"
@@ -190,7 +235,12 @@ describe("Oura sync upsert/dedup", () => {
     const again = db.transaction(() =>
       upsertActivities(profileId, [w.activity], OURA_ID)
     )();
-    expect(again).toEqual({ inserted: 0, updated: 0, unchanged: 1 });
+    expect(again).toEqual({
+      inserted: 0,
+      updated: 0,
+      unchanged: 1,
+      suppressed: 0,
+    });
   });
 
   it("does not touch a manual body-metrics row for the same date (source-scoped)", () => {

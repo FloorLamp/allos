@@ -13,6 +13,7 @@ import {
   sharedMeasures,
   findBodyMetricConflicts,
   undecidedPairs,
+  suppressingSignatures,
   foldActivityFields,
   activityRichness,
   preferActivityKeeper,
@@ -542,6 +543,40 @@ describe("undecidedPairs (decision durability)", () => {
     const redetected = findActivityDuplicates([manual, stravaAfter]);
     expect(redetected).toHaveLength(1);
     expect(undecidedPairs(redetected, decided)).toHaveLength(0);
+  });
+});
+
+describe("suppressingSignatures (#507 — merged never silences a re-formed pair)", () => {
+  it("keeps kept-both / dismissed but EXCLUDES merged", () => {
+    const decisions = new Map<string, "merged" | "kept-both" | "dismissed">([
+      ["a|b", "merged"],
+      ["c|d", "kept-both"],
+      ["e|f", "dismissed"],
+    ]);
+    const set = suppressingSignatures(decisions);
+    expect(set.has("a|b")).toBe(false); // merged resurfaces
+    expect(set.has("c|d")).toBe(true);
+    expect(set.has("e|f")).toBe(true);
+  });
+
+  it("a re-formed merged pair is NOT suppressed (resurfaces in Review)", () => {
+    // The absorbed strava row was merged into the manual keeper; a resync re-inserted
+    // it, so BOTH rows exist again and the detector re-forms the pair.
+    const manual = act({ id: 5, source: null, duration_min: 30 });
+    const strava = act({
+      id: 9,
+      source: "strava",
+      external_id: "strava:1",
+      duration_min: 31,
+    });
+    const pair = findActivityDuplicates([manual, strava])[0];
+    const decided = suppressingSignatures(
+      new Map([[pair.signature, "merged"]])
+    );
+    // undecidedPairs with the merged-excluded set keeps the pair visible.
+    expect(
+      undecidedPairs(findActivityDuplicates([manual, strava]), decided)
+    ).toHaveLength(1);
   });
 });
 

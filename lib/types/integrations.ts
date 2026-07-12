@@ -75,6 +75,9 @@ export interface IntegrationSyncEvent {
   inserted: number | null;
   updated: number | null;
   unchanged: number | null;
+  // Rows the source re-sent that a re-import tombstone held out (#507/#508). Null on
+  // legacy rows recorded before the column existed.
+  suppressed: number | null;
   skipped: number | null;
   // Bare filename of the captured raw provider payload under
   // data/integration-payloads/<profile_id>/ (issue #9), or null. Read back only by

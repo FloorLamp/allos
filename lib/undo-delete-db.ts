@@ -19,6 +19,11 @@ import {
   type Row,
 } from "./undo-delete";
 import { revertActivityMerge } from "./merge-activity";
+import {
+  writeImportTombstoneForRow,
+  removeImportTombstoneForRow,
+  liveRowIdForCapturedRoot,
+} from "./integrations/tombstones";
 
 // Human-readable, NON-PHI descriptors stored in deleted_rows.label (for a possible
 // future trash view). Never the user's title/name — that stays in `payload`.
@@ -96,6 +101,12 @@ export function captureDelete(
       profileId
     );
 
+    // Re-import tombstone (#507/#508): when the deleted root is a source-owned row
+    // (a Strava/HC activity, an imported scale reading, an imported vital), record its
+    // natural key so the next rolling-window resync doesn't resurrect it. No-op for a
+    // manual row (importTombstoneForRow returns null). Undo removes it (restore below).
+    writeImportTombstoneForRow(profileId, spec.ownedTable, rootRow);
+
     return Number(info.lastInsertRowid);
   });
 }
@@ -115,14 +126,36 @@ export function restoreDeletedRow(profileId: number, undoId: number): boolean {
   const payload = parsePayload(spec0.payload);
   const spec = getKindSpec(payload.kind);
 
+  const rootEntity = spec.entities[0];
+
   writeTx(() => {
     const idMaps: IdMaps = {};
     for (const entity of spec.entities) {
+      const isRoot = entity.entity === rootEntity.entity;
       const map = new Map<number, number>();
       idMaps[entity.entity] = map;
       const captured = payload.rows[entity.entity] ?? [];
       for (const row of captured) {
         const oldId = row.id;
+        // Natural-key collision on the source-owned root (#509): between the delete
+        // and this undo a resync may have re-created a row under the same
+        // external_id / (date, source) — verbatim re-insert would throw on the UNIQUE
+        // index. When a live row already occupies the key, adopt it as the restored
+        // row (map old id -> live id, skip the insert) rather than throwing: children
+        // remap onto it and a merge-undo inverts the keeper against it. With the
+        // tombstone in place the resync never re-inserted, so this only fires for a
+        // pre-tombstone delete; either way undo never crashes.
+        if (isRoot && typeof oldId === "number") {
+          const liveId = liveRowIdForCapturedRoot(
+            profileId,
+            spec.ownedTable,
+            row
+          );
+          if (liveId !== null) {
+            map.set(oldId, liveId);
+            continue;
+          }
+        }
         const toInsert = remapRow(row, idMaps, entity.fks);
         // Reconcile captured FK links that point OUTSIDE this capture and may have
         // been deleted between capture and undo (#202): null a now-dangling nullable
@@ -182,6 +215,13 @@ export function restoreDeletedRow(profileId: number, undoId: number): boolean {
       if (typeof newDropId === "number")
         revertActivityMerge(profileId, payload.merge, newDropId);
     }
+
+    // Remove the re-import tombstone the delete/merge wrote (#200 side-effect
+    // inversion): the row is back, so the rolling window should resume ingesting its
+    // natural key. No-op for a manual root (no tombstone was written).
+    const capturedRoot = payload.rows[rootEntity.entity]?.[0];
+    if (capturedRoot)
+      removeImportTombstoneForRow(profileId, spec.ownedTable, capturedRoot);
 
     db.prepare(`DELETE FROM deleted_rows WHERE id = ? AND profile_id = ?`).run(
       undoId,

@@ -7,6 +7,12 @@ import {
 } from "@/lib/body-metric-extract";
 import { emptyCounts, rowsEqual, isEditLocked } from "./sync-log";
 import type { UpsertCounts } from "./sync-log";
+import { loadImportTombstones } from "./tombstones";
+import {
+  bodyMetricTombstoneKey,
+  metricSampleTombstoneKey,
+  hrMinuteTombstoneKey,
+} from "./tombstone-keys";
 
 // Provider-agnostic record shapes. Every integration parses its own payload into
 // these, then calls the shared upserts below — so a new provider (Strava, Garmin)
@@ -151,6 +157,9 @@ export function upsertBodyMetrics(
        resting_hr = excluded.resting_hr`
   );
 
+  // Re-import tombstones for body_metrics: a source-owned row the user merged away or
+  // deleted must NOT be re-inserted by the rolling window (#507/#508). Loaded once.
+  const tombstoned = loadImportTombstones(profileId, "body_metrics");
   const counts = emptyCounts();
   for (const r of rows) {
     const incoming: BodyMetricValues = {
@@ -161,6 +170,12 @@ export function upsertBodyMetrics(
     if (!hasBodyMetric(incoming)) continue; // nothing to store
     const mine = find.get(profileId, r.date, source) as
       (BodyMetricValues & { id: number; edited: number | null }) | undefined;
+    // No live row AND a tombstone for this (date, source): the user removed it — skip
+    // the re-insert and count it suppressed (a live row wins; the tombstone is stale).
+    if (!mine && tombstoned.has(bodyMetricTombstoneKey(r.date, source))) {
+      counts.suppressed++;
+      continue;
+    }
     // A hand-edited imported row is never overwritten; count it as unchanged (we
     // deliberately persist nothing), mirroring the activities path.
     if (mine && isEditLocked(mine.edited)) {
@@ -241,6 +256,9 @@ export function upsertMetricSamples(
      ON CONFLICT(profile_id, metric, source, start_time, end_time) DO UPDATE SET
        value = excluded.value, date = excluded.date`
   );
+  // Re-import tombstones for metric_samples (#508): a user-deleted sample must not be
+  // re-inserted by the rolling window. Loaded once for the batch.
+  const tombstoned = loadImportTombstones(profileId, "metric_samples");
   const counts = emptyCounts();
   for (const r of rows) {
     if ((BODY_METRIC_SAMPLE_MEASURES as readonly string[]).includes(r.metric)) {
@@ -255,6 +273,16 @@ export function upsertMetricSamples(
       r.start_time,
       r.end_time
     ) as { value: number; date: string } | undefined;
+    // No live row AND a tombstone for this natural key: skip the resurrecting insert.
+    if (
+      !found &&
+      tombstoned.has(
+        metricSampleTombstoneKey(r.metric, source, r.start_time, r.end_time)
+      )
+    ) {
+      counts.suppressed++;
+      continue;
+    }
     stmt.run(
       profileId,
       source,
@@ -298,6 +326,9 @@ export function upsertHrMinutes(
        bpm = excluded.bpm, bpm_min = excluded.bpm_min, bpm_max = excluded.bpm_max,
        n = excluded.n`
   );
+  // Re-import tombstones for hr_minutes (#508): a user-deleted minute bucket must not
+  // be re-inserted by the rolling window. Loaded once for the batch.
+  const tombstoned = loadImportTombstones(profileId, "hr_minutes");
   const counts = emptyCounts();
   for (const r of rows) {
     const found = find.get(profileId, r.ts, source) as
@@ -308,6 +339,11 @@ export function upsertHrMinutes(
           n: number;
         }
       | undefined;
+    // No live row AND a tombstone for this (ts, source): skip the resurrecting insert.
+    if (!found && tombstoned.has(hrMinuteTombstoneKey(r.ts, source))) {
+      counts.suppressed++;
+      continue;
+    }
     stmt.run(profileId, r.ts, r.bpm, r.bpm_min, r.bpm_max, r.n, source);
     if (!found) counts.inserted++;
     else if (
@@ -357,6 +393,8 @@ export function upsertVitals(
            canonical_name = ?
      WHERE id = ?`
   );
+  // Re-import tombstones for medical_records vitals (#508), keyed by external_id.
+  const tombstoned = loadImportTombstones(profileId, "medical_records");
   const ids: number[] = [];
   const counts = emptyCounts();
   for (const r of rows) {
@@ -369,6 +407,12 @@ export function upsertVitals(
     // do NOT push its id — the row is left entirely untouched, no flag re-derivation.
     if (found && isEditLocked(found.edited)) {
       counts.unchanged++;
+      continue;
+    }
+    // No live row AND a tombstone for this external_id: the user deleted this vital —
+    // skip the resurrecting insert and count it suppressed.
+    if (!found && tombstoned.has(r.external_id)) {
+      counts.suppressed++;
       continue;
     }
     if (found) {
@@ -473,6 +517,9 @@ export function upsertActivities(
            start_time = ?, end_time = ?, ${metricSet}, components = ?, source = ?
      WHERE id = ?`
   );
+  // Re-import tombstones for activities (#507/#508), keyed by external_id. A row the
+  // user merged away or deleted must not be re-inserted by the trailing re-scan.
+  const tombstoned = loadImportTombstones(profileId, "activities");
   const counts = emptyCounts();
   for (const r of rows) {
     const metrics = activityMetricValues(r);
@@ -525,6 +572,11 @@ export function upsertActivities(
         );
         counts.updated++;
       }
+    } else if (tombstoned.has(r.external_id)) {
+      // No live row AND a tombstone for this external_id: the user merged/deleted it —
+      // skip the resurrecting insert and count it suppressed.
+      counts.suppressed++;
+      continue;
     } else {
       insert.run(
         profileId,

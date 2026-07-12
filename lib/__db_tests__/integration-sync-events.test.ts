@@ -157,7 +157,12 @@ describe("integration_sync_events: simulated Health Connect ingest path", () => 
     ];
     const counts = upsertMetricSamples(profileA, rows, "health-connect");
     // Both rows are brand-new on this first upsert.
-    expect(counts).toEqual({ inserted: 2, updated: 0, unchanged: 0 });
+    expect(counts).toEqual({
+      inserted: 2,
+      updated: 0,
+      unchanged: 0,
+      suppressed: 0,
+    });
     const skipped = 1; // pretend one payload record was malformed
     const tally = summarizeSplit(counts, skipped);
     const win = dateWindow(rows.map((r) => r.date));
@@ -194,7 +199,12 @@ describe("integration_sync_events: simulated Health Connect ingest path", () => 
     // Idempotency check: re-upserting the same window writes no NEW rows and now
     // classifies both as unchanged (the split accounting).
     const rewritten = upsertMetricSamples(profileA, rows, "health-connect");
-    expect(rewritten).toEqual({ inserted: 0, updated: 0, unchanged: 2 });
+    expect(rewritten).toEqual({
+      inserted: 0,
+      updated: 0,
+      unchanged: 2,
+      suppressed: 0,
+    });
     const persistedAfter = db
       .prepare(
         "SELECT COUNT(*) AS n FROM metric_samples WHERE profile_id = ? AND metric = 'steps'"

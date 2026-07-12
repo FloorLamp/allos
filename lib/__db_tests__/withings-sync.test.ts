@@ -111,25 +111,47 @@ describe("Withings sync upsert/dedup", () => {
   it("first push inserts everything; an identical re-push is all-unchanged", () => {
     const first = apply();
     // Two groups on the same day merge into ONE (date, source) body-metrics row.
-    expect(first.body).toEqual({ inserted: 1, updated: 0, unchanged: 0 });
+    expect(first.body).toEqual({
+      inserted: 1,
+      updated: 0,
+      unchanged: 0,
+      suppressed: 0,
+    });
     // Systolic + diastolic = 2 vitals.
     expect(first.vitals.counts).toEqual({
       inserted: 2,
       updated: 0,
       unchanged: 0,
+      suppressed: 0,
     });
     // sleep_min + 4 stages = 5 sleep samples, plus 4 composition point samples
     // (lean/muscle/bone mass + body water) from the weigh-in = 9.
-    expect(first.samples).toEqual({ inserted: 9, updated: 0, unchanged: 0 });
+    expect(first.samples).toEqual({
+      inserted: 9,
+      updated: 0,
+      unchanged: 0,
+      suppressed: 0,
+    });
 
     const second = apply();
-    expect(second.body).toEqual({ inserted: 0, updated: 0, unchanged: 1 });
+    expect(second.body).toEqual({
+      inserted: 0,
+      updated: 0,
+      unchanged: 1,
+      suppressed: 0,
+    });
     expect(second.vitals.counts).toEqual({
       inserted: 0,
       updated: 0,
       unchanged: 2,
+      suppressed: 0,
     });
-    expect(second.samples).toEqual({ inserted: 0, updated: 0, unchanged: 9 });
+    expect(second.samples).toEqual({
+      inserted: 0,
+      updated: 0,
+      unchanged: 9,
+      suppressed: 0,
+    });
   });
 
   it("BP lands as vitals in medical_records like a manual reading", () => {
@@ -185,7 +207,12 @@ describe("Withings sync upsert/dedup", () => {
     const first = db.transaction(() =>
       upsertVitals(profileId, m.vitals, WITHINGS_ID)
     )();
-    expect(first.counts).toEqual({ inserted: 1, updated: 0, unchanged: 0 });
+    expect(first.counts).toEqual({
+      inserted: 1,
+      updated: 0,
+      unchanged: 0,
+      suppressed: 0,
+    });
     const vo2 = db
       .prepare(
         `SELECT category, value_num, unit, canonical_name FROM medical_records
@@ -204,7 +231,12 @@ describe("Withings sync upsert/dedup", () => {
     const second = db.transaction(() =>
       upsertVitals(profileId, m.vitals, WITHINGS_ID)
     )();
-    expect(second.counts).toEqual({ inserted: 0, updated: 0, unchanged: 1 });
+    expect(second.counts).toEqual({
+      inserted: 0,
+      updated: 0,
+      unchanged: 1,
+      suppressed: 0,
+    });
   });
 
   it("writes weight, body fat, and heart pulse to one body-metrics row", () => {
@@ -230,7 +262,12 @@ describe("Withings sync upsert/dedup", () => {
       "UPDATE body_metrics SET edited = 1, weight_kg = 71.2 WHERE profile_id = ? AND date = ? AND source IS ?"
     ).run(profileId, "2023-11-14", WITHINGS_ID);
     const res = apply();
-    expect(res.body).toEqual({ inserted: 0, updated: 0, unchanged: 1 });
+    expect(res.body).toEqual({
+      inserted: 0,
+      updated: 0,
+      unchanged: 1,
+      suppressed: 0,
+    });
     const bm = db
       .prepare(
         "SELECT weight_kg FROM body_metrics WHERE profile_id = ? AND date = ? AND source IS ?"

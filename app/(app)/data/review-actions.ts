@@ -9,6 +9,7 @@ import {
   BODY_METRIC_DOMAIN,
 } from "@/lib/import-review/detect";
 import { writeActivityFold } from "@/lib/merge-activity";
+import { writeImportTombstoneForRow } from "@/lib/integrations/tombstones";
 import { parseOverrideFields } from "@/lib/import-review/conflicts";
 import { mergeBodyMetric } from "@/lib/body-metric-extract";
 import type { PairDecision } from "@/lib/import-review/detect";
@@ -74,6 +75,11 @@ export async function mergeActivityPair(formData: FormData) {
       dropId,
       profile.id
     );
+    // Re-import tombstone (#507): if the absorbed row is source-owned, record its
+    // external_id so the trailing-window resync can't re-insert it as a fresh unmerged
+    // row. This resolver's merge is not undoable, so the tombstone is permanent — the
+    // merged-away duplicate stays gone. No-op for a manual absorbed row.
+    writeImportTombstoneForRow(profile.id, "activities", drop);
     recordPairDecision(profile.id, ACTIVITY_DOMAIN, signature, "merged");
     return true;
   });
@@ -105,13 +111,15 @@ export async function mergeBodyMetricPair(formData: FormData) {
       | undefined;
     const drop = db
       .prepare(
-        "SELECT weight_kg, body_fat_pct, resting_hr FROM body_metrics WHERE id = ? AND profile_id = ?"
+        "SELECT weight_kg, body_fat_pct, resting_hr, date, source FROM body_metrics WHERE id = ? AND profile_id = ?"
       )
       .get(dropId, profile.id) as
       | {
           weight_kg: number | null;
           body_fat_pct: number | null;
           resting_hr: number | null;
+          date: string;
+          source: string | null;
         }
       | undefined;
     if (!keep || !drop) return false;
@@ -138,6 +146,10 @@ export async function mergeBodyMetricPair(formData: FormData) {
       dropId,
       profile.id
     );
+    // Re-import tombstone (#507): a source-owned absorbed row keyed on (date, source)
+    // must not be re-inserted by the next `ON CONFLICT(profile_id, date, source)`
+    // push. Not undoable here, so it's permanent. No-op for a manual (source NULL) row.
+    writeImportTombstoneForRow(profile.id, "body_metrics", drop);
     recordPairDecision(profile.id, BODY_METRIC_DOMAIN, signature, "merged");
     return true;
   });

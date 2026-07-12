@@ -22,10 +22,15 @@ export interface UpsertCounts {
   inserted: number;
   updated: number;
   unchanged: number;
+  // Rows the source re-sent that a re-import TOMBSTONE held out (issues #507/#508):
+  // a merged-away or user-deleted source-owned row the upsert would otherwise have
+  // re-inserted. Counted (never silently dropped) so the Review feed can show
+  // "N suppressed" and `received` stays honest.
+  suppressed: number;
 }
 
 export function emptyCounts(): UpsertCounts {
-  return { inserted: 0, updated: 0, unchanged: 0 };
+  return { inserted: 0, updated: 0, unchanged: 0, suppressed: 0 };
 }
 
 // The user-edit lock (issue #133): true when an integration-owned row has been
@@ -46,6 +51,7 @@ export function foldCounts(parts: UpsertCounts[]): UpsertCounts {
     out.inserted += p.inserted;
     out.updated += p.updated;
     out.unchanged += p.unchanged;
+    out.suppressed += p.suppressed;
   }
   return out;
 }
@@ -65,13 +71,17 @@ export function summarizeSplit(
   const inserted = Math.max(0, Math.round(counts.inserted));
   const updated = Math.max(0, Math.round(counts.updated));
   const unchanged = Math.max(0, Math.round(counts.unchanged));
+  const suppressed = Math.max(0, Math.round(counts.suppressed));
   const s = Math.max(0, Math.round(skipped));
   return {
     inserted,
     updated,
     unchanged,
+    suppressed,
     skipped: s,
-    received: inserted + updated + unchanged + s,
+    // A tombstone-suppressed row WAS handed to us by the source, so it belongs in
+    // `received` (no silent cap) even though it was deliberately not persisted.
+    received: inserted + updated + unchanged + suppressed + s,
   };
 }
 
@@ -102,6 +112,9 @@ export function formatSplitLabel(ev: {
   updated: number | null;
   unchanged: number | null;
   written: number | null;
+  // Tombstone-suppressed re-inserts (#507/#508). Absent on rows recorded before the
+  // column existed → treated as 0.
+  suppressed?: number | null;
 }): { primary: string; muted: boolean } {
   const { inserted, updated, unchanged } = ev;
   if (inserted === null && updated === null && unchanged === null) {
@@ -111,13 +124,18 @@ export function formatSplitLabel(ev: {
   const ins = inserted ?? 0;
   const upd = updated ?? 0;
   const unch = unchanged ?? 0;
-  if (ins + upd === 0) {
-    return { primary: "nothing new", muted: true };
-  }
+  const supp = ev.suppressed ?? 0;
   const segs: string[] = [];
   if (ins > 0) segs.push(`${ins} new`);
   if (upd > 0) segs.push(`${upd} changed`);
   if (unch > 0) segs.push(`${unch} unchanged`);
+  // A suppressed re-import is meaningful signal — the sync tried to bring back a row
+  // the user merged/deleted and the tombstone blocked it — so it shows even when
+  // nothing new landed, and keeps the row from reading as a muted "nothing new".
+  if (supp > 0) segs.push(`${supp} suppressed`);
+  if (ins + upd + supp === 0) {
+    return { primary: "nothing new", muted: true };
+  }
   return { primary: segs.join(" · "), muted: false };
 }
 
@@ -177,12 +195,15 @@ export function isNoOpSyncEvent(ev: {
   inserted: number | null;
   updated: number | null;
   unchanged: number | null;
+  // A suppressed re-import is NOT a no-op — the sync actively blocked a resurrection,
+  // which the user should see, so it must not collapse into the quiet-sync summary.
+  suppressed?: number | null;
 }): boolean {
   if (!ev.ok) return false;
   if (ev.inserted === null && ev.updated === null && ev.unchanged === null) {
     return false;
   }
-  return (ev.inserted ?? 0) + (ev.updated ?? 0) === 0;
+  return (ev.inserted ?? 0) + (ev.updated ?? 0) + (ev.suppressed ?? 0) === 0;
 }
 
 // The ids to prune from integration_sync_events on the retention sweep (issue #388):

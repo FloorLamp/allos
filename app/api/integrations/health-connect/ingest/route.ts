@@ -277,6 +277,7 @@ export async function POST(req: Request) {
     inserted: tally.inserted,
     updated: tally.updated,
     unchanged: tally.unchanged,
+    suppressed: tally.suppressed,
     skipped: tally.skipped,
     raw_ref: rawRef,
   });

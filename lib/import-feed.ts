@@ -36,6 +36,7 @@ export interface FeedSyncEvent {
   updated: number | null;
   unchanged: number | null;
   written: number | null;
+  suppressed: number | null;
   skipped: number | null;
   error: string | null;
   raw_ref: string | null;
