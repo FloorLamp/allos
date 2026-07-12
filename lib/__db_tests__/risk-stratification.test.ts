@@ -100,6 +100,36 @@ describe("issue #517 — cadence modulation & one-shots via collectUpcoming", ()
     }
   });
 
+  it("pregnancy brings glucose (GDM) + ferritin (anemia) retests due sooner, ranked + explained (#521)", () => {
+    const pid = makeProfile("Pregnant", "1994-01-01");
+    setUserSex(pid, "female");
+    // Glucose base cadence is 180d → a 150-day-old reading is not yet due; the
+    // pregnancy GDM rule tightens it to ~90d, bringing it due.
+    insertLab(pid, "Glucose", shiftDateStr(now, -150));
+    // Ferritin base cadence is 365d → a 200-day-old reading is not yet due; the
+    // pregnancy anemia rule tightens it to ~182d, bringing it due.
+    insertLab(pid, "Ferritin", shiftDateStr(now, -200));
+
+    // Baseline (not pregnant): neither is stale under its base cadence.
+    const before = collectUpcoming(pid, now);
+    expect(before.some((i) => i.key === "biomarker:glucose")).toBe(false);
+    expect(before.some((i) => i.key === "biomarker:ferritin")).toBe(false);
+
+    setRiskAttributes(pid, { ...EMPTY_RISK_ATTRIBUTES, pregnant: true });
+
+    const after = collectUpcoming(pid, now);
+    const glucose = after.find((i) => i.key === "biomarker:glucose");
+    expect(glucose, "glucose retest now due").toBeTruthy();
+    expect(glucose!.priority).toBe(2);
+    expect(glucose!.detail).toContain(
+      "Pregnancy — gestational diabetes screening"
+    );
+    const ferritin = after.find((i) => i.key === "biomarker:ferritin");
+    expect(ferritin, "ferritin retest now due").toBeTruthy();
+    expect(ferritin!.priority).toBe(2);
+    expect(ferritin!.detail).toContain("Pregnancy — anemia screening");
+  });
+
   it("a newborn bilirubin drawn in infancy is a one-shot, not a recurring retest", () => {
     // Born ~2 years ago; bilirubin drawn at ~1 month old (infant), now well past a
     // 365-day clock — a flat retest would nag, but the anchored one-shot suppresses it.

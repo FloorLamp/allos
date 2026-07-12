@@ -41,10 +41,10 @@ const FIELDS: {
     key: "pregnant",
     name: "pregnant",
     label: "Pregnant",
-    // Honest about today's behavior: the attribute is part of the curated risk
-    // model (#517 names it as an input), but no pregnancy rule ships yet — the
-    // hint must not promise prioritization RISK_RULES doesn't do.
-    hint: "Recorded as risk context — pregnancy-specific suggestions are still being curated.",
+    // Pregnancy rules now ship (#521): glucose (gestational-diabetes screening)
+    // and CBC/ferritin (anemia screening) are retested sooner and ranked up. The
+    // hint describes that real behavior now that RISK_RULES backs it.
+    hint: "Gestational-diabetes (glucose) and anemia (CBC/ferritin) checks are brought due sooner and prioritized.",
   },
 ];
 

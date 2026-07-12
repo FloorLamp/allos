@@ -233,6 +233,39 @@ export const RISK_RULES: RiskRule[] = [
     reason: "Healthcare worker",
     source: "ACIP (informational)",
   },
+  // ---- Pregnancy (issue #521) --------------------------------------------------
+  // A small, ACOG/USPSTF-defensible set keyed on the `pregnant` factor. Pregnancy
+  // brings a few routine labs due sooner and ranks them up with a calm reason; the
+  // set is deliberately conservative (only rules with a clear informational
+  // citation). Gestational-diabetes screening — glucose is drawn/repeated in
+  // pregnancy (ACOG: routine GDM screening at 24–28 weeks, earlier when higher
+  // risk), so its retest tightens and the diabetes screening ranks up.
+  {
+    factor: "pregnant",
+    names: ["glucose"],
+    screeningRules: ["diabetes_screening"],
+    cadenceMultiplier: 0.5,
+    priority: 2,
+    reason: "Pregnancy — gestational diabetes screening",
+    source: "ACOG (informational)",
+  },
+  // Anemia in pregnancy — ACOG recommends screening with a CBC (hemoglobin /
+  // hematocrit) at the first visit and again at 24–28 weeks; ferritin gauges iron
+  // stores. Retested sooner and ranked up.
+  {
+    factor: "pregnant",
+    names: ["hemoglobin", "hematocrit", "ferritin"],
+    cadenceMultiplier: 0.5,
+    priority: 2,
+    reason: "Pregnancy — anemia screening",
+    source: "ACOG (informational)",
+  },
+  // Deliberately NOT modeled: universal thyroid (TSH) screening in pregnancy.
+  // ACOG/USPSTF do not recommend UNIVERSAL thyroid screening in pregnancy (it is
+  // targeted to symptoms/risk), so a blanket `pregnant` → TSH rule would over-
+  // remind. Omitted under the conservative-curation caveat until a defensible,
+  // targeted input exists — the same "documented out-of-scope" discipline the
+  // screening catalog uses for risk-defined recommendations.
 ];
 
 // Whether a rule targets the given analyte (by exact canonical name or substring).
