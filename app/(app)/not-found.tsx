@@ -6,7 +6,10 @@ import Link from "next/link";
 // of (app)/layout.tsx, so the sidebar/nav stay), instead of Next's bare default.
 export default function AppNotFound() {
   return (
-    <div className="card flex flex-col items-center justify-center px-6 py-16 text-center">
+    <div
+      data-testid="app-not-found"
+      className="card flex flex-col items-center justify-center px-6 py-16 text-center"
+    >
       <p className="text-sm font-semibold uppercase tracking-wide text-brand-600 dark:text-brand-400">
         404
       </p>
