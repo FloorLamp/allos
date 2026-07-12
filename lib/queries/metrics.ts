@@ -337,6 +337,27 @@ export function getSleepSessions(
   }[];
 }
 
+// The date (YYYY-MM-DD) of the `limitDays`-th most-recent distinct HR day, or null
+// when the profile has no hr_minutes at all. Used as an inclusive `>= cutoff` lower
+// bound so the daily-summary / per-source reads GROUP BY only the recent window
+// instead of all history — hr_minutes is the fastest-growing table (~0.5M rows/year
+// for an all-day wearable), so an unbounded GROUP BY sorts a million rows per Trends
+// render on year two (issue #387). The DISTINCT-days scan is index-supported
+// (idx_hr_minutes_day on (profile_id, substr(ts,1,10))) and stops after limitDays
+// groups, and bounding at this cutoff is EXACT: `>= cutoff` selects precisely the
+// limitDays most-recent distinct days, which is the same window the callers'
+// post-group slice/LIMIT already kept.
+function recentHrCutoff(profileId: number, limitDays: number): string | null {
+  const rows = db
+    .prepare(
+      `SELECT DISTINCT substr(ts,1,10) AS date FROM hr_minutes
+        WHERE profile_id = ?
+        ORDER BY date DESC LIMIT ?`
+    )
+    .all(profileId, limitDays) as { date: string }[];
+  return rows.length > 0 ? rows[rows.length - 1].date : null;
+}
+
 // Daily HR summary derived from the 1-minute buckets, oldest→newest. Since the
 // hr_minutes key gained `source` (migration 013, issue #14) two sources can carry
 // the same minutes, so each day keeps ONE source's buckets — the 'heart_rate'
@@ -346,16 +367,20 @@ export function getHrDailySummary(
   profileId: number,
   limitDays = 180
 ): { date: string; avg: number; min: number; max: number }[] {
+  // Bound the GROUP BY to the limitDays most-recent days-with-data (issue #387).
+  // The JS slice below still picks one source per day over exactly this window.
+  const cutoff = recentHrCutoff(profileId, limitDays);
+  if (cutoff === null) return [];
   const rows = db
     .prepare(
       `SELECT substr(ts,1,10) AS date, source,
               AVG(bpm) AS avg, MIN(bpm_min) AS min, MAX(bpm_max) AS max,
               COUNT(*) AS n
          FROM hr_minutes
-        WHERE profile_id = ?
+        WHERE profile_id = ? AND substr(ts,1,10) >= ?
         GROUP BY substr(ts,1,10), source`
     )
-    .all(profileId) as {
+    .all(profileId, cutoff) as {
     date: string;
     source: string | null;
     avg: number;
@@ -632,14 +657,21 @@ export function getHrSeriesBySource(
   profileId: number,
   limitDays = 180
 ): MetricSourceSeries[] {
+  // Bound the GROUP BY to the limitDays most-recent days-with-data (issue #387).
+  // `>= cutoff` keeps at least limitDays (date,source) groups in the same newest-
+  // first order, so the unchanged `ORDER BY date DESC LIMIT ?` returns the identical
+  // top-limitDays rows it did over the full-table scan — just without sorting all
+  // history first.
+  const cutoff = recentHrCutoff(profileId, limitDays);
+  if (cutoff === null) return [];
   const rows = db
     .prepare(
       `SELECT substr(ts,1,10) AS date, source, AVG(bpm) AS value
          FROM hr_minutes
-        WHERE profile_id = ?
+        WHERE profile_id = ? AND substr(ts,1,10) >= ?
         GROUP BY substr(ts,1,10), source ORDER BY date DESC LIMIT ?`
     )
-    .all(profileId, limitDays) as {
+    .all(profileId, cutoff, limitDays) as {
     date: string;
     source: string | null;
     value: number;

@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Migration } from "../runner";
 
-// Migration 020 (issue #430): give intake_item_doses a lifetime.
+// Migration 021 (issue #430): give intake_item_doses a lifetime.
 //
 // The adherence-PATTERN detectors (lib/rule-findings.buildAdherencePatternFindings
 // → lib/adherence-patterns) walk a fixed 56-day window and mark every due-not-taken
@@ -62,7 +62,7 @@ export function up(db: Database.Database): void {
 }
 
 export const migration: Migration = {
-  id: 20,
-  name: "020-dose-lifetime",
+  id: 21,
+  name: "021-dose-lifetime",
   up,
 };

@@ -13,6 +13,7 @@ import {
   shouldRecordUse,
   type TokenExpiryChoice,
 } from "@/lib/token-lifecycle";
+import { daysAgoModifier, SYNC_EVENTS_RETENTION_DAYS } from "@/lib/retention";
 
 // Generic per-provider connection state, backed by integration_connections. Holds
 // the push token for Health Connect and OAuth tokens for Strava (Garmin later).
@@ -156,6 +157,36 @@ export function recordSyncEvent(
       provider,
       err: String(err),
     });
+  }
+}
+
+// Retention sweep for integration_sync_events (issue #388), run once per hourly
+// notify tick alongside the other maintenance sweeps (sweepReplayedKeys /
+// pruneAuditEvents / sweepDeletedRows). Deletes events STRICTLY older than the
+// window EXCEPT the newest event per (profile, provider) — kept regardless of age so
+// a dormant provider's last-known state survives for the failure detector. GLOBAL by
+// design (one call prunes every profile's aged rows), mirroring the sibling sweeps;
+// the retained-newest subquery names `profile_id`, so it clears the profile-scoping
+// guard. Best-effort — never throws, so a prune failure can't affect the tick. The
+// prune SET matches the pure planSyncEventPrune (lib/integrations/sync-log), pinned
+// in the db tier. Returns the number of rows removed.
+export function pruneSyncEvents(
+  maxAgeDays = SYNC_EVENTS_RETENTION_DAYS
+): number {
+  try {
+    return db
+      .prepare(
+        `DELETE FROM integration_sync_events
+          WHERE at < datetime('now', ?)
+            AND id NOT IN (
+              SELECT MAX(id) FROM integration_sync_events
+               GROUP BY profile_id, provider
+            )`
+      )
+      .run(daysAgoModifier(maxAgeDays)).changes;
+  } catch (err) {
+    log.error("pruneSyncEvents failed", { err: String(err) });
+    return 0;
   }
 }
 

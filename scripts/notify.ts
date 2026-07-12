@@ -59,7 +59,10 @@ import { slotDue, inWakingWindow } from "../lib/notifications/schedule";
 import { db, today, checkpointWal } from "../lib/db";
 import { hourInTz, weekdayInTz } from "../lib/date";
 import { createLogger } from "../lib/log";
-import { getConnection } from "../lib/integrations/connections";
+import {
+  getConnection,
+  pruneSyncEvents,
+} from "../lib/integrations/connections";
 import { runStravaSync } from "../lib/integrations/strava-sync";
 import { runOuraSync } from "../lib/integrations/oura-sync";
 import { runWithingsSync } from "../lib/integrations/withings-sync";
@@ -485,6 +488,20 @@ async function tick() {
     if (sweptKeys > 0) log.info("swept expired replay keys", { sweptKeys });
   } catch (e) {
     log.error("replay-key sweep failed", {
+      err: e instanceof Error ? e : String(e),
+    });
+  }
+
+  // Sync-event retention sweep (#388): global, once per tick. integration_sync_events
+  // gains a row per provider per hourly tick and was the one tick sibling nothing
+  // pruned. Keeps the last 90 days plus the newest event per (profile, provider).
+  // Best-effort (pruneSyncEvents never throws); never affects the notification
+  // flow/exit code.
+  try {
+    const prunedSync = pruneSyncEvents();
+    if (prunedSync > 0) log.info("pruned sync events", { prunedSync });
+  } catch (e) {
+    log.error("sync-event prune failed", {
       err: e instanceof Error ? e : String(e),
     });
   }

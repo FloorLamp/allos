@@ -18,5 +18,6 @@
   "017-equipment-retire.ts": "d02249f09502f53ba328ef66d066bfabbcb33cbfd08f8c746cc375e70635ee81",
   "018-equipment-category-enum.ts": "b2445a9fbae5f1e54ff3d8791b2769420e49a09e3d6d15e2e3f0e507f448e115",
   "019-activity-equipment.ts": "534e1bb32a2269ffcf98e28a1906f75d13083997a0e9364c468194508b115002",
-  "020-dose-lifetime.ts": "88cf78a72468828d3cd2a235da08be1239bc19c968ee3348e7c2b01ee53f23ce"
+  "020-medical-records-created-index.ts": "5723f805482c0023e99572ef10e5b58b105a75916baf17b205d8f64a804e5a04",
+  "021-dose-lifetime.ts": "1354785432bb5e2df4be2b75b89373994fe3fcfa4bd7ef6c3e43150c6dc5ed0f"
 }

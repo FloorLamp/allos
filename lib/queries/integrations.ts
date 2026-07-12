@@ -69,19 +69,32 @@ export function getLastSuccessfulSyncAt(
 export function getLatestSyncEventPerProvider(
   profileId: number
 ): IntegrationSyncEvent[] {
-  return db
+  // Instead of scanning every event with a correlated `id = latest-for-provider`
+  // subquery per row (issue #388), enumerate the profile's DISTINCT providers and do
+  // ONE indexed seek per provider — idx_sync_events_profile_provider_at
+  // (profile_id, provider, at) satisfies both the DISTINCT skip-scan and each
+  // `ORDER BY at DESC, id DESC LIMIT 1`, so this is O(providers × log N) rather than
+  // O(N) with a per-row subquery. Output is byte-identical: the latest event per
+  // provider, ordered newest-first overall.
+  const providers = db
     .prepare(
-      `SELECT e.* FROM integration_sync_events e
-        WHERE e.profile_id = ?
-          AND e.id = (
-            SELECT e2.id FROM integration_sync_events e2
-             WHERE e2.profile_id = e.profile_id AND e2.provider = e.provider
-             ORDER BY e2.at DESC, e2.id DESC
-             LIMIT 1
-          )
-        ORDER BY e.at DESC, e.id DESC`
+      `SELECT DISTINCT provider FROM integration_sync_events
+        WHERE profile_id = ?`
     )
-    .all(profileId) as IntegrationSyncEvent[];
+    .all(profileId) as { provider: string }[];
+  const latest = db.prepare(
+    `SELECT * FROM integration_sync_events
+      WHERE profile_id = ? AND provider = ?
+      ORDER BY at DESC, id DESC
+      LIMIT 1`
+  );
+  const out: IntegrationSyncEvent[] = [];
+  for (const { provider } of providers) {
+    const ev = latest.get(profileId, provider) as
+      IntegrationSyncEvent | undefined;
+    if (ev) out.push(ev);
+  }
+  return out.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : b.id - a.id));
 }
 
 // How many items the Data → Review inbox wants the user's attention on — the count

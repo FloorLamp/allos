@@ -426,7 +426,16 @@ export function getExerciseSetCountsSince(
 // `reps` — the rep count of the best-e1RM set that day — so the plateau detector can
 // tell a genuine flat lift from high-rep progression the E1RM_REP_CAP flattens
 // (12→15→18 reps at fixed load caps to one e1RM; the rising reps are the escape hatch).
-export function getExerciseE1rmSeries(profileId: number): {
+//
+// `since` (YYYY-MM-DD, inclusive) optionally bounds the scan to a trailing window.
+// The only caller (buildTrainingObservationFindings → detectPlateaus) windows each
+// series to the last PLATEAU_WINDOW_DAYS anyway, so passing that cutoff makes the
+// rep-bearing-history scan a free win (issue #389) with no change to the plateau
+// output. Omit `since` for the full lifetime series.
+export function getExerciseE1rmSeries(
+  profileId: number,
+  since?: string
+): {
   exercise: string;
   points: { date: string; value: number; reps: number }[];
 }[] {
@@ -436,9 +445,10 @@ export function getExerciseE1rmSeries(profileId: number): {
               s.weight_kg, s.reps, s.weight_kg_right, s.reps_right
          FROM exercise_sets s JOIN activities a ON a.id = s.activity_id
         WHERE a.profile_id = ? AND (s.reps IS NOT NULL OR s.reps_right IS NOT NULL)
+          AND (? IS NULL OR a.date >= ?)
         ORDER BY a.date ASC, a.id ASC`
     )
-    .all(profileId) as {
+    .all(profileId, since ?? null, since ?? null) as {
     exercise: string;
     date: string;
     weight_kg: number | null;

@@ -11,7 +11,8 @@
 import { today } from "../db";
 import { daysBetweenDateStr, shiftDateStr } from "../date";
 import {
-  getActivities,
+  getActivitiesSince,
+  getActivityDates,
   getVolumeByDate,
   getStrengthByExercise,
   getCardioByActivity,
@@ -125,7 +126,11 @@ export function gatherRecapInput(
   const weekStart = getWeekStart(profileId);
   const win = resolveRecapWindow(td, days, weekMode, weekStart);
 
-  const allActivities = getActivities(profileId);
+  // Only the recap's two windows (current + previous) reduce these, and win.prevStart
+  // is the earliest bound of either, so bound the load there (issue #389) instead of
+  // pulling all history (SELECT *, incl. the components TEXT) to discard all but ~14
+  // days. The streak below needs full history, so it reads getActivityDates directly.
+  const allActivities = getActivitiesSince(profileId, win.prevStart);
   const activities = allActivities.map(asWorkout);
   const workouts = activities.filter((w) =>
     inWindow(w.date, win.start, win.end)
@@ -193,7 +198,10 @@ export function gatherRecapInput(
     .map((w) => ({ date: w.date, weightKg: w.weight_kg as number }))
     .sort((a, b) => a.date.localeCompare(b.date));
 
-  const activityDates = activities.map((a) => a.date);
+  // Streaks walk back arbitrarily far, so they need the FULL date history — not the
+  // windowed `activities` above. getActivityDates is the cheap DISTINCT-dates read
+  // (currentStreak/flexibleStreak read it as a set, so dedup is irrelevant).
+  const activityDates = getActivityDates(profileId);
   const goalsCompleted = getGoals(profileId)
     .filter(
       (g) =>

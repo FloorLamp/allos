@@ -13,6 +13,7 @@ import {
   isEditLocked,
   isNoOpSyncEvent,
   shouldShowConnectedSource,
+  planSyncEventPrune,
 } from "@/lib/integrations/sync-log";
 
 describe("isEditLocked", () => {
@@ -385,5 +386,63 @@ describe("shouldShowConnectedSource", () => {
     expect(
       shouldShowConnectedSource({ connected: false, hasHistory: false })
     ).toBe(false);
+  });
+});
+
+describe("planSyncEventPrune", () => {
+  // Structurally-typed events; `at` values are ISO strings ordered lexicographically.
+  type Ev = { id: number; profile_id: number; provider: string; at: string };
+
+  it("prunes events older than the cutoff", () => {
+    const evs: Ev[] = [
+      { id: 1, profile_id: 1, provider: "strava", at: "2024-01-01" },
+      { id: 2, profile_id: 1, provider: "strava", at: "2024-02-01" },
+      { id: 3, profile_id: 1, provider: "strava", at: "2024-03-01" },
+    ];
+    // cutoff 2024-02-15: id 1 old, id 2 old but newest? no — id 3 is newest and kept.
+    // id 2 (2024-02-01) is < cutoff and not newest → pruned. id 1 likewise.
+    expect(planSyncEventPrune(evs, "2024-02-15")).toEqual([1, 2]);
+  });
+
+  it("always keeps the newest event per (profile, provider) even when it's ancient", () => {
+    const evs: Ev[] = [
+      { id: 1, profile_id: 1, provider: "strava", at: "2020-01-01" },
+    ];
+    // The only event is old but is the newest for its provider → kept.
+    expect(planSyncEventPrune(evs, "2024-01-01")).toEqual([]);
+  });
+
+  it("keeps newest-per-provider independently across providers and profiles", () => {
+    const evs: Ev[] = [
+      { id: 1, profile_id: 1, provider: "strava", at: "2020-01-01" },
+      { id: 2, profile_id: 1, provider: "strava", at: "2020-02-01" }, // newest strava/p1
+      { id: 3, profile_id: 1, provider: "oura", at: "2020-01-15" }, // newest oura/p1
+      { id: 4, profile_id: 2, provider: "strava", at: "2020-01-20" }, // newest strava/p2
+    ];
+    // cutoff far in the future → everything is "old"; only the newest per key survives.
+    expect(planSyncEventPrune(evs, "2099-01-01")).toEqual([1]);
+  });
+
+  it("keeps events at or after the cutoff (strictly-older only)", () => {
+    const evs: Ev[] = [
+      { id: 1, profile_id: 1, provider: "strava", at: "2024-01-01" }, // newest → kept
+      { id: 2, profile_id: 1, provider: "oura", at: "2024-02-01" }, // == cutoff → kept
+      { id: 3, profile_id: 1, provider: "oura", at: "2024-02-05" }, // newest oura → kept
+    ];
+    expect(planSyncEventPrune(evs, "2024-02-01")).toEqual([]);
+  });
+
+  it("returns [] for no events", () => {
+    expect(planSyncEventPrune([], "2024-01-01")).toEqual([]);
+  });
+
+  it("returns prunable ids sorted ascending", () => {
+    const evs: Ev[] = [
+      { id: 5, profile_id: 1, provider: "strava", at: "2020-05-01" },
+      { id: 2, profile_id: 1, provider: "strava", at: "2020-02-01" },
+      { id: 9, profile_id: 1, provider: "strava", at: "2020-09-01" }, // newest → kept
+      { id: 1, profile_id: 1, provider: "strava", at: "2020-01-01" },
+    ];
+    expect(planSyncEventPrune(evs, "2099-01-01")).toEqual([1, 2, 5]);
   });
 });
