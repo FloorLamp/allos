@@ -1057,6 +1057,22 @@ db.prepare(
   `INSERT INTO starred_biomarkers (profile_id, canonical_name) VALUES (?, ?)`
 ).run(PROFILE_ID, APOE_MARKER);
 
+// #516 — a positive durable-immunity antibody titer whose only reading is ~2 years
+// old. On the flat 365-day retest clock it would nag "retest overdue" and render
+// "These results are stale", which is clinically wrong for a documented positive
+// immunity result (durable evidence, like genomics). The durable-immunity spec asserts
+// the detail page shows no "stale" note. Unique synthetic name so the assertion is
+// deterministic and it can't collide with the seed's own titers.
+const IMMUNITY_MARKER = "E2E Varicella IgG";
+db.prepare(
+  `DELETE FROM medical_records WHERE profile_id = ? AND canonical_name = ?`
+).run(PROFILE_ID, IMMUNITY_MARKER);
+db.prepare(
+  `INSERT INTO medical_records
+     (profile_id, date, category, name, value, canonical_name, notes, source)
+   VALUES (?, '2023-05-01', 'lab', ?, 'Immune', ?, 'Immune', 'manual')`
+).run(PROFILE_ID, IMMUNITY_MARKER, IMMUNITY_MARKER);
+
 // #383 — a lab whose raw name ("...CHOLESTEROL, TOTAL") differs from its
 // displayed canonical heading ("...Total Cholesterol"), so the biomarker search
 // must match the canonical name a user actually sees.

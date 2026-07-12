@@ -368,7 +368,20 @@ function biomarkerItems(profileId: number, today: string): UpcomingItem[] {
       1,
       Math.round(retestIntervalDays(retestDays) * mod.multiplier)
     );
-    if (!isBiomarkerStale(effectiveDate, r.category, today, interval)) continue;
+    // Immune-positive durable-immunity titers never go stale (#516) — pass the
+    // reading's identity + result so isBiomarkerStale can exempt them. A negative/
+    // equivocal titer keeps the (risk-modulated) clock, so the risk layer's
+    // hepatitis-A tightening still bites exactly the readings that warrant followup.
+    if (
+      !isBiomarkerStale(effectiveDate, r.category, today, interval, {
+        name,
+        flag: r.flag,
+        value: r.value,
+        notes: r.notes,
+        reference: r.reference_range,
+      })
+    )
+      continue;
     const agoMonths = monthsApprox(daysBetween(effectiveDate, today));
     items.push({
       key: biomarkerDismissalKey(name),

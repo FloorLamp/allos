@@ -620,6 +620,11 @@ export interface StarredBiomarker {
   // is null for AI-registered rows and never 'genomics', so it could never fire
   // the never-stale genomics rule from the tile (#381).
   latest_category: string | null;
+  // Latest reading's notes + reference text — carried so the tile's staleness check
+  // can recognize an immune-positive durable-immunity titer (#516), exactly like the
+  // detail page and table (which read the full MedicalRecord).
+  latest_notes: string | null;
+  latest_reference_range: string | null;
   // Reference entry (ranges/direction) joined in so the chip needs no extra query.
   canonical: CanonicalBiomarker | null;
 }
@@ -678,6 +683,8 @@ export function getStarredBiomarkers(profileId: number): StarredBiomarker[] {
       latest_flag: latest?.flag ?? null,
       latest_date: latest?.date ?? null,
       latest_category: latest?.category ?? null,
+      latest_notes: latest?.notes ?? null,
+      latest_reference_range: latest?.reference_range ?? null,
       canonical: cb,
     };
   });
