@@ -26,12 +26,16 @@ test("situations bar toggles the id-keyed situation and gates its supplement", a
     .filter({ hasText: "Zinc" });
   await expect(zincDue).toHaveCount(1);
 
-  // Toggle Illness OFF → Zinc drops out of the due buckets into "Not scheduled today".
+  // Toggle Illness OFF → Zinc drops out of the due buckets into "Not scheduled
+  // today" — a COLLAPSED <details> (app/(app)/medicine/page.tsx), so expand it via
+  // its summary before asserting the row (contents aren't visible while closed).
   await illness.click();
   await expect(illness).toHaveAttribute("aria-pressed", "false");
   const notScheduled = page
-    .locator("section")
+    .locator("details")
     .filter({ hasText: /Not scheduled today/ });
+  await expect(notScheduled).toBeVisible();
+  await notScheduled.locator("summary").click();
   await expect(notScheduled.getByText("Zinc").first()).toBeVisible();
 
   // Active state persists across a reload (it's a real row, not request state).
