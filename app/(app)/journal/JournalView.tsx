@@ -689,6 +689,7 @@ export default function JournalView({
                         parts={c.parts}
                         fault={c.fault}
                         provenance={c.provenance}
+                        routePolyline={c.routePolyline}
                         // Manual-merge targets: the OTHER activities logged this
                         // same day (issue #64), from the unfiltered day group, each
                         // with the per-field conflicts vs this keeper (issue #100).

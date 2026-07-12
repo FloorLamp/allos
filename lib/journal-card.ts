@@ -72,6 +72,10 @@ export interface JournalCardData {
   // conflict preview compares against a same-day sibling. Values are raw canonical
   // numbers/strings straight off the activity row.
   foldValues: Record<string, unknown>;
+  // The activity's encoded GPS route polyline (issue #569), or null. Rendered as a
+  // tile-free SVG route thumbnail on the card; only imported outdoor activities with
+  // a captured route carry one.
+  routePolyline: string | null;
 }
 
 export interface DayGroup {
@@ -145,6 +149,9 @@ export interface BuildJournalCardsInput {
   // The app's TZ-local "today"/"yesterday" (lib/db) for the day-group labels.
   today: string;
   yesterday: string;
+  // activityId -> encoded GPS route polyline (issue #569), for the route thumbnail.
+  // Optional (defaults to none) so existing pure-test call sites need no route data.
+  routes?: Map<number, string>;
 }
 
 // Compact, unit-aware chips for the richer per-activity metrics carried by pull
@@ -198,6 +205,7 @@ export function buildJournalCards({
   units,
   today,
   yesterday,
+  routes,
 }: BuildJournalCardsInput): DayGroup[] {
   const wu = units.weightUnit;
 
@@ -371,6 +379,8 @@ export function buildJournalCards({
       },
       // Fold-field values for the manual-merge conflict preview (issue #100).
       foldValues: pickFoldValues(a as unknown as Record<string, unknown>),
+      // GPS route polyline for the tile-free SVG thumbnail (issue #569), or null.
+      routePolyline: routes?.get(a.id) ?? null,
     };
 
     let group = byDate.get(a.date);

@@ -5,6 +5,7 @@ import { IconCheck, IconAlertTriangle } from "@tabler/icons-react";
 import { useActivityEditor } from "@/components/ActivityEditorProvider";
 import { ActivityTypeIcon, IntensityBadge } from "@/components/ui";
 import ActivityProvenance from "@/components/ActivityProvenance";
+import RouteMap from "@/components/RouteMap";
 import type { ActivityEditData } from "@/components/ActivityForm";
 import type { UnitPrefs } from "@/lib/settings";
 import { SET_STATUS_TITLES } from "@/lib/journal-format";
@@ -26,6 +27,7 @@ export default function JournalCard({
   parts,
   fault,
   provenance,
+  routePolyline = null,
   mergeSiblings = [],
   keeperLabel,
   units,
@@ -53,6 +55,10 @@ export default function JournalCard({
     createdAt: string;
     updatedAt: string | null;
   };
+  // The activity's encoded GPS route polyline (issue #569), or null — rendered as a
+  // tile-free SVG route thumbnail. Default null so a render site without route data
+  // simply shows no thumbnail.
+  routePolyline?: string | null;
   // Same-day siblings this activity can be manually merged with (issue #64), each
   // carrying its per-field conflicts vs this card (issue #100). Empty (the default)
   // hides the merge affordance — a lone activity has nothing to fold.
@@ -169,6 +175,15 @@ export default function JournalCard({
         <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
           {activity.notes}
         </p>
+      )}
+
+      {/* Tile-free SVG route thumbnail (issue #569) for an imported outdoor
+          activity that carries a captured GPS route — the route's shape only, no
+          basemap, no external request. */}
+      {routePolyline && (
+        <div className="mt-3">
+          <RouteMap polyline={routePolyline} size={132} />
+        </div>
       )}
 
       {parts.length > 0 && (

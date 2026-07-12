@@ -19,9 +19,11 @@ import { mapStravaActivity } from "./strava";
 import { writeRawPayload } from "./raw-log";
 import {
   upsertActivities,
+  upsertActivityRoutes,
   upsertMetricSamples,
   type NormActivity,
   type NormMetricSample,
+  type NormActivityRoute,
 } from "./normalize";
 
 // Pulls activities from the Strava API and upserts them. Runs both from the
@@ -104,6 +106,7 @@ export async function runStravaSync(
   const after = Math.max(0, cursor - RESCAN_MARGIN_SEC);
   const acts: NormActivity[] = [];
   const samples: NormMetricSample[] = [];
+  const routes: NormActivityRoute[] = [];
   // Raw fetched activity JSON (detailed when available, else the list summary),
   // accumulated for the admin-only raw viewer (issue #9) and written once below.
   const rawItems: unknown[] = [];
@@ -168,6 +171,7 @@ export async function runStravaSync(
       }
       acts.push(mapped.activity);
       samples.push(...mapped.samples);
+      if (mapped.route) routes.push(mapped.route);
       const startSec = Math.floor(
         new Date(String(summary.start_date)).getTime() / 1000
       );
@@ -184,6 +188,10 @@ export async function runStravaSync(
     writeTx(() => {
       upActivities = upsertActivities(profileId, acts, STRAVA_ID);
       upSamples = upsertMetricSamples(profileId, samples, STRAVA_ID);
+      // Routes resolve their parent activity by external_id, so this must run after
+      // upsertActivities (same tx). Idempotent; not folded into the sync tally — a
+      // route is a side artifact of the activity it belongs to, not its own record.
+      upsertActivityRoutes(profileId, routes, STRAVA_ID);
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

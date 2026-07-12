@@ -399,7 +399,11 @@ appointment" even inside the shared feed.
 
 Connect once with OAuth and your runs, rides, and other activities sync
 automatically — with heart rate, elevation, pace, calories, and cycling
-power/cadence.
+power/cadence. A synced activity's **GPS route** (Strava's summary polyline,
+which respects your privacy zones) is captured too and drawn on its Journal card
+as a small **tile-free SVG route thumbnail** — the route's shape, rendered from
+the stored polyline with no basemap and **no map tiles or external requests**
+(nothing about where you were leaves the box).
 
 1. Create an API application in your [Strava API settings](https://www.strava.com/settings/api)
    to get a **Client ID** and **Client Secret**.
