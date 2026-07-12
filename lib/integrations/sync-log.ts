@@ -185,6 +185,31 @@ export function isNoOpSyncEvent(ev: {
   return (ev.inserted ?? 0) + (ev.updated ?? 0) === 0;
 }
 
+// The ids to prune from integration_sync_events on the retention sweep (issue #388):
+// every event STRICTLY older than `cutoffIso` EXCEPT the newest event per (profile,
+// provider), which is kept regardless of age. Keeping the newest-per-provider row is
+// what lets a dormant integration's last-known state (a failure that stopped
+// syncing, say) survive the 90-day window so currentlyFailingProviders can still see
+// it. `cutoffIso` is the retention boundary (`< cutoff` is expired, matching the SQL
+// `at < datetime('now', ?)`). Newest is by id (AUTOINCREMENT, monotonic with `at`),
+// mirroring the SQL's `MAX(id) … GROUP BY profile_id, provider`. Pure →
+// unit-testable, and pinned byte-for-byte against the DB sweep in the db tier.
+export function planSyncEventPrune<
+  T extends { id: number; profile_id: number; provider: string; at: string },
+>(events: readonly T[], cutoffIso: string): number[] {
+  const newestId = new Map<string, number>();
+  for (const e of events) {
+    const key = `${e.profile_id} ${e.provider}`;
+    const cur = newestId.get(key);
+    if (cur === undefined || e.id > cur) newestId.set(key, e.id);
+  }
+  const keep = new Set(newestId.values());
+  return events
+    .filter((e) => e.at < cutoffIso && !keep.has(e.id))
+    .map((e) => e.id)
+    .sort((a, b) => a - b);
+}
+
 // Which recurring providers belong in the Data → Review "Connected sources" section
 // (issue #294). A provider is shown when it is CURRENTLY connected OR it has any
 // historical sync events — a source that was connected and later removed keeps

@@ -64,6 +64,14 @@ export function digestSince(profileId: number): string {
 // canonical-preferred (COALESCE) so links/dedupe key on the same identity the
 // biomarker view page resolves, and repeat flags of one analyte collapse to the
 // newest reading (dedupeFlaggedByAnalyte) BEFORE the limit is applied.
+//
+// ORDER BY carries an explicit id tiebreak: batch imports/seeds write many flags in
+// the same created_at second, and with >MAX_FLAGGED unique analytes in the window
+// the slice keeps whichever ties come first — so tie order IS behavior. Before
+// migration 020 (idx_medical_records_profile_created) ties fell back to table-scan
+// rowid order (id ASC); the index scan would silently flip them to id DESC and
+// change which analytes surface on the digest/hero. id ASC pins the long-observed
+// pre-index behavior deterministically.
 export function getNewlyFlaggedBiomarkers(
   profileId: number,
   since: string,
@@ -77,7 +85,7 @@ export function getNewlyFlaggedBiomarkers(
          FROM medical_records
         WHERE profile_id = ? AND created_at > ?
           AND flag IS NOT NULL AND flag != 'normal'
-        ORDER BY created_at DESC`
+        ORDER BY created_at DESC, id ASC`
     )
     .all(profileId, since) as {
     name: string;

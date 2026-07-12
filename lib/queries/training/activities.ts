@@ -181,6 +181,23 @@ export function getJournalWeekSummary(profileId: number): JournalWeekSummary {
   };
 }
 
+// Activities on or after `since` (YYYY-MM-DD, inclusive), newest first. The bounded
+// counterpart to getActivities() for callers that only reduce a trailing window and
+// don't need full history — e.g. the weekly recap's two 7-day windows (issue #389),
+// which otherwise loaded every activity (SELECT *, including the components TEXT) to
+// discard all but ~14 days. Streak math that DOES need full history uses the cheap
+// getActivityDates instead.
+export function getActivitiesSince(
+  profileId: number,
+  since: string
+): Activity[] {
+  return db
+    .prepare(
+      "SELECT * FROM activities WHERE profile_id = ? AND date >= ? ORDER BY date DESC, id DESC"
+    )
+    .all(profileId, since) as Activity[];
+}
+
 export function getActivitiesByDate(
   profileId: number,
   date: string
