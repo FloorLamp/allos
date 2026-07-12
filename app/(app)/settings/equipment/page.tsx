@@ -1,30 +1,13 @@
 import { redirect } from "next/navigation";
-import { getEquipment } from "@/lib/equipment";
-import { getUnitPrefs } from "@/lib/settings";
-import { requireSession } from "@/lib/auth";
-import { isTrainingRestricted } from "@/lib/age-gate";
-import { PageHeader } from "@/components/ui";
-import SettingsTabs from "../SettingsTabs";
-import EquipmentManager from "@/components/EquipmentManager";
 
 export const dynamic = "force-dynamic";
 
-export default async function EquipmentSettingsPage() {
-  const { login, profile } = await requireSession();
-  // Age-restricted profiles can't reach Equipment even by direct URL — the tab
-  // is hidden for them; bounce them back to Preferences (see lib/age-gate.ts).
-  if (isTrainingRestricted(profile.id)) redirect("/settings");
-  // includeRetired: the manager lists retired gear too (with an Unretire action).
-  const equipment = getEquipment(profile.id, { includeRetired: true });
-  const units = getUnitPrefs(login.id);
-  return (
-    <div>
-      <PageHeader
-        title="Settings"
-        subtitle="Define your own bars and implements — name lift variants the catalog doesn't cover, and optionally record each implement's own weight."
-      />
-      <SettingsTabs isAdmin={login.role === "admin"} />
-      <EquipmentManager equipment={equipment} unit={units.weightUnit} />
-    </div>
-  );
+// Equipment moved out of Settings into its own top-level registry (issue #343):
+// a domain inventory with per-item detail + usage history, not configuration.
+// This route only survives as a redirect for old bookmarks / deep links — the
+// repo defines no next.config redirects, so the bounce is a route-level
+// redirect() here. The age gate (a restricted profile can't reach equipment) now
+// lives on the /equipment page itself.
+export default function EquipmentSettingsRedirect() {
+  redirect("/equipment");
 }

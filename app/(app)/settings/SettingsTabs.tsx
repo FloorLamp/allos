@@ -10,10 +10,12 @@ import { usePathname } from "next/navigation";
 // cross-profile access trail), so they're appended only when isAdmin. The order
 // interleaves them where they belong: Server sits after the per-person tabs,
 // before Family.
+//
+// Equipment used to be a tab here; it moved to its own top-level registry
+// (/equipment — issue #343), so it's no longer a settings surface.
 const BASE_TABS = [
   { href: "/settings", label: "Preferences" },
   { href: "/settings/profile", label: "Profile" },
-  { href: "/settings/equipment", label: "Equipment" },
 ];
 const ADMIN_TABS = [
   { href: "/settings/family", label: "Family" },
@@ -24,17 +26,11 @@ const ADMIN_TABS = [
 
 export default function SettingsTabs({
   isAdmin = false,
-  // Hide the Equipment tab for age-restricted profiles (see lib/age-gate.ts).
-  hideEquipment = false,
 }: {
   isAdmin?: boolean;
-  hideEquipment?: boolean;
 }) {
   const pathname = usePathname();
-  const base = hideEquipment
-    ? BASE_TABS.filter((t) => t.href !== "/settings/equipment")
-    : BASE_TABS;
-  const tabs = isAdmin ? [...base, ...ADMIN_TABS] : base;
+  const tabs = isAdmin ? [...BASE_TABS, ...ADMIN_TABS] : BASE_TABS;
   return (
     <div className="mb-6 flex gap-1 overflow-x-auto border-b border-black/10 dark:border-white/10">
       {tabs.map((t) => {

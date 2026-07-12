@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { IconCheck, IconAlertTriangle } from "@tabler/icons-react";
 import { useActivityEditor } from "@/components/ActivityEditorProvider";
 import { ActivityTypeIcon, IntensityBadge } from "@/components/ui";
@@ -105,15 +106,26 @@ export default function JournalCard({
             </div>
             {(metrics.length > 0 || gear) && (
               <div className="mt-1.5 flex flex-wrap gap-1.5">
-                {gear && (
-                  <span
-                    data-testid="activity-gear"
-                    className="badge bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300"
-                    title="Equipment used"
-                  >
-                    🚲 {gear}
-                  </span>
-                )}
+                {gear &&
+                  (activity.equipment_id != null ? (
+                    // Contextual link to the gear's registry detail (issue #343).
+                    <Link
+                      href={`/equipment/${activity.equipment_id}`}
+                      data-testid="activity-gear"
+                      className="badge bg-brand-50 text-brand-700 transition hover:ring-1 hover:ring-current dark:bg-brand-500/15 dark:text-brand-300"
+                      title="View equipment"
+                    >
+                      🚲 {gear}
+                    </Link>
+                  ) : (
+                    <span
+                      data-testid="activity-gear"
+                      className="badge bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300"
+                      title="Equipment used"
+                    >
+                      🚲 {gear}
+                    </span>
+                  ))}
                 {metrics.map((m, i) => (
                   <span
                     key={i}

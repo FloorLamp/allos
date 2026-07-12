@@ -1,5 +1,4 @@
 import { requireAdmin } from "@/lib/auth";
-import { isTrainingRestricted } from "@/lib/age-gate";
 import { db } from "@/lib/db";
 import { PageHeader } from "@/components/ui";
 import SettingsTabs from "../SettingsTabs";
@@ -88,7 +87,7 @@ export default async function FamilySettingsPage() {
         title="Settings"
         subtitle="Family — manage the people you track (profiles) and the logins that can access them. Admins can see every profile; members only the ones you grant."
       />
-      <SettingsTabs isAdmin hideEquipment={isTrainingRestricted(profile.id)} />
+      <SettingsTabs isAdmin />
       <FamilyManager
         profiles={profiles}
         logins={logins}

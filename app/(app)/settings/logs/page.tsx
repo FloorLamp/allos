@@ -1,6 +1,5 @@
 import { readAiEvents } from "@/lib/ai-log";
 import { requireAdmin } from "@/lib/auth";
-import { isTrainingRestricted } from "@/lib/age-gate";
 import { PageHeader } from "@/components/ui";
 import SettingsTabs from "../SettingsTabs";
 import LogsStream from "./LogsStream";
@@ -18,7 +17,7 @@ export default async function AiLogsPage() {
         title="Settings"
         subtitle="AI activity log — every extraction, suggestion, and insight call. Streams live; also written to data/logs/ai.jsonl."
       />
-      <SettingsTabs isAdmin hideEquipment={isTrainingRestricted(profile.id)} />
+      <SettingsTabs isAdmin />
       <LogsStream initial={initial} />
     </div>
   );

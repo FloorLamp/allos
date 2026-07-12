@@ -1,14 +1,15 @@
 import { test, expect } from "@playwright/test";
 
-// #341: equipment lifecycle. Settings → Equipment gains a Retire/Restore toggle
-// (soft-retire, mirroring dose retire) alongside the existing edit/delete, and the
-// Type picker offers the expanded, grouped category set. This drives the manager:
-// add a piece of gear, retire it (it stays listed with a "Retired" badge), then
-// restore it — proving the round-trip renders on the real page.
+// #341: equipment lifecycle. The equipment manager (now the /equipment registry
+// index — issue #343) gains a Retire/Restore toggle (soft-retire, mirroring dose
+// retire) alongside the existing edit/delete, and the Type picker offers the
+// expanded, grouped category set. This drives the manager: add a piece of gear,
+// retire it (it stays listed with a "Retired" badge), then restore it — proving
+// the round-trip renders on the real page.
 test("retire and restore equipment from the manager (#341)", async ({
   page,
 }) => {
-  await page.goto("/settings/equipment");
+  await page.goto("/equipment");
 
   await expect(
     page.getByRole("heading", { name: "Your equipment" })

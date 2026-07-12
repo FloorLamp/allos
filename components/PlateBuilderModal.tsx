@@ -15,7 +15,7 @@ import {
   platesPerSideWeight,
   barbellTotal,
 } from "@/lib/plates";
-import { createEquipmentAction } from "@/app/(app)/settings/equipment/actions";
+import { createEquipmentAction } from "@/app/(app)/equipment/actions";
 
 // select() sentinel for the "create a custom barbell" row at the bottom.
 const NEW_BAR = "__new__";

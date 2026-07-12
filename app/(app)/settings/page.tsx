@@ -2,7 +2,6 @@ import { getUnitPrefs } from "@/lib/settings";
 import { requireSession, listLoginSessions } from "@/lib/auth";
 import { isDemoMode, isDemoRestricted } from "@/lib/demo";
 import { getLoginTotpState, countUnusedRecoveryCodes } from "@/lib/two-factor";
-import { isTrainingRestricted } from "@/lib/age-gate";
 import { PageHeader } from "@/components/ui";
 import AppVersion from "@/components/AppVersion";
 import SettingsTabs from "./SettingsTabs";
@@ -24,7 +23,6 @@ export default async function SettingsPage() {
   // Admins keep everything.
   const demoRestricted = isDemoRestricted(isDemoMode(), login.role);
   const prefs = getUnitPrefs(login.id);
-  const hideEquipment = isTrainingRestricted(profile.id);
   const sessions = await listLoginSessions(login.id);
   const twofaEnabled = getLoginTotpState(login.id).enabled;
   const recoveryRemaining = twofaEnabled
@@ -37,7 +35,7 @@ export default async function SettingsPage() {
         title="Settings"
         subtitle={`Preferences — these settings belong to your login (${login.username}), not the profile being viewed. They follow you across every profile.`}
       />
-      <SettingsTabs isAdmin={isAdmin} hideEquipment={hideEquipment} />
+      <SettingsTabs isAdmin={isAdmin} />
       <UnitPrefsForm prefs={prefs} />
       <PushNotificationSettings />
       {!demoRestricted && <ChangePasswordSettings username={login.username} />}
