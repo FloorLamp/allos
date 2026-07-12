@@ -42,6 +42,12 @@
 // Diabetes / prediabetes — USPSTF B: screen adults 35–70 who are overweight/obese.
 // Depression — USPSTF B: screen adults ≥18 (incl. pregnancy/postpartum) and
 //   adolescents 12–18 for major depressive disorder where follow-up care exists.
+// Anxiety — USPSTF B: screen children/adolescents 8–18 (2022) and adults 19–64
+//   incl. pregnancy/postpartum (2023) for anxiety disorders. ≥65 is an I statement.
+// HIV — USPSTF A: screen adolescents and adults 15–65 for HIV at least once.
+// Hepatitis B — USPSTF B (2020): screen adolescents/adults at increased risk. The
+//   population is risk-defined, so this ships risk-gated (inert until a risk input
+//   exists), mirroring the smoking-gated rows.
 // Abdominal aortic aneurysm — USPSTF B: one-time ultrasound, men 65–75 who ever
 //   smoked (risk-gated — inert until a smoking history is recorded).
 // Osteoporosis — USPSTF B: screen women ≥65 with bone-measurement testing.
@@ -117,11 +123,14 @@ const SCREENINGS: ScreeningRow[] = [
     graceMonths: 6,
     citation: {
       source: "USPSTF",
+      // Aligned to the honest 40–75 band (issue #437): current USPSTF has no
+      // standalone lipid A/B rec — it folds into the statin-prevention rec for
+      // adults 40–75 with cardiovascular risk factors, which is grade B there.
       summary:
-        "Lipid screening supports statin-use decisions in adults ~40–75; broader periodic screening is common (every ~5 years used here).",
+        "Lipids inform the statin-prevention decision for adults 40–75 with cardiovascular risk factors; broader periodic screening is common practice (every ~5 years used here).",
       grade: "B",
     },
-    schedule: { startMonths: 35 * Y, endMonths: 76 * Y, intervalMonths: 60 },
+    schedule: { startMonths: 40 * Y, endMonths: 76 * Y, intervalMonths: 60 },
   },
   {
     key: "colorectal_cancer",
@@ -170,6 +179,22 @@ const SCREENINGS: ScreeningRow[] = [
     schedule: { startMonths: 12 * Y, endMonths: 120 * Y, intervalMonths: 12 },
   },
   {
+    key: "anxiety_screening",
+    name: "Anxiety screening",
+    description:
+      "Screening for anxiety disorders (e.g. a GAD-7 questionnaire) in children, adolescents, and adults.",
+    graceMonths: 6,
+    citation: {
+      source: "USPSTF",
+      summary:
+        "Screen children and adolescents 8–18 (2022) and adults 19–64, including during pregnancy and postpartum (2023), for anxiety disorders. Optimal rescreening interval is not established (annual default used here).",
+      grade: "B",
+    },
+    // Grade B is 8–18 and 19–64; ≥65 is an I statement, so the window ends at 64.
+    // Annual stand-in cadence (USPSTF does not specify an interval).
+    schedule: { startMonths: 8 * Y, endMonths: 65 * Y, intervalMonths: 12 },
+  },
+  {
     key: "hepatitis_c",
     name: "Hepatitis C screening",
     description: "One-time blood test for hepatitis C infection.",
@@ -181,6 +206,20 @@ const SCREENINGS: ScreeningRow[] = [
     },
     // Once-in-window (no interval).
     schedule: { startMonths: 18 * Y, endMonths: 79 * Y },
+  },
+  {
+    key: "hiv_screening",
+    name: "HIV screening",
+    description: "One-time blood test for HIV infection.",
+    graceMonths: 12,
+    citation: {
+      source: "USPSTF",
+      summary:
+        "Screen adolescents and adults 15–65 for HIV infection at least once (younger adolescents and older adults at increased risk should also be screened).",
+      grade: "A",
+    },
+    // Once-in-window (no interval), ages 15–65 — structural twin of hepatitis C.
+    schedule: { startMonths: 15 * Y, endMonths: 65 * Y },
   },
   {
     key: "cervical_cancer",
@@ -228,7 +267,23 @@ const SCREENINGS: ScreeningRow[] = [
     // Open-ended above 65; conservative rescreen stand-in (interval uncertain).
     schedule: { startMonths: 65 * Y, endMonths: 120 * Y, intervalMonths: 60 },
   },
-  // ---- Risk-gated (inert until a structured smoking record exists) ----
+  // ---- Risk-gated (inert until the required risk input exists) ----
+  {
+    key: "hepatitis_b",
+    name: "Hepatitis B screening",
+    description:
+      "Blood test for hepatitis B infection in adolescents and adults at increased risk. Requires risk information — inactive until that is recorded.",
+    graceMonths: 12,
+    riskGated: true,
+    citation: {
+      source: "USPSTF",
+      summary:
+        "Screen adolescents and adults at increased risk for hepatitis B virus infection (2020). The population is risk-defined rather than universal.",
+      grade: "B",
+    },
+    // Once-in-window; risk-defined population, so it ships inert (riskGated).
+    schedule: { startMonths: 15 * Y, endMonths: 120 * Y },
+  },
   {
     key: "lung_cancer_ldct",
     name: "Lung cancer screening (low-dose CT)",

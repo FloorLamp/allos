@@ -134,6 +134,43 @@
         "goat's milk": ["goat milk", "goats milk"],
         "sheep's milk": ["sheep milk", "sheeps milk", "ewe milk"]
       }
+    },
+    {
+      "id": "finned-fish",
+      "name": "Finned fish group (parvalbumin)",
+      "label": "finned fish (shared parvalbumin)",
+      "citation": "Sharp MF, Lopata AL. Fish allergy: in review. Clin Rev Allergy Immunol 2014;46:258-271.",
+      "members": [
+        "salmon",
+        "cod",
+        "tuna",
+        "halibut",
+        "mackerel",
+        "herring",
+        "sardine",
+        "anchovy",
+        "trout",
+        "tilapia",
+        "bass",
+        "pollock",
+        "haddock",
+        "sole"
+      ],
+      "aliases": {
+        "sardine": ["pilchard"],
+        "pollock": ["pollack"]
+      }
+    },
+    {
+      "id": "peanut-lupin",
+      "name": "Peanut / lupin legume group",
+      "label": "peanut and lupin (cross-reacting legumes)",
+      "citation": "Moneret-Vautrin DA, et al. Cross-allergenicity of peanut and lupine. Allergy 1999;54:643-645.",
+      "members": ["peanut", "lupin"],
+      "aliases": {
+        "peanut": ["groundnut", "arachis"],
+        "lupin": ["lupine", "lupini", "lupin bean"]
+      }
     }
   ]
 }

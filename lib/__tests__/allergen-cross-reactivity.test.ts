@@ -52,6 +52,23 @@ describe("findCrossReactivity — matching", () => {
     expect(findCrossReactivity(["Shrimps"])[0]?.familyId).toBe("crustacean");
   });
 
+  it("surfaces the finned-fish (parvalbumin) group from a salmon allergy", () => {
+    const [m, ...rest] = findCrossReactivity(["Salmon"]);
+    expect(rest).toHaveLength(0);
+    expect(m.familyId).toBe("finned-fish");
+    expect(m.related).not.toContain("salmon");
+    expect(m.related).toEqual(
+      expect.arrayContaining(["cod", "tuna", "halibut"])
+    );
+  });
+
+  it("matches peanut↔lupin cross-reactivity (incl. the lupine alias)", () => {
+    const [m] = findCrossReactivity(["Peanut"]);
+    expect(m.familyId).toBe("peanut-lupin");
+    expect(m.related).toEqual(["lupin"]);
+    expect(findCrossReactivity(["Lupine"])[0]?.familyId).toBe("peanut-lupin");
+  });
+
   it("matches mammalian milk via a bare 'Milk' alias", () => {
     const [m] = findCrossReactivity(["Milk"]);
     expect(m.familyId).toBe("mammalian-milk");

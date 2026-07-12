@@ -25,11 +25,11 @@
       "graceMonths": 6,
       "citation": {
         "source": "USPSTF",
-        "summary": "Lipid screening supports statin-use decisions in adults ~40–75; broader periodic screening is common (every ~5 years used here).",
+        "summary": "Lipids inform the statin-prevention decision for adults 40–75 with cardiovascular risk factors; broader periodic screening is common practice (every ~5 years used here).",
         "grade": "B"
       },
       "schedule": {
-        "startMonths": 420,
+        "startMonths": 480,
         "endMonths": 912,
         "intervalMonths": 60
       }
@@ -84,6 +84,22 @@
       }
     },
     {
+      "key": "anxiety_screening",
+      "name": "Anxiety screening",
+      "description": "Screening for anxiety disorders (e.g. a GAD-7 questionnaire) in children, adolescents, and adults.",
+      "graceMonths": 6,
+      "citation": {
+        "source": "USPSTF",
+        "summary": "Screen children and adolescents 8–18 (2022) and adults 19–64, including during pregnancy and postpartum (2023), for anxiety disorders. Optimal rescreening interval is not established (annual default used here).",
+        "grade": "B"
+      },
+      "schedule": {
+        "startMonths": 96,
+        "endMonths": 780,
+        "intervalMonths": 12
+      }
+    },
+    {
       "key": "hepatitis_c",
       "name": "Hepatitis C screening",
       "description": "One-time blood test for hepatitis C infection.",
@@ -96,6 +112,21 @@
       "schedule": {
         "startMonths": 216,
         "endMonths": 948
+      }
+    },
+    {
+      "key": "hiv_screening",
+      "name": "HIV screening",
+      "description": "One-time blood test for HIV infection.",
+      "graceMonths": 12,
+      "citation": {
+        "source": "USPSTF",
+        "summary": "Screen adolescents and adults 15–65 for HIV infection at least once (younger adolescents and older adults at increased risk should also be screened).",
+        "grade": "A"
+      },
+      "schedule": {
+        "startMonths": 180,
+        "endMonths": 780
       }
     },
     {
@@ -147,6 +178,22 @@
         "startMonths": 780,
         "endMonths": 1440,
         "intervalMonths": 60
+      }
+    },
+    {
+      "key": "hepatitis_b",
+      "name": "Hepatitis B screening",
+      "description": "Blood test for hepatitis B infection in adolescents and adults at increased risk. Requires risk information — inactive until that is recorded.",
+      "graceMonths": 12,
+      "riskGated": true,
+      "citation": {
+        "source": "USPSTF",
+        "summary": "Screen adolescents and adults at increased risk for hepatitis B virus infection (2020). The population is risk-defined rather than universal.",
+        "grade": "B"
+      },
+      "schedule": {
+        "startMonths": 180,
+        "endMonths": 1440
       }
     },
     {
