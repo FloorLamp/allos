@@ -477,7 +477,8 @@ const TOOL: Anthropic.Tool = {
                 },
                 prescriber: {
                   type: ["string", "null"],
-                  description: "Ordering clinician name, e.g. 'Grace Hopper, MD'",
+                  description:
+                    "Ordering clinician name, e.g. 'Grace Hopper, MD'",
                 },
                 pharmacy: {
                   type: ["string", "null"],
@@ -839,7 +840,9 @@ async function buildContent(
 // collapses a boolean/0/1/yes-no to 1/0/null; every text field is trimmed-or-null.
 // Returns null when the object carries NO usable field, so an all-null object never
 // masks the parsePrescription fallback.
-export function normalizePrescription(raw: unknown): ExtractedPrescription | null {
+export function normalizePrescription(
+  raw: unknown
+): ExtractedPrescription | null {
   if (!raw || typeof raw !== "object") return null;
   const p = raw as Record<string, unknown>;
   const rx: ExtractedPrescription = {

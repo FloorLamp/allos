@@ -1,5 +1,7 @@
 import type {
   AllergyStatus,
+  AppointmentKind,
+  AppointmentStatus,
   ConditionStatus,
   MedicalCategory,
   MedicalFlag,
@@ -174,6 +176,21 @@ export interface PersistCareGoal {
   external_id: string | null;
 }
 
+// Scheduled-appointment projection (issue #416). Only the FHIR Appointment resource
+// fills this; the AI and CDA paths leave it empty. The attending clinician
+// (`provider`) is resolved into the shared registry on persist (linked via
+// appointments.provider_id); the facility is a plain `location` string.
+export interface PersistAppointment {
+  scheduled_at: string;
+  status: AppointmentStatus;
+  title: string | null;
+  location: string | null;
+  notes: string | null;
+  kind: AppointmentKind | null;
+  provider: ImportedProvider | null;
+  external_id: string | null;
+}
+
 // The profile-backfill inputs (sex/birthdate/age/name), shaped for
 // adoptProfileFromExtraction. Null when the document states no demographics.
 export interface AdoptMeta {
@@ -206,6 +223,7 @@ export interface PersistInput {
   familyHistory: PersistFamilyHistory[];
   carePlanItems: PersistCarePlanItem[];
   careGoals: PersistCareGoal[];
+  appointments: PersistAppointment[];
   bodyMetrics: DocBodyMetric[];
   // Body-height samples (metric_samples, metric 'height_cm') — height has no
   // body_metrics column, so it gets its own projection.
@@ -521,6 +539,9 @@ export function extractionToPersistInput(
     familyHistory,
     carePlanItems,
     careGoals,
+    // The AI medical extractor has no appointment shape (it emits care plans, not
+    // scheduled visits), so the AI path never produces appointments (#416).
+    appointments: [],
     bodyMetrics,
     heights,
     headCircs,
@@ -702,6 +723,16 @@ export function healthRecordToPersistInput(
       target_date: g.target_date,
       status: g.status,
       external_id: g.external_id,
+    })),
+    appointments: (parsed.appointments ?? []).map((a) => ({
+      scheduled_at: a.scheduled_at,
+      status: a.status,
+      title: a.title,
+      location: a.location,
+      notes: a.notes,
+      kind: a.kind,
+      provider: a.provider,
+      external_id: a.external_id,
     })),
     bodyMetrics,
     heights,

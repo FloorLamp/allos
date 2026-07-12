@@ -147,14 +147,16 @@ describe("producedTotal", () => {
       familyHistory: 1,
       carePlanItems: 1,
       careGoals: 1,
+      appointments: 1,
       medications: 2,
       bodyMetrics: 1,
       heightSamples: 1,
       headCircSamples: 1,
       providers: 4,
     };
-    // 14 records + 3 imms + 7 clinical singles + 2 meds + 3 body samples.
-    expect(producedTotal(counts)).toBe(14 + 3 + 7 + 2 + 3);
+    // 14 records + 3 imms + 8 clinical singles (incl. 1 appointment) + 2 meds +
+    // 3 body samples.
+    expect(producedTotal(counts)).toBe(14 + 3 + 8 + 2 + 3);
   });
 });
 

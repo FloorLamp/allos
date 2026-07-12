@@ -27,6 +27,7 @@ export type ImportTabKind =
   | "family-history"
   | "care-plan"
   | "care-goals"
+  | "appointments"
   | "medications"
   | "body";
 
@@ -97,6 +98,7 @@ const DOMAIN_TAB_KEYS = new Set<string>([
   "family-history",
   "care-plan",
   "care-goals",
+  "appointments",
   "medications",
   "body",
 ]);
@@ -138,6 +140,7 @@ export function buildImportTabs(
   add("family-history", "Family history", counts.familyHistory);
   add("care-plan", "Care plan", counts.carePlanItems);
   add("care-goals", "Care goals", counts.careGoals);
+  add("appointments", "Appointments", counts.appointments);
   add("medications", "Medications", counts.medications);
   add(
     "body",
@@ -329,6 +332,23 @@ export function careGoalItem(row: {
     detail: detailLine(row.status),
     date: row.target_date,
     href: "/care-goals",
+  };
+}
+
+export function appointmentItem(row: {
+  id: number;
+  scheduled_at: string;
+  title: string | null;
+  location: string | null;
+  status: string;
+}): ProducedItem {
+  return {
+    id: row.id,
+    title: row.title ?? "Appointment",
+    detail: detailLine(row.location ?? row.status),
+    // The scheduled date (drop any time portion for the listing's date column).
+    date: row.scheduled_at.slice(0, 10),
+    href: "/appointments",
   };
 }
 

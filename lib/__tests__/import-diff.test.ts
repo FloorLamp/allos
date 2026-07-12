@@ -48,6 +48,7 @@ function input(over: Partial<PersistInput> = {}): PersistInput {
     familyHistory: [],
     carePlanItems: [],
     careGoals: [],
+    appointments: [],
     bodyMetrics: [],
     heights: [],
     headCircs: [],

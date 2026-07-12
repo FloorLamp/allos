@@ -47,6 +47,7 @@ function inputWith(records: PersistRecord[]): PersistInput {
     familyHistory: [],
     carePlanItems: [],
     careGoals: [],
+    appointments: [],
     bodyMetrics: [],
     heights: [],
     headCircs: [],

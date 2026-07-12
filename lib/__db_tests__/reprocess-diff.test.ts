@@ -107,6 +107,7 @@ function makeInput(over: Partial<PersistInput> = {}): PersistInput {
     familyHistory: [],
     carePlanItems: [],
     careGoals: [],
+    appointments: [],
     bodyMetrics: [
       { date: DATE, weight_kg: 82, body_fat_pct: null, resting_hr: null },
     ],

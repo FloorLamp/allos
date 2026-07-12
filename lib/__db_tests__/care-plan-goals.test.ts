@@ -66,6 +66,7 @@ function makeInput(tag: string): PersistInput {
         external_id: `ccda:caregoal:4548-4:${tag}`,
       },
     ],
+    appointments: [],
     bodyMetrics: [],
     heights: [],
     headCircs: [],

@@ -1,3 +1,5 @@
+import type { AppointmentKind, AppointmentStatus } from "./types";
+
 // FHIR R4 bundle EXPORT — the inverse of lib/fhir.ts's import mapping (issue #18).
 // Pure: no DB, no network, no filesystem. Given the profile's clinical passport as
 // plain provider-neutral rows (conditions, allergies, procedures, immunizations,
@@ -174,6 +176,19 @@ export interface FhirExportCareGoal {
   status: string | null;
 }
 
+// A scheduled appointment for the FHIR export (issue #416). The appointments table
+// is ALSO a flat export dataset, so this FHIR emission exists mainly to keep the
+// exporter symmetric with the importer's Appointment mapper — full-fidelity
+// portability rides on the dataset.
+export interface FhirExportAppointment {
+  scheduled_at: string;
+  status: AppointmentStatus;
+  title: string | null;
+  location: string | null;
+  notes: string | null;
+  kind: AppointmentKind | null;
+}
+
 export interface FhirExportInput {
   profile?: FhirExportProfile | null;
   conditions: FhirExportCondition[];
@@ -189,6 +204,8 @@ export interface FhirExportInput {
   familyHistory?: FhirExportFamilyHistory[];
   carePlanItems?: FhirExportCarePlanItem[];
   careGoals?: FhirExportCareGoal[];
+  // Scheduled appointments (#416). Optional (default []) so existing callers stay valid.
+  appointments?: FhirExportAppointment[];
 }
 
 // The FHIR resourceTypes this exporter emits. Bound in a DB-tier test (issue #465)
@@ -206,6 +223,7 @@ export const FHIR_EXPORT_RESOURCE_TYPES = [
   "FamilyMemberHistory",
   "CarePlan",
   "Goal",
+  "Appointment",
 ] as const;
 
 export interface FhirBundleEntry {
@@ -415,6 +433,38 @@ function goalResource(g: FhirExportCareGoal): Record<string, unknown> {
   return r;
 }
 
+// Inverse of mapAppointmentResource: the lifecycle status back to a FHIR value,
+// the scheduled date/time as `start`, the title as `description`, notes as `comment`,
+// and the kind echoed as a serviceType text so the importer can re-map it.
+const APPOINTMENT_STATUS_TO_FHIR: Record<AppointmentStatus, string> = {
+  scheduled: "booked",
+  completed: "fulfilled",
+  cancelled: "cancelled",
+};
+function appointmentResource(
+  a: FhirExportAppointment
+): Record<string, unknown> {
+  const r: Record<string, unknown> = {
+    resourceType: "Appointment",
+    status: APPOINTMENT_STATUS_TO_FHIR[a.status] ?? "booked",
+    start: a.scheduled_at,
+  };
+  if (a.title && a.title.trim()) r.description = a.title.trim();
+  if (a.notes && a.notes.trim()) r.comment = a.notes.trim();
+  if (a.kind) r.serviceType = [{ text: a.kind }];
+  if (a.location && a.location.trim())
+    r.participant = [
+      {
+        actor: {
+          reference: `Location/${a.location.trim()}`,
+          display: a.location.trim(),
+        },
+        status: "accepted",
+      },
+    ];
+  return r;
+}
+
 // Build the FHIR R4 collection Bundle. Every entry gets a stable synthetic id +
 // fullUrl (urn:allos:<type>:<n>) so the importer's reference resolver has keys to
 // index; nothing in this bundle actually cross-references, but well-formed entries
@@ -444,6 +494,8 @@ export function buildFhirBundle(input: FhirExportInput): FhirBundle {
   for (const c of input.carePlanItems ?? [])
     add("careplan", carePlanResource(c));
   for (const g of input.careGoals ?? []) add("goal", goalResource(g));
+  for (const a of input.appointments ?? [])
+    add("appointment", appointmentResource(a));
 
   return { resourceType: "Bundle", type: "collection", entry };
 }

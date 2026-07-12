@@ -65,6 +65,7 @@ function makeInput(tag: string): PersistInput {
     ],
     carePlanItems: [],
     careGoals: [],
+    appointments: [],
     bodyMetrics: [],
     heights: [],
     headCircs: [],

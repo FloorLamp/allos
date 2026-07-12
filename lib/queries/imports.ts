@@ -199,6 +199,13 @@ export function getDocumentProduced(
       )
       .get(profileId, docId)
   );
+  const appointments = scalar(
+    db
+      .prepare(
+        `SELECT COUNT(*) AS c FROM appointments WHERE profile_id = ? AND document_id = ?`
+      )
+      .get(profileId, docId)
+  );
   const medications = scalar(
     db
       .prepare(
@@ -272,6 +279,7 @@ export function getDocumentProduced(
     familyHistory,
     carePlanItems,
     careGoals,
+    appointments,
     medications,
     bodyMetrics,
     heightSamples,
@@ -412,6 +420,22 @@ export function getDocumentCareGoals(profileId: number, docId: number) {
     description: string;
     target_date: string | null;
     status: string | null;
+  }[];
+}
+
+export function getDocumentAppointments(profileId: number, docId: number) {
+  return db
+    .prepare(
+      `SELECT id, scheduled_at, title, location, status FROM appointments
+        WHERE profile_id = ? AND document_id = ?
+        ORDER BY scheduled_at DESC, id DESC`
+    )
+    .all(profileId, docId) as {
+    id: number;
+    scheduled_at: string;
+    title: string | null;
+    location: string | null;
+    status: string;
   }[];
 }
 

@@ -873,7 +873,12 @@ describe("extractionToPersistInput — structured prescription (#414)", () => {
     expect(rec.notes).toBe("Take 1 tablet by mouth daily");
     // A printed start date becomes a single open course.
     expect(rec.courses).toEqual([
-      { started_on: "2024-02-01", stopped_on: null, stop_reason: null, notes: null },
+      {
+        started_on: "2024-02-01",
+        stopped_on: null,
+        stop_reason: null,
+        notes: null,
+      },
     ]);
   });
 

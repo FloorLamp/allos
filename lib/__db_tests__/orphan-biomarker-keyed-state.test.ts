@@ -78,6 +78,7 @@ function glucoseInput(): PersistInput {
     familyHistory: [],
     carePlanItems: [],
     careGoals: [],
+    appointments: [],
     bodyMetrics: [],
     heights: [],
     headCircs: [],

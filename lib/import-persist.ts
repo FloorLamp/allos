@@ -482,6 +482,17 @@ function insertImportRows(
         source, document_id, external_id, profile_id)
      VALUES (?,?,?,?,?,?,?,?,?)`
   );
+  // Scheduled appointments (issue #416). Same idempotency as the other clinical
+  // domains: the per-document delete-set clears this document's prior rows, then
+  // INSERT OR IGNORE dedups within the document via the per-profile unique external_id
+  // index (scoped with the document source). provider_id is the resolved shared-
+  // registry id for the attending clinician; location is a plain facility string.
+  const insAppointment = db.prepare(
+    `INSERT OR IGNORE INTO appointments
+       (scheduled_at, provider_id, title, location, notes, kind, status,
+        source, document_id, external_id, profile_id)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?)`
+  );
 
   // Structured medications: a prescription record is ALSO projected
   // into a kind='medication' intake_items row (source='extracted', document_id),
@@ -722,6 +733,21 @@ function insertImportRows(
       docSource,
       docId,
       scopedExternalId(g.external_id),
+      profileId
+    );
+  }
+  for (const a of input.appointments) {
+    insAppointment.run(
+      a.scheduled_at,
+      providerIdFor(a.provider),
+      a.title,
+      a.location,
+      a.notes,
+      a.kind,
+      a.status,
+      docSource,
+      docId,
+      scopedExternalId(a.external_id),
       profileId
     );
   }

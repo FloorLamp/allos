@@ -24,6 +24,7 @@ import type {
   FhirExportFamilyHistory,
   FhirExportCarePlanItem,
   FhirExportCareGoal,
+  FhirExportAppointment,
 } from "./fhir-export";
 
 // Server-side collection layer for the full-account export (issue #18). Reads the
@@ -281,6 +282,13 @@ export function collectFhirExportInput(
     )
     .all(profileId) as FhirExportCareGoal[];
 
+  const appointments = db
+    .prepare(
+      `SELECT scheduled_at, status, title, location, notes, kind
+         FROM appointments WHERE profile_id = ? ORDER BY scheduled_at DESC, id DESC`
+    )
+    .all(profileId) as FhirExportAppointment[];
+
   const smoking = getSmokingHistory(profileId);
   const profile = {
     name: getUserFullName(profileId) ?? displayName,
@@ -307,6 +315,7 @@ export function collectFhirExportInput(
     familyHistory,
     carePlanItems,
     careGoals,
+    appointments,
   };
 }
 

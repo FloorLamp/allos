@@ -159,6 +159,7 @@ function makeInput(opts: InputOpts = {}): PersistInput {
     familyHistory: [],
     carePlanItems: [],
     careGoals: [],
+    appointments: [],
     bodyMetrics: [
       { date, weight_kg: 82, body_fat_pct: null, resting_hr: null },
     ],
