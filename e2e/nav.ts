@@ -1,4 +1,32 @@
-import { expect, type Locator, type Page } from "@playwright/test";
+import {
+  expect,
+  type Browser,
+  type Locator,
+  type Page,
+} from "@playwright/test";
+
+// Sign in as the given credentials in a brand-new, explicitly cookie-less context
+// (so it does NOT inherit the admin storageState). Returns the member's page; the
+// caller owns closing its context. Used by the #391 specs to drive an isolated,
+// non-admin session — its own server-side active profile — without touching the
+// shared admin session that every other spec relies on.
+export async function loginAs(
+  browser: Browser,
+  creds: { username: string; password: string }
+): Promise<Page> {
+  const ctx = await browser.newContext({
+    storageState: { cookies: [], origins: [] },
+  });
+  const page = await ctx.newPage();
+  await page.goto("/login");
+  await page.fill('input[name="username"]', creds.username);
+  await page.fill('input[name="password"]', creds.password);
+  await page.click('button[type="submit"]');
+  await page.waitForURL((u) => !u.pathname.startsWith("/login"), {
+    timeout: 20_000,
+  });
+  return page;
+}
 
 // Follow a Next.js <Link> reliably, retrying the click until the client router
 // actually commits the navigation.

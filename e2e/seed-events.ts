@@ -16,6 +16,16 @@ import {
   setSetting,
   setWeekMode,
 } from "../lib/settings";
+import { setMinTrainingAge } from "../lib/age-gate";
+import { hashPasswordSync } from "../lib/password";
+import {
+  E2E_LOGIN_CHILD,
+  E2E_LOGIN_HC,
+  E2E_LOGIN_STRAVA,
+  E2E_MEMBER_PASSWORD,
+  HEALTH_CONNECT_PROFILE,
+  STRAVA_REAUTH_PROFILE,
+} from "./fixture-logins";
 
 // A persisted notification-delivery failure (#131) so Settings → Server surfaces
 // the "Last notification delivery failed" marker for the e2e to assert. Synthetic
@@ -1081,4 +1091,160 @@ db.prepare(
 
 console.log(
   `e2e: seeded medical-smalls fixtures on profile ${PROFILE_ID} (#381 starred genomics, #383 canonical search, #384 allergy twins)`
+);
+
+// ── E2E coverage-gap fixtures (issue #391) ────────────────────────────────────
+// Fill the browser-coverage holes the audit flagged: share links, immunizations,
+// equipment, Strava/Health-Connect integration states, care-plan, AI-logs gate,
+// and appointments. Anything that needs a NON-profile-1 active profile is served
+// by a purpose-built member login + grant (created directly below) so the spec can
+// sign in as an isolated session in its own cookie context — never mutating the
+// shared admin storageState's active profile. All synthetic; idempotent.
+
+// The instance-wide age gate, ON at 13 whole years. This is deliberately global,
+// but SAFE for every existing spec: it restricts ONLY a profile whose known age is
+// under 13, and the sole such profile is the ~18-month-old "Riley (child)". Profile
+// 1 (the admin's active profile, ~40y) is never restricted, so the training /
+// equipment specs that run as profile 1 are untouched; Test Child / Sam Rivers have
+// no birthdate → unknown age → never restricted; and the demo webServer boots from
+// scripts/seed.ts ONLY (no seed-events), so its DB never sees this setting. The two
+// child-profile specs (kids-growth, pediatric-ranges) only visit Trends / Settings /
+// Biomarkers as Riley — none of which the gate touches. The equipment-manager spec
+// uses it to prove /settings/equipment bounces a restricted profile to /settings.
+setMinTrainingAge(13);
+
+// Create a member login (username + scrypt hash) granted exactly ONE profile at the
+// given access level. INSERT OR IGNORE keeps it idempotent across a reused dev
+// server; the grant is re-asserted either way. Returns the login id.
+function seedMemberLogin(
+  username: string,
+  profileId: number,
+  access: "read" | "write" = "write"
+): number {
+  db.prepare(
+    "INSERT OR IGNORE INTO logins (username, password_hash, role) VALUES (?, ?, 'member')"
+  ).run(username, hashPasswordSync(E2E_MEMBER_PASSWORD));
+  const loginId = (
+    db.prepare("SELECT id FROM logins WHERE username = ?").get(username) as {
+      id: number;
+    }
+  ).id;
+  db.prepare(
+    `INSERT INTO login_profiles (login_id, profile_id, access) VALUES (?, ?, ?)
+       ON CONFLICT(login_id, profile_id) DO UPDATE SET access = excluded.access`
+  ).run(loginId, profileId, access);
+  return loginId;
+}
+
+// Look up (or create) a fixture profile by name — idempotent for a reused server.
+function fixtureProfileId(name: string): number {
+  const existing = db
+    .prepare("SELECT id FROM profiles WHERE name = ?")
+    .get(name) as { id: number } | undefined;
+  if (existing) return existing.id;
+  return Number(
+    db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
+      .lastInsertRowid
+  );
+}
+
+// Riley (child) is seeded by scripts/seed.ts; grant the child member to it.
+const rileyId = (
+  db.prepare("SELECT id FROM profiles WHERE name = ?").get("Riley (child)") as
+    { id: number } | undefined
+)?.id;
+if (rileyId) seedMemberLogin(E2E_LOGIN_CHILD, rileyId);
+
+// A dedicated profile whose Strava connection sits in the terminal `needs_reauth`
+// state (dead/revoked refresh token, #326/#352): config kept (client id/secret) but
+// NO access token, so the page reads !connected + needsReauth → the reconnect CTA.
+const stravaReauthId = fixtureProfileId(STRAVA_REAUTH_PROFILE);
+upsertConnection(stravaReauthId, "strava", {
+  status: "needs_reauth",
+  config: { clientId: "e2e-reauth-client", clientSecret: "e2e-reauth-secret" },
+});
+seedMemberLogin(E2E_LOGIN_STRAVA, stravaReauthId);
+
+// A dedicated, connection-less profile for the Health Connect generate→rotate flow.
+const healthConnectId = fixtureProfileId(HEALTH_CONNECT_PROFILE);
+seedMemberLogin(E2E_LOGIN_HC, healthConnectId);
+
+console.log(
+  `e2e: enabled age gate (13) + seeded member logins for the child (${rileyId}), Strava-reauth (${stravaReauthId}), and Health-Connect (${healthConnectId}) fixture profiles (#391)`
+);
+
+// A profile-1 equipment row REFERENCED by a logged strength set, so the equipment
+// manager's delete can prove it detaches the link (nulls exercise_sets.equipment_id)
+// and the referencing session still renders — no FK 500 (the #342 side-state rule).
+// Idempotent: rebuilt from scratch each boot.
+db.prepare(
+  `DELETE FROM equipment WHERE profile_id = ? AND name = 'E2E Delete Bar'`
+).run(PROFILE_ID);
+db.prepare(
+  `DELETE FROM activities WHERE profile_id = ? AND external_id = 'e2e:equip-delete'`
+).run(PROFILE_ID);
+const delBarId = Number(
+  db
+    .prepare(
+      `INSERT INTO equipment (profile_id, name, weight_kg, category)
+       VALUES (?, 'E2E Delete Bar', 20, 'Barbell')`
+    )
+    .run(PROFILE_ID).lastInsertRowid
+);
+const delActId = Number(
+  db
+    .prepare(
+      `INSERT INTO activities
+         (profile_id, date, type, title, duration_min, source, external_id, edited)
+       VALUES (?, ?, 'strength', 'E2E Equipment Delete Session', 30, 'manual', 'e2e:equip-delete', 0)`
+    )
+    .run(PROFILE_ID, shiftDateStr(today(PROFILE_ID), -1)).lastInsertRowid
+);
+db.prepare(
+  `INSERT INTO exercise_sets (activity_id, exercise, set_number, weight_kg, reps, equipment_id)
+   VALUES (?, 'Bench Press', 1, 60, 5, ?)`
+).run(delActId, delBarId);
+
+// A dedicated, open, FUTURE-dated care-plan item on profile 1 for the care-plan
+// spec's complete→disappears-from-Upcoming check. Distinct from the base seed's
+// care-plan rows (which care-plan-upcoming.spec drives), so the two never collide.
+// The description must match NO preventive concept-map phrase (an earlier "eye
+// exam" wording, once the spec completed it, was inferred as satisfying the
+// vision_exam rule and broke preventive-upcoming's still-due control assertion).
+db.prepare(
+  `DELETE FROM care_plan_items WHERE profile_id = ? AND description IN ('E2E annual eye exam', 'E2E orthotics fitting')`
+).run(PROFILE_ID);
+db.prepare(
+  `INSERT INTO care_plan_items
+     (profile_id, description, category, planned_date, status, notes)
+   VALUES (?, 'E2E orthotics fitting', 'procedure', ?, 'planned', 'Custom insole fitting')`
+).run(PROFILE_ID, shiftDateStr(today(PROFILE_ID), 21));
+
+// A dedicated, FUTURE, scheduled appointment on profile 1 (with a provider) for the
+// appointments spec's cancel→removed-from-Upcoming check — separate from the base
+// seed's appointments so cancelling it can't disturb the family-calendar / upcoming
+// fixtures. Provider linked via a dedicated synthetic clinic.
+db.prepare(
+  `DELETE FROM appointments WHERE profile_id = ? AND title = 'E2E dermatology visit'`
+).run(PROFILE_ID);
+db.prepare(`DELETE FROM providers WHERE dedup_key = 'e2e-appt-clinic'`).run();
+const apptProviderId = Number(
+  db
+    .prepare(
+      `INSERT INTO providers (name, type, dedup_key)
+       VALUES ('E2E Skin Clinic', 'organization', 'e2e-appt-clinic')`
+    )
+    .run().lastInsertRowid
+);
+db.prepare(
+  `INSERT INTO appointments (profile_id, scheduled_at, provider_id, title, location, status)
+   VALUES (?, ?, ?, 'E2E dermatology visit', 'E2E Skin Clinic', 'scheduled')`
+).run(
+  PROFILE_ID,
+  `${shiftDateStr(today(PROFILE_ID), 4)} 09:30`,
+  apptProviderId
+);
+
+console.log(
+  `e2e: seeded an equipment-delete link fixture, an open care-plan item, and a future appointment on profile ${PROFILE_ID} (#391)`
 );

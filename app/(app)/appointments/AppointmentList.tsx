@@ -163,6 +163,7 @@ export default function AppointmentList({
           ) : (
             <div
               key={a.id}
+              data-testid="appointment-row"
               className="flex items-start gap-3 p-3 transition hover:bg-slate-50 dark:hover:bg-ink-850"
             >
               <div className="min-w-0 flex-1">
