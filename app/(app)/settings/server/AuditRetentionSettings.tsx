@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   MIN_AUDIT_RETENTION_MONTHS,
@@ -8,6 +8,7 @@ import {
 } from "@/lib/retention";
 import { saveAuditRetention } from "./actions";
 import SaveStatus from "@/components/SaveStatus";
+import { useSaveStatus } from "@/components/useSaveStatus";
 
 // GLOBAL, admin-only: how long the security audit trail (`audit_events` — logins,
 // PHI access, admin/family changes) is kept before the hourly notify tick prunes
@@ -17,15 +18,13 @@ import SaveStatus from "@/components/SaveStatus";
 export default function AuditRetentionSettings({ months }: { months: number }) {
   const router = useRouter();
   const [value, setValue] = useState(String(months));
-  const [pending, startTransition] = useTransition();
-  const [savedAt, setSavedAt] = useState(0);
+  const { pending, savedAt, error, save: runSave } = useSaveStatus();
 
   function save() {
     const fd = new FormData();
     fd.set("audit_retention_months", value.trim());
-    startTransition(async () => {
+    runSave(async () => {
       await saveAuditRetention(fd);
-      setSavedAt(Date.now());
       router.refresh();
     });
   }
@@ -39,7 +38,7 @@ export default function AuditRetentionSettings({ months }: { months: number }) {
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Audit-log retention
         </h2>
-        <SaveStatus pending={pending} savedAt={savedAt} />
+        <SaveStatus pending={pending} savedAt={savedAt} error={error} />
       </div>
 
       <p className="text-xs text-slate-400 dark:text-slate-500">

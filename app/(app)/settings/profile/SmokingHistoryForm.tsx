@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { saveSmokingHistory } from "./actions";
 import SaveStatus from "@/components/SaveStatus";
+import { useSaveStatus } from "@/components/useSaveStatus";
 import type { SmokingHistory, SmokingStatusValue } from "@/lib/smoking";
 
 // Structured smoking history (issue #83) — a PROFILE-scoped property of the tracked
@@ -26,8 +27,7 @@ export default function SmokingHistoryForm({
   const [quitYear, setQuitYear] = useState(
     history.quitYear == null ? "" : String(history.quitYear)
   );
-  const [pending, startTransition] = useTransition();
-  const [savedAt, setSavedAt] = useState(0);
+  const { pending, savedAt, error, save: runSave } = useSaveStatus();
 
   const everSmoker = status === "former" || status === "current";
   const isFormer = status === "former";
@@ -48,9 +48,8 @@ export default function SmokingHistoryForm({
         : ""
     );
     fd.set("quit_year", next.status === "former" ? next.quitYear : "");
-    startTransition(async () => {
+    runSave(async () => {
       await saveSmokingHistory(fd);
-      setSavedAt(Date.now());
       router.refresh();
     });
   }
@@ -61,7 +60,7 @@ export default function SmokingHistoryForm({
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Smoking history
         </h2>
-        <SaveStatus pending={pending} savedAt={savedAt} />
+        <SaveStatus pending={pending} savedAt={savedAt} error={error} />
       </div>
 
       <div>

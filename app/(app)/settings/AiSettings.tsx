@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { AiPrefs } from "@/lib/settings";
 import type { AiEndpointInfo } from "@/lib/ai-client";
 import { saveAiSettings } from "./server/actions";
 import SaveStatus from "@/components/SaveStatus";
+import { useSaveStatus } from "@/components/useSaveStatus";
 
 export default function AiSettings({
   prefs,
@@ -19,16 +20,14 @@ export default function AiSettings({
     prefs.autoSupplementSuggestions
   );
   const [autoInsights, setAutoInsights] = useState(prefs.autoInsights);
-  const [pending, startTransition] = useTransition();
-  const [savedAt, setSavedAt] = useState(0);
+  const { pending, savedAt, error, save: runSave } = useSaveStatus();
 
   function save(next: { autoSuggest: boolean; autoInsights: boolean }) {
     const fd = new FormData();
     fd.set("auto_supplement_suggestions", next.autoSuggest ? "1" : "0");
     fd.set("auto_insights", next.autoInsights ? "1" : "0");
-    startTransition(async () => {
+    runSave(async () => {
       await saveAiSettings(fd);
-      setSavedAt(Date.now());
       router.refresh();
     });
   }
@@ -37,7 +36,7 @@ export default function AiSettings({
     <div className="card mt-6 max-w-lg space-y-5">
       <div className="flex items-center justify-between">
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">AI</h2>
-        <SaveStatus pending={pending} savedAt={savedAt} />
+        <SaveStatus pending={pending} savedAt={savedAt} error={error} />
       </div>
 
       {/*

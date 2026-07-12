@@ -6,6 +6,7 @@ import type { TelegramBotConfig, TelegramMode } from "@/lib/settings";
 import type { NotifyErrorMarker } from "@/lib/notifications/delivery-status";
 import { saveTelegramBotConfig, registerTelegramWebhook } from "./actions";
 import SaveStatus from "@/components/SaveStatus";
+import { useSaveStatus } from "@/components/useSaveStatus";
 
 // The GLOBAL Telegram bot credentials (token + inbound transport mode). One bot
 // serves every profile, so this is admin-only. Each profile's enable toggle,
@@ -25,11 +26,14 @@ export default function ServerTelegramSettings({
   const router = useRouter();
   const [botToken, setBotToken] = useState(config.telegramBotToken);
   const [mode, setMode] = useState<TelegramMode>(config.telegramMode);
-  const [pending, startTransition] = useTransition();
-  const [savedAt, setSavedAt] = useState(0);
+  const { pending, savedAt, error, save: runSave } = useSaveStatus();
+  // Register drives the result message, not the "saved" chip, so it keeps its own
+  // transition (see the note on register()).
+  const [registering, startRegister] = useTransition();
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(
     null
   );
+  const busy = pending || registering;
 
   function buildFormData() {
     const fd = new FormData();
@@ -39,9 +43,8 @@ export default function ServerTelegramSettings({
   }
 
   function save() {
-    startTransition(async () => {
+    runSave(async () => {
       await saveTelegramBotConfig(buildFormData());
-      setSavedAt(Date.now());
       setResult(null);
       router.refresh();
     });
@@ -50,11 +53,19 @@ export default function ServerTelegramSettings({
   // Register acts on *stored* settings, so persist the form first — otherwise
   // unsaved edits are silently ignored. The "Saved" chip stays tied to the Save
   // button: showing it here would read as success even when registration fails.
+  // The try/catch keeps a transient throw from escalating to the error boundary.
   function register() {
     const fd = buildFormData();
-    startTransition(async () => {
-      await saveTelegramBotConfig(fd);
-      setResult(await registerTelegramWebhook());
+    startRegister(async () => {
+      try {
+        await saveTelegramBotConfig(fd);
+        setResult(await registerTelegramWebhook());
+      } catch {
+        setResult({
+          ok: false,
+          message: "Couldn’t register the webhook. Please try again.",
+        });
+      }
       router.refresh();
     });
   }
@@ -65,7 +76,7 @@ export default function ServerTelegramSettings({
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Telegram bot
         </h2>
-        <SaveStatus pending={pending} savedAt={savedAt} />
+        <SaveStatus pending={pending} savedAt={savedAt} error={error} />
       </div>
 
       <p className="text-xs text-slate-400 dark:text-slate-500">
@@ -147,14 +158,14 @@ export default function ServerTelegramSettings({
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" onClick={save} disabled={pending} className="btn">
+        <button type="button" onClick={save} disabled={busy} className="btn">
           Save
         </button>
         {mode === "webhook" && (
           <button
             type="button"
             onClick={register}
-            disabled={pending}
+            disabled={busy}
             className="btn-ghost"
           >
             Register webhook

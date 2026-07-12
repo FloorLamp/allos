@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { savePublicUrl } from "./server/actions";
 import SaveStatus from "@/components/SaveStatus";
+import { useSaveStatus } from "@/components/useSaveStatus";
 
 // The externally reachable base URL of the app — one shared setting consumed by
 // everything that hands a URL to a third party (Telegram webhook, Strava OAuth
@@ -15,23 +16,25 @@ export default function PublicUrlSettings({
 }) {
   const router = useRouter();
   const [url, setUrl] = useState(publicUrl);
-  const [pending, startTransition] = useTransition();
-  const [savedAt, setSavedAt] = useState(0);
-  const [error, setError] = useState<string | null>(null);
+  const { pending, savedAt, error, save: runSave } = useSaveStatus();
+  // A server-side validation message (a rejected URL). Distinct from the hook's
+  // boolean `error` (a thrown/transient save failure) — this carries the reason.
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   function save() {
     const fd = new FormData();
     fd.set("public_url", url);
-    startTransition(async () => {
+    runSave(async () => {
       const res = await savePublicUrl(fd);
       if (!res.ok) {
-        setError(res.error);
-        return;
+        setValidationError(res.error);
+        // Throw so the hook records a failure (error icon, no "saved" chip)
+        // rather than treating the rejected value as a successful save.
+        throw new Error(res.error);
       }
       // Reflect the normalization (added scheme, stripped trailing slash).
       setUrl(res.url);
-      setError(null);
-      setSavedAt(Date.now());
+      setValidationError(null);
       router.refresh();
     });
   }
@@ -42,7 +45,7 @@ export default function PublicUrlSettings({
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Public app URL
         </h2>
-        <SaveStatus pending={pending} savedAt={savedAt} />
+        <SaveStatus pending={pending} savedAt={savedAt} error={error} />
       </div>
 
       <p className="text-xs text-slate-400 dark:text-slate-500">
@@ -67,8 +70,10 @@ export default function PublicUrlSettings({
         </button>
       </div>
 
-      {error && (
-        <p className="text-sm text-rose-600 dark:text-rose-400">{error}</p>
+      {validationError && (
+        <p className="text-sm text-rose-600 dark:text-rose-400">
+          {validationError}
+        </p>
       )}
     </div>
   );

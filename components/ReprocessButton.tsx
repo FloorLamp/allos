@@ -32,6 +32,14 @@ export default function ReprocessButton() {
     let cost;
     try {
       cost = await previewReprocessAllCost();
+    } catch {
+      // The preview is fired from an un-awaited onClick, so a throw here was
+      // completely silent (issue #477) — surface it inline instead.
+      setResult({
+        status: "skipped",
+        message: "Couldn't check documents. Please try again.",
+      });
+      return;
     } finally {
       setPreparing(false);
     }
@@ -70,7 +78,16 @@ export default function ReprocessButton() {
 
     setResult(null);
     startTransition(async () => {
-      setResult(await reprocessAllDocuments());
+      try {
+        setResult(await reprocessAllDocuments());
+      } catch {
+        // A throw inside the transition would escalate to the route error
+        // boundary; keep it on this row instead (issue #477).
+        setResult({
+          status: "skipped",
+          message: "Re-extraction failed. Please try again.",
+        });
+      }
     });
   }
 

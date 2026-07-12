@@ -219,6 +219,16 @@ function ImportJobCard({ job, unit }: { job: ImportJob; unit: WeightUnit }) {
       }
       toast(r.message);
       router.refresh();
+    } catch {
+      // commitImportJob deliberately RETHROWS after reverting the job to 'ready'
+      // (good server design) — without this catch the spinner just cleared and
+      // the user retried blind (issue #477). Toast the failure; the job row still
+      // carries its honest 'ready' state.
+      toast("Couldn't save this import. Please try again.", {
+        tone: "error",
+        duration: null,
+      });
+      router.refresh();
     } finally {
       setPending(null);
     }
@@ -229,6 +239,11 @@ function ImportJobCard({ job, unit }: { job: ImportJob; unit: WeightUnit }) {
     try {
       await discardImportJob(job.id);
       router.refresh();
+    } catch {
+      toast("Couldn't discard this import. Please try again.", {
+        tone: "error",
+        duration: null,
+      });
     } finally {
       setPending(null);
     }

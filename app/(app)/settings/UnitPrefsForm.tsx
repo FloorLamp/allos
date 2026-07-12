@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { saveUnitPrefs } from "./actions";
 import SaveStatus from "@/components/SaveStatus";
+import { useSaveStatus } from "@/components/useSaveStatus";
 import type { DistanceUnit, UnitPrefs, WeightUnit } from "@/lib/settings";
 
 // Unit display preferences — a LOGIN-scoped setting (the signed-in login's
@@ -14,16 +15,14 @@ export default function UnitPrefsForm({ prefs }: { prefs: UnitPrefs }) {
   const [distanceUnit, setDistanceUnit] = useState<DistanceUnit>(
     prefs.distanceUnit
   );
-  const [pending, startTransition] = useTransition();
-  const [savedAt, setSavedAt] = useState(0);
+  const { pending, savedAt, error, save: runSave } = useSaveStatus();
 
   function save(next: { weightUnit: WeightUnit; distanceUnit: DistanceUnit }) {
     const fd = new FormData();
     fd.set("weight_unit", next.weightUnit);
     fd.set("distance_unit", next.distanceUnit);
-    startTransition(async () => {
+    runSave(async () => {
       await saveUnitPrefs(fd);
-      setSavedAt(Date.now());
       router.refresh();
     });
   }
@@ -34,7 +33,7 @@ export default function UnitPrefsForm({ prefs }: { prefs: UnitPrefs }) {
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Units
         </h2>
-        <SaveStatus pending={pending} savedAt={savedAt} />
+        <SaveStatus pending={pending} savedAt={savedAt} error={error} />
       </div>
 
       <div>

@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { saveInstanceTimezone } from "./actions";
 import SaveStatus from "@/components/SaveStatus";
+import { useSaveStatus } from "@/components/useSaveStatus";
 
 // The GLOBAL instance-default timezone: seeds newly created profiles and backs
 // up any profile without its own timezone. Admin-only. Per-person timezones are
@@ -15,8 +16,7 @@ export default function InstanceTimezoneSettings({
 }) {
   const router = useRouter();
   const [timezone, setTimezone] = useState(initialTimezone);
-  const [pending, startTransition] = useTransition();
-  const [savedAt, setSavedAt] = useState(0);
+  const { pending, savedAt, error, save: runSave } = useSaveStatus();
 
   const [tzList, setTzList] = useState<string[]>([]);
   useEffect(() => {
@@ -29,9 +29,8 @@ export default function InstanceTimezoneSettings({
   function save(tz: string) {
     const fd = new FormData();
     fd.set("timezone", tz);
-    startTransition(async () => {
+    runSave(async () => {
       await saveInstanceTimezone(fd);
-      setSavedAt(Date.now());
       router.refresh();
     });
   }
@@ -42,7 +41,7 @@ export default function InstanceTimezoneSettings({
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Instance-default timezone
         </h2>
-        <SaveStatus pending={pending} savedAt={savedAt} />
+        <SaveStatus pending={pending} savedAt={savedAt} error={error} />
       </div>
 
       <p className="text-xs text-slate-400 dark:text-slate-500">

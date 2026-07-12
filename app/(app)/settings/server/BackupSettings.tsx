@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { BackupSettings } from "@/lib/settings";
 import { saveBackupSettings, backupNow } from "./actions";
 import SaveStatus from "@/components/SaveStatus";
+import { useSaveStatus } from "@/components/useSaveStatus";
 
 // GLOBAL, admin-only: automated nightly SQLite snapshots + retention (#131). The
 // hour is in the instance timezone (backups are instance-wide, not per-profile).
@@ -30,11 +31,14 @@ export default function BackupSettings({
   const [hour, setHour] = useState(settings.hour);
   const [keepDaily, setKeepDaily] = useState(settings.keepDaily);
   const [keepWeekly, setKeepWeekly] = useState(settings.keepWeekly);
-  const [pending, startTransition] = useTransition();
-  const [savedAt, setSavedAt] = useState(0);
+  const { pending, savedAt, error, save: runSave } = useSaveStatus();
+  // "Back up now" is a distinct action with its own result message, not tied to
+  // the "saved" chip — keep its own transition so it doesn't flip savedAt.
+  const [runningNow, startRunNow] = useTransition();
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(
     null
   );
+  const busy = pending || runningNow;
 
   function save() {
     const fd = new FormData();
@@ -42,17 +46,23 @@ export default function BackupSettings({
     fd.set("backup_hour", String(hour));
     fd.set("backup_keep_daily", String(keepDaily));
     fd.set("backup_keep_weekly", String(keepWeekly));
-    startTransition(async () => {
+    runSave(async () => {
       await saveBackupSettings(fd);
-      setSavedAt(Date.now());
       setResult(null);
       router.refresh();
     });
   }
 
   function runNow() {
-    startTransition(async () => {
-      setResult(await backupNow());
+    startRunNow(async () => {
+      try {
+        setResult(await backupNow());
+      } catch {
+        setResult({
+          ok: false,
+          message: "Couldn’t run the backup. Please try again.",
+        });
+      }
       router.refresh();
     });
   }
@@ -63,7 +73,7 @@ export default function BackupSettings({
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Automated backups
         </h2>
-        <SaveStatus pending={pending} savedAt={savedAt} />
+        <SaveStatus pending={pending} savedAt={savedAt} error={error} />
       </div>
 
       <p className="text-xs text-slate-400 dark:text-slate-500">
@@ -180,13 +190,13 @@ export default function BackupSettings({
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" onClick={save} disabled={pending} className="btn">
+        <button type="button" onClick={save} disabled={busy} className="btn">
           Save
         </button>
         <button
           type="button"
           onClick={runNow}
-          disabled={pending}
+          disabled={busy}
           className="btn-ghost"
         >
           Back up now
