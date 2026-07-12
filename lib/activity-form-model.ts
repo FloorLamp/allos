@@ -250,24 +250,31 @@ export function partTotal(p: PartEntry): number {
 export const INTENSITIES: {
   value: string;
   label: string;
+  // One-line RPE-style descriptor so the level isn't unexplained (#336). Shown
+  // under the picker for the selected level; the choice feeds the calorie MET
+  // tier (lib/calorie-estimate), so a note there says the estimate depends on it.
+  hint: string;
   cls: string;
   active: string;
 }[] = [
   {
     value: "easy",
     label: "Easy",
+    hint: "Conversational, low effort — RPE 3–4",
     cls: "text-green-700 border-green-200 dark:text-green-300 dark:border-green-800",
     active: "bg-green-500 text-white border-green-500",
   },
   {
     value: "moderate",
     label: "Moderate",
+    hint: "Working but can still talk — RPE 5–6",
     cls: "text-amber-700 border-amber-200 dark:text-amber-300 dark:border-amber-800",
     active: "bg-amber-500 text-white border-amber-500",
   },
   {
     value: "hard",
     label: "Hard",
+    hint: "Breathless, near-maximal — RPE 7–9",
     cls: "text-rose-700 border-rose-200 dark:text-rose-300 dark:border-rose-800",
     active: "bg-rose-500 text-white border-rose-500",
   },

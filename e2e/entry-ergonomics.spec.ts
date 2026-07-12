@@ -246,6 +246,40 @@ test("a fresh strength part auto-seeds set 1 from the coached suggestion (#335)"
     .click();
 });
 
+test("a cardio part derives avg speed AND pace from distance + duration (#336)", async ({
+  page,
+}) => {
+  await page.goto("/training"); // default "Log" tab renders the Journal feed
+
+  await page
+    .getByRole("main")
+    .getByRole("button", { name: "New activity" })
+    .click();
+
+  // Running requires a distance field; pick it so both Distance and Duration show.
+  await page.getByPlaceholder(/What did you do/).fill("Running");
+  await page
+    .getByRole("listbox")
+    .getByRole("button", { name: "Running", exact: true })
+    .click();
+
+  // 5 km in 25 min → 12 km/h, pace 5:00 /km (seeded login is metric).
+  await page.getByTestId("cardio-duration").fill("25");
+  await page.getByLabel(/Distance/).fill("5");
+
+  // Both the average speed AND the newly-added pace line render from the same
+  // inputs (#336) — pace is what runners actually think in.
+  await expect(page.getByText(/Avg speed:/)).toContainText("12");
+  await expect(page.getByText(/Pace:/)).toContainText("5:00");
+
+  // Clean up the auto-saved draft (a duration makes it savable).
+  await page.getByRole("button", { name: "Delete", exact: true }).click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Delete", exact: true })
+    .click();
+});
+
 test("a failed activity save surfaces an error, never a false 'Saved ✓' (#332)", async ({
   page,
 }) => {

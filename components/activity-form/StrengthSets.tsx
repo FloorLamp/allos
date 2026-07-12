@@ -258,6 +258,8 @@ export default function StrengthSets({
   const plateButton = (si: number, field: "weight" | "weightRight") => (
     <button
       type="button"
+      // Pointer affordance only — keep it out of the weight→reps tab order (#336).
+      tabIndex={-1}
       onClick={() => onPlateTarget(si, field)}
       title="Plate builder"
       aria-label="Open plate builder"
@@ -272,16 +274,30 @@ export default function StrengthSets({
     onChange: (v: string) => void,
     blocked: boolean,
     ghostReps?: number | null,
-    onGhostFocus?: () => void
+    onGhostFocus?: () => void,
+    onEnter?: () => void
   ) => {
     if (!timed) {
       return (
         <input
           type="number"
           min="1"
+          inputMode="numeric"
           value={value}
           onChange={(e) => onChange(stripNonPositive(e.target.value))}
           onFocus={onGhostFocus}
+          onKeyDown={
+            onEnter
+              ? (e) => {
+                  // Enter in a complete reps field adds the next set (#336) —
+                  // the form never submits on Enter, so this is a free keystroke.
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    onEnter();
+                  }
+                }
+              : undefined
+          }
           placeholder={ghostReps != null ? String(ghostReps) : "reps"}
           className={`input bg-white dark:bg-ink-900 ${
             blocked ? blockedField : ""
@@ -623,6 +639,7 @@ export default function StrengthSets({
                         type="number"
                         step="0.5"
                         min="0"
+                        inputMode="decimal"
                         value={sideW}
                         onChange={(e) =>
                           onUpdateSet(
@@ -655,7 +672,10 @@ export default function StrengthSets({
                                 ? { duration: v }
                                 : { reps: v }
                           ),
-                        flags.effort
+                        flags.effort,
+                        null,
+                        undefined,
+                        canAddSet ? onAddSet : undefined
                       )}
                     </div>
                   );
@@ -667,6 +687,7 @@ export default function StrengthSets({
                   type="number"
                   step="0.5"
                   min="0"
+                  inputMode="decimal"
                   data-testid={si === 0 ? "set1-weight" : undefined}
                   value={s.weight}
                   onChange={(e) =>
@@ -697,7 +718,10 @@ export default function StrengthSets({
                   (v) => onUpdateSet(si, timed ? { duration: v } : { reps: v }),
                   sideFlags(s.weight, s.reps, s.duration).effort,
                   si === 0 && ghost && !timed ? ghost.reps : null,
-                  si === 0 && ghost ? () => onApplySuggestion(ghost) : undefined
+                  si === 0 && ghost
+                    ? () => onApplySuggestion(ghost)
+                    : undefined,
+                  canAddSet ? onAddSet : undefined
                 )}
               </div>
             )}

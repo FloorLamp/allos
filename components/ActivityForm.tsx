@@ -373,6 +373,15 @@ export default function ActivityForm({
     startTime && endTime && !timeError
       ? minutesBetween(startTime, endTime)
       : null;
+  // A cardio/sport part's own Duration (min), used to derive End from Start (or
+  // Start from End) when the clock span is missing (#336). First such part wins.
+  const derivableDurationMin = (() => {
+    const p = namedParts.find(
+      (pp) => partType(pp) !== "strength" && pp.durationMin.trim()
+    );
+    const n = p ? Number(p.durationMin) : NaN;
+    return Number.isFinite(n) && n > 0 ? n : null;
+  })();
   const firstValid = namedParts[0];
   const headingType = firstValid ? partType(firstValid) : null;
 
@@ -1085,6 +1094,7 @@ export default function ActivityForm({
                   part={p}
                   showDist={partNeedsDistance(p)}
                   distanceUnit={units.distanceUnit}
+                  overallDuration={overallDuration}
                   fault={issue}
                   onDistance={(v) => updatePart(pi, { distance: v })}
                   onDurationMin={(v) => updatePart(pi, { durationMin: v })}
@@ -1127,6 +1137,7 @@ export default function ActivityForm({
         tz={tz}
         timeError={timeError}
         overallDuration={overallDuration}
+        derivableDurationMin={derivableDurationMin}
         onDate={setDate}
         onStartTime={setStartTime}
         onEndTime={setEndTime}
