@@ -5,7 +5,11 @@ import {
   snapCanonicalName,
   vitaminDIsoform,
   distinguishVitaminDIsoform,
+  vitaminDRetestFamily,
+  VITAMIN_D_25OH_FAMILY,
+  canonicalAliases,
 } from "../canonical-name";
+import canonicalSeed from "../canonical-biomarkers.json";
 
 describe("normalizeCanonicalKey", () => {
   it("is case-, punctuation- and order-insensitive", () => {
@@ -141,5 +145,110 @@ describe("distinguishVitaminDIsoform", () => {
     expect(distinguishVitaminDIsoform("Creatinine", "Creatinine, Serum")).toBe(
       "Creatinine"
     );
+  });
+});
+
+describe("vitaminDRetestFamily", () => {
+  it("collapses the 25-hydroxy vitamin-D variants onto one family key", () => {
+    for (const name of [
+      "Vitamin D, 25-Hydroxy",
+      "Vitamin D, Total",
+      "Vitamin D",
+      "25-OH Vitamin D",
+      "Vitamin D2, 25-Hydroxy",
+      "Vitamin D3, 25-Hydroxy",
+      "Vit D2",
+      "Ergocalciferol",
+      "25-OH Vitamin D3 (Cholecalciferol)",
+    ]) {
+      expect(vitaminDRetestFamily(name)).toBe(VITAMIN_D_25OH_FAMILY);
+    }
+  });
+
+  it("keeps distinct vitamin-D analytes out of the storage-form family", () => {
+    // Active metabolite (calcitriol) — a separate test.
+    expect(vitaminDRetestFamily("1,25-Dihydroxy Vitamin D")).toBeNull();
+    expect(vitaminDRetestFamily("Vitamin D, 1,25-Dihydroxy")).toBeNull();
+    expect(vitaminDRetestFamily("Calcitriol")).toBeNull();
+    // Binding protein / receptor are not the 25-OH status measurement.
+    expect(vitaminDRetestFamily("Vitamin D Binding Protein")).toBeNull();
+    expect(vitaminDRetestFamily("Vitamin D Receptor")).toBeNull();
+  });
+
+  it("returns null for a non-vitamin-D name or empty input", () => {
+    expect(vitaminDRetestFamily("LDL Cholesterol")).toBeNull();
+    expect(
+      vitaminDRetestFamily("Dermatophagoides Farinae (D2) IgE")
+    ).toBeNull();
+    expect(vitaminDRetestFamily(null)).toBeNull();
+    expect(vitaminDRetestFamily("")).toBeNull();
+  });
+});
+
+describe("canonical aliases (synonym/abbreviation drift)", () => {
+  // The real production vocabulary, so the alias routes are exercised against the
+  // spellings the dataset actually ships.
+  const vocab = (
+    canonicalSeed as { biomarkers: { name: string }[] }
+  ).biomarkers.map((b) => b.name);
+  const index = buildCanonicalIndex(vocab);
+  const rawKeys = new Set(vocab.map((n) => normalizeCanonicalKey(n)));
+
+  it("snaps common lab spellings onto the dataset canonical name", () => {
+    const expectations: [string, string][] = [
+      ["HbA1c", "Hemoglobin A1c"],
+      ["A1c", "Hemoglobin A1c"],
+      ["Glycated Hemoglobin", "Hemoglobin A1c"],
+      ["SGPT", "ALT"],
+      ["Aspartate Aminotransferase", "AST"],
+      ["Urea Nitrogen", "BUN"],
+      ["Thyroid Stimulating Hormone", "TSH"],
+      ["Estimated GFR", "eGFR"],
+      ["Apolipoprotein B", "ApoB"],
+      ["Cobalamin", "Vitamin B12"],
+      ["Folic Acid", "Folate"],
+      ["Bicarbonate", "Carbon Dioxide"],
+      ["Retinol", "Vitamin A (Retinol)"],
+      // "Full Name (ABBREV)" entries: both the bare abbrev and the full name snap.
+      ["FSH", "Follicle Stimulating Hormone (FSH)"],
+      ["Follicle Stimulating Hormone", "Follicle Stimulating Hormone (FSH)"],
+      ["CK", "Creatine Kinase (CK)"],
+      ["Creatine Kinase", "Creatine Kinase (CK)"],
+      ["SHBG", "Sex Hormone Binding Globulin (SHBG)"],
+      ["Anti-TPO", "Thyroid Peroxidase Antibodies (TPOAb)"],
+    ];
+    for (const [spelling, canonical] of expectations) {
+      expect(snapCanonicalName(spelling, index)).toBe(canonical);
+    }
+  });
+
+  it("keeps genuinely distinct assays apart (no over-merging)", () => {
+    // Plain CRP is a different assay than hs-CRP — must not alias onto it.
+    expect(snapCanonicalName("CRP", index)).not.toBe("hs-CRP");
+    expect(snapCanonicalName("C-Reactive Protein", index)).not.toBe("hs-CRP");
+    // Free testosterone stays on its own series — the aliases never route a
+    // fraction onto the total (it snaps to the free entry by word order, not total).
+    expect(snapCanonicalName("Free Testosterone", index)).toBe(
+      "Testosterone, Free"
+    );
+    expect(snapCanonicalName("Testosterone, Free", index)).not.toBe(
+      "Testosterone, Total"
+    );
+  });
+
+  it("every alias targets a REAL dataset entry and shadows no distinct analyte", () => {
+    for (const [alias, canonical] of canonicalAliases()) {
+      // Target is a real seeded canonical name.
+      expect(rawKeys.has(normalizeCanonicalKey(canonical))).toBe(true);
+      // The alias key never collides with a DIFFERENT real analyte (a real entry
+      // always wins in buildCanonicalIndex; this pins that no alias was written to
+      // shadow one).
+      const aliasKey = normalizeCanonicalKey(alias);
+      if (rawKeys.has(aliasKey)) {
+        expect(normalizeCanonicalKey(canonical)).toBe(aliasKey);
+      }
+      // And it resolves through the production index.
+      expect(snapCanonicalName(alias, index)).toBe(canonical);
+    }
   });
 });

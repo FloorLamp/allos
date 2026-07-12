@@ -35,6 +35,7 @@ import {
   daysBetween,
 } from "../../reference-range";
 import { retestDaysForBiomarker } from "../../biomarker-retest";
+import { vitaminDRetestFamily } from "../../canonical-name";
 import { frequencyScopeLabel } from "../../goals";
 import {
   getUserSex,
@@ -42,6 +43,7 @@ import {
   getActiveSituations,
 } from "../../settings";
 import type { UpcomingItem } from "../../upcoming";
+import type { MedicalRecord } from "../../types";
 import { pickNextAppointment } from "../../household";
 import {
   getSupplements,
@@ -270,11 +272,31 @@ function monthsApprox(days: number): number {
 // curated retest_days). The retest-due date is the last reading + that analyte's
 // interval, so a quarterly HbA1c reads as overdue far sooner than an annual lipid
 // panel; uncurated analytes keep the flat 365-day fallback.
+//
+// Readings are first grouped into retest FAMILIES: almost every analyte is its own
+// family (keyed by canonical name), but the 25-hydroxy vitamin-D variants (total,
+// generic, D2, D3) collapse into one via vitaminDRetestFamily — a recent total
+// supersedes an old D2/D3 breakdown, so the stale isoforms don't each nag as
+// overdue when a fresh reading of any member exists. Per family we keep the NEWEST
+// reading: its date drives staleness and the "last tested" text, and it is the
+// representative the retest item is emitted for (its name → the stable
+// `biomarker:<name>` dismissal key).
 function biomarkerItems(profileId: number, today: string): UpcomingItem[] {
   const latest = getMedicalRecords(profileId, { current: true });
-  const items: UpcomingItem[] = [];
+  const byFamily = new Map<string, MedicalRecord>();
   for (const r of latest) {
     if (!RETEST_CATEGORIES.has(r.category ?? "")) continue;
+    const groupName = r.canonical_name?.trim() || r.name;
+    const famKey =
+      vitaminDRetestFamily(groupName) ?? `name:${groupName.toLowerCase()}`;
+    const prev = byFamily.get(famKey);
+    // Newest wins; tie-break on higher id (later-entered), matching
+    // getMedicalRecords' "date DESC, id DESC" current-reading ranking.
+    if (!prev || r.date > prev.date || (r.date === prev.date && r.id > prev.id))
+      byFamily.set(famKey, r);
+  }
+  const items: UpcomingItem[] = [];
+  for (const r of byFamily.values()) {
     const name = r.canonical_name?.trim() || r.name;
     const retestDays = retestDaysForBiomarker(r.canonical_name?.trim() || null);
     if (!isBiomarkerStale(r.date, r.category, today, retestDays)) continue;
