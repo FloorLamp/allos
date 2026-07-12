@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { followLink, openCommandPalette } from "./nav";
 
 // Broad smoke coverage: each primary authenticated surface renders (real HTTP
 // 200 + the app shell, not a Next error page) against the seeded DB. Catches
@@ -82,8 +83,7 @@ test("biomarkers page surfaces a derived clinical index (#40)", async ({
 
   // Non-HDL Cholesterol is derived from the seeded Total + HDL readings.
   const link = page.getByRole("link", { name: "Non-HDL Cholesterol" }).first();
-  await expect(link).toBeVisible();
-  await link.click();
+  await followLink(page, link, /\/biomarkers\/view/);
 
   const note = page.getByTestId("derived-note");
   await expect(note).toBeVisible();
@@ -104,8 +104,7 @@ test("biomarkers page surfaces the derived PhenoAge biological age (#157)", asyn
   await expect(page.getByTestId("derived-badge").first()).toBeVisible();
 
   const link = page.getByRole("link", { name: "PhenoAge" }).first();
-  await expect(link).toBeVisible();
-  await link.click();
+  await followLink(page, link, /\/biomarkers\/view/);
 
   const note = page.getByTestId("derived-note");
   await expect(note).toBeVisible();
@@ -180,19 +179,18 @@ test("command palette surfaces a seeded allergy for 'penicillin' (#19)", async (
   page,
 }) => {
   await page.goto("/");
-  // Open via Ctrl-K (the handler accepts metaKey||ctrlKey).
-  await page.keyboard.press("Control+KeyK");
-  const input = page.getByRole("combobox", { name: "Search or run a command" });
-  await expect(input).toBeVisible();
+  // Open via Ctrl-K (the handler accepts metaKey||ctrlKey); openCommandPalette
+  // re-presses until the palette is up, since a pre-hydration keypress is
+  // swallowed under parallel-run contention (issue #500).
+  const input = await openCommandPalette(page);
   await input.fill("penicillin");
   // The result list is the palette's listbox; scope to it so the sidebar's own
   // "Allergies" nav link can't satisfy the assertions.
   const results = page.getByRole("listbox", { name: "Results" });
   await expect(results.getByText("Allergies", { exact: true })).toBeVisible();
   const hit = results.getByRole("option", { name: /Penicillin/i });
-  await expect(hit.first()).toBeVisible();
   // Selecting it navigates to the allergies passport page.
-  await hit.first().click();
+  await followLink(page, hit.first(), /\/allergies$/);
   await expect(page).toHaveURL(/\/allergies$/);
 });
 
