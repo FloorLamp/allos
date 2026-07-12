@@ -6,6 +6,7 @@ import {
   weightTrendKg,
   buildWeeklyRecap,
   renderRecapMessage,
+  pickRecapNarrative,
   medianWeeklyWorkouts,
   type RecapInput,
 } from "@/lib/weekly-recap";
@@ -230,6 +231,79 @@ describe("renderRecapMessage", () => {
     expect(msg.body).toContain("2026-07-03 – 2026-07-09");
     expect(msg.body).toContain("• Workouts: 1");
     expect(msg.body).toContain("• Adherence: 100%");
+  });
+
+  // #421: a stored recap narrative replaces the bare bullets when present.
+  it("uses the stored narrative body when one is supplied", () => {
+    const recap = buildWeeklyRecap(
+      baseInput({
+        workouts: [{ date: "2026-07-08", type: "strength" }],
+        adherence: { taken: 7, skipped: 0, due: 7 },
+      })
+    );
+    const msg = renderRecapMessage(
+      recap,
+      "Ada",
+      "A strong week — one lift and perfect adherence."
+    )!;
+    expect(msg.body).toContain("2026-07-03 – 2026-07-09");
+    expect(msg.body).toContain("A strong week");
+    // The narrative supersedes the bullet lines.
+    expect(msg.body).not.toContain("• Workouts:");
+  });
+
+  it("falls back to bullets when the narrative is empty/whitespace", () => {
+    const recap = buildWeeklyRecap(
+      baseInput({ workouts: [{ date: "2026-07-08", type: "strength" }] })
+    );
+    const msg = renderRecapMessage(recap, "Ada", "   ")!;
+    expect(msg.body).toContain("• Workouts: 1");
+  });
+});
+
+describe("pickRecapNarrative (#421)", () => {
+  const recap = buildWeeklyRecap(
+    baseInput({ workouts: [{ date: "2026-07-08", type: "strength" }] })
+  );
+  // recap window is 2026-07-03 – 2026-07-09.
+  it("prefers an exact period_end match", () => {
+    const got = pickRecapNarrative(
+      [
+        {
+          period_start: "2026-07-03",
+          period_end: "2026-07-09",
+          summary: "exact",
+        },
+        {
+          period_start: "2026-06-26",
+          period_end: "2026-07-02",
+          summary: "old",
+        },
+      ],
+      recap
+    );
+    expect(got).toBe("exact");
+  });
+
+  it("falls back to the newest narrative overlapping the window", () => {
+    const got = pickRecapNarrative(
+      [
+        { period_start: null, period_end: "2026-07-05", summary: "overlap-a" },
+        { period_start: null, period_end: "2026-07-07", summary: "overlap-b" },
+      ],
+      recap
+    );
+    expect(got).toBe("overlap-b");
+  });
+
+  it("returns null when nothing overlaps the window", () => {
+    expect(
+      pickRecapNarrative(
+        [{ period_start: null, period_end: "2026-06-20", summary: "stale" }],
+        recap
+      )
+    ).toBeNull();
+    expect(pickRecapNarrative([], recap)).toBeNull();
   });
 });
 

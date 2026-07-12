@@ -57,7 +57,7 @@ describe("buildLabTrendPrompt", () => {
     expect(p).toContain("as of 2026-07-09");
     expect(p).toContain("## Detected biomarker movements");
     expect(p).toContain("- LDL Cholesterol: trending toward high range");
-    expect(p).toContain("## Medication timeline");
+    expect(p).toContain("## Medication & supplement timeline");
     expect(p).toContain("Test Statin (started 2026-01-01, stopped 2026-05-01)");
     expect(p).toContain("## Conditions");
     expect(p).toContain("Hyperlipidemia (active, since 2025-11-01)");
@@ -74,7 +74,7 @@ describe("buildLabTrendPrompt", () => {
       input({ medications: [], conditions: [], findings: [] })
     );
     expect(p).toContain("None flagged by the trend engine.");
-    expect(p).toContain("No medications recorded.");
+    expect(p).toContain("No medications or supplements recorded.");
     expect(p).toContain("None recorded.");
   });
 
@@ -86,13 +86,37 @@ describe("buildLabTrendPrompt", () => {
     );
     expect(p).toContain("Test Med (started 2026-02-01, ongoing)");
   });
+
+  // #421: supplements share the intake timeline, tagged [supplement] so the model
+  // can weigh an OTC supplement differently from a prescription.
+  it("tags supplement rows and leaves medications untagged", () => {
+    const p = buildLabTrendPrompt(
+      input({
+        medications: [
+          { name: "Test Statin", kind: "medication", startedOn: "2026-01-01" },
+          {
+            name: "Vitamin D3",
+            kind: "supplement",
+            startedOn: "2026-03-01",
+          },
+        ],
+      })
+    );
+    expect(p).toContain(
+      "Vitamin D3 [supplement] (started 2026-03-01, ongoing)"
+    );
+    expect(p).toContain("Test Statin (started 2026-01-01, ongoing)");
+    expect(p).not.toContain("Test Statin [supplement]");
+    // The system prompt distinguishes the two kinds.
+    expect(LAB_TREND_SYSTEM).toContain("supplement");
+  });
 });
 
 describe("composeLabTrendOffline", () => {
   it("summarizes the movements and points at a clinician", () => {
     const out = composeLabTrendOffline(input());
     expect(out).toContain("LDL Cholesterol (trending toward high range)");
-    expect(out).toContain("medication timeline (Test Statin)");
+    expect(out).toContain("medication & supplement timeline (Test Statin)");
   });
 
   it("falls back to readings when there are no engine findings", () => {

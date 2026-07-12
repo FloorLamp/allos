@@ -211,22 +211,34 @@ export function gatherLabTrendInput(profileId: number): LabTrendInput {
       flag: r.flag,
     }));
 
-  // Medication timeline: name (from the intake item) + start/stop dates (from its
-  // courses), most-recently-started first, capped.
-  const medNames = new Map(
-    getSupplements(profileId)
-      .filter((s) => s.kind === "medication")
-      .map((s) => [s.id, s.name])
+  // Intake timeline: name + kind (from the intake item) + start/stop dates (from
+  // its courses), most-recently-started first, capped. Includes BOTH medications
+  // and supplements (#421) — a supplement started months ago (vitamin D, iron) is
+  // often the best explanation for a moving 25-OH-D or ferritin trend, so it must
+  // reach the interpretation; each row is kind-tagged so the model can tell an OTC
+  // supplement from a prescription.
+  const intakeById = new Map(
+    getSupplements(profileId).map((s) => [
+      s.id,
+      {
+        name: s.name,
+        kind: s.kind === "medication" ? "medication" : "supplement",
+      },
+    ])
   );
   const medications = getMedicationCourses(profileId)
-    .filter((c) => medNames.has(c.item_id))
+    .filter((c) => intakeById.has(c.item_id))
     .sort((a, b) => (b.started_on ?? "").localeCompare(a.started_on ?? ""))
-    .slice(0, 8)
-    .map((c) => ({
-      name: medNames.get(c.item_id) as string,
-      startedOn: c.started_on,
-      stoppedOn: c.stopped_on,
-    }));
+    .slice(0, 10)
+    .map((c) => {
+      const item = intakeById.get(c.item_id)!;
+      return {
+        name: item.name,
+        kind: item.kind as "medication" | "supplement",
+        startedOn: c.started_on,
+        stoppedOn: c.stopped_on,
+      };
+    });
 
   const conditions = getConditions(profileId, { status: "active" })
     .slice(0, 8)

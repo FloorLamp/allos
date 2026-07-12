@@ -410,18 +410,49 @@ export function recapRangeLabel(start: string, end: string): string {
   return `${start} – ${end}`;
 }
 
+// The minimal shape of a stored recap narrative row this picker needs (a subset
+// of lib/types Narrative), kept local so this pure module stays dependency-light.
+export interface StoredRecapNarrative {
+  period_start: string | null;
+  period_end: string;
+  summary: string;
+}
+
+// Pick the stored recap narrative to surface in the weekly notification (#421):
+// the AI narrative of the SAME recap that today only reaches the Trends button.
+// An exact period_end match with the recap window wins; otherwise the newest
+// narrative anchored inside the window (a read generated a day earlier still
+// describes this week). Returns the trimmed summary, or null when none applies.
+export function pickRecapNarrative(
+  narratives: StoredRecapNarrative[],
+  recap: WeeklyRecap
+): string | null {
+  const exact = narratives.find((n) => n.period_end === recap.end);
+  if (exact) return exact.summary.trim() || null;
+  const overlap = narratives
+    .filter((n) => n.period_end >= recap.start && n.period_end <= recap.end)
+    .sort((a, b) => b.period_end.localeCompare(a.period_end))[0];
+  return overlap ? overlap.summary.trim() || null : null;
+}
+
 // Render the recap to a channel-agnostic notification message, or null when the
 // week was empty (nothing worth interrupting the user for). Kept separate from
 // assembly, mirroring the digest. The title names the profile — a shared chat can
-// carry several.
+// carry several. When a stored recap `narrative` is supplied (#421), it replaces
+// the bare "• label: value" bullets — the narrative already reads over the same
+// facts; the bullets are the fallback when no narrative has been generated.
 export function renderRecapMessage(
   recap: WeeklyRecap,
-  profileName: string
+  profileName: string,
+  narrative?: string | null
 ): NotificationMessage | null {
   if (recap.isEmpty || recap.lines.length === 0) return null;
-  const body = recap.lines
-    .map((l) => `• ${l.label}: ${l.value}${l.delta ? ` (${l.delta})` : ""}`)
-    .join("\n");
+  const narr = narrative?.trim();
+  const body = narr
+    ? narr
+    : recap.lines
+        .map((l) => `• ${l.label}: ${l.value}${l.delta ? ` (${l.delta})` : ""}`)
+        .join("\n");
   const who = profileName ? ` — ${profileName}` : "";
   return {
     title: `📊 Weekly recap${who}`,

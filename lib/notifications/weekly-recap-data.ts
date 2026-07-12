@@ -34,12 +34,14 @@ import {
   buildWeeklyRecap,
   resolveRecapWindow,
   renderRecapMessage,
+  pickRecapNarrative,
   inWindow,
   type RecapInput,
   type RecapWorkout,
   type WeeklyRecap,
   type WorkoutType,
 } from "../weekly-recap";
+import { getRecentNarratives } from "../queries";
 import {
   getActiveSituations,
   getWeekMode,
@@ -276,7 +278,15 @@ export async function runWeeklyRecap(
 ): Promise<{ failed: boolean }> {
   const dedupKey = "notify_last_weekly_recap";
   const recap = buildWeeklyRecap(gatherRecapInput(profileId, "kg"));
-  const msg = renderRecapMessage(recap, profileName);
+  // Surface the stored AI recap narrative when one exists for this window (#421).
+  // READ-ONLY — the tick must never call Claude (quota atomicity assumes a single
+  // AI-calling process); it only SELECTs a narrative the web process already
+  // generated, falling back to the bullet lines when there is none.
+  const narrative = pickRecapNarrative(
+    getRecentNarratives(profileId, ["week"], 5),
+    recap
+  );
+  const msg = renderRecapMessage(recap, profileName, narrative);
   if (!msg) {
     setProfileSetting(profileId, dedupKey, date);
     log.info("weekly recap: nothing to send", { profile: profileId });
