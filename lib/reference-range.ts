@@ -718,6 +718,141 @@ export function isDurableImmunePositive(r: ImmunityResult): boolean {
   return isDurableImmunityTiter(r.name) && isImmunePositiveResult(r);
 }
 
+// ---------------------------------------------------------------------------
+// Qualitative-result classifier (issue #549). The QUALITATIVE mirror of the
+// numeric path's parseLooseValue (extract a number) + reconciledFlag (judge it
+// against curated ranges). Non-numeric lab values ("Positive", "Reactive", "A+",
+// "YELLOW", "e3/e3") have NO shared choke-point, so the extractor's one-shot
+// abnormal/normal guess — never reconciled afterward (reconciledFlag bails on both
+// `flag === "abnormal"` and `value_num == null`) — drives every surface, wrongly.
+// classifyQualitativeResult is that missing choke-point: given the analyte name and
+// the reading's value/notes/reference it resolves what the value MEANS, so the flag
+// chip, the staleness clock, the notification digest, and the chart timeline agree.
+//
+// Exclusion discipline — the mirror of the #482 "distinct assays stay apart"
+// identity-family rule: the SAME word "positive" means opposite things by class, so
+// the CLASS is resolved from the NAME and the PRESENCE from the value/notes vocab —
+//   • infection-positive (HBsAg, anti-HBc, HCV, HIV, culture growth) → polarity BAD
+//   • immune-positive     (durable-immunity titers, #516)            → polarity GOOD
+//   • attribute-positive  (blood type, genotype, urinalysis color…)  → polarity NEUTRAL
+// Returns null when neither the name nor the value is recognized — exactly like
+// parseLooseValue returning null on a non-numeric string — so callers leave the
+// existing extractor/numeric behavior UNTOUCHED rather than guessing (never quiet an
+// unrecognized result). It reuses the #516 seeds (isDurableImmunityTiter /
+// isImmunePositiveResult / the POSITIVE/NEGATIVE vocab) rather than forking them.
+// ---------------------------------------------------------------------------
+
+export type QualitativePresence = "positive" | "negative" | "neutral";
+
+// Infection / active-disease markers — a POSITIVE here is genuinely bad and MUST keep
+// flagging (never quieted). Mirrors the exclusion set isDurableImmunityTiter uses to
+// hold antigen/infection markers OUT of the immunity family.
+const INFECTION_MARKER =
+  /antigen|hbsag|core antibody|core ab|anti-?hbc|hbcab|hepatitis c|\bhcv\b|\bhiv\b|\brpr\b|treponema|syphilis|\bvdrl\b|chlamydia|gonorrh|\bculture\b/i;
+
+// Immutable identity attributes — a value that never changes and is never "abnormal":
+// blood group/type, Rh factor, and genotype/allele strings (#548 §2).
+const IMMUTABLE_ATTRIBUTE =
+  /blood\s*(?:type|group)|\babo\b|rh\s*type|rh\s*factor|rh\s*\(?d\)?\b|\bgenotype\b|\ballele\b|\bhaplotype\b/i;
+
+// Context-neutral (but mutable) descriptive attributes — urinalysis color/appearance/
+// clarity and morphology "pattern" — neither good nor bad, so never "abnormal" (#548 §1).
+const NEUTRAL_ATTRIBUTE =
+  /\bcolou?r\b|appearance|clarity|\bpattern\b|morphology/i;
+
+// A culture that GREW something is positive; "no growth" is negative. Small extra
+// vocab beyond the titer words, only meaningful on a culture/infection result.
+const CULTURE_NEGATIVE = /\bno growth\b|\bnone\b/i;
+const CULTURE_POSITIVE = /\bgrowth\b/i;
+
+// The presence a qualitative value asserts, from the reading's value + notes, using
+// the SAME #516 vocabulary (NEGATIVE checked first — "non-reactive"/"non-immune"
+// contain the positive words). Neutral when nothing recognized is said.
+export function qualitativePresence(
+  ...texts: Array<string | null | undefined>
+): QualitativePresence {
+  const s = texts.filter(Boolean).join(" ").trim();
+  if (!s) return "neutral";
+  if (NEGATIVE_TITER.test(s) || CULTURE_NEGATIVE.test(s)) return "negative";
+  if (POSITIVE_TITER.test(s) || CULTURE_POSITIVE.test(s)) return "positive";
+  return "neutral";
+}
+
+export interface QualitativeClassification {
+  presence: QualitativePresence;
+  // Clinical sense of the presence FOR THIS ANALYTE CLASS: good (reassuring, e.g. an
+  // immunity titer that's positive or an infection marker that's negative), bad (an
+  // infection marker that's positive), or neutral (an identity/descriptive attribute).
+  polarity: "good" | "bad" | "neutral";
+  // The value never meaningfully changes (blood type, genotype) → exempt from retest,
+  // like genomics + durable immunity already are (#548 §2).
+  immutable: boolean;
+}
+
+export function classifyQualitativeResult(
+  name: string | null | undefined,
+  value?: string | null,
+  notes?: string | null,
+  reference?: string | null
+): QualitativeClassification | null {
+  const n = (name ?? "").trim().toLowerCase();
+  if (!n) return null;
+  const presence = qualitativePresence(value, notes);
+
+  // 1. Immutable identity attributes (blood type, genotype) — never abnormal, never stale.
+  if (IMMUTABLE_ATTRIBUTE.test(n))
+    return { presence, polarity: "neutral", immutable: true };
+
+  // 2. Infection / active-disease markers — positive is BAD (keep flagging), negative
+  //    is reassuring. An ambiguous reading yields null (don't fabricate a verdict).
+  if (INFECTION_MARKER.test(n) && !isDurableImmunityTiter(name)) {
+    if (presence === "positive")
+      return { presence, polarity: "bad", immutable: false };
+    if (presence === "negative")
+      return { presence, polarity: "good", immutable: false };
+    return null;
+  }
+
+  // 3. Durable-immunity titers (#516) — an immune-POSITIVE titer is GOOD. Judged from
+  //    the value/notes/reference (NOT any stored flag — the blunt "abnormal" is exactly
+  //    what we're reconsidering). A negative/equivocal titer keeps its own flag + clock.
+  if (isDurableImmunityTiter(name)) {
+    if (isImmunePositiveResult({ name, value, notes, reference }))
+      return { presence: "positive", polarity: "good", immutable: false };
+    return null;
+  }
+
+  // 4. Context-neutral descriptive attributes (urinalysis color, morphology pattern).
+  if (NEUTRAL_ATTRIBUTE.test(n))
+    return { presence, polarity: "neutral", immutable: false };
+
+  // 5. Unrecognized analyte — no confident qualitative interpretation (leave as-is).
+  return null;
+}
+
+// The stored flag a qualitative reading should carry, given its classifier verdict
+// and current flag (issue #549, routing #544 + #548 §1). The qualitative counterpart
+// of reconciledFlag: "immune" for a good durable-immunity titer, null (clear to
+// normal) for a neutral attribute or good non-immunity result that a blunt "abnormal"
+// mis-flagged, and undefined (leave unchanged) for a bad-polarity infection marker or
+// an unrecognized value. Never touches a flag it can't confidently reclassify.
+export function qualitativeFlagResolution(
+  name: string | null | undefined,
+  value: string | null | undefined,
+  notes: string | null | undefined,
+  reference: string | null | undefined,
+  currentFlag: string | null | undefined
+): "immune" | null | undefined {
+  const c = classifyQualitativeResult(name, value, notes, reference);
+  if (!c) return undefined; // unrecognized → leave the extractor/existing flag
+  if (c.polarity === "bad") return undefined; // infection-positive stays flagged
+  if (c.polarity === "good" && isDurableImmunityTiter(name))
+    return currentFlag === "immune" ? undefined : "immune";
+  // Neutral attribute, or good non-immunity: never "abnormal". Clear an out-of-range
+  // flag the extractor guessed; leave an already-neutral flag alone.
+  return isOutOfRange(currentFlag) ? null : undefined;
+}
+
 // Whether a biomarker's latest reading is past its retest window. `retestDays` is
 // the analyte's curated cadence (null → the flat DEFAULT_RETEST_DAYS), so e.g. a
 // quarterly HbA1c goes stale at 90 days while an uncurated lab still goes stale at
