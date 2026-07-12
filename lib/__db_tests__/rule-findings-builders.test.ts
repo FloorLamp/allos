@@ -23,6 +23,7 @@ import {
   buildTrainingObservationFindings,
   buildGoalPacingFindings,
   buildBodyHygieneFindings,
+  collectCoachingFindings,
 } from "@/lib/rule-findings";
 import {
   weekdayMissSignalKey,
@@ -526,6 +527,64 @@ describe("rule-findings builders — dedupeKey prefix registry (#448)", () => {
     expect(keys.length).toBeGreaterThan(0);
     expect(keys.some((k) => k.startsWith(ADHERENCE_PREFIX))).toBe(true);
     for (const k of keys) {
+      expect(dedupeKeyHasKnownPrefix(k), `unguardable dedupeKey: ${k}`).toBe(
+        true
+      );
+    }
+  });
+});
+
+// #449 — the dashboard "Coaching observations" rollup renders collectCoachingFindings,
+// which must be the EXACT union of the four tab builders (same dedupeKeys) so a dismiss
+// on either surface silences the other through the shared bus. This pins that the
+// aggregator forks nothing: same keys, same guardability.
+describe("collectCoachingFindings — the #449 unified rollup", () => {
+  it("returns the exact union of the four builders, with guardable keys", () => {
+    const { profileId, anchor } = makeProfile("rollup-449");
+
+    // A long-lived Friday-miss dose → an adherence finding (the cheapest domain to
+    // provoke deterministically); one firing domain is enough to prove union parity.
+    const longAgo = `${shiftDateStr(anchor, -90)} 09:00:00`;
+    const item = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items (profile_id, name, active, kind, condition, priority, as_needed, created_at)
+           VALUES (?, 'Rollup Magnesium', 1, 'supplement', 'daily', 'high', 0, ?)`
+        )
+        .run(profileId, longAgo).lastInsertRowid
+    );
+    const dose = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort, created_at)
+           VALUES (?, '1 cap', 'evening', 'any', 0, ?)`
+        )
+        .run(item, longAgo).lastInsertRowid
+    );
+    const logTaken = db.prepare(
+      `INSERT INTO intake_item_logs (dose_id, item_id, date, status) VALUES (?, ?, ?, 'taken')`
+    );
+    for (let i = 55; i >= 0; i--) {
+      const date = shiftDateStr(anchor, -i);
+      if (!isFriday(date)) logTaken.run(dose, item, date);
+    }
+
+    const union = [
+      ...buildTrainingObservationFindings(profileId, anchor),
+      ...buildBodyHygieneFindings(profileId, anchor, "kg"),
+      ...buildGoalPacingFindings(profileId, anchor),
+      ...buildAdherencePatternFindings(profileId, anchor),
+    ].map((f) => f.dedupeKey);
+
+    const rolled = collectCoachingFindings(profileId, anchor, "kg").map(
+      (f) => f.dedupeKey
+    );
+
+    // Same set of keys (order-independent): the rollup is a formatter over the same
+    // computation, not a second engine that can drift.
+    expect([...rolled].sort()).toEqual([...union].sort());
+    expect(rolled.length).toBeGreaterThan(0);
+    for (const k of rolled) {
       expect(dedupeKeyHasKnownPrefix(k), `unguardable dedupeKey: ${k}`).toBe(
         true
       );

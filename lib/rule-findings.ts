@@ -66,6 +66,33 @@ import {
 } from "./supplement-adherence";
 import { isDueOn, timeBucket } from "./supplement-schedule";
 
+// ---- #449: the unified coaching-findings collection -------------------------
+
+// The four observational domains below (training balance/plateau, body-metric
+// hygiene, goal pacing, adherence patterns) are the #45 "coaching" reach tier: calm,
+// observational FYIs — never a push, never the non-hideable Needs-attention hero. Each
+// renders on its own tab today, so a stale-exercise or off-pace-goal finding a user
+// never opens that tab for is invisible (issue #449). This ONE aggregator is the
+// single computation the dashboard "Coaching observations" rollup AND the four tabs
+// build over — every finding keeps its stable, namespace-guarded dedupeKey, so a
+// dismiss on ANY surface silences it on ALL of them through the shared suppression bus
+// ("dismiss once, silence everywhere"). Returns the raw union; the caller applies the
+// findings-bus filter (activeFindings) exactly like each tab does. No owned SQL is
+// added (it reads through the already profile-scoped builders), so the profile-scoping
+// guard is unaffected.
+export function collectCoachingFindings(
+  profileId: number,
+  today: string,
+  wu: WeightUnit
+): Finding[] {
+  return [
+    ...buildTrainingObservationFindings(profileId, today),
+    ...buildBodyHygieneFindings(profileId, today, wu),
+    ...buildGoalPacingFindings(profileId, today),
+    ...buildAdherencePatternFindings(profileId, today),
+  ];
+}
+
 // ---- Domain 4: training balance + plateau (Training → Overview) -----------
 
 // The deep link a stale/plateau exercise finding points at — the Analyze tab focused

@@ -7,6 +7,7 @@ import { today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { snoozeUntil } from "@/lib/upcoming";
 import { snoozeFinding, dismissFinding, markDoseTaken } from "@/lib/queries";
+import { dedupeKeyHasKnownPrefix } from "@/lib/rule-finding-prefixes";
 
 // Persist the active profile's dashboard customization: the widget
 // display order and the set of hidden widget ids. Profile-scoped like the other
@@ -28,6 +29,20 @@ export async function snoozeCoaching(formData: FormData) {
   const dedupeKey = String(formData.get("dedupe_key") ?? "").trim();
   if (!dedupeKey.startsWith("coaching:")) return;
   snoozeFinding(profile.id, dedupeKey, shiftDateStr(today(profile.id), 1));
+  revalidatePath("/");
+}
+
+// Dismiss a coaching observation from the dashboard rollup (issue #449). The rollup
+// aggregates all four #45 observational domains, so it guards the WHOLE rule-findings
+// prefix registry (dedupeKeyHasKnownPrefix) rather than a single namespace, then
+// writes to the SAME shared suppression store the origin tabs use — so a dashboard
+// dismiss silences the finding on its tab too ("dismiss once, silence everywhere").
+// Profile-scoped via dismissFinding.
+export async function dismissCoachingObservation(formData: FormData) {
+  const { profile } = await requireWriteAccess();
+  const dedupeKey = String(formData.get("dedupe_key") ?? "").trim();
+  if (!dedupeKeyHasKnownPrefix(dedupeKey)) return;
+  dismissFinding(profile.id, dedupeKey);
   revalidatePath("/");
 }
 
