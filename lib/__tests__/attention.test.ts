@@ -1,10 +1,14 @@
 import { describe, it, expect } from "vitest";
 import {
   ATTENTION_GROUP_CAP,
+  attentionCardItems,
   attentionCountLabel,
-  buildAttention,
-  groupAttention,
-  SEVERITY_ORDER,
+  buildAttentionModel,
+  cardBandForItem,
+  groupAttentionForCard,
+  groupAttentionForPage,
+  moreInUpcomingCount,
+  CARD_BAND_ORDER,
   type AttentionInput,
 } from "../attention";
 import type { UpcomingItem } from "../upcoming";
@@ -35,113 +39,65 @@ function input(over: Partial<AttentionInput> = {}): AttentionInput {
   };
 }
 
-describe("buildAttention", () => {
+describe("buildAttentionModel — the one item builder (issue #524)", () => {
   it("empty inputs → empty model (the 'all clear' state)", () => {
-    expect(buildAttention(input())).toEqual([]);
+    expect(buildAttentionModel(input())).toEqual([]);
   });
 
-  it("maps an Upcoming band to a severity: overdue date → overdue, future within a week → soon", () => {
-    const items = buildAttention(
+  it("folds the due-signals plus the flagged/integration/review signals into ONE set", () => {
+    const model = buildAttentionModel(
       input({
-        upcoming: [
-          up({
-            key: "appointment:1",
-            domain: "appointment",
-            dueDate: "2026-07-01",
-          }), // past → overdue
-          up({
-            key: "appointment:2",
-            domain: "appointment",
-            dueDate: "2026-07-13",
-          }), // +3d → soon
+        upcoming: [up({ key: "dose:1", doseId: 1 })],
+        flaggedBiomarkers: [
+          {
+            name: "LDL Cholesterol",
+            canonicalName: "LDL Cholesterol",
+            value: "160",
+            flag: "high",
+          },
+        ],
+        integrations: [{ provider: "Strava", detail: "401" }],
+        reviewCount: 2,
+      })
+    );
+    expect(new Set(model.map((i) => i.key))).toEqual(
+      new Set([
+        "dose:1",
+        "biomarker-flag:ldl cholesterol",
+        "integration:Strava",
+        "review",
+      ])
+    );
+  });
+
+  it("a flagged biomarker becomes an ACTION item — verb title, series deep-link, flag dismissal key, suppressible (issues #524/#526)", () => {
+    const [item] = buildAttentionModel(
+      input({
+        flaggedBiomarkers: [
+          {
+            name: "HDL Cholesterol",
+            canonicalName: "HDL Cholesterol",
+            value: "35",
+            flag: "low",
+          },
         ],
       })
     );
-    const byKey = new Map(items.map((i) => [i.key, i]));
-    expect(byKey.get("appointment:1")!.severity).toBe("overdue");
-    expect(byKey.get("appointment:2")!.severity).toBe("soon");
-  });
-
-  it("EXCLUDES later-band items — far-future dates and explicit 'later' overrides never reach the hero (issue #283)", () => {
-    const items = buildAttention(
-      input({
-        upcoming: [
-          // +45 days → 'later' by date → dropped.
-          up({
-            key: "appointment:3",
-            domain: "appointment",
-            dueDate: "2026-08-24",
-          }),
-          // Explicit 'later' band (a quiet Scheduled preventive item) → dropped.
-          up({
-            key: "visit:adult_physical",
-            domain: "visit",
-            band: "later",
-            dueText: "Scheduled",
-          }),
-          // Boundary: +7 days is still the 'week' band → kept as 'soon'.
-          up({
-            key: "appointment:4",
-            domain: "appointment",
-            dueDate: "2026-07-17",
-          }),
-        ],
-      })
-    );
-    expect(items.map((i) => i.key)).toEqual(["appointment:4"]);
-    expect(items[0].severity).toBe("soon");
-  });
-
-  it("a null-dated due dose bands as 'today' and carries its doseId + suppressible flag", () => {
-    const [item] = buildAttention(
-      input({ upcoming: [up({ key: "dose:12", domain: "dose", doseId: 12 })] })
-    );
-    expect(item.severity).toBe("today");
-    expect(item.doseId).toBe(12);
+    expect(item.key).toBe("biomarker-flag:hdl cholesterol");
+    expect(item.domain).toBe("biomarker-flag");
+    expect(item.signalGroup).toBe("flagged");
+    // The verb up front — no more actionless "HDL Cholesterol · Flagged result 55".
+    expect(item.title).toBe("Review HDL Cholesterol");
+    expect(item.detail).toBe("Flagged low — 35");
+    expect(item.href).toBe("/biomarkers/view?name=HDL%20Cholesterol");
+    expect(item.dueText).toBe("Low");
     expect(item.suppressible).toBe(true);
   });
 
-  it("newly-flagged out-of-range biomarker → 'today', non-optimal → 'soon'; both dismissible via the findings bus (issue #283)", () => {
-    const items = buildAttention(
+  it("an uncanonicalized flag falls back to the biomarkers list (no series link)", () => {
+    const [item] = buildAttentionModel(
       input({
         flaggedBiomarkers: [
-          {
-            name: "LDL Cholesterol",
-            canonicalName: "LDL Cholesterol",
-            value: "160 mg/dL",
-            flag: "high",
-          },
-          {
-            name: "Ferritin",
-            canonicalName: "Ferritin",
-            value: "20",
-            flag: "non-optimal-low",
-          },
-        ],
-      })
-    );
-    const ldl = items.find((i) => i.title === "LDL Cholesterol")!;
-    const fer = items.find((i) => i.title === "Ferritin")!;
-    expect(ldl.severity).toBe("today");
-    expect(ldl.suppressible).toBe(true);
-    expect(ldl.key).toBe("biomarker-flag:ldl cholesterol");
-    expect(fer.severity).toBe("soon");
-    expect(fer.suppressible).toBe(true);
-  });
-
-  it("a canonicalized flag deep-links to its series by canonical name; an uncanonicalized one falls back to /biomarkers (issue #283)", () => {
-    const items = buildAttention(
-      input({
-        flaggedBiomarkers: [
-          // The read already prefers the canonical name (COALESCE), so `name` IS
-          // the canonical string when canonicalName is set — even when the raw
-          // stored name differed (e.g. "LDL-C" snapped to "LDL Cholesterol").
-          {
-            name: "LDL Cholesterol",
-            canonicalName: "LDL Cholesterol",
-            value: "160 mg/dL",
-            flag: "high",
-          },
           {
             name: "Mystery Analyte",
             canonicalName: null,
@@ -151,125 +107,245 @@ describe("buildAttention", () => {
         ],
       })
     );
-    const ldl = items.find((i) => i.title === "LDL Cholesterol")!;
-    const mystery = items.find((i) => i.title === "Mystery Analyte")!;
-    // The view page treats ?name= as the CANONICAL name, so only a canonicalized
-    // reading gets the deep link.
-    expect(ldl.href).toBe("/biomarkers/view?name=LDL%20Cholesterol");
-    expect(mystery.href).toBe("/biomarkers");
+    expect(item.href).toBe("/biomarkers");
   });
 
-  it("a failing integration → a 'today' reconnect item; review pairs → a single 'info' item", () => {
-    const items = buildAttention(
+  it("an out-of-range flag outranks a merely non-optimal one within its group (#517 priority)", () => {
+    const model = buildAttentionModel(
+      input({
+        flaggedBiomarkers: [
+          {
+            name: "Ferritin",
+            canonicalName: "Ferritin",
+            value: "20",
+            flag: "non-optimal-low",
+          },
+          {
+            name: "Glucose",
+            canonicalName: "Glucose",
+            value: "180",
+            flag: "high",
+          },
+        ],
+      })
+    );
+    const [flagged] = groupAttentionForPage(model, TODAY);
+    expect(flagged.kind).toBe("flagged");
+    // Out-of-range (priority 1) leads the non-optimal (priority 0).
+    expect(flagged.items.map((i) => i.title)).toEqual([
+      "Review Glucose",
+      "Review Ferritin",
+    ]);
+  });
+
+  it("integration + review are structural (non-suppressible); no review item at count 0", () => {
+    const model = buildAttentionModel(
       input({
         integrations: [{ provider: "Strava", detail: "401 Unauthorized" }],
         reviewCount: 3,
       })
     );
-    const integ = items.find((i) => i.domain === "integration")!;
-    const review = items.find((i) => i.domain === "review")!;
-    expect(integ.severity).toBe("today");
+    const integ = model.find((i) => i.domain === "integration")!;
+    const review = model.find((i) => i.domain === "review")!;
     expect(integ.suppressible).toBe(false);
-    expect(review.severity).toBe("info");
+    expect(integ.signalGroup).toBe("review");
+    expect(review.suppressible).toBe(false);
     expect(review.title).toContain("3 import items");
-  });
-
-  it("no review item when reviewCount is 0", () => {
-    const items = buildAttention(input({ reviewCount: 0 }));
-    expect(items.find((i) => i.domain === "review")).toBeUndefined();
-  });
-
-  it("orders same-severity doses by their sortHint (bucket → priority → name), not alphabetically (issue #297)", () => {
-    // Three due doses all band as 'today' and share the 'dose' domain rank, so
-    // the sortHint (carried through from the Upcoming item) is what breaks the
-    // tie — bucket-then-priority, never plain A→Z.
-    const items = buildAttention(
-      input({
-        upcoming: [
-          up({
-            key: "dose:1",
-            domain: "dose",
-            title: "Melatonin",
-            doseId: 1,
-            sortHint: "32~Melatonin", // Before sleep
-          }),
-          up({
-            key: "dose:2",
-            domain: "dose",
-            title: "Aspirin",
-            doseId: 2,
-            sortHint: "00~Aspirin", // Morning, mandatory
-          }),
-          up({
-            key: "dose:3",
-            domain: "dose",
-            title: "Zinc",
-            doseId: 3,
-            sortHint: "02~Zinc", // Morning, low
-          }),
-        ],
-      })
-    );
-    expect(items.map((i) => i.title)).toEqual(["Aspirin", "Zinc", "Melatonin"]);
-  });
-
-  it("orders by severity first, then by domain rank within a severity", () => {
-    const items = buildAttention(
-      input({
-        // All resolve to 'today': a due dose (domain rank 0) and a high flag (rank 1),
-        // plus an overdue appointment that must sort ABOVE both.
-        upcoming: [
-          up({ key: "dose:1", domain: "dose", doseId: 1 }),
-          up({
-            key: "appointment:9",
-            domain: "appointment",
-            dueDate: "2026-06-01",
-          }),
-        ],
-        flaggedBiomarkers: [{ name: "LDL", value: null, flag: "high" }],
-      })
-    );
-    // overdue appointment leads; then within 'today', dose (rank 0) before flag (rank 1).
-    expect(items.map((i) => i.key)).toEqual([
-      "appointment:9",
-      "dose:1",
-      "biomarker-flag:ldl",
-    ]);
+    expect(
+      buildAttentionModel(input({ reviewCount: 0 })).find(
+        (i) => i.domain === "review"
+      )
+    ).toBeUndefined();
   });
 });
 
-describe("groupAttention", () => {
-  it("buckets by severity in fixed order, dropping empty bands", () => {
-    const items = buildAttention(
+describe("groupAttentionForPage — the planning view (everything, time-ordered)", () => {
+  it("bands dated items Overdue → Today → This week → Later, then Flagged, then For review", () => {
+    const model = buildAttentionModel(
       input({
         upcoming: [
           up({
             key: "appointment:1",
             domain: "appointment",
-            dueDate: "2026-06-01",
+            dueDate: "2026-07-01",
           }), // overdue
-          up({ key: "dose:1", domain: "dose", doseId: 1 }), // today
+          up({ key: "dose:1", domain: "dose", doseId: 1 }), // today (null date)
+          up({
+            key: "appointment:2",
+            domain: "appointment",
+            dueDate: "2026-07-14",
+          }), // +4 → week
+          up({
+            key: "appointment:3",
+            domain: "appointment",
+            dueDate: "2026-08-24",
+          }), // +45 → later
         ],
-        reviewCount: 1, // info
+        flaggedBiomarkers: [
+          { name: "LDL", canonicalName: "LDL", value: "160", flag: "high" },
+        ],
+        reviewCount: 1,
       })
     );
-    const groups = groupAttention(items);
-    expect(groups.map((g) => g.severity)).toEqual(["overdue", "today", "info"]);
-    // fixed global order is respected (no 'soon' band present here)
-    for (let i = 1; i < groups.length; i++) {
-      expect(SEVERITY_ORDER.indexOf(groups[i].severity)).toBeGreaterThan(
-        SEVERITY_ORDER.indexOf(groups[i - 1].severity)
-      );
-    }
-    // No group is anywhere near the cap here — nothing overflows.
-    expect(groups.every((g) => g.overflow === 0)).toBe(true);
+    const groups = groupAttentionForPage(model, TODAY);
+    expect(groups.map((g) => g.kind)).toEqual([
+      "overdue",
+      "today",
+      "week",
+      "later",
+      "flagged",
+      "review",
+    ]);
+    expect(groups.map((g) => g.label)).toEqual([
+      "Overdue",
+      "Today",
+      "This week",
+      "Later",
+      "Flagged",
+      "For review",
+    ]);
   });
 
-  it("caps each severity group and reports the rest as overflow (issue #283)", () => {
-    // Twelve overdue appointments, deterministic titles. With a cap of 8 the
-    // group keeps the first 8 (already severity/domain/title-ordered) and
-    // reports 4 as overflow for the hero's "+N more" link.
-    const items = buildAttention(
+  it("KEEPS later-band items (completeness is the point of the page)", () => {
+    const model = buildAttentionModel(
+      input({
+        upcoming: [
+          up({
+            key: "appointment:3",
+            domain: "appointment",
+            dueDate: "2026-08-24",
+          }),
+        ],
+      })
+    );
+    const groups = groupAttentionForPage(model, TODAY);
+    expect(groups.map((g) => g.kind)).toEqual(["later"]);
+    expect(groups[0].items[0].key).toBe("appointment:3");
+  });
+
+  it("orders within a band by date, then #517 priority, then domain, then title", () => {
+    const model = buildAttentionModel(
+      input({
+        upcoming: [
+          // All due 2026-07-12 (+2 → week band). Two share a date: a high-priority
+          // screening must lead the routine one regardless of domain/title.
+          up({
+            key: "screening:a",
+            domain: "screening",
+            title: "Zzz screening",
+            dueDate: "2026-07-12",
+            priority: 3,
+          }),
+          up({
+            key: "screening:b",
+            domain: "screening",
+            title: "Aaa screening",
+            dueDate: "2026-07-12",
+            priority: 0,
+          }),
+          up({
+            key: "appointment:c",
+            domain: "appointment",
+            title: "Earlier",
+            dueDate: "2026-07-11",
+          }),
+        ],
+      })
+    );
+    const [week] = groupAttentionForPage(model, TODAY);
+    expect(week.items.map((i) => i.key)).toEqual([
+      "appointment:c", // earliest date
+      "screening:a", // same date, higher priority
+      "screening:b",
+    ]);
+  });
+});
+
+describe("groupAttentionForCard — the triage glance (act-now subset)", () => {
+  it("bands Urgent / Today / Needs review and EXCLUDES this-week + later scheduled items", () => {
+    const model = buildAttentionModel(
+      input({
+        upcoming: [
+          up({
+            key: "appointment:1",
+            domain: "appointment",
+            dueDate: "2026-07-01",
+          }), // overdue → Urgent
+          up({ key: "dose:1", domain: "dose", doseId: 1 }), // today → Today
+          up({
+            key: "appointment:2",
+            domain: "appointment",
+            dueDate: "2026-07-14",
+          }), // +4 week → excluded
+          up({
+            key: "appointment:3",
+            domain: "appointment",
+            dueDate: "2026-08-24",
+          }), // +45 later → excluded
+        ],
+        flaggedBiomarkers: [
+          { name: "LDL", canonicalName: "LDL", value: "160", flag: "high" },
+        ], // → Needs review
+        reviewCount: 1, // → Needs review
+      })
+    );
+    const groups = groupAttentionForCard(model, TODAY);
+    expect(groups.map((g) => g.band)).toEqual(["urgent", "today", "review"]);
+    expect(groups.map((g) => g.label)).toEqual([
+      "Urgent",
+      "Today",
+      "Needs review",
+    ]);
+    // The week/later scheduled appointments are NOT on the card.
+    const cardKeys = groups.flatMap((g) => g.items.map((i) => i.key));
+    expect(cardKeys).not.toContain("appointment:2");
+    expect(cardKeys).not.toContain("appointment:3");
+    // Both signals land in Needs review.
+    const review = groups.find((g) => g.band === "review")!;
+    expect(review.items.map((i) => i.key).sort()).toEqual([
+      "biomarker-flag:ldl",
+      "review",
+    ]);
+  });
+
+  it("cardBandForItem maps overdue→urgent, today→today, signals→review, week/later→excluded", () => {
+    expect(
+      cardBandForItem(
+        up({ key: "a", domain: "appointment", dueDate: "2026-07-01" }),
+        TODAY
+      )
+    ).toBe("urgent");
+    expect(
+      cardBandForItem(up({ key: "b", domain: "dose", dueDate: null }), TODAY)
+    ).toBe("today");
+    expect(
+      cardBandForItem(
+        up({ key: "c", domain: "appointment", dueDate: "2026-07-14" }),
+        TODAY
+      )
+    ).toBeNull();
+    expect(
+      cardBandForItem(
+        up({ key: "d", domain: "appointment", dueDate: "2026-08-24" }),
+        TODAY
+      )
+    ).toBeNull();
+    expect(
+      cardBandForItem(
+        up({ key: "review", domain: "review", signalGroup: "review" }),
+        TODAY
+      )
+    ).toBe("review");
+    expect(
+      cardBandForItem(
+        up({ key: "f:x", domain: "biomarker-flag", signalGroup: "flagged" }),
+        TODAY
+      )
+    ).toBe("review");
+  });
+
+  it("caps each card band and reports the rest as overflow (issue #283)", () => {
+    const model = buildAttentionModel(
       input({
         upcoming: Array.from({ length: 12 }, (_, i) =>
           up({
@@ -281,34 +357,82 @@ describe("groupAttention", () => {
         ),
       })
     );
-    expect(items).toHaveLength(12); // the model (and the count badge) keeps all
-    const [group] = groupAttention(items);
-    expect(group.severity).toBe("overdue");
+    const [group] = groupAttentionForCard(model, TODAY);
+    expect(group.band).toBe("urgent");
     expect(group.items).toHaveLength(ATTENTION_GROUP_CAP);
     expect(group.overflow).toBe(12 - ATTENTION_GROUP_CAP);
-    // The kept rows are the FIRST of the ordered list, not an arbitrary slice.
     expect(group.items[0].title).toBe("Visit 00");
-    expect(group.items[ATTENTION_GROUP_CAP - 1].title).toBe(
-      `Visit ${String(ATTENTION_GROUP_CAP - 1).padStart(2, "0")}`
-    );
-    // An explicit cap wins over the default.
-    const [tight] = groupAttention(items, 2);
+    const [tight] = groupAttentionForCard(model, TODAY, 2);
     expect(tight.items).toHaveLength(2);
     expect(tight.overflow).toBe(10);
   });
+
+  it("card bands come back in fixed Urgent → Today → Needs review order", () => {
+    expect(CARD_BAND_ORDER).toEqual(["urgent", "today", "review"]);
+  });
 });
 
-// Issue #512 — the honest per-band count label so the card reconciles with the
-// Upcoming page instead of showing a bare capped count.
-describe("attentionCountLabel", () => {
-  it("shows the plain count when nothing overflows", () => {
-    expect(attentionCountLabel(5, 0)).toBe("5");
-    expect(attentionCountLabel(0, 0)).toBe("0");
+// The load-bearing invariant (issue #524): the card is a strict, labeled SUBSET of
+// the page's item set — every card item exists in the model with the SAME key, and
+// the counts reconcile.
+describe("the strict subset invariant", () => {
+  const model = buildAttentionModel(
+    input({
+      upcoming: [
+        up({
+          key: "appointment:1",
+          domain: "appointment",
+          dueDate: "2026-07-01",
+        }), // overdue
+        up({ key: "dose:1", domain: "dose", doseId: 1 }), // today
+        up({
+          key: "appointment:2",
+          domain: "appointment",
+          dueDate: "2026-07-14",
+        }), // week (page-only)
+        up({
+          key: "appointment:3",
+          domain: "appointment",
+          dueDate: "2026-08-24",
+        }), // later (page-only)
+        up({ key: "goal:1", domain: "goal", dueDate: "2026-07-20" }), // later (page-only)
+      ],
+      flaggedBiomarkers: [
+        { name: "LDL", canonicalName: "LDL", value: "160", flag: "high" },
+      ],
+      integrations: [{ provider: "Strava", detail: "401" }],
+      reviewCount: 4,
+    })
+  );
+
+  it("every card item exists in the page model with the same key", () => {
+    const modelKeys = new Set(model.map((i) => i.key));
+    for (const item of attentionCardItems(model, TODAY)) {
+      expect(modelKeys.has(item.key)).toBe(true);
+    }
   });
 
-  it("shows 'shown of total' when the cap truncated the band", () => {
-    // The reported case: 8 shown of 11 true → "8 of 11", not a bare "8".
+  it("card count + 'more in Upcoming' reconciles to the page total", () => {
+    const card = attentionCardItems(model, TODAY);
+    const cardCount = card.length;
+    const more = moreInUpcomingCount(model, cardCount);
+    // The page's total is the whole model; the card's count plus the hidden
+    // far-future items equals it exactly.
+    expect(cardCount + more).toBe(model.length);
+    // The hidden set is precisely the week/later scheduled items the card omits.
+    expect(more).toBe(3); // appointment:2 (week) + appointment:3 (later) + goal:1 (later)
+  });
+});
+
+// Issue #512 — the honest per-band count label + the card/page reconciliation.
+describe("count helpers", () => {
+  it("attentionCountLabel: plain count with no overflow, 'shown of total' when capped", () => {
+    expect(attentionCountLabel(5, 0)).toBe("5");
     expect(attentionCountLabel(8, 3)).toBe("8 of 11");
-    expect(attentionCountLabel(2, 10)).toBe("2 of 12");
+  });
+
+  it("moreInUpcomingCount never goes negative", () => {
+    expect(moreInUpcomingCount([], 0)).toBe(0);
+    expect(moreInUpcomingCount([up({ key: "a" })], 5)).toBe(0);
   });
 });

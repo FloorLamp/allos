@@ -19,11 +19,17 @@ import {
 import SubmitButton from "@/components/SubmitButton";
 import SnoozeDismissMenu from "@/components/SnoozeDismissMenu";
 import {
-  groupAttention,
+  groupAttentionForCard,
+  attentionCardItems,
   attentionCountLabel,
-  type AttentionItem,
-  type AttentionSeverity,
+  moreInUpcomingCount,
+  type CardBand,
 } from "@/lib/attention";
+import {
+  isItemSuppressibleFlag,
+  upcomingDueText,
+  type UpcomingItem,
+} from "@/lib/upcoming";
 import {
   snoozeAttention,
   dismissAttention,
@@ -33,16 +39,23 @@ import {
 // The Tier-1 "Needs attention" hero (issue #171). Full-width, pinned first, NOT
 // hideable — a health app where a user can configure away "three doses overdue" is
 // a liability, so control is item-level (snooze/dismiss the instance, never the
-// category) via the same shared findings store as the Upcoming page. Renders the
-// merged, severity-ordered attention model computed in lib/attention.ts (the SAME
-// signals the Telegram digest and Upcoming read). Empty → a quiet "all clear",
-// which is itself information.
+// category) via the same shared findings store as the Upcoming page.
+//
+// It renders the ACT-NOW SUBSET of the ONE unified attention model (lib/attention.ts,
+// issue #524) — overdue + due-today scheduled work plus the "something's off"
+// signals (flagged labs, failing syncs, the review count) — banded as urgency
+// (Urgent / Today / Needs review). The Upcoming page renders the SAME model in full
+// (adding this-week / later scheduled items under a calendar framing), and the
+// card's items are a strict subset of it, so the "+N more in Upcoming" number always
+// reconciles. Empty → a quiet "all clear", which is itself information.
 
 // Domain → leading glyph. Covers every attention domain (Upcoming domains plus the
-// hero-only biomarker-flag / integration / review signals).
+// signal biomarker-flag / integration / review domains).
 const DOMAIN_ICON: Record<string, TablerIcon> = {
   dose: IconPill,
   refill: IconRefresh,
+  "dietary-limit": IconAlertTriangle,
+  interaction: IconAlertTriangle,
   appointment: IconStethoscope,
   visit: IconStethoscope,
   screening: IconMicroscope,
@@ -56,15 +69,22 @@ const DOMAIN_ICON: Record<string, TablerIcon> = {
   review: IconInbox,
 };
 
-// Severity → accent tone for the due-text + section heading.
-const SEVERITY_TONE: Record<AttentionSeverity, string> = {
-  overdue: "text-rose-600 dark:text-rose-400",
+// Card band → accent tone for the due-text + section heading.
+const BAND_TONE: Record<CardBand, string> = {
+  urgent: "text-rose-600 dark:text-rose-400",
   today: "text-brand-700 dark:text-brand-400",
-  soon: "text-amber-600 dark:text-amber-400",
-  info: "text-slate-500 dark:text-slate-400",
+  review: "text-amber-600 dark:text-amber-400",
 };
 
-function Row({ item, tone }: { item: AttentionItem; tone: string }) {
+function Row({
+  item,
+  now,
+  tone,
+}: {
+  item: UpcomingItem;
+  now: string;
+  tone: string;
+}) {
   const Icon = DOMAIN_ICON[item.domain] ?? IconAlertTriangle;
   return (
     <div
@@ -89,13 +109,9 @@ function Row({ item, tone }: { item: AttentionItem; tone: string }) {
           </div>
         )}
       </div>
-      {item.dueText && (
-        <div
-          className={`shrink-0 whitespace-nowrap text-xs font-medium ${tone}`}
-        >
-          {item.dueText}
-        </div>
-      )}
+      <div className={`shrink-0 whitespace-nowrap text-xs font-medium ${tone}`}>
+        {upcomingDueText(item, now)}
+      </div>
       {item.doseId != null && (
         <form action={markAttentionDose} className="shrink-0">
           <input type="hidden" name="dose_id" value={item.doseId} />
@@ -109,9 +125,9 @@ function Row({ item, tone }: { item: AttentionItem; tone: string }) {
       )}
       {/* Per-item snooze/dismiss popover — the shared OverflowMenu-based menu
       (issue #281), so it matches every other popover in the app. Only rendered
-      for suppressible items (Upcoming-derived); structural signals
-      (review/integration) are resolved, not snoozed. */}
-      {item.suppressible && (
+      for suppressible items (Upcoming-derived + biomarker flags); structural
+      signals (review/integration) are resolved, not snoozed. */}
+      {isItemSuppressibleFlag(item) && (
         <SnoozeDismissMenu
           signalKey={item.key}
           snoozeAction={snoozeAttention}
@@ -124,11 +140,17 @@ function Row({ item, tone }: { item: AttentionItem; tone: string }) {
 
 export default function NeedsAttentionHero({
   items,
+  today,
 }: {
-  items: AttentionItem[];
+  items: UpcomingItem[];
+  today: string;
 }) {
-  const groups = groupAttention(items);
-  const count = items.length;
+  const groups = groupAttentionForCard(items, today);
+  // The badge / count is the CARD subset — the act-now slice, NOT the full model.
+  const count = attentionCardItems(items, today).length;
+  // The far-future scheduled work the card hides, waiting on the Upcoming page. A
+  // strict subset guarantees this reconciles with the page's total.
+  const more = moreInUpcomingCount(items, count);
 
   return (
     <section
@@ -172,13 +194,22 @@ export default function NeedsAttentionHero({
             aria-hidden="true"
           />
           All clear — nothing needs your attention right now.
+          {more > 0 && (
+            <Link
+              href="/upcoming"
+              data-testid="attention-more-upcoming"
+              className="font-medium text-brand-600 hover:underline dark:text-brand-400"
+            >
+              {more} upcoming
+            </Link>
+          )}
         </div>
       ) : (
         <div className="space-y-4">
           {groups.map((group) => (
-            <div key={group.severity}>
+            <div key={group.band}>
               <div
-                className={`mb-1 text-xs font-semibold uppercase tracking-wide ${SEVERITY_TONE[group.severity]}`}
+                className={`mb-1 text-xs font-semibold uppercase tracking-wide ${BAND_TONE[group.band]}`}
               >
                 {group.label}
                 <span className="ml-1 text-slate-400 dark:text-slate-500">
@@ -190,16 +221,17 @@ export default function NeedsAttentionHero({
                   <Row
                     key={item.key}
                     item={item}
-                    tone={SEVERITY_TONE[group.severity]}
+                    now={today}
+                    tone={BAND_TONE[group.band]}
                   />
                 ))}
-                {/* Defensive per-severity cap (issue #283): a pathological day
-                (a giant flagged import, an overdue backlog) collapses to a link
-                instead of blowing the layout. */}
+                {/* Defensive per-band cap (issue #283): a pathological day (a giant
+                flagged import, an overdue backlog) collapses to a link instead of
+                blowing the layout. */}
                 {group.overflow > 0 && (
                   <Link
                     href="/upcoming"
-                    data-testid={`attention-overflow-${group.severity}`}
+                    data-testid={`attention-overflow-${group.band}`}
                     className="block rounded-lg px-2 py-1.5 text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
                   >
                     +{group.overflow} more in Upcoming
@@ -208,6 +240,18 @@ export default function NeedsAttentionHero({
               </div>
             </div>
           ))}
+          {/* The card is a strict subset of the Upcoming page; the far-future
+          scheduled work it hides is one click away, with an exact count so the two
+          surfaces reconcile (issue #524). */}
+          {more > 0 && (
+            <Link
+              href="/upcoming"
+              data-testid="attention-more-upcoming"
+              className="block text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
+            >
+              +{more} more in Upcoming
+            </Link>
+          )}
         </div>
       )}
     </section>

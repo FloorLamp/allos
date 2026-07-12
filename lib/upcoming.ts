@@ -37,6 +37,15 @@ export function snoozeUntil(today: string, days: number): string | null {
 //   goal        — a goal with a target_date approaching or overdue
 //   training    — an unmet weekly frequency target
 //   careplan    — a provider-ordered care_plan_item with a planned_date (issue #84)
+//
+// Three of these domains are NOT date-scheduled due-signals but the orthogonal
+// "something's off" signals the unified attention model (lib/attention.ts, issue
+// #524) folds in so the dashboard card and this page draw from ONE item set:
+//   biomarker-flag — a newly out-of-range/non-optimal lab reading (issue #526)
+//   integration    — a failing / needs-reauth sync provider
+//   review         — the unresolved import-review pair count
+// They carry `signalGroup` (below) instead of a due date, so they surface under
+// their own "Flagged" / "For review" groupings rather than in the date bands.
 export type UpcomingDomain =
   | "dose"
   | "refill"
@@ -49,7 +58,10 @@ export type UpcomingDomain =
   | "biomarker"
   | "goal"
   | "training"
-  | "careplan";
+  | "careplan"
+  | "biomarker-flag"
+  | "integration"
+  | "review";
 
 // Stable within-band ordering when two items share an effective due date.
 const DOMAIN_ORDER: Record<UpcomingDomain, number> = {
@@ -65,6 +77,13 @@ const DOMAIN_ORDER: Record<UpcomingDomain, number> = {
   biomarker: 9,
   goal: 10,
   training: 11,
+  // The "something's off" signals (issue #524). They never share a date band with
+  // the scheduled domains (they carry `signalGroup`, not a due date), so these
+  // ranks only order them WITHIN the Flagged / For-review groupings: the clinical
+  // flag leads, then a broken sync, then the housekeeping review count.
+  "biomarker-flag": 12,
+  integration: 13,
+  review: 14,
 };
 
 export type UrgencyBand = "overdue" | "today" | "week" | "later";
@@ -131,6 +150,29 @@ export interface UpcomingItem {
   // care_plan_items row completed (issue #84) — the same inline fast-path shape as
   // doseId/preventiveRuleKey. Only careplan items carry one.
   carePlanItemId?: number;
+  // Whether this item supports snooze/dismiss through the shared findings store
+  // (issue #524). Date-scheduled due-signals and biomarker flags do (undefined is
+  // treated as suppressible); the structural signals (review / failing integration)
+  // are resolved, not snoozed, so they set this false and render no snooze menu.
+  suppressible?: boolean;
+  // The "something's off" signals only (issue #524): which page grouping the item
+  // surfaces under ("Flagged" for out-of-range labs, "For review" for the review
+  // count + failing integrations). Set ⇒ the item is NOT a date-scheduled signal,
+  // so the page groups it separately from the urgency bands and the card files it
+  // under "Needs review". Absent for every date-scheduled domain.
+  signalGroup?: SignalGroup;
+}
+
+// The two non-date groupings the "something's off" signals surface under on the
+// Upcoming page (issue #524). Flagged = out-of-range lab readings; review = the
+// import-review count and failing-integration signals (both act on /data?section=review).
+export type SignalGroup = "flagged" | "review";
+
+// Whether an item participates in snooze/dismiss (issue #524). Undefined defaults
+// to suppressible so every existing date-scheduled due-signal keeps its menu; only
+// the structural signals opt out with an explicit false.
+export function isItemSuppressibleFlag(item: UpcomingItem): boolean {
+  return item.suppressible !== false;
 }
 
 export interface BandGroup {
@@ -183,8 +225,31 @@ export function upcomingDueText(item: UpcomingItem, today: string): string {
 
 // The effective calendar date used to sort an item within its band. A null due
 // date sorts as today so status-driven items cluster with same-day work.
-function sortDate(item: UpcomingItem, today: string): string {
+export function sortDate(item: UpcomingItem, today: string): string {
   return item.dueDate ?? today;
+}
+
+// The ONE within-band comparator (issue #524, decision #2): date → priority →
+// domain → sortHint → title. Both surfaces order the SAME facts the SAME way — the
+// Upcoming page's date bands (groupUpcoming) and the dashboard card
+// (lib/attention.ts) both sort with this, so "two orderings of the same facts" can
+// never drift (the card used to ignore the #517 risk priority AND the due date —
+// issue #525). Purely relative, so it slots straight into Array.sort.
+export function compareWithinBand(
+  a: UpcomingItem,
+  b: UpcomingItem,
+  today: string
+): number {
+  return (
+    sortDate(a, today).localeCompare(sortDate(b, today)) ||
+    // Clinical-importance ranking (issue #517): among items due the SAME day, the
+    // higher-priority (risk-driven) item leads. Default 0, so ordinary items are
+    // unaffected and the date-first order stands.
+    (b.priority ?? 0) - (a.priority ?? 0) ||
+    DOMAIN_ORDER[a.domain] - DOMAIN_ORDER[b.domain] ||
+    compareSortHint(a.sortHint, b.sortHint) ||
+    a.title.localeCompare(b.title)
+  );
 }
 
 // Bucket items into the four urgency bands, each sorted by effective due date
@@ -207,17 +272,7 @@ export function groupUpcoming(
   for (const band of BAND_ORDER) {
     const arr = byBand.get(band);
     if (!arr || arr.length === 0) continue;
-    arr.sort(
-      (a, b) =>
-        sortDate(a, today).localeCompare(sortDate(b, today)) ||
-        // Clinical-importance ranking (issue #517): among items due the SAME day,
-        // the higher-priority (risk-driven) item leads. Default 0, so ordinary
-        // items are unaffected and the date-first order stands.
-        (b.priority ?? 0) - (a.priority ?? 0) ||
-        DOMAIN_ORDER[a.domain] - DOMAIN_ORDER[b.domain] ||
-        compareSortHint(a.sortHint, b.sortHint) ||
-        a.title.localeCompare(b.title)
-    );
+    arr.sort((a, b) => compareWithinBand(a, b, today));
     groups.push({ band, label: BAND_LABELS[band], items: arr });
   }
   return groups;

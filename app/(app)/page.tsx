@@ -26,7 +26,7 @@ import {
   getCarePlanItems,
   gatherCoachingInput,
   getFindingSuppressions,
-  collectAttention,
+  collectAttentionModel,
   attentionCountForProfile,
   getBioAgeReadings,
   getHealthspanPillars,
@@ -111,10 +111,11 @@ export default async function Dashboard() {
   const units = getUnitPrefs(login.id);
 
   // Tier 1 — the "Needs attention" hero. Pinned + non-hideable, so it's computed
-  // unconditionally (outside the customizable grid). Renders the merged, severity-
-  // ordered attention model that shares its underlying reads with the Telegram
-  // digest and the Upcoming list — one source of truth (issue #171).
-  const attention = collectAttention(profile.id, on);
+  // unconditionally (outside the customizable grid). Renders the act-now SUBSET of
+  // the ONE unified attention model (lib/attention.ts) the Upcoming page renders in
+  // full — a strict subset, so the two surfaces always reconcile (issue #524). The
+  // model shares its underlying reads with the Telegram digest and the Upcoming list.
+  const attention = collectAttentionModel(profile.id, on);
 
   // Tier 2 — the household strip. A caregiver reaching 2+ profiles gets a per-
   // profile attention count for their OTHER profiles (same gate as the Household
@@ -520,7 +521,7 @@ export default async function Dashboard() {
         subtitle={`Today is ${formatLongDate(on)} — here's your health at a glance.`}
       />
       <div className="mb-6">
-        <NeedsAttentionHero items={attention} />
+        <NeedsAttentionHero items={attention} today={on} />
       </div>
       <HouseholdStrip entries={householdEntries} />
       <DashboardGrid widgets={gridWidgets} saveAction={saveDashboardLayout} />

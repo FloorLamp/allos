@@ -7,9 +7,12 @@ import {
   IconMicroscope,
   IconVaccine,
   IconChartLine,
+  IconFlask,
   IconTarget,
   IconBarbell,
   IconClipboardList,
+  IconPlugConnectedX,
+  IconInbox,
   IconArrowBackUp,
   IconInfoCircle,
   IconCalendarPlus,
@@ -18,14 +21,16 @@ import {
 } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
-import { collectUpcoming, collectSuppressedUpcoming } from "@/lib/queries";
-import { getUserBirthdate, getStoredAge } from "@/lib/settings";
 import {
-  groupUpcoming,
-  totalUpcomingCount,
+  collectAttentionModel,
+  collectSuppressedAttention,
+} from "@/lib/queries";
+import { getUserBirthdate, getStoredAge } from "@/lib/settings";
+import { groupAttentionForPage, type PageGroupKind } from "@/lib/attention";
+import {
+  isItemSuppressibleFlag,
   upcomingDueText,
   type UpcomingDomain,
-  type UrgencyBand,
   type UpcomingItem,
 } from "@/lib/upcoming";
 import { PageHeader, EmptyState } from "@/components/ui";
@@ -43,7 +48,8 @@ import {
 
 export const dynamic = "force-dynamic";
 
-// Domain → icon for the leading glyph on each row.
+// Domain → icon for the leading glyph on each row. Covers the date-scheduled
+// domains plus the unified model's "something's off" signals (issue #524).
 const DOMAIN_ICON: Record<UpcomingDomain, TablerIcon> = {
   dose: IconPill,
   refill: IconRefresh,
@@ -57,23 +63,34 @@ const DOMAIN_ICON: Record<UpcomingDomain, TablerIcon> = {
   goal: IconTarget,
   training: IconBarbell,
   careplan: IconClipboardList,
+  "biomarker-flag": IconFlask,
+  integration: IconPlugConnectedX,
+  review: IconInbox,
 };
 
-// Urgency band → accent tone for the band heading + the overdue-date text.
-const BAND_TONE: Record<UrgencyBand, string> = {
+// Page group → accent tone for the group heading + the due-text. The date bands
+// carry their urgency tone; the two signal groupings (Flagged / For review) get an
+// alerting amber (issue #524).
+const GROUP_TONE: Record<PageGroupKind, string> = {
   overdue: "text-rose-600 dark:text-rose-400",
   today: "text-brand-700 dark:text-brand-400",
   week: "text-amber-600 dark:text-amber-400",
   later: "text-slate-500 dark:text-slate-400",
+  flagged: "text-amber-600 dark:text-amber-400",
+  review: "text-amber-600 dark:text-amber-400",
 };
 
 export default async function UpcomingPage() {
   const { profile } = await requireSession();
   const now = today(profile.id);
-  const items = collectUpcoming(profile.id, now);
-  const groups = groupUpcoming(items, now);
-  const total = totalUpcomingCount(groups);
-  const suppressed = collectSuppressedUpcoming(profile.id, now);
+  // The ONE unified attention model (issue #524) — the SAME set the dashboard card
+  // renders (as an act-now subset). The page shows it in FULL: date-scheduled work
+  // in calendar bands, plus the flagged-lab / failing-sync / review signals under
+  // their own groupings. Completeness is the point of the planning view.
+  const items = collectAttentionModel(profile.id, now);
+  const groups = groupAttentionForPage(items, now);
+  const total = items.length;
+  const suppressed = collectSuppressedAttention(profile.id, now);
 
   // Preventive well-visits/screenings (issue #82) are only assessed when the
   // profile's age is known; without a birthdate/age they emit nothing. Surface a
@@ -124,9 +141,9 @@ export default async function UpcomingPage() {
       ) : (
         <div className="space-y-6">
           {groups.map((group) => (
-            <section key={group.band}>
+            <section key={group.kind}>
               <h2
-                className={`mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide ${BAND_TONE[group.band]}`}
+                className={`mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide ${GROUP_TONE[group.kind]}`}
               >
                 {group.label}
                 <span className="text-slate-400 dark:text-slate-500">
@@ -139,7 +156,7 @@ export default async function UpcomingPage() {
                     key={item.key}
                     item={item}
                     now={now}
-                    tone={BAND_TONE[group.band]}
+                    tone={GROUP_TONE[group.kind]}
                   />
                 ))}
               </div>
@@ -352,18 +369,22 @@ function Row({
         </form>
       )}
       {/* Per-item snooze/dismiss popover — the shared OverflowMenu-based menu
-      (issue #281), identical to the dashboard hero's. */}
-      <SnoozeDismissMenu
-        signalKey={item.key}
-        snoozeAction={async (fd) => {
-          "use server";
-          await snoozeItem(fd);
-        }}
-        dismissAction={async (fd) => {
-          "use server";
-          await dismissItem(fd);
-        }}
-      />
+      (issue #281), identical to the dashboard hero's. Only suppressible items get
+      one; the structural signals (failing sync / review count) are resolved, not
+      snoozed (issue #524). */}
+      {isItemSuppressibleFlag(item) && (
+        <SnoozeDismissMenu
+          signalKey={item.key}
+          snoozeAction={async (fd) => {
+            "use server";
+            await snoozeItem(fd);
+          }}
+          dismissAction={async (fd) => {
+            "use server";
+            await dismissItem(fd);
+          }}
+        />
+      )}
     </div>
   );
 }
