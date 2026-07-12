@@ -7,7 +7,7 @@ import SaveStatus from "@/components/SaveStatus";
 import { clearEmergencyPayload } from "@/components/emergency-offline";
 import { BLOOD_TYPES } from "@/lib/emergency-card";
 import type { EmergencyContactSetting } from "@/lib/settings";
-import { saveEmergencyCardSettings } from "../actions";
+import { saveEmergencyCardSettings } from "./actions";
 
 // Settings → Profile card for the offline Emergency Card (issue #42): the opt-in
 // toggle (OFF by default), a manual blood type, and the emergency contact. All are

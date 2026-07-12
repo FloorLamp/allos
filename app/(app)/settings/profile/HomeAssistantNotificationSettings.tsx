@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import type { ProfileHomeAssistant } from "@/lib/settings";
 import type { NotificationKind } from "@/lib/notifications/types";
 import { TOGGLEABLE_HA_KINDS } from "@/lib/notifications/home-assistant-core";
-import { saveHomeAssistantPrefs, sendTestHomeAssistant } from "../actions";
+import { saveHomeAssistantPrefs, sendTestHomeAssistant } from "./actions";
 import SaveStatus from "@/components/SaveStatus";
 
 // Home Assistant as a third delivery channel (#248). A per-profile outbound webhook

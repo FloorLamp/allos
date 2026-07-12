@@ -1,0 +1,443 @@
+// Medical passport domain types (providers, appointments, lab/biomarker records,
+// canonical ranges, immunizations, allergies, conditions, encounters, procedures,
+// family history, care plans/goals, documents). Split out of lib/types.ts (#319);
+// the `@/lib/types` barrel re-exports everything here, so import paths are unchanged.
+
+// A healthcare provider or organization. GLOBAL — shared across the
+// whole family/instance (a family sees one "Quest Diagnostics" / "Dr. Smith"),
+// modeled like logins/profiles, so it is intentionally NOT profile-scoped. Records
+// link to it via a nullable provider_id FK on their profile-owned row. `type`
+// discriminates an organization from an individual clinician.
+export type ProviderType = "organization" | "individual";
+
+export interface Provider {
+  id: number;
+  name: string;
+  type: ProviderType;
+  // National Provider Identifier (US), when the source carried one — authoritative
+  // for global dedup. `identifier` holds any other stable id (org/EMR id). Both
+  // nullable; phone/address are captured from the CCD when present.
+  npi: string | null;
+  identifier: string | null;
+  phone: string | null;
+  address: string | null;
+  created_at: string;
+}
+
+// A scheduled medical visit. Profile-owned; optionally
+// linked to the shared providers registry via a nullable provider_id FK.
+// `scheduled_at` is a date (YYYY-MM-DD) or datetime; `status` drives whether it
+// still surfaces on the Upcoming page (only 'scheduled' does). Runtime array is the
+// single source for the union AND the appointments.status CHECK (enum-parity test).
+export const APPOINTMENT_STATUSES = [
+  "scheduled",
+  "completed",
+  "cancelled",
+] as const;
+export type AppointmentStatus = (typeof APPOINTMENT_STATUSES)[number];
+
+// Optional visit category (issue #85). NULL on existing rows and whenever the user
+// leaves it blank — a NULL kind never matches a preventive rule (no fuzzy title
+// guessing). The values map to preventive-care rules in lib/preventive-appointment.ts,
+// which powers the prefilled "Book" CTA, the scheduled-visit suppression, and the
+// close-the-loop satisfaction on completion.
+export type AppointmentKind =
+  "well_child" | "physical" | "dental" | "vision" | "screening" | "other";
+
+export interface Appointment {
+  id: number;
+  profile_id: number;
+  scheduled_at: string;
+  provider_id: number | null;
+  // Joined display name of the linked provider (from the global registry), null
+  // when unlinked. Populated by getAppointments, not a stored column.
+  provider_name: string | null;
+  title: string | null;
+  location: string | null;
+  notes: string | null;
+  status: AppointmentStatus;
+  // Optional visit category (well_child | physical | dental | vision | screening |
+  // other), or null when unset. See AppointmentKind above.
+  kind: AppointmentKind | null;
+  created_at: string;
+}
+
+export type MedicalCategory =
+  "vitals" | "lab" | "genomics" | "biomarker" | "scan" | "prescription";
+
+// "non-optimal" is the legacy directionless value (older rows, pre-migration);
+// new derivations use the directional "-high"/"-low" variants so the UI can show
+// an up/down arrow. All three are treated as non-optimal by isNonOptimal().
+export type MedicalFlag =
+  | "normal"
+  | "high"
+  | "low"
+  | "abnormal"
+  | "non-optimal"
+  | "non-optimal-high"
+  | "non-optimal-low";
+
+export interface MedicalRecord {
+  id: number;
+  date: string;
+  category: MedicalCategory;
+  name: string;
+  value: string | null;
+  unit: string | null;
+  reference_range: string | null;
+  notes: string | null;
+  created_at: string;
+  // Populated when the row came from an uploaded document (see MedicalDocument).
+  document_id: number | null;
+  panel: string | null;
+  flag: MedicalFlag | null;
+  value_num: number | null;
+  // A clean, consistent biomarker name used to group readings of the same
+  // analyte across documents/labs. Assigned by the AI at extraction/backfill,
+  // editable per record; falls back to `name` when absent.
+  canonical_name: string | null;
+  // 1 when this is the most recent reading in its biomarker group; only set by
+  // queries that select it (e.g. the biomarkers table). Absent otherwise.
+  is_latest?: number;
+  // The performing provider/organization. provider_id links the
+  // shared GLOBAL registry; provider_name is joined for display. NULL/absent when
+  // unlinked.
+  provider_id: number | null;
+  provider_name?: string | null;
+  // Set on VIRTUAL records computed at read time from other readings (issue #40 —
+  // derived clinical indices like Non-HDL, HOMA-IR, eGFR). These are never stored:
+  // they carry a synthetic negative `id`, no `document_id`, and are read-only in the
+  // UI. `derived_formula` is the human formula with the component values substituted
+  // (shown as the "derived" tooltip/subtitle). Absent on real stored rows.
+  derived?: boolean;
+  derived_formula?: string;
+}
+
+// "higher is better", "lower is better", or "best inside a range" — governs how
+// a value is judged against its optimal band (one-sided optima honor this).
+export type BiomarkerDirection = "higher_better" | "lower_better" | "in_range";
+
+// An entry in the committed canonical biomarker reference dataset
+// (lib/canonical-biomarkers.json), seeded into the canonical_biomarkers table.
+// Ranges are informational, not medical advice, and may vary by sex/age.
+export type Sex = "male" | "female";
+
+// A profile's reproductive (menopausal) status — a CURRENT attribute of the
+// tracked person (no history is modeled, so it applies to ALL of that profile's
+// hormone records, the same simplification as the stored-age fallback). Drives
+// sex- and life-stage-aware hormone ranges for FEMALE physiology: when set it takes
+// precedence over the age proxy (e.g. the FSH 51+ age band), so a genuinely
+// post-menopausal HIGH estradiol/FSH/LH flags while a still-cycling woman at 51+
+// isn't false-flagged. Unset (null) = not specified → today's age-proxy behavior.
+export type ReproductiveStatus = "premenopausal" | "postmenopausal";
+
+// One female-physiology reference range keyed by reproductive status — parallel to
+// AgeBandedRange but selected by menopausal status, not age. ref_low null = open.
+export interface ReproductiveStatusRange {
+  ref_low: number | null;
+  ref_high: number | null;
+  note?: string | null;
+}
+
+// Reproductive-status reference overrides for an analyte (Estradiol/FSH/LH). A
+// partial map: only the statuses with a curated range are present. Applies to
+// FEMALE physiology only — male ranges are entirely unaffected. Highest precedence
+// in referenceRange (above the age band) when the subject's sex is female and their
+// reproductive status is set. Stored as JSON in canonical_biomarkers.
+export type ReproductiveStatusRanges = Partial<
+  Record<ReproductiveStatus, ReproductiveStatusRange>
+>;
+
+// An age-banded reference/optimal range for a biomarker whose normal values shift
+// with age (the pediatric/geriatric case — e.g. ALP and resting heart rate in
+// children). Ages are WHOLE YEARS (matching ageFromBirthdate) and the band is
+// half-open [min_age, max_age): a value at exactly max_age falls into the next
+// band. `max_age` null means the band is open-ended at the top. The range fields
+// mirror the adult top-level shape, so the same sex-override resolution applies
+// within a band; any field left null means "no bound" (as with the adult fields).
+export interface AgeBandedRange {
+  min_age: number; // inclusive, whole years
+  max_age: number | null; // exclusive; null = open-ended upper bound
+  ref_low: number | null;
+  ref_high: number | null;
+  ref_low_male?: number | null;
+  ref_high_male?: number | null;
+  ref_low_female?: number | null;
+  ref_high_female?: number | null;
+  optimal_low?: number | null;
+  optimal_high?: number | null;
+  optimal_low_male?: number | null;
+  optimal_high_male?: number | null;
+  optimal_low_female?: number | null;
+  optimal_high_female?: number | null;
+  note?: string | null;
+}
+
+export interface CanonicalBiomarker {
+  name: string;
+  category: string | null;
+  unit: string | null;
+  ref_low: number | null;
+  ref_high: number | null;
+  // Sex-specific reference-range overrides. When set for the user's sex they take
+  // precedence over the generic ref_low/high (the fallback when sex is unknown).
+  // Used for analytes whose normal range differs by sex (e.g. testosterone, CBC).
+  ref_low_male: number | null;
+  ref_high_male: number | null;
+  ref_low_female: number | null;
+  ref_high_female: number | null;
+  optimal_low: number | null;
+  optimal_high: number | null;
+  // Sex-specific optimal overrides. When set for the user's sex they take
+  // precedence over the generic optimal_low/high (which remains the fallback
+  // when the user's sex is unknown or no override exists).
+  optimal_low_male: number | null;
+  optimal_high_male: number | null;
+  optimal_low_female: number | null;
+  optimal_high_female: number | null;
+  direction: BiomarkerDirection | null;
+  // Age-banded overrides for analytes whose normal range shifts with age. When a
+  // band matches the data subject's age at the record's collection date, it
+  // replaces the adult top-level fields (sex overrides then resolve within the
+  // band); absent or no-match falls back to the adult fields. Stored as a JSON
+  // array in the canonical_biomarkers table.
+  ranges_by_age: AgeBandedRange[] | null;
+  // Reproductive-status reference overrides (female physiology only). When the
+  // subject's sex is female and their reproductive_status is set and this map has a
+  // range for that status, it REPLACES all other ranges (above the age band) — see
+  // lib/reference-range.selectStatusRange. NULL when the analyte isn't hormone-like.
+  // Stored as a JSON object in the canonical_biomarkers table.
+  ranges_by_status: ReproductiveStatusRanges | null;
+  // Recommended retest cadence, in days, for the Upcoming retest signal. NULL
+  // falls back to the flat DEFAULT_RETEST_DAYS (365) — see lib/reference-range.
+  // Curated per-analyte in scripts/gen-canonical-biomarkers (RETEST_DAYS) so e.g.
+  // an HbA1c retests quarterly while a lipid panel is annual. NOT a flag input
+  // (deliberately absent from FLAG_RELEVANT_FIELDS), so editing it never triggers
+  // a flag re-derivation. Carried in the committed JSON; the retest signal reads
+  // it from there (lib/biomarker-retest), not from the canonical_biomarkers table.
+  retest_days?: number | null;
+  note: string | null;
+  source: string; // 'seed' | 'ai'
+  created_at: string;
+}
+
+// A recorded vaccine administration. `vaccine` is a catalog/combo code from
+// lib/immunization-catalog (or a slug fallback for an unrecognized name). A
+// combination shot (e.g. Vaxelis) is one row under the combo code; the status
+// engine expands it to its component series. `source` mirrors the medical
+// provenance convention: NULL for manual entries, 'document:<id>' for rows
+// projected from an uploaded immunization record.
+export interface Immunization {
+  id: number;
+  date: string;
+  vaccine: string;
+  dose_label: string | null;
+  notes: string | null;
+  source: string | null;
+  // Idempotent dedup key for synced rows (integration / SMART Health Card);
+  // NULL for manual and document-extracted rows.
+  external_id: string | null;
+  created_at: string;
+  // The administering provider/organization. provider_id links the
+  // shared GLOBAL registry; provider_name is joined for display.
+  provider_id: number | null;
+  provider_name?: string | null;
+}
+
+// ---- Allergies & conditions (CCD clinical lists) ----
+
+// Clinical status of an allergy/intolerance. `active` is the default for a
+// documented allergy; `inactive`/`resolved` come from the source's concern-act
+// or clinical-status observation. Runtime array is the single source for the union
+// AND the allergies.status CHECK (enum-parity test).
+export const ALLERGY_STATUSES = ["active", "inactive", "resolved"] as const;
+export type AllergyStatus = (typeof ALLERGY_STATUSES)[number];
+
+// A recorded allergy / intolerance (table: allergies). `substance` is the
+// offending agent (drug/food/environmental) — a name, ideally with a code when
+// the source carried one. reaction/manifestation and severity are free text as
+// printed. `source` mirrors the medical provenance convention: NULL for manual
+// entries, 'document:<id>' for rows projected from an uploaded record; external_id
+// is the stable per-document dedup key.
+export interface Allergy {
+  id: number;
+  onset_date: string | null; // onset date (YYYY-MM-DD) when known
+  substance: string;
+  substance_code: string | null;
+  substance_code_system: string | null;
+  reaction: string | null;
+  severity: string | null; // mild/moderate/severe when coded, else free text
+  status: AllergyStatus;
+  notes: string | null;
+  source: string | null;
+  document_id: number | null;
+  external_id: string | null;
+  created_at: string;
+}
+
+// Clinical status of a problem-list condition. Runtime array is the single source
+// for the union AND the conditions.status CHECK (enum-parity test).
+export const CONDITION_STATUSES = ["active", "inactive", "resolved"] as const;
+export type ConditionStatus = (typeof CONDITION_STATUSES)[number];
+
+// A problem-list condition / diagnosis (table: conditions). `name` is the display
+// term, `code`/`code_system` the coded identity (ICD-10 / SNOMED) when present.
+export interface Condition {
+  id: number;
+  name: string;
+  code: string | null;
+  code_system: string | null;
+  status: ConditionStatus;
+  onset_date: string | null;
+  resolved_date: string | null;
+  notes: string | null;
+  source: string | null;
+  document_id: number | null;
+  external_id: string | null;
+  created_at: string;
+}
+
+// A visit / encounter (table: encounters). `type` is the
+// display ("Office Visit"), `class_code` the HL7 ActEncounterCode (AMB/IMP/…),
+// `reason` the chief complaint, `diagnoses` a '; '-joined summary of the visit
+// diagnoses. provider_id / location_provider_id link the shared providers registry
+// (attending clinician + facility); the joined names are surfaced for display.
+export interface Encounter {
+  id: number;
+  date: string;
+  end_date: string | null;
+  type: string | null;
+  class_code: string | null;
+  reason: string | null;
+  diagnoses: string | null;
+  provider_id: number | null;
+  provider_name: string | null;
+  location_provider_id: number | null;
+  location_name: string | null;
+  notes: string | null;
+  source: string | null;
+  document_id: number | null;
+  external_id: string | null;
+  created_at: string;
+}
+
+// A procedure / surgical-history entry (table: procedures). `name` is the display
+// term, `code`/`code_system` the coded identity (CPT / SNOMED / ICD-10-PCS) when
+// present, `date` the performed date. provider_id links the shared providers
+// registry (the performing clinician); the joined name is surfaced for display.
+// Provenance/dedup mirror the conditions table.
+export interface Procedure {
+  id: number;
+  name: string;
+  code: string | null;
+  code_system: string | null;
+  date: string | null;
+  provider_id: number | null;
+  provider_name: string | null;
+  notes: string | null;
+  source: string | null;
+  document_id: number | null;
+  external_id: string | null;
+  created_at: string;
+}
+
+// A family-history entry (table: family_history): one condition affecting one
+// relative. `relation` is the affected relative (mother/father/sibling/…);
+// `condition` the display term for their diagnosis; `code`/`code_system` its coded
+// identity when present. `onset_age` is the relative's age (years) at onset when
+// known; `deceased` is 1/0 (null when unknown). Provenance/dedup mirror conditions.
+export interface FamilyHistory {
+  id: number;
+  relation: string | null;
+  condition: string;
+  code: string | null;
+  code_system: string | null;
+  onset_age: number | null;
+  deceased: number | null;
+  notes: string | null;
+  source: string | null;
+  document_id: number | null;
+  external_id: string | null;
+  created_at: string;
+}
+
+// A care-plan item (table: care_plan_items): a single planned / ordered future
+// care activity pulled from a health record's Plan of Treatment / Care Plan
+// section, or entered manually. `description` is the display term; `code`/
+// `code_system` its coded identity when present; `category` classifies the planned
+// activity (procedure / encounter / medication / observation / …); `planned_date`
+// is when it's scheduled/intended; `status` its lifecycle (planned / active / …).
+// provider_id links the shared providers registry (the ordering/responsible
+// clinician). Provenance/dedup mirror the procedures table. NB: distinct from the
+// user's own fitness `goals` — these are imported CLINICAL plans/goals.
+export interface CarePlanItem {
+  id: number;
+  description: string;
+  code: string | null;
+  code_system: string | null;
+  category: string | null;
+  planned_date: string | null;
+  // FREE-FORM BY DESIGN — deliberately bare TEXT with no DB CHECK (issue #328): the
+  // importers pass FHIR CarePlan.activity status codes through verbatim, and the app
+  // form takes a free-text clinical status. The only app-WRITTEN sentinel is
+  // 'completed' (setCarePlanItemDone, lib/queries/upcoming.ts); every other value is
+  // clinical passthrough. A closed enum here would drop or mangle real record data.
+  status: string | null;
+  provider_id: number | null;
+  provider_name: string | null;
+  notes: string | null;
+  source: string | null;
+  document_id: number | null;
+  external_id: string | null;
+  created_at: string;
+}
+
+// A care goal (table: care_goals): a clinical target from a health record's Goals
+// section, or entered manually. `description` is the goal statement; `code`/
+// `code_system` its coded identity when present; `target_date` when it's aimed to
+// be met; `status` its lifecycle (proposed / active / achieved / …). Provenance/
+// dedup mirror the conditions table. NB: this is DISTINCT from the `goals` table
+// (the user's own fitness/body goals) — care_goals are imported clinical goals.
+export interface CareGoal {
+  id: number;
+  description: string;
+  code: string | null;
+  code_system: string | null;
+  target_date: string | null;
+  // FREE-FORM BY DESIGN — deliberately bare TEXT with no DB CHECK (issue #328): the
+  // importers pass FHIR Goal.lifecycleStatus / achievementStatus codes through
+  // verbatim (proposed / active / achieved / …), and the app form takes a free-text
+  // clinical status. There is no app-written sentinel. A closed enum here would drop
+  // or mangle real record data.
+  status: string | null;
+  notes: string | null;
+  source: string | null;
+  document_id: number | null;
+  external_id: string | null;
+  created_at: string;
+}
+
+export type ExtractionStatus =
+  "pending" | "processing" | "done" | "failed" | "skipped";
+
+export interface MedicalDocument {
+  id: number;
+  filename: string;
+  stored_path: string;
+  mime_type: string | null;
+  size_bytes: number | null;
+  doc_type: string | null;
+  source: string | null;
+  document_date: string | null;
+  patient_name: string | null;
+  extraction_status: ExtractionStatus;
+  extraction_error: string | null;
+  extracted_count: number;
+  raw_extraction: string | null;
+  model: string | null;
+  content_hash: string | null;
+  // The import DEBUGGER report as JSON: dropped candidates +
+  // section/resource coverage. NULL for AI-extracted docs or pre-feature rows.
+  import_report: string | null;
+  uploaded_at: string;
+}

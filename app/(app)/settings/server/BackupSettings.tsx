@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { BackupSettings } from "@/lib/settings";
-import { saveBackupSettings, backupNow } from "../actions";
+import { saveBackupSettings, backupNow } from "./actions";
 import SaveStatus from "@/components/SaveStatus";
 
 // GLOBAL, admin-only: automated nightly SQLite snapshots + retention (#131). The

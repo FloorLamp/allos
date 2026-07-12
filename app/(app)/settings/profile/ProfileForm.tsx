@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { saveProfileSettings } from "../actions";
+import { saveProfileSettings } from "./actions";
 import { ageFromBirthdate, dateStrInTz, isRealIsoDate } from "@/lib/date";
 import DateField from "@/components/DateField";
 import SaveStatus from "@/components/SaveStatus";

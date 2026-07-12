@@ -19,7 +19,6 @@ import {
   baseLiftName,
   exerciseHistoryKey,
 } from "@/lib/lifts";
-import { formatLongDate } from "@/lib/format-date";
 import type { ActivitySuggestions, ExerciseHistoryMap } from "@/lib/queries";
 import {
   inferFreeTextType,
@@ -32,22 +31,14 @@ import { biasByCompanions } from "@/lib/companions";
 import { dispWeight, kmTo, round } from "@/lib/units";
 import { saveOutcomeMessage } from "@/lib/activity-save-outcome";
 import { type NextSet } from "@/lib/coaching";
-import {
-  IconX,
-  IconChevronDown,
-  IconChevronRight,
-  IconAlertTriangle,
-} from "@tabler/icons-react";
+import { IconX, IconAlertTriangle } from "@tabler/icons-react";
 import ActivityCombobox from "./ActivityCombobox";
-import ActivityIcon from "./ActivityIcon";
-import DateField from "./DateField";
 import PlateBuilderModal from "./PlateBuilderModal";
 import { isRealIsoDate } from "@/lib/date";
 import { useTimezone } from "@/components/TimezoneProvider";
 import { useToast } from "@/components/Toast";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useUndoableDelete } from "@/components/useUndoableDelete";
-import SaveStatus from "@/components/SaveStatus";
 import {
   type ActivityEditData,
   type PartEntry,
@@ -60,7 +51,6 @@ import {
   setPartial,
   todayStr,
   nowHHMM,
-  INTENSITIES,
 } from "./activity-form/model";
 import {
   makeNameClassifier,
@@ -72,13 +62,17 @@ import CustomTypeChips from "./activity-form/CustomTypeChips";
 import CardioFields from "./activity-form/CardioFields";
 import StrengthSets from "./activity-form/StrengthSets";
 import ActivityEquipmentPicker from "./activity-form/ActivityEquipmentPicker";
+import ActivityFormHeader from "./activity-form/ActivityFormHeader";
+import DateTimeFields from "./activity-form/DateTimeFields";
+import NotesField from "./activity-form/NotesField";
+import IntensityPicker from "./activity-form/IntensityPicker";
+import EstimatedCalories from "./activity-form/EstimatedCalories";
+import ActivityFormFooter from "./activity-form/ActivityFormFooter";
 import {
   equipmentForActivity,
   pickDefaultActivityEquipment,
   usesActivityEquipment,
 } from "@/lib/activity-equipment";
-import ActivityProvenance from "@/components/ActivityProvenance";
-import { activityProvenanceLabel } from "@/lib/journal-format";
 import { estimateActivityKcal } from "@/lib/calorie-estimate";
 
 // Re-exported so existing callers keep importing the edit-payload shape from
@@ -859,51 +853,14 @@ export default function ActivityForm({
       onSubmit={(e) => e.preventDefault()}
       className="space-y-5"
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="flex items-center gap-2 text-xl font-bold text-slate-900 dark:text-slate-100">
-            {headingType && (
-              <ActivityIcon
-                type={headingType}
-                title={firstValid.name}
-                className="h-6 w-6 text-brand-600 dark:text-brand-400"
-              />
-            )}
-            {effectiveTitle}
-          </h2>
-          {/* Date lives in a field below, but surfacing it in the header gives
-              at-a-glance context for the row being edited. Reads live `date`
-              state, so it tracks edits to the field. */}
-          <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
-            {formatLongDate(date)}
-          </p>
-          {/* Provenance + created/updated timestamps for a stored row (issue
-              #11). Omitted while creating a new activity (no created_at yet). */}
-          {editData?.created_at && (
-            <ActivityProvenance
-              label={activityProvenanceLabel(
-                editData.source ?? null,
-                editData.edited
-              )}
-              createdAt={editData.created_at}
-              updatedAt={editData.updated_at ?? null}
-              className="mt-1"
-            />
-          )}
-        </div>
-        {/* Close control for both the centered modal and the docked editor; the
-            docked form flushes any pending auto-save on unmount. */}
-        {/* Negative margin keeps the icon in place while the hit area grows to
-            finger size (same trick on the small controls below). */}
-        <button
-          type="button"
-          onClick={requestClose}
-          className="-m-2 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-ink-800 dark:hover:text-slate-300"
-          aria-label="Close"
-        >
-          <IconX className="h-5 w-5" />
-        </button>
-      </div>
+      <ActivityFormHeader
+        headingType={headingType}
+        headingTitle={firstValid?.name}
+        effectiveTitle={effectiveTitle}
+        date={date}
+        editData={editData}
+        onClose={requestClose}
+      />
 
       {/* Editable name — auto-filled from the activities below until you change it. */}
       <div>
@@ -1084,109 +1041,26 @@ export default function ActivityForm({
         + Add activity
       </button>
 
-      {/* Date and times */}
-      <div className="grid gap-4 sm:grid-cols-3">
-        <div>
-          <label className="label">Date</label>
-          <DateField value={date} onChange={setDate} required />
-        </div>
-        <div>
-          <div className="flex items-baseline justify-between">
-            <label className="label mb-0">Start</label>
-            {startTime !== nowHHMM(tz) && (
-              <button
-                type="button"
-                onClick={() => setStartTime(nowHHMM(tz))}
-                className="-mx-2 -my-2 px-2 py-2 text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
-              >
-                now
-              </button>
-            )}
-          </div>
-          <input
-            type="time"
-            value={startTime}
-            onChange={(e) => setStartTime(e.target.value)}
-            className="input mt-1"
-          />
-        </div>
-        <div>
-          <label className="label">End</label>
-          <input
-            type="time"
-            value={endTime}
-            min={startTime || undefined}
-            onChange={(e) => setEndTime(e.target.value)}
-            className={`input ${timeError ? "border-rose-300 dark:border-rose-800" : ""}`}
-          />
-        </div>
-      </div>
-      {timeError && (
-        <p className="-mt-2 text-xs text-rose-500 dark:text-rose-400">
-          End time must be after the start time.
-        </p>
-      )}
-      {!timeError && overallDuration != null && (
-        <p className="-mt-2 text-xs text-slate-400 dark:text-slate-500">
-          Duration: {overallDuration} min
-        </p>
-      )}
+      <DateTimeFields
+        date={date}
+        startTime={startTime}
+        endTime={endTime}
+        tz={tz}
+        timeError={timeError}
+        overallDuration={overallDuration}
+        onDate={setDate}
+        onStartTime={setStartTime}
+        onEndTime={setEndTime}
+      />
 
-      {/* Notes (collapsible) */}
-      <div>
-        <button
-          type="button"
-          onClick={toggleNotes}
-          className="label mb-0 flex items-center gap-1.5 hover:text-slate-700 dark:hover:text-slate-200"
-        >
-          Notes
-          <span className="text-slate-400 dark:text-slate-500">
-            {notesOpen ? (
-              <IconChevronDown className="h-4 w-4" />
-            ) : (
-              <IconChevronRight className="h-4 w-4" />
-            )}
-          </span>
-          {!notesOpen && notes.trim() && (
-            <span className="normal-case text-slate-400 dark:text-slate-500">
-              ({notes.trim().length} chars)
-            </span>
-          )}
-        </button>
-        {notesOpen && (
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            rows={2}
-            className="input mt-1"
-            placeholder="How did it feel?"
-          />
-        )}
-      </div>
+      <NotesField
+        notesOpen={notesOpen}
+        notes={notes}
+        onToggle={toggleNotes}
+        onNotesChange={setNotes}
+      />
 
-      {/* Intensity */}
-      <div>
-        <label className="label">Intensity</label>
-        <div className="grid grid-cols-3 gap-2">
-          {INTENSITIES.map((opt) => {
-            const active = intensity === opt.value;
-            return (
-              <button
-                key={opt.value}
-                type="button"
-                onClick={() => setIntensity(active ? "" : opt.value)}
-                className={`rounded-lg border px-3 py-2 text-sm font-medium transition ${
-                  active
-                    ? opt.active
-                    : `bg-white dark:bg-ink-900 ${opt.cls} hover:bg-slate-50 dark:hover:bg-ink-800`
-                }`}
-              >
-                {opt.label}
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      <IntensityPicker intensity={intensity} onChange={setIntensity} />
 
       {/* Session-level equipment (issue #342): the gear the whole non-strength
           activity used — a ride's bike, a run's shoes. Hidden for pure-strength
@@ -1210,50 +1084,19 @@ export default function ActivityForm({
           Shown only for manual activities (imported rows carry device energy). The
           "Estimated" label marks it as an estimate, distinct from measured. */}
       {showEstimate && (
-        <div data-testid="est-calories-field">
-          <label className="label" htmlFor="est-calories">
-            Calories{" "}
-            <span className="font-normal normal-case text-slate-400 dark:text-slate-500">
-              (estimated)
-            </span>
-          </label>
-          <div className="flex items-center gap-2">
-            <input
-              id="est-calories"
-              data-testid="est-calories-input"
-              type="number"
-              inputMode="numeric"
-              min={0}
-              step={1}
-              value={estCalories}
-              onChange={(e) => {
-                setEstCalories(e.target.value);
-                setEstEdited(true);
-              }}
-              className="input max-w-[10rem]"
-              placeholder="—"
-            />
-            <span className="text-sm text-slate-400 dark:text-slate-500">
-              kcal
-            </span>
-            {estEdited && autoEstimateKcal != null && (
-              <button
-                type="button"
-                onClick={() => {
-                  setEstEdited(false);
-                  setEstCalories(String(autoEstimateKcal));
-                }}
-                className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
-              >
-                reset
-              </button>
-            )}
-          </div>
-          <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
-            Estimated from activity type, intensity, duration, and your
-            bodyweight — edit if you have a measured value.
-          </p>
-        </div>
+        <EstimatedCalories
+          value={estCalories}
+          edited={estEdited}
+          autoEstimateKcal={autoEstimateKcal}
+          onChange={(v) => {
+            setEstCalories(v);
+            setEstEdited(true);
+          }}
+          onReset={() => {
+            setEstEdited(false);
+            setEstCalories(String(autoEstimateKcal));
+          }}
+        />
       )}
 
       {/* Auto-save is paused: spell out what to fix (the offending fields are
@@ -1269,43 +1112,16 @@ export default function ActivityForm({
         </p>
       )}
 
-      {/* Sticky variant: negative margins re-span the overlay panel's padding
-          (p-4 / sm:p-6 in ActivityOverlay) so the bar runs edge to edge; bottom
-          offsets match the overlay's outer padding (0 on the mobile full page,
-          sm:p-8 around the centered card); the bottom padding clears the home
-          indicator on notched phones. */}
-      <div
-        className={`flex items-center justify-between gap-2 ${
-          stickyFooter
-            ? "sticky bottom-0 -mx-4 -mb-4 border-t border-black/5 bg-white px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:-bottom-8 sm:-mx-6 sm:-mb-6 sm:rounded-b-xl sm:px-6 dark:border-white/10 dark:bg-ink-900"
-            : "pt-2"
-        }`}
-      >
-        <div>
-          {hasRow && (
-            <button
-              type="button"
-              onClick={remove}
-              disabled={saving}
-              className="rounded-lg border border-rose-200 px-3 py-2 text-sm font-medium text-rose-600 transition hover:bg-rose-50 disabled:opacity-50 dark:border-rose-800 dark:text-rose-400 dark:hover:bg-rose-950"
-            >
-              Delete
-            </button>
-          )}
-        </div>
-        <div className="flex items-center gap-3">
-          <SaveStatus
-            pending={status === "saving"}
-            savedAt={savedAt}
-            error={status === "error"}
-          />
-          {stickyFooter && (
-            <button type="button" onClick={requestClose} className="btn">
-              Done
-            </button>
-          )}
-        </div>
-      </div>
+      <ActivityFormFooter
+        stickyFooter={stickyFooter}
+        hasRow={hasRow}
+        saving={saving}
+        pending={status === "saving"}
+        error={status === "error"}
+        savedAt={savedAt}
+        onDelete={remove}
+        onDone={requestClose}
+      />
 
       {plateTarget && (
         <PlateBuilderModal

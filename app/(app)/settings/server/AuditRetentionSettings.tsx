@@ -6,7 +6,7 @@ import {
   MIN_AUDIT_RETENTION_MONTHS,
   MAX_AUDIT_RETENTION_MONTHS,
 } from "@/lib/retention";
-import { saveAuditRetention } from "../actions";
+import { saveAuditRetention } from "./actions";
 import SaveStatus from "@/components/SaveStatus";
 
 // GLOBAL, admin-only: how long the security audit trail (`audit_events` — logins,
