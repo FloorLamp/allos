@@ -23,6 +23,7 @@
 
 import type { Sex } from "@/lib/types";
 import data from "@/lib/bp-percentiles.json";
+import { PEDIATRIC_BP_MAX_AGE } from "@/lib/life-stage";
 
 export type BpComponent = "systolic" | "diastolic";
 export type BpCategory = "normal" | "elevated" | "stage1" | "stage2";
@@ -44,8 +45,11 @@ interface BpDataset {
 const DATA = data as unknown as BpDataset;
 
 export const BP_PERCENTILE_SOURCE = DATA.source;
-// AAP switches from percentile-based to static adult-style thresholds at 13 y.
-export const ADULT_BP_AGE = 13;
+// AAP switches from percentile-based to static adult-style thresholds at 13 y. This
+// is the child→adolescent boundary of the one age model (PEDIATRIC_BP_MAX_AGE in
+// lib/life-stage) — the BP regime is a NAMED member of that model, not a private
+// magic number, so it can't drift from the rest of the age axes.
+export const ADULT_BP_AGE = PEDIATRIC_BP_MAX_AGE;
 
 // The canonical biomarker names carrying pediatric BP interpretation. Must match
 // the canonical_biomarkers rows / vitals-input canonical names byte-for-byte.

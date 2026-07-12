@@ -12,6 +12,7 @@ import {
   planBodyCharts,
   showGrowthQuickAdd,
   showHeadCircEntry,
+  showBodyFat,
   type BodyChartKey,
 } from "@/lib/growth-metrics";
 import {
@@ -110,6 +111,12 @@ export default async function BodySection({ range }: { range: DateRange }) {
     ? ageInMonthsFromBirthdate(birthdate, today(profile.id))
     : null;
   const plan = planBodyCharts({ ageYears, ageMonths });
+  // Body fat % is de-prioritized for a growth-tracked profile. #493: apply the ONE
+  // showBodyFat predicate at EVERY interactive surface — the charts (via plan.keys),
+  // the entry field, and the history column — so "not tracked" is consistent instead
+  // of hidden-from-charts-but-still-enterable. (The raw data export keeps the column,
+  // a complete-record contract distinct from this display choice.)
+  const bodyFatShown = showBodyFat(ageYears);
 
   // Height + head-circumference series (canonical cm, from metric_samples — the
   // same store the growth charts read). Charted on the Body tab for minors so a
@@ -415,7 +422,11 @@ export default async function BodySection({ range }: { range: DateRange }) {
 
   return (
     <div className="space-y-6">
-      <BodyQuickAdd weightUnit={wu} defaultDate={today(profile.id)} />
+      <BodyQuickAdd
+        weightUnit={wu}
+        defaultDate={today(profile.id)}
+        showBodyFat={bodyFatShown}
+      />
 
       {showGrowthQuickAdd(ageYears) && (
         <GrowthQuickAdd
@@ -679,7 +690,7 @@ export default async function BodySection({ range }: { range: DateRange }) {
                 <tr className="border-b border-black/5 dark:border-white/10">
                   <th className="th">Date</th>
                   <th className="th">Weight</th>
-                  <th className="th">Body fat</th>
+                  {bodyFatShown && <th className="th">Body fat</th>}
                   <th className="th">Resting HR</th>
                   <th className="th">Source</th>
                   <th className="th">Notes</th>
@@ -701,9 +712,11 @@ export default async function BodySection({ range }: { range: DateRange }) {
                     >
                       {fmtWeight(w.weight_kg, wu)}
                     </td>
-                    <td className="td">
-                      {w.body_fat_pct != null ? `${w.body_fat_pct}%` : "—"}
-                    </td>
+                    {bodyFatShown && (
+                      <td className="td">
+                        {w.body_fat_pct != null ? `${w.body_fat_pct}%` : "—"}
+                      </td>
+                    )}
                     <td className="td">{w.resting_hr ?? "—"}</td>
                     <td className="td whitespace-nowrap">
                       {w.document_id != null ? (

@@ -75,10 +75,13 @@ test.describe.serial("kids growth trends", () => {
       page.getByRole("heading", { name: "Height", exact: true })
     ).toBeVisible();
 
-    // Body fat % is de-prioritized out of a child's Body tab entirely.
+    // Body fat % is de-prioritized out of a child's Body tab entirely — the chart
+    // heading AND (issue #493) the entry field are both gone, so "not tracked" is
+    // consistent instead of hidden-from-charts-but-still-enterable.
     await expect(page.getByRole("heading", { name: "Body fat" })).toHaveCount(
       0
     );
+    await expect(page.getByLabel("Body fat (%)")).toHaveCount(0);
 
     // Adding a height persists without error and the form clears.
     await heightInput.fill("82.5");
@@ -101,8 +104,10 @@ test.describe.serial("kids growth trends", () => {
     // No child growth quick-add for an adult.
     await expect(page.getByTestId("growth-quick-add")).toHaveCount(0);
 
-    // Body fat % is still charted; height/head-circ are not surfaced as tiles.
+    // Body fat % is still charted AND enterable for an adult (#493); height/head-circ
+    // are not surfaced as tiles.
     await expect(page.getByRole("heading", { name: "Body fat" })).toBeVisible();
+    await expect(page.getByLabel("Body fat (%)")).toBeVisible();
     await expect(
       page.getByRole("heading", { name: "Head circumference" })
     ).toHaveCount(0);
