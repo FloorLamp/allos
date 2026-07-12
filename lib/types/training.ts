@@ -267,4 +267,7 @@ export interface FrequencyTarget {
 // unconditionally confirm; report what really happened.
 export type SaveActivityOutcome =
   | { ok: true; id: number } // row inserted/updated; `id` is its row id
-  | { ok: false; reason: "invalid" | "not-owned" };
+  // "restricted": the active profile is below the instance min_training_age (#488) —
+  // the view/edit/delete surfaces are hidden for it, so the create path refuses too,
+  // rather than persisting an activity its owner can never see.
+  | { ok: false; reason: "invalid" | "not-owned" | "restricted" };

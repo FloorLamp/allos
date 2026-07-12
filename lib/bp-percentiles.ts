@@ -23,7 +23,7 @@
 
 import type { Sex } from "@/lib/types";
 import data from "@/lib/bp-percentiles.json";
-import { PEDIATRIC_BP_MAX_AGE } from "@/lib/life-stage";
+import { PEDIATRIC_BP_MAX_AGE, isAdultBpRegime } from "@/lib/life-stage";
 
 export type BpComponent = "systolic" | "diastolic";
 export type BpCategory = "normal" | "elevated" | "stage1" | "stage2";
@@ -224,7 +224,10 @@ export function pediatricBpContext(
     category: bpComponentCategory(component, value, Math.floor(ageYears), thr),
     heightPercentile: heightPct,
     heightAssumed,
-    adultRegime: Math.floor(ageYears) >= ADULT_BP_AGE,
+    // The adult/pediatric BP regime is the ONE shared predicate isAdultBpRegime
+    // (#494/#505), not a re-derived inline copy — so a future change to its boundary
+    // or null-age handling propagates to the BP card instead of silently diverging.
+    adultRegime: isAdultBpRegime(ageYears),
     source: DATA.source,
   };
 }

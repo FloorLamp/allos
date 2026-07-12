@@ -9,6 +9,7 @@ import {
   buildJournalCards,
   activityMetrics,
   appendDayGroups,
+  reconcileJournalPaging,
 } from "@/lib/journal-card";
 import type { Activity, ExerciseSet } from "@/lib/types";
 import type { UnitPrefs } from "@/lib/settings";
@@ -346,6 +347,32 @@ describe("appendDayGroups — server-paged feed accumulation (#451)", () => {
 
   it("is a no-op for an empty incoming page and returns the existing groups", () => {
     expect(appendDayGroups(page1, [])).toBe(page1);
+  });
+
+  it("reconciles the load-more cursor when the server window shifts (#503)", () => {
+    // Newest window: days …Day13 down to Day14; cursor seeded to the oldest loaded
+    // day (Day14). No shift while the server cursor is unchanged.
+    expect(reconcileJournalPaging("2026-06-14", "2026-06-14")).toEqual({
+      changed: false,
+      cursor: "2026-06-14",
+    });
+    // Logging a new day rolls Day14 out of the first page; the server's fresh cursor
+    // is now Day13. The stale cursor must reset to it so "Load more" fetches
+    // `date < Day13` and re-includes Day14 (which `date < Day14` never would).
+    expect(reconcileJournalPaging("2026-06-14", "2026-06-13")).toEqual({
+      changed: true,
+      cursor: "2026-06-13",
+    });
+    // A first page that now covers the whole history (cursor → null) also resets.
+    expect(reconcileJournalPaging("2026-06-14", null)).toEqual({
+      changed: true,
+      cursor: null,
+    });
+    // Null → same null is a no-op (already exhausted, nothing to page).
+    expect(reconcileJournalPaging(null, null)).toEqual({
+      changed: false,
+      cursor: null,
+    });
   });
 
   it("merges a boundary day and dedups by activity id (no duplicate cards)", () => {

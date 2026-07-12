@@ -28,7 +28,7 @@ import { loadJournalPage } from "./actions";
 // pure buildJournalCards. Re-exported so existing `../journal/JournalView` importers
 // (HistorySection) keep their paths.
 import type { JournalCardData, DayGroup } from "@/lib/journal-card";
-import { appendDayGroups } from "@/lib/journal-card";
+import { appendDayGroups, reconcileJournalPaging } from "@/lib/journal-card";
 export type { JournalCardData, DayGroup };
 
 export interface TargetChip {
@@ -125,6 +125,29 @@ export default function JournalView({
   const olderGroupsRef = useRef(olderGroups);
   olderGroupsRef.current = olderGroups;
   const fetchingRef = useRef(false);
+
+  // Re-sync pagination when the server's first-page cursor shifts (issue #503). The
+  // server refreshes `initialGroups`/`initialCursor` on every auto-save; when the
+  // newest window moves (a new day rolls in and pushes the oldest loaded day out of
+  // the first page), `initialCursor` changes but the local `cursor` — seeded only at
+  // mount — kept pointing at the OLD boundary, so "Load more" fetched `date <
+  // oldBoundary` and permanently skipped the rolled-out day. Reset the cursor to the
+  // new boundary and drop loaded older pages (their nextBefore chain spans the invalid
+  // gap) so paging resumes from the fresh first page. Refs are updated synchronously
+  // too so the deep-link auto-load loop reads the reset state immediately.
+  const seededCursorRef = useRef(initialCursor);
+  useEffect(() => {
+    const { changed, cursor: nextCursor } = reconcileJournalPaging(
+      seededCursorRef.current,
+      initialCursor
+    );
+    if (!changed) return;
+    seededCursorRef.current = initialCursor;
+    olderGroupsRef.current = [];
+    cursorRef.current = nextCursor;
+    setOlderGroups([]);
+    setCursor(nextCursor);
+  }, [initialCursor]);
 
   // Fetch the next-older page from the server and append it. Returns false when there
   // is nothing more to fetch, or a fetch is already in flight — so a caller/loop stops.

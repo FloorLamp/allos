@@ -7,6 +7,7 @@ import {
   serializeDisabledKinds,
   isKindEnabled,
   isValidWebhookUrl,
+  isAcceptableWebhookStatus,
 } from "../notifications/home-assistant-core";
 import type { NotificationMessage } from "../notifications/types";
 
@@ -195,5 +196,34 @@ describe("isValidWebhookUrl", () => {
       isValidWebhookUrl("http://ha.local/api/webhook/x?target=admin")
     ).toBe(false);
     expect(isValidWebhookUrl("http://ha.local/api/webhook/x#frag")).toBe(false);
+  });
+});
+
+// SSRF regression (issue #371 hole closed by #502). postWebhook now sends the POST
+// with `redirect: "manual"`, so a webhook host answering `302 Location:
+// http://169.254.169.254/…` surfaces here as a 3xx STATUS rather than being
+// transparently followed to that internal target. isAcceptableWebhookStatus is the
+// gate that then refuses it — only a 2xx is a delivered success; a 3xx (redirect),
+// 4xx, or 5xx throws in postWebhook and is recorded as a channel failure. This pins
+// that a redirecting target is refused, not silently chased.
+describe("isAcceptableWebhookStatus — refuses redirect (and error) responses", () => {
+  it("accepts only 2xx", () => {
+    expect(isAcceptableWebhookStatus(200)).toBe(true);
+    expect(isAcceptableWebhookStatus(201)).toBe(true);
+    expect(isAcceptableWebhookStatus(204)).toBe(true);
+    expect(isAcceptableWebhookStatus(299)).toBe(true);
+  });
+
+  it("refuses every redirect status — a manual-redirect 3xx is never a success", () => {
+    for (const s of [300, 301, 302, 303, 307, 308]) {
+      expect(isAcceptableWebhookStatus(s)).toBe(false);
+    }
+  });
+
+  it("refuses client/server error statuses too", () => {
+    expect(isAcceptableWebhookStatus(400)).toBe(false);
+    expect(isAcceptableWebhookStatus(403)).toBe(false);
+    expect(isAcceptableWebhookStatus(500)).toBe(false);
+    expect(isAcceptableWebhookStatus(0)).toBe(false);
   });
 });

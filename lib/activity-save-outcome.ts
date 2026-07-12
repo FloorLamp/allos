@@ -19,5 +19,10 @@ export function saveOutcomeMessage(
       // Title/date failed the server-side guard (the client gate normally
       // prevents this; belt-and-suspenders if a bad value slips through).
       return "Couldn’t save — check the title and date.";
+    case "restricted":
+      // The active profile is below the instance's minimum training age (#488) —
+      // activity logging is unavailable for it (the view/edit surfaces are hidden),
+      // so the create path refuses rather than persisting an unreachable row.
+      return "Couldn’t save — activity logging isn’t available for this profile.";
   }
 }

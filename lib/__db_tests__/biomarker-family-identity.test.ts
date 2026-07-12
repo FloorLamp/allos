@@ -16,7 +16,9 @@ import {
   getStarredBiomarkers,
   isBiomarkerStarred,
   collectUpcoming,
+  biomarkerFamilyKey,
 } from "@/lib/queries";
+import { biomarkerFamily } from "@/lib/canonical-name";
 import { seedProfile, type SeededProfile } from "./fixtures";
 
 let p: SeededProfile;
@@ -108,6 +110,44 @@ describe("vitamin-D family resolves to one group on every surface (#482)", () =>
     // total it was pinned on.
     expect(star?.latest_value_num).toBe(41);
     expect(star?.latest_date).toBe(shiftDateStr(p.todayStr, -5));
+  });
+});
+
+// The supplement-suggest "is this biomarker new" gate counts prior readings by the
+// SAME family identity the biomarkers table partitions on (#504) — not the raw name.
+// Before the fix it keyed on the literal canonical-or-name, so a fresh reading under a
+// DIFFERENT family member's spelling counted as 0 prior readings and was misjudged
+// "brand new" (eligible for a first-ever AI supplement suggestion) even when the
+// family already had a full trend. This pins that the exact count query the gate runs
+// resolves cross-member readings to one family.
+describe("supplement-suggest 'new reading' count keys on the family (#504)", () => {
+  // Mirrors autoSuggestFromBiomarkers' private count statement.
+  function priorReadingCount(name: string): number {
+    return (
+      db
+        .prepare(
+          `SELECT COUNT(*) AS c FROM medical_records
+             WHERE profile_id = ? AND ${biomarkerFamilyKey()} = ? COLLATE NOCASE`
+        )
+        .get(p.profileId, biomarkerFamily(name)) as { c: number }
+    ).c;
+  }
+
+  it("a fresh family member sees the whole family's history, not zero", () => {
+    // Existing history under one member's name, then a fresh reading under a DIFFERENT
+    // member's spelling — the exact divergence scenario from the issue.
+    addReading("Vitamin D2", shiftDateStr(p.todayStr, -60), 40);
+    addReading("Vitamin D, 25-Hydroxy", p.todayStr, 30);
+
+    // Family-keyed count sees BOTH readings (≥ 2) → NOT new, so the gate correctly
+    // declines to treat the fresh member as a first-ever reading. A raw-name count
+    // would have returned 1 for that literal string — the pre-#504 bug.
+    expect(priorReadingCount("Vitamin D, 25-Hydroxy")).toBe(2);
+    expect(priorReadingCount("Vitamin D2")).toBe(2);
+
+    // An unrelated analyte with a single reading still counts as new (1).
+    addReading("Ferritin", p.todayStr, 55, "ng/mL");
+    expect(priorReadingCount("Ferritin")).toBe(1);
   });
 });
 
