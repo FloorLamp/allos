@@ -60,11 +60,14 @@ test("dismissing a coaching observation from the dashboard removes it (#449)", a
   const rollup = page.getByRole("main").getByTestId("coaching-observations");
   await expect(rollup).toBeVisible();
 
-  // Target the Skullcrusher plateau row specifically (a deterministic seeded
-  // finding), so other domains' rows legitimately remain after the dismiss.
+  // Target the DEDICATED "E2E Dismiss Press" plateau (seed-events.ts), NOT the
+  // Skullcrusher one rule-findings.spec.ts asserts — "dismiss once, silence
+  // everywhere" writes to the shared store, so dismissing Skullcrusher here would
+  // also hide it on Training → Overview and fail that later spec. Other domains'
+  // rows legitimately remain after this dismiss.
   const row = rollup
     .getByTestId("coaching-observations-item")
-    .filter({ hasText: "Skullcrusher" });
+    .filter({ hasText: "E2E Dismiss Press" });
   await expect(row).toBeVisible();
 
   await row.getByTestId("coaching-observations-dismiss").click();
@@ -74,6 +77,6 @@ test("dismissing a coaching observation from the dashboard removes it (#449)", a
   await expect(
     rollup
       .getByTestId("coaching-observations-item")
-      .filter({ hasText: "Skullcrusher" })
+      .filter({ hasText: "E2E Dismiss Press" })
   ).toHaveCount(0);
 });
