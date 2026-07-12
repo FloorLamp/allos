@@ -27,6 +27,7 @@ export default async function GoalPacingFindings() {
     <FindingsList
       findings={findings}
       dismissAction={async (fd) => {
+        "use server";
         await dismissGoalPacing(fd);
       }}
       heading="Goal pacing"
