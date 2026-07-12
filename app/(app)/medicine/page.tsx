@@ -99,7 +99,12 @@ function DismissFindingButton({
   label: string;
 }) {
   return (
-    <form action={dismissMedicineFinding}>
+    <form
+      action={async (fd) => {
+        "use server";
+        await dismissMedicineFinding(fd);
+      }}
+    >
       <input type="hidden" name="dedupe_key" value={dedupeKey} />
       <button
         type="submit"
