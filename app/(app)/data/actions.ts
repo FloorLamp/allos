@@ -173,9 +173,13 @@ export interface ImportJobState {
 }
 
 // Kick off an extraction in the background. Inserts a 'processing' job row and
-// returns immediately with its id; the actual AI call runs fire-and-forget (safe
-// in this single long-lived Node process — orphans are reset in migrate()). The
-// page shows the job as processing and the app-wide poller toasts on completion.
+// returns immediately with its id; the actual AI call runs fire-and-forget in the
+// web process. A crash orphan is reaped by the boot-time reset (resetInterruptedWork
+// in lib/migrations/boot-tasks.ts) — which is AGE-GATED on the extraction lease so a
+// sibling process booting (the hourly notify tick) can't fail this still-running job
+// (issue #461); it is NOT "safe because single-process" — multiple processes share
+// the DB. The page shows the job as processing and the app-wide poller toasts on
+// completion.
 export async function startImport(
   type: ImportType,
   text: string
