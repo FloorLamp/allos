@@ -1,16 +1,20 @@
 import { test, expect, type Page } from "@playwright/test";
+import { openCommandPalette } from "./nav";
 
-// Pick an activity in the editor's exercise combobox. Strength options render a
-// muscle badge INSIDE the option button (e.g. "Barbell Bench Press" plus a
-// "Chest" badge), so the button's accessible NAME is not the bare lift name and
-// an exact-name role query never matches. Match the option by its exact inner
-// name text instead — works for badge-less cardio options too.
+// Pick an activity in the editor's exercise combobox. The option button's text
+// varies with the input state: a partial filter lists options as the name plus a
+// muscle badge ("Barbell Bench Press" + "Chest"), while an EXACT typed match
+// collapses the dropdown to a single 'Use "Barbell Bench Press"' button (curly
+// quotes around the name). Neither shape carries the bare name as an exact text
+// node or accessible name, so match by SUBSTRING — hasText covers both shapes,
+// and badge-less cardio options too. (Ground truth from the aria snapshot of the
+// live component; see PR #547 review thread.)
 async function pickActivity(page: Page, name: string) {
   await page.getByPlaceholder(/What did you do/).fill(name);
   await page
     .getByRole("listbox")
     .getByRole("button")
-    .filter({ has: page.getByText(name, { exact: true }) })
+    .filter({ hasText: name })
     .first()
     .click();
 }
@@ -31,10 +35,9 @@ test("command palette 'weight 84.3' logs a body metric (#29)", async ({
 }) => {
   await page.goto("/");
 
-  // Open the palette (Cmd/Ctrl-K; the handler accepts either modifier).
-  await page.keyboard.press("Control+k");
-  const input = page.getByLabel("Search or run a command");
-  await expect(input).toBeVisible();
+  // Open the palette via the retrying helper — a raw Ctrl-K fired inside the
+  // hydration window is swallowed (issue #500/#501; e2e/nav.ts).
+  const input = await openCommandPalette(page);
 
   // Typing the quick-log syntax surfaces a preview row; the seed login is kg.
   await input.fill("weight 84.3");
@@ -292,9 +295,8 @@ test("the command palette offers 'Repeat last activity' when history exists (#33
 }) => {
   await page.goto("/"); // the seed has plenty of logged activities
 
-  await page.keyboard.press("Control+k");
-  const input = page.getByLabel("Search or run a command");
-  await expect(input).toBeVisible();
+  // Retrying open — see the #29 spec above (hydration-window swallow).
+  const input = await openCommandPalette(page);
 
   // Typing "repeat" surfaces the new palette command (gated on a last activity
   // existing — the seed guarantees one).
