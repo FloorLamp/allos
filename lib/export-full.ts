@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { db } from "./db";
+import { db, readTx } from "./db";
 import { PHOTO_ROOT } from "./profile-photo";
 import { DATASETS, RESTRICTED_DATASETS } from "./export";
 import { isTrainingRestricted } from "./age-gate";
@@ -332,7 +332,7 @@ export interface ExportSnapshot {
 // the stream was pulled, with no snapshot — so a write landing BETWEEN two pulls
 // could tear the archive internally (a supplement present in supplements.json whose
 // log row, read a moment later, is already gone). better-sqlite3 is synchronous and
-// a `db.transaction` wraps the reads in one BEGIN…COMMIT, so every dataset + the
+// a `readTx` wraps the reads in one (deferred) BEGIN…COMMIT, so every dataset + the
 // FHIR passport input + the medical-file list observe the same consistent snapshot.
 // The bounded JSON (datasets + FHIR input) is materialized in memory here; the
 // medical FILES are only LISTED here (their bytes are still streamed one at a time
@@ -346,7 +346,7 @@ export function collectExportSnapshot(
   // out of the ZIP too, not just the export UI (issue #471) — same authoritative
   // enforcement as the per-dataset CSV route. Gate off by default (min age unset).
   const restricted = isTrainingRestricted(profileId);
-  return db.transaction((): ExportSnapshot => ({
+  return readTx((): ExportSnapshot => ({
     datasets: DATASETS.filter(
       (ds) => !(restricted && RESTRICTED_DATASETS.has(ds.key))
     ).map((ds) => ({
@@ -357,5 +357,5 @@ export function collectExportSnapshot(
     fhirInput: collectFhirExportInput(profileId, profileName),
     files: listProfileMedicalFiles(profileId),
     profilePhoto: getProfilePhotoFile(profileId),
-  }))();
+  }));
 }

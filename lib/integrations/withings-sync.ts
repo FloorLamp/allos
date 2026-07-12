@@ -1,4 +1,4 @@
-import { db } from "@/lib/db";
+import { db, writeTx } from "@/lib/db";
 import { createLogger } from "@/lib/log";
 import { addCanonicalNames, reconcileFlags } from "@/lib/queries";
 import {
@@ -275,14 +275,13 @@ export async function runWithingsSync(
   let upSamples: UpsertCounts = emptyCounts();
   let vitalIds: number[] = [];
   try {
-    const tx = db.transaction(() => {
+    writeTx(() => {
       upBody = upsertBodyMetrics(profileId, bodyMetrics, WITHINGS_ID);
       const v = upsertVitals(profileId, vitals, WITHINGS_ID);
       upVitals = v.counts;
       vitalIds = v.ids;
       upSamples = upsertMetricSamples(profileId, samples, WITHINGS_ID);
     });
-    tx();
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const win = dateWindow([

@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { db } from "./db";
+import { db, writeTx } from "./db";
 import {
   biomarkerNameKey,
   getActivities,
@@ -352,7 +352,7 @@ function insertSuggestions(
         situation, rationale, trigger, source_detail, model)
      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
   );
-  const run = db.transaction(() => {
+  writeTx(() => {
     for (const d of fresh) {
       insert.run(
         profileId,
@@ -372,7 +372,6 @@ function insertSuggestions(
       );
     }
   });
-  run();
   return fresh.length;
 }
 

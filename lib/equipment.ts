@@ -1,4 +1,4 @@
-import { db } from "./db";
+import { db, writeTx } from "./db";
 import type { Equipment } from "./types";
 
 // Shape accepted from the manager UI. Weight is in kg (callers convert from the
@@ -114,7 +114,7 @@ export function setEquipmentRetired(
 // activity link (activities.equipment_id). Every detach and the delete are scoped
 // to the profile so a leaked id can't reach another profile's rows.
 export function deleteEquipment(profileId: number, id: number): void {
-  const tx = db.transaction(() => {
+  writeTx(() => {
     db.prepare(
       `UPDATE exercise_sets SET equipment_id = NULL
         WHERE equipment_id = ?
@@ -129,5 +129,4 @@ export function deleteEquipment(profileId: number, id: number): void {
       profileId
     );
   });
-  tx();
 }

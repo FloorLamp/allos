@@ -2,7 +2,7 @@
 import { requireWriteAccess } from "@/lib/auth";
 
 import { revalidatePath } from "next/cache";
-import { db } from "@/lib/db";
+import { db, writeTx } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
 import { normalizeGrowthInput } from "@/lib/growth-input";
 
@@ -47,12 +47,11 @@ export async function addGrowth(formData: FormData) {
   });
   if ("error" in normalized) return;
 
-  const run = db.transaction(() => {
+  writeTx(() => {
     for (const s of normalized.samples) {
       upsertManualSample(profile.id, s.metric, date, s.value);
     }
   });
-  run();
 
   revalidatePath("/trends");
   revalidatePath("/");

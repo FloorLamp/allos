@@ -5,7 +5,7 @@
 // tested in lib/__tests__/family-ui.test.ts; the access-diffing half lives in
 // lib/grants.ts and the deletion guards in lib/family-deletion.ts.
 
-import type { Access } from "@/lib/grants";
+import { grantSignature, type Access } from "@/lib/grants";
 
 // The member logins (with their granted profile ids) that a profile deletion
 // would consult — computed from the grant matrix. Admins are excluded (they
@@ -88,4 +88,17 @@ export function grantFormEntries(
   selected: Map<number, Access>
 ): { id: number; level: Access }[] {
   return [...selected].map(([id, level]) => ({ id, level }));
+}
+
+// The signature of the grants a row LOADED with (issue #467), submitted as a hidden
+// field so setGrants can refuse a stale form. Built from the same (granted, access)
+// props initialGrantSelection uses, through the shared grantSignature so the client's
+// loaded snapshot and the server's current read sign identically.
+export function loadedGrantSignature(
+  granted: readonly number[],
+  access: Record<number, Access>
+): string {
+  return grantSignature(
+    granted.map((id) => ({ profileId: id, access: access[id] ?? "write" }))
+  );
 }

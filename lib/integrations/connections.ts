@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { db } from "@/lib/db";
+import { db, writeTx } from "@/lib/db";
 import { log } from "@/lib/log";
 import type {
   IntegrationConnection,
@@ -86,10 +86,10 @@ function mergeConnectionConfig<T extends object>(
   patch: Partial<T>,
   status?: "connected" | "disconnected"
 ): void {
-  db.transaction(() => {
+  writeTx(() => {
     const next = { ...read(), ...patch } as Record<string, unknown>;
     upsertConnection(profileId, provider, { status, config: next });
-  }).immediate();
+  });
 }
 
 // Single-flight the OAuth token refresh for one connection (issue #470). Strava and

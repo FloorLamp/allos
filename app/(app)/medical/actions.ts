@@ -7,7 +7,7 @@
 import { requireWriteAccess } from "@/lib/auth";
 
 import { revalidatePath } from "next/cache";
-import { db } from "@/lib/db";
+import { db, writeTx } from "@/lib/db";
 import { captureDelete } from "@/lib/undo-delete-db";
 import { isRealIsoDate } from "@/lib/date";
 import {
@@ -75,7 +75,7 @@ export async function addRecord(formData: FormData) {
     sanitizeCanonical(formData.get("canonical_name") as string) ?? name;
   // Insert the record and reconcile its flag in one transaction, so a throw in
   // reconcileFlags can't leave a half-written record (matches persistDocumentImport).
-  const write = db.transaction(() => {
+  writeTx(() => {
     const info = db
       .prepare(
         `INSERT INTO medical_records
@@ -97,7 +97,6 @@ export async function addRecord(formData: FormData) {
     // Auto-flag the new reading non-optimal if it falls outside the optimal band.
     reconcileFlags(profile.id, [Number(info.lastInsertRowid)]);
   });
-  write();
   revalidateMedical();
 }
 

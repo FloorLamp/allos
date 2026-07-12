@@ -10,7 +10,7 @@
 // Every statement here filters by profile_id (child tables reach it via their
 // parent), per the repo scoping rule.
 
-import { db } from "@/lib/db";
+import { db, writeTx } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
 import { toKg } from "@/lib/units";
 import type { WeightUnit } from "@/lib/settings";
@@ -274,7 +274,7 @@ export function applyIntent(
   intent: QueuedIntent
 ): ReplayApplied {
   let outcome: ReplayApplied = "rejected";
-  const tx = db.transaction(() => {
+  writeTx(() => {
     if (alreadyReplayed(profileId, intent.key)) {
       outcome = "duplicate";
       return;
@@ -324,6 +324,5 @@ export function applyIntent(
     recordReplayKey(profileId, intent.key, intent.flow);
     outcome = "done";
   });
-  tx();
   return outcome;
 }

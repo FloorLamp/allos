@@ -1,4 +1,4 @@
-import { db, today } from "../db";
+import { db, today, writeTx } from "../db";
 import { ageFromBirthdate, ageMonthsFrom } from "../date";
 import type { Sex, ReproductiveStatus } from "../types";
 import { normalizeBloodType } from "../emergency-card";
@@ -100,7 +100,7 @@ export function setSmokingHistory(
   record: SmokingHistory,
   source: "manual" | "imported" = "manual"
 ): void {
-  const write = db.transaction(() => {
+  writeTx(() => {
     if (record.status == null) {
       deleteProfileSetting(profileId, "smoking_status");
       deleteProfileSetting(profileId, "smoking_pack_years");
@@ -129,7 +129,6 @@ export function setSmokingHistory(
     }
     setProfileSetting(profileId, "smoking_source", source);
   });
-  write();
 }
 
 // Seed the structured smoking STATUS from an imported CCD social-history smoking
@@ -145,14 +144,13 @@ export function adoptSmokingStatusFromImport(
   status: "former" | "current"
 ): void {
   if (getProfileSetting(profileId, "smoking_source") === "manual") return;
-  const write = db.transaction(() => {
+  writeTx(() => {
     setProfileSetting(profileId, "smoking_status", status);
     if (status === "current") {
       deleteProfileSetting(profileId, "smoking_quit_year");
     }
     setProfileSetting(profileId, "smoking_source", "imported");
   });
-  write();
 }
 
 // The tracked person's full/legal name — distinct from profiles.name, which is
@@ -190,11 +188,10 @@ export function setUserBirthdate(profileId: number, date: string | null) {
     deleteProfileSetting(profileId, "birthdate");
     return;
   }
-  const write = db.transaction(() => {
+  writeTx(() => {
     setProfileSetting(profileId, "birthdate", date);
     deleteProfileSetting(profileId, "age");
   });
-  write();
 }
 
 // A stored age fallback (whole years) for the profile, used only when no birthdate
@@ -453,7 +450,7 @@ export function setEmergencyContact(
   profileId: number,
   contact: EmergencyContactSetting
 ): void {
-  const write = db.transaction(() => {
+  writeTx(() => {
     const set = (key: string, value: string) => {
       const v = value.trim().slice(0, 200);
       if (v) setProfileSetting(profileId, key, v);
@@ -463,7 +460,6 @@ export function setEmergencyContact(
     set("emergency_contact_phone", contact.phone);
     set("emergency_contact_relation", contact.relation);
   });
-  write();
 }
 
 // Currently-active situations (e.g. "Illness", "Travel") for a profile, persisted
@@ -492,7 +488,7 @@ export function setActiveSituations(profileId: number, situations: string[]) {
   // the dated change log is what makes situations chartable. Same JSON-in-settings
   // precedent as active_situations itself; no owned table.
   const events = diffSituations(before, distinct, today(profileId));
-  const write = db.transaction(() => {
+  writeTx(() => {
     setProfileSetting(profileId, "active_situations", JSON.stringify(distinct));
     if (events.length > 0) {
       setProfileSetting(
@@ -507,7 +503,6 @@ export function setActiveSituations(profileId: number, situations: string[]) {
       );
     }
   });
-  write();
 }
 
 // The profile's active-situation change log (Trends event annotations):

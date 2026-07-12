@@ -7,7 +7,7 @@
 // but it never leaves this same SQLite file — the same trust boundary as the row it
 // came from. The label column is a generic, non-PHI kind descriptor only.
 
-import { db } from "./db";
+import { db, writeTx } from "./db";
 import {
   getKindSpec,
   parsePayload,
@@ -69,7 +69,7 @@ export function captureDelete(
   const spec = getKindSpec(kind);
   const root = spec.entities[0];
 
-  const tx = db.transaction((): number | null => {
+  return writeTx((): number | null => {
     const rootRow = db
       .prepare(`SELECT * FROM ${root.table} WHERE id = ? AND profile_id = ?`)
       .get(rootId, profileId) as Row | undefined;
@@ -98,8 +98,6 @@ export function captureDelete(
 
     return Number(info.lastInsertRowid);
   });
-
-  return tx();
 }
 
 // Restore a captured delete: re-insert the root + children (NEW ids, FKs remapped)
@@ -117,7 +115,7 @@ export function restoreDeletedRow(profileId: number, undoId: number): boolean {
   const payload = parsePayload(spec0.payload);
   const spec = getKindSpec(payload.kind);
 
-  const tx = db.transaction(() => {
+  writeTx(() => {
     const idMaps: IdMaps = {};
     for (const entity of spec.entities) {
       const map = new Map<number, number>();
@@ -190,8 +188,6 @@ export function restoreDeletedRow(profileId: number, undoId: number): boolean {
       profileId
     );
   });
-
-  tx();
   return true;
 }
 

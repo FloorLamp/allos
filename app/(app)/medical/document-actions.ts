@@ -16,7 +16,7 @@ import {
 import fs from "node:fs";
 import path from "node:path";
 import { revalidatePath } from "next/cache";
-import { db } from "@/lib/db";
+import { db, writeTx } from "@/lib/db";
 import {
   reconcileFlags,
   getMedicalDocument,
@@ -183,7 +183,7 @@ export async function reassignDocument(
   // SECOND full record set under the source pointing at a document now owned by dest,
   // recreating the #201 cross-profile stranding through a race.
   let claimed = false;
-  const move = db.transaction(() => {
+  writeTx(() => {
     const res = db
       .prepare(
         "UPDATE medical_documents SET profile_id = ? WHERE id = ? AND profile_id = ? AND extraction_status NOT IN ('processing','pending')"
@@ -198,7 +198,6 @@ export async function reassignDocument(
     // so no dest pin/snooze can lose its backing. (mirrors deleteMedicalDocument.)
     cleanupOrphanBiomarkerKeyedState(src);
   });
-  move();
   if (!claimed) {
     return {
       status: "error",
@@ -307,7 +306,7 @@ export async function deleteMedicalDocument(formData: FormData) {
   // silent partial import and this path must grow its own atomic 'processing' claim
   // (the pattern reassignDocument uses). A DB-tier test pins the rollback so a
   // refactor can't quietly remove the FKs this relies on.
-  const removeAll = db.transaction(() => {
+  writeTx(() => {
     // Delete every row this document imported — medical_records, extracted
     // medications, body_metrics, height + head-circumference metric_samples,
     // immunizations, allergies, conditions, and encounters. This is the SAME
@@ -325,7 +324,6 @@ export async function deleteMedicalDocument(formData: FormData) {
     // re-nudges instead of inheriting the stale, name-keyed side-state (#327).
     cleanupOrphanBiomarkerKeyedState(profile.id);
   });
-  removeAll();
 
   if (doc?.stored_path) {
     try {

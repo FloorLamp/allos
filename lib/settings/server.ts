@@ -1,6 +1,6 @@
 import { DEFAULT_TIMEZONE, isValidTimezone } from "../timezone";
 import { clampAuditRetentionMonths } from "../retention";
-import { db } from "../db";
+import { db, writeTx } from "../db";
 import { getSetting, setSetting } from "./kv";
 
 // Public base URL of the app (e.g. behind a tunnel or reverse proxy). Global —
@@ -84,13 +84,12 @@ export function getBackupSettings(): BackupSettings {
 }
 
 export function setBackupSettings(cfg: BackupSettings): void {
-  const write = db.transaction(() => {
+  writeTx(() => {
     setSetting("backup_enabled", cfg.enabled ? "1" : "0");
     setSetting("backup_hour", String(cfg.hour));
     setSetting("backup_keep_daily", String(cfg.keepDaily));
     setSetting("backup_keep_weekly", String(cfg.keepWeekly));
   });
-  write();
 }
 
 // Audit-log retention window (issue #98), stored app-globally as a whole-month

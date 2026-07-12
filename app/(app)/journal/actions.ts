@@ -2,7 +2,7 @@
 import { requireSession, requireWriteAccess } from "@/lib/auth";
 
 import { revalidatePath } from "next/cache";
-import { db } from "@/lib/db";
+import { db, writeTx } from "@/lib/db";
 import { buildJournalFeedPage, type JournalFeedPage } from "@/lib/journal-feed";
 import { captureDelete } from "@/lib/undo-delete-db";
 import {
@@ -211,7 +211,7 @@ export async function saveActivity(
     return owned ? n : null;
   })();
 
-  const tx = db.transaction((): number | null => {
+  const activityId = writeTx((): number | null => {
     let activityId: number;
     let storedSets: StoredSetWeights | undefined;
     if (id) {
@@ -305,7 +305,6 @@ export async function saveActivity(
       writeSets(activityId, formData, prefs.weightUnit, storedSets);
     return activityId;
   });
-  const activityId = tx();
   // The tx returns null when the (untrusted) form id isn't this profile's — the
   // ownership check bailed, so nothing was written. Report it instead of a silent
   // no-op the form would confirm as "Saved ✓".
@@ -368,7 +367,7 @@ export async function mergeActivities(
   const overrideFields = parseOverrideFields(formData.get("overrides"));
 
   let undoId: number | null = null;
-  const tx = db.transaction((): boolean => {
+  const ok = writeTx((): boolean => {
     const keep = db
       .prepare("SELECT * FROM activities WHERE id = ? AND profile_id = ?")
       .get(keepId, profile.id) as Record<string, unknown> | undefined;
@@ -403,7 +402,7 @@ export async function mergeActivities(
     });
     return true;
   });
-  if (!tx()) return { undoId: null };
+  if (!ok) return { undoId: null };
 
   // Refresh every activity-reading surface the folded/deleted row feeds — the
   // Journal feed on /training, the /trends fitness chart + heatmap, and the

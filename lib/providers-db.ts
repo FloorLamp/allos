@@ -1,4 +1,4 @@
-import { db } from "./db";
+import { db, writeTx } from "./db";
 import type { Provider } from "./types";
 import {
   cleanProviderInput,
@@ -29,7 +29,7 @@ export function resolveProviderId(
   const p = cleanProviderInput(input);
   if (!p) return null;
   const key = providerDedupKey(p);
-  const insert = db.transaction((): number => {
+  return writeTx((): number => {
     db.prepare(
       `INSERT OR IGNORE INTO providers
          (name, type, npi, identifier, phone, address, dedup_key)
@@ -40,7 +40,6 @@ export function resolveProviderId(
       .get(key) as { id: number } | undefined;
     return row!.id;
   });
-  return insert();
 }
 
 // Manual-entry resolver for the provider picker (create-on-type). Links to an
@@ -155,7 +154,7 @@ export function mergeProviders(survivorId: number, duplicateId: number): void {
     .prepare("SELECT id FROM providers WHERE id IN (?, ?)")
     .all(survivorId, duplicateId) as { id: number }[];
   if (both.length !== 2) throw new Error("Both providers must exist to merge.");
-  const tx = db.transaction(() => {
+  writeTx(() => {
     for (const { table, column } of PROVIDER_LINK_COLUMNS) {
       db.prepare(`UPDATE ${table} SET ${column} = ? WHERE ${column} = ?`).run(
         survivorId,
@@ -164,5 +163,4 @@ export function mergeProviders(survivorId: number, duplicateId: number): void {
     }
     db.prepare("DELETE FROM providers WHERE id = ?").run(duplicateId);
   });
-  tx();
 }

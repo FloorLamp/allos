@@ -9,7 +9,7 @@
 // actions) own authorization and auditing.
 
 import crypto from "node:crypto";
-import { db } from "./db";
+import { db, writeTx } from "./db";
 import { base32Encode, otpauthURL, verifyTotp, TOTP_WINDOW } from "./totp";
 import {
   generateRecoveryCodes,
@@ -104,7 +104,7 @@ export function activateTotp(
 // and every recovery code. Used by the self-service disable (after re-auth) and
 // by the env-var bootstrap override.
 export function disableTotp(loginId: number): void {
-  const tx = db.transaction(() => {
+  writeTx(() => {
     db.prepare(
       "UPDATE logins SET totp_secret = NULL, totp_enabled = 0, totp_last_step = NULL WHERE id = ?"
     ).run(loginId);
@@ -112,14 +112,13 @@ export function disableTotp(loginId: number): void {
       loginId
     );
   });
-  tx();
 }
 
 // Replace this login's recovery codes with a fresh set and return the plaintext
 // codes to show ONCE. Only the SHA-256 of each is stored.
 export function regenerateRecoveryCodes(loginId: number): string[] {
   const codes = generateRecoveryCodes();
-  const tx = db.transaction(() => {
+  writeTx(() => {
     db.prepare("DELETE FROM login_recovery_codes WHERE login_id = ?").run(
       loginId
     );
@@ -128,7 +127,6 @@ export function regenerateRecoveryCodes(loginId: number): string[] {
     );
     for (const c of codes) ins.run(loginId, hashRecoveryCode(c));
   });
-  tx();
   return codes;
 }
 

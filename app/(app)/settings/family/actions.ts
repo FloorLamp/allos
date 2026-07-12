@@ -11,7 +11,7 @@ import {
   adminLoginCount,
   type Role,
 } from "@/lib/auth";
-import { db } from "@/lib/db";
+import { db, writeTx } from "@/lib/db";
 import { hashPassword } from "@/lib/password";
 import { checkPasswordStrength } from "@/lib/password-strength";
 import { getSetting, isValidTimezone, setProfileSetting } from "@/lib/settings";
@@ -20,6 +20,7 @@ import {
   diffGrantAccess,
   normalizeAccess,
   formatGrantDiff,
+  grantSignature,
   type GrantInput,
 } from "@/lib/grants";
 import { canDeleteLogin, canDeleteProfile } from "@/lib/family-deletion";
@@ -85,7 +86,7 @@ export async function createProfile(formData: FormData): Promise<FamilyResult> {
   if (!name) return { ok: false, error: "Enter a name." };
   if (name.length > 60) return { ok: false, error: "Name is too long." };
 
-  const create = db.transaction((): number => {
+  const newId = writeTx((): number => {
     const info = db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name);
     const id = Number(info.lastInsertRowid);
     // Seed the new profile's timezone from the instance default (global settings
@@ -94,7 +95,6 @@ export async function createProfile(formData: FormData): Promise<FamilyResult> {
     if (tz && isValidTimezone(tz)) setProfileSetting(id, "timezone", tz);
     return id;
   });
-  const newId = create();
   recordAudit({
     loginId: admin.login.id,
     profileId: admin.profile.id,
@@ -161,7 +161,7 @@ export async function deleteProfile(formData: FormData): Promise<FamilyResult> {
       .all(id) as { stored_path: string }[]
   ).map((r) => r.stored_path);
 
-  const remove = db.transaction(() => {
+  writeTx(() => {
     // Child tables first, reached through their parent (they carry no profile_id
     // of their own, so these deletes are exempt from the profile-scoping test).
     db.prepare(
@@ -196,7 +196,6 @@ export async function deleteProfile(formData: FormData): Promise<FamilyResult> {
     ).run(id);
     db.prepare("DELETE FROM profiles WHERE id = ?").run(id);
   });
-  remove();
   recordAudit({
     loginId: admin.login.id,
     profileId: admin.profile.id,
@@ -330,13 +329,12 @@ export async function deleteLogin(formData: FormData): Promise<FamilyResult> {
 
   const isSelf = session.login.id === acct.id;
 
-  const remove = db.transaction(() => {
+  writeTx(() => {
     db.prepare("DELETE FROM sessions WHERE login_id = ?").run(id);
     db.prepare("DELETE FROM login_profiles WHERE login_id = ?").run(id);
     db.prepare("DELETE FROM login_settings WHERE login_id = ?").run(id);
     db.prepare("DELETE FROM logins WHERE id = ?").run(id);
   });
-  remove();
   recordAudit({
     loginId: session.login.id,
     profileId: session.profile.id,
@@ -411,24 +409,41 @@ export async function setGrants(formData: FormData): Promise<FamilyResult> {
       access: normalizeAccess(formData.get(`access_${profileId}`)),
     }));
   const desired = normalizeGrantInputs(submitted, validIds);
+  // The signature of the grants the admin's form LOADED with (issue #467).
+  const loadedSnapshot = String(formData.get("grants_snapshot") ?? "");
 
-  const current: GrantInput[] = (
-    db
-      .prepare(
-        "SELECT profile_id AS profileId, access FROM login_profiles WHERE login_id = ?"
-      )
-      .all(loginId) as { profileId: number; access: string | null }[]
-  ).map((r) => ({ profileId: r.profileId, access: normalizeAccess(r.access) }));
+  // Optimistic concurrency for access-control state (issue #467). The form's DESIRED
+  // set is absolute, so a stale form (opened before another admin granted profile P to
+  // this member) would diff "remove P" and silently revoke the fresh grant. Instead we
+  // re-read the login's CURRENT grants under the IMMEDIATE write lock and refuse when
+  // they no longer match the loaded snapshot — read-check-apply all atomic, so nothing
+  // can slip in between the check and the write.
+  type GrantOutcome =
+    | { kind: "conflict" }
+    | { kind: "nochange" }
+    | { kind: "applied"; diff: ReturnType<typeof diffGrantAccess> };
+  const outcome = writeTx((): GrantOutcome => {
+    const current: GrantInput[] = (
+      db
+        .prepare(
+          "SELECT profile_id AS profileId, access FROM login_profiles WHERE login_id = ?"
+        )
+        .all(loginId) as { profileId: number; access: string | null }[]
+    ).map((r) => ({
+      profileId: r.profileId,
+      access: normalizeAccess(r.access),
+    }));
 
-  const diff = diffGrantAccess(current, desired);
-  if (
-    diff.add.length === 0 &&
-    diff.update.length === 0 &&
-    diff.remove.length === 0
-  )
-    return { ok: true, message: "No changes." };
+    if (grantSignature(current) !== loadedSnapshot) return { kind: "conflict" };
 
-  const apply = db.transaction(() => {
+    const diff = diffGrantAccess(current, desired);
+    if (
+      diff.add.length === 0 &&
+      diff.update.length === 0 &&
+      diff.remove.length === 0
+    )
+      return { kind: "nochange" };
+
     const ins = db.prepare(
       "INSERT OR IGNORE INTO login_profiles (login_id, profile_id, access) VALUES (?, ?, ?)"
     );
@@ -441,8 +456,17 @@ export async function setGrants(formData: FormData): Promise<FamilyResult> {
     for (const g of diff.add) ins.run(loginId, g.profileId, g.access);
     for (const g of diff.update) upd.run(g.access, loginId, g.profileId);
     for (const pid of diff.remove) del.run(loginId, pid);
+    return { kind: "applied", diff };
   });
-  apply();
+
+  if (outcome.kind === "conflict")
+    return {
+      ok: false,
+      error:
+        "This login’s access changed since you opened this form. Reload and try again.",
+    };
+  if (outcome.kind === "nochange") return { ok: true, message: "No changes." };
+
   // Detail is a compact grant diff by profile id + access level (identifiers
   // only — never PHI). e.g. "+2:read,~3:write,-4".
   recordAudit({
@@ -450,7 +474,7 @@ export async function setGrants(formData: FormData): Promise<FamilyResult> {
     profileId: admin.profile.id,
     action: AUDIT_ACTIONS.grantUpdate,
     target: String(loginId),
-    detail: formatGrantDiff(diff),
+    detail: formatGrantDiff(outcome.diff),
   });
 
   revalidatePath("/settings/family");

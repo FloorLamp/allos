@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { db } from "../db";
+import { db, writeTx } from "../db";
 import type { NotificationKind } from "../notifications/types";
 import {
   parseDisabledKinds,
@@ -133,7 +133,7 @@ export function setProfileHomeAssistant(
     disabledKinds: readonly NotificationKind[];
   }
 ): ProfileHomeAssistant {
-  const write = db.transaction(() => {
+  writeTx(() => {
     setProfileSetting(profileId, "ha_notify_enabled", cfg.enabled ? "1" : "0");
     setProfileSetting(
       profileId,
@@ -147,7 +147,6 @@ export function setProfileHomeAssistant(
       serializeDisabledKinds(cfg.disabledKinds)
     );
   });
-  write();
   return getProfileHomeAssistant(profileId);
 }
 
@@ -159,7 +158,7 @@ export function setTelegramBotConfig(cfg: {
 }): TelegramBotConfig {
   // Write the token, mode, and one-time webhook secret as one transaction (mirrors
   // setUnitPrefs) so a partial failure can't leave the config half-updated.
-  const write = db.transaction(() => {
+  writeTx(() => {
     setSetting("telegram_bot_token", cfg.telegramBotToken.trim());
     setSetting("telegram_mode", cfg.telegramMode);
     // Generate a stable webhook secret once, so inbound calls can be authenticated.
@@ -167,7 +166,6 @@ export function setTelegramBotConfig(cfg: {
       setSetting("telegram_webhook_secret", crypto.randomUUID());
     }
   });
-  write();
   return getTelegramBotConfig();
 }
 

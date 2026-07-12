@@ -1,5 +1,5 @@
 import * as React from "react";
-import { db } from "../db";
+import { db, writeTx } from "../db";
 
 // React's per-request cache() only exists in the canary React that Next vendors
 // for server components. This module is also imported directly by tsx scripts
@@ -51,11 +51,10 @@ export const getUnitPrefs = cache(function getUnitPrefs(
 });
 
 export function setUnitPrefs(loginId: number, prefs: UnitPrefs) {
-  const tx = db.transaction(() => {
+  writeTx(() => {
     setLoginSetting(loginId, "weight_unit", prefs.weightUnit);
     setLoginSetting(loginId, "distance_unit", prefs.distanceUnit);
   });
-  tx();
 }
 
 // App timezone (IANA name, e.g. "America/New_York"), stored per profile in
