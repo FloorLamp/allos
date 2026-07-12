@@ -101,6 +101,42 @@ const GENERIC_VITAMIN_D: [string, (iso: "2" | "3") => string][] = [
   [normalizeCanonicalKey("Vitamin D, Total"), (iso) => `Vitamin D${iso}`],
 ];
 
+// The retest FAMILY key for the storage-form (25-hydroxy) vitamin-D metabolites,
+// or null for anything else. Circulating total 25-OH vitamin D = D2 + D3, and
+// most panels report only the total; a lab that additionally breaks out D2 and
+// D3 is still measuring the same vitamin-D status. So for the "labs to redraw"
+// retest signal these variants — total, generic "Vitamin D", and the D2/D3
+// isoforms — are ONE analyte family: a fresh reading of any member satisfies the
+// retest for all of them, so an old D2/D3 breakdown isn't flagged overdue when a
+// recent total exists (the reported bug). Deliberately EXCLUDED, because they are
+// genuinely distinct tests: the ACTIVE 1,25-dihydroxy metabolite (calcitriol),
+// and the vitamin-D binding protein / receptor. Keyed off the same vitamin-D
+// context rule as vitaminDIsoform (so a bare "D2"/"D3" only counts in context).
+export const VITAMIN_D_25OH_FAMILY = "vitamin-d-25-hydroxy";
+
+export function vitaminDRetestFamily(
+  name: string | null | undefined
+): string | null {
+  if (!name) return null;
+  const s = name.toLowerCase();
+  const isVitaminD =
+    /\bvit(?:amin)?\.?\s*d[23]?\b/.test(s) ||
+    /\bergocalciferol\b/.test(s) ||
+    /\bcholecalciferol\b/.test(s);
+  if (!isVitaminD) return null;
+  // Distinct analytes that share the "vitamin D" words but aren't the storage
+  // form — never fold them into the family.
+  if (
+    /1[\s,]*25/.test(s) ||
+    /\bdihydroxy\b/.test(s) ||
+    /\bcalcitriol\b/.test(s) ||
+    /\bbinding\b/.test(s) ||
+    /\breceptor\b/.test(s)
+  )
+    return null;
+  return VITAMIN_D_25OH_FAMILY;
+}
+
 // Given the model's canonical name and the verbatim lab name for the same row,
 // return a canonical name that preserves the vitamin-D isoform. When the lab
 // name pins down D2 or D3 but the canonical name is a generic vitamin-D entry,

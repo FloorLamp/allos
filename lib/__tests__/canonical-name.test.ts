@@ -5,6 +5,8 @@ import {
   snapCanonicalName,
   vitaminDIsoform,
   distinguishVitaminDIsoform,
+  vitaminDRetestFamily,
+  VITAMIN_D_25OH_FAMILY,
 } from "../canonical-name";
 
 describe("normalizeCanonicalKey", () => {
@@ -141,5 +143,42 @@ describe("distinguishVitaminDIsoform", () => {
     expect(distinguishVitaminDIsoform("Creatinine", "Creatinine, Serum")).toBe(
       "Creatinine"
     );
+  });
+});
+
+describe("vitaminDRetestFamily", () => {
+  it("collapses the 25-hydroxy vitamin-D variants onto one family key", () => {
+    for (const name of [
+      "Vitamin D, 25-Hydroxy",
+      "Vitamin D, Total",
+      "Vitamin D",
+      "25-OH Vitamin D",
+      "Vitamin D2, 25-Hydroxy",
+      "Vitamin D3, 25-Hydroxy",
+      "Vit D2",
+      "Ergocalciferol",
+      "25-OH Vitamin D3 (Cholecalciferol)",
+    ]) {
+      expect(vitaminDRetestFamily(name)).toBe(VITAMIN_D_25OH_FAMILY);
+    }
+  });
+
+  it("keeps distinct vitamin-D analytes out of the storage-form family", () => {
+    // Active metabolite (calcitriol) — a separate test.
+    expect(vitaminDRetestFamily("1,25-Dihydroxy Vitamin D")).toBeNull();
+    expect(vitaminDRetestFamily("Vitamin D, 1,25-Dihydroxy")).toBeNull();
+    expect(vitaminDRetestFamily("Calcitriol")).toBeNull();
+    // Binding protein / receptor are not the 25-OH status measurement.
+    expect(vitaminDRetestFamily("Vitamin D Binding Protein")).toBeNull();
+    expect(vitaminDRetestFamily("Vitamin D Receptor")).toBeNull();
+  });
+
+  it("returns null for a non-vitamin-D name or empty input", () => {
+    expect(vitaminDRetestFamily("LDL Cholesterol")).toBeNull();
+    expect(
+      vitaminDRetestFamily("Dermatophagoides Farinae (D2) IgE")
+    ).toBeNull();
+    expect(vitaminDRetestFamily(null)).toBeNull();
+    expect(vitaminDRetestFamily("")).toBeNull();
   });
 });
