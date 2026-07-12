@@ -11,7 +11,12 @@ import type {
   ImportedProvider,
   ImportedMedicationCourse,
 } from "./health-import";
-import { serializeImportReport } from "./import-report";
+import {
+  serializeImportReport,
+  isRowDrop,
+  type ImportReport,
+} from "./import-report";
+import { toAllergyStatus, toConditionStatus } from "./clinical-parse";
 import { isRealIsoDate } from "./date";
 import {
   bodyMetricsFromExtraction,
@@ -284,6 +289,25 @@ function withoutCapturedHeadCircs(
   });
 }
 
+// Wrap a captured provider/facility NAME (the AI path surfaces these as bare
+// strings) into the provider-neutral ImportedProvider the persist layer resolves
+// into the shared registry. Null name → null (nothing to register).
+function providerFromName(
+  name: string | null,
+  type: "individual" | "organization"
+): ImportedProvider | null {
+  const clean = name?.trim();
+  if (!clean) return null;
+  return {
+    name: clean,
+    type,
+    npi: null,
+    identifier: null,
+    phone: null,
+    address: null,
+  };
+}
+
 // AI extraction → PersistInput. `fallbackDate` is the caller-resolved date used
 // for results without a real collected_date (document date, else today in the
 // profile's timezone); passed in so this stays pure.
@@ -332,29 +356,137 @@ export function extractionToPersistInput(
     ),
     headCircs
   );
+
+  // Clinical-narrative domains (parity with the deterministic importer). The AI path
+  // leaves external_id null — a document's rows are cleared/reprocessed by
+  // document_id (clearImportedDocumentRows), so reprocess is idempotent without a
+  // natural key — matching how the AI path already treats records/immunizations.
+  // Status strings are normalized to the CHECK sets here (toAllergyStatus/
+  // toConditionStatus); care-plan/care-goal status is free-text passthrough.
+  const immunizations = immunizationsFromExtraction(
+    result.immunizations,
+    result.meta.document_date
+  ).map((im) => ({
+    date: im.date,
+    vaccine: im.vaccine,
+    dose_label: im.dose_label,
+    notes: im.notes,
+    external_id: null,
+    provider: null,
+  }));
+  const allergies: PersistAllergy[] = result.allergies.map((a) => ({
+    substance: a.substance,
+    substance_code: a.substance_code,
+    substance_code_system: a.substance_code_system,
+    reaction: a.reaction,
+    severity: a.severity,
+    status: toAllergyStatus(a.status),
+    onset_date: a.onset_date,
+    external_id: null,
+  }));
+  const conditions: PersistCondition[] = result.conditions.map((c) => ({
+    name: c.name,
+    code: c.code,
+    code_system: c.code_system,
+    status: toConditionStatus(c.status),
+    onset_date: c.onset_date,
+    resolved_date: c.resolved_date,
+    external_id: null,
+  }));
+  const encounters: PersistEncounter[] = result.encounters.map((e) => ({
+    date: e.date,
+    end_date: e.end_date,
+    type: e.type,
+    class_code: e.class_code,
+    reason: e.reason,
+    diagnoses: e.diagnoses,
+    provider: providerFromName(e.provider, "individual"),
+    location: providerFromName(e.location, "organization"),
+    notes: e.notes,
+    external_id: null,
+  }));
+  const procedures: PersistProcedure[] = result.procedures.map((p) => ({
+    name: p.name,
+    code: p.code,
+    code_system: p.code_system,
+    date: p.date,
+    provider: null,
+    external_id: null,
+  }));
+  const familyHistory: PersistFamilyHistory[] = result.familyHistory.map(
+    (f) => ({
+      relation: f.relation,
+      condition: f.condition,
+      code: f.code,
+      code_system: f.code_system,
+      onset_age: f.onset_age,
+      deceased: f.deceased,
+      external_id: null,
+    })
+  );
+  const carePlanItems: PersistCarePlanItem[] = result.carePlanItems.map(
+    (c) => ({
+      description: c.description,
+      code: c.code,
+      code_system: c.code_system,
+      category: c.category,
+      planned_date: c.planned_date,
+      status: c.status,
+      provider: null,
+      external_id: null,
+    })
+  );
+  const careGoals: PersistCareGoal[] = result.careGoals.map((g) => ({
+    description: g.description,
+    code: g.code,
+    code_system: g.code_system,
+    target_date: g.target_date,
+    status: g.status,
+    external_id: null,
+  }));
+
+  // The document-level source ("Quest Diagnostics", the discharge hospital, …) is
+  // registered into the shared providers registry — the AI path's answer to item 3
+  // (surface meta.source). Per-row performers (encounter attending / facility) ride
+  // on their rows and are unioned by the persist resolver.
+  const providers: ImportedProvider[] = [];
+  const sourceProvider = providerFromName(result.meta.source, "organization");
+  if (sourceProvider) providers.push(sourceProvider);
+
+  // A real import report so the AI path stops being the only one without drop
+  // accounting (item 4). No section/resource coverage on the AI path (there are no
+  // sections), but every rejected clinical entity is reported as a row-level drop.
+  const imported =
+    records.length +
+    immunizations.length +
+    allergies.length +
+    conditions.length +
+    encounters.length +
+    procedures.length +
+    familyHistory.length +
+    carePlanItems.length +
+    careGoals.length +
+    bodyMetrics.length +
+    heights.length +
+    headCircs.length;
+  const report: ImportReport = {
+    drops: result.drops,
+    coverage: [],
+    imported,
+    considered: imported + result.drops.filter(isRowDrop).length,
+    unmappedLoincs: [],
+  };
+
   return {
     records,
-    immunizations: immunizationsFromExtraction(
-      result.immunizations,
-      result.meta.document_date
-    ).map((im) => ({
-      date: im.date,
-      vaccine: im.vaccine,
-      dose_label: im.dose_label,
-      notes: im.notes,
-      external_id: null,
-      provider: null,
-    })),
-    // The AI extraction path does not yet emit allergies/problems/encounters/
-    // procedures/family-history/care-plan/care-goals — only the deterministic
-    // CCD/FHIR path does.
-    allergies: [],
-    conditions: [],
-    encounters: [],
-    procedures: [],
-    familyHistory: [],
-    carePlanItems: [],
-    careGoals: [],
+    immunizations,
+    allergies,
+    conditions,
+    encounters,
+    procedures,
+    familyHistory,
+    carePlanItems,
+    careGoals,
     bodyMetrics,
     heights,
     headCircs,
@@ -371,14 +503,12 @@ export function extractionToPersistInput(
       patientName: result.meta.patient_name,
       raw: result.raw,
       model: result.model,
-      // The AI extraction path produces no structured drop/coverage report.
-      importReport: null,
+      importReport: serializeImportReport(report),
     },
     // Register only the names that stay as records (body metrics aren't
     // biomarkers, so they don't enter the vocabulary).
     canonicalNamesToRegister: records.map((r) => r.canonical),
-    // The AI path doesn't surface providers yet.
-    providers: [],
+    providers,
   };
 }
 

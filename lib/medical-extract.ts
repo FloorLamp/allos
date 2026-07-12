@@ -10,6 +10,8 @@ import { AI_MODEL, aiConfigured, createAiClient } from "./ai-client";
 import { createLogger } from "./log";
 import { recordAiEvent, capDetail, LOG_PROMPTS } from "./ai-log";
 import { strOrNull } from "./parse";
+import { isRealIsoDate } from "./date";
+import type { ImportDrop } from "./import-report";
 import {
   buildCanonicalIndex,
   snapCanonicalName,
@@ -84,6 +86,75 @@ export interface ExtractedImmunization {
   notes: string | null;
 }
 
+// The clinical-narrative domains the AI extractor now emits (parity with the
+// deterministic CCD/FHIR importer). These are the PRE-persist AI shapes: statuses
+// stay as the model's raw string (normalized to the CHECK sets in import-shape),
+// dates are already coerced to strict ISO-or-null, and providers/facilities are
+// captured as plain names (resolved into the shared providers registry on persist).
+export interface ExtractedCondition {
+  name: string;
+  code: string | null;
+  code_system: string | null;
+  status: string | null; // raw clinical status; normalized in import-shape
+  onset_date: string | null; // YYYY-MM-DD
+  resolved_date: string | null; // YYYY-MM-DD
+}
+
+export interface ExtractedAllergy {
+  substance: string;
+  substance_code: string | null;
+  substance_code_system: string | null;
+  reaction: string | null;
+  severity: string | null;
+  status: string | null; // raw clinical status; normalized in import-shape
+  onset_date: string | null; // YYYY-MM-DD
+}
+
+export interface ExtractedProcedure {
+  name: string;
+  code: string | null;
+  code_system: string | null;
+  date: string | null; // YYYY-MM-DD
+}
+
+export interface ExtractedEncounter {
+  date: string; // YYYY-MM-DD (required — a dateless encounter is dropped)
+  end_date: string | null; // YYYY-MM-DD
+  type: string | null;
+  class_code: string | null;
+  reason: string | null;
+  diagnoses: string[];
+  provider: string | null; // attending clinician name (resolved on persist)
+  location: string | null; // facility name (resolved on persist)
+  notes: string | null;
+}
+
+export interface ExtractedFamilyHistory {
+  relation: string | null;
+  condition: string;
+  code: string | null;
+  code_system: string | null;
+  onset_age: number | null;
+  deceased: number | null; // 1/0/null
+}
+
+export interface ExtractedCarePlanItem {
+  description: string;
+  code: string | null;
+  code_system: string | null;
+  category: string | null;
+  planned_date: string | null; // YYYY-MM-DD
+  status: string | null; // free-text passthrough (no enum)
+}
+
+export interface ExtractedCareGoal {
+  description: string;
+  code: string | null;
+  code_system: string | null;
+  target_date: string | null; // YYYY-MM-DD
+  status: string | null; // free-text passthrough (no enum)
+}
+
 export interface ExtractionMeta {
   document_type: string | null; // lab | dexa | imaging | immunization | other
   source: string | null;
@@ -130,6 +201,18 @@ export type ExtractionResult =
       meta: ExtractionMeta;
       results: ExtractedResult[];
       immunizations: ExtractedImmunization[];
+      conditions: ExtractedCondition[];
+      allergies: ExtractedAllergy[];
+      procedures: ExtractedProcedure[];
+      encounters: ExtractedEncounter[];
+      familyHistory: ExtractedFamilyHistory[];
+      carePlanItems: ExtractedCarePlanItem[];
+      careGoals: ExtractedCareGoal[];
+      // Row-level drops (a clinical entity the model emitted but that was rejected
+      // for want of its required identifier) — the AI path's drop accounting, folded
+      // into a real ImportReport in import-shape. Parity with the deterministic
+      // importer, which was previously the only path with a report.
+      drops: ImportDrop[];
       model: string;
       raw: string;
     }
@@ -263,6 +346,24 @@ Rules:
   and a short note else null. Set document_type to "immunization" for such documents. A lab
   report with antibody TITERS (e.g. "Measles IgG", "Hepatitis B Surface Antibody") is NOT an
   immunization record — put those in results as normal lab analytes, not in immunizations.
+- clinical entities: when the document is a CLINICAL NARRATIVE (a discharge / after-visit
+  summary, progress note, or a problem / allergy / surgical-history printout) rather than a pure
+  lab or scan report, ALSO extract its structured clinical entities into the matching arrays.
+  Emit ONLY what the document actually states; never invent a code, status, or date — leave a
+  field null when it isn't printed. Each array is empty for a plain lab/scan report:
+  - conditions: problem-list diagnoses (name + ICD-10/SNOMED code when printed; status
+    "active"/"inactive"/"resolved" when stated; onset/resolved dates ISO YYYY-MM-DD).
+  - allergies: allergies / intolerances (substance + reaction + severity + status). Do NOT emit a
+    row for an explicit "no known allergies" / "NKDA" statement — leave the array empty.
+  - procedures: procedures / surgical history (name + code + performed date ISO YYYY-MM-DD).
+  - encounters: the visit(s) the document describes (date, end/discharge date, type e.g.
+    "Office Visit"/"Emergency", class_code AMB/IMP/EMER, reason, attending provider name, facility
+    name). A document's own visit diagnoses ALSO go in conditions.
+  - family_history: one entry per (relative, condition) pair (relation, condition, onset_age,
+    deceased).
+  - care_plan: planned / ordered FUTURE care — follow-ups, ordered tests, referrals, planned
+    procedures (the "Plan" / "Follow-up" section).
+  - care_goals: stated clinical goals / targets (e.g. "A1c < 7.0%").
 - Be concise: emit only the structured fields above. Brevity matters — there may be 100+
   results and the response must fit in the output budget.
 - Do not invent data. If the document has no extractable results, return empty arrays.`;
@@ -346,6 +447,240 @@ const TOOL: Anthropic.Tool = {
             notes: { type: ["string", "null"] },
           },
           required: ["vaccine"],
+        },
+      },
+      conditions: {
+        type: "array",
+        description:
+          "Problem-list diagnoses / conditions stated on the document. Empty for a plain lab/scan report.",
+        items: {
+          type: "object",
+          properties: {
+            name: {
+              type: "string",
+              description:
+                "The condition/diagnosis display name, e.g. 'Type 2 diabetes mellitus'",
+            },
+            code: {
+              type: ["string", "null"],
+              description: "ICD-10 / SNOMED code if printed, else null",
+            },
+            code_system: {
+              type: ["string", "null"],
+              description:
+                "Code system, e.g. 'ICD-10-CM' or 'SNOMED', else null",
+            },
+            status: {
+              type: ["string", "null"],
+              description:
+                "Clinical status if stated: active, inactive, or resolved. Null otherwise.",
+            },
+            onset_date: {
+              type: ["string", "null"],
+              description: "Onset date, ISO YYYY-MM-DD, else null",
+            },
+            resolved_date: {
+              type: ["string", "null"],
+              description: "Resolution date, ISO YYYY-MM-DD, else null",
+            },
+          },
+          required: ["name"],
+        },
+      },
+      allergies: {
+        type: "array",
+        description:
+          "Allergies / intolerances stated on the document. Do NOT emit a row for an explicit 'no known allergies' statement — leave the array empty.",
+        items: {
+          type: "object",
+          properties: {
+            substance: {
+              type: "string",
+              description:
+                "The offending agent (drug/food/environmental), e.g. 'Penicillin'",
+            },
+            substance_code: { type: ["string", "null"] },
+            substance_code_system: { type: ["string", "null"] },
+            reaction: {
+              type: ["string", "null"],
+              description: "Reaction / manifestation as printed, e.g. 'Hives'",
+            },
+            severity: {
+              type: ["string", "null"],
+              description: "mild / moderate / severe, or as printed",
+            },
+            status: {
+              type: ["string", "null"],
+              description: "active, inactive, or resolved. Null if not stated.",
+            },
+            onset_date: {
+              type: ["string", "null"],
+              description: "Onset date, ISO YYYY-MM-DD, else null",
+            },
+          },
+          required: ["substance"],
+        },
+      },
+      procedures: {
+        type: "array",
+        description: "Procedures / surgical history stated on the document.",
+        items: {
+          type: "object",
+          properties: {
+            name: {
+              type: "string",
+              description: "Procedure display name, e.g. 'Appendectomy'",
+            },
+            code: {
+              type: ["string", "null"],
+              description:
+                "CPT / SNOMED / ICD-10-PCS code if printed, else null",
+            },
+            code_system: { type: ["string", "null"] },
+            date: {
+              type: ["string", "null"],
+              description: "Performed date, ISO YYYY-MM-DD, else null",
+            },
+          },
+          required: ["name"],
+        },
+      },
+      encounters: {
+        type: "array",
+        description:
+          "Visits / encounters the document describes (an after-visit or discharge summary usually describes ONE). The visit's diagnoses ALSO go in conditions.",
+        items: {
+          type: "object",
+          properties: {
+            date: {
+              type: "string",
+              description: "Visit/admission date, ISO YYYY-MM-DD",
+            },
+            end_date: {
+              type: ["string", "null"],
+              description: "Discharge/end date, ISO YYYY-MM-DD, else null",
+            },
+            type: {
+              type: ["string", "null"],
+              description:
+                "Encounter type display, e.g. 'Office Visit', 'Emergency', 'Inpatient'",
+            },
+            class_code: {
+              type: ["string", "null"],
+              description:
+                "HL7 encounter class if known: AMB (ambulatory), IMP (inpatient), EMER (emergency). Else null.",
+            },
+            reason: {
+              type: ["string", "null"],
+              description: "Chief complaint / reason for visit",
+            },
+            diagnoses: {
+              type: "array",
+              items: { type: "string" },
+              description: "Visit diagnosis display names",
+            },
+            provider: {
+              type: ["string", "null"],
+              description:
+                "Attending/treating clinician name, e.g. 'Grace Hopper, MD'",
+            },
+            location: {
+              type: ["string", "null"],
+              description: "Facility / clinic / hospital name",
+            },
+            notes: {
+              type: ["string", "null"],
+              description: "A short visit summary note, else null",
+            },
+          },
+          required: ["date"],
+        },
+      },
+      family_history: {
+        type: "array",
+        description:
+          "Family medical history — one condition affecting one relative.",
+        items: {
+          type: "object",
+          properties: {
+            relation: {
+              type: ["string", "null"],
+              description: "Affected relative: mother / father / sibling / …",
+            },
+            condition: {
+              type: "string",
+              description: "The relative's condition display name",
+            },
+            code: { type: ["string", "null"] },
+            code_system: { type: ["string", "null"] },
+            onset_age: {
+              type: ["number", "null"],
+              description: "Relative's age (years) at onset, if stated",
+            },
+            deceased: {
+              type: ["boolean", "null"],
+              description: "Whether the relative is deceased, if stated",
+            },
+          },
+          required: ["condition"],
+        },
+      },
+      care_plan: {
+        type: "array",
+        description:
+          "Planned / ordered FUTURE care — follow-ups, ordered tests, referrals, planned procedures (the 'Plan' / 'Follow-up' section).",
+        items: {
+          type: "object",
+          properties: {
+            description: {
+              type: "string",
+              description:
+                "The planned activity, e.g. 'Follow up in 3 months', 'Order lipid panel'",
+            },
+            code: { type: ["string", "null"] },
+            code_system: { type: ["string", "null"] },
+            category: {
+              type: ["string", "null"],
+              description:
+                "procedure / encounter / medication / observation / … if classifiable",
+            },
+            planned_date: {
+              type: ["string", "null"],
+              description: "Scheduled/intended date, ISO YYYY-MM-DD, else null",
+            },
+            status: {
+              type: ["string", "null"],
+              description:
+                "Lifecycle status if stated (planned / active / completed / …)",
+            },
+          },
+          required: ["description"],
+        },
+      },
+      care_goals: {
+        type: "array",
+        description:
+          "Clinical goals / targets stated on the document (the 'Goals' section), e.g. 'A1c < 7.0%'.",
+        items: {
+          type: "object",
+          properties: {
+            description: {
+              type: "string",
+              description: "The goal statement",
+            },
+            code: { type: ["string", "null"] },
+            code_system: { type: ["string", "null"] },
+            target_date: {
+              type: ["string", "null"],
+              description: "Target date, ISO YYYY-MM-DD, else null",
+            },
+            status: {
+              type: ["string", "null"],
+              description:
+                "Lifecycle status if stated (proposed / active / achieved / …)",
+            },
+          },
+          required: ["description"],
         },
       },
     },
@@ -495,6 +830,219 @@ function normalizeImmunizations(raw: any): ExtractedImmunization[] {
   return out;
 }
 
+// Coerce a model-supplied date to strict ISO YYYY-MM-DD, else null. The DB stores
+// dates as ISO strings, so a bare year / locale format / junk is dropped (a null
+// date column) rather than guessed.
+function isoDateOrNull(raw: unknown): string | null {
+  const s = strOrNull(raw);
+  return s && isRealIsoDate(s) ? s : null;
+}
+
+// A finite number from a number or numeric string, else null (family-history onset age).
+function finiteOrNull(raw: unknown): number | null {
+  const n =
+    typeof raw === "number" ? raw : typeof raw === "string" ? Number(raw) : NaN;
+  return Number.isFinite(n) ? n : null;
+}
+
+// The model may report `deceased` as a boolean, 0/1, or a yes/no string; collapse
+// to the DB's 1/0/null. Unknown → null (not "alive").
+function boolIntOrNull(raw: unknown): number | null {
+  if (raw === true || raw === 1) return 1;
+  if (raw === false || raw === 0) return 0;
+  if (typeof raw === "string") {
+    const v = raw.trim().toLowerCase();
+    if (v === "true" || v === "yes" || v === "y" || v === "deceased") return 1;
+    if (v === "false" || v === "no" || v === "n" || v === "alive") return 0;
+  }
+  return null;
+}
+
+// Normalize the model's clinical-narrative arrays (conditions / allergies /
+// procedures / encounters / family history / care plan / care goals) into typed
+// entries, collecting an ImportDrop for every entry rejected for want of its
+// required identifier (name / substance / condition / description / visit date).
+// This is the AI path's strict validator + drop accounting: garbage entries drop
+// with a reported reason rather than being silently dropped or silently landed.
+// Status-enum normalization and provider resolution happen downstream in
+// import-shape (extractionToPersistInput); this stays a pure shape coercion.
+export function normalizeClinicalDomains(raw: any): {
+  conditions: ExtractedCondition[];
+  allergies: ExtractedAllergy[];
+  procedures: ExtractedProcedure[];
+  encounters: ExtractedEncounter[];
+  familyHistory: ExtractedFamilyHistory[];
+  carePlanItems: ExtractedCarePlanItem[];
+  careGoals: ExtractedCareGoal[];
+  drops: ImportDrop[];
+} {
+  const drops: ImportDrop[] = [];
+  const arr = (v: unknown): any[] => (Array.isArray(v) ? v : []);
+
+  const conditions: ExtractedCondition[] = [];
+  for (const c of arr(raw?.conditions)) {
+    const name = strOrNull(c?.name);
+    if (!name) {
+      drops.push({
+        kind: "condition",
+        label: "(unnamed condition)",
+        reason: "no_value",
+      });
+      continue;
+    }
+    conditions.push({
+      name,
+      code: strOrNull(c?.code),
+      code_system: strOrNull(c?.code_system),
+      status: strOrNull(c?.status),
+      onset_date: isoDateOrNull(c?.onset_date),
+      resolved_date: isoDateOrNull(c?.resolved_date),
+    });
+  }
+
+  const allergies: ExtractedAllergy[] = [];
+  for (const a of arr(raw?.allergies)) {
+    const substance = strOrNull(a?.substance);
+    if (!substance) {
+      drops.push({
+        kind: "allergy",
+        label: "(unnamed allergy)",
+        reason: "no_value",
+      });
+      continue;
+    }
+    allergies.push({
+      substance,
+      substance_code: strOrNull(a?.substance_code),
+      substance_code_system: strOrNull(a?.substance_code_system),
+      reaction: strOrNull(a?.reaction),
+      severity: strOrNull(a?.severity),
+      status: strOrNull(a?.status),
+      onset_date: isoDateOrNull(a?.onset_date),
+    });
+  }
+
+  const procedures: ExtractedProcedure[] = [];
+  for (const p of arr(raw?.procedures)) {
+    const name = strOrNull(p?.name);
+    if (!name) {
+      drops.push({
+        kind: "procedure",
+        label: "(unnamed procedure)",
+        reason: "no_value",
+      });
+      continue;
+    }
+    procedures.push({
+      name,
+      code: strOrNull(p?.code),
+      code_system: strOrNull(p?.code_system),
+      date: isoDateOrNull(p?.date),
+    });
+  }
+
+  const encounters: ExtractedEncounter[] = [];
+  for (const e of arr(raw?.encounters)) {
+    // A visit MUST carry a resolvable date (the encounters.date column is NOT NULL);
+    // a dateless entry can't be placed on the timeline, so it drops.
+    const date = isoDateOrNull(e?.date);
+    if (!date) {
+      drops.push({
+        kind: "encounter",
+        label: strOrNull(e?.type) ?? "(undated visit)",
+        reason: "no_value",
+      });
+      continue;
+    }
+    encounters.push({
+      date,
+      end_date: isoDateOrNull(e?.end_date),
+      type: strOrNull(e?.type),
+      class_code: strOrNull(e?.class_code),
+      reason: strOrNull(e?.reason),
+      diagnoses: arr(e?.diagnoses)
+        .map((d) => strOrNull(d))
+        .filter((d): d is string => !!d),
+      provider: strOrNull(e?.provider),
+      location: strOrNull(e?.location),
+      notes: strOrNull(e?.notes),
+    });
+  }
+
+  const familyHistory: ExtractedFamilyHistory[] = [];
+  for (const f of arr(raw?.family_history)) {
+    const condition = strOrNull(f?.condition);
+    if (!condition) {
+      drops.push({
+        kind: "family_history",
+        label: strOrNull(f?.relation) ?? "(family history)",
+        reason: "no_value",
+      });
+      continue;
+    }
+    familyHistory.push({
+      relation: strOrNull(f?.relation),
+      condition,
+      code: strOrNull(f?.code),
+      code_system: strOrNull(f?.code_system),
+      onset_age: finiteOrNull(f?.onset_age),
+      deceased: boolIntOrNull(f?.deceased),
+    });
+  }
+
+  const carePlanItems: ExtractedCarePlanItem[] = [];
+  for (const c of arr(raw?.care_plan)) {
+    const description = strOrNull(c?.description);
+    if (!description) {
+      drops.push({
+        kind: "care_plan",
+        label: "(care plan item)",
+        reason: "no_value",
+      });
+      continue;
+    }
+    carePlanItems.push({
+      description,
+      code: strOrNull(c?.code),
+      code_system: strOrNull(c?.code_system),
+      category: strOrNull(c?.category),
+      planned_date: isoDateOrNull(c?.planned_date),
+      status: strOrNull(c?.status),
+    });
+  }
+
+  const careGoals: ExtractedCareGoal[] = [];
+  for (const g of arr(raw?.care_goals)) {
+    const description = strOrNull(g?.description);
+    if (!description) {
+      drops.push({
+        kind: "care_goal",
+        label: "(care goal)",
+        reason: "no_value",
+      });
+      continue;
+    }
+    careGoals.push({
+      description,
+      code: strOrNull(g?.code),
+      code_system: strOrNull(g?.code_system),
+      target_date: isoDateOrNull(g?.target_date),
+      status: strOrNull(g?.status),
+    });
+  }
+
+  return {
+    conditions,
+    allergies,
+    procedures,
+    encounters,
+    familyHistory,
+    carePlanItems,
+    careGoals,
+    drops,
+  };
+}
+
 export async function extractMedicalDocument(
   buffer: Buffer,
   mime: string,
@@ -585,6 +1133,7 @@ export async function extractMedicalDocument(
     const input = toolUse.input as any;
     const results = normalizeResults(input, knownCanonical);
     const immunizations = normalizeImmunizations(input);
+    const clinical = normalizeClinicalDomains(input);
 
     // If the model ran out of output budget, the results array is likely
     // truncated (or empty). Surface that instead of silently importing a
@@ -622,10 +1171,21 @@ export async function extractMedicalDocument(
         typeof input?.document_date === "string" ? input.document_date : null,
     };
 
+    const clinicalCount =
+      clinical.conditions.length +
+      clinical.allergies.length +
+      clinical.procedures.length +
+      clinical.encounters.length +
+      clinical.familyHistory.length +
+      clinical.carePlanItems.length +
+      clinical.careGoals.length;
+
     log.info("extraction done", {
       filename,
       secs,
       results: results.length,
+      clinical: clinicalCount,
+      dropped: clinical.drops.length,
       usage: msg.usage
         ? { in: msg.usage.input_tokens, out: msg.usage.output_tokens }
         : undefined,
@@ -638,6 +1198,7 @@ export async function extractMedicalDocument(
       durationMs: Date.now() - startedAt,
       detail: capDetail(
         `${filename} — ${results.length} record(s)` +
+          (clinicalCount ? `, ${clinicalCount} clinical` : "") +
           (LOG_PROMPTS ? `\nresponse: ${JSON.stringify(input)}` : "")
       ),
     });
@@ -646,6 +1207,14 @@ export async function extractMedicalDocument(
       meta,
       results,
       immunizations,
+      conditions: clinical.conditions,
+      allergies: clinical.allergies,
+      procedures: clinical.procedures,
+      encounters: clinical.encounters,
+      familyHistory: clinical.familyHistory,
+      carePlanItems: clinical.carePlanItems,
+      careGoals: clinical.careGoals,
+      drops: clinical.drops,
       model: MODEL,
       raw: JSON.stringify(input),
     };
