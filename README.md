@@ -704,9 +704,29 @@ and append-only: because uploaded files are content-hashed and immutable, only n
 copied each night, so it stays cheap. Keep the destination **operator-controlled** — it holds
 multi-profile PHI, so no cloud/network target is wired up (mount your own if you want one).
 
+**Verify the mount (avoids silent evaporation).** The app **never creates the destination
+root** — a missing mount must fail honestly, not `mkdir` a fake backup into the container's
+ephemeral layer that vanishes on the next redeploy. So replication requires a one-time
+**sentinel** (`.allos-backup-destination`) written into the mounted volume: after mounting
+`BACKUP_DEST_DIR`, click **Verify destination** on the backups card. If the sentinel is
+absent (never verified, or the volume later unmounted), replication is **skipped** and the
+reason is recorded under `backup_offsite_last_error` — off-volume backups don't silently
+succeed into nowhere.
+
 The **Settings → Server → Automated backups** card shows whether `BACKUP_DEST_DIR` is
-configured and the time of the last off-volume copy (or its last error). Off-volume failures
-are recorded under their own marker and never fail the primary snapshot.
+configured, whether the destination is currently **mounted and verified**, and the time of the
+last off-volume copy (or its last error). Off-volume failures are recorded under their own
+marker and never fail the primary snapshot, but an off-volume mirror that has gone **stale**
+(older than the backup-staleness threshold, default 48h) now also degrades the
+[health endpoint](#health-endpoint) (`reason: "offsite-stale"`), so a mirror that quietly
+stopped is visible to uptime monitors.
+
+**What the off-volume mirror covers.** The mirror copies the **database snapshot** (+ its
+verify sidecar) and **`data/uploads/`** (medical files). It does **not** mirror
+`data/integration-payloads/` (raw provider payloads, re-syncable from the source integration)
+or `data/logs/ai.jsonl` (the AI audit log) — this is a deliberate scope decision to keep the
+mirror to the recoverable clinical dataset; if you want those off-volume too, copy them with
+your own out-of-band job.
 
 ```bash
 # docker-compose: mount a second host directory and point the env at it
@@ -835,6 +855,10 @@ container unhealthy:
   staleness threshold (**48h** by default; override with the `backup_staleness_hours`
   global setting). A never-backed-up instance (fresh install, or backups just enabled) is
   **not** flagged, so this only catches a schedule that ran and then silently died.
+- **`offsite-stale`** — an off-volume destination (`BACKUP_DEST_DIR`) is configured and its
+  last successful replica is older than the staleness threshold, so a mirror that silently
+  stopped is visible to uptime monitors (a never-succeeded mirror surfaces instead as an
+  off-volume error on the admin card — see [Off-volume backups](#off-volume-backups-backup_dest_dir)).
 
 The body stays deliberately coarse (a `status`, a single `reason`, and `lastBackupAgeHours`)
 with no paths, versions, or PHI, since the endpoint is unauthenticated — details go to the

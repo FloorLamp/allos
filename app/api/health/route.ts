@@ -59,6 +59,8 @@ export async function GET() {
   let liveIntegrityOk: boolean | null = null;
   let backupsEnabled = false;
   let stalenessThresholdHours = DEFAULT_BACKUP_STALENESS_HOURS;
+  let offsiteConfigured = false;
+  let lastOffsiteAt: string | null = null;
   try {
     const { db } = await import("@/lib/db");
     db.prepare("SELECT 1").get();
@@ -72,6 +74,12 @@ export async function GET() {
     const thresholdRaw = Number(getSetting("backup_staleness_hours"));
     if (Number.isFinite(thresholdRaw) && thresholdRaw > 0)
       stalenessThresholdHours = thresholdRaw;
+    // Off-volume replication staleness (#463): cheap settings-only reads, folded
+    // into the same staleness threshold family as the primary backup.
+    const { isOffsiteConfigured, getLastOffsiteBackupAt } =
+      await import("@/lib/backup");
+    offsiteConfigured = isOffsiteConfigured();
+    lastOffsiteAt = getLastOffsiteBackupAt();
   } catch (err) {
     // Log the real reason server-side, but keep the body generic.
     console.error("health check: DB read failed", err);
@@ -87,6 +95,8 @@ export async function GET() {
     backupsEnabled,
     stalenessThresholdHours,
     lastBackupAt,
+    offsiteConfigured,
+    lastOffsiteAt,
     now: new Date(),
   });
 

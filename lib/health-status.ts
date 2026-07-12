@@ -9,7 +9,11 @@ import { backupAgeHours } from "./backup-verify";
 export type HealthState = "ok" | "degraded";
 
 export type HealthReason =
-  "db-failed" | "write-failed" | "integrity-failed" | "backup-stale";
+  | "db-failed"
+  | "write-failed"
+  | "integrity-failed"
+  | "backup-stale"
+  | "offsite-stale";
 
 export interface HealthResult {
   ok: boolean;
@@ -49,6 +53,13 @@ export function buildHealthStatus(opts: {
   backupsEnabled?: boolean;
   stalenessThresholdHours?: number;
   lastBackupAt?: string | null;
+  // Off-volume replication (#130/#463): when a secondary destination is configured,
+  // its own staleness folds into health so a mirror that has failed every night for
+  // months is visible to an uptime monitor (not just the admin card). Same threshold
+  // family as the primary backup; same never-run exemption (age null → not flagged,
+  // and item-1's recorded error surfaces the never-succeeded case on the card).
+  offsiteConfigured?: boolean;
+  lastOffsiteAt?: string | null;
   now: Date;
 }): HealthResult {
   const lastBackupAgeHours = backupAgeHours(opts.lastBackupAt, opts.now);
@@ -72,6 +83,17 @@ export function buildHealthStatus(opts: {
     lastBackupAgeHours > threshold
   ) {
     return degraded("backup-stale");
+  }
+
+  // Off-volume staleness is the least severe (a mirror lag is less urgent than the
+  // primary snapshot dying), so it's checked last.
+  const offsiteAgeHours = backupAgeHours(opts.lastOffsiteAt, opts.now);
+  if (
+    opts.offsiteConfigured &&
+    offsiteAgeHours !== null &&
+    offsiteAgeHours > threshold
+  ) {
+    return degraded("offsite-stale");
   }
 
   return { ok: true, status: "ok", lastBackupAgeHours, httpStatus: 200 };
