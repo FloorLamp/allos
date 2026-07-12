@@ -8,7 +8,7 @@ import type { MedicalCategory, MedicalFlag, Sex } from "./types";
 import { MEDICAL_CATEGORIES, MEDICAL_FLAGS } from "./medical-categories";
 import { AI_MODEL, aiConfigured, createAiClient } from "./ai-client";
 import { createLogger } from "./log";
-import { recordAiEvent, capDetail, LOG_PROMPTS } from "./ai-log";
+import { recordAiEvent, capDetail, LOG_PROMPTS, usageFrom } from "./ai-log";
 import { strOrNull } from "./parse";
 import { isRealIsoDate } from "./date";
 import type { ImportDrop } from "./import-report";
@@ -1304,6 +1304,7 @@ export async function extractMedicalDocument(
       status: "ok",
       model: MODEL,
       durationMs: Date.now() - startedAt,
+      usage: usageFrom(msg),
       detail: capDetail(
         `${filename} — ${results.length} record(s)` +
           (clinicalCount ? `, ${clinicalCount} clinical` : "") +

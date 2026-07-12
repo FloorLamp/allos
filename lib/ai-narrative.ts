@@ -14,7 +14,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { today } from "./db";
 import { AI_MODEL as MODEL, aiConfigured, createAiClient } from "./ai-client";
-import { recordAiEvent, capDetail, LOG_PROMPTS } from "./ai-log";
+import { recordAiEvent, capDetail, LOG_PROMPTS, usageFrom } from "./ai-log";
 import { checkAndIncrementAiUsage, narrativeDailyLimit } from "./ai-usage";
 import { getUnitPrefs, type WeightUnit } from "./settings";
 import type { NarrativeKind } from "./types";
@@ -119,6 +119,7 @@ async function narrate(opts: {
       status: "ok",
       model: MODEL,
       durationMs: Date.now() - startedAt,
+      usage: usageFrom(msg),
       detail: capDetail(detailKey + (LOG_PROMPTS ? `\n${text}` : "")),
     });
     return { summary: text || offline(), model: MODEL };

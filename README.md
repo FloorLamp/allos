@@ -190,8 +190,11 @@ The app logs to stdout/stderr via a small leveled logger (`LOG_LEVEL`,
 `LOG_FORMAT`), so `docker logs` captures everything. Every AI call (extraction,
 suggestions, insights) and its outcome is also appended to
 `data/logs/ai.jsonl` — readable directly on the host and streamed live in
-**Settings → AI logs**. Failures surface there (and inline where you triggered
-them), not just in the console.
+**Settings → AI logs**, now with **token usage** (input / output) per call and a
+**today / 7-day rollup by feature × profile** so the admin whose API key everyone
+spends can see where it goes (tokens only — no dollar math; the model is recorded,
+so compute cost from your provider's prices). Failures surface there (and inline
+where you triggered them), not just in the console.
 
 For debugging integration syncs, each sync can capture the raw provider payload
 (the Health Connect POST body, the Strava activity JSON, the Oura sleep/workout JSON) under

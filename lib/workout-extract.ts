@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { AI_MODEL, aiConfigured, createAiClient } from "./ai-client";
 import { describeError } from "./medical-extract";
 import { createLogger } from "./log";
-import { recordAiEvent, capDetail, LOG_PROMPTS } from "./ai-log";
+import { recordAiEvent, capDetail, LOG_PROMPTS, usageFrom } from "./ai-log";
 import { strOrNull } from "./parse";
 
 const log = createLogger("workout-extract");
@@ -473,6 +473,7 @@ async function extractChunk(
       status: "ok",
       model: MODEL,
       durationMs: Date.now() - startedAt,
+      usage: usageFrom(msg),
       detail: capDetail(
         `workouts — ${workouts.length} workout(s)` +
           (LOG_PROMPTS ? `\nresponse: ${JSON.stringify(input)}` : "")
