@@ -15,6 +15,7 @@ import {
   getBloodType,
   getEmergencyContact,
   getSmokingHistory,
+  getRiskAttributes,
   getMaxHrOverride,
   getZone2WeeklyTargetMin,
 } from "@/lib/settings";
@@ -31,6 +32,7 @@ import ProfileNotificationSettings from "./ProfileNotificationSettings";
 import HomeAssistantNotificationSettings from "./HomeAssistantNotificationSettings";
 import EmergencyCardSettings from "./EmergencyCardSettings";
 import SmokingHistoryForm from "./SmokingHistoryForm";
+import RiskFactorsForm from "./RiskFactorsForm";
 import TrainingZonesForm from "./TrainingZonesForm";
 
 export const dynamic = "force-dynamic";
@@ -91,6 +93,7 @@ export default async function ProfileSettingsPage() {
         />
       )}
       <SmokingHistoryForm history={getSmokingHistory(profile.id)} />
+      <RiskFactorsForm attributes={getRiskAttributes(profile.id)} />
       {!demoRestricted && (
         <>
           <ProfileNotificationSettings

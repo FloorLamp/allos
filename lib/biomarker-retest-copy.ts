@@ -40,10 +40,14 @@ export function biomarkerRetestDetail(o: {
   agoMonths: number;
   intervalMonths: number;
   flag?: MedicalFlag | null;
+  // Calm risk-priority reasons (issue #517) appended so a modulated cadence /
+  // ranked item explains WHY ("Family history of heart disease"). Empty = routine.
+  reasons?: string[];
 }): string {
   const base = `Last tested ${o.effectiveDate} (${o.agoMonths}mo ago) · retest every ${o.intervalMonths}mo`;
-  if (isFlaggedForRetest(o.flag)) {
-    return `${flagLabel(o.flag)} at last test · ${base}`;
-  }
-  return base;
+  const withStatus = isFlaggedForRetest(o.flag)
+    ? `${flagLabel(o.flag)} at last test · ${base}`
+    : base;
+  const reasons = o.reasons?.filter(Boolean) ?? [];
+  return reasons.length ? `${withStatus} · ${reasons.join(", ")}` : withStatus;
 }

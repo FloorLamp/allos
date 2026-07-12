@@ -39,12 +39,20 @@ import {
   biomarkerRetestTitle,
   biomarkerRetestDetail,
 } from "../../biomarker-retest-copy";
+import {
+  retestModulationFor,
+  screeningPriorityFor,
+  isAnchoredOneShotReading,
+} from "../../risk-stratification";
+import { lifeStage } from "../../life-stage";
+import { getRiskFactors } from "./risk";
 import { biomarkerFamily } from "../../canonical-name";
 import { biomarkerDismissalKey } from "../../dismissal-keys";
 import { derivedInputCanonicalNamesFor } from "../../derived-biomarkers";
 import { frequencyScopeLabel } from "../../goals";
 import {
   getUserSex,
+  getUserAgeOn,
   profileAgeMonths,
   getActiveSituations,
 } from "../../settings";
@@ -258,12 +266,24 @@ function immunizationItems(profileId: number, today: string): UpcomingItem[] {
 // proactive nudge so the page and the push can never diverge on WHICH items are due.
 function preventiveItems(profileId: number, today: string): UpcomingItem[] {
   const scheduled = kindedScheduled(profileId);
-  return assessProfilePreventive(profileId, today).actionable.map((a) =>
-    preventiveAssessmentToUpcomingItem(a, {
+  // Risk-stratified priority (issue #517): a screening the profile's risk factors
+  // make more important (family cardiac history → lipid screening) ranks up and
+  // says why, in a calm line. Cadence of the catalog is unchanged — this is the
+  // ranking + explanation side only.
+  const riskFactors = getRiskFactors(profileId);
+  return assessProfilePreventive(profileId, today).actionable.map((a) => {
+    const item = preventiveAssessmentToUpcomingItem(a, {
       today,
       scheduledDate: scheduledMatchForRule(a.key, scheduled, today),
-    })
-  );
+    });
+    const { priority, reasons } = screeningPriorityFor(a.key, riskFactors);
+    if (priority > 0) {
+      item.priority = priority;
+      const suffix = reasons.join(", ");
+      item.detail = item.detail ? `${item.detail} · ${suffix}` : suffix;
+    }
+    return item;
+  });
 }
 
 // Approximate whole months for a span of days, for the cadence due-text
@@ -313,6 +333,10 @@ function biomarkerItems(profileId: number, today: string): UpcomingItem[] {
     if (!prev || r.date > prev.date || (r.date === prev.date && r.id > prev.id))
       byFamily.set(famKey, r);
   }
+  // Risk-stratified cadence + priority (issue #517): family history, active
+  // conditions, and the occupational/immune attributes tighten an analyte's retest
+  // interval and rank it up. Gathered once per profile (request-cached).
+  const riskFactors = getRiskFactors(profileId);
   const items: UpcomingItem[] = [];
   for (const r of byFamily.values()) {
     const name = r.canonical_name?.trim() || r.name;
@@ -325,9 +349,26 @@ function biomarkerItems(profileId: number, today: string): UpcomingItem[] {
       const inputDate = latestDateByFamily.get(biomarkerFamily(input));
       if (inputDate && inputDate > effectiveDate) effectiveDate = inputDate;
     }
-    if (!isBiomarkerStale(effectiveDate, r.category, today, retestDays))
+    // Anchored one-shot (issue #517): a newborn analyte (bilirubin / metabolic
+    // screen) drawn in infancy is a life-stage milestone, not a recurring retest —
+    // skip it entirely so it never nags on a yearly clock. Age is resolved on the
+    // READING date, so an adult bilirubin stays a normal recurring LFT.
+    if (
+      isAnchoredOneShotReading(
+        name,
+        lifeStage(getUserAgeOn(profileId, effectiveDate))
+      )
+    )
       continue;
-    const interval = retestIntervalDays(retestDays);
+    // Modulate the cadence by the matched risk rules (tightest multiplier wins),
+    // then test staleness + band against the MODULATED interval so a high-risk
+    // analyte comes due sooner.
+    const mod = retestModulationFor(name, riskFactors);
+    const interval = Math.max(
+      1,
+      Math.round(retestIntervalDays(retestDays) * mod.multiplier)
+    );
+    if (!isBiomarkerStale(effectiveDate, r.category, today, interval)) continue;
     const agoMonths = monthsApprox(daysBetween(effectiveDate, today));
     items.push({
       key: biomarkerDismissalKey(name),
@@ -341,11 +382,13 @@ function biomarkerItems(profileId: number, today: string): UpcomingItem[] {
         agoMonths,
         intervalMonths: monthsApprox(interval),
         flag: r.flag,
+        reasons: mod.reasons,
       }),
       href: r.canonical_name?.trim()
         ? `/biomarkers/view?name=${encodeURIComponent(name)}`
         : "/biomarkers",
       dueDate: shiftDateStr(effectiveDate, interval),
+      priority: mod.priority,
     });
   }
   return items;
