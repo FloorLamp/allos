@@ -7,7 +7,10 @@ import {
   getUserReproductiveStatus,
   getUserSex,
 } from "../settings";
-import { computeFlagReconciliation } from "../flag-reconcile";
+import {
+  computeFlagReconciliation,
+  computeQualitativeFlagChanges,
+} from "../flag-reconcile";
 import {
   TITER_DISTINCTIVE_TOKENS,
   matchesImmunityMarker,
@@ -883,6 +886,40 @@ export function reconcileFlags(profileId: number, ids?: number[]): number {
     age: storedAge,
     reproductiveStatus,
   });
+  // Qualitative pass (#549): the numeric reconcile above bails on value_num IS NULL,
+  // so a qualitative value's extractor-guessed flag is never revisited. Route those
+  // rows through the shared classifier — promote a durable-immunity titer to "immune"
+  // (#544), clear a blunt "abnormal" on a context-neutral attribute like a blood type
+  // (#548 §1) — leaving infection markers + unrecognized values alone. Same profile
+  // scoping and optional id filter as the numeric pass.
+  let qsql = `SELECT id, canonical_name, name, value, notes, reference_range, flag
+     FROM medical_records
+     WHERE profile_id = ? AND value_num IS NULL AND category IN ('lab','biomarker')`;
+  const qargs: number[] = [profileId];
+  if (ids) {
+    qsql += ` AND id IN (${ids.map(() => "?").join(",")})`;
+    qargs.push(...ids);
+  }
+  const qrows = (
+    db.prepare(qsql).all(...qargs) as {
+      id: number;
+      canonical_name: string | null;
+      name: string;
+      value: string | null;
+      notes: string | null;
+      reference_range: string | null;
+      flag: string | null;
+    }[]
+  ).map((r) => ({
+    id: r.id,
+    name: r.canonical_name?.trim() || r.name,
+    value: r.value,
+    notes: r.notes,
+    reference: r.reference_range,
+    flag: r.flag,
+  }));
+  const qChanges = computeQualitativeFlagChanges(qrows);
+
   const setFlag = db.prepare(
     "UPDATE medical_records SET flag = ? WHERE id = ?"
   );
@@ -890,12 +927,12 @@ export function reconcileFlags(profileId: number, ids?: number[]): number {
     "UPDATE medical_records SET flag = NULL WHERE id = ?"
   );
   writeTx(() => {
-    for (const c of changes) {
+    for (const c of [...changes, ...qChanges]) {
       if (c.flag === null) clear.run(c.id);
       else setFlag.run(c.flag, c.id);
     }
   });
-  return changes.length;
+  return changes.length + qChanges.length;
 }
 
 // ---- Encounters / visits ----

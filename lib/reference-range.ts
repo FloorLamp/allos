@@ -496,6 +496,8 @@ export function flagLabel(flag: string | null | undefined): string {
       return "Low";
     case "abnormal":
       return "Abnormal";
+    case "immune":
+      return "Immune";
     case "non-optimal-high":
       return "Above optimal";
     case "non-optimal-low":
@@ -857,9 +859,11 @@ export function qualitativeFlagResolution(
 // the analyte's curated cadence (null → the flat DEFAULT_RETEST_DAYS), so e.g. a
 // quarterly HbA1c goes stale at 90 days while an uncurated lab still goes stale at
 // 365. Genomics never go stale (genetics don't change). An immune-POSITIVE durable-
-// immunity titer never goes stale either (issue #516) — when the optional `immunity`
-// context is supplied and it's a durable immune-positive result. Boundary: stale
-// strictly AFTER the window (age > interval), matching the original > comparison.
+// immunity titer never goes stale either (issue #516), and — via the shared
+// qualitative classifier (#549) — neither does an IMMUTABLE-attribute result (blood
+// type, genotype), the same "the value can't change" exemption (#548 §2). Both use
+// the optional `immunity` context (the reading's name/flag/value/notes/reference).
+// Boundary: stale strictly AFTER the window (age > interval), matching the original.
 export function isBiomarkerStale(
   latestDate: string | null | undefined,
   category: string | null | undefined,
@@ -869,7 +873,16 @@ export function isBiomarkerStale(
 ): boolean {
   if (!latestDate) return false;
   if (category === "genomics") return false; // genetics don't change
-  if (immunity && isDurableImmunePositive(immunity)) return false; // durable immunity (#516)
+  if (immunity) {
+    if (isDurableImmunePositive(immunity)) return false; // durable immunity (#516)
+    const c = classifyQualitativeResult(
+      immunity.name,
+      immunity.value,
+      immunity.notes,
+      immunity.reference
+    );
+    if (c?.immutable) return false; // immutable attribute — never stale (#548 §2)
+  }
   return daysBetween(latestDate, today) > retestIntervalDays(retestDays);
 }
 

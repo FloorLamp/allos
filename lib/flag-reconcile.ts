@@ -1,5 +1,5 @@
 import { ageFromBirthdate } from "./date";
-import { reconciledFlag } from "./reference-range";
+import { reconciledFlag, qualitativeFlagResolution } from "./reference-range";
 import type { ReproductiveStatus, Sex } from "./types";
 
 // The canonical-ranges shape reconciledFlag needs to judge a value. Kept loose so
@@ -88,6 +88,44 @@ export function computeFlagReconciliation<T>(
       context.sex ?? null,
       ageForRecord(context, r.date),
       context.reproductiveStatus ?? null
+    );
+    if (next === undefined) continue;
+    out.push({ id: r.id, flag: next });
+  }
+  return out;
+}
+
+// A QUALITATIVE (value_num IS NULL) record for the qualitative flag reconcile: the
+// name (canonical_name || name, resolved by the caller), the freetext value/notes/
+// reference the classifier reads, and the current flag.
+export interface QualitativeFlagRow {
+  id: number;
+  name: string;
+  value: string | null;
+  notes: string | null;
+  reference: string | null;
+  flag: string | null;
+}
+
+// The qualitative counterpart of computeFlagReconciliation (issue #549): the numeric
+// reconcile bails on value_num IS NULL, so a qualitative value's extractor-guessed
+// flag is never revisited. This routes each qualitative row through
+// qualitativeFlagResolution (the shared classifier) — promoting a durable-immunity
+// titer to "immune" (#544) and clearing a blunt "abnormal" the classifier judges
+// context-neutral like a blood type (#548 §1) — while leaving infection-positive
+// markers and unrecognized values untouched. `undefined` (no change) is dropped.
+// Shared by queries.reconcileFlags and the boot-time reconcile so they can't drift.
+export function computeQualitativeFlagChanges(
+  rows: QualitativeFlagRow[]
+): FlagChange[] {
+  const out: FlagChange[] = [];
+  for (const r of rows) {
+    const next = qualitativeFlagResolution(
+      r.name,
+      r.value,
+      r.notes,
+      r.reference,
+      r.flag
     );
     if (next === undefined) continue;
     out.push({ id: r.id, flag: next });

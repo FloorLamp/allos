@@ -13,7 +13,12 @@ import canonicalSeed from "./canonical-biomarkers.json";
 // v4: reproductive-status ranges (ranges_by_status) — for female physiology, an
 // explicit menopausal status now overrides the age proxy in referenceRange, so
 // hormone records for a profile with a status set must re-reconcile once.
-export const FLAG_LOGIC_VERSION = 4;
+// v5: qualitative-result classifier (#549) — the flag reconcile now revisits
+// QUALITATIVE (value_num IS NULL) rows the numeric pass always skipped, promoting a
+// durable-immunity titer to "immune" (#544) and clearing a blunt "abnormal" on a
+// context-neutral attribute like a blood type (#548 §1). Existing stored rows must
+// re-reconcile once so the boot pass corrects flags frozen by the extractor's guess.
+export const FLAG_LOGIC_VERSION = 5;
 
 // The canonical fields that can change a record's derived flag: the reference and
 // optimal ranges (incl. sex-specific and age-banded variants), the unit +

@@ -1,7 +1,10 @@
 import type Database from "better-sqlite3";
 import crypto from "node:crypto";
 import canonicalSeed from "../canonical-biomarkers.json";
-import { computeFlagReconciliation } from "../flag-reconcile";
+import {
+  computeFlagReconciliation,
+  computeQualitativeFlagChanges,
+} from "../flag-reconcile";
 import { canonicalFlagsSignature } from "../canonical-flags-version";
 import { hashPasswordSync } from "../password";
 import { extractionLeaseMinutes } from "../extraction-lease";
@@ -416,6 +419,15 @@ function reconcileNonOptimalFlags(db: Database.Database) {
   const clear = db.prepare(
     "UPDATE medical_records SET flag = NULL WHERE id = ?"
   );
+  // Qualitative (value_num IS NULL) rows for the shared classifier pass (#549). It's
+  // profile-independent (a blood type / immunity titer classifies the same for
+  // everyone), so scan them once across all profiles rather than per-profile.
+  const qualRowsStmt = db.prepare(
+    `SELECT id, canonical_name, name, value, notes, reference_range, flag
+       FROM medical_records
+      WHERE value_num IS NULL AND category IN ('lab','biomarker')`
+  );
+
   const run = db.transaction(() => {
     for (const p of profiles) {
       const sex = readSex(p.id);
@@ -443,6 +455,31 @@ function reconcileNonOptimalFlags(db: Database.Database) {
         if (c.flag === null) clear.run(c.id);
         else setFlag.run(c.flag, c.id);
       }
+    }
+    // Qualitative flag reconcile (#549): promote durable-immunity titers to "immune"
+    // (#544) and clear blunt "abnormal" flags on context-neutral attributes (#548 §1),
+    // through the SAME classifier the request-time reconcile uses.
+    const qrows = (
+      qualRowsStmt.all() as {
+        id: number;
+        canonical_name: string | null;
+        name: string;
+        value: string | null;
+        notes: string | null;
+        reference_range: string | null;
+        flag: string | null;
+      }[]
+    ).map((r) => ({
+      id: r.id,
+      name: r.canonical_name?.trim() || r.name,
+      value: r.value,
+      notes: r.notes,
+      reference: r.reference_range,
+      flag: r.flag,
+    }));
+    for (const c of computeQualitativeFlagChanges(qrows)) {
+      if (c.flag === null) clear.run(c.id);
+      else setFlag.run(c.flag, c.id);
     }
   });
   runBootTx(run);

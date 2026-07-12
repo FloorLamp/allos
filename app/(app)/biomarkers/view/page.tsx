@@ -13,6 +13,7 @@ import {
   RANGE_BADGE_META,
   parseReferenceRange,
   parseLooseValue,
+  isDurableImmunityTiter,
   optimalBand,
   referenceRange,
   selectStatusRange,
@@ -470,13 +471,44 @@ export default async function BiomarkerDetailPage(props: {
               </div>
             </div>
           ))}
-        {!pediatricBp && badge !== "unknown" && (
+        {!pediatricBp && badge !== "unknown" && latest.flag !== "immune" && (
           <div>
             <div className="label">Status</div>
             <span className={`badge ${badgeMeta.chip}`}>{badgeMeta.label}</span>
           </div>
         )}
+        {/* A GOOD durable-immunity titer resolves to a neutral "Immune" status, never
+            a red "Abnormal" (#544/#549) — the flag reconcile stores it as "immune". */}
+        {latest.flag === "immune" && (
+          <div data-testid="immune-status">
+            <div className="label">Status</div>
+            <span className="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+              Immune
+            </span>
+          </div>
+        )}
       </div>
+
+      {/* Cross-link to the immunization/immunity surface (#544 part 2): the value
+          lives here, the schedule meaning lives there — a user on either wants the
+          other. Shown only for a durable-immunity titer analyte. */}
+      {isDurableImmunityTiter(canonical) && (
+        <div
+          data-testid="immunity-crosslink"
+          className="card mb-6 flex items-center justify-between gap-3 border-l-4 border-l-emerald-300 text-sm dark:border-l-emerald-700"
+        >
+          <span className="text-slate-700 dark:text-slate-200">
+            <span className="font-semibold">Immunity marker.</span> This titer
+            backs your immunization record.
+          </span>
+          <Link
+            href="/immunizations"
+            className="shrink-0 font-medium text-brand-700 hover:underline dark:text-brand-400"
+          >
+            See immunity status →
+          </Link>
+        </div>
+      )}
 
       {/* Pediatric BP percentile + AAP category (#150) — child BP readings only,
           shown INSTEAD OF the adult thresholds; hidden for adults/non-BP markers. */}
