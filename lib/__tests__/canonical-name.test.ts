@@ -7,7 +7,9 @@ import {
   distinguishVitaminDIsoform,
   vitaminDRetestFamily,
   VITAMIN_D_25OH_FAMILY,
+  canonicalAliases,
 } from "../canonical-name";
+import canonicalSeed from "../canonical-biomarkers.json";
 
 describe("normalizeCanonicalKey", () => {
   it("is case-, punctuation- and order-insensitive", () => {
@@ -180,5 +182,73 @@ describe("vitaminDRetestFamily", () => {
     ).toBeNull();
     expect(vitaminDRetestFamily(null)).toBeNull();
     expect(vitaminDRetestFamily("")).toBeNull();
+  });
+});
+
+describe("canonical aliases (synonym/abbreviation drift)", () => {
+  // The real production vocabulary, so the alias routes are exercised against the
+  // spellings the dataset actually ships.
+  const vocab = (
+    canonicalSeed as { biomarkers: { name: string }[] }
+  ).biomarkers.map((b) => b.name);
+  const index = buildCanonicalIndex(vocab);
+  const rawKeys = new Set(vocab.map((n) => normalizeCanonicalKey(n)));
+
+  it("snaps common lab spellings onto the dataset canonical name", () => {
+    const expectations: [string, string][] = [
+      ["HbA1c", "Hemoglobin A1c"],
+      ["A1c", "Hemoglobin A1c"],
+      ["Glycated Hemoglobin", "Hemoglobin A1c"],
+      ["SGPT", "ALT"],
+      ["Aspartate Aminotransferase", "AST"],
+      ["Urea Nitrogen", "BUN"],
+      ["Thyroid Stimulating Hormone", "TSH"],
+      ["Estimated GFR", "eGFR"],
+      ["Apolipoprotein B", "ApoB"],
+      ["Cobalamin", "Vitamin B12"],
+      ["Folic Acid", "Folate"],
+      ["Bicarbonate", "Carbon Dioxide"],
+      ["Retinol", "Vitamin A (Retinol)"],
+      // "Full Name (ABBREV)" entries: both the bare abbrev and the full name snap.
+      ["FSH", "Follicle Stimulating Hormone (FSH)"],
+      ["Follicle Stimulating Hormone", "Follicle Stimulating Hormone (FSH)"],
+      ["CK", "Creatine Kinase (CK)"],
+      ["Creatine Kinase", "Creatine Kinase (CK)"],
+      ["SHBG", "Sex Hormone Binding Globulin (SHBG)"],
+      ["Anti-TPO", "Thyroid Peroxidase Antibodies (TPOAb)"],
+    ];
+    for (const [spelling, canonical] of expectations) {
+      expect(snapCanonicalName(spelling, index)).toBe(canonical);
+    }
+  });
+
+  it("keeps genuinely distinct assays apart (no over-merging)", () => {
+    // Plain CRP is a different assay than hs-CRP — must not alias onto it.
+    expect(snapCanonicalName("CRP", index)).not.toBe("hs-CRP");
+    expect(snapCanonicalName("C-Reactive Protein", index)).not.toBe("hs-CRP");
+    // Free testosterone stays on its own series — the aliases never route a
+    // fraction onto the total (it snaps to the free entry by word order, not total).
+    expect(snapCanonicalName("Free Testosterone", index)).toBe(
+      "Testosterone, Free"
+    );
+    expect(snapCanonicalName("Testosterone, Free", index)).not.toBe(
+      "Testosterone, Total"
+    );
+  });
+
+  it("every alias targets a REAL dataset entry and shadows no distinct analyte", () => {
+    for (const [alias, canonical] of canonicalAliases()) {
+      // Target is a real seeded canonical name.
+      expect(rawKeys.has(normalizeCanonicalKey(canonical))).toBe(true);
+      // The alias key never collides with a DIFFERENT real analyte (a real entry
+      // always wins in buildCanonicalIndex; this pins that no alias was written to
+      // shadow one).
+      const aliasKey = normalizeCanonicalKey(alias);
+      if (rawKeys.has(aliasKey)) {
+        expect(normalizeCanonicalKey(canonical)).toBe(aliasKey);
+      }
+      // And it resolves through the production index.
+      expect(snapCanonicalName(alias, index)).toBe(canonical);
+    }
   });
 });

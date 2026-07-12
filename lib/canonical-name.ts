@@ -39,16 +39,148 @@ export function normalizeCanonicalKey(name: string): string {
   return tokens.join(" ");
 }
 
+// Curated alias -> canonical-name routes for synonym/abbreviation drift.
+// normalizeCanonicalKey folds case, punctuation and word order (plus the
+// vitamin-D synonyms), but NOT abbreviation<->spelled-out or clinical synonyms —
+// so a lab report's spelling that the extractor mirrors ("HbA1c", "SGPT", a bare
+// "FSH") lands in its OWN biomarker series instead of the dataset entry, and once
+// it's registered as an ai-coined name it permanently pollutes the vocabulary
+// (the self-reinforcing loop this module exists to prevent). Each entry routes one
+// such spelling onto an EXISTING dataset canonical name (the right column must be
+// a real seeded name — the alias is dropped if that target isn't in the active
+// vocabulary). Discipline: alias ONLY spellings of the SAME analyte — never merge
+// genuinely distinct assays (plain CRP vs hs-CRP, Free vs Total hormone fractions,
+// a serum vs a urine/RBC specimen, a total vs an active metabolite). A dataset
+// entry written "Full Name (ABBREV)" needs BOTH the bare abbreviation AND the bare
+// full name aliased, since its combined-token key matches neither alone.
+const CANONICAL_ALIASES: [string, string][] = [
+  // Glycated hemoglobin
+  ["HbA1c", "Hemoglobin A1c"],
+  ["Hgb A1c", "Hemoglobin A1c"],
+  ["A1c", "Hemoglobin A1c"],
+  ["Glycated Hemoglobin", "Hemoglobin A1c"],
+  ["Glycosylated Hemoglobin", "Hemoglobin A1c"],
+  ["Glycohemoglobin", "Hemoglobin A1c"],
+  // Liver enzymes (legacy SGPT/SGOT spellings)
+  ["Alanine Aminotransferase", "ALT"],
+  ["Alanine Transaminase", "ALT"],
+  ["SGPT", "ALT"],
+  ["Aspartate Aminotransferase", "AST"],
+  ["Aspartate Transaminase", "AST"],
+  ["SGOT", "AST"],
+  ["Gamma-Glutamyl Transferase", "GGT"],
+  ["Gamma-Glutamyl Transpeptidase", "GGT"],
+  ["Gamma GT", "GGT"],
+  ["GGTP", "GGT"],
+  // Renal
+  ["Urea Nitrogen", "BUN"],
+  ["Blood Urea Nitrogen", "BUN"],
+  ["Estimated GFR", "eGFR"],
+  ["GFR, Estimated", "eGFR"],
+  ["Glomerular Filtration Rate, Estimated", "eGFR"],
+  // Thyroid
+  ["Thyroid Stimulating Hormone", "TSH"],
+  ["Thyrotropin", "TSH"],
+  // Inflammation (high-sensitivity ONLY — plain CRP is a distinct assay)
+  ["hsCRP", "hs-CRP"],
+  ["High Sensitivity CRP", "hs-CRP"],
+  ["High-Sensitivity C-Reactive Protein", "hs-CRP"],
+  ["C-Reactive Protein, High Sensitivity", "hs-CRP"],
+  ["Cardio CRP", "hs-CRP"],
+  // Prostate (unqualified PSA = total; the Free % entry stays distinct)
+  ["Prostate Specific Antigen", "PSA"],
+  ["Prostate-Specific Antigen", "PSA"],
+  ["Prostate Specific Antigen, Total", "PSA"],
+  ["PSA, Total", "PSA"],
+  // Lipids / apolipoprotein
+  ["Apolipoprotein B", "ApoB"],
+  ["Apo B", "ApoB"],
+  ["Apolipoprotein B-100", "ApoB"],
+  // Iron
+  ["Total Iron Binding Capacity", "TIBC"],
+  // Vitamins / cofactors
+  ["B12", "Vitamin B12"],
+  ["Vitamin B-12", "Vitamin B12"],
+  ["Cobalamin", "Vitamin B12"],
+  ["Cyanocobalamin", "Vitamin B12"],
+  ["Folic Acid", "Folate"],
+  ["Vitamin B9", "Folate"],
+  ["Retinol", "Vitamin A (Retinol)"],
+  ["Vitamin A", "Vitamin A (Retinol)"],
+  // Electrolytes (the BMP CO2/bicarbonate line)
+  ["CO2", "Carbon Dioxide"],
+  ["Total CO2", "Carbon Dioxide"],
+  ["Bicarbonate", "Carbon Dioxide"],
+  ["HCO3", "Carbon Dioxide"],
+  // Hormones / metabolites
+  ["DHEA-S", "DHEA-Sulfate"],
+  ["DHEAS", "DHEA-Sulfate"],
+  ["Dehydroepiandrosterone Sulfate", "DHEA-Sulfate"],
+  ["Urate", "Uric Acid"],
+  ["IGF-I", "IGF-1"],
+  ["Insulin-like Growth Factor 1", "IGF-1"],
+  ["Insulin-Like Growth Factor-1", "IGF-1"],
+  ["Somatomedin C", "IGF-1"],
+  // "Full Name (ABBREV)" entries: alias BOTH the abbreviation and the full name.
+  ["CK", "Creatine Kinase (CK)"],
+  ["CPK", "Creatine Kinase (CK)"],
+  ["Creatine Phosphokinase", "Creatine Kinase (CK)"],
+  ["Creatine Kinase", "Creatine Kinase (CK)"],
+  ["Creatine Kinase, Total", "Creatine Kinase (CK)"],
+  ["LDH", "Lactate Dehydrogenase (LDH)"],
+  ["Lactate Dehydrogenase", "Lactate Dehydrogenase (LDH)"],
+  ["ESR", "Erythrocyte Sedimentation Rate (ESR)"],
+  ["Sed Rate", "Erythrocyte Sedimentation Rate (ESR)"],
+  ["Sedimentation Rate", "Erythrocyte Sedimentation Rate (ESR)"],
+  ["Erythrocyte Sedimentation Rate", "Erythrocyte Sedimentation Rate (ESR)"],
+  ["FSH", "Follicle Stimulating Hormone (FSH)"],
+  ["Follicle Stimulating Hormone", "Follicle Stimulating Hormone (FSH)"],
+  ["Follicle-Stimulating Hormone", "Follicle Stimulating Hormone (FSH)"],
+  ["LH", "Luteinizing Hormone (LH)"],
+  ["Luteinizing Hormone", "Luteinizing Hormone (LH)"],
+  ["SHBG", "Sex Hormone Binding Globulin (SHBG)"],
+  ["Sex Hormone Binding Globulin", "Sex Hormone Binding Globulin (SHBG)"],
+  ["Sex Hormone-Binding Globulin", "Sex Hormone Binding Globulin (SHBG)"],
+  ["RF", "Rheumatoid Factor (RF)"],
+  ["Rheumatoid Factor", "Rheumatoid Factor (RF)"],
+  ["TgAb", "Thyroglobulin Antibodies (TgAb)"],
+  ["Anti-Thyroglobulin", "Thyroglobulin Antibodies (TgAb)"],
+  ["Anti-Thyroglobulin Antibody", "Thyroglobulin Antibodies (TgAb)"],
+  ["Thyroglobulin Antibody", "Thyroglobulin Antibodies (TgAb)"],
+  ["Thyroglobulin Ab", "Thyroglobulin Antibodies (TgAb)"],
+  ["TPOAb", "Thyroid Peroxidase Antibodies (TPOAb)"],
+  ["Anti-TPO", "Thyroid Peroxidase Antibodies (TPOAb)"],
+  ["TPO Antibody", "Thyroid Peroxidase Antibodies (TPOAb)"],
+  ["Thyroid Peroxidase Antibody", "Thyroid Peroxidase Antibodies (TPOAb)"],
+  ["Thyroid Peroxidase Ab", "Thyroid Peroxidase Antibodies (TPOAb)"],
+  ["Anti-Thyroid Peroxidase", "Thyroid Peroxidase Antibodies (TPOAb)"],
+];
+
 // Build a normalized-key -> canonical-spelling lookup from a vocabulary list.
 // On key collision the first entry wins (vocabulary is passed in the caller's
-// preferred order — seeded/curated names sort ahead of ai-coined ones).
+// preferred order — seeded/curated names sort ahead of ai-coined ones). Curated
+// CANONICAL_ALIASES are layered on AFTER the real entries, and only for a target
+// name present in this vocabulary: a real entry always wins a key collision, so
+// an alias can only ADD a route to an existing analyte, never hijack a distinct one.
 export function buildCanonicalIndex(vocabulary: string[]): Map<string, string> {
   const index = new Map<string, string>();
   for (const name of vocabulary) {
     const key = normalizeCanonicalKey(name);
     if (key && !index.has(key)) index.set(key, name);
   }
+  for (const [alias, canonical] of CANONICAL_ALIASES) {
+    const aliasKey = normalizeCanonicalKey(alias);
+    if (!aliasKey || index.has(aliasKey)) continue;
+    const target = index.get(normalizeCanonicalKey(canonical));
+    if (target) index.set(aliasKey, target);
+  }
   return index;
+}
+
+// The curated alias routes, exposed for the vocabulary-integrity test (it pins
+// that every target is a real dataset entry and no alias shadows a distinct one).
+export function canonicalAliases(): readonly [string, string][] {
+  return CANONICAL_ALIASES;
 }
 
 // Snap a model-produced canonical name onto a known vocabulary entry when they
