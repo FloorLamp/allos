@@ -169,10 +169,13 @@ function parseDoses(formData: FormData): DoseInput[] {
     : [{ amount: null, time_of_day: null, food_timing: "any" }];
 }
 
+// Stamp created_at so the adherence-pattern window starts at the dose's real birth,
+// not the parent item's (#430). SQLite forbids datetime('now') as an ADD COLUMN
+// default, so the write path sets it explicitly.
 const insertDoseStmt = () =>
   db.prepare(
-    `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
-     VALUES (?,?,?,?,?)`
+    `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort, created_at)
+     VALUES (?,?,?,?,?, datetime('now'))`
   );
 
 // Insert a fresh set of doses for a supplement (used on add + accept). Must run
@@ -383,14 +386,30 @@ export async function updateSupplement(formData: FormData) {
     // a brand/dosage edit. The retired = 0 guard keeps a forged/stale id from
     // rewriting a retired dose's row, which history still displays through.
     const ins = insertDoseStmt();
+    // Bump updated_at only when the slot actually changes (#430): a re-time
+    // (evening → morning) restarts the adherence-pattern window so the engine
+    // stops re-accusing the OLD slot, but a pure amount/food edit leaves the
+    // dose's lifetime — and its miss history — where it was. `IS NOT` compares
+    // NULL-safely.
     const upd = db.prepare(
-      `UPDATE intake_item_doses SET amount = ?, time_of_day = ?, food_timing = ?, sort = ?
-       WHERE id = ? AND item_id = ? AND retired = 0`
+      `UPDATE intake_item_doses
+          SET amount = ?, time_of_day = ?, food_timing = ?, sort = ?,
+              updated_at = CASE WHEN time_of_day IS NOT ? THEN datetime('now')
+                                ELSE updated_at END
+        WHERE id = ? AND item_id = ? AND retired = 0`
     );
     const keptIds: number[] = [];
     doses.forEach((d, i) => {
       if (d.id) {
-        upd.run(d.amount, d.time_of_day, d.food_timing, i, d.id, id);
+        upd.run(
+          d.amount,
+          d.time_of_day,
+          d.food_timing,
+          i,
+          d.time_of_day,
+          d.id,
+          id
+        );
         keptIds.push(d.id);
       } else {
         const info = ins.run(id, d.amount, d.time_of_day, d.food_timing, i);

@@ -1,0 +1,4 @@
+
+# sha256 hex digests of migration files — digit runs can coincidentally Luhn-validate
+# as NPI-shaped numbers; the file contains only content hashes, never identifiers.
+lib/migrations/manifest.json

@@ -17,6 +17,7 @@ import {
   getExerciseSetCountsSince,
   getExerciseE1rmSeries,
   getWeights,
+  getBodyMetricDailySeries,
   getGoals,
   getSupplements,
   getSupplementDoses,
@@ -48,14 +49,20 @@ import {
   detectFastWeightLoss,
   goalPaceSignalKey,
   weightLossRateSignalKey,
+  GOAL_PACE_WINDOW_DAYS,
 } from "./goal-pacing";
 import {
   detectAdherencePatterns,
+  doseAdherenceSince,
   ADHERENCE_PATTERN_DAYS,
   type AdherencePattern,
   type DoseAdherenceInput,
 } from "./adherence-patterns";
-import { doseStrip, indexTakenByDose } from "./supplement-adherence";
+import {
+  doseStrip,
+  indexTakenByDose,
+  stripWithoutTrailingPending,
+} from "./supplement-adherence";
 import { isDueOn, timeBucket } from "./supplement-schedule";
 
 // ---- Domain 4: training balance + plateau (Training → Overview) -----------
@@ -130,8 +137,8 @@ function weightAnomalyToFinding(a: WeightAnomaly, wu: WeightUnit): Finding {
       `${prev} on ${formatLongDate(a.prevDate)} — that looks like a kg/lb entry ` +
       `mix-up. Fixing or converting it keeps your weight trend honest.`
     : `On ${formatLongDate(a.date)} you logged ${cur}, ${pct}% ${dir} from ` +
-      `${prev} on ${formatLongDate(a.prevDate)} — a jump that big in a day or ` +
-      `two is usually a scale glitch. Check the entry and fix or delete it.`;
+      `${prev} on ${formatLongDate(a.prevDate)} — a jump that big over just a ` +
+      `few days is usually a scale glitch. Check the entry and fix or delete it.`;
   return {
     domain: "body-hygiene",
     dedupeKey: weightAnomalySignalKey(a.id),
@@ -176,10 +183,16 @@ export function buildGoalPacingFindings(
 ): Finding[] {
   const findings: Finding[] = [];
 
-  // Weight readings in canonical kg, ascending, as projection input.
-  const weightPoints = getWeights(profileId)
-    .map((w) => ({ date: w.date, value: w.weight_kg }))
-    .sort((a, b) => a.date.localeCompare(b.date));
+  // Weight readings in canonical kg, ascending, as projection input. The SAME
+  // primary-source-collapsed daily series (one row/day, #14) the Trends → Body
+  // chart caption charts — not the raw all-source getWeights rows — windowed to the
+  // shared GOAL_PACE_WINDOW_DAYS so the finding and the caption run projectGoal over
+  // identical points and can't disagree (#433). getBodyMetricDailySeries already
+  // returns oldest→newest.
+  const windowStart = shiftDateStr(today, -(GOAL_PACE_WINDOW_DAYS - 1));
+  const weightPoints = getBodyMetricDailySeries(profileId, "weight").filter(
+    (p) => p.date >= windowStart
+  );
 
   // Off-pace body-metric goals. Only weight goals have a metric series here
   // (getWeights); body-fat / resting-HR goals would need their own series and are a
@@ -289,21 +302,38 @@ export function buildAdherencePatternFindings(
     // Only active, scheduled (non-PRN) items produce due days to miss.
     if (!supp || !supp.active || supp.as_needed) continue;
     const status = takenByDose.get(d.id);
-    const strip = doseStrip(
-      dates,
-      (date) =>
-        isDueOn(supp, {
-          isWorkoutDay: workoutDays.has(date),
-          activeSituations,
-        }),
-      status?.taken ?? new Set(),
-      status?.skipped ?? new Set()
+    // Clamp the window to the dose's lifetime (#430): a day before the dose
+    // existed with its current schedule is not a "miss" it defeated the
+    // min-history gate with, nor a slot it can be re-accused of. `since` is the
+    // later of the item's creation and this dose's last re-time.
+    const since = doseAdherenceSince(
+      supp.created_at,
+      d.created_at,
+      d.updated_at
+    );
+    const windowDates = since ? dates.filter((date) => date >= since) : dates;
+    const strip = stripWithoutTrailingPending(
+      doseStrip(
+        windowDates,
+        (date) =>
+          isDueOn(supp, {
+            isWorkoutDay: workoutDays.has(date),
+            activeSituations,
+          }),
+        status?.taken ?? new Set(),
+        status?.skipped ?? new Set()
+      )
     );
     inputs.push({
       doseId: d.id,
       supplementName: supp.name,
       bucket: timeBucket(d.time_of_day),
       strip,
+      // "Move it earlier" is wrong advice for a bedtime slot or a prescribed
+      // medication (#430.4) — fall back to the neutral reminder copy.
+      suppressMoveSuggestion:
+        timeBucket(d.time_of_day) === "Before sleep" ||
+        supp.kind === "medication",
     });
   }
 
