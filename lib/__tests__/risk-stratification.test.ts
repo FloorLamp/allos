@@ -107,6 +107,34 @@ describe("retestModulationFor", () => {
     }
   });
 
+  it("tightens glucose + CBC/ferritin cadence and ranks up for pregnancy (#521)", () => {
+    const pregnant = new Set<RiskFactor>(["pregnant"]);
+    // Gestational-diabetes screening → glucose retested sooner + ranked up.
+    const glucose = retestModulationFor("Glucose", pregnant);
+    expect(glucose.multiplier).toBe(0.5);
+    expect(glucose.priority).toBe(2);
+    expect(glucose.reasons).toEqual([
+      "Pregnancy — gestational diabetes screening",
+    ]);
+    // Anemia screening → CBC analytes + ferritin retested sooner.
+    for (const name of ["Hemoglobin", "Hematocrit", "Ferritin"]) {
+      const mod = retestModulationFor(name, pregnant);
+      expect(mod.multiplier, name).toBe(0.5);
+      expect(mod.priority, name).toBe(2);
+      expect(mod.reasons, name).toEqual(["Pregnancy — anemia screening"]);
+    }
+  });
+
+  it("does NOT modulate an uncurated pregnancy analyte (conservative curation)", () => {
+    const pregnant = new Set<RiskFactor>(["pregnant"]);
+    // TSH is deliberately NOT modeled (no universal thyroid-screening rec), and the
+    // exact-name match must not let 'Hemoglobin' leak onto 'Hemoglobin A1c'.
+    expect(retestModulationFor("TSH", pregnant)).toEqual(NO_MODULATION);
+    expect(retestModulationFor("Hemoglobin A1c", pregnant)).toEqual(
+      NO_MODULATION
+    );
+  });
+
   it("takes the tightest multiplier and highest priority when several rules match", () => {
     // A dialysis patient with cardiac family history: the hep-A rule (0.5/p1) and
     // the CKD rule don't overlap analytes, but stacking two immune factors on the
@@ -130,6 +158,12 @@ describe("screeningPriorityFor", () => {
     );
     expect(p.priority).toBe(2);
     expect(p.reasons).toEqual(["Family history of heart disease"]);
+  });
+
+  it("ranks up the diabetes screening for pregnancy (#521)", () => {
+    const p = screeningPriorityFor("diabetes_screening", new Set(["pregnant"]));
+    expect(p.priority).toBe(2);
+    expect(p.reasons).toEqual(["Pregnancy — gestational diabetes screening"]);
   });
 
   it("is neutral for an unrelated screening or no matching factor", () => {

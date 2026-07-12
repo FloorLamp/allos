@@ -41,17 +41,20 @@ describe("screenings.json dataset", () => {
     expect(committed).toBe(generated);
   });
 
-  it("carries the core USPSTF grade A/B screening set, with depression added", () => {
+  it("carries the core USPSTF grade A/B screening set, with depression/anxiety/HIV/hep-B added", () => {
     const keys = ROWS.map((s) => s.key).sort();
     expect(keys).toEqual(
       [
         "aaa_ultrasound",
+        "anxiety_screening",
         "blood_pressure",
         "cervical_cancer",
         "colorectal_cancer",
         "depression_screening",
         "diabetes_screening",
+        "hepatitis_b",
         "hepatitis_c",
+        "hiv_screening",
         "lipid_screening",
         "lung_cancer_ldct",
         "mammography",
@@ -113,5 +116,38 @@ describe("screenings.json dataset", () => {
     expect(dep.schedule.startMonths).toBe(12 * 12); // from age 12
     expect(dep.schedule.intervalMonths).toBe(12);
     expect(dep.citation.grade).toBe("B");
+  });
+
+  it("adds anxiety screening for ages 8–64 (grade B, ≥65 excluded), annual cadence", () => {
+    const anx = ROWS.find((s) => s.key === "anxiety_screening")!;
+    expect(anx.sex).toBeUndefined();
+    expect(anx.schedule.startMonths).toBe(8 * 12); // from age 8
+    expect(anx.schedule.endMonths).toBe(65 * 12); // through 64 (≥65 is an I statement)
+    expect(anx.schedule.intervalMonths).toBe(12);
+    expect(anx.citation.grade).toBe("B");
+    expect(anx.riskGated).toBeFalsy();
+  });
+
+  it("adds one-time HIV screening for ages 15–65 (grade A, universal, not risk-gated)", () => {
+    const hiv = ROWS.find((s) => s.key === "hiv_screening")!;
+    expect(hiv.sex).toBeUndefined();
+    expect(hiv.schedule.startMonths).toBe(15 * 12);
+    expect(hiv.schedule.endMonths).toBe(65 * 12);
+    expect(hiv.schedule.intervalMonths).toBeUndefined(); // once-in-window
+    expect(hiv.citation.grade).toBe("A");
+    expect(hiv.riskGated).toBeFalsy();
+  });
+
+  it("ships hepatitis B risk-gated (risk-defined population, inert until an input exists)", () => {
+    const hbv = ROWS.find((s) => s.key === "hepatitis_b")!;
+    expect(hbv.riskGated).toBe(true);
+    expect(hbv.schedule.intervalMonths).toBeUndefined(); // once-in-window
+    expect(hbv.citation.grade).toBe("B");
+  });
+
+  it("aligns lipid screening to the honest 40–75 statin-prevention band", () => {
+    const lipid = ROWS.find((s) => s.key === "lipid_screening")!;
+    expect(lipid.schedule.startMonths).toBe(40 * 12); // from 40, not 35
+    expect(lipid.schedule.endMonths).toBe(76 * 12); // through 75
   });
 });

@@ -217,21 +217,41 @@ const CONCEPTS: RawConcept[] = [
   },
   // Cardiac / metabolic
   {
+    // CYP3A4-MAJOR statins only — simvastatin/lovastatin exposure rises sharply
+    // with a CYP3A4 inhibitor (major myopathy risk). Atorvastatin, a CYP3A4
+    // substrate with a much smaller effect, is split into its own concept below
+    // so it isn't mislabeled "major" with a macrolide/azole (issue #437).
     key: "statin",
-    label:
-      "Statins metabolized by CYP3A4 (simvastatin, lovastatin, atorvastatin)",
-    rxcuis: ["36567", "6472", "83367"],
+    label: "Statins strongly affected by CYP3A4 (simvastatin, lovastatin)",
+    rxcuis: ["36567", "6472"],
     synonyms: [
       "simvastatin",
       "zocor",
       "lovastatin",
       "mevacor",
+      // Combination brand containing a CYP3A4-major statin (issue #279).
+      "vytorin", // ezetimibe/simvastatin
+    ],
+  },
+  {
+    // Atorvastatin — a CYP3A4 substrate, but the interaction magnitude with
+    // CYP3A4 inhibitors is moderate, not major (issue #437). Kept separate from
+    // `statin` so the severities differ correctly.
+    key: "atorvastatin",
+    label: "Atorvastatin",
+    rxcuis: ["83367"],
+    synonyms: [
       "atorvastatin",
       "lipitor",
-      // Combination brands containing a CYP3A4 statin (issue #279).
-      "vytorin", // ezetimibe/simvastatin
+      // Combination brand containing atorvastatin (issue #279).
       "caduet", // amlodipine/atorvastatin
     ],
+  },
+  {
+    key: "gemfibrozil",
+    label: "Gemfibrozil",
+    rxcuis: ["4719"],
+    synonyms: ["gemfibrozil", "lopid"],
   },
   {
     key: "macrolide",
@@ -270,6 +290,43 @@ const CONCEPTS: RawConcept[] = [
     label: "Lithium",
     rxcuis: ["6448"],
     synonyms: ["lithium", "lithobid", "eskalith"],
+  },
+  {
+    key: "loop_thiazide_diuretic",
+    label: "Loop / thiazide diuretics (furosemide, hydrochlorothiazide, …)",
+    rxcuis: ["4603", "5487"],
+    synonyms: [
+      "furosemide",
+      "lasix",
+      "torsemide",
+      "bumetanide",
+      "bumex",
+      "hydrochlorothiazide",
+      "hctz",
+      "chlorthalidone",
+      "indapamide",
+      "metolazone",
+      "thiazide",
+      "loop diuretic",
+    ],
+  },
+  {
+    key: "allopurinol",
+    label: "Allopurinol",
+    rxcuis: ["519"],
+    synonyms: ["allopurinol", "zyloprim", "aloprim"],
+  },
+  {
+    key: "azathioprine",
+    label: "Azathioprine",
+    rxcuis: ["1256"],
+    synonyms: ["azathioprine", "imuran", "azasan"],
+  },
+  {
+    key: "acetaminophen",
+    label: "Acetaminophen (paracetamol)",
+    rxcuis: ["161"],
+    synonyms: ["acetaminophen", "tylenol", "paracetamol", "apap"],
   },
   {
     key: "methotrexate",
@@ -703,6 +760,22 @@ const INTERACTIONS: RawInteraction[] = [
       "Ibuprofen and other NSAIDs can block aspirin's cardioprotective antiplatelet effect and add GI-bleeding risk.",
     source: "FDA aspirin/ibuprofen labeling (DailyMed)",
   },
+  {
+    a: "nsaid",
+    b: "ssri",
+    severity: "moderate",
+    mechanism:
+      "SSRIs impair platelet aggregation and NSAIDs injure the GI mucosa, so together they raise the risk of upper-GI bleeding.",
+    source: "NIH MedlinePlus; FDA SSRI prescribing information (DailyMed)",
+  },
+  {
+    a: "acetaminophen",
+    b: "warfarin",
+    severity: "moderate",
+    mechanism:
+      "Regular (chronic or high-dose) acetaminophen can raise the INR and increase bleeding risk with warfarin; occasional single doses are lower-risk.",
+    source: "FDA warfarin prescribing information (DailyMed); NIH MedlinePlus",
+  },
 
   // ---- Serotonin syndrome ----
   {
@@ -798,12 +871,44 @@ const INTERACTIONS: RawInteraction[] = [
     source: "FDA simvastatin prescribing information (DailyMed)",
   },
   {
-    a: "statin",
-    b: "azole_antifungal",
+    a: "azole_antifungal",
+    b: "statin",
     severity: "major",
     mechanism:
       "Azole antifungals inhibit CYP3A4, increasing statin levels and the risk of muscle injury (rhabdomyolysis).",
     source: "FDA simvastatin prescribing information (DailyMed)",
+  },
+  {
+    a: "atorvastatin",
+    b: "macrolide",
+    severity: "moderate",
+    mechanism:
+      "Clarithromycin/erythromycin inhibit CYP3A4 and raise atorvastatin levels, increasing myopathy risk — but less than with simvastatin/lovastatin.",
+    source: "FDA atorvastatin prescribing information (DailyMed)",
+  },
+  {
+    a: "atorvastatin",
+    b: "azole_antifungal",
+    severity: "moderate",
+    mechanism:
+      "Azole antifungals inhibit CYP3A4 and raise atorvastatin levels, increasing myopathy risk — but less than with simvastatin/lovastatin.",
+    source: "FDA atorvastatin prescribing information (DailyMed)",
+  },
+  {
+    a: "gemfibrozil",
+    b: "statin",
+    severity: "major",
+    mechanism:
+      "Gemfibrozil raises statin exposure and independently causes myopathy, sharply increasing rhabdomyolysis risk (gemfibrozil + simvastatin is contraindicated).",
+    source: "FDA simvastatin & gemfibrozil prescribing information (DailyMed)",
+  },
+  {
+    a: "atorvastatin",
+    b: "gemfibrozil",
+    severity: "major",
+    mechanism:
+      "Gemfibrozil raises atorvastatin exposure and adds its own myopathy risk, increasing the chance of muscle injury/rhabdomyolysis.",
+    source: "FDA atorvastatin & gemfibrozil prescribing information (DailyMed)",
   },
 
   // ---- Methotrexate ----
@@ -910,6 +1015,22 @@ const INTERACTIONS: RawInteraction[] = [
     mechanism:
       "Clarithromycin/erythromycin raise digoxin levels, increasing the risk of digoxin toxicity (nausea, arrhythmia).",
     source: "FDA digoxin prescribing information (DailyMed)",
+  },
+  {
+    a: "digoxin",
+    b: "loop_thiazide_diuretic",
+    severity: "moderate",
+    mechanism:
+      "Loop and thiazide diuretics can lower potassium and magnesium, which increases the risk of digoxin toxicity and arrhythmia.",
+    source: "FDA digoxin prescribing information (DailyMed)",
+  },
+  {
+    a: "allopurinol",
+    b: "azathioprine",
+    severity: "major",
+    mechanism:
+      "Allopurinol blocks xanthine-oxidase breakdown of azathioprine, raising its active metabolites and the risk of severe bone-marrow suppression; the azathioprine dose must be sharply reduced or the pair avoided.",
+    source: "FDA azathioprine prescribing information (DailyMed)",
   },
   {
     a: "lithium",

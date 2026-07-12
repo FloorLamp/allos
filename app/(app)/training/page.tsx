@@ -1,4 +1,3 @@
-import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/ui";
 import Tabs from "@/components/Tabs";
 import { requireSession } from "@/lib/auth";
@@ -7,6 +6,7 @@ import OverviewSection from "./OverviewSection";
 import HistorySection from "./HistorySection";
 import AnalyzeSection from "./AnalyzeSection";
 import GoalsSection from "./GoalsSection";
+import RestrictedActivityView from "./RestrictedActivityView";
 
 export const dynamic = "force-dynamic";
 
@@ -16,10 +16,12 @@ export default async function TrainingPage(props: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const searchParams = await props.searchParams;
-  // Hidden for age-restricted profiles; the nav link is gone, this bounces any
-  // direct navigation back to the dashboard (see lib/age-gate.ts).
+  // Type-aware training restriction (#489): a minor keeps age-neutral sport/cardio
+  // tracking via a lightweight activity log instead of losing the surface outright.
+  // The adult hub below (strength e1RM/standards, fitness-age, coaching, goals)
+  // stays gated — this branch swaps it for the sport/cardio log.
   const { profile } = await requireSession();
-  if (isTrainingRestricted(profile.id)) redirect("/");
+  if (isTrainingRestricted(profile.id)) return <RestrictedActivityView />;
   return (
     <div>
       <PageHeader

@@ -43,10 +43,11 @@ describe("isGroupActive", () => {
 });
 
 describe("isNavLeafVisible", () => {
-  // Mirrors Nav's RESTRICTED_HREFS after the sidebar consolidation: Training is
-  // the only top-level age-gated route (AI Insights moved into the Trends
-  // "Insights" tab, which the Trends page gates server-side).
-  const restrictedHrefs = new Set(["/training"]);
+  // The production RESTRICTED_HREFS is EMPTY since #489 (Training is no longer
+  // nav-gated — a restricted profile keeps a lightweight sport/cardio log there),
+  // so this exercises the pure mechanism against a hypothetical gated route to
+  // prove a future gated href would still be hidden.
+  const restrictedHrefs = new Set(["/__gated__"]);
   const ctx = (over: Partial<Parameters<typeof isNavLeafVisible>[1]> = {}) => ({
     isAdmin: true,
     restricted: false,
@@ -101,14 +102,22 @@ describe("isNavLeafVisible", () => {
 
   it("honors the age-gate only for hrefs in the restricted set", () => {
     expect(
-      isNavLeafVisible({ href: "/training" }, ctx({ restricted: true }))
+      isNavLeafVisible({ href: "/__gated__" }, ctx({ restricted: true }))
     ).toBe(false);
     expect(
       isNavLeafVisible({ href: "/biomarkers" }, ctx({ restricted: true }))
     ).toBe(true);
-    // Not restricted: age-gated href still shows.
+    // Not restricted: even a gated href still shows.
     expect(
-      isNavLeafVisible({ href: "/training" }, ctx({ restricted: false }))
+      isNavLeafVisible({ href: "/__gated__" }, ctx({ restricted: false }))
+    ).toBe(true);
+  });
+
+  it("keeps /training visible to a restricted profile (#489 is type-aware)", () => {
+    // Training is no longer nav-gated — the page adapts (lightweight sport/cardio
+    // log) rather than hiding, so a restricted profile must still see the link.
+    expect(
+      isNavLeafVisible({ href: "/training" }, ctx({ restricted: true }))
     ).toBe(true);
   });
 });

@@ -117,12 +117,15 @@ const entries: Entry[] = [
   { href: "/settings", label: "Settings", icon: IconSettings },
 ];
 
-// Nav entries hidden for age-restricted profiles (see lib/age-gate.ts). Training
-// is the only remaining top-level gated route (AI Insights moved into the Trends
-// "Insights" tab, which the Trends page itself gates server-side). None of the
-// Medical group's children are age-gated, but the group's children are filtered
-// against this set too so a future gated child would be dropped.
-const RESTRICTED_HREFS = new Set(["/training"]);
+// Nav entries FULLY hidden for age-restricted profiles (see lib/age-gate.ts).
+// Empty since #489: Training is no longer all-or-nothing — a restricted profile
+// keeps a lightweight sport/cardio activity log there (the page swaps in
+// RestrictedActivityView and gates only the adult strength/analytics content), so
+// the nav link must stay reachable. AI Insights already folded into the Trends
+// "Insights" tab (server-gated), and no other top-level route is age-gated. The
+// mechanism is retained (and group children are still filtered against it) so a
+// future genuinely-gated route is one array entry away.
+const RESTRICTED_HREFS = new Set<string>([]);
 
 const leafClass = (active: boolean, nested: boolean) =>
   `flex items-center gap-3 rounded-lg py-2 text-sm font-medium transition ${

@@ -39,6 +39,31 @@
       ]
     },
     {
+      "key": "acetaminophen",
+      "label": "Acetaminophen (paracetamol)",
+      "rxcuis": [
+        "161"
+      ],
+      "synonyms": [
+        "acetaminophen",
+        "apap",
+        "paracetamol",
+        "tylenol"
+      ]
+    },
+    {
+      "key": "allopurinol",
+      "label": "Allopurinol",
+      "rxcuis": [
+        "519"
+      ],
+      "synonyms": [
+        "allopurinol",
+        "aloprim",
+        "zyloprim"
+      ]
+    },
+    {
       "key": "aspirin",
       "label": "Aspirin",
       "rxcuis": [
@@ -50,6 +75,30 @@
         "aspirin",
         "bayer",
         "ecotrin"
+      ]
+    },
+    {
+      "key": "atorvastatin",
+      "label": "Atorvastatin",
+      "rxcuis": [
+        "83367"
+      ],
+      "synonyms": [
+        "atorvastatin",
+        "caduet",
+        "lipitor"
+      ]
+    },
+    {
+      "key": "azathioprine",
+      "label": "Azathioprine",
+      "rxcuis": [
+        "1256"
+      ],
+      "synonyms": [
+        "azasan",
+        "azathioprine",
+        "imuran"
       ]
     },
     {
@@ -188,6 +237,17 @@
       ]
     },
     {
+      "key": "gemfibrozil",
+      "label": "Gemfibrozil",
+      "rxcuis": [
+        "4719"
+      ],
+      "synonyms": [
+        "gemfibrozil",
+        "lopid"
+      ]
+    },
+    {
       "key": "ginkgo",
       "label": "Ginkgo biloba",
       "rxcuis": [],
@@ -233,6 +293,28 @@
         "eskalith",
         "lithium",
         "lithobid"
+      ]
+    },
+    {
+      "key": "loop_thiazide_diuretic",
+      "label": "Loop / thiazide diuretics (furosemide, hydrochlorothiazide, …)",
+      "rxcuis": [
+        "4603",
+        "5487"
+      ],
+      "synonyms": [
+        "bumetanide",
+        "bumex",
+        "chlorthalidone",
+        "furosemide",
+        "hctz",
+        "hydrochlorothiazide",
+        "indapamide",
+        "lasix",
+        "loop diuretic",
+        "metolazone",
+        "thiazide",
+        "torsemide"
       ]
     },
     {
@@ -531,16 +613,12 @@
     },
     {
       "key": "statin",
-      "label": "Statins metabolized by CYP3A4 (simvastatin, lovastatin, atorvastatin)",
+      "label": "Statins strongly affected by CYP3A4 (simvastatin, lovastatin)",
       "rxcuis": [
         "36567",
-        "6472",
-        "83367"
+        "6472"
       ],
       "synonyms": [
-        "atorvastatin",
-        "caduet",
-        "lipitor",
         "lovastatin",
         "mevacor",
         "simvastatin",
@@ -671,6 +749,20 @@
       "source": "FDA lisinopril & spironolactone labeling (DailyMed)"
     },
     {
+      "a": "acetaminophen",
+      "b": "warfarin",
+      "severity": "moderate",
+      "mechanism": "Regular (chronic or high-dose) acetaminophen can raise the INR and increase bleeding risk with warfarin; occasional single doses are lower-risk.",
+      "source": "FDA warfarin prescribing information (DailyMed); NIH MedlinePlus"
+    },
+    {
+      "a": "allopurinol",
+      "b": "azathioprine",
+      "severity": "major",
+      "mechanism": "Allopurinol blocks xanthine-oxidase breakdown of azathioprine, raising its active metabolites and the risk of severe bone-marrow suppression; the azathioprine dose must be sharply reduced or the pair avoided.",
+      "source": "FDA azathioprine prescribing information (DailyMed)"
+    },
+    {
       "a": "aspirin",
       "b": "nsaid",
       "severity": "moderate",
@@ -683,6 +775,27 @@
       "severity": "major",
       "mechanism": "Aspirin's antiplatelet effect plus warfarin's anticoagulation markedly increases bleeding risk; combined use should be clinician-directed.",
       "source": "FDA warfarin prescribing information (DailyMed)"
+    },
+    {
+      "a": "atorvastatin",
+      "b": "azole_antifungal",
+      "severity": "moderate",
+      "mechanism": "Azole antifungals inhibit CYP3A4 and raise atorvastatin levels, increasing myopathy risk — but less than with simvastatin/lovastatin.",
+      "source": "FDA atorvastatin prescribing information (DailyMed)"
+    },
+    {
+      "a": "atorvastatin",
+      "b": "gemfibrozil",
+      "severity": "major",
+      "mechanism": "Gemfibrozil raises atorvastatin exposure and adds its own myopathy risk, increasing the chance of muscle injury/rhabdomyolysis.",
+      "source": "FDA atorvastatin & gemfibrozil prescribing information (DailyMed)"
+    },
+    {
+      "a": "atorvastatin",
+      "b": "macrolide",
+      "severity": "moderate",
+      "mechanism": "Clarithromycin/erythromycin inhibit CYP3A4 and raise atorvastatin levels, increasing myopathy risk — but less than with simvastatin/lovastatin.",
+      "source": "FDA atorvastatin prescribing information (DailyMed)"
     },
     {
       "a": "azole_antifungal",
@@ -735,6 +848,13 @@
     },
     {
       "a": "digoxin",
+      "b": "loop_thiazide_diuretic",
+      "severity": "moderate",
+      "mechanism": "Loop and thiazide diuretics can lower potassium and magnesium, which increases the risk of digoxin toxicity and arrhythmia.",
+      "source": "FDA digoxin prescribing information (DailyMed)"
+    },
+    {
+      "a": "digoxin",
       "b": "macrolide",
       "severity": "moderate",
       "mechanism": "Clarithromycin/erythromycin raise digoxin levels, increasing the risk of digoxin toxicity (nausea, arrhythmia).",
@@ -767,6 +887,13 @@
       "severity": "moderate",
       "mechanism": "Concentrated garlic supplements have antiplatelet activity that may increase bleeding risk with warfarin.",
       "source": "NCCIH Garlic herb-drug interaction summary"
+    },
+    {
+      "a": "gemfibrozil",
+      "b": "statin",
+      "severity": "major",
+      "mechanism": "Gemfibrozil raises statin exposure and independently causes myopathy, sharply increasing rhabdomyolysis risk (gemfibrozil + simvastatin is contraindicated).",
+      "source": "FDA simvastatin & gemfibrozil prescribing information (DailyMed)"
     },
     {
       "a": "ginkgo",
@@ -851,6 +978,13 @@
       "severity": "major",
       "mechanism": "PDE5 inhibitors plus nitrates cause profound, potentially life-threatening hypotension; the combination is contraindicated.",
       "source": "FDA sildenafil prescribing information (DailyMed)"
+    },
+    {
+      "a": "nsaid",
+      "b": "ssri",
+      "severity": "moderate",
+      "mechanism": "SSRIs impair platelet aggregation and NSAIDs injure the GI mucosa, so together they raise the risk of upper-GI bleeding.",
+      "source": "NIH MedlinePlus; FDA SSRI prescribing information (DailyMed)"
     },
     {
       "a": "nsaid",
