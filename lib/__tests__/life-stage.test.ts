@@ -12,7 +12,7 @@ import {
   OLDER_ADULT_MIN_AGE,
 } from "@/lib/life-stage";
 import { ADULT_MIN_AGE as FITNESS_ADULT_MIN_AGE } from "@/lib/fitness-norms";
-import { ADULT_BP_AGE } from "@/lib/bp-percentiles";
+import { ADULT_BP_AGE, pediatricBpContext } from "@/lib/bp-percentiles";
 import { PHENOAGE_MIN_AGE } from "@/lib/derived-biomarkers";
 import { GROWTH_CHART_MAX_AGE as GROWTH_METRICS_CEILING } from "@/lib/growth-metrics";
 import { MAX_AGE_MONTHS } from "@/lib/growth";
@@ -109,5 +109,21 @@ describe("domain constants stay bound to the life-stage model", () => {
   });
   it("the growth-chart data ceiling (240 mo) === 20 y, the model's growth line", () => {
     expect(MAX_AGE_MONTHS).toBe(GROWTH_CHART_MAX_AGE * 12);
+  });
+
+  // Output-level parity (#505): the BP card's rendered regime (pediatricBpContext's
+  // adultRegime) must call the shared isAdultBpRegime, not re-derive its own copy —
+  // the constant-equality check above can't catch a divergence in flooring or
+  // null-age handling. Assert the two functions agree across the pediatric window.
+  it("pediatricBpContext.adultRegime === isAdultBpRegime for every pediatric age", () => {
+    for (const ageYears of [1, 5, 12, 12.5, 13, 13.5, 14, 17]) {
+      const ctx = pediatricBpContext("systolic", 100, {
+        sex: "male",
+        ageYears,
+        heightPercentile: 50,
+      });
+      expect(ctx).not.toBeNull();
+      expect(ctx!.adultRegime).toBe(isAdultBpRegime(ageYears));
+    }
   });
 });
