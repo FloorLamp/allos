@@ -6,6 +6,7 @@ import {
   isPlateau,
   detectPlateaus,
   trainingBalanceSignalKey,
+  trainingBalanceLegacyKey,
   staleExerciseSignalKey,
   plateauSignalKey,
   TRAINING_OBS_PREFIX,
@@ -42,7 +43,9 @@ describe("detectPushPullImbalance", () => {
   it("flags a ≥2× skew once total volume clears the floor", () => {
     const f = detectPushPullImbalance([push(16), pull(6)]);
     expect(f?.kind).toBe("balance");
-    expect(f?.key).toBe(trainingBalanceSignalKey());
+    // Episode anchor = the skewed direction ("push" here); #436.
+    expect(f?.key).toBe(trainingBalanceSignalKey("push"));
+    expect(f?.legacyKey).toBe(trainingBalanceLegacyKey());
     expect(f?.detail).toContain("more pushing than pulling");
   });
 
@@ -83,7 +86,8 @@ describe("detectStaleExercises", () => {
     );
     expect(out).toHaveLength(1);
     expect(out[0].kind).toBe("stale");
-    expect(out[0].key).toBe(staleExerciseSignalKey("Deadlift"));
+    // Episode anchor = the YYYY-MM of the last session (daysAgo(28) → 2026-02); #436.
+    expect(out[0].key).toBe(staleExerciseSignalKey("Deadlift", "2026-02"));
   });
 
   it("ignores a lift with too few sessions", () => {
@@ -153,15 +157,16 @@ describe("isPlateau / detectPlateaus", () => {
       today
     );
     expect(out).toHaveLength(1);
-    expect(out[0].key).toBe(plateauSignalKey("Bench Press"));
+    // Episode anchor = the e1RM level bucket (median ~100 kg → round(100/5) = "20"); #436.
+    expect(out[0].key).toBe(plateauSignalKey("Bench Press", "20"));
     expect(out[0].detail).toContain("deload");
   });
 
   it("all observation keys share the training-obs namespace", () => {
     for (const k of [
-      trainingBalanceSignalKey(),
-      staleExerciseSignalKey("Deadlift"),
-      plateauSignalKey("Bench Press"),
+      trainingBalanceSignalKey("push"),
+      staleExerciseSignalKey("Deadlift", "2026-02"),
+      plateauSignalKey("Bench Press", "20"),
     ]) {
       expect(k.startsWith(TRAINING_OBS_PREFIX)).toBe(true);
     }

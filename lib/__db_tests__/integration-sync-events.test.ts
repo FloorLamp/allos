@@ -5,9 +5,15 @@
 // real schema. Also exercises the Health Connect write PATH (upsert → summarize →
 // recordSyncEvent) end-to-end so the event a real ingest would store is checked.
 
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, afterEach, vi } from "vitest";
 import { db } from "@/lib/db";
-import { recordSyncEvent, getConnection } from "@/lib/integrations/connections";
+import {
+  recordSyncEvent,
+  getConnection,
+  setStravaCredentials,
+  setStravaTokens,
+} from "@/lib/integrations/connections";
+import { runStravaSync } from "@/lib/integrations/strava-sync";
 import {
   getIntegrationSyncEvents,
   getLastSuccessfulSyncAt,
@@ -198,6 +204,40 @@ describe("integration_sync_events: simulated Health Connect ingest path", () => 
 
     // getConnection stays independent of the event log.
     expect(getConnection(profileA, "health-connect")).toBeUndefined();
+  });
+});
+
+describe("integration_sync_events: Strava network throw is recorded (#476)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("a rejected fetch records an ok:false event instead of vanishing unlogged", async () => {
+    const p = Number(
+      db.prepare("INSERT INTO profiles (name) VALUES ('STRAVA-NET')").run()
+        .lastInsertRowid
+    );
+    // A live, connected Strava with a still-valid access token, so
+    // getStravaAccessToken returns WITHOUT hitting the token endpoint — the throw we
+    // want to exercise is the ACTIVITY fetch inside the sync loop, the path that used
+    // to escape runStravaSync unlogged.
+    setStravaCredentials(p, "client-id", "client-secret");
+    setStravaTokens(p, {
+      accessToken: "access-token",
+      refreshToken: "refresh-token",
+      expiresAt: Math.floor(Date.now() / 1000) + 3600, // > 5-min margin → no refresh
+    });
+
+    // Simulate the DNS/ECONNRESET/TLS/timeout rejection the bug report describes.
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("ECONNRESET")));
+
+    const res = await runStravaSync(p);
+    expect(res).toHaveProperty("error");
+
+    const ev = getLatestSyncEvent(p, "strava");
+    expect(ev?.ok).toBe(0);
+    // The real cause is threaded into the event message, not swallowed as "(0)".
+    expect(ev?.error).toContain("ECONNRESET");
   });
 });
 

@@ -36,7 +36,14 @@ import {
   uploadsDir,
   verifySnapshot,
 } from "../lib/backup";
-import { interpretIntegrityRows, decideRestore } from "../lib/backup-verify";
+import { decideRestore } from "../lib/backup-verify";
+import {
+  confineSnapshotPath,
+  readSnapshotUserVersion,
+  restoreCore,
+  RestoreRefusedError,
+} from "../lib/restore";
+import { MIGRATIONS } from "../lib/migrations/versions";
 
 function fmtBytes(n: number): string {
   if (n < 1024) return `${n} B`;
@@ -51,7 +58,10 @@ function list(dir: string) {
     console.log("No snapshots found in", dir);
     return;
   }
-  console.log(`Snapshots in ${dir} (newest first):\n`);
+  const buildVersion = MIGRATIONS.length;
+  console.log(
+    `Snapshots in ${dir} (newest first). This build's schema version: ${buildVersion}.\n`
+  );
   for (const name of names) {
     const st = fs.statSync(path.join(dir, name));
     const v = readVerification(name, dir);
@@ -60,7 +70,18 @@ function list(dir: string) {
         ? "verified ok"
         : `FAILED (${v.detail ?? "integrity"})`
       : "unverified";
-    console.log(`  ${name}  ${fmtBytes(st.size).padStart(9)}  [${status}]`);
+    // Surface the snapshot's schema version (#472) so a newer-schema snapshot is
+    // visible here rather than only tripping the boot-time downgrade guard later.
+    const uv = readSnapshotUserVersion(path.join(dir, name));
+    const uvLabel =
+      uv === null
+        ? "v?"
+        : uv > buildVersion
+          ? `v${uv} NEWER than build`
+          : `v${uv}`;
+    console.log(
+      `  ${name}  ${fmtBytes(st.size).padStart(9)}  [${status}]  [${uvLabel}]`
+    );
   }
   console.log("\nRestore with:  npm run restore -- <snapshot.db>");
 }
@@ -113,7 +134,15 @@ async function restore(
   opts: { force: boolean; yes: boolean; sourceDir: string }
 ) {
   const dir = opts.sourceDir;
-  const snapPath = path.join(dir, name);
+  // Confine the caller-supplied name to the source dir (no ../ or absolute escape).
+  const snapPath = confineSnapshotPath(dir, name);
+  if (!snapPath) {
+    console.error(
+      `Refusing: "${name}" resolves outside the snapshot directory ${dir}.`
+    );
+    console.error("Pass a snapshot filename listed by `npm run restore`.");
+    process.exit(1);
+  }
   if (!fs.existsSync(snapPath)) {
     console.error(`Snapshot not found: ${snapPath}`);
     console.error("Run `npm run restore` with no arguments to list snapshots.");
@@ -126,6 +155,27 @@ async function restore(
   console.log(
     `Snapshot integrity: ${snapshotOk ? "ok" : `FAILED — ${v.detail ?? ""}`}`
   );
+
+  // Read its schema version (#472): a snapshot from a NEWER build than this one
+  // would only make the boot-time downgrade guard refuse to start.
+  const snapshotUserVersion = readSnapshotUserVersion(snapPath);
+  const buildMigrationCount = MIGRATIONS.length;
+  console.log(
+    `Snapshot schema version: ${snapshotUserVersion ?? "?"} (this build: ${buildMigrationCount}).`
+  );
+  if (
+    snapshotUserVersion !== null &&
+    snapshotUserVersion > buildMigrationCount &&
+    !opts.force
+  ) {
+    console.error(
+      `Refusing: the snapshot's schema (v${snapshotUserVersion}) is NEWER than this build ` +
+        `(v${buildMigrationCount}) — a newer release wrote it. Restoring it would only make ` +
+        `the app refuse to boot (downgrade guard). Redeploy the newer image, or pass --force ` +
+        `to install it anyway.`
+    );
+    process.exit(1);
+  }
 
   // 2. Safety gate: app-running + integrity, both overridable with --force.
   const livePath = dbFilePath();
@@ -161,51 +211,34 @@ async function restore(
     }
   }
 
-  // 3. Copy the current live DB aside as a rollback point.
-  if (fs.existsSync(livePath)) {
-    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const aside = `${livePath}.pre-restore-${stamp}`;
-    try {
-      fs.copyFileSync(livePath, aside);
-      console.log(`Backed up current DB aside: ${aside}`);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      console.error(`Could not copy the current DB aside (${msg}) — aborting.`);
-      process.exit(1);
-    }
-  }
-
-  // 4. Copy the snapshot into place, then clear stale WAL/SHM sidecars so the next
-  //    boot doesn't replay an old WAL over the freshly restored file.
+  // 3. Aside → install → WAL cleanup → post-restore integrity, all in the shared
+  //    restoreCore (issue #462) so the DB-tier drill exercises the exact sequence.
+  let result;
   try {
-    fs.copyFileSync(snapPath, livePath);
-    for (const suffix of ["-wal", "-shm"]) {
-      const p = livePath + suffix;
-      if (fs.existsSync(p)) fs.unlinkSync(p);
-    }
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error(`Restore copy failed: ${msg}`);
-    process.exit(1);
-  }
-
-  // Sanity-check the restored live DB opens + passes integrity_check.
-  try {
-    const live = new Database(livePath, {
-      readonly: true,
-      fileMustExist: true,
+    result = restoreCore({
+      snapshotPath: snapPath,
+      livePath,
+      snapshotOk,
+      force: opts.force,
+      snapshotUserVersion,
+      buildMigrationCount,
     });
-    const res = interpretIntegrityRows(live.pragma("integrity_check"));
-    live.close();
-    if (!res.ok) {
-      console.error(
-        `WARNING: restored DB failed integrity_check: ${res.detail}`
-      );
-      process.exit(1);
-    }
   } catch (e) {
-    console.error("WARNING: could not open the restored DB:", e);
+    if (e instanceof RestoreRefusedError) {
+      console.error(
+        e.reason === "snapshot-newer-schema"
+          ? "Refusing: the snapshot's schema is newer than this build. Pass --force to install it anyway."
+          : "Refusing: the snapshot failed its integrity check. Pass --force to restore it anyway."
+      );
+    } else {
+      console.error(
+        `Restore failed: ${e instanceof Error ? e.message : String(e)}`
+      );
+    }
     process.exit(1);
+  }
+  if (result.asidePath) {
+    console.log(`Backed up current DB aside: ${result.asidePath}`);
   }
 
   console.log(`\nRestored ${name} -> ${livePath}. Start the app to use it.`);

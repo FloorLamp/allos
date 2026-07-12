@@ -9,17 +9,30 @@
 // Kept pure (no DB) so the merge/sort/latest logic is unit-tested in isolation.
 
 import { isNonOptimal, isOutOfRange } from "./reference-range";
+import { biomarkerFamily } from "./canonical-name";
 import type { MedicalRecord } from "./types";
 import type { MedicalSortColumn, SortDirection } from "./queries/medical";
 import type { RangeFilter } from "./queries/medical";
 
-// Display/grouping identity: canonical name when present, else the raw name —
-// mirrors biomarkerNameKey() in the SQL layer so a merged row groups with its kin.
+// Display identity: canonical name when present, else the raw name — mirrors
+// biomarkerNameKey() in the SQL layer. Used for the VISIBLE name sort/heading.
 export function tableNameKey(r: {
   name: string;
   canonical_name: string | null;
 }): string {
   return r.canonical_name?.trim() || r.name;
+}
+
+// Grouping identity for is_latest/current — the #482 biomarker FAMILY, lowercased,
+// mirroring the SQL biomarkerFamilyKey so a merged (stored + derived) row groups
+// with its family kin exactly like the family-partitioned DB dedup/latest. Kept
+// separate from tableNameKey: grouping collapses families, but the visible name
+// sort still orders by the row's own display name.
+function familyGroupKey(r: {
+  name: string;
+  canonical_name: string | null;
+}): string {
+  return biomarkerFamily(tableNameKey(r)).toLowerCase();
 }
 
 // Case-insensitive compare (NOCASE-equivalent) for the name/panel sort keys.
@@ -107,7 +120,7 @@ function comparator(
 function latestIdByName(records: MedicalRecord[]): Map<string, number> {
   const best = new Map<string, MedicalRecord>();
   for (const r of records) {
-    const key = tableNameKey(r).toLowerCase();
+    const key = familyGroupKey(r);
     const cur = best.get(key);
     if (!cur || r.date > cur.date || (r.date === cur.date && r.id > cur.id))
       best.set(key, r);
@@ -129,7 +142,7 @@ export function prepareTableRecords(
   const latest = latestIdByName(combined);
   const withLatest = combined.map((r) => ({
     ...r,
-    is_latest: latest.get(tableNameKey(r).toLowerCase()) === r.id ? 1 : 0,
+    is_latest: latest.get(familyGroupKey(r)) === r.id ? 1 : 0,
   }));
   const filtered = opts.current
     ? withLatest.filter((r) => r.is_latest === 1)

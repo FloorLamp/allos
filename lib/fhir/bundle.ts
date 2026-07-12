@@ -97,6 +97,17 @@ const RESOURCE_MAPPERS: Record<
   }),
 };
 
+// The FHIR resourceTypes this importer consumes via a top-level mapper, PLUS the
+// Patient it reads for demographics. Bound in a DB-tier test (issue #465) against the
+// exporter's emitted set so the two directions can't silently drift — every clinical
+// domain the app can import from a bundle it must also be able to export. The two
+// read-only equivalents (MedicationStatement aliases MedicationRequest;
+// DiagnosticReport is an Observation container) are exported as their canonical form.
+export const FHIR_IMPORT_RESOURCE_TYPES = [
+  "Patient",
+  ...Object.keys(RESOURCE_MAPPERS),
+] as const;
+
 // Reduce a flat list of FHIR resources to our ImportResult, deduped by
 // external_id; the first Patient supplies demographics. Kept for the SMART Health
 // Card decoder (which flattens every card's bundle with no fullUrl); references

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireWriteAccess } from "@/lib/auth";
-import { db } from "@/lib/db";
+import { db, writeTx } from "@/lib/db";
 import { recordPairDecision } from "@/lib/queries";
 import {
   ACTIVITY_DOMAIN,
@@ -56,7 +56,7 @@ export async function mergeActivityPair(formData: FormData) {
   // client value. Empty for the common one-click merge.
   const overrideFields = parseOverrideFields(formData.get("overrides"));
 
-  const tx = db.transaction(() => {
+  const ok = writeTx(() => {
     const keep = db
       .prepare("SELECT * FROM activities WHERE id = ? AND profile_id = ?")
       .get(keepId, profile.id) as Record<string, unknown> | undefined;
@@ -77,7 +77,7 @@ export async function mergeActivityPair(formData: FormData) {
     recordPairDecision(profile.id, ACTIVITY_DOMAIN, signature, "merged");
     return true;
   });
-  if (!tx()) return;
+  if (!ok) return;
   revalidateActivitySurfaces();
 }
 
@@ -91,7 +91,7 @@ export async function mergeBodyMetricPair(formData: FormData) {
   const signature = String(formData.get("signature") ?? "").trim();
   if (!keepId || !dropId || keepId === dropId || !signature) return;
 
-  const tx = db.transaction(() => {
+  const ok = writeTx(() => {
     const keep = db
       .prepare(
         "SELECT weight_kg, body_fat_pct, resting_hr FROM body_metrics WHERE id = ? AND profile_id = ?"
@@ -141,7 +141,7 @@ export async function mergeBodyMetricPair(formData: FormData) {
     recordPairDecision(profile.id, BODY_METRIC_DOMAIN, signature, "merged");
     return true;
   });
-  if (!tx()) return;
+  if (!ok) return;
   revalidateBodyMetricSurfaces();
 }
 

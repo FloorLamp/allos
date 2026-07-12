@@ -3,7 +3,11 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { BackupSettings } from "@/lib/settings";
-import { saveBackupSettings, backupNow } from "./actions";
+import {
+  saveBackupSettings,
+  backupNow,
+  verifyOffsiteDestination,
+} from "./actions";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus } from "@/components/useSaveStatus";
 
@@ -16,12 +20,20 @@ export default function BackupSettings({
   offsite,
 }: {
   settings: BackupSettings;
-  lastBackup: { name: string; size: string; when: string } | null;
+  lastBackup: {
+    name: string;
+    size: string;
+    when: string;
+    failed: boolean;
+  } | null;
   lastError: string | null;
   // Off-volume replication status (#130): whether BACKUP_DEST_DIR is configured
-  // (env-driven, not editable here) plus the last off-volume copy time / error.
+  // (env-driven, not editable here) plus whether it's presently mounted/verified
+  // (#463) and the last off-volume copy time / error.
   offsite: {
     configured: boolean;
+    ready: boolean;
+    notReadyReason: string | null;
     lastAt: string | null;
     lastError: string | null;
   };
@@ -63,6 +75,13 @@ export default function BackupSettings({
           message: "Couldn’t run the backup. Please try again.",
         });
       }
+      router.refresh();
+    });
+  }
+
+  function verifyOffsite() {
+    startRunNow(async () => {
+      setResult(await verifyOffsiteDestination());
       router.refresh();
     });
   }
@@ -147,8 +166,15 @@ export default function BackupSettings({
       <div className="rounded-lg bg-slate-50 p-3 text-xs text-slate-500 dark:bg-slate-800/50 dark:text-slate-400">
         {lastBackup ? (
           <>
-            Last backup: <span className="font-mono">{lastBackup.name}</span> (
+            Last snapshot file:{" "}
+            <span className="font-mono">{lastBackup.name}</span> (
             {lastBackup.size}) — {lastBackup.when}
+            {lastBackup.failed && (
+              <span className="ml-1 font-medium text-rose-600 dark:text-rose-400">
+                — integrity check FAILED (kept for forensics; not a valid
+                backup)
+              </span>
+            )}
           </>
         ) : (
           <>No backups yet.</>
@@ -174,6 +200,18 @@ export default function BackupSettings({
               <>Last off-volume backup: {offsite.lastAt}.</>
             ) : (
               <>No off-volume backup yet.</>
+            )}
+            {offsite.ready ? (
+              <div className="mt-1 text-emerald-600 dark:text-emerald-400">
+                Destination mounted and verified.
+              </div>
+            ) : (
+              <div className="mt-1 text-amber-600 dark:text-amber-400">
+                Destination not verified —{" "}
+                {offsite.notReadyReason ?? "the second mount may be missing"}.
+                Replication is skipped until you verify it (mount the volume,
+                then click <strong>Verify destination</strong> below).
+              </div>
             )}
           </>
         ) : (
@@ -201,6 +239,16 @@ export default function BackupSettings({
         >
           Back up now
         </button>
+        {offsite.configured && (
+          <button
+            type="button"
+            onClick={verifyOffsite}
+            disabled={pending}
+            className="btn-ghost"
+          >
+            Verify destination
+          </button>
+        )}
       </div>
 
       {result && (

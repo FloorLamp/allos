@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { followLink } from "./nav";
 
 // Dashboard redesign (issue #171): the Tier-1 "Needs attention" hero, the Tier-2
 // household strip, and the data-aware onboarding empty state. Runs against the
@@ -65,8 +66,7 @@ test("a goal deadline item links to the Training → Goals tab, not the removed 
   const goalLink = page
     .getByRole("main")
     .getByRole("link", { name: "Reach 74 kg", exact: true });
-  await expect(goalLink).toBeVisible();
-  await goalLink.click();
+  await followLink(page, goalLink, /\/training\?tab=goals/);
 
   // Lands on the real Training hub with the Goals tab selected — a real page,
   // not the pageless /goals directory that 404'd.

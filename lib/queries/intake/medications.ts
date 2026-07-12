@@ -4,7 +4,7 @@
 // intake_items JOIN.
 // Medication history / lifecycle: courses (episodes), active-flag sync, side
 // effects and their promotion to an allergy row.
-import { db } from "../../db";
+import { db, writeTx } from "../../db";
 import { normalizeSeverity, SEVERITY_LABELS } from "../../medication-history";
 import type { MedicationCourse, MedicationSideEffect } from "../../types";
 
@@ -109,7 +109,7 @@ export function createImportedMedicationCourses(
          WHERE c.item_id = ? AND c.started_on IS ?
       )`
   );
-  const tx = db.transaction(() => {
+  writeTx(() => {
     for (const c of courses) {
       insert.run(
         itemId,
@@ -133,7 +133,6 @@ export function createImportedMedicationCourses(
        WHERE id = ? AND profile_id = ?`
     ).run(itemId, itemId, profileId);
   });
-  tx();
 }
 
 // Confirm a medication belongs to the profile (kind guard). Returns its id or
@@ -167,7 +166,7 @@ export function stopMedicationCourses(
   }
 ): void {
   if (ownedMedicationId(profileId, itemId) == null) return;
-  const tx = db.transaction(() => {
+  writeTx(() => {
     const openCourses = db
       .prepare(
         "SELECT id FROM medication_courses WHERE item_id = ? AND stopped_on IS NULL ORDER BY started_on, id"
@@ -192,7 +191,6 @@ export function stopMedicationCourses(
       ).run(itemId, courseId, opts.effect, opts.severity ?? null, opts.date);
     }
   });
-  tx();
 }
 
 // Restart a medication: open a NEW course (preserving prior courses) and set
@@ -203,7 +201,7 @@ export function restartMedicationCourse(
   date: string
 ): void {
   if (ownedMedicationId(profileId, itemId) == null) return;
-  const tx = db.transaction(() => {
+  writeTx(() => {
     const openCount = (
       db
         .prepare(
@@ -220,7 +218,6 @@ export function restartMedicationCourse(
       "UPDATE intake_items SET active = 1 WHERE id = ? AND profile_id = ?"
     ).run(itemId, profileId);
   });
-  tx();
 }
 
 // Keep a medication's course history in sync with a plain active-flag toggle
@@ -234,7 +231,7 @@ export function setMedicationActive(
   date: string
 ): void {
   if (ownedMedicationId(profileId, itemId) == null) return;
-  const tx = db.transaction(() => {
+  writeTx(() => {
     db.prepare(
       "UPDATE intake_items SET active = ? WHERE id = ? AND profile_id = ?"
     ).run(active, itemId, profileId);
@@ -257,7 +254,6 @@ export function setMedicationActive(
       }
     }
   });
-  tx();
 }
 
 // Add a side effect to a medication. course_id is validated to belong to the same
@@ -392,7 +388,7 @@ export function promoteMedicationSideEffect(
   if (!row) return false;
   const severity = normalizeSeverity(row.severity);
   const severityLabel = severity ? SEVERITY_LABELS[severity] : null;
-  const tx = db.transaction(() => {
+  writeTx(() => {
     db.prepare(
       `INSERT OR IGNORE INTO allergies
          (substance, reaction, severity, status, onset_date, notes, source,
@@ -412,6 +408,5 @@ export function promoteMedicationSideEffect(
       "UPDATE intake_item_side_effects SET resolved = 1 WHERE id = ?"
     ).run(id);
   });
-  tx();
   return true;
 }

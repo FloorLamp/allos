@@ -14,8 +14,17 @@ import {
   getMedicationSideEffects,
   getDietaryLimitWarnings,
   getInteractionWarnings,
+  getFindingSuppressions,
 } from "@/lib/queries";
-import { ulWarningTitle, ulWarningDetail, ulWarningEvidence } from "@/lib/dri";
+import { activeByKey } from "@/lib/findings";
+import { isSuppressed } from "@/lib/upcoming-suppress";
+import {
+  ulWarningTitle,
+  ulWarningDetail,
+  ulWarningEvidence,
+  dietaryLimitSignalKey,
+} from "@/lib/dri";
+import { FOOD_TIMING_PREFIX } from "@/lib/food-drug-interactions";
 import {
   interactionTitle,
   SEVERITY_LABEL,
@@ -47,7 +56,7 @@ import {
 import { compareDoseDay, type DoseDayEntry } from "@/lib/dose-order";
 import type { Supplement, SupplementDose } from "@/lib/types";
 import { PageHeader, EmptyState } from "@/components/ui";
-import { IconAlertTriangle } from "@tabler/icons-react";
+import { IconAlertTriangle, IconX } from "@tabler/icons-react";
 import SubmitButton from "@/components/SubmitButton";
 import EditableSupplementRow from "./EditableSupplementRow";
 import DismissSuggestionButton from "./DismissSuggestionButton";
@@ -57,17 +66,52 @@ import {
   STRIP_DAYS,
   type AdherenceDot,
 } from "@/lib/supplement-adherence";
-import { separatePairWarnings } from "@/lib/intake-pairs";
+import {
+  separatePairWarnings,
+  type KeepApartWarning,
+} from "@/lib/intake-pairs";
 import SupplementForm from "./SupplementForm";
 import SuggestionsForm from "./SuggestionsForm";
 import AdherenceFindings from "./AdherenceFindings";
-import { addSupplement, toggleSituation, acceptSuggestion } from "./actions";
+import {
+  addSupplement,
+  toggleSituation,
+  acceptSuggestion,
+  dismissMedicineFinding,
+} from "./actions";
 
 export const dynamic = "force-dynamic";
 
 interface Item {
   supplement: Supplement;
   dose: SupplementDose;
+}
+
+// Inline dismiss control for the page's stack-safety / keep-apart observation cards
+// (#435): posts the finding's dedupeKey to the namespace-guarded dismissMedicineFinding
+// action, which hides it through the shared findings-suppression bus. Kept as one
+// helper so the three warning blocks dismiss identically.
+function DismissFindingButton({
+  dedupeKey,
+  label,
+}: {
+  dedupeKey: string;
+  label: string;
+}) {
+  return (
+    <form action={dismissMedicineFinding}>
+      <input type="hidden" name="dedupe_key" value={dedupeKey} />
+      <button
+        type="submit"
+        data-testid="medicine-finding-dismiss"
+        aria-label={label}
+        title="Dismiss"
+        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-slate-400 transition hover:bg-black/5 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-white/10 dark:hover:text-slate-300"
+      >
+        <IconX className="h-4 w-4" stroke={2} />
+      </button>
+    </form>
+  );
 }
 
 export default async function SupplementsPage() {
@@ -198,10 +242,18 @@ export default async function SupplementsPage() {
   // dose in the same bucket. Policy lives in the shared separatePairWarnings
   // (issue #313); this surface just supplies the bucket's supplement ids.
   const pairs = getSupplementPairs(profile.id);
-  const bucketWarnings = (items: Item[]): string[] =>
-    separatePairWarnings(
-      items.map((it) => it.supplement.id),
-      pairs
+  // Filtered through the findings bus (#435): a keep-apart warning the profile has
+  // dismissed (on this page or Upcoming) is held out, keyed by its keep-apart:<lo>-<hi>
+  // dedupeKey. `suppressions`/`todayStr` are resolved above.
+  const bucketWarnings = (items: Item[]): KeepApartWarning[] =>
+    activeByKey(
+      separatePairWarnings(
+        items.map((it) => it.supplement.id),
+        pairs
+      ),
+      (w) => w.key,
+      suppressions,
+      todayStr
     );
 
   const situationChips = [
@@ -222,16 +274,44 @@ export default async function SupplementsPage() {
   // each row so the badge reflects real consumption and can name its basis.
   const refillRates = getRefillRates(profile.id);
 
+  // Shared findings-suppression store (#227/#435): the ONE snooze/dismiss ledger
+  // behind both Upcoming and every findings surface. The stack-safety warnings and
+  // food-drug guidance below are routed through it, keyed by the identical dedupeKey
+  // their Upcoming twin carries, so a dismiss/snooze on either surface silences the
+  // other ("dismiss once, silence everywhere", #227's page↔push applied page↔page).
+  const suppressions = getFindingSuppressions(profile.id);
+  // This profile's currently-active food-timing dismissals, threaded into each row's
+  // FoodGuidance so a dismissed food note stays hidden (#435).
+  const suppressedFoodKeys = [...suppressions.entries()]
+    .filter(
+      ([k, rec]) =>
+        k.startsWith(FOOD_TIMING_PREFIX) && isSuppressed(rec, todayStr)
+    )
+    .map(([k]) => k);
+
   // Stack-total UL warnings (issue #148): nutrients whose active-stack daily
   // supplemental intake exceeds the NIH Tolerable Upper Intake Level for this
   // profile's age/sex. Same computation the Upcoming finding uses; informational,
-  // never prescriptive.
-  const ulWarnings = getDietaryLimitWarnings(profile.id, todayStr);
+  // never prescriptive. Routed through the findings bus (#435) so a dismiss from
+  // Upcoming (or here) silences it everywhere, keyed by dietaryLimitSignalKey.
+  const ulWarnings = activeByKey(
+    getDietaryLimitWarnings(profile.id, todayStr),
+    (w) => dietaryLimitSignalKey(w.key),
+    suppressions,
+    todayStr
+  );
 
   // Known drug-/supplement-interactions among the ACTIVE stack (issue #148's drug
   // twin, issue #144). Severity-ranked; the create/edit inline check + the
-  // dismissible Upcoming finding format over the SAME detectInteractions.
-  const interactionWarnings = getInteractionWarnings(profile.id);
+  // dismissible Upcoming finding format over the SAME detectInteractions. Routed
+  // through the findings bus (#435) — the /medicine list used to render UNFILTERED,
+  // so an Upcoming dismissal left its identical twin standing here; now they agree.
+  const interactionWarnings = activeByKey(
+    getInteractionWarnings(profile.id),
+    (hit) => hit.dedupeKey,
+    suppressions,
+    todayStr
+  );
   // The item stack (name + cached RxCUI(s) + active) threaded to every form for
   // the client-side create/edit interaction notice. Cached ingredient CUIs (issue
   // #279) keep a combination product matchable against ingredient-keyed concepts.
@@ -258,6 +338,7 @@ export default async function SupplementsPage() {
       strip={stripFor(it.supplement)}
       trainingRestricted={trainingRestricted}
       refillRate={refillRates.get(it.supplement.id) ?? null}
+      suppressedFoodKeys={suppressedFoodKeys}
     />
   );
 
@@ -314,17 +395,23 @@ export default async function SupplementsPage() {
               data-testid={`ul-warning-${w.key}`}
               className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200"
             >
-              <div className="flex items-start gap-1.5">
-                <IconAlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                <div>
-                  <p className="font-semibold">{ulWarningTitle(w)}</p>
-                  <p className="mt-0.5 text-amber-700 dark:text-amber-300">
-                    {ulWarningDetail(w)}
-                  </p>
-                  <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
-                    From: {ulWarningEvidence(w)}
-                  </p>
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-start gap-1.5">
+                  <IconAlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <div>
+                    <p className="font-semibold">{ulWarningTitle(w)}</p>
+                    <p className="mt-0.5 text-amber-700 dark:text-amber-300">
+                      {ulWarningDetail(w)}
+                    </p>
+                    <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                      From: {ulWarningEvidence(w)}
+                    </p>
+                  </div>
                 </div>
+                <DismissFindingButton
+                  dedupeKey={dietaryLimitSignalKey(w.key)}
+                  label={`Dismiss ${ulWarningTitle(w)}`}
+                />
               </div>
             </div>
           ))}
@@ -340,23 +427,29 @@ export default async function SupplementsPage() {
               data-testid={`interaction-warning-${hit.dedupeKey}`}
               className="rounded-lg border border-rose-300 bg-rose-50 px-3 py-2.5 text-sm text-rose-800 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-200"
             >
-              <div className="flex items-start gap-1.5">
-                <IconAlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                <div>
-                  <p className="font-semibold">
-                    <span className="uppercase">
-                      {SEVERITY_LABEL[hit.severity]}
-                    </span>{" "}
-                    · {interactionTitle(hit)}
-                  </p>
-                  <p className="mt-0.5 text-rose-700 dark:text-rose-300">
-                    {hit.mechanism}
-                  </p>
-                  <p className="mt-1 text-xs text-rose-600 dark:text-rose-400">
-                    Informational, not medical advice — discuss with your
-                    prescriber or pharmacist. Source: {hit.source}
-                  </p>
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-start gap-1.5">
+                  <IconAlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <div>
+                    <p className="font-semibold">
+                      <span className="uppercase">
+                        {SEVERITY_LABEL[hit.severity]}
+                      </span>{" "}
+                      · {interactionTitle(hit)}
+                    </p>
+                    <p className="mt-0.5 text-rose-700 dark:text-rose-300">
+                      {hit.mechanism}
+                    </p>
+                    <p className="mt-1 text-xs text-rose-600 dark:text-rose-400">
+                      Informational, not medical advice — discuss with your
+                      prescriber or pharmacist. Source: {hit.source}
+                    </p>
+                  </div>
                 </div>
+                <DismissFindingButton
+                  dedupeKey={hit.dedupeKey}
+                  label={`Dismiss ${interactionTitle(hit)} interaction`}
+                />
               </div>
             </div>
           ))}
@@ -393,6 +486,7 @@ export default async function SupplementsPage() {
                     sideEffects={m.sideEffects}
                     todayStr={todayStr}
                     trainingRestricted={trainingRestricted}
+                    suppressedFoodKeys={suppressedFoodKeys}
                   />
                 ))}
               </div>
@@ -420,6 +514,7 @@ export default async function SupplementsPage() {
                     sideEffects={m.sideEffects}
                     todayStr={todayStr}
                     trainingRestricted={trainingRestricted}
+                    suppressedFoodKeys={suppressedFoodKeys}
                   />
                 ))}
               </div>
@@ -437,10 +532,17 @@ export default async function SupplementsPage() {
                 </h2>
                 {warnings.map((w) => (
                   <div
-                    key={w}
-                    className="mb-2 flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300"
+                    key={w.key}
+                    className="mb-2 flex items-center justify-between gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300"
                   >
-                    <IconAlertTriangle className="h-4 w-4" /> {w}
+                    <span className="flex items-center gap-1.5">
+                      <IconAlertTriangle className="h-4 w-4 shrink-0" />{" "}
+                      {w.text}
+                    </span>
+                    <DismissFindingButton
+                      dedupeKey={w.key}
+                      label={`Dismiss: ${w.text}`}
+                    />
                   </div>
                 ))}
                 <div className="space-y-3">

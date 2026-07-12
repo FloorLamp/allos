@@ -1,8 +1,9 @@
 "use server";
-import { requireWriteAccess } from "@/lib/auth";
+import { requireSession, requireWriteAccess } from "@/lib/auth";
 
 import { revalidatePath } from "next/cache";
-import { db } from "@/lib/db";
+import { db, writeTx } from "@/lib/db";
+import { buildJournalFeedPage, type JournalFeedPage } from "@/lib/journal-feed";
 import { captureDelete } from "@/lib/undo-delete-db";
 import {
   writeActivityFold,
@@ -210,7 +211,7 @@ export async function saveActivity(
     return owned ? n : null;
   })();
 
-  const tx = db.transaction((): number | null => {
+  const activityId = writeTx((): number | null => {
     let activityId: number;
     let storedSets: StoredSetWeights | undefined;
     if (id) {
@@ -304,7 +305,6 @@ export async function saveActivity(
       writeSets(activityId, formData, prefs.weightUnit, storedSets);
     return activityId;
   });
-  const activityId = tx();
   // The tx returns null when the (untrusted) form id isn't this profile's — the
   // ownership check bailed, so nothing was written. Report it instead of a silent
   // no-op the form would confirm as "Saved ✓".
@@ -367,7 +367,7 @@ export async function mergeActivities(
   const overrideFields = parseOverrideFields(formData.get("overrides"));
 
   let undoId: number | null = null;
-  const tx = db.transaction((): boolean => {
+  const ok = writeTx((): boolean => {
     const keep = db
       .prepare("SELECT * FROM activities WHERE id = ? AND profile_id = ?")
       .get(keepId, profile.id) as Record<string, unknown> | undefined;
@@ -402,13 +402,30 @@ export async function mergeActivities(
     });
     return true;
   });
-  if (!tx()) return { undoId: null };
+  if (!ok) return { undoId: null };
 
   // Refresh every activity-reading surface the folded/deleted row feeds — the
   // Journal feed on /training, the /trends fitness chart + heatmap, and the
   // dashboard rollups (same surfaces deleteActivity refreshes).
   revalidateActivitySurfaces();
   return { undoId };
+}
+
+// Load an older window of the Journal feed (issue #451). The Training → Log surface
+// renders only its newest page server-side; this fetches the next-older window on a
+// "Load more" tap (or when a deep link targets a day/activity below the loaded set).
+// A READ, but scoped to the SESSION's active profile — `before` is the only client
+// input and is used purely as a `date <` cursor, never a profile selector, so it can't
+// reach another profile's history (getJournalPage filters by profile_id). A malformed
+// cursor is normalized to null (start from the newest day) rather than trusted into SQL.
+export async function loadJournalPage(
+  before: string | null
+): Promise<JournalFeedPage> {
+  const { login, profile } = await requireSession();
+  const cursor =
+    typeof before === "string" && isRealIsoDate(before) ? before : null;
+  const units = getUnitPrefs(login.id);
+  return buildJournalFeedPage(profile.id, cursor, units);
 }
 
 export async function deleteActivity(

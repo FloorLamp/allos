@@ -1,12 +1,8 @@
 import { IconDownload, IconFileExport } from "@tabler/icons-react";
-import { DATASETS, PAGE_SIZE } from "@/lib/export";
+import { DATASETS, PAGE_SIZE, RESTRICTED_DATASETS } from "@/lib/export";
 import { requireSession } from "@/lib/auth";
 import { isTrainingRestricted } from "@/lib/age-gate";
 import DataTableManager from "@/components/DataTableManager";
-
-// Datasets tied to the age-gated fitness surfaces (Activities, Goals); hidden
-// here for restricted profiles to match the rest of the UI (see lib/age-gate.ts).
-const RESTRICTED_DATASETS = new Set(["activities", "goals"]);
 
 function firstParam(value: string | string[] | undefined): string | undefined {
   const first = Array.isArray(value) ? value[0] : value;
@@ -44,7 +40,9 @@ export default async function DataExport({
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
           Take a complete, portable copy of {profile.name}&apos;s record — every
           dataset as JSON and CSV, uploaded medical files, and the clinical
-          passport as a FHIR bundle, all in one zip.
+          passport as a FHIR bundle, all in one zip. This is a readable copy for
+          portability, not a restore file — rebuilding an instance uses the
+          snapshot backups, not this zip.
         </p>
         <div className="mt-4 flex flex-wrap gap-3">
           <a

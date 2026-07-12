@@ -28,6 +28,7 @@
 
 import { convertToCanonical } from "./unit-conversions";
 import type { Sex } from "./types";
+import { ADULT_MIN_AGE, isAdultForClinical } from "./life-stage";
 
 // The canonical output names — each MUST exist as a canonical_biomarkers row so
 // the shared reference/optimal-range + flag machinery treats a derived value like
@@ -216,11 +217,12 @@ const CRP_MGL_TO_MGDL = 1 / 10; // mg/L → mg/dL
 // WBC 10^3/µL is numerically identical to 10^9/L (the formula's unit); no factor.
 
 // PhenoAge is developed/validated in ADULTS (NHANES III/IV, ages ~20–84); it is
-// not meaningful for children, so — mirroring how age-dependent surfaces gate off
-// child profiles (see lib/age-gate.ts) — the deriver emits NOTHING below this age.
-// Exported so the biological-age surfaces (lib/bio-age.ts) gate their hero card on
-// exactly the same adult floor the computation uses.
-export const PHENOAGE_MIN_AGE = 18;
+// not meaningful for children, so — like every adult-population surface — the deriver
+// emits NOTHING below the adult floor. This is the SAME line (ADULT_MIN_AGE from the
+// one age model, lib/life-stage) that fitness norms, the bio-age hero, and — since
+// #490 — eGFR gate on, so the adult-population indices no longer disagree on the
+// pediatric floor. Aliased here so the bio-age surfaces keep their import name.
+export const PHENOAGE_MIN_AGE = ADULT_MIN_AGE;
 
 // The catalogue of derived indices. Ordered for stable output. Each formula runs
 // on values already converted to the input's canonical unit.
@@ -283,7 +285,13 @@ const DERIVED_DEFS: DerivedDef[] = [
       const sex = demo.sex;
       const age = demo.ageOn(date);
       // Never guess: eGFR requires a known binary sex and age.
-      if ((sex !== "male" && sex !== "female") || age == null) return null;
+      if (sex !== "male" && sex !== "female") return null;
+      // CKD-EPI 2021 is validated in ADULTS only; a child needs the bedside-Schwartz
+      // equation (height-based), not this age/sex/creatinine formula, so an under-18
+      // profile gets NO eGFR rather than a clinically invalid adult-formula number
+      // (#490). This is the same ADULT_MIN_AGE floor PhenoAge beside it uses — the two
+      // adult-population indices no longer disagree on the pediatric line.
+      if (!isAdultForClinical(age)) return null;
       const scr = v["Creatinine"];
       if (!(scr > 0)) return null;
       return ckdEpi2021(scr, age, sex);
@@ -340,6 +348,16 @@ export function derivedInputCanonicalNames(): string[] {
   const s = new Set<string>();
   for (const d of DERIVED_DEFS) for (const i of d.inputs) s.add(i.canonical);
   return [...s];
+}
+
+// The canonical input analytes ONE derived index depends on, or [] when `name`
+// isn't a derived index. The retest clock (#482 scope 2) uses this: a derived
+// value's retest is satisfied when its INPUTS are fresh — a stored Non-HDL is not
+// "overdue" while a recent Total + HDL exist — because re-drawing the inputs
+// re-derives it. The input→derived relation is a family the clock honors.
+export function derivedInputCanonicalNamesFor(name: string): string[] {
+  const def = DERIVED_DEFS_BY_NAME[name as DerivedName];
+  return def ? def.inputs.map((i) => i.canonical) : [];
 }
 
 // Reduce a component series to date -> canonical value, converting each reading to

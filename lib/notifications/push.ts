@@ -16,7 +16,7 @@
 //     that login manages — the sensible default for a personal/family instance.
 
 import webpush from "web-push";
-import { db } from "../db";
+import { db, writeTx } from "../db";
 import { getSetting, setSetting, getPublicUrl } from "../settings";
 import { createLogger } from "../log";
 import type { NotificationChannel, NotificationMessage } from "./types";
@@ -72,11 +72,10 @@ export function ensureVapidKeys(): string {
   const existing = getStoredVapidKeys();
   if (vapidConfigured(existing)) return existing.publicKey!;
   const keys = webpush.generateVAPIDKeys();
-  const write = db.transaction(() => {
+  writeTx(() => {
     setSetting(VAPID_PUBLIC_KEY, keys.publicKey);
     setSetting(VAPID_PRIVATE_KEY, keys.privateKey);
   });
-  write();
   log.info("generated VAPID keypair"); // note: no key material logged
   return keys.publicKey;
 }

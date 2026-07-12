@@ -1,5 +1,5 @@
 import { revalidatePath } from "next/cache";
-import { db } from "@/lib/db";
+import { db, writeTx } from "@/lib/db";
 import { getTimezone } from "@/lib/settings";
 import { log } from "@/lib/log";
 import { reconcileFlags, addCanonicalNames } from "@/lib/queries";
@@ -173,7 +173,7 @@ export async function POST(req: Request) {
   // last_sync_summary / log.info, kept alongside the new split accounting.
   const total = (c: UpsertCounts) => c.inserted + c.updated + c.unchanged;
   try {
-    const tx = db.transaction(
+    const txResult = writeTx(
       (): { counts: IngestCounts; split: UpsertCounts } => {
         const bodyMetrics = upsertBodyMetrics(
           INGEST_PROFILE_ID,
@@ -219,7 +219,7 @@ export async function POST(req: Request) {
         };
       }
     );
-    ({ counts, split } = tx());
+    ({ counts, split } = txResult);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     log.error("health-connect ingest failed", { err: String(err) });
@@ -233,7 +233,14 @@ export async function POST(req: Request) {
       raw_ref: rawRef,
       error: message,
     });
-    return Response.json({ ok: false, error: message }, { status: 500 });
+    // The real error is logged + stored on the sync event server-side (above); the
+    // response body stays GENERIC (issue #478) so raw internals — SQLite constraint
+    // text, table names — never reach the bearer-token holder, matching every other
+    // route's 500 shape.
+    return Response.json(
+      { ok: false, error: "internal error" },
+      { status: 500 }
+    );
   }
 
   // Post-commit reconcile (#131): register new canonical names and (re)compute

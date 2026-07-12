@@ -1,12 +1,12 @@
 import * as React from "react";
-import { db } from "../db";
+import { db, writeTx } from "../db";
 
 // React's per-request cache() only exists in the canary React that Next vendors
 // for server components. This module is also imported directly by tsx scripts
 // (scripts/notify.ts) that resolve the plain `react` package, which doesn't export
 // cache — importing the named binding there crashes at module load. Fall back to
 // identity in that context (those scripts run each read at most once per tick, so
-// per-request dedup is meaningless outside Next). Mirrors lib/queries/training.ts.
+// per-request dedup is meaningless outside Next). Mirrors lib/request-cache.ts.
 const cache: typeof React.cache =
   (React as { cache?: typeof React.cache }).cache ?? ((fn) => fn);
 import { isValidTimezone, resolveTimezone } from "../timezone";
@@ -51,11 +51,10 @@ export const getUnitPrefs = cache(function getUnitPrefs(
 });
 
 export function setUnitPrefs(loginId: number, prefs: UnitPrefs) {
-  const tx = db.transaction(() => {
+  writeTx(() => {
     setLoginSetting(loginId, "weight_unit", prefs.weightUnit);
     setLoginSetting(loginId, "distance_unit", prefs.distanceUnit);
   });
-  tx();
 }
 
 // App timezone (IANA name, e.g. "America/New_York"), stored per profile in

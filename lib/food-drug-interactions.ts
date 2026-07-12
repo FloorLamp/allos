@@ -110,6 +110,23 @@ export function matchFoodInteractions(item: {
   );
 }
 
+// ---- Suppression key (issue #435) ----
+
+// The findings-bus namespace for the per-item food–drug guidance lines. The
+// /medicine dismiss action guards the whole domain with this single prefix check
+// (mirroring the interaction / dietary-limit / adherence guards).
+export const FOOD_TIMING_PREFIX = "food-timing:";
+
+// The stable suppression/identity key for a food–drug guidance line:
+// `food-timing:<itemId>:<ruleId>` (#435). Keyed on the AUTOINCREMENT item id (never
+// recycles, #203) plus the food-rule entry key (FoodInteractionHit.key), so a
+// dismissal follows the exact item×food guidance — a different item, or the same
+// item's OTHER food rule, keeps its own key. The single source of truth: the
+// /medicine row and any future push derive from it.
+export function foodTimingSignalKey(itemId: number, ruleId: string): string {
+  return `${FOOD_TIMING_PREFIX}${itemId}:${ruleId}`;
+}
+
 // ---- Formatting (shared by every surface) ----
 
 // The actionable guidance line — the issue's "Avoid grapefruit juice — increases

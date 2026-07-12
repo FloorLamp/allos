@@ -1,5 +1,6 @@
-import { db } from "../db";
+import { db, writeTx } from "../db";
 import { cache } from "../request-cache";
+import { biomarkerFamily, BIOMARKER_FAMILIES } from "../canonical-name";
 import {
   getStoredAge,
   getUserBirthdate,
@@ -73,6 +74,39 @@ export function biomarkerNameKey(alias = ""): string {
 }
 const BIOMARKER_NAME_KEY = biomarkerNameKey();
 
+// The biomarker FAMILY identity as a SQL expression (#482) — the ONE grouping key
+// every biomarker surface partitions/matches on so none of them can disagree about
+// what "Vitamin D" is: the dedup partition, the is_latest/current marker, the
+// chart/detail series, and the starred tile all key on THIS instead of the bare
+// per-name key. It is the finite-preimage (#394) realization of the pure
+// biomarkerFamily(): SQL can't call the JS matcher, so each family's member
+// spellings are inlined as an `IN (...)` preimage (from the shared BIOMARKER_FAMILIES
+// data — one source of truth with the JS side) and every other name falls through to
+// the plain display-name key, byte-for-byte the pre-#482 grouping for non-family
+// analytes. Family keys and member strings are hardcoded constants (single-quote
+// escaped), so this is injection-safe. Pass a table alias for a self-join.
+function sqlStringLiteral(s: string): string {
+  return `'${s.replace(/'/g, "''")}'`;
+}
+// The family CASE over an arbitrary name expression — reused both for the records
+// grouping key (over the canonical-or-raw display name) and the star store (over
+// its bare canonical_name column), so both key on the identical family identity.
+function familyKeyOfExpr(nameExpr: string): string {
+  const whens = BIOMARKER_FAMILIES.map((fam) => {
+    const inList = fam.members.map(sqlStringLiteral).join(", ");
+    return `WHEN lower(${nameExpr}) IN (${inList}) THEN ${sqlStringLiteral(
+      `family:${fam.key}`
+    )}`;
+  }).join(" ");
+  return `CASE ${whens} ELSE ${nameExpr} END`;
+}
+export function biomarkerFamilyKey(alias = ""): string {
+  return familyKeyOfExpr(biomarkerNameKey(alias));
+}
+const BIOMARKER_FAMILY_KEY = biomarkerFamilyKey();
+// The same family identity computed over the star store's canonical_name column.
+const STAR_FAMILY_KEY = familyKeyOfExpr("canonical_name");
+
 // Build a "contains" LIKE pattern for free-text search, escaping the SQL wildcards
 // (%, _) and the escape char (\) so a user typing e.g. "50%" or "a_b" matches
 // literally. Pair with `LIKE ? ESCAPE '\'`.
@@ -98,13 +132,19 @@ function likeContains(q: string): string {
 // CTE then surfaces as the single representative, and deleting the ONLY contributor
 // removes the reading entirely.
 //
-// Content-identity = (profile_id, canonical-or-raw name NOCASE, date, value,
-// value_num, unit). Rows sharing ALL of these are the SAME reading and collapse to
-// one; any difference — most importantly a DIFFERENT value for the same
-// date+analyte (a genuine conflict, not a dup) — puts rows in different groups so
-// BOTH stay visible and are never silently merged. value/value_num/unit NULLs group
-// together (window PARTITION BY treats NULLs as equal), so a numeric-only reading
-// (value NULL, value_num set) dedups correctly too.
+// Content-identity = (profile_id, biomarker FAMILY NOCASE, date, value,
+// value_num, unit). The name dimension is the #482 FAMILY key, not the bare name,
+// so two names that are the same measurement (a "Vitamin D, 25-Hydroxy" and a
+// generic "Vitamin D" reading of the same value/date/unit from two documents)
+// collapse to one representative instead of double-counting — the same identity
+// the series/starred/is_latest surfaces now use. Rows sharing ALL of these are the
+// SAME reading and collapse to one; any difference — most importantly a DIFFERENT
+// value for the same date+family (a genuine conflict, not a dup) — puts rows in
+// different groups so BOTH stay visible and are never silently merged (so a
+// same-date total/D2/D3 breakdown with distinct values stays fully visible; only an
+// exact value+date+unit coincidence across two family members would coalesce).
+// value/value_num/unit NULLs group together (window PARTITION BY treats NULLs as
+// equal), so a numeric-only reading (value NULL, value_num set) dedups correctly too.
 //
 // Representative rule: prefer a MANUAL row (document_id IS NULL — manual entries
 // carry no document; both import paths stamp one) over an imported twin, so the
@@ -114,7 +154,7 @@ function likeContains(q: string): string {
 const DEDUP_IDS_CTE = `deduped AS (
   SELECT id FROM (
     SELECT id, ROW_NUMBER() OVER (
-      PARTITION BY profile_id, ${BIOMARKER_NAME_KEY} COLLATE NOCASE,
+      PARTITION BY profile_id, ${BIOMARKER_FAMILY_KEY} COLLATE NOCASE,
                    date, value, value_num, unit
       ORDER BY (document_id IS NULL) DESC, id DESC
     ) AS rn
@@ -125,8 +165,9 @@ const DEDUP_IDS_CTE = `deduped AS (
 // Membership test: this row is the surviving representative of its content-identity.
 const IN_DEDUPED = `id IN (SELECT id FROM deduped)`;
 
-// CTE that ranks every reading within its biomarker group (keyed on the canonical
-// name, case-insensitively) newest-first — date, then id as tie-break — and keeps
+// CTE that ranks every reading within its biomarker group (keyed on the #482
+// FAMILY identity, case-insensitively — so the vitamin-D 25-OH variants share one
+// current reading) newest-first — date, then id as tie-break — and keeps
 // only rn = 1, the current reading. Ranked over the DE-DUPED id set (not all rows)
 // so the "current value" filter and is_latest marker agree with the de-duplicated
 // list: whichever representative dedup kept is the one ranked here, so a manual
@@ -136,7 +177,7 @@ const IN_DEDUPED = `id IN (SELECT id FROM deduped)`;
 const LATEST_IDS_CTE = `latest AS (
   SELECT id FROM (
     SELECT id, ROW_NUMBER() OVER (
-      PARTITION BY profile_id, ${BIOMARKER_NAME_KEY} COLLATE NOCASE
+      PARTITION BY profile_id, ${BIOMARKER_FAMILY_KEY} COLLATE NOCASE
       ORDER BY date DESC, id DESC
     ) AS rn
     FROM medical_records
@@ -365,10 +406,9 @@ export function addCanonicalNames(names: string[]): void {
   const insert = db.prepare(
     "INSERT OR IGNORE INTO canonical_biomarkers (name, source) VALUES (?, 'ai')"
   );
-  const run = db.transaction(() => {
+  writeTx(() => {
     for (const n of distinct) insert.run(n);
   });
-  run();
 }
 
 // Distinct canonical names actually used by records — including user-typed ones
@@ -436,14 +476,20 @@ export const getBiomarkerSeries = cache(function getBiomarkerSeries(
   profileId: number,
   canonical: string
 ): MedicalRecord[] {
+  // Match by the #482 FAMILY identity, not the exact canonical name: a request for
+  // any family member (e.g. "Vitamin D, 25-Hydroxy") returns the WHOLE family's
+  // readings (total + D2 + D3), so the chart/detail page and the starred tile show
+  // one Vitamin D series instead of three — the same collapse the dedup/latest
+  // partitions apply. A non-family analyte's family key is just its own name, so
+  // its series is unchanged from the pre-#482 exact match.
   return db
     .prepare(
       `WITH ${DEDUP_IDS_CTE}
        SELECT * FROM medical_records
-       WHERE profile_id = ? AND canonical_name = ? COLLATE NOCASE AND ${IN_DEDUPED}
+       WHERE profile_id = ? AND ${BIOMARKER_FAMILY_KEY} = ? COLLATE NOCASE AND ${IN_DEDUPED}
        ORDER BY date ASC, id ASC`
     )
-    .all(profileId, profileId, canonical) as MedicalRecord[];
+    .all(profileId, profileId, biomarkerFamily(canonical)) as MedicalRecord[];
 });
 
 // Every canonically-named reading for a profile in ONE deduped pass, ordered so
@@ -493,7 +539,7 @@ export function findRecordsByContentIdentity(
     .prepare(
       `SELECT * FROM medical_records
        WHERE profile_id = ?
-         AND ${BIOMARKER_NAME_KEY} = ? COLLATE NOCASE
+         AND ${BIOMARKER_FAMILY_KEY} = ? COLLATE NOCASE
          AND date = ?
          AND value IS ?
          AND value_num IS ?
@@ -502,7 +548,7 @@ export function findRecordsByContentIdentity(
     )
     .all(
       profileId,
-      identity.nameKey,
+      biomarkerFamily(identity.nameKey),
       identity.date,
       identity.value,
       identity.value_num,
@@ -510,31 +556,55 @@ export function findRecordsByContentIdentity(
     ) as MedicalRecord[];
 }
 
-// Drop any star whose biomarker no longer has a backing record (its last
+// Drop any star whose biomarker FAMILY no longer has a backing record (its last
 // reading was deleted or its canonical name changed), so the pinned card can't
-// point at nothing. Shared by every path that deletes medical records.
+// point at nothing. Family-keyed (#482): a star on "Vitamin D, 25-Hydroxy"
+// survives as long as ANY family member (a D2/D3 breakdown) still has a reading,
+// matching the family-collapsed tile. Shared by every path that deletes records.
 export function cleanupOrphanStars(profileId: number): void {
   db.prepare(
     `DELETE FROM starred_biomarkers
      WHERE profile_id = ?
-       AND canonical_name NOT IN (
-         SELECT canonical_name FROM medical_records
+       AND ${STAR_FAMILY_KEY} NOT IN (
+         SELECT ${BIOMARKER_FAMILY_KEY} FROM medical_records
          WHERE profile_id = ? AND canonical_name IS NOT NULL
        )`
   ).run(profileId, profileId);
 }
 
+// True when THIS biomarker — or any sibling in its #482 family — is starred, so
+// the star toggle reflects the family-collapsed tile (starring "Vitamin D, Total"
+// lights the star on the "Vitamin D3" detail page too). Stars are few, so the
+// family compare is done in JS over the profile's star list.
 export function isBiomarkerStarred(
   profileId: number,
   canonical: string
 ): boolean {
-  return Boolean(
-    db
-      .prepare(
-        "SELECT 1 FROM starred_biomarkers WHERE profile_id = ? AND canonical_name = ? COLLATE NOCASE"
-      )
-      .get(profileId, canonical)
-  );
+  const fam = biomarkerFamily(canonical);
+  const stars = db
+    .prepare(
+      "SELECT canonical_name FROM starred_biomarkers WHERE profile_id = ?"
+    )
+    .all(profileId) as { canonical_name: string }[];
+  return stars.some((s) => biomarkerFamily(s.canonical_name) === fam);
+}
+
+// Remove every star in a biomarker's #482 family (the unstar half of the toggle):
+// because a star on any member lights the whole family, un-starring must clear all
+// of them, not just the exact name — else isBiomarkerStarred would still report the
+// family starred and the toggle would appear stuck. Returns rows deleted.
+export function unstarBiomarkerFamily(
+  profileId: number,
+  canonical: string
+): number {
+  const fam = biomarkerFamily(canonical);
+  const info = db
+    .prepare(
+      `DELETE FROM starred_biomarkers
+        WHERE profile_id = ? AND ${STAR_FAMILY_KEY} = ? COLLATE NOCASE`
+    )
+    .run(profileId, fam);
+  return info.changes;
 }
 
 export interface StarredBiomarker {
@@ -571,11 +641,14 @@ export function getStarredBiomarkers(profileId: number): StarredBiomarker[] {
   // when a manual reading and its imported twin share content-identity, dedup's
   // representative rule (prefer the manual, unflagged row) wins here too, so the
   // tile's flag chip matches the representative the other surfaces show (#381).
-  // Binds profile_id (for DEDUP_IDS_CTE), then profile_id + canonical name.
+  // Matched by the #482 FAMILY identity, so a star on "Vitamin D, 25-Hydroxy"
+  // surfaces the newest reading of ANY family member (a fresh D3 breakdown), the
+  // same series the chart shows. Binds profile_id (for DEDUP_IDS_CTE), then
+  // profile_id + the star's family key.
   const latestStmt = db.prepare(
     `WITH ${DEDUP_IDS_CTE}
      SELECT * FROM medical_records
-     WHERE profile_id = ? AND canonical_name = ? COLLATE NOCASE AND ${IN_DEDUPED}
+     WHERE profile_id = ? AND ${BIOMARKER_FAMILY_KEY} = ? COLLATE NOCASE AND ${IN_DEDUPED}
      ORDER BY date DESC, id DESC LIMIT 1`
   );
 
@@ -591,8 +664,11 @@ export function getStarredBiomarkers(profileId: number): StarredBiomarker[] {
   const cbByName = new Map(cbRows.map((c) => [c.name.toLowerCase(), c]));
 
   return stars.map((name) => {
-    const latest = latestStmt.get(profileId, profileId, name) as
-      MedicalRecord | undefined;
+    const latest = latestStmt.get(
+      profileId,
+      profileId,
+      biomarkerFamily(name)
+    ) as MedicalRecord | undefined;
     const cb = cbByName.get(name.toLowerCase()) ?? null;
     return {
       canonical_name: name,
@@ -806,13 +882,12 @@ export function reconcileFlags(profileId: number, ids?: number[]): number {
   const clear = db.prepare(
     "UPDATE medical_records SET flag = NULL WHERE id = ?"
   );
-  const run = db.transaction(() => {
+  writeTx(() => {
     for (const c of changes) {
       if (c.flag === null) clear.run(c.id);
       else setFlag.run(c.flag, c.id);
     }
   });
-  run();
   return changes.length;
 }
 

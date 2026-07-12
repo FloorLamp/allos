@@ -61,7 +61,8 @@ What is recorded:
   grant-matrix changes.
 
 The `detail` and `target` fields hold **identifiers only — never medical
-content**. Records are retained **90 days** by default and pruned by the hourly
+content**. Records are retained **24 months** by default (admin-configurable —
+`DEFAULT_AUDIT_RETENTION_MONTHS` in `lib/retention.ts`) and pruned by the hourly
 maintenance tick. The log spans every profile, so the viewer is **admin-only**;
 login/profile ids are kept even after the referent is deleted (no foreign key),
 so the trail survives account deletion. A `grant.update` event's `detail` records
@@ -126,7 +127,7 @@ the policy can be observed in the field without breaking anything. Only
 alongside `X-Frame-Options`.
 
 The report-only policy keeps `'unsafe-inline'` in `script-src`/`style-src`
-because Next 14's App Router emits inline bootstrap/runtime scripts and Tailwind
+because Next 16's App Router emits inline bootstrap/runtime scripts and Tailwind
 emits inline styles; a nonce-based strict CSP requires threading a per-request
 nonce through the framework and is a deliberate follow-up. The graduation path:
 

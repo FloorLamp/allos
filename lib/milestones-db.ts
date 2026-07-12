@@ -5,7 +5,7 @@
 // timeline source), and optionally sends a quiet notification. Called once per
 // profile per hourly tick from scripts/notify.ts, next to the refill/digest runs.
 
-import { db, today } from "./db";
+import { db, today, writeTx } from "./db";
 import { shiftDateStr } from "./date";
 import {
   getActivityDates,
@@ -121,11 +121,10 @@ export function recordMilestones(
        (profile_id, key, kind, threshold, title, detail, achieved_on)
      VALUES (?, ?, ?, ?, ?, ?, ?)`
   );
-  const tx = db.transaction((rows: Milestone[]) => {
-    for (const m of rows)
+  writeTx(() => {
+    for (const m of milestones)
       stmt.run(profileId, m.key, m.kind, m.threshold, m.title, m.detail, date);
   });
-  tx(milestones);
 }
 
 // A quiet notification listing the milestones just reached. Factual, no reward

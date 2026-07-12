@@ -106,6 +106,14 @@ function doseLine(e: WindowDose, showFood: boolean): string {
     // medication/supplement (e.g. "⚠️ Avoid grapefruit juice …"). Same pure
     // matcher the /medicine row + item-form notice format over. Pending doses
     // only — it's guidance for taking this dose now.
+    //
+    // SAFETY-TIER, DELIBERATELY UN-GATED (#435): this note rides the scheduled
+    // dose reminder, a safety-tier send that is NOT bus-gated (a page dismissal must
+    // never silence a possibly-critical medication reminder — the same #171/#227
+    // reasoning as the dose reminder itself). So unlike the /medicine food-guidance
+    // LINE (which carries a food-timing:<itemId>:<ruleId> key and is dismissible
+    // through the findings bus), the reminder tail intentionally ignores those
+    // dismissals and always appends the note when the dose is being reminded.
     const foodDrug = foodGuidanceReminderNote(
       matchFoodInteractions({
         name: e.supp.name,

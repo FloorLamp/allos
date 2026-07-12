@@ -65,12 +65,35 @@ export const WEEKEND_RATIO = 2;
 // the supplement never re-attaches a stale dismissal to a different slot.
 export const ADHERENCE_PREFIX = "adherence:";
 
-export function weekdayMissSignalKey(doseId: number, weekday: number): string {
+// Legacy (pre-#436, episode-less) key builders — the old dose+weekday shapes. Kept
+// only so a dismissal stored before #436 still suppresses the current finding via
+// Finding.supersedes rather than orphaning; fresh dismissals write the episodic keys.
+export function weekdayMissLegacyKey(doseId: number, weekday: number): string {
   return `${ADHERENCE_PREFIX}weekday:${doseId}:${weekday}`;
 }
 
-export function weekendAsymmetrySignalKey(doseId: number): string {
+export function weekendAsymmetryLegacyKey(doseId: number): string {
   return `${ADHERENCE_PREFIX}weekend:${doseId}`;
+}
+
+// Episodic keys (#436): append a coarse PERIOD anchor (the builder passes the current
+// year, YYYY) so a recurring same-weekday habit that returns a year later isn't
+// silenced forever by one dismissal — a new period re-fires. The dose-id segment
+// still keys on the AUTOINCREMENT id (never recycles, #203), so a rename/re-time
+// never re-attaches a stale dismissal to a different slot.
+export function weekdayMissSignalKey(
+  doseId: number,
+  weekday: number,
+  periodAnchor: string
+): string {
+  return `${weekdayMissLegacyKey(doseId, weekday)}:${periodAnchor}`;
+}
+
+export function weekendAsymmetrySignalKey(
+  doseId: number,
+  periodAnchor: string
+): string {
+  return `${weekendAsymmetryLegacyKey(doseId)}:${periodAnchor}`;
 }
 
 // ---- Types ----------------------------------------------------------------
@@ -79,9 +102,12 @@ export type AdherencePatternKind = "weekday" | "weekend";
 
 export interface AdherencePattern {
   kind: AdherencePatternKind;
-  // Stable suppression/identity key (the finding's dedupeKey). See the *SignalKey
-  // helpers above.
+  // Stable suppression/identity key (the finding's dedupeKey) — now episode-anchored
+  // (#436). See the *SignalKey helpers above.
   key: string;
+  // The pre-#436, episode-less shape of `key`, honored for suppression via
+  // Finding.supersedes so upgrading the key never orphans a live dismissal.
+  legacyKey: string;
   title: string;
   detail: string;
   // The dose the pattern is about — for the deep link + the re-key.
@@ -96,6 +122,11 @@ export interface DoseAdherenceInput {
   supplementName: string;
   bucket: TimeBucket;
   strip: AdherenceDot[];
+  // The coarse period anchor (the current year, YYYY) appended to the finding's
+  // episodic dedupeKey (#436), so a same-weekday habit recurring a year later isn't
+  // permanently silenced by one dismissal. Supplied by the server builder from
+  // `today`; optional (defaults to "") so older callers/tests are unchanged.
+  periodAnchor?: string;
   // Suppress the "move it earlier in the day" schedule tweak (#430.4): a bedtime
   // slot ("Before sleep") is already as early as the day allows for its purpose,
   // and a medication's timing is prescribed, so "move it to the morning" is wrong
@@ -233,7 +264,8 @@ export function detectWeekdayMissPattern(
   const bucketLower = input.bucket.toLowerCase();
   return {
     kind: "weekday",
-    key: weekdayMissSignalKey(input.doseId, bestWd),
+    key: weekdayMissSignalKey(input.doseId, bestWd, input.periodAnchor ?? ""),
+    legacyKey: weekdayMissLegacyKey(input.doseId, bestWd),
     title: `${input.supplementName}: ${day}s slip`,
     detail:
       `You miss your ${bucketLower} ${input.supplementName} dose most ${day}s ` +
@@ -286,7 +318,8 @@ export function detectWeekendAsymmetry(
   const bucketLower = input.bucket.toLowerCase();
   return {
     kind: "weekend",
-    key: weekendAsymmetrySignalKey(input.doseId),
+    key: weekendAsymmetrySignalKey(input.doseId, input.periodAnchor ?? ""),
+    legacyKey: weekendAsymmetryLegacyKey(input.doseId),
     title: `${input.supplementName}: weekends slip`,
     detail:
       `Your ${bucketLower} ${input.supplementName} dose slips more on weekends ` +

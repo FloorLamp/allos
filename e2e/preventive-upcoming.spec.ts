@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import path from "node:path";
 import Database from "better-sqlite3";
+import { followLink } from "./nav";
 
 // Preventive visits/screenings in Upcoming (issues #82 + #86). The seeded
 // profile 1 is a ~40-year-old with a birthdate (scripts/seed.ts), so the pure
@@ -160,9 +161,14 @@ test.describe("preventive care in Upcoming (issues #82 + #86 + #85)", () => {
     // so it runs BEFORE the later test in this serial group declines the rule.
     const depression = main.getByTestId(DEPRESSION_KEY);
     await expect(depression).toBeVisible();
-    await depression
-      .getByRole("link", { name: "Depression screening", exact: true })
-      .click();
+    await followLink(
+      page,
+      depression.getByRole("link", {
+        name: "Depression screening",
+        exact: true,
+      }),
+      /\/procedures/
+    );
 
     await expect(page).toHaveURL(/\/procedures/);
     await expect(
@@ -248,7 +254,11 @@ test.describe("preventive care in Upcoming (issues #82 + #86 + #85)", () => {
     await expect(skin).toBeVisible();
 
     // Follow the row's "Book" CTA to the appointment form.
-    await skin.getByRole("link", { name: "Book" }).click();
+    await followLink(
+      page,
+      skin.getByRole("link", { name: "Book" }),
+      /\/appointments/
+    );
     await expect(page).toHaveURL(/\/appointments/);
 
     // The create form is prefilled from the preventive item: its title and the

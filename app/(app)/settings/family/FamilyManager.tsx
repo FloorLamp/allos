@@ -11,6 +11,7 @@ import {
   deletionErasesText,
   grantFormEntries,
   initialGrantSelection,
+  loadedGrantSignature,
   memberGrantList,
   setGrantLevel,
   toggleGrant,
@@ -707,6 +708,10 @@ function GrantsRow({
   function save() {
     const fd = new FormData();
     fd.set("loginId", String(login.id));
+    // The grants this row LOADED with (issue #467): setGrants refuses the save if the
+    // login's access changed server-side since then, instead of letting this stale
+    // form's desired set silently revoke another admin's fresh grant.
+    fd.set("grants_snapshot", loadedGrantSignature(granted, access));
     for (const { id, level } of grantFormEntries(selected)) {
       fd.append("profileId", String(id));
       fd.set(`access_${id}`, level);

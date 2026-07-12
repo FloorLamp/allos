@@ -198,6 +198,67 @@ export function getActivitiesSince(
     .all(profileId, since) as Activity[];
 }
 
+// One page of the Journal feed, windowed SERVER-SIDE by whole days (issue #451). The
+// journal is browsed by recency, so paging by day (not by row) keeps a day's cards
+// intact — a page never splits a single day across the boundary, so the client can
+// append pages by plain concatenation. Keyset ("seek") pagination on `date`: pass the
+// previous page's `nextBefore` as `before` to get the next-older window; null starts
+// at the newest day. Bounded — at most `dayLimit` days' activities cross the wire per
+// call, instead of the profile's entire history (SELECT *, incl. the components TEXT)
+// on every visit. `nextBefore` is the oldest loaded date when more days remain (an
+// over-fetch of one extra date decides this without a phantom trailing page), else
+// null. Profile-scoped on both statements.
+export interface JournalPage {
+  activities: Activity[]; // every activity on the returned days, date DESC, id DESC
+  days: string[]; // the distinct dates covered, date DESC
+  nextBefore: string | null; // cursor for the next-older page, or null when exhausted
+}
+
+export function getJournalPage(
+  profileId: number,
+  before: string | null,
+  dayLimit: number
+): JournalPage {
+  const limit = Math.max(1, dayLimit);
+  // Over-fetch one extra date so we can tell whether an older page exists without
+  // issuing a separate count (or a trailing page that comes back empty).
+  const dateRows = (
+    before == null
+      ? db.prepare(
+          `SELECT DISTINCT date FROM activities WHERE profile_id = ?
+             ORDER BY date DESC LIMIT ?`
+        )
+      : db.prepare(
+          `SELECT DISTINCT date FROM activities WHERE profile_id = ? AND date < ?
+             ORDER BY date DESC LIMIT ?`
+        )
+  ).all(
+    ...(before == null
+      ? [profileId, limit + 1]
+      : [profileId, before, limit + 1])
+  ) as {
+    date: string;
+  }[];
+
+  const hasMore = dateRows.length > limit;
+  const days = dateRows.slice(0, limit).map((r) => r.date);
+  if (days.length === 0) return { activities: [], days: [], nextBefore: null };
+
+  const placeholders = days.map(() => "?").join(",");
+  const activities = db
+    .prepare(
+      `SELECT * FROM activities WHERE profile_id = ? AND date IN (${placeholders})
+         ORDER BY date DESC, id DESC`
+    )
+    .all(profileId, ...days) as Activity[];
+
+  return {
+    activities,
+    days,
+    nextBefore: hasMore ? days[days.length - 1] : null,
+  };
+}
+
 export function getActivitiesByDate(
   profileId: number,
   date: string

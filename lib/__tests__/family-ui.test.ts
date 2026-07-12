@@ -3,12 +3,13 @@ import {
   deletionErasesText,
   grantFormEntries,
   initialGrantSelection,
+  loadedGrantSignature,
   memberGrantList,
   plural,
   setGrantLevel,
   toggleGrant,
 } from "@/lib/family-ui";
-import type { Access } from "@/lib/grants";
+import { grantSignature, type Access } from "@/lib/grants";
 
 describe("memberGrantList", () => {
   const logins = [
@@ -84,5 +85,30 @@ describe("grant selection transforms", () => {
       { id: 1, level: "write" },
       { id: 4, level: "read" },
     ]);
+  });
+});
+
+describe("loadedGrantSignature (issue #467)", () => {
+  it("matches the server-side grantSignature for the same loaded grants", () => {
+    const granted = [3, 1];
+    const access: Record<number, Access> = { 1: "write", 3: "read" };
+    // The client signs the (granted, access) props; the server signs the
+    // GrantInput[] it reads back — the two must agree so an unchanged form passes.
+    expect(loadedGrantSignature(granted, access)).toBe(
+      grantSignature([
+        { profileId: 1, access: "write" },
+        { profileId: 3, access: "read" },
+      ])
+    );
+  });
+
+  it("defaults a missing access level to 'write' (mirrors the server)", () => {
+    expect(loadedGrantSignature([2], {})).toBe(
+      grantSignature([{ profileId: 2, access: "write" }])
+    );
+  });
+
+  it("signs no grants as the empty string", () => {
+    expect(loadedGrantSignature([], {})).toBe("");
   });
 });

@@ -1,8 +1,17 @@
 import fs from "node:fs";
 import path from "node:path";
-import { db } from "./db";
-import { DATASETS } from "./export";
-import { getUserSex, getUserBirthdate, getUserFullName } from "./settings";
+import { db, readTx } from "./db";
+import { PHOTO_ROOT } from "./profile-photo";
+import { DATASETS, RESTRICTED_DATASETS } from "./export";
+import { isTrainingRestricted } from "./age-gate";
+import {
+  getUserSex,
+  getUserBirthdate,
+  getUserFullName,
+  getBloodType,
+  getEmergencyContact,
+  getSmokingHistory,
+} from "./settings";
 import type {
   FhirExportInput,
   FhirExportCondition,
@@ -11,6 +20,10 @@ import type {
   FhirExportImmunization,
   FhirExportObservation,
   FhirExportMedication,
+  FhirExportEncounter,
+  FhirExportFamilyHistory,
+  FhirExportCarePlanItem,
+  FhirExportCareGoal,
 } from "./fhir-export";
 
 // Server-side collection layer for the full-account export (issue #18). Reads the
@@ -76,6 +89,31 @@ export function listProfileMedicalFiles(profileId: number): ExportFile[] {
     out.push({ zipName, absPath: abs, size });
   }
   return out;
+}
+
+// The profile's avatar photo as a bundle file, when one is stored on disk (#466).
+// Confined to PHOTO_ROOT with the same path-traversal guard as the medical files and
+// the serve route; a missing/tampered path yields null (nothing bundled).
+export function getProfilePhotoFile(profileId: number): ExportFile | null {
+  const row = db
+    .prepare(`SELECT photo_path FROM profiles WHERE id = ?`)
+    .get(profileId) as { photo_path: string | null } | undefined;
+  const stored = row?.photo_path;
+  if (!stored) return null;
+  const abs = path.resolve(process.cwd(), stored);
+  if (abs !== PHOTO_ROOT && !abs.startsWith(PHOTO_ROOT + path.sep)) return null;
+  try {
+    const st = fs.statSync(abs);
+    if (!st.isFile()) return null;
+    const ext = abs.split(".").pop()?.toLowerCase();
+    return {
+      zipName: `profile-photo${ext ? `.${sanitizeName(ext)}` : ""}`,
+      absPath: abs,
+      size: st.size,
+    };
+  } catch {
+    return null;
+  }
 }
 
 // Strip path separators / control chars from a stored filename so it can't create
@@ -191,10 +229,70 @@ export function collectFhirExportInput(
     active: m.active !== 0,
   }));
 
+  // Encounters, family history, care plan items and care goals — the domains the
+  // importer already parses (Encounter / FamilyMemberHistory / CarePlan / Goal) but
+  // the exporter used to drop (#465). encounters.diagnoses is stored as a "; "-joined
+  // summary column, so split it back into the string[] the builder expects.
+  const encounters = (
+    db
+      .prepare(
+        `SELECT date, end_date, type, class_code, reason, diagnoses
+           FROM encounters WHERE profile_id = ? ORDER BY date DESC, id DESC`
+      )
+      .all(profileId) as {
+      date: string;
+      end_date: string | null;
+      type: string | null;
+      class_code: string | null;
+      reason: string | null;
+      diagnoses: string | null;
+    }[]
+  ).map<FhirExportEncounter>((e) => ({
+    date: e.date,
+    end_date: e.end_date,
+    type: e.type,
+    class_code: e.class_code,
+    reason: e.reason,
+    diagnoses: (e.diagnoses ?? "")
+      .split(";")
+      .map((s) => s.trim())
+      .filter(Boolean),
+  }));
+
+  const familyHistory = db
+    .prepare(
+      `SELECT relation, condition, code, code_system, onset_age, deceased
+         FROM family_history WHERE profile_id = ? ORDER BY condition, id`
+    )
+    .all(profileId) as FhirExportFamilyHistory[];
+
+  const carePlanItems = db
+    .prepare(
+      `SELECT description, code, code_system, category, planned_date, status
+         FROM care_plan_items WHERE profile_id = ?
+        ORDER BY planned_date DESC, id DESC`
+    )
+    .all(profileId) as FhirExportCarePlanItem[];
+
+  const careGoals = db
+    .prepare(
+      `SELECT description, code, code_system, target_date, status
+         FROM care_goals WHERE profile_id = ? ORDER BY target_date DESC, id DESC`
+    )
+    .all(profileId) as FhirExportCareGoal[];
+
+  const smoking = getSmokingHistory(profileId);
   const profile = {
     name: getUserFullName(profileId) ?? displayName,
     sex: getUserSex(profileId),
     birthdate: getUserBirthdate(profileId),
+    bloodType: getBloodType(profileId),
+    emergencyContact: getEmergencyContact(profileId),
+    smoking: {
+      status: smoking.status,
+      packYears: smoking.packYears,
+      quitYear: smoking.quitYear,
+    },
   };
 
   return {
@@ -205,6 +303,10 @@ export function collectFhirExportInput(
     immunizations,
     observations,
     medications,
+    encounters,
+    familyHistory,
+    carePlanItems,
+    careGoals,
   };
 }
 
@@ -221,6 +323,8 @@ export interface ExportSnapshot {
   datasets: ExportDatasetSnapshot[];
   fhirInput: FhirExportInput;
   files: ExportFile[];
+  // The profile avatar to bundle, or null when none is stored (#466).
+  profilePhoto: ExportFile | null;
 }
 
 // Collect the whole export payload inside a SINGLE SQLite read transaction (issue
@@ -228,7 +332,7 @@ export interface ExportSnapshot {
 // the stream was pulled, with no snapshot — so a write landing BETWEEN two pulls
 // could tear the archive internally (a supplement present in supplements.json whose
 // log row, read a moment later, is already gone). better-sqlite3 is synchronous and
-// a `db.transaction` wraps the reads in one BEGIN…COMMIT, so every dataset + the
+// a `readTx` wraps the reads in one (deferred) BEGIN…COMMIT, so every dataset + the
 // FHIR passport input + the medical-file list observe the same consistent snapshot.
 // The bounded JSON (datasets + FHIR input) is materialized in memory here; the
 // medical FILES are only LISTED here (their bytes are still streamed one at a time
@@ -238,13 +342,20 @@ export function collectExportSnapshot(
   profileId: number,
   profileName: string
 ): ExportSnapshot {
-  return db.transaction((): ExportSnapshot => ({
-    datasets: DATASETS.map((ds) => ({
+  // A training-restricted profile's fitness datasets (activities/goals) are gated
+  // out of the ZIP too, not just the export UI (issue #471) — same authoritative
+  // enforcement as the per-dataset CSV route. Gate off by default (min age unset).
+  const restricted = isTrainingRestricted(profileId);
+  return readTx((): ExportSnapshot => ({
+    datasets: DATASETS.filter(
+      (ds) => !(restricted && RESTRICTED_DATASETS.has(ds.key))
+    ).map((ds) => ({
       key: ds.key,
       columns: ds.columns,
       rows: ds.rows(profileId),
     })),
     fhirInput: collectFhirExportInput(profileId, profileName),
     files: listProfileMedicalFiles(profileId),
-  }))();
+    profilePhoto: getProfilePhotoFile(profileId),
+  }));
 }

@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import { db } from "./db";
+import { db, writeTx } from "./db";
 import { documentSource, undeferredBodyMetrics } from "./body-metric-extract";
 import {
   adoptProfileFromExtraction,
@@ -23,8 +23,8 @@ import type {
 import type { PersistInput, PersistRecord } from "./import-shape";
 
 // The single persist core shared by every document import path — the AI
-// extractor (app/(app)/medical/actions.ts) and the deterministic CCD/XDM/SHC
-// parser (lib/health-record-doc.ts). Having one writer means the delete-set
+// extractor (runExtraction in lib/medical-pipeline.ts) and the deterministic
+// CCD/XDM/SHC parser (lib/health-record-doc.ts). Having one writer means the delete-set
 // (what a reprocess/delete clears), the insert columns, and the document
 // finalize can't drift between paths. Callers reduce their extractor output to a
 // PersistInput (lib/import-shape) and keep only their own extras (the AI path's
@@ -80,7 +80,7 @@ function footprintScope(t: ImportFootprintTable): string {
 // Delete every row a document import produced, across ALL footprint tables. Shared
 // by BOTH the reprocess delete-set (persistDocumentImport below, which clears the
 // old set before re-inserting) and deleteMedicalDocument
-// (app/(app)/medical/actions.ts, which clears it on delete) — driven off
+// (app/(app)/medical/document-actions.ts, which clears it on delete) — driven off
 // IMPORT_FOOTPRINT_TABLES so the two can't drift. Every statement is
 // profile_id-scoped (profile-scoping rule); manual rows carry a NULL document_id or
 // a non-document source and are never touched.
@@ -164,7 +164,7 @@ export function persistDocumentImport(
 ): PersistOutcome {
   const providerIdFor = buildProviderResolver(input.providers);
 
-  const result = db.transaction(() => {
+  const result = writeTx(() => {
     // Replace this document's prior rows (a no-op on first import; on reprocess
     // it clears the old set) across every table an import writes — including the
     // previously auto-structured meds, cleared here before the existing-meds set
@@ -224,7 +224,7 @@ export function persistDocumentImport(
       profileId
     );
     return { counts, extractedCount };
-  })();
+  });
 
   return {
     immCount: result.counts.immCount,
@@ -268,9 +268,9 @@ export function persistDocumentlessImport(
   input: PersistInput
 ): DocumentlessOutcome {
   const providerIdFor = buildProviderResolver(input.providers);
-  const counts = db.transaction(() =>
+  const counts = writeTx(() =>
     insertImportRows(profileId, null, input, providerIdFor)
-  )();
+  );
   return {
     recCount: counts.recCount,
     immCount: counts.immCount,

@@ -78,14 +78,33 @@ export async function GET() {
     );
 
     const files = snapshot.files;
+    // A file listed at snapshot time but gone before the byte read is ABSENT from the
+    // archive — record its zip name so the manifest warns instead of silently
+    // dropping it (#466).
+    const missingFiles: string[] = [];
+    let bundledFileCount = 0;
     for (const f of files) {
       let data: Buffer;
       try {
         data = fs.readFileSync(f.absPath);
       } catch {
-        continue; // vanished between listing and read — skip rather than abort
+        missingFiles.push(f.zipName); // vanished between listing and read
+        continue;
       }
+      bundledFileCount += 1;
       yield zip.file(f.zipName, data);
+    }
+
+    // The profile avatar (#466), same vanished-file handling.
+    let profilePhotoName: string | null = null;
+    if (snapshot.profilePhoto) {
+      try {
+        const data = fs.readFileSync(snapshot.profilePhoto.absPath);
+        yield zip.file(snapshot.profilePhoto.zipName, data);
+        profilePhotoName = snapshot.profilePhoto.zipName;
+      } catch {
+        missingFiles.push(snapshot.profilePhoto.zipName);
+      }
     }
 
     const manifest = buildExportManifest({
@@ -93,8 +112,10 @@ export async function GET() {
       exportedAt: new Date().toISOString(),
       profile: { id: profileId, name: profileName },
       datasetCounts,
-      fileCount: files.length,
+      fileCount: bundledFileCount,
       fhirResourceCount: fhir.entry.length,
+      missingFiles,
+      profilePhoto: profilePhotoName,
     });
     yield zip.file(
       "manifest.json",

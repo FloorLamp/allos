@@ -2,7 +2,7 @@
 import { requireSession, requireWriteAccess } from "@/lib/auth";
 
 import { revalidatePath } from "next/cache";
-import { db, today } from "@/lib/db";
+import { db, today, writeTx } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
 import { getUnitPrefs } from "@/lib/settings";
 import {
@@ -173,9 +173,13 @@ export interface ImportJobState {
 }
 
 // Kick off an extraction in the background. Inserts a 'processing' job row and
-// returns immediately with its id; the actual AI call runs fire-and-forget (safe
-// in this single long-lived Node process — orphans are reset in migrate()). The
-// page shows the job as processing and the app-wide poller toasts on completion.
+// returns immediately with its id; the actual AI call runs fire-and-forget in the
+// web process. A crash orphan is reaped by the boot-time reset (resetInterruptedWork
+// in lib/migrations/boot-tasks.ts) — which is AGE-GATED on the extraction lease so a
+// sibling process booting (the hourly notify tick) can't fail this still-running job
+// (issue #461); it is NOT "safe because single-process" — multiple processes share
+// the DB. The page shows the job as processing and the app-wide poller toasts on
+// completion.
 export async function startImport(
   type: ImportType,
   text: string
@@ -444,7 +448,7 @@ export async function commitWorkouts(
 
   let nWorkouts = 0;
   let nSets = 0;
-  const run = db.transaction(() => {
+  writeTx(() => {
     for (const w of workouts) {
       const sets = Array.isArray(w?.sets) ? w.sets.filter((s) => s?.exercise?.trim()) : [];
       if (sets.length === 0) continue;
@@ -481,7 +485,6 @@ export async function commitWorkouts(
       nWorkouts++;
     }
   });
-  run();
 
   revalidatePath("/training");
   revalidatePath("/");

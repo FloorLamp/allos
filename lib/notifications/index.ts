@@ -1,6 +1,7 @@
 // Channel registry + dispatch. Adding a channel = implement NotificationChannel
 // and list it here.
 
+import { writeTx } from "../db";
 import { createLogger } from "../log";
 import { getSetting, setSetting } from "../settings";
 import { type ChannelId, type NotificationMessage } from "./types";
@@ -48,22 +49,31 @@ export function getNotifyError(): NotifyErrorMarker | null {
 // must never turn a delivery into a throw, so failures are logged and swallowed.
 function recordDeliveryOutcome(results: DispatchResult[]): void {
   try {
-    // The channel of the currently-recorded failure, if any (empty when the
-    // marker is clear or is a legacy value predating channel tracking).
-    const prevFailedChannel = getSetting(NOTIFY_ERR_KEY)
-      ? (getSetting(NOTIFY_ERR_CHANNEL_KEY) ?? "")
-      : "";
-    const decision = decideMarker(results, prevFailedChannel);
-    if (decision.action === "set") {
-      setSetting(NOTIFY_ERR_KEY, decision.failure.error);
-      setSetting(NOTIFY_ERR_AT_KEY, new Date().toISOString());
-      setSetting(NOTIFY_ERR_CHANNEL_KEY, decision.failure.channel);
-    } else if (decision.action === "clear") {
-      setSetting(NOTIFY_ERR_KEY, "");
-      setSetting(NOTIFY_ERR_AT_KEY, "");
-      setSetting(NOTIFY_ERR_CHANNEL_KEY, "");
-    }
-    // "keep" → leave the marker untouched.
+    // Read-decide-write in ONE immediate transaction (issue #468): the marker is
+    // three separate settings, written by BOTH the web app and the notify tick.
+    // Without the write lock taken at BEGIN, a set from one process could interleave
+    // with a clear from the other and tear error/at/channel apart — and, worse,
+    // feed the #192 channel-aware clear a stale prevFailedChannel read a moment
+    // before another process rewrote it. writeTx makes the read (the prior failed
+    // channel) and the three writes atomic against the other writer.
+    writeTx(() => {
+      // The channel of the currently-recorded failure, if any (empty when the
+      // marker is clear or is a legacy value predating channel tracking).
+      const prevFailedChannel = getSetting(NOTIFY_ERR_KEY)
+        ? (getSetting(NOTIFY_ERR_CHANNEL_KEY) ?? "")
+        : "";
+      const decision = decideMarker(results, prevFailedChannel);
+      if (decision.action === "set") {
+        setSetting(NOTIFY_ERR_KEY, decision.failure.error);
+        setSetting(NOTIFY_ERR_AT_KEY, new Date().toISOString());
+        setSetting(NOTIFY_ERR_CHANNEL_KEY, decision.failure.channel);
+      } else if (decision.action === "clear") {
+        setSetting(NOTIFY_ERR_KEY, "");
+        setSetting(NOTIFY_ERR_AT_KEY, "");
+        setSetting(NOTIFY_ERR_CHANNEL_KEY, "");
+      }
+      // "keep" → leave the marker untouched.
+    });
   } catch (e) {
     log.error("recording delivery outcome failed", {
       err: e instanceof Error ? e.message : String(e),

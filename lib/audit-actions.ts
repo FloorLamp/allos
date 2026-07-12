@@ -49,7 +49,20 @@ export const AUDIT_ACTIONS = {
   // to capture; the target records how many rows/files/resources left the app.
   exportFull: "export.full",
   exportFhir: "export.fhir",
+  // Per-dataset CSV export (issue #471): the /api/export/<dataset> route serves the
+  // identical full-table PHI as the ZIP (ds.rows() unbounded), so "someone exported
+  // the whole biomarker history" must be logged here too — not only when the ZIP
+  // button was used. target = the dataset key, detail = the row count that left.
+  exportDataset: "export.dataset",
 } as const;
+
+// DELIBERATELY UNAUDITED PHI egress, recorded here so it reads as a decision, not a
+// gap (issue #471): the token-authed calendar `.ics` feed and the Telegram
+// notification sends. Both are high-frequency machine pulls/pushes (a subscribed
+// calendar client refetches every few hours; the tick fans out per profile), so an
+// audit row per fetch/send would be poll spam that buries the real access events —
+// and each already has its own trail (token mint/revoke rows, the notify delivery
+// markers). Auditing them would degrade the log without adding accountability.
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
 
@@ -70,8 +83,12 @@ export function matchesActionPrefix(action: string, prefix: string): boolean {
 
 // ---- Retention ----
 
-// Default audit retention: keep 90 days of events. The hourly notify tick calls
-// pruneAuditEvents() with this default.
+// A 90-day day-window fallback, kept ONLY for callers/tests that prune by a day
+// count. It is NOT the tick's default: the hourly notify tick prunes by the
+// admin-configurable MONTH window (`DEFAULT_AUDIT_RETENTION_MONTHS = 24` in
+// lib/retention.ts unless overridden), so the real out-of-the-box retention is 24
+// months, not 90 days. See pruneAuditEvents() (lib/audit.ts) — maxMonths wins when
+// supplied, and the tick always supplies it.
 export const DEFAULT_AUDIT_RETENTION_DAYS = 90;
 
 // The SQLite datetime() modifier for an age-based prune cutoff — e.g. 90 →

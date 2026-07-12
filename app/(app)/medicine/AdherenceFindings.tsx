@@ -2,7 +2,7 @@ import { IconCalendarStats } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
 import { getFindingSuppressions } from "@/lib/queries";
-import { activeByKey } from "@/lib/findings";
+import { activeFindings } from "@/lib/findings";
 import { buildAdherencePatternFindings } from "@/lib/rule-findings";
 import FindingsList from "@/components/FindingsList";
 import { dismissAdherencePattern } from "./actions";
@@ -17,9 +17,8 @@ import { dismissAdherencePattern } from "./actions";
 export default async function AdherenceFindings() {
   const { profile } = await requireSession();
   const now = today(profile.id);
-  const findings = activeByKey(
+  const findings = activeFindings(
     buildAdherencePatternFindings(profile.id, now),
-    (f) => f.dedupeKey,
     getFindingSuppressions(profile.id),
     now
   );

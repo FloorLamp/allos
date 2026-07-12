@@ -15,7 +15,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { revalidatePath } from "next/cache";
-import { db, today } from "@/lib/db";
+import { db, today, writeTx } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
 import { extractMedicalDocument, isSupportedFile } from "@/lib/medical-extract";
 import { sniffUploadType } from "@/lib/file-sniff";
@@ -305,23 +305,20 @@ export async function ingestMedicalUpload(
     `INSERT INTO medical_documents (filename, stored_path, mime_type, size_bytes, content_hash, extraction_status, processing_started_at, profile_id)
      VALUES (?,?,?,?,?, 'processing', datetime('now'), ?)`
   );
-  const reserve = db.transaction(
-    (): { existing: Existing } | { docId: number } => {
-      const found = findExisting.get(contentHash, profileId) as
-        Existing | undefined;
-      if (found) return { existing: found };
-      const info = insertRow.run(
-        file.name,
-        "",
-        storedMime,
-        buffer.length,
-        contentHash,
-        profileId
-      );
-      return { docId: Number(info.lastInsertRowid) };
-    }
-  );
-  const reserved = reserve();
+  const reserved = writeTx((): { existing: Existing } | { docId: number } => {
+    const found = findExisting.get(contentHash, profileId) as
+      Existing | undefined;
+    if (found) return { existing: found };
+    const info = insertRow.run(
+      file.name,
+      "",
+      storedMime,
+      buffer.length,
+      contentHash,
+      profileId
+    );
+    return { docId: Number(info.lastInsertRowid) };
+  });
   if ("existing" in reserved) {
     const existing = reserved.existing;
     // If the original's extraction failed and its file is still on disk, the

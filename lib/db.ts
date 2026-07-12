@@ -79,6 +79,31 @@ export function migrate(db: Database.Database): void {
 export const db = globalForDb.__healthDb ?? createDb();
 if (process.env.NODE_ENV !== "production") globalForDb.__healthDb = db;
 
+// Run a WRITE transaction with the reserved-write lock taken at BEGIN (IMMEDIATE)
+// (issue #468). A plain `db.transaction(fn)` is DEFERRED: it opens a read snapshot
+// and only tries to upgrade to a write lock at its FIRST write — and that upgrade,
+// if another connection has committed since the snapshot opened, throws SQLITE_BUSY
+// *immediately*, NOT covered by busy_timeout. Three processes now write this file
+// (the web app, the hourly notify tick, the poll sidecar), so a read-then-write
+// transaction that snapshots then writes hits that trap under the top-of-hour write
+// burst. IMMEDIATE takes the write lock up front, so a competing writer waits it out
+// via busy_timeout instead of failing. Any app transaction that WRITES must go
+// through here (or `.immediate()` directly, for the arg-passing migration sites) —
+// enforced by lib/__tests__/immediate-tx.test.ts. Nesting is safe: better-sqlite3
+// turns a transaction opened inside an already-open one into a SAVEPOINT and ignores
+// the access mode, so writeTx works at either the top level or nested.
+export function writeTx<T>(fn: () => T): T {
+  return db.transaction(fn).immediate() as T;
+}
+
+// Run a READ-ONLY snapshot transaction (DEFERRED): wrap several reads in one
+// BEGIN…COMMIT so they observe a single consistent snapshot (e.g. the full-export
+// collector, issue #135). Deferred is correct here — it never writes, so it must NOT
+// take a write lock. Anything that mutates uses writeTx instead.
+export function readTx<T>(fn: () => T): T {
+  return db.transaction(fn)() as T;
+}
+
 // Proactively checkpoint the write-ahead log (issue #135, item 6). Three processes
 // share one DB file on a bind mount (the app, the hourly tick, the poll sidecar) and
 // nothing otherwise runs a passive checkpoint, so a long-lived reader can hold the
