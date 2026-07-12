@@ -50,3 +50,27 @@ test("an imported cycling ride shows the bike icon in the journal", async ({
     "bike"
   );
 });
+
+// #451: the Log feed is paged SERVER-SIDE — only the newest window of days renders on
+// load, and "Load more" fetches an older window on demand (instead of shipping the
+// whole history to the client up front). The seed carries ~16 weeks of Push/Pull/Legs
+// sessions, so there are well over one page of day sections: clicking "Load more"
+// reveals additional, older day groups.
+test("the Log feed pages older days in via 'Load more' (#451)", async ({
+  page,
+}) => {
+  await page.goto("/training");
+
+  const days = page.locator('section[id^="day-"]');
+  await expect(days.first()).toBeVisible();
+  const before = await days.count();
+
+  const loadMore = page.getByTestId("journal-load-more");
+  await expect(loadMore).toBeVisible();
+  await loadMore.click();
+
+  // After loading an older window, strictly more day sections are on the page.
+  await expect
+    .poll(async () => days.count(), { timeout: 10_000 })
+    .toBeGreaterThan(before);
+});

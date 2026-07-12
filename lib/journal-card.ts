@@ -80,6 +80,33 @@ export interface DayGroup {
   cards: JournalCardData[];
 }
 
+// Append a newer-first page of day groups onto the already-loaded ones as the Journal
+// feed pages older windows in from the server (issue #451). The server pages by whole
+// day, so `incoming` dates are normally disjoint from and strictly older than
+// `existing` — a plain concat. This still merges by date (deduping cards by activity
+// id) so a boundary re-fetch or an overlapping window can't duplicate a card or split
+// a day into two groups. Pure: same inputs → same output, unit-tested.
+export function appendDayGroups(
+  existing: DayGroup[],
+  incoming: DayGroup[]
+): DayGroup[] {
+  if (incoming.length === 0) return existing;
+  const out = existing.map((g) => ({ ...g, cards: [...g.cards] }));
+  const indexByDate = new Map(out.map((g, i) => [g.date, i]));
+  for (const g of incoming) {
+    const at = indexByDate.get(g.date);
+    if (at == null) {
+      indexByDate.set(g.date, out.length);
+      out.push({ ...g, cards: [...g.cards] });
+    } else {
+      const seen = new Set(out[at].cards.map((c) => c.activity.id));
+      for (const c of g.cards)
+        if (!seen.has(c.activity.id)) out[at].cards.push(c);
+    }
+  }
+  return out;
+}
+
 export interface BuildJournalCardsInput {
   // Activities newest-first (as getActivities returns them); grouped by date here.
   activities: Activity[];

@@ -53,6 +53,11 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     fn: "runGlobalSearch",
     why: "read-only: cross-domain search of the active profile",
   },
+  {
+    file: "app/(app)/journal/actions.ts",
+    fn: "loadJournalPage",
+    why: "read-only: fetches an older window of the active profile's Journal feed for server-side paging (#451); `before` is a date cursor, not a profile selector",
+  },
   // --- Login-scoped actions (operate on the LOGIN, not profile-owned data) ---
   {
     file: "app/(app)/settings/actions.ts",
