@@ -35,6 +35,7 @@ import {
   digestSince,
   getNewlyFlaggedBiomarkers,
 } from "@/lib/notifications/digest-data";
+import { getCurrentFlaggedBiomarkers } from "@/lib/queries/medical";
 import { setProfileSetting } from "@/lib/settings";
 
 function createProfile(name: string): number {
@@ -42,6 +43,16 @@ function createProfile(name: string): number {
     db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
       .lastInsertRowid
   );
+}
+
+// The datetime('now')-format window start N days ago — the same shape the hero's
+// stable window (FLAGGED_ATTENTION_WINDOW_DAYS) passes into getNewlyFlaggedBiomarkers.
+function flaggedSince(days: number): string {
+  return (
+    db.prepare("SELECT datetime('now', ?) AS s").get(`-${days} days`) as {
+      s: string;
+    }
+  ).s;
 }
 
 // A flagged lab reading. `createdAtModifier` is a SQLite datetime modifier
@@ -166,6 +177,103 @@ describe("model flagged-biomarker window (issue #283)", () => {
     expect(collectAttentionModel(pid, td).some((i) => i.key === key)).toBe(
       true
     );
+  });
+});
+
+describe("current-reading filter (issue #557)", () => {
+  it("a superseded historical out-of-range reading (old low, current normal) is NOT flagged", () => {
+    const pid = createProfile("Attention Test G");
+    const td = today(pid);
+    // A 5-year-old out-of-range Vitamin D, since replaced by a normal reading.
+    insertFlagged(pid, {
+      name: "Vitamin D",
+      canonical: "Vitamin D",
+      value: "18",
+      flag: "low",
+      createdAtModifier: "-1800 days",
+      date: shiftDateStr(td, -1800),
+    });
+    // The current reading is normal (flag NULL) — collected today, imported today.
+    db.prepare(
+      `INSERT INTO medical_records
+         (profile_id, date, category, name, value, unit, canonical_name, flag, created_at)
+       VALUES (?, ?, 'lab', 'Vitamin D', '45', 'ng/mL', 'Vitamin D', NULL, datetime('now'))`
+    ).run(pid, td);
+
+    // Neither the digest/hero read nor the unified model surfaces it: the current
+    // reading is fine, so the analyte is not currently flagged.
+    expect(getNewlyFlaggedBiomarkers(pid, flaggedSince(14))).toEqual([]);
+    expect(
+      collectAttentionModel(pid, td).filter(
+        (i) => i.domain === "biomarker-flag"
+      )
+    ).toEqual([]);
+  });
+
+  it("an analyte whose LATEST reading is out-of-range still IS flagged", () => {
+    const pid = createProfile("Attention Test H");
+    const td = today(pid);
+    // An older normal reading, superseded by a current out-of-range one.
+    db.prepare(
+      `INSERT INTO medical_records
+         (profile_id, date, category, name, value, unit, canonical_name, flag, created_at)
+       VALUES (?, ?, 'lab', 'Ferritin', '90', 'ng/mL', 'Ferritin', NULL, datetime('now','-40 days'))`
+    ).run(pid, shiftDateStr(td, -40));
+    insertFlagged(pid, {
+      name: "Ferritin",
+      canonical: "Ferritin",
+      value: "12",
+      flag: "low",
+    });
+
+    const flagged = getNewlyFlaggedBiomarkers(pid, flaggedSince(14));
+    expect(flagged.map((f) => f.name)).toEqual(["Ferritin"]);
+    expect(flagged[0].flag).toBe("low");
+    expect(
+      collectAttentionModel(pid, td)
+        .filter((i) => i.domain === "biomarker-flag")
+        .map((i) => i.key)
+    ).toEqual(["biomarker-flag:ferritin"]);
+  });
+
+  it("a bulk backfill of old flagged labs (created_at now, collection date years ago) does NOT light the window", () => {
+    const pid = createProfile("Attention Test I");
+    const td = today(pid);
+    // Simulate a history import: every row stamped created_at = today (import
+    // time), but the actual collection dates are years in the past. These ARE the
+    // current readings for their analytes (no newer reading exists), so the
+    // current-filter alone wouldn't exclude them — only the collection-date window
+    // does (issue #557 fix 2).
+    for (const [name, yearsAgo] of [
+      ["Cholesterol", 3],
+      ["Triglycerides", 4],
+      ["ALT", 5],
+    ] as const) {
+      db.prepare(
+        `INSERT INTO medical_records
+           (profile_id, date, category, name, value, unit, canonical_name, flag, created_at)
+         VALUES (?, ?, 'lab', ?, '999', 'mg/dL', ?, 'high', datetime('now'))`
+      ).run(pid, shiftDateStr(td, -365 * yearsAgo), name, name);
+    }
+
+    // Freshly imported (created_at today) but old by collection — the digest/hero
+    // window must not fire on them.
+    expect(getNewlyFlaggedBiomarkers(pid, flaggedSince(14))).toEqual([]);
+    expect(
+      collectAttentionModel(pid, td).filter(
+        (i) => i.domain === "biomarker-flag"
+      )
+    ).toEqual([]);
+
+    // But they DO remain currently-flagged when read without a recency window —
+    // the passport/household surfaces (getCurrentFlaggedBiomarkers, no `since`)
+    // still see them, so the fix narrows only the "newly flagged" window, not the
+    // whole current-flagged set.
+    expect(
+      getCurrentFlaggedBiomarkers(pid)
+        .map((r) => r.name)
+        .sort()
+    ).toEqual(["ALT", "Cholesterol", "Triglycerides"]);
   });
 });
 

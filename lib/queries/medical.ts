@@ -302,6 +302,71 @@ export function getMedicalRecords(
   return getMedicalRecordsCached(profileId, medicalFiltersKey(filters));
 }
 
+// A currently-flagged biomarker reading — a biomarker family whose CURRENT
+// (latest-per-family) reading is out-of-range/non-optimal. The minimal shape the
+// digest/hero flagged surface consumes (canonical-preferred display name so links
+// key on the same identity the biomarker view resolves).
+export interface CurrentFlaggedReading {
+  name: string;
+  canonicalName: string | null;
+  value: string | null;
+  flag: string;
+  date: string;
+}
+
+// THE shared "which biomarkers are currently flagged" computation (issue #557).
+// Returns one row per biomarker family whose CURRENT reading is flagged, reusing
+// the SAME DEDUP+LATEST CTE machinery (LATEST_IDS_CTE / the #482/#394 family
+// identity layer) that getMedicalRecords(current:true) drives for the household
+// (range:"oor") and passport (range:"nonoptimal") surfaces. So the three surfaces
+// can never disagree, and a SUPERSEDED historical out-of-range reading — a
+// 5-year-old low that a later normal reading has since replaced — can NEVER
+// surface: only an analyte whose LATEST reading is flagged does. Before #557 the
+// digest/hero read raw SQL (`created_at > since AND flag NOT IN ...`) with no
+// current-reading filter, so any historical flagged row leaked through.
+//
+// Flag set: the digest denylist (`flag NOT IN ('normal','immune')`) — equivalent
+// to range:"nonoptimal" over the known flag set, and it keeps #544's "immune" (a
+// good durable-immunity status) off the care-tier surface.
+//
+// Recency (#557 fix 2): when `since` is given the read is windowed by BOTH the
+// import cursor (`created_at > since` — the digest send-cursor / hero stable
+// window, so a delivered digest doesn't re-report and the #283 stable window is
+// preserved) AND the COLLECTION date (`date >= date(since)`). The collection-date
+// half is what stops a history backfill (created_at = today, collection date years
+// ago) from lighting the window even though the old reading is still the current
+// one — "newly flagged" means the current reading was actually COLLECTED recently,
+// not merely imported recently. Omit `since` for the whole current-flagged set.
+export function getCurrentFlaggedBiomarkers(
+  profileId: number,
+  since?: string
+): CurrentFlaggedReading[] {
+  const args: (string | number)[] = [profileId, profileId, profileId];
+  let windowClause = "";
+  if (since != null) {
+    windowClause = "AND created_at > ? AND date >= date(?)";
+    args.push(since, since);
+  }
+  // Both CTEs bind profile_id (deduped first, then latest — in WITH order), then
+  // the main query's profile_id, then the optional window's two `since` binds.
+  // ORDER BY date DESC (newest collection first) with an id ASC tiebreak keeps the
+  // slice the caller applies deterministic.
+  return db
+    .prepare(
+      `WITH ${DEDUP_IDS_CTE},
+            ${LATEST_IDS_CTE}
+       SELECT COALESCE(NULLIF(TRIM(canonical_name), ''), name) AS name,
+              NULLIF(TRIM(canonical_name), '') AS canonicalName,
+              value, flag, date
+         FROM medical_records
+        WHERE profile_id = ? AND ${LATEST_IN_GROUP}
+          AND flag IS NOT NULL AND flag NOT IN ('normal', 'immune')
+          ${windowClause}
+        ORDER BY date DESC, id ASC`
+    )
+    .all(...args) as CurrentFlaggedReading[];
+}
+
 export function getMedicalDocuments(profileId: number): MedicalDocument[] {
   return db
     .prepare(
