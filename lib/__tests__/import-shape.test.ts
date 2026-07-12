@@ -836,3 +836,93 @@ function mkResult(over: Record<string, unknown>) {
     ...over,
   };
 }
+
+describe("extractionToPersistInput — structured prescription (#414)", () => {
+  it("threads structured attribution + sig/strength/course onto a prescription record", () => {
+    const input = extractionToPersistInput(
+      doneExtraction({
+        results: [
+          mkResult({
+            category: "prescription",
+            name: "Lisinopril",
+            canonical_name: "Lisinopril",
+            value: null,
+            notes: null,
+            prescription: {
+              sig: "Take 1 tablet by mouth daily",
+              strength: "10 mg",
+              prn: 0,
+              prescriber: "Grace Hopper, MD",
+              pharmacy: "Test Pharmacy #12",
+              rx_number: "RX-555031",
+              start_date: "2024-02-01",
+            },
+          }),
+        ],
+      }),
+      "2099-12-31"
+    );
+    const rec = input.records.find((r) => r.category === "prescription")!;
+    // Attribution comes straight off the label, not NULL.
+    expect(rec.prescriber).toBe("Grace Hopper, MD");
+    expect(rec.pharmacy).toBe("Test Pharmacy #12");
+    expect(rec.rxNumber).toBe("RX-555031");
+    // Strength → value (parsePrescription's explicit strength), sig → notes (so the
+    // schedule is inferred from clean directions).
+    expect(rec.value).toBe("10 mg");
+    expect(rec.notes).toBe("Take 1 tablet by mouth daily");
+    // A printed start date becomes a single open course.
+    expect(rec.courses).toEqual([
+      { started_on: "2024-02-01", stopped_on: null, stop_reason: null, notes: null },
+    ]);
+  });
+
+  it("forces PRN through the sig and leaves attribution null when unstructured", () => {
+    const input = extractionToPersistInput(
+      doneExtraction({
+        results: [
+          mkResult({
+            category: "prescription",
+            name: "Ibuprofen",
+            canonical_name: "Ibuprofen",
+            notes: "old note",
+            prescription: {
+              sig: "1 tablet for pain",
+              strength: null,
+              prn: 1,
+              prescriber: null,
+              pharmacy: null,
+              rx_number: null,
+              start_date: null,
+            },
+          }),
+        ],
+      }),
+      "2099-12-31"
+    );
+    const rec = input.records.find((r) => r.category === "prescription")!;
+    expect(rec.notes).toBe("1 tablet for pain; as needed");
+    expect(rec.prescriber).toBeNull();
+    expect(rec.courses).toBeNull();
+  });
+
+  it("falls back to the note (no structured prescription) — legacy path unchanged", () => {
+    const input = extractionToPersistInput(
+      doneExtraction({
+        results: [
+          mkResult({
+            category: "prescription",
+            name: "Metformin 500 mg",
+            canonical_name: "Metformin 500 mg",
+            notes: "Take 1 tablet twice daily",
+          }),
+        ],
+      }),
+      "2099-12-31"
+    );
+    const rec = input.records.find((r) => r.category === "prescription")!;
+    expect(rec.notes).toBe("Take 1 tablet twice daily");
+    expect(rec.prescriber ?? null).toBeNull();
+    expect(rec.courses ?? null).toBeNull();
+  });
+});

@@ -4,6 +4,7 @@ import {
   normalizeBirthdate,
   normalizeAge,
   normalizeClinicalDomains,
+  normalizePrescription,
 } from "@/lib/medical-extract";
 
 describe("normalizeSex", () => {
@@ -156,5 +157,58 @@ describe("normalizeClinicalDomains", () => {
     expect(out.encounters[0].provider).toBe("Grace Hopper");
     expect(out.familyHistory[0].deceased).toBe(1);
     expect(out.familyHistory[0].onset_age).toBe(70);
+  });
+});
+
+describe("normalizePrescription (#414)", () => {
+  it("returns null for a missing / non-object / empty prescription", () => {
+    expect(normalizePrescription(undefined)).toBeNull();
+    expect(normalizePrescription(null)).toBeNull();
+    expect(normalizePrescription("nope")).toBeNull();
+    // An all-null object carries nothing usable — null so it never masks the
+    // parsePrescription fallback.
+    expect(
+      normalizePrescription({
+        sig: null,
+        strength: null,
+        prn: null,
+        prescriber: null,
+        pharmacy: null,
+        rx_number: null,
+        start_date: null,
+      })
+    ).toBeNull();
+  });
+
+  it("coerces the structured fields the model reads off a label", () => {
+    const p = normalizePrescription({
+      sig: "Take 1 tablet by mouth daily",
+      strength: "10 mg",
+      prn: 0,
+      prescriber: "Grace Hopper, MD",
+      pharmacy: "Test Pharmacy #12",
+      rx_number: "RX-555031",
+      start_date: "2024-02-01",
+    });
+    expect(p).toEqual({
+      sig: "Take 1 tablet by mouth daily",
+      strength: "10 mg",
+      prn: 0,
+      prescriber: "Grace Hopper, MD",
+      pharmacy: "Test Pharmacy #12",
+      rx_number: "RX-555031",
+      start_date: "2024-02-01",
+    });
+  });
+
+  it("collapses a boolean/yes-no prn to 1/0 and drops a junk start_date", () => {
+    expect(normalizePrescription({ prn: true })?.prn).toBe(1);
+    expect(normalizePrescription({ prn: "yes" })?.prn).toBe(1);
+    expect(normalizePrescription({ prn: false, sig: "x" })?.prn).toBe(0);
+    // A junk start_date drops to null (kept alongside a usable sig so the object
+    // isn't itself null).
+    expect(
+      normalizePrescription({ sig: "x", start_date: "02/01/2024" })?.start_date
+    ).toBe(null);
   });
 });

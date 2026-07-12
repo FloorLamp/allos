@@ -318,25 +318,59 @@ export function extractionToPersistInput(
   const docDate = isRealIsoDate(result.meta.document_date)
     ? result.meta.document_date
     : null;
-  const allRecords: PersistRecord[] = result.results.map((r) => ({
-    category: r.category,
-    name: r.name,
-    canonical: r.canonical_name || r.name,
-    value: r.value,
-    value_num: Number.isFinite(r.value_num) ? r.value_num : null,
-    unit: r.unit,
-    date: isRealIsoDate(r.collected_date) ? r.collected_date! : fallbackDate,
-    reference_range: r.reference_range,
-    flag: r.flag,
-    panel: r.panel,
-    notes: r.notes,
-    source: null,
-    external_id: null,
-    loinc: null,
-    provider: null,
-    // The AI path carries no structured medication period/status → courses.
-    courses: null,
-  }));
+  const allRecords: PersistRecord[] = result.results.map((r) => {
+    // A structured prescription object (#414) supplies the sig / strength /
+    // prescriber / pharmacy / Rx / start-date straight off the label, so the med
+    // projection no longer depends on parsePrescription reconstructing them from a
+    // note. It is preferred; parsePrescription stays the fallback (its conservative
+    // "no invented schedule" rule still runs as post-validation on the sig). We
+    // route the structured sig into `notes` and the strength into `value` so the
+    // existing PersistRecord → parsePrescription path infers the schedule from clean
+    // directions rather than the model's free-text note.
+    const rx = r.category === "prescription" ? r.prescription : null;
+    // Force PRN through the sig so parseSig marks the med as-needed (PRN wins over
+    // any frequency token). Otherwise keep the verbatim sig, falling back to the
+    // model's note when it didn't structure one.
+    const sigNote =
+      rx?.prn === 1
+        ? [rx.sig, "as needed"].filter(Boolean).join("; ")
+        : (rx?.sig ?? r.notes);
+    const courses: ImportedMedicationCourse[] | null =
+      rx?.start_date != null
+        ? [
+            {
+              started_on: rx.start_date,
+              stopped_on: null,
+              stop_reason: null,
+              notes: null,
+            },
+          ]
+        : null;
+    return {
+      category: r.category,
+      name: r.name,
+      canonical: r.canonical_name || r.name,
+      value: rx?.strength ?? r.value,
+      value_num: Number.isFinite(r.value_num) ? r.value_num : null,
+      unit: r.unit,
+      date: isRealIsoDate(r.collected_date) ? r.collected_date! : fallbackDate,
+      reference_range: r.reference_range,
+      flag: r.flag,
+      panel: r.panel,
+      notes: rx ? sigNote : r.notes,
+      source: null,
+      external_id: null,
+      loinc: null,
+      provider: null,
+      // Structured medication period (a single open course from the printed start
+      // date) + attribution, when the label carried them (#414); else null and the
+      // persist layer's parsePrescription fallback fills what it can.
+      courses,
+      prescriber: rx?.prescriber ?? null,
+      pharmacy: rx?.pharmacy ?? null,
+      rxNumber: rx?.rx_number ?? null,
+    };
+  });
   const bodyMetrics = bodyMetricsFromExtraction(
     result.results,
     result.meta.document_date
