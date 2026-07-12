@@ -1,23 +1,36 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { IconChevronLeft } from "@tabler/icons-react";
+import { IconChevronLeft, IconBarbell } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
 import {
   getProtocol,
   getProtocolComparison,
   getProtocolOutcomeOptions,
+  getProtocolPractice,
+  getProtocolUsage,
+  getProtocolAdherence,
 } from "@/lib/queries";
+import { getEquipment, getEquipmentById } from "@/lib/equipment";
 import { getUnitPrefs } from "@/lib/settings";
+import { formatUsageSummary } from "@/lib/usage-format";
 import ProtocolControls from "../ProtocolControls";
 import ProtocolCompare from "../ProtocolCompare";
 import { updateProtocol, endProtocol, deleteProtocol } from "../actions";
 
 export const dynamic = "force-dynamic";
 
+const PRACTICE_TYPE_LABELS: Record<string, string> = {
+  strength: "Strength",
+  cardio: "Cardio",
+  sport: "Sport",
+};
+
 // A single protocol's before/during detail. Scoped by (profile, id) so a guessed
 // id from another profile 404s. The comparison is the pure engine's output
-// (gathered per outcome metric in the query seam) rendered as panels.
+// (gathered per outcome metric in the query seam) rendered as panels. The
+// practice/gear card (issue #344) shows the linked recovery gear, adherence (the
+// SAME weekly-count computation the routine widget uses), and usage-during-window.
 export default async function ProtocolDetailPage(props: {
   params: Promise<{ id: string }>;
 }) {
@@ -28,13 +41,24 @@ export default async function ProtocolDetailPage(props: {
   if (!protocol) notFound();
 
   const units = getUnitPrefs(login.id);
+  const todayStr = today(profile.id);
   const comparison = getProtocolComparison(
     profile.id,
     protocol,
-    today(profile.id),
+    todayStr,
     units.weightUnit
   );
   const options = getProtocolOutcomeOptions(profile.id);
+  // includeRetired so a linked-but-retired gear stays selectable in the edit form.
+  const equipment = getEquipment(profile.id, { includeRetired: true });
+  const practice = getProtocolPractice(profile.id, protocol);
+  const gear =
+    protocol.equipment_id != null
+      ? getEquipmentById(profile.id, protocol.equipment_id)
+      : undefined;
+  const adherence = getProtocolAdherence(profile.id, protocol);
+  const usage = getProtocolUsage(profile.id, protocol, todayStr);
+  const hasPracticeCard = !!gear || !!practice;
 
   return (
     <div>
@@ -51,10 +75,87 @@ export default async function ProtocolDetailPage(props: {
           <ProtocolControls
             protocol={protocol}
             options={options}
+            equipment={equipment}
+            practice={practice}
             updateAction={updateProtocol}
             endAction={endProtocol}
             deleteAction={deleteProtocol}
           />
+
+          {hasPracticeCard && (
+            <div
+              className="card space-y-3"
+              data-testid="protocol-practice-card"
+            >
+              <h2 className="font-semibold text-slate-800 dark:text-slate-100">
+                Practice
+              </h2>
+
+              {gear && (
+                <div>
+                  <div className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                    Gear
+                  </div>
+                  <Link
+                    href={`/equipment/${gear.id}`}
+                    className="mt-0.5 inline-flex items-center gap-1.5 font-medium text-brand-700 hover:underline dark:text-brand-300"
+                    data-testid="protocol-gear-link"
+                  >
+                    <IconBarbell
+                      className="h-4 w-4"
+                      stroke={1.75}
+                      aria-hidden
+                    />
+                    {gear.name}
+                    {gear.retired ? (
+                      <span className="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+                        Retired
+                      </span>
+                    ) : null}
+                  </Link>
+                </div>
+              )}
+
+              {practice && (
+                <div>
+                  <div className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                    Adherence this week
+                  </div>
+                  <div
+                    className="mt-0.5 text-sm text-slate-700 dark:text-slate-200"
+                    data-testid="protocol-adherence"
+                  >
+                    <span className="font-semibold tabular-nums">
+                      {adherence?.count ?? 0} / {practice.perWeek}
+                    </span>{" "}
+                    {PRACTICE_TYPE_LABELS[practice.type] ?? practice.type}{" "}
+                    sessions
+                    {adherence?.met ? (
+                      <span className="badge ml-1.5 bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+                        On track
+                      </span>
+                    ) : (
+                      <span className="badge ml-1.5 bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+                        Behind
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <div className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                  During this protocol
+                </div>
+                <div
+                  className="mt-0.5 text-sm text-slate-700 dark:text-slate-200"
+                  data-testid="protocol-usage"
+                >
+                  {formatUsageSummary(usage.sessions, usage.lastUsed, todayStr)}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
         <div className="min-w-0 lg:col-span-2">
           <ProtocolCompare comparison={comparison} />

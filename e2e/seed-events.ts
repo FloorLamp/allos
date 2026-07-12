@@ -1274,6 +1274,18 @@ db.prepare(
    VALUES (?, ?, 'cardio', 'E2E Registry Ride', 45, 20, 'manual', 'e2e:equip-registry-ride', 0, ?)`
 ).run(PROFILE_ID, shiftDateStr(today(PROFILE_ID), -2), regBikeId);
 
+// A dedicated recovery device on profile 1 for the protocol-practice spec (issue
+// #344): the protocol form can reference it as the gear its experiment is about.
+// Distinct, synthetic name so it never collides with the equipment specs' rows.
+// Idempotent: rebuilt each boot.
+db.prepare(
+  `DELETE FROM equipment WHERE profile_id = ? AND name = 'E2E Protocol Sauna'`
+).run(PROFILE_ID);
+db.prepare(
+  `INSERT INTO equipment (profile_id, name, weight_kg, category)
+   VALUES (?, 'E2E Protocol Sauna', NULL, 'Sauna')`
+).run(PROFILE_ID);
+
 // A dedicated, open, FUTURE-dated care-plan item on profile 1 for the care-plan
 // spec's complete→disappears-from-Upcoming check. Distinct from the base seed's
 // care-plan rows (which care-plan-upcoming.spec drives), so the two never collide.

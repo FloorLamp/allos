@@ -39,5 +39,16 @@ export interface Protocol {
   notes: string | null;
   situation: string | null;
   outcomeKeys: string[];
+  // Optional recovery-gear reference (issue #344): the equipment row the protocol
+  // studies ("which sauna"), Equipment.id or NULL. deleteEquipment nulls it.
+  equipment_id: number | null;
+  // Optional practice link (issue #344): the frequency_targets row that measures
+  // adherence to the protocol's practice ("sauna 4×/week"), or NULL. Adherence
+  // reuses the Weekly-widget weekly-count computation over this target.
+  frequency_target_id: number | null;
+  // 1 when the protocol CREATED its frequency target (so its delete cleans the
+  // target up, unless a sibling protocol now references it); 0 when it merely
+  // points at a pre-existing routine target it must not destroy.
+  owns_frequency_target: number;
   created_at: string;
 }

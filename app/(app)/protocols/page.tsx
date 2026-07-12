@@ -1,5 +1,6 @@
 import { requireSession } from "@/lib/auth";
 import { getProtocols, getProtocolOutcomeOptions } from "@/lib/queries";
+import { getEquipment } from "@/lib/equipment";
 import { PageHeader } from "@/components/ui";
 import ProtocolForm from "./ProtocolForm";
 import ProtocolList from "./ProtocolList";
@@ -15,6 +16,7 @@ export default async function ProtocolsPage() {
   const { profile } = await requireSession();
   const protocols = getProtocols(profile.id);
   const options = getProtocolOutcomeOptions(profile.id);
+  const equipment = getEquipment(profile.id);
 
   return (
     <div>
@@ -28,7 +30,11 @@ export default async function ProtocolsPage() {
           <ProtocolList items={protocols} />
         </div>
         <div className="min-w-0 space-y-4">
-          <ProtocolForm action={createProtocol} options={options} />
+          <ProtocolForm
+            action={createProtocol}
+            options={options}
+            equipment={equipment}
+          />
           <p className="px-1 text-xs text-slate-400 dark:text-slate-500">
             Informational only, not medical advice. Comparisons are descriptive
             (mean/median shift with n per window), not statistical inference.

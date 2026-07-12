@@ -8,6 +8,8 @@ import { getActiveSituations, setActiveSituations } from "@/lib/settings";
 import { isRealIsoDate } from "@/lib/date";
 import { normalizeOutcomeKeys } from "@/lib/protocol-metrics";
 import { getProtocol, situationUsedByOtherProtocol } from "@/lib/queries";
+import { getEquipmentById } from "@/lib/equipment";
+import { parseProtocolPractice } from "@/lib/protocol-practice";
 import { formError, formOk, type FormResult } from "@/lib/types";
 
 function revalidateProtocols(id?: number) {
@@ -44,6 +46,123 @@ function deactivateSituation(
   if (next.delete(situation)) setActiveSituations(profileId, [...next]);
 }
 
+// Resolve the optional recovery-gear reference: the submitted equipment id, but
+// only if it's a real row for THIS profile (a leaked/foreign id becomes NULL
+// rather than a dangling FK write).
+function resolveEquipmentId(
+  profileId: number,
+  formData: FormData
+): number | null {
+  const raw = Number(formData.get("equipment_id"));
+  if (!raw || !Number.isFinite(raw)) return null;
+  return getEquipmentById(profileId, raw) ? raw : null;
+}
+
+// The protocol's practice link BEFORE this save (nulls for a create).
+interface PracticeLink {
+  frequency_target_id: number | null;
+  owns_frequency_target: number;
+}
+
+// Delete a protocol-OWNED frequency target, but only when no OTHER protocol now
+// references it (row-ops rule: an owned target's cleanup must not strand a sibling
+// protocol's reference). Profile-scoped.
+function maybeDeleteOwnedTarget(
+  profileId: number,
+  targetId: number,
+  exceptProtocolId: number
+) {
+  const other = db
+    .prepare(
+      `SELECT 1 FROM protocols
+        WHERE profile_id = ? AND id != ? AND frequency_target_id = ? LIMIT 1`
+    )
+    .get(profileId, exceptProtocolId, targetId);
+  if (!other)
+    db.prepare(
+      "DELETE FROM frequency_targets WHERE id = ? AND profile_id = ?"
+    ).run(targetId, profileId);
+}
+
+// Reconcile a protocol's practice (adherence) frequency target with the submitted
+// form, deciding create-vs-reference EXPLICITLY (issue #344, row-ops rule):
+//   • No practice submitted → unlink.
+//   • Practice type already has a frequency target → REFERENCE it (owns=0), never
+//     clobbering a pre-existing routine target's per-week — unless the protocol
+//     already owned that exact target, in which case keep ownership and update it.
+//   • Otherwise → CREATE a new owned target (owns=1).
+// Returns the (target id, owns flag) to store on the protocol PLUS the id of a
+// previously-OWNED target the protocol has moved off of, if any — the caller
+// deletes that only AFTER the protocol row no longer references it (else the FK
+// on protocols.frequency_target_id fails), via cleanupStaleOwnedTarget().
+function syncPracticeTarget(
+  profileId: number,
+  formData: FormData,
+  prev: PracticeLink
+): PracticeLink & { staleOwnedTargetId: number | null } {
+  const practice = parseProtocolPractice(
+    str(formData, "practice_type"),
+    formData.get("practice_per_week") as string | null
+  );
+
+  let tid: number | null = null;
+  let owns = 0;
+
+  if (practice) {
+    const found = db
+      .prepare(
+        `SELECT id FROM frequency_targets
+          WHERE profile_id = ? AND scope_kind = 'type' AND scope_value = ?
+          LIMIT 1`
+      )
+      .get(profileId, practice.practiceType) as { id: number } | undefined;
+    if (found) {
+      tid = found.id;
+      // If the protocol already OWNED this exact target, keep ownership and let the
+      // edit update its per-week; otherwise reference it read-only (owns=0).
+      if (prev.frequency_target_id === found.id && prev.owns_frequency_target) {
+        owns = 1;
+        db.prepare(
+          `UPDATE frequency_targets SET per_week = ? WHERE id = ? AND profile_id = ?`
+        ).run(practice.perWeek, found.id, profileId);
+      }
+    } else {
+      const info = db
+        .prepare(
+          `INSERT INTO frequency_targets (profile_id, scope_kind, scope_value, per_week)
+           VALUES (?, 'type', ?, ?)`
+        )
+        .run(profileId, practice.practiceType, practice.perWeek);
+      tid = Number(info.lastInsertRowid);
+      owns = 1;
+    }
+  }
+
+  const staleOwnedTargetId =
+    prev.frequency_target_id != null &&
+    prev.owns_frequency_target &&
+    prev.frequency_target_id !== tid
+      ? prev.frequency_target_id
+      : null;
+
+  return {
+    frequency_target_id: tid,
+    owns_frequency_target: owns,
+    staleOwnedTargetId,
+  };
+}
+
+// Delete a now-stale owned target once the protocol row no longer references it.
+// A no-op for null; profile-scoped via maybeDeleteOwnedTarget.
+function cleanupStaleOwnedTarget(
+  profileId: number,
+  staleOwnedTargetId: number | null,
+  exceptProtocolId: number
+) {
+  if (staleOwnedTargetId != null)
+    maybeDeleteOwnedTarget(profileId, staleOwnedTargetId, exceptProtocolId);
+}
+
 export async function createProtocol(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const name = String(formData.get("name") ?? "").trim();
@@ -58,12 +177,19 @@ export async function createProtocol(formData: FormData): Promise<FormResult> {
   const outcomeKeys = normalizeOutcomeKeys(
     formData.getAll("outcome_keys").map((v) => String(v))
   );
+  const equipmentId = resolveEquipmentId(profile.id, formData);
+  // On create there is no prior practice link, so no stale-target cleanup applies.
+  const practice = syncPracticeTarget(profile.id, formData, {
+    frequency_target_id: null,
+    owns_frequency_target: 0,
+  });
 
   const info = db
     .prepare(
       `INSERT INTO protocols
-        (profile_id, name, start_date, end_date, notes, outcome_keys, situation)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
+        (profile_id, name, start_date, end_date, notes, outcome_keys, situation,
+         equipment_id, frequency_target_id, owns_frequency_target)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       profile.id,
@@ -72,7 +198,10 @@ export async function createProtocol(formData: FormData): Promise<FormResult> {
       end,
       notes,
       JSON.stringify(outcomeKeys),
-      situation
+      situation,
+      equipmentId,
+      practice.frequency_target_id,
+      practice.owns_frequency_target
     );
 
   // Starting an ongoing protocol activates its situation (if any).
@@ -101,11 +230,17 @@ export async function updateProtocol(formData: FormData): Promise<FormResult> {
   const outcomeKeys = normalizeOutcomeKeys(
     formData.getAll("outcome_keys").map((v) => String(v))
   );
+  const equipmentId = resolveEquipmentId(profile.id, formData);
+  const practice = syncPracticeTarget(profile.id, formData, {
+    frequency_target_id: existing.frequency_target_id,
+    owns_frequency_target: existing.owns_frequency_target,
+  });
 
   db.prepare(
     `UPDATE protocols
        SET name = ?, start_date = ?, end_date = ?, notes = ?,
-           outcome_keys = ?, situation = ?
+           outcome_keys = ?, situation = ?, equipment_id = ?,
+           frequency_target_id = ?, owns_frequency_target = ?
      WHERE id = ? AND profile_id = ?`
   ).run(
     name,
@@ -114,9 +249,14 @@ export async function updateProtocol(formData: FormData): Promise<FormResult> {
     notes,
     JSON.stringify(outcomeKeys),
     situation,
+    equipmentId,
+    practice.frequency_target_id,
+    practice.owns_frequency_target,
     id,
     profile.id
   );
+  // Now that the protocol row no longer references the old target, clean it up.
+  cleanupStaleOwnedTarget(profile.id, practice.staleOwnedTargetId, id);
 
   // Reconcile the situation activation with the edit: a removed/renamed situation
   // on an ongoing protocol is deactivated (unless a sibling needs it); a newly-set
@@ -160,8 +300,14 @@ export async function deleteProtocol(formData: FormData): Promise<FormResult> {
     id,
     profile.id
   );
-  // Delete carries its side-state: an ongoing protocol's situation activation is
-  // reversed (unless a sibling protocol still needs it).
+  // Delete carries its side-state (row-ops rule): a practice frequency target this
+  // protocol OWNED is removed too — but only after the protocol row is gone (else
+  // the FK on protocols.frequency_target_id fails) and only when no sibling
+  // protocol references it.
+  if (existing.owns_frequency_target && existing.frequency_target_id != null)
+    maybeDeleteOwnedTarget(profile.id, existing.frequency_target_id, id);
+  // An ongoing protocol's situation activation is reversed (unless a sibling
+  // protocol still needs it).
   if (existing.situation && existing.end_date == null)
     deactivateSituation(profile.id, existing.situation, id);
   revalidateProtocols();

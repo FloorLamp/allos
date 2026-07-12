@@ -9,6 +9,10 @@
 import { db } from "../db";
 import { getBiomarkerSeries, getCanonicalBiomarker } from "./medical";
 import { getBodyMetrics } from "./metrics";
+import {
+  getFrequencyTargetProgress,
+  type FrequencyTargetProgress,
+} from "./training";
 import { getBioAgeReadings } from "./derived";
 import { getSleepRegularityTrend } from "./sleep";
 import { kgTo } from "../units";
@@ -37,6 +41,9 @@ interface ProtocolRow {
   notes: string | null;
   situation: string | null;
   outcome_keys: string;
+  equipment_id: number | null;
+  frequency_target_id: number | null;
+  owns_frequency_target: number;
   created_at: string;
 }
 
@@ -63,6 +70,9 @@ function toProtocol(r: ProtocolRow): Protocol {
     notes: r.notes,
     situation: r.situation,
     outcomeKeys: parseOutcomeKeys(r.outcome_keys),
+    equipment_id: r.equipment_id,
+    frequency_target_id: r.frequency_target_id,
+    owns_frequency_target: r.owns_frequency_target,
     created_at: r.created_at,
   };
 }
@@ -105,6 +115,104 @@ export function situationUsedByOtherProtocol(
     )
     .get(profileId, exceptId, situation);
   return !!row;
+}
+
+// Usage-during-window for a protocol (issue #344): a pure join over `activities`
+// within [start_date, end_date ?? today] that used the protocol's linked gear
+// (activities.equipment_id) and/or logged the protocol's practice type. Counted as
+// distinct training days, plus the last such date, for the "23 sessions · last 3
+// days ago" line. No new table. Profile-scoped.
+export interface ProtocolUsage {
+  sessions: number;
+  lastUsed: string | null;
+}
+
+export function getProtocolUsage(
+  profileId: number,
+  protocol: Protocol,
+  today: string
+): ProtocolUsage {
+  const end = protocol.end_date ?? today;
+  // The practice's activity type comes from the linked frequency target (only a
+  // scope_kind='type' target names an activity type).
+  let practiceType: string | null = null;
+  if (protocol.frequency_target_id != null) {
+    const t = db
+      .prepare(
+        `SELECT scope_kind, scope_value FROM frequency_targets
+          WHERE id = ? AND profile_id = ?`
+      )
+      .get(protocol.frequency_target_id, profileId) as
+      { scope_kind: string; scope_value: string } | undefined;
+    if (t && t.scope_kind === "type") practiceType = t.scope_value;
+  }
+  if (protocol.equipment_id == null && practiceType == null)
+    return { sessions: 0, lastUsed: null };
+
+  const rows = db
+    .prepare(
+      `SELECT DISTINCT date FROM activities
+        WHERE profile_id = ? AND date >= ? AND date <= ?
+          AND (
+            (? IS NOT NULL AND equipment_id = ?)
+            OR (? IS NOT NULL AND type = ?)
+          )
+        ORDER BY date`
+    )
+    .all(
+      profileId,
+      protocol.start_date,
+      end,
+      protocol.equipment_id,
+      protocol.equipment_id,
+      practiceType,
+      practiceType
+    ) as { date: string }[];
+
+  return {
+    sessions: rows.length,
+    lastUsed: rows.length ? rows[rows.length - 1].date : null,
+  };
+}
+
+// The protocol's CONFIGURED practice (issue #344): the linked frequency target's
+// activity type + per-week, for seeding the edit form. Null when unlinked or the
+// target is not a type target. Profile-scoped.
+export interface ProtocolPractice {
+  type: string;
+  perWeek: number;
+}
+
+export function getProtocolPractice(
+  profileId: number,
+  protocol: Protocol
+): ProtocolPractice | null {
+  if (protocol.frequency_target_id == null) return null;
+  const t = db
+    .prepare(
+      `SELECT scope_kind, scope_value, per_week FROM frequency_targets
+        WHERE id = ? AND profile_id = ?`
+    )
+    .get(protocol.frequency_target_id, profileId) as
+    { scope_kind: string; scope_value: string; per_week: number } | undefined;
+  if (!t || t.scope_kind !== "type") return null;
+  return { type: t.scope_value, perWeek: t.per_week };
+}
+
+// Adherence for a protocol's practice (issue #344): the linked frequency target's
+// CURRENT weekly progress, computed by the SAME getFrequencyTargetProgress the
+// Weekly routine widget uses — one question, one computation, no parallel adherence
+// engine. Null when the protocol has no practice link (or its target was removed).
+export function getProtocolAdherence(
+  profileId: number,
+  protocol: Protocol
+): FrequencyTargetProgress | null {
+  if (protocol.frequency_target_id == null) return null;
+  return (
+    getFrequencyTargetProgress(profileId).find(
+      (p) => p.target.id === protocol.frequency_target_id
+    ) ?? null
+  );
 }
 
 // An option in the outcome-metric picker: the fixed metrics plus the profile's
