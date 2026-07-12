@@ -102,11 +102,20 @@ export function getInferredPreventiveSatisfactions(
   }
 
   // Encounters → visits: a recorded encounter IS a completed visit; match on its
-  // type + reason free text.
+  // type + reason free text PLUS its notes and the provider/facility name (issue
+  // #515). A dermatology visit's evidence lives in the notes ("skin…") and the
+  // provider/facility name ("… Dermatology"), not just type/reason — folding those
+  // in lets a specialty visit satisfy the matching "see the right kind of doctor"
+  // rule (skin/eye/dental). Whole-word matching against the SAME specific phrases
+  // keeps this within the #86 conservatism: bare "skin" still matches nothing; a
+  // specialty word ("dermatology") or an explicit phrase ("skin check") does.
   for (const e of getEncounters(profileId)) {
     records.push({
       code: null,
-      name: [e.type, e.reason].filter(Boolean).join(" ") || null,
+      name:
+        [e.type, e.reason, e.notes, e.provider_name, e.location_name]
+          .filter(Boolean)
+          .join(" ") || null,
       date: e.date,
       allow: ["visit"],
     });

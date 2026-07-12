@@ -113,6 +113,33 @@ describe("matchRuleKeys", () => {
     ).toEqual([]);
   });
 
+  it("matches specialty 'see the right kind of doctor' visits by specialty word (issue #515)", () => {
+    // A dermatology visit's evidence — the provider/facility name folds into the
+    // matched text for encounters — satisfies skin_check via the specialty word.
+    expect(
+      matchRuleKeys({ name: "Office Visit Cedar Dermatology Clinic" }, [
+        "visit",
+      ])
+    ).toEqual(["skin_check"]);
+    // The explicit phrase in notes still matches too.
+    expect(
+      matchRuleKeys({ name: "Follow-up full body skin exam performed" }, [
+        "visit",
+      ])
+    ).toEqual(["skin_check"]);
+    // Analogous specialty words for the other structured-specialty rules.
+    expect(
+      matchRuleKeys({ name: "Visit with an ophthalmologist" }, ["visit"])
+    ).toEqual(["vision_exam"]);
+    expect(matchRuleKeys({ name: "Saw the dentist" }, ["visit"])).toEqual([
+      "dental_cleaning",
+    ]);
+    // Bare "skin" is NOT one of the specific phrases — conservative (#86) still holds.
+    expect(matchRuleKeys({ name: "Dry skin on the arm" }, ["visit"])).toEqual(
+      []
+    );
+  });
+
   it("matches a depression screen by PHQ code and whole-word name", () => {
     expect(matchRuleKeys({ code: "G0444" }, ["screening"])).toEqual([
       "depression_screening",

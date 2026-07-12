@@ -277,6 +277,7 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
       "dental check up",
       "teeth cleaning",
       "dental prophylaxis",
+      "dentist",
     ],
     canonicalBiomarkers: [],
   },
@@ -294,8 +295,10 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
       "vision exam",
       "comprehensive eye",
       "optometry",
+      "optometrist",
       "ophthalmology",
       "ophthalmological",
+      "ophthalmologist",
     ],
     canonicalBiomarkers: [],
   },
@@ -308,6 +311,14 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
       "skin cancer screening",
       "full body skin exam",
       "total body skin exam",
+      // Provider-specialty evidence (issue #515): a visit to a dermatology
+      // provider/facility is strong, specific evidence a skin exam occurred.
+      // Specialty terms are single, unambiguous words (unlike bare "skin"), so
+      // whole-word matching them stays within the #86 conservatism — the matcher
+      // now folds the encounter's provider/facility name into the matched text
+      // (see lib/queries/upcoming/preventive.ts).
+      "dermatology",
+      "dermatologist",
     ],
     canonicalBiomarkers: [],
   },
