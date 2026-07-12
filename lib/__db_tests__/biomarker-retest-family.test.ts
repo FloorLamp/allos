@@ -45,9 +45,9 @@ describe("vitamin-D 25-hydroxy retest family", () => {
     addReading("Vitamin D, 25-Hydroxy", recentDate, 34);
 
     const keys = biomarkerKeys();
-    expect(keys).not.toContain("biomarker:vitamin d2, 25-hydroxy");
-    expect(keys).not.toContain("biomarker:vitamin d3, 25-hydroxy");
-    expect(keys).not.toContain("biomarker:vitamin d, 25-hydroxy");
+    // The whole family is keyed by the ONE #482 family identity now — a recent
+    // member satisfies it, so it never surfaces.
+    expect(keys).not.toContain("biomarker:family:vitamin-d-25-hydroxy");
   });
 
   it("with no recent member, the family surfaces exactly one retest item", () => {
@@ -57,11 +57,11 @@ describe("vitamin-D 25-hydroxy retest family", () => {
     addReading("Vitamin D2, 25-Hydroxy", oldDate, 8);
     addReading("Vitamin D3, 25-Hydroxy", shiftDateStr(p.todayStr, -1800), 22);
 
-    const keys = biomarkerKeys().filter((k) =>
-      k.startsWith("biomarker:vitamin d")
-    );
-    // One item for the whole family, keyed by the newest member (the D3 reading).
-    expect(keys).toEqual(["biomarker:vitamin d3, 25-hydroxy"]);
+    const keys = biomarkerKeys().filter((k) => k.includes("vitamin-d"));
+    // One item for the whole family, keyed by the stable #482 family identity (not
+    // the newest member's name), so a dismiss on it silences the family and the key
+    // doesn't drift as which isoform is newest changes.
+    expect(keys).toEqual(["biomarker:family:vitamin-d-25-hydroxy"]);
   });
 
   it("the active 1,25-dihydroxy metabolite is a separate retest lifecycle", () => {

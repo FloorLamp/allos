@@ -286,3 +286,104 @@ export function distinguishVitaminDIsoform(
   const generic = GENERIC_VITAMIN_D.find(([k]) => k === key);
   return generic ? generic[1](iso) : canonicalName;
 }
+
+// --- Biomarker identity families (#482) ------------------------------------
+//
+// GENERALIZES #481's vitaminDRetestFamily from the retest generator to the whole
+// identity layer. A "family" is several stored biomarker names that answer ONE
+// clinical question and so must resolve to ONE identity on EVERY surface — the
+// cross-source dedup partition, the chart/detail series, the starred tile, the
+// is_latest/current marker, AND the retest clock — so all of them agree what
+// "Vitamin D" (or "A1c") is. It is the #481 alias table with a grouping column:
+// each family carries the FINITE set of member canonical/raw spellings (the SQL
+// preimage the #394 IN(...) pattern needs, since SQL can't call this JS) plus an
+// optional freeform JS matcher (a regex) for names the extractor never snapped.
+//
+// EXCLUSION DISCIPLINE (#481 scope 3, verified against the FIT-vs-colonoscopy
+// false-all-clear audit): ONLY names that are the SAME measurement join a family.
+// Distinct assays (CRP vs hs-CRP), fractions (Free vs Total), specimens (serum vs
+// RBC folate), and metabolites (25-OH storage form vs 1,25-dihydroxy calcitriol)
+// are DELIBERATELY kept apart — each keeps its own identity — because a wrong
+// grouping grants a wrong retest pass. Over-collapsing is the failure mode, so a
+// new family is added only for names that are literally interchangeable readings.
+export interface BiomarkerFamily {
+  // The stable family key (unprefixed). biomarkerFamily() returns `family:<key>`.
+  key: string;
+  // Lowercased member spellings — the finite SQL preimage. A stored row whose
+  // display name (canonical-or-raw) lowercases into this set is a family member.
+  members: string[];
+  // Optional JS-only matcher for freeform spellings the SQL preimage can't list
+  // (e.g. "25-OH Vitamin D3 (Cholecalciferol)"). SQL surfaces rely on the finite
+  // member list; the retest generator (pure JS) gets the full regex coverage.
+  match?: (lowerName: string) => boolean;
+}
+
+// Hemoglobin A1c and its re-expression as estimated average glucose (eAG) are the
+// SAME measurement — eAG just maps the A1c percentage onto an average glucose
+// number (mg/dL) — exactly the D2/D3 case: one measurement, two names. This never
+// fires on a bare fasting/random "Glucose": the "estimated average"/"eAG"
+// qualifier (or an A1c/glyc-hemoglobin spelling) is what identifies it.
+function isA1cFamily(lower: string): boolean {
+  if (/\beag\b/.test(lower)) return true;
+  if (/estimated average glucose/.test(lower)) return true;
+  if (/\bh?b?a1c\b/.test(lower)) return true; // a1c, hba1c, hb a1c, hemoglobin a1c
+  if (/\bglyc(?:ated|osylated|o)\s*h?a?emoglobin\b/.test(lower)) return true;
+  return false;
+}
+
+export const HEMOGLOBIN_A1C_FAMILY = "hemoglobin-a1c";
+
+// The registered identity families. Kept small and well-justified (each entry
+// risks collapsing two distinct analytes — see the exclusion discipline above).
+export const BIOMARKER_FAMILIES: readonly BiomarkerFamily[] = [
+  {
+    key: VITAMIN_D_25OH_FAMILY,
+    members: [
+      "vitamin d, 25-hydroxy",
+      "vitamin d, total",
+      "vitamin d",
+      "vitamin d2, 25-hydroxy",
+      "vitamin d3, 25-hydroxy",
+      "vitamin d2",
+      "vitamin d3",
+      "25-oh vitamin d",
+      "25-hydroxy vitamin d",
+      "25-hydroxyvitamin d",
+    ],
+    match: (s) => vitaminDRetestFamily(s) === VITAMIN_D_25OH_FAMILY,
+  },
+  {
+    key: HEMOGLOBIN_A1C_FAMILY,
+    members: [
+      "hemoglobin a1c",
+      "hba1c",
+      "a1c",
+      "hgb a1c",
+      "glycated hemoglobin",
+      "glycosylated hemoglobin",
+      "glycohemoglobin",
+      "estimated average glucose",
+      "eag",
+    ],
+    match: isA1cFamily,
+  },
+];
+
+// The identity of a biomarker name: its `family:<key>` when the name belongs to a
+// registered family, else the trimmed name itself (its own singleton identity).
+// This is the ONE grouping every biomarker surface keys on so they can't disagree
+// about what "Vitamin D" is. Returns "" for empty input. Non-family names are
+// returned unchanged (only case is folded downstream) so the JS result and the
+// SQL biomarkerFamilyKey() CASE-ELSE (which returns the raw display name) agree
+// under a COLLATE NOCASE compare.
+export function biomarkerFamily(name: string | null | undefined): string {
+  const trimmed = (name ?? "").trim();
+  if (!trimmed) return "";
+  const lower = trimmed.toLowerCase();
+  for (const fam of BIOMARKER_FAMILIES) {
+    if (fam.members.includes(lower) || fam.match?.(lower)) {
+      return `family:${fam.key}`;
+    }
+  }
+  return trimmed;
+}

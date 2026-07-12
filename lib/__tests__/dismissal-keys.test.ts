@@ -7,10 +7,26 @@ import {
 } from "../dismissal-keys";
 
 describe("biomarkerDismissalKey", () => {
-  it("lowercases and trims to match the retest nudge key", () => {
+  it("keys a non-family analyte on its own lowercased/trimmed name", () => {
     expect(biomarkerDismissalKey("Glucose")).toBe("biomarker:glucose");
+    expect(biomarkerDismissalKey("  LDL Cholesterol  ")).toBe(
+      "biomarker:ldl cholesterol"
+    );
+  });
+
+  it("keys a family member on its #482 family so any member's dismiss covers it", () => {
+    // The 25-OH vitamin-D variants collapse to one family key — a dismiss on the
+    // total silences the whole family's retest nudge and the key doesn't drift as
+    // which member is the newest reading changes.
     expect(biomarkerDismissalKey("  Vitamin D, 25-Hydroxy  ")).toBe(
-      "biomarker:vitamin d, 25-hydroxy"
+      "biomarker:family:vitamin-d-25-hydroxy"
+    );
+    expect(biomarkerDismissalKey("Vitamin D3, 25-Hydroxy")).toBe(
+      biomarkerDismissalKey("Vitamin D, Total")
+    );
+    // A1c ↔ eAG likewise share one retest key.
+    expect(biomarkerDismissalKey("HbA1c")).toBe(
+      biomarkerDismissalKey("Estimated Average Glucose")
     );
   });
 });
