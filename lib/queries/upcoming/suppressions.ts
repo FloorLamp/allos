@@ -13,7 +13,7 @@ import {
   immunizationDismissalKey,
   immunizationCodesLosingBacking,
 } from "../../dismissal-keys";
-import { cleanupOrphanStars } from "../medical";
+import { cleanupOrphanStars, biomarkerFamilyKey } from "../medical";
 
 // The profile's snooze/dismiss rows, keyed by signal_key (a Finding's dedupeKey)
 // for O(1) lookup during filtering. This is the shared read behind BOTH the
@@ -91,20 +91,22 @@ export function restoreFinding(profileId: number, dedupeKey: string): void {
 // delete/rename seams, mirroring cleanupOrphanStars on the star store. Each is
 // profile-scoped.
 
-// Drop biomarker retest dismissals (`biomarker:<name>`) AND flagged-result
+// Drop biomarker retest dismissals (`biomarker:<family>`) AND flagged-result
 // dismissals (`biomarker-flag:<name>`, issue #283) whose backing readings are
 // all gone, so dismissing a nudge → deleting every reading → re-adding the marker
 // later re-surfaces the nudge instead of it being suppressed by the stale row.
-// Both key on lower(canonical_name || name); a dismissal with no matching reading
-// can never fire again, so removing it is a pure de-orphan (mirrors
-// cleanupOrphanStars). 11 = length('biomarker:') + 1; 16 = length('biomarker-flag:') + 1.
+// The retest key is now the #482 FAMILY identity (biomarkerFamilyKey), so it is
+// de-orphaned only when NO family member has a reading left; the flag key is still
+// the per-name identity. A dismissal with no matching reading can never fire again,
+// so removing it is a pure de-orphan (mirrors cleanupOrphanStars).
+// 11 = length('biomarker:') + 1; 16 = length('biomarker-flag:') + 1.
 export function cleanupOrphanBiomarkerDismissals(profileId: number): void {
   db.prepare(
     `DELETE FROM upcoming_dismissals
        WHERE profile_id = ?
          AND signal_key LIKE 'biomarker:%'
          AND substr(signal_key, 11) NOT IN (
-           SELECT lower(COALESCE(NULLIF(trim(canonical_name), ''), name))
+           SELECT DISTINCT lower(${biomarkerFamilyKey()})
              FROM medical_records WHERE profile_id = ?
          )`
   ).run(profileId, profileId);
@@ -152,6 +154,15 @@ export function migrateRenamedBiomarker(
         SET canonical_name = ?
       WHERE profile_id = ? AND canonical_name = ? COLLATE NOCASE`
   ).run(newName, profileId, oldName);
+  // If the rename COLLIDED with an existing pin under the new name (UPDATE OR
+  // IGNORE left the old row), drop the now-redundant old star. Before #482 the
+  // family-blind orphan sweep dropped it (the old name lost its backing on rename);
+  // the family-aware sweep keeps a same-family sibling backed, so the collapse has
+  // to be explicit here — a rename must never leave two pins on one family.
+  db.prepare(
+    `DELETE FROM starred_biomarkers
+      WHERE profile_id = ? AND canonical_name = ? COLLATE NOCASE`
+  ).run(profileId, oldName);
   const rekey = db.prepare(
     `UPDATE OR IGNORE upcoming_dismissals
         SET signal_key = ?

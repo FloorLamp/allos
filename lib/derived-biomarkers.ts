@@ -342,6 +342,16 @@ export function derivedInputCanonicalNames(): string[] {
   return [...s];
 }
 
+// The canonical input analytes ONE derived index depends on, or [] when `name`
+// isn't a derived index. The retest clock (#482 scope 2) uses this: a derived
+// value's retest is satisfied when its INPUTS are fresh — a stored Non-HDL is not
+// "overdue" while a recent Total + HDL exist — because re-drawing the inputs
+// re-derives it. The input→derived relation is a family the clock honors.
+export function derivedInputCanonicalNamesFor(name: string): string[] {
+  const def = DERIVED_DEFS_BY_NAME[name as DerivedName];
+  return def ? def.inputs.map((i) => i.canonical) : [];
+}
+
 // Reduce a component series to date -> canonical value, converting each reading to
 // the input's canonical unit and dropping readings that can't be converted. When a
 // date has multiple readings (a genuine same-date conflict the read-layer keeps

@@ -7,6 +7,9 @@ import {
   distinguishVitaminDIsoform,
   vitaminDRetestFamily,
   VITAMIN_D_25OH_FAMILY,
+  HEMOGLOBIN_A1C_FAMILY,
+  BIOMARKER_FAMILIES,
+  biomarkerFamily,
   canonicalAliases,
 } from "../canonical-name";
 import canonicalSeed from "../canonical-biomarkers.json";
@@ -182,6 +185,86 @@ describe("vitaminDRetestFamily", () => {
     ).toBeNull();
     expect(vitaminDRetestFamily(null)).toBeNull();
     expect(vitaminDRetestFamily("")).toBeNull();
+  });
+});
+
+describe("biomarkerFamily (unified identity — #482)", () => {
+  const VITD_KEY = `family:${VITAMIN_D_25OH_FAMILY}`;
+  const A1C_KEY = `family:${HEMOGLOBIN_A1C_FAMILY}`;
+
+  it("collapses every 25-hydroxy vitamin-D variant onto ONE identity", () => {
+    for (const name of [
+      "Vitamin D, 25-Hydroxy",
+      "Vitamin D, Total",
+      "Vitamin D",
+      "25-OH Vitamin D",
+      "Vitamin D2, 25-Hydroxy",
+      "Vitamin D3, 25-Hydroxy",
+      "Vit D2",
+      "Ergocalciferol",
+      "25-OH Vitamin D3 (Cholecalciferol)",
+    ]) {
+      expect(biomarkerFamily(name)).toBe(VITD_KEY);
+    }
+  });
+
+  it("collapses A1c and its eAG re-expression onto ONE identity (the D2/D3 case)", () => {
+    for (const name of [
+      "Hemoglobin A1c",
+      "HbA1c",
+      "A1c",
+      "Glycated Hemoglobin",
+      "Glycohemoglobin",
+      "Estimated Average Glucose",
+      "eAG",
+    ]) {
+      expect(biomarkerFamily(name)).toBe(A1C_KEY);
+    }
+  });
+
+  it("holds distinct assays / fractions / specimens / metabolites APART (#481 exclusion discipline)", () => {
+    // Active metabolite vs the 25-OH storage form.
+    expect(biomarkerFamily("1,25-Dihydroxy Vitamin D")).not.toBe(VITD_KEY);
+    expect(biomarkerFamily("Calcitriol")).not.toBe(VITD_KEY);
+    // Binding protein / receptor are not the status measurement.
+    expect(biomarkerFamily("Vitamin D Binding Protein")).not.toBe(VITD_KEY);
+    // A plain fasting/random Glucose is NOT the A1c/eAG family — over-collapsing it
+    // would grant a wrong retest pass (the inverse of the FIT-vs-colonoscopy audit).
+    expect(biomarkerFamily("Glucose")).not.toBe(A1C_KEY);
+    expect(biomarkerFamily("Fasting Glucose")).not.toBe(A1C_KEY);
+    // Distinct assays / fractions stay on their own identity.
+    expect(biomarkerFamily("CRP")).not.toBe(biomarkerFamily("hs-CRP"));
+    expect(biomarkerFamily("Testosterone, Free")).not.toBe(
+      biomarkerFamily("Testosterone, Total")
+    );
+  });
+
+  it("gives a non-family analyte its own singleton identity (its own name)", () => {
+    expect(biomarkerFamily("LDL Cholesterol")).toBe("LDL Cholesterol");
+    expect(biomarkerFamily("  LDL Cholesterol  ")).toBe("LDL Cholesterol");
+    expect(biomarkerFamily("")).toBe("");
+    expect(biomarkerFamily(null)).toBe("");
+  });
+
+  it("every SQL-preimage member resolves to its own family (JS ↔ SQL parity)", () => {
+    // The medical.ts biomarkerFamilyKey() CASE inlines these member strings as its
+    // IN(...) preimage; this pins that biomarkerFamily() (the JS half) agrees on
+    // every one, so the finite-preimage SQL and the JS matcher can't drift.
+    for (const fam of BIOMARKER_FAMILIES) {
+      for (const member of fam.members) {
+        expect(biomarkerFamily(member)).toBe(`family:${fam.key}`);
+      }
+    }
+  });
+
+  it("no member string belongs to two families (families are disjoint)", () => {
+    const seen = new Map<string, string>();
+    for (const fam of BIOMARKER_FAMILIES) {
+      for (const member of fam.members) {
+        expect(seen.has(member)).toBe(false);
+        seen.set(member, fam.key);
+      }
+    }
   });
 });
 
