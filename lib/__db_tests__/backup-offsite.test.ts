@@ -15,9 +15,17 @@ import os from "node:os";
 import path from "node:path";
 import { replicateToOffsite, listUploadFiles } from "@/lib/backup";
 import { verificationSidecarName } from "@/lib/backup-verify";
+import { OFFSITE_SENTINEL } from "@/lib/backup-offsite";
 
 function mkTmp(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+}
+
+// Mark a temp dir as a verified, MOUNTED off-volume destination (#463): the
+// replicator refuses to write into a root without the sentinel.
+function markMounted(dir: string): void {
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, OFFSITE_SENTINEL), "test");
 }
 
 function writeSnapshot(dir: string, name: string, body = "db"): void {
@@ -44,6 +52,8 @@ describe("replicateToOffsite (copy path)", () => {
     srcDir = mkTmp("allos-offsite-src-");
     destDir = mkTmp("allos-offsite-dest-");
     uploads = mkTmp("allos-offsite-uploads-");
+    // The destination is a real, verified mount for the happy-path cases below.
+    markMounted(destDir);
   });
 
   it("returns replicated:false when no destination is configured", () => {
@@ -150,6 +160,72 @@ describe("replicateToOffsite (copy path)", () => {
         path.join(destDir, verificationSidecarName("allos-2026-07-05-0300.db"))
       )
     ).toBe(false);
+  });
+});
+
+describe("replicateToOffsite mount detection (#463)", () => {
+  let srcDir: string;
+  let uploads: string;
+
+  beforeEach(() => {
+    srcDir = mkTmp("allos-offsite-src-");
+    uploads = mkTmp("allos-offsite-uploads-");
+    writeSnapshot(srcDir, "allos-2026-07-10-0300.db");
+  });
+
+  it("skips (does not mkdir) when the destination root does not exist", () => {
+    const missing = path.join(os.tmpdir(), "allos-offsite-not-mounted-xyz-123");
+    fs.rmSync(missing, { recursive: true, force: true });
+
+    const r = replicateToOffsite("allos-2026-07-10-0300.db", {
+      destDir: missing,
+      sourceBackupsDir: srcDir,
+      uploadsRoot: uploads,
+      keepDaily: 7,
+      keepWeekly: 8,
+    });
+
+    expect(r.replicated).toBe(false);
+    expect(r.skipped).toBe(true);
+    expect(r.skipReason).toMatch(/not mounted/i);
+    // Crucially, the root was NOT created — no false durable backup.
+    expect(fs.existsSync(missing)).toBe(false);
+  });
+
+  it("skips when the root exists but has no sentinel (bare/unmounted mount point)", () => {
+    const bare = mkTmp("allos-offsite-bare-"); // exists, but no sentinel written
+    const r = replicateToOffsite("allos-2026-07-10-0300.db", {
+      destDir: bare,
+      sourceBackupsDir: srcDir,
+      uploadsRoot: uploads,
+      keepDaily: 7,
+      keepWeekly: 8,
+    });
+
+    expect(r.replicated).toBe(false);
+    expect(r.skipped).toBe(true);
+    expect(r.skipReason).toMatch(/sentinel|verified/i);
+    // The snapshot was NOT copied into the unverified root.
+    expect(fs.existsSync(path.join(bare, "allos-2026-07-10-0300.db"))).toBe(
+      false
+    );
+  });
+
+  it("replicates once the sentinel is present", () => {
+    const dest = mkTmp("allos-offsite-mounted-");
+    markMounted(dest);
+    const r = replicateToOffsite("allos-2026-07-10-0300.db", {
+      destDir: dest,
+      sourceBackupsDir: srcDir,
+      uploadsRoot: uploads,
+      keepDaily: 7,
+      keepWeekly: 8,
+    });
+    expect(r.replicated).toBe(true);
+    expect(r.skipped).toBeUndefined();
+    expect(fs.existsSync(path.join(dest, "allos-2026-07-10-0300.db"))).toBe(
+      true
+    );
   });
 });
 

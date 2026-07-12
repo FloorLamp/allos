@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   resolveOffsiteDir,
   planUploadMirror,
+  checkOffsiteReadiness,
   type MirrorEntry,
 } from "@/lib/backup-offsite";
 
@@ -20,6 +21,48 @@ describe("resolveOffsiteDir", () => {
   it("returns a trimmed directory when set", () => {
     expect(resolveOffsiteDir("/mnt/backup")).toBe("/mnt/backup");
     expect(resolveOffsiteDir("  /mnt/backup  ")).toBe("/mnt/backup");
+  });
+});
+
+describe("checkOffsiteReadiness (#463)", () => {
+  it("is ready only when the root exists as a dir AND the sentinel is present", () => {
+    expect(
+      checkOffsiteReadiness({
+        rootExists: true,
+        rootIsDir: true,
+        sentinelPresent: true,
+      })
+    ).toEqual({ ready: true });
+  });
+
+  it("refuses (not mounted) when the root does not exist", () => {
+    const r = checkOffsiteReadiness({
+      rootExists: false,
+      rootIsDir: false,
+      sentinelPresent: false,
+    });
+    expect(r.ready).toBe(false);
+    if (!r.ready) expect(r.reason).toMatch(/not mounted/i);
+  });
+
+  it("refuses (not mounted) when the path exists but isn't a directory", () => {
+    const r = checkOffsiteReadiness({
+      rootExists: true,
+      rootIsDir: false,
+      sentinelPresent: false,
+    });
+    expect(r.ready).toBe(false);
+    if (!r.ready) expect(r.reason).toMatch(/not mounted/i);
+  });
+
+  it("refuses (not verified) when the dir exists but the sentinel is missing", () => {
+    const r = checkOffsiteReadiness({
+      rootExists: true,
+      rootIsDir: true,
+      sentinelPresent: false,
+    });
+    expect(r.ready).toBe(false);
+    if (!r.ready) expect(r.reason).toMatch(/sentinel|verified/i);
   });
 });
 

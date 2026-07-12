@@ -20,6 +20,7 @@ import { migration as m018 } from "./018-equipment-category-enum";
 import { migration as m019 } from "./019-activity-equipment";
 import { migration as m020 } from "./020-medical-records-created-index";
 import { migration as m021 } from "./021-dose-lifetime";
+import { migration as m022 } from "./022-integration-refresh-claim";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
 // CONTRACT: a migration's position (1-based) must equal its `id`, and the runner
@@ -49,4 +50,5 @@ export const MIGRATIONS: Migration[] = [
   m019,
   m020,
   m021,
+  m022,
 ];

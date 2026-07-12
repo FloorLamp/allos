@@ -71,6 +71,52 @@ export function upsertConnection(
   ).run(profileId, provider, status, config);
 }
 
+// Read-merge-write a connection's config JSON inside an IMMEDIATE transaction (issue
+// #470). A patch is `{ ...currentConfig, ...patch }`, so two processes patching the
+// SAME connection concurrently — the hourly tick writing a sync cursor while web "Sync
+// now" writes a fresh token pair — would lost-update each other under plain read-then-
+// write (last writer wins, the other's keys vanish). BEGIN IMMEDIATE takes the write
+// lock up front, so the second process blocks until the first commits, then re-reads
+// the just-merged config and layers its own keys onto that fresh value. better-sqlite3
+// is fully synchronous, so `read` runs entirely inside the transaction with no await.
+function mergeConnectionConfig<T extends object>(
+  profileId: number,
+  provider: string,
+  read: () => T,
+  patch: Partial<T>,
+  status?: "connected" | "disconnected"
+): void {
+  db.transaction(() => {
+    const next = { ...read(), ...patch } as Record<string, unknown>;
+    upsertConnection(profileId, provider, { status, config: next });
+  }).immediate();
+}
+
+// Single-flight the OAuth token refresh for one connection (issue #470). Strava and
+// Withings ROTATE the refresh token on every refresh, so two processes refreshing the
+// same connection at once (web "Sync now" + the hourly tick) race: the loser presents
+// an already-consumed refresh token, gets invalid_grant, and spuriously flags the
+// connection needs_reauth. This atomic claim makes exactly ONE caller the refresher —
+// the flip itself is the claim (UPDATE ... WHERE the slot is free or its claim aged
+// out), so a concurrent caller gets changes === 0 and skips the fetch. The 60s window
+// is far longer than a refresh round-trip yet short enough that a crashed winner's
+// stale claim frees within a tick. Returns true iff THIS caller won and may refresh.
+export function claimTokenRefresh(
+  profileId: number,
+  provider: string
+): boolean {
+  const res = db
+    .prepare(
+      `UPDATE integration_connections
+          SET refresh_claimed_at = datetime('now')
+        WHERE profile_id = ? AND provider = ?
+          AND (refresh_claimed_at IS NULL
+               OR refresh_claimed_at < datetime('now','-60 seconds'))`
+    )
+    .run(profileId, provider);
+  return res.changes === 1;
+}
+
 // Flip a connection into `needs_reauth` after a DEFINITIVE auth failure (a dead or
 // revoked refresh token / PAT — see isAuthRefreshFailure). Preserves the existing
 // config (creds and now-dead tokens are kept so the setup page can show which
@@ -377,8 +423,15 @@ function patchStravaConfig(
   patch: Partial<StravaConfig>,
   status?: "connected" | "disconnected"
 ) {
-  const next = { ...getStravaConfig(profileId), ...patch };
-  upsertConnection(profileId, STRAVA_ID, { status, config: next });
+  // Atomic read-merge-write (issue #470) so a token patch and a cursor patch from two
+  // processes can't drop each other.
+  mergeConnectionConfig(
+    profileId,
+    STRAVA_ID,
+    () => getStravaConfig(profileId),
+    patch,
+    status
+  );
 }
 
 export function setStravaCredentials(
@@ -466,6 +519,21 @@ export async function getStravaAccessToken(
   }
   if (!c.refreshToken) return null;
 
+  // Single-flight the refresh (issue #470): Strava rotates the refresh token, so if a
+  // sibling process (web "Sync now" vs the hourly tick) is already refreshing this
+  // connection, we must NOT present our about-to-be-consumed token — that consumed
+  // token would come back invalid_grant and spuriously flag needs_reauth. On a lost
+  // claim, reuse whatever usable access token is stored (the peer's fresh one, or our
+  // own still-unexpired one — we entered here only within the 5-min expiry margin) and
+  // otherwise skip this sync; the next tick picks up the refreshed pair.
+  if (!claimTokenRefresh(profileId, STRAVA_ID)) {
+    const latest = getStravaConfig(profileId);
+    if (latest.accessToken && latest.expiresAt && latest.expiresAt > nowSec) {
+      return latest.accessToken;
+    }
+    return null;
+  }
+
   const res = await fetch(STRAVA_TOKEN_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -526,8 +594,16 @@ function patchOuraConfig(
   patch: Partial<OuraConfig>,
   status?: "connected" | "disconnected"
 ) {
-  const next = { ...getOuraConfig(profileId), ...patch };
-  upsertConnection(profileId, OURA_ID, { status, config: next });
+  // Atomic read-merge-write (issue #470) — mirrors patchStravaConfig. Oura doesn't
+  // rotate a refresh token (it's a pasted PAT), but its cursor patch still shares the
+  // config row with connect-time writes, so the same lost-update guard applies.
+  mergeConnectionConfig(
+    profileId,
+    OURA_ID,
+    () => getOuraConfig(profileId),
+    patch,
+    status
+  );
 }
 
 export function getOuraToken(profileId: number): string | null {
@@ -603,8 +679,14 @@ function patchWithingsConfig(
   patch: Partial<WithingsConfig>,
   status?: "connected" | "disconnected"
 ) {
-  const next = { ...getWithingsConfig(profileId), ...patch };
-  upsertConnection(profileId, WITHINGS_ID, { status, config: next });
+  // Atomic read-merge-write (issue #470) — mirrors patchStravaConfig.
+  mergeConnectionConfig(
+    profileId,
+    WITHINGS_ID,
+    () => getWithingsConfig(profileId),
+    patch,
+    status
+  );
 }
 
 export function setWithingsCredentials(
@@ -742,6 +824,18 @@ export async function getWithingsAccessToken(
     return c.accessToken;
   }
   if (!c.refreshToken) return null;
+
+  // Single-flight the refresh (issue #470) — mirrors getStravaAccessToken. Withings
+  // also rotates the refresh token, so a lost claim means a sibling process is
+  // refreshing now; reuse a usable stored token or skip this sync rather than burn the
+  // consumed refresh token into a spurious needs_reauth.
+  if (!claimTokenRefresh(profileId, WITHINGS_ID)) {
+    const latest = getWithingsConfig(profileId);
+    if (latest.accessToken && latest.expiresAt && latest.expiresAt > nowSec) {
+      return latest.accessToken;
+    }
+    return null;
+  }
 
   const res = await fetch(WITHINGS_TOKEN_URL, {
     method: "POST",

@@ -12,6 +12,8 @@ import {
   isOffsiteConfigured,
   getLastOffsiteBackupAt,
   getLastOffsiteError,
+  getOffsiteReadiness,
+  readVerification,
 } from "@/lib/backup";
 import { getNotifyError } from "@/lib/notifications";
 import { aiEndpointInfo } from "@/lib/ai-client";
@@ -37,6 +39,11 @@ export default async function ServerSettingsPage() {
 
   const publicUrl = getPublicUrl();
   const last = getLastBackup();
+  // Label the newest FILE as failed if its verification sidecar says so, rather
+  // than presenting an integrity-failed snapshot (kept for forensics) as "the last
+  // backup" (#472).
+  const lastVerification = last ? readVerification(last.name) : null;
+  const offsiteReadiness = getOffsiteReadiness();
 
   return (
     <div>
@@ -61,12 +68,17 @@ export default async function ServerSettingsPage() {
                 name: last.name,
                 size: formatBytes(last.size),
                 when: new Date(last.mtimeMs).toLocaleString(),
+                failed: lastVerification?.integrity === "failed",
               }
             : null
         }
         lastError={getLastBackupError() || null}
         offsite={{
           configured: isOffsiteConfigured(),
+          ready: offsiteReadiness.configured ? offsiteReadiness.ready : false,
+          notReadyReason: offsiteReadiness.configured
+            ? (offsiteReadiness.reason ?? null)
+            : null,
           lastAt: (() => {
             const at = getLastOffsiteBackupAt();
             return at ? new Date(at).toLocaleString() : null;

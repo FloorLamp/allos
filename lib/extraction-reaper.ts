@@ -17,21 +17,15 @@
 // records — only the transient extraction_status of a wedged document row.
 
 import { db } from "./db";
+import {
+  DEFAULT_EXTRACTION_LEASE_MINUTES,
+  extractionLeaseMinutes,
+} from "./extraction-lease";
 
-// How long a document may sit in 'processing' before the reaper considers its
-// extraction wedged. Extractions normally settle in seconds to a couple of minutes;
-// 30m is comfortably past the slowest legitimate run (a large multi-page PDF) while
-// still freeing a truly-hung row within the hour. Overridable per deploy via env.
-export const DEFAULT_EXTRACTION_LEASE_MINUTES = 30;
-
-function leaseMinutes(): number {
-  const raw = process.env.EXTRACTION_LEASE_MINUTES;
-  if (raw === undefined || raw.trim() === "") {
-    return DEFAULT_EXTRACTION_LEASE_MINUTES;
-  }
-  const n = Number(raw);
-  return Number.isInteger(n) && n >= 1 ? n : DEFAULT_EXTRACTION_LEASE_MINUTES;
-}
+// The lease window lives in the db-free lib/extraction-lease so boot-tasks (which runs
+// inside createDb) can share it without an import cycle. Re-exported here so existing
+// importers of the reaper keep working.
+export { DEFAULT_EXTRACTION_LEASE_MINUTES, extractionLeaseMinutes };
 
 const STUCK_EXTRACTION_MESSAGE =
   "Extraction timed out (no result within the lease window). Reprocess to retry.";
@@ -43,7 +37,9 @@ const STUCK_EXTRACTION_MESSAGE =
 // caller runs this inside a try/catch so a reap failure never affects the
 // notification flow. See the module header for the global-scope justification (also
 // recorded in the profile-scoping allowlist).
-export function reapStuckExtractions(minutes: number = leaseMinutes()): number {
+export function reapStuckExtractions(
+  minutes: number = extractionLeaseMinutes()
+): number {
   const mins =
     Number.isInteger(minutes) && minutes >= 1
       ? minutes

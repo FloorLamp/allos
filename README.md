@@ -704,9 +704,29 @@ and append-only: because uploaded files are content-hashed and immutable, only n
 copied each night, so it stays cheap. Keep the destination **operator-controlled** — it holds
 multi-profile PHI, so no cloud/network target is wired up (mount your own if you want one).
 
+**Verify the mount (avoids silent evaporation).** The app **never creates the destination
+root** — a missing mount must fail honestly, not `mkdir` a fake backup into the container's
+ephemeral layer that vanishes on the next redeploy. So replication requires a one-time
+**sentinel** (`.allos-backup-destination`) written into the mounted volume: after mounting
+`BACKUP_DEST_DIR`, click **Verify destination** on the backups card. If the sentinel is
+absent (never verified, or the volume later unmounted), replication is **skipped** and the
+reason is recorded under `backup_offsite_last_error` — off-volume backups don't silently
+succeed into nowhere.
+
 The **Settings → Server → Automated backups** card shows whether `BACKUP_DEST_DIR` is
-configured and the time of the last off-volume copy (or its last error). Off-volume failures
-are recorded under their own marker and never fail the primary snapshot.
+configured, whether the destination is currently **mounted and verified**, and the time of the
+last off-volume copy (or its last error). Off-volume failures are recorded under their own
+marker and never fail the primary snapshot, but an off-volume mirror that has gone **stale**
+(older than the backup-staleness threshold, default 48h) now also degrades the
+[health endpoint](#health-endpoint) (`reason: "offsite-stale"`), so a mirror that quietly
+stopped is visible to uptime monitors.
+
+**What the off-volume mirror covers.** The mirror copies the **database snapshot** (+ its
+verify sidecar) and **`data/uploads/`** (medical files). It does **not** mirror
+`data/integration-payloads/` (raw provider payloads, re-syncable from the source integration)
+or `data/logs/ai.jsonl` (the AI audit log) — this is a deliberate scope decision to keep the
+mirror to the recoverable clinical dataset; if you want those off-volume too, copy them with
+your own out-of-band job.
 
 ```bash
 # docker-compose: mount a second host directory and point the env at it
@@ -736,10 +756,14 @@ schedule/retention/verification and is safe to run hourly by cron:
 
 ### Restore
 
-Use the restore tool (`npm run restore`) — it lists snapshots with their integrity status,
-verifies the chosen one before trusting it, copies the current live DB aside as a rollback
-(`allos.db.pre-restore-<timestamp>`), then copies the snapshot into place and clears any
-stale `-wal`/`-shm` sidecars.
+Use the restore tool (`npm run restore`) — it lists snapshots with their integrity status
+**and schema version**, verifies the chosen one before trusting it, copies the current live
+DB aside as a rollback (`allos.db.pre-restore-<timestamp>`, **including its `-wal`/`-shm`** so a
+rollback keeps WAL-only committed transactions), then installs the snapshot via an **atomic
+rename** (a kill mid-restore leaves the old DB intact, not a torn file) and clears any stale
+`-wal`/`-shm` sidecars. It **refuses a snapshot whose schema is newer than the running build**
+(which would only trip the boot-time downgrade guard) unless you pass `--force`. Old aside
+copies are pruned to the newest few by the backup tick.
 
 ```bash
 npm run restore                       # list snapshots + integrity status
@@ -766,6 +790,26 @@ command, e.g. `cp -a /backup/uploads/. data/uploads/`.
 You can still restore by hand if you prefer: stop the container, `cp
 data/backups/allos-<stamp>.db data/allos.db`, delete any `data/allos.db-wal` /
 `data/allos.db-shm`, and start it again.
+
+### Moving to a new server
+
+To migrate a running instance to a new host, **copy the whole `DATA_DIR`** — the
+database plus everything alongside it on disk (`uploads/`, `integration-payloads/`,
+`backups/`). Everything Allos persists lives under that one directory (outside the
+checkout), so a faithful move is a directory copy, not a database-only step:
+
+```bash
+# on the OLD host, with the app stopped:
+rsync -a "$DATA_DIR"/ newhost:/path/to/allos-data/
+# on the NEW host: point DATA_DIR at the copy and start the container
+```
+
+Stop the app on the old host first so the SQLite WAL is checkpointed and no file
+changes mid-copy. Do **not** use the **Data → Export all my data** ZIP for this — that
+is a readable **portability** artifact (JSON/CSV + a FHIR passport) for taking a
+profile's record to another tool, **not** a restore image: it omits operational state
+(connections, sessions, sync history) and can't rebuild an instance. The `DATA_DIR`
+copy (or a [backup snapshot](#backups) plus its `uploads/`) is the restore path.
 
 ## Running a demo instance
 
@@ -833,8 +877,18 @@ container unhealthy:
   `integrity_check` itself, so it stays cheap enough for a frequent uptime poll.
 - **`backup-stale`** — backups are enabled and the newest snapshot is older than the
   staleness threshold (**48h** by default; override with the `backup_staleness_hours`
-  global setting). A never-backed-up instance (fresh install, or backups just enabled) is
-  **not** flagged, so this only catches a schedule that ran and then silently died.
+  global setting). A brand-new instance inside its grace window is **not** flagged here — see
+  `backups-never-ran` below for the perpetually-unbackuped case.
+- **`backups-never-ran`** — backups are enabled but **no snapshot has ever been taken** and
+  the instance is older than a short grace period (**72h**). This catches a deployment with
+  no backup scheduler at all (the notify sidecar dropped and no cron replacing it) —
+  previously such an instance stayed permanently green because the never-backed-up exemption
+  never expired. A genuinely fresh install is exempt until it crosses the grace window
+  (instance age comes from an `install_first_boot_at` marker seeded on first boot).
+- **`offsite-stale`** — an off-volume destination (`BACKUP_DEST_DIR`) is configured and its
+  last successful replica is older than the staleness threshold, so a mirror that silently
+  stopped is visible to uptime monitors (a never-succeeded mirror surfaces instead as an
+  off-volume error on the admin card — see [Off-volume backups](#off-volume-backups-backup_dest_dir)).
 
 The body stays deliberately coarse (a `status`, a single `reason`, and `lastBackupAgeHours`)
 with no paths, versions, or PHI, since the endpoint is unauthenticated — details go to the

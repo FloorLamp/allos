@@ -18,4 +18,5 @@ export {
   resourcesToImportResult,
   entriesToImportResult,
   parseFhirBundle,
+  FHIR_IMPORT_RESOURCE_TYPES,
 } from "./fhir/bundle";

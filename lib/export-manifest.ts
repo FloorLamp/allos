@@ -14,6 +14,12 @@ export interface ExportManifestInput {
   fileCount: number;
   // Number of FHIR resources in passport.fhir.json (0 when the passport is empty).
   fhirResourceCount: number;
+  // Zip names of files that were listed but vanished from disk before the byte read,
+  // so they are ABSENT from the archive — surfaced here instead of silently skipped
+  // (#466). Empty/omitted when every listed file was bundled.
+  missingFiles?: string[];
+  // The bundled profile photo's zip name, when the profile has one on disk (#466).
+  profilePhoto?: string | null;
 }
 
 export interface ExportManifest {
@@ -23,8 +29,9 @@ export interface ExportManifest {
   profile: { id: number; name: string };
   contents: {
     datasets: { key: string; count: number; json: string; csv: string }[];
-    medicalFiles: { directory: string; count: number };
+    medicalFiles: { directory: string; count: number; missing?: string[] };
     fhir: { file: string; resourceCount: number };
+    profilePhoto?: string;
     manifest: string;
   };
   totals: {
@@ -47,6 +54,7 @@ export function buildExportManifest(
     csv: `datasets/${key}.csv`,
   }));
   const rows = datasets.reduce((sum, d) => sum + d.count, 0);
+  const missing = input.missingFiles ?? [];
 
   return {
     app: "allos",
@@ -58,11 +66,13 @@ export function buildExportManifest(
       medicalFiles: {
         directory: "medical-files/",
         count: input.fileCount,
+        ...(missing.length ? { missing } : {}),
       },
       fhir: {
         file: "passport.fhir.json",
         resourceCount: input.fhirResourceCount,
       },
+      ...(input.profilePhoto ? { profilePhoto: input.profilePhoto } : {}),
       manifest: "manifest.json",
     },
     totals: {
