@@ -157,6 +157,32 @@ describe("assessSchedule", () => {
     expect(statusFor("mmr", s).status).toBe("unknown");
   });
 
+  it("resolves an age-inappropriate childhood-only series to not_recommended for an adult (#552)", () => {
+    // A 40-year-old with no rotavirus / childhood-PCV / Hib record: these are
+    // infant-only series with no adult catch-up, so they are age-inappropriate,
+    // NOT a lost record — they must read `not_recommended` (ranked last, dropped
+    // from the page table + due feeds), not `unknown`.
+    const s = assessSchedule([], 40 * 12, null, on);
+    for (const code of ["rv", "pcv", "hib"]) {
+      expect(statusFor(code, s).status, code).toBe("not_recommended");
+    }
+    // The genuine-`unknown` distinction is preserved: a series WITH an adult
+    // catch-up/booster (MMR, Tdap, varicella) still reads `unknown` for the same
+    // adult, so a likely-lost record with a real catch-up keeps surfacing.
+    expect(statusFor("mmr", s).status).toBe("unknown");
+    expect(statusFor("varicella", s).status).toBe("unknown");
+    expect(statusFor("tdap", s).status).toBe("unknown");
+  });
+
+  it("keeps an age-appropriate childhood-only series overdue for a child (#552)", () => {
+    // The noAdultCatchup gate is adulthood-only: a 2-year-old (24mo) missing the
+    // rotavirus/PCV/Hib series is a real, surfaced gap → overdue, unchanged.
+    const s = assessSchedule([], 24, null, on);
+    for (const code of ["rv", "pcv", "hib"]) {
+      expect(statusFor(code, s).status, code).toBe("overdue");
+    }
+  });
+
   it("flags a Tdap booster overdue past the 10-year interval", () => {
     const recs: ImmunizationRecordLite[] = [
       { vaccine: "tdap", date: "2010-01-01" },

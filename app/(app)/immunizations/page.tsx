@@ -9,6 +9,8 @@ import {
 } from "@/lib/queries";
 import ProviderDatalist from "@/components/ProviderDatalist";
 import { getUserBirthdate, getUserSex, getStoredAge } from "@/lib/settings";
+import { getRiskFactors } from "@/lib/queries/upcoming/risk";
+import { immunizationPriorityFor } from "@/lib/risk-stratification";
 import { ageMonthsFrom } from "@/lib/date";
 import {
   assessSchedule,
@@ -57,12 +59,20 @@ const STATUS_RANK: Record<VaccineStatus, number> = {
 
 type SortKey = "vaccine" | "status" | "last" | "doses" | "next";
 
-function sortValue(a: VaccineAssessment, key: SortKey): string | number {
+// Within a status band, a risk-elevated (issue #553) vaccine leads. STATUS_RANK
+// spans 0..6; multiplying by 10 leaves room to subtract the priority (max 2)
+// WITHOUT crossing a band boundary — so a risk-elevated `due` vaccine sorts above
+// a routine `due` one but never above an `overdue` one.
+function sortValue(
+  a: VaccineAssessment,
+  key: SortKey,
+  priority: number
+): string | number {
   switch (key) {
     case "vaccine":
       return a.name.toLowerCase();
     case "status":
-      return STATUS_RANK[a.status];
+      return STATUS_RANK[a.status] * 10 - priority;
     case "last":
       // No dose → "" sorts to the top ascending; a real date otherwise. Desc
       // then puts the most recent dose first.
@@ -103,6 +113,19 @@ export default async function ImmunizationsPage(props: {
     overrides.map((o) => ({ vaccine: o.vaccine, kind: o.kind }))
   );
 
+  // Risk-stratified priority (issue #553): the SAME risk-factor gather + pure
+  // machinery the Upcoming immunization signal uses, so the page and the feed
+  // never disagree on which vaccines a risk factor ranks up. A calm reason line
+  // explains why; the status sort below leads a risk-elevated vaccine within its
+  // band.
+  const riskFactors = getRiskFactors(profile.id);
+  const riskByCode = new Map(
+    summary.assessments.map((a) => [
+      a.code,
+      immunizationPriorityFor(a.code, riskFactors),
+    ])
+  );
+
   // Master-table sort + filter, driven by query params (SortableHeader writes
   // sort/dir; ImmunizationStatusFilter writes status). Sort/dir parsing and the
   // comparator are the shared lib/table-sort helpers.
@@ -123,7 +146,7 @@ export default async function ImmunizationsPage(props: {
   // Tie-break on vaccine name (ascending) so equal keys keep a predictable order.
   rows = sortRows(
     rows,
-    (a) => sortValue(a, sortKey),
+    (a) => sortValue(a, sortKey, riskByCode.get(a.code)?.priority ?? 0),
     dir,
     (a) => a.name
   );
@@ -230,6 +253,9 @@ export default async function ImmunizationsPage(props: {
               <tbody>
                 {rows.map((a) => {
                   const badge = statusBadge(a);
+                  const risk = riskByCode.get(a.code);
+                  const prioritized = (risk?.priority ?? 0) > 0;
+                  const riskReason = risk?.reasons.join(", ") ?? "";
                   return (
                     <tr
                       key={a.code}
@@ -243,6 +269,14 @@ export default async function ImmunizationsPage(props: {
                         >
                           {a.name}
                         </Link>
+                        {prioritized && (
+                          <div
+                            data-testid={`immunization-prioritized-${a.code}`}
+                            className="mt-0.5 text-xs font-medium text-amber-700 dark:text-amber-400"
+                          >
+                            Prioritized — {riskReason}
+                          </div>
+                        )}
                         <div className="text-xs text-slate-500 sm:hidden dark:text-slate-400">
                           {a.detail}
                           {a.nextLabel ? ` · ${a.nextLabel}` : ""}

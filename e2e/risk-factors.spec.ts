@@ -31,7 +31,17 @@ test.describe("health risk factors (issue #517)", () => {
     await page.reload();
     await expect(page.getByTestId("risk-healthcare_worker")).toBeChecked();
 
+    // #553: the factor now ranks up the matching vaccine on the immunization page.
+    // Profile 1's seeded influenza (last season's flu, ~13mo old) reads `due`; the
+    // healthcare-worker factor elevates it with a calm reason line. Done here,
+    // inside the single on→off window, so no other spec sees the mutated factor.
+    await page.goto("/immunizations");
+    const flu = page.getByTestId("immunization-prioritized-influenza");
+    await expect(flu).toBeVisible();
+    await expect(flu).toContainText("Healthcare worker");
+
     // Reset to off, leaving the shared fixture as we found it.
+    await page.goto("/settings/profile");
     await page.getByTestId("risk-healthcare_worker").uncheck();
     await expect(page.getByLabel("Saved").first()).toBeVisible();
     await page.reload();
