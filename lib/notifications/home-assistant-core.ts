@@ -191,6 +191,18 @@ export const TOGGLEABLE_HA_KINDS: readonly {
 // becoming an arbitrary server-side POST primitive: profile editors may point it
 // at their HA webhook, not at any URL the server can reach. Empty is treated as
 // "not configured" (returns false) by callers.
+// Whether a live webhook response status is an accepted success. Only 2xx passes.
+// A 3xx is DELIBERATELY a failure (issue #502): the outbound POST is sent with
+// `redirect: "manual"`, so a redirect surfaces here as a 3xx rather than being
+// transparently followed to whatever host/port/path the Location header names. That
+// closes the SSRF hole isValidWebhookUrl (#371) left open — it can only validate the
+// CONFIGURED URL at save time and has no say over where a 3xx on the live request
+// would re-POST the medication-bearing payload. The request now only ever reaches the
+// exact validated URL. Pure so the refusal is unit-tested without a live server.
+export function isAcceptableWebhookStatus(status: number): boolean {
+  return status >= 200 && status < 300;
+}
+
 export function isValidWebhookUrl(url: string): boolean {
   if (!url) return false;
   let u: URL;

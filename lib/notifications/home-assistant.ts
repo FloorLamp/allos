@@ -23,6 +23,7 @@ import {
   buildHomeAssistantPayload,
   isKindEnabled,
   isValidWebhookUrl,
+  isAcceptableWebhookStatus,
   HA_SECRET_HEADER,
 } from "./home-assistant-core";
 
@@ -42,6 +43,14 @@ function profileDisplayName(profileId: number): string {
 // dispatch() records the channel failed and the delivery-health marker is set. A
 // 10s timeout guards a hung LAN request. The shared secret, when set, rides the
 // X-Allos-Webhook-Secret header (never in the body).
+//
+// SSRF hardening (issue #502): `redirect: "manual"` so Node's fetch NEVER follows a
+// 3xx. isValidWebhookUrl (#371) only constrains the CONFIGURED url at save time — a
+// profile editor could still point it at a host that answers 302 Location:
+// http://169.254.169.254/… and the default redirect-following fetch would re-POST the
+// medication-bearing payload to that internal target. With manual redirect a 3xx
+// arrives here as a non-2xx status and is rejected below, so the request only ever
+// reaches the exact validated URL, never a redirect target.
 async function postWebhook(
   url: string,
   secret: string,
@@ -55,9 +64,10 @@ async function postWebhook(
     method: "POST",
     headers,
     body: JSON.stringify(payload),
+    redirect: "manual",
     signal: AbortSignal.timeout(10_000),
   });
-  if (!res.ok) {
+  if (!isAcceptableWebhookStatus(res.status)) {
     throw new Error(`Home Assistant webhook failed: HTTP ${res.status}`);
   }
 }
