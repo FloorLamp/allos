@@ -107,6 +107,30 @@ export function appendDayGroups(
   return out;
 }
 
+// Reconcile the client's "load more" cursor when the server re-renders the newest
+// page (issue #503). The Journal's first page and its `nextBefore` cursor are
+// refreshed server-side on every auto-save (via revalidatePath). When that cursor
+// MOVES — e.g. logging an activity on a day outside the loaded window rolls the oldest
+// loaded day out of the first page, shifting the whole newest window — the locally
+// held cursor (seeded only at mount) and any fetched older pages are stale: "load
+// more" would fetch `date < oldBoundary`, which by construction never re-includes the
+// day that just rolled out, so it silently disappears from the feed until a reload.
+//
+// Given the cursor the client last synced to (`seeded`) and the fresh server cursor
+// (`next`), returns whether they diverged and the paging state to apply. On a change,
+// the cursor resets to the new boundary and loaded older pages are dropped — their
+// `nextBefore` chain spans the now-invalid gap the window shift opened, so paging must
+// resume cleanly from the refreshed first page (where the rolled-out day is reachable
+// again via `date < newBoundary`). Pure so the reset decision is unit-tested without
+// the React component.
+export function reconcileJournalPaging(
+  seeded: string | null,
+  next: string | null
+): { changed: boolean; cursor: string | null } {
+  if (seeded === next) return { changed: false, cursor: seeded };
+  return { changed: true, cursor: next };
+}
+
 export interface BuildJournalCardsInput {
   // Activities newest-first (as getActivities returns them); grouped by date here.
   activities: Activity[];
