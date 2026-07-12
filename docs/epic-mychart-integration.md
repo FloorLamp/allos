@@ -15,7 +15,7 @@
 >   reprocess + canonicalized-bundle content hash), not direct row writes —
 >   which also dissolves the "immunizations idempotency gap" below (document
 >   import already handles immunizations).
-> - The "no existing FHIR/SMART code" claim predates `lib/fhir.ts` and the
+> - The "no existing FHIR/SMART code" claim predates `lib/fhir/` and the
 >   deterministic health-record import path; both exist now.
 >
 > The FHIR→schema mapping notes, sandbox guidance, endpoint-directory
@@ -89,9 +89,9 @@ The "Import from MyChart" control on `/immunizations` auto-detects the format an
 MyChart's **"Download Summary" / "Download My Record"** produces `HealthSummary_<date>.zip` → `MachineReadable_XDMFormat/IHE_XDM/<name>/DOC0001.XML`. That `DOC0001.XML` is a **C-CDA CCD** — the _complete_ record (every immunization with CVX codes, plus labs, vitals, and medications). **XDM** is just the IHE **ZIP packaging** around the CCD (some portals hand you a `.xdm` file — same zip).
 
 - `lib/zip.ts` — a dependency-free ZIP reader unwraps the `.zip`/`.xdm` and picks the CCD.
-- `lib/cda.ts` — parses the CCD with `fast-xml-parser` and an **extensible extractor seam** (see below): Immunizations (LOINC 11369-6; CVX → catalog via `cvx-map`), Results (30954-2), Vital Signs (8716-3), and Medications (10160-0) ship as built-in extractors. Rows are deduped on `external_id` (source `ccda`); labs feed the immunity-titer aggregation.
+- `lib/cda/` — parses the CCD with `fast-xml-parser` and an **extensible extractor seam** (see below): Immunizations (LOINC 11369-6; CVX → catalog via `cvx-map`), Results (30954-2), Vital Signs (8716-3), and Medications (10160-0) ship as built-in extractors. Rows are deduped on `external_id` (source `ccda`); labs feed the immunity-titer aggregation. (Since split from a single `lib/cda.ts` into the `lib/cda/` module directory — `parse.ts` / `extractors.ts` / `normalize.ts` / …)
 
-**Extensibility.** `lib/cda.ts` exposes `parseCcdaDocument(xml)` (raw sections) and a `SectionExtractor` registry (`DEFAULT_EXTRACTORS`). A new clinical section is one `SectionExtractor` appended to the list — no change to the walker or the writer, since every record flows through the common `ImportedRecord { category, … }` shape. The built-in **medications** extractor already lands prescriptions in `medical_records` (category `prescription`), the interim "structured home" for structured medications; when a dedicated medications table ships, only that sink changes.
+**Extensibility.** `lib/cda/` exposes `parseCcdaDocument(xml)` (raw sections) and a `SectionExtractor` registry (`DEFAULT_EXTRACTORS`). A new clinical section is one `SectionExtractor` appended to the list — no change to the walker or the writer, since every record flows through the common `ImportedRecord { category, … }` shape. The built-in **medications** extractor already lands prescriptions in `medical_records` (category `prescription`), the interim "structured home" for structured medications; when a dedicated medications table ships, only that sink changes.
 
 ### B.2 — SMART Health Card (secondary — usually COVID-only)
 
