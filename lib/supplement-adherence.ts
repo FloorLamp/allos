@@ -142,13 +142,26 @@ export function supplementAdherenceStrip(
   });
 }
 
+// Drop a trailing "missed" day — today, still pending: nothing logged yet, so it
+// should penalize neither the percentage/streak (adherenceSummary) nor the pattern
+// detectors (#430.3). A day still in progress reads as "missed" all day otherwise,
+// which can tip a boundary (a false Friday miss viewed Friday morning). Both the
+// medicine page's summary and the pattern builder share this ONE guard so the
+// pattern window and the strip it summarizes can't disagree about "today". Pure.
+export function stripWithoutTrailingPending(
+  strip: AdherenceDot[]
+): AdherenceDot[] {
+  const n = strip.length;
+  return n > 0 && strip[n - 1].state === "missed"
+    ? strip.slice(0, n - 1)
+    : strip;
+}
+
 export function adherenceSummary(strip: AdherenceDot[]): AdherenceSummary {
   // A trailing "missed" today means today is still pending — nothing logged
   // yet. Drop it so a day still in progress penalizes neither the percentage
   // nor the streak (both would otherwise read it as a miss all day).
-  const n = strip.length;
-  const settled =
-    n > 0 && strip[n - 1].state === "missed" ? strip.slice(0, n - 1) : strip;
+  const settled = stripWithoutTrailingPending(strip);
 
   // "skipped" days are a decision, not an intended dose — excluded from the
   // denominator (alongside "na"), but surfaced as their own count (#232).

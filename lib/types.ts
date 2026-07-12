@@ -790,6 +790,14 @@ export interface SupplementDose {
   // from every "current schedule" read (getSupplementDoses) and are never
   // loggable; history reads still join them.
   retired: 0 | 1;
+  // Dose lifetime timestamps (#430, migration 020). created_at is when the dose
+  // was first scheduled (backfilled from the parent item for pre-migration rows);
+  // updated_at is set whenever the schedule/time is edited, so the adherence-
+  // pattern window can restart at a re-time instead of re-accusing the old slot.
+  // Nullable — a dose inserted by a path that doesn't stamp them falls back to the
+  // parent item's created_at (see doseAdherenceSince).
+  created_at: string | null;
+  updated_at: string | null;
 }
 
 // A dose's resolution on a given day. A skip is a first-class LOG ROW (issue

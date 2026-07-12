@@ -96,6 +96,46 @@ export interface DoseAdherenceInput {
   supplementName: string;
   bucket: TimeBucket;
   strip: AdherenceDot[];
+  // Suppress the "move it earlier in the day" schedule tweak (#430.4): a bedtime
+  // slot ("Before sleep") is already as early as the day allows for its purpose,
+  // and a medication's timing is prescribed, so "move it to the morning" is wrong
+  // advice for a melatonin or an at-bedtime med. The builder sets this for the
+  // Before-sleep bucket and for kind='medication'; the finding then falls back to
+  // the neutral "a reminder might help" copy. Optional (defaults false) so older
+  // callers/tests are unchanged.
+  suppressMoveSuggestion?: boolean;
+}
+
+// The lower bound (YYYY-MM-DD) a dose's adherence pattern may be inferred from —
+// the day the dose has existed with its CURRENT schedule (#430). A pattern window
+// must never reach back before this, or it manufactures "phantom misses" on days
+// the dose didn't exist (defeating the min-history gate) and re-accuses a re-timed
+// dose for the weeks it sat in its OLD slot. Derived from the timestamps the
+// builder reads:
+//   - the parent item's created_at is the earliest the dose could have existed;
+//   - the dose's own created_at (when present) refines that;
+//   - the dose's updated_at (set whenever the schedule/time is edited) resets the
+//     window on a re-time, so a dose moved evening→morning is judged only on days
+//     it was actually a morning dose.
+// The effective start is the LATEST of these (a re-time can only move it forward,
+// never expose pre-creation days). Pure string-date math (each timestamp is
+// "YYYY-MM-DD…", which sorts chronologically), so it's client-safe and testable.
+export function doseAdherenceSince(
+  itemCreatedAt: string | null | undefined,
+  doseCreatedAt: string | null | undefined,
+  doseUpdatedAt: string | null | undefined
+): string | null {
+  const dateOf = (t: string | null | undefined): string | null =>
+    t ? t.slice(0, 10) : null;
+  // The dose's own lifetime lower bound: its last re-time, else its creation,
+  // else (no dose timestamps stored yet) the parent item's creation.
+  const doseSince =
+    dateOf(doseUpdatedAt) ?? dateOf(doseCreatedAt) ?? dateOf(itemCreatedAt);
+  const candidates = [dateOf(itemCreatedAt), doseSince].filter(
+    (d): d is string => d != null
+  );
+  if (candidates.length === 0) return null;
+  return candidates.reduce((a, b) => (a >= b ? a : b));
 }
 
 // ---- Helpers --------------------------------------------------------------
@@ -137,9 +177,10 @@ function isMiss(dot: AdherenceDot): boolean {
 // The concrete schedule suggestion for a slot that keeps slipping. An evening/late
 // slot most often slips because the day got away — an earlier slot tends to stick,
 // so we suggest moving it; a morning slot that still slips wants a reminder, not an
-// earlier time.
-function moveSuggestion(bucket: TimeBucket): string {
-  return bucket === "Morning"
+// earlier time. `suppressMove` (#430.4) forces the reminder copy for slots where an
+// "earlier in the day" nudge is wrong — a bedtime dose or a prescribed medication.
+function moveSuggestion(bucket: TimeBucket, suppressMove: boolean): string {
+  return bucket === "Morning" || suppressMove
     ? "A reminder on those days might help it stick."
     : "Moving it earlier in the day — to the morning — tends to help it stick.";
 }
@@ -196,7 +237,8 @@ export function detectWeekdayMissPattern(
     title: `${input.supplementName}: ${day}s slip`,
     detail:
       `You miss your ${bucketLower} ${input.supplementName} dose most ${day}s ` +
-      `— ${miss[bestWd]} of the last ${occ[bestWd]}. ${moveSuggestion(input.bucket)}`,
+      `— ${miss[bestWd]} of the last ${occ[bestWd]}. ` +
+      `${moveSuggestion(input.bucket, input.suppressMoveSuggestion ?? false)}`,
     doseId: input.doseId,
   };
 }
