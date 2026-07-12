@@ -4,7 +4,7 @@
 // gates on requireWriteAccess() (properties of the tracked person, editable by any
 // login with write access to the active profile). Re-exported from ../actions for
 // back-compat import paths.
-import { requireWriteAccess } from "@/lib/auth";
+import { requireWriteAccess, requireAdmin } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import {
   getUserSex,
@@ -33,7 +33,9 @@ import {
   setRiskAttributes,
   setMaxHrOverride,
   setZone2WeeklyTargetMin,
+  setRecommendationCadence,
 } from "@/lib/settings";
+import { parseCadence } from "@/lib/recommendation-run";
 import {
   parsePackYears,
   parseQuitYear,
@@ -381,6 +383,17 @@ export async function saveHomeAssistantPrefs(
     secret,
     disabledKinds,
   });
+  revalidatePath("/settings/profile");
+  return { ok: true };
+}
+
+// The AI recommendation-run cadence for the active profile (issue #424). Value is
+// per-profile, but ADMIN-EDITABLE ONLY — the admin pays for the API key — so this
+// gates on requireAdmin() (a member's Profile tab renders the control read-only).
+export async function saveRecommendationCadence(formData: FormData) {
+  const { profile } = await requireAdmin();
+  const cadence = parseCadence(String(formData.get("recommendation_cadence")));
+  setRecommendationCadence(profile.id, cadence);
   revalidatePath("/settings/profile");
   return { ok: true };
 }

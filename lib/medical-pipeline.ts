@@ -36,7 +36,7 @@ import {
   getReprocessSnapshot,
   cleanupOrphanBiomarkerKeyedState,
 } from "@/lib/queries";
-import { autoSuggestFromBiomarkers } from "@/lib/supplement-suggest";
+import { runRecommendation } from "@/lib/recommendation-engine";
 import {
   extractionToPersistInput,
   healthRecordToPersistInput,
@@ -618,15 +618,17 @@ export async function runExtraction(
       // Imported body metrics surface on Body Metrics and the dashboard.
       revalidatePath("/trends");
       revalidatePath("/");
-      // Fire-and-forget AI supplement suggestions from new/changed biomarkers, so
-      // extraction latency is unchanged (the doc is already marked 'done'). No-ops
-      // when nothing relevant changed, ANTHROPIC_API_KEY is unset, or the
-      // auto-suggestions toggle is off (Settings → AI).
-      void autoSuggestFromBiomarkers(profileId, insertedIds)
-        .then((n) => {
-          if (n > 0) revalidatePath("/medicine");
-        })
-        .catch((err) => log.error("auto-suggest failed", { docId, err }));
+      // Fire-and-forget AI recommendation run from the new/changed biomarkers
+      // (issue #424 — the generalized auto-suggest hook), so extraction latency is
+      // unchanged (the doc is already marked 'done'). Cadence-gated: no-ops when
+      // the profile's cadence is off, AI is unconfigured, or the input signature is
+      // unchanged. Inherits the ambient AI-log context set by the caller.
+      void runRecommendation(profileId, {
+        trigger: "document-imported",
+        recordIds: insertedIds,
+      })
+        .then(() => revalidatePath("/medicine"))
+        .catch((err) => log.error("recommendation run failed", { docId, err }));
     } catch (err) {
       log.error("post-import steps failed (document already imported)", {
         docId,

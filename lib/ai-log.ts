@@ -40,7 +40,11 @@ export type AiFeature =
   // A period recap narrative (weekly/monthly) or a lab-trend interpretation —
   // the AI narrative layer (issue #20). Both narrate over already-gathered,
   // structured findings, so they share one feature tag in the audit log.
-  | "narrative";
+  | "narrative"
+  // A cadence-driven recommendation RUN (issue #424): the run-level audit event.
+  // The features a run invokes (insight, auto-suggest) still log their own events;
+  // this one records the scheduling decision (ran / skipped / capped).
+  | "recommendation";
 export type AiStatus = "ok" | "skipped" | "failed";
 
 export interface AiEvent {

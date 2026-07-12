@@ -555,3 +555,51 @@ export function setActiveSituations(profileId: number, situations: string[]) {
 export function getSituationEvents(profileId: number): SituationEvent[] {
   return parseSituationEvents(getProfileSetting(profileId, "situation_events"));
 }
+
+// ---- AI recommendation runs (issue #424) — profile scope, no migration ----
+// The per-profile cadence for proactive AI recommendation runs (supplement
+// suggestions + daily insight), plus the run markers that mirror notify_last_*
+// discipline: the last run timestamp (cadence pacing) and the last input
+// signature (skip a run when nothing changed). Cadence is admin-editable only —
+// the admin pays for the API key — but the VALUE is per-profile, so it lives here.
+import {
+  parseCadence,
+  type RecommendationCadence,
+} from "../recommendation-run";
+
+export function getRecommendationCadence(
+  profileId: number
+): RecommendationCadence {
+  return parseCadence(getProfileSetting(profileId, "recommendation_cadence"));
+}
+
+export function setRecommendationCadence(
+  profileId: number,
+  cadence: RecommendationCadence
+): void {
+  setProfileSetting(profileId, "recommendation_cadence", cadence);
+}
+
+export function getRecommendationLastRunAt(profileId: number): string | null {
+  return getProfileSetting(profileId, "recommendation_last_run_at") ?? null;
+}
+
+export function setRecommendationLastRunAt(
+  profileId: number,
+  iso: string
+): void {
+  setProfileSetting(profileId, "recommendation_last_run_at", iso);
+}
+
+export function getRecommendationLastSignature(
+  profileId: number
+): string | null {
+  return getProfileSetting(profileId, "recommendation_last_signature") ?? null;
+}
+
+export function setRecommendationLastSignature(
+  profileId: number,
+  signature: string
+): void {
+  setProfileSetting(profileId, "recommendation_last_signature", signature);
+}

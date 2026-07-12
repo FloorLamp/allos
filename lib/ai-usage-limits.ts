@@ -10,7 +10,15 @@
 // coaching-style generations distinct from document extraction. Narratives get
 // their OWN bucket because they're heavier, on-demand generations whose cap
 // should tune independently of the per-day insight cap.
-export type AiUsageKind = "extraction" | "insight" | "narrative";
+export type AiUsageKind =
+  | "extraction"
+  | "insight"
+  | "narrative"
+  // A cadence-driven recommendation RUN (issue #424) — the run-level counter the
+  // admin-set per-profile daily clamp (getRecommendationMaxRunsPerDay) enforces.
+  // The features a run invokes still consume their own insight/narrative units;
+  // this bucket bounds how OFTEN a run itself may fire.
+  | "recommendation";
 
 // Defaults are generous for a real single user across a day, but tight enough to
 // bound abuse. Overridable per deploy via env; the default stays the source of
