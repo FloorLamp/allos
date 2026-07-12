@@ -561,4 +561,43 @@ describe("deleteMedicalDocument (full action path)", () => {
       ).n
     ).toBe(0);
   });
+
+  // Issue #469 (adjacent): deleteMedicalDocument has NO 'processing' guard, and that
+  // is safe ONLY because the footprint tables' document_id FKs make a racing persist
+  // roll back WHOLE. This pins that load-bearing accident: with the document row
+  // deleted, an in-flight persist that references the dead docId throws on the FK and
+  // lands ZERO rows — never a silent partial import. If the FK is ever loosened this
+  // test fails, flagging that delete-during-extraction now needs its own atomic guard.
+  it("a persist racing a document delete rolls back whole on the document_id FK", () => {
+    const profileId = Number(
+      db.prepare("INSERT INTO profiles (name) VALUES ('FK-ROLLBACK')").run()
+        .lastInsertRowid
+    );
+    const docId = newDocument(profileId, "race.ccd");
+    persistDocumentImport(profileId, docId, makeInput());
+    expect(footprintCounts(profileId, docId).records).toBeGreaterThan(0);
+
+    // Simulate the delete committing first (the removeAll core): footprint cleared,
+    // then the medical_documents parent row dropped.
+    clearImportedDocumentRows(profileId, docId);
+    db.prepare("DELETE FROM medical_documents WHERE id = ?").run(docId);
+
+    // The in-flight persist now lands against a document that no longer exists: every
+    // footprint INSERT carries document_id = docId, so the FK rejects it and the whole
+    // persist rolls back.
+    expect(() =>
+      persistDocumentImport(profileId, docId, makeInput())
+    ).toThrow();
+
+    // Nothing partially imported under the profile for the dead document.
+    expect(
+      (
+        db
+          .prepare(
+            "SELECT COUNT(*) n FROM medical_records WHERE document_id = ?"
+          )
+          .get(docId) as { n: number }
+      ).n
+    ).toBe(0);
+  });
 });
