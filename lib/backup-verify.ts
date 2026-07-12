@@ -95,3 +95,22 @@ export function decideRestore(opts: {
     return { proceed: false, reason: "snapshot-failed-integrity" };
   return { proceed: true };
 }
+
+// Whether a snapshot's schema version is compatible with the running build (#472).
+// A snapshot whose `PRAGMA user_version` EXCEEDS this build's migration count was
+// written by a NEWER release — installing it makes the boot-time downgrade guard
+// refuse to start (and its error points the operator right back at restore, a
+// loop). Refuse up front unless forced. When either input is unknown (null/
+// undefined) the gate is a no-op — we only refuse on a definite newer-schema.
+export function decideSnapshotVersion(opts: {
+  snapshotUserVersion?: number | null;
+  buildMigrationCount?: number | null;
+  force: boolean;
+}): { ok: boolean; snapshotNewer: boolean } {
+  const { snapshotUserVersion, buildMigrationCount, force } = opts;
+  const snapshotNewer =
+    snapshotUserVersion != null &&
+    buildMigrationCount != null &&
+    snapshotUserVersion > buildMigrationCount;
+  return { ok: force || !snapshotNewer, snapshotNewer };
+}

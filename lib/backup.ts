@@ -10,7 +10,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
-import { db } from "./db";
+import { db, dbFilePath } from "./db";
 import {
   getBackupSettings,
   getInstanceTimezone,
@@ -22,6 +22,7 @@ import {
   backupFilename,
   isBackupDue,
   isoWeekKey,
+  planAsidePrune,
   planBackupRotation,
 } from "./backup-rotation";
 import {
@@ -32,6 +33,8 @@ import {
 } from "./backup-verify";
 import {
   MirrorEntry,
+  OFFSITE_SENTINEL,
+  checkOffsiteReadiness,
   planUploadMirror,
   resolveOffsiteDir,
 } from "./backup-offsite";
@@ -73,6 +76,58 @@ export function getLastOffsiteBackupAt(): string | null {
 // masking (or being masked by) the primary snapshot's own `backup_last_error`.
 export function getLastOffsiteError(): string | null {
   return getSetting("backup_offsite_last_error") || null;
+}
+
+// Whether the configured off-volume destination is presently MOUNTED and verified
+// (root exists as a directory + carries the sentinel), or must be skipped (#463).
+// Reads the fs; returns { ready:false } with no reason when nothing is configured.
+export function getOffsiteReadiness():
+  | { configured: false }
+  | { configured: true; ready: boolean; reason?: string } {
+  const dest = backupDestDir();
+  if (!dest) return { configured: false };
+  const rootExists = fs.existsSync(dest);
+  const rootIsDir = rootExists && fs.statSync(dest).isDirectory();
+  const sentinelPresent =
+    rootIsDir && fs.existsSync(path.join(dest, OFFSITE_SENTINEL));
+  const r = checkOffsiteReadiness({ rootExists, rootIsDir, sentinelPresent });
+  return r.ready
+    ? { configured: true, ready: true }
+    : { configured: true, ready: false, reason: r.reason };
+}
+
+// Initialize the off-volume destination: write the sentinel file into the mounted
+// root so replication is allowed (#463). The root must already EXIST as a directory
+// (i.e. the second volume is mounted) — we never create the root ourselves, which
+// is the whole point. Returns a friendly outcome the admin action surfaces.
+export function initOffsiteDestination(): { ok: boolean; message: string } {
+  const dest = backupDestDir();
+  if (!dest) {
+    return { ok: false, message: "BACKUP_DEST_DIR is not configured." };
+  }
+  if (!fs.existsSync(dest) || !fs.statSync(dest).isDirectory()) {
+    return {
+      ok: false,
+      message: `Destination ${dest} does not exist as a directory — mount the second volume first, then verify.`,
+    };
+  }
+  try {
+    fs.writeFileSync(
+      path.join(dest, OFFSITE_SENTINEL),
+      `allos off-volume backup destination — created ${new Date().toISOString()}\n`
+    );
+  } catch (e) {
+    return {
+      ok: false,
+      message: `Could not write the sentinel into ${dest}: ${
+        e instanceof Error ? e.message : String(e)
+      }`,
+    };
+  }
+  return {
+    ok: true,
+    message: `Verified — wrote ${OFFSITE_SENTINEL} into ${dest}. Off-volume backups are now enabled.`,
+  };
 }
 
 export interface BackupInfo {
@@ -240,7 +295,12 @@ export function listUploadFiles(root: string): MirrorEntry[] {
 }
 
 export interface OffsiteResult {
-  replicated: boolean; // false when no destination is configured
+  replicated: boolean; // false when no destination is configured OR it was skipped
+  // Set when a destination IS configured but replication was skipped because it
+  // isn't mounted/verified (#463) — the caller records `reason` as an off-volume
+  // error instead of a false success. Absent when nothing is configured.
+  skipped?: boolean;
+  skipReason?: string;
   dest?: string;
   snapshotCopied?: boolean;
   uploadsCopied?: number; // files copied by the incremental uploads mirror
@@ -274,8 +334,26 @@ export function replicateToOffsite(
   const dest = opts.destDir !== undefined ? opts.destDir : backupDestDir();
   if (!dest) return { replicated: false };
 
+  // Never mkdir the destination ROOT (#463). It must pre-exist as a directory AND
+  // carry the sentinel — otherwise the "destination" is a bare (unmounted) mount
+  // point or a fresh path in the container's ephemeral layer, and copying into it
+  // reports a durable backup that evaporates on the next redeploy. Skip + surface a
+  // reason instead. (Subdirectories UNDER a verified root — uploads/ — are still
+  // created freely below.)
+  const rootExists = fs.existsSync(dest);
+  const rootIsDir = rootExists && fs.statSync(dest).isDirectory();
+  const sentinelPresent =
+    rootIsDir && fs.existsSync(path.join(dest, OFFSITE_SENTINEL));
+  const readiness = checkOffsiteReadiness({
+    rootExists,
+    rootIsDir,
+    sentinelPresent,
+  });
+  if (!readiness.ready) {
+    return { replicated: false, skipped: true, skipReason: readiness.reason };
+  }
+
   const srcDir = opts.sourceBackupsDir ?? backupsDir();
-  fs.mkdirSync(dest, { recursive: true });
 
   // 1. Copy the verified snapshot + its verification sidecar into the dest root.
   const snapSrc = path.join(srcDir, snapshotName);
@@ -339,6 +417,46 @@ export function replicateToOffsite(
     uploadsCopied: toCopy.length,
     pruned,
   };
+}
+
+// How many pre-restore aside copies to keep (#472). Restore copies the live DB
+// aside (allos.db.pre-restore-<stamp>, + its -wal/-shm) before overwriting it;
+// without pruning these accumulate in data/ forever. The tick keeps the newest N.
+export const KEEP_RESTORE_ASIDES = 3;
+
+// Prune old pre-restore aside copies next to the live DB, keeping the newest
+// `keepN` (#472). Each aside's -wal/-shm siblings are removed alongside it. Runs
+// from the backup tick like snapshot rotation; best-effort, never throws.
+export function pruneRestoreAsides(
+  keepN: number = KEEP_RESTORE_ASIDES
+): number {
+  const livePath = dbFilePath();
+  const dir = path.dirname(livePath);
+  const liveBase = path.basename(livePath);
+  if (!fs.existsSync(dir)) return 0;
+  let names: string[];
+  try {
+    names = fs.readdirSync(dir);
+  } catch {
+    return 0;
+  }
+  const prune = planAsidePrune(names, liveBase, keepN);
+  let pruned = 0;
+  for (const name of prune) {
+    for (const suffix of ["", "-wal", "-shm"]) {
+      const p = path.join(dir, name + suffix);
+      try {
+        if (fs.existsSync(p)) fs.unlinkSync(p);
+      } catch (e) {
+        log.warn("pre-restore aside prune failed", {
+          file: name + suffix,
+          err: e instanceof Error ? e.message : String(e),
+        });
+      }
+    }
+    pruned++;
+  }
+  return pruned;
 }
 
 // Take one snapshot now, verify its integrity, and prune per the retention
@@ -426,6 +544,18 @@ export function performBackup(): {
     integrity: "ok",
   });
 
+  // Prune old pre-restore aside copies (#472) on the same cadence as snapshot
+  // rotation. Best-effort — never lets an aside-prune failure fail the backup.
+  try {
+    const prunedAsides = pruneRestoreAsides();
+    if (prunedAsides > 0)
+      log.info("pruned pre-restore asides", { prunedAsides });
+  } catch (e) {
+    log.warn("pre-restore aside prune failed", {
+      err: e instanceof Error ? e.message : String(e),
+    });
+  }
+
   // Off-volume replication (issue #130): with BACKUP_DEST_DIR configured, copy the
   // verified snapshot + mirror uploads to a second mount. A failure here NEVER
   // fails the primary backup (which already succeeded on the main volume) — it's
@@ -440,6 +570,15 @@ export function performBackup(): {
         dest: offsite.dest,
         uploadsCopied: offsite.uploadsCopied,
         pruned: offsite.pruned,
+      });
+    } else if (offsite.skipped && offsite.skipReason) {
+      // Configured but not mounted/verified (#463): record the reason as an
+      // off-volume error (visible on the admin card + folded into health) instead
+      // of the old silent mkdir-into-ephemeral-fs "success". Do NOT touch
+      // backup_offsite_last_at — a broken mount must not look freshly backed up.
+      setSetting("backup_offsite_last_error", offsite.skipReason);
+      log.warn("off-volume backup skipped — destination not ready", {
+        reason: offsite.skipReason,
       });
     }
   } catch (e) {

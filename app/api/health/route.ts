@@ -23,6 +23,7 @@ import {
   buildHealthStatus,
   DEFAULT_BACKUP_STALENESS_HOURS,
 } from "@/lib/health-status";
+import { backupAgeHours } from "@/lib/backup-verify";
 
 export const dynamic = "force-dynamic";
 
@@ -59,11 +60,21 @@ export async function GET() {
   let liveIntegrityOk: boolean | null = null;
   let backupsEnabled = false;
   let stalenessThresholdHours = DEFAULT_BACKUP_STALENESS_HOURS;
+  let offsiteConfigured = false;
+  let lastOffsiteAt: string | null = null;
+  let instanceAgeHours: number | null = null;
+  const now = new Date();
   try {
     const { db } = await import("@/lib/db");
     db.prepare("SELECT 1").get();
     const { getSetting, getBackupSettings } = await import("@/lib/settings");
     lastBackupAt = getSetting("backup_last_at") ?? null;
+    // Instance age (#464): seeded once at first boot; lets the never-backed-up
+    // exemption expire so a scheduler-less deployment is eventually flagged.
+    instanceAgeHours = backupAgeHours(
+      getSetting("install_first_boot_at") ?? null,
+      now
+    );
     // Cached weekly integrity verdict: "0" = corruption found, "1" = ok,
     // undefined = never run yet (treated as not-a-failure). No PRAGMA here.
     const integrityRaw = getSetting("backup_live_integrity_ok");
@@ -72,6 +83,12 @@ export async function GET() {
     const thresholdRaw = Number(getSetting("backup_staleness_hours"));
     if (Number.isFinite(thresholdRaw) && thresholdRaw > 0)
       stalenessThresholdHours = thresholdRaw;
+    // Off-volume replication staleness (#463): cheap settings-only reads, folded
+    // into the same staleness threshold family as the primary backup.
+    const { isOffsiteConfigured, getLastOffsiteBackupAt } =
+      await import("@/lib/backup");
+    offsiteConfigured = isOffsiteConfigured();
+    lastOffsiteAt = getLastOffsiteBackupAt();
   } catch (err) {
     // Log the real reason server-side, but keep the body generic.
     console.error("health check: DB read failed", err);
@@ -87,7 +104,10 @@ export async function GET() {
     backupsEnabled,
     stalenessThresholdHours,
     lastBackupAt,
-    now: new Date(),
+    instanceAgeHours,
+    offsiteConfigured,
+    lastOffsiteAt,
+    now,
   });
 
   return Response.json(

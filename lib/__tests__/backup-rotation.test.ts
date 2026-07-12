@@ -4,6 +4,7 @@ import {
   parseBackupStamp,
   isoWeekKey,
   planBackupRotation,
+  planAsidePrune,
   isBackupDue,
 } from "../backup-rotation";
 
@@ -82,6 +83,54 @@ describe("planBackupRotation", () => {
     });
     expect(keep).toEqual(["allos-2026-07-06-0300.db"]);
     expect(prune).toEqual([]);
+  });
+});
+
+describe("planAsidePrune (#472)", () => {
+  const base = "allos.db";
+  const asides = [
+    "allos.db.pre-restore-2026-07-08T03-00-00-000Z",
+    "allos.db.pre-restore-2026-07-09T03-00-00-000Z",
+    "allos.db.pre-restore-2026-07-10T03-00-00-000Z",
+    "allos.db.pre-restore-2026-07-11T03-00-00-000Z",
+  ];
+
+  it("keeps the newest keepN and prunes the rest (oldest first)", () => {
+    expect(planAsidePrune(asides, base, 2)).toEqual([
+      "allos.db.pre-restore-2026-07-08T03-00-00-000Z",
+      "allos.db.pre-restore-2026-07-09T03-00-00-000Z",
+    ]);
+  });
+
+  it("prunes nothing when there are keepN or fewer", () => {
+    expect(planAsidePrune(asides.slice(0, 2), base, 3)).toEqual([]);
+  });
+
+  it("ignores -wal/-shm siblings and foreign/live files", () => {
+    const names = [
+      ...asides,
+      "allos.db.pre-restore-2026-07-11T03-00-00-000Z-wal",
+      "allos.db.pre-restore-2026-07-11T03-00-00-000Z-shm",
+      "allos.db",
+      "allos.db-wal",
+      "allos-2026-07-11-0300.db", // a snapshot, not an aside
+    ];
+    // Only the 4 main asides count; keepN=1 → prune the 3 oldest mains.
+    expect(planAsidePrune(names, base, 1)).toEqual([
+      "allos.db.pre-restore-2026-07-08T03-00-00-000Z",
+      "allos.db.pre-restore-2026-07-09T03-00-00-000Z",
+      "allos.db.pre-restore-2026-07-10T03-00-00-000Z",
+    ]);
+  });
+
+  it("only considers asides of the given live DB basename", () => {
+    const names = [
+      "allos.db.pre-restore-2026-07-08T03-00-00-000Z",
+      "other.db.pre-restore-2026-07-09T03-00-00-000Z",
+    ];
+    expect(planAsidePrune(names, base, 0)).toEqual([
+      "allos.db.pre-restore-2026-07-08T03-00-00-000Z",
+    ]);
   });
 });
 

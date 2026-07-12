@@ -35,6 +35,30 @@ export function parseBackupStamp(name: string): BackupStamp | null {
   };
 }
 
+// Pre-restore aside filename: "<liveBase>.pre-restore-<ISO-ish stamp>" (see
+// restoreCore). The stamp has ':' and '.' replaced with '-', so it stays sortable
+// (newest = lexicographically greatest). Its -wal/-shm siblings (#472) are NOT
+// asides themselves and are excluded here — they're pruned alongside their main.
+const ASIDE_SUFFIX_RE = /\.pre-restore-[0-9TZ-]+$/;
+
+// Which pre-restore aside MAIN files to prune, keeping the newest `keepN` (#472).
+// Aside files (`allos.db.pre-restore-*`) otherwise accumulate in data/ forever;
+// the tick prunes them like snapshot rotation. `liveBase` is the live DB's
+// basename (e.g. "allos.db"); only that DB's asides are considered. Pure — the
+// caller lists the directory and unlinks each returned main + its -wal/-shm.
+export function planAsidePrune(
+  names: string[],
+  liveBase: string,
+  keepN: number
+): string[] {
+  const prefix = `${liveBase}.pre-restore-`;
+  const asides = names
+    .filter((n) => n.startsWith(prefix) && ASIDE_SUFFIX_RE.test(n))
+    .sort(); // ISO-ish stamp → lexicographic == chronological
+  const keep = Math.max(0, Math.floor(keepN));
+  return keep >= asides.length ? [] : asides.slice(0, asides.length - keep);
+}
+
 // ISO-8601 week bucket ("YYYY-Www") for a YYYY-MM-DD date. UTC-anchored so it's
 // timezone-independent; weeks start Monday and week 1 contains the year's first
 // Thursday.

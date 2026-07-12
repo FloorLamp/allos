@@ -17,7 +17,7 @@ import {
   setTelegramBotConfig,
   getPublicUrl,
 } from "@/lib/settings";
-import { performBackup } from "@/lib/backup";
+import { performBackup, initOffsiteDestination } from "@/lib/backup";
 import { formatBytes } from "@/lib/format-bytes";
 import { setMinTrainingAge } from "@/lib/age-gate";
 import { normalizePublicUrl } from "@/lib/public-url";
@@ -119,6 +119,19 @@ export async function backupNow(): Promise<{
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : String(e) };
   }
+}
+
+// Verify + initialize the off-volume backup destination (#463): write the sentinel
+// into the mounted BACKUP_DEST_DIR so replication is allowed. Requires the volume
+// to already be mounted (the root must pre-exist) — we never create the root.
+export async function verifyOffsiteDestination(): Promise<{
+  ok: boolean;
+  message: string;
+}> {
+  await requireAdmin();
+  const result = initOffsiteDestination();
+  revalidatePath("/settings/server");
+  return result;
 }
 
 // ---- Audit-log retention (global, admin-only) ----

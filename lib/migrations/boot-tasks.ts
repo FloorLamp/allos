@@ -96,6 +96,27 @@ export function bootTasks(db: Database.Database): void {
   // it so upgrading deploys keep their zone instead of snapping to UTC. This reads
   // the env once on first boot only — it is NOT an ongoing fallback.
   seedTimezoneFromEnv(db);
+
+  // Record an install/first-boot timestamp once, so the health endpoint can tell a
+  // genuinely fresh install (exempt from the never-backed-up alarm) from a
+  // long-running instance that has NEVER taken a backup (#464). Set only when
+  // absent — never overwritten.
+  seedInstallMarker(db);
+}
+
+// Stamp `install_first_boot_at` with the current time on the first boot that lacks
+// it, and never again. Derives the instance age used by the health endpoint's
+// "backups enabled but never ran" alarm (#464). On an instance upgrading INTO this
+// change the marker is set now, so its age-grace window resets once (a bounded
+// 72h) — an acceptable one-time cost documented at the health endpoint.
+export function seedInstallMarker(db: Database.Database) {
+  const existing = db
+    .prepare("SELECT value FROM settings WHERE key = 'install_first_boot_at'")
+    .get() as { value?: string } | undefined;
+  if (existing?.value) return;
+  db.prepare(
+    "INSERT OR IGNORE INTO settings (key, value) VALUES ('install_first_boot_at', ?)"
+  ).run(new Date().toISOString());
 }
 
 // If no logins exist yet, create login 1 (admin) and profile 1, wired

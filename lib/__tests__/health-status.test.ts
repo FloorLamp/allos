@@ -181,6 +181,84 @@ describe("buildHealthStatus", () => {
     expect(r.lastBackupAgeHours).toBeNull();
   });
 
+  // --- Never-backed-up alarm (#464) ---
+
+  it("flags backups-never-ran when enabled, no snapshot ever, past the grace window", () => {
+    const r = buildHealthStatus({
+      readOk: true,
+      writeOk: true,
+      backupsEnabled: true,
+      lastBackupAt: null,
+      instanceAgeHours: 100, // > 72h grace
+      neverRanGraceHours: 72,
+      now,
+    });
+    expect(r.ok).toBe(false);
+    expect(r.reason).toBe("backups-never-ran");
+    expect(r.httpStatus).toBe(503);
+  });
+
+  it("exempts a fresh install still inside the grace window", () => {
+    const r = buildHealthStatus({
+      readOk: true,
+      writeOk: true,
+      backupsEnabled: true,
+      lastBackupAt: null,
+      instanceAgeHours: 10, // < 72h grace
+      neverRanGraceHours: 72,
+      now,
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  it("never flags backups-never-ran when backups are disabled", () => {
+    const r = buildHealthStatus({
+      readOk: true,
+      writeOk: true,
+      backupsEnabled: false,
+      lastBackupAt: null,
+      instanceAgeHours: 1000,
+      now,
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  it("does not flag never-ran once a snapshot exists (that's backup-stale's job)", () => {
+    const r = buildHealthStatus({
+      readOk: true,
+      writeOk: true,
+      backupsEnabled: true,
+      lastBackupAt: "2026-07-09T06:00:00Z", // a backup exists, fresh
+      instanceAgeHours: 1000,
+      now,
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  it("stays exempt when instance age is unknown (marker missing)", () => {
+    const r = buildHealthStatus({
+      readOk: true,
+      writeOk: true,
+      backupsEnabled: true,
+      lastBackupAt: null,
+      instanceAgeHours: null,
+      now,
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  it("uses the 72h default grace when none is passed", () => {
+    const r = buildHealthStatus({
+      readOk: true,
+      writeOk: true,
+      backupsEnabled: true,
+      lastBackupAt: null,
+      instanceAgeHours: 80, // > 72h default
+      now,
+    });
+    expect(r.reason).toBe("backups-never-ran");
+  });
+
   it("prefers integrity-failed over backup-stale", () => {
     const r = buildHealthStatus({
       readOk: true,
@@ -192,5 +270,79 @@ describe("buildHealthStatus", () => {
       now,
     });
     expect(r.reason).toBe("integrity-failed");
+  });
+
+  // --- Off-volume staleness (#463) ---
+
+  it("is degraded + 503 with offsite-stale when the mirror is past the threshold", () => {
+    const r = buildHealthStatus({
+      readOk: true,
+      writeOk: true,
+      backupsEnabled: true,
+      stalenessThresholdHours: 48,
+      lastBackupAt: "2026-07-09T06:00:00Z", // primary fresh (6h)
+      offsiteConfigured: true,
+      lastOffsiteAt: "2026-07-06T12:00:00Z", // mirror 72h stale
+      now,
+    });
+    expect(r.ok).toBe(false);
+    expect(r.reason).toBe("offsite-stale");
+    expect(r.httpStatus).toBe(503);
+  });
+
+  it("stays ok when the off-volume mirror is within the threshold", () => {
+    const r = buildHealthStatus({
+      readOk: true,
+      writeOk: true,
+      backupsEnabled: true,
+      stalenessThresholdHours: 48,
+      lastBackupAt: "2026-07-09T06:00:00Z",
+      offsiteConfigured: true,
+      lastOffsiteAt: "2026-07-08T12:00:00Z", // 24h
+      now,
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  it("never flags offsite staleness when no off-volume copy has been taken", () => {
+    const r = buildHealthStatus({
+      readOk: true,
+      writeOk: true,
+      backupsEnabled: true,
+      stalenessThresholdHours: 48,
+      lastBackupAt: "2026-07-09T06:00:00Z",
+      offsiteConfigured: true,
+      lastOffsiteAt: null,
+      now,
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  it("never flags offsite staleness when no destination is configured", () => {
+    const r = buildHealthStatus({
+      readOk: true,
+      writeOk: true,
+      backupsEnabled: true,
+      stalenessThresholdHours: 48,
+      lastBackupAt: "2026-07-09T06:00:00Z",
+      offsiteConfigured: false,
+      lastOffsiteAt: "2026-06-01T12:00:00Z", // ancient, but not configured
+      now,
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  it("prefers backup-stale over offsite-stale (primary is more urgent)", () => {
+    const r = buildHealthStatus({
+      readOk: true,
+      writeOk: true,
+      backupsEnabled: true,
+      stalenessThresholdHours: 48,
+      lastBackupAt: "2026-07-06T12:00:00Z", // primary 72h stale
+      offsiteConfigured: true,
+      lastOffsiteAt: "2026-07-06T12:00:00Z", // offsite also stale
+      now,
+    });
+    expect(r.reason).toBe("backup-stale");
   });
 });
