@@ -1,12 +1,13 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { db, writeTx } from "./db";
 import {
-  biomarkerNameKey,
+  biomarkerFamilyKey,
   getActivities,
   getGoals,
   getMedicalRecords,
   getSupplements,
 } from "./queries";
+import { biomarkerFamily } from "./canonical-name";
 import type {
   FoodTiming,
   MedicalRecord,
@@ -426,15 +427,19 @@ export async function autoSuggestFromBiomarkers(
   const isFlagged = (r: MedicalRecord) =>
     isOutOfRange(r.flag) || isNonOptimal(r.flag);
 
-  // "New" = this canonical name has only one reading total (this one). Count
-  // by the same identity key the biomarkers table groups on, so legacy rows
-  // with a NULL/blank canonical_name still count as prior readings.
+  // "New" = this biomarker FAMILY has only one reading total (this one). Count by
+  // the #482 family identity — the SAME key the biomarkers table partitions on
+  // (biomarkerFamilyKey / biomarkerFamily) — NOT the raw name, so a fresh reading
+  // under a different family member's spelling (e.g. "Vitamin D, 25-Hydroxy Total"
+  // when the profile already has a "Vitamin D2" history) is correctly seen as a prior
+  // reading, not a brand-new biomarker eligible for a first-ever suggestion. Legacy
+  // rows with a NULL/blank canonical_name still count via the display-name fallback.
   const countStmt = db.prepare(
-    `SELECT COUNT(*) AS c FROM medical_records WHERE profile_id = ? AND ${biomarkerNameKey()} = ? COLLATE NOCASE`
+    `SELECT COUNT(*) AS c FROM medical_records WHERE profile_id = ? AND ${biomarkerFamilyKey()} = ? COLLATE NOCASE`
   );
   const relevant = records.filter((r) => {
     if (isFlagged(r)) return true;
-    const key = (r.canonical_name ?? "").trim() || r.name;
+    const key = biomarkerFamily((r.canonical_name ?? "").trim() || r.name);
     const c = (countStmt.get(profileId, key) as { c: number }).c;
     return c <= 1;
   });
