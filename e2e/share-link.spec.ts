@@ -60,8 +60,16 @@ test.describe("Public passport share links (#391)", () => {
     await anonCtx.close();
 
     // Revoke it from the still-open modal's "Existing links" list (revalidatePath
-    // surfaced the new link there after create).
-    await page.getByRole("button", { name: "Revoke" }).click();
+    // surfaced the new link there after create). The list is newest-first
+    // (created_at DESC, id DESC), and scripts/seed.ts now seeds a second live
+    // link (#422 item 3), so scope to the FIRST row — the link this test just
+    // created — instead of the (now ambiguous) bare Revoke button.
+    await page
+      .locator("li")
+      .filter({ has: page.getByRole("button", { name: "Revoke" }) })
+      .first()
+      .getByRole("button", { name: "Revoke" })
+      .click();
 
     // Reloading the same token now 404s with the friendly, anti-probing copy —
     // indistinguishable from an invalid link.
