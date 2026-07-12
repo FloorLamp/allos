@@ -322,3 +322,98 @@ export function moreInUpcomingCount(
 ): number {
   return Math.max(0, model.length - cardCount);
 }
+
+// ---------------------------------------------------------------------------
+// "+N more" link copy (issue #538) — disambiguate by what DIFFERS, never by
+// position (the #531 convention). The card can show TWO kinds of overflow link:
+//   1. a per-band cap overflow (#283) — "more items in THIS band", and
+//   2. the card-level remainder (#524) — "far-future scheduled items the card
+//      hides for the Upcoming page".
+// Post-#524 both read as a bare "+N more in Upcoming", so when the last band's cap
+// overflow renders directly above the card-level remainder they stack as two
+// identical-looking links (#538). This pure helper gives each link copy that names
+// its referent, and MERGES the two into one line when they'd stack adjacently.
+// ---------------------------------------------------------------------------
+
+// The noun a band's cap-overflow link uses for its own items (what the "+N more"
+// points at). Frames the same urgency the band header shows.
+const CARD_BAND_MORE_NOUN: Record<CardBand, string> = {
+  urgent: "overdue",
+  today: "due today",
+  review: "to review",
+};
+
+// The Upcoming-page anchor a band's cap-overflow link deep-links to (issue #538) —
+// the page's sections carry id={group.kind}. Urgent/Today map cleanly onto the
+// page's Overdue/Today bands; the review band spans two page groupings
+// (Flagged + For review), so it lands at the top of the page rather than mis-
+// pointing at one of them.
+const CARD_BAND_ANCHOR: Record<CardBand, string | null> = {
+  urgent: "overdue",
+  today: "today",
+  review: null,
+};
+
+function upcomingHref(anchor: string | null): string {
+  return anchor ? `/upcoming#${anchor}` : "/upcoming";
+}
+
+export interface AttentionMoreLink {
+  count: number;
+  text: string;
+  href: string;
+}
+
+export interface AttentionMoreLinks {
+  // Per-band cap-overflow links, keyed by band, for the card to render at the foot
+  // of each band section. The LAST band's link is omitted here when it merged into
+  // `trailing` (so two links never stack).
+  perBand: Partial<Record<CardBand, AttentionMoreLink>>;
+  // The single trailing line at the card foot: either the plain far-future
+  // remainder, or the merged (last-band-overflow + remainder) line.
+  trailing: AttentionMoreLink | null;
+}
+
+// Compute the card's "+N more" links so each names what it points at and the
+// last-band-overflow + card-remainder pair never stacks as two look-alike links
+// (issue #538). `groups` are the rendered card bands (each carrying its cap
+// `overflow`, in render order); `more` is moreInUpcomingCount (the hidden far-
+// future scheduled items).
+export function planAttentionMoreLinks(
+  groups: { band: CardBand; overflow: number }[],
+  more: number
+): AttentionMoreLinks {
+  const perBand: Partial<Record<CardBand, AttentionMoreLink>> = {};
+  const lastIdx = groups.length - 1;
+  const last = lastIdx >= 0 ? groups[lastIdx] : null;
+  // The two links would render adjacently only when the LAST band overflows AND
+  // there's a card-level remainder — that's the exact stack #538 reported.
+  const merge = last != null && last.overflow > 0 && more > 0;
+
+  groups.forEach((g, i) => {
+    if (g.overflow <= 0) return;
+    if (merge && i === lastIdx) return; // folded into `trailing`
+    perBand[g.band] = {
+      count: g.overflow,
+      text: `+${g.overflow} more ${CARD_BAND_MORE_NOUN[g.band]} in Upcoming`,
+      href: upcomingHref(CARD_BAND_ANCHOR[g.band]),
+    };
+  });
+
+  let trailing: AttentionMoreLink | null = null;
+  if (merge && last) {
+    trailing = {
+      count: last.overflow + more,
+      text: `+${last.overflow} more ${CARD_BAND_MORE_NOUN[last.band]} and ${more} scheduled later in Upcoming`,
+      href: "/upcoming",
+    };
+  } else if (more > 0) {
+    trailing = {
+      count: more,
+      text: `+${more} scheduled later — view all in Upcoming`,
+      href: upcomingHref("later"),
+    };
+  }
+
+  return { perBand, trailing };
+}

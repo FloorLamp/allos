@@ -8,6 +8,7 @@ import {
   groupAttentionForCard,
   groupAttentionForPage,
   moreInUpcomingCount,
+  planAttentionMoreLinks,
   CARD_BAND_ORDER,
   type AttentionInput,
 } from "../attention";
@@ -434,5 +435,102 @@ describe("count helpers", () => {
   it("moreInUpcomingCount never goes negative", () => {
     expect(moreInUpcomingCount([], 0)).toBe(0);
     expect(moreInUpcomingCount([up({ key: "a" })], 5)).toBe(0);
+  });
+});
+
+// Issue #538 — the two kinds of "+N more" link must be told apart by what they
+// point at (the #531 convention), never by vertical position, and must never stack
+// as two identical-looking links.
+describe("planAttentionMoreLinks — disambiguated '+N more' copy (issue #538)", () => {
+  it("a non-last band's cap overflow names its own band and deep-links to that band anchor", () => {
+    const { perBand, trailing } = planAttentionMoreLinks(
+      [
+        { band: "urgent", overflow: 1 },
+        { band: "today", overflow: 0 },
+      ],
+      0
+    );
+    expect(perBand.urgent).toEqual({
+      count: 1,
+      text: "+1 more overdue in Upcoming",
+      href: "/upcoming#overdue",
+    });
+    expect(perBand.today).toBeUndefined();
+    expect(trailing).toBeNull();
+  });
+
+  it("the card remainder alone names what it HIDES ('scheduled later') and links to the Later section", () => {
+    const { perBand, trailing } = planAttentionMoreLinks(
+      [{ band: "urgent", overflow: 0 }],
+      4
+    );
+    expect(perBand).toEqual({});
+    expect(trailing).toEqual({
+      count: 4,
+      text: "+4 scheduled later — view all in Upcoming",
+      href: "/upcoming#later",
+    });
+  });
+
+  it("MERGES the last band's overflow with the remainder into ONE line so two links never stack", () => {
+    // The exact #538 report: the last (only) band overflows by 1 AND 4 far-future
+    // items are hidden — two adjacent "+N more in Upcoming" links. They collapse to
+    // a single, self-describing line.
+    const { perBand, trailing } = planAttentionMoreLinks(
+      [{ band: "urgent", overflow: 1 }],
+      4
+    );
+    // The last band's own overflow link is withheld — it's folded into `trailing`.
+    expect(perBand.urgent).toBeUndefined();
+    expect(trailing).toEqual({
+      count: 5,
+      text: "+1 more overdue and 4 scheduled later in Upcoming",
+      href: "/upcoming",
+    });
+  });
+
+  it("only the LAST band merges: an earlier band still renders its own link alongside the merged trailing line", () => {
+    const { perBand, trailing } = planAttentionMoreLinks(
+      [
+        { band: "urgent", overflow: 2 },
+        { band: "review", overflow: 3 },
+      ],
+      4
+    );
+    // The urgent band isn't adjacent to the remainder, so it keeps its own link.
+    expect(perBand.urgent).toEqual({
+      count: 2,
+      text: "+2 more overdue in Upcoming",
+      href: "/upcoming#overdue",
+    });
+    // The review band is last and overflows, so it merges with the remainder.
+    expect(perBand.review).toBeUndefined();
+    expect(trailing).toEqual({
+      count: 7,
+      text: "+3 more to review and 4 scheduled later in Upcoming",
+      href: "/upcoming",
+    });
+  });
+
+  it("the review band spans two page groupings, so its overflow link carries no misleading anchor", () => {
+    const { perBand } = planAttentionMoreLinks(
+      [{ band: "review", overflow: 2 }],
+      0
+    );
+    expect(perBand.review).toEqual({
+      count: 2,
+      text: "+2 more to review in Upcoming",
+      href: "/upcoming",
+    });
+  });
+
+  it("no overflow and no remainder → no links at all", () => {
+    expect(planAttentionMoreLinks([{ band: "today", overflow: 0 }], 0)).toEqual(
+      { perBand: {}, trailing: null }
+    );
+    expect(planAttentionMoreLinks([], 0)).toEqual({
+      perBand: {},
+      trailing: null,
+    });
   });
 });

@@ -23,6 +23,7 @@ import {
   attentionCardItems,
   attentionCountLabel,
   moreInUpcomingCount,
+  planAttentionMoreLinks,
   type CardBand,
 } from "@/lib/attention";
 import {
@@ -151,6 +152,9 @@ export default function NeedsAttentionHero({
   // The far-future scheduled work the card hides, waiting on the Upcoming page. A
   // strict subset guarantees this reconciles with the page's total.
   const more = moreInUpcomingCount(items, count);
+  // "+N more" link copy that names each link's referent and merges the last-band
+  // overflow with the card remainder when they'd otherwise stack (issue #538).
+  const moreLinks = planAttentionMoreLinks(groups, more);
 
   return (
     <section
@@ -227,14 +231,17 @@ export default function NeedsAttentionHero({
                 ))}
                 {/* Defensive per-band cap (issue #283): a pathological day (a giant
                 flagged import, an overdue backlog) collapses to a link instead of
-                blowing the layout. */}
-                {group.overflow > 0 && (
+                blowing the layout. The copy names THIS band's items so it can't be
+                mistaken for the card-level remainder below (issue #538); when this
+                is the last band and a remainder follows, the link is merged into the
+                trailing line instead (planAttentionMoreLinks), so two never stack. */}
+                {moreLinks.perBand[group.band] && (
                   <Link
-                    href="/upcoming"
+                    href={moreLinks.perBand[group.band]!.href}
                     data-testid={`attention-overflow-${group.band}`}
                     className="block rounded-lg px-2 py-1.5 text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
                   >
-                    +{group.overflow} more in Upcoming
+                    {moreLinks.perBand[group.band]!.text}
                   </Link>
                 )}
               </div>
@@ -242,14 +249,16 @@ export default function NeedsAttentionHero({
           ))}
           {/* The card is a strict subset of the Upcoming page; the far-future
           scheduled work it hides is one click away, with an exact count so the two
-          surfaces reconcile (issue #524). */}
-          {more > 0 && (
+          surfaces reconcile (issue #524). Names what it hides ("scheduled later") so
+          it reads distinctly from a band cap-overflow link; when the last band also
+          overflowed, this line absorbs it into one merged link (issue #538). */}
+          {moreLinks.trailing && (
             <Link
-              href="/upcoming"
+              href={moreLinks.trailing.href}
               data-testid="attention-more-upcoming"
               className="block text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
             >
-              +{more} more in Upcoming
+              {moreLinks.trailing.text}
             </Link>
           )}
         </div>
