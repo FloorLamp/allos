@@ -4,7 +4,7 @@ import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
 import { getFindingSuppressions } from "@/lib/queries";
 import { buildTrajectoryFindings } from "@/lib/trajectory-series";
-import { activeByKey } from "@/lib/findings";
+import { activeFindings } from "@/lib/findings";
 import { dismissTrajectory } from "./actions";
 
 // Biomarker trajectory findings (issue #41) for the Trends → Biomarkers area. Runs
@@ -18,9 +18,12 @@ import { dismissTrajectory } from "./actions";
 export default async function TrajectoryFindings() {
   const { profile } = await requireSession();
   const now = today(profile.id);
-  const findings = activeByKey(
+  // activeFindings (not activeByKey) so a finding is suppressed by EITHER its own
+  // `trajectory:<analyte>:<rule>` dedupeKey OR the shared `biomarker-flag:<family>`
+  // acknowledgment it carries as `supersedes` (#564) — so dismissing the analyte's
+  // flag on the dashboard silences its trajectory watch here too.
+  const findings = activeFindings(
     buildTrajectoryFindings(profile.id, now),
-    (f) => f.dedupeKey,
     getFindingSuppressions(profile.id),
     now
   );
@@ -70,14 +73,20 @@ export default async function TrajectoryFindings() {
                 )}
               </div>
             </div>
-            {/* Dismiss this finding through the shared suppression store (#39/#41). */}
+            {/* Dismiss through the shared suppression store (#39/#41). The key is
+                the analyte-level acknowledgment (`biomarker-flag:<family>`, #564),
+                so dismissing here silences the analyte's dashboard flag too. */}
             <form
               action={async (fd) => {
                 "use server";
                 await dismissTrajectory(fd);
               }}
             >
-              <input type="hidden" name="dedupe_key" value={f.dedupeKey} />
+              <input
+                type="hidden"
+                name="ack_key"
+                value={f.supersedes ?? f.dedupeKey}
+              />
               <button
                 type="submit"
                 data-testid="trajectory-dismiss"

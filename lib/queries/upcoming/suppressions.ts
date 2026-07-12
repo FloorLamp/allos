@@ -92,13 +92,15 @@ export function restoreFinding(profileId: number, dedupeKey: string): void {
 // profile-scoped.
 
 // Drop biomarker retest dismissals (`biomarker:<family>`) AND flagged-result
-// dismissals (`biomarker-flag:<name>`, issue #283) whose backing readings are
-// all gone, so dismissing a nudge → deleting every reading → re-adding the marker
-// later re-surfaces the nudge instead of it being suppressed by the stale row.
-// The retest key is now the #482 FAMILY identity (biomarkerFamilyKey), so it is
-// de-orphaned only when NO family member has a reading left; the flag key is still
-// the per-name identity. A dismissal with no matching reading can never fire again,
-// so removing it is a pure de-orphan (mirrors cleanupOrphanStars).
+// dismissals (`biomarker-flag:<family>`, issues #283/#564) whose backing readings
+// are all gone, so dismissing a nudge → deleting every reading → re-adding the
+// marker later re-surfaces the nudge instead of it being suppressed by the stale
+// row. BOTH keys are now the #482 FAMILY identity (biomarkerFamilyKey) — the flag
+// key moved to the family in #564 to share the trajectory acknowledgment — so each
+// is de-orphaned only when NO family member has a reading left, and a stale
+// legacy per-name flag row (from before #564) is de-orphaned here too (its suffix
+// isn't in the family-key set). A dismissal with no matching reading can never fire
+// again, so removing it is a pure de-orphan (mirrors cleanupOrphanStars).
 // 11 = length('biomarker:') + 1; 16 = length('biomarker-flag:') + 1.
 export function cleanupOrphanBiomarkerDismissals(profileId: number): void {
   db.prepare(
@@ -115,7 +117,7 @@ export function cleanupOrphanBiomarkerDismissals(profileId: number): void {
        WHERE profile_id = ?
          AND signal_key LIKE 'biomarker-flag:%'
          AND substr(signal_key, 16) NOT IN (
-           SELECT lower(COALESCE(NULLIF(trim(canonical_name), ''), name))
+           SELECT DISTINCT lower(${biomarkerFamilyKey()})
              FROM medical_records WHERE profile_id = ?
          )`
   ).run(profileId, profileId);
