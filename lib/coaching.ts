@@ -18,6 +18,7 @@ import {
   type NextWorkout,
   type NextWorkoutItem,
 } from "./workout-recommendation";
+import type { EquipmentAvailability } from "./equipment-availability";
 import type { WeightUnit } from "./settings";
 
 // Re-exported so existing importers of the variety window keep working — its
@@ -703,6 +704,11 @@ export interface CoachingInput {
   // Optional — absent ⇒ the core falls back to aggregate least-recent picks, so
   // existing callers/tests keep their prior behavior.
   datedExercises?: DatedExercise[];
+  // The profile's equipment availability (issue #345), threaded through the ONE
+  // coaching gather so BOTH the dashboard/overview cards and the Telegram workout
+  // nudge prefer gear-satisfiable "train today" content by construction. Optional —
+  // absent ⇒ no equipment gating (the prior behavior).
+  availableEquipment?: EquipmentAvailability;
   sleep: SleepSignal | null;
   restingHr: RestingHrSignal | null;
   // The persisted rest episode as of the last reconcile (null when none is open).

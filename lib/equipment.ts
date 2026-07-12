@@ -1,5 +1,9 @@
 import { db, writeTx } from "./db";
 import type { Equipment } from "./types";
+import {
+  summarizeEquipmentAvailability,
+  type EquipmentAvailability,
+} from "./equipment-availability";
 
 // Shape accepted from the manager UI. Weight is in kg (callers convert from the
 // user's display unit first).
@@ -28,6 +32,16 @@ export function getEquipment(
       `SELECT * FROM equipment WHERE profile_id = ?${where} ORDER BY name COLLATE NOCASE`
     )
     .all(profileId) as Equipment[];
+}
+
+// The profile's equipment availability summary (issue #345): "has barbell?
+// dumbbells? machine? bike?" from its NON-retired rows, for gating workout /
+// exercise suggestions. The ONE read every consumer formats over; pure logic lives
+// in summarizeEquipmentAvailability so it stays unit-tested and client-safe.
+export function availableEquipmentKinds(
+  profileId: number
+): EquipmentAvailability {
+  return summarizeEquipmentAvailability(getEquipment(profileId));
 }
 
 export function getEquipmentById(
