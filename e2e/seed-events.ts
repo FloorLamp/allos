@@ -1132,6 +1132,59 @@ db.prepare(
    VALUES (?, '2023-05-01', 'lab', ?, 'A POSITIVE', ?, 'abnormal', 'manual')`
 ).run(PROFILE_ID, BLOOD_TYPE_MARKER, BLOOD_TYPE_MARKER);
 
+// #542 — a titer series whose values carry an embedded unit ("58 mIU/mL") and a
+// dilution ratio ("1:160"), both with value_num NULL. parseLeadingNumeric recovers
+// the leading numeric at the chart boundary so these plot instead of vanishing.
+const EMBEDDED_UNIT_MARKER = "E2E Rubella IgG Titer";
+db.prepare(
+  `DELETE FROM medical_records WHERE profile_id = ? AND canonical_name = ?`
+).run(PROFILE_ID, EMBEDDED_UNIT_MARKER);
+const embeddedInsert = db.prepare(
+  `INSERT INTO medical_records
+     (profile_id, date, category, name, value, canonical_name, source)
+   VALUES (?, ?, 'lab', ?, ?, ?, 'manual')`
+);
+embeddedInsert.run(
+  PROFILE_ID,
+  "2024-02-01",
+  EMBEDDED_UNIT_MARKER,
+  "1:40",
+  EMBEDDED_UNIT_MARKER
+);
+embeddedInsert.run(
+  PROFILE_ID,
+  "2025-02-01",
+  EMBEDDED_UNIT_MARKER,
+  "58 mIU/mL",
+  EMBEDDED_UNIT_MARKER
+);
+
+// #543 — a purely qualitative series (no numeric anywhere) renders as a dated
+// timeline instead of a blank numeric chart.
+const QUALITATIVE_MARKER = "E2E Mumps IgG Screen";
+db.prepare(
+  `DELETE FROM medical_records WHERE profile_id = ? AND canonical_name = ?`
+).run(PROFILE_ID, QUALITATIVE_MARKER);
+const qualInsert = db.prepare(
+  `INSERT INTO medical_records
+     (profile_id, date, category, name, value, canonical_name, source)
+   VALUES (?, ?, 'lab', ?, ?, ?, 'manual')`
+);
+qualInsert.run(
+  PROFILE_ID,
+  "2023-03-01",
+  QUALITATIVE_MARKER,
+  "Negative",
+  QUALITATIVE_MARKER
+);
+qualInsert.run(
+  PROFILE_ID,
+  "2025-03-01",
+  QUALITATIVE_MARKER,
+  "Reactive",
+  QUALITATIVE_MARKER
+);
+
 // Reconcile so the extractor's blunt "abnormal" flags are corrected before the
 // specs read the page (the app's own boot reconcile is signature-gated and the seed
 // already stamped the current signature, so it would skip these post-seed inserts).

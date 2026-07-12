@@ -328,6 +328,67 @@ export function parseLooseValue(
   return null;
 }
 
+// A numeric recovered from a value string parseLooseValue deliberately rejects —
+// the whole-string anchor there is the strict "numeric intent" contract other
+// callers rely on, so this is a SEPARATE, chart-only recovery (issue #542):
+//   "58 mIU/mL"  → { value: 58 }              (extraction left the unit embedded)
+//   "12.3 mg/dL" → { value: 12.3 }
+//   "1:160"      → { value: 160, titer: true } (titer reciprocal — higher = more
+//                                               antibody; the plottable magnitude)
+// Returns null when there is no leading number ("positive", "Pattern A", "").
+export interface LeadingNumeric {
+  value: number;
+  // Parsed from a "1:N" dilution ratio; `value` is the reciprocal N.
+  titer?: boolean;
+}
+
+export function parseLeadingNumeric(
+  s: string | null | undefined
+): LeadingNumeric | null {
+  if (!s) return null;
+  const str = s.trim();
+  if (!str) return null;
+  // Titer ratio "1:160" → the reciprocal (160), before the generic leading-number
+  // rule (which would otherwise read the leading "1").
+  const titer = /^1\s*:\s*(\d+(?:\.\d+)?)$/.exec(str);
+  if (titer) {
+    const n = Number(titer[1]);
+    return Number.isFinite(n) ? { value: n, titer: true } : null;
+  }
+  // A leading number FOLLOWED BY a unit/text token. The lookahead keeps the number
+  // from being split by backtracking (so a bare "58" — where the only trailing char
+  // is another digit — does NOT match and is left to parseLooseValue's strict path).
+  const lead = /^(-?\d+(?:\.\d+)?)(?=[^\d.]|\s)\s*\S/.exec(str);
+  if (lead) {
+    const n = Number(lead[1]);
+    return Number.isFinite(n) ? { value: n } : null;
+  }
+  return null;
+}
+
+// The number a reading contributes to a numeric chart — the ONE computation both
+// the chart points and the status badge derive from (issue #542): the exact
+// value_num, else a bare/bounded numeric string (parseLooseValue), else a leading
+// numeric recovered from a unit-suffixed or titer value (parseLeadingNumeric).
+// Null → the reading is purely qualitative (nothing to plot).
+export interface PlottableValue {
+  value: number;
+  bound?: "<" | ">";
+  titer?: boolean;
+}
+
+export function plottableReadingValue(
+  valueNum: number | null | undefined,
+  value: string | null | undefined
+): PlottableValue | null {
+  if (valueNum != null && Number.isFinite(valueNum)) return { value: valueNum };
+  const loose = parseLooseValue(value);
+  if (loose) return { value: loose.value, bound: loose.bound };
+  const lead = parseLeadingNumeric(value);
+  if (lead) return { value: lead.value, titer: lead.titer };
+  return null;
+}
+
 export type RangeStatus = "below" | "above" | "in" | "unknown";
 
 // Where a value sits relative to a plain [low, high] range (null bound = open).

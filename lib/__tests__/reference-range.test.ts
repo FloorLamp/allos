@@ -13,8 +13,10 @@ import {
   isDurableImmunePositive,
   optimalBand,
   optimalStatus,
+  parseLeadingNumeric,
   parseLooseValue,
   parseReferenceRange,
+  plottableReadingValue,
   qualitativeFlagResolution,
   qualitativePresence,
   rangeBadge,
@@ -71,6 +73,51 @@ describe("parseLooseValue", () => {
     expect(parseLooseValue("Pattern A")).toBeNull();
     expect(parseLooseValue("12 mg/dL")).toBeNull();
     expect(parseLooseValue(null)).toBeNull();
+  });
+});
+
+describe("parseLeadingNumeric (#542 chart recovery)", () => {
+  it("recovers a leading numeric from a unit-suffixed value", () => {
+    expect(parseLeadingNumeric("58 mIU/mL")).toEqual({ value: 58 });
+    expect(parseLeadingNumeric("12.3 mg/dL")).toEqual({ value: 12.3 });
+    expect(parseLeadingNumeric("100mg/dL")).toEqual({ value: 100 });
+  });
+
+  it("reads a titer ratio as its reciprocal magnitude", () => {
+    expect(parseLeadingNumeric("1:160")).toEqual({ value: 160, titer: true });
+    expect(parseLeadingNumeric("1 : 40")).toEqual({ value: 40, titer: true });
+  });
+
+  it("returns null for a bare number (parseLooseValue's job) or freetext", () => {
+    expect(parseLeadingNumeric("58")).toBeNull();
+    expect(parseLeadingNumeric("positive")).toBeNull();
+    expect(parseLeadingNumeric("Pattern A")).toBeNull();
+    expect(parseLeadingNumeric("")).toBeNull();
+    expect(parseLeadingNumeric(null)).toBeNull();
+  });
+});
+
+describe("plottableReadingValue (#542 shared chart/badge value)", () => {
+  it("prefers an exact value_num", () => {
+    expect(plottableReadingValue(58, "58 mIU/mL")).toEqual({ value: 58 });
+  });
+
+  it("falls back to a bounded string, then a leading numeric", () => {
+    expect(plottableReadingValue(null, "<0.10")).toEqual({
+      value: 0.1,
+      bound: "<",
+    });
+    expect(plottableReadingValue(null, "58 mIU/mL")).toEqual({ value: 58 });
+    expect(plottableReadingValue(null, "1:160")).toEqual({
+      value: 160,
+      titer: true,
+    });
+  });
+
+  it("is null for a purely qualitative reading", () => {
+    expect(plottableReadingValue(null, "positive")).toBeNull();
+    expect(plottableReadingValue(null, "Immune")).toBeNull();
+    expect(plottableReadingValue(null, null)).toBeNull();
   });
 });
 
