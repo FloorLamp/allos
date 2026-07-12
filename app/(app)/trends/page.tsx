@@ -20,6 +20,7 @@ import BiomarkersSection, {
 import BodySection from "./BodySection";
 import FitnessSection from "./FitnessSection";
 import InsightsSection from "./InsightsSection";
+import NutritionSection from "./NutritionSection";
 import type { AppRoute } from "@/lib/hrefs";
 
 export const dynamic = "force-dynamic";
@@ -29,6 +30,7 @@ const TABS = [
   "compare",
   "biomarkers",
   "body",
+  "nutrition",
   "fitness",
   "insights",
 ] as const;
@@ -160,6 +162,7 @@ export default async function TrendsPage(props: {
     { id: "compare", label: "Compare" },
     { id: "biomarkers", label: "Biomarkers" },
     { id: "body", label: "Body" },
+    { id: "nutrition", label: "Nutrition" },
     ...(restricted
       ? []
       : ([
@@ -195,6 +198,8 @@ export default async function TrendsPage(props: {
         );
       case "body":
         return <BodySection range={range} />;
+      case "nutrition":
+        return <NutritionSection range={range} />;
       case "fitness":
         return <FitnessSection ftab={ftab} />;
       case "insights":

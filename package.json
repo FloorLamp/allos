@@ -34,6 +34,7 @@
     "gen:interactions": "tsx scripts/gen-drug-interactions.ts",
     "gen:screenings": "tsx scripts/gen-screenings.ts",
     "gen:nutrient-food-map": "tsx scripts/gen-nutrient-food-map.ts",
+    "gen:food-groups": "tsx scripts/gen-food-groups.ts",
     "prepare": "husky"
   },
   "lint-staged": {

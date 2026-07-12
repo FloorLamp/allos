@@ -785,6 +785,17 @@ export const DATASETS: ExportDataset[] = [
   // state. Not deletable as a set — intake_items.situation_id links reference these
   // rows, so a bulk wipe would strand them (row-ops rule).
   tableDataset({
+    // Food-group serving log (#579): one row per (date, group) with a servings count.
+    // Fully profile-owned + id-keyed, so it's deletable like the other logged datasets.
+    key: "food_log",
+    label: "Food log",
+    table: "food_log",
+    columns: ["date", "group_key", "servings", "notes"],
+    select: `SELECT id, date, group_key, servings, notes
+       FROM food_log WHERE profile_id = ? ORDER BY date DESC, group_key`,
+    countSql: `SELECT COUNT(*) AS n FROM food_log WHERE profile_id = ?`,
+  }),
+  tableDataset({
     key: "situations",
     label: "Situations",
     table: "situations",
@@ -905,6 +916,7 @@ export const DELETE_POLICY: Record<string, DatasetDeletePolicy> = {
   milestones: { revalidate: ["/"] },
   equipment: { revalidate: ["/settings/equipment", "/training"] },
   frequency_targets: { revalidate: ["/training", "/"] },
+  food_log: { revalidate: ["/nutrition", "/trends", "/"] },
 };
 
 export function getDataset(key: string): ExportDataset | undefined {

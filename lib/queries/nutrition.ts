@@ -4,12 +4,19 @@
 // is lib/food-suggest.ts; this module only assembles its typed inputs from the
 // profile-scoped reads and hands them over.
 
+import { db, today } from "../db";
 import { getCurrentFlaggedBiomarkers } from "./medical";
 import { getAllergies, getConditions } from "./clinical";
 import { getSupplements } from "./intake";
+import { weekWindowStart } from "./training/common";
 import { getActiveSituations } from "../settings";
 import { parseRxcuiIngredients } from "../rxnorm";
 import { suggestFoods, type FoodSuggestion } from "../food-suggest";
+import {
+  rollupServings,
+  type FoodLogEntry,
+  type GroupServingTotal,
+} from "../food-log";
 import type { SafetyMedication } from "../supplement-safety";
 
 // Safety-screened food suggestions for the profile's currently-flagged, diet-responsive
@@ -44,4 +51,102 @@ export function getFoodSuggestions(profileId: number): FoodSuggestion[] {
     conditions,
     situations,
   });
+}
+
+// ---- Food-group serving log (issue #579) ----
+
+// A day's logged servings per food group, as a slug→servings map — the state the
+// one-tap logging bar reads to show each group's current count. Profile-scoped.
+export function getFoodServingsOnDate(
+  profileId: number,
+  date: string
+): Map<string, number> {
+  const rows = db
+    .prepare(
+      `SELECT group_key, servings FROM food_log
+        WHERE profile_id = ? AND date = ?`
+    )
+    .all(profileId, date) as { group_key: string; servings: number }[];
+  const m = new Map<string, number>();
+  for (const r of rows) m.set(r.group_key, r.servings);
+  return m;
+}
+
+// The profile's food-log rows on/after `since` (inclusive), as FoodLogEntry[] for the
+// pure rollup. Profile-scoped.
+export function getFoodLogEntries(
+  profileId: number,
+  since: string
+): FoodLogEntry[] {
+  return db
+    .prepare(
+      `SELECT date, group_key, servings FROM food_log
+        WHERE profile_id = ? AND date >= ? AND servings > 0
+        ORDER BY date DESC`
+    )
+    .all(profileId, since) as FoodLogEntry[];
+}
+
+// The weekly rollup — servings per group over the profile's "this week" window (the
+// SAME week definition the weekly-routine counters use, #223). The ONE computation the
+// nutrition card, the trends view, and the #580 habit-target progress all format.
+export function getWeeklyFoodRollup(profileId: number): GroupServingTotal[] {
+  return rollupServings(
+    getFoodLogEntries(profileId, weekWindowStart(profileId))
+  );
+}
+
+// Servings per group over an explicit [from, to] date window (inclusive) — the Trends
+// → Nutrition tab's ranged rollup, honoring the shared date-range control. Same pure
+// rollup as the weekly card. Profile-scoped.
+export function getFoodRollupInRange(
+  profileId: number,
+  from: string,
+  to: string
+): GroupServingTotal[] {
+  const rows = db
+    .prepare(
+      `SELECT date, group_key, servings FROM food_log
+        WHERE profile_id = ? AND date >= ? AND date <= ? AND servings > 0
+        ORDER BY date DESC`
+    )
+    .all(profileId, from, to) as FoodLogEntry[];
+  return rollupServings(rows);
+}
+
+// This week's servings for a single group — the #580 food-habit target progress read,
+// routed through the SAME rollup entries so progress and the card can't disagree.
+export function getWeeklyServingsForGroup(
+  profileId: number,
+  groupKey: string,
+  weekStart: string = weekWindowStart(profileId)
+): number {
+  const row = db
+    .prepare(
+      `SELECT COALESCE(SUM(servings), 0) AS n FROM food_log
+        WHERE profile_id = ? AND date >= ? AND group_key = ?`
+    )
+    .get(profileId, weekStart, groupKey) as { n: number };
+  return row.n;
+}
+
+// The distinct dates this week a group was logged (servings > 0) — for a target framed
+// as "N days/week" rather than "N servings/week". Profile-scoped.
+export function getWeeklyDaysForGroup(
+  profileId: number,
+  groupKey: string,
+  weekStart: string = weekWindowStart(profileId)
+): number {
+  const row = db
+    .prepare(
+      `SELECT COUNT(DISTINCT date) AS n FROM food_log
+        WHERE profile_id = ? AND date >= ? AND group_key = ? AND servings > 0`
+    )
+    .get(profileId, weekStart, groupKey) as { n: number };
+  return row.n;
+}
+
+// Convenience: today's date for the acting profile (the logging bar's default day).
+export function foodLogToday(profileId: number): string {
+  return today(profileId);
 }

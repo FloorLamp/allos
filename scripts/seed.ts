@@ -1496,6 +1496,30 @@ db.prepare(
   "Creatine loading"
 );
 
+// ── Food-group serving log (issue #579) ──────────────────────────────────────
+// ~2 weeks of realistic food-group servings so the /nutrition log, the weekly rollup,
+// and the Trends → Nutrition tab have data, and so a food-habit target (#580) has
+// progress. group_key values are the stable slugs from lib/food-groups.json. Synthetic.
+const foodLog = db.prepare(
+  `INSERT INTO food_log (profile_id, date, group_key, servings)
+   VALUES (1, ?, ?, ?)
+   ON CONFLICT (profile_id, date, group_key) DO UPDATE SET servings = servings + excluded.servings`
+);
+// A weekly rhythm: greens/legumes/fruit most days, fatty fish twice a week, the
+// occasional red meat / alcohol / dessert.
+for (let d = 13; d >= 0; d--) {
+  const date = daysAgo(d);
+  foodLog.run(date, "leafy_greens", 1 + (d % 2));
+  foodLog.run(date, "fruit", 1);
+  if (d % 3 === 0) foodLog.run(date, "legumes", 1);
+  if (d % 2 === 0) foodLog.run(date, "whole_grains", 1);
+  if (d % 7 === 1 || d % 7 === 4) foodLog.run(date, "fatty_fish", 1);
+  if (d % 5 === 0) foodLog.run(date, "red_meat", 1);
+  if (d % 4 === 0) foodLog.run(date, "nuts_seeds", 1);
+  if (d === 5 || d === 12) foodLog.run(date, "alcohol", 2);
+  if (d === 2 || d === 9) foodLog.run(date, "added_sugar", 1);
+}
+
 // ── Active situations + change log (Trends Ph3 annotations) ──────────────────
 // profile_settings stores only the CURRENT set; the dated start/stop log
 // (situation_events) is what makes situations chartable. Build a small history so

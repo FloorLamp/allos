@@ -28,6 +28,7 @@ import {
   IconEmergencyBed,
   IconChevronRight,
   IconPuzzle,
+  IconSalad,
   type TablerIcon,
 } from "@tabler/icons-react";
 import { isRouteActive, isGroupActive, isNavLeafVisible } from "@/lib/nav";
@@ -102,6 +103,7 @@ const entries: Entry[] = [
   { href: "/", label: "Dashboard", icon: IconLayoutDashboard },
   { href: "/timeline", label: "Timeline", icon: IconTimelineEvent },
   { href: "/trends", label: "Trends", icon: IconTrendingUp },
+  { href: "/nutrition", label: "Nutrition", icon: IconSalad },
   { href: "/protocols", label: "Protocols", icon: IconFlask2 },
   { href: "/upcoming", label: "Upcoming", icon: IconCalendarClock },
   {
