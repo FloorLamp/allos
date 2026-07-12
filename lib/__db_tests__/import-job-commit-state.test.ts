@@ -118,24 +118,32 @@ describe("import_jobs 'committing' state — migration 015", () => {
   });
 });
 
-describe("boot reaper — a crash-stranded 'committing' job", () => {
-  it("is reclaimed to 'failed' on the next boot with an explanatory error", () => {
+describe("boot reaper — a crash-stranded 'committing' job (age-gated, issue #461)", () => {
+  it("reclaims STRANDED 'committing'/'processing' jobs but spares FRESH ones and 'ready'", () => {
     const db = newDb();
     migrate(db);
-    // Simulate a crash between the atomic claim and the row-delete: a job wedged in
-    // 'committing', plus one wedged in 'processing' (both reaped), and a healthy
-    // 'ready' job that must be left untouched.
+    // The boot reset is age-gated on the extraction lease (#461): boot runs in EVERY
+    // process, including the hourly notify tick, so an unconditional reset would fail a
+    // job the web process is committing right now. Only jobs stranded past the lease
+    // are reaped. Age ids 1 & 2 an hour back (genuine crash orphans); leave ids 4 & 5
+    // fresh (updated_at ~ now, an in-flight commit/extraction) and id 3 healthy 'ready'.
     db.prepare(
-      "INSERT INTO import_jobs (id, profile_id, type, status) VALUES (1, 1, 'workouts', 'committing')"
+      "INSERT INTO import_jobs (id, profile_id, type, status, updated_at) VALUES (1, 1, 'workouts', 'committing', datetime('now','-60 minutes'))"
     ).run();
     db.prepare(
-      "INSERT INTO import_jobs (id, profile_id, type, status) VALUES (2, 1, 'biomarkers', 'processing')"
+      "INSERT INTO import_jobs (id, profile_id, type, status, updated_at) VALUES (2, 1, 'biomarkers', 'processing', datetime('now','-60 minutes'))"
     ).run();
     db.prepare(
       "INSERT INTO import_jobs (id, profile_id, type, status) VALUES (3, 1, 'workouts', 'ready')"
     ).run();
+    db.prepare(
+      "INSERT INTO import_jobs (id, profile_id, type, status) VALUES (4, 1, 'workouts', 'committing')"
+    ).run();
+    db.prepare(
+      "INSERT INTO import_jobs (id, profile_id, type, status) VALUES (5, 1, 'biomarkers', 'processing')"
+    ).run();
 
-    bootTasks(db); // re-runs the per-boot stuck-state cleanup
+    bootTasks(db); // re-runs the per-boot (now age-gated) stuck-state cleanup
 
     const rows = db
       .prepare("SELECT id, status, error FROM import_jobs ORDER BY id")
@@ -144,6 +152,9 @@ describe("boot reaper — a crash-stranded 'committing' job", () => {
     expect(rows[0].error).toMatch(/interrupted/i);
     expect(rows[1]).toMatchObject({ id: 2, status: "failed" });
     expect(rows[2]).toMatchObject({ id: 3, status: "ready" }); // untouched
+    // The #461 regression guard: a fresh in-flight commit/extraction survives the tick.
+    expect(rows[3]).toMatchObject({ id: 4, status: "committing" });
+    expect(rows[4]).toMatchObject({ id: 5, status: "processing" });
     db.close();
   });
 });

@@ -128,7 +128,11 @@ export async function reassignDocument(
   // LITERAL source profile_id it was started with; re-pointing the document to B
   // mid-flight would land those rows orphaned under A while the finalize
   // (WHERE id=? AND profile_id=A) no-ops, stranding the doc 'processing' under B
-  // with no content. Wait for it to settle first.
+  // with no content. Wait for it to settle first. This is a fast-path bail on the
+  // status we just read — but the read is NOT relied on for correctness: the move
+  // transaction below re-checks the status atomically as its claim (issue #469),
+  // since a concurrent reprocess could flip the row to 'processing' in the await
+  // window between here and the move.
   if (doc.extraction_status === "processing") {
     return {
       status: "error",
@@ -168,10 +172,25 @@ export async function reassignDocument(
   // cross-profile with an FK-500 on the new owner's later delete (#201). Every
   // statement is scoped to the source profile_id so no other profile's rows can be
   // touched; the on-disk file move + stored_path update happen after the commit.
+  //
+  // ATOMIC CLAIM (issue #469): the re-point IS the guard. The status re-check lives
+  // inside the same UPDATE — `AND extraction_status NOT IN ('processing','pending')`
+  // — so a concurrent reprocess that claimed the row 'done'->'processing' in the
+  // await window above makes this UPDATE match 0 rows. On a 0-change claim we abort
+  // the whole move (leaving the footprint under the source, where the still-in-flight
+  // persist/finalize correctly lands its rows) and report it as still-processing.
+  // Without this the read-then-move raced: the in-flight persist would insert a
+  // SECOND full record set under the source pointing at a document now owned by dest,
+  // recreating the #201 cross-profile stranding through a race.
+  let claimed = false;
   const move = db.transaction(() => {
-    db.prepare(
-      "UPDATE medical_documents SET profile_id = ? WHERE id = ? AND profile_id = ?"
-    ).run(dest, id, src);
+    const res = db
+      .prepare(
+        "UPDATE medical_documents SET profile_id = ? WHERE id = ? AND profile_id = ? AND extraction_status NOT IN ('processing','pending')"
+      )
+      .run(dest, id, src);
+    if (res.changes !== 1) return; // lost the claim — leave everything untouched
+    claimed = true;
     moveImportedDocumentRows(src, dest, id);
     // A star OR a retest/flag dismissal on the SOURCE profile may now point at a
     // biomarker with no remaining records there — sweep both name-keyed side-stores
@@ -180,6 +199,13 @@ export async function reassignDocument(
     cleanupOrphanBiomarkerKeyedState(src);
   });
   move();
+  if (!claimed) {
+    return {
+      status: "error",
+      message:
+        "This document is still processing — wait for it to finish, then move it.",
+    };
+  }
 
   // Re-derive out-of-range flags on the destination: reconciledFlag depends on the
   // profile's sex/birthdate/age/reproductive-status, so the moved medical_records
@@ -272,6 +298,15 @@ export async function deleteMedicalDocument(formData: FormData) {
       target: String(id),
     });
 
+  // NO 'processing' guard here, and that is SAFE BY ACCIDENT (issue #469): if a
+  // reprocess is mid-flight when this runs, dropping the medical_documents row would
+  // orphan the in-flight extraction's writes — but every footprint table carries a
+  // document_id FK REFERENCES medical_documents(id), so the racing persist's INSERTs
+  // hit the missing parent and roll back WHOLE. Nothing is half-imported. This is
+  // load-bearing: if those FKs are ever loosened, delete-during-extraction becomes a
+  // silent partial import and this path must grow its own atomic 'processing' claim
+  // (the pattern reassignDocument uses). A DB-tier test pins the rollback so a
+  // refactor can't quietly remove the FKs this relies on.
   const removeAll = db.transaction(() => {
     // Delete every row this document imported — medical_records, extracted
     // medications, body_metrics, height + head-circumference metric_samples,

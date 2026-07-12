@@ -5,7 +5,8 @@
 // nulls nothing it shouldn't, moves the on-disk file, and is rejected when the
 // login can't reach the destination.
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+import * as auth from "@/lib/auth";
 import fs from "node:fs";
 import path from "node:path";
 import { reassignDocument } from "@/app/(app)/medical/document-actions";
@@ -336,6 +337,60 @@ describe("reassignDocument", () => {
       .prepare("SELECT profile_id FROM medical_documents WHERE id = ?")
       .get(docId) as { profile_id: number };
     expect(owner.profile_id).toBe(a.id);
+  });
+
+  // Issue #469: the TOCTOU race. reassignDocument reads extraction_status, then
+  // AWAITS getAccessibleProfiles before moving. A concurrent reprocess can flip the
+  // row 'done'->'processing' in that window; the pre-fix read-then-move would then
+  // re-point the document + footprint to the destination while the in-flight persist
+  // inserts a SECOND record set under the source — the #201 cross-profile stranding
+  // recreated through a race. We inject that exact interleaving by flipping the row
+  // to 'processing' from inside the awaited getAccessibleProfiles, and assert the
+  // atomic claim (the status re-check folded into the move UPDATE) aborts the move.
+  it("does not strand rows when a reprocess claims the doc in the await window (issue #469)", async () => {
+    const admin = createLogin({ role: "admin" });
+    const a = createProfile("TOCTOU-A");
+    const b = createProfile("TOCTOU-B");
+    const docId = newDocument(a.id);
+    persistDocumentImport(a.id, docId, makeInput());
+    // Finalize to 'done' so the initial status read passes the fast-path guard —
+    // the race is only reachable when the early read sees a terminal status.
+    db.prepare(
+      "UPDATE medical_documents SET extraction_status = 'done' WHERE id = ?"
+    ).run(docId);
+    actAs(admin, a);
+
+    const beforeA = ownedRowCount(a.id, docId);
+    expect(beforeA).toBeGreaterThan(0);
+
+    const spy = vi
+      .spyOn(auth, "getAccessibleProfiles")
+      .mockImplementation(async () => {
+        // The concurrent reprocess lands here, mid-await: claim the row 'processing'.
+        db.prepare(
+          "UPDATE medical_documents SET extraction_status = 'processing' WHERE id = ?"
+        ).run(docId);
+        return [
+          { id: a.id, name: "TOCTOU-A", photo_path: null, photo_version: 0 },
+          { id: b.id, name: "TOCTOU-B", photo_path: null, photo_version: 0 },
+        ];
+      });
+    try {
+      const res = await reassignDocument(
+        fd({ id: docId, destProfileId: b.id })
+      );
+      // The move aborts on the 0-change claim: nothing crossed to the destination.
+      expect(res.status).toBe("error");
+      expect(res.message).toMatch(/processing/i);
+      expect(ownedRowCount(a.id, docId)).toBe(beforeA);
+      expect(ownedRowCount(b.id, docId)).toBe(0);
+      const owner = db
+        .prepare("SELECT profile_id FROM medical_documents WHERE id = ?")
+        .get(docId) as { profile_id: number };
+      expect(owner.profile_id).toBe(a.id);
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it("re-derives biomarker flags against the destination after the move", async () => {

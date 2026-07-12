@@ -4,6 +4,7 @@ import canonicalSeed from "../canonical-biomarkers.json";
 import { computeFlagReconciliation } from "../flag-reconcile";
 import { canonicalFlagsSignature } from "../canonical-flags-version";
 import { hashPasswordSync } from "../password";
+import { extractionLeaseMinutes } from "../extraction-lease";
 import { runBootTx } from "./schema-utils";
 
 // PER-BOOT TASKS (issue #119). These run on EVERY process start, AFTER the
@@ -27,7 +28,17 @@ import { runBootTx } from "./schema-utils";
 //   • reconcileFlagsIfCanonical… — gated on the canonical-flags-version content
 //                                  signature, not the schema version.
 //   • stuck-state cleanup        — resets extraction/import rows a crash left mid-
-//                                  flight; must run on every process start.
+//                                  flight; must run on every process start. AGE-GATED
+//                                  on the extraction lease window (issue #461): boot
+//                                  runs in EVERY process, including the hourly notify
+//                                  tick (scripts/notify.ts imports lib/db => createDb
+//                                  => bootTasks at the top of every hour), so an
+//                                  unconditional reset would flip a FRESH in-flight
+//                                  extraction started seconds ago by the web process
+//                                  to 'failed'. The age gate makes the reset touch
+//                                  only genuinely-stranded rows (past the lease) in
+//                                  ANY process — the same lease reapStuckExtractions
+//                                  uses — so a live extraction/import survives the tick.
 //   • seedTimezoneFromEnv        — env-dependent first-boot seeding.
 //
 // (The old boot path also carried backfillProfileIds, adopting legacy
@@ -55,41 +66,10 @@ export function bootTasks(db: Database.Database): void {
   // records on the next boot, without a full re-scan on every startup.
   reconcileFlagsIfCanonicalChanged(db);
 
-  // Background extraction runs in-process. A fresh process can't have any
-  // extraction in flight, so any doc left mid-extraction was interrupted by a
-  // restart/crash — mark it failed rather than leaving it stuck on 'processing'.
-  db.exec(
-    `UPDATE medical_documents
-       SET extraction_status = 'failed',
-           extraction_error = 'Extraction was interrupted (server restarted). Delete and re-upload to retry.'
-     WHERE extraction_status IN ('processing','pending')`
-  );
-
-  // Same for async paste/CSV import jobs left mid-extraction by a restart/crash:
-  // mark them failed rather than leaving them stuck spinning on 'processing'.
-  db.exec(
-    `UPDATE import_jobs
-       SET status = 'failed',
-           error = 'Extraction was interrupted (server restarted). Discard and try again.',
-           updated_at = datetime('now')
-     WHERE status = 'processing'`
-  );
-
-  // And for jobs a crash stranded mid-commit (issue #323). commitImportJob claims a
-  // job by flipping 'ready' → 'committing' before writing rows; a crash between that
-  // claim and the row-delete would strand it in 'committing' forever — it can't be
-  // re-claimed (the claim requires status='ready') and only a manual Discard exits.
-  // Reap it to 'failed' with an explanatory error, mirroring the 'processing' reset.
-  // We do NOT revert to 'ready' for auto-retry: the crash may have landed after the
-  // inner commit transaction (data already imported), so the safe move is to fail it
-  // and let the user review — a deliberate re-import is deduped by the importers.
-  db.exec(
-    `UPDATE import_jobs
-       SET status = 'failed',
-           error = 'Saving this import was interrupted (server restarted). Some or all of its data may already have been imported — check your data before retrying, then discard this job.',
-           updated_at = datetime('now')
-     WHERE status = 'committing'`
-  );
+  // Reset extraction/import rows a crash left mid-flight — but ONLY those stranded
+  // past the lease window, so the hourly notify tick's boot can't fail a live
+  // extraction the web process started seconds ago (issue #461).
+  resetInterruptedWork(db);
 
   // One-time bootstrap: timezone moved from the `TZ` env into a DB setting. If no
   // timezone is stored yet but a TZ env is present and valid, seed the setting from
@@ -117,6 +97,77 @@ export function seedInstallMarker(db: Database.Database) {
   db.prepare(
     "INSERT OR IGNORE INTO settings (key, value) VALUES ('install_first_boot_at', ?)"
   ).run(new Date().toISOString());
+}
+
+// Reap document-extraction and import-job rows a crash left mid-flight — AGE-GATED on
+// the extraction lease window (issue #461).
+//
+// The old boot reset was unconditional ("a fresh process can't have any extraction in
+// flight"). That holds per-PROCESS but not per-DATABASE: the hourly notify tick imports
+// lib/db, so createDb() -> bootTasks() runs this at the top of every hour, and an
+// unconditional reset would flip a FRESH in-flight extraction/import — one the web
+// process kicked off seconds earlier — to 'failed' (a false failure toast, a
+// double-charged AI quota on the user's retry, or the alarming "data may already have
+// been imported" on a commit that is actually succeeding).
+//
+// The age gate fixes it in ANY process: only rows stranded PAST the lease are reaped —
+// exactly the "genuinely abandoned by a dead process" set — so a live run always
+// survives the tick, while a true crash orphan is still cleared (here on the next boot,
+// or by reapStuckExtractions within the hour). `minutes` is a validated positive integer
+// (extractionLeaseMinutes), so interpolating it into the datetime modifier is injection-
+// safe. Exported so the DB-tier test can drive it with a controlled window.
+export function resetInterruptedWork(
+  db: Database.Database,
+  minutes: number = extractionLeaseMinutes()
+): void {
+  const mins =
+    Number.isInteger(minutes) && minutes >= 1
+      ? minutes
+      : extractionLeaseMinutes();
+  const modifier = `-${mins} minutes`;
+
+  // Background document extraction runs in-process; a row stuck on 'processing' past
+  // the lease was abandoned by a dead process. Gated by processing_started_at (stamped
+  // when a row enters 'processing'): a NULL stamp or a fresh one is left alone.
+  db.exec(
+    `UPDATE medical_documents
+       SET extraction_status = 'failed',
+           extraction_error = 'Extraction was interrupted (server restarted). Delete and re-upload to retry.'
+     WHERE extraction_status IN ('processing','pending')
+       AND processing_started_at IS NOT NULL
+       AND processing_started_at < datetime('now', '${modifier}')`
+  );
+
+  // Async paste/CSV import jobs left mid-extraction by a restart/crash. updated_at is
+  // set at insert and bumped on every transition, so it ages a stalled job from when
+  // it last made progress; a fresh 'processing' job (updated_at ~ now) is spared.
+  db.exec(
+    `UPDATE import_jobs
+       SET status = 'failed',
+           error = 'Extraction was interrupted (server restarted). Discard and try again.',
+           updated_at = datetime('now')
+     WHERE status = 'processing'
+       AND updated_at < datetime('now', '${modifier}')`
+  );
+
+  // Jobs a crash stranded mid-commit (issue #323). commitImportJob claims a job by
+  // flipping 'ready' -> 'committing' (bumping updated_at) before writing rows; a crash
+  // between that claim and the row-delete would strand it in 'committing' forever — it
+  // can't be re-claimed (the claim requires status='ready') and only a manual Discard
+  // exits. Reap it to 'failed' with an explanatory error, mirroring the 'processing'
+  // reset, but only once its lease is past so a commit that IS succeeding right now
+  // isn't falsely reported as maybe-imported (issue #461). We do NOT revert to 'ready'
+  // for auto-retry: the crash may have landed after the inner commit transaction (data
+  // already imported), so the safe move is to fail it and let the user review — a
+  // deliberate re-import is deduped by the importers.
+  db.exec(
+    `UPDATE import_jobs
+       SET status = 'failed',
+           error = 'Saving this import was interrupted (server restarted). Some or all of its data may already have been imported — check your data before retrying, then discard this job.',
+           updated_at = datetime('now')
+     WHERE status = 'committing'
+       AND updated_at < datetime('now', '${modifier}')`
+  );
 }
 
 // If no logins exist yet, create login 1 (admin) and profile 1, wired
