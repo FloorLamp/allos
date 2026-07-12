@@ -193,11 +193,14 @@ export default function ActivityForm({
       ),
     [allOptions, equipmentList]
   );
-  // Which set's weight field the plate builder is targeting, if open.
+  // Which set's weight field the plate builder is targeting, if open. `seed`
+  // (display-unit weight) pre-loads the builder from the coached suggestion
+  // instead of the field's current value (#335); omitted for a plain icon tap.
   const [plateTarget, setPlateTarget] = useState<{
     pi: number;
     si: number;
     field: "weight" | "weightRight";
+    seed?: number;
   } | null>(null);
 
   // Session-level equipment link (issue #342): the gear the WHOLE activity used —
@@ -626,6 +629,58 @@ export default function ActivityForm({
     )
       updatePart(pi, { targetReps: String(ns.targetReps) });
   }
+  // Fill the suggested next set for a per-side lift (#335): each side is seeded
+  // from its OWN progression (left off left history, right off right), so the
+  // weaker side is never loaded off the stronger one. Into the untouched last
+  // row if still blank, else as a new set — mirroring applySuggestion.
+  function applyPerSideSuggestion(
+    pi: number,
+    left: NextSet | null,
+    right: NextSet | null
+  ) {
+    const p = parts[pi];
+    const patch: Partial<SetEntry> = {};
+    if (left) {
+      patch.weight = left.bodyweight
+        ? ""
+        : String(dispWeight(left.weightKg, units.weightUnit, 1));
+      patch.reps = String(left.reps);
+    }
+    if (right) {
+      patch.weightRight = right.bodyweight
+        ? ""
+        : String(dispWeight(right.weightKg, units.weightUnit, 1));
+      patch.repsRight = String(right.reps);
+    }
+    const li = p.sets.length - 1;
+    const last = p.sets[li];
+    const untouched =
+      !!last &&
+      !setComplete(p.name, last, p.perSide) &&
+      !setPartial(p.name, last, p.perSide);
+    if (untouched) updateSet(pi, li, patch);
+    else
+      setParts((prev) =>
+        prev.map((part, idx) =>
+          idx === pi
+            ? { ...part, sets: [...part.sets, { ...blankSet(), ...patch }] }
+            : part
+        )
+      );
+  }
+  // Suggestion → plate-builder deep link (#335): open the builder seeded with the
+  // suggested load (converted to the display unit) targeting set 1's weight, so a
+  // barbell lifter goes straight from "add 2.5 kg" to a loaded bar.
+  function plateFromSuggestion(pi: number, weightKg: number) {
+    const p = parts[pi];
+    const si = Math.max(0, p.sets.length - 1);
+    setPlateTarget({
+      pi,
+      si,
+      field: "weight",
+      seed: dispWeight(weightKg, units.weightUnit, 1),
+    });
+  }
   // Apply a plate-builder result to the targeted set weight. Auto-tag the
   // exercise with the bar only when no implement is chosen yet — never silently
   // replace a deliberate selection (the equipment dropdown changes it instead).
@@ -1014,6 +1069,12 @@ export default function ActivityForm({
                     updatePartName(pi, name, extra)
                   }
                   onApplySuggestion={(ns) => applySuggestion(pi, ns)}
+                  onApplyPerSideSuggestion={(left, right) =>
+                    applyPerSideSuggestion(pi, left, right)
+                  }
+                  onPlateFromSuggestion={(weightKg) =>
+                    plateFromSuggestion(pi, weightKg)
+                  }
                   onPlateTarget={(si, field) =>
                     setPlateTarget({ pi, si, field })
                   }
@@ -1147,9 +1208,11 @@ export default function ActivityForm({
           equipment={equipmentList}
           initialBarId={parts[plateTarget.pi]?.equipmentId ?? null}
           initialWeight={
-            Number(
+            plateTarget.seed ??
+            (Number(
               parts[plateTarget.pi]?.sets[plateTarget.si]?.[plateTarget.field]
-            ) || 0
+            ) ||
+              0)
           }
           onUse={applyPlateBuild}
           onCreated={(e) => setEquipmentList((prev) => [...prev, e])}

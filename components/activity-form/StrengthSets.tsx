@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import type { Equipment } from "@/lib/types";
 import { isBarbell } from "@/lib/types";
 import type { UnitPrefs } from "@/lib/settings";
@@ -25,6 +26,7 @@ import {
   suggestNextSet,
   sessionBestSet,
   sessionWorkSets,
+  sideSets,
   nextSetText,
   type NextSet,
 } from "@/lib/coaching";
@@ -41,6 +43,7 @@ import {
   partTotal,
   recentSessionsForForm,
   setComplete,
+  setPartial,
   sidePartial,
   blockedField,
   blockedRing,
@@ -75,6 +78,8 @@ export default function StrengthSets({
   onRemoveSet,
   onUpdatePartName,
   onApplySuggestion,
+  onApplyPerSideSuggestion,
+  onPlateFromSuggestion,
   onPlateTarget,
 }: {
   part: PartEntry;
@@ -99,6 +104,15 @@ export default function StrengthSets({
   onRemoveSet: (si: number) => void;
   onUpdatePartName: (name: string, extra?: Partial<PartEntry>) => void;
   onApplySuggestion: (ns: NextSet) => void;
+  // Fill set 1 (or a new set) with a per-side suggestion — each side seeded from
+  // its own progression (#335). Either side may be null (no history that side).
+  onApplyPerSideSuggestion: (
+    left: NextSet | null,
+    right: NextSet | null
+  ) => void;
+  // Open the plate builder seeded with the suggestion's weight, loading it into
+  // set 1's weight field (the suggestion → plate deep-link, #335).
+  onPlateFromSuggestion: (weightKg: number) => void;
   onPlateTarget: (si: number, field: "weight" | "weightRight") => void;
 }) {
   const p = part;
@@ -125,35 +139,52 @@ export default function StrengthSets({
   const past = !isEdit
     ? hist?.sessions.filter((s) => s.activityId !== currentActivityId)
     : undefined;
-  let suggestion: NextSet | null = null;
-  if (hist && past?.length) {
-    // Seed off the prior session of the EXACT variant the user is entering
-    // (`p.name`), falling back to the newest session overall — the merged history
-    // (#331) interleaves implements, and a per-hand dumbbell load is a different
-    // progression from a barbell total (#393). pickSeedSessions is the same ONE
-    // decision getStrengthByExercise's lastSessionBest/lastSessionSets use, so the
-    // seed is implement-appropriate identically on both surfaces. Two same-day
-    // activities are still one session (as in getStrengthByExercise) — the anchor
-    // plus every working set so progression judges the session, not the single
-    // best set (#330).
-    const seed = pickSeedSessions(past, p.name);
-    const seedSets = seed.flatMap((s) => s.sets);
-    const seedBase = seed[0]?.baseKg ?? 0;
-    const best = sessionBestSet(seedSets, seedBase);
-    // A weighted lift whose newest session carries only weightless sets
-    // (possible via imports) has no load to progress from — no suggestion
-    // beats a from-zero "add 2.5 kg".
-    if (best && (hist.bodyweight || best.weightKg > 0))
-      suggestion = suggestNextSet(
-        {
-          exercise: p.name,
-          bodyweight: hist.bodyweight,
-          lastSessionBest: best,
-          lastSessionSets: sessionWorkSets(seedSets, seedBase),
-        },
-        units.weightUnit
-      );
-  }
+  // Seed off the prior session of the EXACT variant the user is entering
+  // (`p.name`), falling back to the newest session overall — the merged history
+  // (#331) interleaves implements, and a per-hand dumbbell load is a different
+  // progression from a barbell total (#393). pickSeedSessions is the same ONE
+  // decision getStrengthByExercise's lastSessionBest/lastSessionSets use, so the
+  // seed is implement-appropriate identically on both surfaces. Two same-day
+  // activities are still one session (as in getStrengthByExercise) — the anchor
+  // plus every working set so progression judges the session, not the single
+  // best set (#330).
+  const seed = hist && past?.length ? pickSeedSessions(past, p.name) : [];
+  const seedSets = seed.flatMap((s) => s.sets);
+  const seedBase = seed[0]?.baseKg ?? 0;
+  // Build a next-set suggestion from a set list (one shared computation, so a
+  // per-side left/right suggestion progresses each side by the SAME rule as the
+  // bilateral one — #335). A weighted lift whose newest session carries only
+  // weightless sets (possible via imports) has no load to progress from.
+  const buildSuggestion = (
+    sets: Parameters<typeof sessionBestSet>[0]
+  ): NextSet | null => {
+    if (!hist) return null;
+    const best = sessionBestSet(sets, seedBase);
+    if (!(best && (hist.bodyweight || best.weightKg > 0))) return null;
+    return suggestNextSet(
+      {
+        exercise: p.name,
+        bodyweight: hist.bodyweight,
+        lastSessionBest: best,
+        lastSessionSets: sessionWorkSets(sets, seedBase),
+      },
+      units.weightUnit
+    );
+  };
+  // Bilateral parts get one suggestion; per-side parts get an independent
+  // suggestion per side (#335) — sessionBestSet already treats each side as its
+  // own candidate, so seeding both from the stronger side would over-load the
+  // weaker one.
+  const suggestion =
+    !p.perSide && seedSets.length ? buildSuggestion(seedSets) : null;
+  const suggestionLeft =
+    p.perSide && seedSets.length
+      ? buildSuggestion(sideSets(seedSets, "left"))
+      : null;
+  const suggestionRight =
+    p.perSide && seedSets.length
+      ? buildSuggestion(sideSets(seedSets, "right"))
+      : null;
   const timed = isTimed(p.name);
   // A "content" fault means no set counts yet: flag the effort input (reps or
   // hold), and the weight too where a set needs one (not bodyweight/timed).
@@ -172,6 +203,18 @@ export default function StrengthSets({
   const last = p.sets[p.sets.length - 1];
   const canAddSet = !!last && setComplete(p.name, last, p.perSide);
   const total = partTotal(p);
+  // A pristine part (no set started): its set 1 shows the suggestion as ghost
+  // placeholders, and focusing an input fills it — auto-consuming the coached
+  // next set without a "Use" tap (#335). Once anything is typed it's no longer
+  // pristine, so the ghosts vanish and never fight real input.
+  const partUntouched = p.sets.every(
+    (s) =>
+      !setComplete(p.name, s, p.perSide) && !setPartial(p.name, s, p.perSide)
+  );
+  // The bilateral suggestion to auto-seed set 1 with (ghost + focus-fill). Only
+  // for a fresh bilateral part with a weighted suggestion — per-side seeds via
+  // its own Use button, and a bodyweight suggestion has no weight ghost.
+  const ghost = !p.perSide && partUntouched ? suggestion : null;
   // Live version of the journal card's missed-target marker, judged by the
   // same shared rule the saved data will be (completed sets only).
   const intent = partIntent(p);
@@ -182,6 +225,28 @@ export default function StrengthSets({
         .filter((s) => setComplete(p.name, s, false))
         .map((s) => ({ reps: Number(s.reps), target_reps: intent.target }))
     ) === "missed";
+  // Inherit the rep target from last session (#335): when the coached suggestion
+  // carries a declared target (the user's scheme) and this fresh part has none,
+  // adopt it so a fixed-scheme lifter (5×5) doesn't retype the target each time.
+  // Guarded by the last-seeded name so clearing the field doesn't re-seed it, and
+  // gated on `partUntouched` so it never overrides a session already in progress.
+  const seededTargetFor = useRef<string | null>(null);
+  useEffect(() => {
+    const name = p.name.trim();
+    if (seededTargetFor.current === name) return;
+    seededTargetFor.current = name;
+    if (
+      suggestion?.targetReps != null &&
+      !isTimed(p.name) &&
+      !p.perSide &&
+      partUntouched &&
+      !p.targetReps.trim() &&
+      !p.toFailure
+    )
+      onUpdatePart({ targetReps: String(suggestion.targetReps) });
+    // Re-run only when the exercise changes; the ref prevents mid-session re-seeds.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [p.name]);
   const variant = variantOf(p.name);
   // For lifts with no selectable equipment variant, show their normal implement.
   const defaultEq = variant ? null : defaultEquipment(p.name);
@@ -205,7 +270,9 @@ export default function StrengthSets({
   const effortInput = (
     value: string,
     onChange: (v: string) => void,
-    blocked: boolean
+    blocked: boolean,
+    ghostReps?: number | null,
+    onGhostFocus?: () => void
   ) => {
     if (!timed) {
       return (
@@ -214,7 +281,8 @@ export default function StrengthSets({
           min="1"
           value={value}
           onChange={(e) => onChange(stripNonPositive(e.target.value))}
-          placeholder="reps"
+          onFocus={onGhostFocus}
+          placeholder={ghostReps != null ? String(ghostReps) : "reps"}
           className={`input bg-white dark:bg-ink-900 ${
             blocked ? blockedField : ""
           }`}
@@ -404,7 +472,9 @@ export default function StrengthSets({
       )}
       {/* The coached next set (same progression as the exercise detail
           panel's card) with a one-tap fill, so the suggestion can be acted
-          on right where sets are logged. */}
+          on right where sets are logged. For a fresh bilateral part it's also
+          shown as ghost placeholders on set 1 (#335) — this card keeps the
+          rationale and the explicit Use / plate actions. */}
       {suggestion && (
         <div className="mt-2 rounded-md border border-brand-200 bg-brand-50/60 px-2.5 py-1.5 text-xs dark:border-brand-900 dark:bg-brand-950/40">
           <div className="flex items-center justify-between gap-2">
@@ -415,23 +485,69 @@ export default function StrengthSets({
               <span className="font-semibold tabular-nums text-slate-800 dark:text-slate-100">
                 {nextSetText(suggestion, units.weightUnit)}
               </span>
-              {/* No one-tap fill for per-side parts: the suggestion seeds
-                  from the stronger side, so filling both sides with it
-                  would over-load the weaker one. */}
-              {!p.perSide && (
-                <button
-                  type="button"
-                  onClick={() => onApplySuggestion(suggestion)}
-                  title="Fill this into a set"
-                  className="rounded-md border border-brand-300 px-2 py-0.5 font-medium text-brand-600 transition hover:bg-brand-500 hover:text-white dark:border-brand-800 dark:text-brand-400 dark:hover:bg-brand-600 dark:hover:text-white"
-                >
-                  Use
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => onApplySuggestion(suggestion)}
+                title="Fill this into a set"
+                className="rounded-md border border-brand-300 px-2 py-0.5 font-medium text-brand-600 transition hover:bg-brand-500 hover:text-white dark:border-brand-800 dark:text-brand-400 dark:hover:bg-brand-600 dark:hover:text-white"
+              >
+                Use
+              </button>
+              {/* Barbell lifts: jump straight into the plate builder seeded with
+                  the suggested load, landing it in set 1's weight (#335). */}
+              {showPlate &&
+                !suggestion.bodyweight &&
+                suggestion.weightKg > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => onPlateFromSuggestion(suggestion.weightKg)}
+                    title="Load these plates on the bar"
+                    aria-label="Load these plates on the bar"
+                    className="flex h-6 w-6 items-center justify-center rounded-md border border-brand-300 text-brand-600 transition hover:bg-brand-500 hover:text-white dark:border-brand-800 dark:text-brand-400 dark:hover:bg-brand-600 dark:hover:text-white"
+                  >
+                    <IconBarbell className="h-3.5 w-3.5" />
+                  </button>
+                )}
             </span>
           </div>
           <p className="mt-0.5 text-slate-500 dark:text-slate-400">
             {suggestion.rationale}
+          </p>
+        </div>
+      )}
+      {/* Per-side parts get an independent suggestion per side (#335): each side
+          progresses off its own history, so a stronger side never over-loads the
+          weaker one. One Use fills set 1 with both sides. */}
+      {p.perSide && (suggestionLeft || suggestionRight) && (
+        <div className="mt-2 rounded-md border border-brand-200 bg-brand-50/60 px-2.5 py-1.5 text-xs dark:border-brand-900 dark:bg-brand-950/40">
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-medium text-brand-600 dark:text-brand-400">
+              Next set
+            </span>
+            <span className="flex items-center gap-2.5">
+              <span className="font-semibold tabular-nums text-slate-800 dark:text-slate-100">
+                {suggestionLeft
+                  ? `L ${nextSetText(suggestionLeft, units.weightUnit)}`
+                  : "L —"}
+                {" · "}
+                {suggestionRight
+                  ? `R ${nextSetText(suggestionRight, units.weightUnit)}`
+                  : "R —"}
+              </span>
+              <button
+                type="button"
+                onClick={() =>
+                  onApplyPerSideSuggestion(suggestionLeft, suggestionRight)
+                }
+                title="Fill both sides into a set"
+                className="rounded-md border border-brand-300 px-2 py-0.5 font-medium text-brand-600 transition hover:bg-brand-500 hover:text-white dark:border-brand-800 dark:text-brand-400 dark:hover:bg-brand-600 dark:hover:text-white"
+              >
+                Use
+              </button>
+            </span>
+          </div>
+          <p className="mt-0.5 text-slate-500 dark:text-slate-400">
+            {(suggestionLeft ?? suggestionRight)!.rationale}
           </p>
         </div>
       )}
@@ -551,13 +667,23 @@ export default function StrengthSets({
                   type="number"
                   step="0.5"
                   min="0"
+                  data-testid={si === 0 ? "set1-weight" : undefined}
                   value={s.weight}
                   onChange={(e) =>
                     onUpdateSet(si, {
                       weight: stripNegative(e.target.value),
                     })
                   }
-                  placeholder={units.weightUnit}
+                  onFocus={
+                    si === 0 && ghost
+                      ? () => onApplySuggestion(ghost)
+                      : undefined
+                  }
+                  placeholder={
+                    si === 0 && ghost && !ghost.bodyweight
+                      ? String(dispWeight(ghost.weightKg, units.weightUnit, 1))
+                      : units.weightUnit
+                  }
                   className={`input bg-white dark:bg-ink-900 ${
                     sideFlags(s.weight, s.reps, s.duration).weight
                       ? blockedField
@@ -569,7 +695,9 @@ export default function StrengthSets({
                 {effortInput(
                   timed ? s.duration : s.reps,
                   (v) => onUpdateSet(si, timed ? { duration: v } : { reps: v }),
-                  sideFlags(s.weight, s.reps, s.duration).effort
+                  sideFlags(s.weight, s.reps, s.duration).effort,
+                  si === 0 && ghost && !timed ? ghost.reps : null,
+                  si === 0 && ghost ? () => onApplySuggestion(ghost) : undefined
                 )}
               </div>
             )}

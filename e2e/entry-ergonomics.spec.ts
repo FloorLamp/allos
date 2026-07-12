@@ -202,6 +202,50 @@ test("logging a manual cardio activity auto-fills an editable estimated-calorie 
     .click();
 });
 
+test("a fresh strength part auto-seeds set 1 from the coached suggestion (#335)", async ({
+  page,
+}) => {
+  await page.goto("/training"); // default "Log" tab renders the Journal feed
+
+  // Open a fresh create form (fields addressed by testid/role — see the
+  // est-calories spec's note on why the editor isn't main-scoped).
+  await page
+    .getByRole("main")
+    .getByRole("button", { name: "New activity" })
+    .click();
+
+  // Pick a lift the seed trains repeatedly (Barbell Bench Press, weeks of
+  // 60 kg → +1 kg/wk history) so a coached next-set suggestion exists.
+  await page.getByPlaceholder(/What did you do/).fill("Barbell Bench Press");
+  await page
+    .getByRole("listbox")
+    .getByRole("button", { name: "Barbell Bench Press", exact: true })
+    .click();
+
+  // The coached "Next set" card renders for a fresh part with history.
+  await expect(page.getByText("Next set")).toBeVisible();
+
+  // Set 1's weight shows the suggested load as a ghost PLACEHOLDER (a number,
+  // not the bare "kg" unit) — the auto-seed, no "Use" tap needed (#335).
+  const weight = page.getByTestId("set1-weight");
+  await expect(weight).toHaveAttribute("placeholder", /^\d/);
+
+  // Focusing the field fills it (weight + reps) from the suggestion, completing
+  // the set so it auto-saves — the Delete button appearing confirms the persist.
+  await weight.focus();
+  await expect(weight).toHaveValue(/^\d/);
+  await expect(
+    page.getByRole("button", { name: "Delete", exact: true })
+  ).toBeVisible();
+
+  // Clean up the auto-saved draft so the shared seed DB is left untouched.
+  await page.getByRole("button", { name: "Delete", exact: true }).click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Delete", exact: true })
+    .click();
+});
+
 test("a failed activity save surfaces an error, never a false 'Saved ✓' (#332)", async ({
   page,
 }) => {

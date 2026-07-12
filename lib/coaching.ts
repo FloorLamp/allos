@@ -199,6 +199,24 @@ export function sessionWorkSets(
   return out;
 }
 
+// One side of a per-side session's sets, projected onto the bilateral shape so
+// sessionBestSet/sessionWorkSets/suggestNextSet judge that side on its OWN
+// history (#335). A per-side suggestion seeds each side independently — the
+// weaker side is never loaded off the stronger one's numbers.
+export function sideSets(
+  sets: SessionSet[],
+  side: "left" | "right"
+): SessionSet[] {
+  return sets.map((s) => ({
+    weight_kg: side === "left" ? s.weight_kg : s.weight_kg_right,
+    reps: side === "left" ? s.reps : s.reps_right,
+    weight_kg_right: null,
+    reps_right: null,
+    target_reps: s.target_reps,
+    to_failure: s.to_failure,
+  }));
+}
+
 // The load after one increment, chosen in the user's unit so it stays loadable.
 // kg users get the canonical 2.5/5 kg jump; lb users get a native 5/10 lb jump
 // snapped to the nearest multiple of 5 lb (a plate-loadable number, not a
