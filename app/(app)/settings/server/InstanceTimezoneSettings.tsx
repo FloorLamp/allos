@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { saveInstanceTimezone } from "../actions";
+import { saveInstanceTimezone } from "./actions";
 import SaveStatus from "@/components/SaveStatus";
 
 // The GLOBAL instance-default timezone: seeds newly created profiles and backs

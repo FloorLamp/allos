@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { savePublicUrl } from "./actions";
+import { savePublicUrl } from "./server/actions";
 import SaveStatus from "@/components/SaveStatus";
 
 // The externally reachable base URL of the app — one shared setting consumed by

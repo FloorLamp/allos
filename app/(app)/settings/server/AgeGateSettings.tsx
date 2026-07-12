@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { saveMinTrainingAge } from "../actions";
+import { saveMinTrainingAge } from "./actions";
 import SaveStatus from "@/components/SaveStatus";
 
 // The GLOBAL minimum age (whole years) for the fitness-oriented surfaces. When a

@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { saveTrainingZones } from "../actions";
+import { saveTrainingZones } from "./actions";
 import SaveStatus from "@/components/SaveStatus";
 
 // Training HR-zone settings (issue #159) — PROFILE-scoped, following the active

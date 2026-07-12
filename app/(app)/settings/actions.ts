@@ -1,9 +1,18 @@
 "use server";
+// Login-scoped settings actions — the Preferences tab (Settings) plus the
+// account-security controls (change-own-password, active sessions, web push, 2FA).
+// These operate on the caller's own LOGIN (unit prefs keyed by login.id, session
+// teardown, push subscriptions, TOTP), never profile-owned data, so they gate on
+// requireSession()/requireLoginWriteAccess() and are allowlisted in the
+// write-access enforcement test on that basis.
+//
+// The admin/global actions (Server tab) and active-profile actions (Profile tab)
+// were split out by auth tier (#319) into ./server/actions and ./profile/actions.
+// A "use server" file may only export async functions (Next forbids re-exports),
+// so those tabs' components import directly from the split modules.
 import {
   requireSession,
-  requireWriteAccess,
   requireLoginWriteAccess,
-  requireAdmin,
   destroyOtherSessionsForCurrent,
   revokeSession,
 } from "@/lib/auth";
@@ -16,62 +25,14 @@ import {
   regenerateRecoveryCodes,
   verifyLoginSecondFactor,
 } from "@/lib/two-factor";
-
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { hashPassword, verifyPassword } from "@/lib/password";
 import {
   setUnitPrefs,
-  getUserSex,
-  setUserSex,
-  getUserBirthdate,
-  setUserBirthdate,
-  getUserFullName,
-  setUserFullName,
-  getUserReproductiveStatus,
-  setUserReproductiveStatus,
-  getStoredAge,
-  setStoredAge,
-  getTelegramBotConfig,
-  setProfileTelegram,
-  setTelegramBotConfig,
-  setNotifySchedule,
-  getProfileHomeAssistant,
-  setProfileHomeAssistant,
-  getPublicUrl,
-  setPublicUrl,
-  isValidTimezone,
-  setTimezone,
-  setInstanceTimezone,
-  isValidWeekStart,
-  setWeekStart,
-  isValidWeekMode,
-  setWeekMode,
-  setAiPrefs,
-  getBackupSettings,
-  setBackupSettings,
-  setAuditRetentionMonths,
-  setEmergencyCardEnabled,
-  setBloodType,
-  setEmergencyContact,
-  setSmokingHistory,
-  setMaxHrOverride,
-  setZone2WeeklyTargetMin,
   type DistanceUnit,
   type WeightUnit,
 } from "@/lib/settings";
-import {
-  parsePackYears,
-  parseQuitYear,
-  parseSmokingStatus,
-} from "@/lib/smoking";
-import { performBackup } from "@/lib/backup";
-import { formatBytes } from "@/lib/format-bytes";
-import { setMinTrainingAge } from "@/lib/age-gate";
-import { reconcileFlags } from "@/lib/queries";
-import { normalizePublicUrl } from "@/lib/public-url";
-import { dispatch } from "@/lib/notifications";
-import { setWebhook, deleteWebhook } from "@/lib/notifications/telegram";
 import {
   ensureVapidKeys,
   savePushSubscription,
@@ -79,13 +40,6 @@ import {
   sendTestPushToLogin,
 } from "@/lib/notifications/push";
 import { parsePushSubscription } from "@/lib/notifications/push-core";
-import { sendHomeAssistantTest } from "@/lib/notifications/home-assistant";
-import {
-  isValidWebhookUrl,
-  TOGGLEABLE_HA_KINDS,
-} from "@/lib/notifications/home-assistant-core";
-import type { NotificationKind } from "@/lib/notifications/types";
-import type { ReproductiveStatus, Sex } from "@/lib/types";
 import { recordAudit } from "@/lib/audit";
 import { AUDIT_ACTIONS } from "@/lib/audit-actions";
 import { createLogger } from "@/lib/log";
@@ -107,187 +61,6 @@ export async function saveUnitPrefs(formData: FormData) {
   setUnitPrefs(login.id, { weightUnit, distanceUnit });
   // Units affect display across the whole app.
   revalidatePath("/", "layout");
-}
-
-// ---- Profile scope (follows the active profile) ----
-
-// Biological sex, birthdate/age, and timezone are properties of the tracked
-// person, so they're keyed by profile.id. Any login acting as the profile may
-// edit them (members included).
-export async function saveProfileSettings(formData: FormData) {
-  const { profile } = await requireWriteAccess();
-
-  // Biological sex: drives sex-specific optimal biomarker bands. When it
-  // changes, re-derive the stored non-optimal flags so the records table and
-  // range filters reflect the new optimal ranges.
-  const raw = formData.get("sex");
-  const sex: Sex | null =
-    raw === "male" ? "male" : raw === "female" ? "female" : null;
-  const sexChanged = sex !== getUserSex(profile.id);
-  if (sexChanged) setUserSex(profile.id, sex);
-
-  // Reproductive (menopausal) status — female physiology only. Only accept a value
-  // when the sex is female; otherwise force null so switching away from female
-  // clears any stale status. Like sex, a change re-derives the stored hormone flags.
-  const rsRaw = formData.get("reproductive_status");
-  const reproductiveStatus: ReproductiveStatus | null =
-    sex === "female" &&
-    (rsRaw === "premenopausal" || rsRaw === "postmenopausal")
-      ? rsRaw
-      : null;
-  const rsChanged =
-    reproductiveStatus !== getUserReproductiveStatus(profile.id);
-  if (rsChanged) setUserReproductiveStatus(profile.id, reproductiveStatus);
-
-  // Both sex and reproductive status feed the reference-range selection, so a
-  // change to either re-reconciles the flags and refreshes the biomarker views.
-  if (sexChanged || rsChanged) {
-    reconcileFlags(profile.id);
-    revalidatePath("/biomarkers");
-    revalidatePath("/biomarkers/view", "page");
-  }
-
-  // Birthdate (ISO YYYY-MM-DD); the profile's age is derived from it. An <input
-  // type="date"> emits either a valid date or "". Setting a birthdate also
-  // clears any stored age fallback (handled in setUserBirthdate).
-  const bdRaw = String(formData.get("birthdate") ?? "").trim();
-  const birthdate = /^\d{4}-\d{2}-\d{2}$/.test(bdRaw) ? bdRaw : null;
-  if (birthdate !== getUserBirthdate(profile.id))
-    setUserBirthdate(profile.id, birthdate);
-
-  // Manual age is editable only while no birthdate is set (a birthdate always
-  // derives the age and clears this). Blank clears the fallback; an invalid
-  // number is ignored so a fat-fingered entry can't wipe a good value.
-  if (!birthdate) {
-    const ageRaw = String(formData.get("age") ?? "").trim();
-    if (ageRaw === "") {
-      if (getStoredAge(profile.id) !== null) setStoredAge(profile.id, null);
-    } else {
-      const age = Number(ageRaw);
-      if (
-        Number.isInteger(age) &&
-        age > 0 &&
-        age < 150 &&
-        age !== getStoredAge(profile.id)
-      )
-        setStoredAge(profile.id, age);
-    }
-  }
-
-  // Full/legal name of the tracked person — distinct from the profile's display
-  // name. Blank clears it. (Only save when the field was submitted, so callers
-  // that don't render it can't wipe an adopted value.)
-  if (formData.has("full_name")) {
-    const fullName = String(formData.get("full_name") ?? "").trim();
-    if (fullName !== (getUserFullName(profile.id) ?? ""))
-      setUserFullName(profile.id, fullName || null);
-  }
-
-  // Timezone defines "today" for this profile (day-window queries, streaks,
-  // reminders). Ignore an invalid value rather than throwing — keep the prior
-  // setting.
-  const tz = String(formData.get("timezone") ?? "").trim();
-  if (tz && isValidTimezone(tz)) setTimezone(profile.id, tz);
-
-  // Week start (0=Sun … 6=Sat): where calendars break and, in calendar mode, when
-  // the weekly-routine counters reset. Ignore a missing/empty/out-of-range value
-  // rather than letting Number(null)===0 silently force Sunday.
-  const wsRaw = String(formData.get("week_start") ?? "").trim();
-  const ws = Number(wsRaw);
-  if (wsRaw !== "" && isValidWeekStart(ws)) setWeekStart(profile.id, ws);
-
-  // Weekly counting mode: calendar week vs rolling 7 days for the routine
-  // counters and the journal week summary. Ignore an unrecognized value.
-  const wm = String(formData.get("week_mode") ?? "").trim();
-  if (isValidWeekMode(wm)) setWeekMode(profile.id, wm);
-
-  // These affect display across the whole app.
-  revalidatePath("/", "layout");
-}
-
-// ---- Smoking history (profile scope, issue #83) ----
-// The structured smoking record (status / pack-years / quit year) — a property of
-// the tracked person, so profile-scoped; any login with write access to the profile
-// may edit it. Marks the entry 'manual' so a later CCD re-import never clobbers it.
-// pack-years apply only to an ever-smoker and the quit year only to a former smoker
-// (the setter drops the rest); the assessor uses this to activate the risk-gated
-// lung LDCT / AAA screening reminders.
-export async function saveSmokingHistory(formData: FormData) {
-  const { profile } = await requireWriteAccess();
-  const status = parseSmokingStatus(
-    String(formData.get("smoking_status") ?? "")
-  );
-  const packYears = parsePackYears(String(formData.get("pack_years") ?? ""));
-  // Bound the quit year to a real, non-future year; parseQuitYear already rejects
-  // an out-of-range value, and a future year is meaningless for "quit N years ago".
-  const thisYear = new Date().getFullYear();
-  const quitYearRaw = parseQuitYear(String(formData.get("quit_year") ?? ""));
-  const quitYear =
-    quitYearRaw != null && quitYearRaw <= thisYear ? quitYearRaw : null;
-
-  setSmokingHistory(profile.id, { status, packYears, quitYear });
-  // The record drives the preventive reminders (Upcoming) and the profile page.
-  revalidatePath("/upcoming");
-  revalidatePath("/settings/profile");
-}
-
-// ---- Training HR zones (profile scope, issue #159) ----
-
-// The manual max-HR override (bpm) and the weekly Zone 2 minutes target that drive
-// the Trends → Fitness intensity-distribution view. Both profile-scoped properties
-// of the tracked person; any login with write access may edit them. A blank/zero
-// max-HR clears the override (falls back to the age formula); a blank Zone 2 target
-// leaves the stored value untouched (its getter supplies the default).
-export async function saveTrainingZones(formData: FormData) {
-  const { profile } = await requireWriteAccess();
-
-  const maxHrRaw = String(formData.get("max_hr_override") ?? "").trim();
-  if (maxHrRaw === "") {
-    setMaxHrOverride(profile.id, null);
-  } else {
-    const bpm = Number(maxHrRaw);
-    // Guard an implausible entry rather than storing junk; a real max HR sits well
-    // inside this band. Out-of-range input is ignored (keeps the prior value).
-    if (Number.isFinite(bpm) && bpm >= 100 && bpm <= 240) {
-      setMaxHrOverride(profile.id, Math.round(bpm));
-    }
-  }
-
-  const targetRaw = String(
-    formData.get("zone2_weekly_target_min") ?? ""
-  ).trim();
-  if (targetRaw !== "") {
-    const min = Number(targetRaw);
-    if (Number.isFinite(min) && min >= 0 && min <= 5000) {
-      setZone2WeeklyTargetMin(profile.id, Math.round(min));
-    }
-  }
-
-  revalidatePath("/settings/profile");
-  revalidatePath("/trends");
-}
-
-// ---- Emergency card (profile scope, issue #42) ----
-
-// The offline emergency card opt-in, manual blood type, and emergency contact —
-// all properties of the tracked person, so profile-scoped (any login acting as the
-// profile may edit them). setBloodType normalizes/validates the value; a blank or
-// unrecognized blood type clears it.
-export async function saveEmergencyCardSettings(formData: FormData) {
-  const { profile } = await requireWriteAccess();
-  const enabledRaw = formData.get("emergency_enabled");
-  setEmergencyCardEnabled(
-    profile.id,
-    enabledRaw === "1" || enabledRaw === "on"
-  );
-  setBloodType(profile.id, String(formData.get("blood_type") ?? ""));
-  setEmergencyContact(profile.id, {
-    name: String(formData.get("emergency_contact_name") ?? ""),
-    phone: String(formData.get("emergency_contact_phone") ?? ""),
-    relation: String(formData.get("emergency_contact_relation") ?? ""),
-  });
-  revalidatePath("/settings/profile");
-  revalidatePath("/emergency");
 }
 
 // ---- Change own password ----
@@ -352,266 +125,6 @@ export async function signOutOtherSessions() {
   const { login } = await requireLoginWriteAccess();
   await destroyOtherSessionsForCurrent(login.id);
   revalidatePath("/settings");
-}
-
-// ---- AI (global, admin-only) ----
-
-export async function saveAiSettings(formData: FormData) {
-  await requireAdmin();
-  // Accept both the "1" our client sends and a native checkbox's "on".
-  const on = (key: string) => {
-    const v = formData.get(key);
-    return v === "1" || v === "on";
-  };
-  setAiPrefs({
-    autoSupplementSuggestions: on("auto_supplement_suggestions"),
-    autoInsights: on("auto_insights"),
-  });
-  revalidatePath("/settings/server");
-}
-
-// ---- Public URL (global, admin-only) ----
-// Shared by Telegram webhook, Strava OAuth, Health Connect.
-
-export async function savePublicUrl(
-  formData: FormData
-): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
-  await requireAdmin();
-  const res = normalizePublicUrl(String(formData.get("public_url") ?? ""));
-  if (!res.ok) return res;
-  setPublicUrl(res.url);
-  revalidatePath("/settings/server");
-  revalidatePath("/data", "layout");
-  return res;
-}
-
-// ---- Instance-default timezone (global, admin-only) ----
-// Seeds new profiles and backstops any profile without its own timezone.
-
-export async function saveInstanceTimezone(formData: FormData) {
-  await requireAdmin();
-  const tz = String(formData.get("timezone") ?? "").trim();
-  if (tz && isValidTimezone(tz)) setInstanceTimezone(tz);
-  revalidatePath("/settings/server");
-}
-
-// ---- Automated backups (global, admin-only) ----
-// Nightly SQLite snapshot config + on-demand snapshot. See lib/backup.ts.
-
-export async function saveBackupSettings(formData: FormData) {
-  await requireAdmin();
-  const on = (key: string) => {
-    const v = formData.get(key);
-    return v === "1" || v === "on";
-  };
-  const num = (key: string, fallback: number) => {
-    const n = Number(formData.get(key));
-    return Number.isInteger(n) && n >= 0 ? n : fallback;
-  };
-  const prev = getBackupSettings();
-  setBackupSettings({
-    enabled: on("backup_enabled"),
-    hour: (() => {
-      const h = num("backup_hour", prev.hour);
-      return h >= 0 && h <= 23 ? h : prev.hour;
-    })(),
-    keepDaily: num("backup_keep_daily", prev.keepDaily),
-    keepWeekly: num("backup_keep_weekly", prev.keepWeekly),
-  });
-  revalidatePath("/settings/server");
-}
-
-// On-demand snapshot. Surfaces the created file (name + size) or the failure —
-// e.g. a full disk — rather than failing silently.
-export async function backupNow(): Promise<{
-  ok: boolean;
-  message: string;
-}> {
-  await requireAdmin();
-  try {
-    const { name, size, verification } = performBackup();
-    revalidatePath("/settings/server");
-    if (verification.integrity !== "ok") {
-      // The snapshot wrote but failed PRAGMA integrity_check — don't report it as
-      // a clean backup (performBackup already recorded the error and kept older
-      // good snapshots).
-      return {
-        ok: false,
-        message: `Backup ${name} failed integrity check: ${verification.detail ?? "corrupt snapshot"}.`,
-      };
-    }
-    return {
-      ok: true,
-      message: `Backup created and verified: ${name} (${formatBytes(size)}).`,
-    };
-  } catch (e) {
-    return { ok: false, message: e instanceof Error ? e.message : String(e) };
-  }
-}
-
-// ---- Audit-log retention (global, admin-only) ----
-// The window (whole months) the hourly notify tick keeps `audit_events` for before
-// pruning older rows (#98). setAuditRetentionMonths clamps to the allowed range.
-
-export async function saveAuditRetention(formData: FormData) {
-  await requireAdmin();
-  const raw = String(formData.get("audit_retention_months") ?? "").trim();
-  setAuditRetentionMonths(Number(raw));
-  revalidatePath("/settings/server");
-}
-
-// ---- Fitness age gate (global, admin-only) ----
-// The minimum age (whole years) a profile must be to see Training and AI
-// Insights surfaces + the Equipment tab. Empty / non-positive clears it
-// (gate off). Setting it changes nav/tabs/pages for every profile, so the whole
-// app layout is revalidated. See lib/age-gate.ts.
-
-export async function saveMinTrainingAge(formData: FormData) {
-  await requireAdmin();
-  const raw = String(formData.get("min_training_age") ?? "").trim();
-  setMinTrainingAge(raw === "" ? null : Number(raw));
-  revalidatePath("/", "layout");
-  revalidatePath("/settings/server");
-}
-
-// ---- Notifications: profile delivery target (profile scope) ----
-
-// The per-profile parts of notifications: whether reminders are on for this
-// profile, the chat they're sent to, and the send schedule. The global bot
-// credentials are set separately (admin-only, see saveTelegramBotConfig).
-export async function saveNotificationPrefs(formData: FormData) {
-  const { profile } = await requireWriteAccess();
-  const enabledRaw = formData.get("telegram_enabled");
-  setProfileTelegram(profile.id, {
-    telegramEnabled: enabledRaw === "on" || enabledRaw === "1",
-    telegramChatId: String(formData.get("telegram_chat_id") ?? ""),
-  });
-
-  // Per-slot send schedule. "" / "off" → that window is disabled.
-  const hour = (key: string): number | null => {
-    const raw = String(formData.get(key) ?? "").trim();
-    if (raw === "" || raw === "off") return null;
-    const n = Number(raw);
-    return Number.isInteger(n) && n >= 0 && n <= 23 ? n : null;
-  };
-  setNotifySchedule(profile.id, {
-    supplementHours: {
-      Morning: hour("supp_morning_hour"),
-      Midday: hour("supp_midday_hour"),
-      Evening: hour("supp_evening_hour"),
-      Bedtime: hour("supp_bedtime_hour"),
-    },
-    workoutEnabled:
-      formData.get("workout_enabled") === "on" ||
-      formData.get("workout_enabled") === "1",
-    // Morning digest: "" / "off" → off.
-    digestHour: hour("digest_hour"),
-    // Weekly recap (#32): weekday 0-6, "" / "off" → off.
-    weeklyRecapDay: (() => {
-      const raw = String(formData.get("recap_day") ?? "").trim();
-      if (raw === "" || raw === "off") return null;
-      const n = Number(raw);
-      return Number.isInteger(n) && n >= 0 && n <= 6 ? n : null;
-    })(),
-    weeklyRecapHour: hour("recap_hour") ?? 9,
-    // Milestone alerts (#32): default on.
-    milestonesEnabled:
-      formData.get("milestones_enabled") === "on" ||
-      formData.get("milestones_enabled") === "1",
-    // Preventive-care reminders (#87): default on.
-    preventiveEnabled:
-      formData.get("preventive_enabled") === "on" ||
-      formData.get("preventive_enabled") === "1",
-  });
-  revalidatePath("/settings/profile");
-}
-
-export async function sendTestNotification(): Promise<{
-  ok: boolean;
-  message: string;
-}> {
-  const { profile } = await requireWriteAccess();
-  const results = await dispatch(profile.id, {
-    title: "Test notification",
-    body: "Notifications are working ✅",
-    kind: "test",
-  });
-  if (results.length === 0)
-    return {
-      ok: false,
-      message:
-        "No channel configured — check “Enable Telegram notifications”, fill in your chat id, and ask an admin to set the bot token on Settings → Server.",
-    };
-  const failed = results.filter((r) => !r.ok);
-  if (failed.length)
-    return {
-      ok: false,
-      message: failed.map((f) => `${f.id}: ${f.error}`).join("; "),
-    };
-  return { ok: true, message: "Sent ✅ — check your Telegram." };
-}
-
-// ---- Notifications: Home Assistant channel (profile scope, issue #248) ----
-
-// The per-profile Home Assistant webhook target: enable toggle, webhook URL,
-// optional shared secret, and which notification kinds to forward (a household may
-// want doses announced but not weekly recaps). Profile-scoped like the Telegram
-// delivery target, so any login with write access to the profile may edit it.
-// Rejects a malformed URL when enabling so a typo can't silently disable delivery.
-export async function saveHomeAssistantPrefs(
-  formData: FormData
-): Promise<{ ok: true } | { ok: false; error: string }> {
-  const { profile } = await requireWriteAccess();
-  const enabled =
-    formData.get("ha_enabled") === "on" || formData.get("ha_enabled") === "1";
-  const webhookUrl = String(formData.get("ha_webhook_url") ?? "").trim();
-  const secret = String(formData.get("ha_secret") ?? "").trim();
-
-  if (enabled && !isValidWebhookUrl(webhookUrl)) {
-    return {
-      ok: false,
-      error:
-        "Enter a valid Home Assistant webhook URL (http(s)://host:8123/api/webhook/<id>).",
-    };
-  }
-
-  // A checkbox per toggleable kind: checked ("1") = forward; the DISABLED set is the
-  // kinds NOT checked. Absent field also reads as disabled (an unchecked box submits
-  // nothing), so the form must render every kind.
-  const disabledKinds: NotificationKind[] = TOGGLEABLE_HA_KINDS.filter(
-    ({ kind }) => formData.get(`ha_kind_${kind}`) !== "1"
-  ).map(({ kind }) => kind);
-
-  setProfileHomeAssistant(profile.id, {
-    enabled,
-    webhookUrl,
-    secret,
-    disabledKinds,
-  });
-  revalidatePath("/settings/profile");
-  return { ok: true };
-}
-
-// Send a test announcement to the profile's HA webhook, independent of the
-// Telegram/push test (a household may run only HA). Reports the failure verbatim so
-// a wrong URL / unreachable HA is visible.
-export async function sendTestHomeAssistant(): Promise<{
-  ok: boolean;
-  message: string;
-}> {
-  const { profile } = await requireWriteAccess();
-  try {
-    const result = await sendHomeAssistantTest(profile.id);
-    if (result === "not-configured")
-      return {
-        ok: false,
-        message:
-          "No Home Assistant webhook configured — enable it and paste your HA webhook URL first.",
-      };
-    return { ok: true, message: "Sent ✅ — check Home Assistant." };
-  } catch (e) {
-    return { ok: false, message: e instanceof Error ? e.message : String(e) };
-  }
 }
 
 // ---- Web Push (login scope, issue #17) ----
@@ -689,63 +202,6 @@ export async function sendTestPush(): Promise<{
           "No subscribed browsers for your login. Enable push on this browser first.",
       };
     return { ok: true, message: "Sent ✅ — check your notifications." };
-  } catch (e) {
-    return { ok: false, message: e instanceof Error ? e.message : String(e) };
-  }
-}
-
-// ---- Notifications: global bot credentials (global, admin-only) ----
-
-// The bot token and inbound transport mode are app-wide (a single bot serves
-// every profile), so only an admin may change them.
-export async function saveTelegramBotConfig(formData: FormData) {
-  await requireAdmin();
-  const prevMode = getTelegramBotConfig().telegramMode;
-  const cfg = setTelegramBotConfig({
-    telegramBotToken: String(formData.get("telegram_bot_token") ?? ""),
-    telegramMode:
-      formData.get("telegram_mode") === "webhook" ? "webhook" : "poll",
-  });
-  // Switching to polling: drop any registered webhook, since Telegram rejects
-  // getUpdates while one is set. Best-effort — the poller reports 409s anyway.
-  if (
-    prevMode === "webhook" &&
-    cfg.telegramMode === "poll" &&
-    cfg.telegramBotToken
-  ) {
-    try {
-      await deleteWebhook();
-    } catch (e) {
-      log.warn("deleteWebhook on mode switch failed", {
-        err: e instanceof Error ? e.message : String(e),
-      });
-    }
-  }
-  revalidatePath("/settings/server");
-}
-
-export async function registerTelegramWebhook(): Promise<{
-  ok: boolean;
-  message: string;
-}> {
-  await requireAdmin();
-  const cfg = getTelegramBotConfig();
-  if (!cfg.telegramBotToken)
-    return { ok: false, message: "Save your bot token first." };
-  if (!cfg.telegramWebhookSecret)
-    return {
-      ok: false,
-      message: "Save settings first to generate a webhook secret.",
-    };
-  const url = getPublicUrl();
-  if (!url)
-    return {
-      ok: false,
-      message: "Set the public app URL (in the card above) first.",
-    };
-  try {
-    await setWebhook(`${url}/api/telegram/webhook`, cfg.telegramWebhookSecret);
-    return { ok: true, message: "Webhook registered ✅" };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : String(e) };
   }

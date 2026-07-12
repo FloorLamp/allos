@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { saveSmokingHistory } from "../actions";
+import { saveSmokingHistory } from "./actions";
 import SaveStatus from "@/components/SaveStatus";
 import type { SmokingHistory, SmokingStatusValue } from "@/lib/smoking";
 

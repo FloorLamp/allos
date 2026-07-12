@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { AiPrefs } from "@/lib/settings";
 import type { AiEndpointInfo } from "@/lib/ai-client";
-import { saveAiSettings } from "./actions";
+import { saveAiSettings } from "./server/actions";
 import SaveStatus from "@/components/SaveStatus";
 
 export default function AiSettings({

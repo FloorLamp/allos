@@ -10,7 +10,7 @@ import { revalidatePath } from "next/cache";
 import {
   saveHomeAssistantPrefs,
   sendTestHomeAssistant,
-} from "@/app/(app)/settings/actions";
+} from "@/app/(app)/settings/profile/actions";
 import { getProfileHomeAssistant } from "@/lib/settings";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 

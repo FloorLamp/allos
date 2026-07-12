@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { TelegramBotConfig, TelegramMode } from "@/lib/settings";
 import type { NotifyErrorMarker } from "@/lib/notifications/delivery-status";
-import { saveTelegramBotConfig, registerTelegramWebhook } from "../actions";
+import { saveTelegramBotConfig, registerTelegramWebhook } from "./actions";
 import SaveStatus from "@/components/SaveStatus";
 
 // The GLOBAL Telegram bot credentials (token + inbound transport mode). One bot
