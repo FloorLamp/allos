@@ -74,6 +74,16 @@ export interface VaccineEntry {
   // vaccine's target (matched case-insensitively against medical_records).
   antibodyMarkers: string[];
   schedule: VaccineSchedule;
+  // Issue #552: a childhood-only primary series with NO routine adult catch-up.
+  // An adult who never received it (born before it existed, or simply aged out)
+  // is not "behind" — there is no adult indication to catch up on. The status
+  // engine reads this to resolve an adult's never-recorded dose to
+  // `not_recommended` (age-inappropriate, ranked last, off the due feed) instead
+  // of `unknown` (a lost record with a real catch-up). Set ONLY on infant-only
+  // series (rotavirus, childhood PCV/Hib); left unset on series that DO carry an
+  // adult booster/catch-up (MMR, varicella, Tdap, HepB, HepA…), which stay
+  // `unknown` so a genuinely-missing adult dose keeps surfacing.
+  noAdultCatchup?: boolean;
 }
 
 // A combination shot: one physical dose that covers several component vaccines.
@@ -118,6 +128,9 @@ export const CATALOG: VaccineEntry[] = [
     group: "routine_child",
     aliases: ["rotateq", "rotarix", "rota"],
     antibodyMarkers: [],
+    // Infant-only (US recommendation began 2006); no adult catch-up — the max
+    // start age is 14w6d, so an adult never receives it (issue #552).
+    noAdultCatchup: true,
     schedule: {
       kind: "series",
       minIntervalDays: MIN_INTERVAL_4WK,
@@ -154,6 +167,10 @@ export const CATALOG: VaccineEntry[] = [
     group: "routine_child",
     aliases: ["hib", "acthib", "hiberix", "pedvaxhib"],
     antibodyMarkers: [],
+    // Infant/toddler series; not routinely given to healthy adults (only for
+    // specific conditions like asplenia/HSCT), so an adult with no record has no
+    // routine catch-up (issue #552).
+    noAdultCatchup: true,
     schedule: {
       kind: "series",
       minIntervalDays: MIN_INTERVAL_4WK,
@@ -171,6 +188,10 @@ export const CATALOG: VaccineEntry[] = [
     group: "routine_child",
     aliases: ["pcv13", "pcv15", "pcv20", "prevnar", "prevnar 13", "prevnar 20"],
     antibodyMarkers: [],
+    // The childhood conjugate series. Adults are covered by the SEPARATE adult
+    // pneumococcal entry (`pneumo_adult`, from 65 or on risk), so an adult with no
+    // childhood-PCV record has no catch-up on THIS series (issue #552).
+    noAdultCatchup: true,
     schedule: {
       kind: "series",
       minIntervalDays: MIN_INTERVAL_4WK,

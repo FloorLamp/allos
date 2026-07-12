@@ -26,6 +26,17 @@ test.describe("Immunizations (#391)", () => {
       page.locator('a[href^="/immunizations/"]').first()
     ).toBeVisible();
 
+    // #552: an adult (profile 1, born 1986) sees age-inappropriate childhood-only
+    // series (rotavirus, childhood PCV/Hib) resolved to not_recommended and
+    // dropped from the Vaccines table — NOT surfaced as "No record on file" gaps.
+    // The table is the only place a vaccine links to /immunizations/<code> (the
+    // schedule grid below lists every vaccine by abbrev, no link), so the absent
+    // rv/hib links prove the rows left the table while MMR (has an adult catch-up)
+    // stays.
+    await expect(page.locator('a[href="/immunizations/mmr"]')).toBeVisible();
+    await expect(page.locator('a[href="/immunizations/rv"]')).toHaveCount(0);
+    await expect(page.locator('a[href="/immunizations/hib"]')).toHaveCount(0);
+
     // The CDC schedule grid + the seeded immunity titer both render.
     await expect(
       page.getByRole("heading", { name: "CDC recommended schedule" })

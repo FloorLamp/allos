@@ -357,7 +357,24 @@ function assessOne(entry: VaccineEntry, ctx: Ctx): VaccineAssessment {
     // can't tell if they were vaccinated); a child/adolescent past a dose age is
     // "overdue" — a real, surfaced gap. Split on adulthood, not on the series-end
     // age, so a 6-year-old missing MMR still shows overdue, not "no record".
-    if (dosesReceived === 0 && ageM > UNKNOWN_AFTER_MONTHS)
+    if (dosesReceived === 0 && ageM > UNKNOWN_AFTER_MONTHS) {
+      // Issue #552: a childhood-only series with no routine adult catch-up
+      // (rotavirus, childhood PCV/Hib) is age-inappropriate for an adult, not a
+      // lost record — resolve it to `not_recommended` (ranked last, dropped from
+      // the page table and the Upcoming/passport gap feeds) rather than
+      // `unknown`. A series WITH an adult catch-up/booster (MMR, varicella, Tdap,
+      // HepB/HepA…) keeps `unknown`, so a genuinely-missing adult dose still fires.
+      if (entry.noAdultCatchup)
+        return base(
+          entry,
+          0,
+          required,
+          null,
+          false,
+          "not_recommended",
+          "Childhood series — no routine adult catch-up",
+          null
+        );
       return base(
         entry,
         0,
@@ -368,6 +385,7 @@ function assessOne(entry: VaccineEntry, ctx: Ctx): VaccineAssessment {
         "No record on file",
         null
       );
+    }
     if (ageM < next.minMonths)
       return note(
         base(
