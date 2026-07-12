@@ -109,6 +109,7 @@ export default async function AppLayout({
               recentActivityEquipment={recentActivityEquipment}
               bodyweightKg={bodyweightKg}
               lastActivity={lastActivity}
+              restricted={restricted}
             >
               <div className="flex min-h-screen">
                 <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col gap-4 overflow-y-auto border-r border-black/10 bg-white/70 p-4 backdrop-blur-xl md:flex print:hidden dark:border-white/5 dark:bg-ink-950/70">

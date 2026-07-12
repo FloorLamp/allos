@@ -19,6 +19,7 @@ export default function ActivityOverlay({
   bodyweightKg,
   editData,
   prefill = null,
+  live = false,
   onClose,
 }: {
   units: UnitPrefs;
@@ -29,6 +30,7 @@ export default function ActivityOverlay({
   bodyweightKg: number | null;
   editData: ActivityEditData | null;
   prefill?: ActivityEditData | null;
+  live?: boolean;
   onClose: () => void;
 }) {
   // Mounted only while open, so the page behind is locked for exactly that span.
@@ -54,6 +56,7 @@ export default function ActivityOverlay({
           bodyweightKg={bodyweightKg}
           editData={editData}
           prefill={prefill}
+          live={live}
           onClose={onClose}
           stickyFooter
         />

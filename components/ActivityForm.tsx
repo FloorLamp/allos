@@ -71,6 +71,8 @@ import {
 import CustomTypeChips from "./activity-form/CustomTypeChips";
 import CardioFields from "./activity-form/CardioFields";
 import StrengthSets from "./activity-form/StrengthSets";
+import LiveWorkoutPanel from "./activity-form/LiveWorkoutPanel";
+import { leadExerciseName } from "@/lib/live-workout";
 import ActivityEquipmentPicker from "./activity-form/ActivityEquipmentPicker";
 import ActivityFormHeader from "./activity-form/ActivityFormHeader";
 import DateTimeFields from "./activity-form/DateTimeFields";
@@ -103,6 +105,7 @@ export default function ActivityForm({
   bodyweightKg,
   editData,
   prefill = null,
+  live = false,
   onClose,
   stickyFooter = false,
 }: {
@@ -121,6 +124,11 @@ export default function ActivityForm({
   // treats it as a CREATE — saves insert a new activity, and the prefilled
   // content auto-saves on open. Ignored when editData is present.
   prefill?: ActivityEditData | null;
+  // Live workout mode (issue #340): opens the create form in the in-gym layout —
+  // a control strip with the rest timer + Finish above the normal form. Purely a
+  // presentation flag over the same form state (no second engine); "Finish"
+  // collapses it back to the plain editor. Ignored in edit mode.
+  live?: boolean;
   onClose: () => void;
   // In the overlay the (often taller-than-viewport) form scrolls, so the action
   // row pins to the bottom of the screen and gains a Done button — otherwise
@@ -316,6 +324,16 @@ export default function ActivityForm({
   });
 
   const isEdit = !!editData;
+  // Live workout mode (issue #340) — a create-only presentation. Held as state so
+  // "Finish workout" can collapse it back to the plain form. `restStartKey` bumps
+  // on every set check-off to auto-start the rest timer.
+  const [liveMode, setLiveMode] = useState(live && !isEdit);
+  const [restStartKey, setRestStartKey] = useState(0);
+  const liveLeadExercise = leadExerciseName(parts.map((p) => p.name));
+  function finishWorkout() {
+    if (!endTime) setEndTime(nowHHMM(tz));
+    setLiveMode(false);
+  }
   // All validation/auto-save gating (namedParts, canSave, the per-part fault,
   // the save-blocker message, canAddPart) is pure — computed from the parts +
   // session fields by lib/activity-form-validate. partIssue keeps its call
@@ -595,6 +613,9 @@ export default function ActivityForm({
     );
   }
   function addSet(pi: number) {
+    // Adding the next set is the "checked off the previous set" gesture — in live
+    // mode that's when the rest timer starts (issue #340).
+    if (liveMode) setRestStartKey((n) => n + 1);
     setParts((prev) =>
       prev.map((p, idx) => {
         if (idx !== pi) return p;
@@ -981,6 +1002,17 @@ export default function ActivityForm({
         editData={editData}
         onClose={requestClose}
       />
+
+      {/* Live workout mode (issue #340): the in-gym control strip pinned above
+          the normal form — rest timer + Finish. The form below is unchanged, so
+          Finish just collapses this back to the plain editor. */}
+      {liveMode && (
+        <LiveWorkoutPanel
+          leadExercise={liveLeadExercise}
+          restStartKey={restStartKey}
+          onFinish={finishWorkout}
+        />
+      )}
 
       {/* Editable name — auto-filled from the activities below until you change it. */}
       <div>

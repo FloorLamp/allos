@@ -20,6 +20,13 @@ import { useTimezone } from "./TimezoneProvider";
 
 interface ActivityEditorApi {
   openCreate: () => void;
+  // Start a LIVE workout (issue #340): opens a fresh create form (date=today,
+  // start=now) in the in-gym layout — the rest timer + set check-off flow. A
+  // no-op for an age-restricted profile (strength is gated, #489); gate the
+  // affordance on `canStartWorkout`.
+  openLive: () => void;
+  // Whether live workout mode is available (false for age-restricted profiles).
+  canStartWorkout: boolean;
   openEdit: (data: ActivityEditData) => void;
   // "Log again" / "Repeat last": open a CREATE form pre-filled from a stored
   // activity (title, exercises, sets) with the date reset to today (issue #29).
@@ -58,6 +65,7 @@ export default function ActivityEditorProvider({
   recentActivityEquipment = [],
   bodyweightKg,
   lastActivity = null,
+  restricted = false,
   children,
 }: {
   units: UnitPrefs;
@@ -71,11 +79,16 @@ export default function ActivityEditorProvider({
   // The single most recent activity (issue #337), seeding the "Repeat last
   // activity" palette command / mobile quick action. null when nothing's logged.
   lastActivity?: ActivityEditData | null;
+  // True for an age-restricted profile (#489): strength is gated, so live
+  // workout mode (issue #340) is unavailable. Hides the Start-workout affordances.
+  restricted?: boolean;
   children: React.ReactNode;
 }) {
   const tz = useTimezone();
   const [open, setOpen] = useState(false);
   const [editData, setEditData] = useState<ActivityEditData | null>(null);
+  // Whether the currently-open editor is in live workout mode (issue #340).
+  const [live, setLive] = useState(false);
   // Repeat-last prefill: seeds a create form. Bumped `repeatNonce` forces a fresh
   // remount so tapping "Log again" twice on the same source re-seeds cleanly.
   const [prefill, setPrefill] = useState<ActivityEditData | null>(null);
@@ -112,18 +125,33 @@ export default function ActivityEditorProvider({
       openCreate: () => {
         setEditData(null);
         setPrefill(null);
+        setLive(false);
         setDocked(dockElRef.current != null);
         setOpen(true);
       },
+      openLive: () => {
+        // Age-restricted profiles have no strength surface (#489) — no-op.
+        if (restricted) return;
+        setEditData(null);
+        setPrefill(null);
+        setLive(true);
+        // Live mode is a focused, full-attention flow — never dock it into the
+        // journal's side column; use the overlay so it reads as its own screen.
+        setDocked(false);
+        setOpen(true);
+      },
+      canStartWorkout: !restricted,
       openEdit: (data) => {
         setEditData(data);
         setPrefill(null);
+        setLive(false);
         setDocked(dockElRef.current != null);
         setOpen(true);
       },
       openRepeat: (data) => {
         setEditData(null);
         setPrefill(buildRepeatPrefill(data, todayStr(tz)));
+        setLive(false);
         setRepeatNonce((n) => n + 1);
         setDocked(dockElRef.current != null);
         setOpen(true);
@@ -132,6 +160,7 @@ export default function ActivityEditorProvider({
         if (!lastActivity) return;
         setEditData(null);
         setPrefill(buildRepeatPrefill(lastActivity, todayStr(tz)));
+        setLive(false);
         setRepeatNonce((n) => n + 1);
         setDocked(dockElRef.current != null);
         setOpen(true);
@@ -142,7 +171,7 @@ export default function ActivityEditorProvider({
       editData,
       registerDock,
     }),
-    [open, editData, registerDock, tz, lastActivity]
+    [open, editData, registerDock, tz, lastActivity, restricted]
   );
 
   // The editor renders into the dock only when it was opened with one present
@@ -167,7 +196,9 @@ export default function ActivityEditorProvider({
     ? `edit-${editData.id}`
     : prefill
       ? `repeat-${repeatNonce}`
-      : "create";
+      : live
+        ? "live"
+        : "create";
 
   return (
     <Ctx.Provider value={api}>
@@ -185,6 +216,7 @@ export default function ActivityEditorProvider({
               bodyweightKg={bodyweightKg}
               editData={editData}
               prefill={prefill}
+              live={live}
               onClose={() => setOpen(false)}
             />,
             dockEl
@@ -200,6 +232,7 @@ export default function ActivityEditorProvider({
             bodyweightKg={bodyweightKg}
             editData={editData}
             prefill={prefill}
+            live={live}
             onClose={() => setOpen(false)}
           />
         ))}
