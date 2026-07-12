@@ -9,6 +9,7 @@ import {
   getPendingSuggestions,
   getActivitiesByDate,
   getActivityDates,
+  isPredictedWorkoutDay,
   getProviderNames,
   getMedicationCourses,
   getMedicationSideEffects,
@@ -40,10 +41,11 @@ import { today } from "@/lib/db";
 import { parseRxcuiIngredients } from "@/lib/rxnorm";
 import { requireSession } from "@/lib/auth";
 import { isTrainingRestricted } from "@/lib/age-gate";
-import { lastNDates } from "@/lib/date";
-import { getActiveSituations } from "@/lib/settings";
+import { lastNDates, zonedDateParts } from "@/lib/date";
+import { getActiveSituations, getTimezone } from "@/lib/settings";
 import {
   isDueOn,
+  isPostWorkoutReady,
   timeBucket,
   TIME_BUCKETS,
   PRIORITY_ORDER,
@@ -134,9 +136,27 @@ export default async function SupplementsPage() {
   const taken = getTakenDoseIds(profile.id, today(profile.id));
   const skipped = getSkippedDoseIds(profile.id, today(profile.id));
   const activeSituations = new Set(getActiveSituations(profile.id));
-  const isWorkoutDay =
-    getActivitiesByDate(profile.id, today(profile.id)).length > 0;
-  const ctx = { isWorkoutDay, activeSituations };
+  const todaysActivities = getActivitiesByDate(profile.id, today(profile.id));
+  const isWorkoutDay = todaysActivities.length > 0;
+  // #558: a pre_workout supplement should surface on a PREDICTED training day
+  // (from the inferred cadence), not only once a session is logged; post_workout
+  // stays gated on a logged session, held until the earliest session's end time.
+  const predictedWorkoutDay = isPredictedWorkoutDay(
+    profile.id,
+    today(profile.id)
+  );
+  const { hhmm } = zonedDateParts(getTimezone(profile.id), new Date());
+  const nowMinutes = Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
+  const postWorkoutReady = isPostWorkoutReady(
+    todaysActivities.map((a) => a.end_time ?? a.start_time),
+    nowMinutes
+  );
+  const ctx = {
+    isWorkoutDay,
+    activeSituations,
+    predictedWorkoutDay,
+    postWorkoutReady,
+  };
   // When fitness tracking is restricted for this profile the workout/rest-day
   // concept is meaningless, so we drop the subtitle prefix and the workout/
   // rest-day schedule options (see lib/age-gate.ts).
@@ -356,7 +376,7 @@ export default async function SupplementsPage() {
         subtitle={
           trainingRestricted
             ? `${takenCount}/${dueItems.length} taken.`
-            : `${isWorkoutDay ? "Workout day" : "Rest day"} — ${takenCount}/${dueItems.length} taken.`
+            : `${(predictedWorkoutDay ?? isWorkoutDay) ? "Workout day" : "Rest day"} — ${takenCount}/${dueItems.length} taken.`
         }
       />
 

@@ -79,6 +79,7 @@ import { interactionTitle, interactionDetail } from "../../drug-interactions";
 import { getScheduledAppointments, kindedScheduled } from "../appointments";
 import {
   getActivitiesByDate,
+  isPredictedWorkoutDay,
   getGoals,
   getFrequencyTargetProgress,
 } from "../training";
@@ -114,7 +115,10 @@ function doseItems(profileId: number, today: string): UpcomingItem[] {
   const taken = getTakenDoseIds(profileId, today);
   const activeSituations = new Set(getActiveSituations(profileId));
   const isWorkoutDay = getActivitiesByDate(profileId, today).length > 0;
-  const ctx = { isWorkoutDay, activeSituations };
+  // #558: a pre_workout dose is pending on a predicted training day, before a
+  // session is logged; the logged signal is the fallback when no cadence is known.
+  const predictedWorkoutDay = isPredictedWorkoutDay(profileId, today);
+  const ctx = { isWorkoutDay, activeSituations, predictedWorkoutDay };
 
   const byId = new Map(supplements.map((s) => [s.id, s]));
   const items: UpcomingItem[] = [];

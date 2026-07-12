@@ -284,6 +284,11 @@ export function getActivityDates(profileId: number): string[] {
 export interface InferredWorkoutSchedule {
   weekdays: number[]; // 0=Sun … 6=Sat the user habitually trains
   hour: number; // typical start hour (local), fallback 18
+  // Whether a real training cadence was detected. false means `weekdays` is the
+  // "every day" fallback (no discernible pattern), so consumers that need to know
+  // "is TODAY specifically a predicted training day?" must treat it as unknown
+  // rather than "yes, every day" (see isPredictedWorkoutDay / issue #558).
+  hasPattern: boolean;
 }
 
 // Derive the user's regular training cadence from recent history, so the workout
@@ -330,8 +335,26 @@ export function inferWorkoutSchedule(
     .map(([wd]) => wd)
     .sort((a, b) => a - b);
 
-  if (weekdays.length === 0) return { weekdays: [0, 1, 2, 3, 4, 5, 6], hour };
-  return { weekdays, hour };
+  if (weekdays.length === 0)
+    return { weekdays: [0, 1, 2, 3, 4, 5, 6], hour, hasPattern: false };
+  return { weekdays, hour, hasPattern: true };
+}
+
+// Whether `date` should be a training day for this profile, per the inferred
+// cadence (issue #558). Returns `null` when no cadence can be inferred — the
+// caller then falls back to "was a workout actually logged" rather than guessing.
+// This is the "today SHOULD be a workout day" signal a pre-workout supplement
+// reminder needs (so it can fire in the morning, before the session), reusing the
+// same inferWorkoutSchedule the notify tick's workout reminder consumes ("one
+// question, one computation").
+export function isPredictedWorkoutDay(
+  profileId: number,
+  date: string,
+  weeks = 8
+): boolean | null {
+  const inf = inferWorkoutSchedule(profileId, weeks);
+  if (!inf.hasPattern) return null;
+  return inf.weekdays.includes(weekdayOfDateStr(date));
 }
 
 // (date, exercise) rows over the recent window — one scan that powers the workout

@@ -69,28 +69,81 @@ export function availableConditions(
   );
 }
 
-// Whether a supplement applies given today's context: workout vs rest day (from
-// the journal) and the set of currently-active situations. An as-needed (PRN)
+// Whether a supplement applies given today's context. An as-needed (PRN)
 // medication is never scheduled-due — it's taken on demand, so it generates no
 // reminders/escalation/adherence-due and can never be "missed".
+//
+// Workout-conditioned items key on WHEN the training happens, not only on whether
+// a session has already been logged (issue #558):
+//   • pre_workout / rest_day consult `predictedWorkoutDay` (from the inferred
+//     training cadence) so a "take before your workout" reminder can fire in the
+//     morning of a predicted training day, not only AFTER the workout is logged.
+//     When the cadence is unknown (`predictedWorkoutDay == null`) they fall back
+//     to the logged signal, preserving the old behavior.
+//   • post_workout keeps the ACTUAL logged-session gate (post = after), and when
+//     the session's end time is known it stays hidden until the session is over
+//     (`postWorkoutReady`, default true).
+// This only ever gates workout-conditioned items — `daily` (the safety tier for
+// scheduled meds) is unconditional, so no ordinary medication reminder becomes
+// workout-dependent.
 export function isDueOn(
   supp: Pick<Supplement, "condition" | "situation"> & { as_needed?: number },
-  ctx: { isWorkoutDay: boolean; activeSituations: Set<string> }
+  ctx: {
+    isWorkoutDay: boolean;
+    activeSituations: Set<string>;
+    // Today IS a predicted training day per the inferred cadence; null/undefined
+    // when no cadence could be inferred (fall back to the logged signal).
+    predictedWorkoutDay?: boolean | null;
+    // The logged session's end time has passed (post_workout timing). Default true.
+    postWorkoutReady?: boolean;
+  }
 ): boolean {
   if (supp.as_needed) return false;
+  // "Is today a training day?" — predicted cadence when known, else logged reality.
+  const trainingToday = ctx.predictedWorkoutDay ?? ctx.isWorkoutDay;
   switch (supp.condition) {
     case "daily":
       return true;
     case "pre_workout":
+      return trainingToday;
     case "post_workout":
-      return ctx.isWorkoutDay;
+      // Post-workout stays gated on an actually-logged session, timed after it.
+      return ctx.isWorkoutDay && (ctx.postWorkoutReady ?? true);
     case "rest_day":
-      return !ctx.isWorkoutDay;
+      return !trainingToday;
     case "situational":
       return supp.situation != null && ctx.activeSituations.has(supp.situation);
     default:
       return true;
   }
+}
+
+// Parse an "HH:MM" / "HH:MM:SS" wall-clock time to minutes-since-midnight, or null.
+function timeToMinutes(t: string | null | undefined): number | null {
+  if (!t) return null;
+  const m = /^(\d{1,2}):(\d{2})/.exec(t.trim());
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (h < 0 || h > 23 || min < 0 || min > 59) return null;
+  return h * 60 + min;
+}
+
+// Whether a post_workout supplement's window has opened on a day with logged
+// activity (issue #558). `nowMinutes` is the current profile-local minute-of-day;
+// pass null for a past day (always ready). Ready once the EARLIEST logged session
+// whose end time is known has ended; when no session carries an end time, ready as
+// soon as any activity is logged (the reminder can't be timed, so it isn't held).
+export function isPostWorkoutReady(
+  endTimes: (string | null | undefined)[],
+  nowMinutes: number | null
+): boolean {
+  if (nowMinutes == null) return true; // a past day — the session is over
+  const ends = endTimes
+    .map(timeToMinutes)
+    .filter((m): m is number => m != null);
+  if (ends.length === 0) return true; // no timing available — don't hold it
+  return nowMinutes >= Math.min(...ends);
 }
 
 // Suggested situation labels for the form; free text is still allowed.
