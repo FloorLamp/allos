@@ -29,8 +29,14 @@ export interface TrainingObservation {
   kind: TrainingObservationKind;
   // Stable suppression/identity key (the UpcomingItem key === dedupeKey). See the
   // *SignalKey helpers below — the single source of truth so the finding and any
-  // future push line up on the same string.
+  // future push line up on the same string. Now carries an EPISODE anchor (#436)
+  // so a dismissal is "this episode", not "this topic forever".
   key: string;
+  // The pre-#436, episode-less shape of `key`. A dismissal stored under the old key
+  // still suppresses the CURRENT finding through Finding.supersedes (dual-read), so
+  // upgrading the key shape never orphans a live dismissal. New dismissals write the
+  // episodic `key`. See lib/findings.activeFindings + lib/rule-findings.
+  legacyKey: string;
   title: string;
   detail: string;
   // The exercise a stale/plateau finding is about (null for the push/pull balance
@@ -46,17 +52,62 @@ export interface TrainingObservation {
 // segment keeps the three checks collision-free within the namespace.
 export const TRAINING_OBS_PREFIX = "training-obs:";
 
-// One push/pull balance finding per profile — keyed by the axis it describes.
-export function trainingBalanceSignalKey(): string {
+// e1RM level bucket (kg) the plateau episode anchor rounds to. Coarse enough that a
+// plateau holding at the same load keeps ONE anchor (so a dismissal sticks across the
+// rolling window), fine enough that breaking to a new working weight and re-stalling
+// there is a NEW episode that re-fires (#436).
+export const PLATEAU_LEVEL_BUCKET_KG = 5;
+
+// ---- Legacy (pre-#436, episode-less) key builders ----
+// The old key shapes, kept only so a dismissal stored before #436 still suppresses
+// the current finding via Finding.supersedes rather than orphaning. Never written as
+// a fresh dismissal — the *SignalKey builders below (with the episode anchor) are.
+
+export function trainingBalanceLegacyKey(): string {
   return `${TRAINING_OBS_PREFIX}balance:push-pull`;
 }
 
-export function staleExerciseSignalKey(exercise: string): string {
+export function staleExerciseLegacyKey(exercise: string): string {
   return `${TRAINING_OBS_PREFIX}stale:${exercise.trim().toLowerCase()}`;
 }
 
-export function plateauSignalKey(exercise: string): string {
+export function plateauLegacyKey(exercise: string): string {
   return `${TRAINING_OBS_PREFIX}plateau:${exercise.trim().toLowerCase()}`;
+}
+
+// ---- Episodic key builders (#436) ----
+
+// One push/pull balance finding per profile, keyed by the SKEWED DIRECTION ("push" or
+// "pull") — mirroring the digest's direction component, so a dismissal of a
+// push-heavy skew doesn't also silence a later pull-heavy one (a flip re-fires).
+export function trainingBalanceSignalKey(heavier: "push" | "pull"): string {
+  return `${trainingBalanceLegacyKey()}:${heavier}`;
+}
+
+// A stale finding keyed by the exercise AND the lapse anchor (the YYYY-MM of the last
+// session before it went quiet): training it again then letting it lapse afresh moves
+// the anchor forward → a new episode re-fires; the same lapse keeps one anchor.
+export function staleExerciseSignalKey(
+  exercise: string,
+  lapseAnchor: string
+): string {
+  return `${staleExerciseLegacyKey(exercise)}:${lapseAnchor}`;
+}
+
+// A plateau finding keyed by the exercise AND the e1RM level bucket: a NEW plateau at
+// a different working weight lands in a new bucket → re-fires; a plateau holding at
+// the same load keeps one anchor so the dismissal sticks.
+export function plateauSignalKey(
+  exercise: string,
+  levelAnchor: string
+): string {
+  return `${plateauLegacyKey(exercise)}:${levelAnchor}`;
+}
+
+// The e1RM-level episode anchor for a plateau (the working load bucketed to
+// PLATEAU_LEVEL_BUCKET_KG). Pure integer bucket so it's a stable string across ticks.
+export function plateauLevelAnchor(levelKg: number): string {
+  return String(Math.round(levelKg / PLATEAU_LEVEL_BUCKET_KG));
 }
 
 // ---- 1. Push/pull volume imbalance ----------------------------------------
@@ -114,11 +165,13 @@ export function detectPushPullImbalance(
   const lo = Math.min(push, pull);
   if (lo > 0 && hi < PUSH_PULL_RATIO * lo) return null;
   if (lo === 0 && hi === 0) return null;
+  const heavierSide = push >= pull ? "push" : "pull";
   const heavier = push >= pull ? "pushing" : "pulling";
   const lighter = push >= pull ? "pulling" : "pushing";
   return {
     kind: "balance",
-    key: trainingBalanceSignalKey(),
+    key: trainingBalanceSignalKey(heavierSide),
+    legacyKey: trainingBalanceLegacyKey(),
     title: "Push/pull balance is skewed",
     detail:
       `Over the last 4 weeks you logged ${push} pushing and ${pull} pulling ` +
@@ -172,7 +225,9 @@ export function detectStaleExercises(
       ago,
       obs: {
         kind: "stale",
-        key: staleExerciseSignalKey(s.exercise),
+        // Episode anchor = the YYYY-MM of the last session before the lapse.
+        key: staleExerciseSignalKey(s.exercise, s.lastDate.slice(0, 7)),
+        legacyKey: staleExerciseLegacyKey(s.exercise),
         title: `${s.exercise} has gone quiet`,
         detail:
           `You trained ${s.exercise} regularly but haven't in about ${weeks} ` +
@@ -272,9 +327,15 @@ export function detectPlateaus(
     // A flat e1RM with rising reps at a fixed load is progression the rep cap hid,
     // not a stall — don't advise a deload (#432.2).
     if (repsProgressing(windowed)) continue;
+    // Episode anchor = the plateau's e1RM level bucket (its median working load), so
+    // a new plateau at a different weight re-fires while this one stays dismissed.
+    const levelAnchor = plateauLevelAnchor(
+      median(windowed.map((p) => p.value))
+    );
     out.push({
       kind: "plateau",
-      key: plateauSignalKey(s.exercise),
+      key: plateauSignalKey(s.exercise, levelAnchor),
+      legacyKey: plateauLegacyKey(s.exercise),
       title: `${s.exercise} has plateaued`,
       detail:
         `Your estimated 1RM for ${s.exercise} has been flat for about 6 weeks. ` +

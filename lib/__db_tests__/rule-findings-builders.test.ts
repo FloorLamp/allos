@@ -30,7 +30,15 @@ import {
 } from "@/lib/adherence-patterns";
 import { TRAINING_OBS_PREFIX } from "@/lib/training-observations";
 import { weightAnomalySignalKey } from "@/lib/weight-anomaly";
-import { getBodyMetricDailySeries, getWeights, getGoals } from "@/lib/queries";
+import {
+  getBodyMetricDailySeries,
+  getWeights,
+  getGoals,
+  getFindingSuppressions,
+  dismissFinding,
+  restoreFinding,
+} from "@/lib/queries";
+import { activeFindings } from "@/lib/findings";
 import { projectGoal, type GoalProjection } from "@/lib/trend-projection";
 import { PACE_SLACK_DAYS, GOAL_PACE_WINDOW_DAYS } from "@/lib/goal-pacing";
 import { dedupeKeyHasKnownPrefix } from "@/lib/rule-finding-prefixes";
@@ -113,11 +121,15 @@ describe("buildAdherencePatternFindings — dose lifetime window (#430)", () => 
     const findings = buildAdherencePatternFindings(profileId, anchor);
 
     // Exactly one finding — the control's Friday pattern — and NONE for the re-timed
-    // trap dose (its window starts at the re-time, below the min-history gate).
+    // trap dose (its window starts at the re-time, below the min-history gate). The
+    // key now carries the #436 episode anchor (the current year).
+    const yr = anchor.slice(0, 4);
     expect(findings).toHaveLength(1);
-    expect(findings[0].dedupeKey).toBe(weekdayMissSignalKey(ctrlDose, 5));
+    expect(findings[0].dedupeKey).toBe(weekdayMissSignalKey(ctrlDose, 5, yr));
     expect(
-      findings.some((f) => f.dedupeKey === weekdayMissSignalKey(trapDose, 5))
+      findings.some(
+        (f) => f.dedupeKey === weekdayMissSignalKey(trapDose, 5, yr)
+      )
     ).toBe(false);
     // The control's copy suggests a MOVE (evening slot); a bedtime/medication would
     // fall back to the reminder copy (#430.4) — the evening supplement does not.
@@ -291,6 +303,136 @@ describe("buildBodyHygieneFindings — out-and-back collapse (#434)", () => {
     ).toBe(false);
     // The middle row reads as a unit mix-up (ratio ≈ 2.2×).
     expect(findings[0].detail).toMatch(/kg\/lb entry mix-up/i);
+  });
+});
+
+// ---- #436: episode-anchored dedupe keys + dual-read legacy suppression ------
+
+describe("episode-anchored dedupe keys (#436)", () => {
+  // Seed a flat curl plateau at 30 kg (the #432 merged-curl fixture) and return the
+  // profile + a live re-read of its plateau finding.
+  function seedPlateau(name: string) {
+    const { profileId, anchor } = makeProfile(name);
+    const insAct = db.prepare(
+      `INSERT INTO activities (profile_id, date, type, title, duration_min)
+       VALUES (?, ?, 'strength', 'Arms', 30)`
+    );
+    const insSet = db.prepare(
+      `INSERT INTO exercise_sets (activity_id, exercise, set_number, weight_kg, reps)
+       VALUES (?, ?, 1, 30, 5)`
+    );
+    for (const s of [
+      { day: -35, ex: "Barbell Curl" },
+      { day: -28, ex: "Curl" },
+      { day: -14, ex: "Barbell Curl" },
+      { day: 0, ex: "Curl" },
+    ]) {
+      const actId = Number(
+        insAct.run(profileId, shiftDateStr(anchor, s.day)).lastInsertRowid
+      );
+      insSet.run(actId, s.ex);
+    }
+    const plateauOf = () =>
+      buildTrainingObservationFindings(profileId, anchor).find(
+        (f) => f.domain === "training-plateau"
+      );
+    return { profileId, anchor, plateauOf };
+  }
+
+  it("plateau: the key carries an episode anchor and a legacy supersedes", () => {
+    const { plateauOf } = seedPlateau("plateau-shape-436");
+    const plateau = plateauOf()!;
+    expect(plateau).toBeTruthy();
+    // Episodic key = training-obs:plateau:<name>:<e1RM level bucket>.
+    expect(plateau.dedupeKey).toMatch(/^training-obs:plateau:.+:\d+$/);
+    // Dual-read legacy key = the pre-#436 episode-less shape; the episodic key is it
+    // plus the level-bucket anchor.
+    expect(plateau.supersedes).toMatch(/^training-obs:plateau:.+[^:\d]$/);
+    expect(plateau.dedupeKey.startsWith(`${plateau.supersedes}:`)).toBe(true);
+  });
+
+  it("plateau: a same-episode dismissal hides it; a different-episode one does not", () => {
+    const { profileId, anchor, plateauOf } = seedPlateau("plateau-episode-436");
+    const plateau = plateauOf()!;
+    const visible = () =>
+      activeFindings(
+        buildTrainingObservationFindings(profileId, anchor),
+        getFindingSuppressions(profileId),
+        anchor
+      ).some((f) => f.domain === "training-plateau");
+
+    expect(visible()).toBe(true);
+
+    // (a) Dismiss THIS episode's key → hidden.
+    dismissFinding(profileId, plateau.dedupeKey);
+    expect(visible()).toBe(false);
+    restoreFinding(profileId, plateau.dedupeKey);
+
+    // (b) A dismissal for a DIFFERENT episode (a plateau at another level) must NOT
+    //     silence the current one — the bug #436 fixes.
+    dismissFinding(profileId, `${plateau.supersedes}:999`);
+    expect(visible()).toBe(true);
+    restoreFinding(profileId, `${plateau.supersedes}:999`);
+  });
+
+  it("plateau: a legacy (pre-#436, episode-less) dismissal still suppresses the current finding (no orphan)", () => {
+    const { profileId, anchor, plateauOf } = seedPlateau("plateau-legacy-436");
+    const plateau = plateauOf()!;
+    // A dismissal stored under the OLD key shape keeps working (dual-read), so
+    // upgrading the key never re-surfaces a finding the user already dismissed.
+    dismissFinding(profileId, plateau.supersedes!);
+    const visible = activeFindings(
+      buildTrainingObservationFindings(profileId, anchor),
+      getFindingSuppressions(profileId),
+      anchor
+    ).some((f) => f.domain === "training-plateau");
+    expect(visible).toBe(false);
+  });
+
+  it("adherence: the weekday key carries the year anchor and a legacy supersedes", () => {
+    const { profileId, anchor } = makeProfile("adherence-episode-436");
+    const longAgo = `${shiftDateStr(anchor, -90)} 09:00:00`;
+    const item = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items (profile_id, name, active, kind, condition, priority, as_needed, created_at)
+           VALUES (?, 'Episode Zinc', 1, 'supplement', 'daily', 'high', 0, ?)`
+        )
+        .run(profileId, longAgo).lastInsertRowid
+    );
+    const dose = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort, created_at)
+           VALUES (?, '1 cap', 'evening', 'any', 0, ?)`
+        )
+        .run(item, longAgo).lastInsertRowid
+    );
+    const logTaken = db.prepare(
+      `INSERT INTO intake_item_logs (dose_id, item_id, date, status) VALUES (?, ?, ?, 'taken')`
+    );
+    for (let i = 55; i >= 0; i--) {
+      const date = shiftDateStr(anchor, -i);
+      if (!isFriday(date)) logTaken.run(dose, item, date);
+    }
+    const f = buildAdherencePatternFindings(profileId, anchor).find(
+      (x) => x.domain === "adherence-weekday"
+    )!;
+    expect(f).toBeTruthy();
+    expect(f.dedupeKey).toBe(
+      `${weekdayMissSignalKey(dose, 5, anchor.slice(0, 4))}`
+    );
+    expect(f.supersedes).toBe(`${ADHERENCE_PREFIX}weekday:${dose}:5`);
+
+    // No-orphan: a legacy (year-less) dismissal still suppresses it.
+    dismissFinding(profileId, f.supersedes!);
+    expect(
+      activeFindings(
+        buildAdherencePatternFindings(profileId, anchor),
+        getFindingSuppressions(profileId),
+        anchor
+      ).some((x) => x.domain === "adherence-weekday")
+    ).toBe(false);
   });
 });
 

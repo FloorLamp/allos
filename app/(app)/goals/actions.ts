@@ -52,9 +52,12 @@ interface GoalCols {
 // The prior canonical (kg) weight values for the goal being edited, so an
 // untouched lb-preference edit re-stores the exact stored kg instead of drifting
 // it by the display-rounding quantum (issue #194). Null/absent on create.
+// `target_date` rides along so updateGoal can clear a stale off-pace dismissal on
+// a re-target (#436).
 interface StoredWeights {
   target_weight_kg: number | null;
   target_value: number | null;
+  target_date: string | null;
 }
 
 function goalColsFromForm(
@@ -233,7 +236,7 @@ export async function updateGoal(formData: FormData) {
   // (issue #194) instead of a kg↔lb round-trip drift on every save.
   const stored = db
     .prepare(
-      "SELECT target_weight_kg, target_value FROM goals WHERE id = ? AND profile_id = ?"
+      "SELECT target_weight_kg, target_value, target_date FROM goals WHERE id = ? AND profile_id = ?"
     )
     .get(id, profile.id) as StoredWeights | undefined;
   const c = goalColsFromForm(formData, login.id, stored);
@@ -247,6 +250,19 @@ export async function updateGoal(formData: FormData) {
        target_value = ?, current_value = ?, unit = ?, body_metric = ?
      WHERE id = ? AND profile_id = ?`
   ).run(...goalValues(c), id, profile.id);
+  // RE-TARGET clears a stale off-pace dismissal (#436/#203). The `goal-pace:goal:<id>`
+  // key encodes the goal, not the target — so dismissing "off pace for Sep 1", then
+  // moving the deadline to Dec 1, must not leave the new pacing question silenced by
+  // the old dismissal (deleteGoal already sweeps this key; updateGoal did not). A
+  // changed target DATE or VALUE is a new question, so drop the suppression row and
+  // let the finding re-assess against the new target. A no-op when nothing changed.
+  if (
+    stored != null &&
+    (stored.target_date !== c.target_date ||
+      stored.target_value !== c.target_value)
+  ) {
+    restoreFinding(profile.id, goalPaceSignalKey(id));
+  }
   revalidatePath("/training");
   revalidatePath("/");
 }

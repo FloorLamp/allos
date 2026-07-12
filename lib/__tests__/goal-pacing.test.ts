@@ -110,6 +110,9 @@ describe("detectFastWeightLoss", () => {
 describe("signal keys", () => {
   it("share the goal-pace namespace", () => {
     expect(goalPaceSignalKey(3).startsWith(GOAL_PACE_PREFIX)).toBe(true);
-    expect(weightLossRateSignalKey().startsWith(GOAL_PACE_PREFIX)).toBe(true);
+    // #436: the safe-rate caution key now carries the loss window's start month.
+    expect(
+      weightLossRateSignalKey("2026-03").startsWith(GOAL_PACE_PREFIX)
+    ).toBe(true);
   });
 });

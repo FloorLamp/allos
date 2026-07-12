@@ -100,14 +100,26 @@ export function assessGoalPace(
 export const GOAL_PACE_PREFIX = "goal-pace:";
 
 // Per-goal off-pace finding, keyed by goal id (ids never recycle → a stale dismissal
-// is a dead row, not wrong suppression).
+// is a dead row, not wrong suppression). The key deliberately does NOT encode the
+// target date — RE-TARGETING is a new pacing question, so updateGoal clears this
+// dismissal on a target change (app/(app)/goals/actions.ts, #436/#203) rather than
+// baking the date into the key.
 export function goalPaceSignalKey(goalId: number): string {
   return `${GOAL_PACE_PREFIX}goal:${goalId}`;
 }
 
-// The single safe-rate caution per profile.
-export function weightLossRateSignalKey(): string {
+// The legacy (pre-#436, episode-less) safe-rate caution key — one per profile. Kept
+// only so a dismissal stored before #436 still suppresses the current caution via
+// Finding.supersedes rather than orphaning.
+export function weightLossRateLegacyKey(): string {
   return `${GOAL_PACE_PREFIX}weight-loss-rate`;
+}
+
+// The single safe-rate caution per profile, keyed by the loss window's start month
+// (#436): a distinct fast-loss phase after a gap lands in a new month bucket and
+// re-fires, rather than one dismissal silencing every future cut.
+export function weightLossRateSignalKey(sinceMonth: string): string {
+  return `${weightLossRateLegacyKey()}:${sinceMonth}`;
 }
 
 // ---- 2. Safe-rate weight-loss caution -------------------------------------
@@ -135,6 +147,9 @@ export interface WeightLossCaution {
   // Estimated sustained loss as a POSITIVE fraction of body weight per week
   // (e.g. 0.015 = 1.5%/week).
   fractionPerWeek: number;
+  // The trailing loss window's earliest reading, as YYYY-MM — the episode anchor
+  // for the caution's dedupeKey (#436), so a fresh cut after a gap re-fires.
+  sinceMonth: string;
 }
 
 // Whole days from an ISO date to `today`, or Infinity if unparseable.
@@ -168,5 +183,5 @@ export function detectFastWeightLoss(
   if (!(level > 0)) return null;
   const fractionPerWeek = (Math.abs(slope) * 7) / level;
   if (fractionPerWeek <= SAFE_LOSS_FRACTION_PER_WEEK) return null;
-  return { fractionPerWeek };
+  return { fractionPerWeek, sinceMonth: dates[0].slice(0, 7) };
 }
