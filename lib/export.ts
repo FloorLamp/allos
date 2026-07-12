@@ -218,6 +218,66 @@ function shapeSupplements(
   }));
 }
 
+// The `providers` registry is a GLOBAL (instance-shared) table, not profile-owned —
+// but every exported clinical row's `provider_id`/`location_provider_id` dangles
+// without it (#465). So this dataset exports exactly the providers REFERENCED by the
+// active profile's rows: the id-gathering SELECTs are each profile-scoped (owned
+// tables), and the final providers read is by id only. Browse/export-only (deleting a
+// shared provider would affect other profiles), so no DELETE_POLICY entry.
+const PROVIDER_LINK_SELECTS = [
+  `SELECT provider_id AS pid FROM encounters WHERE profile_id = ? AND provider_id IS NOT NULL`,
+  `SELECT location_provider_id AS pid FROM encounters WHERE profile_id = ? AND location_provider_id IS NOT NULL`,
+  `SELECT provider_id AS pid FROM procedures WHERE profile_id = ? AND provider_id IS NOT NULL`,
+  `SELECT provider_id AS pid FROM appointments WHERE profile_id = ? AND provider_id IS NOT NULL`,
+  `SELECT provider_id AS pid FROM care_plan_items WHERE profile_id = ? AND provider_id IS NOT NULL`,
+  `SELECT provider_id AS pid FROM immunizations WHERE profile_id = ? AND provider_id IS NOT NULL`,
+  `SELECT provider_id AS pid FROM medical_records WHERE profile_id = ? AND provider_id IS NOT NULL`,
+  `SELECT provider_id AS pid FROM intake_items WHERE profile_id = ? AND provider_id IS NOT NULL`,
+];
+
+function referencedProviderIds(profileId: number): number[] {
+  const ids = new Set<number>();
+  for (const sql of PROVIDER_LINK_SELECTS) {
+    for (const row of db.prepare(sql).all(profileId) as { pid: number }[]) {
+      if (row.pid != null) ids.add(row.pid);
+    }
+  }
+  return [...ids].sort((a, b) => a - b);
+}
+
+const PROVIDER_COLUMNS = [
+  "name",
+  "type",
+  "npi",
+  "identifier",
+  "phone",
+  "address",
+];
+
+function providerRows(profileId: number): Record<string, unknown>[] {
+  const ids = referencedProviderIds(profileId);
+  if (ids.length === 0) return [];
+  const ph = ids.map(() => "?").join(",");
+  return db
+    .prepare(
+      `SELECT id, name, type, npi, identifier, phone, address
+         FROM providers WHERE id IN (${ph}) ORDER BY name, id`
+    )
+    .all(...ids) as Record<string, unknown>[];
+}
+
+const providersDataset: ExportDataset = {
+  key: "providers",
+  label: "Providers",
+  table: "providers",
+  deletable: false,
+  columns: PROVIDER_COLUMNS,
+  rows: providerRows,
+  count: (profileId) => referencedProviderIds(profileId).length,
+  page: (profileId, limit, offset) =>
+    providerRows(profileId).slice(offset, offset + limit),
+};
+
 export const DATASETS: ExportDataset[] = [
   {
     // Activities and their exercise sets combined: one row per activity, with an
@@ -479,6 +539,206 @@ export const DATASETS: ExportDataset[] = [
        FROM hr_minutes WHERE profile_id = ? ORDER BY ts DESC`,
     countSql: `SELECT COUNT(*) AS n FROM hr_minutes WHERE profile_id = ?`,
   }),
+  // ── Clinical passport domains that used to be absent from the full export (#465).
+  // Each was in OWNED_TABLES with a dedicated page but no dataset/FHIR resource, so a
+  // family migrating off an instance silently lost the whole domain. The binding test
+  // (export-completeness.test.ts) now forces every owned table into a dataset, the
+  // FHIR input, or a justified allowlist.
+  tableDataset({
+    key: "procedures",
+    label: "Procedures",
+    table: "procedures",
+    columns: ["date", "name", "code", "code_system", "notes"],
+    select: `SELECT id, date, name, code, code_system, notes
+       FROM procedures WHERE profile_id = ? ORDER BY date DESC, id DESC`,
+    countSql: `SELECT COUNT(*) AS n FROM procedures WHERE profile_id = ?`,
+  }),
+  tableDataset({
+    key: "family_history",
+    label: "Family history",
+    table: "family_history",
+    columns: [
+      "relation",
+      "condition",
+      "code",
+      "code_system",
+      "onset_age",
+      "deceased",
+      "notes",
+    ],
+    select: `SELECT id, relation, condition, code, code_system, onset_age, deceased, notes
+       FROM family_history WHERE profile_id = ? ORDER BY condition, id`,
+    countSql: `SELECT COUNT(*) AS n FROM family_history WHERE profile_id = ?`,
+  }),
+  tableDataset({
+    key: "care_plan_items",
+    label: "Care plan",
+    table: "care_plan_items",
+    columns: [
+      "description",
+      "category",
+      "code",
+      "code_system",
+      "planned_date",
+      "status",
+      "notes",
+    ],
+    select: `SELECT id, description, category, code, code_system, planned_date, status, notes
+       FROM care_plan_items WHERE profile_id = ? ORDER BY planned_date DESC, id DESC`,
+    countSql: `SELECT COUNT(*) AS n FROM care_plan_items WHERE profile_id = ?`,
+  }),
+  tableDataset({
+    key: "care_goals",
+    label: "Care goals",
+    table: "care_goals",
+    columns: [
+      "description",
+      "code",
+      "code_system",
+      "target_date",
+      "status",
+      "notes",
+    ],
+    select: `SELECT id, description, code, code_system, target_date, status, notes
+       FROM care_goals WHERE profile_id = ? ORDER BY target_date DESC, id DESC`,
+    countSql: `SELECT COUNT(*) AS n FROM care_goals WHERE profile_id = ?`,
+  }),
+  tableDataset({
+    key: "appointments",
+    label: "Appointments",
+    table: "appointments",
+    columns: ["scheduled_at", "title", "location", "status", "notes"],
+    select: `SELECT id, scheduled_at, title, location, status, notes
+       FROM appointments WHERE profile_id = ? ORDER BY scheduled_at DESC, id DESC`,
+    countSql: `SELECT COUNT(*) AS n FROM appointments WHERE profile_id = ?`,
+  }),
+  tableDataset({
+    key: "immunization_overrides",
+    label: "Immunization overrides",
+    table: "immunization_overrides",
+    columns: ["vaccine", "kind", "reason", "note"],
+    select: `SELECT id, vaccine, kind, reason, note
+       FROM immunization_overrides WHERE profile_id = ? ORDER BY vaccine`,
+    countSql: `SELECT COUNT(*) AS n FROM immunization_overrides WHERE profile_id = ?`,
+  }),
+  tableDataset({
+    key: "preventive_events",
+    label: "Screening history",
+    table: "preventive_events",
+    columns: ["rule_key", "date", "source"],
+    select: `SELECT id, rule_key, date, source
+       FROM preventive_events WHERE profile_id = ? ORDER BY date DESC, id DESC`,
+    countSql: `SELECT COUNT(*) AS n FROM preventive_events WHERE profile_id = ?`,
+  }),
+  tableDataset({
+    key: "preventive_overrides",
+    label: "Screening overrides",
+    table: "preventive_overrides",
+    columns: ["rule_key", "kind", "note"],
+    select: `SELECT id, rule_key, kind, note
+       FROM preventive_overrides WHERE profile_id = ? ORDER BY rule_key`,
+    countSql: `SELECT COUNT(*) AS n FROM preventive_overrides WHERE profile_id = ?`,
+  }),
+  tableDataset({
+    key: "protocols",
+    label: "Protocols",
+    table: "protocols",
+    columns: [
+      "name",
+      "start_date",
+      "end_date",
+      "situation",
+      "outcome_keys",
+      "notes",
+    ],
+    select: `SELECT id, name, start_date, end_date, situation, outcome_keys, notes
+       FROM protocols WHERE profile_id = ? ORDER BY start_date DESC, id DESC`,
+    countSql: `SELECT COUNT(*) AS n FROM protocols WHERE profile_id = ?`,
+  }),
+  tableDataset({
+    key: "milestones",
+    label: "Milestones",
+    table: "milestones",
+    columns: ["kind", "threshold", "title", "detail", "achieved_on"],
+    select: `SELECT id, key, kind, threshold, title, detail, achieved_on
+       FROM milestones WHERE profile_id = ? ORDER BY achieved_on DESC, id DESC`,
+    countSql: `SELECT COUNT(*) AS n FROM milestones WHERE profile_id = ?`,
+  }),
+  tableDataset({
+    key: "equipment",
+    label: "Equipment",
+    table: "equipment",
+    columns: ["name", "weight_kg", "category"],
+    select: `SELECT id, name, weight_kg, category
+       FROM equipment WHERE profile_id = ? ORDER BY name`,
+    countSql: `SELECT COUNT(*) AS n FROM equipment WHERE profile_id = ?`,
+  }),
+  tableDataset({
+    key: "frequency_targets",
+    label: "Training frequency targets",
+    table: "frequency_targets",
+    columns: ["scope_kind", "scope_value", "per_week"],
+    select: `SELECT id, scope_kind, scope_value, per_week
+       FROM frequency_targets WHERE profile_id = ? ORDER BY scope_kind, scope_value`,
+    countSql: `SELECT COUNT(*) AS n FROM frequency_targets WHERE profile_id = ?`,
+  }),
+  tableDataset({
+    // Uploaded-document METADATA (the file bytes are bundled separately in the ZIP).
+    // Browse/export-only: deleting a document is not a plain id delete (it must unlink
+    // the file and re-point child medical_records), so that lives on the import UI.
+    key: "medical_documents",
+    label: "Medical documents",
+    table: "medical_documents",
+    deletable: false,
+    columns: [
+      "filename",
+      "doc_type",
+      "source",
+      "document_date",
+      "mime_type",
+      "size_bytes",
+      "extraction_status",
+      "extracted_count",
+      "uploaded_at",
+    ],
+    select: `SELECT id, filename, doc_type, source, document_date, mime_type,
+              size_bytes, extraction_status, extracted_count, uploaded_at
+       FROM medical_documents WHERE profile_id = ? ORDER BY uploaded_at DESC, id DESC`,
+    countSql: `SELECT COUNT(*) AS n FROM medical_documents WHERE profile_id = ?`,
+  }),
+  tableDataset({
+    // Medication start/stop history (a child of intake_items via item_id, so
+    // browse/export-only — the parent medication is the deletable unit).
+    key: "medication_courses",
+    label: "Medication courses",
+    table: "medication_courses",
+    deletable: false,
+    columns: ["item", "started_on", "stopped_on", "stop_reason", "notes"],
+    select: `SELECT mc.id, ii.name AS item, mc.started_on, mc.stopped_on,
+              mc.stop_reason, mc.notes
+       FROM medication_courses mc JOIN intake_items ii ON ii.id = mc.item_id
+       WHERE ii.profile_id = ? ORDER BY ii.name, mc.started_on DESC, mc.id DESC`,
+    countSql: `SELECT COUNT(*) AS n
+       FROM medication_courses mc JOIN intake_items ii ON ii.id = mc.item_id
+       WHERE ii.profile_id = ?`,
+  }),
+  tableDataset({
+    // Recorded medication/supplement side effects (a child of intake_items via
+    // item_id, so browse/export-only).
+    key: "intake_item_side_effects",
+    label: "Side effects",
+    table: "intake_item_side_effects",
+    deletable: false,
+    columns: ["item", "effect", "severity", "noted_on", "resolved", "notes"],
+    select: `SELECT se.id, ii.name AS item, se.effect, se.severity, se.noted_on,
+              se.resolved, se.notes
+       FROM intake_item_side_effects se JOIN intake_items ii ON ii.id = se.item_id
+       WHERE ii.profile_id = ? ORDER BY ii.name, se.noted_on DESC, se.id DESC`,
+    countSql: `SELECT COUNT(*) AS n
+       FROM intake_item_side_effects se JOIN intake_items ii ON ii.id = se.item_id
+       WHERE ii.profile_id = ?`,
+  }),
+  providersDataset,
 ];
 
 // Per-dataset deletion policy for the manage-actions delete path: which pages to
@@ -520,6 +780,19 @@ export const DELETE_POLICY: Record<string, DatasetDeletePolicy> = {
   conditions: { revalidate: ["/conditions", "/"] },
   encounters: { revalidate: ["/encounters", "/"] },
   metric_samples: { revalidate: ["/trends", "/"] },
+  // Clinical passport domains newly exported/deletable (#465).
+  procedures: { revalidate: ["/procedures", "/"] },
+  family_history: { revalidate: ["/family-history", "/"] },
+  care_plan_items: { revalidate: ["/care-plan", "/"] },
+  care_goals: { revalidate: ["/care-goals", "/"] },
+  appointments: { revalidate: ["/appointments", "/upcoming", "/"] },
+  immunization_overrides: { revalidate: ["/immunizations", "/"] },
+  preventive_events: { revalidate: ["/upcoming", "/"] },
+  preventive_overrides: { revalidate: ["/upcoming", "/"] },
+  protocols: { revalidate: ["/protocols", "/"] },
+  milestones: { revalidate: ["/"] },
+  equipment: { revalidate: ["/settings/equipment", "/training"] },
+  frequency_targets: { revalidate: ["/training", "/"] },
 };
 
 export function getDataset(key: string): ExportDataset | undefined {

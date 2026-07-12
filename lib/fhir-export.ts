@@ -67,10 +67,29 @@ function statusConcept(code: string): FhirCodeableConcept {
 
 // ---- provider-neutral input shapes (subsets of the DB rows) ----
 
+export interface FhirExportEmergencyContact {
+  name: string;
+  phone: string;
+  relation: string;
+}
+
+export interface FhirExportSmoking {
+  status: string | null; // never | former | current | ...
+  packYears: number | null;
+  quitYear: number | null;
+}
+
 export interface FhirExportProfile {
   name: string | null;
   sex: "male" | "female" | null;
   birthdate: string | null; // YYYY-MM-DD
+  // Settings-tier clinical facts (issue #465). The app's own importer does not read
+  // these back, so they ride on the Patient as best-effort provenance (contact +
+  // Allos extensions) rather than round-tripping — but they no longer VANISH from the
+  // clinical passport the way name/sex/DOB used to be the ONLY demographics exported.
+  bloodType?: string | null;
+  emergencyContact?: FhirExportEmergencyContact | null;
+  smoking?: FhirExportSmoking | null;
 }
 
 export interface FhirExportCondition {
@@ -120,6 +139,41 @@ export interface FhirExportMedication {
   active: boolean;
 }
 
+export interface FhirExportEncounter {
+  date: string; // YYYY-MM-DD
+  end_date: string | null;
+  type: string | null;
+  class_code: string | null;
+  reason: string | null;
+  diagnoses: string[];
+}
+
+export interface FhirExportFamilyHistory {
+  relation: string | null;
+  condition: string;
+  code: string | null;
+  code_system: string | null;
+  onset_age: number | null;
+  deceased: number | null; // 1 | 0 | null
+}
+
+export interface FhirExportCarePlanItem {
+  description: string;
+  code: string | null;
+  code_system: string | null;
+  category: string | null;
+  planned_date: string | null;
+  status: string | null;
+}
+
+export interface FhirExportCareGoal {
+  description: string;
+  code: string | null;
+  code_system: string | null;
+  target_date: string | null;
+  status: string | null;
+}
+
 export interface FhirExportInput {
   profile?: FhirExportProfile | null;
   conditions: FhirExportCondition[];
@@ -128,7 +182,31 @@ export interface FhirExportInput {
   immunizations: FhirExportImmunization[];
   observations: FhirExportObservation[];
   medications: FhirExportMedication[];
+  // Added by #465 so the exporter is symmetric with the importer, which already
+  // parses Encounter / FamilyMemberHistory / CarePlan / Goal. Optional (default []) so
+  // existing callers/tests that build a partial input stay valid.
+  encounters?: FhirExportEncounter[];
+  familyHistory?: FhirExportFamilyHistory[];
+  carePlanItems?: FhirExportCarePlanItem[];
+  careGoals?: FhirExportCareGoal[];
 }
+
+// The FHIR resourceTypes this exporter emits. Bound in a DB-tier test (issue #465)
+// against the importer's consumed set so the two directions can't silently drift —
+// every clinical domain the app can IMPORT from a bundle it can also EXPORT.
+export const FHIR_EXPORT_RESOURCE_TYPES = [
+  "Patient",
+  "Condition",
+  "AllergyIntolerance",
+  "Procedure",
+  "Immunization",
+  "Observation",
+  "MedicationRequest",
+  "Encounter",
+  "FamilyMemberHistory",
+  "CarePlan",
+  "Goal",
+] as const;
 
 export interface FhirBundleEntry {
   fullUrl: string;
@@ -147,6 +225,38 @@ function patientResource(p: FhirExportProfile): Record<string, unknown> {
   if (p.sex) r.gender = p.sex;
   if (p.birthdate) r.birthDate = p.birthdate;
   if (p.name && p.name.trim()) r.name = [{ text: p.name.trim() }];
+
+  // Settings-tier clinical facts (#465). Emergency contact → Patient.contact
+  // (standard FHIR); blood type + smoking → Allos extensions (no standard Patient
+  // element). Best-effort provenance — the importer ignores these — but they are no
+  // longer dropped entirely from the exported passport.
+  const ec = p.emergencyContact;
+  if (ec && (ec.name.trim() || ec.phone.trim())) {
+    const contact: Record<string, unknown> = {};
+    if (ec.name.trim()) contact.name = { text: ec.name.trim() };
+    if (ec.phone.trim())
+      contact.telecom = [{ system: "phone", value: ec.phone.trim() }];
+    if (ec.relation.trim())
+      contact.relationship = [{ text: ec.relation.trim() }];
+    r.contact = [contact];
+  }
+  const extension: Record<string, unknown>[] = [];
+  if (p.bloodType && p.bloodType.trim())
+    extension.push({
+      url: "urn:allos:blood-type",
+      valueString: p.bloodType.trim(),
+    });
+  if (p.smoking && p.smoking.status) {
+    const parts = [p.smoking.status];
+    if (p.smoking.packYears != null)
+      parts.push(`${p.smoking.packYears} pack-years`);
+    if (p.smoking.quitYear != null) parts.push(`quit ${p.smoking.quitYear}`);
+    extension.push({
+      url: "urn:allos:smoking-history",
+      valueString: parts.join("; "),
+    });
+  }
+  if (extension.length) r.extension = extension;
   return r;
 }
 
@@ -235,6 +345,76 @@ function medicationResource(m: FhirExportMedication): Record<string, unknown> {
   return r;
 }
 
+// Inverse of mapEncounterResource: period.start/end, a single-coding class, a text
+// type, a reasonCode, and inline CodeableReference diagnoses the importer resolves.
+function encounterResource(e: FhirExportEncounter): Record<string, unknown> {
+  const r: Record<string, unknown> = {
+    resourceType: "Encounter",
+    status: "finished",
+    period: {
+      start: e.date,
+      ...(e.end_date ? { end: e.end_date } : {}),
+    },
+  };
+  if (e.class_code) r.class = { code: e.class_code };
+  if (e.type) r.type = [concept(e.type)];
+  if (e.reason) r.reasonCode = [concept(e.reason)];
+  if (e.diagnoses.length)
+    r.diagnosis = e.diagnoses.map((d) => ({
+      condition: { concept: concept(d) },
+    }));
+  return r;
+}
+
+// Inverse of mapFamilyMemberHistoryResource: one resource per stored row (each row is
+// already one relation×condition). The condition's onsetAge carries the age at onset.
+function familyMemberHistoryResource(
+  f: FhirExportFamilyHistory
+): Record<string, unknown> {
+  const cond: Record<string, unknown> = {
+    code: concept(f.condition, f.code, f.code_system),
+  };
+  if (f.onset_age != null) cond.onsetAge = { value: f.onset_age, unit: "a" };
+  const r: Record<string, unknown> = {
+    resourceType: "FamilyMemberHistory",
+    status: "completed",
+    condition: [cond],
+  };
+  if (f.relation) r.relationship = concept(f.relation);
+  if (f.deceased != null) r.deceasedBoolean = f.deceased === 1;
+  return r;
+}
+
+// Inverse of mapCarePlanResource: a single-activity plan whose detail codes the
+// planned act, its category, scheduled date, and status.
+function carePlanResource(c: FhirExportCarePlanItem): Record<string, unknown> {
+  const detail: Record<string, unknown> = {
+    code: concept(c.description, c.code, c.code_system),
+  };
+  if (c.category) detail.category = [{ text: c.category }];
+  if (c.planned_date) detail.scheduledPeriod = { start: c.planned_date };
+  if (c.status) detail.status = c.status;
+  return {
+    resourceType: "CarePlan",
+    // CarePlan.status is required; the row's status is a free-text activity status, so
+    // keep the plan-level status neutral-active (the importer reads the detail.status).
+    status: "active",
+    activity: [{ detail }],
+  };
+}
+
+// Inverse of mapGoalResource: description.text (+ optional coding), a due date, and
+// the lifecycle status.
+function goalResource(g: FhirExportCareGoal): Record<string, unknown> {
+  const r: Record<string, unknown> = {
+    resourceType: "Goal",
+    lifecycleStatus: g.status && g.status.trim() ? g.status : "active",
+    description: concept(g.description, g.code, g.code_system),
+  };
+  if (g.target_date) r.target = [{ dueDate: g.target_date }];
+  return r;
+}
+
 // Build the FHIR R4 collection Bundle. Every entry gets a stable synthetic id +
 // fullUrl (urn:allos:<type>:<n>) so the importer's reference resolver has keys to
 // index; nothing in this bundle actually cross-references, but well-formed entries
@@ -257,6 +437,13 @@ export function buildFhirBundle(input: FhirExportInput): FhirBundle {
   for (const o of input.observations)
     add("observation", observationResource(o));
   for (const m of input.medications) add("medication", medicationResource(m));
+  for (const e of input.encounters ?? [])
+    add("encounter", encounterResource(e));
+  for (const f of input.familyHistory ?? [])
+    add("familyhistory", familyMemberHistoryResource(f));
+  for (const c of input.carePlanItems ?? [])
+    add("careplan", carePlanResource(c));
+  for (const g of input.careGoals ?? []) add("goal", goalResource(g));
 
   return { resourceType: "Bundle", type: "collection", entry };
 }

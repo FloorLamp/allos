@@ -767,6 +767,26 @@ You can still restore by hand if you prefer: stop the container, `cp
 data/backups/allos-<stamp>.db data/allos.db`, delete any `data/allos.db-wal` /
 `data/allos.db-shm`, and start it again.
 
+### Moving to a new server
+
+To migrate a running instance to a new host, **copy the whole `DATA_DIR`** — the
+database plus everything alongside it on disk (`uploads/`, `integration-payloads/`,
+`backups/`). Everything Allos persists lives under that one directory (outside the
+checkout), so a faithful move is a directory copy, not a database-only step:
+
+```bash
+# on the OLD host, with the app stopped:
+rsync -a "$DATA_DIR"/ newhost:/path/to/allos-data/
+# on the NEW host: point DATA_DIR at the copy and start the container
+```
+
+Stop the app on the old host first so the SQLite WAL is checkpointed and no file
+changes mid-copy. Do **not** use the **Data → Export all my data** ZIP for this — that
+is a readable **portability** artifact (JSON/CSV + a FHIR passport) for taking a
+profile's record to another tool, **not** a restore image: it omits operational state
+(connections, sessions, sync history) and can't rebuild an instance. The `DATA_DIR`
+copy (or a [backup snapshot](#backups) plus its `uploads/`) is the restore path.
+
 ## Running a demo instance
 
 Allos can run as a **public, read-only demo** so people can explore the data model
