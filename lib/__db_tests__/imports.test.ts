@@ -185,6 +185,18 @@ function makeInput(): PersistInput {
         external_id: "ccda:caregoal:4548-4",
       },
     ],
+    appointments: [
+      {
+        scheduled_at: "2030-01-15T09:30",
+        status: "scheduled",
+        title: "Cardiology follow-up",
+        location: "Sample Cardiology Clinic",
+        notes: null,
+        kind: null,
+        provider: null,
+        external_id: "fhir:appointment:appt-1",
+      },
+    ],
     bodyMetrics: [
       { date: DATE, weight_kg: 82, body_fat_pct: null, resting_hr: null },
     ],
@@ -310,6 +322,7 @@ describe("getDocumentProduced", () => {
     expect(p.familyHistory).toBe(1);
     expect(p.carePlanItems).toBe(1);
     expect(p.careGoals).toBe(1);
+    expect(p.appointments).toBe(1);
     // The prescription record was projected into a structured medication row.
     expect(p.medications).toBe(1);
     expect(p.bodyMetrics).toBe(1);
@@ -345,6 +358,7 @@ describe("getDocumentProduced", () => {
     expect(cross.familyHistory).toBe(0);
     expect(cross.carePlanItems).toBe(0);
     expect(cross.careGoals).toBe(0);
+    expect(cross.appointments).toBe(0);
     expect(cross.medications).toBe(0);
     expect(cross.bodyMetrics).toBe(0);
     expect(cross.heightSamples).toBe(0);
@@ -368,18 +382,18 @@ describe("extracted_count (toast + Review-feed tally)", () => {
     // The cross-domain makeInput() writes: 3 medical_records (2 lab + 1
     // prescription) + 1 immunization + 1 allergy + 1 condition + 1 encounter +
     // 1 procedure + 1 family-history + 1 care-plan item + 1 care goal + 1
-    // structured medication (the prescription projected into intake_items) +
-    // 1 body-metric + 1 height + 1 head-circ = 15.
+    // appointment + 1 structured medication (the prescription projected into
+    // intake_items) + 1 body-metric + 1 height + 1 head-circ = 16.
     // The old tally (immCount + recCount = 1 + 3 = 4) missed the rest.
     const row = db
       .prepare(
         "SELECT extracted_count AS n FROM medical_documents WHERE id = ? AND profile_id = ?"
       )
       .get(docA, profileA) as { n: number };
-    expect(row.n).toBe(15);
+    expect(row.n).toBe(16);
     // And it equals the live footprint count the writer derives off
     // IMPORT_FOOTPRINT_TABLES, so the stored value can't silently drift.
-    expect(countImportedDocumentRows(profileA, docA)).toBe(15);
+    expect(countImportedDocumentRows(profileA, docA)).toBe(16);
   });
 
   it("counts an encounter-only import as 1 item (the reported repro)", () => {
@@ -410,6 +424,7 @@ describe("extracted_count (toast + Review-feed tally)", () => {
       familyHistory: [],
       carePlanItems: [],
       careGoals: [],
+      appointments: [],
       bodyMetrics: [],
       heights: [],
       headCircs: [],

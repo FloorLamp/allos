@@ -154,6 +154,7 @@ function makeInput(): PersistInput {
         external_id: "cg:bp",
       },
     ],
+    appointments: [],
     bodyMetrics: [
       { date: DATE, weight_kg: 80, body_fat_pct: null, resting_hr: null },
     ],

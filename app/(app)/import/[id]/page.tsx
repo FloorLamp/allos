@@ -19,6 +19,7 @@ import {
   getDocumentFamilyHistory,
   getDocumentCarePlanItems,
   getDocumentCareGoals,
+  getDocumentAppointments,
   getDocumentMedications,
   getDocumentBodyRows,
 } from "@/lib/queries";
@@ -49,6 +50,7 @@ import {
   familyHistoryItem,
   carePlanItemRow,
   careGoalItem,
+  appointmentItem,
   medicationItem,
   bodyItems,
   type ImportTab,
@@ -100,6 +102,8 @@ function listingItems(
       return getDocumentCarePlanItems(profileId, docId).map(carePlanItemRow);
     case "care-goals":
       return getDocumentCareGoals(profileId, docId).map(careGoalItem);
+    case "appointments":
+      return getDocumentAppointments(profileId, docId).map(appointmentItem);
     case "medications":
       return getDocumentMedications(profileId, docId).map(medicationItem);
     case "body":

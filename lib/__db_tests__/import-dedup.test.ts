@@ -136,6 +136,7 @@ function glucoseInput(overrides?: {
     ],
     carePlanItems: [],
     careGoals: [],
+    appointments: [],
     bodyMetrics: [],
     heights: [],
     headCircs: [],

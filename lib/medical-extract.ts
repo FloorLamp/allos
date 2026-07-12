@@ -62,6 +62,24 @@ const MAX_TOKENS = Number(process.env.HEALTH_AI_MAX_TOKENS) || 16000;
 const CATEGORIES = MEDICAL_CATEGORIES;
 const FLAGS = MEDICAL_FLAGS;
 
+// Structured prescription fields the model reads straight off a pharmacy label /
+// medication order (#414). Emitted ONLY on `category === 'prescription'` results,
+// so the sig / prescriber / pharmacy / Rx number no longer have to be regex-
+// reconstructed from a free-text note downstream. Preferred by the persist layer
+// when present; `parsePrescription` stays the fallback for legacy stored
+// extractions that carry only a note. The conservative "no invented schedule"
+// rule still applies as post-validation — an unparseable sig yields an as-needed
+// med (parsePrescription/parseSig), never a fabricated daily reminder.
+export interface ExtractedPrescription {
+  sig: string | null; // directions verbatim, e.g. "Take 1 tablet by mouth daily"
+  strength: string | null; // per-dose strength, e.g. "10 mg"
+  prn: number | null; // 1 when the label states as-needed / PRN, else 0/null
+  prescriber: string | null; // ordering clinician name, e.g. "Grace Hopper, MD"
+  pharmacy: string | null; // dispensing pharmacy name
+  rx_number: string | null; // prescription / Rx number as printed
+  start_date: string | null; // YYYY-MM-DD the course started, when printed
+}
+
 export interface ExtractedResult {
   category: MedicalCategory;
   panel: string | null;
@@ -74,6 +92,12 @@ export interface ExtractedResult {
   flag: MedicalFlag | null;
   collected_date: string | null;
   notes: string | null;
+  // Structured prescription attribution/schedule for a `prescription` result
+  // (#414). Null for every non-medication result and for a medication the model
+  // couldn't structure — the persist layer then falls back to parsePrescription.
+  // Optional so existing ExtractedResult constructors (test fixtures) need no
+  // change; normalizeResults always sets it (null when absent).
+  prescription?: ExtractedPrescription | null;
 }
 
 // One vaccine administration extracted from an immunization record / vaccine
@@ -337,6 +361,15 @@ Rules:
   "Comprehensive Metabolic Panel", "Body Composition"), else null.
 - notes: leave null. Only set it for a short (<12 words) clinically meaningful note; never
   copy reference paragraphs, citations, methodology, or boilerplate disclaimers.
+- prescription: when a result is a MEDICATION (category "prescription") read off a pharmacy
+  label, prescription printout, or medication order, ALSO fill the "prescription" object with
+  what the document actually states: sig (the directions VERBATIM, e.g. "Take 1 tablet by mouth
+  daily" — this drives dose reminders, so copy it exactly and do NOT paraphrase away the
+  frequency), strength (the per-dose amount, e.g. "10 mg"), prn (1 only when the label says
+  as-needed / PRN, else 0), prescriber (ordering clinician), pharmacy (dispensing pharmacy),
+  rx_number (the Rx / prescription number), start_date (ISO YYYY-MM-DD when the course started).
+  Leave any field null when the document doesn't print it — never invent a schedule, prescriber,
+  or Rx number. Leave the whole object null for non-medication results.
 - collected_date / document_date: ISO YYYY-MM-DD when determinable, else null. Prefer the
   specimen collection date or scan date.
 - immunizations: if the document is an immunization record / vaccine card / shot history, emit
@@ -423,6 +456,44 @@ const TOOL: Anthropic.Tool = {
             flag: { type: ["string", "null"], enum: [...FLAGS, null] },
             collected_date: { type: ["string", "null"] },
             notes: { type: ["string", "null"] },
+            prescription: {
+              type: ["object", "null"],
+              description:
+                "For a MEDICATION result (category 'prescription') only: the structured order read off the label. Null for non-medications.",
+              properties: {
+                sig: {
+                  type: ["string", "null"],
+                  description:
+                    "Directions verbatim, e.g. 'Take 1 tablet by mouth daily'. Copy the frequency exactly — it drives dose reminders.",
+                },
+                strength: {
+                  type: ["string", "null"],
+                  description: "Per-dose strength, e.g. '10 mg', '1 tablet'",
+                },
+                prn: {
+                  type: ["number", "null"],
+                  description:
+                    "1 when the label states as-needed / PRN, else 0. A PRN med is never scheduled-due.",
+                },
+                prescriber: {
+                  type: ["string", "null"],
+                  description:
+                    "Ordering clinician name, e.g. 'Grace Hopper, MD'",
+                },
+                pharmacy: {
+                  type: ["string", "null"],
+                  description: "Dispensing pharmacy name",
+                },
+                rx_number: {
+                  type: ["string", "null"],
+                  description: "Prescription / Rx number as printed",
+                },
+                start_date: {
+                  type: ["string", "null"],
+                  description: "Course start date, ISO YYYY-MM-DD, else null",
+                },
+              },
+            },
           },
           required: ["category", "name", "canonical_name"],
         },
@@ -763,6 +834,37 @@ async function buildContent(
   ];
 }
 
+// Coerce the model's structured `prescription` object into a typed
+// ExtractedPrescription, or null when absent/empty (#414). Kept pure + exported so
+// the shape coercion is unit-testable. Dates are coerced to strict ISO-or-null; prn
+// collapses a boolean/0/1/yes-no to 1/0/null; every text field is trimmed-or-null.
+// Returns null when the object carries NO usable field, so an all-null object never
+// masks the parsePrescription fallback.
+export function normalizePrescription(
+  raw: unknown
+): ExtractedPrescription | null {
+  if (!raw || typeof raw !== "object") return null;
+  const p = raw as Record<string, unknown>;
+  const rx: ExtractedPrescription = {
+    sig: strOrNull(p.sig),
+    strength: strOrNull(p.strength),
+    prn: boolIntOrNull(p.prn),
+    prescriber: strOrNull(p.prescriber),
+    pharmacy: strOrNull(p.pharmacy),
+    rx_number: strOrNull(p.rx_number),
+    start_date: isoDateOrNull(p.start_date),
+  };
+  const hasAny =
+    rx.sig != null ||
+    rx.strength != null ||
+    rx.prn != null ||
+    rx.prescriber != null ||
+    rx.pharmacy != null ||
+    rx.rx_number != null ||
+    rx.start_date != null;
+  return hasAny ? rx : null;
+}
+
 function normalizeResults(
   raw: any,
   knownCanonical: string[] = []
@@ -805,6 +907,12 @@ function normalizeResults(
       flag,
       collected_date: str(r?.collected_date),
       notes: str(r?.notes),
+      // Only a medication result carries structured prescription fields (#414);
+      // anything the model attached to a lab/scan row is ignored.
+      prescription:
+        category === "prescription"
+          ? normalizePrescription(r?.prescription)
+          : null,
     });
   }
   return out;

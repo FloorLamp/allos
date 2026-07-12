@@ -5,6 +5,7 @@ import type {
   ImportDemographics,
   ImportResult,
   ImportedAllergy,
+  ImportedAppointment,
   ImportedCareGoal,
   ImportedCarePlanItem,
   ImportedCondition,
@@ -35,6 +36,7 @@ import {
   NKA_CODES,
   isEnteredInError,
   mapAllergyResource,
+  mapAppointmentResource,
   mapCarePlanResource,
   mapConditionResource,
   mapEncounterResource,
@@ -62,6 +64,7 @@ interface MapperOutput {
   // CarePlan yields one row PER planned activity (container shape); Goal yields one.
   carePlanItems?: ImportedCarePlanItem[];
   careGoal?: ImportedCareGoal | null;
+  appointment?: ImportedAppointment | null;
 }
 
 // FHIR resourceType → mapper. Each maps into a provider-neutral ImportedX shape and
@@ -92,6 +95,7 @@ const RESOURCE_MAPPERS: Record<
   }),
   CarePlan: (r) => ({ carePlanItems: mapCarePlanResource(r) }),
   Goal: (r) => ({ careGoal: mapGoalResource(r) }),
+  Appointment: (r, ctx) => ({ appointment: mapAppointmentResource(r, ctx) }),
   DiagnosticReport: (r, ctx) => ({
     records: recordsFromDiagnosticReport(r, ctx.idPrefix, ctx),
   }),
@@ -158,6 +162,8 @@ function fhirDropKind(resourceType: string): DropKind {
       return "care_plan";
     case "Goal":
       return "care_goal";
+    case "Appointment":
+      return "appointment";
     default:
       return "resource";
   }
@@ -202,6 +208,16 @@ function fhirDropLabel(resourceType: string, r: any): string {
         (typeof r?.description?.text === "string" && r.description.text.trim()
           ? r.description.text.trim()
           : null) ?? "Goal"
+      );
+    case "Appointment":
+      return (
+        (typeof r?.description === "string" && r.description.trim()
+          ? r.description.trim()
+          : null) ??
+        conceptName(
+          Array.isArray(r?.serviceType) ? r.serviceType[0] : r?.serviceType
+        ) ??
+        "Appointment"
       );
     default:
       return resourceType;
@@ -258,6 +274,9 @@ function fhirDropReason(resourceType: string, r: any): DropReason {
     !(typeof r?.title === "string" && r.title.trim())
   )
     return "no_value";
+  // An Appointment drops only when it carries no usable start (nothing else can
+  // reject it, since status was handled above) — undatable, so `other`.
+  if (resourceType === "Appointment" && !isoDate(r?.start)) return "other";
   return "other";
 }
 
@@ -323,6 +342,7 @@ export function entriesToImportResult(
   const familyHistory: ImportedFamilyHistory[] = [];
   const carePlanItems: ImportedCarePlanItem[] = [];
   const careGoals: ImportedCareGoal[] = [];
+  const appointments: ImportedAppointment[] = [];
   let demographics: ImportDemographics | null = null;
 
   const seenImm = new Set<string>();
@@ -334,6 +354,7 @@ export function entriesToImportResult(
   const seenFam = new Set<string>();
   const seenCarePlan = new Set<string>();
   const seenCareGoal = new Set<string>();
+  const seenAppt = new Set<string>();
 
   // Import DEBUGGER accumulators.
   const drops: ImportDrop[] = [];
@@ -490,6 +511,19 @@ export function entriesToImportResult(
         careGoals.push(out.careGoal);
       }
     } else if (out.careGoal === null) drops.push(dropFor(r));
+    if (out.appointment) {
+      if (seenAppt.has(out.appointment.external_id))
+        drops.push({
+          kind: "appointment",
+          label: out.appointment.title ?? out.appointment.scheduled_at,
+          reason: "deduped",
+          section: r.resourceType,
+        });
+      else {
+        seenAppt.add(out.appointment.external_id);
+        appointments.push(out.appointment);
+      }
+    } else if (out.appointment === null) drops.push(dropFor(r));
   }
 
   // Resource types the bundle carried but no mapper consumed (DocumentReference, …)
@@ -518,6 +552,7 @@ export function entriesToImportResult(
   careGoals.sort((a, b) =>
     (a.target_date ?? "").localeCompare(b.target_date ?? "")
   );
+  appointments.sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at));
 
   const imported =
     records.length +
@@ -528,7 +563,8 @@ export function entriesToImportResult(
     procedures.length +
     familyHistory.length +
     carePlanItems.length +
-    careGoals.length;
+    careGoals.length +
+    appointments.length;
   const rowDrops = drops.filter(
     (d) => d.reason !== "unrecognized_section"
   ).length;
@@ -559,6 +595,7 @@ export function entriesToImportResult(
     familyHistory,
     carePlanItems,
     careGoals,
+    appointments,
     demographics,
     report,
   };

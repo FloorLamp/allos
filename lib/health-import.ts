@@ -1,5 +1,7 @@
 import type {
   AllergyStatus,
+  AppointmentKind,
+  AppointmentStatus,
   ConditionStatus,
   MedicalCategory,
   MedStopReason,
@@ -189,6 +191,25 @@ export interface ImportedCareGoal {
   external_id: string; // stable dedup key ("ccda:caregoal:…")
 }
 
+// A scheduled visit / appointment pulled from a FHIR Appointment resource (issue
+// #416). No CDA appointment section exists, so this is FHIR-only today.
+// Provider-neutral: the attending clinician is captured as an ImportedProvider and
+// resolved into the shared registry on persist (linked via appointments.provider_id);
+// the facility is a plain `location` string (the appointments table stores location
+// as text, not a provider FK). `kind` is best-effort from the FHIR service/type
+// codings (null when not clearly one of the app's kinds — a null kind never matches a
+// preventive rule). scheduled_at preserves the source's date (and time when present).
+export interface ImportedAppointment {
+  scheduled_at: string; // YYYY-MM-DD or "YYYY-MM-DDTHH:MM"
+  status: AppointmentStatus;
+  title: string | null;
+  location: string | null;
+  notes: string | null;
+  kind: AppointmentKind | null;
+  provider: ImportedProvider | null;
+  external_id: string; // stable dedup key ("fhir:appointment:<id>")
+}
+
 // Patient demographics read from the export's header/Patient resource (not a
 // clinical record — these fill the profile's sex/birthdate when they're unset).
 export interface ImportDemographics {
@@ -218,6 +239,9 @@ export interface ImportResult {
   // other parsers omit them.
   carePlanItems?: ImportedCarePlanItem[];
   careGoals?: ImportedCareGoal[];
+  // Scheduled visits / appointments. Optional (default []): only the FHIR Appointment
+  // resource populates it (issue #416); the CDA path and other parsers omit it.
+  appointments?: ImportedAppointment[];
   demographics: ImportDemographics | null;
   // Providers/organizations captured from the record that aren't tied to a single
   // reading — the CCD Care Teams section. Registered into the shared

@@ -399,6 +399,105 @@ describe("FHIR Encounter → ImportedEncounter", () => {
   });
 });
 
+describe("FHIR Appointment → ImportedAppointment (#416)", () => {
+  it("maps start (with time), status, description, service kind + practitioner/location participants", () => {
+    const r = parseFhirBundle(
+      bundleWithUrls([
+        {
+          fullUrl: "urn:uuid:prac-1",
+          resource: {
+            resourceType: "Practitioner",
+            id: "prac-1",
+            name: [{ given: ["Grace"], family: "Hopper" }],
+          },
+        },
+        {
+          fullUrl: "urn:uuid:appt-1",
+          resource: {
+            resourceType: "Appointment",
+            id: "appt-1",
+            status: "booked",
+            description: "Dental cleaning",
+            serviceType: [{ concept: { text: "Dental" } }],
+            start: "2030-08-01T14:30:00Z",
+            comment: "Bring insurance card",
+            participant: [
+              { actor: { reference: "urn:uuid:prac-1" }, status: "accepted" },
+              {
+                actor: {
+                  reference: "Location/loc-9",
+                  display: "Sample Dental Office",
+                },
+                status: "accepted",
+              },
+            ],
+          },
+        },
+      ])
+    );
+    expect(r.appointments).toHaveLength(1);
+    const a = r.appointments![0];
+    expect(a).toMatchObject({
+      scheduled_at: "2030-08-01T14:30",
+      status: "scheduled",
+      title: "Dental cleaning",
+      location: "Sample Dental Office",
+      notes: "Bring insurance card",
+      kind: "dental",
+      external_id: "fhir:appointment:appt-1",
+    });
+    expect(a.provider).toMatchObject({
+      name: "Grace Hopper",
+      type: "individual",
+    });
+  });
+
+  it("maps fulfilled→completed and cancelled/noshow→cancelled", () => {
+    const r = parseFhirBundle(
+      bundle([
+        {
+          resourceType: "Appointment",
+          id: "a1",
+          status: "fulfilled",
+          start: "2030-01-01",
+        },
+        {
+          resourceType: "Appointment",
+          id: "a2",
+          status: "cancelled",
+          start: "2030-01-02",
+        },
+        {
+          resourceType: "Appointment",
+          id: "a3",
+          status: "noshow",
+          start: "2030-01-03",
+        },
+      ])
+    );
+    const byId = Object.fromEntries(
+      (r.appointments ?? []).map((a) => [a.external_id, a.status])
+    );
+    expect(byId["fhir:appointment:a1"]).toBe("completed");
+    expect(byId["fhir:appointment:a2"]).toBe("cancelled");
+    expect(byId["fhir:appointment:a3"]).toBe("cancelled");
+  });
+
+  it("drops entered-in-error and startless appointments", () => {
+    const r = parseFhirBundle(
+      bundle([
+        {
+          resourceType: "Appointment",
+          status: "entered-in-error",
+          start: "2030-01-01",
+        },
+        { resourceType: "Appointment", status: "booked" },
+      ])
+    );
+    expect(r.appointments).toEqual([]);
+  });
+});
+
 describe("FHIR provider provenance on Observation / Immunization", () => {
   it("attaches the resolved performing organization to an Observation record", () => {
     const r = parseFhirBundle(

@@ -1,5 +1,7 @@
 import type {
   AllergyStatus,
+  AppointmentKind,
+  AppointmentStatus,
   ConditionStatus,
   MedicalCategory,
   MedicalFlag,
@@ -174,6 +176,21 @@ export interface PersistCareGoal {
   external_id: string | null;
 }
 
+// Scheduled-appointment projection (issue #416). Only the FHIR Appointment resource
+// fills this; the AI and CDA paths leave it empty. The attending clinician
+// (`provider`) is resolved into the shared registry on persist (linked via
+// appointments.provider_id); the facility is a plain `location` string.
+export interface PersistAppointment {
+  scheduled_at: string;
+  status: AppointmentStatus;
+  title: string | null;
+  location: string | null;
+  notes: string | null;
+  kind: AppointmentKind | null;
+  provider: ImportedProvider | null;
+  external_id: string | null;
+}
+
 // The profile-backfill inputs (sex/birthdate/age/name), shaped for
 // adoptProfileFromExtraction. Null when the document states no demographics.
 export interface AdoptMeta {
@@ -206,6 +223,7 @@ export interface PersistInput {
   familyHistory: PersistFamilyHistory[];
   carePlanItems: PersistCarePlanItem[];
   careGoals: PersistCareGoal[];
+  appointments: PersistAppointment[];
   bodyMetrics: DocBodyMetric[];
   // Body-height samples (metric_samples, metric 'height_cm') — height has no
   // body_metrics column, so it gets its own projection.
@@ -318,25 +336,59 @@ export function extractionToPersistInput(
   const docDate = isRealIsoDate(result.meta.document_date)
     ? result.meta.document_date
     : null;
-  const allRecords: PersistRecord[] = result.results.map((r) => ({
-    category: r.category,
-    name: r.name,
-    canonical: r.canonical_name || r.name,
-    value: r.value,
-    value_num: Number.isFinite(r.value_num) ? r.value_num : null,
-    unit: r.unit,
-    date: isRealIsoDate(r.collected_date) ? r.collected_date! : fallbackDate,
-    reference_range: r.reference_range,
-    flag: r.flag,
-    panel: r.panel,
-    notes: r.notes,
-    source: null,
-    external_id: null,
-    loinc: null,
-    provider: null,
-    // The AI path carries no structured medication period/status → courses.
-    courses: null,
-  }));
+  const allRecords: PersistRecord[] = result.results.map((r) => {
+    // A structured prescription object (#414) supplies the sig / strength /
+    // prescriber / pharmacy / Rx / start-date straight off the label, so the med
+    // projection no longer depends on parsePrescription reconstructing them from a
+    // note. It is preferred; parsePrescription stays the fallback (its conservative
+    // "no invented schedule" rule still runs as post-validation on the sig). We
+    // route the structured sig into `notes` and the strength into `value` so the
+    // existing PersistRecord → parsePrescription path infers the schedule from clean
+    // directions rather than the model's free-text note.
+    const rx = r.category === "prescription" ? r.prescription : null;
+    // Force PRN through the sig so parseSig marks the med as-needed (PRN wins over
+    // any frequency token). Otherwise keep the verbatim sig, falling back to the
+    // model's note when it didn't structure one.
+    const sigNote =
+      rx?.prn === 1
+        ? [rx.sig, "as needed"].filter(Boolean).join("; ")
+        : (rx?.sig ?? r.notes);
+    const courses: ImportedMedicationCourse[] | null =
+      rx?.start_date != null
+        ? [
+            {
+              started_on: rx.start_date,
+              stopped_on: null,
+              stop_reason: null,
+              notes: null,
+            },
+          ]
+        : null;
+    return {
+      category: r.category,
+      name: r.name,
+      canonical: r.canonical_name || r.name,
+      value: rx?.strength ?? r.value,
+      value_num: Number.isFinite(r.value_num) ? r.value_num : null,
+      unit: r.unit,
+      date: isRealIsoDate(r.collected_date) ? r.collected_date! : fallbackDate,
+      reference_range: r.reference_range,
+      flag: r.flag,
+      panel: r.panel,
+      notes: rx ? sigNote : r.notes,
+      source: null,
+      external_id: null,
+      loinc: null,
+      provider: null,
+      // Structured medication period (a single open course from the printed start
+      // date) + attribution, when the label carried them (#414); else null and the
+      // persist layer's parsePrescription fallback fills what it can.
+      courses,
+      prescriber: rx?.prescriber ?? null,
+      pharmacy: rx?.pharmacy ?? null,
+      rxNumber: rx?.rx_number ?? null,
+    };
+  });
   const bodyMetrics = bodyMetricsFromExtraction(
     result.results,
     result.meta.document_date
@@ -487,6 +539,9 @@ export function extractionToPersistInput(
     familyHistory,
     carePlanItems,
     careGoals,
+    // The AI medical extractor has no appointment shape (it emits care plans, not
+    // scheduled visits), so the AI path never produces appointments (#416).
+    appointments: [],
     bodyMetrics,
     heights,
     headCircs,
@@ -668,6 +723,16 @@ export function healthRecordToPersistInput(
       target_date: g.target_date,
       status: g.status,
       external_id: g.external_id,
+    })),
+    appointments: (parsed.appointments ?? []).map((a) => ({
+      scheduled_at: a.scheduled_at,
+      status: a.status,
+      title: a.title,
+      location: a.location,
+      notes: a.notes,
+      kind: a.kind,
+      provider: a.provider,
+      external_id: a.external_id,
     })),
     bodyMetrics,
     heights,

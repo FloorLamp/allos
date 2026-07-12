@@ -15,6 +15,7 @@ import { codeFromVaccineCode } from "../cvx-map";
 import type {
   ImportDemographics,
   ImportedAllergy,
+  ImportedAppointment,
   ImportedCareGoal,
   ImportedCarePlanItem,
   ImportedCondition,
@@ -24,6 +25,7 @@ import type {
   ImportedProcedure,
   ImportedRecord,
 } from "../health-import";
+import type { AppointmentKind, AppointmentStatus } from "../types";
 import type { ImportMedPeriod } from "../medication-course-import";
 import {
   coursesFromImportedMedication,
@@ -397,6 +399,145 @@ export function mapMedicationResource(
 
 // The HL7 v3 ActEncounterCode class (AMB / IMP / EMER / …). R4 carries it as a bare
 // Coding on `class`; R5 as a CodeableConcept[].
+// FHIR Appointment.status → the app's 3-value appointment lifecycle. A booked/
+// pending/proposed/arrived/checked-in/waitlist visit is still-scheduled; fulfilled
+// is completed; cancelled/noshow are cancelled. entered-in-error has no entry (the
+// mapper drops it).
+const FHIR_APPOINTMENT_STATUS: Record<string, AppointmentStatus> = {
+  proposed: "scheduled",
+  pending: "scheduled",
+  booked: "scheduled",
+  arrived: "scheduled",
+  "checked-in": "scheduled",
+  waitlist: "scheduled",
+  fulfilled: "completed",
+  cancelled: "cancelled",
+  noshow: "cancelled",
+};
+
+// Preserve the appointment's date AND wall-clock time when the FHIR instant carries
+// one ("2026-08-01T14:30:00Z" → "2026-08-01T14:30", matching the datetime-local
+// format a manual booking stores); a date-only value stays "YYYY-MM-DD". Null when
+// the date portion isn't a real calendar date.
+function appointmentDateTime(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const date = isoDate(v);
+  if (!date) return null;
+  const m = /^\d{4}-\d{2}-\d{2}T(\d{2}:\d{2})/.exec(v.trim());
+  return m ? `${date}T${m[1]}` : date;
+}
+
+// Best-effort map from an Appointment's SERVICE/TYPE codings to one of the app's
+// explicit appointment kinds — a stronger, deliberate signal than title guessing.
+// Only an unambiguous keyword sets a kind; anything else stays null (a null kind
+// never matches a preventive rule), so an imported visit surfaces on the calendar
+// without ever fabricating a preventive-satisfying match.
+function appointmentKindFromFhir(r: any): AppointmentKind | null {
+  const parts: string[] = [];
+  const push = (c: any) => {
+    const n = conceptName(c);
+    if (n) parts.push(n);
+  };
+  push(r?.appointmentType);
+  for (const s of Array.isArray(r?.serviceType) ? r.serviceType : [])
+    push(s?.concept ?? s);
+  for (const s of Array.isArray(r?.serviceCategory) ? r.serviceCategory : [])
+    push(s);
+  const t = parts.join(" ").toLowerCase();
+  if (!t) return null;
+  if (/\b(dental|dentist|teeth|cleaning|hygien)/.test(t)) return "dental";
+  if (/\b(vision|eye|optometr|ophthalm)/.test(t)) return "vision";
+  if (/\bwell[\s-]?child|child\s+check|pediatric\s+well/.test(t))
+    return "well_child";
+  if (/\b(physical|check[\s-]?up|annual\s+exam|wellness\s+visit)/.test(t))
+    return "physical";
+  if (/\b(screen|mammogram|colonoscop|pap\b)/.test(t)) return "screening";
+  return null;
+}
+
+// FHIR Appointment → ImportedAppointment (issue #416). No CDA equivalent exists, so
+// this is FHIR-only. A dateless (no start) or entered-in-error appointment is dropped
+// (null) — the appointments.scheduled_at column is NOT NULL, so an unschedulable row
+// can't be placed. The attending clinician is resolved from a Practitioner-referencing
+// participant; the facility is a plain location string from a Location participant.
+export function mapAppointmentResource(
+  r: any,
+  ctx: FhirBundleCtx
+): ImportedAppointment | null {
+  if (r?.status === "entered-in-error") return null;
+  const scheduled_at = appointmentDateTime(r?.start);
+  if (!scheduled_at) return null;
+  const status: AppointmentStatus =
+    (typeof r?.status === "string" && FHIR_APPOINTMENT_STATUS[r.status]) ||
+    "scheduled";
+
+  const participants = Array.isArray(r?.participant) ? r.participant : [];
+  // Attending clinician: participant actors EXCEPT the Location (facility) and
+  // Patient references, so a Location/Patient participant isn't mistaken for a
+  // provider. The remaining refs (often bare urn:uuid pointers to a Practitioner)
+  // are resolved by providerFromRefs, which keeps the individual it finds.
+  const clinicianActors = participants
+    .map((p: any) => p?.actor)
+    .filter((a: any) => {
+      const ref = typeof a?.reference === "string" ? a.reference : "";
+      return (
+        !/(?:^|\/)Location\//i.test(ref) && !/(?:^|\/)Patient\//i.test(ref)
+      );
+    });
+  const provider = providerFromRefs(
+    clinicianActors,
+    ctx,
+    r?.contained,
+    "individual"
+  );
+  // Facility: a Location-referencing participant's display, if any.
+  let location: string | null = null;
+  for (const p of participants) {
+    const a = p?.actor;
+    if (
+      typeof a?.reference === "string" &&
+      /Location\//i.test(a.reference) &&
+      typeof a?.display === "string" &&
+      a.display.trim()
+    ) {
+      location = a.display.trim();
+      break;
+    }
+  }
+
+  const title =
+    (typeof r?.description === "string" && r.description.trim()
+      ? r.description.trim()
+      : null) ??
+    conceptName(
+      Array.isArray(r?.serviceType) ? r.serviceType[0] : r?.serviceType
+    ) ??
+    conceptName(r?.appointmentType);
+  const notes =
+    (typeof r?.comment === "string" && r.comment.trim()
+      ? r.comment.trim()
+      : null) ??
+    (typeof r?.patientInstruction === "string" && r.patientInstruction.trim()
+      ? r.patientInstruction.trim()
+      : null);
+
+  const external_id =
+    r?.id != null
+      ? `fhir:appointment:${r.id}`
+      : `fhir:appointment:${scheduled_at}:${(title ?? "").toLowerCase()}`;
+
+  return {
+    scheduled_at,
+    status,
+    title,
+    location,
+    notes,
+    kind: appointmentKindFromFhir(r),
+    provider,
+    external_id,
+  };
+}
+
 function encounterClass(cls: any): string | null {
   if (!cls) return null;
   if (Array.isArray(cls)) {

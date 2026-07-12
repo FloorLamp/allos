@@ -68,6 +68,7 @@ function makeInput(report: ImportReport | null): PersistInput {
     familyHistory: [],
     carePlanItems: [],
     careGoals: [],
+    appointments: [],
     bodyMetrics: [],
     heights: [],
     headCircs: [],

@@ -49,7 +49,15 @@ const MAX_CHARS = 200_000;
 // The successful shape of an extraction, stored in a job's result_json and fed
 // to the review preview. (The failure case is carried on the job row's error.)
 export type ImportResult =
-  | { ok: true; type: "workouts"; workouts: ExtractedWorkout[] }
+  | {
+      ok: true;
+      type: "workouts";
+      workouts: ExtractedWorkout[];
+      // Pure-cardio rows the strength-only extractor skipped (#420) — reported so
+      // the review/toast can say "N cardio rows skipped" instead of dropping them
+      // silently. Optional so an older stored result_json (pre-#420) reads as none.
+      cardioSkipped?: number;
+    }
   | {
       ok: true;
       type: "biomarkers";
@@ -107,7 +115,12 @@ async function extractImport(
       extractWorkouts(input, ALL_LIFT_NAMES, equipmentNames)
     );
     if (r.status === "done")
-      return { ok: true, type: "workouts", workouts: r.workouts };
+      return {
+        ok: true,
+        type: "workouts",
+        workouts: r.workouts,
+        cardioSkipped: r.cardioSkipped,
+      };
     if (r.status === "skipped")
       return { ok: false, error: r.message, skipped: true };
     return { ok: false, error: r.error };
@@ -139,7 +152,11 @@ async function extractImport(
 function resultSummary(r: ImportResult): string {
   if (r.type === "workouts") {
     const sets = r.workouts.reduce((n, w) => n + w.sets.length, 0);
-    return `${r.workouts.length} workout${r.workouts.length === 1 ? "" : "s"} · ${sets} set${sets === 1 ? "" : "s"}`;
+    const base = `${r.workouts.length} workout${r.workouts.length === 1 ? "" : "s"} · ${sets} set${sets === 1 ? "" : "s"}`;
+    const skipped = r.cardioSkipped ?? 0;
+    return skipped > 0
+      ? `${base} · ${skipped} cardio row${skipped === 1 ? "" : "s"} skipped`
+      : base;
   }
   const readings = `${r.results.length} reading${r.results.length === 1 ? "" : "s"}`;
   // Optional-chain: jobs persisted before immunizations were threaded through
@@ -353,7 +370,14 @@ export async function commitImportJob(
         revertToReady();
         return { ok: false, error: r.error };
       }
-      message = `Imported ${r.workouts} workout${r.workouts === 1 ? "" : "s"} (${r.sets} set${r.sets === 1 ? "" : "s"}).`;
+      // The strength-only paste path skips pure-cardio rows; report the count so
+      // they're not dropped silently (#420).
+      const skipped = result.cardioSkipped ?? 0;
+      message =
+        `Imported ${r.workouts} workout${r.workouts === 1 ? "" : "s"} (${r.sets} set${r.sets === 1 ? "" : "s"}).` +
+        (skipped > 0
+          ? ` Skipped ${skipped} cardio row${skipped === 1 ? "" : "s"} (strength-only import).`
+          : "");
     } else {
       // Biomarkers and any vaccine doses found in the same paste commit together
       // in one transaction — so an immunization-only paste still saves, and a
@@ -437,13 +461,15 @@ export async function commitWorkouts(
     ])
   );
   const insertActivity = db.prepare(
-    `INSERT INTO activities (date, type, title, notes, profile_id) VALUES (?, 'strength', ?, ?, ?)`
+    `INSERT INTO activities
+       (date, type, title, notes, intensity, start_time, end_time, duration_min, profile_id)
+     VALUES (?, 'strength', ?, ?, ?, ?, ?, ?, ?)`
   );
   const insertSet = db.prepare(
     `INSERT INTO exercise_sets
        (activity_id, exercise, set_number, weight_kg, reps, weight_kg_right, reps_right,
-        duration_sec, duration_sec_right, equipment_id)
-     VALUES (?,?,?,?,?,?,?,?,NULL,?)`
+        duration_sec, duration_sec_right, target_reps, to_failure, equipment_id)
+     VALUES (?,?,?,?,?,?,?,?,NULL,?,?,?)`
   );
 
   let nWorkouts = 0;
@@ -456,8 +482,16 @@ export async function commitWorkouts(
       const date = isIsoDate(w.date) ? w.date : today(profile.id);
       const title = w.title?.trim() || suggestTitle(exNames);
       const aid = Number(
-        insertActivity.run(date, title, w.notes ?? null, profile.id)
-          .lastInsertRowid
+        insertActivity.run(
+          date,
+          title,
+          w.notes ?? null,
+          w.intensity ?? null,
+          w.start_time ?? null,
+          w.end_time ?? null,
+          w.duration_min ?? null,
+          profile.id
+        ).lastInsertRowid
       );
       const counters: Record<string, number> = {};
       for (const s of sets) {
@@ -478,6 +512,8 @@ export async function commitWorkouts(
           weightKgRight,
           s.reps_right ?? null,
           s.duration_sec ?? null,
+          s.target_reps ?? null,
+          s.to_failure ?? null,
           equip?.id ?? null
         );
         nSets++;
