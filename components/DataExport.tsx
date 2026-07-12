@@ -44,7 +44,9 @@ export default async function DataExport({
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
           Take a complete, portable copy of {profile.name}&apos;s record — every
           dataset as JSON and CSV, uploaded medical files, and the clinical
-          passport as a FHIR bundle, all in one zip.
+          passport as a FHIR bundle, all in one zip. This is a readable copy for
+          portability, not a restore file — rebuilding an instance uses the
+          snapshot backups, not this zip.
         </p>
         <div className="mt-4 flex flex-wrap gap-3">
           <a
