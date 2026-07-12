@@ -32,7 +32,7 @@ describe("biomarkerDismissalKey", () => {
 });
 
 describe("biomarkerFlagDismissalKey", () => {
-  it("lowercases and trims to match the hero's flagged-result key (issue #283)", () => {
+  it("keys a non-family analyte on its own lowercased/trimmed name (issue #283)", () => {
     expect(biomarkerFlagDismissalKey("LDL Cholesterol")).toBe(
       "biomarker-flag:ldl cholesterol"
     );
@@ -41,11 +41,36 @@ describe("biomarkerFlagDismissalKey", () => {
     );
   });
 
+  it("keys a family member on its #482 family, matching the retest key's family portion (issue #564)", () => {
+    // The flag key now uses biomarkerFamily (was raw name — the false-parity #482
+    // gap), so a dismiss on "Vitamin D3" covers "Vitamin D2 / Total 25-OH".
+    expect(biomarkerFlagDismissalKey("Vitamin D3")).toBe(
+      "biomarker-flag:family:vitamin-d-25-hydroxy"
+    );
+    expect(biomarkerFlagDismissalKey("Vitamin D3, 25-Hydroxy")).toBe(
+      biomarkerFlagDismissalKey("Vitamin D, Total")
+    );
+    // The flag key and the retest key resolve to the SAME family portion — the
+    // shared acknowledgment (#564) lines up with the retest key that only differs
+    // by prefix ("biomarker-flag:" vs "biomarker:").
+    expect(
+      biomarkerFlagDismissalKey("HbA1c").slice("biomarker-flag:".length)
+    ).toBe(
+      biomarkerDismissalKey("Estimated Average Glucose").slice(
+        "biomarker:".length
+      )
+    );
+  });
+
   it("never collides with the retest key namespace", () => {
     expect(biomarkerFlagDismissalKey("x")).not.toBe(biomarkerDismissalKey("x"));
     // The orphan sweep matches the retest keys with LIKE 'biomarker:%' — the
     // flag prefix must not fall inside that pattern.
     expect(biomarkerFlagDismissalKey("x").startsWith("biomarker:")).toBe(false);
+    // Even a family member (whose suffix is "family:…") stays under the flag prefix.
+    expect(
+      biomarkerFlagDismissalKey("Vitamin D3").startsWith("biomarker:")
+    ).toBe(false);
   });
 });
 

@@ -10,6 +10,7 @@ import {
   type TrajectoryInput,
 } from "../biomarker-trajectory";
 import type { DatedPoint } from "../robust-stats";
+import { biomarkerFlagDismissalKey } from "../dismissal-keys";
 
 // A YYYY-MM-DD date `offset` days after a fixed base, so spans/slopes are exact.
 function d(offset: number): string {
@@ -197,6 +198,37 @@ describe("rule 1 — approaching boundary", () => {
     expect(app!.title).toContain("high");
     // An optimal-edge approach is the mildest signal — informational, not caution.
     expect(app!.tone).toBe("info");
+  });
+});
+
+describe("shared flag+trajectory acknowledgment (issue #564)", () => {
+  const base = input({
+    analyte: "eGFR",
+    unit: "mL/min/1.73m2",
+    reference: { low: 60, high: null },
+    optimal: null,
+    direction: "higher_better",
+    retestDays: 365,
+  });
+
+  it("carries the analyte's flag family key as `supersedes` so a flag dismiss silences it", () => {
+    const pts = line([0, 60, 120], 69, -3);
+    const f = analyteTrajectoryFindings({ ...base, points: pts }).find(
+      (x) => x.rule === "approaching"
+    )!;
+    expect(f.supersedes).toBe(biomarkerFlagDismissalKey("eGFR"));
+    // Its own per-rule key is unchanged (a pre-#564 dismissal still suppresses).
+    expect(f.dedupeKey).toBe("trajectory:eGFR:approaching");
+  });
+
+  it("uses the FAMILY key for a family analyte so the flag/trajectory align on D2/D3/total", () => {
+    const f = analyteTrajectoryFindings({
+      ...base,
+      analyte: "Vitamin D3, 25-Hydroxy",
+      points: line([0, 60, 120], 69, -3),
+    }).find((x) => x.rule === "approaching")!;
+    expect(f.supersedes).toBe("biomarker-flag:family:vitamin-d-25-hydroxy");
+    expect(f.supersedes).toBe(biomarkerFlagDismissalKey("Vitamin D, Total"));
   });
 });
 

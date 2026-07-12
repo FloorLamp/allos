@@ -29,6 +29,7 @@ import { round } from "./units";
 import type { BiomarkerDirection } from "./types";
 import type { Finding } from "./findings";
 import type { AppRoute } from "./hrefs";
+import { biomarkerFlagDismissalKey } from "./dismissal-keys";
 
 // ---- Thresholds (exported so the tests pin the exact boundaries) ----
 
@@ -189,11 +190,20 @@ function baseFinding(
   rule: TrajectoryRule
 ): Pick<
   Finding,
-  "domain" | "dedupeKey" | "tone" | "actionHref" | "actionLabel"
+  "domain" | "dedupeKey" | "supersedes" | "tone" | "actionHref" | "actionLabel"
 > {
   return {
     domain: "trajectory",
     dedupeKey: `trajectory:${input.analyte}:${rule}`,
+    // Shared analyte-level acknowledgment with the biomarker FLAG (#564): the flag
+    // and the trajectory are two views of one concern about one analyte, so a
+    // dismiss on EITHER records this one family-level key and both go quiet. The
+    // finding also honors it for suppression via the findings bus (activeFindings /
+    // isFindingSuppressed reads `supersedes`), so a flag dismiss silences the
+    // trajectory; dismissTrajectory writes this same key so the reverse holds. Its
+    // own per-rule dedupeKey stays honored too, so a pre-#564 trajectory dismissal
+    // keeps suppressing.
+    supersedes: biomarkerFlagDismissalKey(input.analyte),
     tone: "caution",
     ...(input.href
       ? { actionHref: input.href, actionLabel: "Schedule a retest" }

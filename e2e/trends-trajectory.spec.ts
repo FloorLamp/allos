@@ -22,8 +22,13 @@ test("Trends → Biomarkers shows a trajectory finding for the seeded eGFR decli
 });
 
 // The dismiss affordance funnels through the shared findings-bus suppression store
-// (dismissTrajectory → dismissFinding), so a dismissed finding stops rendering.
-test("a trajectory finding can be dismissed (#41)", async ({ page }) => {
+// (dismissTrajectory → dismissFinding). Since #564 it writes the analyte-level
+// acknowledgment key (`biomarker-flag:<family>`) shared with the dashboard flag, so
+// dismissing ONE of the analyte's trajectory findings silences the whole analyte's
+// trajectory watch (both views of one concern), not just that one rule.
+test("dismissing a trajectory finding silences the analyte's trajectory watch (#41/#564)", async ({
+  page,
+}) => {
   await page.goto("/trends?tab=biomarkers");
 
   const finding = page
@@ -33,10 +38,9 @@ test("a trajectory finding can be dismissed (#41)", async ({ page }) => {
 
   await finding.getByTestId("trajectory-dismiss").click();
 
-  // After the server action + re-render, that specific finding is gone.
+  // After the server action + re-render, every eGFR trajectory finding is gone
+  // (the analyte-level acknowledgment, not just the velocity rule).
   await expect(
-    page
-      .getByTestId("trajectory-finding")
-      .filter({ hasText: "eGFR is falling faster than usual" })
+    page.getByTestId("trajectory-finding").filter({ hasText: "eGFR" })
   ).toHaveCount(0);
 });

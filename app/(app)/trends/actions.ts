@@ -117,19 +117,23 @@ export async function dismissDigest(formData: FormData): Promise<FormResult> {
   return formOk();
 }
 
-// Dismiss a biomarker trajectory finding (issue #41): hide it through the shared
-// suppression store keyed by "trajectory:<analyte>:<rule>". Guarded to the
-// trajectory namespace (like dismissDigest) so this action can only ever silence a
-// trajectory key; profile-scoped via dismissFinding.
+// Dismiss a biomarker trajectory finding (issues #41/#564). The flag and the
+// trajectory are two views of one concern about one analyte, so this writes the
+// SHARED analyte-level acknowledgment key ("biomarker-flag:<family>") the finding
+// carries as `supersedes` — silencing BOTH the trajectory watch and the analyte's
+// dashboard flag ("dismiss once, silence everywhere"), at the #482 family level so
+// it covers D2/D3/total. Guarded to the flag namespace so this action can only ever
+// write a biomarker acknowledgment key; profile-scoped via dismissFinding.
 export async function dismissTrajectory(
   formData: FormData
 ): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
-  const dedupeKey = String(formData.get("dedupe_key") ?? "").trim();
-  if (!dedupeKey.startsWith("trajectory:"))
+  const ackKey = String(formData.get("ack_key") ?? "").trim();
+  if (!ackKey.startsWith("biomarker-flag:"))
     return formError("Couldn't dismiss that finding.");
-  dismissFinding(profile.id, dedupeKey);
+  dismissFinding(profile.id, ackKey);
   revalidatePath("/trends");
+  revalidatePath("/");
   return formOk();
 }
 
