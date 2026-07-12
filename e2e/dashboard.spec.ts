@@ -50,8 +50,12 @@ test("the card is a strict act-now subset: this-week + later scheduled items liv
 
   // Both still live on the Upcoming page (the planning view is complete + date-
   // ordered), under their calendar bands — the card is a strict subset of it, so a
-  // "+N more in Upcoming" link points the way.
-  await expect(hero.getByTestId("attention-more-upcoming")).toBeVisible();
+  // remainder link points the way. Its copy names what it HIDES ("scheduled
+  // later"), not a bare "+N more in Upcoming", so it can't be confused with a
+  // per-band cap-overflow link (issue #538).
+  const remainder = hero.getByTestId("attention-more-upcoming");
+  await expect(remainder).toBeVisible();
+  await expect(remainder).toContainText("scheduled later");
   await page.goto("/upcoming");
   const main = page.getByRole("main");
   await expect(

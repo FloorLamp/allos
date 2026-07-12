@@ -141,7 +141,9 @@ export default async function UpcomingPage() {
       ) : (
         <div className="space-y-6">
           {groups.map((group) => (
-            <section key={group.kind}>
+            // id={group.kind} is the deep-link anchor the dashboard card's per-band
+            // "+N more" overflow links target (e.g. /upcoming#overdue) — issue #538.
+            <section key={group.kind} id={group.kind}>
               <h2
                 className={`mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide ${GROUP_TONE[group.kind]}`}
               >
