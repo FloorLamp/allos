@@ -16,6 +16,10 @@ test.describe("Immunization delete confirm (#534)", () => {
       page.getByRole("heading", { name: "Immunizations" })
     ).toBeVisible();
 
+    // The history table lives inside the collapsed "All recorded doses"
+    // <details> — expand it first, or its rows aren't visible to locate.
+    await page.locator("summary", { hasText: "All recorded doses" }).click();
+
     // The two seeded yellow-fever rows share vaccine + date but differ on dose.
     const rowA = page.getByRole("row").filter({ hasText: "Travel dose A" });
     await expect(rowA).toBeVisible();

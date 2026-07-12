@@ -20,12 +20,14 @@ import { setMinTrainingAge } from "../lib/age-gate";
 import { hashPasswordSync } from "../lib/password";
 import {
   E2E_LOGIN_CHILD,
+  E2E_LOGIN_COMPARE,
   E2E_LOGIN_DUP,
   E2E_LOGIN_HC,
   E2E_LOGIN_STRAVA,
   E2E_MEMBER_PASSWORD,
   DUP_REVIEW_PROFILE,
   HEALTH_CONNECT_PROFILE,
+  SOURCE_COMPARE_PROFILE,
   STRAVA_REAUTH_PROFILE,
 } from "./fixture-logins";
 
@@ -1402,20 +1404,25 @@ console.log(
 // ── Two-document body-metric source comparison (issue #533) ───────────────────
 // A metric extracted from TWO different documents stays two distinct series, but
 // the legend/picker used to collapse both to one "Document" label and one teal
-// color. Seed two DEXA-style documents on profile 1 plus a body-fat reading sourced
-// from each (source 'document:<id>'), so Trends → Body's "Compare sources" renders
-// a body_fat card whose two document series carry distinct filenames + colors.
-// Isolated old dates (well before the seed's recent body-metric window) so the two
-// rows never form a same-day body-metric conflict with each other or a manual row —
-// keeping profile 1's Data → Review count untouched (import-dedup.spec relies on it).
+// color. Seed two DEXA-style documents on a DEDICATED member profile plus a
+// body-fat reading sourced from each (source 'document:<id>') and one manual
+// reading, so Trends → Body's "Compare sources" renders a body_fat card whose two
+// document series carry distinct filenames + colors. Dedicated profile ON PURPOSE
+// (first landing tried profile 1 and broke two sibling specs): extra documents on
+// profile 1 pluralize review-inbox's re-extract-all "1 scan/PDF" copy, and a
+// multi-source body_fat adds a second "Body fat" heading (the compare card's h3)
+// that collides kids-growth's strict heading locator. Distinct dates per row so
+// the profile never grows a same-day body-metric conflict.
+const compareProfileId = fixtureProfileId(SOURCE_COMPARE_PROFILE);
+seedMemberLogin(E2E_LOGIN_COMPARE, compareProfileId);
 db.prepare(
-  `DELETE FROM medical_documents WHERE profile_id = 1 AND filename IN ('e2e-dexa-a.pdf', 'e2e-dexa-b.pdf')`
-).run();
+  `DELETE FROM medical_documents WHERE profile_id = ? AND filename IN ('e2e-dexa-a.pdf', 'e2e-dexa-b.pdf')`
+).run(compareProfileId);
 const insCompareDoc = db.prepare(
   `INSERT INTO medical_documents
      (profile_id, filename, stored_path, mime_type, size_bytes, doc_type, source,
       document_date, extraction_status, extracted_count, content_hash, uploaded_at)
-   VALUES (1, ?, ?, 'application/pdf', 1024, 'dexa', 'upload', ?, 'done', 1, ?, ?)`
+   VALUES (?, ?, ?, 'application/pdf', 1024, 'dexa', 'upload', ?, 'done', 1, ?, ?)`
 );
 const compareDocs: { id: number; date: string; bodyFat: number }[] = [];
 for (const [filename, date, bodyFat] of [
@@ -1424,8 +1431,9 @@ for (const [filename, date, bodyFat] of [
 ] as const) {
   const id = Number(
     insCompareDoc.run(
+      compareProfileId,
       filename,
-      `data/uploads/medical/1/${filename}`,
+      `data/uploads/medical/${compareProfileId}/${filename}`,
       date,
       `e2e533${filename.replace(/\W/g, "")}`.padEnd(64, "0"),
       `${date} 08:00:00`
@@ -1433,15 +1441,21 @@ for (const [filename, date, bodyFat] of [
   );
   compareDocs.push({ id, date, bodyFat });
 }
+// Reset the profile's body metrics wholesale (it owns nothing else), then one
+// row per document + one manual row on distinct dates.
+db.prepare(`DELETE FROM body_metrics WHERE profile_id = ?`).run(
+  compareProfileId
+);
 for (const { id, date, bodyFat } of compareDocs) {
   db.prepare(
-    `DELETE FROM body_metrics WHERE profile_id = 1 AND date = ? AND source = ?`
-  ).run(date, `document:${id}`);
-  db.prepare(
     `INSERT INTO body_metrics (profile_id, date, body_fat_pct, source)
-     VALUES (1, ?, ?, ?)`
-  ).run(date, bodyFat, `document:${id}`);
+     VALUES (?, ?, ?, ?)`
+  ).run(compareProfileId, date, bodyFat, `document:${id}`);
 }
+db.prepare(
+  `INSERT INTO body_metrics (profile_id, date, body_fat_pct, source)
+   VALUES (?, '2022-11-05', 20.6, NULL)`
+).run(compareProfileId);
 console.log(
-  "e2e: seeded two-document body-fat source comparison on profile 1 (#533)"
+  `e2e: seeded two-document body-fat source comparison on profile ${compareProfileId} (#533)`
 );
