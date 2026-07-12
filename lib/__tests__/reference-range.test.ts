@@ -7,6 +7,7 @@ import {
   DEFAULT_AXIS_PAD_FRACTION,
   DEFAULT_RETEST_DAYS,
   humanizeAge,
+  isBeyondRetestHorizon,
   isBiomarkerStale,
   isDurableImmunityTiter,
   isImmunePositiveResult,
@@ -725,6 +726,22 @@ describe("isBiomarkerStale with a per-biomarker interval", () => {
     expect(humanizeAge(90)).toBe("3 months");
     expect(humanizeAge(365)).toBe("12 months");
     expect(humanizeAge(600)).toContain("year");
+  });
+});
+
+describe("isBeyondRetestHorizon (#546 age ceiling)", () => {
+  it("is false within the ceiling (a 5-year-old reading is still retest-worthy)", () => {
+    // ~5 years — well under the ~10-year ceiling, so NOT historical baseline.
+    expect(isBeyondRetestHorizon("2019-01-01", "2024-01-01")).toBe(false);
+  });
+
+  it("is true past the ceiling (a 15-year-old one-off is historical baseline)", () => {
+    expect(isBeyondRetestHorizon("2009-01-01", "2024-01-01")).toBe(true);
+  });
+
+  it("honors an explicit ceiling and a null date", () => {
+    expect(isBeyondRetestHorizon("2023-01-01", "2024-01-01", 30)).toBe(true);
+    expect(isBeyondRetestHorizon(null, "2024-01-01")).toBe(false);
   });
 });
 

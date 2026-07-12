@@ -647,6 +647,27 @@ export function retestIntervalDays(
     : DEFAULT_RETEST_DAYS;
 }
 
+// The retest AGE CEILING (issue #546): a reading older than this is stale BASELINE
+// data ("last measured 12 years ago"), not "due for a redraw" — nudging it as an
+// urgency-banded action item is dishonest. Past the ceiling a stale reading drops out
+// of the retest nudge entirely (a distinct "historical" state), regardless of its
+// analyte's cadence. Set well beyond the longest curated cadence (Lp(a)'s 5-year
+// clock) so a normal recurring analyte never trips it — only genuinely ancient
+// one-offs do.
+export const RETEST_AGE_CEILING_DAYS = 3650; // ~10 years
+
+// Whether a reading is beyond the retest age ceiling (issue #546) — so old it's
+// historical baseline rather than "retest overdue". Pure; the caller supplies the
+// reading's effective date and today.
+export function isBeyondRetestHorizon(
+  latestDate: string | null | undefined,
+  today: string,
+  ceilingDays: number = RETEST_AGE_CEILING_DAYS
+): boolean {
+  if (!latestDate) return false;
+  return daysBetween(latestDate, today) > ceilingDays;
+}
+
 // Whole days between two YYYY-MM-DD dates (toISO - fromISO), or 0 if unparseable.
 export function daysBetween(fromISO: string, toISO: string): number {
   const a = Date.parse(`${fromISO}T00:00:00Z`);

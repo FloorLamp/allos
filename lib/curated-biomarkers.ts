@@ -900,6 +900,92 @@ export const VELOCITY_PER_YEAR: Record<string, number> = {
   PSA: 0.75,
 };
 
+// Retest-WORTHINESS tier (issue #546). The recurring-monitoring set — the analytes a
+// clinician actually re-draws on a clock (lipids, glycemic, thyroid, renal, liver,
+// the core CMP/CBC, inflammation, and the commonly-monitored/repleted nutritionals).
+// An analyte OUTSIDE this set is an incidental one-off from a workup (heavy metals,
+// PFAS, the allergen-specific IgE panel, trace minerals, LDL subfractions, urine
+// microscopy, thyroid antibodies…): it shouldn't carry the SAME standing as a lipid
+// panel in the retest nudge, so the Upcoming retest signal ranks it into a low,
+// dismissable tier (feeding the #517 priority) rather than nagging it like a lipid.
+// This is a priority DIMENSION, not a cadence — an unlisted analyte keeps its clock;
+// it just doesn't rank as a standing recurring action. Curated CONSERVATIVELY and
+// INFORMATIONAL (not medical advice); reviewed against routine-panel practice. Keyed
+// by exact canonical name (matched family-aware by lib/biomarker-retest, so the
+// vitamin-D 25-OH isoforms inherit "Vitamin D, 25-Hydroxy"'s worthiness).
+//  - Recurring-monitoring rationale (all INFORMATIONAL): the lipid/glycemic/thyroid/
+//    renal panels are the routinely-trended sets (ADA, ACC/AHA, KDIGO monitoring
+//    practice); the CMP/CBC electrolyte + hepatic + hematologic core is what a
+//    comprehensive panel re-measures; hs-CRP/ESR trend inflammation; ferritin/iron/
+//    B12/folate/D/homocysteine/magnesium are the commonly-repleted nutritionals.
+export const RETEST_WORTHY: string[] = [
+  // Glycemic
+  "Hemoglobin A1c",
+  "Glucose",
+  "Insulin",
+  "HOMA-IR",
+  "C-Peptide",
+  // Lipids
+  "Total Cholesterol",
+  "LDL Cholesterol",
+  "HDL Cholesterol",
+  "Triglycerides",
+  "Non-HDL Cholesterol",
+  "VLDL Cholesterol",
+  "ApoB",
+  "Lipoprotein(a)",
+  "Cholesterol/HDL Ratio",
+  "Triglyceride/HDL Ratio",
+  // Thyroid
+  "TSH",
+  "Free T4",
+  "Free T3",
+  // Renal
+  "Creatinine",
+  "eGFR",
+  "BUN",
+  "Cystatin C",
+  "Uric Acid",
+  // Hepatic (LFTs) + protein
+  "ALT",
+  "AST",
+  "Alkaline Phosphatase",
+  "GGT",
+  "Total Bilirubin",
+  "Albumin",
+  "Total Protein",
+  // Electrolytes / CMP core
+  "Sodium",
+  "Potassium",
+  "Chloride",
+  "Carbon Dioxide",
+  "Calcium",
+  // CBC core
+  "Hemoglobin",
+  "Hematocrit",
+  "White Blood Cell Count",
+  "Platelet Count",
+  "Red Blood Cell Count",
+  "MCV",
+  // Inflammation
+  "hs-CRP",
+  "Erythrocyte Sedimentation Rate (ESR)",
+  // Commonly-monitored / repleted nutritionals + iron studies
+  "Vitamin D, 25-Hydroxy",
+  "Ferritin",
+  "Iron",
+  "TIBC",
+  "Transferrin Saturation",
+  "Vitamin B12",
+  "Folate",
+  "Homocysteine",
+  "Magnesium",
+  // Androgen / prostate monitoring (curated retest cadences already exist for these)
+  "Testosterone, Total",
+  "Testosterone, Free",
+  "PSA",
+];
+
 // Pure transform: return a copy of `biomarkers` with every CURATED_LABS entry
 // present (its canonical definition replacing any same-named row, so edits here
 // propagate), every AGE_BANDS override applied, and every RETEST_DAYS cadence
