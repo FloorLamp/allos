@@ -10,7 +10,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
-import { db } from "./db";
+import { db, dbFilePath } from "./db";
 import {
   getBackupSettings,
   getInstanceTimezone,
@@ -22,6 +22,7 @@ import {
   backupFilename,
   isBackupDue,
   isoWeekKey,
+  planAsidePrune,
   planBackupRotation,
 } from "./backup-rotation";
 import {
@@ -418,6 +419,46 @@ export function replicateToOffsite(
   };
 }
 
+// How many pre-restore aside copies to keep (#472). Restore copies the live DB
+// aside (allos.db.pre-restore-<stamp>, + its -wal/-shm) before overwriting it;
+// without pruning these accumulate in data/ forever. The tick keeps the newest N.
+export const KEEP_RESTORE_ASIDES = 3;
+
+// Prune old pre-restore aside copies next to the live DB, keeping the newest
+// `keepN` (#472). Each aside's -wal/-shm siblings are removed alongside it. Runs
+// from the backup tick like snapshot rotation; best-effort, never throws.
+export function pruneRestoreAsides(
+  keepN: number = KEEP_RESTORE_ASIDES
+): number {
+  const livePath = dbFilePath();
+  const dir = path.dirname(livePath);
+  const liveBase = path.basename(livePath);
+  if (!fs.existsSync(dir)) return 0;
+  let names: string[];
+  try {
+    names = fs.readdirSync(dir);
+  } catch {
+    return 0;
+  }
+  const prune = planAsidePrune(names, liveBase, keepN);
+  let pruned = 0;
+  for (const name of prune) {
+    for (const suffix of ["", "-wal", "-shm"]) {
+      const p = path.join(dir, name + suffix);
+      try {
+        if (fs.existsSync(p)) fs.unlinkSync(p);
+      } catch (e) {
+        log.warn("pre-restore aside prune failed", {
+          file: name + suffix,
+          err: e instanceof Error ? e.message : String(e),
+        });
+      }
+    }
+    pruned++;
+  }
+  return pruned;
+}
+
 // Take one snapshot now, verify its integrity, and prune per the retention
 // policy. Throws on snapshot failure (so callers surface it). Returns the
 // snapshot's name + size + verification. A snapshot that fails PRAGMA
@@ -502,6 +543,18 @@ export function performBackup(): {
     pruned: prune.length,
     integrity: "ok",
   });
+
+  // Prune old pre-restore aside copies (#472) on the same cadence as snapshot
+  // rotation. Best-effort — never lets an aside-prune failure fail the backup.
+  try {
+    const prunedAsides = pruneRestoreAsides();
+    if (prunedAsides > 0)
+      log.info("pruned pre-restore asides", { prunedAsides });
+  } catch (e) {
+    log.warn("pre-restore aside prune failed", {
+      err: e instanceof Error ? e.message : String(e),
+    });
+  }
 
   // Off-volume replication (issue #130): with BACKUP_DEST_DIR configured, copy the
   // verified snapshot + mirror uploads to a second mount. A failure here NEVER

@@ -5,6 +5,7 @@ import {
   backupAgeHours,
   isLiveIntegrityCheckDue,
   decideRestore,
+  decideSnapshotVersion,
 } from "../backup-verify";
 
 describe("interpretIntegrityRows", () => {
@@ -128,5 +129,56 @@ describe("decideRestore", () => {
     expect(
       decideRestore({ snapshotOk: false, appRunning: true, force: true })
     ).toEqual({ proceed: true });
+  });
+});
+
+describe("decideSnapshotVersion (#472)", () => {
+  it("allows a snapshot at or below the build's schema version", () => {
+    expect(
+      decideSnapshotVersion({
+        snapshotUserVersion: 21,
+        buildMigrationCount: 21,
+        force: false,
+      })
+    ).toEqual({ ok: true, snapshotNewer: false });
+    expect(
+      decideSnapshotVersion({
+        snapshotUserVersion: 18,
+        buildMigrationCount: 21,
+        force: false,
+      }).ok
+    ).toBe(true);
+  });
+
+  it("refuses a snapshot from a NEWER schema than the build", () => {
+    const r = decideSnapshotVersion({
+      snapshotUserVersion: 25,
+      buildMigrationCount: 21,
+      force: false,
+    });
+    expect(r).toEqual({ ok: false, snapshotNewer: true });
+  });
+
+  it("force overrides the newer-schema refusal", () => {
+    expect(
+      decideSnapshotVersion({
+        snapshotUserVersion: 25,
+        buildMigrationCount: 21,
+        force: true,
+      })
+    ).toEqual({ ok: true, snapshotNewer: true });
+  });
+
+  it("is a no-op when either version is unknown", () => {
+    expect(
+      decideSnapshotVersion({
+        snapshotUserVersion: null,
+        buildMigrationCount: 21,
+        force: false,
+      })
+    ).toEqual({ ok: true, snapshotNewer: false });
+    expect(
+      decideSnapshotVersion({ snapshotUserVersion: 25, force: false }).ok
+    ).toBe(true);
   });
 });

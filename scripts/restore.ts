@@ -39,9 +39,11 @@ import {
 import { decideRestore } from "../lib/backup-verify";
 import {
   confineSnapshotPath,
+  readSnapshotUserVersion,
   restoreCore,
   RestoreRefusedError,
 } from "../lib/restore";
+import { MIGRATIONS } from "../lib/migrations/versions";
 
 function fmtBytes(n: number): string {
   if (n < 1024) return `${n} B`;
@@ -56,7 +58,10 @@ function list(dir: string) {
     console.log("No snapshots found in", dir);
     return;
   }
-  console.log(`Snapshots in ${dir} (newest first):\n`);
+  const buildVersion = MIGRATIONS.length;
+  console.log(
+    `Snapshots in ${dir} (newest first). This build's schema version: ${buildVersion}.\n`
+  );
   for (const name of names) {
     const st = fs.statSync(path.join(dir, name));
     const v = readVerification(name, dir);
@@ -65,7 +70,18 @@ function list(dir: string) {
         ? "verified ok"
         : `FAILED (${v.detail ?? "integrity"})`
       : "unverified";
-    console.log(`  ${name}  ${fmtBytes(st.size).padStart(9)}  [${status}]`);
+    // Surface the snapshot's schema version (#472) so a newer-schema snapshot is
+    // visible here rather than only tripping the boot-time downgrade guard later.
+    const uv = readSnapshotUserVersion(path.join(dir, name));
+    const uvLabel =
+      uv === null
+        ? "v?"
+        : uv > buildVersion
+          ? `v${uv} NEWER than build`
+          : `v${uv}`;
+    console.log(
+      `  ${name}  ${fmtBytes(st.size).padStart(9)}  [${status}]  [${uvLabel}]`
+    );
   }
   console.log("\nRestore with:  npm run restore -- <snapshot.db>");
 }
@@ -140,6 +156,27 @@ async function restore(
     `Snapshot integrity: ${snapshotOk ? "ok" : `FAILED — ${v.detail ?? ""}`}`
   );
 
+  // Read its schema version (#472): a snapshot from a NEWER build than this one
+  // would only make the boot-time downgrade guard refuse to start.
+  const snapshotUserVersion = readSnapshotUserVersion(snapPath);
+  const buildMigrationCount = MIGRATIONS.length;
+  console.log(
+    `Snapshot schema version: ${snapshotUserVersion ?? "?"} (this build: ${buildMigrationCount}).`
+  );
+  if (
+    snapshotUserVersion !== null &&
+    snapshotUserVersion > buildMigrationCount &&
+    !opts.force
+  ) {
+    console.error(
+      `Refusing: the snapshot's schema (v${snapshotUserVersion}) is NEWER than this build ` +
+        `(v${buildMigrationCount}) — a newer release wrote it. Restoring it would only make ` +
+        `the app refuse to boot (downgrade guard). Redeploy the newer image, or pass --force ` +
+        `to install it anyway.`
+    );
+    process.exit(1);
+  }
+
   // 2. Safety gate: app-running + integrity, both overridable with --force.
   const livePath = dbFilePath();
   const running = appAppearsRunning(livePath);
@@ -183,11 +220,15 @@ async function restore(
       livePath,
       snapshotOk,
       force: opts.force,
+      snapshotUserVersion,
+      buildMigrationCount,
     });
   } catch (e) {
     if (e instanceof RestoreRefusedError) {
       console.error(
-        "Refusing: the snapshot failed its integrity check. Pass --force to restore it anyway."
+        e.reason === "snapshot-newer-schema"
+          ? "Refusing: the snapshot's schema is newer than this build. Pass --force to install it anyway."
+          : "Refusing: the snapshot failed its integrity check. Pass --force to restore it anyway."
       );
     } else {
       console.error(

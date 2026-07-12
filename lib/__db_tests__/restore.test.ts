@@ -12,8 +12,13 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
-import { db } from "@/lib/db";
-import { performBackup, backupsDir, verifySnapshot } from "@/lib/backup";
+import { db, dbFilePath } from "@/lib/db";
+import {
+  performBackup,
+  backupsDir,
+  verifySnapshot,
+  pruneRestoreAsides,
+} from "@/lib/backup";
 import { verificationSidecarName } from "@/lib/backup-verify";
 import {
   confineSnapshotPath,
@@ -132,6 +137,64 @@ describe("restoreCore (restore drill)", () => {
     expect(hasSetting(live, marker)).toBe(false);
   });
 
+  it("installs via an atomic swap — no .restore-tmp is left behind (#472)", () => {
+    restoreCore({
+      snapshotPath: snap,
+      livePath: live,
+      snapshotOk: true,
+      force: false,
+      now: new Date("2026-07-12T04:00:00Z"),
+    });
+    expect(fs.existsSync(live + ".restore-tmp")).toBe(false);
+    expect(fs.existsSync(live)).toBe(true);
+  });
+
+  it("copies the live -wal/-shm alongside the aside (WAL-aware rollback, #472)", () => {
+    const result = restoreCore({
+      snapshotPath: snap,
+      livePath: live,
+      snapshotOk: true,
+      force: false,
+      now: new Date("2026-07-12T04:00:00Z"),
+    });
+    // The stale WAL/SHM present pre-restore are preserved in the aside, so a
+    // rollback can recover WAL-only committed transactions.
+    expect(fs.readFileSync((result.asidePath as string) + "-wal", "utf8")).toBe(
+      "stale-wal"
+    );
+    expect(fs.readFileSync((result.asidePath as string) + "-shm", "utf8")).toBe(
+      "stale-shm"
+    );
+  });
+
+  it("refuses a newer-schema snapshot without --force, and installs with it (#472)", () => {
+    expect(() =>
+      restoreCore({
+        snapshotPath: snap,
+        livePath: live,
+        snapshotOk: true,
+        force: false,
+        snapshotUserVersion: 999,
+        buildMigrationCount: 1,
+      })
+    ).toThrow(RestoreRefusedError);
+    // Live untouched by the refusal.
+    expect(hasSetting(live, marker)).toBe(true);
+
+    // --force installs it anyway.
+    const result = restoreCore({
+      snapshotPath: snap,
+      livePath: live,
+      snapshotOk: true,
+      force: true,
+      snapshotUserVersion: 999,
+      buildMigrationCount: 1,
+      now: new Date("2026-07-12T04:00:00Z"),
+    });
+    expect(result.asidePath).toBeTruthy();
+    expect(hasSetting(live, marker)).toBe(false);
+  });
+
   it("performBackup takes a real, integrity-verified VACUUM INTO snapshot", () => {
     const { name, verification } = performBackup();
     try {
@@ -145,6 +208,41 @@ describe("restoreCore (restore drill)", () => {
       fs.rmSync(path.join(backupsDir(), verificationSidecarName(name)), {
         force: true,
       });
+    }
+  });
+});
+
+describe("pruneRestoreAsides (#472)", () => {
+  it("keeps the newest N asides next to the live DB and removes their sidecars", () => {
+    const livePath = dbFilePath();
+    const stamps = [
+      "2026-07-08T03-00-00-000Z",
+      "2026-07-09T03-00-00-000Z",
+      "2026-07-10T03-00-00-000Z",
+      "2026-07-11T03-00-00-000Z",
+    ];
+    const created: string[] = [];
+    for (const s of stamps) {
+      const aside = `${livePath}.pre-restore-${s}`;
+      fs.writeFileSync(aside, "x");
+      fs.writeFileSync(aside + "-wal", "w");
+      created.push(aside);
+    }
+    try {
+      const pruned = pruneRestoreAsides(2);
+      expect(pruned).toBe(2);
+      // Two oldest gone (main + -wal sidecar).
+      expect(fs.existsSync(created[0])).toBe(false);
+      expect(fs.existsSync(created[0] + "-wal")).toBe(false);
+      expect(fs.existsSync(created[1])).toBe(false);
+      // Two newest kept.
+      expect(fs.existsSync(created[2])).toBe(true);
+      expect(fs.existsSync(created[3])).toBe(true);
+    } finally {
+      for (const a of created) {
+        fs.rmSync(a, { force: true });
+        fs.rmSync(a + "-wal", { force: true });
+      }
     }
   });
 });

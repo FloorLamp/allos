@@ -756,10 +756,14 @@ schedule/retention/verification and is safe to run hourly by cron:
 
 ### Restore
 
-Use the restore tool (`npm run restore`) — it lists snapshots with their integrity status,
-verifies the chosen one before trusting it, copies the current live DB aside as a rollback
-(`allos.db.pre-restore-<timestamp>`), then copies the snapshot into place and clears any
-stale `-wal`/`-shm` sidecars.
+Use the restore tool (`npm run restore`) — it lists snapshots with their integrity status
+**and schema version**, verifies the chosen one before trusting it, copies the current live
+DB aside as a rollback (`allos.db.pre-restore-<timestamp>`, **including its `-wal`/`-shm`** so a
+rollback keeps WAL-only committed transactions), then installs the snapshot via an **atomic
+rename** (a kill mid-restore leaves the old DB intact, not a torn file) and clears any stale
+`-wal`/`-shm` sidecars. It **refuses a snapshot whose schema is newer than the running build**
+(which would only trip the boot-time downgrade guard) unless you pass `--force`. Old aside
+copies are pruned to the newest few by the backup tick.
 
 ```bash
 npm run restore                       # list snapshots + integrity status
