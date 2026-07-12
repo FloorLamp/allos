@@ -35,7 +35,9 @@ import {
   daysBetween,
 } from "../../reference-range";
 import { retestDaysForBiomarker } from "../../biomarker-retest";
-import { vitaminDRetestFamily } from "../../canonical-name";
+import { biomarkerFamily } from "../../canonical-name";
+import { biomarkerDismissalKey } from "../../dismissal-keys";
+import { derivedInputCanonicalNamesFor } from "../../derived-biomarkers";
 import { frequencyScopeLabel } from "../../goals";
 import {
   getUserSex,
@@ -273,22 +275,34 @@ function monthsApprox(days: number): number {
 // interval, so a quarterly HbA1c reads as overdue far sooner than an annual lipid
 // panel; uncurated analytes keep the flat 365-day fallback.
 //
-// Readings are first grouped into retest FAMILIES: almost every analyte is its own
-// family (keyed by canonical name), but the 25-hydroxy vitamin-D variants (total,
-// generic, D2, D3) collapse into one via vitaminDRetestFamily — a recent total
-// supersedes an old D2/D3 breakdown, so the stale isoforms don't each nag as
-// overdue when a fresh reading of any member exists. Per family we keep the NEWEST
-// reading: its date drives staleness and the "last tested" text, and it is the
-// representative the retest item is emitted for (its name → the stable
-// `biomarker:<name>` dismissal key).
+// Readings are grouped by the ONE #482 biomarker FAMILY identity (biomarkerFamily),
+// the same grouping the dedup/series/starred surfaces use — so almost every analyte
+// is its own family (keyed by canonical name), but the interchangeable-name families
+// (the 25-hydroxy vitamin-D variants total/generic/D2/D3, and A1c ↔ eAG) collapse
+// into one: a recent reading of ANY member supersedes an old sibling, so the stale
+// variants don't each nag as overdue when a fresh family reading exists. Per family
+// we keep the NEWEST reading; its name → the stable family `biomarker:<family>`
+// dismissal key (via biomarkerDismissalKey), so a dismiss on any member silences the
+// family and the key doesn't drift as which member is newest changes.
+//
+// DERIVED-analyte freshness (#482 scope 2): a stored derived index (Non-HDL, eGFR…)
+// inherits its INPUTS' freshness — re-drawing Total + HDL re-derives Non-HDL — so we
+// take the newest of (the reading, its input readings) as the effective last-tested
+// date. A non-derived analyte has no inputs, so its effective date is just its own.
 function biomarkerItems(profileId: number, today: string): UpcomingItem[] {
   const latest = getMedicalRecords(profileId, { current: true });
+  // Newest reading date per family across ALL current readings — the input→derived
+  // freshness lookup below reads an input analyte's family date from here.
+  const latestDateByFamily = new Map<string, string>();
+  for (const r of latest) {
+    const fam = biomarkerFamily(r.canonical_name?.trim() || r.name);
+    const prev = latestDateByFamily.get(fam);
+    if (!prev || r.date > prev) latestDateByFamily.set(fam, r.date);
+  }
   const byFamily = new Map<string, MedicalRecord>();
   for (const r of latest) {
     if (!RETEST_CATEGORIES.has(r.category ?? "")) continue;
-    const groupName = r.canonical_name?.trim() || r.name;
-    const famKey =
-      vitaminDRetestFamily(groupName) ?? `name:${groupName.toLowerCase()}`;
+    const famKey = biomarkerFamily(r.canonical_name?.trim() || r.name);
     const prev = byFamily.get(famKey);
     // Newest wins; tie-break on higher id (later-entered), matching
     // getMedicalRecords' "date DESC, id DESC" current-reading ranking.
@@ -299,18 +313,27 @@ function biomarkerItems(profileId: number, today: string): UpcomingItem[] {
   for (const r of byFamily.values()) {
     const name = r.canonical_name?.trim() || r.name;
     const retestDays = retestDaysForBiomarker(r.canonical_name?.trim() || null);
-    if (!isBiomarkerStale(r.date, r.category, today, retestDays)) continue;
+    // Fold in input freshness for a derived analyte (empty for everything else).
+    let effectiveDate = r.date;
+    for (const input of derivedInputCanonicalNamesFor(
+      r.canonical_name?.trim() || ""
+    )) {
+      const inputDate = latestDateByFamily.get(biomarkerFamily(input));
+      if (inputDate && inputDate > effectiveDate) effectiveDate = inputDate;
+    }
+    if (!isBiomarkerStale(effectiveDate, r.category, today, retestDays))
+      continue;
     const interval = retestIntervalDays(retestDays);
-    const agoMonths = monthsApprox(daysBetween(r.date, today));
+    const agoMonths = monthsApprox(daysBetween(effectiveDate, today));
     items.push({
-      key: `biomarker:${name.toLowerCase()}`,
+      key: biomarkerDismissalKey(name),
       domain: "biomarker",
       title: name,
-      detail: `Last tested ${r.date} (${agoMonths}mo ago) · retest every ${monthsApprox(interval)}mo`,
+      detail: `Last tested ${effectiveDate} (${agoMonths}mo ago) · retest every ${monthsApprox(interval)}mo`,
       href: r.canonical_name?.trim()
         ? `/biomarkers/view?name=${encodeURIComponent(name)}`
         : "/biomarkers",
-      dueDate: shiftDateStr(r.date, interval),
+      dueDate: shiftDateStr(effectiveDate, interval),
     });
   }
   return items;

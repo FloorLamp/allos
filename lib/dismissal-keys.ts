@@ -12,13 +12,19 @@
 // arithmetic lives here so it's unit-testable without a DB.
 
 import { expandToComponents } from "./immunization-catalog";
+import { biomarkerFamily } from "./canonical-name";
 
-// The Upcoming retest nudge keys a biomarker on `biomarker:<lowercased name>`
-// (lib/queries/upcoming.ts), where the name is the reading's canonical name
-// (falling back to its raw name). Centralized so the dismissal cleanup / re-key
+// The Upcoming retest nudge keys a biomarker on `biomarker:<family identity>`
+// (lib/queries/upcoming). The identity is the reading's #482 biomarker FAMILY
+// (biomarkerFamily over the canonical name, falling back to the raw name), so a
+// dismiss/snooze on ANY family member silences the whole family's retest nudge —
+// and the key is stable no matter which member happens to be the newest reading
+// (before #482 it keyed the bare representative name, which drifted as readings
+// were added). A non-family analyte's family key is just its own lowercased name,
+// so its dismissal key is unchanged. Centralized so the dismissal cleanup / re-key
 // derive the exact same key the nudge does.
 export function biomarkerDismissalKey(name: string): string {
-  return `biomarker:${name.trim().toLowerCase()}`;
+  return `biomarker:${biomarkerFamily(name).toLowerCase()}`;
 }
 
 // The dashboard hero keys a newly-flagged biomarker on

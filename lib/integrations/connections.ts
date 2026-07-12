@@ -392,6 +392,13 @@ export function resolveHealthConnectProfile(
   return matched;
 }
 
+// Short server-side timeout on the OAuth token-refresh fetches (issue #476, the same
+// gap #470 touched). Without an AbortSignal a hung refresh — a connection that opens
+// but never responds — would freeze the sequential hourly tick just as a hung API
+// call would, only earlier (before any activity is fetched). A throw here is already
+// caught by each sync's getXAccessToken try/catch, which records an ok:false event.
+const TOKEN_REFRESH_TIMEOUT_MS = 15_000;
+
 // ---- Strava OAuth ----
 
 export const STRAVA_ID = "strava";
@@ -543,6 +550,7 @@ export async function getStravaAccessToken(
       grant_type: "refresh_token",
       refresh_token: c.refreshToken,
     }),
+    signal: AbortSignal.timeout(TOKEN_REFRESH_TIMEOUT_MS),
   });
   if (!res.ok) {
     const body = await res.text();
@@ -847,6 +855,7 @@ export async function getWithingsAccessToken(
       client_secret: c.clientSecret,
       refresh_token: c.refreshToken,
     }).toString(),
+    signal: AbortSignal.timeout(TOKEN_REFRESH_TIMEOUT_MS),
   });
   if (!res.ok) {
     if (isAuthRefreshFailure(res.status)) {

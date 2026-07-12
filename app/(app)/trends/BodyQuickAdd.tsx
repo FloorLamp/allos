@@ -19,9 +19,14 @@ import { addBodyMetric } from "./body-actions";
 export default function BodyQuickAdd({
   weightUnit,
   defaultDate,
+  showBodyFat = true,
 }: {
   weightUnit: WeightUnit;
   defaultDate: string;
+  // #493: the body-fat input is hidden for a growth-tracked profile, matching the
+  // charts/history — so "not tracked" is consistent instead of hidden-yet-enterable.
+  // Defaults to shown (adult / unknown age).
+  showBodyFat?: boolean;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -124,20 +129,22 @@ export default function BodyQuickAdd({
             required
           />
         </div>
-        <div>
-          <label className="label" htmlFor="bm-body-fat">
-            Body fat (%)
-          </label>
-          <input
-            id="bm-body-fat"
-            type="number"
-            step="0.1"
-            min="0"
-            max="100"
-            name="body_fat_pct"
-            className="input"
-          />
-        </div>
+        {showBodyFat && (
+          <div>
+            <label className="label" htmlFor="bm-body-fat">
+              Body fat (%)
+            </label>
+            <input
+              id="bm-body-fat"
+              type="number"
+              step="0.1"
+              min="0"
+              max="100"
+              name="body_fat_pct"
+              className="input"
+            />
+          </div>
+        )}
         <div>
           <label className="label" htmlFor="bm-resting-hr">
             Resting HR (bpm)

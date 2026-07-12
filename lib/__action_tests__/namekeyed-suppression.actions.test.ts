@@ -259,7 +259,10 @@ describe("manifestation 3 & 4 — canonical rename migrates star + dismissal", (
       })
     );
     star(profile.id, "Vitamin D");
-    dismissFinding(profile.id, "biomarker:vitamin d");
+    // The retest dismissal is keyed by the #482 FAMILY identity (both "Vitamin D"
+    // and "Vitamin D, 25-Hydroxy" are the same family), so it's stable across the
+    // rename — no drift as the canonical spelling changes.
+    dismissFinding(profile.id, "biomarker:family:vitamin-d-25-hydroxy");
 
     // Snap the canonical name to the fuller vocab entry — exactly what the app
     // encourages — via the single-record edit path.
@@ -276,9 +279,10 @@ describe("manifestation 3 & 4 — canonical rename migrates star + dismissal", (
 
     // Star followed the subject: pinned under the new name, no dead old star.
     expect(starNames(profile.id)).toEqual(["Vitamin D, 25-Hydroxy"]);
-    // Dismissal re-keyed the same way: the snooze the user set still attaches.
+    // The family-keyed dismissal is untouched: the reading is still in the family,
+    // so the snooze the user set still attaches (and never orphan-swept).
     expect(dismissalKeys(profile.id)).toEqual([
-      "biomarker:vitamin d, 25-hydroxy",
+      "biomarker:family:vitamin-d-25-hydroxy",
     ]);
   });
 

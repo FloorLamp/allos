@@ -18,7 +18,8 @@
 // precise verdict. The card carries that caveat; these helpers stay numeric.
 
 import { theilSenSlopePerDay, type DatedPoint } from "./robust-stats";
-import { DERIVED_DEFS_BY_NAME, PHENOAGE_MIN_AGE } from "./derived-biomarkers";
+import { DERIVED_DEFS_BY_NAME } from "./derived-biomarkers";
+import { isAdultForClinical } from "./life-stage";
 
 // Julian year — matches the day→year conversion in lib/biomarker-trajectory.
 const DAYS_PER_YEAR = 365.25;
@@ -209,9 +210,12 @@ export function completenessChecklistMessage(c: InputCompleteness): string {
 // ── Adult gate ────────────────────────────────────────────────────────────────
 
 // Hidden for CHILD profiles — the card gates on exactly the adult floor the
-// computation uses (PhenoAge is an adult population model). Mirroring lib/age-gate.ts,
-// an UNKNOWN age is never hidden: we hide on a positive under-age match, not on
-// missing data (an unknown-age adult can still see the import checklist).
+// computation uses (PhenoAge is an adult population model). An UNKNOWN age is never
+// hidden: we hide on a positive under-age match, not on missing data (an unknown-age
+// adult can still see the import checklist). This is the inverse of the shared
+// adult-clinical predicate (lib/life-stage) — `isAdultForClinical` is false for both
+// a child AND an unknown age, so the "hidden" answer must additionally require a
+// KNOWN age to preserve the show-on-unknown policy.
 export function isBioAgeHiddenForAge(age: number | null): boolean {
-  return age != null && age < PHENOAGE_MIN_AGE;
+  return age != null && !isAdultForClinical(age);
 }

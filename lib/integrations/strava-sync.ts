@@ -43,6 +43,11 @@ const MAX_DETAIL_CALLS = 150;
 // skip it forever. Re-fetching a trailing window each run catches those late
 // uploads; upserts are keyed on external_id, so re-fetches are idempotent.
 const RESCAN_MARGIN_SEC = 7 * 24 * 60 * 60;
+// Short server-side timeout so a hung/blackholed Strava request never stalls the
+// hourly tick (issue #476). The tick processes profiles SEQUENTIALLY, so one fetch
+// with no AbortSignal — a connection that opens but never responds — would freeze the
+// whole run: no dose reminders, no escalations, no backups that hour.
+const TIMEOUT_MS = 30_000;
 
 export interface StravaSyncResult {
   activities: number;
@@ -54,12 +59,29 @@ export interface StravaSyncResult {
 async function stravaGet(
   path: string,
   token: string
-): Promise<{ ok: true; json: unknown } | { ok: false; status: number }> {
-  const res = await fetch(`${API}${path}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!res.ok) return { ok: false, status: res.status };
-  return { ok: true, json: await res.json() };
+): Promise<
+  { ok: true; json: unknown } | { ok: false; status: number; error?: string }
+> {
+  try {
+    const res = await fetch(`${API}${path}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+    if (!res.ok) return { ok: false, status: res.status };
+    return { ok: true, json: await res.json() };
+  } catch (err) {
+    // A network THROW (DNS failure, ECONNRESET, TLS error, or the timeout above)
+    // rejects `fetch`. Convert it to a non-ok result — the same shape Withings'
+    // withingsPost returns (issue #476) — so the caller records an ok:false sync
+    // event instead of letting the rejection escape runStravaSync unlogged, which
+    // left Review green while Strava had silently stopped syncing. status 0 marks
+    // "no HTTP response"; the message carries the real cause for the event.
+    return {
+      ok: false,
+      status: 0,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
 }
 
 export async function runStravaSync(
@@ -102,7 +124,12 @@ export async function runStravaSync(
         break; // rate-limited — keep the cursor, resume next run
       }
       {
-        const message = `Strava activities request failed (${listRes.status})`;
+        // status 0 = a network throw/timeout caught in stravaGet; surface its real
+        // cause (ECONNRESET / timeout) so the failed sync event is actionable, not a
+        // bare "(0)".
+        const message = listRes.error
+          ? `Strava activities request failed: ${listRes.error}`
+          : `Strava activities request failed (${listRes.status})`;
         recordSyncEvent(profileId, STRAVA_ID, { ok: false, error: message });
         return { error: message };
       }

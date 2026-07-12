@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { IconX, IconAlertTriangle } from "@tabler/icons-react";
 import type { ActivityType, Goal, Sex } from "@/lib/types";
 import type {
@@ -22,11 +22,13 @@ import SportDetailPanel from "@/components/SportDetailPanel";
 import JournalCard from "./JournalCard";
 import type { MergeSibling } from "./ActivityCardMenu";
 import { detectFieldConflicts } from "@/lib/import-review/conflicts";
+import { loadJournalPage } from "./actions";
 
 // JournalCardData / DayGroup moved to lib/journal-card.ts (issue #334), built by the
 // pure buildJournalCards. Re-exported so existing `../journal/JournalView` importers
 // (HistorySection) keep their paths.
 import type { JournalCardData, DayGroup } from "@/lib/journal-card";
+import { appendDayGroups } from "@/lib/journal-card";
 export type { JournalCardData, DayGroup };
 
 export interface TargetChip {
@@ -60,7 +62,8 @@ const TYPE_FILTERS: { value: "all" | ActivityType; label: string }[] = [
 ];
 
 export default function JournalView({
-  groups,
+  groups: initialGroups,
+  initialCursor = null,
   exerciseStats,
   cardioStats,
   sportStats,
@@ -74,7 +77,12 @@ export default function JournalView({
   showWeeklyTargets = true,
   sex,
 }: {
+  // The NEWEST page of day groups, refreshed by the server on every auto-save (issue
+  // #451). Older windows are fetched on demand and held in local state below.
   groups: DayGroup[];
+  // Cursor (oldest-date-of-first-page) for fetching the next-older page, or null when
+  // the first page already covers the whole history.
+  initialCursor?: string | null;
   exerciseStats: ExerciseStat[];
   cardioStats: CardioStat[];
   sportStats: SportStat[];
@@ -92,6 +100,51 @@ export default function JournalView({
   const { open, openCreate, openRepeat, close, registerDock } =
     useActivityEditor();
   const dockRef = useRef<HTMLDivElement | null>(null);
+
+  // ---- Server-paged feed (issue #451) ----
+  // `initialGroups` is the newest page (refreshed by the server on every auto-save);
+  // older windows are fetched on demand into `olderGroups`. The rendered feed is the
+  // two merged + deduped, so a first-page refresh after an edit stays live while any
+  // loaded older pages persist. (An edit to a card that lives ONLY in an older page
+  // won't refresh until reload — an accepted edge: edits target the recent/selected
+  // cards, which are on page one.)
+  const [olderGroups, setOlderGroups] = useState<DayGroup[]>([]);
+  const [cursor, setCursor] = useState<string | null>(initialCursor);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const groups = useMemo(
+    () => appendDayGroups(initialGroups, olderGroups),
+    [initialGroups, olderGroups]
+  );
+
+  // Refs mirror the latest values so the deep-link auto-load loop reads fresh state
+  // inside its async iterations (a render-time closure would go stale mid-load).
+  const groupsRef = useRef(groups);
+  groupsRef.current = groups;
+  const cursorRef = useRef(cursor);
+  cursorRef.current = cursor;
+  const olderGroupsRef = useRef(olderGroups);
+  olderGroupsRef.current = olderGroups;
+  const fetchingRef = useRef(false);
+
+  // Fetch the next-older page from the server and append it. Returns false when there
+  // is nothing more to fetch, or a fetch is already in flight — so a caller/loop stops.
+  const fetchNextPage = useCallback(async (): Promise<boolean> => {
+    if (fetchingRef.current) return false;
+    const before = cursorRef.current;
+    if (before == null) return false;
+    fetchingRef.current = true;
+    try {
+      const res = await loadJournalPage(before);
+      const nextOlder = appendDayGroups(olderGroupsRef.current, res.groups);
+      olderGroupsRef.current = nextOlder;
+      cursorRef.current = res.nextBefore;
+      setOlderGroups(nextOlder);
+      setCursor(res.nextBefore);
+      return true;
+    } finally {
+      fetchingRef.current = false;
+    }
+  }, []);
 
   // The most recent logged activity (groups arrive newest-first, cards ordered
   // within a day) — the source for the header's one-tap "Repeat last" (issue
@@ -178,6 +231,49 @@ export default function JournalView({
 
   const shown = filtered.slice(0, visibleDays);
 
+  // "Load more" pages the feed (issue #451): first reveal any already-loaded days
+  // beyond the client window, then fetch the next-older window from the server.
+  const hasMoreLoaded = filtered.length > visibleDays;
+  const canFetchMore = cursor != null;
+  const filtersActive =
+    query.trim() !== "" ||
+    typeFilter !== "all" ||
+    tagFilter != null ||
+    faultOnlyActive;
+  async function handleLoadMore() {
+    if (hasMoreLoaded) {
+      setVisibleDays((v) => v + 14);
+      return;
+    }
+    if (canFetchMore && !loadingMore) {
+      setLoadingMore(true);
+      try {
+        await fetchNextPage();
+        setVisibleDays((v) => v + 14);
+      } finally {
+        setLoadingMore(false);
+      }
+    }
+  }
+  const loadMoreButton = (
+    <button
+      type="button"
+      onClick={handleLoadMore}
+      disabled={loadingMore}
+      data-testid="journal-load-more"
+      className="btn-ghost w-full"
+    >
+      {loadingMore ? "Loading…" : "Load more"}
+    </button>
+  );
+  // Honest search scope (issue #451): filters/search run over LOADED activities only,
+  // so when older windows remain unfetched we say so rather than silently capping.
+  const searchScopeNote = filtersActive && canFetchMore && (
+    <p className="text-center text-xs text-slate-400 dark:text-slate-500">
+      Only loaded activities are searched — load older days to widen the search.
+    </p>
+  );
+
   // Manual-merge targets per day (issue #64): all same-day activities keyed by date,
   // from the UNFILTERED groups so a type/search filter can't hide a legitimate
   // duplicate from the merge picker. Each card's own id is excluded at render.
@@ -223,27 +319,50 @@ export default function JournalView({
   // marks its own writes below) and only jump when it truly changes.
   const handledHashRef = useRef<string | null>(null);
   useEffect(() => {
-    const handleHash = () => {
+    const handleHash = async () => {
       const hash = window.location.hash;
       if (hash === handledHashRef.current) return;
       handledHashRef.current = hash;
       const mDay = hash.match(/^#day-(\d{4}-\d{2}-\d{2})$/);
       const mAct = hash.match(/^#activity-(\d+)$/);
+      if (!mDay && !mAct) return;
+      const actId = mAct ? Number(mAct[1]) : null;
+
+      // The target day/activity may live below the loaded window now that the feed
+      // pages in older history server-side (issue #451). Load older pages until the
+      // target is present, or we've paged past it, or the history is exhausted — so
+      // a deep link from the calendar / a trend / the timeline still lands.
+      const reached = () => {
+        const gs = groupsRef.current;
+        if (mDay) {
+          const present = gs.some((g) => g.date === mDay[1]);
+          const passed = gs.length > 0 && gs[gs.length - 1].date < mDay[1];
+          return present || passed;
+        }
+        return gs.some((g) => g.cards.some((c) => c.activity.id === actId));
+      };
+      while (!reached() && cursorRef.current != null) {
+        // Sequential by design — each page narrows the search for the target.
+        // eslint-disable-next-line no-await-in-loop
+        const ok = await fetchNextPage();
+        if (!ok) break;
+      }
+
+      const gs = groupsRef.current;
       let targetDate: string | null = null;
       let elementId: string | null = null;
       if (mDay) {
         targetDate = mDay[1];
         elementId = `day-${mDay[1]}`;
-      } else if (mAct) {
-        const id = Number(mAct[1]);
-        const g = groups.find((gr) =>
-          gr.cards.some((c) => c.activity.id === id)
+      } else {
+        const g = gs.find((gr) =>
+          gr.cards.some((c) => c.activity.id === actId)
         );
         if (!g) return;
         targetDate = g.date;
-        elementId = `activity-${id}`;
-      } else return;
-      const idx = groups.findIndex((g) => g.date === targetDate);
+        elementId = `activity-${actId}`;
+      }
+      const idx = gs.findIndex((g) => g.date === targetDate);
       if (idx < 0) return;
       setTypeFilter("all");
       setQuery("");
@@ -256,10 +375,11 @@ export default function JournalView({
       setVisibleDays((v) => Math.max(v, idx + 9));
       setPendingScroll(elementId);
     };
-    handleHash();
-    window.addEventListener("hashchange", handleHash);
-    return () => window.removeEventListener("hashchange", handleHash);
-  }, [groups]);
+    void handleHash();
+    const onHashChange = () => void handleHash();
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, [groups, fetchNextPage]);
 
   useEffect(() => {
     if (!pendingScroll) return;
@@ -500,7 +620,17 @@ export default function JournalView({
         {/* Day-grouped feed */}
         <div>
           {shown.length === 0 ? (
-            <EmptyState message="No activities match your filters." />
+            <div className="space-y-3">
+              <EmptyState message="No activities match your filters." />
+              {/* The match may still be in an unloaded older window — offer to widen
+                  the search rather than declaring "none" over a bounded set (#451). */}
+              {canFetchMore && (
+                <>
+                  {searchScopeNote}
+                  {loadMoreButton}
+                </>
+              )}
+            </div>
           ) : (
             <div className="space-y-6">
               {shown.map((g, gi) => (
@@ -559,15 +689,8 @@ export default function JournalView({
                   </div>
                 </section>
               ))}
-              {filtered.length > visibleDays && (
-                <button
-                  type="button"
-                  onClick={() => setVisibleDays((v) => v + 14)}
-                  className="btn-ghost w-full"
-                >
-                  Load more
-                </button>
-              )}
+              {searchScopeNote}
+              {(hasMoreLoaded || canFetchMore) && loadMoreButton}
             </div>
           )}
         </div>
