@@ -277,6 +277,50 @@ describe("resilient restore when a captured FK target was deleted meanwhile", ()
     expect(rec.provider_id).toBeNull();
   });
 
+  it("nulls an intake item's provider_id when the prescriber was merged/deleted after capture (#455)", () => {
+    const q = seedProfile("RX-UNDO");
+    // A global prescriber and a medication linked to it via provider_id — the same
+    // real enforced FK migration 006 added to intake_items.
+    const providerId = Number(
+      db
+        .prepare(
+          `INSERT INTO providers (name, type, dedup_key) VALUES ('RX Clinic', 'organization', ?)`
+        )
+        .run(`rx-clinic-${q.profileId}`).lastInsertRowid
+    );
+    const itemId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items
+             (profile_id, name, active, kind, condition, priority, provider_id)
+           VALUES (?, ?, 1, 'medication', 'daily', 'high', ?)`
+        )
+        .run(q.profileId, `${q.tag} Atorvastatin`, providerId).lastInsertRowid
+    );
+
+    // Delete the medication (captured with its live provider_id), THEN delete the
+    // prescriber — mirroring "merge/delete the provider" after the item was captured.
+    // The captured copy still holds the now-dead provider id.
+    const undoId = captureDelete("intake-item", q.profileId, itemId)!;
+    db.prepare("DELETE FROM providers WHERE id = ?").run(providerId);
+    expect(
+      count("SELECT COUNT(*) c FROM providers WHERE id = ?", providerId)
+    ).toBe(0);
+
+    // Undo must succeed (no FK throw) and restore the item with the dangling
+    // prescriber link NULLed rather than re-inserting a dead FK.
+    expect(restoreDeletedRow(q.profileId, undoId)).toBe(true);
+    const item = db
+      .prepare(
+        "SELECT provider_id FROM intake_items WHERE profile_id = ? AND name = ?"
+      )
+      .get(q.profileId, `${q.tag} Atorvastatin`) as {
+      provider_id: number | null;
+    };
+    expect(item).toBeTruthy();
+    expect(item.provider_id).toBeNull();
+  });
+
   it("drops a pair whose far endpoint item was deleted, still restoring the item", () => {
     const q = seedProfile("PAIR-UNDO");
     // Pair the tracked supplement (X) with the medication (Y).
