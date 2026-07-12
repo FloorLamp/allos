@@ -38,7 +38,7 @@ test.describe("Care plan (#391)", () => {
     // Idempotent: re-completing an already-completed row is a harmless no-op, so a
     // CI retry against the reused DB still passes.
     await page.goto("/care-plan");
-    const row = page.locator("tr").filter({ hasText: "E2E annual eye exam" });
+    const row = page.locator("tr").filter({ hasText: "E2E orthotics fitting" });
     await expect(row).toBeVisible();
     await row.getByRole("button", { name: "Edit" }).click();
 
@@ -52,13 +52,15 @@ test.describe("Care plan (#391)", () => {
 
     // The row now reads Completed on the page …
     await expect(
-      page.locator("tr").filter({ hasText: "E2E annual eye exam" })
+      page.locator("tr").filter({ hasText: "E2E orthotics fitting" })
     ).toContainText("Completed");
 
     // … and its Upcoming twin is gone (the closed status drops it from the feed).
     await page.goto("/upcoming");
     await expect(
-      page.locator(CAREPLAN_UPCOMING).filter({ hasText: "E2E annual eye exam" })
+      page
+        .locator(CAREPLAN_UPCOMING)
+        .filter({ hasText: "E2E orthotics fitting" })
     ).toHaveCount(0);
   });
 

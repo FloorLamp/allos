@@ -1208,13 +1208,16 @@ db.prepare(
 // A dedicated, open, FUTURE-dated care-plan item on profile 1 for the care-plan
 // spec's complete→disappears-from-Upcoming check. Distinct from the base seed's
 // care-plan rows (which care-plan-upcoming.spec drives), so the two never collide.
+// The description must match NO preventive concept-map phrase (an earlier "eye
+// exam" wording, once the spec completed it, was inferred as satisfying the
+// vision_exam rule and broke preventive-upcoming's still-due control assertion).
 db.prepare(
-  `DELETE FROM care_plan_items WHERE profile_id = ? AND description = 'E2E annual eye exam'`
+  `DELETE FROM care_plan_items WHERE profile_id = ? AND description IN ('E2E annual eye exam', 'E2E orthotics fitting')`
 ).run(PROFILE_ID);
 db.prepare(
   `INSERT INTO care_plan_items
      (profile_id, description, category, planned_date, status, notes)
-   VALUES (?, 'E2E annual eye exam', 'procedure', ?, 'planned', 'Routine vision screening')`
+   VALUES (?, 'E2E orthotics fitting', 'procedure', ?, 'planned', 'Custom insole fitting')`
 ).run(PROFILE_ID, shiftDateStr(today(PROFILE_ID), 21));
 
 // A dedicated, FUTURE, scheduled appointment on profile 1 (with a provider) for the
