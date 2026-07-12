@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { IconChevronDown, IconLogout, IconInbox } from "@tabler/icons-react";
 import type { SessionProfile } from "@/lib/auth";
+import { disambiguateProfileNames } from "@/lib/profile-disambiguation";
 import Avatar from "@/components/Avatar";
 import { clearEmergencyPayload } from "@/components/emergency-offline";
 import { clearQueue } from "@/lib/offline/queue-db";
@@ -38,6 +39,10 @@ export default function UserMenu({
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  // Two accessible profiles can share a name (no uniqueness constraint) — append a
+  // "(2)" ordinal so the switcher pill + rows name a specific profile (#534).
+  const displayNames = disambiguateProfileNames(profiles);
+  const activeLabel = displayNames.get(active.id) ?? active.name;
 
   useEffect(() => {
     if (!open) return;
@@ -65,7 +70,7 @@ export default function UserMenu({
         className="flex w-full items-center gap-2 rounded-lg border border-black/10 bg-white/70 px-2 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-white dark:border-white/10 dark:bg-ink-850 dark:text-slate-200 dark:hover:bg-ink-800"
       >
         <Avatar profile={active} size="sm" />
-        <span className="min-w-0 flex-1 truncate text-left">{active.name}</span>
+        <span className="min-w-0 flex-1 truncate text-left">{activeLabel}</span>
         {readOnly && (
           <span
             data-testid="read-only-badge"
@@ -137,7 +142,9 @@ export default function UserMenu({
                   }`}
                 >
                   <Avatar profile={p} size="sm" />
-                  <span className="min-w-0 truncate">{p.name}</span>
+                  <span className="min-w-0 truncate">
+                    {displayNames.get(p.id) ?? p.name}
+                  </span>
                 </button>
               </form>
             );

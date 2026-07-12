@@ -1329,3 +1329,23 @@ db.prepare(
 console.log(
   `e2e: seeded an equipment-delete link fixture, an open care-plan item, and a future appointment on profile ${PROFILE_ID} (#391)`
 );
+
+// ── Duplicate-immunization delete-confirm fixture (issue #534) ────────────────
+// Two yellow-fever doses on the SAME date for profile 1, so the immunizations
+// delete confirm — keyed on "vaccine + date" — would read identically for both
+// without the distinguishing dose label the #534 fix folds in. Yellow fever is a
+// travel/record-only vaccine (never due/overdue), so this can't perturb any CDC
+// schedule-status assertion. Distinct dose labels give the confirm something to
+// disambiguate on. Idempotent: clear the marked rows first.
+db.prepare(
+  `DELETE FROM immunizations WHERE profile_id = ? AND notes = 'e2e:dup-immz'`
+).run(PROFILE_ID);
+const insDupImmz = db.prepare(
+  `INSERT INTO immunizations (profile_id, date, vaccine, dose_label, notes, source)
+   VALUES (?, '2024-05-01', 'yellow_fever', ?, 'e2e:dup-immz', NULL)`
+);
+insDupImmz.run(PROFILE_ID, "Travel dose A");
+insDupImmz.run(PROFILE_ID, "Travel dose B");
+console.log(
+  `e2e: seeded two same-date yellow-fever immunizations on profile ${PROFILE_ID} (delete-confirm disambiguation, #534)`
+);

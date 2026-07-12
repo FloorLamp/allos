@@ -4,6 +4,7 @@ import {
   IconCircleCheck,
 } from "@tabler/icons-react";
 import Avatar, { type AvatarProfile } from "@/components/Avatar";
+import { disambiguateProfileNames } from "@/lib/profile-disambiguation";
 import { openProfileAction } from "@/app/(app)/household/actions";
 
 // One chip's data: a profile the caller can reach + its attention count.
@@ -26,6 +27,9 @@ export default function HouseholdStrip({
   entries: HouseholdStripEntry[];
 }) {
   if (entries.length === 0) return null;
+  // Two accessible profiles can share a name — append a "(2)" ordinal so each chip
+  // names a specific profile rather than a same-name twin (#534).
+  const displayNames = disambiguateProfileNames(entries.map((e) => e.profile));
   return (
     <section
       data-testid="household-strip"
@@ -47,7 +51,7 @@ export default function HouseholdStrip({
             >
               <Avatar profile={profile} size="sm" />
               <span className="font-medium text-slate-700 dark:text-slate-200">
-                {profile.name}
+                {displayNames.get(profile.id) ?? profile.name}
               </span>
               {count > 0 ? (
                 <span

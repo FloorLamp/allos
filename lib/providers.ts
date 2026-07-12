@@ -76,6 +76,35 @@ export function cleanProviderInput(
   };
 }
 
+// The write-time reuse decision for a manually typed provider name (issue #534).
+// resolveProviderIdByName reuses an EXISTING shared row when the typed name matches
+// one, but must never silently collapse two GENUINELY DISTINCT providers that happen
+// to share a name (a cardiologist "Dr. Smith" vs a dentist; two "City Medical"
+// clinics in different towns). Given every registry row that shares the typed name
+// (case-insensitive) plus the `type` the manual picker is creating under, decide
+// which existing row — if any — is safe to reuse:
+//   • exactly one row of the SAME type → reuse it (the strong signal a name-only
+//     entry carries — a typed lab name reuses the one lab org of that name);
+//   • no same-type row but exactly one row of ANY type → reuse it (preserves
+//     "typing a known clinician's name reuses their row" even when the stored type
+//     differs from the picker default);
+//   • otherwise the name is AMBIGUOUS (two+ rows share it, or it splits across
+//     types) → return null so the caller creates/resolves a DISTINCT row instead of
+//     blind-attaching to an arbitrary `ORDER BY id LIMIT 1` winner.
+// Exclusion discipline (#482): when the match can't be pinned uniquely, UNDER-
+// collapsing (a fresh duplicate the merge UI can later fix) beats mis-linking a
+// record onto the wrong distinct provider. Pure + unit-tested; the DB half only
+// supplies the candidate rows.
+export function pickReusableProviderId(
+  type: ProviderType,
+  matches: readonly { id: number; type: ProviderType }[]
+): number | null {
+  const sameType = matches.filter((m) => m.type === type);
+  if (sameType.length === 1) return sameType[0].id;
+  if (sameType.length === 0 && matches.length === 1) return matches[0].id;
+  return null;
+}
+
 // Dedup a list of candidates by their global key, keeping the first (richest is
 // caller's responsibility — first-writer-wins matches the DB INSERT OR IGNORE).
 export function dedupeProviders(inputs: ProviderInput[]): ProviderInput[] {
