@@ -11,6 +11,16 @@ export type SupplementCondition =
 
 // Importance band. `mandatory` is reserved for lab-confirmed deficiencies
 // (normally set by the AI engine); `high`/`low` are user-managed.
+//
+// This is a STATIC, user-owned sort key — never recomputed from context (#559).
+// Unlike a screening/retest priority (#517), which DERIVES a clinical judgment the
+// user can't encode, a supplement's importance is the user's own explicit tag: the
+// ground truth, not something to infer. So there is deliberately NO dynamic priority
+// ENGINE for supplements — context only GATES dueness (isDueOn hides a rest-day item
+// on a workout day, a situational item while inactive), it never INVENTS priority.
+// The one legitimately-dynamic axis is time-urgency (a due-but-unconfirmed
+// time-critical dose escalating as its window passes), and that rides the EXISTING
+// dose-reminder/missed-dose escalation lattice, not this band.
 export type SupplementPriority = "mandatory" | "high" | "low";
 
 // How a dose relates to food. A property of the substance (fat-soluble vitamins
