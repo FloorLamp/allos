@@ -13,6 +13,7 @@ import {
   getSkippedDoseIds,
   getActivitiesByDate,
   getFrequencyTargetProgress,
+  getCurrentFlaggedBiomarkers,
 } from "../queries";
 import { isDueOn } from "../supplement-schedule";
 import {
@@ -60,51 +61,35 @@ export function digestSince(profileId: number): string {
 // single read behind BOTH the digest's "New" section and the dashboard hero's
 // flagged-biomarker attention items, so the two can never disagree on which results
 // are "newly flagged" — each surface passes its OWN window (`since`): the digest
-// its send cursor, the hero a stable trailing window (issue #283). Names are
-// canonical-preferred (COALESCE) so links/dedupe key on the same identity the
-// biomarker view page resolves, and repeat flags of one analyte collapse to the
-// newest reading (dedupeFlaggedByAnalyte) BEFORE the limit is applied.
+// its send cursor, the hero a stable trailing window (issue #283).
 //
-// ORDER BY carries an explicit id tiebreak: batch imports/seeds write many flags in
-// the same created_at second, and with >MAX_FLAGGED unique analytes in the window
-// the slice keeps whichever ties come first — so tie order IS behavior. Before
-// migration 020 (idx_medical_records_profile_created) ties fell back to table-scan
-// rowid order (id ASC); the index scan would silently flip them to id DESC and
-// change which analytes surface on the digest/hero. id ASC pins the long-observed
-// pre-index behavior deterministically.
+// The heavy lifting is getCurrentFlaggedBiomarkers (lib/queries/medical.ts): it
+// restricts to each analyte family's CURRENT (latest-per-family) reading via the
+// SAME LATEST_IDS_CTE machinery the household/passport surfaces use, so a
+// SUPERSEDED historical out-of-range reading (a 5-year-old low that a later normal
+// reading replaced) never surfaces here — the #557 fix, a "one question, one
+// computation" consolidation with the two sibling surfaces. It also windows on the
+// COLLECTION date as well as the import cursor, so a history backfill (created_at
+// today, collected years ago) can't light the window. "immune" is a good
+// durable-immunity status (#544/#549), excluded there too. Names are
+// canonical-preferred so links/dedupe key on the same identity the biomarker view
+// resolves; repeat flags of one analyte already collapse to the current reading in
+// the CTE, and dedupeFlaggedByAnalyte stays as a defensive collapse-by-name before
+// the MAX_FLAGGED slice.
 export function getNewlyFlaggedBiomarkers(
   profileId: number,
   since: string,
   limit = MAX_FLAGGED
 ): DigestFlaggedBiomarker[] {
-  // "immune" is a GOOD durable-immunity status (#544/#549), not a care-tier alert,
-  // so it never reaches the flagged-digest/hero/push — and a context-neutral
-  // qualitative value the classifier cleared has flag NULL, already excluded here.
-  // Neutral extractor-guessed "abnormal" flags are corrected to NULL by the flag
-  // reconcile before this read (#548 §1).
-  const rows = db
-    .prepare(
-      `SELECT COALESCE(NULLIF(trim(canonical_name), ''), name) AS name,
-              NULLIF(trim(canonical_name), '') AS canonical_name,
-              value, flag
-         FROM medical_records
-        WHERE profile_id = ? AND created_at > ?
-          AND flag IS NOT NULL AND flag NOT IN ('normal', 'immune')
-        ORDER BY created_at DESC, id ASC`
-    )
-    .all(profileId, since) as {
-    name: string;
-    canonical_name: string | null;
-    value: string | null;
-    flag: string;
-  }[];
   return dedupeFlaggedByAnalyte(
-    rows.map((r): DigestFlaggedBiomarker => ({
-      name: r.name,
-      canonicalName: r.canonical_name,
-      value: r.value,
-      flag: r.flag,
-    }))
+    getCurrentFlaggedBiomarkers(profileId, since).map(
+      (r): DigestFlaggedBiomarker => ({
+        name: r.name,
+        canonicalName: r.canonicalName,
+        value: r.value,
+        flag: r.flag,
+      })
+    )
   ).slice(0, limit);
 }
 
