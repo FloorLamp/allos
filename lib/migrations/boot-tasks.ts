@@ -97,9 +97,16 @@ export function seedInstallMarker(db: Database.Database) {
     .prepare("SELECT value FROM settings WHERE key = 'install_first_boot_at'")
     .get() as { value?: string } | undefined;
   if (existing?.value) return;
-  db.prepare(
-    "INSERT OR IGNORE INTO settings (key, value) VALUES ('install_first_boot_at', ?)"
-  ).run(new Date().toISOString());
+  // Wrapped in the retrying IMMEDIATE-tx wrapper so a parallel cold boot waits out a
+  // peer's write lock (issue #581) rather than surfacing a raw SQLITE_BUSY; the
+  // INSERT OR IGNORE keeps a lost race a clean no-op.
+  runBootTx(
+    db.transaction(() => {
+      db.prepare(
+        "INSERT OR IGNORE INTO settings (key, value) VALUES ('install_first_boot_at', ?)"
+      ).run(new Date().toISOString());
+    })
+  );
 }
 
 // Reap document-extraction and import-job rows a crash left mid-flight — AGE-GATED on
@@ -129,48 +136,54 @@ export function resetInterruptedWork(
       : extractionLeaseMinutes();
   const modifier = `-${mins} minutes`;
 
-  // Background document extraction runs in-process; a row stuck on 'processing' past
-  // the lease was abandoned by a dead process. Gated by processing_started_at (stamped
-  // when a row enters 'processing'): a NULL stamp or a fresh one is left alone.
-  db.exec(
-    `UPDATE medical_documents
-       SET extraction_status = 'failed',
-           extraction_error = 'Extraction was interrupted (server restarted). Delete and re-upload to retry.'
-     WHERE extraction_status IN ('processing','pending')
-       AND processing_started_at IS NOT NULL
-       AND processing_started_at < datetime('now', '${modifier}')`
-  );
+  // All three reaps run inside one retrying IMMEDIATE transaction so a parallel cold
+  // boot waits out a peer's write lock (issue #581) instead of surfacing a raw
+  // SQLITE_BUSY; each UPDATE is idempotent, so a re-run after a lost race is a no-op.
+  const reap = db.transaction(() => {
+    // Background document extraction runs in-process; a row stuck on 'processing' past
+    // the lease was abandoned by a dead process. Gated by processing_started_at (stamped
+    // when a row enters 'processing'): a NULL stamp or a fresh one is left alone.
+    db.exec(
+      `UPDATE medical_documents
+         SET extraction_status = 'failed',
+             extraction_error = 'Extraction was interrupted (server restarted). Delete and re-upload to retry.'
+       WHERE extraction_status IN ('processing','pending')
+         AND processing_started_at IS NOT NULL
+         AND processing_started_at < datetime('now', '${modifier}')`
+    );
 
-  // Async paste/CSV import jobs left mid-extraction by a restart/crash. updated_at is
-  // set at insert and bumped on every transition, so it ages a stalled job from when
-  // it last made progress; a fresh 'processing' job (updated_at ~ now) is spared.
-  db.exec(
-    `UPDATE import_jobs
-       SET status = 'failed',
-           error = 'Extraction was interrupted (server restarted). Discard and try again.',
-           updated_at = datetime('now')
-     WHERE status = 'processing'
-       AND updated_at < datetime('now', '${modifier}')`
-  );
+    // Async paste/CSV import jobs left mid-extraction by a restart/crash. updated_at is
+    // set at insert and bumped on every transition, so it ages a stalled job from when
+    // it last made progress; a fresh 'processing' job (updated_at ~ now) is spared.
+    db.exec(
+      `UPDATE import_jobs
+         SET status = 'failed',
+             error = 'Extraction was interrupted (server restarted). Discard and try again.',
+             updated_at = datetime('now')
+       WHERE status = 'processing'
+         AND updated_at < datetime('now', '${modifier}')`
+    );
 
-  // Jobs a crash stranded mid-commit (issue #323). commitImportJob claims a job by
-  // flipping 'ready' -> 'committing' (bumping updated_at) before writing rows; a crash
-  // between that claim and the row-delete would strand it in 'committing' forever — it
-  // can't be re-claimed (the claim requires status='ready') and only a manual Discard
-  // exits. Reap it to 'failed' with an explanatory error, mirroring the 'processing'
-  // reset, but only once its lease is past so a commit that IS succeeding right now
-  // isn't falsely reported as maybe-imported (issue #461). We do NOT revert to 'ready'
-  // for auto-retry: the crash may have landed after the inner commit transaction (data
-  // already imported), so the safe move is to fail it and let the user review — a
-  // deliberate re-import is deduped by the importers.
-  db.exec(
-    `UPDATE import_jobs
-       SET status = 'failed',
-           error = 'Saving this import was interrupted (server restarted). Some or all of its data may already have been imported — check your data before retrying, then discard this job.',
-           updated_at = datetime('now')
-     WHERE status = 'committing'
-       AND updated_at < datetime('now', '${modifier}')`
-  );
+    // Jobs a crash stranded mid-commit (issue #323). commitImportJob claims a job by
+    // flipping 'ready' -> 'committing' (bumping updated_at) before writing rows; a crash
+    // between that claim and the row-delete would strand it in 'committing' forever — it
+    // can't be re-claimed (the claim requires status='ready') and only a manual Discard
+    // exits. Reap it to 'failed' with an explanatory error, mirroring the 'processing'
+    // reset, but only once its lease is past so a commit that IS succeeding right now
+    // isn't falsely reported as maybe-imported (issue #461). We do NOT revert to 'ready'
+    // for auto-retry: the crash may have landed after the inner commit transaction (data
+    // already imported), so the safe move is to fail it and let the user review — a
+    // deliberate re-import is deduped by the importers.
+    db.exec(
+      `UPDATE import_jobs
+         SET status = 'failed',
+             error = 'Saving this import was interrupted (server restarted). Some or all of its data may already have been imported — check your data before retrying, then discard this job.',
+             updated_at = datetime('now')
+       WHERE status = 'committing'
+         AND updated_at < datetime('now', '${modifier}')`
+    );
+  });
+  runBootTx(reap);
 }
 
 // If no logins exist yet, create login 1 (admin) and profile 1, wired
@@ -245,10 +258,16 @@ export function seedTimezoneFromEnv(db: Database.Database) {
   } catch {
     return; // invalid TZ env — leave unset so getTimezone() falls back to UTC
   }
-  db.prepare(
-    `INSERT INTO settings (key, value) VALUES ('timezone', ?)
-     ON CONFLICT(key) DO NOTHING`
-  ).run(tz);
+  // Wrapped in the retrying IMMEDIATE-tx wrapper so a parallel cold boot waits out a
+  // peer's write lock (issue #581); ON CONFLICT DO NOTHING keeps a lost race a no-op.
+  runBootTx(
+    db.transaction(() => {
+      db.prepare(
+        `INSERT INTO settings (key, value) VALUES ('timezone', ?)
+         ON CONFLICT(key) DO NOTHING`
+      ).run(tz);
+    })
+  );
 }
 
 // Seed the canonical_biomarkers table from the committed JSON dataset. The JSON
@@ -342,10 +361,17 @@ export function reconcileFlagsIfCanonicalChanged(db: Database.Database) {
     .get() as { value?: string } | undefined;
   if (row?.value === sig) return; // ranges + logic unchanged — nothing to do
   reconcileNonOptimalFlags(db);
-  db.prepare(
-    `INSERT INTO settings (key, value) VALUES ('canonical_flags_sig', ?)
-     ON CONFLICT(key) DO UPDATE SET value = excluded.value`
-  ).run(sig);
+  // Record the new signature inside the retrying IMMEDIATE-tx wrapper so a parallel
+  // cold boot waits out a peer's write lock (issue #581) rather than surfacing a raw
+  // SQLITE_BUSY; the UPSERT keeps a re-run after a lost race a no-op.
+  runBootTx(
+    db.transaction(() => {
+      db.prepare(
+        `INSERT INTO settings (key, value) VALUES ('canonical_flags_sig', ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+      ).run(sig);
+    })
+  );
 }
 
 // Reconcile every record's flag against the canonical reference + optimal ranges
