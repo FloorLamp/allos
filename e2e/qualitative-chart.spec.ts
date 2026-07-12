@@ -18,8 +18,10 @@ test("embedded-unit and titer-ratio values are recovered onto the chart (#542)",
   // fallback.
   await expect(page.getByText("No numeric readings to chart")).toHaveCount(0);
   await expect(page.getByTestId("qualitative-timeline")).toHaveCount(0);
-  // Both readings still appear in the readings table verbatim.
-  await expect(page.getByText("58 mIU/mL")).toBeVisible();
+  // Both readings still appear in the readings table verbatim. Scoped to the
+  // table: the latest-reading badge above it repeats the same text, so a bare
+  // getByText is a strict-mode collision.
+  await expect(page.getByRole("table").getByText("58 mIU/mL")).toBeVisible();
 });
 
 // #543 — a purely qualitative series (no numeric anywhere) previously rendered a
