@@ -380,7 +380,7 @@ export interface CarePlanItem {
   // FREE-FORM BY DESIGN — deliberately bare TEXT with no DB CHECK (issue #328): the
   // importers pass FHIR CarePlan.activity status codes through verbatim, and the app
   // form takes a free-text clinical status. The only app-WRITTEN sentinel is
-  // 'completed' (setCarePlanItemDone, lib/queries/upcoming.ts); every other value is
+  // 'completed' (markCarePlanItemDone, lib/queries/upcoming/generators.ts); every other value is
   // clinical passthrough. A closed enum here would drop or mangle real record data.
   status: string | null;
   provider_id: number | null;

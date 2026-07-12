@@ -83,8 +83,12 @@ export function matchesActionPrefix(action: string, prefix: string): boolean {
 
 // ---- Retention ----
 
-// Default audit retention: keep 90 days of events. The hourly notify tick calls
-// pruneAuditEvents() with this default.
+// A 90-day day-window fallback, kept ONLY for callers/tests that prune by a day
+// count. It is NOT the tick's default: the hourly notify tick prunes by the
+// admin-configurable MONTH window (`DEFAULT_AUDIT_RETENTION_MONTHS = 24` in
+// lib/retention.ts unless overridden), so the real out-of-the-box retention is 24
+// months, not 90 days. See pruneAuditEvents() (lib/audit.ts) — maxMonths wins when
+// supplied, and the tick always supplies it.
 export const DEFAULT_AUDIT_RETENTION_DAYS = 90;
 
 // The SQLite datetime() modifier for an age-based prune cutoff — e.g. 90 →

@@ -42,7 +42,7 @@ export interface ReprocessCost {
   quotaRemaining: number; // quota left BEFORE this run
   // Of the `ai` docs, how many actually dispatch within the remaining quota vs are
   // shed to 'skipped' once the cap is hit (attempts beyond the cap don't queue —
-  // reprocessOne marks them skipped, see medical/actions.ts).
+  // reprocessOne marks them skipped, see lib/medical-pipeline.ts).
   aiWithinQuota: number;
   aiOverQuota: number;
   quotaAfter: number; // quota left AFTER this run's AI extractions (floored at 0)
