@@ -146,8 +146,10 @@ export async function saveAuditRetention(formData: FormData) {
 }
 
 // ---- Fitness age gate (global, admin-only) ----
-// The minimum age (whole years) a profile must be to see Training and AI
-// Insights surfaces + the Equipment tab. Empty / non-positive clears it
+// The minimum age (whole years) a profile must be to see the ADULT fitness
+// content: training analytics (e1RM/standards/fitness-age/coaching/goals), AI
+// Insights, and the Equipment registry. Duration-based sport/cardio logging is
+// age-neutral and survives the gate (issue #489). Empty / non-positive clears it
 // (gate off). Setting it changes nav/tabs/pages for every profile, so the whole
 // app layout is revalidated. See lib/age-gate.ts.
 

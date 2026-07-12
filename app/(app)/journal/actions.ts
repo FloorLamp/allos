@@ -22,7 +22,7 @@ import { getUnitPrefs } from "@/lib/settings";
 import { toKg, toKm, resolveWeightKg } from "@/lib/units";
 import { minutesBetween, compositeRollup } from "@/lib/activity-meta";
 import { isRealIsoDate } from "@/lib/date";
-import { isTrainingRestricted } from "@/lib/age-gate";
+import { isTrainingRestricted, isActivityTypeAllowed } from "@/lib/age-gate";
 
 interface SetInput {
   exercise: string;
@@ -126,17 +126,17 @@ export async function saveActivity(
   formData: FormData
 ): Promise<SaveActivityOutcome> {
   const { login, profile } = await requireWriteAccess();
-  // Training-restriction gate (#488): a profile below the instance min_training_age
-  // has NO surface to view/edit/delete an activity — /training redirects, the nav
-  // Training item and sidebar "Log activity" button are hidden. The create path was
-  // the un-gated twin (reachable via the command palette / a stale editor), so a
-  // restricted profile could persist an activity it can never see, that still feeds
-  // weekly-recap/coaching. The gate is authoritative HERE at the write boundary so the
-  // create and view paths agree regardless of what the UI offers.
-  if (isTrainingRestricted(profile.id))
-    return { ok: false, reason: "restricted" };
   const id = formData.get("id") ? Number(formData.get("id")) : null;
   const type = String(formData.get("type")) as ActivityType;
+  // Training-restriction gate — now TYPE-AWARE (#489, evolving #488). A profile
+  // below the instance min_training_age keeps duration-based SPORT/CARDIO logging
+  // (a lightweight, age-neutral activity log on /training) but still cannot log a
+  // STRENGTH session — the adult e1RM/strength-standard/fitness-age apparatus stays
+  // gated. Authoritative HERE at the write boundary so the create and view paths
+  // agree regardless of what the UI offers (a stale editor / command palette can't
+  // slip a strength row past the restriction, nor lose a legitimate sport log).
+  if (!isActivityTypeAllowed(type, isTrainingRestricted(profile.id)))
+    return { ok: false, reason: "restricted" };
   const title = String(formData.get("title") ?? "").trim();
   const date = String(formData.get("date") ?? "").trim();
   // Reject non-ISO dates server-side too: the client gates on this, but the
@@ -368,6 +368,11 @@ export async function mergeActivities(
 ): Promise<{ undoId: number | null }> {
   // Merging edits the keeper and deletes the discarded row — a write (issue #33).
   const { profile } = await requireWriteAccess();
+  // Merge is an adult-analytics affordance (the Journal duplicate-review flow) and
+  // is not offered on the restricted profile's lightweight activity log; keep it
+  // fully gated for a restricted profile (#489) so the un-surfaced action can't be
+  // reached out-of-band.
+  if (isTrainingRestricted(profile.id)) return { undoId: null };
   const keepId = Number(formData.get("keep_id"));
   const dropId = Number(formData.get("drop_id"));
   if (!keepId || !dropId || keepId === dropId) return { undoId: null };
@@ -444,6 +449,16 @@ export async function deleteActivity(
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return { undoId: null };
+  // Type-aware restriction (#489): a restricted profile owns only sport/cardio
+  // rows (strength creation is blocked), but guard defensively so a leftover
+  // strength row can't be deleted from the lightweight activity log either — the
+  // gate matches the write path so create/delete agree.
+  if (isTrainingRestricted(profile.id)) {
+    const act = db
+      .prepare("SELECT type FROM activities WHERE id = ? AND profile_id = ?")
+      .get(id, profile.id) as { type: ActivityType } | undefined;
+    if (act && !isActivityTypeAllowed(act.type, true)) return { undoId: null };
+  }
   // Capture the activity + its exercise_sets into the undo holding table and
   // delete it in one transaction (issue #30), so a mis-tap can be undone from the
   // toast. children cascade; captureDelete returns the undo token.

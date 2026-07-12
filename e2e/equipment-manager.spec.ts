@@ -82,8 +82,9 @@ test.describe("Equipment manager (#391)", () => {
 
     // A member whose sole active profile is Riley (child) — under the seeded
     // min-training-age gate. Navigating straight to /equipment must redirect to
-    // the dashboard (the registry is hidden for restricted profiles, like
-    // /training).
+    // the dashboard: equipment is part of the ADULT fitness layer the restriction
+    // protects, so it stays gated even though /training itself no longer bounces a
+    // restricted profile (it swaps in the lightweight sport/cardio log — #489).
     const member = await loginAs(browser, {
       username: E2E_LOGIN_CHILD,
       password: E2E_MEMBER_PASSWORD,

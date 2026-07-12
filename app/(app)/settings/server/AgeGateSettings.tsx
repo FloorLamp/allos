@@ -6,10 +6,12 @@ import { saveMinTrainingAge } from "./actions";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus } from "@/components/useSaveStatus";
 
-// The GLOBAL minimum age (whole years) for the fitness-oriented surfaces. When a
-// profile's known age is below it, the Training and AI Insights pages,
-// the Equipment settings tab, and their dashboard widgets are hidden for that
-// profile. Admin-only. Empty disables the gate (everyone has full access).
+// The GLOBAL minimum age (whole years) for the ADULT fitness-content surfaces.
+// When a profile's known age is below it, the adult training analytics (strength
+// e1RM/standards, fitness-age, coaching, goals), AI Insights, the Equipment
+// registry, and their dashboard widgets are hidden. Duration-based SPORT/CARDIO
+// logging survives (issue #489) — a restricted profile keeps a lightweight
+// activity log on /training. Admin-only. Empty disables the gate entirely.
 export default function AgeGateSettings({
   minTrainingAge,
 }: {
@@ -40,10 +42,13 @@ export default function AgeGateSettings({
       </div>
 
       <p className="text-xs text-slate-400 dark:text-slate-500">
-        Profiles whose age is below this are shown a slimmed-down app: the
-        Training and AI Insights pages, the Equipment settings tab, and the
-        related dashboard cards are hidden. A profile with no birthdate or age
-        set is never restricted. Leave empty to disable the gate entirely.
+        Profiles whose age is below this are shown a slimmed-down app: the adult
+        training analytics (1-rep-max, strength standards, fitness age,
+        coaching, goals), AI Insights, the Equipment registry, and the related
+        dashboard cards are hidden. Duration-based sport and cardio logging
+        still works — they get a lightweight activity log instead. A profile
+        with no birthdate or age set is never restricted. Leave empty to disable
+        the gate entirely.
       </p>
 
       <div className="flex items-end gap-2">
