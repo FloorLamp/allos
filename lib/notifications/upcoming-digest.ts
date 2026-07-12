@@ -26,6 +26,13 @@ const DOMAIN_NOUN: Record<UpcomingDomain, string> = {
   goal: "goal",
   training: "training target",
   careplan: "care-plan item",
+  // The unified model's "something's off" signals (issue #524) never reach this
+  // digest — it groups collectUpcoming, which is date-scheduled due-signals only —
+  // but the exhaustive Record needs an entry. DOMAIN_SEQ omits them, so they're
+  // never counted even if one ever appeared.
+  "biomarker-flag": "flagged result",
+  integration: "sync issue",
+  review: "review item",
 };
 
 // Fixed within-band ordering for the count phrase, matching the page's domain

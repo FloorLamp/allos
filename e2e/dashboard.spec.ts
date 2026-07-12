@@ -30,29 +30,35 @@ test("the Needs attention hero renders with the seeded profile's items", async (
   ).toBeVisible();
 });
 
-test("far-future (Later-band) items stay off the hero but remain on Upcoming (issue #283)", async ({
+test("the card is a strict act-now subset: this-week + later scheduled items live only on Upcoming (issue #524)", async ({
   page,
 }) => {
   await page.goto("/");
   const hero = page.getByRole("main").getByTestId("needs-attention");
   await expect(hero).toBeVisible();
 
-  // The seeded +4-day "Echocardiogram" is This-week runway → still on the hero…
+  // The card is the triage glance — overdue + due-today + the "something's off"
+  // signals only. The seeded +4-day "Echocardiogram" (This week) and +45-day
+  // "Physical exam" (Later) are scheduled work with runway, so they are NOT on the
+  // card (the old hero pulled in the This-week band; #524 narrows it to act-now).
   await expect(
     hero.getByRole("link", { name: "Echocardiogram", exact: true })
-  ).toBeVisible();
-  // …but the seeded +45-day "Physical exam" appointment (Later band) must NOT
-  // flood it — the hero used to render every far-future Upcoming item.
+  ).toHaveCount(0);
   await expect(
     hero.getByRole("link", { name: "Physical exam", exact: true })
   ).toHaveCount(0);
 
-  // The same item still lives on the Upcoming page (its home surface).
+  // Both still live on the Upcoming page (the planning view is complete + date-
+  // ordered), under their calendar bands — the card is a strict subset of it, so a
+  // "+N more in Upcoming" link points the way.
+  await expect(hero.getByTestId("attention-more-upcoming")).toBeVisible();
   await page.goto("/upcoming");
+  const main = page.getByRole("main");
   await expect(
-    page
-      .getByRole("main")
-      .getByRole("link", { name: "Physical exam", exact: true })
+    main.getByRole("link", { name: "Echocardiogram", exact: true })
+  ).toBeVisible();
+  await expect(
+    main.getByRole("link", { name: "Physical exam", exact: true })
   ).toBeVisible();
 });
 

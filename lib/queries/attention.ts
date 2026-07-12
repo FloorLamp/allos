@@ -1,16 +1,21 @@
-// Dashboard "Needs attention" gather (issue #171). One profile-scoped entry point,
-// collectAttention(), fans out across the EXISTING attention signals — the Upcoming
-// findings engine, the digest's newly-flagged-biomarker read (over the hero's own
-// stable window — issue #283), the failing-integration events, and the review-inbox
-// pair count — and hands them to the pure buildAttention (lib/attention.ts) for
-// severity ordering. No new table reads: every row-returning read here delegates to
-// a function that already filters profile_id (enforced by
-// lib/__tests__/profile-scoping.test.ts), so the hero adds no new scoping surface.
+// The unified attention gather (issues #171, #524). One profile-scoped entry point,
+// collectAttentionModel(), fans out across the EXISTING attention signals — the
+// Upcoming findings engine, the digest's newly-flagged-biomarker read (over the
+// hero's own stable window — issue #283), the failing-integration events, and the
+// review-inbox pair count — and hands them to the pure buildAttentionModel
+// (lib/attention.ts). This ONE model is rendered by BOTH surfaces: the dashboard
+// card (the act-now subset) and the Upcoming page (the full, time-ordered set), so
+// the two can never disagree on what an item means (issue #524).
+//
+// No new table reads: every row-returning read here delegates to a function that
+// already filters profile_id (enforced by lib/__tests__/profile-scoping.test.ts),
+// so this adds no new scoping surface.
 
 import { db } from "../db";
 import {
-  buildAttention,
-  type AttentionItem,
+  buildAttentionModel,
+  buildFlaggedItem,
+  attentionCardItems,
   type AttentionIntegration,
 } from "../attention";
 import { getNewlyFlaggedBiomarkers } from "../notifications/digest-data";
@@ -18,7 +23,13 @@ import { getIntegration } from "../integrations/registry";
 import { biomarkerFlagDismissalKey } from "../dismissal-keys";
 import { isSuppressed } from "../upcoming-suppress";
 import type { IntegrationId } from "../types";
-import { collectUpcoming, getFindingSuppressions } from "./upcoming";
+import type { UpcomingItem } from "../upcoming";
+import {
+  collectUpcoming,
+  collectSuppressedUpcoming,
+  getFindingSuppressions,
+  type SuppressedUpcoming,
+} from "./upcoming";
 import { getImportIssues, getReviewPairCount } from "./integrations";
 
 // A friendly provider label for a failing-integration event, falling back to the
@@ -27,8 +38,8 @@ function providerLabel(provider: string): string {
   return getIntegration(provider as IntegrationId)?.name ?? provider;
 }
 
-// The failing/needs-reauth providers reduced to what the hero renders (one entry per
-// currently-broken provider).
+// The failing/needs-reauth providers reduced to what the model renders (one entry
+// per currently-broken provider).
 function integrationAttention(profileId: number): AttentionIntegration[] {
   return getImportIssues(profileId).map((ev) => ({
     provider: providerLabel(ev.provider),
@@ -36,10 +47,10 @@ function integrationAttention(profileId: number): AttentionIntegration[] {
   }));
 }
 
-// The hero's stable flagged-biomarker window (issue #283): a result flagged in
-// the last N days needs attention, regardless of whether/when a Telegram digest
-// went out. The digest keeps its own send-cursor window (digestSince) — the read
-// is shared, the window is per-surface.
+// The stable flagged-biomarker window (issue #283): a result flagged in the last N
+// days needs attention, regardless of whether/when a Telegram digest went out. The
+// digest keeps its own send-cursor window (digestSince) — the read is shared, the
+// window is per-surface.
 export const FLAGGED_ATTENTION_WINDOW_DAYS = 14;
 
 // The window start as a datetime('now')-format UTC string (medical_records
@@ -52,25 +63,31 @@ function flaggedAttentionSince(): string {
   ).since;
 }
 
-// The full, severity-ordered attention model for one profile. Reuses collectUpcoming
-// (already snooze/dismiss-filtered), the SAME newly-flagged-biomarker read the
-// Telegram digest uses (over the hero's stable window), the failing-integration
+// The newly-flagged biomarkers for the hero's stable window, still LIVE (not
+// snooze/dismiss-filtered). The caller decides whether to keep or drop the
+// suppressed ones — the live model drops them, the restore gather keeps only them.
+function flaggedInWindow(profileId: number) {
+  return getNewlyFlaggedBiomarkers(profileId, flaggedAttentionSince());
+}
+
+// The full, unified attention model for one profile (issue #524). Reuses
+// collectUpcoming (already snooze/dismiss-filtered), the SAME newly-flagged read
+// the Telegram digest uses (over the stable window), the failing-integration
 // events, and the review-pair count. Flagged items go through the shared findings
-// bus too (issue #283): a `biomarker-flag:<name>` dismissal/snooze recorded from
-// the hero filters them here, same store as every other finding.
-export function collectAttention(
+// bus too (issue #283): a `biomarker-flag:<name>` dismissal/snooze filters them
+// here, same store as every other finding. This is the item set BOTH surfaces
+// render — the dashboard card via attentionCardItems/groupAttentionForCard, the
+// Upcoming page via groupAttentionForPage.
+export function collectAttentionModel(
   profileId: number,
   today: string
-): AttentionItem[] {
+): UpcomingItem[] {
   const suppressions = getFindingSuppressions(profileId);
-  const flaggedBiomarkers = getNewlyFlaggedBiomarkers(
-    profileId,
-    flaggedAttentionSince()
-  ).filter((b) => {
+  const flaggedBiomarkers = flaggedInWindow(profileId).filter((b) => {
     const rec = suppressions.get(biomarkerFlagDismissalKey(b.name));
     return rec == null || !isSuppressed(rec, today);
   });
-  return buildAttention({
+  return buildAttentionModel({
     upcoming: collectUpcoming(profileId, today),
     flaggedBiomarkers,
     integrations: integrationAttention(profileId),
@@ -79,15 +96,43 @@ export function collectAttention(
   });
 }
 
-// The attention COUNT for one profile — the number behind a household-strip chip.
-// Same computation as collectAttention, so a chip's badge and the profile's own hero
-// can never disagree — and like the hero it excludes far-future `later`-band items
-// (issue #283: those were inflating every badge with non-urgent counts). Bounded
-// work (a household is a handful of profiles), and every underlying read is
-// profile-scoped.
+// The dashboard-card ATTENTION COUNT for one profile — the number behind the hero's
+// badge and a household-strip chip. It's the CARD subset (the act-now slice), so a
+// chip's badge, the profile's own hero badge, and the "N shown" the card renders can
+// never disagree — and it excludes the far-future scheduled items the card hides
+// (issue #524), which is what a triage count should mean. Bounded work (a household
+// is a handful of profiles), every underlying read profile-scoped.
 export function attentionCountForProfile(
   profileId: number,
   today: string
 ): number {
-  return collectAttention(profileId, today).length;
+  return attentionCardItems(collectAttentionModel(profileId, today), today)
+    .length;
+}
+
+// The items currently snoozed/dismissed for this profile — powers the Upcoming
+// page's "Snoozed & dismissed" restore section. It's the complement of the live
+// model: the suppressed date-scheduled due-signals (collectSuppressedUpcoming) PLUS
+// any suppressed biomarker flags (issue #524 — a flag dismissed on either surface
+// stays restorable, same `biomarker-flag:<name>` store). Structural signals
+// (review/integration) aren't suppressible, so they never appear here.
+export function collectSuppressedAttention(
+  profileId: number,
+  today: string
+): SuppressedUpcoming[] {
+  const out = collectSuppressedUpcoming(profileId, today);
+  const suppressions = getFindingSuppressions(profileId);
+  for (const b of flaggedInWindow(profileId)) {
+    const key = biomarkerFlagDismissalKey(b.name);
+    const rec = suppressions.get(key);
+    if (rec && isSuppressed(rec, today)) {
+      out.push({
+        item: buildFlaggedItem(b),
+        signalKey: key,
+        snoozeUntil: rec.snooze_until,
+        dismissedAt: rec.dismissed_at,
+      });
+    }
+  }
+  return out;
 }
