@@ -41,6 +41,10 @@ import {
 } from "@/lib/smoking";
 import { reconcileFlags } from "@/lib/queries";
 import { dispatch } from "@/lib/notifications";
+import {
+  WAKING_START_HOUR,
+  WAKING_END_HOUR,
+} from "@/lib/notifications/schedule";
 import { sendHomeAssistantTest } from "@/lib/notifications/home-assistant";
 import {
   isValidWebhookUrl,
@@ -269,6 +273,15 @@ export async function saveNotificationPrefs(formData: FormData) {
     const n = Number(raw);
     return Number.isInteger(n) && n >= 0 && n <= 23 ? n : null;
   };
+  // A required 0-23 hour with a fallback (the quiet-hours bounds are never "off" —
+  // there is always a waking window; the widest is 0→23).
+  const wakingHour = (key: string, fallback: number): number => {
+    const raw = String(formData.get(key) ?? "").trim();
+    const n = Number(raw);
+    return raw !== "" && Number.isInteger(n) && n >= 0 && n <= 23
+      ? n
+      : fallback;
+  };
   setNotifySchedule(profile.id, {
     supplementHours: {
       Morning: hour("supp_morning_hour"),
@@ -297,6 +310,11 @@ export async function saveNotificationPrefs(formData: FormData) {
     preventiveEnabled:
       formData.get("preventive_enabled") === "on" ||
       formData.get("preventive_enabled") === "1",
+    // Quiet hours (#450): the waking-window bounds for non-urgent episode nudges.
+    // A blank/invalid field falls back to the default so a malformed submit can't
+    // silence the profile; wrap-around (start > end) is allowed for night shifts.
+    wakingStartHour: wakingHour("waking_start_hour", WAKING_START_HOUR),
+    wakingEndHour: wakingHour("waking_end_hour", WAKING_END_HOUR),
   });
   revalidatePath("/settings/profile");
 }

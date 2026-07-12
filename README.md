@@ -586,6 +586,16 @@ reminders are deliberately **not** silenceable this way — scheduled **dose rem
 **missed-dose escalations** keep firing on their own per-day dedup regardless of a page
 dismissal.
 
+**Quiet hours.** The non-urgent episode nudges (refill, preventive, milestone) are only
+sent during a per-profile **waking window** — set the start/end hours under
+**Settings → Profile → Quiet hours** (this profile's timezone; defaults to 08:00–21:00).
+An overnight span like 20:00 → 08:00 is supported for a night-shift rhythm. Outside the
+window a due nudge simply waits for the next in-window tick (its once-per-episode dedup is
+unchanged). Slot-anchored sends (dose reminders, morning digest, workout, weekly recap)
+already fire at their own chosen hours and are unaffected; safety-critical **dose
+reminders** and **missed-dose escalations** are **never** held by quiet hours — an
+escalation at 2am for a missed critical med is the feature working.
+
 ### Telegram
 
 Configure the bot token and mode under **Settings → Server** (global, admin-only);

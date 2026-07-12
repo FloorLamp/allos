@@ -11,6 +11,7 @@ import {
   getProfileSetting,
   setProfileSetting,
 } from "./kv";
+import { WAKING_START_HOUR, WAKING_END_HOUR } from "../notifications/schedule";
 
 // How inbound Telegram button taps reach the app: "poll" long-polls getUpdates
 // (works without a public URL), "webhook" has Telegram POST to /api/telegram/webhook.
@@ -199,6 +200,15 @@ export interface NotifySchedule {
   // default. Off suppresses both push paths; the Upcoming page still lists them
   // (that's a pull surface, not a push).
   preventiveEnabled: boolean;
+  // Quiet hours (issue #450): the profile-local WAKING window (inclusive hours 0-23)
+  // during which the non-time-critical EPISODE nudges (refill, preventive, milestone)
+  // may be sent; outside it they're held to the next in-window tick. Defaults to the
+  // #378 constant (8→21). A window that wraps past midnight (start > end) is supported
+  // for night-shift rhythms (see inWakingWindow). SAFETY-tier sends (dose reminders,
+  // missed-dose escalation) NEVER consult this — the slot-anchored senders (digest,
+  // workout, recap) are user-timed and also unaffected.
+  wakingStartHour: number;
+  wakingEndHour: number;
 }
 
 const SUPP_HOUR_KEYS = {
@@ -263,6 +273,18 @@ export function getNotifySchedule(profileId: number): NotifySchedule {
     // Preventive-care reminders on unless explicitly disabled.
     preventiveEnabled:
       (getProfileSetting(profileId, "notify_preventive") ?? "1") === "1",
+    // Quiet hours (#450): waking-window bounds, defaulting to the #378 constant when
+    // unset/invalid. parseHour clamps to 0-23; anything else falls back to the default.
+    wakingStartHour:
+      parseHour(
+        getProfileSetting(profileId, "notify_waking_start"),
+        WAKING_START_HOUR
+      ) ?? WAKING_START_HOUR,
+    wakingEndHour:
+      parseHour(
+        getProfileSetting(profileId, "notify_waking_end"),
+        WAKING_END_HOUR
+      ) ?? WAKING_END_HOUR,
   };
 }
 
@@ -310,5 +332,16 @@ export function setNotifySchedule(
     profileId,
     "notify_preventive",
     sched.preventiveEnabled ? "1" : "0"
+  );
+  // Quiet hours (#450): persist the waking-window bounds as plain 0-23 hours.
+  setProfileSetting(
+    profileId,
+    "notify_waking_start",
+    String(sched.wakingStartHour)
+  );
+  setProfileSetting(
+    profileId,
+    "notify_waking_end",
+    String(sched.wakingEndHour)
   );
 }

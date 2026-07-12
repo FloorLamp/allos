@@ -314,8 +314,14 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
   // late button-tap that crosses a threshold (#378). Hold them to a humane
   // profile-local waking window; their once-per-episode dedup is unchanged (a held
   // nudge simply isn't sent yet, and re-evaluates on the next in-window tick). The
-  // safety-tier senders above (dose reminders, escalation) stay ungated.
-  const waking = inWakingWindow(hour);
+  // window is the profile's own quiet-hours setting (#450, defaulting to 8→21), so a
+  // night-shift rhythm can shift it. The safety-tier senders above (dose reminders,
+  // escalation) stay ungated — they must never consult quiet hours.
+  const waking = inWakingWindow(
+    hour,
+    sched.wakingStartHour,
+    sched.wakingEndHour
+  );
 
   // Low-supply refill nudge: runs every waking-hour tick; its own per-item
   // "once per low-supply episode" dedup (cleared when an item is refilled) keeps
