@@ -8,17 +8,20 @@
 
 import { vi, describe, it, expect, beforeAll, beforeEach } from "vitest";
 
-// Stub the Telegram Bot API calls; keep the pure helpers (messageKeyboard,
-// renderMessageHtml) real via importActual so keyboard rebuilds still run.
-vi.mock("@/lib/notifications/telegram", async (importActual) => {
+// Stub the RAW Telegram Bot API transport (issue #454's guarded boundary), keeping
+// the chokepoint (telegram.ts: rebuildMessage/closeMessage/…) and the pure render
+// helpers (messageKeyboard, renderMessageHtml) REAL via importActual — so the
+// prefix/escaping the chokepoint applies is exercised and the edited wire text this
+// test asserts on is the genuine rendered output, only the network hop is faked.
+vi.mock("@/lib/notifications/telegram-api", async (importActual) => {
   const actual =
-    await importActual<typeof import("@/lib/notifications/telegram")>();
+    await importActual<typeof import("@/lib/notifications/telegram-api")>();
   return {
     ...actual,
     answerCallbackQuery: vi.fn(async () => {}),
-    editMessageText: vi.fn(async () => {}),
-    editMessageReplyMarkup: vi.fn(async () => {}),
-    sendTelegramMessage: vi.fn(async () => {}),
+    editMessageTextRaw: vi.fn(async () => {}),
+    editMessageReplyMarkupRaw: vi.fn(async () => {}),
+    sendMessageRaw: vi.fn(async () => {}),
   };
 });
 
@@ -31,12 +34,12 @@ import { escalationMarkerKey } from "@/lib/notifications/escalate";
 import { handleCallbackQuery } from "@/lib/notifications/telegram-callbacks";
 import {
   answerCallbackQuery,
-  editMessageText,
-} from "@/lib/notifications/telegram";
+  editMessageTextRaw,
+} from "@/lib/notifications/telegram-api";
 import { seedProfile, type SeededProfile } from "./fixtures";
 
 const answerMock = vi.mocked(answerCallbackQuery);
-const editTextMock = vi.mocked(editMessageText);
+const editTextMock = vi.mocked(editMessageTextRaw);
 
 const OWN_CHAT = "5550100";
 const CARE_CHAT = "5550199";

@@ -52,16 +52,13 @@ import {
   tapResolved,
   tapSkipAnswerText,
 } from "./callback-data";
-import { prefixForProfile } from "./index";
-import { prefixMessage } from "./types";
 import { collectWindowDoses, windowSessionForDose } from "./supplements";
 import { renderWindowMessage } from "./supplement-format";
 import {
   answerCallbackQuery,
-  editMessageReplyMarkup,
-  editMessageText,
-  messageKeyboard,
-  renderMessageHtml,
+  closeMessage,
+  rebuildMessage,
+  updateMessageKeyboard,
   type TelegramCallbackQuery,
 } from "./telegram";
 
@@ -138,13 +135,13 @@ async function consumeRow(
   if (remaining.length === 0) {
     // Retain the original title line so a shared-chat message stays attributable
     // once its buttons are gone (#377).
-    await editMessageText(
+    await closeMessage(
       chatId,
       messageId,
       replacementWithTitle(cq.message?.text, closingText)
     );
   } else {
-    await editMessageReplyMarkup(chatId, messageId, remaining);
+    await updateMessageKeyboard(chatId, messageId, remaining);
   }
 }
 
@@ -160,7 +157,7 @@ async function replaceMessage(
   if (chatId == null || messageId == null || rows.length === 0) return;
   // Retain the original title line (which med / whose escalation) above the
   // closing so a shared-chat escalation stays attributable once consumed (#377).
-  await editMessageText(
+  await closeMessage(
     chatId,
     messageId,
     replacementWithTitle(cq.message?.text, text)
@@ -364,17 +361,17 @@ async function handleDoseTap(
   // buttons).
   const session = windowSessionForDose(profileId, tap.doseId, tap.date);
   if (session && session.entries.length > 0) {
-    // Re-apply the SAME "[Name] " prefix the tick's send site added
-    // (prefixForProfile — one computation, #377), so a shared-chat rebuild keeps
-    // the profile label instead of collapsing to an unattributable title.
-    const msg = prefixMessage(
-      renderWindowMessage(profileId, session.window, tap.date, session.entries),
-      prefixForProfile(profileId)
+    // Rebuild through the channel chokepoint, which re-applies the SAME send-time
+    // "[Name] " prefix (prefixForProfile — one computation, #377/#454), so a
+    // shared-chat rebuild keeps the profile label instead of collapsing to an
+    // unattributable title. The handler hands over the un-prefixed message and
+    // cannot render the wire text itself.
+    await rebuildMessage(
+      profileId,
+      chatId,
+      messageId,
+      renderWindowMessage(profileId, session.window, tap.date, session.entries)
     );
-    await editMessageText(chatId, messageId, renderMessageHtml(msg), {
-      keyboard: messageKeyboard(msg),
-      parseMode: "HTML",
-    });
     return;
   }
 
@@ -386,7 +383,7 @@ async function handleDoseTap(
   // Retain the original title line so the collapsed message stays attributable.
   const remaining = removeButton(rows, cq.data as string);
   if (remaining.length === 0) {
-    await editMessageText(
+    await closeMessage(
       chatId,
       messageId,
       replacementWithTitle(
@@ -395,7 +392,7 @@ async function handleDoseTap(
       )
     );
   } else {
-    await editMessageReplyMarkup(chatId, messageId, remaining);
+    await updateMessageKeyboard(chatId, messageId, remaining);
   }
 }
 
@@ -456,21 +453,20 @@ async function handleAllTaken(
   // this tap came from one) so it stops advertising doses that no longer exist.
   const refreshed = collectWindowDoses(profileId, all.window, all.date);
   if (refreshed.length === 0) {
-    await editMessageText(
+    await closeMessage(
       chatId,
       messageId,
       replacementWithTitle(cq.message?.text, OUTDATED_MESSAGE_TEXT)
     );
     return;
   }
-  // Re-apply the send-time "[Name] " prefix (one computation, #377) so the
-  // rebuilt completion summary stays attributable in a shared chat.
-  const msg = prefixMessage(
-    renderWindowMessage(profileId, all.window, all.date, refreshed),
-    prefixForProfile(profileId)
+  // Rebuild through the chokepoint, which re-applies the send-time "[Name] "
+  // prefix (one computation, #377/#454) so the rebuilt completion summary stays
+  // attributable in a shared chat.
+  await rebuildMessage(
+    profileId,
+    chatId,
+    messageId,
+    renderWindowMessage(profileId, all.window, all.date, refreshed)
   );
-  await editMessageText(chatId, messageId, renderMessageHtml(msg), {
-    keyboard: messageKeyboard(msg),
-    parseMode: "HTML",
-  });
 }
