@@ -154,8 +154,10 @@ export function interleaveImportLog<
 // ---- "What it produced" counts ----
 
 // Raw per-kind counts a document import produced (from lib/queries/imports.ts).
-// One field per IMPORT_FOOTPRINT_TABLES entry (lib/import-persist.ts) — the same
-// footprint extracted_count totals (#212) — plus the provider-reference count.
+// One field per IMPORT_FOOTPRINT_TABLES entry (lib/import-footprint.ts) — the same
+// footprint extracted_count totals (#212) — plus the provider-reference count. The
+// field↔footprint agreement is bound by lib/__tests__/import-produced-counts.test.ts
+// (a table added to the footprint without a count field fails there).
 // The tabbed records browser (lib/import-browser.ts) turns this into its tab
 // strip, so the tab counts and the toast/Review-feed tally share one source.
 export interface DocumentProducedCounts {
