@@ -280,6 +280,50 @@ test("a cardio part derives avg speed AND pace from distance + duration (#336)",
     .click();
 });
 
+test("the command palette offers 'Repeat last activity' when history exists (#337)", async ({
+  page,
+}) => {
+  await page.goto("/"); // the seed has plenty of logged activities
+
+  await page.keyboard.press("Control+k");
+  const input = page.getByLabel("Search or run a command");
+  await expect(input).toBeVisible();
+
+  // Typing "repeat" surfaces the new palette command (gated on a last activity
+  // existing — the seed guarantees one).
+  await input.fill("repeat");
+  await expect(page.getByText("Repeat last activity")).toBeVisible();
+
+  // Read-only: close without executing so no draft is created.
+  await page.keyboard.press("Escape");
+});
+
+test("weight steppers bump a set's load by the lift-appropriate increment (#337)", async ({
+  page,
+}) => {
+  await page.goto("/training");
+
+  await page
+    .getByRole("main")
+    .getByRole("button", { name: "New activity" })
+    .click();
+
+  // Barbell Bench Press is an upper-body lift → a 2.5 (kg) step for the seeded
+  // metric login.
+  await page.getByPlaceholder(/What did you do/).fill("Barbell Bench Press");
+  await page
+    .getByRole("listbox")
+    .getByRole("button", { name: "Barbell Bench Press", exact: true })
+    .click();
+
+  // The + stepper bumps the (empty) weight by one increment → 2.5. Only weight is
+  // set, so the set stays half-filled and nothing auto-saves — no cleanup needed.
+  await page.getByLabel("Increase weight").first().click();
+  await expect(page.getByTestId("set1-weight")).toHaveValue("2.5");
+
+  await page.keyboard.press("Escape");
+});
+
 test("a failed activity save surfaces an error, never a false 'Saved ✓' (#332)", async ({
   page,
 }) => {

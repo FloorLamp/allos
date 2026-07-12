@@ -10,6 +10,9 @@
 export type PaletteActionTarget =
   // Open the activity editor overlay via the ActivityEditor context (no nav).
   | { kind: "activity" }
+  // Repeat the most recent activity via the ActivityEditor context (issue #337):
+  // opens a create form pre-filled from it. Shown only when one exists.
+  | { kind: "repeat" }
   // Navigate to a route; the destination form focuses itself from the param
   // baked into `href` (see components/useFocusFormOnParam).
   | { kind: "navigate"; href: string };
@@ -34,6 +37,13 @@ export const PALETTE_ACTIONS: PaletteAction[] = [
     keywords: ["activity", "exercise", "training", "gym", "lift", "cardio"],
     icon: "barbell",
     target: { kind: "activity" },
+  },
+  {
+    id: "repeat-last",
+    label: "Repeat last activity",
+    keywords: ["again", "duplicate", "same", "redo", "log again"],
+    icon: "barbell",
+    target: { kind: "repeat" },
   },
   {
     id: "log-weight",

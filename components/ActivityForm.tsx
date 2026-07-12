@@ -21,6 +21,7 @@ import {
 } from "@/lib/lifts";
 import type { ActivitySuggestions, ExerciseHistoryMap } from "@/lib/queries";
 import {
+  compositeRollup,
   inferFreeTextType,
   legacyActivityName,
   minutesBetween,
@@ -35,7 +36,12 @@ import {
 import { dispWeight, kmTo, round } from "@/lib/units";
 import { saveOutcomeMessage } from "@/lib/activity-save-outcome";
 import { type NextSet } from "@/lib/coaching";
-import { IconX, IconAlertTriangle } from "@tabler/icons-react";
+import {
+  IconX,
+  IconAlertTriangle,
+  IconChevronUp,
+  IconChevronDown,
+} from "@tabler/icons-react";
 import ActivityCombobox from "./ActivityCombobox";
 import PlateBuilderModal from "./PlateBuilderModal";
 import { isRealIsoDate } from "@/lib/date";
@@ -385,6 +391,24 @@ export default function ActivityForm({
   const firstValid = namedParts[0];
   const headingType = firstValid ? partType(firstValid) : null;
 
+  // Live multisport roll-up (issue #337): Σ distance / Σ duration across the legs
+  // while editing a brick, so the totals don't only appear after save. Fed the
+  // display-unit numbers through the SAME compositeRollup the save-time fold uses
+  // (lib/activity-meta), so the shown total can't fork from the stored one. Only
+  // meaningful once there are ≥2 legs carrying a distance/duration.
+  const rollup = compositeRollup(
+    namedParts.map((p) => ({
+      type: partType(p)!,
+      distance_km:
+        partNeedsDistance(p) && p.distance.trim() ? Number(p.distance) : null,
+      duration_min: p.durationMin.trim() ? Number(p.durationMin) : null,
+    })),
+    overallDuration
+  );
+  const showRollup =
+    namedParts.length >= 2 &&
+    (rollup.distanceKm != null || rollup.durationMin != null);
+
   // Auto-computed calorie ESTIMATE for this (manual) draft: the MET dataset × this
   // profile's bodyweight × the activity's duration (issue #151). null when there's
   // no bodyweight on record, no usable duration, or nothing valid entered yet — the
@@ -591,6 +615,17 @@ export default function ActivityForm({
         };
       })
     );
+  }
+  // Reorder parts (issue #337): swap a multisport leg with its neighbour so a
+  // brick's legs can be ordered swim → bike → run without delete-and-re-add.
+  function movePart(i: number, dir: -1 | 1) {
+    setParts((prev) => {
+      const j = i + dir;
+      if (j < 0 || j >= prev.length) return prev;
+      const next = [...prev];
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
+    });
   }
   function removeSet(pi: number, si: number) {
     setParts((prev) =>
@@ -1031,16 +1066,38 @@ export default function ActivityForm({
                   />
                 </div>
                 {parts.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setParts((prev) => prev.filter((_, i) => i !== pi))
-                    }
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded text-rose-400 hover:bg-rose-50 hover:text-rose-600 dark:text-rose-500/80 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
-                    aria-label="Remove activity"
-                  >
-                    <IconX className="h-4 w-4" />
-                  </button>
+                  <>
+                    {/* Reorder legs (issue #337) — swim → bike → run without
+                        deleting and re-adding. */}
+                    <button
+                      type="button"
+                      onClick={() => movePart(pi, -1)}
+                      disabled={pi === 0}
+                      className="flex h-8 w-7 shrink-0 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-brand-600 disabled:opacity-30 disabled:hover:bg-transparent dark:text-slate-500 dark:hover:bg-ink-800"
+                      aria-label="Move activity up"
+                    >
+                      <IconChevronUp className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => movePart(pi, 1)}
+                      disabled={pi === parts.length - 1}
+                      className="flex h-8 w-7 shrink-0 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-brand-600 disabled:opacity-30 disabled:hover:bg-transparent dark:text-slate-500 dark:hover:bg-ink-800"
+                      aria-label="Move activity down"
+                    >
+                      <IconChevronDown className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setParts((prev) => prev.filter((_, i) => i !== pi))
+                      }
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded text-rose-400 hover:bg-rose-50 hover:text-rose-600 dark:text-rose-500/80 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
+                      aria-label="Remove activity"
+                    >
+                      <IconX className="h-4 w-4" />
+                    </button>
+                  </>
                 )}
               </div>
 
@@ -1116,19 +1173,39 @@ export default function ActivityForm({
         })}
       </div>
 
-      <button
-        type="button"
-        onClick={() => setParts((prev) => [...prev, blankPart()])}
-        disabled={!canAddPart}
-        title={
-          canAddPart
-            ? "Add another activity"
-            : "Complete the current activity first"
-        }
-        className="btn-ghost disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        + Add activity
-      </button>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={() => setParts((prev) => [...prev, blankPart()])}
+          disabled={!canAddPart}
+          title={
+            canAddPart
+              ? "Add another activity"
+              : "Complete the current activity first"
+          }
+          className="btn-ghost disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          + Add activity
+        </button>
+        {/* Live multisport roll-up (issue #337): Σ distance / Σ duration across
+            the legs while editing, matching the save-time fold. */}
+        {showRollup && (
+          <span
+            data-testid="multisport-rollup"
+            className="text-xs font-medium text-slate-500 dark:text-slate-400"
+          >
+            Total:
+            {rollup.distanceKm != null && (
+              <>
+                {" "}
+                {round(rollup.distanceKm, 2)} {units.distanceUnit}
+              </>
+            )}
+            {rollup.distanceKm != null && rollup.durationMin != null && " ·"}
+            {rollup.durationMin != null && <> {rollup.durationMin} min</>}
+          </span>
+        )}
+      </div>
 
       <DateTimeFields
         date={date}

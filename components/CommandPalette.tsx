@@ -103,7 +103,7 @@ export default function CommandPalette({
 }) {
   const router = useRouter();
   const toast = useToast();
-  const { openCreate } = useActivityEditor();
+  const { openCreate, openRepeatLast, hasLastActivity } = useActivityEditor();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [groups, setGroups] = useState<SearchGroup[]>([]);
@@ -121,7 +121,15 @@ export default function CommandPalette({
     () => (q ? parseQuickLog(query, weightUnit) : null),
     [query, q, weightUnit]
   );
-  const actions = useMemo(() => matchPaletteActions(query), [query]);
+  // Drop the "Repeat last activity" action when nothing's been logged — there's
+  // no last activity to repeat (issue #337).
+  const actions = useMemo(
+    () =>
+      matchPaletteActions(query).filter(
+        (a) => a.target.kind !== "repeat" || hasLastActivity
+      ),
+    [query, hasLastActivity]
+  );
   const hits = useMemo(() => flattenHits(groups), [groups]);
 
   // The flat item list arrows/Enter walk, in render order.
@@ -218,11 +226,14 @@ export default function CommandPalette({
       if (action.target.kind === "activity") {
         close();
         openCreate();
+      } else if (action.target.kind === "repeat") {
+        close();
+        openRepeatLast();
       } else {
         go(action.target.href);
       }
     },
-    [close, openCreate, go]
+    [close, openCreate, openRepeatLast, go]
   );
 
   const commitQuickLog = useCallback(

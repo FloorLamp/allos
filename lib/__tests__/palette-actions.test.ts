@@ -32,6 +32,18 @@ describe("palette create actions", () => {
     expect(matchPaletteActions("zzzzz")).toEqual([]);
   });
 
+  it("offers a repeat-last action that matches 'again' but not 'workout' (#337)", () => {
+    expect(matchPaletteActions("again").map((a) => a.id)).toEqual([
+      "repeat-last",
+    ]);
+    // The repeat action must not collide with the log-workout label match.
+    expect(matchPaletteActions("workout").map((a) => a.id)).toEqual([
+      "log-workout",
+    ]);
+    const repeat = PALETTE_ACTIONS.find((a) => a.id === "repeat-last");
+    expect(repeat?.target.kind).toBe("repeat");
+  });
+
   it("has exactly one in-place activity action; the rest navigate with the focus param", () => {
     const activity = PALETTE_ACTIONS.filter(
       (a) => a.target.kind === "activity"

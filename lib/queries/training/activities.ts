@@ -10,6 +10,7 @@ import { decayedWeight } from "../../decay";
 import { LIFT_OPTIONS, baseLiftName } from "../../lifts";
 import { rankByFrequency } from "../../rank-by-frequency";
 import { currentStreak } from "../../streak";
+import type { ActivityEditData } from "../../activity-form-model";
 import type { Activity, ActivityType, ExerciseSet } from "../../types";
 import { getLatestBodyMetricDated } from "../metrics";
 import {
@@ -368,6 +369,57 @@ export function getSetsForActivities(
        ORDER BY s.exercise, s.set_number`
     )
     .all(profileId, ...ids) as ExerciseSet[];
+}
+
+// The single most recent activity as an ActivityEditData (issue #337): the seed
+// for a "Repeat last activity" command palette entry / mobile quick action, so
+// repeat-last isn't desktop-only. Newest by (date, id); null when nothing is
+// logged. Profile-scoped; its sets come through getSetsForActivities (also
+// scoped). Mirrors buildJournalCards' editData mapping so the repeated draft is
+// identical whichever surface launched it.
+export function getMostRecentActivityEditData(
+  profileId: number
+): ActivityEditData | null {
+  const a = db
+    .prepare(
+      `SELECT * FROM activities WHERE profile_id = ?
+        ORDER BY date DESC, id DESC LIMIT 1`
+    )
+    .get(profileId) as Activity | undefined;
+  if (!a) return null;
+  const sets = getSetsForActivities(profileId, [a.id]);
+  return {
+    id: a.id,
+    type: a.type,
+    title: a.title,
+    date: a.date,
+    duration_min: a.duration_min,
+    distance_km: a.distance_km,
+    intensity: a.intensity,
+    start_time: a.start_time,
+    end_time: a.end_time,
+    components: a.components,
+    notes: a.notes,
+    source: a.source,
+    edited: a.edited,
+    created_at: a.created_at,
+    updated_at: a.updated_at,
+    est_calories: a.est_calories,
+    equipment_id: a.equipment_id,
+    sets: sets.map((s) => ({
+      exercise: s.exercise,
+      set_number: s.set_number,
+      weight_kg: s.weight_kg,
+      reps: s.reps,
+      weight_kg_right: s.weight_kg_right,
+      reps_right: s.reps_right,
+      duration_sec: s.duration_sec,
+      duration_sec_right: s.duration_sec_right,
+      equipment_id: s.equipment_id,
+      target_reps: s.target_reps,
+      to_failure: s.to_failure,
+    })),
+  };
 }
 
 export function getDashboardStats(profileId: number) {

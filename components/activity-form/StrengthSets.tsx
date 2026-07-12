@@ -28,6 +28,8 @@ import {
   sessionWorkSets,
   sideSets,
   nextSetText,
+  weightIncrementKg,
+  weightIncrementLb,
   type NextSet,
 } from "@/lib/coaching";
 import { pickSeedSessions } from "@/lib/exercise-window";
@@ -266,6 +268,42 @@ export default function StrengthSets({
       className="-mx-1.5 flex h-9 w-9 shrink-0 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-brand-600 dark:text-slate-500 dark:hover:bg-ink-800 dark:hover:text-brand-400"
     >
       <IconBarbell className="h-4 w-4" />
+    </button>
+  );
+  // Increment steppers (issue #337). The weight step is lift-appropriate and
+  // plate-loadable — the SAME weightIncrementKg/Lb the next-set suggestion adds
+  // (5 kg squat vs 2.5 kg accessory), in the user's display unit; reps step ±1.
+  const weightStep =
+    units.weightUnit === "lb"
+      ? weightIncrementLb(p.name)
+      : weightIncrementKg(p.name);
+  const stepWeight = (
+    si: number,
+    field: "weight" | "weightRight",
+    delta: number
+  ) => {
+    const cur =
+      Number(field === "weight" ? p.sets[si].weight : p.sets[si].weightRight) ||
+      0;
+    const next = Math.max(0, round(cur + delta, 2));
+    onUpdateSet(si, { [field]: next > 0 ? String(next) : "" });
+  };
+  const stepReps = (si: number, field: "reps" | "repsRight", delta: number) => {
+    const cur =
+      Number(field === "reps" ? p.sets[si].reps : p.sets[si].repsRight) || 0;
+    const next = Math.max(0, cur + delta);
+    onUpdateSet(si, { [field]: next > 0 ? String(next) : "" });
+  };
+  // A compact ±/+ stepper button — pointer affordance, so out of the tab order.
+  const stepButton = (label: string, onClick: () => void, aria: string) => (
+    <button
+      type="button"
+      tabIndex={-1}
+      onClick={onClick}
+      aria-label={aria}
+      className="flex h-9 w-6 shrink-0 items-center justify-center rounded text-sm font-semibold text-slate-400 hover:bg-slate-100 hover:text-brand-600 dark:text-slate-500 dark:hover:bg-ink-800 dark:hover:text-brand-400"
+    >
+      {label}
     </button>
   );
   // The "effort" input is reps for normal lifts, a m:ss hold time for timed.
@@ -616,6 +654,19 @@ export default function StrengthSets({
           )}
         </div>
       )}
+      {/* A compact "last time" strip pinned right above the set rows (issue
+          #337): the Recent panel scrolls away above a long set list, so mirror
+          the newest prior session's sets here — the same summarizeExercise text,
+          so "match last time" needs no scrolling. */}
+      {recent.length > 0 && (
+        <p
+          data-testid="last-session-strip"
+          className="mt-2 text-xs tabular-nums text-slate-400 dark:text-slate-500"
+        >
+          <span className="font-medium uppercase tracking-wide">Last</span>{" "}
+          {summarizeExercise(recent[0].sets, units.weightUnit).text}
+        </p>
+      )}
       <div className="mt-2 space-y-2">
         {p.sets.map((s, si) => (
           <div key={si} className="flex items-start gap-2">
@@ -635,6 +686,18 @@ export default function StrengthSets({
                       <span className="w-4 shrink-0 text-xs font-semibold text-slate-400 dark:text-slate-500">
                         {isRight ? "R" : "L"}
                       </span>
+                      {!timed &&
+                        !isBodyweight(p.name) &&
+                        stepButton(
+                          "−",
+                          () =>
+                            stepWeight(
+                              si,
+                              isRight ? "weightRight" : "weight",
+                              -weightStep
+                            ),
+                          "Decrease weight"
+                        )}
                       <input
                         type="number"
                         step="0.5"
@@ -654,6 +717,18 @@ export default function StrengthSets({
                           flags.weight ? blockedField : ""
                         }`}
                       />
+                      {!timed &&
+                        !isBodyweight(p.name) &&
+                        stepButton(
+                          "+",
+                          () =>
+                            stepWeight(
+                              si,
+                              isRight ? "weightRight" : "weight",
+                              weightStep
+                            ),
+                          "Increase weight"
+                        )}
                       {showPlate &&
                         plateButton(si, isRight ? "weightRight" : "weight")}
                       <span className="text-slate-400 dark:text-slate-500">
@@ -677,12 +752,25 @@ export default function StrengthSets({
                         undefined,
                         canAddSet ? onAddSet : undefined
                       )}
+                      {!timed &&
+                        stepButton(
+                          "+",
+                          () => stepReps(si, isRight ? "repsRight" : "reps", 1),
+                          "Add a rep"
+                        )}
                     </div>
                   );
                 })}
               </div>
             ) : (
               <div className="flex flex-1 items-center gap-2">
+                {!timed &&
+                  !isBodyweight(p.name) &&
+                  stepButton(
+                    "−",
+                    () => stepWeight(si, "weight", -weightStep),
+                    "Decrease weight"
+                  )}
                 <input
                   type="number"
                   step="0.5"
@@ -711,6 +799,13 @@ export default function StrengthSets({
                       : ""
                   }`}
                 />
+                {!timed &&
+                  !isBodyweight(p.name) &&
+                  stepButton(
+                    "+",
+                    () => stepWeight(si, "weight", weightStep),
+                    "Increase weight"
+                  )}
                 {showPlate && plateButton(si, "weight")}
                 <span className="text-slate-400 dark:text-slate-500">×</span>
                 {effortInput(
@@ -723,6 +818,8 @@ export default function StrengthSets({
                     : undefined,
                   canAddSet ? onAddSet : undefined
                 )}
+                {!timed &&
+                  stepButton("+", () => stepReps(si, "reps", 1), "Add a rep")}
               </div>
             )}
             {p.sets.length > 1 && (
