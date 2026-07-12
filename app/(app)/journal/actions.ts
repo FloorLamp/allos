@@ -22,6 +22,7 @@ import { getUnitPrefs } from "@/lib/settings";
 import { toKg, toKm, resolveWeightKg } from "@/lib/units";
 import { minutesBetween, compositeRollup } from "@/lib/activity-meta";
 import { isRealIsoDate } from "@/lib/date";
+import { isTrainingRestricted } from "@/lib/age-gate";
 
 interface SetInput {
   exercise: string;
@@ -125,6 +126,15 @@ export async function saveActivity(
   formData: FormData
 ): Promise<SaveActivityOutcome> {
   const { login, profile } = await requireWriteAccess();
+  // Training-restriction gate (#488): a profile below the instance min_training_age
+  // has NO surface to view/edit/delete an activity — /training redirects, the nav
+  // Training item and sidebar "Log activity" button are hidden. The create path was
+  // the un-gated twin (reachable via the command palette / a stale editor), so a
+  // restricted profile could persist an activity it can never see, that still feeds
+  // weekly-recap/coaching. The gate is authoritative HERE at the write boundary so the
+  // create and view paths agree regardless of what the UI offers.
+  if (isTrainingRestricted(profile.id))
+    return { ok: false, reason: "restricted" };
   const id = formData.get("id") ? Number(formData.get("id")) : null;
   const type = String(formData.get("type")) as ActivityType;
   const title = String(formData.get("title") ?? "").trim();
