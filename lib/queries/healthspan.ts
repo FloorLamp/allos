@@ -20,6 +20,7 @@ import { getStrengthByExercise } from "./training";
 import { fitnessContext } from "../fitness-norms";
 import { strengthStanding, bestStanding } from "../strength-standards";
 import { bioAgeDelta, isBioAgeHiddenForAge } from "../bio-age";
+import { isAdultForClinical } from "../life-stage";
 import {
   buildPillars,
   optimalRangeHitRate,
@@ -73,9 +74,12 @@ export function getHealthspanPillars(profileId: number): Pillar[] {
 
   // Strength standard (#152) — the strongest standing across the core barbell
   // lifts the profile has trained, from the SAME strengthStanding computation the
-  // exercise-detail coaching line uses. Hidden without sex or a known bodyweight.
+  // exercise-detail coaching line uses. Hidden without sex or a known bodyweight,
+  // AND gated on the SAME adult-clinical floor the VO2 pillar above uses (#491):
+  // the baked strength-standards tables are adult population norms, so an adolescent
+  // no longer gets an adult strength standing beside a correctly-hidden VO2 pillar.
   const bodyweightKg = getLatestBodyMetric(profileId, "weight");
-  if (sex && bodyweightKg) {
+  if (sex && bodyweightKg && isAdultForClinical(age)) {
     const standings = getStrengthByExercise(profileId)
       .map((e) => strengthStanding(e.exercise, e.e1rmKg, sex, bodyweightKg))
       .filter((s): s is NonNullable<typeof s> => s != null);

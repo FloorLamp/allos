@@ -18,6 +18,7 @@
 
 import type { Sex } from "@/lib/types";
 import norms from "@/lib/fitness-norms.json";
+import { ADULT_MIN_AGE, isAdultForClinical } from "@/lib/life-stage";
 
 interface NormBand {
   age: number;
@@ -41,8 +42,9 @@ export const FITNESS_NORM_MARKERS = Object.keys(MARKERS);
 
 // Adult-context floor: the norms are adult reference standards, so a subject below
 // this age hides the percentile line (matches how the pediatric/adult split hides
-// adult ranges for children elsewhere).
-export const ADULT_MIN_AGE = 18;
+// adult ranges for children elsewhere). Re-exported from the one age model
+// (lib/life-stage) so this and the other adult-population surfaces share one line.
+export { ADULT_MIN_AGE };
 
 export function hasFitnessNorms(name: string): boolean {
   return Object.prototype.hasOwnProperty.call(MARKERS, name);
@@ -164,7 +166,7 @@ export function fitnessPercentile(
 ): FitnessPercentile | null {
   const m = MARKERS[name];
   if (!m) return null;
-  if (!sex || age == null || age < ADULT_MIN_AGE) return null;
+  if (!sex || !isAdultForClinical(age)) return null;
   if (value == null || !Number.isFinite(value)) return null;
   const sn = m.sexes[sex];
   if (!sn) return null;
@@ -183,7 +185,7 @@ export function fitnessAge(
 ): FitnessAgeResult | null {
   const m = MARKERS[name];
   if (!m) return null;
-  if (!sex || age == null || age < ADULT_MIN_AGE) return null;
+  if (!sex || !isAdultForClinical(age)) return null;
   if (value == null || !Number.isFinite(value)) return null;
   const sn = m.sexes[sex];
   if (!sn) return null;

@@ -186,6 +186,27 @@ describe("computeDerivedReadings — eGFR (CKD-EPI 2021)", () => {
     );
     expect(find(r, "eGFR", "2024-01-01")).toBeUndefined();
   });
+
+  it("declines eGFR below the adult floor — CKD-EPI is adult-only (#490)", () => {
+    // A 10-year-old with a creatinine + known sex used to get an adult-formula
+    // eGFR; the pediatric floor (matching PhenoAge) now returns nothing instead of
+    // a clinically invalid number (bedside-Schwartz, not CKD-EPI, applies for kids).
+    const child = computeDerivedReadings(
+      seriesOf({
+        Creatinine: [{ date: "2024-01-01", value: 0.9, unit: "mg/dL" }],
+      }),
+      demo("male", 10)
+    );
+    expect(find(child, "eGFR", "2024-01-01")).toBeUndefined();
+    // Still produced for an adult at exactly the floor.
+    const adult = computeDerivedReadings(
+      seriesOf({
+        Creatinine: [{ date: "2024-01-01", value: 0.9, unit: "mg/dL" }],
+      }),
+      demo("male", 18)
+    );
+    expect(find(adult, "eGFR", "2024-01-01")?.value).toBeGreaterThan(0);
+  });
 });
 
 describe("phenoAge — Levine 2018 formula (worked example)", () => {
