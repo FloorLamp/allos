@@ -8,6 +8,7 @@ import { captureDelete } from "@/lib/undo-delete-db";
 import {
   getActiveSituations,
   setActiveSituations,
+  resolveSituationId,
   deleteProfileSetting,
 } from "@/lib/settings";
 import { generateAndStoreSuggestions } from "@/lib/supplement-suggest";
@@ -260,14 +261,20 @@ export async function addSupplement(formData: FormData): Promise<FormResult> {
       ? resolveProviderIdByName(String(formData.get("provider") ?? ""))
       : null;
   writeTx(() => {
+    // Link the situational item to its id-keyed situation ROW (#560), creating the
+    // row if this is a new label; the free-text `situation` column is kept as a
+    // denormalized fallback.
+    const situationId = f.situation
+      ? resolveSituationId(profile.id, f.situation)
+      : null;
     const info = db
       .prepare(
         `INSERT INTO intake_items
-           (name, notes, condition, priority, brand, product, situation, stack,
+           (name, notes, condition, priority, brand, product, situation, situation_id, stack,
             critical, escalate_after_min, escalate_chat_id,
             quantity_on_hand, qty_per_dose,
             kind, prescriber, pharmacy, rx_number, as_needed, rxcui, rxcui_ingredients, provider_id, source, profile_id)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'manual',?)`
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'manual',?)`
       )
       .run(
         name,
@@ -277,6 +284,7 @@ export async function addSupplement(formData: FormData): Promise<FormResult> {
         f.brand,
         f.product,
         f.situation,
+        situationId,
         f.stack,
         f.critical,
         f.escalateAfterMin,
@@ -353,10 +361,15 @@ export async function updateSupplement(
       owned.quantity_on_hand
     );
 
+    // Re-resolve the situation link on edit so a re-typed/changed label re-keys to
+    // (or creates) the matching situation ROW (#560); null when not situational.
+    const situationId = f.situation
+      ? resolveSituationId(profile.id, f.situation)
+      : null;
     db.prepare(
       `UPDATE intake_items
          SET name = ?, notes = ?, condition = ?, priority = ?, brand = ?,
-             product = ?, situation = ?, stack = ?,
+             product = ?, situation = ?, situation_id = ?, stack = ?,
              critical = ?, escalate_after_min = ?, escalate_chat_id = ?,
              quantity_on_hand = ?, qty_per_dose = ?,
              kind = ?, prescriber = ?, pharmacy = ?, rx_number = ?, as_needed = ?,
@@ -370,6 +383,7 @@ export async function updateSupplement(
       f.brand,
       f.product,
       f.situation,
+      situationId,
       f.stack,
       f.critical,
       f.escalateAfterMin,
@@ -872,11 +886,16 @@ export async function acceptSuggestion(
   const time = s.time_of_day ?? parsed.timeOfDay ?? null;
   const times = spreadDoseTimes(parsed.perDay, time);
   writeTx(() => {
+    // Link an accepted situational suggestion to its situation ROW (#560).
+    const situationId =
+      s.condition === "situational" && s.situation
+        ? resolveSituationId(profile.id, s.situation)
+        : null;
     const info = db
       .prepare(
         `INSERT INTO intake_items
-           (name, notes, condition, priority, brand, product, situation, stack, source, profile_id)
-         VALUES (?,?,?,?,?,?,?,?,'manual',?)`
+           (name, notes, condition, priority, brand, product, situation, situation_id, stack, source, profile_id)
+         VALUES (?,?,?,?,?,?,?,?,?,'manual',?)`
       )
       .run(
         s.name,
@@ -886,6 +905,7 @@ export async function acceptSuggestion(
         s.brand,
         s.product,
         s.situation,
+        situationId,
         null,
         profile.id
       );

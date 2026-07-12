@@ -43,6 +43,7 @@ function supp(overrides: Partial<Supplement> = {}): Supplement {
     created_at: "2026-01-01",
     condition: "daily",
     priority: "high",
+    situation_id: null,
     brand: null,
     product: null,
     situation: null,

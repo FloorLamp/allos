@@ -14,6 +14,7 @@ import {
   serializeSituationEvents,
   type SituationEvent,
 } from "../trend-annotations";
+import { normalizeSituationName } from "../situations";
 import {
   METRIC_SOURCE_PRIORITY_KEY,
   isValidSourceId,
@@ -506,34 +507,99 @@ export function setEmergencyContact(
   });
 }
 
-// Currently-active situations (e.g. "Illness", "Travel") for a profile, persisted
-// as a JSON array so situational supplements surface only while the situation
-// applies and the state is shared with the notifier.
-export function getActiveSituations(profileId: number): string[] {
-  const v = getProfileSetting(profileId, "active_situations");
-  if (!v) return [];
-  try {
-    const arr = JSON.parse(v);
-    return Array.isArray(arr)
-      ? arr.filter((x): x is string => typeof x === "string")
-      : [];
-  } catch {
-    return [];
-  }
+// One situation in the profile's vocabulary (issue #560): an id-keyed row, not a
+// free-text string. `active` is the current toggle state a situational supplement
+// keys on.
+export interface Situation {
+  id: number;
+  name: string;
+  active: number;
 }
 
+// The profile's whole situation vocabulary (active + inactive), for the toggle bar.
+export function getSituations(profileId: number): Situation[] {
+  return db
+    .prepare(
+      `SELECT id, name, active FROM situations
+        WHERE profile_id = ? ORDER BY name COLLATE NOCASE`
+    )
+    .all(profileId) as Situation[];
+}
+
+// Get-or-create the situation ROW for a name, returning its id (or null for an
+// empty name). NOCASE-matched against the one vocabulary, so casing/whitespace
+// variants ("illness" / " Illness ") resolve to the SAME row (#560 removes the
+// #203 exact-string fragility). Kept a plain read/write so it composes inside a
+// caller's writeTx (supplement create/edit).
+export function resolveSituationId(
+  profileId: number,
+  name: string
+): number | null {
+  const norm = normalizeSituationName(name);
+  if (!norm) return null;
+  const existing = db
+    .prepare(
+      `SELECT id FROM situations WHERE profile_id = ? AND name = ? COLLATE NOCASE`
+    )
+    .get(profileId, norm) as { id: number } | undefined;
+  if (existing) return existing.id;
+  return Number(
+    db
+      .prepare(
+        `INSERT INTO situations (profile_id, name, active) VALUES (?, ?, 0)`
+      )
+      .run(profileId, norm).lastInsertRowid
+  );
+}
+
+// Currently-active situation NAMES for a profile (e.g. "Illness", "Travel"), read
+// from the id-keyed situations table. Returned as names because that stays the
+// shared currency across the notifier / adherence / digest layers — and, since
+// getSupplements coalesces the same situations.name onto each item, a rename
+// re-keys both sides together (no detachment).
+export function getActiveSituations(profileId: number): string[] {
+  return (
+    db
+      .prepare(
+        `SELECT name FROM situations
+          WHERE profile_id = ? AND active = 1 ORDER BY name COLLATE NOCASE`
+      )
+      .all(profileId) as { name: string }[]
+  ).map((r) => r.name);
+}
+
+// Set the profile's active situations to exactly `situations` (by name). Rows are
+// upserted into the one NOCASE vocabulary and their `active` flag toggled; a name
+// not previously seen becomes a new row. The dated start/stop transitions are still
+// logged (Trends annotations) for chartability.
 export function setActiveSituations(profileId: number, situations: string[]) {
   const before = getActiveSituations(profileId);
   const distinct = [
-    ...new Set(situations.map((s) => s.trim()).filter(Boolean)),
+    ...new Map(
+      situations
+        .map((s) => normalizeSituationName(s))
+        .filter(Boolean)
+        .map((s) => [s.toLowerCase(), s])
+    ).values(),
   ];
-  // Log the start/stop transitions (Trends event annotations) before
-  // overwriting the current set — profile_settings keeps only the CURRENT set, so
-  // the dated change log is what makes situations chartable. Same JSON-in-settings
-  // precedent as active_situations itself; no owned table.
   const events = diffSituations(before, distinct, today(profileId));
   writeTx(() => {
-    setProfileSetting(profileId, "active_situations", JSON.stringify(distinct));
+    const wanted = new Set<number>();
+    for (const name of distinct) {
+      const id = resolveSituationId(profileId, name);
+      if (id != null) wanted.add(id);
+    }
+    // Deactivate everything, then activate the wanted set — one vocabulary, so a
+    // toggled-off situation's ROW survives (its situational supplements keep their
+    // link) but reads as inactive.
+    db.prepare(`UPDATE situations SET active = 0 WHERE profile_id = ?`).run(
+      profileId
+    );
+    for (const id of wanted) {
+      db.prepare(
+        `UPDATE situations SET active = 1 WHERE id = ? AND profile_id = ?`
+      ).run(id, profileId);
+    }
     if (events.length > 0) {
       setProfileSetting(
         profileId,

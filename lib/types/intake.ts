@@ -39,7 +39,13 @@ export interface Supplement {
   priority: SupplementPriority;
   brand: string | null; // manufacturer, e.g. "Thorne" (free text)
   product: string | null; // specific product/SKU (free text)
-  situation: string | null; // label when condition = 'situational'
+  // Situational context (condition = 'situational'). `situation` is the display
+  // label (COALESCEd from the linked row's name on read); `situation_id` links to
+  // the id-keyed `situations` row (issue #560) — the durable identity that survives
+  // a rename and unifies the profile's situation vocabulary. NULL for non-situational
+  // or legacy/unmatched rows.
+  situation: string | null;
+  situation_id: number | null;
   // Optional "stack" label grouping supplements taken together (e.g. "D3 + K2");
   // members render adjacently in their time bucket. Free text.
   stack: string | null;

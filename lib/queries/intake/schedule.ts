@@ -13,12 +13,22 @@ import type {
 
 // ---- Supplements ----
 export function getSupplements(profileId: number): Supplement[] {
+  // COALESCE(situations.name, intake_items.situation): a situational item's
+  // displayed situation follows its linked ROW (issue #560), so a rename re-keys it
+  // (and it stays in lockstep with getActiveSituations, which reads the same table);
+  // the free-text column is the fallback for legacy/unlinked rows. The `AS situation`
+  // alias comes last, so it wins over intake_items.* on the duplicate column name.
   return db
     .prepare(
-      `SELECT *,
+      `SELECT intake_items.*,
+              COALESCE(situations.name, intake_items.situation) AS situation,
               (SELECT p.name FROM providers p WHERE p.id = intake_items.provider_id)
                 AS provider_name
-         FROM intake_items WHERE profile_id = ? ORDER BY active DESC, name`
+         FROM intake_items
+         LEFT JOIN situations
+                ON situations.id = intake_items.situation_id
+               AND situations.profile_id = intake_items.profile_id
+        WHERE intake_items.profile_id = ? ORDER BY active DESC, name`
     )
     .all(profileId) as Supplement[];
 }

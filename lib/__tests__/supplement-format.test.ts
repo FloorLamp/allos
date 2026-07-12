@@ -31,6 +31,7 @@ function supp(
     brand: null,
     product: null,
     situation: null,
+    situation_id: null,
     stack: null,
     critical: 0,
     escalate_after_min: null,
