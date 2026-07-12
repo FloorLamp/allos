@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { IconMenu2, IconPlus, IconRepeat } from "@tabler/icons-react";
+import { IconMenu2, IconPlus, IconRepeat, IconBolt } from "@tabler/icons-react";
 import Wordmark from "@/components/Wordmark";
 import SidebarContent from "@/components/SidebarContent";
 import { useActivityEditor } from "@/components/ActivityEditorProvider";
@@ -51,7 +51,8 @@ export default function MobileNav({
 }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
-  const { openCreate, openRepeatLast, hasLastActivity } = useActivityEditor();
+  const { openCreate, openLive, openRepeatLast, hasLastActivity } =
+    useActivityEditor();
 
   // Close the drawer whenever navigation happens.
   useEffect(() => {
@@ -89,6 +90,17 @@ export default function MobileNav({
           </Link>
           {!restricted && (
             <div className="ml-auto -mr-1 flex items-center">
+              {/* Start a live workout — the phone-at-the-gym entry to the rest
+                  timer + set check-off flow (issue #340). */}
+              <button
+                type="button"
+                aria-label="Start workout"
+                data-testid="start-workout-mobile"
+                onClick={() => openLive()}
+                className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-ink-750"
+              >
+                <IconBolt className="h-5 w-5" stroke={1.75} />
+              </button>
               {/* Repeat last activity — the mobile twin of the desktop aside's
                   "Repeat last", so it isn't desktop-only (issue #337). */}
               {hasLastActivity && (

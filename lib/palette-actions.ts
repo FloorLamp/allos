@@ -10,6 +10,9 @@
 export type PaletteActionTarget =
   // Open the activity editor overlay via the ActivityEditor context (no nav).
   | { kind: "activity" }
+  // Start a LIVE workout (issue #340): opens the create form in the in-gym layout
+  // (rest timer + set check-off). Hidden for age-restricted profiles (#489).
+  | { kind: "live" }
   // Repeat the most recent activity via the ActivityEditor context (issue #337):
   // opens a create form pre-filled from it. Shown only when one exists.
   | { kind: "repeat" }
@@ -37,6 +40,13 @@ export const PALETTE_ACTIONS: PaletteAction[] = [
     keywords: ["activity", "exercise", "training", "gym", "lift", "cardio"],
     icon: "barbell",
     target: { kind: "activity" },
+  },
+  {
+    id: "start-workout",
+    label: "Start workout",
+    keywords: ["live", "session", "rest timer", "begin", "in session"],
+    icon: "barbell",
+    target: { kind: "live" },
   },
   {
     id: "repeat-last",

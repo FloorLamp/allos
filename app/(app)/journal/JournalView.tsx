@@ -97,8 +97,15 @@ export default function JournalView({
   // Profile sex, so the exercise detail's strength standards use the right chart.
   sex?: Sex | null;
 }) {
-  const { open, openCreate, openRepeat, close, registerDock } =
-    useActivityEditor();
+  const {
+    open,
+    openCreate,
+    openLive,
+    openRepeat,
+    close,
+    registerDock,
+    canStartWorkout,
+  } = useActivityEditor();
   const dockRef = useRef<HTMLDivElement | null>(null);
 
   // ---- Server-paged feed (issue #451) ----
@@ -739,6 +746,19 @@ export default function JournalView({
                     className="btn-ghost"
                   >
                     Repeat last
+                  </button>
+                )}
+                {/* Start a live workout (issue #340): the in-gym rest-timer +
+                    set check-off flow. Strength-centric, so hidden for
+                    age-restricted profiles (#489). */}
+                {canStartWorkout && (
+                  <button
+                    type="button"
+                    onClick={openLive}
+                    data-testid="start-workout"
+                    className="btn-ghost"
+                  >
+                    Start workout
                   </button>
                 )}
                 <button type="button" onClick={openCreate} className="btn">

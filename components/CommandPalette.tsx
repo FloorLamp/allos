@@ -103,7 +103,13 @@ export default function CommandPalette({
 }) {
   const router = useRouter();
   const toast = useToast();
-  const { openCreate, openRepeatLast, hasLastActivity } = useActivityEditor();
+  const {
+    openCreate,
+    openLive,
+    openRepeatLast,
+    hasLastActivity,
+    canStartWorkout,
+  } = useActivityEditor();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [groups, setGroups] = useState<SearchGroup[]>([]);
@@ -126,9 +132,13 @@ export default function CommandPalette({
   const actions = useMemo(
     () =>
       matchPaletteActions(query).filter(
-        (a) => a.target.kind !== "repeat" || hasLastActivity
+        (a) =>
+          (a.target.kind !== "repeat" || hasLastActivity) &&
+          // Live workout is strength-centric; hidden for age-restricted profiles
+          // (#489/#340).
+          (a.target.kind !== "live" || canStartWorkout)
       ),
-    [query, hasLastActivity]
+    [query, hasLastActivity, canStartWorkout]
   );
   const hits = useMemo(() => flattenHits(groups), [groups]);
 
@@ -226,6 +236,9 @@ export default function CommandPalette({
       if (action.target.kind === "activity") {
         close();
         openCreate();
+      } else if (action.target.kind === "live") {
+        close();
+        openLive();
       } else if (action.target.kind === "repeat") {
         close();
         openRepeatLast();
@@ -233,7 +246,7 @@ export default function CommandPalette({
         go(action.target.href);
       }
     },
-    [close, openCreate, openRepeatLast, go]
+    [close, openCreate, openLive, openRepeatLast, go]
   );
 
   const commitQuickLog = useCallback(

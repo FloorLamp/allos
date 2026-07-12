@@ -128,6 +128,7 @@ export default function DateTimeFields({
           </div>
           <input
             type="time"
+            data-testid="end-time-input"
             value={endTime}
             min={startTime || undefined}
             onChange={(e) => onEndTime(e.target.value)}

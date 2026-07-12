@@ -12,8 +12,25 @@ describe("palette create actions", () => {
   });
 
   it("matches on the label", () => {
+    // "workout" is a substring of both "Log workout" and "Start workout" (#340).
     const ids = matchPaletteActions("workout").map((a) => a.id);
-    expect(ids).toEqual(["log-workout"]);
+    expect(ids).toEqual(["log-workout", "start-workout"]);
+    // The more specific labels disambiguate.
+    expect(matchPaletteActions("log workout").map((a) => a.id)).toEqual([
+      "log-workout",
+    ]);
+    expect(matchPaletteActions("start").map((a) => a.id)).toEqual([
+      "start-workout",
+    ]);
+  });
+
+  it("offers a live 'Start workout' action (#340)", () => {
+    const live = PALETTE_ACTIONS.find((a) => a.id === "start-workout");
+    expect(live?.target.kind).toBe("live");
+    // Reachable by its in-gym keywords.
+    expect(matchPaletteActions("rest timer").map((a) => a.id)).toEqual([
+      "start-workout",
+    ]);
   });
 
   it("matches on keywords, case-insensitively", () => {
@@ -36,9 +53,10 @@ describe("palette create actions", () => {
     expect(matchPaletteActions("again").map((a) => a.id)).toEqual([
       "repeat-last",
     ]);
-    // The repeat action must not collide with the log-workout label match.
+    // The repeat action must not collide with the workout-label matches.
     expect(matchPaletteActions("workout").map((a) => a.id)).toEqual([
       "log-workout",
+      "start-workout",
     ]);
     const repeat = PALETTE_ACTIONS.find((a) => a.id === "repeat-last");
     expect(repeat?.target.kind).toBe("repeat");
