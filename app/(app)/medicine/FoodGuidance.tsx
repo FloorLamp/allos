@@ -52,7 +52,10 @@ export default function FoodGuidance({
   return (
     <div data-testid="food-guidance" className="mt-1 space-y-0.5">
       {hits.map((hit) => (
-        <p
+        // A <div>, not a <p>: the dismiss <form> may not nest inside a <p> —
+        // invalid HTML that React rejects at hydration, crashing the whole
+        // /medicine tree (dose cards included).
+        <div
           key={hit.key}
           className="flex items-start gap-1 text-xs text-amber-700 dark:text-amber-300"
         >
@@ -78,7 +81,7 @@ export default function FoodGuidance({
               <IconX className="h-3 w-3" stroke={2} />
             </button>
           </form>
-        </p>
+        </div>
       ))}
     </div>
   );
