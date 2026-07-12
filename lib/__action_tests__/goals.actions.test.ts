@@ -8,7 +8,12 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { createGoal, setStatus, updateGoal } from "@/app/(app)/goals/actions";
-import { getGoals } from "@/lib/queries";
+import {
+  getGoals,
+  dismissFinding,
+  getFindingSuppressions,
+} from "@/lib/queries";
+import { goalPaceSignalKey } from "@/lib/goal-pacing";
 import { LB_PER_KG } from "@/lib/units";
 import { createLogin, createProfile, actAs, seedActor, fd } from "./harness";
 
@@ -126,6 +131,47 @@ describe("updateGoal weight round-trip (issue #194)", () => {
     );
     const row = goalRows(profile.id).find((r) => r.id === id);
     expect(row.target_value).toBeCloseTo(300 / LB_PER_KG, 6);
+  });
+});
+
+describe("updateGoal re-target clears the off-pace dismissal (#436)", () => {
+  it("drops the goal-pace suppression on a target change; keeps it on a no-op", async () => {
+    const { profile } = seedActor();
+    const id = Number(
+      db
+        .prepare(
+          "INSERT INTO goals (title, category, target_value, target_date, body_metric, profile_id, status) VALUES ('Cut', 'body', 84, '2026-09-01', 'weight', ?, 'active')"
+        )
+        .run(profile.id).lastInsertRowid
+    );
+    const key = goalPaceSignalKey(id);
+    dismissFinding(profile.id, key);
+    expect(getFindingSuppressions(profile.id).has(key)).toBe(true);
+
+    // A no-op edit (same target value + date) must NOT clear the dismissal.
+    await updateGoal(
+      fd({
+        id,
+        kind: "body",
+        body_metric: "weight",
+        body_target: 84,
+        target_date: "2026-09-01",
+      })
+    );
+    expect(getFindingSuppressions(profile.id).has(key)).toBe(true);
+
+    // Re-targeting (new deadline) is a new pacing question → the stale dismissal is
+    // dropped so the finding re-assesses against the new date.
+    await updateGoal(
+      fd({
+        id,
+        kind: "body",
+        body_metric: "weight",
+        body_target: 84,
+        target_date: "2026-12-01",
+      })
+    );
+    expect(getFindingSuppressions(profile.id).has(key)).toBe(false);
   });
 });
 

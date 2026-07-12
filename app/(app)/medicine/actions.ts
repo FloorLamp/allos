@@ -3,6 +3,7 @@ import { requireWriteAccess } from "@/lib/auth";
 
 import { revalidatePath } from "next/cache";
 import { db, today, writeTx } from "@/lib/db";
+import { isUniqueConstraintError } from "@/lib/sqlite-error";
 import { captureDelete } from "@/lib/undo-delete-db";
 import {
   getActiveSituations,
@@ -57,6 +58,8 @@ import { strOrNull } from "@/lib/parse";
 import { isRealIsoDate } from "@/lib/date";
 import { dismissFinding } from "@/lib/queries";
 import { ADHERENCE_PREFIX } from "@/lib/adherence-patterns";
+import { FOOD_TIMING_PREFIX } from "@/lib/food-drug-interactions";
+import { KEEP_APART_PREFIX } from "@/lib/intake-pairs";
 
 // Supplement-level fields (timing/amount/food live on doses).
 function fields(formData: FormData) {
@@ -494,30 +497,62 @@ function applyDoseStatus(
   const current: DoseStatusTarget = existing ? existing.status : "clear";
   if (current === target) return;
 
+  // INVARIANT (issue #473): a supply move follows the ROW that actually changed, not
+  // the pre-read state. Each branch keys its increment/decrement on the write's
+  // rows-affected (or, for the INSERT, on whether we actually inserted) so a
+  // concurrent writer that already landed the row can't drive a phantom
+  // double-decrement the day the web app runs more than one replica.
   if (target === "clear") {
-    db.prepare(
-      "DELETE FROM intake_item_logs WHERE dose_id = ? AND date = ?"
-    ).run(doseId, date);
-  } else if (!existing) {
-    db.prepare(
-      "INSERT INTO intake_item_logs (dose_id, item_id, date, amount, status) VALUES (?,?,?,?,?)"
-    ).run(
-      doseId,
-      dose.item_id,
-      date,
-      target === "taken" ? dose.amount : null,
-      target
-    );
-  } else {
-    db.prepare(
-      "UPDATE intake_item_logs SET status = ?, amount = ? WHERE dose_id = ? AND date = ?"
-    ).run(target, target === "taken" ? dose.amount : null, doseId, date);
+    const info = db
+      .prepare("DELETE FROM intake_item_logs WHERE dose_id = ? AND date = ?")
+      .run(doseId, date);
+    // Re-increment only if THIS delete removed the taken row (a concurrent clear may
+    // have removed it first, and already re-incremented).
+    if (info.changes > 0 && current === "taken") {
+      incrementSupply(profileId, dose.item_id);
+    }
+    return;
   }
 
-  if (current !== "taken" && target === "taken") {
-    decrementSupply(profileId, dose.item_id);
-  } else if (current === "taken" && target !== "taken") {
-    incrementSupply(profileId, dose.item_id);
+  if (!existing) {
+    let inserted = false;
+    try {
+      db.prepare(
+        "INSERT INTO intake_item_logs (dose_id, item_id, date, amount, status) VALUES (?,?,?,?,?)"
+      ).run(
+        doseId,
+        dose.item_id,
+        date,
+        target === "taken" ? dose.amount : null,
+        target
+      );
+      inserted = true;
+    } catch (err) {
+      // UNIQUE(dose_id, date) lost race: a concurrent writer (a second web replica,
+      // or the notify sidecar) already logged this dose today. The winner owns the
+      // row AND its supply move, so we no-op — the same "already logged" outcome the
+      // Telegram markDoseTaken path reports — instead of surfacing a Server-Action 500.
+      if (!isUniqueConstraintError(err)) throw err;
+    }
+    // Only the writer that actually inserted the taken row decrements supply.
+    if (inserted && target === "taken") {
+      decrementSupply(profileId, dose.item_id);
+    }
+    return;
+  }
+
+  const info = db
+    .prepare(
+      "UPDATE intake_item_logs SET status = ?, amount = ? WHERE dose_id = ? AND date = ?"
+    )
+    .run(target, target === "taken" ? dose.amount : null, doseId, date);
+  // Cross the taken boundary in supply only when THIS update actually changed a row.
+  if (info.changes > 0) {
+    if (current !== "taken" && target === "taken") {
+      decrementSupply(profileId, dose.item_id);
+    } else if (current === "taken" && target !== "taken") {
+      incrementSupply(profileId, dose.item_id);
+    }
   }
 }
 
@@ -884,6 +919,34 @@ export async function dismissAdherencePattern(formData: FormData) {
   const { profile } = await requireWriteAccess();
   const dedupeKey = String(formData.get("dedupe_key") ?? "").trim();
   if (!dedupeKey.startsWith(ADHERENCE_PREFIX)) return;
+  dismissFinding(profile.id, dedupeKey);
+  revalidatePath("/medicine");
+}
+
+// The finding namespaces the /medicine page renders as dismissible OBSERVATIONS
+// (issue #435): drug–drug interactions, stack-total dietary limits, per-item
+// food–drug guidance, and keep-apart pair warnings. Each also surfaces on Upcoming
+// through the SAME shared findings-suppression bus keyed by the identical dedupeKey,
+// so a dismiss here silences the Upcoming twin and vice versa ("dismiss once, silence
+// everywhere", #227's page↔push principle applied page↔page). The scheduled
+// dose-reminder / missed-dose escalation stay their own (deliberately un-suppressible)
+// safety-tier machinery — these are calm observations, not safety reminders.
+const MEDICINE_FINDING_PREFIXES = [
+  "interaction:",
+  "dietary-limit:",
+  FOOD_TIMING_PREFIX,
+  KEEP_APART_PREFIX,
+];
+
+// Dismiss a /medicine observational finding through the shared findings-bus
+// suppression store. Guarded to the medicine-surface namespaces above, so it can only
+// silence one of those keys (never an arbitrary finding); profile-scoped via
+// dismissFinding. One action for the four page surfaces (their divs post their own
+// dedupeKey), mirroring how each page's dismiss action guards its own domain.
+export async function dismissMedicineFinding(formData: FormData) {
+  const { profile } = await requireWriteAccess();
+  const dedupeKey = String(formData.get("dedupe_key") ?? "").trim();
+  if (!MEDICINE_FINDING_PREFIXES.some((p) => dedupeKey.startsWith(p))) return;
   dismissFinding(profile.id, dedupeKey);
   revalidatePath("/medicine");
 }

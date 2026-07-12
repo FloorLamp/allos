@@ -177,7 +177,18 @@ export function reconcileRestEpisode(
 // Convenience for the notify tick: gather this profile's coaching input, rank it,
 // and reconcile the rest episode. Units don't affect the rest decision, so plain
 // canonical defaults are fine here. Returns the reconciled episode.
-export function runCoachingEpisode(profileId: number): RestEpisode | null {
-  const recs = recommendCoaching(gatherCoachingInput(profileId, "kg", "km"));
+//
+// The full gather (complete strength/cardio scan + 42×1440 HR-minute rows) is the
+// tick's heaviest per-profile read, and the workout-reminder slot runs the IDENTICAL
+// gather in the same tick (recommendWorkout) — request-scoped caching is a no-op
+// outside Next (#386), so the tick did it twice. `input` lets the caller pass a
+// gather it already computed this tick so both consumers share ONE scan (#447).
+export function runCoachingEpisode(
+  profileId: number,
+  input?: CoachingInput
+): RestEpisode | null {
+  const recs = recommendCoaching(
+    input ?? gatherCoachingInput(profileId, "kg", "km")
+  );
   return reconcileRestEpisode(profileId, recs, today(profileId));
 }

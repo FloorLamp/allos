@@ -2,7 +2,7 @@ import { IconBarbell } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
 import { getFindingSuppressions } from "@/lib/queries";
-import { activeByKey } from "@/lib/findings";
+import { activeFindings } from "@/lib/findings";
 import { buildTrainingObservationFindings } from "@/lib/rule-findings";
 import FindingsList from "@/components/FindingsList";
 import { dismissTrainingObservation } from "./actions";
@@ -16,9 +16,8 @@ import { dismissTrainingObservation } from "./actions";
 export default async function TrainingFindings() {
   const { profile } = await requireSession();
   const now = today(profile.id);
-  const findings = activeByKey(
+  const findings = activeFindings(
     buildTrainingObservationFindings(profile.id, now),
-    (f) => f.dedupeKey,
     getFindingSuppressions(profile.id),
     now
   );

@@ -62,6 +62,7 @@ export default function MedicationCard({
   sideEffects,
   todayStr,
   trainingRestricted,
+  suppressedFoodKeys = [],
 }: {
   supplement: Supplement;
   doses: SupplementDose[];
@@ -75,6 +76,8 @@ export default function MedicationCard({
   sideEffects: MedicationSideEffect[];
   todayStr: string;
   trainingRestricted: boolean;
+  // Active food-timing dismissals for this profile (#435), threaded to FoodGuidance.
+  suppressedFoodKeys?: string[];
 }) {
   const s = supplement;
   const [editing, setEditing] = useState(false);
@@ -175,9 +178,11 @@ export default function MedicationCard({
           {/* Food–drug guidance (issue #154): a per-item food note (grapefruit,
               vitamin K, dairy/minerals, alcohol) — no second med needed. */}
           <FoodGuidance
+            itemId={s.id}
             name={s.name}
             rxcui={s.rxcui}
             rxcuiIngredients={s.rxcui_ingredients}
+            suppressedFoodKeys={suppressedFoodKeys}
           />
           {medInfo && (
             <details className="group mt-1">

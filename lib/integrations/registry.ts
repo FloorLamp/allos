@@ -2,7 +2,8 @@ import type { IntegrationDef, IntegrationId } from "@/lib/types";
 
 // Declarative list of integrations. The Integrations page renders from this, so
 // adding a provider is a matter of adding an entry (and, for 'available' ones, a
-// parser + config page). Health Connect and Strava are 'available'; Garmin is a
+// parser + config page). Health Connect, Strava, Oura, and Withings are
+// 'available' (plus the outbound calendar-feed subscription); Garmin is a
 // 'planned' preview today.
 export const INTEGRATIONS: IntegrationDef[] = [
   {

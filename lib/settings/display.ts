@@ -6,7 +6,7 @@ import { db, writeTx } from "../db";
 // (scripts/notify.ts) that resolve the plain `react` package, which doesn't export
 // cache — importing the named binding there crashes at module load. Fall back to
 // identity in that context (those scripts run each read at most once per tick, so
-// per-request dedup is meaningless outside Next). Mirrors lib/queries/training.ts.
+// per-request dedup is meaningless outside Next). Mirrors lib/request-cache.ts.
 const cache: typeof React.cache =
   (React as { cache?: typeof React.cache }).cache ?? ((fn) => fn);
 import { isValidTimezone, resolveTimezone } from "../timezone";

@@ -16,11 +16,13 @@ import {
   toggleTaken,
   setDoseStatus,
   toggleActive,
+  dismissMedicineFinding,
 } from "@/app/(app)/medicine/actions";
 import {
   getSupplements,
   getSupplementDoses,
   getInteractionWarnings,
+  getFindingSuppressions,
 } from "@/lib/queries";
 import { getProfileSetting, setProfileSetting } from "@/lib/settings";
 import { refillMarkerKey } from "@/lib/refill-nudge";
@@ -577,5 +579,29 @@ describe("rxcui_ingredients write path (issue #279)", () => {
     expect(rxcuiRow(id).rxcui_ingredients).toBe('["52175"]');
     await updateSupplement(fd({ id, name: "Tablet E" }));
     expect(rxcuiRow(id)).toEqual({ rxcui: null, rxcui_ingredients: null });
+  });
+});
+
+// #435: the /medicine observation dismiss action writes to the shared findings bus
+// for its four namespaces and refuses anything else.
+describe("dismissMedicineFinding (#435)", () => {
+  it("suppresses each medicine-surface namespace, rejecting foreign keys", async () => {
+    const { profile } = seedActor();
+    const suppressed = () => getFindingSuppressions(profile.id);
+
+    for (const key of [
+      "interaction:3-7",
+      "dietary-limit:magnesium",
+      "food-timing:12:grapefruit",
+      "keep-apart:1-2",
+    ]) {
+      await dismissMedicineFinding(fd({ dedupe_key: key }));
+      expect(suppressed().has(key)).toBe(true);
+    }
+
+    // A key outside the medicine namespaces is refused (the prefix guard), so this
+    // action can never silence an arbitrary finding.
+    await dismissMedicineFinding(fd({ dedupe_key: "biomarker:ldl" }));
+    expect(suppressed().has("biomarker:ldl")).toBe(false);
   });
 });

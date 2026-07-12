@@ -482,9 +482,10 @@ function familyFixture(): ConsolidatedProfileFeed[] {
     {
       profileId: 7,
       profileName: "Ada",
-      detail: "full",
+      options: famOpts({ detail: "full" }),
       tz: "UTC",
       today: "2026-07-08",
+      signals: [],
       appts: [
         {
           id: 1,
@@ -500,9 +501,10 @@ function familyFixture(): ConsolidatedProfileFeed[] {
     {
       profileId: 9,
       profileName: "Leo",
-      detail: "minimal",
+      options: famOpts({ detail: "minimal" }),
       tz: "UTC",
       today: "2026-07-08",
+      signals: [],
       appts: [
         {
           id: 1, // same appointment id as Ada's — must NOT collide
@@ -525,6 +527,20 @@ function familyFixture(): ConsolidatedProfileFeed[] {
       ],
     },
   ];
+}
+
+// Full FeedOptions for a consolidated-feed profile (the family feed now honors each
+// profile's whole customization, not just detail — issue #473). Appointments-only
+// with reminders + the historical window unless overridden.
+function famOpts(over: Partial<FeedOptions> = {}): FeedOptions {
+  return {
+    categories: ["appointment"],
+    detail: "minimal",
+    reminders: true,
+    pastWindowDays: 30,
+    futureWindowDays: null,
+    ...over,
+  };
 }
 
 describe("selectConsolidatedFeedEvents — multi-profile merge", () => {
@@ -585,7 +601,47 @@ describe("selectConsolidatedPreviewRows + grouping", () => {
       selectConsolidatedPreviewRows(feeds)
     );
     expect(groups).toHaveLength(1);
-    expect(groups[0].rows.map((r) => r.profileName)).toEqual(["Leo", "Ada"]);
+    // Same day → grouped together; within the day the consolidated preview mirrors
+    // composeFeedPreviewRows' date+uid ordering (fam-7 < fam-9), so Ada precedes Leo.
+    expect(groups[0].rows.map((r) => r.profileName)).toEqual(["Ada", "Leo"]);
+  });
+});
+
+describe("selectConsolidatedFeedEvents — honors per-profile customization (#473)", () => {
+  it("includes a profile's enabled non-appointment categories in the family feed", () => {
+    const feeds = familyFixture();
+    // Ada turns on the dose category and contributes a due dose; Leo stays
+    // appointments-only. The family feed must carry Ada's dose event.
+    feeds[0].options = famOpts({
+      detail: "minimal",
+      categories: ["appointment", "dose"],
+    });
+    feeds[0].signals = [
+      {
+        key: "dose:99",
+        domain: "dose",
+        title: "Vitamin D",
+        detail: "Medication",
+        dueDate: "2026-07-08",
+      },
+    ];
+    const events = selectConsolidatedFeedEvents(feeds);
+    const summaries = events.map((e) => e.summary);
+    // The dose rides in as a neutral (minimal) label, prefixed with the profile name.
+    expect(summaries).toContain("Ada: Medication / supplement dose");
+    // Leo's appointment-only feed still contributes just its appointment.
+    expect(summaries).toContain("Leo: Medical appointment");
+  });
+
+  it("respects a profile's future window when merging", () => {
+    const feeds = familyFixture();
+    // Ada narrows her horizon to today only — her Jul-10 appointment (2 days out)
+    // drops out of the family feed, honoring her per-profile window.
+    feeds[0].options = famOpts({ detail: "full", futureWindowDays: 0 });
+    const events = selectConsolidatedFeedEvents(feeds);
+    const summaries = events.map((e) => e.summary);
+    expect(summaries).not.toContain("Ada: Cardiology follow-up");
+    expect(summaries).toContain("Leo: Medical appointment");
   });
 });
 

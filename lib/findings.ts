@@ -54,6 +54,16 @@ export interface Finding {
   // free across engines; this is exactly the string stored as a suppression row's
   // signal_key (e.g. "dose:12", "coaching:rest-sleep", "digest:bio:LDL:up").
   dedupeKey: string;
+  // A LEGACY (pre-#436, episode-less) dedupeKey this finding ALSO honors for
+  // suppression. The behavioral engines grew an episode anchor on their keys (#436)
+  // so a dismissal is "this episode" not "this topic forever"; `supersedes` carries
+  // the old key shape so a dismissal stored under it keeps suppressing the current
+  // finding (dual-read) rather than orphaning. Fresh dismissals are always written
+  // against `dedupeKey` (episodic). Consulted by activeFindings below. Note the
+  // documented dual-read limitation: a pre-#436 dismissal remains sticky across
+  // future distinct episodes (it lacks the anchor to tell them apart); every
+  // NEW dismissal is per-episode.
+  supersedes?: string;
   title: string;
   detail?: string | null;
   tone?: FindingTone;
@@ -250,4 +260,35 @@ export function activeByKey<T>(
     const rec = map.get(keyOf(item));
     return !(rec && isSuppressed(rec, today));
   });
+}
+
+// Whether a Finding is suppressed right now, honoring BOTH its `dedupeKey` and its
+// optional legacy `supersedes` key (dual-read, #436): a dismissal stored under either
+// hides it. The two-key check is why the episode-anchored engines can change their key
+// shape without orphaning a dismissal made under the old shape.
+export function isFindingSuppressed(
+  finding: Pick<Finding, "dedupeKey" | "supersedes">,
+  map: Map<string, SuppressionRecord>,
+  today: string
+): boolean {
+  const keys = finding.supersedes
+    ? [finding.dedupeKey, finding.supersedes]
+    : [finding.dedupeKey];
+  for (const key of keys) {
+    const rec = map.get(key);
+    if (rec && isSuppressed(rec, today)) return true;
+  }
+  return false;
+}
+
+// The Finding-typed twin of activeByKey that also consults `supersedes` — the filter
+// the page surfaces for the episode-anchored behavioral engines use so a legacy
+// dismissal keeps suppressing the current finding (#436). Preserves order; drops any
+// finding hidden by a dismiss/snooze on its episodic OR legacy key.
+export function activeFindings(
+  findings: Finding[],
+  map: Map<string, SuppressionRecord>,
+  today: string
+): Finding[] {
+  return findings.filter((f) => !isFindingSuppressed(f, map, today));
 }
