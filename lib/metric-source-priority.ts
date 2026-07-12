@@ -11,7 +11,46 @@
 // (de)serialization and the preference-list math; lib/settings.ts owns the tier
 // read/write.
 
+import { assignHashedColors } from "./trend-colors";
+
 export const METRIC_SOURCE_PRIORITY_KEY = "metric_source_priority";
+
+// A document-provenance source is 'document:<id>' (mirrors
+// body-metric-extract.DOCUMENT_SOURCE_PREFIX — kept literal here so this pure module
+// doesn't pull in the extraction/AI module graph, the same way the e2e specs mirror
+// the wire format). Returns the numeric doc id, or null for a non-document source.
+const DOCUMENT_SOURCE_PREFIX = "document:";
+
+export function documentSourceId(source: string): number | null {
+  if (!source.startsWith(DOCUMENT_SOURCE_PREFIX)) return null;
+  const n = Number(source.slice(DOCUMENT_SOURCE_PREFIX.length));
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+export interface DocumentMeta {
+  filename?: string | null;
+  document_date?: string | null;
+}
+
+// Human label for a 'document:<id>' series (#533): the document's OWN identity —
+// its filename, else its document date, else "Document #<id>" — so two documents no
+// longer both collapse to a single "Document" in the legend and primary-source
+// picker. `docs` is a per-profile id→meta lookup the caller joins from
+// medical_documents. A non-document source returns the bare "Document" fallback
+// (callers only pass document sources here). Pure + unit-tested.
+export function documentSourceLabel(
+  source: string,
+  docs: Record<number, DocumentMeta>
+): string {
+  const id = documentSourceId(source);
+  if (id == null) return "Document";
+  const meta = docs[id];
+  const name = meta?.filename?.trim();
+  if (name) return name;
+  const date = meta?.document_date?.trim();
+  if (date) return `Document (${date})`;
+  return `Document #${id}`;
+}
 
 // metric key → primary source id. Metric keys are the metric_samples `metric`
 // strings ('steps', 'sleep_min', …) plus the body_metrics kinds ('weight',
@@ -162,4 +201,42 @@ export const SOURCE_FALLBACK_COLOR = "#0d9488";
 
 export function sourceColor(source: string | null | undefined): string {
   return SOURCE_COLORS[sourceKey(source)] ?? SOURCE_FALLBACK_COLOR;
+}
+
+// Palette for document series (#533) — distinct hues from the fixed
+// integration/manual SOURCE_COLORS so a document line never masquerades as an
+// integration's color. Validated for light AND dark surfaces with the dataviz
+// validator (lightness band, chroma floor, CVD separation).
+export const DOCUMENT_SERIES_COLORS = [
+  "#4f46e5", // indigo
+  "#d97706", // amber
+  "#0891b2", // cyan
+  "#c026d3", // fuchsia
+  "#65a30d", // lime
+  "#e11d48", // rose
+] as const;
+
+// Per-KEY color map for a comparison overlay's series (#533). A known source
+// (manual + the integrations) keeps its FIXED brand color, so Oura is the same
+// violet on every metric; every OTHER key — a distinct 'document:<id>' provenance —
+// gets its own stable, de-collided color from DOCUMENT_SERIES_COLORS
+// (assignHashedColors, the #406 util) instead of every document sharing the single
+// fallback teal. So two documents draw as two different lines with two different
+// legend dots, and the primary-source picker's two "Document" options become
+// visually and textually distinct. Pure + unit-tested.
+export function sourceSeriesColorMap(keys: string[]): Map<string, string> {
+  const out = new Map<string, string>();
+  const unknown: string[] = [];
+  for (const key of keys) {
+    const fixed = SOURCE_COLORS[sourceKey(key)];
+    if (fixed) out.set(key, fixed);
+    else unknown.push(key);
+  }
+  for (const [key, color] of assignHashedColors(
+    unknown,
+    DOCUMENT_SERIES_COLORS
+  )) {
+    out.set(key, color);
+  }
+  return out;
 }

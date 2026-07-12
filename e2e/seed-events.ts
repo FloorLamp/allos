@@ -1398,3 +1398,50 @@ insDupProvider.run(
 console.log(
   "e2e: seeded two same-named 'E2E Duplicate Lab' providers (merge disambiguation, #532)"
 );
+
+// ── Two-document body-metric source comparison (issue #533) ───────────────────
+// A metric extracted from TWO different documents stays two distinct series, but
+// the legend/picker used to collapse both to one "Document" label and one teal
+// color. Seed two DEXA-style documents on profile 1 plus a body-fat reading sourced
+// from each (source 'document:<id>'), so Trends → Body's "Compare sources" renders
+// a body_fat card whose two document series carry distinct filenames + colors.
+// Isolated old dates (well before the seed's recent body-metric window) so the two
+// rows never form a same-day body-metric conflict with each other or a manual row —
+// keeping profile 1's Data → Review count untouched (import-dedup.spec relies on it).
+db.prepare(
+  `DELETE FROM medical_documents WHERE profile_id = 1 AND filename IN ('e2e-dexa-a.pdf', 'e2e-dexa-b.pdf')`
+).run();
+const insCompareDoc = db.prepare(
+  `INSERT INTO medical_documents
+     (profile_id, filename, stored_path, mime_type, size_bytes, doc_type, source,
+      document_date, extraction_status, extracted_count, content_hash, uploaded_at)
+   VALUES (1, ?, ?, 'application/pdf', 1024, 'dexa', 'upload', ?, 'done', 1, ?, ?)`
+);
+const compareDocs: { id: number; date: string; bodyFat: number }[] = [];
+for (const [filename, date, bodyFat] of [
+  ["e2e-dexa-a.pdf", "2022-11-01", 21.4],
+  ["e2e-dexa-b.pdf", "2022-11-03", 19.8],
+] as const) {
+  const id = Number(
+    insCompareDoc.run(
+      filename,
+      `data/uploads/medical/1/${filename}`,
+      date,
+      `e2e533${filename.replace(/\W/g, "")}`.padEnd(64, "0"),
+      `${date} 08:00:00`
+    ).lastInsertRowid
+  );
+  compareDocs.push({ id, date, bodyFat });
+}
+for (const { id, date, bodyFat } of compareDocs) {
+  db.prepare(
+    `DELETE FROM body_metrics WHERE profile_id = 1 AND date = ? AND source = ?`
+  ).run(date, `document:${id}`);
+  db.prepare(
+    `INSERT INTO body_metrics (profile_id, date, body_fat_pct, source)
+     VALUES (1, ?, ?, ?)`
+  ).run(date, bodyFat, `document:${id}`);
+}
+console.log(
+  "e2e: seeded two-document body-fat source comparison on profile 1 (#533)"
+);
