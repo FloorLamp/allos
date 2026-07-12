@@ -157,17 +157,17 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
   },
   // --- Thin wrappers that delegate to a gated helper ---
   {
-    file: "app/(app)/appointments/actions.ts",
+    file: "app/(app)/encounters/appointment-actions.ts",
     fn: "completeAppointment",
     why: "delegates to setStatus(), which calls requireWriteAccess()",
   },
   {
-    file: "app/(app)/appointments/actions.ts",
+    file: "app/(app)/encounters/appointment-actions.ts",
     fn: "cancelAppointment",
     why: "delegates to setStatus(), which calls requireWriteAccess()",
   },
   {
-    file: "app/(app)/appointments/actions.ts",
+    file: "app/(app)/encounters/appointment-actions.ts",
     fn: "reopenAppointment",
     why: "delegates to setStatus(), which calls requireWriteAccess()",
   },

@@ -20,7 +20,7 @@ export default function NextAppointmentWidget({
     <div className="card">
       <WidgetHeader
         title="Next appointment"
-        href="/appointments"
+        href="/encounters"
         linkLabel="All"
       />
       {!appointment ? (

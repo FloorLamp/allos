@@ -1,7 +1,7 @@
 "use server";
 import { requireWriteAccess } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
-import { db } from "@/lib/db";
+import { db, writeTx } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
 import { formError, formOk, type FormResult } from "@/lib/types";
 import { resolveProviderIdByName } from "@/lib/providers-db";
@@ -98,10 +98,19 @@ export async function deleteEncounter(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that visit.");
-  db.prepare("DELETE FROM encounters WHERE id = ? AND profile_id = ?").run(
-    id,
-    profile.id
-  );
+  writeTx(() => {
+    // Row-ops side-state (#288): an appointment may link this visit
+    // (appointments.encounter_id). encounters carries no ON DELETE action, so NULL
+    // the back-link FIRST — the appointment (and its completed status) is
+    // preserved, just unlinked — otherwise the FK would block the delete.
+    db.prepare(
+      "UPDATE appointments SET encounter_id = NULL WHERE encounter_id = ? AND profile_id = ?"
+    ).run(id, profile.id);
+    db.prepare("DELETE FROM encounters WHERE id = ? AND profile_id = ?").run(
+      id,
+      profile.id
+    );
+  });
   revalidateEncounters();
   return formOk();
 }

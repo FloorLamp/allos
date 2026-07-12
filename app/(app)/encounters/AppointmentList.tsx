@@ -1,12 +1,15 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   IconPencil,
   IconTrash,
   IconCheck,
   IconX,
   IconCalendarPlus,
+  IconStethoscope,
 } from "@tabler/icons-react";
 import AppointmentForm from "./AppointmentForm";
 import {
@@ -17,7 +20,8 @@ import {
   reopenAppointment,
   deleteAppointment,
   recordPreventiveFromAppointment,
-} from "./actions";
+  logVisitFromAppointment,
+} from "./appointment-actions";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useToast } from "@/components/Toast";
 import { satisfiedRuleForCompletedKind } from "@/lib/preventive-appointment";
@@ -72,8 +76,12 @@ export default function AppointmentList({
   // The appointment id whose preventive satisfaction has already been recorded
   // from the close-the-loop offer, so the button reads "Recorded" and no-ops.
   const [recordedId, setRecordedId] = useState<number | null>(null);
+  // The appointment id whose visit has just been logged this session, so its
+  // "Log visit" button flips to a done state without waiting for the refresh.
+  const [loggedId, setLoggedId] = useState<number | null>(null);
   const confirm = useConfirm();
   const toast = useToast();
+  const router = useRouter();
 
   // Complete a scheduled visit, then offer to schedule the next one prefilled
   // from it — so recurring visits don't fall off.
@@ -88,6 +96,18 @@ export default function AppointmentList({
     await submit(recordPreventiveFromAppointment, a.id);
     setRecordedId(a.id);
     toast("Preventive care recorded");
+  }
+
+  // Close the appointment → encounter loop (issue #288): create a linked visit
+  // prefilled from this appointment (date/provider/kind) and complete it. The new
+  // visit lands in the Past section below; refresh so it (and the linked badge)
+  // appear.
+  async function onLogVisit(a: Appointment) {
+    await submit(logVisitFromAppointment, a.id);
+    setLoggedId(a.id);
+    setFollowUpFrom(null);
+    toast("Visit logged");
+    router.refresh();
   }
 
   async function onDelete(a: Appointment) {
@@ -105,6 +125,30 @@ export default function AppointmentList({
     <div className="space-y-3">
       {followUpFrom && (
         <div className="rounded-xl border border-brand-200 bg-brand-50/50 p-3 dark:border-brand-900 dark:bg-brand-950/30">
+          {/* Close the appointment → encounter loop (issue #288): turn the just-
+              completed appointment into a real, linked visit in the Past section —
+              prefilled from it — instead of the row just settling to "Completed"
+              with nothing recorded. Hidden once this appointment already links a
+              visit. */}
+          {followUpFrom.encounter_id == null && (
+            <div className="mb-3 flex flex-wrap items-center gap-2 border-b border-brand-200/60 pb-3 dark:border-brand-900/60">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Log this as a visit in your history?
+              </p>
+              <button
+                type="button"
+                data-testid="log-visit"
+                disabled={loggedId === followUpFrom.id}
+                onClick={() => onLogVisit(followUpFrom)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-black/10 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 disabled:opacity-60 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"
+              >
+                <IconStethoscope className="h-3.5 w-3.5" stroke={1.75} />
+                {loggedId === followUpFrom.id
+                  ? "Visit logged ✓"
+                  : "Log this visit"}
+              </button>
+            </div>
+          )}
           {/* Close the loop (issue #85): a completed kind-tagged visit can mark the
               matching preventive care done in one click, so a due reminder clears
               without a separate mark-done on Upcoming. */}
@@ -210,6 +254,29 @@ export default function AppointmentList({
                   </>
                 ) : (
                   <>
+                    {a.status === "completed" &&
+                      (a.encounter_id != null ? (
+                        <Link
+                          href={`/encounters/${a.encounter_id}`}
+                          aria-label="View linked visit"
+                          title="View linked visit"
+                          data-testid="view-linked-visit"
+                          className="tap-target flex h-8 w-8 items-center justify-center rounded-lg text-emerald-600 transition hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950"
+                        >
+                          <IconStethoscope className="h-4 w-4" stroke={1.75} />
+                        </Link>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => onLogVisit(a)}
+                          aria-label="Log this visit"
+                          title="Log this visit"
+                          data-testid="log-visit-row"
+                          className="tap-target flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-emerald-50 hover:text-emerald-600 dark:text-slate-400 dark:hover:bg-emerald-950 dark:hover:text-emerald-400"
+                        >
+                          <IconStethoscope className="h-4 w-4" stroke={1.75} />
+                        </button>
+                      ))}
                     {a.status === "completed" && (
                       <button
                         type="button"

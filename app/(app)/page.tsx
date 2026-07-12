@@ -396,7 +396,7 @@ export default async function Dashboard() {
             icon={IconCalendarEvent}
             message="No appointments scheduled. Add one to see it here and get reminders."
             ctaLabel="Add appointment"
-            ctaHref="/appointments"
+            ctaHref="/encounters"
           />
         );
       case "care-plan-due":

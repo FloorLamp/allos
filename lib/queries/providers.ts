@@ -361,7 +361,7 @@ export function getProviderAppointments(
     date: r.scheduled_at,
     label: r.title || "Appointment",
     sublabel: r.status,
-    href: "/appointments",
+    href: "/encounters",
   }));
 }
 

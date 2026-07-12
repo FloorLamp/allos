@@ -424,7 +424,7 @@ function appointmentHits(profileId: number, like: string): SearchHit[] {
       key: `appointment:${r.id}`,
       title,
       subtitle,
-      href: "/appointments",
+      href: "/encounters",
       date: isoDate(r.scheduled_at),
     };
   });
@@ -596,9 +596,10 @@ const PAGES: {
     keywords: "vaccines shots",
   },
   {
-    title: "Appointments",
-    href: "/appointments",
-    keywords: "visits doctor scheduled booking calendar",
+    title: "Visits",
+    href: "/encounters",
+    keywords:
+      "visits encounters appointments doctor scheduled booking calendar history",
   },
   {
     title: "AI Insights",

@@ -12,7 +12,10 @@ import {
   reconcileFlags,
   ensureMedicationCourse,
   createImportedMedicationCourses,
+  recordPreventiveDone,
 } from "./queries";
+import { matchAppointmentForEncounter } from "./appointment-encounter-match";
+import { satisfiedRuleForCompletedKind } from "./preventive-appointment";
 import { parsePrescription, cleanMedicationName } from "./prescription-parse";
 import { resolveProviderId } from "./providers-db";
 import { cleanProviderInput, providerDedupKey } from "./providers";
@@ -95,6 +98,18 @@ export function clearImportedDocumentRows(
   docId: number
 ): void {
   const source = documentSource(docId);
+  // Row-ops side-state (#288): an appointment may link an encounter this document
+  // produced (via "Log this visit" or the import auto-complete). encounters carry
+  // no ON DELETE action, so NULL those back-links FIRST — otherwise deleting the
+  // encounter (below, in the footprint loop) would trip the appointments.encounter_id
+  // FK. A manual appointment (not in the footprint) is preserved, just unlinked.
+  db.prepare(
+    `UPDATE appointments SET encounter_id = NULL
+       WHERE profile_id = ?
+         AND encounter_id IN (
+           SELECT id FROM encounters WHERE profile_id = ? AND document_id = ?
+         )`
+  ).run(profileId, profileId, docId);
   for (const t of IMPORT_FOOTPRINT_TABLES) {
     db.prepare(
       `DELETE FROM ${t.table} WHERE ${t.key} = ? AND ${footprintScope(t)}`
@@ -120,6 +135,21 @@ export function moveImportedDocumentRows(
     db.prepare(
       `UPDATE ${t.table} SET profile_id = ? WHERE ${t.key} = ? AND ${footprintScope(t)}`
     ).run(destProfileId, footprintKeyValue(t, docId, source), srcProfileId);
+  }
+  // Row-ops side-state (#288): the appointment → encounter link must never cross
+  // profiles. A reassign can move an encounter (or a linking appointment) but not
+  // its counterpart — e.g. a MANUAL appointment stays in the source while its
+  // imported encounter moves to the destination. Re-enforce the same-profile
+  // invariant on BOTH affected profiles: NULL any appointment whose linked
+  // encounter no longer lives in that appointment's profile. A link whose both
+  // ends moved together (an imported appointment + its encounter from this doc)
+  // stays intact, since the encounter now lives in the destination alongside it.
+  for (const pid of [srcProfileId, destProfileId]) {
+    db.prepare(
+      `UPDATE appointments SET encounter_id = NULL
+         WHERE profile_id = ? AND encounter_id IS NOT NULL
+           AND encounter_id NOT IN (SELECT id FROM encounters WHERE profile_id = ?)`
+    ).run(pid, pid);
   }
 }
 
@@ -149,6 +179,82 @@ export function countImportedDocumentRows(
     total += row.n;
   }
   return total;
+}
+
+// Close the appointment → encounter loop for a just-imported document (issue
+// #288): when this document landed encounters that correspond to still-scheduled
+// appointments the user booked ahead of the visit, mark those appointments
+// completed and link them — the "zero manual steps" half of the preventive loop.
+// Runs inside persistDocumentImport's transaction, AFTER the encounter INSERTs, so
+// it sees exactly the rows this import wrote.
+//
+// The match decision is the pure, conservative matchAppointmentForEncounter (a
+// null provider on either side never matches; two same-day candidates need a clear
+// nearest-time signal or it declines). Every read/write is profile-scoped. Each
+// encounter re-reads the still-scheduled, still-unlinked appointment set, so an
+// appointment consumed by an earlier encounter in the same batch can't be matched
+// twice. When the completed appointment's kind maps to a single preventive rule
+// (physical/dental/vision), the satisfaction is ALSO recorded (dated the visit) via
+// the SAME recordPreventiveDone stream the manual close-the-loop uses — so the rule
+// is satisfied end-to-end without a click, mirroring recordPreventiveFromAppointment.
+export function autoCompleteAppointmentsFromEncounters(
+  profileId: number,
+  docId: number
+): void {
+  const encounters = db
+    .prepare(
+      `SELECT id, date, provider_id AS providerId
+         FROM encounters
+        WHERE profile_id = ? AND document_id = ?`
+    )
+    .all(profileId, docId) as {
+    id: number;
+    date: string;
+    providerId: number | null;
+  }[];
+  if (encounters.length === 0) return;
+
+  const readScheduled = db.prepare(
+    `SELECT id, scheduled_at AS scheduledAt, provider_id AS providerId,
+            status, encounter_id AS encounterId, kind
+       FROM appointments
+      WHERE profile_id = ? AND status = 'scheduled' AND encounter_id IS NULL`
+  );
+  const completeAndLink = db.prepare(
+    `UPDATE appointments
+        SET status = 'completed', encounter_id = ?
+      WHERE id = ? AND profile_id = ? AND status = 'scheduled'
+        AND encounter_id IS NULL`
+  );
+
+  for (const enc of encounters) {
+    const candidates = readScheduled.all(profileId) as {
+      id: number;
+      scheduledAt: string;
+      providerId: number | null;
+      status: string;
+      encounterId: number | null;
+      kind: string | null;
+    }[];
+    const matchId = matchAppointmentForEncounter(
+      { date: enc.date, providerId: enc.providerId },
+      candidates
+    );
+    if (matchId == null) continue;
+    completeAndLink.run(enc.id, matchId, profileId);
+    // Close the preventive loop when the completed appointment's kind maps to a
+    // single rule — same satisfaction stream as the manual "Mark done" offer.
+    const matched = candidates.find((c) => c.id === matchId);
+    const ruleKey = satisfiedRuleForCompletedKind(matched?.kind ?? null);
+    if (ruleKey) {
+      recordPreventiveDone(
+        profileId,
+        ruleKey,
+        enc.date.slice(0, 10),
+        "appointment"
+      );
+    }
+  }
 }
 
 // Write one document's parsed contents, replacing any rows it previously
@@ -197,6 +303,10 @@ export function persistDocumentImport(
     }
 
     const counts = insertImportRows(profileId, docId, input, providerIdFor);
+
+    // Close the appointment → encounter loop: a just-imported encounter that
+    // matches a still-scheduled appointment marks it completed + linked (#288).
+    autoCompleteAppointmentsFromEncounters(profileId, docId);
 
     // The toast + Review feed report ONE "N items imported" number. Tally it off
     // the footprint tables here — after every insert loop — so it counts every

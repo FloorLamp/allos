@@ -60,7 +60,7 @@ export const PALETTE_ACTIONS: PaletteAction[] = [
     label: "Add appointment",
     keywords: ["visit", "doctor", "schedule", "clinic", "booking"],
     icon: "calendar",
-    target: { kind: "navigate", href: `/appointments?${FOCUS_PARAM}=1` },
+    target: { kind: "navigate", href: `/encounters?${FOCUS_PARAM}=1` },
   },
   {
     id: "add-biomarker",

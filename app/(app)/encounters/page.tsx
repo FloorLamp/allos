@@ -1,46 +1,145 @@
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
-import { getEncounters, getProviderNames } from "@/lib/queries";
+import {
+  getAppointments,
+  getEncounters,
+  getProviderNames,
+} from "@/lib/queries";
+import { isRealIsoDate } from "@/lib/date";
+import { isAppointmentKind } from "@/lib/preventive-appointment";
 import ProviderDatalist from "@/components/ProviderDatalist";
-import { PageHeader } from "@/components/ui";
+import { PageHeader, EmptyState } from "@/components/ui";
+import AppointmentForm from "./AppointmentForm";
+import AppointmentList from "./AppointmentList";
 import EncounterForm from "./EncounterForm";
 import EncounterList from "./EncounterList";
+import { createAppointment } from "./appointment-actions";
 import { addEncounter } from "./actions";
 
 export const dynamic = "force-dynamic";
 
-// Visits / encounters: the profile's visit history, newest first.
-// Imported from a health record's CCD Encounters section, plus manual add/edit/
-// delete. Each visit shows its date, type, chief complaint, diagnoses, and the
-// attending provider + facility (resolved from the shared providers registry).
-export default async function EncountersPage() {
+// A single value from the (string | string[]) searchParams shape.
+function one(v: string | string[] | undefined): string | null {
+  const s = Array.isArray(v) ? v[0] : v;
+  return s?.trim() || null;
+}
+
+// The unified Visits page (issue #288): appointments (future, scheduling) and
+// encounters (past, clinical) are one continuum in the user's head, so they share
+// ONE surface with two sections — "Upcoming" (the appointments management +
+// booking form + #85 Book CTA + calendar-feed hookup) and "Past" (imported/manual
+// visit history with /encounters/[id] detail links). The tables stay separate
+// (different shapes and lifecycles); only the page merged. `/appointments`
+// redirects here.
+export default async function VisitsPage(props: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
+  const searchParams = await props.searchParams;
   const { profile } = await requireSession();
   const now = today(profile.id);
+  const appointments = getAppointments(profile.id);
   const encounters = getEncounters(profile.id);
   const providerNames = getProviderNames();
 
+  // Prefill the booking form from a preventive "Book" CTA (issue #85): the item's
+  // title + mapped visit kind + suggested date arrive as query params (now pointed
+  // at /encounters). Only build a prefill when a title or kind is present; a lone
+  // ?new=1 (command palette) just focuses the empty form. A real ISO date param
+  // seeds the form's default date.
+  const ctaTitle = one(searchParams.title);
+  const ctaKindRaw = one(searchParams.kind);
+  const ctaKind = isAppointmentKind(ctaKindRaw) ? ctaKindRaw : null;
+  const ctaDate = one(searchParams.date);
+  const prefillDate = ctaDate && isRealIsoDate(ctaDate) ? ctaDate : now;
+  const bookPrefill =
+    ctaTitle || ctaKind
+      ? { title: ctaTitle, provider: null, location: null, kind: ctaKind }
+      : undefined;
+
+  // Split scheduled (future-facing, still on Upcoming) from the settled history so
+  // the active list stays actionable. getAppointments returns soonest-first.
+  const scheduled = appointments.filter((a) => a.status === "scheduled");
+  const settled = appointments.filter((a) => a.status !== "scheduled");
+  const upcomingCount = scheduled.filter(
+    (a) => a.scheduled_at.slice(0, 10) >= now
+  ).length;
+
   return (
-    <div>
-      {/* Shared provider picker options for the add + edit forms. */}
+    <div className="space-y-10">
+      {/* Shared provider picker options for every add + edit form on the page. */}
       <ProviderDatalist names={providerNames} />
       <PageHeader
         title="Visits"
-        subtitle="Your visit history — office visits, hospitalizations, and other encounters. Add them manually or import from uploaded health records (CCD Encounters section)."
+        subtitle="Your appointments and visit history in one place — book upcoming visits (they also surface on Upcoming) and review past encounters, diagnoses, and notes."
       />
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="min-w-0 space-y-4 lg:col-span-2">
-          <EncounterList items={encounters} defaultDate={now} />
-        </div>
+      {/* Upcoming — the appointments surface. */}
+      <section data-testid="visits-upcoming">
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+          Upcoming
+        </h2>
+        <div className="grid gap-6 lg:grid-cols-3">
+          <div className="min-w-0 space-y-6 lg:col-span-2">
+            <section>
+              <h3 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                Scheduled
+                {scheduled.length > 0 && (
+                  <span className="text-slate-400 dark:text-slate-500">
+                    ({upcomingCount} upcoming)
+                  </span>
+                )}
+              </h3>
+              {scheduled.length === 0 ? (
+                <EmptyState message="No scheduled appointments. Add one to see it here and on Upcoming." />
+              ) : (
+                <AppointmentList items={scheduled} defaultDate={now} />
+              )}
+            </section>
 
-        <div className="min-w-0 space-y-4">
-          <EncounterForm action={addEncounter} defaultDate={now} />
-          <p className="px-1 text-xs text-slate-400 dark:text-slate-500">
-            Informational only, not medical advice. Imported visits come from
-            uploaded health records (CCD Encounters section).
-          </p>
+            {settled.length > 0 && (
+              <details className="card">
+                <summary className="cursor-pointer font-semibold text-slate-800 dark:text-slate-100">
+                  Completed &amp; cancelled{" "}
+                  <span className="text-sm font-normal text-slate-400">
+                    ({settled.length})
+                  </span>
+                </summary>
+                <div className="mt-3">
+                  <AppointmentList items={settled} defaultDate={now} />
+                </div>
+              </details>
+            )}
+          </div>
+
+          <div className="min-w-0 space-y-4">
+            <AppointmentForm
+              action={createAppointment}
+              defaultDate={bookPrefill ? prefillDate : now}
+              prefill={bookPrefill}
+            />
+          </div>
         </div>
-      </div>
+      </section>
+
+      {/* Past — the encounters / visit-history surface. */}
+      <section data-testid="visits-past">
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+          Past
+        </h2>
+        <div className="grid gap-6 lg:grid-cols-3">
+          <div className="min-w-0 space-y-4 lg:col-span-2">
+            <EncounterList items={encounters} defaultDate={now} />
+          </div>
+
+          <div className="min-w-0 space-y-4">
+            <EncounterForm action={addEncounter} defaultDate={now} />
+            <p className="px-1 text-xs text-slate-400 dark:text-slate-500">
+              Informational only, not medical advice. Imported visits come from
+              uploaded health records (CCD Encounters section).
+            </p>
+          </div>
+        </div>
+      </section>
     </div>
   );
 }

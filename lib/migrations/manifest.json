@@ -23,5 +23,6 @@
   "022-integration-refresh-claim.ts": "e7af7b35752c3c6c291ec69834e938314f26c6bf4447fb71f6cc95a2eb9a578f",
   "023-import-tombstones.ts": "07c6349524ed10ef1fb28f785916cdb73b29cfc651096dab2fd9aecff3322197",
   "024-appointment-import-provenance.ts": "5a4722f51e8c0d3c58777f8901cca32f2fef7b76f31617494f64a0fbb1723d02",
-  "025-protocol-equipment-practice.ts": "a5b43b0aadb220ffb8a8787add02ff6afc40993a00858e8021c0cd83226b3ea2"
+  "025-protocol-equipment-practice.ts": "a5b43b0aadb220ffb8a8787add02ff6afc40993a00858e8021c0cd83226b3ea2",
+  "026-appointment-encounter-link.ts": "274f26ddcaf6729397e2f854fb6d0c311f586b21aab103fe45fadc4e607b8ac5"
 }

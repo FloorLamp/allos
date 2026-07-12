@@ -165,7 +165,7 @@ describe("pickNextAppointment", () => {
     key: `appointment:${id}`,
     domain: "appointment",
     title: `Visit ${id}`,
-    href: "/appointments",
+    href: "/encounters",
     dueDate,
   });
 
@@ -223,7 +223,7 @@ describe("pickNextAppointment", () => {
       key: `appointment:${a.id}`,
       domain: "appointment",
       title: `Visit ${a.id}`,
-      href: "/appointments",
+      href: "/encounters",
       dueDate: a.scheduled_at.slice(0, 10),
     }));
 
