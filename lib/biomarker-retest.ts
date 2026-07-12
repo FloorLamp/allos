@@ -8,6 +8,8 @@
 // DEFAULT_RETEST_DAYS in lib/reference-range.retestIntervalDays.
 
 import canonicalSeed from "./canonical-biomarkers.json";
+import { RETEST_WORTHY } from "./curated-biomarkers";
+import { biomarkerFamily } from "./canonical-name";
 
 interface RetestRow {
   name?: string;
@@ -34,4 +36,23 @@ export function retestDaysForBiomarker(
 ): number | null {
   if (!name) return null;
   return RETEST_BY_NAME.get(name.trim().toLowerCase()) ?? null;
+}
+
+// The retest-WORTHY families (issue #546): the #482 family identity of every curated
+// RETEST_WORTHY analyte, so the vitamin-D 25-OH isoforms (D2/D3/total) all inherit
+// "Vitamin D, 25-Hydroxy"'s worthiness — matching how the retest signal groups by
+// family. Most analytes are their own family (keyed by canonical name), so this
+// behaves like an exact-name set for everything except the interchangeable families.
+const WORTHY_FAMILIES: Set<string> = new Set(
+  RETEST_WORTHY.map((n) => biomarkerFamily(n))
+);
+
+// Whether a biomarker is on the curated recurring-monitoring tier (issue #546). An
+// analyte NOT on the tier is an incidental one-off — the Upcoming retest signal still
+// tracks its clock but ranks it into a low, dismissable tier rather than nagging it
+// with a lipid panel's standing. Family-aware (see WORTHY_FAMILIES) and case-
+// insensitive on the canonical name.
+export function isRetestWorthy(name: string | null | undefined): boolean {
+  if (!name) return false;
+  return WORTHY_FAMILIES.has(biomarkerFamily(name));
 }

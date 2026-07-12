@@ -17,6 +17,7 @@ import {
   setWeekMode,
 } from "../lib/settings";
 import { setMinTrainingAge } from "../lib/age-gate";
+import { reconcileFlags } from "../lib/queries";
 import { hashPasswordSync } from "../lib/password";
 import {
   E2E_LOGIN_CHILD,
@@ -1103,6 +1104,91 @@ db.prepare(
      (profile_id, date, category, name, value, canonical_name, notes, source)
    VALUES (?, '2023-05-01', 'lab', ?, 'Immune', ?, 'Immune', 'manual')`
 ).run(PROFILE_ID, IMMUNITY_MARKER, IMMUNITY_MARKER);
+
+// #544/#549 — a POSITIVE durable-immunity titer the extractor stamped "abnormal".
+// The qualitative classifier reroutes the flag reconcile to present it as a neutral
+// "Immune" status (never a red "Abnormal" attention flag) and cross-link to the
+// immunization surface. Synthetic name that matches isDurableImmunityTiter.
+const IMMUNE_FLAG_MARKER = "E2E Hepatitis B Surface Antibody";
+db.prepare(
+  `DELETE FROM medical_records WHERE profile_id = ? AND canonical_name = ?`
+).run(PROFILE_ID, IMMUNE_FLAG_MARKER);
+db.prepare(
+  `INSERT INTO medical_records
+     (profile_id, date, category, name, value, canonical_name, notes, flag, source)
+   VALUES (?, '2023-05-01', 'lab', ?, 'Positive', ?, 'Immune', 'abnormal', 'manual')`
+).run(PROFILE_ID, IMMUNE_FLAG_MARKER, IMMUNE_FLAG_MARKER);
+
+// #548 — an IMMUTABLE identity attribute (blood type) the extractor stamped
+// "abnormal", dated ~2 years old. The classifier makes it neutral (never abnormal)
+// and exempt from the retest-stale clock, the way genomics + durable immunity are.
+const BLOOD_TYPE_MARKER = "E2E ABO Blood Group";
+db.prepare(
+  `DELETE FROM medical_records WHERE profile_id = ? AND canonical_name = ?`
+).run(PROFILE_ID, BLOOD_TYPE_MARKER);
+db.prepare(
+  `INSERT INTO medical_records
+     (profile_id, date, category, name, value, canonical_name, flag, source)
+   VALUES (?, '2023-05-01', 'lab', ?, 'A POSITIVE', ?, 'abnormal', 'manual')`
+).run(PROFILE_ID, BLOOD_TYPE_MARKER, BLOOD_TYPE_MARKER);
+
+// #542 — a titer series whose values carry an embedded unit ("58 mIU/mL") and a
+// dilution ratio ("1:160"), both with value_num NULL. parseLeadingNumeric recovers
+// the leading numeric at the chart boundary so these plot instead of vanishing.
+const EMBEDDED_UNIT_MARKER = "E2E Rubella IgG Titer";
+db.prepare(
+  `DELETE FROM medical_records WHERE profile_id = ? AND canonical_name = ?`
+).run(PROFILE_ID, EMBEDDED_UNIT_MARKER);
+const embeddedInsert = db.prepare(
+  `INSERT INTO medical_records
+     (profile_id, date, category, name, value, canonical_name, source)
+   VALUES (?, ?, 'lab', ?, ?, ?, 'manual')`
+);
+embeddedInsert.run(
+  PROFILE_ID,
+  "2024-02-01",
+  EMBEDDED_UNIT_MARKER,
+  "1:40",
+  EMBEDDED_UNIT_MARKER
+);
+embeddedInsert.run(
+  PROFILE_ID,
+  "2025-02-01",
+  EMBEDDED_UNIT_MARKER,
+  "58 mIU/mL",
+  EMBEDDED_UNIT_MARKER
+);
+
+// #543 — a purely qualitative series (no numeric anywhere) renders as a dated
+// timeline instead of a blank numeric chart.
+const QUALITATIVE_MARKER = "E2E Mumps IgG Screen";
+db.prepare(
+  `DELETE FROM medical_records WHERE profile_id = ? AND canonical_name = ?`
+).run(PROFILE_ID, QUALITATIVE_MARKER);
+const qualInsert = db.prepare(
+  `INSERT INTO medical_records
+     (profile_id, date, category, name, value, canonical_name, source)
+   VALUES (?, ?, 'lab', ?, ?, ?, 'manual')`
+);
+qualInsert.run(
+  PROFILE_ID,
+  "2023-03-01",
+  QUALITATIVE_MARKER,
+  "Negative",
+  QUALITATIVE_MARKER
+);
+qualInsert.run(
+  PROFILE_ID,
+  "2025-03-01",
+  QUALITATIVE_MARKER,
+  "Reactive",
+  QUALITATIVE_MARKER
+);
+
+// Reconcile so the extractor's blunt "abnormal" flags are corrected before the
+// specs read the page (the app's own boot reconcile is signature-gated and the seed
+// already stamped the current signature, so it would skip these post-seed inserts).
+reconcileFlags(PROFILE_ID);
 
 // #383 — a lab whose raw name ("...CHOLESTEROL, TOTAL") differs from its
 // displayed canonical heading ("...Total Cholesterol"), so the biomarker search

@@ -328,6 +328,67 @@ export function parseLooseValue(
   return null;
 }
 
+// A numeric recovered from a value string parseLooseValue deliberately rejects —
+// the whole-string anchor there is the strict "numeric intent" contract other
+// callers rely on, so this is a SEPARATE, chart-only recovery (issue #542):
+//   "58 mIU/mL"  → { value: 58 }              (extraction left the unit embedded)
+//   "12.3 mg/dL" → { value: 12.3 }
+//   "1:160"      → { value: 160, titer: true } (titer reciprocal — higher = more
+//                                               antibody; the plottable magnitude)
+// Returns null when there is no leading number ("positive", "Pattern A", "").
+export interface LeadingNumeric {
+  value: number;
+  // Parsed from a "1:N" dilution ratio; `value` is the reciprocal N.
+  titer?: boolean;
+}
+
+export function parseLeadingNumeric(
+  s: string | null | undefined
+): LeadingNumeric | null {
+  if (!s) return null;
+  const str = s.trim();
+  if (!str) return null;
+  // Titer ratio "1:160" → the reciprocal (160), before the generic leading-number
+  // rule (which would otherwise read the leading "1").
+  const titer = /^1\s*:\s*(\d+(?:\.\d+)?)$/.exec(str);
+  if (titer) {
+    const n = Number(titer[1]);
+    return Number.isFinite(n) ? { value: n, titer: true } : null;
+  }
+  // A leading number FOLLOWED BY a unit/text token. The lookahead keeps the number
+  // from being split by backtracking (so a bare "58" — where the only trailing char
+  // is another digit — does NOT match and is left to parseLooseValue's strict path).
+  const lead = /^(-?\d+(?:\.\d+)?)(?=[^\d.]|\s)\s*\S/.exec(str);
+  if (lead) {
+    const n = Number(lead[1]);
+    return Number.isFinite(n) ? { value: n } : null;
+  }
+  return null;
+}
+
+// The number a reading contributes to a numeric chart — the ONE computation both
+// the chart points and the status badge derive from (issue #542): the exact
+// value_num, else a bare/bounded numeric string (parseLooseValue), else a leading
+// numeric recovered from a unit-suffixed or titer value (parseLeadingNumeric).
+// Null → the reading is purely qualitative (nothing to plot).
+export interface PlottableValue {
+  value: number;
+  bound?: "<" | ">";
+  titer?: boolean;
+}
+
+export function plottableReadingValue(
+  valueNum: number | null | undefined,
+  value: string | null | undefined
+): PlottableValue | null {
+  if (valueNum != null && Number.isFinite(valueNum)) return { value: valueNum };
+  const loose = parseLooseValue(value);
+  if (loose) return { value: loose.value, bound: loose.bound };
+  const lead = parseLeadingNumeric(value);
+  if (lead) return { value: lead.value, titer: lead.titer };
+  return null;
+}
+
 export type RangeStatus = "below" | "above" | "in" | "unknown";
 
 // Where a value sits relative to a plain [low, high] range (null bound = open).
@@ -496,6 +557,8 @@ export function flagLabel(flag: string | null | undefined): string {
       return "Low";
     case "abnormal":
       return "Abnormal";
+    case "immune":
+      return "Immune";
     case "non-optimal-high":
       return "Above optimal";
     case "non-optimal-low":
@@ -582,6 +645,27 @@ export function retestIntervalDays(
   return retestDays != null && retestDays > 0
     ? retestDays
     : DEFAULT_RETEST_DAYS;
+}
+
+// The retest AGE CEILING (issue #546): a reading older than this is stale BASELINE
+// data ("last measured 12 years ago"), not "due for a redraw" — nudging it as an
+// urgency-banded action item is dishonest. Past the ceiling a stale reading drops out
+// of the retest nudge entirely (a distinct "historical" state), regardless of its
+// analyte's cadence. Set well beyond the longest curated cadence (Lp(a)'s 5-year
+// clock) so a normal recurring analyte never trips it — only genuinely ancient
+// one-offs do.
+export const RETEST_AGE_CEILING_DAYS = 3650; // ~10 years
+
+// Whether a reading is beyond the retest age ceiling (issue #546) — so old it's
+// historical baseline rather than "retest overdue". Pure; the caller supplies the
+// reading's effective date and today.
+export function isBeyondRetestHorizon(
+  latestDate: string | null | undefined,
+  today: string,
+  ceilingDays: number = RETEST_AGE_CEILING_DAYS
+): boolean {
+  if (!latestDate) return false;
+  return daysBetween(latestDate, today) > ceilingDays;
 }
 
 // Whole days between two YYYY-MM-DD dates (toISO - fromISO), or 0 if unparseable.
@@ -718,13 +802,150 @@ export function isDurableImmunePositive(r: ImmunityResult): boolean {
   return isDurableImmunityTiter(r.name) && isImmunePositiveResult(r);
 }
 
+// ---------------------------------------------------------------------------
+// Qualitative-result classifier (issue #549). The QUALITATIVE mirror of the
+// numeric path's parseLooseValue (extract a number) + reconciledFlag (judge it
+// against curated ranges). Non-numeric lab values ("Positive", "Reactive", "A+",
+// "YELLOW", "e3/e3") have NO shared choke-point, so the extractor's one-shot
+// abnormal/normal guess — never reconciled afterward (reconciledFlag bails on both
+// `flag === "abnormal"` and `value_num == null`) — drives every surface, wrongly.
+// classifyQualitativeResult is that missing choke-point: given the analyte name and
+// the reading's value/notes/reference it resolves what the value MEANS, so the flag
+// chip, the staleness clock, the notification digest, and the chart timeline agree.
+//
+// Exclusion discipline — the mirror of the #482 "distinct assays stay apart"
+// identity-family rule: the SAME word "positive" means opposite things by class, so
+// the CLASS is resolved from the NAME and the PRESENCE from the value/notes vocab —
+//   • infection-positive (HBsAg, anti-HBc, HCV, HIV, culture growth) → polarity BAD
+//   • immune-positive     (durable-immunity titers, #516)            → polarity GOOD
+//   • attribute-positive  (blood type, genotype, urinalysis color…)  → polarity NEUTRAL
+// Returns null when neither the name nor the value is recognized — exactly like
+// parseLooseValue returning null on a non-numeric string — so callers leave the
+// existing extractor/numeric behavior UNTOUCHED rather than guessing (never quiet an
+// unrecognized result). It reuses the #516 seeds (isDurableImmunityTiter /
+// isImmunePositiveResult / the POSITIVE/NEGATIVE vocab) rather than forking them.
+// ---------------------------------------------------------------------------
+
+export type QualitativePresence = "positive" | "negative" | "neutral";
+
+// Infection / active-disease markers — a POSITIVE here is genuinely bad and MUST keep
+// flagging (never quieted). Mirrors the exclusion set isDurableImmunityTiter uses to
+// hold antigen/infection markers OUT of the immunity family.
+const INFECTION_MARKER =
+  /antigen|hbsag|core antibody|core ab|anti-?hbc|hbcab|hepatitis c|\bhcv\b|\bhiv\b|\brpr\b|treponema|syphilis|\bvdrl\b|chlamydia|gonorrh|\bculture\b/i;
+
+// Immutable identity attributes — a value that never changes and is never "abnormal":
+// blood group/type, Rh factor, and genotype/allele strings (#548 §2).
+const IMMUTABLE_ATTRIBUTE =
+  /blood\s*(?:type|group)|\babo\b|rh\s*type|rh\s*factor|rh\s*\(?d\)?\b|\bgenotype\b|\ballele\b|\bhaplotype\b/i;
+
+// Context-neutral (but mutable) descriptive attributes — urinalysis color/appearance/
+// clarity and morphology "pattern" — neither good nor bad, so never "abnormal" (#548 §1).
+const NEUTRAL_ATTRIBUTE =
+  /\bcolou?r\b|appearance|clarity|\bpattern\b|morphology/i;
+
+// A culture that GREW something is positive; "no growth" is negative. Small extra
+// vocab beyond the titer words, only meaningful on a culture/infection result.
+const CULTURE_NEGATIVE = /\bno growth\b|\bnone\b/i;
+const CULTURE_POSITIVE = /\bgrowth\b/i;
+
+// The presence a qualitative value asserts, from the reading's value + notes, using
+// the SAME #516 vocabulary (NEGATIVE checked first — "non-reactive"/"non-immune"
+// contain the positive words). Neutral when nothing recognized is said.
+export function qualitativePresence(
+  ...texts: Array<string | null | undefined>
+): QualitativePresence {
+  const s = texts.filter(Boolean).join(" ").trim();
+  if (!s) return "neutral";
+  if (NEGATIVE_TITER.test(s) || CULTURE_NEGATIVE.test(s)) return "negative";
+  if (POSITIVE_TITER.test(s) || CULTURE_POSITIVE.test(s)) return "positive";
+  return "neutral";
+}
+
+export interface QualitativeClassification {
+  presence: QualitativePresence;
+  // Clinical sense of the presence FOR THIS ANALYTE CLASS: good (reassuring, e.g. an
+  // immunity titer that's positive or an infection marker that's negative), bad (an
+  // infection marker that's positive), or neutral (an identity/descriptive attribute).
+  polarity: "good" | "bad" | "neutral";
+  // The value never meaningfully changes (blood type, genotype) → exempt from retest,
+  // like genomics + durable immunity already are (#548 §2).
+  immutable: boolean;
+}
+
+export function classifyQualitativeResult(
+  name: string | null | undefined,
+  value?: string | null,
+  notes?: string | null,
+  reference?: string | null
+): QualitativeClassification | null {
+  const n = (name ?? "").trim().toLowerCase();
+  if (!n) return null;
+  const presence = qualitativePresence(value, notes);
+
+  // 1. Immutable identity attributes (blood type, genotype) — never abnormal, never stale.
+  if (IMMUTABLE_ATTRIBUTE.test(n))
+    return { presence, polarity: "neutral", immutable: true };
+
+  // 2. Infection / active-disease markers — positive is BAD (keep flagging), negative
+  //    is reassuring. An ambiguous reading yields null (don't fabricate a verdict).
+  if (INFECTION_MARKER.test(n) && !isDurableImmunityTiter(name)) {
+    if (presence === "positive")
+      return { presence, polarity: "bad", immutable: false };
+    if (presence === "negative")
+      return { presence, polarity: "good", immutable: false };
+    return null;
+  }
+
+  // 3. Durable-immunity titers (#516) — an immune-POSITIVE titer is GOOD. Judged from
+  //    the value/notes/reference (NOT any stored flag — the blunt "abnormal" is exactly
+  //    what we're reconsidering). A negative/equivocal titer keeps its own flag + clock.
+  if (isDurableImmunityTiter(name)) {
+    if (isImmunePositiveResult({ name, value, notes, reference }))
+      return { presence: "positive", polarity: "good", immutable: false };
+    return null;
+  }
+
+  // 4. Context-neutral descriptive attributes (urinalysis color, morphology pattern).
+  if (NEUTRAL_ATTRIBUTE.test(n))
+    return { presence, polarity: "neutral", immutable: false };
+
+  // 5. Unrecognized analyte — no confident qualitative interpretation (leave as-is).
+  return null;
+}
+
+// The stored flag a qualitative reading should carry, given its classifier verdict
+// and current flag (issue #549, routing #544 + #548 §1). The qualitative counterpart
+// of reconciledFlag: "immune" for a good durable-immunity titer, null (clear to
+// normal) for a neutral attribute or good non-immunity result that a blunt "abnormal"
+// mis-flagged, and undefined (leave unchanged) for a bad-polarity infection marker or
+// an unrecognized value. Never touches a flag it can't confidently reclassify.
+export function qualitativeFlagResolution(
+  name: string | null | undefined,
+  value: string | null | undefined,
+  notes: string | null | undefined,
+  reference: string | null | undefined,
+  currentFlag: string | null | undefined
+): "immune" | null | undefined {
+  const c = classifyQualitativeResult(name, value, notes, reference);
+  if (!c) return undefined; // unrecognized → leave the extractor/existing flag
+  if (c.polarity === "bad") return undefined; // infection-positive stays flagged
+  if (c.polarity === "good" && isDurableImmunityTiter(name))
+    return currentFlag === "immune" ? undefined : "immune";
+  // Neutral attribute, or good non-immunity: never "abnormal". Clear an out-of-range
+  // flag the extractor guessed; leave an already-neutral flag alone.
+  return isOutOfRange(currentFlag) ? null : undefined;
+}
+
 // Whether a biomarker's latest reading is past its retest window. `retestDays` is
 // the analyte's curated cadence (null → the flat DEFAULT_RETEST_DAYS), so e.g. a
 // quarterly HbA1c goes stale at 90 days while an uncurated lab still goes stale at
 // 365. Genomics never go stale (genetics don't change). An immune-POSITIVE durable-
-// immunity titer never goes stale either (issue #516) — when the optional `immunity`
-// context is supplied and it's a durable immune-positive result. Boundary: stale
-// strictly AFTER the window (age > interval), matching the original > comparison.
+// immunity titer never goes stale either (issue #516), and — via the shared
+// qualitative classifier (#549) — neither does an IMMUTABLE-attribute result (blood
+// type, genotype), the same "the value can't change" exemption (#548 §2). Both use
+// the optional `immunity` context (the reading's name/flag/value/notes/reference).
+// Boundary: stale strictly AFTER the window (age > interval), matching the original.
 export function isBiomarkerStale(
   latestDate: string | null | undefined,
   category: string | null | undefined,
@@ -734,7 +955,16 @@ export function isBiomarkerStale(
 ): boolean {
   if (!latestDate) return false;
   if (category === "genomics") return false; // genetics don't change
-  if (immunity && isDurableImmunePositive(immunity)) return false; // durable immunity (#516)
+  if (immunity) {
+    if (isDurableImmunePositive(immunity)) return false; // durable immunity (#516)
+    const c = classifyQualitativeResult(
+      immunity.name,
+      immunity.value,
+      immunity.notes,
+      immunity.reference
+    );
+    if (c?.immutable) return false; // immutable attribute — never stale (#548 §2)
+  }
   return daysBetween(latestDate, today) > retestIntervalDays(retestDays);
 }
 

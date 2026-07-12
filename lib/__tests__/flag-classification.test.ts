@@ -18,10 +18,15 @@ const ALL_FLAGS: MedicalFlag[] = [
   "high",
   "low",
   "abnormal",
+  "immune",
   "non-optimal",
   "non-optimal-high",
   "non-optimal-low",
 ];
+
+// The neutral (default-tone) flags: neither out-of-range nor non-optimal. "immune"
+// is a GOOD durable-immunity status (#544), so it joins "normal" in this tier.
+const NEUTRAL_FLAGS: MedicalFlag[] = ["normal", "immune"];
 
 describe("isOutOfRange", () => {
   it("is exactly the clinical high/low/abnormal tier", () => {
@@ -43,10 +48,14 @@ describe("isOutOfRange", () => {
     for (const f of ALL_FLAGS) {
       expect(isOutOfRange(f) && isNonOptimal(f)).toBe(false);
     }
-    // Every recognized non-normal flag lands in exactly one of the two tiers.
-    const abnormal = ALL_FLAGS.filter((f) => f !== "normal");
+    // Every recognized concern flag lands in exactly one of the two tiers. The
+    // neutral flags (normal, immune) are in neither.
+    const abnormal = ALL_FLAGS.filter((f) => !NEUTRAL_FLAGS.includes(f));
     for (const f of abnormal) {
       expect(isOutOfRange(f) || isNonOptimal(f)).toBe(true);
+    }
+    for (const f of NEUTRAL_FLAGS) {
+      expect(isOutOfRange(f) || isNonOptimal(f)).toBe(false);
     }
   });
 });
@@ -61,6 +70,7 @@ describe("flagTone", () => {
       "non-optimal-high": "warn",
       "non-optimal-low": "warn",
       normal: "default",
+      immune: "default",
     };
     for (const f of ALL_FLAGS) {
       expect(flagTone(f)).toBe(cases[f]);
@@ -91,6 +101,7 @@ describe("flagLabel", () => {
     expect(flagLabel("non-optimal-low")).toBe("Below optimal");
     expect(flagLabel("non-optimal")).toBe("Non-optimal");
     expect(flagLabel("normal")).toBe("Normal");
+    expect(flagLabel("immune")).toBe("Immune");
   });
 
   // The bug the issue reports: the two former copies disagreed on the catch-all

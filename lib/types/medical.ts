@@ -77,6 +77,11 @@ export type MedicalFlag =
   | "high"
   | "low"
   | "abnormal"
+  // A GOOD durable-immunity titer (a positive hep A/B surface Ab, MMR/varicella IgG):
+  // protective immunity is the desired result, so it's a neutral status, never a red
+  // "abnormal" attention flag (issue #544). Derived by the qualitative classifier
+  // (#549) in the flag reconcile; its tone is "default" and it is NOT out-of-range.
+  | "immune"
   | "non-optimal"
   | "non-optimal-high"
   | "non-optimal-low";

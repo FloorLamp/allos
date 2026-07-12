@@ -31,10 +31,11 @@ import { scheduledMatchForRule } from "../../preventive-appointment";
 import { carePlanUpcomingItems } from "../../care-plan-upcoming";
 import {
   isBiomarkerStale,
+  isBeyondRetestHorizon,
   retestIntervalDays,
   daysBetween,
 } from "../../reference-range";
-import { retestDaysForBiomarker } from "../../biomarker-retest";
+import { retestDaysForBiomarker, isRetestWorthy } from "../../biomarker-retest";
 import {
   biomarkerRetestTitle,
   biomarkerRetestDetail,
@@ -94,6 +95,12 @@ import { getFindingSuppressions } from "./suppressions";
 // isBiomarkerStale). Kept narrow so the retest signal stays a labs signal. The
 // cadence is per-analyte now (curated retest_days, default 365) rather than flat.
 const RETEST_CATEGORIES = new Set(["lab", "biomarker"]);
+
+// The priority an incidental (non-retest-worthy, non-risk-elevated) analyte's retest
+// item carries (issue #546): below the default 0 so it sorts UNDER worthy retests and
+// risk-elevated items within a band — the "low, dismissable tier" for ancient one-offs
+// that shouldn't nag with a lipid panel's standing.
+const RETEST_LOW_TIER_PRIORITY = -1;
 
 // Doses pending TODAY across active supplements + medications (reuses the
 // supplement schedule's isDueOn with today's workout/situation context, and the
@@ -360,10 +367,23 @@ function biomarkerItems(profileId: number, today: string): UpcomingItem[] {
       )
     )
       continue;
+    // Age ceiling (issue #546): a reading older than ~10 years is historical baseline,
+    // not "retest overdue" — drop it from the nudge entirely rather than banding it as
+    // an urgency action item, regardless of the analyte's cadence.
+    if (isBeyondRetestHorizon(effectiveDate, today)) continue;
     // Modulate the cadence by the matched risk rules (tightest multiplier wins),
     // then test staleness + band against the MODULATED interval so a high-risk
     // analyte comes due sooner.
     const mod = retestModulationFor(name, riskFactors);
+    // Retest-worthiness tier (issue #546): the recurring-monitoring set (lipids, A1c,
+    // key metabolic/CBC/thyroid/renal…) ranks at its risk-modulated priority; an
+    // incidental one-off (heavy metal, allergen IgE, LDL subfraction…) with no risk
+    // elevation drops to a LOW, dismissable tier instead of nagging with a lipid
+    // panel's standing — feeding the #517 priority rather than forking it.
+    const priority =
+      isRetestWorthy(name) || mod.priority > 0
+        ? mod.priority
+        : RETEST_LOW_TIER_PRIORITY;
     const interval = Math.max(
       1,
       Math.round(retestIntervalDays(retestDays) * mod.multiplier)
@@ -401,7 +421,7 @@ function biomarkerItems(profileId: number, today: string): UpcomingItem[] {
         ? `/biomarkers/view?name=${encodeURIComponent(name)}`
         : "/biomarkers",
       dueDate: shiftDateStr(effectiveDate, interval),
-      priority: mod.priority,
+      priority,
     });
   }
   return items;

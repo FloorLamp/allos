@@ -77,6 +77,11 @@ export function getNewlyFlaggedBiomarkers(
   since: string,
   limit = MAX_FLAGGED
 ): DigestFlaggedBiomarker[] {
+  // "immune" is a GOOD durable-immunity status (#544/#549), not a care-tier alert,
+  // so it never reaches the flagged-digest/hero/push — and a context-neutral
+  // qualitative value the classifier cleared has flag NULL, already excluded here.
+  // Neutral extractor-guessed "abnormal" flags are corrected to NULL by the flag
+  // reconcile before this read (#548 §1).
   const rows = db
     .prepare(
       `SELECT COALESCE(NULLIF(trim(canonical_name), ''), name) AS name,
@@ -84,7 +89,7 @@ export function getNewlyFlaggedBiomarkers(
               value, flag
          FROM medical_records
         WHERE profile_id = ? AND created_at > ?
-          AND flag IS NOT NULL AND flag != 'normal'
+          AND flag IS NOT NULL AND flag NOT IN ('normal', 'immune')
         ORDER BY created_at DESC, id ASC`
     )
     .all(profileId, since) as {

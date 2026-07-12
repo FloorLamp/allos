@@ -2,18 +2,24 @@ import { describe, expect, it } from "vitest";
 import {
   ageBandLabel,
   biomarkerAxisDomain,
+  classifyQualitativeResult,
   daysBetween,
   DEFAULT_AXIS_PAD_FRACTION,
   DEFAULT_RETEST_DAYS,
   humanizeAge,
+  isBeyondRetestHorizon,
   isBiomarkerStale,
   isDurableImmunityTiter,
   isImmunePositiveResult,
   isDurableImmunePositive,
   optimalBand,
   optimalStatus,
+  parseLeadingNumeric,
   parseLooseValue,
   parseReferenceRange,
+  plottableReadingValue,
+  qualitativeFlagResolution,
+  qualitativePresence,
   rangeBadge,
   reconciledFlag,
   referenceRange,
@@ -68,6 +74,51 @@ describe("parseLooseValue", () => {
     expect(parseLooseValue("Pattern A")).toBeNull();
     expect(parseLooseValue("12 mg/dL")).toBeNull();
     expect(parseLooseValue(null)).toBeNull();
+  });
+});
+
+describe("parseLeadingNumeric (#542 chart recovery)", () => {
+  it("recovers a leading numeric from a unit-suffixed value", () => {
+    expect(parseLeadingNumeric("58 mIU/mL")).toEqual({ value: 58 });
+    expect(parseLeadingNumeric("12.3 mg/dL")).toEqual({ value: 12.3 });
+    expect(parseLeadingNumeric("100mg/dL")).toEqual({ value: 100 });
+  });
+
+  it("reads a titer ratio as its reciprocal magnitude", () => {
+    expect(parseLeadingNumeric("1:160")).toEqual({ value: 160, titer: true });
+    expect(parseLeadingNumeric("1 : 40")).toEqual({ value: 40, titer: true });
+  });
+
+  it("returns null for a bare number (parseLooseValue's job) or freetext", () => {
+    expect(parseLeadingNumeric("58")).toBeNull();
+    expect(parseLeadingNumeric("positive")).toBeNull();
+    expect(parseLeadingNumeric("Pattern A")).toBeNull();
+    expect(parseLeadingNumeric("")).toBeNull();
+    expect(parseLeadingNumeric(null)).toBeNull();
+  });
+});
+
+describe("plottableReadingValue (#542 shared chart/badge value)", () => {
+  it("prefers an exact value_num", () => {
+    expect(plottableReadingValue(58, "58 mIU/mL")).toEqual({ value: 58 });
+  });
+
+  it("falls back to a bounded string, then a leading numeric", () => {
+    expect(plottableReadingValue(null, "<0.10")).toEqual({
+      value: 0.1,
+      bound: "<",
+    });
+    expect(plottableReadingValue(null, "58 mIU/mL")).toEqual({ value: 58 });
+    expect(plottableReadingValue(null, "1:160")).toEqual({
+      value: 160,
+      titer: true,
+    });
+  });
+
+  it("is null for a purely qualitative reading", () => {
+    expect(plottableReadingValue(null, "positive")).toBeNull();
+    expect(plottableReadingValue(null, "Immune")).toBeNull();
+    expect(plottableReadingValue(null, null)).toBeNull();
   });
 });
 
@@ -678,6 +729,22 @@ describe("isBiomarkerStale with a per-biomarker interval", () => {
   });
 });
 
+describe("isBeyondRetestHorizon (#546 age ceiling)", () => {
+  it("is false within the ceiling (a 5-year-old reading is still retest-worthy)", () => {
+    // ~5 years — well under the ~10-year ceiling, so NOT historical baseline.
+    expect(isBeyondRetestHorizon("2019-01-01", "2024-01-01")).toBe(false);
+  });
+
+  it("is true past the ceiling (a 15-year-old one-off is historical baseline)", () => {
+    expect(isBeyondRetestHorizon("2009-01-01", "2024-01-01")).toBe(true);
+  });
+
+  it("honors an explicit ceiling and a null date", () => {
+    expect(isBeyondRetestHorizon("2023-01-01", "2024-01-01", 30)).toBe(true);
+    expect(isBeyondRetestHorizon(null, "2024-01-01")).toBe(false);
+  });
+});
+
 // --- Durable-immunity titers (issue #516) -----------------------------------
 describe("isDurableImmunityTiter", () => {
   it("recognizes the vaccine-preventable durable-immunity titers", () => {
@@ -928,5 +995,153 @@ describe("biomarkerAxisDomain", () => {
     expect(biomarkerAxisDomain(values, bounds)).toEqual(
       biomarkerAxisDomain(values, bounds)
     );
+  });
+});
+
+describe("classifyQualitativeResult (#549 qualitative choke-point)", () => {
+  it("infection markers: positive is BAD, negative is GOOD", () => {
+    expect(
+      classifyQualitativeResult("Hepatitis B Surface Antigen", "Positive")
+    ).toEqual({ presence: "positive", polarity: "bad", immutable: false });
+    expect(
+      classifyQualitativeResult("HIV 1/2 Antibody", "Non-Reactive")
+    ).toEqual({ presence: "negative", polarity: "good", immutable: false });
+    expect(
+      classifyQualitativeResult("Hepatitis C Antibody", "Reactive")
+    ).toEqual({ presence: "positive", polarity: "bad", immutable: false });
+    // A blood/urine culture that grew something.
+    expect(classifyQualitativeResult("Urine Culture", "Growth")).toEqual({
+      presence: "positive",
+      polarity: "bad",
+      immutable: false,
+    });
+  });
+
+  it("durable-immunity titers: an immune-positive titer is GOOD (not bad)", () => {
+    expect(
+      classifyQualitativeResult("Hepatitis B Surface Antibody", "Positive")
+    ).toEqual({ presence: "positive", polarity: "good", immutable: false });
+    expect(classifyQualitativeResult("Measles IgG", "Immune")).toEqual({
+      presence: "positive",
+      polarity: "good",
+      immutable: false,
+    });
+    // A numeric titer at/above its positivity threshold reads immune too.
+    expect(
+      classifyQualitativeResult("Varicella Zoster IgG", "45", null, ">=10")
+    ).toEqual({ presence: "positive", polarity: "good", immutable: false });
+    // A negative/equivocal titer is NOT confidently classified — leave it alone.
+    expect(classifyQualitativeResult("Measles IgG", "Non-Immune")).toBeNull();
+  });
+
+  it("never confuses surface ANTIGEN (infection) with surface ANTIBODY (immunity)", () => {
+    expect(
+      classifyQualitativeResult("Hepatitis B Surface Antigen", "Positive")
+        ?.polarity
+    ).toBe("bad");
+    expect(
+      classifyQualitativeResult("Hepatitis B Surface Antibody", "Positive")
+        ?.polarity
+    ).toBe("good");
+  });
+
+  it("immutable identity attributes are neutral + immutable", () => {
+    expect(classifyQualitativeResult("ABO Blood Group", "A")).toEqual({
+      presence: "neutral",
+      polarity: "neutral",
+      immutable: true,
+    });
+    expect(classifyQualitativeResult("Blood Type", "RH(D) POSITIVE")).toEqual({
+      presence: "positive",
+      polarity: "neutral",
+      immutable: true,
+    });
+    expect(classifyQualitativeResult("APOE Genotype", "e3/e3")).toEqual({
+      presence: "neutral",
+      polarity: "neutral",
+      immutable: true,
+    });
+  });
+
+  it("context-neutral descriptive attributes are neutral but mutable", () => {
+    expect(classifyQualitativeResult("Urine Color", "YELLOW")).toEqual({
+      presence: "neutral",
+      polarity: "neutral",
+      immutable: false,
+    });
+    expect(classifyQualitativeResult("LDL Pattern", "Pattern A")).toEqual({
+      presence: "neutral",
+      polarity: "neutral",
+      immutable: false,
+    });
+  });
+
+  it("returns null for an unrecognized analyte (no confident verdict)", () => {
+    expect(
+      classifyQualitativeResult("Some Novel Assay", "Positive")
+    ).toBeNull();
+    expect(classifyQualitativeResult("", "Positive")).toBeNull();
+    expect(classifyQualitativeResult(null, null)).toBeNull();
+  });
+});
+
+describe("qualitativePresence (#549 shared vocabulary)", () => {
+  it("reads negative before positive (non-reactive contains reactive)", () => {
+    expect(qualitativePresence("Non-Reactive")).toBe("negative");
+    expect(qualitativePresence("Not Detected")).toBe("negative");
+    expect(qualitativePresence("Reactive")).toBe("positive");
+    expect(qualitativePresence("Detected")).toBe("positive");
+    expect(qualitativePresence("YELLOW")).toBe("neutral");
+    expect(qualitativePresence(null, "notes say immune")).toBe("positive");
+  });
+});
+
+describe("qualitativeFlagResolution (#549 routing #544 + #548)", () => {
+  it("promotes an immune-positive titer's flag to 'immune'", () => {
+    expect(
+      qualitativeFlagResolution(
+        "Hepatitis B Surface Antibody",
+        "Positive",
+        null,
+        null,
+        "abnormal"
+      )
+    ).toBe("immune");
+  });
+
+  it("clears a blunt 'abnormal' on a neutral identity attribute", () => {
+    expect(
+      qualitativeFlagResolution("ABO Blood Group", "A+", null, null, "abnormal")
+    ).toBeNull();
+    expect(
+      qualitativeFlagResolution("Urine Color", "YELLOW", null, null, "abnormal")
+    ).toBeNull();
+  });
+
+  it("leaves an infection-positive marker flagged (never quiets it)", () => {
+    expect(
+      qualitativeFlagResolution(
+        "Hepatitis B Surface Antigen",
+        "Positive",
+        null,
+        null,
+        "abnormal"
+      )
+    ).toBeUndefined();
+  });
+
+  it("leaves an unrecognized value and an already-neutral flag unchanged", () => {
+    expect(
+      qualitativeFlagResolution(
+        "Some Novel Assay",
+        "Positive",
+        null,
+        null,
+        "abnormal"
+      )
+    ).toBeUndefined();
+    expect(
+      qualitativeFlagResolution("ABO Blood Group", "A+", null, null, null)
+    ).toBeUndefined();
   });
 });

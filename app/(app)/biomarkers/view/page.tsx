@@ -12,7 +12,9 @@ import {
   rangeBadge,
   RANGE_BADGE_META,
   parseReferenceRange,
-  parseLooseValue,
+  plottableReadingValue,
+  classifyQualitativeResult,
+  isDurableImmunityTiter,
   optimalBand,
   referenceRange,
   selectStatusRange,
@@ -158,14 +160,14 @@ export default async function BiomarkerDetailPage(props: {
   const cbHasRange =
     !!cb && [ref.low, ref.high, opt.low, opt.high].some((v) => v != null);
 
-  // Readings we can place on the chart: exact (value_num) plus inexact-but-
-  // bounded ones ("<0.10", ">5"), plotted at their limit and flagged so the dot
-  // renders hollow. Each carries the source record + a numeric plot value.
+  // Readings we can place on the chart: exact (value_num), inexact-but-bounded ones
+  // ("<0.10", ">5") plotted at their limit, and (issue #542) a leading numeric
+  // recovered from a unit-suffixed or titer value ("58 mIU/mL" → 58, "1:160" → 160)
+  // the extraction left in the value string. Each carries the source record + a
+  // numeric plot value; bounded dots render hollow. The SAME plottableReadingValue
+  // the badge derives from, so the chart and the status agree on what plots.
   const plottable = series.flatMap((r) => {
-    const p =
-      r.value_num != null
-        ? { value: r.value_num, bound: undefined }
-        : parseLooseValue(r.value);
+    const p = plottableReadingValue(r.value_num, r.value);
     return p ? [{ r, value: p.value, bound: p.bound }] : [];
   });
   // Newest reading we can place on the scale, exact or bounded — drives the
@@ -173,6 +175,29 @@ export default async function BiomarkerDetailPage(props: {
   const latestPlottable = plottable.length
     ? plottable[plottable.length - 1]
     : null;
+
+  // Purely qualitative readings (nothing plottable) — a fully-qualitative series
+  // (positive/reactive/negative/immune titers) renders as a dated timeline instead
+  // of a blank numeric chart (issue #543). Presence/polarity come from the SAME
+  // classifier the flag + staleness logic use (#549), so the chart never disagrees
+  // with the status about what "positive" means for this analyte.
+  const qualitativeReadings = series.flatMap((r) => {
+    if (plottableReadingValue(r.value_num, r.value) != null) return [];
+    const c = classifyQualitativeResult(
+      canonical,
+      r.value,
+      r.notes,
+      r.reference_range
+    );
+    return [{ r, polarity: c?.polarity ?? ("neutral" as const) }];
+  });
+  // Tone for a qualitative dot/chip by its classified polarity: good = emerald,
+  // bad = rose, neutral = slate. Mirrors the flag tone tiers.
+  const qualitativeTone: Record<"good" | "bad" | "neutral", string> = {
+    good: "bg-emerald-500",
+    bad: "bg-rose-500",
+    neutral: "bg-slate-400",
+  };
 
   // Pediatric BP interpretation (#150): for a CHILD, a blood-pressure reading is
   // judged by the AAP 2017 age/sex/height percentile, not the adult thresholds
@@ -470,13 +495,44 @@ export default async function BiomarkerDetailPage(props: {
               </div>
             </div>
           ))}
-        {!pediatricBp && badge !== "unknown" && (
+        {!pediatricBp && badge !== "unknown" && latest.flag !== "immune" && (
           <div>
             <div className="label">Status</div>
             <span className={`badge ${badgeMeta.chip}`}>{badgeMeta.label}</span>
           </div>
         )}
+        {/* A GOOD durable-immunity titer resolves to a neutral "Immune" status, never
+            a red "Abnormal" (#544/#549) — the flag reconcile stores it as "immune". */}
+        {latest.flag === "immune" && (
+          <div data-testid="immune-status">
+            <div className="label">Status</div>
+            <span className="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+              Immune
+            </span>
+          </div>
+        )}
       </div>
+
+      {/* Cross-link to the immunization/immunity surface (#544 part 2): the value
+          lives here, the schedule meaning lives there — a user on either wants the
+          other. Shown only for a durable-immunity titer analyte. */}
+      {isDurableImmunityTiter(canonical) && (
+        <div
+          data-testid="immunity-crosslink"
+          className="card mb-6 flex items-center justify-between gap-3 border-l-4 border-l-emerald-300 text-sm dark:border-l-emerald-700"
+        >
+          <span className="text-slate-700 dark:text-slate-200">
+            <span className="font-semibold">Immunity marker.</span> This titer
+            backs your immunization record.
+          </span>
+          <Link
+            href="/immunizations"
+            className="shrink-0 font-medium text-brand-700 hover:underline dark:text-brand-400"
+          >
+            See immunity status →
+          </Link>
+        </div>
+      )}
 
       {/* Pediatric BP percentile + AAP category (#150) — child BP readings only,
           shown INSTEAD OF the adult thresholds; hidden for adults/non-BP markers. */}
@@ -499,7 +555,34 @@ export default async function BiomarkerDetailPage(props: {
           ) : null}
         </div>
         {chartPoints.length === 0 ? (
-          <EmptyState message="No numeric readings to chart (qualitative biomarker)." />
+          qualitativeReadings.length > 0 ? (
+            // A qualitative series has no numeric axis — show the results as a dated
+            // timeline (newest first) so the history is legible instead of blank (#543).
+            <ol
+              data-testid="qualitative-timeline"
+              className="space-y-2 text-sm"
+            >
+              {[...qualitativeReadings].reverse().map(({ r, polarity }) => (
+                <li
+                  key={r.id}
+                  className="flex items-center gap-3 rounded-md border border-black/5 px-3 py-2 dark:border-white/10"
+                >
+                  <span
+                    className={`h-2.5 w-2.5 shrink-0 rounded-full ${qualitativeTone[polarity]}`}
+                    aria-hidden
+                  />
+                  <span className="w-24 shrink-0 text-slate-400 dark:text-slate-500">
+                    {r.date}
+                  </span>
+                  <span className="font-medium text-slate-800 dark:text-slate-100">
+                    {r.value ?? "—"}
+                  </span>
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <EmptyState message="No numeric readings to chart (qualitative biomarker)." />
+          )
         ) : (
           <BiomarkerChart
             data={chartPoints}

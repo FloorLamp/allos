@@ -69,6 +69,12 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     why: "boot-time reconcile: ids come from a per-profile SELECT (rowsStmt)",
   },
   {
+    file: "lib/migrations/boot-tasks.ts",
+    includes:
+      "FROM medical_records WHERE value_num IS NULL AND category IN ('lab','biomarker')",
+    why: "boot-time qualitative flag reconcile (#549): a GLOBAL maintenance re-derivation run once per canonical-flags-signature change — a qualitative value classifies the same for every profile (blood type / immunity titer), so it is intentionally profile-agnostic; it only rewrites the row's own flag, never reads across profiles",
+  },
+  {
     file: "lib/integrations/normalize.ts",
     includes: "UPDATE medical_records SET date = ?",
     why: "upsertVitals: the id comes from a profile-scoped find() just above",
@@ -133,6 +139,11 @@ const ALLOW_NON_LITERAL: { file: string; expr: string; why: string }[] = [
     file: "lib/queries/medical.ts",
     expr: "sql",
     why: "reconcileFlags: `sql` starts from a base string that includes WHERE profile_id = ?",
+  },
+  {
+    file: "lib/queries/medical.ts",
+    expr: "qsql",
+    why: "reconcileFlags qualitative pass (#549): `qsql` starts from a base string that includes WHERE profile_id = ?",
   },
   {
     file: "lib/export.ts",
