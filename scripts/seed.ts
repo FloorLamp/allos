@@ -951,7 +951,7 @@ const ironId = addSupp(
   [{ amount: "18 mg", time: "Morning", food: "empty_stomach" }]
 );
 // Situational: only surfaces while "Illness" is active.
-addSupp(
+const zincId = addSupp(
   {
     name: "Zinc",
     condition: "situational",
@@ -1519,7 +1519,20 @@ const upsertProfileSetting = db.prepare(
   `INSERT INTO profile_settings (profile_id, key, value) VALUES (1, ?, ?)
    ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
 );
-upsertProfileSetting.run("active_situations", JSON.stringify(["Illness"]));
+// Situations are now id-keyed rows (#560): the profile's vocabulary with an active
+// flag. "Illness" is currently active (surfacing the situational Zinc above);
+// "Travel" is a past situation kept in the vocabulary. Link Zinc to the Illness row.
+const seedSituation = db.prepare(
+  `INSERT INTO situations (profile_id, name, active) VALUES (1, ?, ?)`
+);
+const illnessSituationId = Number(
+  seedSituation.run("Illness", 1).lastInsertRowid
+);
+seedSituation.run("Travel", 0);
+db.prepare("UPDATE intake_items SET situation_id = ? WHERE id = ?").run(
+  illnessSituationId,
+  zincId
+);
 upsertProfileSetting.run(
   "situation_events",
   serializeSituationEvents([], situationEvents)

@@ -11,6 +11,16 @@ export type SupplementCondition =
 
 // Importance band. `mandatory` is reserved for lab-confirmed deficiencies
 // (normally set by the AI engine); `high`/`low` are user-managed.
+//
+// This is a STATIC, user-owned sort key — never recomputed from context (#559).
+// Unlike a screening/retest priority (#517), which DERIVES a clinical judgment the
+// user can't encode, a supplement's importance is the user's own explicit tag: the
+// ground truth, not something to infer. So there is deliberately NO dynamic priority
+// ENGINE for supplements — context only GATES dueness (isDueOn hides a rest-day item
+// on a workout day, a situational item while inactive), it never INVENTS priority.
+// The one legitimately-dynamic axis is time-urgency (a due-but-unconfirmed
+// time-critical dose escalating as its window passes), and that rides the EXISTING
+// dose-reminder/missed-dose escalation lattice, not this band.
 export type SupplementPriority = "mandatory" | "high" | "low";
 
 // How a dose relates to food. A property of the substance (fat-soluble vitamins
@@ -29,7 +39,13 @@ export interface Supplement {
   priority: SupplementPriority;
   brand: string | null; // manufacturer, e.g. "Thorne" (free text)
   product: string | null; // specific product/SKU (free text)
-  situation: string | null; // label when condition = 'situational'
+  // Situational context (condition = 'situational'). `situation` is the display
+  // label (COALESCEd from the linked row's name on read); `situation_id` links to
+  // the id-keyed `situations` row (issue #560) — the durable identity that survives
+  // a rename and unifies the profile's situation vocabulary. NULL for non-situational
+  // or legacy/unmatched rows.
+  situation: string | null;
+  situation_id: number | null;
   // Optional "stack" label grouping supplements taken together (e.g. "D3 + K2");
   // members render adjacently in their time bucket. Free text.
   stack: string | null;

@@ -9,6 +9,8 @@ import {
   getPendingSuggestions,
   getActivitiesByDate,
   getActivityDates,
+  isPredictedWorkoutDay,
+  getConditions,
   getProviderNames,
   getMedicationCourses,
   getMedicationSideEffects,
@@ -40,10 +42,16 @@ import { today } from "@/lib/db";
 import { parseRxcuiIngredients } from "@/lib/rxnorm";
 import { requireSession } from "@/lib/auth";
 import { isTrainingRestricted } from "@/lib/age-gate";
-import { lastNDates } from "@/lib/date";
-import { getActiveSituations } from "@/lib/settings";
+import { lastNDates, zonedDateParts } from "@/lib/date";
+import {
+  getActiveSituations,
+  getSituations,
+  getTimezone,
+} from "@/lib/settings";
+import { suggestedSituationsFromConditions } from "@/lib/situations";
 import {
   isDueOn,
+  isPostWorkoutReady,
   timeBucket,
   TIME_BUCKETS,
   PRIORITY_ORDER,
@@ -134,9 +142,27 @@ export default async function SupplementsPage() {
   const taken = getTakenDoseIds(profile.id, today(profile.id));
   const skipped = getSkippedDoseIds(profile.id, today(profile.id));
   const activeSituations = new Set(getActiveSituations(profile.id));
-  const isWorkoutDay =
-    getActivitiesByDate(profile.id, today(profile.id)).length > 0;
-  const ctx = { isWorkoutDay, activeSituations };
+  const todaysActivities = getActivitiesByDate(profile.id, today(profile.id));
+  const isWorkoutDay = todaysActivities.length > 0;
+  // #558: a pre_workout supplement should surface on a PREDICTED training day
+  // (from the inferred cadence), not only once a session is logged; post_workout
+  // stays gated on a logged session, held until the earliest session's end time.
+  const predictedWorkoutDay = isPredictedWorkoutDay(
+    profile.id,
+    today(profile.id)
+  );
+  const { hhmm } = zonedDateParts(getTimezone(profile.id), new Date());
+  const nowMinutes = Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
+  const postWorkoutReady = isPostWorkoutReady(
+    todaysActivities.map((a) => a.end_time ?? a.start_time),
+    nowMinutes
+  );
+  const ctx = {
+    isWorkoutDay,
+    activeSituations,
+    predictedWorkoutDay,
+    postWorkoutReady,
+  };
   // When fitness tracking is restricted for this profile the workout/rest-day
   // concept is meaningless, so we drop the subtitle prefix and the workout/
   // rest-day schedule options (see lib/age-gate.ts).
@@ -261,14 +287,23 @@ export default async function SupplementsPage() {
       todayStr
     );
 
+  // The situations bar is driven by the id-keyed vocabulary (#560): every situation
+  // ROW for this profile, plus the built-in suggestions (NOCASE-deduped against the
+  // vocabulary so a stored "illness" doesn't double up with the suggested "Illness").
+  const vocabulary = getSituations(profile.id).map((s) => s.name);
   const situationChips = [
-    ...new Set([
-      ...supplements
-        .filter((s) => s.condition === "situational" && s.situation)
-        .map((s) => s.situation as string),
-      ...SUGGESTED_SITUATIONS,
-    ]),
+    ...new Map(
+      [...vocabulary, ...SUGGESTED_SITUATIONS].map((n) => [n.toLowerCase(), n])
+    ).values(),
   ];
+
+  // One-way condition bridge (#560 part 2): an ACTIVE acute illness/injury condition
+  // suggests its matching clinical situation, so a sick user doesn't flip two toggles
+  // (log the condition AND activate the situation). Suggest-only — the user confirms.
+  const bridgeSuggestions = suggestedSituationsFromConditions(
+    getConditions(profile.id, { status: "active" }).map((c) => c.name),
+    [...activeSituations]
+  );
 
   const suggestions = getPendingSuggestions(profile.id);
   const pairsFor = (suppId: number) =>
@@ -356,12 +391,15 @@ export default async function SupplementsPage() {
         subtitle={
           trainingRestricted
             ? `${takenCount}/${dueItems.length} taken.`
-            : `${isWorkoutDay ? "Workout day" : "Rest day"} — ${takenCount}/${dueItems.length} taken.`
+            : `${(predictedWorkoutDay ?? isWorkoutDay) ? "Workout day" : "Rest day"} — ${takenCount}/${dueItems.length} taken.`
         }
       />
 
       {/* Situations bar */}
-      <div className="mb-4 flex flex-wrap items-center gap-2">
+      <div
+        className="mb-4 flex flex-wrap items-center gap-2"
+        data-testid="situations-bar"
+      >
         <span className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
           Situations
         </span>
@@ -390,6 +428,36 @@ export default async function SupplementsPage() {
           );
         })}
       </div>
+
+      {/* Condition bridge (#560 part 2): suggest a clinical situation implied by an
+          active illness/injury condition, so it isn't a second manual toggle. */}
+      {bridgeSuggestions.length > 0 && (
+        <div
+          className="mb-4 flex flex-wrap items-center gap-2"
+          data-testid="situation-bridge"
+        >
+          <span className="text-xs text-slate-400 dark:text-slate-500">
+            Suggested from your conditions:
+          </span>
+          {bridgeSuggestions.map((sit) => (
+            <form
+              action={async (fd) => {
+                "use server";
+                await toggleSituation(fd);
+              }}
+              key={sit}
+            >
+              <input type="hidden" name="situation" value={sit} />
+              <SubmitButton
+                data-testid={`situation-bridge-${sit}`}
+                className="badge cursor-pointer border border-dashed border-brand-400 bg-transparent text-brand-700 hover:bg-brand-50 disabled:opacity-60 dark:border-brand-700 dark:text-brand-300 dark:hover:bg-brand-950"
+              >
+                + {sit}
+              </SubmitButton>
+            </form>
+          ))}
+        </div>
+      )}
 
       {/* Stack-total UL warnings (issue #148) */}
       {ulWarnings.length > 0 && (

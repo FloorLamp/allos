@@ -12,6 +12,7 @@ import {
   getTakenDoseIds,
   getSkippedDoseIds,
   getActivitiesByDate,
+  isPredictedWorkoutDay,
   getFrequencyTargetProgress,
   getCurrentFlaggedBiomarkers,
 } from "../queries";
@@ -110,18 +111,28 @@ export function gatherDigestInput(
   );
   const situations = new Set(getActiveSituations(profileId));
 
-  const dueDoseIds = (date: string): number[] => {
+  // For TODAY, a pre_workout/rest_day item keys on the PREDICTED training day
+  // (issue #558) so the morning digest lists it before the session, not only after
+  // one is logged. Past days (yesterday's adherence) use the logged reality.
+  const dueDoseIds = (date: string, forToday = false): number[] => {
     const isWorkoutDay = getActivitiesByDate(profileId, date).length > 0;
+    const predictedWorkoutDay = forToday
+      ? isPredictedWorkoutDay(profileId, date)
+      : null;
     return doses
       .filter((d) => {
         const supp = suppById.get(d.item_id)!;
-        return isDueOn(supp, { isWorkoutDay, activeSituations: situations });
+        return isDueOn(supp, {
+          isWorkoutDay,
+          activeSituations: situations,
+          predictedWorkoutDay,
+        });
       })
       .map((d) => d.id);
   };
 
   // Today: doses on deck + frequency targets not yet met this week.
-  const todayDueIds = dueDoseIds(td);
+  const todayDueIds = dueDoseIds(td, true);
   const doseCount = todayDueIds.length;
   const goalsDue: DigestGoalDue[] = getFrequencyTargetProgress(profileId)
     .filter((p) => !p.met)

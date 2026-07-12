@@ -781,6 +781,19 @@ export const DATASETS: ExportDataset[] = [
        FROM frequency_targets WHERE profile_id = ? ORDER BY scope_kind, scope_value`,
     countSql: `SELECT COUNT(*) AS n FROM frequency_targets WHERE profile_id = ?`,
   }),
+  // Situations vocabulary (#560): the profile's situational-context labels + active
+  // state. Not deletable as a set — intake_items.situation_id links reference these
+  // rows, so a bulk wipe would strand them (row-ops rule).
+  tableDataset({
+    key: "situations",
+    label: "Situations",
+    table: "situations",
+    columns: ["name", "active"],
+    select: `SELECT id, name, active
+       FROM situations WHERE profile_id = ? ORDER BY name COLLATE NOCASE`,
+    countSql: `SELECT COUNT(*) AS n FROM situations WHERE profile_id = ?`,
+    deletable: false,
+  }),
   tableDataset({
     // Uploaded-document METADATA (the file bytes are bundled separately in the ZIP).
     // Browse/export-only: deleting a document is not a plain id delete (it must unlink

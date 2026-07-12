@@ -80,6 +80,7 @@ export const OWNED_TABLES = [
   "milestones",
   "protocols",
   "coverage_gaps",
+  "situations",
 ] as const;
 
 export type OwnedTable = (typeof OWNED_TABLES)[number];

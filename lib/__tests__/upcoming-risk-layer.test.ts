@@ -32,7 +32,11 @@ const RISK_AWARE = new Set<string>([
 // dietary-limit/interaction findings are standing safety notes, not risk-ranked
 // due signals.
 const ALLOWLIST: Record<string, string> = {
-  doseItems: "scheduled dose for today — fixed schedule, no risk ranking",
+  doseItems:
+    "scheduled dose for today — user-set mandatory/high/low priority, NOT " +
+    "risk-ranked (#559: supplements are user-prioritized, so the risk engine " +
+    "must not recompute their priority); the only dynamic axis is time-urgency " +
+    "via the existing dose/escalation lattice, not this layer",
   refillItems: "supply run-out math — not a risk-ranked due signal",
   dietaryLimitItems: "standing UL warning — informational, not risk-ranked",
   interactionItems:

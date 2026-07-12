@@ -4,7 +4,7 @@
 // renderWindowMessage in ./supplement-format.
 
 import { today } from "../db";
-import { lastNDates } from "../date";
+import { lastNDates, zonedDateParts } from "../date";
 import {
   getSupplements,
   getSupplementDoses,
@@ -12,15 +12,21 @@ import {
   getSkippedDoseIds,
   getActivitiesByDate,
   getActivityDates,
+  isPredictedWorkoutDay,
   getSupplementLogsInRange,
 } from "../queries";
-import { getActiveSituations } from "../settings";
+import { getActiveSituations, getTimezone } from "../settings";
 import {
   adherenceSummary,
   doseStrip,
   indexTakenByDose,
 } from "../supplement-adherence";
-import { isDueOn, timeBucket, type TimeBucket } from "../supplement-schedule";
+import {
+  isDueOn,
+  isPostWorkoutReady,
+  timeBucket,
+  type TimeBucket,
+} from "../supplement-schedule";
 import type { SupplementDose } from "../types";
 import {
   renderWindowMessage,
@@ -34,6 +40,12 @@ export type { ReminderWindow };
 // Rolling window for the streak + adherence percentage shown on each line —
 // matches the supplements page's strip length.
 const ADHERENCE_DAYS = 14;
+
+// The current profile-local minute-of-day (0–1439), for post_workout timing.
+function currentMinutesOfDay(profileId: number): number {
+  const { hhmm } = zonedDateParts(getTimezone(profileId), new Date());
+  return Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
+}
 
 // Map a dose's (5-value) time bucket to one of the 4 reminder windows: "Anytime"
 // folds into the morning (so it's reminded once a day); "Before sleep" maps to
@@ -70,9 +82,22 @@ function gatherWindowDoses(
   const taken = getTakenDoseIds(profileId, date);
   const skipped = getSkippedDoseIds(profileId, date);
   const activeSituations = new Set(getActiveSituations(profileId));
+  const activitiesToday = getActivitiesByDate(profileId, date);
+  // #558: a pre_workout reminder fires on a PREDICTED training day (so it can land
+  // in the morning, before the session), not only after a workout is logged;
+  // post_workout stays gated on a logged session and held until it has ended.
+  // Only workout-conditioned items are affected — a daily med reminder (safety
+  // tier) is unconditional, so it never becomes workout-dependent.
+  const isForToday = date === today(profileId);
+  const nowMinutes = isForToday ? currentMinutesOfDay(profileId) : null;
   const ctx = {
-    isWorkoutDay: getActivitiesByDate(profileId, date).length > 0,
+    isWorkoutDay: activitiesToday.length > 0,
     activeSituations,
+    predictedWorkoutDay: isPredictedWorkoutDay(profileId, date),
+    postWorkoutReady: isPostWorkoutReady(
+      activitiesToday.map((a) => a.end_time ?? a.start_time),
+      nowMinutes
+    ),
   };
 
   // Inputs for the per-dose streak + adherence percentage. Anchored on the real

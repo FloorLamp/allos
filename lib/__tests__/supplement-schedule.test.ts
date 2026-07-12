@@ -4,6 +4,7 @@ import {
   CONDITIONS,
   defaultFoodTiming,
   isDueOn,
+  isPostWorkoutReady,
   parseDosage,
   priorityClass,
   spreadDoseTimes,
@@ -66,7 +67,12 @@ describe("timeBucket", () => {
 
 describe("isDueOn", () => {
   const ctx = (
-    over: Partial<{ isWorkoutDay: boolean; activeSituations: Set<string> }> = {}
+    over: Partial<{
+      isWorkoutDay: boolean;
+      activeSituations: Set<string>;
+      predictedWorkoutDay: boolean | null;
+      postWorkoutReady: boolean;
+    }> = {}
   ) => ({
     isWorkoutDay: false,
     activeSituations: new Set<string>(),
@@ -85,10 +91,61 @@ describe("isDueOn", () => {
     expect(isDueOn(post, ctx({ isWorkoutDay: true }))).toBe(true);
   });
 
+  // #558: pre_workout keys on the PREDICTED training day, so it's due before a
+  // session is logged; on a predicted rest day it stays hidden. The logged flag is
+  // only the fallback when no cadence can be inferred (predictedWorkoutDay == null).
+  it("pre_workout is due on a predicted workout day with NO logged activity", () => {
+    const pre = { condition: "pre_workout" as const, situation: null };
+    expect(
+      isDueOn(pre, ctx({ isWorkoutDay: false, predictedWorkoutDay: true }))
+    ).toBe(true);
+    expect(
+      isDueOn(pre, ctx({ isWorkoutDay: false, predictedWorkoutDay: false }))
+    ).toBe(false);
+    // predictedWorkoutDay wins over the logged flag when known.
+    expect(
+      isDueOn(pre, ctx({ isWorkoutDay: true, predictedWorkoutDay: false }))
+    ).toBe(false);
+    // null → fall back to the logged flag (old behavior).
+    expect(
+      isDueOn(pre, ctx({ isWorkoutDay: true, predictedWorkoutDay: null }))
+    ).toBe(true);
+  });
+
+  // #558: post_workout keeps the actually-logged gate (post = after) and stays
+  // hidden until the session's end time when the postWorkoutReady flag says so.
+  it("post_workout needs a logged session and its end time", () => {
+    const post = { condition: "post_workout" as const, situation: null };
+    // A predicted workout day alone does not make it due — it needs a logged session.
+    expect(
+      isDueOn(post, ctx({ isWorkoutDay: false, predictedWorkoutDay: true }))
+    ).toBe(false);
+    // Logged but session not over yet → not due.
+    expect(
+      isDueOn(post, ctx({ isWorkoutDay: true, postWorkoutReady: false }))
+    ).toBe(false);
+    // Logged and session over → due.
+    expect(
+      isDueOn(post, ctx({ isWorkoutDay: true, postWorkoutReady: true }))
+    ).toBe(true);
+  });
+
   it("rest_day is the inverse of a workout day", () => {
     const rest = { condition: "rest_day" as const, situation: null };
     expect(isDueOn(rest, ctx({ isWorkoutDay: false }))).toBe(true);
     expect(isDueOn(rest, ctx({ isWorkoutDay: true }))).toBe(false);
+  });
+
+  // #558: rest_day follows the same predicted-vs-logged decision as pre_workout,
+  // so a rest-day supplement doesn't wait until end-of-day to confirm no workout.
+  it("rest_day follows the predicted signal when known", () => {
+    const rest = { condition: "rest_day" as const, situation: null };
+    expect(
+      isDueOn(rest, ctx({ isWorkoutDay: false, predictedWorkoutDay: true }))
+    ).toBe(false);
+    expect(
+      isDueOn(rest, ctx({ isWorkoutDay: true, predictedWorkoutDay: false }))
+    ).toBe(true);
   });
 
   it("situational is due only when its situation is active", () => {
@@ -118,6 +175,31 @@ describe("isDueOn", () => {
     expect(
       isDueOn({ condition: "daily", situation: null, as_needed: 0 }, ctx())
     ).toBe(true);
+  });
+});
+
+describe("isPostWorkoutReady", () => {
+  it("is ready on a past day (nowMinutes null)", () => {
+    expect(isPostWorkoutReady(["18:00"], null)).toBe(true);
+  });
+
+  it("holds until the earliest logged session's end time on today", () => {
+    // Two sessions ending 09:30 and 18:00; earliest is 09:30 (570 min).
+    expect(isPostWorkoutReady(["18:00", "09:30"], 9 * 60)).toBe(false); // 09:00
+    expect(isPostWorkoutReady(["18:00", "09:30"], 9 * 60 + 30)).toBe(true); // 09:30
+    expect(isPostWorkoutReady(["18:00", "09:30"], 12 * 60)).toBe(true); // 12:00
+  });
+
+  it("is ready as soon as logged when no end time is known", () => {
+    expect(isPostWorkoutReady([null, undefined], 6 * 60)).toBe(true);
+    expect(isPostWorkoutReady([], 6 * 60)).toBe(true);
+  });
+
+  it("accepts HH:MM:SS and ignores malformed times", () => {
+    expect(isPostWorkoutReady(["07:15:00"], 7 * 60 + 20)).toBe(true);
+    expect(isPostWorkoutReady(["07:15:00"], 7 * 60 + 10)).toBe(false);
+    // A single malformed value leaves no usable end time → ready.
+    expect(isPostWorkoutReady(["notatime"], 5 * 60)).toBe(true);
   });
 });
 
