@@ -11,6 +11,7 @@ import {
   type BodyMetricConflictPair,
 } from "@/lib/import-review/detect";
 import { detectFieldConflicts } from "@/lib/import-review/conflicts";
+import { disambiguationLabels } from "@/lib/import-review/disambiguate";
 import ActivityMergeControls from "@/components/ActivityMergeControls";
 import type {
   ActivityDupRow,
@@ -51,17 +52,22 @@ function ConfidenceChip({ confidence }: { confidence: "high" | "medium" }) {
   );
 }
 
-// A read-only summary line for one candidate row (used by both domains).
+// A read-only summary line for one candidate row (used by both domains). `badge`
+// is the on-card A/B (or 1/2) marker shown when the two candidates' source labels
+// collide (#531) — the visible referent for the "keep A / keep B" affordances,
+// correct in both the stacked and side-by-side layouts (unlike a spatial label).
 function RowSummary({
   source,
   title,
   facts,
   isKeeper,
+  badge,
 }: {
   source: string | null;
   title: string;
   facts: string[];
   isKeeper: boolean;
+  badge?: string;
 }) {
   return (
     <div
@@ -72,6 +78,15 @@ function RowSummary({
       }`}
     >
       <div className="flex flex-wrap items-center gap-2">
+        {badge && (
+          <span
+            data-testid="dup-candidate-badge"
+            aria-label={`Option ${badge}`}
+            className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-700 text-xs font-bold text-white dark:bg-slate-200 dark:text-slate-900"
+          >
+            {badge}
+          </span>
+        )}
         <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600 dark:bg-ink-800 dark:text-slate-300">
           {sourceLabel(source)}
         </span>
@@ -210,6 +225,12 @@ export default function DuplicateReview({
           const keepId = preferActivityKeeper(pair.a, pair.b);
           const keeper = pair.a.id === keepId ? pair.a : pair.b;
           const other = pair.a.id === keepId ? pair.b : pair.a;
+          // Keeper = A, other = B. Label by source when they differ, else A/B with
+          // an on-card badge (#531).
+          const dis = disambiguationLabels(
+            sourceLabel(keeper.source),
+            sourceLabel(other.source)
+          );
           return (
             <li
               key={`act:${pair.signature}`}
@@ -228,20 +249,22 @@ export default function DuplicateReview({
                   title={keeper.title}
                   facts={activityFacts(keeper, units)}
                   isKeeper
+                  badge={dis.usedFallback ? "A" : undefined}
                 />
                 <RowSummary
                   source={other.source}
                   title={other.title}
                   facts={activityFacts(other, units)}
                   isKeeper={false}
+                  badge={dis.usedFallback ? "B" : undefined}
                 />
               </div>
               <ActivityMergeControls
                 signature={pair.signature}
                 aId={keeper.id}
                 bId={other.id}
-                aLabel={sourceLabel(keeper.source)}
-                bLabel={sourceLabel(other.source)}
+                aLabel={dis.a}
+                bLabel={dis.b}
                 // Oriented with the default keeper as A; the dialog flips values
                 // for the "keep other" button (issue #100).
                 conflicts={detectFieldConflicts(
@@ -254,45 +277,56 @@ export default function DuplicateReview({
           );
         })}
 
-        {bodyMetricPairs.map((pair) => (
-          <li
-            key={`bm:${pair.signature}`}
-            data-testid="dup-body-metric-pair"
-            className="rounded-lg border border-black/10 p-3 dark:border-white/10"
-          >
-            <div className="mb-2 flex flex-wrap items-center gap-2">
-              <span className="rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-700 dark:bg-sky-950/40 dark:text-sky-300">
-                Conflict
-              </span>
-              <span className="text-xs text-slate-500 dark:text-slate-400">
-                {pair.a.date} · {pair.reason}
-              </span>
-            </div>
-            <div className="grid gap-2 sm:grid-cols-2">
-              <RowSummary
-                source={pair.a.source}
-                title={sourceLabel(pair.a.source)}
-                facts={bodyMetricFacts(pair.a, units)}
-                isKeeper
+        {bodyMetricPairs.map((pair) => {
+          // Keeper = a, other = b. Two manual weigh-ins both read "Manual entry",
+          // so label by source when they differ, else A/B with an on-card badge
+          // (#531) — the same shared disambiguator as the activity path.
+          const dis = disambiguationLabels(
+            sourceLabel(pair.a.source),
+            sourceLabel(pair.b.source)
+          );
+          return (
+            <li
+              key={`bm:${pair.signature}`}
+              data-testid="dup-body-metric-pair"
+              className="rounded-lg border border-black/10 p-3 dark:border-white/10"
+            >
+              <div className="mb-2 flex flex-wrap items-center gap-2">
+                <span className="rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-700 dark:bg-sky-950/40 dark:text-sky-300">
+                  Conflict
+                </span>
+                <span className="text-xs text-slate-500 dark:text-slate-400">
+                  {pair.a.date} · {pair.reason}
+                </span>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <RowSummary
+                  source={pair.a.source}
+                  title={sourceLabel(pair.a.source)}
+                  facts={bodyMetricFacts(pair.a, units)}
+                  isKeeper
+                  badge={dis.usedFallback ? "A" : undefined}
+                />
+                <RowSummary
+                  source={pair.b.source}
+                  title={sourceLabel(pair.b.source)}
+                  facts={bodyMetricFacts(pair.b, units)}
+                  isKeeper={false}
+                  badge={dis.usedFallback ? "B" : undefined}
+                />
+              </div>
+              <PairActions
+                domain={BODY_METRIC_DOMAIN}
+                signature={pair.signature}
+                keepId={pair.a.id}
+                dropId={pair.b.id}
+                mergeAction={mergeBodyMetricPair}
+                keepLabelA={dis.a}
+                keepLabelB={dis.b}
               />
-              <RowSummary
-                source={pair.b.source}
-                title={sourceLabel(pair.b.source)}
-                facts={bodyMetricFacts(pair.b, units)}
-                isKeeper={false}
-              />
-            </div>
-            <PairActions
-              domain={BODY_METRIC_DOMAIN}
-              signature={pair.signature}
-              keepId={pair.a.id}
-              dropId={pair.b.id}
-              mergeAction={mergeBodyMetricPair}
-              keepLabelA={sourceLabel(pair.a.source)}
-              keepLabelB={sourceLabel(pair.b.source)}
-            />
-          </li>
-        ))}
+            </li>
+          );
+        })}
       </ul>
     </div>
   );

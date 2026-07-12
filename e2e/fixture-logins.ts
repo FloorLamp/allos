@@ -32,3 +32,11 @@ export const STRAVA_REAUTH_PROFILE = "Strava Reauth (e2e)";
 // relies on).
 export const E2E_LOGIN_HC = "e2e_hc";
 export const HEALTH_CONNECT_PROFILE = "Health Connect (e2e)";
+
+// A member granted a dedicated profile carrying ONE same-source duplicate — two
+// manual weigh-ins on one day (both "Manual entry") — so the Data → Review resolver
+// renders a candidate pair whose source labels collide and the A/B disambiguation
+// (#531) fallback is exercised in isolation, never touching profile 1's review
+// inbox (whose exact duplicate count import-dedup.spec relies on).
+export const E2E_LOGIN_DUP = "e2e_dup";
+export const DUP_REVIEW_PROFILE = "Dup Review (e2e)";

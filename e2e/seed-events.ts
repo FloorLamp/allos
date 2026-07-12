@@ -20,9 +20,11 @@ import { setMinTrainingAge } from "../lib/age-gate";
 import { hashPasswordSync } from "../lib/password";
 import {
   E2E_LOGIN_CHILD,
+  E2E_LOGIN_DUP,
   E2E_LOGIN_HC,
   E2E_LOGIN_STRAVA,
   E2E_MEMBER_PASSWORD,
+  DUP_REVIEW_PROFILE,
   HEALTH_CONNECT_PROFILE,
   STRAVA_REAUTH_PROFILE,
 } from "./fixture-logins";
@@ -1211,6 +1213,25 @@ seedMemberLogin(E2E_LOGIN_STRAVA, stravaReauthId);
 // A dedicated, connection-less profile for the Health Connect generate→rotate flow.
 const healthConnectId = fixtureProfileId(HEALTH_CONNECT_PROFILE);
 seedMemberLogin(E2E_LOGIN_HC, healthConnectId);
+
+// A dedicated profile whose sole Data → Review item is a SAME-SOURCE duplicate:
+// two manual weigh-ins on one day (both source NULL → both "Manual entry"), so the
+// resolver's candidate labels collide and the A/B disambiguation fallback (#531) is
+// exercised without touching profile 1's review inbox. Idempotent: clear the
+// profile's body_metrics first (it owns no others). Distinct weights so the two rows
+// visibly differ; body_metrics allows two NULL-source rows on one day.
+const dupReviewId = fixtureProfileId(DUP_REVIEW_PROFILE);
+seedMemberLogin(E2E_LOGIN_DUP, dupReviewId);
+db.prepare(`DELETE FROM body_metrics WHERE profile_id = ?`).run(dupReviewId);
+const insDupWeighIn = db.prepare(
+  `INSERT INTO body_metrics (profile_id, date, weight_kg, source)
+   VALUES (?, '2026-06-15', ?, NULL)`
+);
+insDupWeighIn.run(dupReviewId, 80.2);
+insDupWeighIn.run(dupReviewId, 81.4);
+console.log(
+  `e2e: seeded a same-source (two manual weigh-ins) duplicate on profile ${dupReviewId} (A/B disambiguation, #531)`
+);
 
 console.log(
   `e2e: enabled age gate (13) + seeded member logins for the child (${rileyId}), Strava-reauth (${stravaReauthId}), and Health-Connect (${healthConnectId}) fixture profiles (#391)`
