@@ -73,6 +73,16 @@ headers as `{{ trigger.headers }}`.
 
 ## Recipe 1 — kitchen TTS dose announcement + confirm back to `/dose`
 
+> **Requires unshipped PR 3.** The confirm-back half of this recipe POSTs to
+> `POST /api/integrations/home-assistant/dose`, an actuation endpoint that **does
+> not exist yet** — it's part of the HA→Allos appliance work tracked in
+> [#235](https://github.com/FloorLamp/allos/issues/235) (its "PR 3"), specced in
+> [`home-assistant-spec.md`](home-assistant-spec.md) but **not built**. Building
+> this automation today, the `allos_log_dose` rest_command will 404. The
+> **announce** half (the outbound webhook that speaks the reminder) works now with
+> the shipped notification channel; only the log-back-to-`/dose` call is blocked
+> until PR 3 lands.
+
 Announce dose reminders on a speaker **only when someone is in the kitchen**, and
 expose a physical/voice confirmation that logs the dose back in Allos. Uses HA
 `!secret` references so no token lands in a shared config.

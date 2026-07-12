@@ -1,6 +1,16 @@
 # Spec: Versioned migration runner (`PRAGMA user_version`)
 
-Status: **draft** · Owner: TBD · Tracking issue: [#119](https://github.com/FloorLamp/allos/issues/119)
+Status: **shipped** · Tracking issue: [#119](https://github.com/FloorLamp/allos/issues/119)
+
+> **Status: shipped — this reads as documentation, not a proposal.** The runner
+> described here is built and matches `lib/migrations/`: the `PRAGMA user_version`
+> gate + `BEGIN IMMEDIATE`-per-migration runner (`lib/migrations/runner.ts`), the
+> append-only `lib/migrations/versions/` set headed by the clean-apply
+> `001-baseline.ts`, the checked-in immutability `manifest.json`, the downgrade
+> guard, and the per-boot tasks kept outside the runner (`boot-tasks.ts`). Later
+> design choices (the baseline-is-a-clean-apply decision, the dropped legacy
+> upgrade machinery) are recorded in the Revision below and are the shipped
+> behavior. Kept for the rationale; the code is the source of truth.
 
 ## Revision (2026-07-10)
 

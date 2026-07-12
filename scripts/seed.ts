@@ -9,6 +9,7 @@ import { reconcileFlags } from "../lib/queries";
 import { providerDedupKey } from "../lib/providers";
 import { orderIntakePair } from "../lib/intake-pairs";
 import { hashPasswordSync } from "../lib/password";
+import { createShareLink } from "../lib/share-links-db";
 import { isDemoMode, DEMO_USERNAME, DEMO_PASSWORD } from "../lib/demo";
 import {
   diffSituations,
@@ -1550,6 +1551,34 @@ upsertProfileSetting.run(
       },
     },
   ])
+);
+
+// ── Starred biomarkers (the pinned-tile side-store) ──────────────────────────
+// The star is name-keyed (starred_biomarkers.canonical_name COLLATE NOCASE); each
+// canonical_name here matches a seeded biomarker that HAS backing medical_records,
+// so the Biomarkers view renders the pinned tiles and the #203/#327 orphan-sweep
+// has real stars to (correctly) leave alone. Distinct from trend_pins above — a
+// separate feature — so seed exercises both.
+const starBiomarker = db.prepare(
+  `INSERT OR IGNORE INTO starred_biomarkers (profile_id, canonical_name) VALUES (1, ?)`
+);
+for (const name of ["ApoB", "hs-CRP", "Lipoprotein(a)"])
+  starBiomarker.run(name);
+
+// ── Passport share link (the public read-only /share/<token> fixture) ────────
+// One live (non-expired, non-revoked) link scoping a sensible subset of the
+// passport, created_by the bootstrap admin. The RAW token is never stored (only
+// its SHA-256), so this seeds the row the management UI lists + the e2e share
+// fixture (#391); a fresh token is minted here rather than reproducing one. Uses
+// createShareLink so the token-hash + field-serialization stay the one code path.
+const seedAdminLogin = db
+  .prepare("SELECT id FROM logins WHERE role = 'admin' ORDER BY id LIMIT 1")
+  .get() as { id: number } | undefined;
+createShareLink(
+  SEED_PROFILE_ID,
+  seedAdminLogin?.id ?? null,
+  ["identity", "allergies", "conditions", "medications", "immunizations"],
+  new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() // +30 days
 );
 
 // ── Refill tracking — low days-of-supply → Upcoming refill signal.

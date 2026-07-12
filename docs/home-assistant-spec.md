@@ -1,6 +1,19 @@
 # Spec: Home Assistant integration (appliance endpoints)
 
-Status: **draft** · Owner: TBD · Tracking issue: [#235](https://github.com/FloorLamp/allos/issues/235)
+Status: **unbuilt (draft)** · Owner: TBD · Tracking issue: [#235](https://github.com/FloorLamp/allos/issues/235)
+
+> **Status: unbuilt.** None of this spec's HA→Allos appliance machinery ships yet
+> (tracked in [#235](https://github.com/FloorLamp/allos/issues/235)): the four
+> endpoints (`POST /ingest`, `POST /event`, `GET /upcoming`, `POST /dose`), the
+> `integrations/registry.ts` entry, the per-token `allow_actions` model, and the
+> setup wizard are all still proposals — no `app/api/integrations/home-assistant/`
+> route or HA registry entry exists.
+>
+> What DID ship is the piece this spec explicitly scopes **out** (use case 6, below):
+> the **Allos → Home Assistant notification channel** — `lib/notifications/home-assistant*.ts`
+> plus the landed webhook-URL restriction. It is documented separately in
+> [`home-assistant-notifications.md`](home-assistant-notifications.md). Don't read
+> this spec as describing shipped behavior in either direction.
 
 ## Problem / use cases
 
