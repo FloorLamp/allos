@@ -92,7 +92,7 @@ export function getInferredPreventiveSatisfactions(
 
   // Completed appointments → visits (name-matched on the title).
   for (const a of getAppointments(profileId)) {
-    if (a.status !== "completed") continue;
+    if (!isCompletedStatus(a.status)) continue;
     records.push({
       code: null,
       name: a.title,

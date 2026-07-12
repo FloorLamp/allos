@@ -17,6 +17,19 @@ export function isGoalStatus(value: unknown): value is GoalStatus {
   );
 }
 
+// The single "is this goal live (active and not filed away)?" predicate. Goal
+// liveness is DUAL-AXIS: status must be "active" AND archived must be falsy —
+// GOAL_STATUSES also has "achieved", and archived is an independent column, so a
+// raw `status === "active"` check that forgets `archived` is the classic bug. Every
+// surface that filters to live goals routes through here (issue: goal-liveness
+// canonical predicate). Takes the two fields so callers can pass a partial row.
+export function isGoalLive(g: {
+  status: GoalStatus | string;
+  archived: number | boolean | null | undefined;
+}): boolean {
+  return g.status === "active" && !g.archived;
+}
+
 // The single "what percent complete is this goal?" computation, shared by every
 // surface that renders a goal percentage (the household card via goalHighlights,
 // the dashboard's ActiveGoalsWidget, and the training GoalsManager) so they can

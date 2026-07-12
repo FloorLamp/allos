@@ -5,7 +5,7 @@
 // any new cross-profile SQL and the logic stays unit-testable.
 
 import { isDueOn } from "./supplement-schedule";
-import { goalPct } from "./goals";
+import { goalPct, isGoalLive } from "./goals";
 import type { Goal, Supplement } from "./types";
 import type { GoalProgress } from "./goal-progress";
 
@@ -80,7 +80,7 @@ export function goalHighlights(
   limit = 2
 ): GoalHighlight[] {
   return goals
-    .filter((g) => g.status === "active" && !g.archived)
+    .filter((g) => isGoalLive(g))
     .slice(0, limit)
     .map((g) => ({
       id: g.id,

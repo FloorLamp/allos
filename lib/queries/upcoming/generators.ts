@@ -50,7 +50,7 @@ import { getRiskFactors } from "./risk";
 import { biomarkerFamily } from "../../canonical-name";
 import { biomarkerDismissalKey } from "../../dismissal-keys";
 import { derivedInputCanonicalNamesFor } from "../../derived-biomarkers";
-import { frequencyScopeLabel } from "../../goals";
+import { frequencyScopeLabel, isGoalLive } from "../../goals";
 import {
   getUserSex,
   getUserAgeOn,
@@ -453,7 +453,7 @@ function appointmentItems(profileId: number): UpcomingItem[] {
 // standalone /goals route has no page (issue #283 found the dead link).
 function goalItems(profileId: number): UpcomingItem[] {
   return getGoals(profileId)
-    .filter((g) => !g.archived && g.status === "active" && g.target_date)
+    .filter((g) => isGoalLive(g) && g.target_date)
     .map((g) => ({
       key: `goal:${g.id}`,
       domain: "goal" as const,
