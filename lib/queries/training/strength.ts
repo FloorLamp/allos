@@ -50,6 +50,10 @@ export interface RecentSession {
     // can seed next-set suggestions off the newest session.
     target_reps: number | null;
     to_failure: number | null;
+    // Warmup flag (#338), shipped so the editor's seed excludes it (via
+    // sessionBestSet/sessionWorkSets) and its status judgment ignores it, while
+    // the Recent panel still SHOWS it.
+    warmup: number | null;
   }[];
 }
 
@@ -116,7 +120,7 @@ export const getRecentExerciseHistory = cache(function getRecentExerciseHistory(
       `SELECT s.exercise, a.date, a.id AS activity_id, s.set_number,
               s.weight_kg, s.reps, s.weight_kg_right, s.reps_right,
               s.duration_sec, s.duration_sec_right, s.target_reps, s.to_failure,
-              eq.name AS equipment
+              s.warmup, eq.name AS equipment
        FROM exercise_sets s JOIN activities a ON a.id = s.activity_id
        LEFT JOIN equipment eq ON eq.id = s.equipment_id
        WHERE a.profile_id = ? AND a.date >= ?
@@ -135,6 +139,7 @@ export const getRecentExerciseHistory = cache(function getRecentExerciseHistory(
     duration_sec_right: number | null;
     target_reps: number | null;
     to_failure: number | null;
+    warmup: number | null;
     equipment: string | null;
   }[];
 
@@ -191,6 +196,7 @@ export const getRecentExerciseHistory = cache(function getRecentExerciseHistory(
       duration_sec_right: r.duration_sec_right,
       target_reps: r.target_reps,
       to_failure: r.to_failure,
+      warmup: r.warmup,
     });
   }
 
@@ -294,6 +300,7 @@ export function getExerciseComparison(
        FROM exercise_sets s JOIN activities a ON a.id = s.activity_id
        LEFT JOIN equipment eq ON eq.id = s.equipment_id
        WHERE a.profile_id = ? AND LOWER(TRIM(s.exercise)) IN (${placeholders})
+         AND s.warmup = 0 -- exclude warmups from the comparison metrics (#338)
        ORDER BY a.date ASC, a.id ASC, s.set_number ASC`
     )
     .all(profileId, ...names) as {
@@ -407,6 +414,7 @@ export function getExerciseSetCountsSince(
       `SELECT s.exercise AS exercise, COUNT(*) AS sets
          FROM exercise_sets s JOIN activities a ON a.id = s.activity_id
         WHERE a.profile_id = ? AND a.date >= ?
+          AND s.warmup = 0 -- warmups don't count toward push/pull volume (#338)
         GROUP BY s.exercise`
     )
     .all(profileId, since) as { exercise: string; sets: number }[];
@@ -445,6 +453,7 @@ export function getExerciseE1rmSeries(
               s.weight_kg, s.reps, s.weight_kg_right, s.reps_right
          FROM exercise_sets s JOIN activities a ON a.id = s.activity_id
         WHERE a.profile_id = ? AND (s.reps IS NOT NULL OR s.reps_right IS NOT NULL)
+          AND s.warmup = 0 -- warmups don't seed the plateau e1RM series (#338)
           AND (? IS NULL OR a.date >= ?)
         ORDER BY a.date ASC, a.id ASC`
     )
@@ -529,6 +538,7 @@ export function getVolumeByDate(profileId: number) {
        WHERE a.profile_id = ?
          AND ((s.weight_kg IS NOT NULL AND s.reps IS NOT NULL)
           OR (s.weight_kg_right IS NOT NULL AND s.reps_right IS NOT NULL))
+         AND s.warmup = 0 -- warmups aren't working volume (#338)
        GROUP BY a.date ORDER BY a.date ASC`
     )
     .all(profileId) as { date: string; volume: number }[];
@@ -591,8 +601,11 @@ export const getStrengthByExercise = cache(function getStrengthByExercise(
               s.target_reps, s.to_failure
        FROM exercise_sets s JOIN activities a ON a.id = s.activity_id
        -- Any set with reps, weighted OR bodyweight (bodyweight sets store a
-       -- NULL weight); the load is resolved per exercise below.
+       -- NULL weight); the load is resolved per exercise below. Warmups are
+       -- excluded (#338) — inert to e1RM, best/top weight, volume, PRs and the
+       -- next-set seed alike.
        WHERE a.profile_id = ? AND (s.reps IS NOT NULL OR s.reps_right IS NOT NULL)
+         AND s.warmup = 0
        -- date+id ascending so the last row of an exercise is its newest session.
        ORDER BY a.date ASC, a.id ASC`
     )

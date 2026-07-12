@@ -51,6 +51,8 @@ export interface ActivityEditData {
     // Declared intent: planned rep count, or "to failure" (AMRAP, 1 = true).
     target_reps: number | null;
     to_failure: number | null;
+    // Warmup flag (#338, 1 = warmup); populated back into the set row on edit.
+    warmup: number | null;
   }[];
 }
 
@@ -90,6 +92,8 @@ export interface SetEntry {
   repsRight: string;
   duration: string; // timed holds, entered as m:ss
   durationRight: string;
+  // Warmup flag (#338): a ramp-up set, excluded from volume/judgment/progression.
+  warmup: boolean;
 }
 export interface PartEntry {
   name: string;
@@ -135,6 +139,7 @@ export const blankSet = (): SetEntry => ({
   repsRight: "",
   duration: "",
   durationRight: "",
+  warmup: false,
 });
 export const blankPart = (): PartEntry => ({
   name: "",
@@ -216,6 +221,7 @@ export function groupEditSets(
       duration: s.duration_sec != null ? formatSeconds(s.duration_sec) : "",
       durationRight:
         s.duration_sec_right != null ? formatSeconds(s.duration_sec_right) : "",
+      warmup: !!s.warmup,
     });
   }
   return byName;
@@ -238,8 +244,10 @@ export const setPartial = (name: string, set: SetEntry, perSide: boolean) =>
     sidePartial(name, set.weightRight, set.repsRight, set.durationRight));
 
 // Working-set volume (weight × reps, summed across sets and both sides).
+// Warmups are excluded (#338) — they're not working volume.
 export function partTotal(p: PartEntry): number {
   return p.sets.reduce((sum, s) => {
+    if (s.warmup) return sum;
     let v = (Number(s.weight) || 0) * (Number(s.reps) || 0);
     if (p.perSide)
       v += (Number(s.weightRight) || 0) * (Number(s.repsRight) || 0);

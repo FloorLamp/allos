@@ -87,7 +87,7 @@ export function getGoalProgressMap(
               s.weight_kg, s.reps, s.weight_kg_right, s.reps_right,
               s.duration_sec, s.duration_sec_right
        FROM exercise_sets s JOIN activities a ON a.id = s.activity_id
-       WHERE a.profile_id = ? AND s.exercise IN (${matchingNames
+       WHERE a.profile_id = ? AND s.warmup = 0 AND s.exercise IN (${matchingNames
          .map(() => "?")
          .join(",")})`
     )

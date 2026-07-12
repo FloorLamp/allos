@@ -418,6 +418,7 @@ export function getMostRecentActivityEditData(
       equipment_id: s.equipment_id,
       target_reps: s.target_reps,
       to_failure: s.to_failure,
+      warmup: s.warmup,
     })),
   };
 }

@@ -610,6 +610,9 @@ export default function ActivityForm({
               repsRight: last?.repsRight ?? "",
               duration: last?.duration ?? "",
               durationRight: last?.durationRight ?? "",
+              // A new set is a working set by default — never inherit the
+              // previous row's warmup flag (#338).
+              warmup: false,
             },
           ],
         };

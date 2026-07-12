@@ -525,6 +525,21 @@ describe("sessionWorkSets", () => {
       { weightKg: 25, reps: 7, targetReps: null, toFailure: false },
     ]);
   });
+
+  it("drops a flag-marked warmup set entirely (#338)", () => {
+    expect(
+      sessionWorkSets([
+        {
+          weight_kg: 60,
+          reps: 5,
+          weight_kg_right: null,
+          reps_right: null,
+          warmup: 1,
+        },
+        { weight_kg: 100, reps: 5, weight_kg_right: null, reps_right: null },
+      ])
+    ).toEqual([{ weightKg: 100, reps: 5, targetReps: null, toFailure: false }]);
+  });
 });
 
 // A RecentSession-shaped set with everything null unless overridden.
@@ -557,6 +572,16 @@ describe("sessionBestSet", () => {
       set({ reps: 9 }),
     ]);
     expect(best).toMatchObject({ weightKg: 0, reps: 11 });
+  });
+
+  it("never anchors on a flag-marked warmup, even if it's the heaviest (#338)", () => {
+    // A 120 kg warmup single would win the e1RM ranking, but it's flagged — the
+    // anchor must be the 100×5 working set instead.
+    const best = sessionBestSet([
+      set({ weight_kg: 120, reps: 1, warmup: 1 }),
+      set({ weight_kg: 100, reps: 5 }),
+    ]);
+    expect(best).toMatchObject({ weightKg: 100, reps: 5 });
   });
 
   it("treats each side of a per-side set as its own candidate", () => {

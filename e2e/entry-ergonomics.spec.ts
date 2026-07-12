@@ -324,6 +324,33 @@ test("weight steppers bump a set's load by the lift-appropriate increment (#337)
   await page.keyboard.press("Escape");
 });
 
+test("a set row has a warmup toggle that flips its pressed state (#338)", async ({
+  page,
+}) => {
+  await page.goto("/training");
+
+  await page
+    .getByRole("main")
+    .getByRole("button", { name: "New activity" })
+    .click();
+
+  await page.getByPlaceholder(/What did you do/).fill("Barbell Bench Press");
+  await page
+    .getByRole("listbox")
+    .getByRole("button", { name: "Barbell Bench Press", exact: true })
+    .click();
+
+  // Each set carries a light "W" warmup toggle (default off). Toggling flips its
+  // aria-pressed state — the flag excludes the set from volume/target/records.
+  const warmup = page.getByTestId("set1-warmup");
+  await expect(warmup).toHaveAttribute("aria-pressed", "false");
+  await warmup.click();
+  await expect(warmup).toHaveAttribute("aria-pressed", "true");
+
+  // Only the flag was toggled on an empty set, so nothing auto-saves — no cleanup.
+  await page.keyboard.press("Escape");
+});
+
 test("a failed activity save surfaces an error, never a false 'Saved ✓' (#332)", async ({
   page,
 }) => {

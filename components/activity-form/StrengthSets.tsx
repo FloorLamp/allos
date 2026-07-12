@@ -822,6 +822,29 @@ export default function StrengthSets({
                   stepButton("+", () => stepReps(si, "reps", 1), "Add a rep")}
               </div>
             )}
+            {/* Warmup toggle (#338): a light per-set "W" — a warmup is excluded
+                from the part's volume total and target markers. One toggle per
+                set (both sides of a per-side set share it). */}
+            <button
+              type="button"
+              tabIndex={-1}
+              onClick={() => onUpdateSet(si, { warmup: !s.warmup })}
+              aria-pressed={s.warmup}
+              data-testid={si === 0 ? "set1-warmup" : undefined}
+              title={
+                s.warmup
+                  ? "Warmup set — excluded from volume & target markers"
+                  : "Mark as a warmup set"
+              }
+              aria-label={s.warmup ? "Unmark warmup set" : "Mark warmup set"}
+              className={`mt-1 flex h-8 w-7 shrink-0 items-center justify-center rounded text-xs font-bold ${
+                s.warmup
+                  ? "bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400"
+                  : "text-slate-300 hover:bg-slate-100 hover:text-slate-500 dark:text-slate-600 dark:hover:bg-ink-800"
+              }`}
+            >
+              W
+            </button>
             {p.sets.length > 1 && (
               <button
                 type="button"

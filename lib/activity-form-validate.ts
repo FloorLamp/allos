@@ -287,6 +287,8 @@ export interface ActivitySetPayload {
   equipmentId: number | null;
   targetReps: number | null;
   toFailure: boolean;
+  // Warmup flag (#338): true marks a ramp-up set, excluded from working-set math.
+  warmup: boolean;
 }
 
 export interface ActivityPayload {
@@ -343,6 +345,7 @@ export function buildActivityPayload(
         equipmentId: p.equipmentId,
         targetReps: intent.target,
         toFailure: intent.toFailure,
+        warmup: s.warmup,
       });
     }
   }

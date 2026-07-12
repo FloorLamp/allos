@@ -147,6 +147,52 @@ describe("summarizeExercise — target-based status", () => {
       ).status
     ).toBeNull();
   });
+
+  it("a warmup set doesn't count toward met/missed (#338)", () => {
+    // A 60 kg warmup single under a 5-rep target must not sink a session whose
+    // working sets all hit 5.
+    const sets = [
+      row({ set_number: 1, weight_kg: 60, reps: 1, target_reps: 5, warmup: 1 }),
+      row({ set_number: 2, weight_kg: 100, reps: 5, target_reps: 5 }),
+      row({ set_number: 3, weight_kg: 100, reps: 5, target_reps: 5 }),
+    ];
+    expect(summarizeExercise(sets, "kg").status).toBe("met");
+  });
+});
+
+describe("summarizeExercise — warmup volume (#338)", () => {
+  it("excludes a warmup set from the volume total but keeps it in the text", () => {
+    const sets = [
+      row({ set_number: 1, weight_kg: 60, reps: 5, warmup: 1 }),
+      row({ set_number: 2, weight_kg: 100, reps: 5 }),
+      row({ set_number: 3, weight_kg: 100, reps: 5 }),
+    ];
+    const s = summarizeExercise(sets, "kg");
+    expect(s.totalKg).toBe(1000); // 100×5 × 2, the 60×5 warmup excluded
+    expect(s.text).toContain("60kg"); // still shown
+  });
+
+  it("excludes a warmup from per-side volume too", () => {
+    const sets = [
+      row({
+        set_number: 1,
+        weight_kg: 8,
+        reps: 10,
+        weight_kg_right: 8,
+        reps_right: 10,
+        warmup: 1,
+      }),
+      row({
+        set_number: 2,
+        weight_kg: 14,
+        reps: 10,
+        weight_kg_right: 12,
+        reps_right: 8,
+      }),
+    ];
+    // Only the working set counts: 14×10 + 12×8.
+    expect(summarizeExercise(sets, "kg").totalKg).toBe(14 * 10 + 12 * 8);
+  });
 });
 
 describe("summarizeExercise — timed holds", () => {

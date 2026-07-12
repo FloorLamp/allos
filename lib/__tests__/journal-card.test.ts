@@ -68,6 +68,7 @@ function set(
     target_reps: null,
     to_failure: null,
     equipment_id: null,
+    warmup: 0,
     ...over,
   };
 }
