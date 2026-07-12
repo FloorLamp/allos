@@ -11,7 +11,7 @@ import {
   adminLoginCount,
   type Role,
 } from "@/lib/auth";
-import { db } from "@/lib/db";
+import { db, writeTx } from "@/lib/db";
 import { hashPassword } from "@/lib/password";
 import { checkPasswordStrength } from "@/lib/password-strength";
 import { getSetting, isValidTimezone, setProfileSetting } from "@/lib/settings";
@@ -85,7 +85,7 @@ export async function createProfile(formData: FormData): Promise<FamilyResult> {
   if (!name) return { ok: false, error: "Enter a name." };
   if (name.length > 60) return { ok: false, error: "Name is too long." };
 
-  const create = db.transaction((): number => {
+  const newId = writeTx((): number => {
     const info = db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name);
     const id = Number(info.lastInsertRowid);
     // Seed the new profile's timezone from the instance default (global settings
@@ -94,7 +94,6 @@ export async function createProfile(formData: FormData): Promise<FamilyResult> {
     if (tz && isValidTimezone(tz)) setProfileSetting(id, "timezone", tz);
     return id;
   });
-  const newId = create();
   recordAudit({
     loginId: admin.login.id,
     profileId: admin.profile.id,
@@ -161,7 +160,7 @@ export async function deleteProfile(formData: FormData): Promise<FamilyResult> {
       .all(id) as { stored_path: string }[]
   ).map((r) => r.stored_path);
 
-  const remove = db.transaction(() => {
+  writeTx(() => {
     // Child tables first, reached through their parent (they carry no profile_id
     // of their own, so these deletes are exempt from the profile-scoping test).
     db.prepare(
@@ -196,7 +195,6 @@ export async function deleteProfile(formData: FormData): Promise<FamilyResult> {
     ).run(id);
     db.prepare("DELETE FROM profiles WHERE id = ?").run(id);
   });
-  remove();
   recordAudit({
     loginId: admin.login.id,
     profileId: admin.profile.id,
@@ -330,13 +328,12 @@ export async function deleteLogin(formData: FormData): Promise<FamilyResult> {
 
   const isSelf = session.login.id === acct.id;
 
-  const remove = db.transaction(() => {
+  writeTx(() => {
     db.prepare("DELETE FROM sessions WHERE login_id = ?").run(id);
     db.prepare("DELETE FROM login_profiles WHERE login_id = ?").run(id);
     db.prepare("DELETE FROM login_settings WHERE login_id = ?").run(id);
     db.prepare("DELETE FROM logins WHERE id = ?").run(id);
   });
-  remove();
   recordAudit({
     loginId: session.login.id,
     profileId: session.profile.id,
@@ -428,7 +425,7 @@ export async function setGrants(formData: FormData): Promise<FamilyResult> {
   )
     return { ok: true, message: "No changes." };
 
-  const apply = db.transaction(() => {
+  writeTx(() => {
     const ins = db.prepare(
       "INSERT OR IGNORE INTO login_profiles (login_id, profile_id, access) VALUES (?, ?, ?)"
     );
@@ -442,7 +439,6 @@ export async function setGrants(formData: FormData): Promise<FamilyResult> {
     for (const g of diff.update) upd.run(g.access, loginId, g.profileId);
     for (const pid of diff.remove) del.run(loginId, pid);
   });
-  apply();
   // Detail is a compact grant diff by profile id + access level (identifiers
   // only — never PHI). e.g. "+2:read,~3:write,-4".
   recordAudit({

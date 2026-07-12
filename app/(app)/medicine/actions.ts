@@ -2,7 +2,7 @@
 import { requireWriteAccess } from "@/lib/auth";
 
 import { revalidatePath } from "next/cache";
-import { db, today } from "@/lib/db";
+import { db, today, writeTx } from "@/lib/db";
 import { captureDelete } from "@/lib/undo-delete-db";
 import {
   getActiveSituations,
@@ -258,7 +258,7 @@ export async function addSupplement(formData: FormData) {
     f.kind === "medication"
       ? resolveProviderIdByName(String(formData.get("provider") ?? ""))
       : null;
-  const tx = db.transaction(() => {
+  writeTx(() => {
     const info = db
       .prepare(
         `INSERT INTO intake_items
@@ -301,7 +301,6 @@ export async function addSupplement(formData: FormData) {
       ensureMedicationCourse(profile.id, suppId, today(profile.id));
     }
   });
-  tx();
   revalidatePath("/medicine");
   revalidatePath("/");
 }
@@ -321,7 +320,7 @@ export async function updateSupplement(formData: FormData) {
     f.kind === "medication"
       ? resolveProviderIdByName(String(formData.get("provider") ?? ""))
       : null;
-  const tx = db.transaction(() => {
+  writeTx(() => {
     // Verify ownership before touching the supplement or its child rows — the
     // form id is untrusted. Bail (no-op) when it isn't owned. Also snapshot the
     // prior refill-tracked state (active + quantity_on_hand) so an edit that turns
@@ -441,7 +440,6 @@ export async function updateSupplement(formData: FormData) {
       ensureMedicationCourse(profile.id, id, null);
     }
   });
-  tx();
   revalidatePath("/medicine");
   revalidatePath("/");
 }
@@ -792,7 +790,7 @@ export async function acceptSuggestion(formData: FormData) {
   const amount = parsed.amount ?? s.dosage;
   const time = s.time_of_day ?? parsed.timeOfDay ?? null;
   const times = spreadDoseTimes(parsed.perDay, time);
-  const tx = db.transaction(() => {
+  writeTx(() => {
     const info = db
       .prepare(
         `INSERT INTO intake_items
@@ -823,7 +821,6 @@ export async function acceptSuggestion(formData: FormData) {
       "UPDATE intake_item_suggestions SET status = 'accepted' WHERE id = ? AND profile_id = ?"
     ).run(id, profile.id);
   });
-  tx();
   revalidatePath("/medicine");
   revalidatePath("/");
 }

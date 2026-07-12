@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { db } from "../db";
+import { db, writeTx } from "../db";
 import { hashShareToken } from "../share-token";
 import {
   parseFeedCategories,
@@ -101,7 +101,7 @@ export function mintCalendarFeedToken(
   const token = crypto.randomBytes(32).toString("hex");
   const now = new Date();
   const expiresAt = expiresAtFromChoice(expiry, now.getTime());
-  const write = db.transaction(() => {
+  writeTx(() => {
     setProfileSetting(
       profileId,
       "calendar_feed_token_hash",
@@ -120,7 +120,6 @@ export function mintCalendarFeedToken(
     }
     deleteProfileSetting(profileId, "calendar_feed_token_last_used_at");
   });
-  write();
   return token;
 }
 
@@ -128,14 +127,13 @@ export function mintCalendarFeedToken(
 // dead even if re-enabled later without a fresh mint. Also clears the lifecycle
 // stamps so a later re-enable starts clean. Idempotent.
 export function disableCalendarFeed(profileId: number): void {
-  const write = db.transaction(() => {
+  writeTx(() => {
     setProfileSetting(profileId, "calendar_feed_enabled", "0");
     deleteProfileSetting(profileId, "calendar_feed_token_hash");
     deleteProfileSetting(profileId, "calendar_feed_token_created_at");
     deleteProfileSetting(profileId, "calendar_feed_token_expires_at");
     deleteProfileSetting(profileId, "calendar_feed_token_last_used_at");
   });
-  write();
 }
 
 // Record a successful feed fetch, throttled to once an hour (mirrors the session
@@ -178,7 +176,7 @@ export function setCalendarFeedOptions(
   opts: CalendarFeedOptionsInput
 ): void {
   const categories = canonicalizeFeedCategories(opts.categories);
-  const write = db.transaction(() => {
+  writeTx(() => {
     setProfileSetting(
       profileId,
       "calendar_feed_categories",
@@ -204,7 +202,6 @@ export function setCalendarFeedOptions(
       deleteProfileSetting(profileId, "calendar_feed_future_days");
     }
   });
-  write();
 }
 
 // Resolve a raw token from the feed URL to the owning profile id, or null. This is
@@ -292,7 +289,7 @@ export function mintConsolidatedCalendarFeedToken(
   const token = crypto.randomBytes(32).toString("hex");
   const now = new Date();
   const expiresAt = expiresAtFromChoice(expiry, now.getTime());
-  const write = db.transaction(() => {
+  writeTx(() => {
     setLoginSetting(loginId, CCF_KEY.hash, hashShareToken(token));
     setLoginSetting(loginId, CCF_KEY.enabled, "1");
     setLoginSetting(loginId, CCF_KEY.createdAt, now.toISOString());
@@ -300,21 +297,19 @@ export function mintConsolidatedCalendarFeedToken(
     else deleteLoginSetting(loginId, CCF_KEY.expiresAt);
     deleteLoginSetting(loginId, CCF_KEY.lastUsedAt);
   });
-  write();
   return token;
 }
 
 // Disable the feed (route then 404s) and drop the token hash so the URL is dead.
 // Also clears the lifecycle stamps so a later re-enable starts clean. Idempotent.
 export function disableConsolidatedCalendarFeed(loginId: number): void {
-  const write = db.transaction(() => {
+  writeTx(() => {
     setLoginSetting(loginId, CCF_KEY.enabled, "0");
     deleteLoginSetting(loginId, CCF_KEY.hash);
     deleteLoginSetting(loginId, CCF_KEY.createdAt);
     deleteLoginSetting(loginId, CCF_KEY.expiresAt);
     deleteLoginSetting(loginId, CCF_KEY.lastUsedAt);
   });
-  write();
 }
 
 // Record a successful feed fetch, throttled to once an hour (mirrors the per-profile

@@ -1,4 +1,4 @@
-import { db } from "@/lib/db";
+import { db, writeTx } from "@/lib/db";
 import { createLogger } from "@/lib/log";
 import {
   OURA_ID,
@@ -257,12 +257,11 @@ export async function runOuraSync(
   let upBody: UpsertCounts = emptyCounts();
   let upSamples: UpsertCounts = emptyCounts();
   try {
-    const tx = db.transaction(() => {
+    writeTx(() => {
       upActivities = upsertActivities(profileId, acts, OURA_ID);
       upBody = upsertBodyMetrics(profileId, bodyMetrics, OURA_ID);
       upSamples = upsertMetricSamples(profileId, samples, OURA_ID);
     });
-    tx();
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const win = dateWindow([

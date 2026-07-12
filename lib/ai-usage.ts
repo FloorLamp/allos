@@ -15,7 +15,7 @@
 // DB wrapper itself (atomic read-increment, per-kind and per-profile independence)
 // is exercised by the DB-tier test lib/__db_tests__/ai-usage.test.ts.
 
-import { db, today } from "./db";
+import { db, today, writeTx } from "./db";
 import {
   decideAiUsage,
   decideAiRefund,
@@ -53,18 +53,19 @@ export type {
 // longer permanently exhausts the day with nothing imported. A `skipped` outcome is
 // NOT refunded (the model declined, or the cap already blocked the charge).
 //
-// Atomicity holds WITHIN a single Node process: better-sqlite3 is synchronous and
-// every AI-writing path runs in the web process (the notify sidecar doesn't call
-// these), so the read and the increment can't interleave. A second AI-writing
-// process would break that assumption and require db.transaction(...).immediate plus
-// an atomic `SET count = count + 1`.
+// The read + increment run in one IMMEDIATE transaction (writeTx, issue #468): the
+// write lock is taken at BEGIN, so two concurrent callers can't both read the same
+// count and both pass, and — now that this may run outside the single web process —
+// the read-then-write can't hit the deferred-upgrade SQLITE_BUSY trap. Every
+// AI-writing path historically ran in the web process (the notify sidecar doesn't
+// call these), but the immediate lock makes the atomicity hold regardless.
 export function checkAndIncrementAiUsage(
   profileId: number,
   kind: AiUsageKind,
   limit: number,
   day: string = today(profileId)
 ): AiUsageResult {
-  const run = db.transaction((): AiUsageResult => {
+  return writeTx((): AiUsageResult => {
     const row = db
       .prepare(
         "SELECT count FROM ai_usage_counters WHERE profile_id = ? AND day = ? AND kind = ?"
@@ -81,7 +82,6 @@ export function checkAndIncrementAiUsage(
     }
     return { allowed: decision.allowed, remaining: decision.remaining };
   });
-  return run();
 }
 
 // Refund one unit for a (day, kind) counter after a TRANSIENT extraction failure
@@ -96,7 +96,7 @@ export function refundAiUsage(
   kind: AiUsageKind,
   day: string = today(profileId)
 ): void {
-  const run = db.transaction((): void => {
+  writeTx((): void => {
     const row = db
       .prepare(
         "SELECT count FROM ai_usage_counters WHERE profile_id = ? AND day = ? AND kind = ?"
@@ -108,7 +108,6 @@ export function refundAiUsage(
       "UPDATE ai_usage_counters SET count = ? WHERE profile_id = ? AND day = ? AND kind = ?"
     ).run(nextCount, profileId, day, kind);
   });
-  run();
 }
 
 // Read the profile's current count for a day/kind WITHOUT incrementing (for

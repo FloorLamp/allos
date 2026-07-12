@@ -1,4 +1,4 @@
-import { db } from "../db";
+import { db, writeTx } from "../db";
 import { cache } from "../request-cache";
 import {
   getStoredAge,
@@ -365,10 +365,9 @@ export function addCanonicalNames(names: string[]): void {
   const insert = db.prepare(
     "INSERT OR IGNORE INTO canonical_biomarkers (name, source) VALUES (?, 'ai')"
   );
-  const run = db.transaction(() => {
+  writeTx(() => {
     for (const n of distinct) insert.run(n);
   });
-  run();
 }
 
 // Distinct canonical names actually used by records — including user-typed ones
@@ -806,13 +805,12 @@ export function reconcileFlags(profileId: number, ids?: number[]): number {
   const clear = db.prepare(
     "UPDATE medical_records SET flag = NULL WHERE id = ?"
   );
-  const run = db.transaction(() => {
+  writeTx(() => {
     for (const c of changes) {
       if (c.flag === null) clear.run(c.id);
       else setFlag.run(c.flag, c.id);
     }
   });
-  run();
   return changes.length;
 }
 

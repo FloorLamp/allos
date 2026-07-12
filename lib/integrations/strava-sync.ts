@@ -1,4 +1,4 @@
-import { db } from "@/lib/db";
+import { db, writeTx } from "@/lib/db";
 import { createLogger } from "@/lib/log";
 import {
   STRAVA_ID,
@@ -154,11 +154,10 @@ export async function runStravaSync(
   let upActivities: UpsertCounts = emptyCounts();
   let upSamples: UpsertCounts = emptyCounts();
   try {
-    const tx = db.transaction(() => {
+    writeTx(() => {
       upActivities = upsertActivities(profileId, acts, STRAVA_ID);
       upSamples = upsertMetricSamples(profileId, samples, STRAVA_ID);
     });
-    tx();
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const win = dateWindow([

@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import { db } from "./db";
+import { db, writeTx } from "./db";
 import { documentSource, undeferredBodyMetrics } from "./body-metric-extract";
 import {
   adoptProfileFromExtraction,
@@ -164,7 +164,7 @@ export function persistDocumentImport(
 ): PersistOutcome {
   const providerIdFor = buildProviderResolver(input.providers);
 
-  const result = db.transaction(() => {
+  const result = writeTx(() => {
     // Replace this document's prior rows (a no-op on first import; on reprocess
     // it clears the old set) across every table an import writes — including the
     // previously auto-structured meds, cleared here before the existing-meds set
@@ -224,7 +224,7 @@ export function persistDocumentImport(
       profileId
     );
     return { counts, extractedCount };
-  })();
+  });
 
   return {
     immCount: result.counts.immCount,
@@ -268,9 +268,9 @@ export function persistDocumentlessImport(
   input: PersistInput
 ): DocumentlessOutcome {
   const providerIdFor = buildProviderResolver(input.providers);
-  const counts = db.transaction(() =>
+  const counts = writeTx(() =>
     insertImportRows(profileId, null, input, providerIdFor)
-  )();
+  );
   return {
     recCount: counts.recCount,
     immCount: counts.immCount,
