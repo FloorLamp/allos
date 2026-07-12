@@ -24,6 +24,10 @@ import {
   type BodyGroup,
 } from "./lifts";
 import { weekdayOfDateStr, shiftDateStr } from "./date";
+import {
+  deRankUnavailableLifts,
+  type EquipmentAvailability,
+} from "./equipment-availability";
 import type {
   StrengthRecent,
   CardioRecent,
@@ -96,6 +100,12 @@ export interface NextWorkoutInput {
   // Bounded-window dated exercise rows; enables recovery exclusion + weekday
   // habit + frequency-ranked exercise lists. Optional — see DatedExercise.
   datedExercises?: DatedExercise[];
+  // The profile's equipment availability (issue #345). When present and non-empty,
+  // the shared strength suggestion PREFERS lifts satisfiable with available gear —
+  // a dumbbell-only home-gym user's "train today" leads with a lift they can do.
+  // Absent / empty registry ⇒ no gating (gym-goers own no rows), so every existing
+  // caller/test keeps its prior ordering.
+  availableEquipment?: EquipmentAvailability;
 }
 
 // How a workout item was arrived at, so a formatter can phrase it precisely:
@@ -252,8 +262,7 @@ function computeStrengthWorkout(
     const inScope = (r: MuscleRegion) => candidate == null || candidate.has(r);
     const focusRegions = focusFromHistory(dated, today, behindRegions, inScope);
     const exercises = rankExercises(dated, focusRegions);
-    const primary = strength.find((s) => s.exercise === exercises[0]) ?? null;
-    return { focus: focusRegions, exercises, primary };
+    return withEquipmentPreference(focusRegions, exercises, input);
   }
 
   // Aggregate fallback: qualifying strength rows within the variety window,
@@ -275,11 +284,31 @@ function computeStrengthWorkout(
     const r = regionForExercise(s.exercise);
     if (r && !focus.includes(r)) focus.push(r);
   }
-  return {
-    focus: focus.slice(0, 3),
-    exercises: qualifying.map((s) => s.exercise).slice(0, 5),
-    primary: qualifying[0] ?? null,
-  };
+  return withEquipmentPreference(
+    focus.slice(0, 3),
+    qualifying.map((s) => s.exercise).slice(0, 5),
+    input
+  );
+}
+
+// Apply the #345 equipment preference to a computed strength suggestion: de-rank
+// exercises the profile can't do with its available gear (a no-op when the
+// registry is empty/absent — see equipment-availability), then re-derive the lead
+// lift from the reordered list so `primary` and the exercise list agree. `primary`
+// stays a StrengthRecent from the input rows (or null when the lead came from the
+// catalog / no strength history).
+function withEquipmentPreference(
+  focus: MuscleRegion[],
+  exercises: string[],
+  input: NextWorkoutInput
+): {
+  focus: MuscleRegion[];
+  exercises: string[];
+  primary: StrengthRecent | null;
+} {
+  const ranked = deRankUnavailableLifts(exercises, input.availableEquipment);
+  const primary = input.strength.find((s) => s.exercise === ranked[0]) ?? null;
+  return { focus, exercises: ranked, primary };
 }
 
 // Focus regions from dated history: behind ∩ usual, then behind, then usual —

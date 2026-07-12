@@ -70,10 +70,7 @@ export default async function ProfileSettingsPage() {
         title="Settings"
         subtitle={`${profile.name}’s profile — these settings apply to the person you’re currently viewing. Switch profiles in the header to edit someone else.`}
       />
-      <SettingsTabs
-        isAdmin={isAdmin}
-        hideEquipment={isTrainingRestricted(profile.id)}
-      />
+      <SettingsTabs isAdmin={isAdmin} />
       <ProfilePhotoCard profile={profile} disabled={demoRestricted} />
       <ProfileForm
         fullName={fullName}

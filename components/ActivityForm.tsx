@@ -28,6 +28,10 @@ import {
 } from "@/lib/activity-meta";
 import { isCuratedActivity } from "@/lib/activities-catalog";
 import { biasByCompanions } from "@/lib/companions";
+import {
+  summarizeEquipmentAvailability,
+  deRankUnavailableLifts,
+} from "@/lib/equipment-availability";
 import { dispWeight, kmTo, round } from "@/lib/units";
 import { saveOutcomeMessage } from "@/lib/activity-save-outcome";
 import { type NextSet } from "@/lib/coaching";
@@ -175,6 +179,20 @@ export default function ActivityForm({
   // Local copy so a bar created from the plate builder appears immediately in
   // both the equipment selector and the builder without waiting on a refetch.
   const [equipmentList, setEquipmentList] = useState<Equipment[]>(equipment);
+
+  // Equipment-aware base ordering for the exercise combobox (issue #345): de-rank
+  // lifts whose implement kind the profile doesn't own, so cold suggestions prefer
+  // gear the user actually has. A no-op for an empty registry (gym-goers), and only
+  // a BASE reorder — the companion/recency bias below still floats logged lifts, so
+  // this mostly affects untrained cold suggestions ("de-rank, not hide").
+  const equipmentRankedOptions = useMemo(
+    () =>
+      deRankUnavailableLifts(
+        allOptions,
+        summarizeEquipmentAvailability(equipmentList)
+      ),
+    [allOptions, equipmentList]
+  );
   // Which set's weight field the plate builder is targeting, if open.
   const [plateTarget, setPlateTarget] = useState<{
     pi: number;
@@ -891,7 +909,7 @@ export default function ActivityForm({
             ? baseLiftName(p.name).trim().toLowerCase()
             : "";
           const biasedOptions = biasByCompanions(
-            allOptions,
+            equipmentRankedOptions,
             enteredLiftBases.filter((n) => n !== selfBase),
             suggestions.liftCompanions
           );

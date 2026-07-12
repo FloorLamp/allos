@@ -19,7 +19,7 @@ import { getNotifyError } from "@/lib/notifications";
 import { aiEndpointInfo } from "@/lib/ai-client";
 import { formatBytes } from "@/lib/format-bytes";
 import { requireAdmin } from "@/lib/auth";
-import { isTrainingRestricted, minTrainingAge } from "@/lib/age-gate";
+import { minTrainingAge } from "@/lib/age-gate";
 import { PageHeader } from "@/components/ui";
 import AppVersion from "@/components/AppVersion";
 import SettingsTabs from "../SettingsTabs";
@@ -51,7 +51,7 @@ export default async function ServerSettingsPage() {
         title="Settings"
         subtitle="Server — instance-wide settings that apply to everyone. Only admins can change these."
       />
-      <SettingsTabs isAdmin hideEquipment={isTrainingRestricted(profile.id)} />
+      <SettingsTabs isAdmin />
       <PublicUrlSettings publicUrl={publicUrl} />
       <ServerTelegramSettings
         config={getTelegramBotConfig()}

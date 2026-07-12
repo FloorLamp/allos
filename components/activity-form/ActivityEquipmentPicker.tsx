@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import type { ActivityType, Equipment } from "@/lib/types";
 import { equipmentForActivity } from "@/lib/activity-equipment";
 
@@ -39,9 +40,20 @@ export default function ActivityEquipmentPicker({
 
   return (
     <div className="mt-2">
-      <label className="label" htmlFor="activity-equipment">
-        Equipment
-      </label>
+      <div className="flex items-center justify-between">
+        <label className="label" htmlFor="activity-equipment">
+          Equipment
+        </label>
+        {/* Contextual link to the registry (issue #343) — equipment lives at
+        /equipment now, reached from where gear appears rather than top-level nav. */}
+        <Link
+          href="/equipment"
+          target="_blank"
+          className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
+        >
+          Manage equipment
+        </Link>
+      </div>
       <select
         id="activity-equipment"
         data-testid="activity-equipment-select"

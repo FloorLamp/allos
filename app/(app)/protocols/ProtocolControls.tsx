@@ -4,8 +4,8 @@ import { useState } from "react";
 import { IconPencil, IconTrash, IconPlayerStop } from "@tabler/icons-react";
 import SubmitButton from "@/components/SubmitButton";
 import { formatLongDate } from "@/lib/format-date";
-import type { Protocol, FormResult } from "@/lib/types";
-import type { OutcomeOption } from "@/lib/queries/protocols";
+import type { Protocol, FormResult, Equipment } from "@/lib/types";
+import type { OutcomeOption, ProtocolPractice } from "@/lib/queries/protocols";
 import ProtocolForm from "./ProtocolForm";
 
 // Detail-page header + lifecycle controls for one protocol: an inline edit toggle
@@ -15,12 +15,16 @@ import ProtocolForm from "./ProtocolForm";
 export default function ProtocolControls({
   protocol,
   options,
+  equipment,
+  practice,
   updateAction,
   endAction,
   deleteAction,
 }: {
   protocol: Protocol;
   options: OutcomeOption[];
+  equipment: Equipment[];
+  practice: ProtocolPractice | null;
   updateAction: (formData: FormData) => Promise<FormResult>;
   endAction: (formData: FormData) => Promise<FormResult>;
   deleteAction: (formData: FormData) => Promise<FormResult>;
@@ -33,7 +37,9 @@ export default function ProtocolControls({
       <ProtocolForm
         action={updateAction}
         options={options}
+        equipment={equipment}
         protocol={protocol}
+        practice={practice}
         onDone={() => setEditing(false)}
       />
     );

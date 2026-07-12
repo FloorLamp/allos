@@ -5,21 +5,34 @@ import { useRouter } from "next/navigation";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
-import type { Protocol, FormResult } from "@/lib/types";
-import type { OutcomeOption } from "@/lib/queries/protocols";
+import type { Protocol, FormResult, Equipment } from "@/lib/types";
+import type { OutcomeOption, ProtocolPractice } from "@/lib/queries/protocols";
+import { PRACTICE_TYPES } from "@/lib/protocol-practice";
+
+const PRACTICE_TYPE_LABELS: Record<string, string> = {
+  strength: "Strength",
+  cardio: "Cardio",
+  sport: "Sport",
+};
 
 // Shared add/edit protocol form. Add mode: no `protocol`. Edit mode: pass the row
 // (renders a hidden id + Cancel). `options` is the outcome-metric picker (fixed
 // body/index metrics + the profile's tracked biomarkers), grouped for headings.
+// `equipment` powers the optional recovery-gear reference; `practice` seeds the
+// optional adherence practice (activity type × N/week) in edit mode (issue #344).
 export default function ProtocolForm({
   action,
   options,
+  equipment,
   protocol,
+  practice = null,
   onDone,
 }: {
   action: (formData: FormData) => Promise<FormResult>;
   options: OutcomeOption[];
+  equipment: Equipment[];
   protocol?: Protocol;
+  practice?: ProtocolPractice | null;
   onDone?: () => void;
 }) {
   const router = useRouter();
@@ -160,6 +173,77 @@ export default function ProtocolForm({
           defaultValue={protocol?.situation ?? ""}
           placeholder="e.g. Creatine loading — surfaces situational supplements"
         />
+      </div>
+      {equipment.length > 0 && (
+        <div>
+          <label className="label" htmlFor={`pr-equipment-${uid}`}>
+            Recovery gear <span className="text-slate-400">(optional)</span>
+          </label>
+          <select
+            id={`pr-equipment-${uid}`}
+            name="equipment_id"
+            className="input"
+            defaultValue={protocol?.equipment_id ?? ""}
+            data-testid="protocol-equipment"
+          >
+            <option value="">None</option>
+            {equipment.map((e) => (
+              <option key={e.id} value={e.id}>
+                {e.name}
+                {e.retired ? " (retired)" : ""}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+            Link the device this experiment is about — e.g. which sauna.
+          </p>
+        </div>
+      )}
+      <div>
+        <span className="label">
+          Practice adherence <span className="text-slate-400">(optional)</span>
+        </span>
+        <div className="mt-1 grid grid-cols-[1fr,auto] items-end gap-2">
+          <div>
+            <label className="sr-only" htmlFor={`pr-practice-type-${uid}`}>
+              Practice activity type
+            </label>
+            <select
+              id={`pr-practice-type-${uid}`}
+              name="practice_type"
+              className="input"
+              defaultValue={practice?.type ?? ""}
+              data-testid="protocol-practice-type"
+            >
+              <option value="">No adherence tracking</option>
+              {PRACTICE_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {PRACTICE_TYPE_LABELS[t] ?? t}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <input
+              type="number"
+              name="practice_per_week"
+              min={1}
+              max={14}
+              className="input w-20"
+              defaultValue={practice?.perWeek ?? ""}
+              placeholder="4"
+              aria-label="Sessions per week"
+              data-testid="protocol-practice-per-week"
+            />
+            <span className="whitespace-nowrap text-sm text-slate-500 dark:text-slate-400">
+              × / week
+            </span>
+          </div>
+        </div>
+        <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+          Track how often you actually do the practice — reuses your weekly
+          routine targets (e.g. sauna 4×/week).
+        </p>
       </div>
       <div>
         <label className="label" htmlFor={`pr-notes-${uid}`}>

@@ -2,11 +2,13 @@ import { test, expect } from "@playwright/test";
 import { loginAs } from "./nav";
 import { E2E_LOGIN_CHILD, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
-// Settings → Equipment (issue #391, gap 3). equipment-lifecycle covers retire/
-// restore; this covers the untested rest: adding an implement WITH its own weight
-// (shown in the login's weight unit), deleting one that a logged set references
-// (the link nulls, no FK 500, history survives — the #342 side-state rule), and the
-// age-gate bounce that keeps a restricted profile off the tab even by direct URL.
+// The equipment MANAGER (issue #391), now hosted on the top-level /equipment
+// registry index instead of a Settings tab (issue #343). equipment-lifecycle
+// covers retire/restore; this covers the untested rest: adding an implement WITH
+// its own weight (shown in the login's weight unit), deleting one that a logged
+// set references (the link nulls, no FK 500, history survives — the #342
+// side-state rule), and the age-gate bounce that keeps a restricted profile off
+// the registry even by direct URL.
 test.describe("Equipment manager (#391)", () => {
   test("add an implement with its own weight — listed with the weight unit", async ({
     page,
@@ -14,7 +16,7 @@ test.describe("Equipment manager (#391)", () => {
     // Local `next dev` compiles the equipment route on first hit.
     test.slow();
 
-    await page.goto("/settings/equipment");
+    await page.goto("/equipment");
     await expect(
       page.getByRole("heading", { name: "Your equipment" })
     ).toBeVisible();
@@ -46,7 +48,7 @@ test.describe("Equipment manager (#391)", () => {
     // seed-events). Delete it; the confirm dialog's own button is scoped to the
     // dialog so it can't be confused with the row's Delete icon. Guarded so a CI
     // retry (which reuses the DB where the bar is already gone) is a no-op.
-    await page.goto("/settings/equipment");
+    await page.goto("/equipment");
     const row = page
       .getByTestId("equipment-row")
       .filter({ hasText: "E2E Delete Bar" });
@@ -73,22 +75,23 @@ test.describe("Equipment manager (#391)", () => {
     ).toBeVisible();
   });
 
-  test("an age-restricted profile is bounced off the Equipment tab by direct URL", async ({
+  test("an age-restricted profile is bounced off the Equipment registry by direct URL", async ({
     browser,
   }) => {
     test.slow();
 
     // A member whose sole active profile is Riley (child) — under the seeded
-    // min-training-age gate. Navigating straight to /settings/equipment must
-    // redirect to /settings (the tab is hidden for restricted profiles).
+    // min-training-age gate. Navigating straight to /equipment must redirect to
+    // the dashboard (the registry is hidden for restricted profiles, like
+    // /training).
     const member = await loginAs(browser, {
       username: E2E_LOGIN_CHILD,
       password: E2E_MEMBER_PASSWORD,
     });
     try {
-      await member.goto("/settings/equipment");
-      await member.waitForURL(/\/settings$/, { timeout: 20_000 });
-      await expect(member).toHaveURL(/\/settings$/);
+      await member.goto("/equipment");
+      await member.waitForURL((u) => u.pathname === "/", { timeout: 20_000 });
+      await expect(member).toHaveURL(/\/$/);
       // The manager heading never renders for the bounced profile.
       await expect(
         member.getByRole("heading", { name: "Your equipment" })

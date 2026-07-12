@@ -1248,6 +1248,44 @@ db.prepare(
    VALUES (?, 'Bench Press', 1, 60, 5, ?)`
 ).run(delActId, delBarId);
 
+// A DEDICATED, non-retired profile-1 Bike used by a session-level cardio activity
+// (activities.equipment_id), for the equipment-registry spec (issue #343): it
+// proves the /equipment index renders a usage badge + a Cardio group, and its
+// /equipment/[id] detail renders the sessions/last-used/total-distance payoff.
+// Distinct name from "E2E Delete Bar" (the delete spec's fixture) so the two specs
+// never race on the same row. Idempotent: rebuilt from scratch each boot.
+db.prepare(
+  `DELETE FROM equipment WHERE profile_id = ? AND name = 'E2E Registry Bike'`
+).run(PROFILE_ID);
+db.prepare(
+  `DELETE FROM activities WHERE profile_id = ? AND external_id = 'e2e:equip-registry-ride'`
+).run(PROFILE_ID);
+const regBikeId = Number(
+  db
+    .prepare(
+      `INSERT INTO equipment (profile_id, name, weight_kg, category)
+       VALUES (?, 'E2E Registry Bike', NULL, 'Bike')`
+    )
+    .run(PROFILE_ID).lastInsertRowid
+);
+db.prepare(
+  `INSERT INTO activities
+     (profile_id, date, type, title, duration_min, distance_km, source, external_id, edited, equipment_id)
+   VALUES (?, ?, 'cardio', 'E2E Registry Ride', 45, 20, 'manual', 'e2e:equip-registry-ride', 0, ?)`
+).run(PROFILE_ID, shiftDateStr(today(PROFILE_ID), -2), regBikeId);
+
+// A dedicated recovery device on profile 1 for the protocol-practice spec (issue
+// #344): the protocol form can reference it as the gear its experiment is about.
+// Distinct, synthetic name so it never collides with the equipment specs' rows.
+// Idempotent: rebuilt each boot.
+db.prepare(
+  `DELETE FROM equipment WHERE profile_id = ? AND name = 'E2E Protocol Sauna'`
+).run(PROFILE_ID);
+db.prepare(
+  `INSERT INTO equipment (profile_id, name, weight_kg, category)
+   VALUES (?, 'E2E Protocol Sauna', NULL, 'Sauna')`
+).run(PROFILE_ID);
+
 // A dedicated, open, FUTURE-dated care-plan item on profile 1 for the care-plan
 // spec's complete→disappears-from-Upcoming check. Distinct from the base seed's
 // care-plan rows (which care-plan-upcoming.spec drives), so the two never collide.

@@ -23,6 +23,7 @@ export * from "./queries/upcoming";
 export * from "./queries/attention";
 export * from "./queries/integrations";
 export * from "./queries/protocols";
+export * from "./queries/equipment";
 export * from "./queries/healthspan";
 export * from "./queries/providers";
 // The shared, GLOBAL providers registry — not profile-scoped, but

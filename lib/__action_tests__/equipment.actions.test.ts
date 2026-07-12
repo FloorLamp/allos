@@ -11,7 +11,7 @@ import {
   createEquipmentAction,
   setEquipmentRetiredAction,
   deleteEquipmentAction,
-} from "@/app/(app)/settings/equipment/actions";
+} from "@/app/(app)/equipment/actions";
 import { getEquipment } from "@/lib/equipment";
 import { seedActor } from "./harness";
 
@@ -31,7 +31,7 @@ describe("createEquipmentAction", () => {
     if (!res.ok) return;
     expect(res.equipment.category).toBe("Barbell");
     expect(res.equipment.retired).toBe(0);
-    expect(revalidate).toHaveBeenCalledWith("/settings/equipment");
+    expect(revalidate).toHaveBeenCalledWith("/equipment");
 
     const rows = getEquipment(profile.id);
     expect(rows.map((e) => e.name)).toContain("Trap Bar");

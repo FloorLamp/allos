@@ -1,5 +1,9 @@
 import { db, writeTx } from "./db";
 import type { Equipment } from "./types";
+import {
+  summarizeEquipmentAvailability,
+  type EquipmentAvailability,
+} from "./equipment-availability";
 
 // Shape accepted from the manager UI. Weight is in kg (callers convert from the
 // user's display unit first).
@@ -28,6 +32,16 @@ export function getEquipment(
       `SELECT * FROM equipment WHERE profile_id = ?${where} ORDER BY name COLLATE NOCASE`
     )
     .all(profileId) as Equipment[];
+}
+
+// The profile's equipment availability summary (issue #345): "has barbell?
+// dumbbells? machine? bike?" from its NON-retired rows, for gating workout /
+// exercise suggestions. The ONE read every consumer formats over; pure logic lives
+// in summarizeEquipmentAvailability so it stays unit-tested and client-safe.
+export function availableEquipmentKinds(
+  profileId: number
+): EquipmentAvailability {
+  return summarizeEquipmentAvailability(getEquipment(profileId));
 }
 
 export function getEquipmentById(
@@ -109,10 +123,12 @@ export function setEquipmentRetired(
 
 // Delete an equipment row, first detaching it from any row that links to it so
 // their history survives (the columns have no FK ON DELETE action, so this is done
-// in code — #342 adds the second table). Equipment is gear at BOTH levels: the
-// per-set strength implement (exercise_sets.equipment_id) and the session-level
-// activity link (activities.equipment_id). Every detach and the delete are scoped
-// to the profile so a leaked id can't reach another profile's rows.
+// in code — #342 added the activity link, #344 the protocol reference). Equipment
+// is gear at THREE places: the per-set strength implement
+// (exercise_sets.equipment_id), the session-level activity link
+// (activities.equipment_id), and a protocol's recovery-gear reference
+// (protocols.equipment_id). Every detach and the delete are scoped to the profile
+// so a leaked id can't reach another profile's rows.
 export function deleteEquipment(profileId: number, id: number): void {
   writeTx(() => {
     db.prepare(
@@ -122,6 +138,10 @@ export function deleteEquipment(profileId: number, id: number): void {
     ).run(id, profileId);
     db.prepare(
       `UPDATE activities SET equipment_id = NULL
+        WHERE equipment_id = ? AND profile_id = ?`
+    ).run(id, profileId);
+    db.prepare(
+      `UPDATE protocols SET equipment_id = NULL
         WHERE equipment_id = ? AND profile_id = ?`
     ).run(id, profileId);
     db.prepare("DELETE FROM equipment WHERE id = ? AND profile_id = ?").run(

@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { requireAdmin } from "@/lib/auth";
-import { isTrainingRestricted } from "@/lib/age-gate";
 import { PageHeader } from "@/components/ui";
 import SettingsTabs from "../SettingsTabs";
 import {
@@ -61,7 +60,7 @@ export default async function AuditLogPage(props: {
         title="Settings"
         subtitle="Audit log — who accessed or modified which profile's data. Auth events, PHI access (medical files, share links), and admin/family changes. Identifiers only, never medical content. Retained 90 days."
       />
-      <SettingsTabs isAdmin hideEquipment={isTrainingRestricted(profile.id)} />
+      <SettingsTabs isAdmin />
 
       {/* Filters (plain GET form so it works without JS and is bookmarkable). */}
       <form

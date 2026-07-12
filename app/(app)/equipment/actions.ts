@@ -32,10 +32,12 @@ function clean(input: EquipmentFormInput): EquipmentFormInput {
 }
 
 function refresh() {
-  // Equipment affects the importer and the journal's per-set implement labels.
-  revalidatePath("/settings/equipment");
+  // Equipment now lives at /equipment (index + detail); it still affects the
+  // importer, the journal's per-set implement labels, and protocol gear refs.
+  revalidatePath("/equipment");
   revalidatePath("/data");
   revalidatePath("/training");
+  revalidatePath("/protocols");
 }
 
 export async function createEquipmentAction(

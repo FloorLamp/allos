@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   IconPencil,
@@ -9,6 +10,7 @@ import {
   IconX,
   IconArchive,
   IconArchiveOff,
+  IconChevronRight,
 } from "@tabler/icons-react";
 import type { Equipment, EquipmentKind } from "@/lib/types";
 import { EQUIPMENT_CATEGORIES, kindOf } from "@/lib/types";
@@ -22,7 +24,14 @@ import {
   updateEquipmentAction,
   deleteEquipmentAction,
   setEquipmentRetiredAction,
-} from "@/app/(app)/settings/equipment/actions";
+} from "@/app/(app)/equipment/actions";
+
+// Per-equipment usage summary (issue #343): the count of sessions this gear was
+// used in, for the index badge. Full stats (Σ volume/distance, last used, trend)
+// live on the detail page — this is just the at-a-glance count.
+export interface EquipmentUsageBadge {
+  sessions: number;
+}
 
 interface Draft {
   name: string;
@@ -61,9 +70,12 @@ function toDraft(e: Equipment, unit: WeightUnit): Draft {
 export default function EquipmentManager({
   equipment,
   unit,
+  usage = {},
 }: {
   equipment: Equipment[];
   unit: WeightUnit;
+  // equipment id → usage badge; a missing id means "never used" (no badge).
+  usage?: Record<number, EquipmentUsageBadge>;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -159,6 +171,99 @@ export default function EquipmentManager({
     });
   }
 
+  // Split active/retired, then group active rows by kind so the index reads as an
+  // organized inventory rather than a flat list (issue #343). Retired gear drops
+  // to its own trailing section (still listed — it labels old history).
+  const active = equipment.filter((e) => !e.retired);
+  const retired = equipment.filter((e) => e.retired);
+  const activeGroups = KIND_LABELS.map(({ kind, label }) => ({
+    label,
+    rows: active.filter((e) => kindOf(e.category) === kind),
+  })).filter((g) => g.rows.length > 0);
+
+  const row = (e: Equipment) => (
+    <li
+      key={e.id}
+      data-testid="equipment-row"
+      data-retired={e.retired ? "1" : "0"}
+      className="flex items-center justify-between gap-3 py-3"
+    >
+      <div className={`min-w-0 ${e.retired ? "opacity-60" : ""}`}>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href={`/equipment/${e.id}`}
+            className="group inline-flex items-center gap-0.5 font-medium text-slate-800 hover:text-brand-600 dark:text-slate-100 dark:hover:text-brand-400"
+          >
+            {e.name}
+            <IconChevronRight
+              className="h-4 w-4 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-brand-500 dark:text-slate-600"
+              stroke={2}
+              aria-hidden
+            />
+          </Link>
+          {e.category && (
+            <span className="badge bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+              {e.category}
+            </span>
+          )}
+          {usage[e.id] && usage[e.id].sessions > 0 ? (
+            <span
+              data-testid="equipment-usage"
+              className="badge bg-brand-50 tabular-nums text-brand-700 dark:bg-brand-950 dark:text-brand-300"
+            >
+              {usage[e.id].sessions}{" "}
+              {usage[e.id].sessions === 1 ? "session" : "sessions"}
+            </span>
+          ) : null}
+          {e.retired ? (
+            <span className="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+              Retired
+            </span>
+          ) : null}
+        </div>
+        <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+          {e.weight_kg != null
+            ? `${round(kgTo(e.weight_kg, unit), 2)} ${unit}`
+            : "weight not set"}
+        </div>
+      </div>
+      <div className="flex shrink-0 items-center gap-1">
+        <button
+          type="button"
+          onClick={() => startEdit(e)}
+          disabled={pending}
+          className="rounded p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+          title="Edit"
+        >
+          <IconPencil className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          onClick={() => toggleRetired(e)}
+          disabled={pending}
+          data-testid="equipment-retire-toggle"
+          className="rounded p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+          title={e.retired ? "Restore" : "Retire"}
+        >
+          {e.retired ? (
+            <IconArchiveOff className="h-4 w-4" />
+          ) : (
+            <IconArchive className="h-4 w-4" />
+          )}
+        </button>
+        <button
+          type="button"
+          onClick={() => remove(e)}
+          disabled={pending}
+          className="rounded p-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50 dark:hover:bg-rose-950 dark:hover:text-rose-400"
+          title="Delete"
+        >
+          <IconTrash className="h-4 w-4" />
+        </button>
+      </div>
+    </li>
+  );
+
   return (
     <div className="card max-w-2xl space-y-4">
       <div className="flex items-center justify-between">
@@ -177,12 +282,13 @@ export default function EquipmentManager({
       </div>
 
       <p className="text-xs text-slate-500 dark:text-slate-400">
-        Name a bar or implement to tag your lifts with it. Logged weights are
-        always the <strong>total</strong> load; the bar weight here is for
-        reference only and never changes your recorded numbers.
+        Name a bar, implement, or recovery device to tag your sessions with it.
+        Logged weights are always the <strong>total</strong> load; the bar
+        weight here is for reference only and never changes your recorded
+        numbers.
       </p>
 
-      {adding && editingId == null && (
+      {(adding || editingId != null) && (
         <EquipmentForm
           draft={draft}
           setDraft={setDraft}
@@ -195,89 +301,30 @@ export default function EquipmentManager({
       )}
 
       {equipment.length === 0 && !adding ? (
-        <EmptyState message="No equipment defined yet. Add a trap bar, EZ-curl bar, or any custom implement." />
+        <EmptyState message="No equipment defined yet. Add a trap bar, a bike, a pair of shoes, or a sauna." />
       ) : (
-        <ul className="divide-y divide-slate-100 dark:divide-slate-800">
-          {equipment.map((e) =>
-            editingId === e.id ? (
-              <li key={e.id} className="py-3">
-                <EquipmentForm
-                  draft={draft}
-                  setDraft={setDraft}
-                  unit={unit}
-                  onSave={save}
-                  onCancel={cancel}
-                  pending={pending}
-                  error={error}
-                />
-              </li>
-            ) : (
-              <li
-                key={e.id}
-                data-testid="equipment-row"
-                data-retired={e.retired ? "1" : "0"}
-                className="flex items-center justify-between gap-3 py-3"
-              >
-                <div className={`min-w-0 ${e.retired ? "opacity-60" : ""}`}>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-medium text-slate-800 dark:text-slate-100">
-                      {e.name}
-                    </span>
-                    {e.category && (
-                      <span className="badge bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                        {e.category}
-                      </span>
-                    )}
-                    {e.retired ? (
-                      <span className="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">
-                        Retired
-                      </span>
-                    ) : null}
-                  </div>
-                  <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                    {e.weight_kg != null
-                      ? `${round(kgTo(e.weight_kg, unit), 2)} ${unit}`
-                      : "weight not set"}
-                  </div>
-                </div>
-                <div className="flex shrink-0 items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => startEdit(e)}
-                    disabled={pending}
-                    className="rounded p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50 dark:hover:bg-slate-800 dark:hover:text-slate-200"
-                    title="Edit"
-                  >
-                    <IconPencil className="h-4 w-4" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => toggleRetired(e)}
-                    disabled={pending}
-                    data-testid="equipment-retire-toggle"
-                    className="rounded p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50 dark:hover:bg-slate-800 dark:hover:text-slate-200"
-                    title={e.retired ? "Restore" : "Retire"}
-                  >
-                    {e.retired ? (
-                      <IconArchiveOff className="h-4 w-4" />
-                    ) : (
-                      <IconArchive className="h-4 w-4" />
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => remove(e)}
-                    disabled={pending}
-                    className="rounded p-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50 dark:hover:bg-rose-950 dark:hover:text-rose-400"
-                    title="Delete"
-                  >
-                    <IconTrash className="h-4 w-4" />
-                  </button>
-                </div>
-              </li>
-            )
+        <div className="space-y-4">
+          {activeGroups.map((g) => (
+            <div key={g.label}>
+              <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                {g.label}
+              </h3>
+              <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+                {g.rows.map(row)}
+              </ul>
+            </div>
+          ))}
+          {retired.length > 0 && (
+            <div>
+              <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                Retired
+              </h3>
+              <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+                {retired.map(row)}
+              </ul>
+            </div>
           )}
-        </ul>
+        </div>
       )}
     </div>
   );

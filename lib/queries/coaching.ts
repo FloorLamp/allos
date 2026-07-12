@@ -24,6 +24,7 @@ import {
   type DistanceUnit,
   type WeightUnit,
 } from "../settings";
+import { availableEquipmentKinds } from "../equipment";
 
 // How many recent nights / days to average for a recovery baseline. Long enough
 // to be a stable personal norm, short enough to reflect the current block.
@@ -108,6 +109,7 @@ export function gatherCoachingInput(
     cardio: getCardioByActivity(profileId, distanceUnit),
     trainingDates: getActivityDates(profileId),
     datedExercises: getRecentDatedExercises(profileId),
+    availableEquipment: availableEquipmentKinds(profileId),
     sleep: getSleepSignal(profileId),
     restingHr: getRestingHrSignal(profileId),
     restEpisode: getRestEpisode(profileId),

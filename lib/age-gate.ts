@@ -2,8 +2,9 @@ import { getSetting, setSetting, deleteSetting, getUserAge } from "./settings";
 
 // Age gating for the fitness-oriented surfaces. When a profile's known age is
 // below the configured minimum, the Journal, Training, and AI Insights pages —
-// plus the Equipment settings tab and their dashboard widgets — are hidden and
-// direct navigation to them is bounced back to the dashboard.
+// plus the Equipment registry (/equipment, issue #343) and their dashboard
+// widgets — are hidden and direct navigation to them is bounced back to the
+// dashboard.
 //
 // The threshold is an instance-wide global setting (`min_training_age`, whole
 // years), managed by an admin on Settings → Server. Unset or non-positive
