@@ -15,6 +15,7 @@ import { AI_MODEL as MODEL, aiConfigured, createAiClient } from "./ai-client";
 import { recordAiEvent, capDetail, LOG_PROMPTS, usageFrom } from "./ai-log";
 import { checkAndIncrementAiUsage, insightDailyLimit } from "./ai-usage";
 import { recentPRs, recentCardioPRs } from "./coaching";
+import { isGoalLive } from "./goals";
 import {
   prToFinding,
   cardioPrToFinding,
@@ -100,9 +101,7 @@ function gatherInsightContext(
     date
   ).flatMap((g) => g.items);
 
-  const goalCount = getGoals(profileId).filter(
-    (g) => g.status === "active" && !g.archived
-  ).length;
+  const goalCount = getGoals(profileId).filter((g) => isGoalLive(g)).length;
 
   // Clinical/demographic context (issue #415): active conditions, active intake
   // (kind-labelled so the model tells a medication from a supplement), and profile

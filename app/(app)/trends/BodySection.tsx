@@ -38,6 +38,7 @@ import { ALL_ROWS, filterSeriesByRange } from "@/lib/trends";
 import { buildTrendAnnotations } from "@/lib/trends-series";
 import { projectGoal, describeEta } from "@/lib/trend-projection";
 import { formatLongDate } from "@/lib/format-date";
+import { isGoalLive } from "@/lib/goals";
 import type { BodyMetricKind, Goal } from "@/lib/types";
 import type { DateRange } from "@/lib/timeline-format";
 import { EmptyState } from "@/components/ui";
@@ -155,11 +156,7 @@ export default async function BodySection({ range }: { range: DateRange }) {
   const goals = getGoals(profile.id);
   const goalFor = (metric: BodyMetricKind): Goal | undefined =>
     goals.find(
-      (g) =>
-        g.body_metric === metric &&
-        g.status === "active" &&
-        g.archived === 0 &&
-        g.target_value != null
+      (g) => g.body_metric === metric && isGoalLive(g) && g.target_value != null
     );
 
   const goalOverlay = (

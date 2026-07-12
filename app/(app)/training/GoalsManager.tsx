@@ -11,6 +11,7 @@ import {
   goalTargetText,
   goalBodyTargetText,
   fmtBodyMetric,
+  isGoalLive,
 } from "@/lib/goals";
 import { fmtWeight } from "@/lib/units";
 import OverflowMenu, {
@@ -319,11 +320,7 @@ export default function GoalsManager({
                       const label = daysRemainingLabel(g.target_date, todayStr);
                       const n = daysUntil(g.target_date, todayStr);
                       // Only flag as overdue for goals still being pursued.
-                      const overdue =
-                        n != null &&
-                        n < 0 &&
-                        g.status === "active" &&
-                        !g.archived;
+                      const overdue = n != null && n < 0 && isGoalLive(g);
                       return label ? (
                         <span
                           className={

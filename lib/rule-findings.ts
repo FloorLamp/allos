@@ -25,6 +25,7 @@ import {
   getActivityDates,
 } from "./queries";
 import { getActiveSituations } from "./settings";
+import { isGoalLive } from "./goals";
 import { shiftDateStr, lastNDates } from "./date";
 import { fmtWeight, round } from "./units";
 import { formatLongDate } from "./format-date";
@@ -229,8 +230,7 @@ export function buildGoalPacingFindings(
   // documented follow-up, so we pace weight goals — the common case.
   for (const g of getGoals(profileId)) {
     if (
-      g.archived !== 0 ||
-      g.status !== "active" ||
+      !isGoalLive(g) ||
       g.body_metric !== "weight" ||
       g.target_value == null ||
       g.target_date == null

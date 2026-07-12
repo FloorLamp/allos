@@ -1,3 +1,4 @@
+import { isNonOptimal, isOutOfRange } from "./reference-range";
 import type { MedicalCategory, MedicalFlag, MedicalRecord } from "./types";
 
 // Which medical-record categories count as "labs" for the recent-labs surfaces:
@@ -33,12 +34,20 @@ export function recentLabHighlights(
   records: LabRecord[],
   limit = 6
 ): RecentLabRow[] {
+  // "Notable" = the canonical notability predicate (issue #544/#551): out-of-range
+  // (high/low/abnormal) OR non-optimal. A loose `flag !== "normal"` test would sort
+  // the neutral "immune" flag (a good durable-immunity titer) to the top as if
+  // abnormal — exactly the "good result reads as needs-attention" behavior #544
+  // eliminates. Route through isOutOfRange/isNonOptimal so a new neutral flag value
+  // can't be miscategorized here.
+  const notable = (flag: MedicalFlag | null): boolean =>
+    isOutOfRange(flag) || isNonOptimal(flag);
   return records
     .filter((r) => LAB_CATEGORIES.has(r.category))
     .slice()
     .sort((a, b) => {
-      const af = a.flag && a.flag !== "normal" ? 0 : 1;
-      const bf = b.flag && b.flag !== "normal" ? 0 : 1;
+      const af = notable(a.flag) ? 0 : 1;
+      const bf = notable(b.flag) ? 0 : 1;
       return af - bf || b.date.localeCompare(a.date);
     })
     .slice(0, limit)

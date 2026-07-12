@@ -34,6 +34,7 @@ import {
 import { recommendCoaching } from "@/lib/coaching";
 import { collectCoachingFindings } from "@/lib/rule-findings";
 import { pickNextAppointment } from "@/lib/household";
+import { isGoalLive } from "@/lib/goals";
 import { activeByKey, activeFindings, coachingDedupeKey } from "@/lib/findings";
 import { requireSession, getAccessibleProfiles } from "@/lib/auth";
 import { withAiLogContext } from "@/lib/ai-log";
@@ -273,7 +274,7 @@ export default async function Dashboard() {
   // active-goals
   const goals = has("active-goals")
     ? getGoals(profile.id)
-        .filter((g) => g.status === "active" && !g.archived)
+        .filter((g) => isGoalLive(g))
         .slice(0, 4)
     : [];
   const goalProgress = has("active-goals")
