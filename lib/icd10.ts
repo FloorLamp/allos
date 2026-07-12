@@ -69,6 +69,19 @@ export function bestIcd10Suggestion(query: string): Icd10Suggestion | null {
   return suggestIcd10(query, 1)[0] ?? null;
 }
 
+// The set of curated ICD-10-CM codes (uppercased), built once. Used by the
+// coverage-gap check (#550) to tell whether a condition's existing code is one the
+// curated catalog actually knows.
+const CODE_SET: Set<string> = new Set(
+  ENTRIES.map((e) => e.code.trim().toUpperCase())
+);
+
+// Whether a code is present in the curated ICD-10-CM subset (case-insensitive).
+export function hasIcd10Code(code: string | null | undefined): boolean {
+  const c = (code ?? "").trim().toUpperCase();
+  return c ? CODE_SET.has(c) : false;
+}
+
 // The read-layer condition de-dup collapse key (#134, strengthened by #155). A row
 // that carries a code collapses on its CODE identity ('code:<code>'); an uncoded row
 // falls back to its normalized NAME ('name:<lower name>'). The 'code:'/'name:'

@@ -27,6 +27,7 @@ import {
   IconReportMedical,
   IconEmergencyBed,
   IconChevronRight,
+  IconPuzzle,
   type TablerIcon,
 } from "@tabler/icons-react";
 import { isRouteActive, isGroupActive, isNavLeafVisible } from "@/lib/nav";
@@ -82,6 +83,7 @@ const RECORDS: Group = {
     { href: "/immunizations", label: "Immunizations", icon: IconVaccine },
     { href: "/encounters", label: "Visits", icon: IconCalendarEvent },
     { href: "/providers", label: "Providers", icon: IconStethoscope },
+    { href: "/coverage", label: "Coverage gaps", icon: IconPuzzle },
     { href: "/profile", label: "Passport", icon: IconId },
     { href: "/emergency", label: "Emergency Card", icon: IconEmergencyBed },
   ],

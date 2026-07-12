@@ -44,7 +44,11 @@ export type AiFeature =
   // A cadence-driven recommendation RUN (issue #424): the run-level audit event.
   // The features a run invokes (insight, auto-suggest) still log their own events;
   // this one records the scheduling decision (ran / skipped / capped).
-  | "recommendation";
+  | "recommendation"
+  // A coverage-gap DESCRIPTIVE enrichment (issue #550): the local/private-AI fill
+  // path generating a plain-language "what is this" blurb for an uncatalogued
+  // biomarker/med/condition. Descriptive only — never a range/threshold/severity.
+  | "coverage";
 export type AiStatus = "ok" | "skipped" | "failed";
 
 export interface AiEvent {

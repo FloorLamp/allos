@@ -1545,3 +1545,19 @@ db.prepare(
 console.log(
   `e2e: seeded two-document body-fat source comparison on profile ${compareProfileId} (#533)`
 );
+
+// An uncatalogued biomarker lab so the Coverage gaps page (#550) has a real
+// derivable gap to opt into. The canonical name is deliberately synthetic and
+// absent from every curated seed / #482 family, so detection surfaces it as a
+// candidate. Idempotent: cleared then re-inserted on each seed run.
+const COVERAGE_GAP_ANALYTE = "Serum Fictionase (e2e)";
+db.prepare(
+  `DELETE FROM medical_records WHERE profile_id = ? AND canonical_name = ?`
+).run(PROFILE_ID, COVERAGE_GAP_ANALYTE);
+db.prepare(
+  `INSERT INTO medical_records (profile_id, date, category, name, value_num, unit, canonical_name)
+   VALUES (?, '2026-05-01', 'lab', ?, 42, 'U/L', ?)`
+).run(PROFILE_ID, COVERAGE_GAP_ANALYTE, COVERAGE_GAP_ANALYTE);
+console.log(
+  `e2e: seeded uncatalogued biomarker "${COVERAGE_GAP_ANALYTE}" on profile ${PROFILE_ID} for coverage gaps (#550)`
+);
