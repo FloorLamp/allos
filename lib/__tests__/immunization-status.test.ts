@@ -17,6 +17,7 @@ import {
   doseNumberLabel,
   resolveDoseLabels,
   resolveDoseLabelsByVaccine,
+  immunizationHasDuplicateVaccineDate,
   type ImmunizationRecordLite,
   type VaccineOverride,
 } from "@/lib/immunization-status";
@@ -524,5 +525,24 @@ describe("creditedDoseCount", () => {
     expect(
       creditedDoseCount(["2025-01-01", "2025-01-10", "2025-01-29"], 28)
     ).toBe(2);
+  });
+});
+
+describe("immunizationHasDuplicateVaccineDate (issue #534)", () => {
+  const items = [
+    { id: 1, vaccine: "influenza", date: "2025-10-01" },
+    { id: 2, vaccine: "influenza", date: "2025-10-01" }, // dup of #1
+    { id: 3, vaccine: "influenza", date: "2024-10-01" }, // same vaccine, other date
+    { id: 4, vaccine: "tdap", date: "2025-10-01" }, // same date, other vaccine
+  ];
+
+  it("flags a same-vaccine same-date twin", () => {
+    expect(immunizationHasDuplicateVaccineDate(items, items[0])).toBe(true);
+    expect(immunizationHasDuplicateVaccineDate(items, items[1])).toBe(true);
+  });
+
+  it("does not flag a row unique on vaccine+date", () => {
+    expect(immunizationHasDuplicateVaccineDate(items, items[2])).toBe(false);
+    expect(immunizationHasDuplicateVaccineDate(items, items[3])).toBe(false);
   });
 });

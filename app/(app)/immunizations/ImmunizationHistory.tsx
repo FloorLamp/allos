@@ -5,7 +5,10 @@ import { updateImmunization, deleteImmunization } from "./actions";
 import RecordTable, { type RecordColumn } from "@/components/RecordTable";
 import RecordProvenance from "@/components/RecordProvenance";
 import { vaccineDisplayName } from "@/lib/immunization-catalog";
-import { resolveDoseLabelsByVaccine } from "@/lib/immunization-status";
+import {
+  resolveDoseLabelsByVaccine,
+  immunizationHasDuplicateVaccineDate,
+} from "@/lib/immunization-status";
 import { sourceLabel } from "@/lib/record-format";
 import type { Immunization } from "@/lib/types";
 
@@ -81,10 +84,24 @@ export default function ImmunizationHistory({
           defaultDate={defaultDate}
         />
       )}
-      confirmDelete={(im) => ({
-        title: "Delete immunization",
-        message: `Delete the ${vaccineDisplayName(im.vaccine)} record from ${im.date}? This can’t be undone.`,
-      })}
+      confirmDelete={(im) => {
+        // "vaccine + date" collides for a duplicate-imported same-vaccine-same-date
+        // pair (#534); fold in the distinguishing dose/provider (id as last resort)
+        // so the confirm names the row the id-keyed delete actually removes.
+        let extra = "";
+        if (immunizationHasDuplicateVaccineDate(items, im)) {
+          const bits: string[] = [];
+          const dose = doseLabel(im);
+          if (dose && dose !== "—") bits.push(dose);
+          if (im.provider_name) bits.push(im.provider_name);
+          if (bits.length === 0) bits.push(`#${im.id}`);
+          extra = ` (${bits.join(", ")})`;
+        }
+        return {
+          title: "Delete immunization",
+          message: `Delete the ${vaccineDisplayName(im.vaccine)} record from ${im.date}${extra}? This can’t be undone.`,
+        };
+      }}
       onDelete={async (im) => {
         const fd = new FormData();
         fd.set("id", String(im.id));

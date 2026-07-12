@@ -10,6 +10,10 @@ import { mergeProviderAction } from "./actions";
 interface Candidate {
   id: number;
   name: string;
+  // Composite disambiguation label (#532): the bare name when unique, else name +
+  // the first differing field, so two same-named rows are never picked/deleted
+  // blind. Precomputed on the server via providerDisambigLabel.
+  label: string;
   type: string;
   // Count-only impact summary ("14 records · 3 visits across 2 profiles"), or null
   // when the candidate has no linked records. Precomputed on the server — GLOBAL
@@ -25,7 +29,7 @@ export default function ProviderMergePanel({
   survivor,
   candidates,
 }: {
-  survivor: { id: number; name: string };
+  survivor: { id: number; name: string; label: string };
   candidates: Candidate[];
 }) {
   const [duplicateId, setDuplicateId] = useState<number | "">("");
@@ -43,10 +47,10 @@ export default function ProviderMergePanel({
     if (!chosen) return;
     setError(null);
     const detail = chosen.impact
-      ? `This moves ${chosen.impact} onto ${survivor.name}, then deletes “${chosen.name}”. This can’t be undone.`
-      : `“${chosen.name}” has no linked records. It will be deleted and merged into ${survivor.name}. This can’t be undone.`;
+      ? `This moves ${chosen.impact} onto ${survivor.label}, then deletes “${chosen.label}”. This can’t be undone.`
+      : `“${chosen.label}” has no linked records. It will be deleted and merged into ${survivor.label}. This can’t be undone.`;
     const ok = await confirm({
-      title: `Merge into ${survivor.name}?`,
+      title: `Merge into ${survivor.label}?`,
       message: detail,
       confirmLabel: "Merge",
       danger: true,
@@ -90,7 +94,7 @@ export default function ProviderMergePanel({
           <option value="">Select a duplicate…</option>
           {candidates.map((c) => (
             <option key={c.id} value={c.id}>
-              {c.name}
+              {c.label}
               {c.impact ? ` (${c.impact})` : ""}
             </option>
           ))}

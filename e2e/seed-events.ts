@@ -20,10 +20,14 @@ import { setMinTrainingAge } from "../lib/age-gate";
 import { hashPasswordSync } from "../lib/password";
 import {
   E2E_LOGIN_CHILD,
+  E2E_LOGIN_COMPARE,
+  E2E_LOGIN_DUP,
   E2E_LOGIN_HC,
   E2E_LOGIN_STRAVA,
   E2E_MEMBER_PASSWORD,
+  DUP_REVIEW_PROFILE,
   HEALTH_CONNECT_PROFILE,
+  SOURCE_COMPARE_PROFILE,
   STRAVA_REAUTH_PROFILE,
 } from "./fixture-logins";
 
@@ -1212,6 +1216,25 @@ seedMemberLogin(E2E_LOGIN_STRAVA, stravaReauthId);
 const healthConnectId = fixtureProfileId(HEALTH_CONNECT_PROFILE);
 seedMemberLogin(E2E_LOGIN_HC, healthConnectId);
 
+// A dedicated profile whose sole Data → Review item is a SAME-SOURCE duplicate:
+// two manual weigh-ins on one day (both source NULL → both "Manual entry"), so the
+// resolver's candidate labels collide and the A/B disambiguation fallback (#531) is
+// exercised without touching profile 1's review inbox. Idempotent: clear the
+// profile's body_metrics first (it owns no others). Distinct weights so the two rows
+// visibly differ; body_metrics allows two NULL-source rows on one day.
+const dupReviewId = fixtureProfileId(DUP_REVIEW_PROFILE);
+seedMemberLogin(E2E_LOGIN_DUP, dupReviewId);
+db.prepare(`DELETE FROM body_metrics WHERE profile_id = ?`).run(dupReviewId);
+const insDupWeighIn = db.prepare(
+  `INSERT INTO body_metrics (profile_id, date, weight_kg, source)
+   VALUES (?, '2026-06-15', ?, NULL)`
+);
+insDupWeighIn.run(dupReviewId, 80.2);
+insDupWeighIn.run(dupReviewId, 81.4);
+console.log(
+  `e2e: seeded a same-source (two manual weigh-ins) duplicate on profile ${dupReviewId} (A/B disambiguation, #531)`
+);
+
 console.log(
   `e2e: enabled age gate (13) + seeded member logins for the child (${rileyId}), Strava-reauth (${stravaReauthId}), and Health-Connect (${healthConnectId}) fixture profiles (#391)`
 );
@@ -1328,4 +1351,111 @@ db.prepare(
 
 console.log(
   `e2e: seeded an equipment-delete link fixture, an open care-plan item, and a future appointment on profile ${PROFILE_ID} (#391)`
+);
+
+// ── Duplicate-immunization delete-confirm fixture (issue #534) ────────────────
+// Two yellow-fever doses on the SAME date for profile 1, so the immunizations
+// delete confirm — keyed on "vaccine + date" — would read identically for both
+// without the distinguishing dose label the #534 fix folds in. Yellow fever is a
+// travel/record-only vaccine (never due/overdue), so this can't perturb any CDC
+// schedule-status assertion. Distinct dose labels give the confirm something to
+// disambiguate on. Idempotent: clear the marked rows first.
+db.prepare(
+  `DELETE FROM immunizations WHERE profile_id = ? AND notes = 'e2e:dup-immz'`
+).run(PROFILE_ID);
+const insDupImmz = db.prepare(
+  `INSERT INTO immunizations (profile_id, date, vaccine, dose_label, notes, source)
+   VALUES (?, '2024-05-01', 'yellow_fever', ?, 'e2e:dup-immz', NULL)`
+);
+insDupImmz.run(PROFILE_ID, "Travel dose A");
+insDupImmz.run(PROFILE_ID, "Travel dose B");
+console.log(
+  `e2e: seeded two same-date yellow-fever immunizations on profile ${PROFILE_ID} (delete-confirm disambiguation, #534)`
+);
+
+// ── Same-named provider pair for the merge disambiguation (issue #532) ────────
+// Two organizations that share the name "E2E Duplicate Lab" but carry distinct
+// identifiers + addresses (so distinct dedup keys). The admin merge picker + its
+// irreversible confirm must label them by the differing field, not by the byte-
+// identical name — otherwise the destructive pick is blind on the exact case merge
+// targets. Idempotent: clear both by dedup_key first. Unlinked (no records), so the
+// merge-disambig spec can open the picker/confirm and CANCEL without side effects.
+for (const key of ["id:e2e-dup-lab-a", "id:e2e-dup-lab-b"]) {
+  db.prepare(`DELETE FROM providers WHERE dedup_key = ?`).run(key);
+}
+const insDupProvider = db.prepare(
+  `INSERT INTO providers (name, type, identifier, address, dedup_key)
+   VALUES ('E2E Duplicate Lab', 'organization', ?, ?, ?)`
+);
+insDupProvider.run(
+  "e2e-dup-lab-a",
+  "100 Alpha St, Springfield",
+  "id:e2e-dup-lab-a"
+);
+insDupProvider.run(
+  "e2e-dup-lab-b",
+  "200 Beta Ave, Portland",
+  "id:e2e-dup-lab-b"
+);
+console.log(
+  "e2e: seeded two same-named 'E2E Duplicate Lab' providers (merge disambiguation, #532)"
+);
+
+// ── Two-document body-metric source comparison (issue #533) ───────────────────
+// A metric extracted from TWO different documents stays two distinct series, but
+// the legend/picker used to collapse both to one "Document" label and one teal
+// color. Seed two DEXA-style documents on a DEDICATED member profile plus a
+// body-fat reading sourced from each (source 'document:<id>') and one manual
+// reading, so Trends → Body's "Compare sources" renders a body_fat card whose two
+// document series carry distinct filenames + colors. Dedicated profile ON PURPOSE
+// (first landing tried profile 1 and broke two sibling specs): extra documents on
+// profile 1 pluralize review-inbox's re-extract-all "1 scan/PDF" copy, and a
+// multi-source body_fat adds a second "Body fat" heading (the compare card's h3)
+// that collides kids-growth's strict heading locator. Distinct dates per row so
+// the profile never grows a same-day body-metric conflict.
+const compareProfileId = fixtureProfileId(SOURCE_COMPARE_PROFILE);
+seedMemberLogin(E2E_LOGIN_COMPARE, compareProfileId);
+db.prepare(
+  `DELETE FROM medical_documents WHERE profile_id = ? AND filename IN ('e2e-dexa-a.pdf', 'e2e-dexa-b.pdf')`
+).run(compareProfileId);
+const insCompareDoc = db.prepare(
+  `INSERT INTO medical_documents
+     (profile_id, filename, stored_path, mime_type, size_bytes, doc_type, source,
+      document_date, extraction_status, extracted_count, content_hash, uploaded_at)
+   VALUES (?, ?, ?, 'application/pdf', 1024, 'dexa', 'upload', ?, 'done', 1, ?, ?)`
+);
+const compareDocs: { id: number; date: string; bodyFat: number }[] = [];
+for (const [filename, date, bodyFat] of [
+  ["e2e-dexa-a.pdf", "2022-11-01", 21.4],
+  ["e2e-dexa-b.pdf", "2022-11-03", 19.8],
+] as const) {
+  const id = Number(
+    insCompareDoc.run(
+      compareProfileId,
+      filename,
+      `data/uploads/medical/${compareProfileId}/${filename}`,
+      date,
+      `e2e533${filename.replace(/\W/g, "")}`.padEnd(64, "0"),
+      `${date} 08:00:00`
+    ).lastInsertRowid
+  );
+  compareDocs.push({ id, date, bodyFat });
+}
+// Reset the profile's body metrics wholesale (it owns nothing else), then one
+// row per document + one manual row on distinct dates.
+db.prepare(`DELETE FROM body_metrics WHERE profile_id = ?`).run(
+  compareProfileId
+);
+for (const { id, date, bodyFat } of compareDocs) {
+  db.prepare(
+    `INSERT INTO body_metrics (profile_id, date, body_fat_pct, source)
+     VALUES (?, ?, ?, ?)`
+  ).run(compareProfileId, date, bodyFat, `document:${id}`);
+}
+db.prepare(
+  `INSERT INTO body_metrics (profile_id, date, body_fat_pct, source)
+   VALUES (?, '2022-11-05', 20.6, NULL)`
+).run(compareProfileId);
+console.log(
+  `e2e: seeded two-document body-fat source comparison on profile ${compareProfileId} (#533)`
 );

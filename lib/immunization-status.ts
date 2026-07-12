@@ -782,3 +782,19 @@ export function assessSchedule(
     unknownCount: unknown.length,
   };
 }
+
+// True when another immunization in `items` shares this row's vaccine AND date, so a
+// delete confirm keyed on "vaccine + date" alone (#534) would read identically for a
+// duplicate-imported same-vaccine-same-date pair. The caller then folds in the
+// distinguishing dose/provider so "delete X" names the right row. Pure + unit-tested.
+export function immunizationHasDuplicateVaccineDate(
+  items: readonly { id: number; vaccine: string; date: string }[],
+  target: { id: number; vaccine: string; date: string }
+): boolean {
+  return items.some(
+    (im) =>
+      im.id !== target.id &&
+      im.vaccine === target.vaccine &&
+      im.date === target.date
+  );
+}

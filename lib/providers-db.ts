@@ -1,7 +1,8 @@
 import { db, writeTx } from "./db";
-import type { Provider } from "./types";
+import type { Provider, ProviderType } from "./types";
 import {
   cleanProviderInput,
+  pickReusableProviderId,
   providerDedupKey,
   type ProviderInput,
 } from "./providers";
@@ -42,20 +43,30 @@ export function resolveProviderId(
   });
 }
 
-// Manual-entry resolver for the provider picker (create-on-type). Links to an
-// existing shared provider when the typed name matches one (case-insensitive,
-// whatever its type — so typing a known clinician's name reuses their row), else
-// creates a new organization row. Returns null for a blank input (unlinks).
-export function resolveProviderIdByName(name: string): number | null {
+// Manual-entry resolver for the provider picker (create-on-type). Reuses an
+// existing shared provider when the typed name UNAMBIGUOUSLY matches one, else
+// creates a distinct row. Returns null for a blank input (unlinks). `type` is the
+// kind the picker is entering under (organization by default); it lets the resolver
+// prefer a same-type match and, critically, REFUSE to blind-reuse when the name is
+// ambiguous — pickReusableProviderId (#534) is the pure decision. Before #534 this
+// took the lowest-id name match unconditionally, silently merging two distinct
+// same-named providers onto one row; now an ambiguous name creates/resolves a
+// distinct row via the dedup key (which still converges a repeat of the SAME
+// name+type, so manual re-entry stays idempotent).
+export function resolveProviderIdByName(
+  name: string,
+  type: ProviderType = "organization"
+): number | null {
   const trimmed = (name ?? "").replace(/\s+/g, " ").trim();
   if (!trimmed) return null;
-  const existing = db
+  const matches = db
     .prepare(
-      "SELECT id FROM providers WHERE name = ? COLLATE NOCASE ORDER BY id LIMIT 1"
+      "SELECT id, type FROM providers WHERE name = ? COLLATE NOCASE ORDER BY id"
     )
-    .get(trimmed) as { id: number } | undefined;
-  if (existing) return existing.id;
-  return resolveProviderId({ name: trimmed, type: "organization" });
+    .all(trimmed) as { id: number; type: ProviderType }[];
+  const reuse = pickReusableProviderId(type, matches);
+  if (reuse != null) return reuse;
+  return resolveProviderId({ name: trimmed, type });
 }
 
 // The full shared registry, alphabetical. Used to seed the provider picker's

@@ -2,16 +2,20 @@ import {
   getBodyMetricSeriesBySource,
   getHrSeriesBySource,
   getMetricSeriesBySource,
+  getMedicalDocuments,
   type MetricSourceSeries,
 } from "@/lib/queries";
 import { getMetricSourcePriority } from "@/lib/settings";
 import {
   COMPARABLE_METRICS,
-  sourceColor,
+  documentSourceId,
+  documentSourceLabel,
+  sourceSeriesColorMap,
+  SOURCE_FALLBACK_COLOR,
   type ComparableMetric,
+  type DocumentMeta,
 } from "@/lib/metric-source-priority";
 import { getIntegration } from "@/lib/integrations/registry";
-import { DOCUMENT_SOURCE_PREFIX } from "@/lib/body-metric-extract";
 import { dispWeight, round } from "@/lib/units";
 import type { BodyMetricKind, IntegrationId } from "@/lib/types";
 import type { WeightUnit } from "@/lib/settings";
@@ -23,10 +27,19 @@ import PrimarySourcePicker from "./PrimarySourcePicker";
 // reporting, a per-source overlay chart plus the primary-source picker. Renders
 // NOTHING for a single-source profile — the section only exists when there is
 // genuinely something to compare, so the Body tab stays calm.
+//
+// Document series (#533): a metric extracted from two documents stays two DISTINCT
+// series (foldSourceSeries keeps document:5 and document:7 apart), so each carries
+// the document's OWN label (filename/date/#id) and its own de-collided color rather
+// than both collapsing to one "Document" / one teal line.
 
-function sourceLabel(source: string): string {
+function labelForSource(
+  source: string,
+  docs: Record<number, DocumentMeta>
+): string {
   if (source === "manual") return "Manual";
-  if (source.startsWith(DOCUMENT_SOURCE_PREFIX)) return "Document";
+  if (documentSourceId(source) != null)
+    return documentSourceLabel(source, docs);
   return getIntegration(source as IntegrationId)?.name ?? source;
 }
 
@@ -56,7 +69,19 @@ export default function SourceComparison({
   weightUnit: WeightUnit;
 }) {
   const priority = getMetricSourcePriority(profileId);
-  const cards: ComparisonCard[] = [];
+  // Doc id → filename/date, so a 'document:<id>' series labels by the document's own
+  // identity instead of a collapsed "Document" (#533).
+  const docMeta: Record<number, DocumentMeta> = {};
+  for (const d of getMedicalDocuments(profileId)) {
+    docMeta[d.id] = { filename: d.filename, document_date: d.document_date };
+  }
+
+  interface RawCard {
+    metric: ComparableMetric;
+    unit: string;
+    raw: MetricSourceSeries[];
+  }
+  const rawCards: RawCard[] = [];
   for (const metric of COMPARABLE_METRICS) {
     const raw: MetricSourceSeries[] =
       metric.kind === "sample"
@@ -66,22 +91,30 @@ export default function SourceComparison({
           : getHrSeriesBySource(profileId);
     if (raw.length < 2) continue; // nothing to compare
     const unit = metric.key === "weight" ? ` ${weightUnit}` : metric.unit;
-    cards.push({
-      metric,
-      unit,
-      series: raw.map((s) => ({
-        key: s.source,
-        label: sourceLabel(s.source),
-        color: sourceColor(s.source),
-        data: s.data.map((d) => ({
-          date: d.date,
-          value: displayValue(metric, d.value, weightUnit),
-        })),
-      })),
-      current: priority[metric.key] ?? "",
-    });
+    rawCards.push({ metric, unit, raw });
   }
-  if (cards.length === 0) return null;
+  if (rawCards.length === 0) return null;
+
+  // One color per distinct source KEY across every card, so a document keeps the
+  // same de-collided color on each metric it appears in and no two documents share
+  // the fallback teal (#533).
+  const colorByKey = sourceSeriesColorMap(
+    rawCards.flatMap((c) => c.raw.map((s) => s.source))
+  );
+  const cards: ComparisonCard[] = rawCards.map(({ metric, unit, raw }) => ({
+    metric,
+    unit,
+    series: raw.map((s) => ({
+      key: s.source,
+      label: labelForSource(s.source, docMeta),
+      color: colorByKey.get(s.source) ?? SOURCE_FALLBACK_COLOR,
+      data: s.data.map((d) => ({
+        date: d.date,
+        value: displayValue(metric, d.value, weightUnit),
+      })),
+    })),
+    current: priority[metric.key] ?? "",
+  }));
 
   return (
     <div className="space-y-6" data-testid="source-comparison">

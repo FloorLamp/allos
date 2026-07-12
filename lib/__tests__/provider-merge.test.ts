@@ -7,10 +7,86 @@ import {
   providerLinkTables,
   planProviderMerge,
   formatMergeImpact,
+  providerDisambigLabel,
   type ProviderMergeImpact,
 } from "@/lib/provider-merge";
+import type { Provider } from "@/lib/types";
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
+
+function provider(
+  p: Partial<Provider> & { id: number; name: string }
+): Provider {
+  return {
+    type: "organization",
+    npi: null,
+    identifier: null,
+    phone: null,
+    address: null,
+    created_at: "2020-01-01",
+    ...p,
+  };
+}
+
+describe("providerDisambigLabel (issue #532)", () => {
+  it("returns the bare name when it's unique among the set", () => {
+    const a = provider({ id: 1, name: "Quest Diagnostics" });
+    const b = provider({ id: 2, name: "LabCorp" });
+    expect(providerDisambigLabel(a, [a, b])).toBe("Quest Diagnostics");
+  });
+
+  it("appends the first differing field for two same-named rows", () => {
+    // Same name + type, distinct NPIs → labels split on NPI, the strongest signal.
+    const a = provider({
+      id: 1,
+      name: "Quest Diagnostics",
+      npi: "1000000010",
+    });
+    const b = provider({
+      id: 2,
+      name: "Quest Diagnostics",
+      npi: "1000000011",
+    });
+    expect(providerDisambigLabel(a, [a, b])).toBe(
+      "Quest Diagnostics · NPI 1000000010"
+    );
+    expect(providerDisambigLabel(b, [a, b])).toBe(
+      "Quest Diagnostics · NPI 1000000011"
+    );
+  });
+
+  it("prefers type, then falls to a later field when type matches", () => {
+    // An org and an individual sharing a name split on type.
+    const org = provider({ id: 1, name: "Dr. Smith", type: "organization" });
+    const ind = provider({ id: 2, name: "Dr. Smith", type: "individual" });
+    expect(providerDisambigLabel(org, [org, ind])).toBe(
+      "Dr. Smith · Organization"
+    );
+    // Two same-name same-type rows with only an address difference split on it.
+    const cityA = provider({
+      id: 3,
+      name: "City Medical",
+      address: "1 Alpha St, Springfield",
+    });
+    const cityB = provider({
+      id: 4,
+      name: "City Medical",
+      address: "2 Beta Ave, Portland",
+    });
+    expect(providerDisambigLabel(cityA, [cityA, cityB])).toBe(
+      "City Medical · 1 Alpha St, Springfield"
+    );
+  });
+
+  it("falls back to the id when no field distinguishes the pair", () => {
+    // Two rows identical on every disambig field (distinct only by id) — the id
+    // is the guaranteed-distinguishing last resort.
+    const a = provider({ id: 7, name: "Same Row" });
+    const b = provider({ id: 8, name: "Same Row" });
+    expect(providerDisambigLabel(a, [a, b])).toBe("Same Row · #7");
+    expect(providerDisambigLabel(b, [a, b])).toBe("Same Row · #8");
+  });
+});
 
 describe("planProviderMerge", () => {
   it("rejects a self-merge", () => {
