@@ -13,16 +13,22 @@ import { recommendNextWorkout } from "../workout-recommendation";
 import { isWorkoutNudgeSuppressed } from "../workout-nudge";
 import { gatherCoachingInput } from "../queries";
 import { getFindingSuppressions } from "../queries/upcoming";
+import type { CoachingInput } from "../coaching";
 import type { WorkoutRecommendation } from "./workout-format";
 
 export type { WorkoutRecommendation };
 
+// `gathered` (#447): the notify tick already runs the full coaching gather once per
+// profile per tick for the rest-episode reconcile; passing it here lets the workout
+// slot reuse that single scan instead of repeating the heaviest per-profile read.
+// Omitted (the request-time/manual callers) ⇒ gather fresh.
 export function recommendWorkout(
-  profileId: number
+  profileId: number,
+  gathered?: CoachingInput
 ): WorkoutRecommendation | null {
   // One gather, one core — the dashboard, the overview, and this reminder all
   // read the same computation, so they can't drift.
-  const input = gatherCoachingInput(profileId, "kg", "km");
+  const input = gathered ?? gatherCoachingInput(profileId, "kg", "km");
   const nw = recommendNextWorkout(input);
 
   // Route through the shared findings-suppression bus (#227/#245): the nudge is
