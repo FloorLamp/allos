@@ -49,6 +49,7 @@ export default function CardioFields({
               step="0.01"
               min="0"
               inputMode="decimal"
+              data-testid="cardio-distance"
               value={p.distance}
               onChange={(e) => onDistance(stripNegative(e.target.value))}
               className={`input bg-white dark:bg-ink-900 ${

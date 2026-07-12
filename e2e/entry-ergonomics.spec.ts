@@ -1,4 +1,19 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
+
+// Pick an activity in the editor's exercise combobox. Strength options render a
+// muscle badge INSIDE the option button (e.g. "Barbell Bench Press" plus a
+// "Chest" badge), so the button's accessible NAME is not the bare lift name and
+// an exact-name role query never matches. Match the option by its exact inner
+// name text instead — works for badge-less cardio options too.
+async function pickActivity(page: Page, name: string) {
+  await page.getByPlaceholder(/What did you do/).fill(name);
+  await page
+    .getByRole("listbox")
+    .getByRole("button")
+    .filter({ has: page.getByText(name, { exact: true }) })
+    .first()
+    .click();
+}
 
 // Issue #29: data-entry ergonomics — the three affordances end-to-end against the
 // seeded DB.
@@ -216,11 +231,7 @@ test("a fresh strength part auto-seeds set 1 from the coached suggestion (#335)"
 
   // Pick a lift the seed trains repeatedly (Barbell Bench Press, weeks of
   // 60 kg → +1 kg/wk history) so a coached next-set suggestion exists.
-  await page.getByPlaceholder(/What did you do/).fill("Barbell Bench Press");
-  await page
-    .getByRole("listbox")
-    .getByRole("button", { name: "Barbell Bench Press", exact: true })
-    .click();
+  await pickActivity(page, "Barbell Bench Press");
 
   // The coached "Next set" card renders for a fresh part with history.
   await expect(page.getByText("Next set")).toBeVisible();
@@ -257,15 +268,11 @@ test("a cardio part derives avg speed AND pace from distance + duration (#336)",
     .click();
 
   // Running requires a distance field; pick it so both Distance and Duration show.
-  await page.getByPlaceholder(/What did you do/).fill("Running");
-  await page
-    .getByRole("listbox")
-    .getByRole("button", { name: "Running", exact: true })
-    .click();
+  await pickActivity(page, "Running");
 
   // 5 km in 25 min → 12 km/h, pace 5:00 /km (seeded login is metric).
   await page.getByTestId("cardio-duration").fill("25");
-  await page.getByLabel(/Distance/).fill("5");
+  await page.getByTestId("cardio-distance").fill("5");
 
   // Both the average speed AND the newly-added pace line render from the same
   // inputs (#336) — pace is what runners actually think in.
@@ -310,11 +317,7 @@ test("weight steppers bump a set's load by the lift-appropriate increment (#337)
 
   // Barbell Bench Press is an upper-body lift → a 2.5 (kg) step for the seeded
   // metric login.
-  await page.getByPlaceholder(/What did you do/).fill("Barbell Bench Press");
-  await page
-    .getByRole("listbox")
-    .getByRole("button", { name: "Barbell Bench Press", exact: true })
-    .click();
+  await pickActivity(page, "Barbell Bench Press");
 
   // The + stepper bumps the (empty) weight by one increment → 2.5. Only weight is
   // set, so the set stays half-filled and nothing auto-saves — no cleanup needed.
@@ -334,11 +337,7 @@ test("a set row has a warmup toggle that flips its pressed state (#338)", async 
     .getByRole("button", { name: "New activity" })
     .click();
 
-  await page.getByPlaceholder(/What did you do/).fill("Barbell Bench Press");
-  await page
-    .getByRole("listbox")
-    .getByRole("button", { name: "Barbell Bench Press", exact: true })
-    .click();
+  await pickActivity(page, "Barbell Bench Press");
 
   // Each set carries a light "W" warmup toggle (default off). Toggling flips its
   // aria-pressed state — the flag excludes the set from volume/target/records.
