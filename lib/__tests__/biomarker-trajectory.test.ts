@@ -6,6 +6,7 @@ import {
   MIN_POINTS,
   MIN_SPAN_DAYS,
   PERSIST_SPAN_DAYS,
+  CONFIDENT_MIN_POINTS,
   type TrajectoryInput,
 } from "../biomarker-trajectory";
 import type { DatedPoint } from "../robust-stats";
@@ -196,6 +197,98 @@ describe("rule 1 — approaching boundary", () => {
     expect(app!.title).toContain("high");
     // An optimal-edge approach is the mildest signal — informational, not caution.
     expect(app!.tone).toBe("info");
+  });
+});
+
+describe("rule 1 — measurement-noise floor (issue #563)", () => {
+  // A bounded, near-ceiling vital: SpO2 (higher_better), reference/optimal low 95.
+  const spo2 = input({
+    analyte: "Oxygen Saturation",
+    unit: "%",
+    reference: { low: 95, high: 100 },
+    optimal: { low: 95, high: 100 },
+    direction: "higher_better",
+    retestDays: 365, // horizon 730 — a projected crossing IS reachable
+  });
+
+  it("suppresses a 1-unit wiggle within the noise floor (98→97, no finding)", () => {
+    // 98,98,97,97 over 270 days: absent the floor this projects a crossing of the
+    // 95 boundary within the horizon (the reported bug). Range 1 and fitted change
+    // ~1 both sit under SpO2's ±2 floor, so no trajectory fires.
+    const pts = [
+      { date: d(0), value: 98 },
+      { date: d(90), value: 98 },
+      { date: d(180), value: 97 },
+      { date: d(270), value: 97 },
+    ];
+    const fs = analyteTrajectoryFindings({
+      ...spo2,
+      points: pts,
+      noiseFloor: 2,
+    });
+    expect(fs.every((f) => f.rule !== "approaching")).toBe(true);
+  });
+
+  it("still fires on a genuine multi-unit decline that clears the floor", () => {
+    // 99→96 over 270 days: range 3 > the ±2 floor, latest 96 still in range → the
+    // approaching-boundary finding survives the noise gate.
+    const pts = [
+      { date: d(0), value: 99 },
+      { date: d(90), value: 98 },
+      { date: d(180), value: 97 },
+      { date: d(270), value: 96 },
+    ];
+    const fs = analyteTrajectoryFindings({
+      ...spo2,
+      points: pts,
+      noiseFloor: 2,
+    });
+    expect(fs.some((f) => f.rule === "approaching")).toBe(true);
+  });
+
+  it("with no floor supplied, the same 1-unit wiggle DOES project (gate is the floor)", () => {
+    // Proves the suppression above is the noise floor, not the horizon/other gates.
+    const pts = [
+      { date: d(0), value: 98 },
+      { date: d(90), value: 98 },
+      { date: d(180), value: 97 },
+      { date: d(270), value: 97 },
+    ];
+    const fs = analyteTrajectoryFindings({ ...spo2, points: pts });
+    expect(fs.some((f) => f.rule === "approaching")).toBe(true);
+  });
+});
+
+describe("rule 1 — low-confidence hedge in the copy (issue #563)", () => {
+  const base = input({
+    analyte: "eGFR",
+    unit: "mL/min/1.73m2",
+    reference: { low: 60, high: null },
+    optimal: null,
+    direction: "higher_better",
+    retestDays: 365,
+  });
+
+  it("hedges the ETA as a rough estimate below CONFIDENT_MIN_POINTS readings", () => {
+    const pts = line([0, 60, 120], 69, -3); // 3 points < 5
+    expect(pts.length).toBeLessThan(CONFIDENT_MIN_POINTS);
+    const f = analyteTrajectoryFindings({ ...base, points: pts }).find(
+      (x) => x.rule === "approaching"
+    )!;
+    expect(f.detail).toMatch(/rough estimate/i);
+    expect(f.detail).toMatch(/3 readings/);
+    expect(f.detail).not.toMatch(/projected to cross/i);
+  });
+
+  it("states a firm ETA at/above CONFIDENT_MIN_POINTS readings", () => {
+    // 5 collinear points, still declining toward the 60 floor.
+    const pts = line([0, 45, 90, 135, 180], 69, -1.5); // 69→63, 5 points
+    expect(pts.length).toBeGreaterThanOrEqual(CONFIDENT_MIN_POINTS);
+    const f = analyteTrajectoryFindings({ ...base, points: pts }).find(
+      (x) => x.rule === "approaching"
+    )!;
+    expect(f.detail).toMatch(/projected to cross/i);
+    expect(f.detail).not.toMatch(/rough estimate/i);
   });
 });
 

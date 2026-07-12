@@ -44,6 +44,12 @@ export const HORIZON_RETEST_MULTIPLE = 2;
 export const PERSIST_COUNT = 3;
 // …spanning at least this many days, all sharing the same non-optimal status.
 export const PERSIST_SPAN_DAYS = 90;
+// At/above this many readings a projected crossing reads as reasonably supported;
+// BELOW it the approaching-boundary copy hedges the ETA as a "rough estimate"
+// (issue #563), matching the goal-projection confidence tier (lib/trend-projection,
+// CONFIDENT_MIN_POINTS = 5). A 4-point projection stated as a firm multi-year ETA
+// overclaims; the hedge keeps the copy honest about the sample size.
+export const CONFIDENT_MIN_POINTS = 5;
 // Days per year for the velocity conversion (Julian year, matching robust-stats).
 const DAYS_PER_YEAR = 365.25;
 
@@ -75,6 +81,13 @@ export interface TrajectoryInput {
   // Curated velocity threshold (canonical units/year); null/absent = no velocity
   // rule for this analyte.
   velocityPerYear?: number | null;
+  // Smallest total change (in the points' unit) that counts as signal rather than
+  // measurement noise (issue #563, lib/biomarker-noise-floor). The approaching-
+  // boundary rule won't fire unless the fitted change OR the observed value range
+  // clears this floor — so a 1-unit SpO2 wiggle inside the device's ±2 error
+  // doesn't project a confident decline. null/absent = no floor (the pure engine's
+  // default; the assembly always derives and supplies one).
+  noiseFloor?: number | null;
   // Today (YYYY-MM-DD) — only used to keep humanized spans/projections stable.
   today: string;
   // Optional detail-page link ("schedule a retest" affordance).
@@ -204,6 +217,18 @@ function approachingBoundary(
   if (latestStatus === "high" || latestStatus === "low") return null;
   if (slopePerDay === 0) return null;
 
+  // Measurement-noise floor (#563): if BOTH the total fitted change over the
+  // observed window and the observed value range sit at/under the analyte's noise
+  // floor, the "trend" is jitter within device/assay error — don't project off it.
+  // Either exceeding the floor is enough to treat the move as real signal.
+  const floor = input.noiseFloor;
+  if (floor != null && floor > 0) {
+    const fittedChange = Math.abs(slopePerDay) * spanDays;
+    const values = points.map((p) => p.value);
+    const observedRange = Math.max(...values) - Math.min(...values);
+    if (fittedChange <= floor && observedRange <= floor) return null;
+  }
+
   const rising = slopePerDay > 0;
   // The slope must move in the analyte's harmful direction.
   if (direction === "higher_better" && rising) return null;
@@ -246,12 +271,24 @@ function approachingBoundary(
   const title = `${input.analyte} is trending toward its ${side} ${
     target.kind === "reference" ? "reference" : "optimal"
   } boundary`;
+  // Low-confidence hedge (#563): fewer than CONFIDENT_MIN_POINTS readings can't
+  // support a firm ETA, so soften "is projected to cross … in about X" to "could
+  // reach … in roughly X — a rough estimate from N readings", mirroring the
+  // narrative path's hedge instead of overclaiming a confident multi-year date.
+  const lowConfidence = points.length < CONFIDENT_MIN_POINTS;
+  const etaClause = lowConfidence
+    ? `at this rate could reach the ${side} ${boundaryWord} (${fmt(
+        target.value
+      )}${u}) in roughly ${humanizeAge(
+        Math.round(projectedDays)
+      )} — a rough estimate from just ${points.length} readings`
+    : `at this rate is projected to cross the ${side} ${boundaryWord} (${fmt(
+        target.value
+      )}${u}) in about ${humanizeAge(Math.round(projectedDays))}`;
   const detail =
     `${input.analyte} has been ${verb} — from ${fmt(first)} to ${fmt(latest)}${u} ` +
-    `over ${humanizeAge(spanDays)} — and at this rate is projected to cross the ${side} ` +
-    `${boundaryWord} (${fmt(target.value)}${u}) in about ${humanizeAge(
-      Math.round(projectedDays)
-    )}. It is still in range now; worth discussing with your clinician.`;
+    `over ${humanizeAge(spanDays)} — and ${etaClause}. It is still in range now; ` +
+    `worth discussing with your clinician.`;
 
   return {
     ...baseFinding(input, "approaching"),

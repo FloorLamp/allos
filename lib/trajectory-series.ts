@@ -35,6 +35,7 @@ import {
 import { convertToCanonical, sameUnit } from "./unit-conversions";
 import { retestDaysForBiomarker } from "./biomarker-retest";
 import { velocityPerYearForBiomarker } from "./biomarker-velocity";
+import { noiseFloorForSeries } from "./biomarker-noise-floor";
 import {
   trajectoryFindings,
   type TrajectoryInput,
@@ -131,6 +132,14 @@ function buildInputFromSeries(
     direction,
     retestDays: retestIntervalDays(retestDaysForBiomarker(canonical)),
     velocityPerYear: velocityPerYearForBiomarker(canonical),
+    // Measurement-noise floor (#563): the smallest change the approaching-boundary
+    // rule treats as signal — curated per analyte (SpO2's ±2), else derived from
+    // the series' recording resolution / the reference-range width.
+    noiseFloor: noiseFloorForSeries(
+      canonical,
+      points.map((p) => p.value),
+      reference
+    ),
     today,
     href: biomarkerViewHref(canonical),
   };
