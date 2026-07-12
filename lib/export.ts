@@ -109,12 +109,28 @@ type ActivityRow = {
   duration_min: number | null;
   distance_km: number | null;
   intensity: string | null;
+  // Telemetry the display projection used to drop (#466) — Strava/device numerics.
+  start_time: string | null;
+  end_time: string | null;
+  avg_hr: number | null;
+  max_hr: number | null;
+  elevation_m: number | null;
+  avg_power_w: number | null;
+  avg_cadence: number | null;
+  kilojoules: number | null;
+  est_calories: number | null;
+  workout_type: string | null;
+  source: string | null;
+  external_id: string | null;
   notes: string | null;
 };
 type ActivitySet = SetRow & { activity_id: number; exercise: string };
 
-// Columns selected from `activities` (shared by the full + bounded reads).
-const ACTIVITY_COLUMNS = `id, date, type, title, duration_min, distance_km, intensity, notes`;
+// Columns selected from `activities` (shared by the full + bounded reads). Carries
+// the full device/Strava telemetry, not just the display projection (#466).
+const ACTIVITY_COLUMNS = `id, date, type, title, duration_min, distance_km, intensity,
+          start_time, end_time, avg_hr, max_hr, elevation_m, avg_power_w, avg_cadence,
+          kilojoules, est_calories, workout_type, source, external_id, notes`;
 // Exercise-sets read, scoped to the profile through the activities JOIN. The page
 // reader appends `AND s.activity_id IN (...)` to fetch only the shown activities'
 // sets; the export reader takes them all. Kept as one const so both share the
@@ -167,6 +183,18 @@ function shapeActivities(
       duration_min: a.duration_min,
       distance_km: a.distance_km,
       intensity: a.intensity,
+      start_time: a.start_time,
+      end_time: a.end_time,
+      avg_hr: a.avg_hr,
+      max_hr: a.max_hr,
+      elevation_m: a.elevation_m,
+      avg_power_w: a.avg_power_w,
+      avg_cadence: a.avg_cadence,
+      kilojoules: a.kilojoules,
+      est_calories: a.est_calories,
+      workout_type: a.workout_type,
+      source: a.source,
+      external_id: a.external_id,
       notes: a.notes,
     };
   });
@@ -181,8 +209,9 @@ type DoseRow = {
 
 // Parent intake_items read (supplements + medications). The page reader appends
 // LIMIT/OFFSET; both filter profile_id directly.
-const ITEMS_SELECT = `SELECT id, name, brand, product, condition, priority, situation,
-          stack, active, notes
+const ITEMS_SELECT = `SELECT id, name, kind, brand, product, condition, priority, situation,
+          stack, active, critical, as_needed, prescriber, pharmacy, rx_number,
+          quantity_on_hand, notes
    FROM intake_items WHERE profile_id = ?`;
 // Dose-schedule read, scoped to the profile through the intake_items JOIN. The
 // page reader appends `AND d.item_id IN (...)` to fetch only the shown
@@ -295,6 +324,18 @@ export const DATASETS: ExportDataset[] = [
       "duration_min",
       "distance_km",
       "intensity",
+      "start_time",
+      "end_time",
+      "avg_hr",
+      "max_hr",
+      "elevation_m",
+      "avg_power_w",
+      "avg_cadence",
+      "kilojoules",
+      "est_calories",
+      "workout_type",
+      "source",
+      "external_id",
       "notes",
     ],
     count: qCount(`SELECT COUNT(*) AS n FROM activities WHERE profile_id = ?`),
@@ -334,11 +375,55 @@ export const DATASETS: ExportDataset[] = [
     },
   },
   tableDataset({
+    // Per-set strength numerics (weight/reps/target/to-failure/equipment) — the raw
+    // data behind the activities `exercises` prose summary, which existed NOWHERE in
+    // any export before (#466). A child of activities (JOINed via a.profile_id), so
+    // browse/export-only.
+    key: "exercise_sets",
+    label: "Exercise sets",
+    table: "exercise_sets",
+    deletable: false,
+    columns: [
+      "date",
+      "activity",
+      "exercise",
+      "set_number",
+      "weight_kg",
+      "reps",
+      "weight_kg_right",
+      "reps_right",
+      "duration_sec",
+      "duration_sec_right",
+      "target_reps",
+      "to_failure",
+      "equipment_id",
+    ],
+    select: `SELECT s.id, a.date, a.title AS activity, s.exercise, s.set_number,
+              s.weight_kg, s.reps, s.weight_kg_right, s.reps_right, s.duration_sec,
+              s.duration_sec_right, s.target_reps, s.to_failure, s.equipment_id
+       FROM exercise_sets s JOIN activities a ON a.id = s.activity_id
+       WHERE a.profile_id = ?
+       ORDER BY a.date DESC, s.activity_id DESC, s.exercise, s.set_number`,
+    countSql: `SELECT COUNT(*) AS n
+       FROM exercise_sets s JOIN activities a ON a.id = s.activity_id
+       WHERE a.profile_id = ?`,
+  }),
+  tableDataset({
     key: "body_metrics",
     label: "Body metrics",
     table: "body_metrics",
-    columns: ["date", "weight_kg", "body_fat_pct", "resting_hr", "notes"],
-    select: `SELECT id, date, weight_kg, body_fat_pct, resting_hr, notes
+    // source + edited carry provenance (which integration wrote it, whether a hand
+    // edit locked it) that the export used to drop (#466).
+    columns: [
+      "date",
+      "weight_kg",
+      "body_fat_pct",
+      "resting_hr",
+      "source",
+      "edited",
+      "notes",
+    ],
+    select: `SELECT id, date, weight_kg, body_fat_pct, resting_hr, source, edited, notes
        FROM body_metrics WHERE profile_id = ? ORDER BY date DESC`,
     countSql: `SELECT COUNT(*) AS n FROM body_metrics WHERE profile_id = ?`,
   }),
@@ -357,10 +442,13 @@ export const DATASETS: ExportDataset[] = [
       "reference_range",
       "flag",
       "panel",
+      "source",
+      "document_id",
+      "edited",
       "notes",
     ],
     select: `SELECT id, date, category, name, canonical_name, value, value_num,
-              unit, reference_range, flag, panel, notes
+              unit, reference_range, flag, panel, source, document_id, edited, notes
        FROM medical_records WHERE profile_id = ? ORDER BY date DESC, id DESC`,
     countSql: `SELECT COUNT(*) AS n FROM medical_records WHERE profile_id = ?`,
   }),
@@ -406,6 +494,7 @@ export const DATASETS: ExportDataset[] = [
     table: "intake_items",
     columns: [
       "name",
+      "kind",
       "brand",
       "product",
       "condition",
@@ -413,6 +502,12 @@ export const DATASETS: ExportDataset[] = [
       "situation",
       "stack",
       "active",
+      "critical",
+      "as_needed",
+      "prescriber",
+      "pharmacy",
+      "rx_number",
+      "quantity_on_hand",
       "notes",
       "schedule",
     ],
@@ -454,8 +549,12 @@ export const DATASETS: ExportDataset[] = [
     label: "Supplement & medication log",
     table: "intake_item_logs",
     deletable: false,
-    columns: ["date", "item", "taken_at"],
-    select: `SELECT l.id, l.date, ii.name AS item, l.taken_at
+    // status + skip_reason distinguish a SKIPPED dose from a taken one (a skipped
+    // dose used to export with a timestamp indistinguishable from a confirmed one —
+    // an actively-wrong adherence history); amount is the #280 dose snapshot (#466).
+    columns: ["date", "item", "status", "taken_at", "amount", "skip_reason"],
+    select: `SELECT l.id, l.date, ii.name AS item, l.status, l.taken_at, l.amount,
+              l.skip_reason
        FROM intake_item_logs l JOIN intake_items ii ON ii.id = l.item_id
        WHERE ii.profile_id = ? ORDER BY l.date DESC, ii.name`,
     countSql: `SELECT COUNT(*) AS n

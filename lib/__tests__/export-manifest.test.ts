@@ -60,4 +60,22 @@ describe("buildExportManifest", () => {
     });
     expect(m.contents.datasets.map((d) => d.key)).toEqual(["zeta", "alpha"]);
   });
+
+  it("omits missing-file + profile-photo keys when there are none (#466)", () => {
+    const m = buildExportManifest(base);
+    expect(m.contents.medicalFiles).not.toHaveProperty("missing");
+    expect(m.contents).not.toHaveProperty("profilePhoto");
+  });
+
+  it("surfaces skipped-on-disk files and the bundled profile photo (#466)", () => {
+    const m = buildExportManifest({
+      ...base,
+      missingFiles: ["medical-files/9-gone.pdf"],
+      profilePhoto: "profile-photo.jpg",
+    });
+    expect(m.contents.medicalFiles.missing).toEqual([
+      "medical-files/9-gone.pdf",
+    ]);
+    expect(m.contents.profilePhoto).toBe("profile-photo.jpg");
+  });
 });

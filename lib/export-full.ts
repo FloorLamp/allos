@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { db } from "./db";
+import { PHOTO_ROOT } from "./profile-photo";
 import { DATASETS } from "./export";
 import {
   getUserSex,
@@ -87,6 +88,31 @@ export function listProfileMedicalFiles(profileId: number): ExportFile[] {
     out.push({ zipName, absPath: abs, size });
   }
   return out;
+}
+
+// The profile's avatar photo as a bundle file, when one is stored on disk (#466).
+// Confined to PHOTO_ROOT with the same path-traversal guard as the medical files and
+// the serve route; a missing/tampered path yields null (nothing bundled).
+export function getProfilePhotoFile(profileId: number): ExportFile | null {
+  const row = db
+    .prepare(`SELECT photo_path FROM profiles WHERE id = ?`)
+    .get(profileId) as { photo_path: string | null } | undefined;
+  const stored = row?.photo_path;
+  if (!stored) return null;
+  const abs = path.resolve(process.cwd(), stored);
+  if (abs !== PHOTO_ROOT && !abs.startsWith(PHOTO_ROOT + path.sep)) return null;
+  try {
+    const st = fs.statSync(abs);
+    if (!st.isFile()) return null;
+    const ext = abs.split(".").pop()?.toLowerCase();
+    return {
+      zipName: `profile-photo${ext ? `.${sanitizeName(ext)}` : ""}`,
+      absPath: abs,
+      size: st.size,
+    };
+  } catch {
+    return null;
+  }
 }
 
 // Strip path separators / control chars from a stored filename so it can't create
@@ -296,6 +322,8 @@ export interface ExportSnapshot {
   datasets: ExportDatasetSnapshot[];
   fhirInput: FhirExportInput;
   files: ExportFile[];
+  // The profile avatar to bundle, or null when none is stored (#466).
+  profilePhoto: ExportFile | null;
 }
 
 // Collect the whole export payload inside a SINGLE SQLite read transaction (issue
@@ -321,5 +349,6 @@ export function collectExportSnapshot(
     })),
     fhirInput: collectFhirExportInput(profileId, profileName),
     files: listProfileMedicalFiles(profileId),
+    profilePhoto: getProfilePhotoFile(profileId),
   }))();
 }
