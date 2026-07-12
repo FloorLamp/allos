@@ -37,16 +37,23 @@ describe("separatePairWarnings", () => {
     };
   }
 
+  // #435: each warning now carries a keep-apart:<lo>-<hi> dedupeKey alongside the
+  // line, so the page can route it through the findings-suppression bus.
   it("warns when both members of a separate pair are in the bucket", () => {
     expect(separatePairWarnings([1, 2], [pair()])).toEqual([
-      "Keep apart: Calcium and Iron",
+      { key: "keep-apart:1-2", text: "Keep apart: Calcium and Iron" },
     ]);
   });
 
   it("appends the note when present", () => {
     expect(
       separatePairWarnings([1, 2], [pair({ note: "space by 2h" })])
-    ).toEqual(["Keep apart: Calcium and Iron — space by 2h"]);
+    ).toEqual([
+      {
+        key: "keep-apart:1-2",
+        text: "Keep apart: Calcium and Iron — space by 2h",
+      },
+    ]);
   });
 
   it("stays silent when only one member is in the bucket", () => {
@@ -66,14 +73,14 @@ describe("separatePairWarnings", () => {
       pair({ id: 2, a_id: 3, b_id: 4, a_name: "Zinc", b_name: "Copper" }),
     ];
     expect(separatePairWarnings([1, 2, 3, 4], pairs)).toEqual([
-      "Keep apart: Calcium and Iron",
-      "Keep apart: Zinc and Copper",
+      { key: "keep-apart:1-2", text: "Keep apart: Calcium and Iron" },
+      { key: "keep-apart:3-4", text: "Keep apart: Zinc and Copper" },
     ]);
   });
 
   it("accepts any iterable of ids (e.g. a Set)", () => {
     expect(separatePairWarnings(new Set([1, 2]), [pair()])).toEqual([
-      "Keep apart: Calcium and Iron",
+      { key: "keep-apart:1-2", text: "Keep apart: Calcium and Iron" },
     ]);
   });
 });

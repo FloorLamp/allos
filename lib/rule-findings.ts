@@ -49,6 +49,7 @@ import {
   detectFastWeightLoss,
   goalPaceSignalKey,
   weightLossRateSignalKey,
+  weightLossRateLegacyKey,
   GOAL_PACE_WINDOW_DAYS,
 } from "./goal-pacing";
 import {
@@ -77,6 +78,8 @@ function trainingObservationToFinding(o: TrainingObservation): Finding {
   return {
     domain: `training-${o.kind}`,
     dedupeKey: o.key,
+    // Honor a pre-#436 dismissal under the episode-less key (#436 dual-read).
+    supersedes: o.legacyKey,
     title: o.title,
     detail: o.detail,
     // Stale is a neutral FYI (slate); an imbalance/plateau is worth acting on
@@ -241,7 +244,9 @@ export function buildGoalPacingFindings(
     const pct = round(loss.fractionPerWeek * 100, 1);
     findings.push({
       domain: "goal-pace",
-      dedupeKey: weightLossRateSignalKey(),
+      dedupeKey: weightLossRateSignalKey(loss.sinceMonth),
+      // Honor a pre-#436 dismissal under the episode-less key (#436 dual-read).
+      supersedes: weightLossRateLegacyKey(),
       title: "Losing weight quickly",
       detail:
         `You're down about ${pct}%/week lately — faster than the ~1%/week that ` +
@@ -265,6 +270,8 @@ function adherencePatternToFinding(p: AdherencePattern): Finding {
   return {
     domain: `adherence-${p.kind}`,
     dedupeKey: p.key,
+    // Honor a pre-#436 dismissal under the episode-less key (#436 dual-read).
+    supersedes: p.legacyKey,
     title: p.title,
     detail: p.detail,
     tone: "info",
@@ -329,6 +336,10 @@ export function buildAdherencePatternFindings(
       supplementName: supp.name,
       bucket: timeBucket(d.time_of_day),
       strip,
+      // Episode anchor = the current year (#436): a same-weekday habit that recurs a
+      // year after being dismissed lands in a new period and re-surfaces, rather than
+      // one dismissal silencing it forever.
+      periodAnchor: today.slice(0, 4),
       // "Move it earlier" is wrong advice for a bedtime slot or a prescribed
       // medication (#430.4) — fall back to the neutral reminder copy.
       suppressMoveSuggestion:

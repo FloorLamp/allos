@@ -43,6 +43,7 @@ export default function EditableSupplementRow({
   strip,
   trainingRestricted,
   refillRate,
+  suppressedFoodKeys = [],
 }: {
   supplement: Supplement;
   dose: SupplementDose;
@@ -56,6 +57,8 @@ export default function EditableSupplementRow({
   strip: AdherenceDot[];
   trainingRestricted: boolean;
   refillRate: DoseRate | null;
+  // Active food-timing dismissals for this profile (#435), threaded to FoodGuidance.
+  suppressedFoodKeys?: string[];
 }) {
   const [editing, setEditing] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -226,9 +229,11 @@ export default function EditableSupplementRow({
           {/* Food–drug guidance (issue #154): per-item food note for a matching
               item (e.g. dairy/minerals × iron-binding drugs). */}
           <FoodGuidance
+            itemId={s.id}
             name={s.name}
             rxcui={s.rxcui}
             rxcuiIngredients={s.rxcui_ingredients}
+            suppressedFoodKeys={suppressedFoodKeys}
           />
           {(adherence.pct !== null || adherence.skippedDays > 0) && (
             <div

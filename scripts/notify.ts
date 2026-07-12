@@ -54,7 +54,12 @@ import { pruneAuditEvents } from "../lib/audit";
 import { sweepDeletedRows } from "../lib/undo-delete-db";
 import { sweepReplayedKeys } from "../lib/offline/writes";
 import { reapStuckExtractions } from "../lib/extraction-reaper";
-import { inferWorkoutSchedule, runCoachingEpisode } from "../lib/queries";
+import {
+  inferWorkoutSchedule,
+  runCoachingEpisode,
+  gatherCoachingInput,
+} from "../lib/queries";
+import type { CoachingInput } from "../lib/coaching";
 import { slotDue, inWakingWindow } from "../lib/notifications/schedule";
 import { db, today, checkpointWal } from "../lib/db";
 import { hourInTz, weekdayInTz } from "../lib/date";
@@ -229,6 +234,18 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
   const date = today(profile.id);
   const sched = getNotifySchedule(profile.id);
 
+  // The full coaching gather (complete strength/cardio scan + 42×1440 HR-minute
+  // rows) is this profile's heaviest per-tick read, and BOTH the workout-reminder
+  // slot (recommendWorkout) and the rest-episode reconcile (runCoachingEpisode)
+  // consume it. Request-scoped caching is identity outside Next (#386), so the tick
+  // used to run it twice. Gather it at most ONCE per profile per tick, lazily (only
+  // if a consumer actually runs), and thread it to both (#447). Units don't affect
+  // the rest/workout decisions, so the canonical "kg"/"km" both consumers already
+  // pass is used here too.
+  let coachingInputCache: CoachingInput | undefined;
+  const coachingInput = (): CoachingInput =>
+    (coachingInputCache ??= gatherCoachingInput(profile.id, "kg", "km"));
+
   const dueSlots: { slot: string; build: () => NotificationMessage | null }[] =
     [];
   for (const w of ["Morning", "Midday", "Evening", "Bedtime"] as const) {
@@ -246,7 +263,7 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
     if (inf.weekdays.includes(weekday) && slotDue(inf.hour, hour))
       dueSlots.push({
         slot: "workout",
-        build: () => buildWorkoutTargetReminder(profile.id),
+        build: () => buildWorkoutTargetReminder(profile.id, coachingInput()),
       });
   }
 
@@ -316,14 +333,25 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
     }
   }
 
-  // Preventive-care nudge (#87): runs every waking-hour tick; its own per-rule
-  // "once per due episode" dedup (cleared when an item is satisfied / no longer
-  // due) keeps it from re-nagging daily. Gated by the per-profile preventive
-  // toggle.
-  if (waking) {
+  // Preventive-care nudge (#87): its own per-rule "once per due episode" dedup
+  // (cleared when an item is satisfied / no longer due) keeps it from re-nagging
+  // daily. Gated by the per-profile preventive toggle. Also gated to once per
+  // profile-local DAY (#447): the full medical-records inference it runs answers
+  // "what's due as of today", which only changes at the date rollover, and #378
+  // already windows the sends — so re-running it every waking hour is pure
+  // duplicated work. Mark it assessed only after a clean run so a failed send still
+  // retries next waking hour; a newly-due item that crosses its threshold mid-day is
+  // then picked up on the next date's first waking tick (a day-granularity tradeoff
+  // the episode question already accepts). The safety-tier senders (dose reminders,
+  // escalation) above stay ungated.
+  if (
+    waking &&
+    getProfileSetting(profile.id, "notify_preventive_assessed") !== date
+  ) {
     try {
       const pv = await runPreventive(profile.id, profile.name, date);
       if (pv.failed) anyFailed = true;
+      else setProfileSetting(profile.id, "notify_preventive_assessed", date);
     } catch (e) {
       log.error("preventive check failed", {
         profile: profile.id,
@@ -339,7 +367,7 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
   // it only maintains the marker (mirrors the refill nudge's episode dedup) so the
   // condition is tracked daily even when the user doesn't open a coaching surface.
   try {
-    runCoachingEpisode(profile.id);
+    runCoachingEpisode(profile.id, coachingInput());
   } catch (e) {
     log.error("coaching episode reconcile failed", {
       profile: profile.id,

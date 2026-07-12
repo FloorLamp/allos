@@ -57,6 +57,8 @@ import { strOrNull } from "@/lib/parse";
 import { isRealIsoDate } from "@/lib/date";
 import { dismissFinding } from "@/lib/queries";
 import { ADHERENCE_PREFIX } from "@/lib/adherence-patterns";
+import { FOOD_TIMING_PREFIX } from "@/lib/food-drug-interactions";
+import { KEEP_APART_PREFIX } from "@/lib/intake-pairs";
 
 // Supplement-level fields (timing/amount/food live on doses).
 function fields(formData: FormData) {
@@ -907,6 +909,34 @@ export async function dismissAdherencePattern(formData: FormData) {
   const { profile } = await requireWriteAccess();
   const dedupeKey = String(formData.get("dedupe_key") ?? "").trim();
   if (!dedupeKey.startsWith(ADHERENCE_PREFIX)) return;
+  dismissFinding(profile.id, dedupeKey);
+  revalidatePath("/medicine");
+}
+
+// The finding namespaces the /medicine page renders as dismissible OBSERVATIONS
+// (issue #435): drug–drug interactions, stack-total dietary limits, per-item
+// food–drug guidance, and keep-apart pair warnings. Each also surfaces on Upcoming
+// through the SAME shared findings-suppression bus keyed by the identical dedupeKey,
+// so a dismiss here silences the Upcoming twin and vice versa ("dismiss once, silence
+// everywhere", #227's page↔push principle applied page↔page). The scheduled
+// dose-reminder / missed-dose escalation stay their own (deliberately un-suppressible)
+// safety-tier machinery — these are calm observations, not safety reminders.
+const MEDICINE_FINDING_PREFIXES = [
+  "interaction:",
+  "dietary-limit:",
+  FOOD_TIMING_PREFIX,
+  KEEP_APART_PREFIX,
+];
+
+// Dismiss a /medicine observational finding through the shared findings-bus
+// suppression store. Guarded to the medicine-surface namespaces above, so it can only
+// silence one of those keys (never an arbitrary finding); profile-scoped via
+// dismissFinding. One action for the four page surfaces (their divs post their own
+// dedupeKey), mirroring how each page's dismiss action guards its own domain.
+export async function dismissMedicineFinding(formData: FormData) {
+  const { profile } = await requireWriteAccess();
+  const dedupeKey = String(formData.get("dedupe_key") ?? "").trim();
+  if (!MEDICINE_FINDING_PREFIXES.some((p) => dedupeKey.startsWith(p))) return;
   dismissFinding(profile.id, dedupeKey);
   revalidatePath("/medicine");
 }

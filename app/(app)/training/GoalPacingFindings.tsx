@@ -2,7 +2,7 @@ import { IconTarget } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
 import { getFindingSuppressions } from "@/lib/queries";
-import { activeByKey } from "@/lib/findings";
+import { activeFindings } from "@/lib/findings";
 import { buildGoalPacingFindings } from "@/lib/rule-findings";
 import FindingsList from "@/components/FindingsList";
 import { dismissGoalPacing } from "@/app/(app)/goals/actions";
@@ -17,9 +17,8 @@ import { dismissGoalPacing } from "@/app/(app)/goals/actions";
 export default async function GoalPacingFindings() {
   const { profile } = await requireSession();
   const now = today(profile.id);
-  const findings = activeByKey(
+  const findings = activeFindings(
     buildGoalPacingFindings(profile.id, now),
-    (f) => f.dedupeKey,
     getFindingSuppressions(profile.id),
     now
   );

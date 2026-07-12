@@ -41,6 +41,7 @@ function input(
     supplementName: "Magnesium",
     bucket: "Evening",
     strip,
+    periodAnchor: "2025", // #436 episode anchor (the year)
     ...over,
   };
 }
@@ -62,7 +63,7 @@ describe("detectWeekdayMissPattern", () => {
     const p = detectWeekdayMissPattern(input(strip(28, fridaysMissed)));
     expect(p).not.toBeNull();
     expect(p!.kind).toBe("weekday");
-    expect(p!.key).toBe(weekdayMissSignalKey(42, FRIDAY));
+    expect(p!.key).toBe(weekdayMissSignalKey(42, FRIDAY, "2025"));
     expect(p!.detail).toContain("Friday");
     expect(p!.detail).toContain("4 of the last 4");
     // Evening slot → suggest moving it earlier.
@@ -116,7 +117,7 @@ describe("detectWeekendAsymmetry", () => {
     const p = detectWeekendAsymmetry(input(s));
     expect(p).not.toBeNull();
     expect(p!.kind).toBe("weekend");
-    expect(p!.key).toBe(weekendAsymmetrySignalKey(42));
+    expect(p!.key).toBe(weekendAsymmetrySignalKey(42, "2025"));
     expect(p!.detail).toContain("100% of weekend days");
     expect(p!.detail).toContain("0% on weekdays");
   });
