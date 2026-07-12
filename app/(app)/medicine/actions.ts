@@ -47,6 +47,7 @@ import {
   parseDosage,
   spreadDoseTimes,
 } from "@/lib/supplement-schedule";
+import { formError, formOk, type FormResult } from "@/lib/types";
 import type {
   FoodTiming,
   PairRelation,
@@ -245,10 +246,10 @@ function reconcilePairs(suppId: number, pairs: PairInput[], profileId: number) {
   }
 }
 
-export async function addSupplement(formData: FormData) {
+export async function addSupplement(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const name = String(formData.get("name") ?? "").trim();
-  if (!name) return;
+  if (!name) return formError("Enter a name.");
   const f = fields(formData);
   const doses = parseDoses(formData);
   const pairs = parsePairs(formData);
@@ -303,14 +304,17 @@ export async function addSupplement(formData: FormData) {
   });
   revalidatePath("/medicine");
   revalidatePath("/");
+  return formOk();
 }
 
-export async function updateSupplement(formData: FormData) {
+export async function updateSupplement(
+  formData: FormData
+): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
-  if (!id) return;
+  if (!id) return formError("Couldn't find that supplement.");
   const name = String(formData.get("name") ?? "").trim();
-  if (!name) return;
+  if (!name) return formError("Enter a name.");
   const f = fields(formData);
   const doses = parseDoses(formData);
   const pairs = parsePairs(formData);
@@ -326,7 +330,7 @@ export async function updateSupplement(formData: FormData) {
     f.kind === "medication"
       ? resolveProviderIdByName(String(formData.get("provider") ?? ""))
       : null;
-  writeTx(() => {
+  const ok = writeTx(() => {
     // Verify ownership before touching the supplement or its child rows — the
     // form id is untrusted. Bail (no-op) when it isn't owned. Also snapshot the
     // prior refill-tracked state (active + quantity_on_hand) so an edit that turns
@@ -337,7 +341,7 @@ export async function updateSupplement(formData: FormData) {
       )
       .get(id, profile.id) as
       { active: number; quantity_on_hand: number | null } | undefined;
-    if (!owned) return;
+    if (!owned) return false;
     // Compare-and-set the refill counter (issue #467): only honor the submitted
     // on-hand value when the user actually changed the field; otherwise keep the
     // current value (re-read here under the IMMEDIATE write lock), so a concurrent
@@ -348,6 +352,7 @@ export async function updateSupplement(formData: FormData) {
       loadedQuantityOnHand,
       owned.quantity_on_hand
     );
+
     db.prepare(
       `UPDATE intake_items
          SET name = ?, notes = ?, condition = ?, priority = ?, brand = ?,
@@ -455,9 +460,12 @@ export async function updateSupplement(formData: FormData) {
     if (f.kind === "medication") {
       ensureMedicationCourse(profile.id, id, null);
     }
+    return true;
   });
+  if (!ok) return formError("Couldn't find that supplement.");
   revalidatePath("/medicine");
   revalidatePath("/");
+  return formOk();
 }
 
 // The three states one dose can be in for a day: taken, deliberately skipped
@@ -558,7 +566,7 @@ function applyDoseStatus(
 
 // Set a single dose's status for today to an explicit target — the web
 // tri-state's write path (taken / skipped / clear). #232
-export async function setDoseStatus(formData: FormData) {
+export async function setDoseStatus(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const doseId = Number(formData.get("dose_id"));
   const target = String(formData.get("status") ?? "");
@@ -566,20 +574,21 @@ export async function setDoseStatus(formData: FormData) {
     !doseId ||
     (target !== "taken" && target !== "skipped" && target !== "clear")
   ) {
-    return;
+    return formError("Couldn't update this dose.");
   }
   applyDoseStatus(profile.id, doseId, today(profile.id), target);
   revalidatePath("/medicine");
   revalidatePath("/");
+  return formOk();
 }
 
 // Toggle a single dose's TAKEN log for today (taken ↔ clear). A skipped dose
 // (issue #232) counts as "not taken", so this flips it to taken. Kept as the
 // dedicated take toggle; setDoseStatus is the general tri-state path.
-export async function toggleTaken(formData: FormData) {
+export async function toggleTaken(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const doseId = Number(formData.get("dose_id"));
-  if (!doseId) return;
+  if (!doseId) return formError("Couldn't find that dose.");
   const date = today(profile.id);
   const existing = db
     .prepare(
@@ -594,12 +603,13 @@ export async function toggleTaken(formData: FormData) {
   );
   revalidatePath("/medicine");
   revalidatePath("/");
+  return formOk();
 }
 
-export async function toggleActive(formData: FormData) {
+export async function toggleActive(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
-  if (!id) return;
+  if (!id) return formError("Couldn't find that item.");
   const row = db
     .prepare(
       "SELECT active, kind, quantity_on_hand FROM intake_items WHERE id = ? AND profile_id = ?"
@@ -607,7 +617,7 @@ export async function toggleActive(formData: FormData) {
     .get(id, profile.id) as
     | { active: number; kind: string; quantity_on_hand: number | null }
     | undefined;
-  if (!row) return;
+  if (!row) return formError("Couldn't find that item.");
   const nextActive: 0 | 1 = row.active ? 0 : 1;
   if (row.kind === "medication") {
     // Keep the medication's course history in sync with the plain Pause/Resume
@@ -631,6 +641,7 @@ export async function toggleActive(formData: FormData) {
   }
   revalidatePath("/medicine");
   revalidatePath("/");
+  return formOk();
 }
 
 // ---- Medication lifecycle: stop / restart / side effects ----
@@ -639,10 +650,10 @@ export async function toggleActive(formData: FormData) {
 
 // Stop a medication: close its open course (reason + note) and clear `active`;
 // optionally capture a side effect at stop time.
-export async function stopMedication(formData: FormData) {
+export async function stopMedication(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
-  if (!id) return;
+  if (!id) return formError("Couldn't find that medication.");
   stopMedicationCourses(profile.id, id, {
     date: today(profile.id),
     reason: normalizeStopReason(formData.get("stop_reason")),
@@ -652,23 +663,28 @@ export async function stopMedication(formData: FormData) {
   });
   revalidatePath("/medicine");
   revalidatePath("/");
+  return formOk();
 }
 
 // Restart a medication: open a NEW course dated today and set `active` back on.
-export async function restartMedication(formData: FormData) {
+export async function restartMedication(
+  formData: FormData
+): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
-  if (!id) return;
+  if (!id) return formError("Couldn't find that medication.");
   restartMedicationCourse(profile.id, id, today(profile.id));
   revalidatePath("/medicine");
   revalidatePath("/");
+  return formOk();
 }
 
-export async function addSideEffect(formData: FormData) {
+export async function addSideEffect(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id")); // the medication (item) id
   const effect = strOrNull(formData.get("effect"));
-  if (!id || !effect) return;
+  if (!id) return formError("Couldn't find that medication.");
+  if (!effect) return formError("Enter the side effect.");
   const notedRaw = strOrNull(formData.get("noted_on"));
   const courseRaw = Number(formData.get("course_id"));
   insertMedicationSideEffect(profile.id, id, {
@@ -680,13 +696,17 @@ export async function addSideEffect(formData: FormData) {
   });
   revalidatePath("/medicine");
   revalidatePath("/");
+  return formOk();
 }
 
-export async function updateSideEffect(formData: FormData) {
+export async function updateSideEffect(
+  formData: FormData
+): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   const effect = strOrNull(formData.get("effect"));
-  if (!id || !effect) return;
+  if (!id) return formError("Couldn't find that side effect.");
+  if (!effect) return formError("Enter the side effect.");
   const notedRaw = strOrNull(formData.get("noted_on"));
   updateMedicationSideEffect(profile.id, id, {
     effect,
@@ -700,36 +720,46 @@ export async function updateSideEffect(formData: FormData) {
   });
   revalidatePath("/medicine");
   revalidatePath("/");
+  return formOk();
 }
 
-export async function toggleSideEffectResolved(formData: FormData) {
+export async function toggleSideEffectResolved(
+  formData: FormData
+): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
-  if (!id) return;
+  if (!id) return formError("Couldn't find that side effect.");
   toggleMedicationSideEffectResolved(profile.id, id);
   revalidatePath("/medicine");
   revalidatePath("/");
+  return formOk();
 }
 
-export async function deleteSideEffect(formData: FormData) {
+export async function deleteSideEffect(
+  formData: FormData
+): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
-  if (!id) return;
+  if (!id) return formError("Couldn't find that side effect.");
   deleteMedicationSideEffect(profile.id, id);
   revalidatePath("/medicine");
   revalidatePath("/");
+  return formOk();
 }
 
 // Promote a medication side effect into a manual allergies/intolerance row.
 // The side effect is kept (marked resolved) for the medication's history.
-export async function promoteSideEffectToIntolerance(formData: FormData) {
+export async function promoteSideEffectToIntolerance(
+  formData: FormData
+): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
-  if (!id) return;
+  if (!id) return formError("Couldn't find that side effect.");
   promoteMedicationSideEffect(profile.id, id, today(profile.id));
   revalidatePath("/medicine");
   revalidatePath("/allergies");
   revalidatePath("/");
+  return formOk();
 }
 
 export async function deleteSupplement(
@@ -769,16 +799,17 @@ export async function deleteSupplement(
   return { undoId };
 }
 
-export async function toggleSituation(formData: FormData) {
+export async function toggleSituation(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const situation = String(formData.get("situation") ?? "").trim();
-  if (!situation) return;
+  if (!situation) return formError("Couldn't find that situation.");
   const active = new Set(getActiveSituations(profile.id));
   if (active.has(situation)) active.delete(situation);
   else active.add(situation);
   setActiveSituations(profile.id, [...active]);
   revalidatePath("/medicine");
   revalidatePath("/");
+  return formOk();
 }
 
 export interface SuggestState {
@@ -809,10 +840,12 @@ export async function generateSuggestions(
   };
 }
 
-export async function acceptSuggestion(formData: FormData) {
+export async function acceptSuggestion(
+  formData: FormData
+): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
-  if (!id) return;
+  if (!id) return formError("Couldn't find that suggestion.");
   const s = db
     .prepare(
       "SELECT * FROM intake_item_suggestions WHERE id = ? AND status = 'pending' AND profile_id = ?"
@@ -831,7 +864,7 @@ export async function acceptSuggestion(formData: FormData) {
         rationale: string;
       }
     | undefined;
-  if (!s) return;
+  if (!s) return formError("That suggestion is no longer available.");
   // Parse the free-text dosage ("5–10 g once daily") into a clean amount and
   // intake count, rather than dumping it all into one dose's amount.
   const parsed = parseDosage(s.dosage);
@@ -871,16 +904,20 @@ export async function acceptSuggestion(formData: FormData) {
   });
   revalidatePath("/medicine");
   revalidatePath("/");
+  return formOk();
 }
 
-export async function dismissSuggestion(formData: FormData) {
+export async function dismissSuggestion(
+  formData: FormData
+): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
-  if (!id) return;
+  if (!id) return formError("Couldn't find that suggestion.");
   db.prepare(
     "UPDATE intake_item_suggestions SET status = 'dismissed' WHERE id = ? AND profile_id = ?"
   ).run(id, profile.id);
   revalidatePath("/medicine");
+  return formOk();
 }
 
 // Look up RxNorm candidates for a free-text name (issue #144) — the ONLY network
@@ -915,12 +952,16 @@ export async function lookupRxcuiIngredients(rxcui: string): Promise<string[]> {
 // dedupeKey. Guarded to the adherence namespace (like dismissTrainingObservation)
 // so this action can only ever silence an adherence-pattern key; profile-scoped via
 // dismissFinding.
-export async function dismissAdherencePattern(formData: FormData) {
+export async function dismissAdherencePattern(
+  formData: FormData
+): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const dedupeKey = String(formData.get("dedupe_key") ?? "").trim();
-  if (!dedupeKey.startsWith(ADHERENCE_PREFIX)) return;
+  if (!dedupeKey.startsWith(ADHERENCE_PREFIX))
+    return formError("Couldn't dismiss that observation.");
   dismissFinding(profile.id, dedupeKey);
   revalidatePath("/medicine");
+  return formOk();
 }
 
 // The finding namespaces the /medicine page renders as dismissible OBSERVATIONS
@@ -946,7 +987,9 @@ const MEDICINE_FINDING_PREFIXES = [
 export async function dismissMedicineFinding(formData: FormData) {
   const { profile } = await requireWriteAccess();
   const dedupeKey = String(formData.get("dedupe_key") ?? "").trim();
-  if (!MEDICINE_FINDING_PREFIXES.some((p) => dedupeKey.startsWith(p))) return;
+  if (!MEDICINE_FINDING_PREFIXES.some((p) => dedupeKey.startsWith(p)))
+    return formError("Couldn't dismiss that finding.");
   dismissFinding(profile.id, dedupeKey);
   revalidatePath("/medicine");
+  return formOk();
 }

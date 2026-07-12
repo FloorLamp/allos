@@ -70,8 +70,11 @@ client-generated key and the **date you captured it**, so a late sync lands on t
 right day and can never double-log: replays are applied exactly once and build on
 the existing per-dose/day and per-metric dedup. If your session expired while you
 were away, the queue is **kept** and you're prompted to log back in — nothing is
-silently dropped. As with the emergency card, the queue is cleared on logout and
-profile switch.
+silently dropped. If an entry can't be applied on replay — the server rejects it, or
+it keeps failing after several tries — it is **never silently discarded**: it's moved
+to a small **review panel** (with the reason) so you can re-enter it, rather than the
+badge just decrementing under a "synced" toast. As with the emergency card, the queue
+(and the review panel) are cleared on logout and profile switch.
 
 Everything else still needs connectivity: this is a queue for a few one-tap logs,
 not a general offline mode. Forms with server-derived state (anything that reads or

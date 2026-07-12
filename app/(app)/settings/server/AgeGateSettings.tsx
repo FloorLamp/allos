@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { saveMinTrainingAge } from "./actions";
 import SaveStatus from "@/components/SaveStatus";
+import { useSaveStatus } from "@/components/useSaveStatus";
 
 // The GLOBAL minimum age (whole years) for the fitness-oriented surfaces. When a
 // profile's known age is below it, the Training and AI Insights pages,
@@ -18,15 +19,13 @@ export default function AgeGateSettings({
   const [value, setValue] = useState(
     minTrainingAge != null ? String(minTrainingAge) : ""
   );
-  const [pending, startTransition] = useTransition();
-  const [savedAt, setSavedAt] = useState(0);
+  const { pending, savedAt, error, save: runSave } = useSaveStatus();
 
   function save() {
     const fd = new FormData();
     fd.set("min_training_age", value.trim());
-    startTransition(async () => {
+    runSave(async () => {
       await saveMinTrainingAge(fd);
-      setSavedAt(Date.now());
       router.refresh();
     });
   }
@@ -37,7 +36,7 @@ export default function AgeGateSettings({
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Minimum age for training features
         </h2>
-        <SaveStatus pending={pending} savedAt={savedAt} />
+        <SaveStatus pending={pending} savedAt={savedAt} error={error} />
       </div>
 
       <p className="text-xs text-slate-400 dark:text-slate-500">

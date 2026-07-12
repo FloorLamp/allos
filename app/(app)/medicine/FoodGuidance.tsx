@@ -65,7 +65,11 @@ export default function FoodGuidance({
             {foodGuidanceLine(hit)}
           </span>
           {/* Dismiss through the shared findings-bus suppression store (#435). */}
-          <form action={dismissMedicineFinding}>
+          <form
+            action={async (fd) => {
+              await dismissMedicineFinding(fd);
+            }}
+          >
             <input
               type="hidden"
               name="dedupe_key"

@@ -28,6 +28,7 @@ import { dismissFinding, saveNarrative } from "@/lib/queries";
 import type { NarrativePeriod } from "@/lib/recap-narrative";
 import { today } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
+import { formError, formOk, type FormResult } from "@/lib/types";
 
 // Generate (or regenerate) the AI daily insight for a date and store it for the
 // active profile. Moved here from the former standalone /insights page when AI
@@ -106,24 +107,30 @@ export async function generateLabTrend() {
 // dismissed only while the SAME-direction trend persists (a reversal is a new key
 // and resurfaces). Guarded to the digest namespace; profile-scoped via
 // dismissFinding.
-export async function dismissDigest(formData: FormData) {
+export async function dismissDigest(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const dedupeKey = String(formData.get("dedupe_key") ?? "").trim();
-  if (!dedupeKey.startsWith("digest:")) return;
+  if (!dedupeKey.startsWith("digest:"))
+    return formError("Couldn't dismiss that trend.");
   dismissFinding(profile.id, dedupeKey);
   revalidatePath("/trends");
+  return formOk();
 }
 
 // Dismiss a biomarker trajectory finding (issue #41): hide it through the shared
 // suppression store keyed by "trajectory:<analyte>:<rule>". Guarded to the
 // trajectory namespace (like dismissDigest) so this action can only ever silence a
 // trajectory key; profile-scoped via dismissFinding.
-export async function dismissTrajectory(formData: FormData) {
+export async function dismissTrajectory(
+  formData: FormData
+): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const dedupeKey = String(formData.get("dedupe_key") ?? "").trim();
-  if (!dedupeKey.startsWith("trajectory:")) return;
+  if (!dedupeKey.startsWith("trajectory:"))
+    return formError("Couldn't dismiss that finding.");
   dismissFinding(profile.id, dedupeKey);
   revalidatePath("/trends");
+  return formOk();
 }
 
 // Dismiss a body-metric hygiene finding (issue #45, domain 5): a probable-error
@@ -131,12 +138,16 @@ export async function dismissTrajectory(formData: FormData) {
 // "body-hygiene:weight-jump:<id>". Guarded to the body-hygiene namespace (like
 // dismissTrajectory) so this action can only silence a body-hygiene key; profile-
 // scoped via dismissFinding.
-export async function dismissBodyHygiene(formData: FormData) {
+export async function dismissBodyHygiene(
+  formData: FormData
+): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const dedupeKey = String(formData.get("dedupe_key") ?? "").trim();
-  if (!dedupeKey.startsWith("body-hygiene:")) return;
+  if (!dedupeKey.startsWith("body-hygiene:"))
+    return formError("Couldn't dismiss that finding.");
   dismissFinding(profile.id, dedupeKey);
   revalidatePath("/trends");
+  return formOk();
 }
 
 // Pin / unpin a Trends-Overview tile for the active profile.
@@ -144,12 +155,13 @@ export async function dismissBodyHygiene(formData: FormData) {
 // `trend_pins` list; pinned tiles render first on the Overview. profileId is
 // resolved from the session — any login acting as the profile may pin (it's
 // per-profile data), so this is requireWriteAccess, not requireAdmin.
-export async function toggleTrendPin(formData: FormData) {
+export async function toggleTrendPin(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const key = String(formData.get("key") ?? "").trim();
-  if (!key) return;
+  if (!key) return formError("Couldn't find that tile.");
   setTrendPins(profile.id, togglePin(getTrendPins(profile.id), key));
   revalidatePath("/trends");
+  return formOk();
 }
 
 // Read the hub's current URL state off the submitted form into a params bag. The
@@ -176,25 +188,27 @@ function paramsFromForm(formData: FormData, pins: string[]): TrendViewParams {
 // Saved views. Save the current hub state under a name for
 // the active profile — per-profile data, so requireWriteAccess (any login acting as
 // the profile may save), not requireAdmin. Re-saving the same name overwrites it.
-export async function saveTrendView(formData: FormData) {
+export async function saveTrendView(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const name = String(formData.get("name") ?? "").trim();
-  if (!name) return;
+  if (!name) return formError("Name your view.");
   const params = paramsFromForm(formData, getTrendPins(profile.id));
   setTrendViews(
     profile.id,
     addView(getTrendViews(profile.id), { name, params })
   );
   revalidatePath("/trends");
+  return formOk();
 }
 
 // Delete a saved view by name.
-export async function deleteTrendView(formData: FormData) {
+export async function deleteTrendView(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const name = String(formData.get("name") ?? "").trim();
-  if (!name) return;
+  if (!name) return formError("Couldn't find that view.");
   setTrendViews(profile.id, deleteView(getTrendViews(profile.id), name));
   revalidatePath("/trends");
+  return formOk();
 }
 
 // Apply a saved view: restore its pins snapshot (when it captured one) and redirect

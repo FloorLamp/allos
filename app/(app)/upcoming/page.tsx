@@ -162,7 +162,12 @@ export default async function UpcomingPage() {
 function PreventiveControls({ ruleKey }: { ruleKey: string }) {
   return (
     <div className="flex shrink-0 items-center gap-1">
-      <form action={markPreventiveDone}>
+      <form
+        action={async (fd) => {
+          "use server";
+          await markPreventiveDone(fd);
+        }}
+      >
         <input type="hidden" name="rule_key" value={ruleKey} />
         <SubmitButton
           pendingLabel="…"
@@ -216,7 +221,13 @@ function SuppressedSection({
                   {snoozeUntil ? `Snoozed until ${snoozeUntil}` : "Dismissed"}
                 </div>
               </div>
-              <form action={restoreItem} className="shrink-0">
+              <form
+                action={async (fd) => {
+                  "use server";
+                  await restoreItem(fd);
+                }}
+                className="shrink-0"
+              >
                 <input type="hidden" name="signal_key" value={signalKey} />
                 <SubmitButton
                   pendingLabel="…"
@@ -270,7 +281,13 @@ function Row({
         {upcomingDueText(item, now)}
       </div>
       {item.doseId != null && (
-        <form action={markTaken} className="shrink-0">
+        <form
+          action={async (fd) => {
+            "use server";
+            await markTaken(fd);
+          }}
+          className="shrink-0"
+        >
           <input type="hidden" name="dose_id" value={item.doseId} />
           <SubmitButton
             pendingLabel="…"
@@ -302,7 +319,13 @@ function Row({
         <PreventiveControls ruleKey={item.preventiveRuleKey} />
       )}
       {item.carePlanItemId != null && (
-        <form action={markCarePlanDone} className="shrink-0">
+        <form
+          action={async (fd) => {
+            "use server";
+            await markCarePlanDone(fd);
+          }}
+          className="shrink-0"
+        >
           <input
             type="hidden"
             name="care_plan_item_id"
@@ -320,8 +343,14 @@ function Row({
       (issue #281), identical to the dashboard hero's. */}
       <SnoozeDismissMenu
         signalKey={item.key}
-        snoozeAction={snoozeItem}
-        dismissAction={dismissItem}
+        snoozeAction={async (fd) => {
+          "use server";
+          await snoozeItem(fd);
+        }}
+        dismissAction={async (fd) => {
+          "use server";
+          await dismissItem(fd);
+        }}
       />
     </div>
   );

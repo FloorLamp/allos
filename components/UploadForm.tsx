@@ -24,12 +24,22 @@ import SubmitButton from "@/components/SubmitButton";
 // the unified import feed tracks extraction through to completion.
 export default function UploadForm({ demo = false }: { demo?: boolean }) {
   const [hasFile, setHasFile] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const toast = useToast();
   const router = useRouter();
 
   async function handleUpload(formData: FormData) {
-    await uploadMedicalDocument(formData);
+    setError(null);
+    try {
+      await uploadMedicalDocument(formData);
+    } catch {
+      // Size/type failures are handled gracefully server-side as failed-document
+      // rows, but a disk-write throw would replace the whole page via the error
+      // boundary (issue #477) — keep the form mounted and surface it inline.
+      setError("Upload failed. Please try again.");
+      return;
+    }
     // Clear the input (and re-disable the button) so the same file can be picked
     // again — a native file input won't re-fire `change` for an identical
     // selection unless it's been reset.
@@ -69,6 +79,15 @@ export default function UploadForm({ demo = false }: { demo?: boolean }) {
           className="text-sm text-amber-700 dark:text-amber-400"
         >
           File upload is disabled in demo — this is a read-only demo instance.
+        </p>
+      )}
+      {error && (
+        <p
+          role="alert"
+          data-testid="medical-upload-error"
+          className="text-sm text-rose-600 dark:text-rose-400"
+        >
+          {error}
         </p>
       )}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">

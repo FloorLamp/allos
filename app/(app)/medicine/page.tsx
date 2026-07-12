@@ -99,7 +99,12 @@ function DismissFindingButton({
   label: string;
 }) {
   return (
-    <form action={dismissMedicineFinding}>
+    <form
+      action={async (fd) => {
+        "use server";
+        await dismissMedicineFinding(fd);
+      }}
+    >
       <input type="hidden" name="dedupe_key" value={dedupeKey} />
       <button
         type="submit"
@@ -363,7 +368,13 @@ export default async function SupplementsPage() {
         {situationChips.map((sit) => {
           const on = activeSituations.has(sit);
           return (
-            <form action={toggleSituation} key={sit}>
+            <form
+              action={async (fd) => {
+                "use server";
+                await toggleSituation(fd);
+              }}
+              key={sit}
+            >
               <input type="hidden" name="situation" value={sit} />
               <SubmitButton
                 aria-pressed={on}
@@ -621,7 +632,12 @@ export default async function SupplementsPage() {
                     </p>
                   )}
                   <div className="mt-2 flex items-center gap-3 text-xs">
-                    <form action={acceptSuggestion}>
+                    <form
+                      action={async (fd) => {
+                        "use server";
+                        await acceptSuggestion(fd);
+                      }}
+                    >
                       <input type="hidden" name="id" value={sug.id} />
                       <SubmitButton
                         pendingLabel="Adding…"

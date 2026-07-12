@@ -3,7 +3,12 @@ import { requireWriteAccess } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
-import type { AllergyStatus } from "@/lib/types";
+import {
+  formError,
+  formOk,
+  type AllergyStatus,
+  type FormResult,
+} from "@/lib/types";
 
 // Allergy writes. Session-scoped; every mutation is
 // `WHERE id = ? AND profile_id = ?`. Manual rows carry a NULL source/document_id
@@ -20,10 +25,10 @@ function statusOf(raw: unknown): AllergyStatus {
   return v === "inactive" || v === "resolved" ? v : "active";
 }
 
-export async function addAllergy(formData: FormData) {
+export async function addAllergy(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const substance = String(formData.get("substance") ?? "").trim();
-  if (!substance) return;
+  if (!substance) return formError("Enter the substance you're allergic to.");
   const reaction = String(formData.get("reaction") ?? "").trim() || null;
   const severity = String(formData.get("severity") ?? "").trim() || null;
   const status = statusOf(formData.get("status"));
@@ -36,13 +41,15 @@ export async function addAllergy(formData: FormData) {
      VALUES (?,?,?,?,?,?,NULL,?)`
   ).run(substance, reaction, severity, status, onset, notes, profile.id);
   revalidateAllergies();
+  return formOk();
 }
 
-export async function updateAllergy(formData: FormData) {
+export async function updateAllergy(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   const substance = String(formData.get("substance") ?? "").trim();
-  if (!id || !substance) return;
+  if (!id) return formError("Couldn't find that allergy.");
+  if (!substance) return formError("Enter the substance you're allergic to.");
   const reaction = String(formData.get("reaction") ?? "").trim() || null;
   const severity = String(formData.get("severity") ?? "").trim() || null;
   const status = statusOf(formData.get("status"));
@@ -56,15 +63,17 @@ export async function updateAllergy(formData: FormData) {
      WHERE id = ? AND profile_id = ?`
   ).run(substance, reaction, severity, status, onset, notes, id, profile.id);
   revalidateAllergies();
+  return formOk();
 }
 
-export async function deleteAllergy(formData: FormData) {
+export async function deleteAllergy(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
-  if (!id) return;
+  if (!id) return formError("Couldn't find that allergy.");
   db.prepare("DELETE FROM allergies WHERE id = ? AND profile_id = ?").run(
     id,
     profile.id
   );
   revalidateAllergies();
+  return formOk();
 }

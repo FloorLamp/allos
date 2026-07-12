@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { saveProfileSettings } from "./actions";
 import { ageFromBirthdate, dateStrInTz, isRealIsoDate } from "@/lib/date";
 import DateField from "@/components/DateField";
 import SaveStatus from "@/components/SaveStatus";
+import { useSaveStatus } from "@/components/useSaveStatus";
 import type { ReproductiveStatus, Sex } from "@/lib/types";
 
 // Biological sex, birthdate/age, and timezone — all PROFILE-scoped (properties of
@@ -63,8 +64,7 @@ export default function ProfileForm({
   const derivedAge = birthdate
     ? ageFromBirthdate(birthdate, dateStrInTz(timezone))
     : null;
-  const [pending, startTransition] = useTransition();
-  const [savedAt, setSavedAt] = useState(0);
+  const { pending, savedAt, error, save: runSave } = useSaveStatus();
 
   // Populate the IANA zone list on the client only. The list from
   // Intl.supportedValuesOf can differ between the server's ICU and the browser's,
@@ -104,9 +104,8 @@ export default function ProfileForm({
     fd.set("timezone", next.timezone);
     fd.set("week_start", String(next.weekStart));
     fd.set("week_mode", next.weekMode);
-    startTransition(async () => {
+    runSave(async () => {
       await saveProfileSettings(fd);
-      setSavedAt(Date.now());
       router.refresh();
     });
   }
@@ -117,7 +116,7 @@ export default function ProfileForm({
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Personal
         </h2>
-        <SaveStatus pending={pending} savedAt={savedAt} />
+        <SaveStatus pending={pending} savedAt={savedAt} error={error} />
       </div>
 
       <div>

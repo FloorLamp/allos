@@ -34,6 +34,7 @@ import {
 } from "@/lib/supplement-schedule";
 import type {
   FoodTiming,
+  FormResult,
   PairRelation,
   Supplement,
   SupplementDose,
@@ -77,7 +78,7 @@ export default function SupplementForm({
   onDone,
   trainingRestricted = false,
 }: {
-  action: (formData: FormData) => Promise<void>;
+  action: (formData: FormData) => Promise<FormResult>;
   supplement?: Supplement;
   doses?: SupplementDose[];
   allSupplements?: { id: number; name: string }[];
@@ -253,11 +254,16 @@ export default function SupplementForm({
     formData.set("doses", JSON.stringify(doses));
     formData.set("pairs", JSON.stringify(pairRows));
     const label = name.trim() || "Supplement";
+    let result: FormResult;
     try {
-      await action(formData);
+      result = await action(formData);
     } catch {
       // Keep the form (and everything typed) mounted; surface the failure.
       setError("Couldn't save this supplement. Please try again.");
+      return;
+    }
+    if (!result.ok) {
+      setError(result.error);
       return;
     }
     toast(s ? `${label} updated` : `${label} added`);

@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { saveTrainingZones } from "./actions";
 import SaveStatus from "@/components/SaveStatus";
+import { useSaveStatus } from "@/components/useSaveStatus";
 
 // Training HR-zone settings (issue #159) — PROFILE-scoped, following the active
 // profile. A manual max-HR override for people who've tested theirs (it beats the
@@ -23,16 +24,14 @@ export default function TrainingZonesForm({
     maxHrOverride == null ? "" : String(maxHrOverride)
   );
   const [target, setTarget] = useState(String(zone2Target));
-  const [pending, startTransition] = useTransition();
-  const [savedAt, setSavedAt] = useState(0);
+  const { pending, savedAt, error, save: runSave } = useSaveStatus();
 
   function save(next: { maxHr: string; target: string }) {
     const fd = new FormData();
     fd.set("max_hr_override", next.maxHr);
     fd.set("zone2_weekly_target_min", next.target);
-    startTransition(async () => {
+    runSave(async () => {
       await saveTrainingZones(fd);
-      setSavedAt(Date.now());
       router.refresh();
     });
   }
@@ -43,7 +42,7 @@ export default function TrainingZonesForm({
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Training heart-rate zones
         </h2>
-        <SaveStatus pending={pending} savedAt={savedAt} />
+        <SaveStatus pending={pending} savedAt={savedAt} error={error} />
       </div>
 
       <div>

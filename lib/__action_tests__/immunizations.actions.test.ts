@@ -62,10 +62,32 @@ describe("addImmunization", () => {
     expect(revalidate).toHaveBeenCalledWith("/immunizations");
   });
 
-  it("rejects an impossible date", async () => {
+  it("rejects an impossible date with a typed error, persisting nothing (issue #474)", async () => {
     const { profile } = seedActor();
-    await addImmunization(fd({ date: "not-a-date", vaccine: "MMR" }));
+    // A validation failure must reach the form as an explicit { ok:false, error }
+    // — NOT an undefined resolve the form reads as "Saved ✓".
+    const res = await addImmunization(
+      fd({ date: "not-a-date", vaccine: "MMR" })
+    );
+    expect(res).toEqual({ ok: false, error: expect.any(String) });
     expect(immRows(profile.id)).toHaveLength(0);
+  });
+
+  it("rejects a blank vaccine with a typed error (issue #474)", async () => {
+    const { profile } = seedActor();
+    const res = await addImmunization(
+      fd({ date: "2001-06-01", vaccine: "  " })
+    );
+    expect(res.ok).toBe(false);
+    expect(immRows(profile.id)).toHaveLength(0);
+  });
+
+  it("confirms a persisted save with { ok:true } (issue #474)", async () => {
+    seedActor();
+    const res = await addImmunization(
+      fd({ date: "2001-06-01", vaccine: "MMR" })
+    );
+    expect(res).toEqual({ ok: true });
   });
 });
 

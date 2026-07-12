@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
-import type { CarePlanItem } from "@/lib/types";
+import type { CarePlanItem, FormResult } from "@/lib/types";
 
 // Shared add/edit care-plan form. Add mode: no `item`. Edit mode: pass the row + an
 // `onDone` callback (renders a hidden id + a Cancel button). The provider is a
@@ -15,7 +15,7 @@ export default function CarePlanForm({
   item,
   onDone,
 }: {
-  action: (formData: FormData) => Promise<void>;
+  action: (formData: FormData) => Promise<FormResult>;
   item?: CarePlanItem;
   onDone?: () => void;
 }) {
@@ -31,10 +31,15 @@ export default function CarePlanForm({
       setError("Enter the planned item.");
       return;
     }
+    let result: FormResult;
     try {
-      await action(formData);
+      result = await action(formData);
     } catch {
       setError("Couldn't save this care-plan item. Please try again.");
+      return;
+    }
+    if (!result.ok) {
+      setError(result.error);
       return;
     }
     toast(editing ? "Care-plan item updated" : "Care-plan item saved");

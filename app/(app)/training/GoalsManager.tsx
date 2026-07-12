@@ -68,6 +68,23 @@ export default function GoalsManager({
   const [openMenu, setOpenMenu] = useState<number | null>(null);
   const confirm = useConfirm();
 
+  // The goal actions now return a typed FormResult, but the menu's runAction
+  // helper and the inline <form action> want a void-returning action, and these
+  // toggle/progress surfaces have no inline error slot — adapt each to Promise<void>
+  // (a failed guard just no-ops the optimistic toast, same as before the contract).
+  const setStatusV = async (fd: FormData) => {
+    await setStatus(fd);
+  };
+  const setArchivedV = async (fd: FormData) => {
+    await setArchived(fd);
+  };
+  const deleteGoalV = async (fd: FormData) => {
+    await deleteGoal(fd);
+  };
+  const updateProgressV = async (fd: FormData) => {
+    await updateProgress(fd);
+  };
+
   const archivedCount = goals.filter((g) => g.archived).length;
   const visibleGoals = showArchived ? goals : goals.filter((g) => !g.archived);
 
@@ -170,7 +187,7 @@ export default function GoalsManager({
                         {g.status === "achieved" ? (
                           <form
                             action={(fd) =>
-                              runAction(setStatus, fd, "Marked active")
+                              runAction(setStatusV, fd, "Marked active")
                             }
                           >
                             <input type="hidden" name="id" value={g.id} />
@@ -186,7 +203,7 @@ export default function GoalsManager({
                         ) : (
                           <form
                             action={(fd) =>
-                              runAction(setStatus, fd, "Goal achieved 🎉")
+                              runAction(setStatusV, fd, "Goal achieved 🎉")
                             }
                           >
                             <input type="hidden" name="id" value={g.id} />
@@ -212,7 +229,7 @@ export default function GoalsManager({
                         <form
                           action={(fd) =>
                             runAction(
-                              setArchived,
+                              setArchivedV,
                               fd,
                               g.archived ? "Goal unarchived" : "Goal archived"
                             )
@@ -249,7 +266,7 @@ export default function GoalsManager({
                             if (!ok) return;
                             const fd = new FormData();
                             fd.set("id", String(g.id));
-                            await runAction(deleteGoal, fd, "Goal deleted");
+                            await runAction(deleteGoalV, fd, "Goal deleted");
                           }}
                         >
                           Delete
@@ -323,7 +340,7 @@ export default function GoalsManager({
 
                 {!auto && (
                   <form
-                    action={updateProgress}
+                    action={updateProgressV}
                     className="mt-3 flex items-center gap-2"
                   >
                     <input type="hidden" name="id" value={g.id} />

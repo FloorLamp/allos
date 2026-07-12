@@ -16,6 +16,12 @@ export default function PreventiveOverrideMenu({
   ruleKey: string;
 }) {
   const [open, setOpen] = useState(false);
+  // OverflowMenu.runAction wants a `() => Promise<void>` action; overridePreventive
+  // now returns a FormResult, so adapt it (the result is ignored here — the menu
+  // just toasts + closes on success).
+  const applyOverride = async (fd: FormData) => {
+    await overridePreventive(fd);
+  };
   return (
     <OverflowMenu
       label="Not applicable or declined"
@@ -26,7 +32,7 @@ export default function PreventiveOverrideMenu({
         <>
           <form
             action={(fd) =>
-              runAction(overridePreventive, fd, "Marked not applicable")
+              runAction(applyOverride, fd, "Marked not applicable")
             }
           >
             <input type="hidden" name="rule_key" value={ruleKey} />
@@ -41,9 +47,7 @@ export default function PreventiveOverrideMenu({
             </button>
           </form>
           <form
-            action={(fd) =>
-              runAction(overridePreventive, fd, "Marked declined")
-            }
+            action={(fd) => runAction(applyOverride, fd, "Marked declined")}
           >
             <input type="hidden" name="rule_key" value={ruleKey} />
             <input type="hidden" name="kind" value="declined" />

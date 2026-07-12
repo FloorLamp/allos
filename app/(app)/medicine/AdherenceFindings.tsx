@@ -25,7 +25,10 @@ export default async function AdherenceFindings() {
   return (
     <FindingsList
       findings={findings}
-      dismissAction={dismissAdherencePattern}
+      dismissAction={async (fd) => {
+        "use server";
+        await dismissAdherencePattern(fd);
+      }}
       heading="Adherence patterns"
       subtitle="Where your recent misses cluster — and a schedule tweak that might help."
       icon={

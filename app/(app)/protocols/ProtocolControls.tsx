@@ -4,7 +4,7 @@ import { useState } from "react";
 import { IconPencil, IconTrash, IconPlayerStop } from "@tabler/icons-react";
 import SubmitButton from "@/components/SubmitButton";
 import { formatLongDate } from "@/lib/format-date";
-import type { Protocol } from "@/lib/types";
+import type { Protocol, FormResult } from "@/lib/types";
 import type { OutcomeOption } from "@/lib/queries/protocols";
 import ProtocolForm from "./ProtocolForm";
 
@@ -21,9 +21,9 @@ export default function ProtocolControls({
 }: {
   protocol: Protocol;
   options: OutcomeOption[];
-  updateAction: (formData: FormData) => Promise<void>;
-  endAction: (formData: FormData) => Promise<void>;
-  deleteAction: (formData: FormData) => Promise<void>;
+  updateAction: (formData: FormData) => Promise<FormResult>;
+  endAction: (formData: FormData) => Promise<FormResult>;
+  deleteAction: (formData: FormData) => Promise<FormResult>;
 }) {
   const [editing, setEditing] = useState(false);
   const ongoing = protocol.end_date == null;
@@ -80,7 +80,11 @@ export default function ProtocolControls({
           <IconPencil className="h-4 w-4" stroke={1.75} aria-hidden /> Edit
         </button>
         {ongoing && (
-          <form action={endAction}>
+          <form
+            action={async (fd) => {
+              await endAction(fd);
+            }}
+          >
             <input type="hidden" name="id" value={protocol.id} />
             <SubmitButton className="btn-ghost" pendingLabel="Ending…">
               <IconPlayerStop className="h-4 w-4" stroke={1.75} aria-hidden />{" "}
@@ -89,7 +93,9 @@ export default function ProtocolControls({
           </form>
         )}
         <form
-          action={deleteAction}
+          action={async (fd) => {
+            await deleteAction(fd);
+          }}
           onSubmit={(e) => {
             if (!confirm(`Delete protocol "${protocol.name}"?`))
               e.preventDefault();

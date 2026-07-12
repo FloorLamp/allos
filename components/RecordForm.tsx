@@ -1,12 +1,12 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import DateField from "./DateField";
 import SubmitButton from "./SubmitButton";
 import { useToast } from "./Toast";
 import { useFocusFormOnParam } from "./useFocusFormOnParam";
 import { MEDICAL_CATEGORIES } from "@/lib/medical-categories";
-import type { MedicalRecord } from "@/lib/types";
+import type { FormResult, MedicalRecord } from "@/lib/types";
 
 // Only clinical flags are user-settable; "non-optimal" is derived from the
 // canonical optimal band, so it's not offered here.
@@ -32,7 +32,7 @@ export default function RecordForm({
   defaultDate,
   defaultCategory,
 }: {
-  action: (formData: FormData) => Promise<void>;
+  action: (formData: FormData) => Promise<FormResult>;
   mode: "add" | "edit";
   // The row being edited (edit mode). Its columns seed the field defaults.
   record?: MedicalRecord;
@@ -49,13 +49,27 @@ export default function RecordForm({
   const formRef = useRef<HTMLFormElement>(null);
   const editing = mode === "edit";
   const uid = record?.id ?? "new";
+  const [error, setError] = useState<string | null>(null);
 
   // The add form focuses itself when reached from the palette's "Add biomarker
   // record" (issue #29); the inline row editors (edit mode) opt out.
   useFocusFormOnParam(formRef, "new", undefined, mode === "add");
 
   async function handle(formData: FormData) {
-    await action(formData);
+    setError(null);
+    let result: FormResult;
+    try {
+      result = await action(formData);
+    } catch {
+      setError("Couldn't save this record. Please try again.");
+      return;
+    }
+    // A validation guard now answers with a typed error instead of a silent
+    // resolve — surface it inline and DON'T toast success or reset (issue #474).
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
     if (editing) {
       onDone?.();
     } else {
@@ -219,6 +233,14 @@ export default function RecordForm({
             placeholder="e.g. Quest Diagnostics"
           />
         </div>
+      )}
+      {error && (
+        <p
+          role="alert"
+          className="text-sm text-rose-600 sm:col-span-4 dark:text-rose-400"
+        >
+          {error}
+        </p>
       )}
       <div className="flex items-end gap-2 sm:col-span-4">
         <SubmitButton pendingLabel="Saving…">

@@ -62,7 +62,17 @@ export default function OverflowMenu({
 
   const close = () => onOpenChange(false);
   const runAction: MenuHelpers["runAction"] = async (action, fd, message) => {
-    await action(fd);
+    try {
+      await action(fd);
+    } catch {
+      // An uncaught menu-action throw used to escalate to the route error
+      // boundary (issue #477) — close the menu and toast the failure instead.
+      close();
+      toast("Couldn't complete that action. Please try again.", {
+        tone: "error",
+      });
+      return;
+    }
     close();
     toast(message);
   };

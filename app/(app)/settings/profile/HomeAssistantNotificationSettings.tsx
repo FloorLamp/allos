@@ -7,6 +7,7 @@ import type { NotificationKind } from "@/lib/notifications/types";
 import { TOGGLEABLE_HA_KINDS } from "@/lib/notifications/home-assistant-core";
 import { saveHomeAssistantPrefs, sendTestHomeAssistant } from "./actions";
 import SaveStatus from "@/components/SaveStatus";
+import { useSaveStatus } from "@/components/useSaveStatus";
 
 // Home Assistant as a third delivery channel (#248). A per-profile outbound webhook
 // so HA can announce reminders on a kitchen speaker (TTS), flash lights on
@@ -30,11 +31,14 @@ export default function HomeAssistantNotificationSettings({
     for (const { kind } of TOGGLEABLE_HA_KINDS) out[kind] = !disabled.has(kind);
     return out;
   });
-  const [pending, startTransition] = useTransition();
-  const [savedAt, setSavedAt] = useState(0);
+  const { pending, savedAt, error, save: runSave } = useSaveStatus();
+  // The test send drives the result message, not the "saved" chip, so it keeps its
+  // own transition.
+  const [testing, startTest] = useTransition();
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(
     null
   );
+  const busy = pending || testing;
 
   function buildFormData() {
     const fd = new FormData();
@@ -48,30 +52,39 @@ export default function HomeAssistantNotificationSettings({
   }
 
   function save() {
-    startTransition(async () => {
+    runSave(async () => {
       const res = await saveHomeAssistantPrefs(buildFormData());
-      if (res.ok) {
-        setSavedAt(Date.now());
-        setResult(null);
-        router.refresh();
-      } else {
+      if (!res.ok) {
         setResult({ ok: false, message: res.error });
+        // Throw so the hook records a failure (no "saved" chip) rather than
+        // treating a rejected config as a successful save.
+        throw new Error(res.error);
       }
+      setResult(null);
+      router.refresh();
     });
   }
 
   // Test acts on STORED settings, so persist first (matching the Telegram block) —
   // otherwise an unsaved URL edit is ignored. Only send the test once the save
   // succeeded, so an invalid URL surfaces its own error instead of a send failure.
+  // The try/catch keeps a transient throw from escalating to the error boundary.
   function test() {
-    startTransition(async () => {
-      const res = await saveHomeAssistantPrefs(buildFormData());
-      if (!res.ok) {
-        setResult({ ok: false, message: res.error });
-        return;
+    startTest(async () => {
+      try {
+        const res = await saveHomeAssistantPrefs(buildFormData());
+        if (!res.ok) {
+          setResult({ ok: false, message: res.error });
+          return;
+        }
+        setResult(await sendTestHomeAssistant());
+        router.refresh();
+      } catch {
+        setResult({
+          ok: false,
+          message: "Couldn’t send the test. Please try again.",
+        });
       }
-      setResult(await sendTestHomeAssistant());
-      router.refresh();
     });
   }
 
@@ -81,7 +94,7 @@ export default function HomeAssistantNotificationSettings({
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Notifications (Home Assistant)
         </h2>
-        <SaveStatus pending={pending} savedAt={savedAt} />
+        <SaveStatus pending={pending} savedAt={savedAt} error={error} />
       </div>
 
       <p className="text-xs text-slate-400 dark:text-slate-500">
@@ -186,7 +199,7 @@ export default function HomeAssistantNotificationSettings({
         <button
           type="button"
           onClick={save}
-          disabled={pending}
+          disabled={busy}
           className="btn"
           data-testid="ha-save"
         >
@@ -196,7 +209,7 @@ export default function HomeAssistantNotificationSettings({
           <button
             type="button"
             onClick={test}
-            disabled={pending}
+            disabled={busy}
             className="btn-ghost"
             data-testid="ha-test"
           >

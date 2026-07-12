@@ -13,7 +13,12 @@ export default function PinToggle({
   pinned: boolean;
 }) {
   return (
-    <form action={toggleTrendPin}>
+    <form
+      action={async (fd) => {
+        "use server";
+        await toggleTrendPin(fd);
+      }}
+    >
       <input type="hidden" name="key" value={pinKey} />
       <button
         type="submit"

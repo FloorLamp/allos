@@ -22,7 +22,7 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import { useToast } from "@/components/Toast";
 import { satisfiedRuleForCompletedKind } from "@/lib/preventive-appointment";
 import { preventiveRuleByKey } from "@/lib/preventive-catalog";
-import type { Appointment, AppointmentStatus } from "@/lib/types";
+import type { Appointment, AppointmentStatus, FormResult } from "@/lib/types";
 
 // The preventive rule name a completed appointment's kind would satisfy (issue
 // #85), or null when the kind is unset / ambiguous. Drives the close-the-loop
@@ -48,7 +48,7 @@ const STATUS_TEXT: Record<AppointmentStatus, string> = {
 // Fire a status/delete server action for a row without a full <form> element (so
 // a confirm dialog can gate the destructive delete).
 async function submit(
-  action: (fd: FormData) => Promise<void>,
+  action: (fd: FormData) => Promise<void | FormResult>,
   id: number
 ): Promise<void> {
   const fd = new FormData();

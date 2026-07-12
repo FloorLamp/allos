@@ -7,7 +7,7 @@ import Combobox from "@/components/Combobox";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
 import { PICKER_NAMES, vaccineDisplayName } from "@/lib/immunization-catalog";
-import type { Immunization } from "@/lib/types";
+import type { FormResult, Immunization } from "@/lib/types";
 
 // Shared add/edit form. Add mode: no `immunization`. Edit mode: pass the row +
 // an `onDone` callback (renders a hidden id and a Cancel button). The vaccine
@@ -21,7 +21,7 @@ export default function ImmunizationForm({
   onDone,
   defaultDate,
 }: {
-  action: (formData: FormData) => Promise<void>;
+  action: (formData: FormData) => Promise<FormResult>;
   immunization?: Immunization;
   onDone?: () => void;
   defaultDate: string;
@@ -38,11 +38,18 @@ export default function ImmunizationForm({
   async function handle(formData: FormData) {
     setError(null);
     formData.set("vaccine", vaccine);
+    let result: FormResult;
     try {
-      await action(formData);
+      result = await action(formData);
     } catch {
       // Keep the form and its input mounted, and surface the failure inline.
       setError("Couldn't save this immunization. Please try again.");
+      return;
+    }
+    // A validation guard now answers with a typed error instead of a silent
+    // resolve — surface it inline and DON'T toast success or reset (issue #474).
+    if (!result.ok) {
+      setError(result.error);
       return;
     }
     toast(editing ? "Immunization updated" : "Immunization saved");

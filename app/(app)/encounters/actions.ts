@@ -3,6 +3,7 @@ import { requireWriteAccess } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
+import { formError, formOk, type FormResult } from "@/lib/types";
 import { resolveProviderIdByName } from "@/lib/providers-db";
 
 // Visit / encounter writes. Session-scoped; every mutation is
@@ -27,10 +28,11 @@ function dateOrNull(raw: unknown): string | null {
   return isRealIsoDate(v) ? v : null;
 }
 
-export async function addEncounter(formData: FormData) {
+export async function addEncounter(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const date = dateOrNull(formData.get("date"));
-  if (!date) return; // the visit date is required (NOT NULL) and must be real
+  // the visit date is required (NOT NULL) and must be real
+  if (!date) return formError("Pick a date for this visit.");
   const endDate = dateOrNull(formData.get("end_date"));
   const providerId = resolveProviderIdByName(
     String(formData.get("provider") ?? "")
@@ -55,13 +57,15 @@ export async function addEncounter(formData: FormData) {
     str(formData, "notes")
   );
   revalidateEncounters();
+  return formOk();
 }
 
-export async function updateEncounter(formData: FormData) {
+export async function updateEncounter(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   const date = dateOrNull(formData.get("date"));
-  if (!id || !date) return;
+  if (!id) return formError("Couldn't find that visit.");
+  if (!date) return formError("Pick a date for this visit.");
   const endDate = dateOrNull(formData.get("end_date"));
   const providerId = resolveProviderIdByName(
     String(formData.get("provider") ?? "")
@@ -87,15 +91,17 @@ export async function updateEncounter(formData: FormData) {
     profile.id
   );
   revalidateEncounters();
+  return formOk();
 }
 
-export async function deleteEncounter(formData: FormData) {
+export async function deleteEncounter(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
-  if (!id) return;
+  if (!id) return formError("Couldn't find that visit.");
   db.prepare("DELETE FROM encounters WHERE id = ? AND profile_id = ?").run(
     id,
     profile.id
   );
   revalidateEncounters();
+  return formOk();
 }

@@ -303,7 +303,9 @@ export default function EditableSupplementRow({
               <form
                 action={(fd) =>
                   runAction(
-                    toggleActive,
+                    async (data) => {
+                      await toggleActive(data);
+                    },
                     fd,
                     s.active ? "Supplement paused" : "Supplement resumed"
                   )

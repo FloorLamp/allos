@@ -6,11 +6,14 @@
 // live in lib/offline/queue.ts (unit-tested); this file is the browser-only glue and
 // is exercised by the Playwright e2e (offline-queue.spec.ts), not the pure suite.
 
-import type { QueuedIntent } from "@/lib/offline/queue";
+import type { QueuedIntent, RejectedEntry } from "@/lib/offline/queue";
 
 const DB_NAME = "allos-offline";
-const DB_VERSION = 1;
+// v2 adds the REJECTED dead-letter store (issue #475): a rejected/undeliverable
+// intent leaves the live queue but is preserved here for the user to review + re-enter.
+const DB_VERSION = 2;
 const STORE = "intents";
+const REJECTED = "rejected";
 
 function hasIndexedDB(): boolean {
   return typeof indexedDB !== "undefined";
@@ -26,6 +29,11 @@ function openDb(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(STORE)) {
         db.createObjectStore(STORE, { keyPath: "key" });
       }
+      // Keyed by the wrapped intent's idempotency key so re-parking the same key is
+      // an overwrite, not a duplicate.
+      if (!db.objectStoreNames.contains(REJECTED)) {
+        db.createObjectStore(REJECTED, { keyPath: "intent.key" });
+      }
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -34,6 +42,10 @@ function openDb(): Promise<IDBDatabase> {
 
 function tx(db: IDBDatabase, mode: IDBTransactionMode): IDBObjectStore {
   return db.transaction(STORE, mode).objectStore(STORE);
+}
+
+function rejectedTx(db: IDBDatabase, mode: IDBTransactionMode): IDBObjectStore {
+  return db.transaction(REJECTED, mode).objectStore(REJECTED);
 }
 
 function done(t: IDBTransaction): Promise<void> {
@@ -96,6 +108,92 @@ export async function removeIntents(keys: readonly string[]): Promise<void> {
   }
 }
 
+// Re-persist intents with their bumped attempt count (issue #475): an intent the
+// server returned "error" for stays queued, but its `attempts` must survive the
+// flush so the retry cap can eventually reclassify a permanently-stuck one. `put`
+// overwrites by keyPath, so this is an in-place update of the live row.
+export async function putIntents(
+  intents: readonly QueuedIntent[]
+): Promise<void> {
+  if (!hasIndexedDB() || intents.length === 0) return;
+  try {
+    const db = await openDb();
+    const store = tx(db, "readwrite");
+    for (const i of intents) store.put(i);
+    await done(store.transaction);
+    db.close();
+  } catch {
+    /* ignore — the attempt count just doesn't advance this flush */
+  }
+}
+
+// Park rejected/undeliverable entries in the dead-letter store for review (issue
+// #475). Best-effort; keyed on intent.key so a re-park overwrites.
+export async function saveRejected(
+  entries: readonly RejectedEntry[]
+): Promise<void> {
+  if (!hasIndexedDB() || entries.length === 0) return;
+  try {
+    const db = await openDb();
+    const store = rejectedTx(db, "readwrite");
+    for (const e of entries) store.put(e);
+    await done(store.transaction);
+    db.close();
+  } catch {
+    /* ignore — a failed park is the pre-existing (invisible) behavior; no worse */
+  }
+}
+
+// All parked rejected entries, most-recently-rejected first.
+export async function allRejected(): Promise<RejectedEntry[]> {
+  if (!hasIndexedDB()) return [];
+  try {
+    const db = await openDb();
+    const store = rejectedTx(db, "readonly");
+    const rows: RejectedEntry[] = await new Promise((resolve, reject) => {
+      const req = store.getAll();
+      req.onsuccess = () => resolve(req.result as RejectedEntry[]);
+      req.onerror = () => reject(req.error);
+    });
+    db.close();
+    return rows.sort((a, b) => b.rejectedAt.localeCompare(a.rejectedAt));
+  } catch {
+    return [];
+  }
+}
+
+// Dismiss reviewed rejected entries by their intent key. Best-effort.
+export async function removeRejected(keys: readonly string[]): Promise<void> {
+  if (!hasIndexedDB() || keys.length === 0) return;
+  try {
+    const db = await openDb();
+    const store = rejectedTx(db, "readwrite");
+    for (const k of keys) store.delete(k);
+    await done(store.transaction);
+    db.close();
+  } catch {
+    /* ignore */
+  }
+}
+
+// Count of parked rejected entries (drives the review badge).
+export async function countRejected(): Promise<number> {
+  if (!hasIndexedDB()) return 0;
+  try {
+    const db = await openDb();
+    const store = rejectedTx(db, "readonly");
+    const n: number = await new Promise((resolve, reject) => {
+      const req = store.count();
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    db.close();
+    return n;
+  } catch {
+    return 0;
+  }
+}
+
 // Count of queued intents (drives the pending badge).
 export async function countIntents(): Promise<number> {
   if (!hasIndexedDB()) return 0;
@@ -114,15 +212,17 @@ export async function countIntents(): Promise<number> {
   }
 }
 
-// Drop the entire queue. Called on logout / profile switch so one login's queued
-// PHI never lingers for the next (issue #28: clear the queue on logout).
+// Drop the entire queue AND the rejected dead-letter store. Called on logout /
+// profile switch so one login's queued PHI never lingers for the next (issue #28:
+// clear the queue on logout; #475: the parked rejected entries hold the same PHI).
 export async function clearQueue(): Promise<void> {
   if (!hasIndexedDB()) return;
   try {
     const db = await openDb();
-    const store = tx(db, "readwrite");
-    store.clear();
-    await done(store.transaction);
+    const t = db.transaction([STORE, REJECTED], "readwrite");
+    t.objectStore(STORE).clear();
+    t.objectStore(REJECTED).clear();
+    await done(t);
     db.close();
   } catch {
     /* ignore */

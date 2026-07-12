@@ -8,6 +8,7 @@ import { getActiveSituations, setActiveSituations } from "@/lib/settings";
 import { isRealIsoDate } from "@/lib/date";
 import { normalizeOutcomeKeys } from "@/lib/protocol-metrics";
 import { getProtocol, situationUsedByOtherProtocol } from "@/lib/queries";
+import { formError, formOk, type FormResult } from "@/lib/types";
 
 function revalidateProtocols(id?: number) {
   revalidatePath("/protocols");
@@ -43,10 +44,10 @@ function deactivateSituation(
   if (next.delete(situation)) setActiveSituations(profileId, [...next]);
 }
 
-export async function createProtocol(formData: FormData) {
+export async function createProtocol(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const name = String(formData.get("name") ?? "").trim();
-  if (!name) return;
+  if (!name) return formError("Name your protocol.");
   const startRaw = str(formData, "start_date");
   const start =
     startRaw && isRealIsoDate(startRaw) ? startRaw : today(profile.id);
@@ -81,15 +82,15 @@ export async function createProtocol(formData: FormData) {
   redirect(`/protocols/${info.lastInsertRowid}`);
 }
 
-export async function updateProtocol(formData: FormData) {
+export async function updateProtocol(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
-  if (!id) return;
+  if (!id) return formError("Couldn't find that protocol.");
   const existing = getProtocol(profile.id, id);
-  if (!existing) return;
+  if (!existing) return formError("Couldn't find that protocol.");
 
   const name = String(formData.get("name") ?? "").trim();
-  if (!name) return;
+  if (!name) return formError("Name your protocol.");
   const startRaw = str(formData, "start_date");
   const start =
     startRaw && isRealIsoDate(startRaw) ? startRaw : existing.start_date;
@@ -127,14 +128,17 @@ export async function updateProtocol(formData: FormData) {
   if (situation && end == null) activateSituation(profile.id, situation);
 
   revalidateProtocols(id);
+  return formOk();
 }
 
-export async function endProtocol(formData: FormData) {
+export async function endProtocol(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
-  if (!id) return;
+  if (!id) return formError("Couldn't find that protocol.");
   const existing = getProtocol(profile.id, id);
-  if (!existing || existing.end_date != null) return;
+  if (!existing) return formError("Couldn't find that protocol.");
+  if (existing.end_date != null)
+    return formError("That protocol has already ended.");
   const end = today(profile.id);
   db.prepare(
     "UPDATE protocols SET end_date = ? WHERE id = ? AND profile_id = ?"
@@ -143,14 +147,15 @@ export async function endProtocol(formData: FormData) {
   if (existing.situation)
     deactivateSituation(profile.id, existing.situation, id);
   revalidateProtocols(id);
+  return formOk();
 }
 
-export async function deleteProtocol(formData: FormData) {
+export async function deleteProtocol(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
-  if (!id) return;
+  if (!id) return formError("Couldn't find that protocol.");
   const existing = getProtocol(profile.id, id);
-  if (!existing) return;
+  if (!existing) return formError("Couldn't find that protocol.");
   db.prepare("DELETE FROM protocols WHERE id = ? AND profile_id = ?").run(
     id,
     profile.id

@@ -9,6 +9,7 @@ import {
   applyTrendView,
 } from "@/app/(app)/trends/actions";
 import type { TrendView } from "@/lib/trend-views";
+import type { FormResult } from "@/lib/types";
 
 // The Trends hub's saved-views switcher. A named snapshot of
 // { range + tab + compare pair + pins } per profile: apply one to flip the whole
@@ -21,6 +22,27 @@ export default function SavedViewsBar({ views }: { views: TrendView[] }) {
   const params = useSearchParams();
   const [saving, setSaving] = useState(false);
   const [name, setName] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  // Save the current view, routing a failed guard to an inline error instead of
+  // silently closing the form as a false success (issue #474). Only reset/close
+  // on a confirmed ok.
+  async function handleSave(formData: FormData) {
+    setError(null);
+    let result: FormResult;
+    try {
+      result = await saveTrendView(formData);
+    } catch {
+      setError("Couldn't save this view. Please try again.");
+      return;
+    }
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    setSaving(false);
+    setName("");
+  }
 
   // The live hub params, forwarded to saveTrendView as hidden inputs so the saved
   // snapshot matches exactly what's on screen.
@@ -55,7 +77,11 @@ export default function SavedViewsBar({ views }: { views: TrendView[] }) {
               {v.name}
             </button>
           </form>
-          <form action={deleteTrendView}>
+          <form
+            action={async (fd) => {
+              await deleteTrendView(fd);
+            }}
+          >
             <input type="hidden" name="name" value={v.name} />
             <button
               type="submit"
@@ -70,14 +96,7 @@ export default function SavedViewsBar({ views }: { views: TrendView[] }) {
       ))}
 
       {saving ? (
-        <form
-          action={saveTrendView}
-          onSubmit={() => {
-            setSaving(false);
-            setName("");
-          }}
-          className="inline-flex items-center gap-1"
-        >
+        <form action={handleSave} className="inline-flex items-center gap-1">
           <input type="hidden" name="from" value={current.from} />
           <input type="hidden" name="to" value={current.to} />
           <input type="hidden" name="tab" value={current.tab} />
@@ -112,6 +131,14 @@ export default function SavedViewsBar({ views }: { views: TrendView[] }) {
           >
             Cancel
           </button>
+          {error && (
+            <p
+              role="alert"
+              className="text-xs text-rose-600 dark:text-rose-400"
+            >
+              {error}
+            </p>
+          )}
         </form>
       ) : (
         <button

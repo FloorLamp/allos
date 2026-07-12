@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { NotifySchedule, ProfileTelegram } from "@/lib/settings";
 import { saveNotificationPrefs, sendTestNotification } from "./actions";
 import SaveStatus from "@/components/SaveStatus";
+import { useSaveStatus } from "@/components/useSaveStatus";
 
 type SuppWindow = "Morning" | "Midday" | "Evening" | "Bedtime";
 
@@ -36,11 +37,14 @@ export default function ProfileNotificationSettings({
   const [preventiveEnabled, setPreventiveEnabled] = useState(
     schedule.preventiveEnabled
   );
-  const [pending, startTransition] = useTransition();
-  const [savedAt, setSavedAt] = useState(0);
+  const { pending, savedAt, error, save: runSave } = useSaveStatus();
+  // The test send drives the result message, not the "saved" chip, so it keeps its
+  // own transition.
+  const [testing, startTest] = useTransition();
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(
     null
   );
+  const busy = pending || testing;
 
   function buildFormData() {
     const fd = new FormData();
@@ -72,9 +76,8 @@ export default function ProfileNotificationSettings({
   }
 
   function save() {
-    startTransition(async () => {
+    runSave(async () => {
       await saveNotificationPrefs(buildFormData());
-      setSavedAt(Date.now());
       setResult(null);
       router.refresh();
     });
@@ -83,13 +86,21 @@ export default function ProfileNotificationSettings({
   // Test acts on *stored* settings, so persist the form first — otherwise unsaved
   // edits are silently ignored and nothing sends. The "Saved" chip stays tied to
   // the explicit Save button: showing it here would read as success even when the
-  // test itself fails.
+  // test itself fails. The try/catch keeps a transient throw from escalating to
+  // the error boundary.
   function test() {
     const fd = buildFormData();
-    startTransition(async () => {
-      await saveNotificationPrefs(fd);
-      setResult(await sendTestNotification());
-      router.refresh();
+    startTest(async () => {
+      try {
+        await saveNotificationPrefs(fd);
+        setResult(await sendTestNotification());
+        router.refresh();
+      } catch {
+        setResult({
+          ok: false,
+          message: "Couldn’t send the test. Please try again.",
+        });
+      }
     });
   }
 
@@ -99,7 +110,7 @@ export default function ProfileNotificationSettings({
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Notifications (Telegram)
         </h2>
-        <SaveStatus pending={pending} savedAt={savedAt} />
+        <SaveStatus pending={pending} savedAt={savedAt} error={error} />
       </div>
 
       <p className="text-xs text-slate-400 dark:text-slate-500">
@@ -311,14 +322,14 @@ export default function ProfileNotificationSettings({
       )}
 
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" onClick={save} disabled={pending} className="btn">
+        <button type="button" onClick={save} disabled={busy} className="btn">
           Save
         </button>
         {enabled && (
           <button
             type="button"
             onClick={test}
-            disabled={pending}
+            disabled={busy}
             className="btn-ghost"
           >
             Send test notification

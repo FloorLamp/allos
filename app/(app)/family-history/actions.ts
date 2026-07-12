@@ -2,6 +2,7 @@
 import { requireWriteAccess } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
+import { formError, formOk, type FormResult } from "@/lib/types";
 
 // Family-history writes. Session-scoped; every mutation is
 // `WHERE id = ? AND profile_id = ?` and the INSERT carries profile_id. Manual rows
@@ -33,10 +34,12 @@ function boolInt(raw: unknown): number {
   return v === "on" || v === "1" || v === "true" ? 1 : 0;
 }
 
-export async function addFamilyHistory(formData: FormData) {
+export async function addFamilyHistory(
+  formData: FormData
+): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const condition = String(formData.get("condition") ?? "").trim();
-  if (!condition) return;
+  if (!condition) return formError("Enter the condition.");
   db.prepare(
     `INSERT INTO family_history
        (relation, condition, code, code_system, onset_age, deceased, notes,
@@ -53,13 +56,17 @@ export async function addFamilyHistory(formData: FormData) {
     profile.id
   );
   revalidateFamilyHistory();
+  return formOk();
 }
 
-export async function updateFamilyHistory(formData: FormData) {
+export async function updateFamilyHistory(
+  formData: FormData
+): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   const condition = String(formData.get("condition") ?? "").trim();
-  if (!id || !condition) return;
+  if (!id) return formError("Couldn't find that entry.");
+  if (!condition) return formError("Enter the condition.");
   db.prepare(
     `UPDATE family_history
        SET relation = ?, condition = ?, code = ?, code_system = ?,
@@ -77,15 +84,19 @@ export async function updateFamilyHistory(formData: FormData) {
     profile.id
   );
   revalidateFamilyHistory();
+  return formOk();
 }
 
-export async function deleteFamilyHistory(formData: FormData) {
+export async function deleteFamilyHistory(
+  formData: FormData
+): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
-  if (!id) return;
+  if (!id) return formError("Couldn't find that entry.");
   db.prepare("DELETE FROM family_history WHERE id = ? AND profile_id = ?").run(
     id,
     profile.id
   );
   revalidateFamilyHistory();
+  return formOk();
 }

@@ -71,6 +71,12 @@ export interface QueuedIntent {
   date: string;
   capturedAt: string;
   payload: IntentPayload;
+  // How many times a flush reached the server and got a retryable "error" for this
+  // intent (issue #475 point 3). Absent/0 on a fresh enqueue. Once it hits
+  // MAX_REPLAY_ATTEMPTS the intent is reclassified as rejected (moved to the
+  // dead-letter store) so a permanently-erroring entry can't sit behind the amber
+  // badge forever with no explanation.
+  attempts?: number;
 }
 
 // A uuid for the idempotency key. Prefers crypto.randomUUID (all evergreen
@@ -104,6 +110,7 @@ export function buildIntent(
     date,
     capturedAt: now.toISOString(),
     payload,
+    attempts: 0,
   };
 }
 
@@ -126,11 +133,16 @@ export type ReplayStatus = "done" | "duplicate" | "rejected" | "error";
 export interface ReplayResult {
   key: string;
   status: ReplayStatus;
+  // Optional coarse reason for a `rejected` status, set by the replay route so the
+  // client can tell the user WHY an entry couldn't be applied (issue #475).
+  reason?: string;
 }
 
-// A settled intent is one that must be removed from the queue: it either applied
-// (done), was already applied (duplicate), or can never apply (rejected). Only
-// `error` (transient) is retried, so it stays queued.
+// A settled intent is one that must be removed from the LIVE queue: it either
+// applied (done), was already applied (duplicate), or can never apply (rejected).
+// Only `error` (transient) is retried, so it stays queued. NOTE: a `rejected` entry
+// leaves the live queue but is NOT discarded — planFlushDisposition moves it to the
+// dead-letter store so the user can review/re-enter it (issue #475).
 export function isSettled(status: ReplayStatus): boolean {
   return status === "done" || status === "duplicate" || status === "rejected";
 }
@@ -139,6 +151,96 @@ export function isSettled(status: ReplayStatus): boolean {
 // from IndexedDB. Unknown/missing keys are left queued (fail safe).
 export function settledKeys(results: readonly ReplayResult[]): string[] {
   return results.filter((r) => isSettled(r.status)).map((r) => r.key);
+}
+
+// After this many flushes that reached the server and returned a retryable "error"
+// for the SAME intent, give up and reclassify it as rejected (issue #475 point 3).
+export const MAX_REPLAY_ATTEMPTS = 5;
+
+// A permanently-undeliverable entry, preserved for the user to review and re-enter
+// (issue #475). It carries the FULL original intent — so every captured field the
+// user tried to log survives the drop — plus a human reason and when we gave up.
+export interface RejectedEntry {
+  intent: QueuedIntent;
+  reason: string;
+  rejectedAt: string;
+}
+
+// The disposition of one flush: which live-queue keys to delete, which intents to
+// re-persist with a bumped attempt count, which entries to park in the dead-letter
+// store, and how many actually synced. Pure so the client is a thin applier and the
+// whole policy is unit-tested (issue #475). `resultByKey` ignores results for keys
+// no longer in the queue (fail-safe) and intents with no matching result (kept).
+export interface FlushDisposition {
+  syncedCount: number; // done + duplicate — the "Synced N" success toast count
+  deleteKeys: string[]; // remove from the LIVE queue (synced + rejected + exhausted)
+  rejected: RejectedEntry[]; // move into the dead-letter store (server-rejected + exhausted)
+  retry: QueuedIntent[]; // re-put with attempts incremented (still under the cap)
+}
+
+const DEFAULT_REJECT_REASON = "The server couldn't apply this entry.";
+
+export function planFlushDisposition(
+  intents: readonly QueuedIntent[],
+  results: readonly ReplayResult[],
+  now: Date = new Date()
+): FlushDisposition {
+  const byKey = new Map(intents.map((i) => [i.key, i]));
+  const rejectedAt = now.toISOString();
+  const disposition: FlushDisposition = {
+    syncedCount: 0,
+    deleteKeys: [],
+    rejected: [],
+    retry: [],
+  };
+  for (const r of results) {
+    const intent = byKey.get(r.key);
+    if (r.status === "done" || r.status === "duplicate") {
+      disposition.syncedCount++;
+      disposition.deleteKeys.push(r.key);
+      continue;
+    }
+    if (r.status === "rejected") {
+      disposition.deleteKeys.push(r.key);
+      // A truly shapeless intent may have no matching live row; still record the
+      // key delete above, and only park it when we have the payload to preserve.
+      if (intent) {
+        disposition.rejected.push({
+          intent,
+          reason: r.reason || DEFAULT_REJECT_REASON,
+          rejectedAt,
+        });
+      }
+      continue;
+    }
+    // status === "error" — transient. Bump the attempt count; give up past the cap.
+    if (!intent) continue; // no live row to retry — leave whatever's there
+    const attempts = (intent.attempts ?? 0) + 1;
+    if (attempts >= MAX_REPLAY_ATTEMPTS) {
+      disposition.deleteKeys.push(intent.key);
+      disposition.rejected.push({
+        intent: { ...intent, attempts },
+        reason: `Couldn't be applied after ${attempts} attempts.`,
+        rejectedAt,
+      });
+    } else {
+      disposition.retry.push({ ...intent, attempts });
+    }
+  }
+  return disposition;
+}
+
+// A short human description of what an intent tried to log, for the review list —
+// the user needs to recognise which entry was dropped so they can re-enter it. Only
+// the flow + captured date (no per-field PHI beyond what the user already sees).
+export function describeIntent(intent: QueuedIntent): string {
+  const label: Record<FlowKind, string> = {
+    dose: "Dose logged",
+    "skip-dose": "Dose skipped",
+    "body-metric": "Body metric",
+    vitals: "Vitals",
+  };
+  return `${label[intent.flow]} · ${intent.date}`;
 }
 
 // Is this HTTP status the "session expired / not authorized" signal? On it the

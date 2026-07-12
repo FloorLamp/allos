@@ -7,3 +7,4 @@ export * from "./types/medical";
 export * from "./types/intake";
 export * from "./types/coaching";
 export * from "./types/integrations";
+export * from "./types/forms";
