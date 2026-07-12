@@ -21,13 +21,20 @@ function Stat({
   label,
   value,
   sub,
+  testId,
 }: {
   label: string;
   value: string;
   sub?: string | null;
+  // Stable e2e hook for a stat whose label text also appears elsewhere on the
+  // page ("Sessions" vs the "Recent sessions" heading — Playwright strict mode).
+  testId?: string;
 }) {
   return (
-    <div className="rounded-lg border border-black/5 bg-white/60 px-4 py-3 dark:border-white/10 dark:bg-black/10">
+    <div
+      data-testid={testId}
+      className="rounded-lg border border-black/5 bg-white/60 px-4 py-3 dark:border-white/10 dark:bg-black/10"
+    >
       <div className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
         {label}
       </div>
@@ -100,21 +107,28 @@ export default async function EquipmentDetailPage(props: {
       />
 
       <div className="grid gap-3 sm:grid-cols-3">
-        <Stat label="Sessions" value={String(sessionCount)} />
+        <Stat
+          label="Sessions"
+          value={String(sessionCount)}
+          testId="equipment-stat-sessions"
+        />
         <Stat
           label="Last used"
           value={formatLastUsed(lastUsed, today(profile.id))}
           sub={lastUsed ? formatRecordDate(lastUsed, "") : null}
+          testId="equipment-stat-last-used"
         />
         {showsDistance ? (
           <Stat
             label="Total distance"
             value={`${round(kmTo(totalDistanceKm, units.distanceUnit), 1)} ${units.distanceUnit}`}
+            testId="equipment-stat-distance"
           />
         ) : (
           <Stat
             label="Total volume"
             value={`${round(kgTo(totalVolumeKg, units.weightUnit), 0)} ${units.weightUnit}`}
+            testId="equipment-stat-volume"
           />
         )}
       </div>

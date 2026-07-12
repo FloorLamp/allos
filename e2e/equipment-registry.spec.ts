@@ -43,9 +43,14 @@ test.describe("Equipment registry (#343)", () => {
     await expect(
       page.getByRole("heading", { name: "E2E Registry Bike" })
     ).toBeVisible();
-    // A Bike shows its distance payoff, not lifted volume.
-    await expect(page.getByText("Total distance")).toBeVisible();
-    await expect(page.getByText("Sessions")).toBeVisible();
+    // A Bike shows its distance payoff, not lifted volume. Stat blocks are
+    // asserted by testid — bare label text "Sessions" is a strict-mode trap (it
+    // substring-matches the "Recent sessions" heading too).
+    await expect(page.getByTestId("equipment-stat-distance")).toBeVisible();
+    const sessionsStat = page.getByTestId("equipment-stat-sessions");
+    await expect(sessionsStat).toBeVisible();
+    // The seeded ride gives it exactly one session.
+    await expect(sessionsStat).toContainText("1");
 
     // Back link returns to the index.
     await followLink(
