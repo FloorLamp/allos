@@ -35,6 +35,10 @@ import {
   daysBetween,
 } from "../../reference-range";
 import { retestDaysForBiomarker } from "../../biomarker-retest";
+import {
+  biomarkerRetestTitle,
+  biomarkerRetestDetail,
+} from "../../biomarker-retest-copy";
 import { biomarkerFamily } from "../../canonical-name";
 import { biomarkerDismissalKey } from "../../dismissal-keys";
 import { derivedInputCanonicalNamesFor } from "../../derived-biomarkers";
@@ -328,8 +332,16 @@ function biomarkerItems(profileId: number, today: string): UpcomingItem[] {
     items.push({
       key: biomarkerDismissalKey(name),
       domain: "biomarker",
-      title: name,
-      detail: `Last tested ${effectiveDate} (${agoMonths}mo ago) · retest every ${monthsApprox(interval)}mo`,
+      // The item is a retest nudge, not a flag alert — carry the verb so it reads
+      // as an action, and (when the stale reading was flagged) acknowledge the
+      // status in the detail so the row explains itself (issues #513 / #514).
+      title: biomarkerRetestTitle(name),
+      detail: biomarkerRetestDetail({
+        effectiveDate,
+        agoMonths,
+        intervalMonths: monthsApprox(interval),
+        flag: r.flag,
+      }),
       href: r.canonical_name?.trim()
         ? `/biomarkers/view?name=${encodeURIComponent(name)}`
         : "/biomarkers",

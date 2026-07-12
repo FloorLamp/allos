@@ -125,14 +125,15 @@ describe("per-biomarker retest cadence surfacing", () => {
     const items = collectUpcoming(profileId, now);
     const bios = items.filter((i) => i.domain === "biomarker");
     const names = bios.map((i) => i.title);
-    expect(names).toContain("Hemoglobin A1c");
+    // The retest item carries the action verb (issues #513 / #514).
+    expect(names).toContain("Retest Hemoglobin A1c");
     // The annual LDL of the same age is not yet due.
-    expect(names).not.toContain("LDL Cholesterol");
+    expect(names).not.toContain("Retest LDL Cholesterol");
   });
 
   it("describes the per-analyte cadence in the due-text", () => {
     const items = collectUpcoming(profileId, now);
-    const a1c = items.find((i) => i.title === "Hemoglobin A1c")!;
+    const a1c = items.find((i) => i.title === "Retest Hemoglobin A1c")!;
     // 90 days ≈ 3 months.
     expect(a1c.detail).toContain("retest every 3mo");
   });
