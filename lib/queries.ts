@@ -17,6 +17,7 @@ export * from "./queries/appointments";
 export * from "./queries/intake";
 export * from "./queries/narratives";
 export * from "./queries/clinical";
+export * from "./queries/coverage";
 export * from "./queries/search";
 export * from "./queries/imports";
 export * from "./queries/upcoming";

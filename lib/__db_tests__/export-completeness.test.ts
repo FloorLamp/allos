@@ -45,6 +45,10 @@ const EXPORT_ALLOWLIST: { table: string; why: string }[] = [
     table: "upcoming_dismissals",
     why: "UI dismissal/snooze state for due-nudges; regenerated from the underlying data",
   },
+  {
+    table: "coverage_gaps",
+    why: "opt-in catalog-gap registry + AI-generated descriptive blurbs (issue #550); re-derivable from the profile's own records and re-fillable, not user-entered health data",
+  },
   // AI-derived, regenerable from the source data.
   {
     table: "insights",
