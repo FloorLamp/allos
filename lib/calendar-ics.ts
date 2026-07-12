@@ -704,14 +704,22 @@ export function composeFeedPreviewRows(input: {
 // name so a subscriber can tell whose appointment it is. Pure: the caller resolves
 // the per-profile settings/appointments (from live grants) and passes them in.
 
-// One accessible profile's contribution to a consolidated feed.
+// One accessible profile's contribution to a consolidated feed. It carries the
+// profile's OWN full feed customization (issue #473): not just the detail level but
+// the enabled categories, reminder toggle, and past/future window — the same
+// FeedOptions its personal feed honors. So a profile that turned on dose/refill
+// categories (or narrowed its window) contributes exactly that to the family feed
+// too, instead of the old appointments-only-with-detail projection. `signals` are
+// its non-appointment due-signals (collected by the caller only when a non-
+// appointment category is enabled; empty otherwise).
 export interface ConsolidatedProfileFeed {
   profileId: number;
   profileName: string;
-  detail: IcsDetail; // this profile's own saved detail level
+  options: FeedOptions; // this profile's own saved feed customization
   tz: string; // this profile's timezone
   today: string; // this profile's "today" (for the past-window cutoff)
   appts: readonly AppointmentLike[];
+  signals: readonly UpcomingSignalLike[];
 }
 
 // Prefix a resolved summary with the profile name ("Ada: Medical appointment").
@@ -726,28 +734,27 @@ export function consolidatedSummary(
   return name ? `${name}: ${summary}` : summary;
 }
 
-// Merge every profile's feed appointments into one chronological event list. Each
-// profile is projected through the SAME per-profile mapping (so its detail level +
-// timezone are honored exactly as its own feed would), then its summary is prefixed
-// with the profile name and its UID namespaced by profile id — so two profiles can
-// never collide on a shared appointment id AND the merged events stay distinct from
-// any per-profile feed the same client might also subscribe to.
+// Merge every profile's feed into one chronological event list. Each profile is
+// composed through the SAME pure composer its personal feed uses (composeFeedEvents),
+// so its FULL customization — enabled categories, detail level, reminders, timezone,
+// and window — is honored exactly (issue #473), not just its detail level. Then each
+// resulting event's summary is prefixed with the profile name and its UID namespaced
+// by profile id, so two profiles can never collide on a shared appointment id AND the
+// merged events stay distinct from any per-profile feed the same client might also
+// subscribe to.
 export function selectConsolidatedFeedEvents(
-  feeds: readonly ConsolidatedProfileFeed[],
-  opts: { pastWindowDays?: number; defaultDurationMin?: number } = {}
+  feeds: readonly ConsolidatedProfileFeed[]
 ): IcsEvent[] {
   const events: IcsEvent[] = [];
   for (const feed of feeds) {
-    const selected = selectFeedAppointments(feed.appts, {
+    const perProfile = composeFeedEvents({
+      appointments: feed.appts,
+      signals: feed.signals,
       today: feed.today,
-      pastWindowDays: opts.pastWindowDays,
+      tz: feed.tz,
+      options: feed.options,
     });
-    for (const a of selected) {
-      const ev = appointmentToIcsEvent(a, {
-        tz: feed.tz,
-        detail: feed.detail,
-        defaultDurationMin: opts.defaultDurationMin,
-      });
+    for (const ev of perProfile) {
       events.push({
         ...ev,
         uid: `fam-${feed.profileId}-${ev.uid}`,
@@ -776,32 +783,36 @@ export interface ConsolidatedPreviewRow extends CalendarFeedPreviewRow {
   dateKey: string; // "YYYY-MM-DD" for grouping/sorting
 }
 
-// Project every accessible profile's feed appointments to consolidated preview
-// rows, sorted chronologically. Mirrors selectConsolidatedFeedEvents so the in-app
-// preview can never diverge from what the family feed serves.
+// Project every accessible profile's feed to consolidated preview rows, sorted
+// chronologically. Mirrors selectConsolidatedFeedEvents — each profile is composed
+// through the SAME composeFeedPreviewRows its personal preview uses, so its full
+// customization (categories/detail/reminders/window, issue #473) is reflected — so
+// the in-app family preview can never diverge from what the family feed serves.
 export function selectConsolidatedPreviewRows(
-  feeds: readonly ConsolidatedProfileFeed[],
-  opts: { pastWindowDays?: number; defaultDurationMin?: number } = {}
+  feeds: readonly ConsolidatedProfileFeed[]
 ): ConsolidatedPreviewRow[] {
   const rows: (ConsolidatedPreviewRow & { sortKey: string })[] = [];
   for (const feed of feeds) {
-    const selected = selectFeedAppointments(feed.appts, {
+    const perProfile = composeFeedPreviewRows({
+      appointments: feed.appts,
+      signals: feed.signals,
       today: feed.today,
-      pastWindowDays: opts.pastWindowDays,
+      tz: feed.tz,
+      options: feed.options,
     });
-    for (const a of selected) {
-      const base = appointmentToPreviewRow(a, {
-        tz: feed.tz,
-        detail: feed.detail,
-        defaultDurationMin: opts.defaultDurationMin,
-      });
+    for (const base of perProfile) {
       rows.push({
-        ...base,
         uid: `fam-${feed.profileId}-${base.uid}`,
+        dateLabel: base.dateLabel,
+        timeLabel: base.timeLabel,
+        summary: base.summary,
+        location: base.location,
+        cancelled: base.cancelled,
+        hasReminders: base.hasReminders,
         profileId: feed.profileId,
         profileName: feed.profileName,
-        dateKey: a.scheduled_at.slice(0, 10),
-        sortKey: a.scheduled_at,
+        dateKey: base.dateKey,
+        sortKey: base.dateKey,
       });
     }
   }

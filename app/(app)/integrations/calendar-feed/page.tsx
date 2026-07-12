@@ -80,14 +80,31 @@ export default async function CalendarFeedPage() {
   // login-scoped (login_settings), so its lifecycle is keyed by login.id.
   const accessible = await getAccessibleProfiles();
   const familyFeed = getConsolidatedCalendarFeed(login.id);
-  const familyFeeds: ConsolidatedProfileFeed[] = accessible.map((p) => ({
-    profileId: p.id,
-    profileName: p.name,
-    detail: getCalendarFeed(p.id).detail,
-    tz: getTimezone(p.id),
-    today: today(p.id),
-    appts: getAppointments(p.id),
-  }));
+  const familyFeeds: ConsolidatedProfileFeed[] = accessible.map((p) => {
+    // Each profile's OWN full feed customization (issue #473), mirroring the family
+    // feed route so the preview can't drift from the served .ics.
+    const pFeed = getCalendarFeed(p.id);
+    const pToday = today(p.id);
+    const pWantsAppointments = pFeed.categories.includes("appointment");
+    const pWantsSignals = pFeed.categories.some((c) => c !== "appointment");
+    return {
+      profileId: p.id,
+      profileName: p.name,
+      options: {
+        categories: pFeed.categories,
+        detail: pFeed.detail,
+        reminders: pFeed.reminders,
+        pastWindowDays: pFeed.pastWindowDays,
+        futureWindowDays: pFeed.futureWindowDays,
+      },
+      tz: getTimezone(p.id),
+      today: pToday,
+      appts: pWantsAppointments ? getAppointments(p.id) : [],
+      signals: pWantsSignals
+        ? feedEligibleSignals(collectUpcoming(p.id, pToday))
+        : [],
+    };
+  });
   const familyRows = selectConsolidatedPreviewRows(familyFeeds);
   const familyGroups = groupConsolidatedPreviewRows(familyRows);
 
