@@ -36,8 +36,8 @@ const TODAY = "2026-07-10";
 
 describe("preventiveHref", () => {
   it("visits always act through the appointments surface", () => {
-    expect(preventiveHref("visit", "adult_physical")).toBe("/appointments");
-    expect(preventiveHref("visit", "dental_cleaning")).toBe("/appointments");
+    expect(preventiveHref("visit", "adult_physical")).toBe("/encounters");
+    expect(preventiveHref("visit", "dental_cleaning")).toBe("/encounters");
   });
 
   it("derives a screening's surface from what satisfies it (issue #283)", () => {
@@ -72,12 +72,12 @@ describe("preventiveAssessmentToUpcomingItem", () => {
     expect(item.band).toBe("today");
     expect(item.dueText).toBe("Due");
     expect(item.dueDate).toBeNull();
-    expect(item.href).toBe("/appointments");
+    expect(item.href).toBe("/encounters");
     expect(item.title).toBe("Routine adult check-up");
     // nextLabel is preferred for the detail line.
     expect(item.detail).toBe("Due now");
     // A "Book" CTA is offered, prefilling the rule's title, mapped kind, and date.
-    expect(item.bookHref).toContain("/appointments?");
+    expect(item.bookHref).toContain("/encounters?");
     expect(item.bookHref).toContain("new=1");
     expect(item.bookHref).toContain("kind=physical");
     expect(item.bookHref).toContain(`date=${TODAY}`);
@@ -138,7 +138,7 @@ describe("preventiveAssessmentToUpcomingItem", () => {
     // Quieted out of the nagging bands into Later, no "Book" CTA, links to the visit.
     expect(item.band).toBe("later");
     expect(item.bookHref).toBeUndefined();
-    expect(item.href).toBe("/appointments");
+    expect(item.href).toBe("/encounters");
     expect(item.detail).toBe("Scheduled for 2026-08-01");
     // Still carries the rule key so mark-done / override remain available.
     expect(item.preventiveRuleKey).toBe("adult_physical");

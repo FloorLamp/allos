@@ -884,7 +884,7 @@ export const DELETE_POLICY: Record<string, DatasetDeletePolicy> = {
   family_history: { revalidate: ["/family-history", "/"] },
   care_plan_items: { revalidate: ["/care-plan", "/"] },
   care_goals: { revalidate: ["/care-goals", "/"] },
-  appointments: { revalidate: ["/appointments", "/upcoming", "/"] },
+  appointments: { revalidate: ["/encounters", "/upcoming", "/"] },
   immunization_overrides: { revalidate: ["/immunizations", "/"] },
   preventive_events: { revalidate: ["/upcoming", "/"] },
   preventive_overrides: { revalidate: ["/upcoming", "/"] },

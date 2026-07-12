@@ -59,6 +59,10 @@ export interface Appointment {
   // Optional visit category (well_child | physical | dental | vision | screening |
   // other), or null when unset. See AppointmentKind above.
   kind: AppointmentKind | null;
+  // The resulting visit once this appointment has happened (issue #288): set when
+  // "Log this visit" creates a linked encounter or an import/sync auto-completes a
+  // matching one. NULL for a still-scheduled or manually-completed appointment.
+  encounter_id: number | null;
   created_at: string;
 }
 

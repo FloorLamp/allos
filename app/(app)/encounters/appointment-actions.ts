@@ -2,16 +2,18 @@
 
 import { revalidatePath } from "next/cache";
 import { requireWriteAccess } from "@/lib/auth";
-import { db } from "@/lib/db";
+import { db, writeTx } from "@/lib/db";
 import { resolveProviderIdByName } from "@/lib/providers-db";
 import { recordPreventiveDone } from "@/lib/queries";
 import {
   isAppointmentKind,
   satisfiedRuleForCompletedKind,
+  APPOINTMENT_KIND_LABELS,
 } from "@/lib/preventive-appointment";
 import {
   formError,
   formOk,
+  type AppointmentKind,
   type AppointmentStatus,
   type FormResult,
 } from "@/lib/types";
@@ -31,10 +33,11 @@ const kindOf = (formData: FormData): string | null => {
   return isAppointmentKind(raw) ? raw : null;
 };
 
-// Both the management page and the Upcoming aggregation reflect appointment
-// changes, so keep their caches in lockstep.
+// Both the merged Visits page and the Upcoming aggregation reflect appointment
+// changes, so keep their caches in lockstep. Appointments and encounters now share
+// the /encounters surface (issue #288), so that's the one page path to revalidate.
 function revalidate() {
-  revalidatePath("/appointments");
+  revalidatePath("/encounters");
   revalidatePath("/upcoming");
   revalidatePath("/");
 }
@@ -163,5 +166,82 @@ export async function recordPreventiveFromAppointment(
     "appointment"
   );
   revalidate();
+  return formOk();
+}
+
+// The encounter type an appointment kind implies for a logged visit — the same
+// human labels the form select shows, so a "Physical / check-up" appointment
+// becomes an "Physical / check-up" encounter type. NULL kind → NULL type.
+function encounterTypeForKind(kind: string | null): string | null {
+  return isAppointmentKind(kind)
+    ? APPOINTMENT_KIND_LABELS[kind as AppointmentKind]
+    : null;
+}
+
+// "Log this visit" (issue #288): close the appointment → encounter loop by hand.
+// Completing an appointment offers creating a linked encounter PREFILLED from it —
+// the visit date, the linked provider, and the kind mapped to an encounter type —
+// then marks the appointment completed and records the appointment.encounter_id
+// back-link. This gives the overdue-appointment nudge a real resolution (a logged
+// visit) instead of the row just disappearing on a bare status flip.
+//
+// Idempotent: an appointment already linked to an encounter is a no-op (the
+// existing link stands, no duplicate visit). The new encounter is a MANUAL row
+// (source NULL) — it carries no document provenance, so a later document import/
+// delete never touches it, exactly like a hand-added visit. Profile-scoped on both
+// the read and every write.
+export async function logVisitFromAppointment(
+  formData: FormData
+): Promise<FormResult> {
+  const { profile } = await requireWriteAccess();
+  const id = Number(formData.get("id"));
+  if (!id) return formError("Couldn't find that appointment.");
+  const row = db
+    .prepare(
+      `SELECT scheduled_at, provider_id, title, notes, kind, encounter_id
+         FROM appointments WHERE id = ? AND profile_id = ?`
+    )
+    .get(id, profile.id) as
+    | {
+        scheduled_at: string;
+        provider_id: number | null;
+        title: string | null;
+        notes: string | null;
+        kind: string | null;
+        encounter_id: number | null;
+      }
+    | undefined;
+  if (!row) return formError("Couldn't find that appointment.");
+  // Already logged — leave the existing linked visit in place (no duplicate).
+  if (row.encounter_id != null) {
+    revalidate();
+    return formOk();
+  }
+
+  const date = row.scheduled_at.slice(0, 10);
+  writeTx(() => {
+    const res = db
+      .prepare(
+        `INSERT INTO encounters
+           (profile_id, date, type, reason, notes, provider_id, source)
+         VALUES (?, ?, ?, ?, ?, ?, NULL)`
+      )
+      .run(
+        profile.id,
+        date,
+        encounterTypeForKind(row.kind),
+        row.title,
+        row.notes,
+        row.provider_id
+      );
+    const encounterId = Number(res.lastInsertRowid);
+    db.prepare(
+      `UPDATE appointments SET status = 'completed', encounter_id = ?
+         WHERE id = ? AND profile_id = ?`
+    ).run(encounterId, id, profile.id);
+  });
+
+  revalidate();
+  revalidatePath("/profile");
   return formOk();
 }

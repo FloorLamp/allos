@@ -36,13 +36,16 @@ const MODULES = [
   "care-goals",
   "care-plan",
   "medical",
-  "appointments",
   "goals",
   "protocols",
   "medicine",
   "upcoming",
   "trends",
-].map((m) => path.join("app", "(app)", m, "actions.ts"));
+]
+  .map((m) => path.join("app", "(app)", m, "actions.ts"))
+  // Appointments merged into the Visits page (#288): their write actions live in
+  // encounters/appointment-actions.ts now, not their own route's actions.ts.
+  .concat(path.join("app", "(app)", "encounters", "appointment-actions.ts"));
 
 // Length-preserving neutralizer: blanks the contents of line/block comments and
 // string/template literals (keeping newlines) so brace-matching and the bare-return

@@ -348,7 +348,7 @@ export function appointmentItem(row: {
     detail: detailLine(row.location ?? row.status),
     // The scheduled date (drop any time portion for the listing's date column).
     date: row.scheduled_at.slice(0, 10),
-    href: "/appointments",
+    href: "/encounters",
   };
 }
 

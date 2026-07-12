@@ -421,7 +421,7 @@ function appointmentItems(profileId: number): UpcomingItem[] {
       domain: "appointment" as const,
       title: a.title?.trim() || a.provider_name || "Appointment",
       detail: parts.length ? parts.join(" · ") : "Scheduled visit",
-      href: "/appointments",
+      href: "/encounters",
       dueDate,
     };
   });
