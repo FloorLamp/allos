@@ -41,7 +41,10 @@ const FIELDS: {
     key: "pregnant",
     name: "pregnant",
     label: "Pregnant",
-    hint: "Prioritizes pregnancy-relevant labs and screenings.",
+    // Honest about today's behavior: the attribute is part of the curated risk
+    // model (#517 names it as an input), but no pregnancy rule ships yet — the
+    // hint must not promise prioritization RISK_RULES doesn't do.
+    hint: "Recorded as risk context — pregnancy-specific suggestions are still being curated.",
   },
 ];
 
