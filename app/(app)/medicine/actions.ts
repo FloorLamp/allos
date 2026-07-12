@@ -987,7 +987,9 @@ const MEDICINE_FINDING_PREFIXES = [
 export async function dismissMedicineFinding(formData: FormData) {
   const { profile } = await requireWriteAccess();
   const dedupeKey = String(formData.get("dedupe_key") ?? "").trim();
-  if (!MEDICINE_FINDING_PREFIXES.some((p) => dedupeKey.startsWith(p))) return;
+  if (!MEDICINE_FINDING_PREFIXES.some((p) => dedupeKey.startsWith(p)))
+    return formError("Couldn't dismiss that finding.");
   dismissFinding(profile.id, dedupeKey);
   revalidatePath("/medicine");
+  return formOk();
 }
