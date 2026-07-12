@@ -24,6 +24,11 @@ interface ActivityEditorApi {
   // "Log again" / "Repeat last": open a CREATE form pre-filled from a stored
   // activity (title, exercises, sets) with the date reset to today (issue #29).
   openRepeat: (data: ActivityEditData) => void;
+  // Repeat the single most recent activity — the palette command / mobile quick
+  // action so repeat-last isn't desktop-only (issue #337). No-op when nothing's
+  // been logged; `hasLastActivity` gates the affordance.
+  openRepeatLast: () => void;
+  hasLastActivity: boolean;
   close: () => void;
   // Whether an editor is currently open, and what it's editing — so a page can
   // hand the editor a column to dock into and react to it being active.
@@ -52,6 +57,7 @@ export default function ActivityEditorProvider({
   equipment,
   recentActivityEquipment = [],
   bodyweightKg,
+  lastActivity = null,
   children,
 }: {
   units: UnitPrefs;
@@ -62,6 +68,9 @@ export default function ActivityEditorProvider({
   // form's activity-level equipment picker, narrowed per-activity by the form.
   recentActivityEquipment?: number[];
   bodyweightKg: number | null;
+  // The single most recent activity (issue #337), seeding the "Repeat last
+  // activity" palette command / mobile quick action. null when nothing's logged.
+  lastActivity?: ActivityEditData | null;
   children: React.ReactNode;
 }) {
   const tz = useTimezone();
@@ -119,12 +128,21 @@ export default function ActivityEditorProvider({
         setDocked(dockElRef.current != null);
         setOpen(true);
       },
+      openRepeatLast: () => {
+        if (!lastActivity) return;
+        setEditData(null);
+        setPrefill(buildRepeatPrefill(lastActivity, todayStr(tz)));
+        setRepeatNonce((n) => n + 1);
+        setDocked(dockElRef.current != null);
+        setOpen(true);
+      },
+      hasLastActivity: lastActivity != null,
       close: () => setOpen(false),
       open,
       editData,
       registerDock,
     }),
-    [open, editData, registerDock, tz]
+    [open, editData, registerDock, tz, lastActivity]
   );
 
   // The editor renders into the dock only when it was opened with one present

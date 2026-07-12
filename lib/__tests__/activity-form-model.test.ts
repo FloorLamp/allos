@@ -26,6 +26,7 @@ const storedSet = (
   equipment_id: null,
   target_reps: null,
   to_failure: null,
+  warmup: null,
   ...o,
 });
 
@@ -142,6 +143,16 @@ describe("partTotal", () => {
     ];
     expect(partTotal(part({ perSide: false, sets }))).toBe(200);
     expect(partTotal(part({ perSide: true, sets }))).toBe(200 + 250);
+  });
+
+  it("excludes warmup sets from the volume total (#338)", () => {
+    const p = part({
+      sets: [
+        { ...blankPart().sets[0], weight: "60", reps: "5", warmup: true },
+        { ...blankPart().sets[0], weight: "100", reps: "5" },
+      ],
+    });
+    expect(partTotal(p)).toBe(500); // only the 100×5 working set
   });
 });
 

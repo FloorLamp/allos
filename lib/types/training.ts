@@ -110,6 +110,11 @@ export interface ExerciseSet {
   // NULL when no specific implement is recorded. Informational: stored weight_kg
   // is always the TOTAL load regardless of the implement.
   equipment_id: number | null;
+  // Warmup flag (issue #338): 1 marks a ramp-up/warmup set. A warmup is stored
+  // and shown but INERT to every derived metric — target judgment, volume,
+  // records/e1RM, plateau series, and the next-set seed all exclude it. NOT NULL
+  // DEFAULT 0, so imported/legacy rows are working sets exactly as before.
+  warmup: number;
 }
 
 // A user-defined piece of equipment (a custom bar/implement). `weight_kg` is the

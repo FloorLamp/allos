@@ -6,6 +6,7 @@ import {
   minutesBetween,
   requiresDistance,
   resolveActivityType,
+  shiftHHMM,
   showsDistanceField,
   timeOfDay,
   titleCase,
@@ -179,6 +180,25 @@ describe("minutesBetween", () => {
     expect(minutesBetween("10:00", "09:00")).toBeNull();
     expect(minutesBetween("", "09:00")).toBeNull();
     expect(minutesBetween("x:y", "09:00")).toBeNull();
+  });
+});
+
+describe("shiftHHMM", () => {
+  it("shifts a time forward and back, staying in-day", () => {
+    expect(shiftHHMM("08:00", 90)).toBe("09:30");
+    expect(shiftHHMM("09:30", -90)).toBe("08:00");
+    expect(shiftHHMM("10:15", 45)).toBe("11:00");
+  });
+
+  it("returns null when the shift falls outside the day", () => {
+    expect(shiftHHMM("23:30", 45)).toBeNull(); // past midnight
+    expect(shiftHHMM("00:15", -30)).toBeNull(); // before midnight
+    expect(shiftHHMM("00:00", 1439)).toBe("23:59"); // last minute is in-day
+  });
+
+  it("returns null for invalid input", () => {
+    expect(shiftHHMM("", 30)).toBeNull();
+    expect(shiftHHMM("x:y", 30)).toBeNull();
   });
 });
 

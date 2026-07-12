@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { IconMenu2, IconPlus } from "@tabler/icons-react";
+import { IconMenu2, IconPlus, IconRepeat } from "@tabler/icons-react";
 import Wordmark from "@/components/Wordmark";
 import SidebarContent from "@/components/SidebarContent";
 import { useActivityEditor } from "@/components/ActivityEditorProvider";
@@ -51,7 +51,7 @@ export default function MobileNav({
 }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
-  const { openCreate } = useActivityEditor();
+  const { openCreate, openRepeatLast, hasLastActivity } = useActivityEditor();
 
   // Close the drawer whenever navigation happens.
   useEffect(() => {
@@ -88,14 +88,29 @@ export default function MobileNav({
             <Wordmark markClassName="h-5 w-9" />
           </Link>
           {!restricted && (
-            <button
-              type="button"
-              aria-label="Log activity"
-              onClick={() => openCreate()}
-              className="ml-auto -mr-1 flex h-10 w-10 items-center justify-center rounded-lg text-brand-600 transition hover:bg-slate-100 dark:text-brand-400 dark:hover:bg-ink-750"
-            >
-              <IconPlus className="h-6 w-6" stroke={2} />
-            </button>
+            <div className="ml-auto -mr-1 flex items-center">
+              {/* Repeat last activity — the mobile twin of the desktop aside's
+                  "Repeat last", so it isn't desktop-only (issue #337). */}
+              {hasLastActivity && (
+                <button
+                  type="button"
+                  aria-label="Repeat last activity"
+                  data-testid="repeat-last-mobile"
+                  onClick={() => openRepeatLast()}
+                  className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-ink-750"
+                >
+                  <IconRepeat className="h-5 w-5" stroke={1.75} />
+                </button>
+              )}
+              <button
+                type="button"
+                aria-label="Log activity"
+                onClick={() => openCreate()}
+                className="flex h-10 w-10 items-center justify-center rounded-lg text-brand-600 transition hover:bg-slate-100 dark:text-brand-400 dark:hover:bg-ink-750"
+              >
+                <IconPlus className="h-6 w-6" stroke={2} />
+              </button>
+            </div>
           )}
         </div>
       </header>

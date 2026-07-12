@@ -19,6 +19,7 @@ import {
   withRestContinuity,
   DEFAULT_COACHING_THRESHOLDS,
   sessionWorkSets,
+  sideSets,
   type ExerciseSummary,
   type SessionWorkSet,
   type CardioSummary,
@@ -258,6 +259,81 @@ describe("suggestNextSet", () => {
   });
 });
 
+// Per-side suggestion projection (#335): each side judged off its own history so
+// the weaker side is never loaded off the stronger one's numbers.
+describe("sideSets", () => {
+  const rows = [
+    {
+      weight_kg: 12,
+      reps: 10,
+      weight_kg_right: 10,
+      reps_right: 8,
+      target_reps: null,
+      to_failure: null,
+    },
+    {
+      weight_kg: 12,
+      reps: 10,
+      weight_kg_right: 10,
+      reps_right: 8,
+      target_reps: null,
+      to_failure: null,
+    },
+  ];
+
+  it("projects the left side onto the bilateral shape", () => {
+    const left = sideSets(rows, "left");
+    expect(left).toEqual([
+      {
+        weight_kg: 12,
+        reps: 10,
+        weight_kg_right: null,
+        reps_right: null,
+        target_reps: null,
+        to_failure: null,
+      },
+      {
+        weight_kg: 12,
+        reps: 10,
+        weight_kg_right: null,
+        reps_right: null,
+        target_reps: null,
+        to_failure: null,
+      },
+    ]);
+  });
+
+  it("projects the right side, moving *_right into the bilateral fields", () => {
+    const right = sideSets(rows, "right");
+    expect(right[0]).toMatchObject({
+      weight_kg: 10,
+      reps: 8,
+      reps_right: null,
+    });
+  });
+
+  it("lets each side progress independently (weaker side isn't over-loaded)", () => {
+    // Left maxed the range (10 reps of an 8-12 isolation range) → add weight;
+    // right lagged at 8 → hold. Seeded via each side's own best/work sets.
+    const suggest = (side: "left" | "right") => {
+      const sets = sideSets(rows, side);
+      const best = sessionBestSet(sets);
+      return suggestNextSet({
+        exercise: "Dumbbell Curl",
+        bodyweight: false,
+        lastSessionBest: best!,
+        lastSessionSets: sessionWorkSets(sets),
+      });
+    };
+    const left = suggest("left")!;
+    const right = suggest("right")!;
+    // Left hit the top (10 within 8-12) but not the range top (12) → still building.
+    // What matters: the two sides yield different anchors, never a shared one.
+    expect(left.weightKg).toBe(12);
+    expect(right.weightKg).toBe(10);
+  });
+});
+
 // Session-level progression (#330): the suggestion judges the WORKING sets (the
 // full session, warmups filtered out by load), not just the single best set.
 describe("suggestNextSet — working-set progression (#330)", () => {
@@ -449,6 +525,21 @@ describe("sessionWorkSets", () => {
       { weightKg: 25, reps: 7, targetReps: null, toFailure: false },
     ]);
   });
+
+  it("drops a flag-marked warmup set entirely (#338)", () => {
+    expect(
+      sessionWorkSets([
+        {
+          weight_kg: 60,
+          reps: 5,
+          weight_kg_right: null,
+          reps_right: null,
+          warmup: 1,
+        },
+        { weight_kg: 100, reps: 5, weight_kg_right: null, reps_right: null },
+      ])
+    ).toEqual([{ weightKg: 100, reps: 5, targetReps: null, toFailure: false }]);
+  });
 });
 
 // A RecentSession-shaped set with everything null unless overridden.
@@ -481,6 +572,16 @@ describe("sessionBestSet", () => {
       set({ reps: 9 }),
     ]);
     expect(best).toMatchObject({ weightKg: 0, reps: 11 });
+  });
+
+  it("never anchors on a flag-marked warmup, even if it's the heaviest (#338)", () => {
+    // A 120 kg warmup single would win the e1RM ranking, but it's flagged — the
+    // anchor must be the 100×5 working set instead.
+    const best = sessionBestSet([
+      set({ weight_kg: 120, reps: 1, warmup: 1 }),
+      set({ weight_kg: 100, reps: 5 }),
+    ]);
+    expect(best).toMatchObject({ weightKg: 100, reps: 5 });
   });
 
   it("treats each side of a per-side set as its own candidate", () => {

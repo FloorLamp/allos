@@ -1,4 +1,23 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
+import { openCommandPalette } from "./nav";
+
+// Pick an activity in the editor's exercise combobox. The option button's text
+// varies with the input state: a partial filter lists options as the name plus a
+// muscle badge ("Barbell Bench Press" + "Chest"), while an EXACT typed match
+// collapses the dropdown to a single 'Use "Barbell Bench Press"' button (curly
+// quotes around the name). Neither shape carries the bare name as an exact text
+// node or accessible name, so match by SUBSTRING — hasText covers both shapes,
+// and badge-less cardio options too. (Ground truth from the aria snapshot of the
+// live component; see PR #547 review thread.)
+async function pickActivity(page: Page, name: string) {
+  await page.getByPlaceholder(/What did you do/).fill(name);
+  await page
+    .getByRole("listbox")
+    .getByRole("button")
+    .filter({ hasText: name })
+    .first()
+    .click();
+}
 
 // Issue #29: data-entry ergonomics — the three affordances end-to-end against the
 // seeded DB.
@@ -16,10 +35,9 @@ test("command palette 'weight 84.3' logs a body metric (#29)", async ({
 }) => {
   await page.goto("/");
 
-  // Open the palette (Cmd/Ctrl-K; the handler accepts either modifier).
-  await page.keyboard.press("Control+k");
-  const input = page.getByLabel("Search or run a command");
-  await expect(input).toBeVisible();
+  // Open the palette via the retrying helper — a raw Ctrl-K fired inside the
+  // hydration window is swallowed (issue #500/#501; e2e/nav.ts).
+  const input = await openCommandPalette(page);
 
   // Typing the quick-log syntax surfaces a preview row; the seed login is kg.
   await input.fill("weight 84.3");
@@ -200,6 +218,138 @@ test("logging a manual cardio activity auto-fills an editable estimated-calorie 
     .getByRole("dialog")
     .getByRole("button", { name: "Delete", exact: true })
     .click();
+});
+
+test("a fresh strength part auto-seeds set 1 from the coached suggestion (#335)", async ({
+  page,
+}) => {
+  await page.goto("/training"); // default "Log" tab renders the Journal feed
+
+  // Open a fresh create form (fields addressed by testid/role — see the
+  // est-calories spec's note on why the editor isn't main-scoped).
+  await page
+    .getByRole("main")
+    .getByRole("button", { name: "New activity" })
+    .click();
+
+  // Pick a lift the seed trains repeatedly (Barbell Bench Press, weeks of
+  // 60 kg → +1 kg/wk history) so a coached next-set suggestion exists.
+  await pickActivity(page, "Barbell Bench Press");
+
+  // The coached "Next set" card renders for a fresh part with history.
+  await expect(page.getByText("Next set")).toBeVisible();
+
+  // Set 1's weight shows the suggested load as a ghost PLACEHOLDER (a number,
+  // not the bare "kg" unit) — the auto-seed, no "Use" tap needed (#335).
+  const weight = page.getByTestId("set1-weight");
+  await expect(weight).toHaveAttribute("placeholder", /^\d/);
+
+  // Focusing the field fills it (weight + reps) from the suggestion, completing
+  // the set so it auto-saves — the Delete button appearing confirms the persist.
+  await weight.focus();
+  await expect(weight).toHaveValue(/^\d/);
+  await expect(
+    page.getByRole("button", { name: "Delete", exact: true })
+  ).toBeVisible();
+
+  // Clean up the auto-saved draft so the shared seed DB is left untouched.
+  await page.getByRole("button", { name: "Delete", exact: true }).click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Delete", exact: true })
+    .click();
+});
+
+test("a cardio part derives avg speed AND pace from distance + duration (#336)", async ({
+  page,
+}) => {
+  await page.goto("/training"); // default "Log" tab renders the Journal feed
+
+  await page
+    .getByRole("main")
+    .getByRole("button", { name: "New activity" })
+    .click();
+
+  // Running requires a distance field; pick it so both Distance and Duration show.
+  await pickActivity(page, "Running");
+
+  // 5 km in 25 min → 12 km/h, pace 5:00 /km (seeded login is metric).
+  await page.getByTestId("cardio-duration").fill("25");
+  await page.getByTestId("cardio-distance").fill("5");
+
+  // Both the average speed AND the newly-added pace line render from the same
+  // inputs (#336) — pace is what runners actually think in.
+  await expect(page.getByText(/Avg speed:/)).toContainText("12");
+  await expect(page.getByText(/Pace:/)).toContainText("5:00");
+
+  // Clean up the auto-saved draft (a duration makes it savable).
+  await page.getByRole("button", { name: "Delete", exact: true }).click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Delete", exact: true })
+    .click();
+});
+
+test("the command palette offers 'Repeat last activity' when history exists (#337)", async ({
+  page,
+}) => {
+  await page.goto("/"); // the seed has plenty of logged activities
+
+  // Retrying open — see the #29 spec above (hydration-window swallow).
+  const input = await openCommandPalette(page);
+
+  // Typing "repeat" surfaces the new palette command (gated on a last activity
+  // existing — the seed guarantees one).
+  await input.fill("repeat");
+  await expect(page.getByText("Repeat last activity")).toBeVisible();
+
+  // Read-only: close without executing so no draft is created.
+  await page.keyboard.press("Escape");
+});
+
+test("weight steppers bump a set's load by the lift-appropriate increment (#337)", async ({
+  page,
+}) => {
+  await page.goto("/training");
+
+  await page
+    .getByRole("main")
+    .getByRole("button", { name: "New activity" })
+    .click();
+
+  // Barbell Bench Press is an upper-body lift → a 2.5 (kg) step for the seeded
+  // metric login.
+  await pickActivity(page, "Barbell Bench Press");
+
+  // The + stepper bumps the (empty) weight by one increment → 2.5. Only weight is
+  // set, so the set stays half-filled and nothing auto-saves — no cleanup needed.
+  await page.getByLabel("Increase weight").first().click();
+  await expect(page.getByTestId("set1-weight")).toHaveValue("2.5");
+
+  await page.keyboard.press("Escape");
+});
+
+test("a set row has a warmup toggle that flips its pressed state (#338)", async ({
+  page,
+}) => {
+  await page.goto("/training");
+
+  await page
+    .getByRole("main")
+    .getByRole("button", { name: "New activity" })
+    .click();
+
+  await pickActivity(page, "Barbell Bench Press");
+
+  // Each set carries a light "W" warmup toggle (default off). Toggling flips its
+  // aria-pressed state — the flag excludes the set from volume/target/records.
+  const warmup = page.getByTestId("set1-warmup");
+  await expect(warmup).toHaveAttribute("aria-pressed", "false");
+  await warmup.click();
+  await expect(warmup).toHaveAttribute("aria-pressed", "true");
+
+  // Only the flag was toggled on an empty set, so nothing auto-saves — no cleanup.
+  await page.keyboard.press("Escape");
 });
 
 test("a failed activity save surfaces an error, never a false 'Saved ✓' (#332)", async ({

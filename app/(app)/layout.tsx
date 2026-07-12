@@ -20,6 +20,7 @@ import {
   getLatestBodyMetric,
   getImportReviewCount,
   getRecentActivityEquipmentIds,
+  getMostRecentActivityEditData,
 } from "@/lib/queries";
 import { getTimelineDates } from "@/lib/timeline";
 
@@ -75,6 +76,12 @@ export default async function AppLayout({
   // (last-used shoes for a run, last-used bike for a ride) by the form.
   const recentActivityEquipment = getRecentActivityEquipmentIds(profile.id);
   const bodyweightKg = getLatestBodyMetric(profile.id, "weight");
+  // The most recent activity seeds the "Repeat last activity" palette command +
+  // mobile quick action (issue #337); null hides both. A restricted profile has
+  // no training surface, so it gets none.
+  const lastActivity = restricted
+    ? null
+    : getMostRecentActivityEditData(profile.id);
   const version = getAppVersion();
   // Gates any admin-only nav entries in both surfaces.
   const isAdmin = login.role === "admin";
@@ -101,6 +108,7 @@ export default async function AppLayout({
               equipment={equipment}
               recentActivityEquipment={recentActivityEquipment}
               bodyweightKg={bodyweightKg}
+              lastActivity={lastActivity}
             >
               <div className="flex min-h-screen">
                 <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col gap-4 overflow-y-auto border-r border-black/10 bg-white/70 p-4 backdrop-blur-xl md:flex print:hidden dark:border-white/5 dark:bg-ink-950/70">

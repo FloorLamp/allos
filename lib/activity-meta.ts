@@ -194,6 +194,23 @@ export function minutesBetween(start: string, end: string): number | null {
   return diff > 0 ? diff : null;
 }
 
+/**
+ * A "HH:MM" time shifted by `deltaMin` minutes, or null when it would fall
+ * outside the same day (times are day-local `<input type=time>` values). Powers
+ * the activity form's End↔Start derivation (#336): End = Start + duration, or
+ * Start = End − duration.
+ */
+export function shiftHHMM(hhmm: string, deltaMin: number): string | null {
+  if (!hhmm) return null;
+  const [h, m] = hhmm.split(":").map(Number);
+  if (Number.isNaN(h) || Number.isNaN(m)) return null;
+  const total = h * 60 + m + deltaMin;
+  if (total < 0 || total > 1439) return null;
+  const hh = String(Math.floor(total / 60)).padStart(2, "0");
+  const mm = String(total % 60).padStart(2, "0");
+  return `${hh}:${mm}`;
+}
+
 // One leg of a multisport ("brick") activity, as far as the roll-up cares.
 export interface CompositeComponent {
   type: ActivityType;

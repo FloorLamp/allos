@@ -38,6 +38,9 @@ export interface SetRow {
   // Absent/null when no intent was declared.
   target_reps?: number | null;
   to_failure?: number | null;
+  // Warmup flag (#338, 1 = warmup): a warmup set is shown but excluded from the
+  // target judgment and the volume total below.
+  warmup?: number | null;
 }
 
 // "met" = every targeted set hit its declared rep target; "missed" = at least
@@ -63,10 +66,14 @@ export function judgeTargets(
     reps: number | null;
     target_reps?: number | null;
     to_failure?: number | null;
+    warmup?: number | null;
   }[]
 ): SetStatus {
   const targeted = sets.filter(
     (s) =>
+      // A warmup set never counts toward met/missed (#338) — a light warmup
+      // single under the part's target must not read as a missed set.
+      !s.warmup &&
       s.target_reps != null &&
       s.target_reps > 0 &&
       !s.to_failure &&
@@ -167,9 +174,14 @@ export function summarizeExercise(
 
   const status: SetStatus = timed ? null : judgeTargets(ordered);
 
+  // Warmups are excluded from the volume total (#338) — they're shown in the
+  // text but aren't working volume.
   const totalKg = timed
     ? 0
-    : ordered.reduce((sum, s) => sum + (s.weight_kg ?? 0) * (s.reps ?? 0), 0);
+    : ordered.reduce(
+        (sum, s) => sum + (s.warmup ? 0 : (s.weight_kg ?? 0) * (s.reps ?? 0)),
+        0
+      );
 
   return { text, status, totalKg };
 }
@@ -211,9 +223,11 @@ function summarizePerSide(
     ? 0
     : ordered.reduce(
         (sum, s) =>
-          sum +
-          (s.weight_kg ?? 0) * (s.reps ?? 0) +
-          (s.weight_kg_right ?? 0) * (s.reps_right ?? 0),
+          s.warmup
+            ? sum
+            : sum +
+              (s.weight_kg ?? 0) * (s.reps ?? 0) +
+              (s.weight_kg_right ?? 0) * (s.reps_right ?? 0),
         0
       );
 

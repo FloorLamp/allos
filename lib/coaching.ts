@@ -125,6 +125,11 @@ interface SessionSet {
   reps_right: number | null;
   target_reps?: number | null;
   to_failure?: number | null;
+  // Warmup flag (#338, 1 = warmup): excluded from the progression anchor and the
+  // working-set list so a flagged warmup can't seed or fail the session. The
+  // #330 load-based working-set heuristic remains the fallback for import-only
+  // histories that carry no flag.
+  warmup?: number | null;
 }
 
 // The seeding set of one session: highest estimated 1RM, then most reps —
@@ -144,6 +149,7 @@ export function sessionBestSet(
   let best: ReturnType<typeof sessionBestSet> = null;
   let bestE1rm = -1;
   for (const s of sets) {
+    if (s.warmup) continue; // warmups never anchor the progression (#338)
     const sides: { weight: number; reps: number }[] = [];
     if (s.reps != null)
       sides.push({ weight: baseKg + (s.weight_kg ?? 0), reps: s.reps });
@@ -179,6 +185,7 @@ export function sessionWorkSets(
 ): SessionWorkSet[] {
   const out: SessionWorkSet[] = [];
   for (const s of sets) {
+    if (s.warmup) continue; // warmups aren't working sets (#338)
     const targetReps = s.target_reps ?? null;
     const toFailure = s.to_failure === 1;
     if (s.reps != null)
@@ -197,6 +204,25 @@ export function sessionWorkSets(
       });
   }
   return out;
+}
+
+// One side of a per-side session's sets, projected onto the bilateral shape so
+// sessionBestSet/sessionWorkSets/suggestNextSet judge that side on its OWN
+// history (#335). A per-side suggestion seeds each side independently — the
+// weaker side is never loaded off the stronger one's numbers.
+export function sideSets(
+  sets: SessionSet[],
+  side: "left" | "right"
+): SessionSet[] {
+  return sets.map((s) => ({
+    weight_kg: side === "left" ? s.weight_kg : s.weight_kg_right,
+    reps: side === "left" ? s.reps : s.reps_right,
+    weight_kg_right: null,
+    reps_right: null,
+    target_reps: s.target_reps,
+    to_failure: s.to_failure,
+    warmup: s.warmup,
+  }));
 }
 
 // The load after one increment, chosen in the user's unit so it stays loadable.

@@ -42,6 +42,9 @@ interface SetInput {
   // older clients and integrations don't send them.
   targetReps?: number | null;
   toFailure?: boolean;
+  // Warmup flag (#338): a ramp-up set, excluded from working-set math. Optional
+  // (older clients/imports don't send it — such sets stay working sets).
+  warmup?: boolean;
 }
 
 // The stored canonical (kg) loads of the activity's existing sets before an edit
@@ -72,8 +75,8 @@ function writeSets(
   const setStmt = db.prepare(
     `INSERT INTO exercise_sets
        (activity_id, exercise, set_number, weight_kg, reps, weight_kg_right, reps_right,
-        duration_sec, duration_sec_right, equipment_id, target_reps, to_failure)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
+        duration_sec, duration_sec_right, equipment_id, target_reps, to_failure, warmup)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
   );
   const counters: Record<string, number> = {};
   for (const s of sets) {
@@ -102,7 +105,10 @@ function writeSets(
       !s.toFailure && Number.isInteger(s.targetReps) && s.targetReps! > 0
         ? s.targetReps
         : null,
-      s.toFailure ? 1 : null
+      s.toFailure ? 1 : null,
+      // Warmup flag (#338): canonicalize to 0/1 at the write boundary (the
+      // column is NOT NULL DEFAULT 0).
+      s.warmup ? 1 : 0
     );
   }
 }
