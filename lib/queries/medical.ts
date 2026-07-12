@@ -1051,6 +1051,7 @@ export const getEncounters = cache(function getEncounters(
       `SELECT e.id, e.date, e.end_date, e.type, e.class_code, e.reason,
               e.diagnoses, e.provider_id, p.name AS provider_name,
               e.location_provider_id, l.name AS location_name,
+              l.address AS location_address,
               e.notes, e.source, e.document_id, e.external_id, e.created_at
          FROM encounters e
          LEFT JOIN providers p ON p.id = e.provider_id
@@ -1072,6 +1073,7 @@ export function getEncounter(profileId: number, id: number): Encounter | null {
         `SELECT e.id, e.date, e.end_date, e.type, e.class_code, e.reason,
                 e.diagnoses, e.provider_id, p.name AS provider_name,
                 e.location_provider_id, l.name AS location_name,
+                l.address AS location_address,
                 e.notes, e.source, e.document_id, e.external_id, e.created_at
            FROM encounters e
            LEFT JOIN providers p ON p.id = e.provider_id

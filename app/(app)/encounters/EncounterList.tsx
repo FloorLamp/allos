@@ -7,6 +7,7 @@ import { updateEncounter, deleteEncounter } from "./actions";
 import RecordTable, { type RecordColumn } from "@/components/RecordTable";
 import RecordProvenance from "@/components/RecordProvenance";
 import ProviderName from "@/components/ProviderName";
+import OpenInMaps from "@/components/OpenInMaps";
 import { formatRecordDate } from "@/lib/record-format";
 import type { Encounter } from "@/lib/types";
 
@@ -115,6 +116,14 @@ const COLUMNS: RecordColumn<Encounter>[] = [
                 {e.location_name}
               </span>
             )
+          ) : null}
+          {e.location_address ? (
+            <OpenInMaps
+              address={e.location_address}
+              label="Directions"
+              showIcon={false}
+              className="text-xs text-brand-700 hover:underline dark:text-brand-300"
+            />
           ) : null}
         </div>
       ) : (
