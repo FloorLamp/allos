@@ -1349,3 +1349,31 @@ insDupImmz.run(PROFILE_ID, "Travel dose B");
 console.log(
   `e2e: seeded two same-date yellow-fever immunizations on profile ${PROFILE_ID} (delete-confirm disambiguation, #534)`
 );
+
+// ── Same-named provider pair for the merge disambiguation (issue #532) ────────
+// Two organizations that share the name "E2E Duplicate Lab" but carry distinct
+// identifiers + addresses (so distinct dedup keys). The admin merge picker + its
+// irreversible confirm must label them by the differing field, not by the byte-
+// identical name — otherwise the destructive pick is blind on the exact case merge
+// targets. Idempotent: clear both by dedup_key first. Unlinked (no records), so the
+// merge-disambig spec can open the picker/confirm and CANCEL without side effects.
+for (const key of ["id:e2e-dup-lab-a", "id:e2e-dup-lab-b"]) {
+  db.prepare(`DELETE FROM providers WHERE dedup_key = ?`).run(key);
+}
+const insDupProvider = db.prepare(
+  `INSERT INTO providers (name, type, identifier, address, dedup_key)
+   VALUES ('E2E Duplicate Lab', 'organization', ?, ?, ?)`
+);
+insDupProvider.run(
+  "e2e-dup-lab-a",
+  "100 Alpha St, Springfield",
+  "id:e2e-dup-lab-a"
+);
+insDupProvider.run(
+  "e2e-dup-lab-b",
+  "200 Beta Ave, Portland",
+  "id:e2e-dup-lab-b"
+);
+console.log(
+  "e2e: seeded two same-named 'E2E Duplicate Lab' providers (merge disambiguation, #532)"
+);

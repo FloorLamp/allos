@@ -11,6 +11,61 @@
 // schema (every column named provider_id / location_provider_id in a CREATE TABLE)
 // so a future provider link CANNOT be added without landing in this list.
 
+import type { Provider } from "./types";
+
+// Composite display label that keeps two same-named providers apart in the merge
+// picker and the IRREVERSIBLE confirm (issue #532). The merge exists FOR the
+// duplicate-name case, yet a name-only label renders two "Quest Diagnostics" rows
+// byte-identically — so the admin picks blind, and the destructive "deletes X, keeps
+// Y" confirm names both sides with the same string. Returns the bare name when it's
+// unique among `all`; otherwise appends the FIRST field that actually differs across
+// the same-named group — type, then npi/identifier, then address, then phone — with
+// the id as a guaranteed-distinguishing fallback. Pure + unit-tested; the picker
+// option and the confirm copy consume it so they can't drift.
+const DISAMBIG_FIELDS = [
+  "type",
+  "npi",
+  "identifier",
+  "address",
+  "phone",
+] as const;
+
+function disambigFieldValue(p: Provider, field: string): string | null {
+  switch (field) {
+    case "type":
+      return p.type === "individual" ? "Individual" : "Organization";
+    case "npi":
+      return p.npi ? `NPI ${p.npi}` : null;
+    case "identifier":
+      return p.identifier ?? null;
+    case "address":
+      return p.address ?? null;
+    case "phone":
+      return p.phone ?? null;
+    default:
+      return null;
+  }
+}
+
+export function providerDisambigLabel(
+  p: Provider,
+  all: readonly Provider[]
+): string {
+  const norm = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase();
+  const group = all.filter((o) => norm(o.name) === norm(p.name));
+  if (group.length <= 1) return p.name;
+  for (const field of DISAMBIG_FIELDS) {
+    const mine = disambigFieldValue(p, field);
+    if (mine == null) continue;
+    // Only useful if it separates p from at least one same-named peer.
+    const distinguishes = group.some(
+      (o) => o.id !== p.id && disambigFieldValue(o, field) !== mine
+    );
+    if (distinguishes) return `${p.name} · ${mine}`;
+  }
+  return `${p.name} · #${p.id}`;
+}
+
 export interface ProviderLink {
   table: string;
   column: string;

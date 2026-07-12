@@ -21,7 +21,7 @@ import {
   getProviderMergeImpact,
   type ProviderActivityItem,
 } from "@/lib/queries";
-import { formatMergeImpact } from "@/lib/provider-merge";
+import { formatMergeImpact, providerDisambigLabel } from "@/lib/provider-merge";
 import { formatRecordDate } from "@/lib/record-format";
 import { PageHeader } from "@/components/ui";
 import ProviderIdentityCard from "../ProviderIdentityCard";
@@ -133,16 +133,21 @@ export default async function ProviderDetailPage(props: {
 
   // Merge candidates (admin only): every OTHER provider, with a count-only impact
   // summary of what absorbing THAT provider would move (global, across profiles).
+  // Each carries a composite disambiguation label (#532) so two same-named rows —
+  // the case merge targets — never render as byte-identical option/confirm text.
+  const allProviders = isAdmin ? getProviders() : [];
   const candidates = isAdmin
-    ? getProviders()
+    ? allProviders
         .filter((p) => p.id !== id)
         .map((p) => ({
           id: p.id,
           name: p.name,
+          label: providerDisambigLabel(p, allProviders),
           type: p.type,
           impact: formatMergeImpact(getProviderMergeImpact(p.id)),
         }))
     : [];
+  const survivorLabel = providerDisambigLabel(provider, allProviders);
 
   const TypeIcon =
     provider.type === "individual" ? IconStethoscope : IconBuildingHospital;
@@ -210,7 +215,11 @@ export default async function ProviderDetailPage(props: {
       {/* Merge duplicates — admin only, global operation. */}
       {isAdmin ? (
         <ProviderMergePanel
-          survivor={{ id: provider.id, name: provider.name }}
+          survivor={{
+            id: provider.id,
+            name: provider.name,
+            label: survivorLabel,
+          }}
           candidates={candidates}
         />
       ) : null}
