@@ -12,14 +12,28 @@ export default function DaylightChip({
   home,
   date,
   timezone,
+  outdoorMinutes = 0,
 }: {
   home: HomeLocation | null | undefined;
   date: string;
   timezone: string;
+  // Daylight-outdoor minutes logged that day (issue #571) — the SAME
+  // getDaylightOutdoorMinutesByDay computation the coaching observation averages.
+  // 0 → the "outdoors" line is omitted.
+  outdoorMinutes?: number;
 }) {
   if (!home) return null;
   const day = solarDay(home.lat, home.lng, date, timezone);
   if (!day) return null;
+  const outdoors =
+    outdoorMinutes > 0 ? (
+      <span
+        data-testid="daylight-outdoor-minutes"
+        className="inline-flex items-center gap-1 text-brand-600 dark:text-brand-400"
+      >
+        ☀ {outdoorMinutes} min outdoors
+      </span>
+    ) : null;
 
   if (day.polar === "day" || day.polar === "night") {
     return (
@@ -45,6 +59,7 @@ export default function DaylightChip({
         <IconSunset className="h-3.5 w-3.5 shrink-0" stroke={1.75} />
         {day.sunset}
       </span>
+      {outdoors}
     </div>
   );
 }

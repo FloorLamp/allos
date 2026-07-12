@@ -27,6 +27,7 @@ export * from "./queries/integrations";
 export * from "./queries/protocols";
 export * from "./queries/equipment";
 export * from "./queries/healthspan";
+export * from "./queries/sun";
 export * from "./queries/providers";
 // The shared, GLOBAL providers registry — not profile-scoped, but
 // re-exported here so pages read it through the familiar @/lib/queries surface.

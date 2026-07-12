@@ -9,6 +9,7 @@ import type { Protocol, FormResult, Equipment } from "@/lib/types";
 import type { OutcomeOption, ProtocolPractice } from "@/lib/queries/protocols";
 import { PRACTICE_TYPES, practiceSelectValue } from "@/lib/protocol-practice";
 import { FOOD_GROUPS } from "@/lib/food-groups";
+import type { ProtocolTemplate } from "@/lib/protocol-templates";
 
 const PRACTICE_TYPE_LABELS: Record<string, string> = {
   strength: "Strength",
@@ -27,6 +28,7 @@ export default function ProtocolForm({
   equipment,
   protocol,
   practice = null,
+  template = null,
   onDone,
 }: {
   action: (formData: FormData) => Promise<FormResult>;
@@ -34,6 +36,10 @@ export default function ProtocolForm({
   equipment: Equipment[];
   protocol?: Protocol;
   practice?: ProtocolPractice | null;
+  // A starter template (issue #571) whose defaults seed the ADD form (name, notes,
+  // outcome keys, situation, practice). Ignored in edit mode. The user edits
+  // everything before saving — a template never creates a protocol on its own.
+  template?: ProtocolTemplate | null;
   onDone?: () => void;
 }) {
   const router = useRouter();
@@ -42,7 +48,10 @@ export default function ProtocolForm({
   const editing = !!protocol;
   const [error, setError] = useState<string | null>(null);
 
-  const selected = new Set(protocol?.outcomeKeys ?? []);
+  // Edit mode uses the row's outcomes; add mode with a template pre-checks the
+  // template's outcome keys (only those the profile tracks render as options).
+  const tpl = protocol ? null : template;
+  const selected = new Set(protocol?.outcomeKeys ?? tpl?.outcomeKeys ?? []);
   const groups = Array.from(new Set(options.map((o) => o.group)));
 
   async function handle(formData: FormData) {
@@ -100,7 +109,7 @@ export default function ProtocolForm({
           id={`pr-name-${uid}`}
           name="name"
           className="input"
-          defaultValue={protocol?.name ?? ""}
+          defaultValue={protocol?.name ?? tpl?.name ?? ""}
           placeholder="e.g. Creatine 5 g/day, Sauna 4×/week"
           required
         />
@@ -171,7 +180,7 @@ export default function ProtocolForm({
           id={`pr-situation-${uid}`}
           name="situation"
           className="input"
-          defaultValue={protocol?.situation ?? ""}
+          defaultValue={protocol?.situation ?? tpl?.situation ?? ""}
           placeholder="e.g. Creatine loading — surfaces situational supplements"
         />
       </div>
@@ -216,7 +225,7 @@ export default function ProtocolForm({
               defaultValue={
                 practice
                   ? practiceSelectValue(practice.scopeKind, practice.value)
-                  : ""
+                  : (tpl?.practiceType ?? "")
               }
               data-testid="protocol-practice-type"
             >
@@ -247,7 +256,7 @@ export default function ProtocolForm({
               min={1}
               max={14}
               className="input w-20"
-              defaultValue={practice?.perWeek ?? ""}
+              defaultValue={practice?.perWeek ?? tpl?.practicePerWeek ?? ""}
               placeholder="4"
               aria-label="Sessions per week"
               data-testid="protocol-practice-per-week"
@@ -271,7 +280,7 @@ export default function ProtocolForm({
           name="notes"
           className="input"
           rows={2}
-          defaultValue={protocol?.notes ?? ""}
+          defaultValue={protocol?.notes ?? tpl?.notes ?? ""}
         />
       </div>
       {error && (

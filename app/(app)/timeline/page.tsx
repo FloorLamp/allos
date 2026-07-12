@@ -30,6 +30,7 @@ import {
   type TimelineCategory,
   type TimelineEvent,
 } from "@/lib/timeline";
+import { getDaylightOutdoorMinutesByDay } from "@/lib/queries";
 import {
   groupTimelineDays,
   normalizeTimelineRange,
@@ -291,6 +292,15 @@ export default async function TimelinePage(props: {
     includeTrainingEvents: !trainingRestricted,
   });
   const days = groupTimelineDays(events);
+  // Daylight-outdoor minutes per visible day (issue #571) — the same
+  // getDaylightOutdoorMinutesByDay computation the coaching observation averages.
+  // One query over the rendered days; empty when no home location is set.
+  const daylightOutdoor = home
+    ? getDaylightOutdoorMinutesByDay(
+        profile.id,
+        days.map((d) => d.date)
+      )
+    : new Map<string, number>();
   const singleDaySelected = Boolean(
     range.from && range.to && range.from === range.to
   );
@@ -430,6 +440,7 @@ export default async function TimelinePage(props: {
                     home={home}
                     date={day.date}
                     timezone={profileTimezone}
+                    outdoorMinutes={daylightOutdoor.get(day.date) ?? 0}
                   />
                 </div>
                 <div className="space-y-3 pl-4">
