@@ -190,8 +190,11 @@ The app logs to stdout/stderr via a small leveled logger (`LOG_LEVEL`,
 `LOG_FORMAT`), so `docker logs` captures everything. Every AI call (extraction,
 suggestions, insights) and its outcome is also appended to
 `data/logs/ai.jsonl` — readable directly on the host and streamed live in
-**Settings → AI logs**. Failures surface there (and inline where you triggered
-them), not just in the console.
+**Settings → AI logs**, now with **token usage** (input / output) per call and a
+**today / 7-day rollup by feature × profile** so the admin whose API key everyone
+spends can see where it goes (tokens only — no dollar math; the model is recorded,
+so compute cost from your provider's prices). Failures surface there (and inline
+where you triggered them), not just in the console.
 
 For debugging integration syncs, each sync can capture the raw provider payload
 (the Health Connect POST body, the Strava activity JSON, the Oura sleep/workout JSON) under
@@ -220,6 +223,17 @@ Beyond the single-day insight, two AI **narratives** read across your history:
 Both are stored (like daily insights) and regenerate on demand. Without a key
 they fall back to a deterministic offline summary. Their per-profile daily cap is
 `AI_DAILY_NARRATIVE_LIMIT` (default 30).
+
+**Recommendation runs.** Instead of hitting Generate by hand, you can put the
+proactive AI features (supplement suggestions + a refreshed daily insight) on a
+**cadence** per profile — **off**, **on document upload only** (the default),
+**daily**, **weekly**, or **monthly** — under **Settings → Profile → AI
+recommendations** (admin-editable; the admin owns the API key). A scheduled run
+fires lazily on a page view once the period has elapsed, and only when the
+underlying data actually changed (an unchanged input signature skips the run,
+logged in **Settings → AI logs**). The admin sets a per-profile **max runs per
+day** ceiling on **Settings → Server**. Runs happen only in the web app, never the
+notification tick.
 
 Uploaded medical documents (**Data → Import**) are extracted into
 structured records by the same API — not just labs, vitals, and immunizations but

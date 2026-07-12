@@ -23,6 +23,25 @@ test.describe("AI logs access gate (#391)", () => {
     await expect(page.getByText(/\d+ events/)).toBeVisible();
   });
 
+  // Issue #410: the AI-logs tab carries a token-usage rollup (calls + tokens by
+  // feature × profile, today / 7-day). The e2e DB makes no AI calls (no key), so
+  // the rollup renders its empty state and the honest "no dollar math" note — but
+  // the surface, its testid, and the per-event Tokens column all exist.
+  test("shows the token-usage rollup surface", async ({ page }) => {
+    test.slow();
+
+    await page.goto("/settings/logs");
+    const rollup = page.getByTestId("ai-usage-rollup");
+    await expect(rollup).toBeVisible();
+    await expect(rollup.getByText("Token usage")).toBeVisible();
+    // No AI usage in the seeded fixture → the empty state.
+    await expect(
+      rollup.getByText(/No AI usage recorded in the last 7 days\./)
+    ).toBeVisible();
+    // Tokens are labeled as tokens, with no dollar figures.
+    await expect(page.getByText(/No dollar figures/)).toBeVisible();
+  });
+
   test("a member hitting the AI logs URL is redirected out", async ({
     browser,
   }) => {

@@ -35,9 +35,13 @@ export async function saveAiSettings(formData: FormData) {
     const v = formData.get(key);
     return v === "1" || v === "on";
   };
+  // The clamp is applied inside setAiPrefs (pure clampMaxRunsPerDay), so a blank/
+  // bad value falls back to the default 1 rather than disabling the backstop.
   setAiPrefs({
     autoSupplementSuggestions: on("auto_supplement_suggestions"),
-    autoInsights: on("auto_insights"),
+    recommendationMaxRunsPerDay: Number(
+      formData.get("recommendation_max_runs_per_day")
+    ),
   });
   revalidatePath("/settings/server");
 }

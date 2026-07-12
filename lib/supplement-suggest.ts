@@ -31,7 +31,7 @@ import {
 import { getAiPrefs, getUserSex, getUserAge } from "./settings";
 import { AI_MODEL, aiConfigured, createAiClient } from "./ai-client";
 import { createLogger } from "./log";
-import { recordAiEvent, capDetail, LOG_PROMPTS } from "./ai-log";
+import { recordAiEvent, capDetail, LOG_PROMPTS, usageFrom } from "./ai-log";
 import { checkAndIncrementAiUsage, insightDailyLimit } from "./ai-usage";
 import { strOrNull } from "./parse";
 
@@ -396,6 +396,7 @@ async function runModel(
       status: "ok",
       model: MODEL,
       durationMs: Date.now() - startedAt,
+      usage: usageFrom(msg),
       detail: capDetail(
         `${drafts.length} suggestion(s): ${drafts.map((d) => d.name).join(", ")}` +
           (dropped.length

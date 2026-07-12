@@ -12,7 +12,7 @@ import {
 } from "./queries";
 
 import { AI_MODEL as MODEL, aiConfigured, createAiClient } from "./ai-client";
-import { recordAiEvent, capDetail, LOG_PROMPTS } from "./ai-log";
+import { recordAiEvent, capDetail, LOG_PROMPTS, usageFrom } from "./ai-log";
 import { checkAndIncrementAiUsage, insightDailyLimit } from "./ai-usage";
 import { recentPRs, recentCardioPRs } from "./coaching";
 import {
@@ -228,6 +228,7 @@ export async function generateInsight(
       status: "ok",
       model: MODEL,
       durationMs: Date.now() - startedAt,
+      usage: usageFrom(msg),
       detail: capDetail(`${date}` + (LOG_PROMPTS ? `\n${text}` : "")),
     });
     return {

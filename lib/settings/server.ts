@@ -2,6 +2,10 @@ import { DEFAULT_TIMEZONE, isValidTimezone } from "../timezone";
 import { clampAuditRetentionMonths } from "../retention";
 import { db, writeTx } from "../db";
 import { getSetting, setSetting } from "./kv";
+import {
+  clampMaxRunsPerDay,
+  DEFAULT_MAX_RUNS_PER_DAY,
+} from "../recommendation-run";
 
 // Public base URL of the app (e.g. behind a tunnel or reverse proxy). Global —
 // shared by anything that hands an externally reachable URL to a third party:
@@ -108,21 +112,23 @@ export function setAuditRetentionMonths(months: number): void {
   );
 }
 
-// AI automation toggles, stored app-globally in the settings table.
+// AI automation knobs, stored app-globally in the settings table.
 export interface AiPrefs {
   // Auto-generate supplement suggestions when new/changed biomarkers are
-  // imported (see autoSuggestFromBiomarkers). On by default.
+  // imported (see autoSuggestFromBiomarkers). On by default. This is the
+  // document-imported trigger's enable for the supplement half of a run (#424).
   autoSupplementSuggestions: boolean;
-  // Auto-generate insights. Not consumed anywhere yet — stored so the UI and
-  // a future trigger agree on the key. Off by default.
-  autoInsights: boolean;
+  // The global ceiling on AI recommendation runs per profile per day (issue
+  // #424). Scheduled cadence already caps at 1/day; this backstops upload/manual
+  // bursts. Admin-set; clamped 1..24.
+  recommendationMaxRunsPerDay: number;
 }
 
 export function getAiPrefs(): AiPrefs {
   return {
     autoSupplementSuggestions:
       (getSetting("ai_auto_supplement_suggestions") ?? "1") === "1",
-    autoInsights: getSetting("ai_auto_insights") === "1",
+    recommendationMaxRunsPerDay: getRecommendationMaxRunsPerDay(),
   };
 }
 
@@ -131,5 +137,19 @@ export function setAiPrefs(prefs: AiPrefs): void {
     "ai_auto_supplement_suggestions",
     prefs.autoSupplementSuggestions ? "1" : "0"
   );
-  setSetting("ai_auto_insights", prefs.autoInsights ? "1" : "0");
+  setRecommendationMaxRunsPerDay(prefs.recommendationMaxRunsPerDay);
+}
+
+// The global per-profile daily cap on recommendation runs (issue #424). Stored
+// app-globally; read/clamped through the pure clampMaxRunsPerDay so a bad stored
+// value can never disable the backstop. Default 1.
+export function getRecommendationMaxRunsPerDay(): number {
+  const raw = getSetting("recommendation_max_runs_per_day");
+  return clampMaxRunsPerDay(
+    raw != null ? Number(raw) : DEFAULT_MAX_RUNS_PER_DAY
+  );
+}
+
+export function setRecommendationMaxRunsPerDay(n: number): void {
+  setSetting("recommendation_max_runs_per_day", String(clampMaxRunsPerDay(n)));
 }

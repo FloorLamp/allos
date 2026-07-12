@@ -36,6 +36,8 @@ import { collectCoachingFindings } from "@/lib/rule-findings";
 import { pickNextAppointment } from "@/lib/household";
 import { activeByKey, activeFindings, coachingDedupeKey } from "@/lib/findings";
 import { requireSession, getAccessibleProfiles } from "@/lib/auth";
+import { withAiLogContext } from "@/lib/ai-log";
+import { runRecommendation } from "@/lib/recommendation-engine";
 import { isTrainingRestricted } from "@/lib/age-gate";
 import { isBioAgeHiddenForAge } from "@/lib/bio-age";
 import {
@@ -109,6 +111,15 @@ export default async function Dashboard() {
   const restricted = isTrainingRestricted(profile.id);
   const on = today(profile.id);
   const units = getUnitPrefs(login.id);
+
+  // Lazy scheduled AI recommendation run (issue #424). The dashboard is the
+  // natural landing surface, so it's where a due scheduled run kicks off —
+  // fire-and-forget, never blocking render, and a hard no-op unless the profile's
+  // cadence is a calendar one AND its period has elapsed AND the inputs changed.
+  // Wrapped in the AI-log context so the run's events carry the acting ids.
+  void withAiLogContext({ loginId: login.id, profileId: profile.id }, () =>
+    runRecommendation(profile.id, { trigger: "scheduled", loginId: login.id })
+  );
 
   // Tier 1 — the "Needs attention" hero. Pinned + non-hideable, so it's computed
   // unconditionally (outside the customizable grid). Renders the act-now SUBSET of

@@ -70,6 +70,7 @@ export default function LogsStream({ initial }: { initial: AiEvent[] }) {
                   <th className="td">Status</th>
                   <th className="td">Model</th>
                   <th className="td">Duration</th>
+                  <th className="td">Tokens</th>
                   <th className="td">Detail / error</th>
                 </tr>
               </thead>
@@ -100,6 +101,11 @@ export default function LogsStream({ initial }: { initial: AiEvent[] }) {
                     <td className="td whitespace-nowrap text-slate-500 dark:text-slate-400">
                       {e.durationMs != null
                         ? `${(e.durationMs / 1000).toFixed(1)}s`
+                        : "—"}
+                    </td>
+                    <td className="td whitespace-nowrap tabular-nums text-slate-500 dark:text-slate-400">
+                      {e.usage
+                        ? `${e.usage.in.toLocaleString()} / ${e.usage.out.toLocaleString()}`
                         : "—"}
                     </td>
                     <td className="td">

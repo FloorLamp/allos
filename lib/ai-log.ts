@@ -40,7 +40,11 @@ export type AiFeature =
   // A period recap narrative (weekly/monthly) or a lab-trend interpretation —
   // the AI narrative layer (issue #20). Both narrate over already-gathered,
   // structured findings, so they share one feature tag in the audit log.
-  | "narrative";
+  | "narrative"
+  // A cadence-driven recommendation RUN (issue #424): the run-level audit event.
+  // The features a run invokes (insight, auto-suggest) still log their own events;
+  // this one records the scheduling decision (ran / skipped / capped).
+  | "recommendation";
 export type AiStatus = "ok" | "skipped" | "failed";
 
 export interface AiEvent {
@@ -60,6 +64,26 @@ export interface AiEvent {
   // logs tab is admin-only, so members never read another profile's events.
   loginId?: number | null;
   profileId?: number | null;
+  // Token usage for the call (issue #410), when the SDK reports it: `in` =
+  // input_tokens, `out` = output_tokens. Absent on skipped/failed-before-dispatch
+  // events and on run-level events that make no direct Claude call. Honestly
+  // labeled as tokens — no dollar math (prices drift; the model is recorded, so
+  // anyone who wants dollars can compute them).
+  usage?: { in: number; out: number };
+}
+
+// Normalize an SDK message's usage block into the AiEvent shape, or undefined when
+// the message/usage is absent. Kept here so every call site is a one-liner and the
+// field shape stays in one place.
+export function usageFrom(
+  msg:
+    | { usage?: { input_tokens?: number; output_tokens?: number } }
+    | null
+    | undefined
+): { in: number; out: number } | undefined {
+  const u = msg?.usage;
+  if (!u) return undefined;
+  return { in: u.input_tokens ?? 0, out: u.output_tokens ?? 0 };
 }
 
 // Ambient login/profile for AI-log tagging. An AI call deep in lib/ can't see

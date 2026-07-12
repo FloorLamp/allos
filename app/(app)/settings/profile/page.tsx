@@ -18,6 +18,7 @@ import {
   getRiskAttributes,
   getMaxHrOverride,
   getZone2WeeklyTargetMin,
+  getRecommendationCadence,
 } from "@/lib/settings";
 import { inferWorkoutSchedule } from "@/lib/queries";
 import { requireSession } from "@/lib/auth";
@@ -34,6 +35,7 @@ import EmergencyCardSettings from "./EmergencyCardSettings";
 import SmokingHistoryForm from "./SmokingHistoryForm";
 import RiskFactorsForm from "./RiskFactorsForm";
 import TrainingZonesForm from "./TrainingZonesForm";
+import RecommendationCadenceForm from "./RecommendationCadenceForm";
 
 export const dynamic = "force-dynamic";
 
@@ -91,6 +93,10 @@ export default async function ProfileSettingsPage() {
       )}
       <SmokingHistoryForm history={getSmokingHistory(profile.id)} />
       <RiskFactorsForm attributes={getRiskAttributes(profile.id)} />
+      <RecommendationCadenceForm
+        cadence={getRecommendationCadence(profile.id)}
+        isAdmin={isAdmin}
+      />
       {!demoRestricted && (
         <>
           <ProfileNotificationSettings
