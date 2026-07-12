@@ -32,6 +32,17 @@ function createDb(): Database.Database {
     fs.mkdirSync(path.dirname(dbPath), { recursive: true });
   }
   const db = new Database(dbPath);
+  // busy_timeout MUST be the FIRST pragma set — before journal_mode = WAL (issue
+  // #581). Parallel `next build` workers all open this same file on a cold boot and
+  // race to establish WAL; switching journal mode to WAL takes a database lock, and
+  // a statement issued BEFORE busy_timeout is installed does NOT wait on a competing
+  // worker's lock — it fails the caller with a raw SQLITE_BUSY ("database is
+  // locked"). Setting busy_timeout first installs the busy handler so EVERY
+  // subsequent lock acquisition (the WAL switch, the migration/boot writes) waits
+  // out a peer instead of throwing. A generous timeout lets a writer wait out
+  // another's write lock rather than failing an IMMEDIATE transaction (see
+  // rebuildTable / runBootTx).
+  db.pragma("busy_timeout = 10000");
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
   // synchronous=NORMAL is the recommended companion to WAL: commits no longer
@@ -42,10 +53,6 @@ function createDb(): Database.Database {
   // transient sorters / temp b-trees off disk.
   db.pragma("synchronous = NORMAL");
   db.pragma("temp_store = MEMORY");
-  // Parallel `next build` workers each open the DB and run migrate() at once; a
-  // generous busy timeout lets a writer wait out another's write lock instead of
-  // failing an IMMEDIATE transaction with SQLITE_BUSY (see rebuildTable).
-  db.pragma("busy_timeout = 10000");
   // Apply the versioned schema migrations (lib/migrations/runner), then the
   // per-boot tasks that must re-run on every process start (boot-tasks).
   runMigrations(db);
