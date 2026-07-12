@@ -267,7 +267,12 @@ test.describe("preventive care in Upcoming (issues #82 + #86 + #85)", () => {
     await expect(page.getByLabel("Kind (optional)")).toHaveValue("screening");
 
     // Save the (still-scheduled) visit — the date is prefilled to the suggested day.
-    await page.getByRole("button", { name: "Add", exact: true }).click();
+    // Scoped to the Upcoming (appointments) section: the merged Visits page (#288)
+    // renders a second "Add" in the Past (encounter) form.
+    await page
+      .getByTestId("visits-upcoming")
+      .getByRole("button", { name: "Add", exact: true })
+      .click();
     await expect(page.getByText("Appointment saved")).toBeVisible();
 
     // Back on Upcoming, the matching-kind booking quiets the preventive item to a
