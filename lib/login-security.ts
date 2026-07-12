@@ -4,6 +4,8 @@
 // DB-backed and lives in the login action, with its pure decision logic in
 // lib/login-lockout.ts.)
 
+import type { AppRoute } from "./hrefs";
+
 // Validate a `?next=` redirect target down to a safe, same-origin relative path.
 // Must be a non-empty path that starts with a single "/" (not "//", which the
 // browser reads as a protocol-relative URL to another host) and carries no
@@ -18,8 +20,16 @@ export function isSafeNextPath(next: unknown): next is string {
   return true;
 }
 
-export function safeNextPath(next: unknown, fallback = "/"): string {
-  return isSafeNextPath(next) ? next : fallback;
+// Returns a validated internal redirect target as an `AppRoute` (the typed-routes
+// alias) so it feeds `redirect()`/`<Link>` without a callsite cast. The value is
+// a runtime-sanitized same-origin path (any deep link the user was headed to),
+// which `isSafeNextPath` has already proven internal — typedRoutes can't see that
+// proof, so the widening happens here, in the one place that owns the guarantee.
+export function safeNextPath(
+  next: unknown,
+  fallback: AppRoute = "/"
+): AppRoute {
+  return isSafeNextPath(next) ? (next as AppRoute) : fallback;
 }
 
 // Normalize a request User-Agent header for storage against a session, so the

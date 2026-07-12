@@ -2,6 +2,7 @@
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { ImmunizationFilter } from "@/lib/immunization-status";
+import { currentPathHref } from "@/lib/hrefs";
 
 // Status filter for the immunizations master table. Writes the
 // choice into the `status` query param on the current path (preserving the sort
@@ -32,7 +33,7 @@ export default function ImmunizationStatusFilter({
     if (next) sp.set("status", next);
     else sp.delete("status");
     const s = sp.toString();
-    router.push(s ? `${pathname}?${s}` : pathname);
+    router.push(currentPathHref(s ? `${pathname}?${s}` : pathname));
   }
 
   return (

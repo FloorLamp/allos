@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import type { AppRoute } from "@/lib/hrefs";
 
 // The tabs follow the three settings tiers: Preferences (login), Profile
 // (active profile), and Server (global) — plus Family, AI logs, and Audit.
@@ -13,11 +14,11 @@ import { usePathname } from "next/navigation";
 //
 // Equipment used to be a tab here; it moved to its own top-level registry
 // (/equipment — issue #343), so it's no longer a settings surface.
-const BASE_TABS = [
+const BASE_TABS: { href: AppRoute; label: string }[] = [
   { href: "/settings", label: "Preferences" },
   { href: "/settings/profile", label: "Profile" },
 ];
-const ADMIN_TABS = [
+const ADMIN_TABS: { href: AppRoute; label: string }[] = [
   { href: "/settings/family", label: "Family" },
   { href: "/settings/server", label: "Server" },
   { href: "/settings/logs", label: "AI logs" },

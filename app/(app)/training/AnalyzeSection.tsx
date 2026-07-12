@@ -52,6 +52,7 @@ import ExerciseDetailPanel from "@/components/ExerciseDetailPanel";
 import LineChartCard from "@/components/LineChartCard";
 import SportDetailPanel from "@/components/SportDetailPanel";
 import AnalyzePicker from "./AnalyzePicker";
+import type { AppRoute } from "@/lib/hrefs";
 
 export default async function AnalyzeSection({
   kind,
@@ -107,7 +108,7 @@ export default async function AnalyzeSection({
     item?: string;
     metric?: string;
     range?: RangeId;
-  }) => {
+  }): AppRoute => {
     const nextKind = patch.kind ?? activeKind;
     const params = new URLSearchParams();
     params.set("tab", "analyze");

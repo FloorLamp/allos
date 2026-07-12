@@ -5,6 +5,8 @@
 // the flat hit list into the fixed domain order the palette renders. Kept free of
 // DB/React so it can be unit-tested (lib/__tests__/search-rank.test.ts).
 
+import type { AppRoute } from "./hrefs";
+
 export type SearchDomain =
   | "biomarker"
   | "document"
@@ -31,7 +33,7 @@ export interface SearchHit {
   title: string;
   // Secondary line (value/date/type/status); not used for ranking.
   subtitle: string | null;
-  href: string;
+  href: AppRoute;
   // ISO date (YYYY-MM-DD) for the recency tiebreak; null for undated hits
   // (supplements, goals, pages), which sort after dated ones at the same tier.
   date: string | null;

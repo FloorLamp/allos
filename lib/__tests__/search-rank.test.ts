@@ -15,7 +15,7 @@ function hit(over: Partial<SearchHit> & Pick<SearchHit, "title">): SearchHit {
     domain: "biomarker",
     key: `k:${over.title}`,
     subtitle: null,
-    href: "/x",
+    href: "/training",
     date: null,
     ...over,
   };

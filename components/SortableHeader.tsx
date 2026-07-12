@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { IconCaretUpFilled, IconCaretDownFilled } from "@tabler/icons-react";
 import { nextSortState, parseSortDir } from "@/lib/table-sort";
+import { currentPathHref } from "@/lib/hrefs";
 
 // A sticky table header whose label is a link that toggles sorting on `column`.
 // Clicking cycles asc → desc (and switches column when a different one is
@@ -48,7 +49,7 @@ export default function SortableHeader({
       className={`th sticky top-0 z-10 bg-white dark:bg-ink-900 ${className}`}
     >
       <Link
-        href={`${pathname}?${sp.toString()}`}
+        href={currentPathHref(`${pathname}?${sp.toString()}`)}
         className="inline-flex items-center gap-1 hover:text-brand-700 dark:hover:text-brand-400"
         aria-sort={
           active ? (dir === "asc" ? "ascending" : "descending") : "none"

@@ -1,4 +1,10 @@
 import { isRealIsoDate, shiftDateStr, zonedDateParts } from "./date";
+import {
+  biomarkerViewHref,
+  importHref,
+  protocolHref,
+  type AppRoute,
+} from "./hrefs";
 
 // Tone for a single biomarker result flag: out-of-range reads as "bad", a
 // non-optimal read as "warn", everything else neutral. Re-exported from the
@@ -32,7 +38,7 @@ export interface TimelineEvent {
   title: string;
   subtitle?: string | null;
   detail?: string | null;
-  href?: string | null;
+  href?: AppRoute | null;
   sortTime?: string | null;
   tone?: "default" | "good" | "warn" | "bad";
   meta?: string[];
@@ -105,7 +111,7 @@ export function protocolTimelineEvents(
       category: "protocol",
       title: `Started ${r.name}`,
       subtitle: "Protocol started",
-      href: `/protocols/${r.id}`,
+      href: protocolHref(r.id),
       tone: "good",
     });
     if (r.end_date) {
@@ -115,7 +121,7 @@ export function protocolTimelineEvents(
         category: "protocol",
         title: `Ended ${r.name}`,
         subtitle: "Protocol ended",
-        href: `/protocols/${r.id}`,
+        href: protocolHref(r.id),
         tone: "default",
       });
     }
@@ -174,7 +180,7 @@ export function compactList(items: string[], max = 3): string {
   return `${clean.slice(0, max).join(", ")} +${clean.length - max} more`;
 }
 
-export function journalActivityHref(activityId: number): string {
+export function journalActivityHref(activityId: number): AppRoute {
   return `/training?tab=log#activity-${activityId}`;
 }
 
@@ -248,10 +254,10 @@ export function medicalRecordHref(
   documentId: number | null,
   names: string[],
   firstName: string | null
-): string {
-  if (documentId != null) return `/import/${documentId}`;
+): AppRoute {
+  if (documentId != null) return importHref(documentId);
   if (names.length === 1 && firstName) {
-    return `/biomarkers/view?name=${encodeURIComponent(firstName)}`;
+    return biomarkerViewHref(firstName);
   }
   return "/biomarkers";
 }

@@ -18,7 +18,7 @@ function item(over: Partial<UpcomingItem> & { key: string }): UpcomingItem {
   return {
     domain: "goal",
     title: over.title ?? over.key,
-    href: "/x",
+    href: "/training",
     dueDate: null,
     ...over,
   };

@@ -31,9 +31,10 @@ import {
   type TablerIcon,
 } from "@tabler/icons-react";
 import { isRouteActive, isGroupActive, isNavLeafVisible } from "@/lib/nav";
+import type { AppRoute } from "@/lib/hrefs";
 
 type Leaf = {
-  href: string;
+  href: AppRoute;
   label: string;
   icon: TablerIcon;
   // `adminOnly` entries are dropped for non-admins. Hiding the link is cosmetic —
@@ -92,8 +93,11 @@ const RECORDS: Group = {
 // The sidebar consolidation (folding Insights → Trends "Insights" tab, Body
 // Metrics → Trends "Body" tab, and Integrations → the Import hub) trimmed three
 // standalone entries. The old routes were REMOVED outright — next.config.js
-// defines no redirects — so anything still linking one 404s; the nav-routes and
-// due-signal href guards (lib/__tests__/nav-routes.test.ts) catch that in CI.
+// defines no redirects — so anything still linking one 404s. Since #285 that
+// can't reach production: `href` here is typed `AppRoute`, and with `typedRoutes`
+// on (next.config.js) an href to a page that no longer exists is a `tsc` (⇒
+// `npm run build`) error. The nav-routes / due-signal source guards
+// (lib/__tests__/nav-routes.test.ts) remain as a redundant belt-and-braces check.
 const entries: Entry[] = [
   { href: "/", label: "Dashboard", icon: IconLayoutDashboard },
   { href: "/timeline", label: "Timeline", icon: IconTimelineEvent },

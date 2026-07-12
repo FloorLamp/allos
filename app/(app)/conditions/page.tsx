@@ -6,6 +6,7 @@ import ConditionForm from "./ConditionForm";
 import ConditionList from "./ConditionList";
 import { addCondition } from "./actions";
 import type { ConditionStatus } from "@/lib/types";
+import type { AppRoute } from "@/lib/hrefs";
 
 export const dynamic = "force-dynamic";
 
@@ -42,7 +43,7 @@ export default async function ConditionsPage(props: {
           <div className="flex flex-wrap items-center gap-2">
             {FILTERS.map((f) => {
               const isActive = active === f.key;
-              const href =
+              const href: AppRoute =
                 f.key === "all" ? "/conditions" : `/conditions?status=${f.key}`;
               return (
                 <Link

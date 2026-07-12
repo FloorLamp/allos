@@ -23,6 +23,7 @@ import {
   isLowSupply,
   DEFAULT_LOW_SUPPLY_DAYS,
 } from "../../refill";
+import { biomarkerViewHref } from "../../hrefs";
 import { refillSignalKey } from "../../refill-nudge";
 import { trainingSignalKey } from "../../workout-nudge";
 import { assessSchedule } from "../../immunization-status";
@@ -439,9 +440,7 @@ function biomarkerItems(profileId: number, today: string): UpcomingItem[] {
         flag: r.flag,
         reasons: mod.reasons,
       }),
-      href: r.canonical_name?.trim()
-        ? `/biomarkers/view?name=${encodeURIComponent(name)}`
-        : "/biomarkers",
+      href: biomarkerViewHref(r.canonical_name, r.name),
       dueDate: shiftDateStr(effectiveDate, interval),
       priority,
     });

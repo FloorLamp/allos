@@ -1,6 +1,7 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { currentPathHref } from "@/lib/hrefs";
 
 // The standard medical-record categories, matching the biomarkers filter and the
 // per-row category editor. Offering the fixed set (rather than only categories
@@ -38,7 +39,7 @@ export default function CategoryFilterSelect({
     if (next) sp.set("category", next);
     else sp.delete("category");
     const s = sp.toString();
-    router.push(s ? `${pathname}?${s}` : pathname);
+    router.push(currentPathHref(s ? `${pathname}?${s}` : pathname));
   }
 
   return (

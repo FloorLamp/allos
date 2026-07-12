@@ -28,6 +28,7 @@ export type {
   TimelineDay,
   TimelineEvent,
 } from "./timeline-format";
+import { encounterHref, immunizationHref, importHref } from "./hrefs";
 
 export interface TimelineOptions {
   category?: TimelineEvent["category"];
@@ -368,7 +369,7 @@ function collectEvents(
           ].filter((x): x is string => !!x),
           3
         ),
-        href: `/import/${d.id}`,
+        href: importHref(d.id),
         sortTime: timeFromCreatedAt(d.uploaded_at, tz),
         tone: d.extraction_status === "failed" ? "bad" : "default",
         meta: [
@@ -517,7 +518,7 @@ function collectEvents(
         title: vaccineDisplayName(i.vaccine),
         subtitle: i.dose_label,
         detail: i.notes,
-        href: `/immunizations/${i.vaccine}`,
+        href: immunizationHref(i.vaccine),
         tone: "good",
       },
       options
@@ -654,7 +655,7 @@ function collectEvents(
           3
         ),
         detail: e.diagnoses ?? e.notes,
-        href: `/encounters/${e.id}`,
+        href: encounterHref(e.id),
       },
       options
     );

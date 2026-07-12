@@ -5,6 +5,8 @@ import {
   IconCircle,
 } from "@tabler/icons-react";
 import type { IntegrationSyncEvent } from "@/lib/types";
+import type { IntegrationId } from "@/lib/types/integrations";
+import { integrationDetailHref } from "@/lib/hrefs";
 import type { ConnectedSource } from "@/lib/queries/integrations";
 import { formatSplitLabel, formatWindow } from "@/lib/integrations/sync-log";
 import RelativeTime from "@/components/RelativeTime";
@@ -60,6 +62,7 @@ function SourceCard({
   isAdmin: boolean;
 }) {
   const { latest, history } = source;
+  const reconnectHref = integrationDetailHref(source.id as IntegrationId);
   return (
     <li
       className="rounded-lg border border-black/5 p-3 dark:border-white/5"
@@ -125,12 +128,16 @@ function SourceCard({
             // not-connected card is one that was connected and later removed
             // (issue #294) OR one whose token died and flipped to needs_reauth
             // (#326): either way, offer a Reconnect link back to its setup page.
-            <Link
-              href={`/integrations/${source.id}`}
-              className="text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
-            >
-              Reconnect {source.name} →
-            </Link>
+            // A connectable pull source always has a detail page (integrationDetailHref
+            // only returns null for the planned Garmin, which can't sync).
+            reconnectHref && (
+              <Link
+                href={reconnectHref}
+                className="text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
+              >
+                Reconnect {source.name} →
+              </Link>
+            )
           )
         ) : (
           // Push-only providers (Health Connect) can't be pulled on demand — the

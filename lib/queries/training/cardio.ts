@@ -1,4 +1,6 @@
 import { speedKmh } from "../../coaching";
+import { journalActivityHref } from "../../timeline-format";
+import type { AppRoute } from "../../hrefs";
 import { startOfWeekStr } from "../../date";
 import { formatMinutes } from "../../duration";
 import { formatLongDate } from "../../format-date";
@@ -13,7 +15,7 @@ import { CARDIO_PALETTE, cache, effortEntries } from "./common";
 // preformatted (units applied server-side) so the client panel needs no units.
 export interface CardioSessionSummary {
   date: string;
-  href: string;
+  href: AppRoute;
   text: string;
 }
 
@@ -115,7 +117,7 @@ export const getCardioByActivity = cache(function getCardioByActivity(
     // Newest-first recent list (entries are ascending, so prepend).
     cur.recent.unshift({
       date: formatLongDate(e.date),
-      href: `/training?tab=log#activity-${e.activityId}`,
+      href: journalActivityHref(e.activityId),
       text:
         dist > 0
           ? `${fmtDistance(dist, unit)} · ${formatMinutes(dur || null)}`
@@ -273,7 +275,7 @@ export function getSportByActivity(
     // Newest-first recent list (entries are ascending, so prepend).
     cur.recent.unshift({
       date: formatLongDate(e.date),
-      href: `/training?tab=log#activity-${e.activityId}`,
+      href: journalActivityHref(e.activityId),
       text: formatMinutes(dur || null),
     });
   }

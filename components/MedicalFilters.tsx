@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { IconX } from "@tabler/icons-react";
+import type { AppRoute } from "@/lib/hrefs";
 import RecordSearch from "./RecordSearch";
 import RangeFilterSelect from "./RangeFilterSelect";
 import CategoryFilterSelect from "./CategoryFilterSelect";
@@ -30,7 +31,7 @@ export default function MedicalFilters({
 
   // Merge overrides onto the current query string so unrelated params (e.g.
   // sort/dir) survive; an explicit `undefined` clears that key.
-  function qs(overrides: Record<string, string | undefined>): string {
+  function qs(overrides: Record<string, string | undefined>): AppRoute {
     const sp = new URLSearchParams(searchParams.toString());
     for (const [k, v] of Object.entries(overrides)) {
       if (v) sp.set(k, v);

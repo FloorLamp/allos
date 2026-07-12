@@ -23,6 +23,7 @@ import {
   getUserReproductiveStatus,
 } from "./settings";
 import { canonicalGroupKey, groupByCanonicalName } from "./biomarker-group";
+import { biomarkerViewHref } from "./hrefs";
 import type { MedicalRecord, ReproductiveStatus, Sex } from "./types";
 import {
   referenceRange,
@@ -131,7 +132,7 @@ function buildInputFromSeries(
     retestDays: retestIntervalDays(retestDaysForBiomarker(canonical)),
     velocityPerYear: velocityPerYearForBiomarker(canonical),
     today,
-    href: `/biomarkers/view?name=${encodeURIComponent(canonical)}`,
+    href: biomarkerViewHref(canonical),
   };
 }
 

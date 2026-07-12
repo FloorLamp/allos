@@ -23,7 +23,7 @@ function up(
   return {
     domain: "dose",
     title: "Item",
-    href: "/x",
+    href: "/training",
     dueDate: null,
     ...partial,
   } as UpcomingItem;

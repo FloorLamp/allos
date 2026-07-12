@@ -1,6 +1,7 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { currentPathHref } from "@/lib/hrefs";
 
 // The Compare picker for the Trends hub: two series
 // dropdowns (A + B) plus a "normalize" toggle, writing their choices into the
@@ -32,7 +33,9 @@ export default function CompareControls({
     if (value) sp.set(key, value);
     else sp.delete(key);
     const s = sp.toString();
-    router.replace(s ? `${pathname}?${s}` : pathname, { scroll: false });
+    router.replace(currentPathHref(s ? `${pathname}?${s}` : pathname), {
+      scroll: false,
+    });
   }
 
   const renderOptions = () => (

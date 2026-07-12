@@ -13,6 +13,7 @@
 // due-text exactly like immunizationItems.
 
 import type { PreventiveAssessment } from "./preventive-status";
+import type { AppRoute } from "./hrefs";
 import type { UpcomingItem, UrgencyBand } from "./upcoming";
 import {
   appointmentKindForRule,
@@ -31,7 +32,7 @@ import { PREVENTIVE_CONCEPT_MAP } from "./preventive-concept-map";
 export function preventiveHref(
   kind: PreventiveAssessment["kind"],
   ruleKey: string
-): string {
+): AppRoute {
   if (kind === "visit") return "/encounters";
   const matcher = PREVENTIVE_CONCEPT_MAP.find((m) => m.ruleKey === ruleKey);
   if (!matcher) return "/profile";
@@ -55,7 +56,7 @@ export function preventiveSignalKey(
 // the appointments page's create form, focused (?new=1), seeded with the rule name
 // as the title, the mapped visit kind, and a suggested date. The appointments page
 // reads these query params to pre-fill the form.
-function bookHrefForRule(a: PreventiveAssessment, today: string): string {
+function bookHrefForRule(a: PreventiveAssessment, today: string): AppRoute {
   const kind = appointmentKindForRule(a.key);
   const params = new URLSearchParams({ new: "1", title: a.name });
   if (kind) params.set("kind", kind);

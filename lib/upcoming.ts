@@ -5,6 +5,7 @@
 // and sorts them. Keeping the banding/sorting here (not inline in the page) means
 // it's unit-tested in lib/__tests__ and the page stays a thin composition.
 
+import type { AppRoute } from "./hrefs";
 import { daysBetweenDateStr, shiftDateStr } from "./date";
 import { daysRemainingLabel } from "./format-date";
 import { compareSortHint } from "./dose-order";
@@ -104,7 +105,7 @@ export interface UpcomingItem {
   title: string;
   // Optional secondary context line (dosage, last-tested date, progress…).
   detail?: string | null;
-  href: string;
+  href: AppRoute;
   // Due date as YYYY-MM-DD. Null means "due now / no specific calendar date"
   // (e.g. a scheduled dose, or a status-driven signal), which bands and sorts as
   // today unless `band` is set.
@@ -141,7 +142,7 @@ export interface UpcomingItem {
   // Preventive items only (issue #85): the prefilled new-appointment URL for the
   // "Book" CTA (title + kind + suggested date as query params). Absent once a
   // matching visit is already scheduled.
-  bookHref?: string;
+  bookHref?: AppRoute;
   // Preventive items only (issue #85): true when a FUTURE matching-kind appointment
   // is already booked, so the row renders a quiet "Scheduled" state (links to the
   // appointment) instead of nagging.

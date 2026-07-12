@@ -34,7 +34,7 @@ describe("isSafeNextPath / safeNextPath", () => {
   it("falls back when unsafe", () => {
     expect(safeNextPath("//evil.com")).toBe("/");
     expect(safeNextPath("/ok")).toBe("/ok");
-    expect(safeNextPath(undefined, "/home")).toBe("/home");
+    expect(safeNextPath(undefined, "/training")).toBe("/training");
   });
 });
 

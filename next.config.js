@@ -70,6 +70,13 @@ const nextConfig = {
   // Graduated out of `experimental` in Next 15 (was
   // experimental.serverComponentsExternalPackages).
   serverExternalPackages: ["better-sqlite3"],
+  // Statically typed links (issue #285): Next generates a `Route` type from the
+  // real `app/` tree, so an invalid pathname in any `<Link href>` — or in any
+  // href-carrying field typed `AppRoute` (see lib/hrefs.ts) — fails `tsc`, and
+  // `npm run build` is the CI/deploy gate. Stable top-level config in Next 16
+  // (was `experimental.typedRoutes`). This is what makes a dead route (a href to
+  // a page.tsx that was removed in a consolidation) impossible by construction.
+  typedRoutes: true,
   experimental: {
     // Tree-shake barrel imports: only the icon/chart pieces actually used are
     // pulled into each route's bundle (Next rewrites `import { X } from "pkg"`

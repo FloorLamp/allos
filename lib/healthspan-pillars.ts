@@ -17,6 +17,7 @@ import {
   type FitnessPercentile,
 } from "./fitness-norms";
 import { bioAgeDeltaPhrase, type BioAgeDelta } from "./bio-age";
+import type { AppRoute } from "./hrefs";
 import {
   strengthLevelLabel,
   strengthTone,
@@ -87,7 +88,7 @@ export interface Pillar {
   tone: PillarTone;
   trend: PillarTrend | null;
   // Deep-link to the pillar's detail surface.
-  href: string;
+  href: AppRoute;
 }
 
 // The inputs a caller (the query seam) supplies. Every field is OPTIONAL: an

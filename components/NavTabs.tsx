@@ -1,6 +1,7 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { currentPathHref } from "@/lib/hrefs";
 
 // Navigation-driven tab strip. Unlike `Tabs` (which mounts every panel and
 // toggles visibility client-side), NavTabs renders a strip of tab buttons and a
@@ -40,7 +41,9 @@ export default function NavTabs({
     params.set(paramKey, id);
     // replace (not push) to avoid stacking history on every tab click; keep the
     // scroll position so switching tabs doesn't jump to the top.
-    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    router.replace(currentPathHref(`${pathname}?${params.toString()}`), {
+      scroll: false,
+    });
   }
 
   return (

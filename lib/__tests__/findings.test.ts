@@ -62,7 +62,7 @@ describe("upcomingToFinding", () => {
       key: "goal:3",
       domain: "goal",
       title: "Run a 10k",
-      href: "/goals",
+      href: "/training?tab=goals",
       dueDate: "2026-08-01",
     };
     expect(upcomingToFinding(item).detail).toBeNull();

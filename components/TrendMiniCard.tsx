@@ -5,6 +5,7 @@ import LineChartCard from "./LineChartCard";
 import { round } from "@/lib/units";
 import { robustSeriesSummary } from "@/lib/trends-digest";
 import { biomarkerAxisDomain } from "@/lib/reference-range";
+import type { AppRoute } from "@/lib/hrefs";
 
 // A compact trend tile for the Trends hub's Overview grid: a linked title, the
 // latest value with a net-change badge over the visible window, and a small
@@ -33,7 +34,7 @@ export default function TrendMiniCard({
   applyBiomarkerDomain = false,
 }: {
   title: string;
-  href: string;
+  href: AppRoute;
   data: { date: string; value: number | null }[];
   label: string;
   unit?: string;

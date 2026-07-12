@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { currentPathHref } from "@/lib/hrefs";
 
 // Session-storage key remembering the last-chosen range filter, so it carries
 // across the records browser and the per-document subpages within a session.
@@ -31,7 +32,7 @@ export default function RangeFilterSelect({ value }: { value?: string }) {
     if (saved === "oor" || saved === "nonoptimal") {
       const sp = new URLSearchParams(searchParams.toString());
       sp.set("range", saved);
-      router.replace(`${pathname}?${sp.toString()}`);
+      router.replace(currentPathHref(`${pathname}?${sp.toString()}`));
     }
     // Mount-only: restore once, not on every param change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -47,7 +48,7 @@ export default function RangeFilterSelect({ value }: { value?: string }) {
       sessionStorage.removeItem(STORAGE_KEY);
     }
     const s = sp.toString();
-    router.push(s ? `${pathname}?${s}` : pathname);
+    router.push(currentPathHref(s ? `${pathname}?${s}` : pathname));
   }
 
   return (

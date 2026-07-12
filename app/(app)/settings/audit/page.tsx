@@ -8,6 +8,7 @@ import {
   type AuditFilters,
 } from "@/lib/audit-query";
 import { AUDIT_PAGE_SIZE, clampPage, pageCount } from "@/lib/audit-actions";
+import type { AppRoute } from "@/lib/hrefs";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +27,7 @@ function intOrNull(v: string | undefined): number | null {
 }
 
 // Build the querystring for a target page, preserving the active filters.
-function pageHref(sp: SearchParams, page: number): string {
+function pageHref(sp: SearchParams, page: number): AppRoute {
   const q = new URLSearchParams();
   if (sp.login) q.set("login", sp.login);
   if (sp.action) q.set("action", sp.action);

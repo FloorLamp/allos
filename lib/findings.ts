@@ -35,6 +35,7 @@ import {
   bandForDays,
 } from "./upcoming";
 import type { CoachingTone, Recommendation, PR, CardioPR } from "./coaching";
+import type { AppRoute } from "./hrefs";
 import type { TrendItem } from "./trends-digest";
 import type { WeightUnit, DistanceUnit } from "./settings";
 import { fmtWeight, fmtDistance, fmtKmh } from "./units";
@@ -70,7 +71,7 @@ export interface Finding {
   // Optional supporting evidence (the number/hint behind the finding) for surfaces
   // that show a rationale line; opaque to the envelope.
   evidence?: string | null;
-  actionHref?: string;
+  actionHref?: AppRoute;
   actionLabel?: string;
   // ---- Banding (Upcoming only) ----
   // Due date as YYYY-MM-DD; null / omitted = due now / no calendar date.

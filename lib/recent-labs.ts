@@ -1,5 +1,6 @@
 import { isNonOptimal, isOutOfRange } from "./reference-range";
 import type { MedicalCategory, MedicalFlag, MedicalRecord } from "./types";
+import { biomarkerViewHref, type AppRoute } from "./hrefs";
 
 // Which medical-record categories count as "labs" for the recent-labs surfaces:
 // numeric lab panels and canonical biomarkers, not vitals/scans/prescriptions.
@@ -13,7 +14,7 @@ export interface RecentLabRow {
   unit: string | null;
   flag: MedicalFlag | null;
   date: string;
-  href: string;
+  href: AppRoute;
 }
 
 // The subset of a medical record the highlight selection reads. `getMedicalRecords`
@@ -59,9 +60,7 @@ export function recentLabHighlights(
         unit: r.unit,
         flag: r.flag,
         date: r.date,
-        href: r.canonical_name?.trim()
-          ? `/biomarkers/view?name=${encodeURIComponent(name)}`
-          : "/biomarkers",
+        href: biomarkerViewHref(r.canonical_name, r.name),
       };
     });
 }

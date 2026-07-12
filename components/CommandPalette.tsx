@@ -38,6 +38,7 @@ import {
 import { matchPaletteActions, type PaletteAction } from "@/lib/palette-actions";
 import { parseQuickLog, type QuickLogWeight } from "@/lib/palette-quick-log";
 import type { WeightUnit } from "@/lib/settings";
+import type { AppRoute } from "@/lib/hrefs";
 
 // Global command palette (extended for create actions in #29).
 // Mounted once from the app layout; renders nothing until opened by Cmd/Ctrl-K or
@@ -224,7 +225,7 @@ export default function CommandPalette({
   const close = useCallback(() => setOpen(false), []);
 
   const go = useCallback(
-    (href: string) => {
+    (href: AppRoute) => {
       close();
       router.push(href);
     },
@@ -465,7 +466,7 @@ function SearchResults({
   base: number;
   highlight: number;
   setHighlight: (i: number) => void;
-  onPick: (href: string) => void;
+  onPick: (href: AppRoute) => void;
   rowClass: (active: boolean) => string;
 }) {
   let flatIndex = base - 1;

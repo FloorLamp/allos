@@ -22,6 +22,7 @@ import SubmitButton from "@/components/SubmitButton";
 import StarredBiomarkers from "@/components/StarredBiomarkers";
 import TrajectoryFindings from "./TrajectoryFindings";
 import { generateLabTrend } from "./actions";
+import type { AppRoute } from "@/lib/hrefs";
 
 export type BiomarkerFlagFilter = "oor" | "nonoptimal";
 
@@ -40,7 +41,7 @@ export default async function BiomarkersSection({
   range: DateRange;
   flag?: BiomarkerFlagFilter;
   panel?: string;
-  hrefFor: (opts: { flag?: BiomarkerFlagFilter; panel?: string }) => string;
+  hrefFor: (opts: { flag?: BiomarkerFlagFilter; panel?: string }) => AppRoute;
 }) {
   const { profile } = await requireSession();
   const now = today(profile.id);

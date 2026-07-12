@@ -16,6 +16,7 @@ import {
   type BioAgeDirection,
 } from "@/lib/bio-age";
 import { formatLongDate } from "@/lib/format-date";
+import { biomarkerViewHref } from "@/lib/hrefs";
 
 // The biological-age hero (issue #209). Surfaces the derived PhenoAge index (#157)
 // as a headline "how am I aging" result rather than a buried table row: the
@@ -28,8 +29,7 @@ import { formatLongDate } from "@/lib/format-date";
 // an adult population model). Self-contained so it drops in above the Biomarkers
 // table with no props.
 
-const BIOMARKER_VIEW = (name: string) =>
-  `/biomarkers/view?name=${encodeURIComponent(name)}`;
+const BIOMARKER_VIEW = (name: string) => biomarkerViewHref(name);
 
 // Delta colour by direction — younger is the good direction.
 const DELTA_CLASS: Record<BioAgeDirection, string> = {
