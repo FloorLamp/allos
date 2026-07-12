@@ -175,7 +175,14 @@ export default async function BiomarkersSection({
                   r.canonical_name?.trim() ? r.canonical_name : r.name
                 ).map(({ row: r, isGroupStart, isGroupEnd }) => {
                   const stale =
-                    !!r.is_latest && isBiomarkerStale(r.date, r.category, now);
+                    !!r.is_latest &&
+                    isBiomarkerStale(r.date, r.category, now, undefined, {
+                      name: r.canonical_name?.trim() || r.name,
+                      flag: r.flag,
+                      value: r.value,
+                      notes: r.notes,
+                      reference: r.reference_range,
+                    });
                   const ageDays = daysBetween(r.date, now);
                   const relative =
                     ageDays <= 0 ? "today" : `${humanizeAge(ageDays)} ago`;

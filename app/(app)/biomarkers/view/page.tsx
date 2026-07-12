@@ -358,11 +358,21 @@ export default async function BiomarkerDetailPage(props: {
     age
   );
 
-  // Staleness: most biomarkers want a yearly retest; genomics never go stale.
+  // Staleness: most biomarkers want a yearly retest; genomics never go stale, and an
+  // immune-positive durable-immunity titer (hep A/B surface Ab, MMR/varicella IgG)
+  // never goes stale either (#516).
   const stale = isBiomarkerStale(
     latest.date,
     latest.category,
-    today(profile.id)
+    today(profile.id),
+    undefined,
+    {
+      name: canonical || latest.name,
+      flag: latest.flag,
+      value: latest.value,
+      notes: latest.notes,
+      reference: latest.reference_range,
+    }
   );
   const ageDays = daysBetween(latest.date, today(profile.id));
 

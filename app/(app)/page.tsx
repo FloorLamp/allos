@@ -32,8 +32,9 @@ import {
   getHealthspanPillars,
 } from "@/lib/queries";
 import { recommendCoaching } from "@/lib/coaching";
+import { collectCoachingFindings } from "@/lib/rule-findings";
 import { pickNextAppointment } from "@/lib/household";
-import { activeByKey, coachingDedupeKey } from "@/lib/findings";
+import { activeByKey, activeFindings, coachingDedupeKey } from "@/lib/findings";
 import { requireSession, getAccessibleProfiles } from "@/lib/auth";
 import { isTrainingRestricted } from "@/lib/age-gate";
 import { isBioAgeHiddenForAge } from "@/lib/bio-age";
@@ -74,6 +75,7 @@ import RecentActivityWidget from "@/components/dashboard/RecentActivityWidget";
 import ActiveGoalsWidget from "@/components/dashboard/ActiveGoalsWidget";
 import WeeklyRoutineWidget from "@/components/dashboard/WeeklyRoutineWidget";
 import CoachingWidget from "@/components/dashboard/CoachingWidget";
+import CoachingObservations from "@/components/dashboard/CoachingObservations";
 import LowSupplyWidget, {
   type LowSupplyItem,
 } from "@/components/dashboard/LowSupplyWidget";
@@ -286,6 +288,18 @@ export default async function Dashboard() {
       )
     : [];
 
+  // coaching-observations (#449): the dashboard rollup of the four #45 tab-only
+  // observational domains. ONE computation (collectCoachingFindings) feeds this and
+  // the tabs, filtered through the SAME findings-bus store as everything else — so a
+  // dismiss here (or on a tab) drops the finding out for free. No push, no hero slot.
+  const coachingObservations = has("coaching-observations")
+    ? activeFindings(
+        collectCoachingFindings(profile.id, on, units.weightUnit),
+        getFindingSuppressions(profile.id),
+        on
+      )
+    : [];
+
   // low-supply: items with a tracked quantity running at/below the threshold.
   // Formats over the SHARED getRefillRates rate (the history-aware taken-log
   // rate — #38) exactly like the /medicine badge, Upcoming, and the Telegram
@@ -473,6 +487,10 @@ export default async function Dashboard() {
         return <WeeklyRoutineWidget freqTargets={freqTargets} />;
       case "coaching":
         return <CoachingWidget recs={coachingRecs} />;
+      case "coaching-observations":
+        return coachingObservations.length ? (
+          <CoachingObservations findings={coachingObservations} />
+        ) : null;
       case "low-supply":
         return <LowSupplyWidget items={lowSupplyItems} />;
       case "streak":

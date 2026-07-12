@@ -27,17 +27,35 @@ export function slotDue(slotHour: number, currentHour: number): boolean {
 // window; their once-per-episode dedup semantics are unchanged — the FIRST send
 // simply waits for a reasonable hour. Bounds are inclusive: a nudge may land from
 // WAKING_START_HOUR:00 through WAKING_END_HOUR:59 profile-local.
+//
+// These constants are now only the DEFAULT (issue #450): the window is a per-profile
+// setting (`quiet_hours` in profile_settings, NotifySchedule.wakingStartHour/EndHour),
+// so a night-shift household can shift it. A profile with no stored value falls back
+// to exactly this default, so behavior is unchanged until it's edited.
 export const WAKING_START_HOUR = 8;
 export const WAKING_END_HOUR = 21;
 
-// Whether the given profile-local hour (0-23) is inside the waking window. The
-// safety-tier senders (scheduled dose reminders, missed-dose escalation) are NOT
-// gated by this — a possibly-critical medication signal must not be silenced by
-// quiet hours; only the non-safety episode nudges consult it.
+// Whether the given profile-local hour (0-23) is inside the waking window (issue
+// #378, made per-profile in #450). Inclusive on both bounds. A window that WRAPS
+// past midnight (startHour > endHour, e.g. a night-shift 20→8 waking window) is
+// supported: the hour is waking if it's at/after the start OR at/before the end.
+// A same start/end is a literal one-hour window (an unlikely edge; the widest
+// "no quiet hours" config is start=0, end=23 = every hour waking).
+//
+// SAFETY CONTRACT (#227/#450): the safety-tier senders — scheduled dose reminders
+// and missed-dose escalation — MUST NEVER consult this. A possibly-critical
+// medication signal must not be silenced by quiet hours (an escalation at 2am for a
+// missed critical med is the feature working); only the non-safety EPISODE nudges
+// (refill, preventive, milestone) call it. Do not wire this into a safety sender.
 export function inWakingWindow(
   currentHour: number,
   startHour = WAKING_START_HOUR,
   endHour = WAKING_END_HOUR
 ): boolean {
-  return currentHour >= startHour && currentHour <= endHour;
+  if (startHour <= endHour) {
+    // Normal, same-day window: inclusive [start, end].
+    return currentHour >= startHour && currentHour <= endHour;
+  }
+  // Wrapped window (crosses midnight): awake in [start, 23] OR [0, end].
+  return currentHour >= startHour || currentHour <= endHour;
 }

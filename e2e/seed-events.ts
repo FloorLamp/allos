@@ -733,6 +733,33 @@ for (let w = 0; w < 6; w++) {
   for (let s = 1; s <= 3; s++) insPlateauSet.run(actId, s);
 }
 
+// #449 — a DEDICATED plateaued lift ("E2E Dismiss Press") whose ONLY purpose is the
+// coaching-observations dashboard-dismiss spec. That spec mutates the shared
+// suppression store (dismissing the finding), and "dismiss once, silence everywhere"
+// would then hide the finding on Training → Overview too — so it must NOT reuse the
+// Skullcrusher plateau, which rule-findings.spec.ts asserts is visible. Built exactly
+// like the Skullcrusher fixture (six weekly sessions at a FIXED 30 kg × 10 → flat 1RM →
+// plateau rule fires), with a unique name no other spec references. Idempotent; outside
+// the seeded PPL routine so it doesn't disturb the progressing lifts.
+db.prepare(
+  `DELETE FROM activities WHERE profile_id = ? AND external_id LIKE 'e2e:dismiss-plateau-%'`
+).run(PROFILE_ID);
+const insDismissAct = db.prepare(
+  `INSERT INTO activities (profile_id, date, type, title, duration_min, intensity, source, external_id)
+   VALUES (1, ?, 'strength', 'Arms — E2E Dismiss Press', 30, 'hard', 'manual', ?)`
+);
+const insDismissSet = db.prepare(
+  `INSERT INTO exercise_sets (activity_id, exercise, set_number, weight_kg, reps)
+   VALUES (?, 'E2E Dismiss Press', ?, 30, 10)`
+);
+for (let w = 0; w < 6; w++) {
+  const date = shiftDateStr(today(PROFILE_ID), -(w * 7 + 2));
+  const actId = Number(
+    insDismissAct.run(date, `e2e:dismiss-plateau-${w}`).lastInsertRowid
+  );
+  for (let s = 1; s <= 3; s++) insDismissSet.run(actId, s);
+}
+
 // Domain 5 — a probable-error weight JUMP: one outlier reading (92 kg) three days
 // after the prior weekly weigh-in (~80.5 kg), ~14% above it — a scale-glitch
 // signature the body-hygiene rule flags on Trends → Body.
@@ -746,7 +773,7 @@ db.prepare(
 ).run(jumpDate);
 
 console.log(
-  `e2e: seeded a 6-week Skullcrusher plateau and a weight jump on ${jumpDate} (#45)`
+  `e2e: seeded a 6-week Skullcrusher plateau, a dedicated E2E Dismiss Press plateau (#449), and a weight jump on ${jumpDate} (#45)`
 );
 
 // Domain 3 — an adherence PATTERN: a daily Evening supplement taken every day for
@@ -1056,6 +1083,22 @@ db.prepare(
 db.prepare(
   `INSERT INTO starred_biomarkers (profile_id, canonical_name) VALUES (?, ?)`
 ).run(PROFILE_ID, APOE_MARKER);
+
+// #516 — a positive durable-immunity antibody titer whose only reading is ~2 years
+// old. On the flat 365-day retest clock it would nag "retest overdue" and render
+// "These results are stale", which is clinically wrong for a documented positive
+// immunity result (durable evidence, like genomics). The durable-immunity spec asserts
+// the detail page shows no "stale" note. Unique synthetic name so the assertion is
+// deterministic and it can't collide with the seed's own titers.
+const IMMUNITY_MARKER = "E2E Varicella IgG";
+db.prepare(
+  `DELETE FROM medical_records WHERE profile_id = ? AND canonical_name = ?`
+).run(PROFILE_ID, IMMUNITY_MARKER);
+db.prepare(
+  `INSERT INTO medical_records
+     (profile_id, date, category, name, value, canonical_name, notes, source)
+   VALUES (?, '2023-05-01', 'lab', ?, 'Immune', ?, 'Immune', 'manual')`
+).run(PROFILE_ID, IMMUNITY_MARKER, IMMUNITY_MARKER);
 
 // #383 — a lab whose raw name ("...CHOLESTEROL, TOTAL") differs from its
 // displayed canonical heading ("...Total Cholesterol"), so the biomarker search

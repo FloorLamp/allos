@@ -7,6 +7,9 @@ import {
   DEFAULT_RETEST_DAYS,
   humanizeAge,
   isBiomarkerStale,
+  isDurableImmunityTiter,
+  isImmunePositiveResult,
+  isDurableImmunePositive,
   optimalBand,
   optimalStatus,
   parseLooseValue,
@@ -672,6 +675,123 @@ describe("isBiomarkerStale with a per-biomarker interval", () => {
     expect(humanizeAge(90)).toBe("3 months");
     expect(humanizeAge(365)).toBe("12 months");
     expect(humanizeAge(600)).toContain("year");
+  });
+});
+
+// --- Durable-immunity titers (issue #516) -----------------------------------
+describe("isDurableImmunityTiter", () => {
+  it("recognizes the vaccine-preventable durable-immunity titers", () => {
+    expect(isDurableImmunityTiter("Hepatitis A IgG")).toBe(true);
+    expect(isDurableImmunityTiter("Hepatitis A Antibody, Total")).toBe(true);
+    expect(isDurableImmunityTiter("Hepatitis B Surface Antibody")).toBe(true);
+    expect(isDurableImmunityTiter("Anti-HBs")).toBe(true);
+    expect(isDurableImmunityTiter("HBsAb")).toBe(true);
+    expect(isDurableImmunityTiter("Measles IgG")).toBe(true);
+    expect(isDurableImmunityTiter("Rubeola Antibody")).toBe(true);
+    expect(isDurableImmunityTiter("Mumps IgG")).toBe(true);
+    expect(isDurableImmunityTiter("Rubella IgG")).toBe(true);
+    expect(isDurableImmunityTiter("Varicella IgG")).toBe(true);
+    expect(isDurableImmunityTiter("VZV Antibody")).toBe(true);
+    expect(isDurableImmunityTiter("MMR Titer")).toBe(true);
+  });
+
+  it("EXCLUDES infection/exposure markers (a positive is disease, not immunity)", () => {
+    // Hep B surface ANTIGEN = active infection; core antibody = past infection.
+    expect(isDurableImmunityTiter("Hepatitis B Surface Antigen")).toBe(false);
+    expect(isDurableImmunityTiter("HBsAg")).toBe(false);
+    expect(isDurableImmunityTiter("Hepatitis B Core Antibody")).toBe(false);
+    expect(isDurableImmunityTiter("Anti-HBc")).toBe(false);
+    // Hep C / HIV antibodies are infection markers.
+    expect(isDurableImmunityTiter("Hepatitis C Antibody")).toBe(false);
+    expect(isDurableImmunityTiter("HIV 1/2 Antibody")).toBe(false);
+    // Unrelated analytes.
+    expect(isDurableImmunityTiter("LDL Cholesterol")).toBe(false);
+    expect(isDurableImmunityTiter("")).toBe(false);
+    expect(isDurableImmunityTiter(null)).toBe(false);
+  });
+});
+
+describe("isImmunePositiveResult", () => {
+  it("is positive on an affirmative qualitative result in value or notes", () => {
+    expect(isImmunePositiveResult({ value: "Immune" })).toBe(true);
+    expect(isImmunePositiveResult({ value: "Positive" })).toBe(true);
+    expect(isImmunePositiveResult({ value: "Reactive" })).toBe(true);
+    // The seed stores anti-HBs as a number with "Immune" in notes.
+    expect(
+      isImmunePositiveResult({
+        value: "45",
+        notes: "Immune",
+        reference: ">=10",
+      })
+    ).toBe(true);
+  });
+
+  it("is positive on an in-range standard flag or a value at/above threshold", () => {
+    expect(isImmunePositiveResult({ flag: "normal", value: "45" })).toBe(true);
+    expect(isImmunePositiveResult({ flag: "high", value: "120" })).toBe(true);
+    expect(isImmunePositiveResult({ value: "45", reference: ">=10" })).toBe(
+      true
+    );
+  });
+
+  it("is NOT positive on a negative/equivocal result or a deficient flag", () => {
+    expect(isImmunePositiveResult({ value: "Negative" })).toBe(false);
+    expect(isImmunePositiveResult({ value: "Non-immune" })).toBe(false);
+    expect(isImmunePositiveResult({ value: "Equivocal" })).toBe(false);
+    expect(isImmunePositiveResult({ flag: "low", value: "3" })).toBe(false);
+    expect(
+      isImmunePositiveResult({ flag: "abnormal", value: "Negative" })
+    ).toBe(false);
+    // A number below its positivity threshold.
+    expect(isImmunePositiveResult({ value: "3", reference: ">=10" })).toBe(
+      false
+    );
+  });
+
+  it("is conservative — no positivity signal keeps the retest clock", () => {
+    expect(isImmunePositiveResult({ value: "1.4" })).toBe(false); // no reference
+    expect(isImmunePositiveResult({})).toBe(false);
+  });
+});
+
+describe("isDurableImmunePositive + isBiomarkerStale (#516)", () => {
+  it("an OLD immune-positive durable titer is never stale", () => {
+    // A 3-year-old positive anti-HBs would otherwise be a year overdue.
+    const immunity = {
+      name: "Hepatitis B Surface Antibody",
+      value: "45",
+      notes: "Immune",
+      reference: ">=10",
+    };
+    expect(isDurableImmunePositive(immunity)).toBe(true);
+    expect(
+      isBiomarkerStale("2021-01-01", "lab", "2024-01-01", 365, immunity)
+    ).toBe(false);
+  });
+
+  it("a NEGATIVE durable titer keeps the normal clock (followup is the risk layer's job)", () => {
+    const immunity = {
+      name: "Hepatitis B Surface Antibody",
+      value: "3",
+      flag: "low",
+      reference: ">=10",
+    };
+    expect(isDurableImmunePositive(immunity)).toBe(false);
+    expect(
+      isBiomarkerStale("2021-01-01", "lab", "2024-01-01", 365, immunity)
+    ).toBe(true);
+  });
+
+  it("a positive NON-immunity analyte (e.g. hep C antibody) is NOT exempt", () => {
+    const immunity = { name: "Hepatitis C Antibody", value: "Positive" };
+    expect(isDurableImmunePositive(immunity)).toBe(false);
+    expect(
+      isBiomarkerStale("2021-01-01", "lab", "2024-01-01", 365, immunity)
+    ).toBe(true);
+  });
+
+  it("without the immunity context, behavior is unchanged", () => {
+    expect(isBiomarkerStale("2021-01-01", "lab", "2024-01-01", 365)).toBe(true);
   });
 });
 

@@ -106,6 +106,20 @@ export const DASHBOARD_WIDGETS: WidgetDef[] = [
     span: "third",
   },
   {
+    id: "coaching-observations",
+    label: "Coaching observations",
+    description:
+      "A calm rollup of the observational patterns that otherwise live only on their own tabs — training plateaus/balance, weight-log hygiene, off-pace goals, and adherence patterns. FYIs, not alerts; dismiss any and it's silenced everywhere.",
+    // On by default so the tab-only findings gain dashboard REACH (issue #449) —
+    // discoverable without becoming pushy. Not fitness-gated: it spans body-metric
+    // hygiene and medication adherence too, which matter for a restricted profile.
+    // Not data-aware: it self-hides (renders nothing) when no observation is firing,
+    // so an empty state would be noise rather than an onboarding CTA.
+    defaultOn: true,
+    fitness: false,
+    span: "half",
+  },
+  {
     id: "healthspan-pillars",
     label: "Healthspan pillars",
     description:

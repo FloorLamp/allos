@@ -37,6 +37,8 @@ export default function ProfileNotificationSettings({
   const [preventiveEnabled, setPreventiveEnabled] = useState(
     schedule.preventiveEnabled
   );
+  const [wakingStart, setWakingStart] = useState(schedule.wakingStartHour);
+  const [wakingEnd, setWakingEnd] = useState(schedule.wakingEndHour);
   const { pending, savedAt, error, save: runSave } = useSaveStatus();
   // The test send drives the result message, not the "saved" chip, so it keeps its
   // own transition.
@@ -72,6 +74,8 @@ export default function ProfileNotificationSettings({
     fd.set("recap_hour", String(recapHour));
     fd.set("milestones_enabled", milestonesEnabled ? "1" : "0");
     fd.set("preventive_enabled", preventiveEnabled ? "1" : "0");
+    fd.set("waking_start_hour", String(wakingStart));
+    fd.set("waking_end_hour", String(wakingEnd));
     return fd;
   }
 
@@ -320,6 +324,53 @@ export default function ProfileNotificationSettings({
           </div>
         </>
       )}
+
+      {/* Quiet hours (#450) — the waking window for non-urgent EPISODE nudges
+          (refill, preventive, milestone). Shown regardless of the Telegram toggle
+          because it gates those nudges on every channel (web push / Home Assistant
+          too). Urgent medication reminders (dose reminders, missed-dose escalation)
+          are NEVER held by this — they follow the medication schedule. */}
+      <div
+        className="border-t border-slate-100 pt-5 dark:border-slate-800"
+        data-testid="quiet-hours"
+      >
+        <label className="label">Quiet hours</label>
+        <p className="mb-2 text-xs text-slate-400 dark:text-slate-500">
+          Non-urgent nudges (refill, preventive, milestone) are only sent
+          between these hours (this profile’s timezone). Set an overnight span
+          like 20:00 → 08:00 for a night-shift rhythm. Urgent medication
+          reminders are never held.
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={String(wakingStart)}
+            onChange={(e) => setWakingStart(Number(e.target.value))}
+            className="input sm:w-32"
+            aria-label="Quiet hours start (nudges begin)"
+            data-testid="waking-start-hour"
+          >
+            {Array.from({ length: 24 }, (_, i) => (
+              <option key={i} value={i}>
+                {String(i).padStart(2, "0")}:00
+              </option>
+            ))}
+          </select>
+          <span className="text-sm text-slate-400 dark:text-slate-500">to</span>
+          <select
+            value={String(wakingEnd)}
+            onChange={(e) => setWakingEnd(Number(e.target.value))}
+            className="input sm:w-32"
+            aria-label="Quiet hours end (nudges stop)"
+            data-testid="waking-end-hour"
+          >
+            {Array.from({ length: 24 }, (_, i) => (
+              <option key={i} value={i}>
+                {String(i).padStart(2, "0")}:59
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
 
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" onClick={save} disabled={busy} className="btn">

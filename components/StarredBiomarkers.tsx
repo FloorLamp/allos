@@ -72,11 +72,20 @@ export default async function StarredBiomarkers({
           const meta = RANGE_BADGE_META[badge];
           // Judge staleness on the latest RECORD's category (not the canonical
           // entry's), matching the detail page and table — so a genomics result
-          // fires the never-stale rule here too (#381).
+          // fires the never-stale rule here too (#381), and an immune-positive
+          // durable-immunity titer is exempt on the tile too (#516).
           const stale = isBiomarkerStale(
             b.latest_date,
             b.latest_category,
-            today(profile.id)
+            today(profile.id),
+            undefined,
+            {
+              name: b.canonical_name,
+              flag: b.latest_flag,
+              value: b.latest_value,
+              notes: b.latest_notes,
+              reference: b.latest_reference_range,
+            }
           );
           const ageDays = b.latest_date
             ? daysBetween(b.latest_date, today(profile.id))
