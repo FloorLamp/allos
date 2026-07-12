@@ -7,7 +7,13 @@
 import { today } from "../../db";
 import { ageFromBirthdate } from "../../date";
 import { getUserSex, getUserBirthdate, getStoredAge } from "../../settings";
-import { stackUlWarnings, type StackItem, type UlWarning } from "../../dri";
+import {
+  stackUlWarnings,
+  stackRdaAdequacy,
+  type StackItem,
+  type UlWarning,
+  type RdaAdequacy,
+} from "../../dri";
 import {
   detectInteractions,
   type InteractionHit,
@@ -30,6 +36,36 @@ export function getDietaryLimitWarnings(
   profileId: number,
   todayStr: string = today(profileId)
 ): UlWarning[] {
+  const { items, ageYears, sex } = stackDriContext(profileId, todayStr);
+  return stackUlWarnings(items, ageYears, sex);
+}
+
+// The active stack's nutrients whose supplemental total falls BELOW the RDA for the
+// profile's age/sex — the adequacy inverse of getDietaryLimitWarnings (issue #578),
+// consuming the previously-unused RDA half of dri.json. Same stack/age/sex assembly,
+// pointed at the other reference column, so the two reads can never disagree ("one
+// question, one computation"). Wording (in lib/dri) is "supplements provide X% of the
+// RDA", never "deficient" — food intake is unknown. Informational; no notification.
+export function getDietaryAdequacy(
+  profileId: number,
+  todayStr: string = today(profileId)
+): RdaAdequacy[] {
+  const { items, ageYears, sex } = stackDriContext(profileId, todayStr);
+  return stackRdaAdequacy(items, ageYears, sex);
+}
+
+// The shared DRI input assembly: the active stack as StackItems + the resolved
+// age/sex band. Factored out so the UL and RDA reads build their input identically
+// (they must, or the two nutrient sets could diverge). Profile-scoped through
+// getSupplements/getSupplementDoses; no new SQL.
+function stackDriContext(
+  profileId: number,
+  todayStr: string
+): {
+  items: StackItem[];
+  ageYears: number | null;
+  sex: ReturnType<typeof getUserSex>;
+} {
   const supplements = getSupplements(profileId);
   const dosesBySupp = new Map<number, (string | null)[]>();
   for (const d of getSupplementDoses(profileId)) {
@@ -48,8 +84,7 @@ export function getDietaryLimitWarnings(
     ? ageFromBirthdate(birthdate, todayStr)
     : getStoredAge(profileId);
   const sex = getUserSex(profileId);
-
-  return stackUlWarnings(items, ageYears, sex);
+  return { items, ageYears, sex };
 }
 
 // Known drug-/supplement-interactions among the profile's ACTIVE stack (issue #144).

@@ -7,10 +7,14 @@ import {
   nutrientByKey,
   summarizeStack,
   stackUlWarnings,
+  stackRdaAdequacy,
   dietaryLimitSignalKey,
   ulWarningTitle,
   ulWarningDetail,
   ulWarningEvidence,
+  rdaAdequacySignalKey,
+  rdaAdequacyTitle,
+  rdaAdequacyDetail,
   fmtAmount,
   type StackItem,
 } from "../dri";
@@ -246,6 +250,60 @@ describe("stackUlWarnings (boundaries + basis)", () => {
     expect(w[0].key).toBe("vitamin_a");
     expect(w[0].basis).toBe("total");
     expect(w[0].total).toBeCloseTo(6000);
+  });
+});
+
+describe("stackRdaAdequacy (issue #578 — the RDA inverse)", () => {
+  it("reports a nutrient the stack supplements BELOW its RDA, with the share", () => {
+    // Adult male magnesium RDA is 420 mg; 200 mg supplemental → ~48% of the RDA.
+    const a = stackRdaAdequacy(
+      [active("Magnesium Glycinate", ["200 mg"])],
+      30,
+      "male"
+    );
+    expect(a).toHaveLength(1);
+    expect(a[0].key).toBe("magnesium");
+    expect(a[0].rda).toBe(420);
+    expect(a[0].total).toBe(200);
+    expect(a[0].sharePct).toBe(48);
+  });
+
+  it("does NOT report a nutrient at/above its RDA (the stack already meets it)", () => {
+    expect(
+      stackRdaAdequacy([active("Magnesium Glycinate", ["420 mg"])], 30, "male")
+    ).toEqual([]);
+    expect(
+      stackRdaAdequacy([active("Magnesium Glycinate", ["500 mg"])], 30, "male")
+    ).toEqual([]);
+  });
+
+  it("does NOT report a nutrient the stack isn't supplementing", () => {
+    // Nothing in the stack contributes iron → no iron adequacy row (we can't see food).
+    const a = stackRdaAdequacy(
+      [active("Magnesium Glycinate", ["200 mg"])],
+      30,
+      "male"
+    );
+    expect(a.some((x) => x.key === "iron")).toBe(false);
+  });
+
+  it("skips a nutrient with no RDA in the band (boron)", () => {
+    // Boron has a UL but no RDA anywhere → never an adequacy row even if supplemented.
+    const a = stackRdaAdequacy([active("Boron", ["1 mg"])], 30, "male");
+    expect(a).toEqual([]);
+  });
+
+  it("wording says 'supplements provide X% of the RDA', never 'deficient'", () => {
+    const a = stackRdaAdequacy(
+      [active("Magnesium Glycinate", ["200 mg"])],
+      30,
+      "male"
+    )[0];
+    expect(rdaAdequacySignalKey("magnesium")).toBe("rda-adequacy:magnesium");
+    expect(rdaAdequacyTitle(a)).toContain("48% of the RDA");
+    const detail = rdaAdequacyDetail(a);
+    expect(detail.toLowerCase()).toContain("supplements alone provide");
+    expect(detail.toLowerCase()).not.toContain("deficien");
   });
 });
 

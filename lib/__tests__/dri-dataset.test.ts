@@ -63,4 +63,20 @@ describe("dri.json dataset", () => {
       ).toBe(true);
     }
   });
+
+  // The RDA-adequacy view (issue #578) consumes the RDA column. Pin that the nutrients
+  // whose adequacy the /medicine view links to food sources (the #578↔#577 overlap)
+  // carry a positive RDA in an adult band — so the adequacy read has something to
+  // compare against, and the committed dataset can't silently drop the RDA half.
+  it("the RDA-linked nutrients carry an adult RDA (the adequacy read has a target)", () => {
+    for (const key of ["iron", "folate", "magnesium", "vitamin_d"]) {
+      const n = nutrientByKey(key);
+      expect(n, `${key} missing from dri.json`).toBeTruthy();
+      const adult = n!.bands.filter((b) => b.max_age == null);
+      expect(
+        adult.some((b) => b.rda != null && b.rda > 0),
+        `${key} has no positive adult RDA`
+      ).toBe(true);
+    }
+  });
 });

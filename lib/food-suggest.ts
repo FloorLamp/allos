@@ -272,6 +272,27 @@ export function suggestFoods(input: FoodSuggestInput): FoodSuggestion[] {
   return out;
 }
 
+// Map a lib/dri.ts nutrient key (dri.json uses snake_case: `vitamin_d`) to the
+// nutrient-food-map entry key (hyphenated: `vitamin-d`) where the two datasets name
+// the same nutrient. Only the overlap matters — the RDA-adequacy view (#578) uses this
+// to link a below-RDA supplement nutrient to its food-first sources from the #577 map.
+const DRI_KEY_TO_MAP_KEY: Record<string, string> = {
+  iron: "iron",
+  folate: "folate",
+  magnesium: "magnesium",
+  vitamin_d: "vitamin-d",
+};
+
+// The curated food source display names for a dri.json nutrient key, from the #577
+// map, or [] when the map has no entry for it. Pure — the RDA adequacy surface formats
+// "Food sources: …" over this.
+export function foodSourcesForDriNutrient(driKey: string): string[] {
+  const mapKey = DRI_KEY_TO_MAP_KEY[driKey];
+  if (!mapKey) return [];
+  const entry = ENTRIES.find((e) => e.key === mapKey);
+  return entry ? entry.foods.map((f) => f.food) : [];
+}
+
 // All biomarker names the map references (for the anti-drift dataset test — every one
 // must resolve to a canonical biomarker).
 export function nutrientFoodMapBiomarkers(): string[] {
