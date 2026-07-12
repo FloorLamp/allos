@@ -2,7 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { db } from "./db";
 import { PHOTO_ROOT } from "./profile-photo";
-import { DATASETS } from "./export";
+import { DATASETS, RESTRICTED_DATASETS } from "./export";
+import { isTrainingRestricted } from "./age-gate";
 import {
   getUserSex,
   getUserBirthdate,
@@ -341,8 +342,14 @@ export function collectExportSnapshot(
   profileId: number,
   profileName: string
 ): ExportSnapshot {
+  // A training-restricted profile's fitness datasets (activities/goals) are gated
+  // out of the ZIP too, not just the export UI (issue #471) — same authoritative
+  // enforcement as the per-dataset CSV route. Gate off by default (min age unset).
+  const restricted = isTrainingRestricted(profileId);
   return db.transaction((): ExportSnapshot => ({
-    datasets: DATASETS.map((ds) => ({
+    datasets: DATASETS.filter(
+      (ds) => !(restricted && RESTRICTED_DATASETS.has(ds.key))
+    ).map((ds) => ({
       key: ds.key,
       columns: ds.columns,
       rows: ds.rows(profileId),

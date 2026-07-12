@@ -1,12 +1,8 @@
 import { IconDownload, IconFileExport } from "@tabler/icons-react";
-import { DATASETS, PAGE_SIZE } from "@/lib/export";
+import { DATASETS, PAGE_SIZE, RESTRICTED_DATASETS } from "@/lib/export";
 import { requireSession } from "@/lib/auth";
 import { isTrainingRestricted } from "@/lib/age-gate";
 import DataTableManager from "@/components/DataTableManager";
-
-// Datasets tied to the age-gated fitness surfaces (Activities, Goals); hidden
-// here for restricted profiles to match the rest of the UI (see lib/age-gate.ts).
-const RESTRICTED_DATASETS = new Set(["activities", "goals"]);
 
 function firstParam(value: string | string[] | undefined): string | undefined {
   const first = Array.isArray(value) ? value[0] : value;

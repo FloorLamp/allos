@@ -233,7 +233,14 @@ export async function POST(req: Request) {
       raw_ref: rawRef,
       error: message,
     });
-    return Response.json({ ok: false, error: message }, { status: 500 });
+    // The real error is logged + stored on the sync event server-side (above); the
+    // response body stays GENERIC (issue #478) so raw internals — SQLite constraint
+    // text, table names — never reach the bearer-token holder, matching every other
+    // route's 500 shape.
+    return Response.json(
+      { ok: false, error: "internal error" },
+      { status: 500 }
+    );
   }
 
   // Post-commit reconcile (#131): register new canonical names and (re)compute

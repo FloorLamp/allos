@@ -170,7 +170,12 @@ test.describe("Providers registry", () => {
     // that rendered outcome is the observable contract, not the status code.
     await page.goto(`/providers/${duplicate}`);
     await expect(page.getByTestId("provider-detail")).toHaveCount(0);
-    await expect(page.getByText(/could not be found/i)).toBeVisible();
+    // #478 replaced the per-page missing-provider message with the shared (app)
+    // not-found boundary — assert its stable testid + copy.
+    await expect(page.getByTestId("app-not-found")).toBeVisible();
+    await expect(
+      page.getByText(/doesn.t exist, or you don.t have access/i)
+    ).toBeVisible();
   });
 
   // Undo the merge so retries of this serial group and later specs see the

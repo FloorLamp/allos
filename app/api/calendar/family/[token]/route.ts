@@ -5,9 +5,10 @@ import {
   getTimezone,
 } from "@/lib/settings";
 import { accessibleProfilesForLogin } from "@/lib/auth";
-import { getAppointments } from "@/lib/queries";
+import { getAppointments, collectUpcoming } from "@/lib/queries";
 import {
   buildAppointmentIcs,
+  feedEligibleSignals,
   selectConsolidatedFeedEvents,
   type ConsolidatedProfileFeed,
 } from "@/lib/calendar-ics";
@@ -62,16 +63,34 @@ export async function GET(
   // Access control at REQUEST TIME: the login's live grants decide which profiles
   // are in the feed (a since-revoked grant is gone; an admin sees every profile).
   const profiles = accessibleProfilesForLogin(loginId);
-  const feeds: ConsolidatedProfileFeed[] = profiles.map((p) => ({
-    profileId: p.id,
-    profileName: p.name,
-    // Each profile's OWN detail level + timezone + day boundary — a minimal profile
-    // stays minimal even inside the shared feed. Reads are profile-scoped.
-    detail: getCalendarFeed(p.id).detail,
-    tz: getTimezone(p.id),
-    today: today(p.id),
-    appts: getAppointments(p.id),
-  }));
+  const feeds: ConsolidatedProfileFeed[] = profiles.map((p) => {
+    // Each profile's OWN full feed customization — categories, detail, reminders,
+    // timezone, and window (issue #473) — so a profile that enabled dose/refill
+    // categories (or narrowed its window) contributes exactly that here too, not a
+    // thinner appointments-only projection. The heavier Upcoming read runs only when
+    // a non-appointment category is enabled. Both reads are profile-scoped.
+    const feed = getCalendarFeed(p.id);
+    const todayStr = today(p.id);
+    const wantsAppointments = feed.categories.includes("appointment");
+    const wantsSignals = feed.categories.some((c) => c !== "appointment");
+    return {
+      profileId: p.id,
+      profileName: p.name,
+      options: {
+        categories: feed.categories,
+        detail: feed.detail,
+        reminders: feed.reminders,
+        pastWindowDays: feed.pastWindowDays,
+        futureWindowDays: feed.futureWindowDays,
+      },
+      tz: getTimezone(p.id),
+      today: todayStr,
+      appts: wantsAppointments ? getAppointments(p.id) : [],
+      signals: wantsSignals
+        ? feedEligibleSignals(collectUpcoming(p.id, todayStr))
+        : [],
+    };
+  });
 
   const events = selectConsolidatedFeedEvents(feeds);
   const ics = buildAppointmentIcs(events, {
