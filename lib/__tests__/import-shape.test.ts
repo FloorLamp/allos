@@ -667,6 +667,7 @@ describe("healthRecordToPersistInput (deterministic path)", () => {
       patient_birthdate: "1990-07-22",
       patient_age: null,
       patient_name: "Sam Lee",
+      patient_postal_code: null,
     });
   });
 

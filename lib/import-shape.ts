@@ -198,6 +198,9 @@ export interface AdoptMeta {
   patient_birthdate: string | null;
   patient_age: number | null;
   patient_name: string | null;
+  // The patient's own postal code (CDA header), for the offline ZIP-centroid home
+  // location suggestion (issue #570). Optional — only the CCD path populates it.
+  patient_postal_code?: string | null;
 }
 
 export interface DocMeta {
@@ -743,6 +746,7 @@ export function healthRecordToPersistInput(
           patient_birthdate: parsed.demographics.birthdate,
           patient_age: null,
           patient_name: parsed.demographics.name,
+          patient_postal_code: parsed.demographics.postalCode ?? null,
         }
       : null,
     meta: {

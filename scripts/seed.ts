@@ -384,6 +384,18 @@ db.prepare(
    ON CONFLICT(profile_id, key) DO NOTHING`
 ).run();
 
+// A coarse home location (issue #570) so the timeline's sunrise/sunset daylight
+// chips have something to render. Synthetic city-scale coordinates (~NYC),
+// rounded to the ~11 km storage precision — never a real address.
+db.prepare(
+  `INSERT INTO profile_settings (profile_id, key, value) VALUES (1, 'home_lat', '40.7')
+   ON CONFLICT(profile_id, key) DO NOTHING`
+).run();
+db.prepare(
+  `INSERT INTO profile_settings (profile_id, key, value) VALUES (1, 'home_lng', '-74')
+   ON CONFLICT(profile_id, key) DO NOTHING`
+).run();
+
 // Medical records — comprehensive biomarker panels measured over the past ~3
 // years. Every canonical_name matches a canonical_biomarkers row that HAS an
 // optimal range, so trends render and the optimal-band ("non-optimal") flagging

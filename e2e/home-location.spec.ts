@@ -1,0 +1,46 @@
+import { test, expect } from "@playwright/test";
+
+// Per-profile home location + sunrise/sunset daylight chips (issue #570). The seed
+// sets a coarse home location (~NYC) for the default profile, so the timeline day
+// headers show daylight chips, and Settings → Profile shows the coordinate fields
+// prefilled. Everything is computed on the box from the stored coordinates — no
+// external service, no map tiles.
+
+test("timeline day headers show sunrise/sunset daylight chips", async ({
+  page,
+}) => {
+  await page.goto("/timeline");
+  const chip = page.getByTestId("daylight-chip").first();
+  await expect(chip).toBeVisible();
+  // Sunrise/sunset are rendered as HH:MM times.
+  await expect(chip).toContainText(/\d{1,2}:\d{2}/);
+});
+
+test("Settings → Profile shows the coarse home location and can update it", async ({
+  page,
+}) => {
+  await page.goto("/settings/profile");
+
+  const lat = page.getByTestId("home-lat");
+  const lng = page.getByTestId("home-lng");
+  await expect(lat).toBeVisible();
+  // Seeded coarse coordinates are prefilled (rounded to ~11 km).
+  await expect(lat).toHaveValue("40.7");
+  await expect(lng).toHaveValue("-74");
+
+  // Updating a coordinate auto-saves (rounded to 0.1° server-side).
+  await lat.fill("41.85");
+  await lng.fill("-87.65");
+  await lng.blur();
+  // Reload and confirm the coarse value persisted.
+  await page.reload();
+  await expect(page.getByTestId("home-lat")).toHaveValue("41.9");
+  await expect(page.getByTestId("home-lng")).toHaveValue("-87.7");
+
+  // Restore the seeded value so this spec is idempotent for retries.
+  await page.getByTestId("home-lat").fill("40.7");
+  await page.getByTestId("home-lng").fill("-74");
+  await page.getByTestId("home-lng").blur();
+  await page.reload();
+  await expect(page.getByTestId("home-lat")).toHaveValue("40.7");
+});

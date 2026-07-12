@@ -216,6 +216,11 @@ export interface ImportDemographics {
   sex: Sex | null;
   birthdate: string | null; // YYYY-MM-DD
   name: string | null; // patient name as printed on the record (document provenance)
+  // The patient's OWN postal code from the CDA header (recordTarget/patientRole/
+  // addr/postalCode), if present (issue #570). Used ONLY to suggest a coarse
+  // ZIP-centroid home location offline — never a street address. Optional so other
+  // importers (FHIR) that don't populate it need no change.
+  postalCode?: string | null;
 }
 
 export interface ImportResult {

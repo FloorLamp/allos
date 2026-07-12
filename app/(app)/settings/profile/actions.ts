@@ -22,6 +22,7 @@ import {
   setProfileHomeAssistant,
   isValidTimezone,
   setTimezone,
+  setHomeLocation,
   isValidWeekStart,
   setWeekStart,
   isValidWeekMode,
@@ -36,6 +37,7 @@ import {
   setRecommendationCadence,
 } from "@/lib/settings";
 import { parseCadence } from "@/lib/recommendation-run";
+import { parseHome } from "@/lib/home-location";
 import {
   parsePackYears,
   parseQuitYear,
@@ -134,6 +136,22 @@ export async function saveProfileSettings(formData: FormData) {
   // setting.
   const tz = String(formData.get("timezone") ?? "").trim();
   if (tz && isValidTimezone(tz)) setTimezone(profile.id, tz);
+
+  // Home location (issue #570): the coarse "where am I" coordinates that drive sun /
+  // daylight features. Gated on the field's presence so a form that doesn't render it
+  // never wipes an adopted value. Both blank → CLEAR; a valid pair → stored coarse
+  // (setHomeLocation rounds to ~11 km); an invalid/partial pair is ignored (prior
+  // value kept). Home location is PHI-adjacent — never logged.
+  if (formData.has("home_lat") || formData.has("home_lng")) {
+    const latRaw = String(formData.get("home_lat") ?? "").trim();
+    const lngRaw = String(formData.get("home_lng") ?? "").trim();
+    if (latRaw === "" && lngRaw === "") {
+      setHomeLocation(profile.id, null);
+    } else {
+      const home = parseHome(latRaw, lngRaw);
+      if (home) setHomeLocation(profile.id, home);
+    }
+  }
 
   // Week start (0=Sun … 6=Sat): where calendars break and, in calendar mode, when
   // the weekly-routine counters reset. Ignore a missing/empty/out-of-range value

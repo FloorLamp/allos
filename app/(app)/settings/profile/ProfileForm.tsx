@@ -30,6 +30,8 @@ export default function ProfileForm({
   timezone: initialTimezone,
   weekStart: initialWeekStart,
   weekMode: initialWeekMode,
+  homeLat: initialHomeLat,
+  homeLng: initialHomeLng,
 }: {
   fullName: string | null;
   sex: Sex | null;
@@ -39,6 +41,8 @@ export default function ProfileForm({
   timezone: string;
   weekStart: number;
   weekMode: string;
+  homeLat: number | null;
+  homeLng: number | null;
 }) {
   const router = useRouter();
   const [fullName, setFullName] = useState(initialFullName ?? "");
@@ -58,6 +62,14 @@ export default function ProfileForm({
   const [timezone, setTimezone] = useState(initialTimezone);
   const [weekStart, setWeekStart] = useState(initialWeekStart);
   const [weekMode, setWeekMode] = useState(initialWeekMode);
+  // Home location (issue #570) — coarse coordinates driving sun/daylight features.
+  const [homeLat, setHomeLat] = useState(
+    initialHomeLat == null ? "" : String(initialHomeLat)
+  );
+  const [homeLng, setHomeLng] = useState(
+    initialHomeLng == null ? "" : String(initialHomeLng)
+  );
+  const [geoError, setGeoError] = useState<string | null>(null);
 
   // With a birthdate set, the age is derived from it; otherwise the age field
   // below holds the manual/document fallback.
@@ -90,6 +102,8 @@ export default function ProfileForm({
     timezone: string;
     weekStart: number;
     weekMode: string;
+    homeLat?: string;
+    homeLng?: string;
   }) {
     const fd = new FormData();
     fd.set("full_name", next.fullName ?? fullName);
@@ -104,6 +118,10 @@ export default function ProfileForm({
     fd.set("timezone", next.timezone);
     fd.set("week_start", String(next.weekStart));
     fd.set("week_mode", next.weekMode);
+    // Always carry the current home coordinates so a save of another field never
+    // wipes them; both blank clears the location (issue #570).
+    fd.set("home_lat", next.homeLat ?? homeLat);
+    fd.set("home_lng", next.homeLng ?? homeLng);
     runSave(async () => {
       await saveProfileSettings(fd);
       router.refresh();
@@ -329,6 +347,105 @@ export default function ProfileForm({
         <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
           Decides when each day rolls over — today/yesterday labels, streaks,
           the weekly summary, and notification timing.
+        </p>
+      </div>
+
+      <div className="border-t border-black/5 pt-5 dark:border-white/10">
+        <div className="flex items-center justify-between">
+          <label className="label mb-0">Home location</label>
+          <button
+            type="button"
+            data-testid="home-location-detect"
+            onClick={() => {
+              setGeoError(null);
+              if (!navigator.geolocation) {
+                setGeoError("Geolocation isn’t available in this browser.");
+                return;
+              }
+              navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                  // Round to a coarse ~11 km before it ever leaves the input; the
+                  // server rounds again, so no street-precise value is stored.
+                  const lat = (
+                    Math.round(pos.coords.latitude * 10) / 10
+                  ).toString();
+                  const lng = (
+                    Math.round(pos.coords.longitude * 10) / 10
+                  ).toString();
+                  setHomeLat(lat);
+                  setHomeLng(lng);
+                  save({
+                    sex,
+                    birthdate,
+                    age: ageFallback,
+                    timezone,
+                    weekStart,
+                    weekMode,
+                    homeLat: lat,
+                    homeLng: lng,
+                  });
+                },
+                () => setGeoError("Couldn’t get your location.")
+              );
+            }}
+            className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
+          >
+            Use my location
+          </button>
+        </div>
+        <div className="mt-1 flex gap-2">
+          <input
+            type="number"
+            inputMode="decimal"
+            step="0.1"
+            value={homeLat}
+            data-testid="home-lat"
+            placeholder="Latitude"
+            aria-label="Home latitude"
+            onChange={(e) => setHomeLat(e.target.value)}
+            onBlur={() =>
+              save({
+                sex,
+                birthdate,
+                age: ageFallback,
+                timezone,
+                weekStart,
+                weekMode,
+              })
+            }
+            className="input"
+          />
+          <input
+            type="number"
+            inputMode="decimal"
+            step="0.1"
+            value={homeLng}
+            data-testid="home-lng"
+            placeholder="Longitude"
+            aria-label="Home longitude"
+            onChange={(e) => setHomeLng(e.target.value)}
+            onBlur={() =>
+              save({
+                sex,
+                birthdate,
+                age: ageFallback,
+                timezone,
+                weekStart,
+                weekMode,
+              })
+            }
+            className="input"
+          />
+        </div>
+        {geoError ? (
+          <p className="mt-1 text-xs text-rose-600 dark:text-rose-400">
+            {geoError}
+          </p>
+        ) : null}
+        <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+          Optional. Stored coarse (~11 km) and used only for sunrise/sunset and
+          daylight features — never sent anywhere. Clear both fields to remove
+          it.
         </p>
       </div>
 

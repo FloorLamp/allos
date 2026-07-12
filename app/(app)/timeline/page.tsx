@@ -21,7 +21,8 @@ import {
 import { requireSession } from "@/lib/auth";
 import { isTrainingRestricted } from "@/lib/age-gate";
 import { today } from "@/lib/db";
-import { getUnitPrefs } from "@/lib/settings";
+import { getUnitPrefs, getHomeLocation, getTimezone } from "@/lib/settings";
+import DaylightChip from "@/components/DaylightChip";
 import {
   getTimelinePage,
   TIMELINE_CATEGORIES,
@@ -258,6 +259,10 @@ export default async function TimelinePage(props: {
   const { login, profile } = await requireSession();
   const units = getUnitPrefs(login.id);
   const trainingRestricted = isTrainingRestricted(profile.id);
+  // Home location + timezone for the per-day sunrise/sunset daylight chips (#570).
+  // Absent home location → the chip renders nothing.
+  const home = getHomeLocation(profile.id);
+  const profileTimezone = getTimezone(profile.id);
   const visibleCategories = trainingRestricted
     ? TIMELINE_CATEGORIES.filter((c) => !TRAINING_CATEGORIES.has(c))
     : TIMELINE_CATEGORIES;
@@ -421,6 +426,11 @@ export default async function TimelinePage(props: {
                     {day.events.length} event
                     {day.events.length === 1 ? "" : "s"}
                   </div>
+                  <DaylightChip
+                    home={home}
+                    date={day.date}
+                    timezone={profileTimezone}
+                  />
                 </div>
                 <div className="space-y-3 pl-4">
                   {day.events.map((event) => (
