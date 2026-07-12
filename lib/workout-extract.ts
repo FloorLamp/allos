@@ -26,17 +26,42 @@ export interface ExtractedSet {
   // trap bar), matched to a name from the provided equipment list. Null when the
   // variation isn't one of the user's defined implements.
   equipment: string | null;
+  // The rep target the set was aiming for (schema + manual UI field). Null when
+  // the log states only what was performed. #420. Optional so existing ExtractedSet
+  // fixtures need no change; normalize() always sets it.
+  target_reps?: number | null;
+  // Whether the set was taken to muscular failure (an "AMRAP"/"to failure"/"F"
+  // annotation). 1/0/null — 1 only when the source clearly says so. #420
+  to_failure?: number | null;
 }
 
 export interface ExtractedWorkout {
   date: string | null; // YYYY-MM-DD
   title: string | null;
   notes: string | null;
+  // Session-level effort (easy | moderate | hard), when the log annotates it —
+  // enforced structurally to that enum (else null). #420. Optional so existing
+  // ExtractedWorkout fixtures need no change; normalize() always sets these.
+  intensity?: string | null;
+  // Clock start/end of the session ("HH:MM" or an ISO timestamp) and total
+  // duration in whole minutes, when the log carries them. #420
+  start_time?: string | null;
+  end_time?: string | null;
+  duration_min?: number | null;
   sets: ExtractedSet[];
 }
 
 export type WorkoutExtractionResult =
-  | { status: "done"; workouts: ExtractedWorkout[]; model: string; raw: string }
+  | {
+      status: "done";
+      workouts: ExtractedWorkout[];
+      // Count of pure-cardio rows (runs/rides/distances/paces) the extractor
+      // deliberately skipped — the paste path stays strength-only, but the skip is
+      // now reported structurally instead of dropped silently. #420
+      cardioSkipped: number;
+      model: string;
+      raw: string;
+    }
   | { status: "skipped"; message: string }
   | { status: "failed"; error: string };
 
@@ -73,14 +98,27 @@ Rules:
 - duration_sec: for timed holds (planks, dead hangs) ONLY, the hold time in whole
   seconds (convert m:ss → seconds). Otherwise null. A set has reps OR duration,
   not both.
+- target_reps: the rep TARGET when the log states one distinctly from what was
+  performed (e.g. "3x8 target, got 8,8,7" → target_reps 8). Null otherwise.
+- to_failure: 1 when the set is explicitly taken to failure — "AMRAP", "to failure",
+  "F", "failure", "max reps". Else 0/null. Never guess from a low rep count alone.
 - date: ISO YYYY-MM-DD when determinable, else null.
+- intensity: the session's overall effort as EXACTLY one of "easy", "moderate", or
+  "hard" when the log annotates it (RPE/"felt easy"/"hard session"). Use null when it
+  isn't stated — do NOT invent one.
+- start_time / end_time: the session's clock start/end as "HH:MM" (24-hour) or an ISO
+  timestamp, when the log records them. Null otherwise.
+- duration_min: the session's total duration in whole minutes, when stated. Null
+  otherwise.
 - notes: capture any per-row or session annotations — a "Notes"/"Comment" column,
   or free text like "felt easy", "PR", "belt", a bodyweight — into the workout's
   notes field. When a note clearly belongs to one exercise, prefix it with that
   exercise (e.g. "Deadlift: 225"); join multiple notes for a day with "; ". Never
   put set weights/reps here, and leave notes null when the day has none.
 - Only extract RESISTANCE-TRAINING sets. Skip pure cardio rows (runs, cycling,
-  distances/paces) — those aren't supported here.
+  distances/paces) — those aren't supported here — but COUNT every cardio row you
+  skip and report the running total in "cardio_rows_skipped" so the skip is visible
+  instead of silent.
 - Do not invent data. If there are no extractable sets, return an empty array.`;
 
 const TOOL: Anthropic.Tool = {
@@ -100,6 +138,25 @@ const TOOL: Anthropic.Tool = {
               type: ["string", "null"],
               description:
                 "Day/session notes from a notes/comment column or inline annotations; null if none",
+            },
+            intensity: {
+              type: ["string", "null"],
+              enum: ["easy", "moderate", "hard", null],
+              description:
+                "Session effort, exactly one of easy/moderate/hard when annotated; null otherwise",
+            },
+            start_time: {
+              type: ["string", "null"],
+              description:
+                "Session clock start ('HH:MM' 24h or ISO timestamp), else null",
+            },
+            end_time: {
+              type: ["string", "null"],
+              description: "Session clock end, else null",
+            },
+            duration_min: {
+              type: ["number", "null"],
+              description: "Session total duration in whole minutes, else null",
             },
             sets: {
               type: "array",
@@ -129,6 +186,16 @@ const TOOL: Anthropic.Tool = {
                     description:
                       "Exact name of a matching user-defined equipment, or null",
                   },
+                  target_reps: {
+                    type: ["number", "null"],
+                    description:
+                      "The rep target for the set when stated distinctly from what was performed; null otherwise",
+                  },
+                  to_failure: {
+                    type: ["number", "null"],
+                    description:
+                      "1 when the set is explicitly to failure (AMRAP/F/failure); else 0/null",
+                  },
                 },
                 required: ["exercise"],
               },
@@ -137,6 +204,11 @@ const TOOL: Anthropic.Tool = {
           required: ["sets"],
         },
       },
+      cardio_rows_skipped: {
+        type: ["number", "null"],
+        description:
+          "Count of pure-cardio rows (runs/rides/distances/paces) skipped because this path is strength-only. 0 when none.",
+      },
     },
     required: ["workouts"],
   },
@@ -144,7 +216,38 @@ const TOOL: Anthropic.Tool = {
 
 const VOCAB_CAP = 400;
 
-function normalize(raw: any): ExtractedWorkout[] {
+// The valid session-intensity enum, enforced structurally so a stray model value
+// (an RPE number, "brutal", …) becomes null rather than reaching the DB. Matches
+// lib/activity-form-model's INTENSITIES.
+const INTENSITY_VALUES = new Set(["easy", "moderate", "hard"]);
+
+// A non-negative whole number from a number/numeric string, else null (target_reps,
+// duration_min). Zero/negative/fractional-only is dropped.
+function posIntOrNull(v: unknown): number | null {
+  const n = typeof v === "number" ? v : typeof v === "string" ? Number(v) : NaN;
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : null;
+}
+
+// Collapse a to-failure flag (boolean / 0-1 / yes-no) to 1/0/null. Unknown → null.
+function toFailureFlag(v: unknown): number | null {
+  if (v === true || v === 1) return 1;
+  if (v === false || v === 0) return 0;
+  if (typeof v === "string") {
+    const s = v.trim().toLowerCase();
+    if (["1", "true", "yes", "y", "f", "failure", "amrap"].includes(s))
+      return 1;
+    if (["0", "false", "no", "n"].includes(s)) return 0;
+  }
+  return null;
+}
+
+// Exported for the pure unit tier: coerces the model's raw tool output into typed
+// workouts + the cardio-skipped count, enforcing the intensity enum and the numeric
+// guards structurally (not just via the prompt). #420
+export function normalizeWorkoutExtraction(raw: any): {
+  workouts: ExtractedWorkout[];
+  cardioSkipped: number;
+} {
   const arr = Array.isArray(raw?.workouts) ? raw.workouts : [];
   const out: ExtractedWorkout[] = [];
   for (const w of arr) {
@@ -167,17 +270,26 @@ function normalize(raw: any): ExtractedWorkout[] {
         weight_right: num(s?.weight_right),
         reps_right: num(s?.reps_right),
         equipment: strOrNull(s?.equipment),
+        target_reps: posIntOrNull(s?.target_reps),
+        to_failure: toFailureFlag(s?.to_failure),
       });
     }
     if (sets.length === 0) continue;
+    const intensityRaw =
+      typeof w?.intensity === "string" ? w.intensity.trim().toLowerCase() : "";
     out.push({
       date: strOrNull(w?.date),
       title: strOrNull(w?.title),
       notes: strOrNull(w?.notes),
+      intensity: INTENSITY_VALUES.has(intensityRaw) ? intensityRaw : null,
+      start_time: strOrNull(w?.start_time),
+      end_time: strOrNull(w?.end_time),
+      duration_min: posIntOrNull(w?.duration_min),
       sets,
     });
   }
-  return out;
+  const cardioSkipped = posIntOrNull(raw?.cardio_rows_skipped) ?? 0;
+  return { workouts: out, cardioSkipped };
 }
 
 // Split a CSV/text workout log into chunks small enough to extract within the
@@ -232,6 +344,7 @@ export async function extractWorkouts(
   log.info("extracting in chunks", { chunks: chunks.length });
   const CONCURRENCY = 4;
   const all: ExtractedWorkout[] = [];
+  let cardioSkipped = 0;
   for (let i = 0; i < chunks.length; i += CONCURRENCY) {
     const batch = chunks.slice(i, i + CONCURRENCY);
     const results = await Promise.all(
@@ -239,11 +352,16 @@ export async function extractWorkouts(
     );
     const bad = results.find((r) => r.status !== "done");
     if (bad) return bad;
-    for (const r of results) if (r.status === "done") all.push(...r.workouts);
+    for (const r of results)
+      if (r.status === "done") {
+        all.push(...r.workouts);
+        cardioSkipped += r.cardioSkipped;
+      }
   }
   return {
     status: "done",
     workouts: all,
+    cardioSkipped,
     model: MODEL,
     raw: `(${chunks.length} chunks)`,
   };
@@ -329,7 +447,7 @@ async function extractChunk(
       return { status: "failed", error: "Model returned no structured data." };
     }
     const input = toolUse.input as any;
-    const workouts = normalize(input);
+    const { workouts, cardioSkipped } = normalizeWorkoutExtraction(input);
 
     if (msg.stop_reason === "max_tokens") {
       // Log the truncation so the "every AI call is logged" invariant holds
@@ -363,6 +481,7 @@ async function extractChunk(
     return {
       status: "done",
       workouts,
+      cardioSkipped,
       model: MODEL,
       raw: JSON.stringify(input),
     };

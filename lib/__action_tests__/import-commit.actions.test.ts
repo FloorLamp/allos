@@ -58,15 +58,23 @@ describe("commitImportJob — save a ready paste import", () => {
       weight_right: null,
       reps_right: null,
       equipment: null,
+      target_reps: 8,
+      to_failure: 1,
     };
     const result: ImportResult = {
       ok: true,
       type: "workouts",
+      // A pure-cardio row the strength-only extractor skipped (#420).
+      cardioSkipped: 3,
       workouts: [
         {
           date: "2026-01-05",
           title: "Push Day",
           notes: null,
+          intensity: "hard",
+          start_time: "18:30",
+          end_time: "19:20",
+          duration_min: 50,
           sets: [set, { ...set }],
         },
       ],
@@ -76,27 +84,49 @@ describe("commitImportJob — save a ready paste import", () => {
     const res = await commitImportJob(jobId);
 
     expect(res.ok).toBe(true);
-    if (res.ok) expect(res.message).toMatch(/1 workout/);
+    // The commit message reports the workout AND the skipped cardio rows (#420).
+    if (res.ok) {
+      expect(res.message).toMatch(/1 workout/);
+      expect(res.message).toMatch(/Skipped 3 cardio rows/i);
+    }
 
     // The job row is consumed on success.
     expect(jobStatus(jobId)).toBeUndefined();
 
-    // The activity + its two sets landed on the acting profile.
+    // The activity + its two sets landed on the acting profile, with the new
+    // session-level effort/timing columns persisted (#420).
     const acts = db
       .prepare(
-        "SELECT id, title, type FROM activities WHERE profile_id = ? ORDER BY id"
+        "SELECT id, title, type, intensity, start_time, end_time, duration_min FROM activities WHERE profile_id = ? ORDER BY id"
       )
-      .all(profile.id) as { id: number; title: string; type: string }[];
+      .all(profile.id) as {
+      id: number;
+      title: string;
+      type: string;
+      intensity: string | null;
+      start_time: string | null;
+      end_time: string | null;
+      duration_min: number | null;
+    }[];
     expect(acts).toHaveLength(1);
-    expect(acts[0]).toMatchObject({ title: "Push Day", type: "strength" });
-    const setCount = (
-      db
-        .prepare(
-          "SELECT COUNT(*) AS c FROM exercise_sets WHERE activity_id = ?"
-        )
-        .get(acts[0].id) as { c: number }
-    ).c;
-    expect(setCount).toBe(2);
+    expect(acts[0]).toMatchObject({
+      title: "Push Day",
+      type: "strength",
+      intensity: "hard",
+      start_time: "18:30",
+      end_time: "19:20",
+      duration_min: 50,
+    });
+    const sets = db
+      .prepare(
+        "SELECT target_reps, to_failure FROM exercise_sets WHERE activity_id = ?"
+      )
+      .all(acts[0].id) as {
+      target_reps: number | null;
+      to_failure: number | null;
+    }[];
+    expect(sets).toHaveLength(2);
+    expect(sets[0]).toMatchObject({ target_reps: 8, to_failure: 1 });
     expect(revalidate).toHaveBeenCalledWith("/data");
   });
 
