@@ -26,6 +26,17 @@ import { theilSenSlopePerDay, median, type DatedPoint } from "./robust-stats";
 // saying "on track".
 export const PACE_SLACK_DAYS = 3;
 
+// The trailing window (days) the goal-pacing finding fits its projection over (#433).
+// The finding and the Trends → Body chart caption BOTH call projectGoal, but the
+// finding used to feed it the raw all-source year of weights while the chart fed the
+// primary-source-collapsed daily series windowed to the selected range — so the
+// "can never disagree" comment was aspirational, not true (a 9-month-flat + 8-week-cut
+// profile got "trending away" from the finding and "on track" from the chart). The
+// builder now feeds the SAME deduped daily series windowed to this constant, which
+// matches the chart's 90-day default range, so the two verdicts line up by
+// construction. projectGoal's own docs favor a recent window over a stale year.
+export const GOAL_PACE_WINDOW_DAYS = 90;
+
 // The minimal goal slice the pacing check reads (Goal satisfies it). Only body-
 // metric goals with a target value AND a target date can be paced.
 export interface PaceableGoal {
