@@ -1,8 +1,9 @@
 "use server";
-import { requireWriteAccess } from "@/lib/auth";
+import { requireSession, requireWriteAccess } from "@/lib/auth";
 
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
+import { buildJournalFeedPage, type JournalFeedPage } from "@/lib/journal-feed";
 import { captureDelete } from "@/lib/undo-delete-db";
 import {
   writeActivityFold,
@@ -409,6 +410,23 @@ export async function mergeActivities(
   // dashboard rollups (same surfaces deleteActivity refreshes).
   revalidateActivitySurfaces();
   return { undoId };
+}
+
+// Load an older window of the Journal feed (issue #451). The Training → Log surface
+// renders only its newest page server-side; this fetches the next-older window on a
+// "Load more" tap (or when a deep link targets a day/activity below the loaded set).
+// A READ, but scoped to the SESSION's active profile — `before` is the only client
+// input and is used purely as a `date <` cursor, never a profile selector, so it can't
+// reach another profile's history (getJournalPage filters by profile_id). A malformed
+// cursor is normalized to null (start from the newest day) rather than trusted into SQL.
+export async function loadJournalPage(
+  before: string | null
+): Promise<JournalFeedPage> {
+  const { login, profile } = await requireSession();
+  const cursor =
+    typeof before === "string" && isRealIsoDate(before) ? before : null;
+  const units = getUnitPrefs(login.id);
+  return buildJournalFeedPage(profile.id, cursor, units);
 }
 
 export async function deleteActivity(

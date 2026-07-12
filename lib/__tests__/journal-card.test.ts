@@ -5,7 +5,11 @@
 // grouping/labels. No DB — buildJournalCards takes already-loaded rows.
 
 import { describe, it, expect } from "vitest";
-import { buildJournalCards, activityMetrics } from "@/lib/journal-card";
+import {
+  buildJournalCards,
+  activityMetrics,
+  appendDayGroups,
+} from "@/lib/journal-card";
 import type { Activity, ExerciseSet } from "@/lib/types";
 import type { UnitPrefs } from "@/lib/settings";
 import type { DatedWeight } from "@/lib/calorie-estimate";
@@ -312,5 +316,59 @@ describe("activityMetrics", () => {
   it("renders elevation in feet for the mile preference", () => {
     const a = activity({ id: 1, elevation_m: 100 });
     expect(activityMetrics(a, "mi")).toEqual(["↑ 328 ft"]);
+  });
+});
+
+describe("appendDayGroups — server-paged feed accumulation (#451)", () => {
+  // First page: two newest days. Second page: an older, disjoint day.
+  const page1 = build(
+    [
+      activity({ id: 3, date: "2026-06-11", title: "A" }),
+      activity({ id: 2, date: "2026-06-10", title: "B" }),
+    ],
+    []
+  );
+  const page2 = build(
+    [activity({ id: 1, date: "2026-06-01", title: "C" })],
+    []
+  );
+
+  it("concatenates disjoint older pages, preserving newest-first date order", () => {
+    const merged = appendDayGroups(page1, page2);
+    expect(merged.map((g) => g.date)).toEqual([
+      "2026-06-11",
+      "2026-06-10",
+      "2026-06-01",
+    ]);
+    // Cards are carried through unchanged.
+    expect(merged[2].cards.map((c) => c.activity.id)).toEqual([1]);
+  });
+
+  it("is a no-op for an empty incoming page and returns the existing groups", () => {
+    expect(appendDayGroups(page1, [])).toBe(page1);
+  });
+
+  it("merges a boundary day and dedups by activity id (no duplicate cards)", () => {
+    // A re-fetch whose window overlaps the boundary day 06-10, carrying the SAME
+    // activity 2 plus a NEW same-day activity 20 — must merge into one 06-10 group
+    // with each id once, not split the day or double-list card 2.
+    const overlap = build(
+      [
+        activity({ id: 20, date: "2026-06-10", title: "B2" }),
+        activity({ id: 2, date: "2026-06-10", title: "B" }),
+        activity({ id: 1, date: "2026-06-01", title: "C" }),
+      ],
+      []
+    );
+    const merged = appendDayGroups(page1, overlap);
+    expect(merged.map((g) => g.date)).toEqual([
+      "2026-06-11",
+      "2026-06-10",
+      "2026-06-01",
+    ]);
+    const boundary = merged.find((g) => g.date === "2026-06-10")!;
+    expect(boundary.cards.map((c) => c.activity.id).sort()).toEqual([2, 20]);
+    // The existing input is not mutated.
+    expect(page1.find((g) => g.date === "2026-06-10")!.cards).toHaveLength(1);
   });
 });
