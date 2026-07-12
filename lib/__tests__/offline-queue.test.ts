@@ -8,6 +8,10 @@ import {
   settledKeys,
   isAuthFailure,
   shouldQueueOffline,
+  planFlushDisposition,
+  describeIntent,
+  MAX_REPLAY_ATTEMPTS,
+  type QueuedIntent,
   type ReplayResult,
 } from "@/lib/offline/queue";
 
@@ -134,5 +138,112 @@ describe("FLOW_KINDS", () => {
       "body-metric",
       "vitals",
     ]);
+  });
+});
+
+describe("planFlushDisposition (issue #475)", () => {
+  const now = new Date("2026-07-12T10:00:00.000Z");
+  function intent(key: string, attempts = 0): QueuedIntent {
+    return {
+      key,
+      flow: "dose",
+      date: "2026-07-10",
+      capturedAt: "2026-07-10T09:00:00.000Z",
+      payload: { doseId: 1 },
+      attempts,
+    };
+  }
+
+  it("deletes + counts done/duplicate as synced, and never parks them", () => {
+    const intents = [intent("a"), intent("b")];
+    const results: ReplayResult[] = [
+      { key: "a", status: "done" },
+      { key: "b", status: "duplicate" },
+    ];
+    const plan = planFlushDisposition(intents, results, now);
+    expect(plan.syncedCount).toBe(2);
+    expect(plan.deleteKeys.sort()).toEqual(["a", "b"]);
+    expect(plan.rejected).toEqual([]);
+    expect(plan.retry).toEqual([]);
+  });
+
+  it("parks a server-rejected intent (with its payload + reason) and deletes it from the live queue — never silently discarded", () => {
+    const intents = [intent("a")];
+    const results: ReplayResult[] = [
+      { key: "a", status: "rejected", reason: "bad value" },
+    ];
+    const plan = planFlushDisposition(intents, results, now);
+    expect(plan.deleteKeys).toEqual(["a"]);
+    expect(plan.syncedCount).toBe(0);
+    expect(plan.rejected).toHaveLength(1);
+    expect(plan.rejected[0].intent.key).toBe("a");
+    expect(plan.rejected[0].intent.payload).toEqual({ doseId: 1 });
+    expect(plan.rejected[0].reason).toBe("bad value");
+    expect(plan.rejected[0].rejectedAt).toBe(now.toISOString());
+  });
+
+  it("falls back to a default reason when the server sends none", () => {
+    const plan = planFlushDisposition(
+      [intent("a")],
+      [{ key: "a", status: "rejected" }],
+      now
+    );
+    expect(plan.rejected[0].reason.length).toBeGreaterThan(0);
+  });
+
+  it("re-queues a transient error with a bumped attempt count, under the cap", () => {
+    const plan = planFlushDisposition(
+      [intent("a", 1)],
+      [{ key: "a", status: "error" }],
+      now
+    );
+    expect(plan.retry).toHaveLength(1);
+    expect(plan.retry[0].attempts).toBe(2);
+    expect(plan.deleteKeys).toEqual([]);
+    expect(plan.rejected).toEqual([]);
+  });
+
+  it("reclassifies a permanently-erroring intent to rejected once it hits the cap (issue #475 point 3)", () => {
+    const plan = planFlushDisposition(
+      [intent("a", MAX_REPLAY_ATTEMPTS - 1)],
+      [{ key: "a", status: "error" }],
+      now
+    );
+    expect(plan.retry).toEqual([]);
+    expect(plan.deleteKeys).toEqual(["a"]);
+    expect(plan.rejected).toHaveLength(1);
+    expect(plan.rejected[0].intent.attempts).toBe(MAX_REPLAY_ATTEMPTS);
+    expect(plan.rejected[0].reason).toMatch(/attempts/);
+  });
+
+  it("ignores a result whose key is no longer in the live queue (fail-safe)", () => {
+    const plan = planFlushDisposition(
+      [intent("a")],
+      [{ key: "ghost", status: "error" }],
+      now
+    );
+    expect(plan.retry).toEqual([]);
+    expect(plan.rejected).toEqual([]);
+    // a shapeless rejected with no live row records the delete but parks nothing
+    const plan2 = planFlushDisposition(
+      [],
+      [{ key: "ghost", status: "rejected" }],
+      now
+    );
+    expect(plan2.deleteKeys).toEqual(["ghost"]);
+    expect(plan2.rejected).toEqual([]);
+  });
+});
+
+describe("describeIntent (issue #475)", () => {
+  it("names the flow + captured date so the user can recognise a dropped entry", () => {
+    const i = buildIntent("body-metric", "2026-07-10", {
+      weight: "80",
+      weightUnit: "kg",
+      bodyFatPct: null,
+      restingHr: null,
+      notes: null,
+    });
+    expect(describeIntent(i)).toBe("Body metric · 2026-07-10");
   });
 });

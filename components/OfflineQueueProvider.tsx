@@ -12,16 +12,22 @@ import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import {
   buildIntent,
-  settledKeys,
+  planFlushDisposition,
+  describeIntent,
   isAuthFailure,
   type FlowKind,
   type IntentPayload,
   type ReplayResult,
+  type RejectedEntry,
 } from "@/lib/offline/queue";
 import {
   enqueueIntent,
   allIntents,
   removeIntents,
+  putIntents,
+  saveRejected,
+  allRejected,
+  removeRejected,
   countIntents,
 } from "@/lib/offline/queue-db";
 
@@ -91,6 +97,10 @@ export default function OfflineQueueProvider({
   children: React.ReactNode;
 }) {
   const [pending, setPending] = useState(0);
+  // Parked rejected/undeliverable entries the user can review + re-enter (issue
+  // #475): a replay that failed server validation, or a transient error that
+  // exhausted its retries, is preserved here instead of silently discarded.
+  const [rejected, setRejected] = useState<RejectedEntry[]>([]);
   const flushing = useRef(false);
   // One delayed retry per failure streak (see the fetch catch below) — reset by
   // any flush that reaches the server, so a dead server can't turn the retry
@@ -102,6 +112,20 @@ export default function OfflineQueueProvider({
   const refreshCount = useCallback(async () => {
     setPending(await countIntents());
   }, []);
+
+  const refreshRejected = useCallback(async () => {
+    setRejected(await allRejected());
+  }, []);
+
+  // Dismiss a reviewed rejected entry (the user has re-entered it, or is letting it
+  // go) — removes it from the dead-letter store and the panel.
+  const dismissRejected = useCallback(
+    async (keys: string[]) => {
+      await removeRejected(keys);
+      await refreshRejected();
+    },
+    [refreshRejected]
+  );
 
   // Announce a completed sync exactly once even when several replay actors
   // report it — the page flush AND the service worker's Background Sync both
@@ -173,22 +197,33 @@ export default function OfflineQueueProvider({
       if (!res.ok) return;
       const data = (await res.json()) as { results?: ReplayResult[] };
       const results = data.results ?? [];
-      await removeIntents(settledKeys(results));
-      // Count what this reconnect actually got to the server: "done" is our
-      // apply, "duplicate" means a racing actor (the service worker's Background
-      // Sync replays the queue independently) applied it first — either way the
-      // user's offline entry is now safely synced and deserves the confirmation.
-      // Only counting "done" made the toast (and the router refresh) vanish
-      // whenever the service worker won the race.
-      const synced = results.filter(
-        (r) => r.status === "done" || r.status === "duplicate"
-      ).length;
+      // Split the honest per-intent answers into the four dispositions (issue #475):
+      // synced (done/duplicate) → delete; server-rejected → park in the dead-letter
+      // store, NEVER silently discard; transient error → re-persist with a bumped
+      // attempt count, or park once it exhausts the retry cap. `synced` counts
+      // done+duplicate — "duplicate" means a racing actor (the service worker's
+      // Background Sync) applied it first, which is still a safe sync worth
+      // confirming (only counting "done" made the toast vanish on that race).
+      const plan = planFlushDisposition(intents, results);
+      await removeIntents(plan.deleteKeys);
+      await putIntents(plan.retry);
+      await saveRejected(plan.rejected);
       await refreshCount();
-      announceSynced(synced);
+      await refreshRejected();
+      announceSynced(plan.syncedCount);
+      if (plan.rejected.length > 0) {
+        // A dropped record is data loss — surface it persistently (never
+        // auto-dismiss), and the review panel below lets the user re-enter it.
+        const n = plan.rejected.length;
+        toast(
+          `${n} offline ${n === 1 ? "entry" : "entries"} couldn't be applied. Review below to re-enter.`,
+          { tone: "error", duration: null }
+        );
+      }
     } finally {
       flushing.current = false;
     }
-  }, [toast, refreshCount, announceSynced]);
+  }, [toast, refreshCount, refreshRejected, announceSynced]);
 
   const enqueue = useCallback(
     async (flow: FlowKind, date: string, payload: IntentPayload) => {
@@ -201,6 +236,7 @@ export default function OfflineQueueProvider({
 
   useEffect(() => {
     void refreshCount();
+    void refreshRejected();
     void flush(); // on-load flush for a queue left pending across a reload
 
     const onOnline = () => void flush();
@@ -231,11 +267,63 @@ export default function OfflineQueueProvider({
       document.removeEventListener("visibilitychange", onVisible);
       sw?.removeEventListener("message", onSwMessage);
     };
-  }, [flush, refreshCount, announceSynced]);
+  }, [flush, refreshCount, refreshRejected, announceSynced]);
 
   return (
     <OfflineQueueContext.Provider value={{ pending, enqueue, flush }}>
       {children}
+      {rejected.length > 0 && (
+        <div
+          data-testid="offline-rejected-review"
+          role="alert"
+          aria-live="assertive"
+          className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-[max(1rem,env(safe-area-inset-right))] z-[101] w-[min(22rem,calc(100vw-2rem))] space-y-2 rounded-xl border border-rose-300 bg-rose-50 p-3 text-sm text-rose-900 shadow-lg dark:border-rose-800 dark:bg-rose-950 dark:text-rose-100"
+        >
+          <div className="flex items-start justify-between gap-2">
+            <p className="font-semibold">
+              {rejected.length} offline{" "}
+              {rejected.length === 1 ? "entry" : "entries"} couldn&rsquo;t be
+              applied
+            </p>
+            <button
+              type="button"
+              className="shrink-0 text-xs font-medium underline underline-offset-2"
+              onClick={() =>
+                void dismissRejected(rejected.map((r) => r.intent.key))
+              }
+            >
+              Dismiss all
+            </button>
+          </div>
+          <p className="text-xs text-rose-700 dark:text-rose-300">
+            These weren&rsquo;t saved. Re-enter them, then dismiss.
+          </p>
+          <ul className="space-y-1.5">
+            {rejected.map((r) => (
+              <li
+                key={r.intent.key}
+                className="flex items-start justify-between gap-2 rounded-lg bg-white/60 px-2 py-1.5 dark:bg-black/20"
+              >
+                <span>
+                  <span className="font-medium">
+                    {describeIntent(r.intent)}
+                  </span>
+                  <span className="block text-xs text-rose-700 dark:text-rose-300">
+                    {r.reason}
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  className="shrink-0 text-xs font-medium underline underline-offset-2"
+                  onClick={() => void dismissRejected([r.intent.key])}
+                >
+                  Dismiss
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {pending > 0 && (
         <div
           data-testid="offline-queue-badge"

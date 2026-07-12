@@ -89,13 +89,29 @@ export async function POST(req: Request) {
         raw && typeof (raw as { key?: unknown }).key === "string"
           ? (raw as { key: string }).key
           : "";
-      if (key) results.push({ key, status: "rejected" });
+      if (key)
+        results.push({
+          key,
+          status: "rejected",
+          reason: "The entry was malformed and couldn't be read.",
+        });
       continue;
     }
     try {
       const outcome = applyIntent(profileId, raw);
       if (outcome === "done") anyApplied = true;
-      results.push({ key: raw.key, status: outcome });
+      // A server-side rejection carries a coarse reason so the client can tell the
+      // user WHY their offline entry couldn't be applied (issue #475); the full
+      // captured payload is preserved client-side in the dead-letter store.
+      results.push(
+        outcome === "rejected"
+          ? {
+              key: raw.key,
+              status: outcome,
+              reason: "The server couldn't validate this entry.",
+            }
+          : { key: raw.key, status: outcome }
+      );
     } catch {
       // Transient server/DB failure — leave it queued for the next flush.
       results.push({ key: raw.key, status: "error" });
