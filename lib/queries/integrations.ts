@@ -10,6 +10,7 @@ import {
   findActivityDuplicates,
   findBodyMetricConflicts,
   undecidedPairs,
+  suppressingSignatures,
   ACTIVITY_DOMAIN,
   BODY_METRIC_DOMAIN,
   type ActivityDupInput,
@@ -263,7 +264,12 @@ export function deletePairDecision(
 export function getActivityDuplicates(
   profileId: number
 ): ActivityDupPair<ActivityDupRow>[] {
-  const decided = new Set(getPairDecisions(profileId, ACTIVITY_DOMAIN).keys());
+  // A 'merged' decision must NOT suppress a RE-FORMED pair (#507): if both rows exist
+  // again the resync undid the merge, so it belongs back in Review. Only kept-both /
+  // dismissed keep suppressing on re-detection.
+  const decided = suppressingSignatures(
+    getPairDecisions(profileId, ACTIVITY_DOMAIN)
+  );
   return undecidedPairs(
     findActivityDuplicates(loadActivityDupRows(profileId)),
     decided
@@ -274,8 +280,10 @@ export function getActivityDuplicates(
 export function getBodyMetricConflicts(
   profileId: number
 ): BodyMetricConflictPair<BodyMetricConflictRow>[] {
-  const decided = new Set(
-    getPairDecisions(profileId, BODY_METRIC_DOMAIN).keys()
+  // A re-formed 'merged' body-metric pair means the ON CONFLICT push resurrected the
+  // absorbed row — resurface it (#507); kept-both / dismissed stay suppressed.
+  const decided = suppressingSignatures(
+    getPairDecisions(profileId, BODY_METRIC_DOMAIN)
   );
   return undecidedPairs(
     findBodyMetricConflicts(loadBodyMetricConflictRows(profileId)),

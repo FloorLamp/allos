@@ -392,6 +392,24 @@ export function undecidedPairs<T extends { signature: string }>(
   return pairs.filter((p) => !decided.has(p.signature));
 }
 
+// The signatures whose recorded decision should keep SUPPRESSING a re-detected pair
+// (#507). A pair is only in the detector's input when BOTH its rows exist again — so a
+// re-detected pair means the pair RE-FORMED. For 'kept-both'/'dismissed' the user ruled
+// the pair fine as-is, so it stays suppressed. But a re-formed 'merged' pair means the
+// resync UNDID the merge (the absorbed row came back) — the decision must NOT convert
+// that regression into permanent silence, so 'merged' is EXCLUDED here and the pair
+// resurfaces in Review. (The re-import tombstone normally prevents the resurrection
+// upstream; this is the safety net for when it misses.) Pure → unit-testable.
+export function suppressingSignatures(
+  decisions: ReadonlyMap<string, PairDecision>
+): Set<string> {
+  const out = new Set<string>();
+  for (const [signature, decision] of decisions) {
+    if (decision !== "merged") out.add(signature);
+  }
+  return out;
+}
+
 // ── Merge folding (pure halves of the merge action) ───────────────────────────
 
 // Nullable activity columns folded from the DISCARDED row into the KEEPER when the

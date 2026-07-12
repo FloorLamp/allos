@@ -73,6 +73,7 @@ export const OWNED_TABLES = [
   "profile_share_links",
   "upcoming_dismissals",
   "import_pair_decisions",
+  "import_tombstones",
   "ai_usage_counters",
   "deleted_rows",
   "replayed_keys",

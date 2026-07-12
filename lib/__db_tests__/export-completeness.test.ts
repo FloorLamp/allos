@@ -80,6 +80,10 @@ const EXPORT_ALLOWLIST: { table: string; why: string }[] = [
     why: "import dedup bookkeeping (merge/keep-both signatures); transient processing state",
   },
   {
+    table: "import_tombstones",
+    why: "re-import suppression bookkeeping (merged/deleted source-owned natural keys); operational dedup state, not health data",
+  },
+  {
     table: "ai_usage_counters",
     why: "per-day AI rate-limit counters; operational, not health data",
   },

@@ -328,6 +328,7 @@ export async function runOuraSync(
       inserted: tally.inserted,
       updated: tally.updated,
       unchanged: tally.unchanged,
+      suppressed: tally.suppressed,
       skipped: tally.skipped,
       raw_ref: rawRef,
     });

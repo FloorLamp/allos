@@ -20,5 +20,6 @@
   "019-activity-equipment.ts": "534e1bb32a2269ffcf98e28a1906f75d13083997a0e9364c468194508b115002",
   "020-medical-records-created-index.ts": "5723f805482c0023e99572ef10e5b58b105a75916baf17b205d8f64a804e5a04",
   "021-dose-lifetime.ts": "1354785432bb5e2df4be2b75b89373994fe3fcfa4bd7ef6c3e43150c6dc5ed0f",
-  "022-integration-refresh-claim.ts": "e7af7b35752c3c6c291ec69834e938314f26c6bf4447fb71f6cc95a2eb9a578f"
+  "022-integration-refresh-claim.ts": "e7af7b35752c3c6c291ec69834e938314f26c6bf4447fb71f6cc95a2eb9a578f",
+  "023-import-tombstones.ts": "07c6349524ed10ef1fb28f785916cdb73b29cfc651096dab2fd9aecff3322197"
 }

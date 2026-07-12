@@ -156,6 +156,9 @@ export interface SyncEventInput {
   inserted?: number | null;
   updated?: number | null;
   unchanged?: number | null;
+  // Rows the source re-sent that a re-import tombstone held out (#507/#508). Null on a
+  // failure event or a legacy caller.
+  suppressed?: number | null;
   skipped?: number | null;
   // Bare filename of the raw provider payload captured for this sync (issue #9),
   // written by lib/integrations/raw-log.ts. Null when capture was off/failed.
@@ -180,8 +183,8 @@ export function recordSyncEvent(
     db.prepare(
       `INSERT INTO integration_sync_events
          (profile_id, provider, at, ok, window_start, window_end,
-          received, written, inserted, updated, unchanged, skipped, raw_ref, error)
-       VALUES (?, ?, datetime('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          received, written, inserted, updated, unchanged, suppressed, skipped, raw_ref, error)
+       VALUES (?, ?, datetime('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       profileId,
       provider,
@@ -193,6 +196,7 @@ export function recordSyncEvent(
       ev.inserted ?? null,
       ev.updated ?? null,
       ev.unchanged ?? null,
+      ev.suppressed ?? null,
       ev.skipped ?? null,
       ev.raw_ref ?? null,
       ev.error ? ev.error.slice(0, 500) : null

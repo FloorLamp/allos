@@ -78,7 +78,12 @@ describe("ingest bounds: mixed absurd/good batch accounting", () => {
 
     // Good rows that survived: D1 body_metrics (weight+RHR merged into one day),
     // D1 steps sample, D1 SpO2 vital = 3 inserts.
-    expect(split).toEqual({ inserted: 3, updated: 0, unchanged: 0 });
+    expect(split).toEqual({
+      inserted: 3,
+      updated: 0,
+      unchanged: 0,
+      suppressed: 0,
+    });
 
     const tally = summarizeSplit(split, parsed.skipped);
     expect(tally.skipped).toBe(5);
@@ -146,7 +151,12 @@ describe("ingest bounds: mixed absurd/good batch accounting", () => {
     const split = db.transaction(() =>
       upsertBodyMetrics(profile, parsed.bodyMetrics, SRC)
     )();
-    expect(split).toEqual({ inserted: 0, updated: 0, unchanged: 0 });
+    expect(split).toEqual({
+      inserted: 0,
+      updated: 0,
+      unchanged: 0,
+      suppressed: 0,
+    });
 
     const after = db
       .prepare(

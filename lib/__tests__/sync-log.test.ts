@@ -69,52 +69,85 @@ describe("summarizeSync", () => {
 describe("foldCounts", () => {
   it("returns an all-zero total for no parts", () => {
     expect(foldCounts([])).toEqual(emptyCounts());
-    expect(emptyCounts()).toEqual({ inserted: 0, updated: 0, unchanged: 0 });
+    expect(emptyCounts()).toEqual({
+      inserted: 0,
+      updated: 0,
+      unchanged: 0,
+      suppressed: 0,
+    });
   });
 
   it("sums each field across parts", () => {
     expect(
       foldCounts([
-        { inserted: 3, updated: 1, unchanged: 5 },
-        { inserted: 0, updated: 2, unchanged: 4 },
-        { inserted: 1, updated: 0, unchanged: 0 },
+        { inserted: 3, updated: 1, unchanged: 5, suppressed: 1 },
+        { inserted: 0, updated: 2, unchanged: 4, suppressed: 0 },
+        { inserted: 1, updated: 0, unchanged: 0, suppressed: 2 },
       ])
-    ).toEqual({ inserted: 4, updated: 3, unchanged: 9 });
+    ).toEqual({ inserted: 4, updated: 3, unchanged: 9, suppressed: 3 });
   });
 });
 
 describe("summarizeSplit", () => {
-  it("derives received as inserted + updated + unchanged + skipped", () => {
+  it("derives received as inserted + updated + unchanged + suppressed + skipped", () => {
     expect(
-      summarizeSplit({ inserted: 3, updated: 2, unchanged: 5 }, 4)
+      summarizeSplit(
+        { inserted: 3, updated: 2, unchanged: 5, suppressed: 1 },
+        4
+      )
     ).toEqual({
       inserted: 3,
       updated: 2,
       unchanged: 5,
+      suppressed: 1,
       skipped: 4,
-      received: 14,
+      received: 15,
     });
   });
 
   it("handles an all-unchanged batch (received still counts the unchanged rows)", () => {
     expect(
-      summarizeSplit({ inserted: 0, updated: 0, unchanged: 6 }, 0)
+      summarizeSplit(
+        { inserted: 0, updated: 0, unchanged: 6, suppressed: 0 },
+        0
+      )
     ).toEqual({
       inserted: 0,
       updated: 0,
       unchanged: 6,
+      suppressed: 0,
       skipped: 0,
       received: 6,
     });
   });
 
+  it("counts tombstone-suppressed rows in received (no silent cap)", () => {
+    expect(
+      summarizeSplit(
+        { inserted: 0, updated: 0, unchanged: 0, suppressed: 2 },
+        0
+      )
+    ).toEqual({
+      inserted: 0,
+      updated: 0,
+      unchanged: 0,
+      suppressed: 2,
+      skipped: 0,
+      received: 2,
+    });
+  });
+
   it("clamps negatives to zero and rounds fractional inputs", () => {
     expect(
-      summarizeSplit({ inserted: -1, updated: 2.4, unchanged: 1.6 }, -3)
+      summarizeSplit(
+        { inserted: -1, updated: 2.4, unchanged: 1.6, suppressed: -2 },
+        -3
+      )
     ).toEqual({
       inserted: 0,
       updated: 2,
       unchanged: 2,
+      suppressed: 0,
       skipped: 0,
       received: 4,
     });
@@ -149,6 +182,39 @@ describe("formatSplitLabel", () => {
     // Also when the whole batch was empty.
     expect(
       formatSplitLabel({ inserted: 0, updated: 0, unchanged: 0, written: 0 })
+    ).toEqual({ primary: "nothing new", muted: true });
+  });
+
+  it("shows a suppressed segment, even when nothing else landed (#507)", () => {
+    expect(
+      formatSplitLabel({
+        inserted: 0,
+        updated: 0,
+        unchanged: 0,
+        written: 0,
+        suppressed: 2,
+      })
+    ).toEqual({ primary: "2 suppressed", muted: false });
+    expect(
+      formatSplitLabel({
+        inserted: 1,
+        updated: 0,
+        unchanged: 3,
+        written: 1,
+        suppressed: 1,
+      })
+    ).toEqual({ primary: "1 new · 3 unchanged · 1 suppressed", muted: false });
+  });
+
+  it("still collapses to 'nothing new' when suppressed is absent/zero", () => {
+    expect(
+      formatSplitLabel({
+        inserted: 0,
+        updated: 0,
+        unchanged: 4,
+        written: 4,
+        suppressed: 0,
+      })
     ).toEqual({ primary: "nothing new", muted: true });
   });
 
