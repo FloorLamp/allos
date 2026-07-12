@@ -101,6 +101,22 @@ export function diffGrantAccess(
   };
 }
 
+// Canonical, order-independent signature of a member's grant set (issue #467). The
+// admin grant form submits the signature it LOADED with; setGrants re-reads the
+// login's current grants under the write lock and REFUSES (friendly reload) when they
+// no longer match — so a stale form whose *desired* set predates another admin's fresh
+// grant can't silently revoke it. Access levels are normalized so the two sides can't
+// disagree on a missing/garbled level; the empty set is "". Same shape both the client
+// (loaded snapshot) and server (current) sign, so equal state ⇒ equal signature.
+export function grantSignature(grants: readonly GrantInput[]): string {
+  return normalizeGrantInputs(
+    grants,
+    grants.map((g) => g.profileId)
+  )
+    .map((g) => `${g.profileId}:${g.access}`)
+    .join(",");
+}
+
 // A compact, PHI-free audit detail for a grant change: additions as
 // `+<id>:<access>`, level changes as `~<id>:<access>`, removals as `-<id>`.
 export function formatGrantDiff(diff: {

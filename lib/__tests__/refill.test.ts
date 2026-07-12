@@ -7,7 +7,9 @@ import {
   daysOfSupplyForItem,
   daysOfSupplyLeft,
   isLowSupply,
+  parseQuantityOnHand,
   refillBasisLabel,
+  resolveOnHandWrite,
   selectLowSupplyItems,
   unitsPerDay,
   type DoseRate,
@@ -279,5 +281,41 @@ describe("selectLowSupplyItems", () => {
       expect(widgetById.has(item.id)).toBe(rowIsLow);
       if (rowIsLow) expect(widgetById.get(item.id)).toBe(rowDaysLeft);
     }
+  });
+});
+
+describe("parseQuantityOnHand (issue #467)", () => {
+  it("normalizes blank / non-finite to null (untracked)", () => {
+    expect(parseQuantityOnHand("")).toBeNull();
+    expect(parseQuantityOnHand("   ")).toBeNull();
+    expect(parseQuantityOnHand(null)).toBeNull();
+    expect(parseQuantityOnHand(undefined)).toBeNull();
+    expect(parseQuantityOnHand("abc")).toBeNull();
+  });
+  it("floors negatives at 0 and keeps finite values", () => {
+    expect(parseQuantityOnHand("30")).toBe(30);
+    expect(parseQuantityOnHand("29.5")).toBe(29.5);
+    expect(parseQuantityOnHand("0")).toBe(0);
+    expect(parseQuantityOnHand("-5")).toBe(0);
+  });
+});
+
+describe("resolveOnHandWrite (issue #467 compare-and-set)", () => {
+  it("keeps the current (possibly decremented) value when the field is unchanged", () => {
+    // Form loaded at 30; user didn't touch it; a dose decremented to 29 meanwhile.
+    expect(resolveOnHandWrite(30, 30, 29)).toBe(29);
+  });
+  it("writes the submitted value when the user changed the field", () => {
+    // Refill: form loaded at 5, user typed 90 — honor it even though a dose
+    // decremented current to 4 in between.
+    expect(resolveOnHandWrite(90, 5, 4)).toBe(90);
+  });
+  it("is null-safe across tracking on/off toggles", () => {
+    // Turn tracking OFF (loaded 30 → submitted null): user changed it, write null.
+    expect(resolveOnHandWrite(null, 30, 28)).toBeNull();
+    // Turn tracking ON (loaded null → submitted 60): user changed it, write 60.
+    expect(resolveOnHandWrite(60, null, null)).toBe(60);
+    // Untracked and untouched (null == null): keep current (still null).
+    expect(resolveOnHandWrite(null, null, null)).toBeNull();
   });
 });

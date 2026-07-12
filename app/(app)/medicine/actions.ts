@@ -36,6 +36,7 @@ import {
 } from "@/lib/rxnorm";
 import { orderIntakePair } from "@/lib/intake-pairs";
 import { leftRefillTrackedSet, refillMarkerKey } from "@/lib/refill-nudge";
+import { parseQuantityOnHand, resolveOnHandWrite } from "@/lib/refill";
 import { escalationMarkerKey } from "@/lib/notifications/escalation-keys";
 import { withAiLogContext } from "@/lib/ai-log";
 import {
@@ -86,11 +87,7 @@ function fields(formData: FormData) {
   // Refill tracking. quantity_on_hand is opt-in: a blank field
   // leaves it NULL (untracked). qty_per_dose defaults to 1 and is clamped
   // positive so days-of-supply math never divides by zero.
-  const qtyRaw = String(formData.get("quantity_on_hand") ?? "").trim();
-  const quantityOnHand =
-    qtyRaw === "" || !Number.isFinite(Number(qtyRaw))
-      ? null
-      : Math.max(0, Number(qtyRaw));
+  const quantityOnHand = parseQuantityOnHand(formData.get("quantity_on_hand"));
   const perDoseRaw = Number(formData.get("qty_per_dose"));
   const qtyPerDose =
     Number.isFinite(perDoseRaw) && perDoseRaw > 0 ? perDoseRaw : 1;
@@ -314,6 +311,12 @@ export async function updateSupplement(formData: FormData) {
   const f = fields(formData);
   const doses = parseDoses(formData);
   const pairs = parsePairs(formData);
+  // The on-hand value the form was LOADED with (issue #467): quantity_on_hand is a
+  // concurrently-decremented counter, so we compare-and-set against this instead of
+  // blindly writing the absolute submitted value (see resolveOnHandWrite).
+  const loadedQuantityOnHand = parseQuantityOnHand(
+    formData.get("quantity_on_hand_loaded")
+  );
   // Prescribing provider: medications only; NULL for supplements so
   // a kind flip back to supplement clears a stale link.
   const providerId =
@@ -332,6 +335,16 @@ export async function updateSupplement(formData: FormData) {
       .get(id, profile.id) as
       { active: number; quantity_on_hand: number | null } | undefined;
     if (!owned) return;
+    // Compare-and-set the refill counter (issue #467): only honor the submitted
+    // on-hand value when the user actually changed the field; otherwise keep the
+    // current value (re-read here under the IMMEDIATE write lock), so a concurrent
+    // dose decrement — e.g. a poll-sidecar Telegram ✅ tap — isn't clobbered by a
+    // stale form save. Everything else on the row is still absolute last-write-wins.
+    const effectiveQuantityOnHand = resolveOnHandWrite(
+      f.quantityOnHand,
+      loadedQuantityOnHand,
+      owned.quantity_on_hand
+    );
     db.prepare(
       `UPDATE intake_items
          SET name = ?, notes = ?, condition = ?, priority = ?, brand = ?,
@@ -353,7 +366,7 @@ export async function updateSupplement(formData: FormData) {
       f.critical,
       f.escalateAfterMin,
       f.escalateChatId,
-      f.quantityOnHand,
+      effectiveQuantityOnHand,
       f.qtyPerDose,
       f.kind,
       f.prescriber,
@@ -373,7 +386,7 @@ export async function updateSupplement(formData: FormData) {
     if (
       leftRefillTrackedSet(
         { active: !!owned.active, quantityOnHand: owned.quantity_on_hand },
-        { active: !!owned.active, quantityOnHand: f.quantityOnHand }
+        { active: !!owned.active, quantityOnHand: effectiveQuantityOnHand }
       )
     ) {
       deleteProfileSetting(profile.id, refillMarkerKey(id));

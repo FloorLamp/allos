@@ -710,6 +710,18 @@ export default function SupplementForm({
               className="input"
               placeholder="e.g. 90 pills"
             />
+            {/* The value the form LOADED with, so updateSupplement can compare-and-
+                set the concurrently-decremented on-hand counter instead of blindly
+                overwriting a dose logged while this form was open (issue #467). */}
+            <input
+              type="hidden"
+              name="quantity_on_hand_loaded"
+              value={
+                s?.quantity_on_hand != null
+                  ? Math.max(0, s.quantity_on_hand)
+                  : ""
+              }
+            />
           </div>
           <div>
             <label className="label" htmlFor={`supp-qty-per-dose-${fid}`}>

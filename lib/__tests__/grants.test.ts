@@ -6,6 +6,7 @@ import {
   normalizeGrantInputs,
   diffGrantAccess,
   formatGrantDiff,
+  grantSignature,
 } from "../grants";
 
 describe("normalizeGrantSelection", () => {
@@ -192,5 +193,45 @@ describe("formatGrantDiff", () => {
 
   it("is empty for a no-op diff", () => {
     expect(formatGrantDiff({ add: [], update: [], remove: [] })).toBe("");
+  });
+});
+
+describe("grantSignature (issue #467 optimistic concurrency)", () => {
+  it("is order-independent — same grants, any order, same signature", () => {
+    const a = grantSignature([
+      { profileId: 3, access: "read" },
+      { profileId: 1, access: "write" },
+    ]);
+    const b = grantSignature([
+      { profileId: 1, access: "write" },
+      { profileId: 3, access: "read" },
+    ]);
+    expect(a).toBe(b);
+  });
+
+  it("changes when a grant is added, removed, or its level flips", () => {
+    const base = grantSignature([{ profileId: 1, access: "write" }]);
+    expect(base).not.toBe(
+      grantSignature([
+        { profileId: 1, access: "write" },
+        { profileId: 2, access: "write" },
+      ])
+    ); // added
+    expect(base).not.toBe(grantSignature([])); // removed
+    expect(base).not.toBe(grantSignature([{ profileId: 1, access: "read" }])); // level flip
+  });
+
+  it("signs the empty set as the empty string", () => {
+    expect(grantSignature([])).toBe("");
+  });
+
+  it("normalizes access so a garbled level can't desync the two sides", () => {
+    // The server reads a stored access of null/garbage as 'write' (normalizeAccess);
+    // the signature must too, so an unchanged grant signs identically on both sides.
+    const stored = grantSignature([
+      { profileId: 1, access: "bogus" as unknown as "write" },
+    ]);
+    const loaded = grantSignature([{ profileId: 1, access: "write" }]);
+    expect(stored).toBe(loaded);
   });
 });

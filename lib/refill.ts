@@ -120,6 +120,39 @@ export function daysOfSupplyForItem(
   );
 }
 
+// Normalize the raw `quantity_on_hand` form field (opt-in refill tracking): a blank
+// or non-finite entry is NULL (untracked); otherwise the value floored at 0. Shared
+// by the add/update actions AND the #467 loaded-value compare so both sides of that
+// compare normalize identically.
+export function parseQuantityOnHand(
+  raw: FormDataEntryValue | null | undefined
+): number | null {
+  const s = String(raw ?? "").trim();
+  return s === "" || !Number.isFinite(Number(s))
+    ? null
+    : Math.max(0, Number(s));
+}
+
+// Compare-and-set for the refill counter (issue #467). The supplement edit form
+// writes `quantity_on_hand` as an ABSOLUTE value, but a confirmed dose decrements it
+// concurrently — including from the poll sidecar (a Telegram ✅ tap → markDoseTaken →
+// decrement), a genuinely separate process. A caregiver who opened the edit form when
+// it showed 30, then saved an unrelated tweak after the patient logged a dose (30→29),
+// would write 30 back and silently undo the decrement — on the safety-adjacent refill
+// path, and the edit form IS the refill path (there is no separate "mark refilled"
+// action). So the form also submits the value it LOADED with: only honor the submitted
+// value when the user actually changed the field (submitted differs from loaded);
+// otherwise keep whatever the counter now holds (`current`, re-read under the write
+// lock). NULL-safe, so untracked ↔ tracked toggles compare cleanly. Returns the value
+// to persist.
+export function resolveOnHandWrite(
+  submitted: number | null,
+  loaded: number | null,
+  current: number | null
+): number | null {
+  return submitted === loaded ? current : submitted;
+}
+
 // Minimal shape the low-supply selection needs off an intake item.
 export interface RefillTrackedItem {
   id: number;

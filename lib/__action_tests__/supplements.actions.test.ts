@@ -124,6 +124,60 @@ describe("toggleTaken refill invariant", () => {
     expect(itemRow(suppId).quantity_on_hand).toBe(10);
   });
 
+  // Issue #467: the edit form writes quantity_on_hand as an absolute value, but a
+  // dose confirm (incl. the poll sidecar) decrements it concurrently. The form now
+  // submits the value it LOADED with, and updateSupplement compare-and-sets: an
+  // untouched on-hand field must NOT clobber a decrement logged while the form was open.
+  it("stale-form save preserves a concurrent dose decrement (compare-and-set)", async () => {
+    const { profile } = seedActor();
+    await addSupplement(
+      fd({ name: "Metformin", quantity_on_hand: 30, qty_per_dose: 1 })
+    );
+    const suppId = getSupplements(profile.id)[0].id;
+    const doseId = getSupplementDoses(profile.id)[0].id;
+
+    // A dose is confirmed AFTER the caregiver's form loaded at 30 → supply 30 → 29.
+    await toggleTaken(fd({ dose_id: doseId }));
+    expect(itemRow(suppId).quantity_on_hand).toBe(29);
+
+    // Caregiver saves an unrelated tweak (rename); the on-hand field is UNCHANGED
+    // from the loaded 30, so the decrement to 29 must survive (not revert to 30).
+    await updateSupplement(
+      fd({
+        id: suppId,
+        name: "Metformin XR",
+        quantity_on_hand: 30,
+        quantity_on_hand_loaded: 30,
+        qty_per_dose: 1,
+      })
+    );
+    expect(itemRow(suppId).name).toBe("Metformin XR");
+    expect(itemRow(suppId).quantity_on_hand).toBe(29);
+  });
+
+  it("an intentional refill (changed field) is still written absolutely", async () => {
+    const { profile } = seedActor();
+    await addSupplement(
+      fd({ name: "Metformin", quantity_on_hand: 4, qty_per_dose: 1 })
+    );
+    const suppId = getSupplements(profile.id)[0].id;
+    const doseId = getSupplementDoses(profile.id)[0].id;
+    await toggleTaken(fd({ dose_id: doseId })); // 4 → 3 meanwhile
+
+    // The user refills: form loaded at 4, they typed 90. The changed field wins
+    // (the edit form IS the refill path) even over the concurrent decrement.
+    await updateSupplement(
+      fd({
+        id: suppId,
+        name: "Metformin",
+        quantity_on_hand: 90,
+        quantity_on_hand_loaded: 4,
+        qty_per_dose: 1,
+      })
+    );
+    expect(itemRow(suppId).quantity_on_hand).toBe(90);
+  });
+
   it("a dose belonging to another profile cannot be toggled", async () => {
     // Owner seeds a tracked supplement.
     const owner = seedActor();
@@ -381,9 +435,16 @@ describe("refill episode marker cleanup on state change (#325)", () => {
 
   it("updateSupplement clears the marker when quantity tracking is turned off", async () => {
     const { profile, id } = await seedTrackedWithMarker();
-    // Re-save with a blank quantity_on_hand → tracking off (null).
+    // Re-save with a blank quantity_on_hand → tracking off (null). The form loaded
+    // at 30, so clearing the field is a real change (#467 compare-and-set writes it).
     await updateSupplement(
-      fd({ id, name: "Vitamin D", quantity_on_hand: "", qty_per_dose: 1 })
+      fd({
+        id,
+        name: "Vitamin D",
+        quantity_on_hand: "",
+        quantity_on_hand_loaded: 30,
+        qty_per_dose: 1,
+      })
     );
     expect(itemRow(id).quantity_on_hand).toBeNull();
     expect(getProfileSetting(profile.id, refillMarkerKey(id))).toBeUndefined();
