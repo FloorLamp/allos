@@ -10,6 +10,7 @@ import {
 } from "@/lib/immunization-catalog";
 import { sweepImmunizationDismissals } from "@/lib/queries";
 import { resolveProviderIdByName } from "@/lib/providers-db";
+import { formError, formOk, type FormResult } from "@/lib/types";
 
 // Immunization writes. Mirrors app/(app)/trends/body-actions.ts: session-scoped,
 // every mutation is `WHERE id = ? AND profile_id = ?`, and the user-entered
@@ -29,11 +30,12 @@ function codeFor(raw: string): string {
   return normalizeVaccineName(raw) ?? slugifyVaccine(raw);
 }
 
-export async function addImmunization(formData: FormData) {
+export async function addImmunization(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const date = String(formData.get("date") ?? "").trim();
   const vaccineRaw = String(formData.get("vaccine") ?? "").trim();
-  if (!isRealIsoDate(date) || !vaccineRaw) return;
+  if (!vaccineRaw) return formError("Choose or type a vaccine.");
+  if (!isRealIsoDate(date)) return formError("Enter a valid date given.");
   const doseLabel = String(formData.get("dose_label") ?? "").trim() || null;
   const notes = String(formData.get("notes") ?? "").trim() || null;
   // Administering provider: resolve the typed name into the shared
@@ -54,14 +56,19 @@ export async function addImmunization(formData: FormData) {
     profile.id
   );
   revalidateImmunizations();
+  return formOk();
 }
 
-export async function updateImmunization(formData: FormData) {
+export async function updateImmunization(
+  formData: FormData
+): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   const date = String(formData.get("date") ?? "").trim();
   const vaccineRaw = String(formData.get("vaccine") ?? "").trim();
-  if (!id || !isRealIsoDate(date) || !vaccineRaw) return;
+  if (!id) return formError("Couldn't find that immunization.");
+  if (!vaccineRaw) return formError("Choose or type a vaccine.");
+  if (!isRealIsoDate(date)) return formError("Enter a valid date given.");
   const doseLabel = String(formData.get("dose_label") ?? "").trim() || null;
   const notes = String(formData.get("notes") ?? "").trim() || null;
   const providerId = resolveProviderIdByName(
@@ -93,12 +100,15 @@ export async function updateImmunization(formData: FormData) {
   // credited by a sibling dose) is a no-op.
   if (prev) sweepImmunizationDismissals(profile.id, [prev.vaccine]);
   revalidateImmunizations();
+  return formOk();
 }
 
-export async function deleteImmunization(formData: FormData) {
+export async function deleteImmunization(
+  formData: FormData
+): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
-  if (!id) return;
+  if (!id) return formError("Couldn't find that immunization.");
   // Read the dose's vaccine before deleting so we can tell which component codes
   // it credited (a combo dose credits several).
   const row = db
@@ -117,6 +127,7 @@ export async function deleteImmunization(formData: FormData) {
   // vaccine's dismissal (no backing dose ever) is left intact.
   if (row) sweepImmunizationDismissals(profile.id, [row.vaccine]);
   revalidateImmunizations();
+  return formOk();
 }
 
 // ---- Per-vaccine status overrides ----
@@ -124,11 +135,14 @@ export async function deleteImmunization(formData: FormData) {
 // series complete despite missing doses; `declined` drops it from
 // needs-attention. Upsert on (profile_id, vaccine) so re-setting flips the kind.
 
-export async function setImmunizationOverride(formData: FormData) {
+export async function setImmunizationOverride(
+  formData: FormData
+): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const vaccine = String(formData.get("vaccine") ?? "").trim();
   const kind = String(formData.get("kind") ?? "");
-  if (!vaccine || (kind !== "immune" && kind !== "declined")) return;
+  if (!vaccine || (kind !== "immune" && kind !== "declined"))
+    return formError("Choose a valid override.");
   const reason = String(formData.get("reason") ?? "").trim() || null;
   const note = String(formData.get("note") ?? "").trim() || null;
   db.prepare(
@@ -142,15 +156,19 @@ export async function setImmunizationOverride(formData: FormData) {
   ).run(profile.id, vaccine, kind, reason, note);
   revalidateImmunizations();
   revalidatePath(`/immunizations/${vaccine}`);
+  return formOk();
 }
 
-export async function clearImmunizationOverride(formData: FormData) {
+export async function clearImmunizationOverride(
+  formData: FormData
+): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const vaccine = String(formData.get("vaccine") ?? "").trim();
-  if (!vaccine) return;
+  if (!vaccine) return formError("Couldn't find that vaccine.");
   db.prepare(
     "DELETE FROM immunization_overrides WHERE profile_id = ? AND vaccine = ?"
   ).run(profile.id, vaccine);
   revalidateImmunizations();
   revalidatePath(`/immunizations/${vaccine}`);
+  return formOk();
 }

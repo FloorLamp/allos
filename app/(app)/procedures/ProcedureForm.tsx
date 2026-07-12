@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
-import type { Procedure } from "@/lib/types";
+import type { Procedure, FormResult } from "@/lib/types";
 
 // Shared add/edit procedure form. Add mode: no `procedure`. Edit mode: pass the row
 // + an `onDone` callback (renders a hidden id + a Cancel button). The performer is a
@@ -15,7 +15,7 @@ export default function ProcedureForm({
   procedure,
   onDone,
 }: {
-  action: (formData: FormData) => Promise<void>;
+  action: (formData: FormData) => Promise<FormResult>;
   procedure?: Procedure;
   onDone?: () => void;
 }) {
@@ -31,10 +31,15 @@ export default function ProcedureForm({
       setError("Enter the procedure name.");
       return;
     }
+    let result: FormResult;
     try {
-      await action(formData);
+      result = await action(formData);
     } catch {
       setError("Couldn't save this procedure. Please try again.");
+      return;
+    }
+    if (!result.ok) {
+      setError(result.error);
       return;
     }
     toast(editing ? "Procedure updated" : "Procedure saved");

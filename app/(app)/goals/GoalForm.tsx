@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { BodyMetricKind, Goal, GoalMetric } from "@/lib/types";
+import type { BodyMetricKind, FormResult, Goal, GoalMetric } from "@/lib/types";
 import type { WeightUnit } from "@/lib/settings";
 import { variantOf, composeVariant, isTimed } from "@/lib/lifts";
 import { kgTo, round } from "@/lib/units";
@@ -91,20 +91,26 @@ export default function GoalForm({
 
   async function submit(fd: FormData) {
     setError(null);
+    let result: FormResult;
     try {
       if (editGoal) {
         fd.set("id", String(editGoal.id));
-        await updateGoal(fd);
-        toast("Goal updated");
+        result = await updateGoal(fd);
       } else {
-        await createGoal(fd);
-        toast("Goal created");
+        result = await createGoal(fd);
       }
     } catch {
       // Keep the modal open with the user's entries intact on failure.
       setError("Couldn't save this goal. Please try again.");
       return;
     }
+    // A failed validation guard now returns { ok:false } instead of a bare
+    // resolve — surface it inline instead of toasting a false success.
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    toast(editGoal ? "Goal updated" : "Goal created");
     onDone?.();
   }
 

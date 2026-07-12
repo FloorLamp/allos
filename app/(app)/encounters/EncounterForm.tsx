@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
-import type { Encounter } from "@/lib/types";
+import type { Encounter, FormResult } from "@/lib/types";
 
 // Shared add/edit visit form. Add mode: no `encounter` (blank fields, date seeded
 // to defaultDate). Edit mode: pass the row + an `onDone` callback (renders a hidden
@@ -17,7 +17,7 @@ export default function EncounterForm({
   onDone,
   defaultDate,
 }: {
-  action: (formData: FormData) => Promise<void>;
+  action: (formData: FormData) => Promise<FormResult>;
   encounter?: Encounter;
   onDone?: () => void;
   defaultDate: string;
@@ -34,10 +34,15 @@ export default function EncounterForm({
       setError("Pick a date for this visit.");
       return;
     }
+    let result: FormResult;
     try {
-      await action(formData);
+      result = await action(formData);
     } catch {
       setError("Couldn't save this visit. Please try again.");
+      return;
+    }
+    if (!result.ok) {
+      setError(result.error);
       return;
     }
     toast(editing ? "Visit updated" : "Visit saved");

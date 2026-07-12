@@ -6,7 +6,7 @@ import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
 import { bestIcd10Suggestion, ICD10_SYSTEM } from "@/lib/icd10";
-import type { Condition } from "@/lib/types";
+import type { Condition, FormResult } from "@/lib/types";
 
 // Shared add/edit condition form. Add mode: no `condition`. Edit mode: pass the
 // row + an `onDone` callback. The resolved-date field only applies when the status
@@ -16,7 +16,7 @@ export default function ConditionForm({
   condition,
   onDone,
 }: {
-  action: (formData: FormData) => Promise<void>;
+  action: (formData: FormData) => Promise<FormResult>;
   condition?: Condition;
   onDone?: () => void;
 }) {
@@ -52,10 +52,15 @@ export default function ConditionForm({
       setError("Enter the condition name.");
       return;
     }
+    let result: FormResult;
     try {
-      await action(formData);
+      result = await action(formData);
     } catch {
       setError("Couldn't save this condition. Please try again.");
+      return;
+    }
+    if (!result.ok) {
+      setError(result.error);
       return;
     }
     toast(editing ? "Condition updated" : "Condition saved");

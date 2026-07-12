@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
-import type { Allergy } from "@/lib/types";
+import type { Allergy, FormResult } from "@/lib/types";
 
 // Shared add/edit allergy form. Add mode: no `allergy`. Edit mode: pass the row +
 // an `onDone` callback (renders a hidden id and a Cancel button).
@@ -14,7 +14,7 @@ export default function AllergyForm({
   allergy,
   onDone,
 }: {
-  action: (formData: FormData) => Promise<void>;
+  action: (formData: FormData) => Promise<FormResult>;
   allergy?: Allergy;
   onDone?: () => void;
 }) {
@@ -30,10 +30,15 @@ export default function AllergyForm({
       setError("Enter the substance you're allergic to.");
       return;
     }
+    let result: FormResult;
     try {
-      await action(formData);
+      result = await action(formData);
     } catch {
       setError("Couldn't save this allergy. Please try again.");
+      return;
+    }
+    if (!result.ok) {
+      setError(result.error);
       return;
     }
     toast(editing ? "Allergy updated" : "Allergy saved");

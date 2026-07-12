@@ -27,7 +27,10 @@ export default async function BodyHygieneFindings() {
   return (
     <FindingsList
       findings={findings}
-      dismissAction={dismissBodyHygiene}
+      dismissAction={async (fd) => {
+        "use server";
+        await dismissBodyHygiene(fd);
+      }}
       heading="Data check"
       subtitle="Readings that look like an entry slip, worth a quick fix."
       icon={

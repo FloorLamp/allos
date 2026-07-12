@@ -12,7 +12,10 @@ export default function PinBiomarkerPicker({
   if (options.length === 0) return null;
   return (
     <form
-      action={toggleTrendPin}
+      action={async (fd) => {
+        "use server";
+        await toggleTrendPin(fd);
+      }}
       className="flex flex-wrap items-center gap-2 text-sm"
     >
       <label htmlFor="pin-bio" className="text-slate-500 dark:text-slate-400">

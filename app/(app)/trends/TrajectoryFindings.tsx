@@ -71,7 +71,12 @@ export default async function TrajectoryFindings() {
               </div>
             </div>
             {/* Dismiss this finding through the shared suppression store (#39/#41). */}
-            <form action={dismissTrajectory}>
+            <form
+              action={async (fd) => {
+                "use server";
+                await dismissTrajectory(fd);
+              }}
+            >
               <input type="hidden" name="dedupe_key" value={f.dedupeKey} />
               <button
                 type="submit"

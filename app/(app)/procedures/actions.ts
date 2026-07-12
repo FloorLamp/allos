@@ -3,6 +3,7 @@ import { requireWriteAccess } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
+import { formError, formOk, type FormResult } from "@/lib/types";
 import { resolveProviderIdByName } from "@/lib/providers-db";
 
 // Procedure / surgical-history writes. Session-scoped; every mutation is
@@ -26,10 +27,10 @@ function dateOrNull(raw: unknown): string | null {
   return isRealIsoDate(v) ? v : null;
 }
 
-export async function addProcedure(formData: FormData) {
+export async function addProcedure(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const name = String(formData.get("name") ?? "").trim();
-  if (!name) return;
+  if (!name) return formError("Enter the procedure name.");
   const providerId = resolveProviderIdByName(
     String(formData.get("provider") ?? "")
   );
@@ -47,13 +48,15 @@ export async function addProcedure(formData: FormData) {
     profile.id
   );
   revalidateProcedures();
+  return formOk();
 }
 
-export async function updateProcedure(formData: FormData) {
+export async function updateProcedure(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   const name = String(formData.get("name") ?? "").trim();
-  if (!id || !name) return;
+  if (!id) return formError("Couldn't find that procedure.");
+  if (!name) return formError("Enter the procedure name.");
   const providerId = resolveProviderIdByName(
     String(formData.get("provider") ?? "")
   );
@@ -72,15 +75,17 @@ export async function updateProcedure(formData: FormData) {
     profile.id
   );
   revalidateProcedures();
+  return formOk();
 }
 
-export async function deleteProcedure(formData: FormData) {
+export async function deleteProcedure(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
-  if (!id) return;
+  if (!id) return formError("Couldn't find that procedure.");
   db.prepare("DELETE FROM procedures WHERE id = ? AND profile_id = ?").run(
     id,
     profile.id
   );
   revalidateProcedures();
+  return formOk();
 }

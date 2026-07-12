@@ -81,7 +81,12 @@ export default async function TrendingDigest({ range }: { range: DateRange }) {
                 inner
               )}
               {/* Dismiss this chip (findings bus, #39). */}
-              <form action={dismissDigest}>
+              <form
+                action={async (fd) => {
+                  "use server";
+                  await dismissDigest(fd);
+                }}
+              >
                 <input
                   type="hidden"
                   name="dedupe_key"

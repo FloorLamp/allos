@@ -3,6 +3,7 @@ import { requireWriteAccess } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
+import { formError, formOk, type FormResult } from "@/lib/types";
 import { resolveProviderIdByName } from "@/lib/providers-db";
 
 // Care-plan writes. Session-scoped; every mutation is `WHERE id = ? AND
@@ -25,10 +26,10 @@ function dateOrNull(raw: unknown): string | null {
   return isRealIsoDate(v) ? v : null;
 }
 
-export async function addCarePlanItem(formData: FormData) {
+export async function addCarePlanItem(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const description = String(formData.get("description") ?? "").trim();
-  if (!description) return;
+  if (!description) return formError("Enter the planned item.");
   const providerId = resolveProviderIdByName(
     String(formData.get("provider") ?? "")
   );
@@ -49,13 +50,17 @@ export async function addCarePlanItem(formData: FormData) {
     profile.id
   );
   revalidateCarePlan();
+  return formOk();
 }
 
-export async function updateCarePlanItem(formData: FormData) {
+export async function updateCarePlanItem(
+  formData: FormData
+): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   const description = String(formData.get("description") ?? "").trim();
-  if (!id || !description) return;
+  if (!id) return formError("Couldn't find that care-plan item.");
+  if (!description) return formError("Enter the planned item.");
   const providerId = resolveProviderIdByName(
     String(formData.get("provider") ?? "")
   );
@@ -77,15 +82,19 @@ export async function updateCarePlanItem(formData: FormData) {
     profile.id
   );
   revalidateCarePlan();
+  return formOk();
 }
 
-export async function deleteCarePlanItem(formData: FormData) {
+export async function deleteCarePlanItem(
+  formData: FormData
+): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
-  if (!id) return;
+  if (!id) return formError("Couldn't find that care-plan item.");
   db.prepare("DELETE FROM care_plan_items WHERE id = ? AND profile_id = ?").run(
     id,
     profile.id
   );
   revalidateCarePlan();
+  return formOk();
 }

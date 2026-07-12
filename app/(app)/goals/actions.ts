@@ -3,7 +3,13 @@ import { requireWriteAccess } from "@/lib/auth";
 
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import type { BodyMetricKind, GoalMetric } from "@/lib/types";
+import {
+  formError,
+  formOk,
+  type FormResult,
+  type BodyMetricKind,
+  type GoalMetric,
+} from "@/lib/types";
 import { getUnitPrefs } from "@/lib/settings";
 import { toKg, resolveWeightKg } from "@/lib/units";
 import { parseSeconds } from "@/lib/duration";
@@ -21,12 +27,16 @@ import { GOAL_PACE_PREFIX, goalPaceSignalKey } from "@/lib/goal-pacing";
 // this action can only silence a goal-pacing key; profile-scoped via dismissFinding.
 // The Goals findings surface on the Training page's goals tab, so it revalidates
 // /training.
-export async function dismissGoalPacing(formData: FormData) {
+export async function dismissGoalPacing(
+  formData: FormData
+): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const dedupeKey = String(formData.get("dedupe_key") ?? "").trim();
-  if (!dedupeKey.startsWith(GOAL_PACE_PREFIX)) return;
+  if (!dedupeKey.startsWith(GOAL_PACE_PREFIX))
+    return formError("Couldn't dismiss that goal-pacing item.");
   dismissFinding(profile.id, dedupeKey);
   revalidatePath("/training");
+  return formOk();
 }
 
 // All goal columns parsed from the create/edit form, or null when the input is
@@ -208,10 +218,10 @@ function goalValues(c: GoalCols) {
   ];
 }
 
-export async function createGoal(formData: FormData) {
+export async function createGoal(formData: FormData): Promise<FormResult> {
   const { login, profile } = await requireWriteAccess();
   const c = goalColsFromForm(formData, login.id);
-  if (!c) return;
+  if (!c) return formError("Check the goal's required fields and try again.");
   // Body goals capture the metric's current value as the baseline, so progress
   // can run baseline → target (handling reduction goals).
   const baseline = c.body_metric
@@ -223,12 +233,13 @@ export async function createGoal(formData: FormData) {
   ).run(...goalValues(c), baseline, profile.id);
   revalidatePath("/training");
   revalidatePath("/");
+  return formOk();
 }
 
-export async function updateGoal(formData: FormData) {
+export async function updateGoal(formData: FormData): Promise<FormResult> {
   const { login, profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
-  if (!id) return;
+  if (!id) return formError("Couldn't find that goal.");
   // Read the stored canonical weight values so an untouched edit is a true no-op
   // (issue #194) instead of a kg↔lb round-trip drift on every save.
   const stored = db
@@ -237,7 +248,7 @@ export async function updateGoal(formData: FormData) {
     )
     .get(id, profile.id) as StoredWeights | undefined;
   const c = goalColsFromForm(formData, login.id, stored);
-  if (!c) return;
+  if (!c) return formError("Check the goal's required fields and try again.");
   // baseline_value is intentionally left untouched on edit — the starting point
   // for progress shouldn't move when the target is tweaked.
   db.prepare(
@@ -249,29 +260,33 @@ export async function updateGoal(formData: FormData) {
   ).run(...goalValues(c), id, profile.id);
   revalidatePath("/training");
   revalidatePath("/");
+  return formOk();
 }
 
-export async function updateProgress(formData: FormData) {
+export async function updateProgress(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   const current = formData.get("current_value");
-  if (!id || current == null) return;
+  if (!id) return formError("Couldn't find that goal.");
+  if (current == null) return formError("Enter a value.");
   // Reject a non-finite value (empty/garbage) rather than writing NaN, mirroring
   // goalColsFromForm's numeric guard.
   const value = Number(current);
-  if (!Number.isFinite(value)) return;
+  if (!Number.isFinite(value)) return formError("Enter a valid number.");
   db.prepare(
     "UPDATE goals SET current_value = ? WHERE id = ? AND profile_id = ?"
   ).run(value, id, profile.id);
   revalidatePath("/training");
   revalidatePath("/");
+  return formOk();
 }
 
-export async function setStatus(formData: FormData) {
+export async function setStatus(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   const status = String(formData.get("status"));
-  if (!id || !isGoalStatus(status)) return;
+  if (!id) return formError("Couldn't find that goal.");
+  if (!isGoalStatus(status)) return formError("Unknown goal status.");
   db.prepare("UPDATE goals SET status = ? WHERE id = ? AND profile_id = ?").run(
     status,
     id,
@@ -279,25 +294,27 @@ export async function setStatus(formData: FormData) {
   );
   revalidatePath("/training");
   revalidatePath("/");
+  return formOk();
 }
 
 // Archiving is independent of status, so an achieved goal stays achieved.
-export async function setArchived(formData: FormData) {
+export async function setArchived(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
-  if (!id) return;
+  if (!id) return formError("Couldn't find that goal.");
   const archived = String(formData.get("archived")) === "1" ? 1 : 0;
   db.prepare(
     "UPDATE goals SET archived = ? WHERE id = ? AND profile_id = ?"
   ).run(archived, id, profile.id);
   revalidatePath("/training");
   revalidatePath("/");
+  return formOk();
 }
 
-export async function deleteGoal(formData: FormData) {
+export async function deleteGoal(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
-  if (!id) return;
+  if (!id) return formError("Couldn't find that goal.");
   db.prepare("DELETE FROM goals WHERE id = ? AND profile_id = ?").run(
     id,
     profile.id
@@ -312,4 +329,5 @@ export async function deleteGoal(formData: FormData) {
   restoreFinding(profile.id, goalPaceSignalKey(id));
   revalidatePath("/training");
   revalidatePath("/");
+  return formOk();
 }

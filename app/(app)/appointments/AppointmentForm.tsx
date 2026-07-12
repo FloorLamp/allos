@@ -10,7 +10,7 @@ import {
   APPOINTMENT_KINDS,
   APPOINTMENT_KIND_LABELS,
 } from "@/lib/preventive-appointment";
-import type { Appointment } from "@/lib/types";
+import type { Appointment, FormResult } from "@/lib/types";
 
 // Shared add/edit form for a scheduled visit. Add mode: no `appointment`. Edit
 // mode: pass the row + `onDone` (renders a hidden id + a Cancel button). `prefill`
@@ -26,7 +26,7 @@ export default function AppointmentForm({
   defaultDate,
   prefill,
 }: {
-  action: (formData: FormData) => Promise<void>;
+  action: (formData: FormData) => Promise<FormResult>;
   appointment?: Appointment;
   onDone?: () => void;
   defaultDate: string;
@@ -68,10 +68,17 @@ export default function AppointmentForm({
       return;
     }
     formData.set("scheduled_at", time ? `${date} ${time}` : date);
+    let result: FormResult;
     try {
-      await action(formData);
+      result = await action(formData);
     } catch {
       setError("Couldn't save this appointment. Please try again.");
+      return;
+    }
+    // A validation guard now answers with a typed error instead of a silent
+    // resolve — surface it inline and DON'T toast success or reset (issue #474).
+    if (!result.ok) {
+      setError(result.error);
       return;
     }
     toast(editing ? "Appointment updated" : "Appointment saved");

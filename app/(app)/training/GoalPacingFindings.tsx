@@ -26,7 +26,9 @@ export default async function GoalPacingFindings() {
   return (
     <FindingsList
       findings={findings}
-      dismissAction={dismissGoalPacing}
+      dismissAction={async (fd) => {
+        await dismissGoalPacing(fd);
+      }}
       heading="Goal pacing"
       subtitle="How your goals are tracking against their target dates."
       icon={

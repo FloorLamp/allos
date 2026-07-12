@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
-import type { Protocol } from "@/lib/types";
+import type { Protocol, FormResult } from "@/lib/types";
 import type { OutcomeOption } from "@/lib/queries/protocols";
 
 // Shared add/edit protocol form. Add mode: no `protocol`. Edit mode: pass the row
@@ -17,7 +17,7 @@ export default function ProtocolForm({
   protocol,
   onDone,
 }: {
-  action: (formData: FormData) => Promise<void>;
+  action: (formData: FormData) => Promise<FormResult>;
   options: OutcomeOption[];
   protocol?: Protocol;
   onDone?: () => void;
@@ -37,8 +37,9 @@ export default function ProtocolForm({
       setError("Name your protocol.");
       return;
     }
+    let result: FormResult;
     try {
-      await action(formData);
+      result = await action(formData);
     } catch (e) {
       // A server-action redirect (create → new detail page, delete → list) throws
       // a NEXT_REDIRECT sentinel that must propagate, not be swallowed as an error.
@@ -51,6 +52,10 @@ export default function ProtocolForm({
         throw e;
       }
       setError("Couldn't save this protocol. Please try again.");
+      return;
+    }
+    if (!result.ok) {
+      setError(result.error);
       return;
     }
     toast(editing ? "Protocol updated" : "Protocol created");

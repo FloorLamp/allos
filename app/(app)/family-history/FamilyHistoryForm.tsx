@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
-import type { FamilyHistory } from "@/lib/types";
+import type { FamilyHistory, FormResult } from "@/lib/types";
 
 // Common relatives, offered as a datalist so a user can pick or type their own.
 const RELATIONS = [
@@ -32,7 +32,7 @@ export default function FamilyHistoryForm({
   entry,
   onDone,
 }: {
-  action: (formData: FormData) => Promise<void>;
+  action: (formData: FormData) => Promise<FormResult>;
   entry?: FamilyHistory;
   onDone?: () => void;
 }) {
@@ -48,10 +48,15 @@ export default function FamilyHistoryForm({
       setError("Enter the condition.");
       return;
     }
+    let result: FormResult;
     try {
-      await action(formData);
+      result = await action(formData);
     } catch {
       setError("Couldn't save this entry. Please try again.");
+      return;
+    }
+    if (!result.ok) {
+      setError(result.error);
       return;
     }
     toast(editing ? "Family history updated" : "Family history saved");

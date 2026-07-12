@@ -269,7 +269,9 @@ export default function MedicationCard({
             {current ? (
               stopping ? (
                 <form
-                  action={stopMedication}
+                  action={async (fd) => {
+                    await stopMedication(fd);
+                  }}
                   onSubmit={() => setStopping(false)}
                   className="space-y-2 rounded-lg border border-black/10 p-3 dark:border-white/10"
                 >
@@ -338,7 +340,11 @@ export default function MedicationCard({
                 </button>
               )
             ) : (
-              <form action={restartMedication}>
+              <form
+                action={async (fd) => {
+                  await restartMedication(fd);
+                }}
+              >
                 <input type="hidden" name="id" value={s.id} />
                 <SubmitButton
                   pendingLabel="Restarting…"
@@ -402,7 +408,9 @@ export default function MedicationCard({
 
             {addingEffect && (
               <form
-                action={addSideEffect}
+                action={async (fd) => {
+                  await addSideEffect(fd);
+                }}
                 onSubmit={() => setAddingEffect(false)}
                 className="mb-2 space-y-2 rounded-lg border border-black/10 p-3 dark:border-white/10"
               >
@@ -481,7 +489,11 @@ export default function MedicationCard({
                       </span>
                     )}
                     <span className="ml-auto flex items-center gap-2 text-xs">
-                      <form action={toggleSideEffectResolved}>
+                      <form
+                        action={async (fd) => {
+                          await toggleSideEffectResolved(fd);
+                        }}
+                      >
                         <input type="hidden" name="id" value={se.id} />
                         <SubmitButton className="text-slate-500 hover:underline dark:text-slate-400">
                           {se.resolved ? "Reopen" : "Resolve"}

@@ -21,6 +21,7 @@ import {
   migrateRenamedBiomarker,
 } from "@/lib/queries";
 import { resolveProviderIdByName } from "@/lib/providers-db";
+import { formError, formOk, type FormResult } from "@/lib/types";
 
 // Revalidate the import document pages plus the biomarkers surfaces after a
 // record mutation, so edits made on /import/[id] also reflect on the records
@@ -44,7 +45,7 @@ function sanitizeCanonical(raw: string | null | undefined): string | null {
   return v || null;
 }
 
-export async function addRecord(formData: FormData) {
+export async function addRecord(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const date = String(formData.get("date") ?? "").trim();
   // Validate the category server-side, exactly as updateRecord does — an absent
@@ -62,7 +63,8 @@ export async function addRecord(formData: FormData) {
     : "lab";
   const name = String(formData.get("name") ?? "").trim();
   // Reject a non-ISO / impossible date so it can't land in a YYYY-MM-DD column.
-  if (!isRealIsoDate(date) || !name) return;
+  if (!isRealIsoDate(date)) return formError("Enter a valid date.");
+  if (!name) return formError("Enter a name.");
   const value = (formData.get("value") as string)?.trim() || null;
   // Derive value_num from a purely-numeric value so manual readings chart.
   const valueNum =
@@ -99,17 +101,19 @@ export async function addRecord(formData: FormData) {
   });
   write();
   revalidateMedical();
+  return formOk();
 }
 
 // Edit a single extracted/manual record (used on the document subpage).
-export async function updateRecord(formData: FormData) {
+export async function updateRecord(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
-  if (!id) return;
+  if (!id) return formError("Couldn't find that record.");
   const date = String(formData.get("date") ?? "").trim();
   const name = String(formData.get("name") ?? "").trim();
   // Reject a non-ISO / impossible date so it can't land in a YYYY-MM-DD column.
-  if (!isRealIsoDate(date) || !name) return;
+  if (!isRealIsoDate(date)) return formError("Enter a valid date.");
+  if (!name) return formError("Enter a name.");
 
   const str = (k: string) => {
     const v = (formData.get(k) as string | null)?.trim();
@@ -193,6 +197,7 @@ export async function updateRecord(formData: FormData) {
     cleanupOrphanBiomarkerKeyedState(profile.id);
   }
   revalidateMedical();
+  return formOk();
 }
 
 export async function deleteRecord(

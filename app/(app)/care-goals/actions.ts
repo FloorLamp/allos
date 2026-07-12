@@ -3,6 +3,7 @@ import { requireWriteAccess } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
+import { formError, formOk, type FormResult } from "@/lib/types";
 
 // Care-goal writes. Session-scoped; every mutation is `WHERE id = ? AND
 // profile_id = ?` and the INSERT carries profile_id. Manual rows carry a NULL
@@ -23,10 +24,10 @@ function dateOrNull(raw: unknown): string | null {
   return isRealIsoDate(v) ? v : null;
 }
 
-export async function addCareGoal(formData: FormData) {
+export async function addCareGoal(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const description = String(formData.get("description") ?? "").trim();
-  if (!description) return;
+  if (!description) return formError("Enter the goal.");
   db.prepare(
     `INSERT INTO care_goals
        (description, code, code_system, target_date, status, notes, source, profile_id)
@@ -41,13 +42,15 @@ export async function addCareGoal(formData: FormData) {
     profile.id
   );
   revalidateCareGoals();
+  return formOk();
 }
 
-export async function updateCareGoal(formData: FormData) {
+export async function updateCareGoal(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   const description = String(formData.get("description") ?? "").trim();
-  if (!id || !description) return;
+  if (!id) return formError("Couldn't find that goal.");
+  if (!description) return formError("Enter the goal.");
   db.prepare(
     `UPDATE care_goals
        SET description = ?, code = ?, code_system = ?, target_date = ?,
@@ -64,15 +67,17 @@ export async function updateCareGoal(formData: FormData) {
     profile.id
   );
   revalidateCareGoals();
+  return formOk();
 }
 
-export async function deleteCareGoal(formData: FormData) {
+export async function deleteCareGoal(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
-  if (!id) return;
+  if (!id) return formError("Couldn't find that goal.");
   db.prepare("DELETE FROM care_goals WHERE id = ? AND profile_id = ?").run(
     id,
     profile.id
   );
   revalidateCareGoals();
+  return formOk();
 }
