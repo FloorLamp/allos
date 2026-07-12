@@ -897,3 +897,11 @@ export const DELETE_POLICY: Record<string, DatasetDeletePolicy> = {
 export function getDataset(key: string): ExportDataset | undefined {
   return DATASETS.find((d) => d.key === key);
 }
+
+// Datasets tied to the age-gated fitness surfaces (Activities, Goals). Restricted
+// profiles have these hidden across the app (see lib/age-gate.ts) — the export UI
+// filters them from the card list, and the AUTHORITATIVE layers enforce it too
+// (issue #471): the per-dataset CSV route 404s a restricted one, and the full-ZIP
+// snapshot omits them. Lives here beside DATASETS so the UI list and the route/ZIP
+// gate share one source of truth rather than each spelling the set out.
+export const RESTRICTED_DATASETS = new Set(["activities", "goals"]);

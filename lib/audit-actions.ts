@@ -49,7 +49,20 @@ export const AUDIT_ACTIONS = {
   // to capture; the target records how many rows/files/resources left the app.
   exportFull: "export.full",
   exportFhir: "export.fhir",
+  // Per-dataset CSV export (issue #471): the /api/export/<dataset> route serves the
+  // identical full-table PHI as the ZIP (ds.rows() unbounded), so "someone exported
+  // the whole biomarker history" must be logged here too — not only when the ZIP
+  // button was used. target = the dataset key, detail = the row count that left.
+  exportDataset: "export.dataset",
 } as const;
+
+// DELIBERATELY UNAUDITED PHI egress, recorded here so it reads as a decision, not a
+// gap (issue #471): the token-authed calendar `.ics` feed and the Telegram
+// notification sends. Both are high-frequency machine pulls/pushes (a subscribed
+// calendar client refetches every few hours; the tick fans out per profile), so an
+// audit row per fetch/send would be poll spam that buries the real access events —
+// and each already has its own trail (token mint/revoke rows, the notify delivery
+// markers). Auditing them would degrade the log without adding accountability.
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
 
