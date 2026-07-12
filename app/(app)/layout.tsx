@@ -28,6 +28,27 @@ import { getTimelineDates } from "@/lib/timeline";
 // session. Every page under here is dynamic (it reads cookies() transitively),
 // which is intended: it prevents the full-route cache from leaking one session's
 // rendered data to another.
+//
+// NO `loading.tsx` here (or in child segments) — deliberately. A route-segment
+// loading.tsx wraps the page in a Suspense boundary and opts it into streamed
+// rendering: on a SLOW server render (loaded CI runners) React flushes the
+// skeleton fallback first, then streams the real page into a `<div hidden
+// id="S:…">` that an inline `$RC(…)` script relocates into place. When the
+// client bundle hydrates and reaches that boundary while it is still showing the
+// fallback (its content chunk hasn't arrived yet), React client-renders the
+// boundary content — and for a window the server-streamed subtree and the
+// client-rendered subtree COEXIST in the DOM (the classic tell: two copies of a
+// server-action `<form>`, one carrying react-dom-server's short "React form
+// unexpectedly submitted." error and one carrying react-dom-client's long
+// variant). Playwright strict-mode locators then resolve that transient hidden
+// duplicate as "2 elements" — the Next-16 e2e flake class in issue #530.
+// Because better-sqlite3 is synchronous the pages have nothing to progressively
+// stream toward anyway, and this layout already blocks TTFB on its own queries,
+// so dropping the streamed boundary renders each page inline in the shell and
+// hydrates it in a single non-racing pass. Do not re-introduce loading.tsx
+// under (app) without solving that race (verified in #530: with loading.tsx a
+// slow render emits S:…/$RC/hidden-div; without it the same slow render sends
+// the page inline with no boundary).
 export default async function AppLayout({
   children,
 }: {
