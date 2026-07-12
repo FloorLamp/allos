@@ -30,6 +30,7 @@ import {
   setBloodType,
   setEmergencyContact,
   setSmokingHistory,
+  setRiskAttributes,
   setMaxHrOverride,
   setZone2WeeklyTargetMin,
 } from "@/lib/settings";
@@ -166,6 +167,25 @@ export async function saveSmokingHistory(formData: FormData) {
 
   setSmokingHistory(profile.id, { status, packYears, quitYear });
   // The record drives the preventive reminders (Upcoming) and the profile page.
+  revalidatePath("/upcoming");
+  revalidatePath("/settings/profile");
+}
+
+// ---- Health risk factors (profile scope, issue #517) ----
+// The self-declared occupational/immune context (healthcare worker,
+// immunocompromised, on dialysis, pregnant) that the risk-stratification layer
+// reads to modulate retest cadence + ranking. Boolean flags in profile_settings;
+// any login with write access to the profile may edit them. Drives the Upcoming
+// retest/screening ranking — informational only.
+export async function saveRiskFactors(formData: FormData) {
+  const { profile } = await requireWriteAccess();
+  const on = (key: string) => formData.get(key) === "1";
+  setRiskAttributes(profile.id, {
+    healthcareWorker: on("healthcare_worker"),
+    immunocompromised: on("immunocompromised"),
+    dialysis: on("dialysis"),
+    pregnant: on("pregnant"),
+  });
   revalidatePath("/upcoming");
   revalidatePath("/settings/profile");
 }

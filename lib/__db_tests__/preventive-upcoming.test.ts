@@ -181,3 +181,72 @@ describe("preventive inference from existing records", () => {
     ).toBe(true);
   });
 });
+
+// Issue #515 — a dermatology encounter satisfies the "Skin check" visit rule via
+// the provider/facility-name signal + folded-in notes.
+describe("preventive inference from a specialty encounter (issue #515)", () => {
+  it("a dermatology-facility encounter satisfies skin_check", () => {
+    const skinId = makeProfile("Skin Check Test");
+
+    // Due (overdue) before any evidence: 46yo, skin_check starts at 18y.
+    expect(
+      collectUpcoming(skinId, now).some((i) => i.key === "visit:skin_check")
+    ).toBe(true);
+
+    // A dermatology clinic in the shared registry, linked as the encounter's
+    // facility (location) — "dermatology" lives in the facility NAME, not the
+    // encounter type/reason.
+    const clinicId = Number(
+      db
+        .prepare(
+          "INSERT INTO providers (name, type, dedup_key) VALUES ('Cedar Dermatology Clinic', 'organization', 'cedar-dermatology')"
+        )
+        .run().lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO encounters (profile_id, date, type, reason, location_provider_id)
+         VALUES (?, ?, 'Office Visit', 'Annual mole review', ?)`
+    ).run(skinId, now, clinicId);
+
+    expect(
+      getInferredPreventiveSatisfactions(skinId).some(
+        (s) => s.ruleKey === "skin_check"
+      )
+    ).toBe(true);
+    expect(
+      collectUpcoming(skinId, now).some((i) => i.key === "visit:skin_check")
+    ).toBe(false);
+  });
+
+  it("an encounter whose notes name a full body skin exam satisfies skin_check", () => {
+    const notesId = makeProfile("Skin Notes Test");
+    expect(
+      collectUpcoming(notesId, now).some((i) => i.key === "visit:skin_check")
+    ).toBe(true);
+
+    // The specific phrase lives in the NOTES; type/reason are generic. Bare "skin"
+    // alone would not match — the whole phrase does.
+    db.prepare(
+      `INSERT INTO encounters (profile_id, date, type, reason, notes)
+         VALUES (?, ?, 'Office Visit', 'Follow-up', 'Performed a full body skin exam; no concerning lesions.')`
+    ).run(notesId, now);
+
+    expect(
+      collectUpcoming(notesId, now).some((i) => i.key === "visit:skin_check")
+    ).toBe(false);
+  });
+
+  it("a generic encounter with only bare 'skin' in notes does NOT satisfy skin_check", () => {
+    const genericId = makeProfile("Skin Generic Test");
+    db.prepare(
+      `INSERT INTO encounters (profile_id, date, type, reason, notes)
+         VALUES (?, ?, 'Office Visit', 'Rash', 'Some dry skin noted on the arm.')`
+    ).run(genericId, now);
+
+    // "skin" alone is not one of the specific whole-word phrases, so the
+    // conservative matcher (issue #86) still leaves skin_check due.
+    expect(
+      collectUpcoming(genericId, now).some((i) => i.key === "visit:skin_check")
+    ).toBe(true);
+  });
+});

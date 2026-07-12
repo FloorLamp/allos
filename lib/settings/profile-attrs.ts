@@ -251,6 +251,50 @@ export function getUserAgeOn(
   return getStoredAge(profileId);
 }
 
+// ---- Health risk factors (issue #517) — profile scope, no migration ----
+// Self-declared occupational / immune-status context the risk-stratification
+// layer needs but that isn't captured by the clinical conditions/family-history
+// tables: healthcare worker (occupational hepatitis exposure), immunocompromised,
+// on dialysis, pregnant. Each is a discrete "1"/absent profile_settings flag like
+// the emergency-card toggle. Sensitive like the rest of the passport — visible to
+// any login granted the profile. Informational only; drives cadence/priority, not
+// diagnosis.
+import type { RiskAttributes } from "../risk-stratification";
+import { EMPTY_RISK_ATTRIBUTES } from "../risk-stratification";
+
+const RISK_ATTR_KEYS: Record<keyof RiskAttributes, string> = {
+  healthcareWorker: "risk_healthcare_worker",
+  immunocompromised: "risk_immunocompromised",
+  dialysis: "risk_dialysis",
+  pregnant: "risk_pregnant",
+};
+
+export function getRiskAttributes(profileId: number): RiskAttributes {
+  const read = (key: string) => getProfileSetting(profileId, key) === "1";
+  return {
+    healthcareWorker: read(RISK_ATTR_KEYS.healthcareWorker),
+    immunocompromised: read(RISK_ATTR_KEYS.immunocompromised),
+    dialysis: read(RISK_ATTR_KEYS.dialysis),
+    pregnant: read(RISK_ATTR_KEYS.pregnant),
+  };
+}
+
+export function setRiskAttributes(
+  profileId: number,
+  attrs: RiskAttributes
+): void {
+  writeTx(() => {
+    (Object.keys(RISK_ATTR_KEYS) as (keyof RiskAttributes)[]).forEach((k) => {
+      const key = RISK_ATTR_KEYS[k];
+      if (attrs[k]) setProfileSetting(profileId, key, "1");
+      else deleteProfileSetting(profileId, key);
+    });
+  });
+}
+
+// Re-export so callers can reach the empty default alongside the getters.
+export { EMPTY_RISK_ATTRIBUTES };
+
 // ---- Training HR zones (issue #159) — profile scope, no migration ----
 // A manual max-HR override for people who know theirs from a lab/field test (it
 // beats the age formula), and the configurable weekly Zone 2 minutes target the

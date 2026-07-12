@@ -5,6 +5,7 @@ import {
   bandForItem,
   upcomingDueText,
   groupUpcoming,
+  totalUpcomingCount,
   snoozeUntil,
   BAND_ORDER,
   type UpcomingItem,
@@ -131,6 +132,19 @@ describe("groupUpcoming", () => {
     expect(groups).toHaveLength(1);
     expect(groups[0].band).toBe("today");
     expect(groups[0].label).toBe("Today");
+  });
+
+  // Issue #512 — the page header total; sums the banded groups so the hero's
+  // "+N more in Upcoming" has a number to reconcile against.
+  it("totalUpcomingCount sums every band (equals the collected item count)", () => {
+    const items = [
+      item({ key: "goal-later", dueDate: "2026-08-01" }),
+      item({ key: "dose-today", domain: "dose", dueDate: null }),
+      item({ key: "bio-overdue", domain: "biomarker", dueDate: "2026-06-01" }),
+      item({ key: "goal-week", dueDate: "2026-07-12" }),
+    ];
+    expect(totalUpcomingCount(groupUpcoming(items, TODAY))).toBe(4);
+    expect(totalUpcomingCount(groupUpcoming([], TODAY))).toBe(0);
   });
 
   it("sorts within a band by due date, then domain, then title", () => {

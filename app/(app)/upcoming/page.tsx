@@ -22,6 +22,7 @@ import { collectUpcoming, collectSuppressedUpcoming } from "@/lib/queries";
 import { getUserBirthdate, getStoredAge } from "@/lib/settings";
 import {
   groupUpcoming,
+  totalUpcomingCount,
   upcomingDueText,
   type UpcomingDomain,
   type UrgencyBand,
@@ -71,6 +72,7 @@ export default async function UpcomingPage() {
   const now = today(profile.id);
   const items = collectUpcoming(profile.id, now);
   const groups = groupUpcoming(items, now);
+  const total = totalUpcomingCount(groups);
   const suppressed = collectSuppressedUpcoming(profile.id, now);
 
   // Preventive well-visits/screenings (issue #82) are only assessed when the
@@ -88,6 +90,16 @@ export default async function UpcomingPage() {
       <PageHeader
         title="Upcoming"
         subtitle="Everything due soon — doses, refills, appointments, planned care, preventive visits & screenings, vaccines, retests, goals, and training — in one forward-looking list."
+        action={
+          total > 0 ? (
+            <span
+              data-testid="upcoming-total"
+              className="shrink-0 rounded-full bg-brand-100 px-3 py-1 text-sm font-semibold text-brand-700 dark:bg-brand-500/20 dark:text-brand-300"
+            >
+              {total} total
+            </span>
+          ) : undefined
+        }
       />
 
       {!hasDemographics && (

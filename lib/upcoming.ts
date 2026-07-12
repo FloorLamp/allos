@@ -104,6 +104,13 @@ export interface UpcomingItem {
   // lexically (via compareSortHint) BEFORE the title fallback; an item without
   // one ("") ties and falls through to title, so non-dose domains are unaffected.
   sortHint?: string;
+  // Clinical-importance ranking weight (issue #517). Risk-stratified retest /
+  // screening items carry a positive priority (family cardiac history → lipids,
+  // immunocompromised → hepatitis-A immunity…) so within a band the important item
+  // leads; everything else defaults to 0 (routine). A tiebreak AFTER due date, so
+  // it only reorders items coming due on the SAME day — the tighter cadence already
+  // pulls a high-risk item to an earlier date.
+  priority?: number;
   // When set, the page renders an inline "mark taken" form for this dose id
   // (reusing the existing dose check-off path). Only dose items carry one.
   doseId?: number;
@@ -130,6 +137,15 @@ export interface BandGroup {
   band: UrgencyBand;
   label: string;
   items: UpcomingItem[];
+}
+
+// Total item count across all bands (issue #512): the Upcoming page had no total
+// anywhere, so the dashboard hero's "+N more in Upcoming" had no number to
+// reconcile against. This sums the banded groups (every collected item lands in
+// exactly one band, so it equals the collected count) and is the one figure the
+// page header shows.
+export function totalUpcomingCount(groups: BandGroup[]): number {
+  return groups.reduce((sum, g) => sum + g.items.length, 0);
 }
 
 // Whole days from `today` to a due date: negative = overdue, 0 = today, positive
@@ -194,6 +210,10 @@ export function groupUpcoming(
     arr.sort(
       (a, b) =>
         sortDate(a, today).localeCompare(sortDate(b, today)) ||
+        // Clinical-importance ranking (issue #517): among items due the SAME day,
+        // the higher-priority (risk-driven) item leads. Default 0, so ordinary
+        // items are unaffected and the date-first order stands.
+        (b.priority ?? 0) - (a.priority ?? 0) ||
         DOMAIN_ORDER[a.domain] - DOMAIN_ORDER[b.domain] ||
         compareSortHint(a.sortHint, b.sortHint) ||
         a.title.localeCompare(b.title)
