@@ -108,8 +108,9 @@ export default function HomeAssistantNotificationSettings({
           Home Assistant webhook
         </a>{" "}
         so HA can announce doses on a kitchen speaker, flash lights on a missed
-        dose, or hold a message until someone’s home. See the README “Home
-        Assistant” section for the automation recipes.
+        dose, or hold a message until someone’s home. See{" "}
+        <code>docs/home-assistant-notifications.md</code> for the automation
+        recipes.
       </p>
 
       <p className="text-xs text-amber-600 dark:text-amber-400">
