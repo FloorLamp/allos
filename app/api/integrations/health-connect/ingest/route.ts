@@ -102,10 +102,22 @@ export async function POST(req: Request) {
     );
   }
 
-  // Fast path: reject early when Content-Length IS present and over the cap.
+  // Fast path: reject early when Content-Length IS present and over the cap. The
+  // profile is already resolved, so this rejection is attributable — record a
+  // best-effort failure event (issue #604) so an over-size push shows up as a Data →
+  // Review failure line instead of silently vanishing. The body carries `ok: false`
+  // like every other response here (the two 413s were the only ones that omitted it,
+  // breaking a client that switches on `body.ok`).
   const contentLength = Number(req.headers.get("content-length"));
   if (Number.isFinite(contentLength) && contentLength > MAX_INGEST_BYTES) {
-    return Response.json({ error: "payload too large" }, { status: 413 });
+    recordSyncEvent(INGEST_PROFILE_ID, HEALTH_CONNECT_ID, {
+      ok: false,
+      error: `Payload too large (${contentLength} bytes > ${MAX_INGEST_BYTES}).`,
+    });
+    return Response.json(
+      { ok: false, error: "payload too large" },
+      { status: 413 }
+    );
   }
 
   // Authoritative guard: byte-count the actual stream, aborting the moment
@@ -114,7 +126,17 @@ export async function POST(req: Request) {
   // this is the only real size guard here). Runs before the write transaction.
   const capped = await readBodyCapped(req.body, MAX_INGEST_BYTES);
   if ("overCap" in capped) {
-    return Response.json({ error: "payload too large" }, { status: 413 });
+    // Authoritative byte-cap rejection — the profile is resolved, so record an
+    // attributable failure event (issue #604) and carry `ok: false` in the body, like
+    // the bad-JSON and over-record-count rejections below do.
+    recordSyncEvent(INGEST_PROFILE_ID, HEALTH_CONNECT_ID, {
+      ok: false,
+      error: `Payload too large (exceeded ${MAX_INGEST_BYTES} bytes).`,
+    });
+    return Response.json(
+      { ok: false, error: "payload too large" },
+      { status: 413 }
+    );
   }
 
   // Capture the raw POST body for the admin-only raw viewer (issue #9), best-effort

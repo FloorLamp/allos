@@ -98,3 +98,46 @@ test("emergency card: opt-in, render, offline copy, and logout clears it (#42)",
   await page.goto("/offline");
   await expect(page.getByTestId("offline-view-emergency")).toHaveCount(0);
 });
+
+// #600: the wipe-on-switch contract must hold for EVERY switch affordance, not just
+// the header switcher. Switching via a household strip chip (a server-component form,
+// which can't attach the client cleanup) must still wipe the previous profile's
+// cached emergency card — that's what the centralized ProfileSwitchWatcher guarantees.
+// Before the fix, A's full card stayed readable session-free at /offline after the
+// switch.
+test("switching profiles via the household strip wipes the previous profile's emergency card (#600)", async ({
+  page,
+}) => {
+  test.slow();
+  await login(page);
+
+  // Opt in + cache profile 1's card (the admin's default active profile).
+  await page.goto("/settings/profile");
+  const toggle = page.getByTestId("emergency-toggle");
+  if (!(await toggle.isChecked())) {
+    await toggle.check();
+    await expect(page.getByLabel("Saved").first()).toBeVisible();
+  }
+  await page.goto("/emergency");
+  await expect(page.getByTestId("emergency-card")).toBeVisible();
+  await expect
+    .poll(() => page.evaluate((k) => localStorage.getItem(k), LS_KEY))
+    .toContain("Peanuts");
+
+  // Switch to profile 2 ("Riley (child)") via the dashboard household strip chip —
+  // a switch affordance that never ran the old per-button cleanup. Wait on the
+  // user-menu naming the new profile: the definitive switch signal.
+  await page.goto("/");
+  await page.getByRole("main").getByTestId("household-chip-2").click();
+  await expect(page.getByTestId("user-menu-trigger")).toContainText(
+    "Riley (child)"
+  );
+
+  // The previous profile's offline card is wiped from this device …
+  await expect
+    .poll(() => page.evaluate((k) => localStorage.getItem(k), LS_KEY))
+    .toBeNull();
+  // … and /offline no longer offers it.
+  await page.goto("/offline");
+  await expect(page.getByTestId("offline-view-emergency")).toHaveCount(0);
+});

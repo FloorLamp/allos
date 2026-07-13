@@ -7,6 +7,7 @@ import ImportJobsToaster from "@/components/ImportJobsToaster";
 import VersionWatcher from "@/components/VersionWatcher";
 import { ConfirmProvider } from "@/components/ConfirmDialog";
 import OfflineQueueProvider from "@/components/OfflineQueueProvider";
+import ProfileSwitchWatcher from "@/components/ProfileSwitchWatcher";
 import { getAppVersion } from "@/lib/version";
 import { TimezoneProvider } from "@/components/TimezoneProvider";
 import { WeekStartProvider } from "@/components/WeekStartProvider";
@@ -107,7 +108,8 @@ export default async function AppLayout({
     <TimezoneProvider tz={timezone}>
       <WeekStartProvider weekStart={weekStart}>
         <ConfirmProvider>
-          <OfflineQueueProvider>
+          <OfflineQueueProvider activeProfileId={profile.id}>
+            <ProfileSwitchWatcher activeProfileId={profile.id} />
             <ActivityEditorProvider
               units={units}
               suggestions={suggestions}

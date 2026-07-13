@@ -61,6 +61,32 @@ export interface VitalsPayload {
 
 export type IntentPayload = DosePayload | BodyMetricPayload | VitalsPayload;
 
+// The maximum number of intents accepted (server) and sent (client) per replay POST
+// — the SINGLE source of truth for both sides so they can never disagree (issue
+// #604). The replay route rejects a larger batch with 413; the client chunks the
+// queue into POSTs of at most this size so a long offline stretch of 200+ intents
+// drains across several requests instead of dead-ending on a permanent 413. The
+// per-intent `replayed_keys` idempotency ledger makes partial batches safe to send.
+export const MAX_INTENTS = 200;
+
+// Split a queue into ordered chunks of at most `size` (default MAX_INTENTS),
+// preserving order — N intents yield ceil(N/size) chunks (issue #604). Pure so the
+// chunking math is unit-tested; the client iterates the chunks, POSTing each until
+// the queue drains or a chunk fails.
+export function chunkIntents<T>(
+  items: readonly T[],
+  size: number = MAX_INTENTS
+): T[][] {
+  if (!Number.isInteger(size) || size <= 0) {
+    throw new Error("chunkIntents: size must be a positive integer");
+  }
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+}
+
 // One queued write. `key` is the client-generated idempotency key (a uuid) the
 // server records in `replayed_keys` to guarantee exactly-once. `date` is the
 // captured local date (YYYY-MM-DD) the write lands on; `capturedAt` is the full
@@ -71,6 +97,15 @@ export interface QueuedIntent {
   date: string;
   capturedAt: string;
   payload: IntentPayload;
+  // The profile the write was CAPTURED under — stamped at enqueue time from the
+  // active profile (issue #599). Replay applies the write to THIS profile (verifying
+  // the login still has write access to it), never to whatever profile happens to be
+  // active at flush time — so a caregiver's B-vitals can never land on A after a
+  // profile switch or a re-login. OPTIONAL only for backward compatibility: an intent
+  // queued before this field shipped has no profileId, and the replay route falls
+  // back to the active profile for those legacy entries (there's no other profile to
+  // attribute them to). Every intent built by buildIntent going forward carries it.
+  profileId?: number;
   // How many times a flush reached the server and got a retryable "error" for this
   // intent (issue #475 point 3). Absent/0 on a fresh enqueue. Once it hits
   // MAX_REPLAY_ATTEMPTS the intent is reclassified as rejected (moved to the
@@ -96,12 +131,14 @@ export function newIdempotencyKey(): string {
   });
 }
 
-// Build a fully-formed intent from a flow + captured date + payload. Stamped with a
-// fresh idempotency key and the capture timestamp. `now` is injectable for tests.
+// Build a fully-formed intent from a flow + captured date + payload + the profile it
+// was captured under (issue #599). Stamped with a fresh idempotency key and the
+// capture timestamp. `now` is injectable for tests.
 export function buildIntent(
   flow: FlowKind,
   date: string,
   payload: IntentPayload,
+  profileId: number,
   now: Date = new Date()
 ): QueuedIntent {
   return {
@@ -110,6 +147,7 @@ export function buildIntent(
     date,
     capturedAt: now.toISOString(),
     payload,
+    profileId,
     attempts: 0,
   };
 }
