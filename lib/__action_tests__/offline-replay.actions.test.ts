@@ -23,9 +23,7 @@ function uniqueKey(): string {
   return `replay-test-${Date.now()}-${++keySeq}`;
 }
 
-async function replay(
-  intents: unknown[]
-): Promise<{
+async function replay(intents: unknown[]): Promise<{
   status: number;
   body: {
     ok: boolean;
