@@ -99,12 +99,15 @@ describe("canonicalBiomarkerForLoinc — CBC + CMP lab mappings", () => {
   // #681: non-analyte administrative rows are recognized (so the mapper drops them)
   // and never counted as unmapped labs.
   it("recognizes non-analyte administrative LOINCs and excludes them from unmapped (#681)", () => {
-    for (const code of ["45374-6", "72486-4", "19066-0", "31208-2", "8262-8"]) {
+    for (const code of ["45374-6", "72486-4", "19066-0", "8262-8", "106201-7"]) {
       expect(isNonAnalyteLoinc(code)).toBe(true);
       expect(isUnmappedLabLoinc(code)).toBe(false);
     }
-    // A genuine analyte code is NOT swept up by the denylist.
+    // A genuine analyte code is NOT swept up by the denylist — and the deliberately
+    // conservative set excludes anything that could carry a real result, e.g. an
+    // STI specimen-source code (31208-2) is left in place, not dropped.
     expect(isNonAnalyteLoinc("2345-7")).toBe(false);
+    expect(isNonAnalyteLoinc("31208-2")).toBe(false);
   });
 });
 

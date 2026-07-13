@@ -1148,6 +1148,26 @@ describe("qualitativeFlagResolution — LOINC hint (#684)", () => {
       )
     ).toBeNull();
   });
+
+  it("promotes a LOINC-only immunity titer to 'immune' (name regex is blind)", () => {
+    // A name the durable-immunity regex does NOT recognize: without the LOINC the
+    // immune promotion re-checks the name and misses, so the row is left as-is.
+    expect(
+      qualitativeFlagResolution("IgG serology", "Immune", null, null, "abnormal")
+    ).toBeUndefined();
+    // With the Rubella IgG LOINC (25514-1), the immune-positive titer promotes to
+    // "immune" — NOT cleared to Normal (the gap the LOINC hint closes).
+    expect(
+      qualitativeFlagResolution(
+        "IgG serology",
+        "Immune",
+        null,
+        null,
+        "abnormal",
+        "25514-1"
+      )
+    ).toBe("immune");
+  });
 });
 
 describe("qualitativePresence (#549 shared vocabulary)", () => {

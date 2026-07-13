@@ -977,7 +977,16 @@ export function qualitativeFlagResolution(
     // never override the extractor's specific verdict (high/low/abnormal/immune).
     return isNormalFlag(currentFlag) ? "abnormal" : undefined;
   }
-  if (c.polarity === "good" && isDurableImmunityTiter(name))
+  // Immune promotion: an immune-positive durable-immunity titer resolves to
+  // "immune". Recognize it by NAME (isDurableImmunityTiter) OR by the LOINC immunity
+  // class (#684) — a titer whose printed name the regex misses still promotes
+  // correctly instead of falling through to a flag-clear. An infection-negative is
+  // also polarity:"good" but is NOT immunity, so it stays out of this branch.
+  if (
+    c.polarity === "good" &&
+    (isDurableImmunityTiter(name) ||
+      qualitativeClassForLoinc(loinc) === "immunity")
+  )
     return currentFlag === "immune" ? undefined : "immune";
   // Neutral attribute, or good non-immunity: never "abnormal". Clear an out-of-range
   // flag the extractor guessed; leave an already-neutral flag alone.

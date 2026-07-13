@@ -231,8 +231,10 @@ const VITAL_LOINCS = new Set([
   // Body weight and BMI are anthropometric vitals, not lab analytes — but Epic
   // reports them inside the Results section, so without this they classify as
   // "unmapped labs" (the two highest-frequency such codes across real exports).
-  // Routed to the vitals category by the observation mapper (#681). Not projected
-  // into metric_samples like height/head-circ — they land as vitals records.
+  // isVitalLoinc keeps both out of the unmapped-lab report; the observation mapper
+  // routes them to the vitals category. On persist, weight is projected into
+  // body_metrics (the existing weight-reading rule), while BMI — not a body-metric
+  // kind — lands as a vitals record.
   "29463-7", // Body weight (kg)
   "39156-5", // Body mass index (BMI) [Ratio] (kg/m2)
 ]);
@@ -275,10 +277,8 @@ const NON_ANALYTE_LOINCS = new Set([
   "75608-0", // References
   "77202-0", // About The Test
   "8262-8", // Limitations of The Test
-  "34574-4", // Final Report (status)
   "106201-7", // Cytology accession #
   "19066-0", // Status Information
-  "31208-2", // Chlamydia/Gonococcus specimen source
 ]);
 
 // Whether a LOINC is a known non-analyte (administrative/structural) observation
