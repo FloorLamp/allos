@@ -4,6 +4,7 @@ import CarePlanForm from "./CarePlanForm";
 import { updateCarePlanItem, deleteCarePlanItem } from "./actions";
 import RecordTable, { type RecordColumn } from "@/components/RecordTable";
 import RecordProvenance from "@/components/RecordProvenance";
+import StatusBadge from "@/components/StatusBadge";
 import ProviderName from "@/components/ProviderName";
 import { formatRecordDate, titleCase } from "@/lib/record-format";
 import type { CarePlanItem } from "@/lib/types";
@@ -46,9 +47,8 @@ const COLUMNS: RecordColumn<CarePlanItem>[] = [
   {
     header: "Status",
     headerClassName: "hidden md:table-cell",
-    cellClassName:
-      "hidden whitespace-nowrap text-slate-500 md:table-cell dark:text-slate-400",
-    cell: (c) => (c.status ? titleCase(c.status) : "—"),
+    cellClassName: "hidden whitespace-nowrap md:table-cell",
+    cell: (c) => <StatusBadge status={c.status} />,
   },
   {
     header: "Source",

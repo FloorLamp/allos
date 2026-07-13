@@ -100,7 +100,7 @@ function Row({
       <div className="min-w-0 flex-1">
         <Link
           href={item.href}
-          className="font-medium text-slate-800 hover:text-brand-700 hover:underline dark:text-slate-100 dark:hover:text-brand-400"
+          className="block truncate font-medium text-slate-800 hover:text-brand-700 hover:underline dark:text-slate-100 dark:hover:text-brand-400"
         >
           {item.title}
         </Link>

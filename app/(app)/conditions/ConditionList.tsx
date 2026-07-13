@@ -4,14 +4,9 @@ import ConditionForm from "./ConditionForm";
 import { updateCondition, deleteCondition } from "./actions";
 import RecordTable, { type RecordColumn } from "@/components/RecordTable";
 import RecordProvenance from "@/components/RecordProvenance";
+import StatusBadge from "@/components/StatusBadge";
+import { formatRecordDate } from "@/lib/record-format";
 import type { Condition } from "@/lib/types";
-
-const STATUS_BADGE: Record<string, string> = {
-  active: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300",
-  inactive: "bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300",
-  resolved:
-    "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300",
-};
 
 const COLUMNS: RecordColumn<Condition>[] = [
   {
@@ -47,18 +42,14 @@ const COLUMNS: RecordColumn<Condition>[] = [
   },
   {
     header: "Status",
-    cell: (c) => (
-      <span className={`badge capitalize ${STATUS_BADGE[c.status] ?? ""}`}>
-        {c.status}
-      </span>
-    ),
+    cell: (c) => <StatusBadge status={c.status} />,
   },
   {
     header: "Onset",
     headerClassName: "hidden md:table-cell",
     cellClassName:
       "hidden whitespace-nowrap text-slate-600 md:table-cell dark:text-slate-300",
-    cell: (c) => c.onset_date ?? "—",
+    cell: (c) => formatRecordDate(c.onset_date),
   },
   {
     header: "Source",

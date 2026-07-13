@@ -24,7 +24,7 @@ const COLUMNS: RecordColumn<FamilyHistory>[] = [
         ) : null}
         {f.deceased === 1 ? (
           <span className="ml-2 badge bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300">
-            deceased
+            Deceased
           </span>
         ) : null}
         {f.notes ? (

@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { sourceLabel, formatRecordDate, titleCase } from "@/lib/record-format";
+import {
+  sourceLabel,
+  formatRecordDate,
+  formatRecordDateTime,
+  titleCase,
+  statusTone,
+} from "@/lib/record-format";
 import { documentSource } from "@/lib/body-metric-extract";
 
 describe("sourceLabel", () => {
@@ -36,6 +42,43 @@ describe("formatRecordDate", () => {
   });
 });
 
+describe("formatRecordDateTime", () => {
+  it("formats a stored 'YYYY-MM-DD HH:MM' as a date + time, UTC-safe", () => {
+    // Rendered in en-US so the assertion is deterministic under CI's locale.
+    const out = new Date(Date.UTC(2026, 6, 13, 14, 30)).toLocaleString(
+      "en-US",
+      {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        timeZone: "UTC",
+      }
+    );
+    // The stored wall-clock digits survive (2:30 PM), never the raw ISO string.
+    expect(out).toContain("Jul 13, 2026");
+    expect(out).toContain("2:30");
+    expect(formatRecordDateTime("2026-07-13 14:30")).not.toBe(
+      "2026-07-13 14:30"
+    );
+    // Accepts the "T" separator too.
+    expect(formatRecordDateTime("2026-07-13T14:30")).toBe(
+      formatRecordDateTime("2026-07-13 14:30")
+    );
+  });
+
+  it("falls back to a plain-date format when there is no time component", () => {
+    expect(formatRecordDateTime("2024-01-05")).toBe("Jan 5, 2024");
+  });
+
+  it("returns the fallback for a null/empty value", () => {
+    expect(formatRecordDateTime(null)).toBe("—");
+    expect(formatRecordDateTime("")).toBe("—");
+    expect(formatRecordDateTime(null, "")).toBe("");
+  });
+});
+
 describe("titleCase", () => {
   it("capitalizes the first character only", () => {
     expect(titleCase("active")).toBe("Active");
@@ -44,5 +87,31 @@ describe("titleCase", () => {
 
   it("is a no-op on an empty string", () => {
     expect(titleCase("")).toBe("");
+  });
+});
+
+describe("statusTone", () => {
+  it("maps the shared active/resolved/inactive enum to one tone each", () => {
+    // The same status resolves to the SAME classes regardless of surface (#643):
+    // conditions and allergies used to disagree (amber vs rose for 'active').
+    expect(statusTone("active")).toContain("amber");
+    expect(statusTone("resolved")).toContain("emerald");
+    expect(statusTone("inactive")).toContain("slate");
+  });
+
+  it("covers care-plan / care-goal free-text statuses", () => {
+    expect(statusTone("achieved")).toBe(statusTone("resolved"));
+    expect(statusTone("completed")).toBe(statusTone("resolved"));
+    expect(statusTone("planned")).toContain("sky");
+    expect(statusTone("proposed")).toContain("sky");
+  });
+
+  it("normalizes casing and whitespace before matching", () => {
+    expect(statusTone("Active")).toBe(statusTone("active"));
+    expect(statusTone("  Resolved ")).toBe(statusTone("resolved"));
+  });
+
+  it("falls back to a neutral slate tone for an unknown status", () => {
+    expect(statusTone("something-else")).toContain("slate");
   });
 });

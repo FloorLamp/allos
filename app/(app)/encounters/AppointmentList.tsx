@@ -27,6 +27,7 @@ import { useToast } from "@/components/Toast";
 import OpenInMaps from "@/components/OpenInMaps";
 import { satisfiedRuleForCompletedKind } from "@/lib/preventive-appointment";
 import { preventiveRuleByKey } from "@/lib/preventive-catalog";
+import { formatRecordDate, formatRecordDateTime } from "@/lib/record-format";
 import type { Appointment, AppointmentStatus, FormResult } from "@/lib/types";
 
 // The preventive rule name a completed appointment's kind would satisfy (issue
@@ -114,7 +115,7 @@ export default function AppointmentList({
   async function onDelete(a: Appointment) {
     const ok = await confirm({
       title: "Delete appointment",
-      message: `Delete this appointment from ${a.scheduled_at.slice(0, 10)}? This can’t be undone.`,
+      message: `Delete this appointment from ${formatRecordDate(a.scheduled_at.slice(0, 10))}? This can’t be undone.`,
       confirmLabel: "Delete",
       danger: true,
     });
@@ -221,7 +222,7 @@ export default function AppointmentList({
                   </span>
                 </div>
                 <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                  {a.scheduled_at}
+                  {formatRecordDateTime(a.scheduled_at)}
                   {a.provider_name ? ` · ${a.provider_name}` : ""}
                   {a.location ? ` · ${a.location}` : ""}
                   {a.location ? (
