@@ -29,7 +29,10 @@ import {
   normalizeStopReason,
   normalizeSeverity,
 } from "@/lib/medication-history";
-import { resolveProviderIdByName } from "@/lib/providers-db";
+import {
+  resolveProviderIdByName,
+  resolveProviderOnEdit,
+} from "@/lib/providers-db";
 import {
   lookupRxNormCandidates,
   lookupRxNormIngredients,
@@ -333,10 +336,16 @@ export async function updateSupplement(
     formData.get("quantity_on_hand_loaded")
   );
   // Prescribing provider: medications only; NULL for supplements so
-  // a kind flip back to supplement clears a stale link.
+  // a kind flip back to supplement clears a stale link. Keep the loaded link unless
+  // the field was actually changed (#601), so an unrelated edit can't relink an
+  // ambiguously-named prescriber to a freshly-coined duplicate.
   const providerId =
     f.kind === "medication"
-      ? resolveProviderIdByName(String(formData.get("provider") ?? ""))
+      ? resolveProviderOnEdit(
+          Number(formData.get("provider_id")) || null,
+          String(formData.get("provider_loaded") ?? ""),
+          String(formData.get("provider") ?? "")
+        )
       : null;
   const ok = writeTx(() => {
     // Verify ownership before touching the supplement or its child rows — the

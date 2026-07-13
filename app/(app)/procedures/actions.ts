@@ -4,7 +4,10 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
 import { formError, formOk, type FormResult } from "@/lib/types";
-import { resolveProviderIdByName } from "@/lib/providers-db";
+import {
+  resolveProviderIdByName,
+  resolveProviderOnEdit,
+} from "@/lib/providers-db";
 
 // Procedure / surgical-history writes. Session-scoped; every mutation is
 // `WHERE id = ? AND profile_id = ?` and the INSERT carries profile_id. Manual rows
@@ -57,7 +60,10 @@ export async function updateProcedure(formData: FormData): Promise<FormResult> {
   const name = String(formData.get("name") ?? "").trim();
   if (!id) return formError("Couldn't find that procedure.");
   if (!name) return formError("Enter the procedure name.");
-  const providerId = resolveProviderIdByName(
+  // Keep the loaded link unless the name was actually changed (#601).
+  const providerId = resolveProviderOnEdit(
+    Number(formData.get("provider_id")) || null,
+    String(formData.get("provider_loaded") ?? ""),
     String(formData.get("provider") ?? "")
   );
   db.prepare(

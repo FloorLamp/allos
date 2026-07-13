@@ -20,7 +20,7 @@ import {
   cleanupOrphanBiomarkerKeyedState,
   migrateRenamedBiomarker,
 } from "@/lib/queries";
-import { resolveProviderIdByName } from "@/lib/providers-db";
+import { resolveProviderOnEdit } from "@/lib/providers-db";
 import { formError, formOk, type FormResult } from "@/lib/types";
 
 // Revalidate the import document pages plus the biomarkers surfaces after a
@@ -138,9 +138,12 @@ export async function updateRecord(formData: FormData): Promise<FormResult> {
   // Canonical name: sanitized, defaulting to the record's name when blank so a
   // cleared field re-groups the record under itself (editable + reversible).
   const canonical = sanitizeCanonical(str("canonical_name")) ?? name;
-  // Performing provider: resolve the typed name into the shared
-  // GLOBAL registry (create-on-type), or NULL when left blank.
-  const providerId = resolveProviderIdByName(
+  // Performing provider: keep the loaded link unless the field was actually changed
+  // (#601), so editing an unrelated field can't relink an ambiguous name; a genuine
+  // change re-resolves into the shared GLOBAL registry (create-on-type), NULL when blank.
+  const providerId = resolveProviderOnEdit(
+    Number(formData.get("provider_id")) || null,
+    String(formData.get("provider_loaded") ?? ""),
     String(formData.get("provider") ?? "")
   );
 

@@ -3,7 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { requireWriteAccess } from "@/lib/auth";
 import { db, writeTx } from "@/lib/db";
-import { resolveProviderIdByName } from "@/lib/providers-db";
+import {
+  resolveProviderIdByName,
+  resolveProviderOnEdit,
+} from "@/lib/providers-db";
 import { recordPreventiveDone } from "@/lib/queries";
 import {
   isAppointmentKind,
@@ -77,7 +80,10 @@ export async function updateAppointment(
   const scheduledAt = str(formData, "scheduled_at");
   if (!id) return formError("Couldn't find that appointment.");
   if (!scheduledAt) return formError("Pick a date for this appointment.");
-  const providerId = resolveProviderIdByName(
+  // Keep the loaded link unless the provider field was actually changed (#601).
+  const providerId = resolveProviderOnEdit(
+    Number(formData.get("provider_id")) || null,
+    String(formData.get("provider_loaded") ?? ""),
     String(formData.get("provider") ?? "")
   );
   db.prepare(

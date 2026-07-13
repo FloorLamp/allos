@@ -198,6 +198,20 @@ export function revertActivityMerge(
   // 2. Restore the keeper's pre-fold fold-field values + prior edited flag (#200),
   //    undoing every gap-fill (incl. the inherited components) the fold added.
   const before = merge.keeperBefore;
+  // The captured pre-fold equipment_id points at an equipment row OUTSIDE this
+  // merge-undo context. If that gear was deleted after the merge (deleteEquipment
+  // nulls only LIVE activities.equipment_id, so this snapshot kept its id), writing
+  // it back verbatim would violate activities.equipment_id's FK (migration 019) and
+  // abort the ENTIRE undo (#598) — the same #202/#375 dangling-target class the
+  // generic externalRefs reconciliation handles, which never sees the merge context.
+  // Probe it (profile-scoped, since equipment is profile-owned) and null a dead link.
+  const beforeEquipmentId =
+    typeof before.equipment_id === "number" &&
+    !db
+      .prepare("SELECT 1 FROM equipment WHERE id = ? AND profile_id = ?")
+      .get(before.equipment_id, profileId)
+      ? null
+      : (before.equipment_id ?? null);
   db.prepare(
     `UPDATE activities
         SET notes = ?, duration_min = ?, distance_km = ?, intensity = ?,
@@ -230,7 +244,7 @@ export function revertActivityMerge(
     before.avg_temp_c ?? null,
     before.kilojoules ?? null,
     before.workout_type ?? null,
-    before.equipment_id ?? null,
+    beforeEquipmentId,
     before.edited ?? 0,
     merge.keeperId,
     profileId

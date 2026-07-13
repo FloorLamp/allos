@@ -13,6 +13,7 @@ import {
   ensureMedicationCourse,
   createImportedMedicationCourses,
   recordPreventiveDone,
+  sweepImmunizationDismissals,
 } from "./queries";
 import { matchAppointmentForEncounter } from "./appointment-encounter-match";
 import { satisfiedRuleForCompletedKind } from "./preventive-appointment";
@@ -115,6 +116,25 @@ export function clearImportedDocumentRows(
       `DELETE FROM ${t.table} WHERE ${t.key} = ? AND ${footprintScope(t)}`
     ).run(footprintKeyValue(t, docId, source), profileId);
   }
+}
+
+// The distinct vaccine strings a document's imported immunization rows currently
+// carry — captured BEFORE a delete/reassign/reprocess un-backs them so the post-clear
+// `immunization:<code>` dismissal sweep knows which codes may have lost their backing
+// (#602). Keyed on the document's source string, the same predicate the footprint's
+// immunizations table uses. Empty for a document that imported no immunizations.
+export function documentImmunizationVaccines(
+  profileId: number,
+  docId: number
+): string[] {
+  const source = documentSource(docId);
+  return (
+    db
+      .prepare(
+        "SELECT DISTINCT vaccine FROM immunizations WHERE profile_id = ? AND source = ?"
+      )
+      .all(profileId, source) as { vaccine: string }[]
+  ).map((r) => r.vaccine);
 }
 
 // Re-point a document's ENTIRE per-row footprint from one profile to another — the
@@ -271,6 +291,11 @@ export function persistDocumentImport(
   const providerIdFor = buildProviderResolver(input.providers);
 
   const result = writeTx(() => {
+    // Capture the vaccine codes THIS document currently backs BEFORE the clear, so
+    // the post-insert sweep can clear an `immunization:<code>` dismissal whose last
+    // backing dose a re-extraction drops (#602). Empty on a first import (the doc has
+    // no prior immunization rows), so the sweep no-ops there.
+    const priorVaccines = documentImmunizationVaccines(profileId, docId);
     // Replace this document's prior rows (a no-op on first import; on reprocess
     // it clears the old set) across every table an import writes — including the
     // previously auto-structured meds, cleared here before the existing-meds set
@@ -303,6 +328,13 @@ export function persistDocumentImport(
     }
 
     const counts = insertImportRows(profileId, docId, input, providerIdFor);
+
+    // Sweep any `immunization:<code>` due-nudge dismissal whose backing this reprocess
+    // just dropped (a re-extraction that no longer contains a previously-imported
+    // dose), so a later re-add re-surfaces the nudge instead of hitting a stale
+    // suppression (#602/#203). Reads the post-insert remaining doses, so a vaccine the
+    // re-extraction re-inserted keeps its dismissal; a no-op when nothing was un-backed.
+    sweepImmunizationDismissals(profileId, priorVaccines);
 
     // Close the appointment → encounter loop: a just-imported encounter that
     // matches a still-scheduled appointment marks it completed + linked (#288).

@@ -152,6 +152,21 @@ export default function EncounterForm({
           defaultValue={encounter?.provider_name ?? ""}
           placeholder="e.g. Dr. Smith"
         />
+        {/* Round-trip the loaded link so an untouched field keeps its id (#601). */}
+        {editing && (
+          <>
+            <input
+              type="hidden"
+              name="provider_id"
+              value={encounter?.provider_id ?? ""}
+            />
+            <input
+              type="hidden"
+              name="provider_loaded"
+              value={encounter?.provider_name ?? ""}
+            />
+          </>
+        )}
       </div>
       <div>
         <label className="label" htmlFor={`enc-location-${uid}`}>
@@ -165,6 +180,21 @@ export default function EncounterForm({
           defaultValue={encounter?.location_name ?? ""}
           placeholder="e.g. Example Medical Center, telehealth"
         />
+        {/* Round-trip the loaded facility link so an untouched field keeps it (#601). */}
+        {editing && (
+          <>
+            <input
+              type="hidden"
+              name="location_provider_id"
+              value={encounter?.location_provider_id ?? ""}
+            />
+            <input
+              type="hidden"
+              name="location_loaded"
+              value={encounter?.location_name ?? ""}
+            />
+          </>
+        )}
       </div>
       <div>
         <label className="label" htmlFor={`enc-notes-${uid}`}>

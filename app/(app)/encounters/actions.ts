@@ -4,7 +4,10 @@ import { revalidatePath } from "next/cache";
 import { db, writeTx } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
 import { formError, formOk, type FormResult } from "@/lib/types";
-import { resolveProviderIdByName } from "@/lib/providers-db";
+import {
+  resolveProviderIdByName,
+  resolveProviderOnEdit,
+} from "@/lib/providers-db";
 
 // Visit / encounter writes. Session-scoped; every mutation is
 // `WHERE id = ? AND profile_id = ?` and the INSERT carries profile_id. Manual rows
@@ -67,10 +70,16 @@ export async function updateEncounter(formData: FormData): Promise<FormResult> {
   if (!id) return formError("Couldn't find that visit.");
   if (!date) return formError("Pick a date for this visit.");
   const endDate = dateOrNull(formData.get("end_date"));
-  const providerId = resolveProviderIdByName(
+  // Keep each loaded link unless its field was actually changed (#601) — an edit to
+  // an unrelated field must not relink an ambiguously-named provider/facility.
+  const providerId = resolveProviderOnEdit(
+    Number(formData.get("provider_id")) || null,
+    String(formData.get("provider_loaded") ?? ""),
     String(formData.get("provider") ?? "")
   );
-  const locationId = resolveProviderIdByName(
+  const locationId = resolveProviderOnEdit(
+    Number(formData.get("location_provider_id")) || null,
+    String(formData.get("location_loaded") ?? ""),
     String(formData.get("location") ?? "")
   );
   db.prepare(

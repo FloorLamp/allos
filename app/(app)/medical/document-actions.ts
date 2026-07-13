@@ -21,10 +21,12 @@ import {
   reconcileFlags,
   getMedicalDocument,
   cleanupOrphanBiomarkerKeyedState,
+  sweepImmunizationDismissals,
 } from "@/lib/queries";
 import {
   clearImportedDocumentRows,
   moveImportedDocumentRows,
+  documentImmunizationVaccines,
 } from "@/lib/import-persist";
 import { canReassignDocument } from "@/lib/import-reassign";
 import { recordAudit } from "@/lib/audit";
@@ -191,7 +193,16 @@ export async function reassignDocument(
       .run(dest, id, src);
     if (res.changes !== 1) return; // lost the claim — leave everything untouched
     claimed = true;
+    // Capture the vaccine codes this document backs on the SOURCE BEFORE the move —
+    // afterward its immunization rows live under the destination, so the source may
+    // have lost the last backing for those codes (#602).
+    const movedVaccines = documentImmunizationVaccines(src, id);
     moveImportedDocumentRows(src, dest, id);
+    // Sweep any `immunization:<code>` due-nudge dismissal on the SOURCE whose backing
+    // just moved away, so re-adding that immunization on the source re-surfaces the
+    // nudge instead of hitting a stale suppression (#602/#203). Only the source can
+    // orphan here (the destination only GAINS rows). Mirrors the biomarker sweep below.
+    sweepImmunizationDismissals(src, movedVaccines);
     // A star OR a retest/flag dismissal on the SOURCE profile may now point at a
     // biomarker with no remaining records there — sweep both name-keyed side-stores
     // (#327). Only the source can orphan: the destination only GAINS records here,
@@ -307,6 +318,9 @@ export async function deleteMedicalDocument(formData: FormData) {
   // (the pattern reassignDocument uses). A DB-tier test pins the rollback so a
   // refactor can't quietly remove the FKs this relies on.
   writeTx(() => {
+    // Capture the vaccine codes this document backs BEFORE the clear — afterward its
+    // immunization rows are gone, so we can't tell which codes lost their backing (#602).
+    const removedVaccines = documentImmunizationVaccines(profile.id, id);
     // Delete every row this document imported — medical_records, extracted
     // medications, body_metrics, height + head-circumference metric_samples,
     // immunizations, allergies, conditions, and encounters. This is the SAME
@@ -323,6 +337,11 @@ export async function deleteMedicalDocument(formData: FormData) {
     // remaining records, so a later document reintroducing that name re-pins/
     // re-nudges instead of inheriting the stale, name-keyed side-state (#327).
     cleanupOrphanBiomarkerKeyedState(profile.id);
+    // Sweep the `immunization:<code>` due-nudge dismissal of any vaccine this document
+    // just un-backed, so a later re-add re-surfaces the nudge instead of hitting a
+    // stale suppression — the #376 sweep the per-dose delete does, extended to the
+    // document delete path (#602). No-op when the deleted doses still have siblings.
+    sweepImmunizationDismissals(profile.id, removedVaccines);
   });
 
   if (doc?.stored_path) {
@@ -335,5 +354,8 @@ export async function deleteMedicalDocument(formData: FormData) {
   revalidatePath("/data");
   revalidatePath("/biomarkers");
   revalidatePath("/trends");
+  // A deleted document can drop immunization rows — refresh the passport view too
+  // (reassignDocument already does; this closes the gap #602 noted).
+  revalidatePath("/immunizations");
   revalidatePath("/");
 }

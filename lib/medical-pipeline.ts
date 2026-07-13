@@ -198,6 +198,42 @@ function dispatchExtraction(
   });
 }
 
+// A medical_documents row that can serve as a content-hash dedup target for a new
+// upload (issue #612). Matches only a row that still has its stored file, OR an
+// in-flight placeholder ('processing'/'pending') that a concurrent upload of the
+// same bytes reserved but hasn't written to disk yet. A file-less TERMINAL marker —
+// a 'skipped' duplicate row (stored_path = '') or a pre-upload 'failed' typing row —
+// is EXCLUDED: it carries the hash but no servable/reprocessable file, so letting it
+// match made a file permanently un-re-uploadable after the original document was
+// deleted. Excluding it lets the re-upload proceed fresh AND heals a pre-existing
+// stranded marker. The in-flight placeholder stays matchable so two simultaneous
+// identical uploads still dedup to one document (the reserve-row race the ingest
+// transaction guards). Kept as a named export so the DB tier can pin the decision.
+export interface DedupTarget {
+  id: number;
+  filename: string;
+  status: string;
+  stored_path: string | null;
+}
+export function findDedupTarget(
+  profileId: number,
+  contentHash: string
+): DedupTarget | undefined {
+  return db
+    .prepare(
+      `SELECT id, filename, extraction_status AS status, stored_path
+         FROM medical_documents
+        WHERE content_hash = ? AND profile_id = ?
+          AND (
+            (stored_path IS NOT NULL AND stored_path <> '')
+            OR extraction_status IN ('processing', 'pending')
+          )
+        ORDER BY (stored_path IS NULL OR stored_path = ''), id
+        LIMIT 1`
+    )
+    .get(contentHash, profileId) as DedupTarget | undefined;
+}
+
 // Ingest an uploaded medical document: validate + size-gate + content-sniff, store
 // it on disk under a per-profile subdirectory, dedup on content hash, then kick off
 // AI extraction (or a deterministic health-record import) in the background. Returns
@@ -288,37 +324,25 @@ export async function ingestMedicalUpload(
   // within the process). The transaction returns either the pre-existing row or
   // the id of the freshly reserved 'processing' row; file IO / extraction happen
   // afterwards, outside the transaction.
-  type Existing = {
-    id: number;
-    filename: string;
-    status: string;
-    stored_path: string | null;
-  };
-  const findExisting = db.prepare(
-    `SELECT id, filename, extraction_status AS status, stored_path
-       FROM medical_documents
-      WHERE content_hash = ? AND profile_id = ?
-      ORDER BY (stored_path IS NULL OR stored_path = ''), id
-      LIMIT 1`
-  );
   const insertRow = db.prepare(
     `INSERT INTO medical_documents (filename, stored_path, mime_type, size_bytes, content_hash, extraction_status, processing_started_at, profile_id)
      VALUES (?,?,?,?,?, 'processing', datetime('now'), ?)`
   );
-  const reserved = writeTx((): { existing: Existing } | { docId: number } => {
-    const found = findExisting.get(contentHash, profileId) as
-      Existing | undefined;
-    if (found) return { existing: found };
-    const info = insertRow.run(
-      file.name,
-      "",
-      storedMime,
-      buffer.length,
-      contentHash,
-      profileId
-    );
-    return { docId: Number(info.lastInsertRowid) };
-  });
+  const reserved = writeTx(
+    (): { existing: DedupTarget } | { docId: number } => {
+      const found = findDedupTarget(profileId, contentHash);
+      if (found) return { existing: found };
+      const info = insertRow.run(
+        file.name,
+        "",
+        storedMime,
+        buffer.length,
+        contentHash,
+        profileId
+      );
+      return { docId: Number(info.lastInsertRowid) };
+    }
+  );
   if ("existing" in reserved) {
     const existing = reserved.existing;
     // If the original's extraction failed and its file is still on disk, the

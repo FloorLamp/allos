@@ -69,6 +69,28 @@ export function resolveProviderIdByName(
   return resolveProviderId({ name: trimmed, type });
 }
 
+// Edit-round-trip resolver (issue #601), mirroring the #467 resolveOnHandWrite
+// compare-and-set. An edit form round-trips the provider link through the NAME
+// string only; re-resolving from scratch on every save runs the #534 ambiguity
+// policy, which returns a DISTINCT new row when the name matches 2+ providers —
+// so saving an UNRELATED field on a record linked to an ambiguously-named provider
+// would silently relink it to a freshly-coined duplicate. Guard it: the form ALSO
+// submits the id + name it LOADED with, and we re-resolve by name ONLY when the
+// submitted name actually DIFFERS from the loaded one (whitespace-/case-insensitive,
+// matching the registry's NOCASE dedup); an untouched field keeps the existing id.
+// A genuine name change still re-resolves (create-on-type), and clearing the field
+// (submitted blank ≠ loaded name) unlinks via resolveProviderIdByName's null.
+export function resolveProviderOnEdit(
+  loadedId: number | null,
+  loadedName: string,
+  submittedName: string,
+  type: ProviderType = "organization"
+): number | null {
+  const norm = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase();
+  if (norm(loadedName) === norm(submittedName)) return loadedId;
+  return resolveProviderIdByName(submittedName, type);
+}
+
 // The full shared registry, alphabetical. Used to seed the provider picker's
 // combobox and the (optional) providers list view.
 export function getProviders(): Provider[] {
@@ -106,18 +128,36 @@ export function updateProviderIdentity(id: number, input: ProviderInput): void {
   const p = cleanProviderInput(input);
   if (!p) throw new Error("A provider needs a name.");
   const key = providerDedupKey(p);
-  const clash = db
-    .prepare("SELECT id FROM providers WHERE dedup_key = ? AND id <> ?")
-    .get(key, id) as { id: number } | undefined;
-  if (clash)
-    throw new Error(
-      "Another provider already matches this identity — merge the duplicates instead."
-    );
-  db.prepare(
-    `UPDATE providers
-        SET name = ?, type = ?, npi = ?, identifier = ?, phone = ?, address = ?, dedup_key = ?
-      WHERE id = ?`
-  ).run(p.name, p.type, p.npi, p.identifier, p.phone, p.address, key, id);
+  const friendlyClash =
+    "Another provider already matches this identity — merge the duplicates instead.";
+  // Check-then-write in ONE transaction (issue #601): dedup_key is UNIQUE, and the
+  // SELECT clash-check + UPDATE previously ran as two autocommit statements — with
+  // concurrent writers (web/tick/sidecar, or two admins) the second could pass the
+  // check, then have its UPDATE throw a raw `UNIQUE constraint failed` that the action
+  // surfaced verbatim. writeTx serializes it (better-sqlite3 BEGIN IMMEDIATE), the
+  // same convention resolveProviderId/mergeProviders use; the SQLITE_CONSTRAINT_UNIQUE
+  // catch is belt-and-suspenders, re-mapping a lost race to the friendly message.
+  try {
+    writeTx(() => {
+      const clash = db
+        .prepare("SELECT id FROM providers WHERE dedup_key = ? AND id <> ?")
+        .get(key, id) as { id: number } | undefined;
+      if (clash) throw new Error(friendlyClash);
+      db.prepare(
+        `UPDATE providers
+            SET name = ?, type = ?, npi = ?, identifier = ?, phone = ?, address = ?, dedup_key = ?
+          WHERE id = ?`
+      ).run(p.name, p.type, p.npi, p.identifier, p.phone, p.address, key, id);
+    });
+  } catch (err) {
+    if (
+      err instanceof Error &&
+      "code" in err &&
+      (err as { code?: string }).code === "SQLITE_CONSTRAINT_UNIQUE"
+    )
+      throw new Error(friendlyClash);
+    throw err;
+  }
 }
 
 // Count-only impact of absorbing `duplicateId` (issue #275 confirm dialog). GLOBAL

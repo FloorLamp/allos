@@ -14,6 +14,7 @@ import {
   sweepDeletedRows,
 } from "@/lib/undo-delete-db";
 import { deleteEquipment } from "@/lib/equipment";
+import { UNDO_KINDS } from "@/lib/undo-delete";
 import { seedProfile, type SeededProfile } from "./fixtures";
 
 let p: SeededProfile;
@@ -354,6 +355,142 @@ describe("resilient restore when a captured FK target was deleted meanwhile", ()
         item.id
       )
     ).toBe(0);
+  });
+});
+
+// #598: two dangling-FK paths the #375 reconciliation missed — the merge-undo
+// keeper's captured equipment_id, and the intake-item root's document_id — each
+// re-inserted a captured FK verbatim, so deleting the target between capture and undo
+// made the whole restore abort permanently.
+describe("resilient restore on the merge-undo + intake-document FK paths (#598)", () => {
+  it("nulls the merge keeper's captured equipment_id when the equipment was deleted after the merge", () => {
+    const q = seedProfile("MERGE-EQUIP-UNDO");
+    // A keeper activity carrying a piece of gear, and the discarded (drop) activity
+    // the merge folded into it.
+    const equipId = Number(
+      db
+        .prepare(
+          `INSERT INTO equipment (profile_id, name) VALUES (?, 'MERGE Barbell')`
+        )
+        .run(q.profileId).lastInsertRowid
+    );
+    const keepId = Number(
+      db
+        .prepare(
+          `INSERT INTO activities (profile_id, date, type, title, duration_min, equipment_id)
+           VALUES (?, '2020-04-04', 'strength', 'MERGE Keeper', 40, ?)`
+        )
+        .run(q.profileId, equipId).lastInsertRowid
+    );
+    const dropId = Number(
+      db
+        .prepare(
+          `INSERT INTO activities (profile_id, date, type, title, duration_min)
+           VALUES (?, '2020-04-04', 'strength', 'MERGE Drop', 20)`
+        )
+        .run(q.profileId).lastInsertRowid
+    );
+
+    // Capture the drop with a merge-undo context whose keeperBefore snapshot holds
+    // the pre-fold equipment_id (the value revertActivityMerge writes back).
+    const undoId = captureDelete("activity", q.profileId, dropId, {
+      keeperId: keepId,
+      domain: "activity-dup",
+      signature: "merge-equip-sig",
+      keeperBefore: { equipment_id: equipId, edited: 0 },
+      movedSetIds: [],
+      movedRouteId: null,
+    })!;
+
+    // Delete the gear. deleteEquipment nulls only LIVE activities.equipment_id, so
+    // the keeper's live row is nulled but the captured keeperBefore still holds equipId.
+    deleteEquipment(q.profileId, equipId);
+    expect(
+      count("SELECT COUNT(*) c FROM equipment WHERE id = ?", equipId)
+    ).toBe(0);
+
+    // Undo must succeed (no FK throw) and leave the keeper's equipment_id NULL rather
+    // than re-inserting the dead link.
+    expect(restoreDeletedRow(q.profileId, undoId)).toBe(true);
+    const keeper = db
+      .prepare("SELECT equipment_id FROM activities WHERE id = ?")
+      .get(keepId) as { equipment_id: number | null };
+    expect(keeper.equipment_id).toBeNull();
+  });
+
+  it("nulls an extracted medication's document_id when its source document was deleted after capture", () => {
+    const q = seedProfile("MED-DOC-UNDO");
+    // A prescription auto-structured into a kind='medication' row (source='extracted',
+    // document_id set) — the #414 shape the root's document_id externalRef guards.
+    const itemId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items
+             (profile_id, name, active, kind, condition, priority, source, document_id)
+           VALUES (?, ?, 1, 'medication', 'daily', 'high', 'extracted', ?)`
+        )
+        .run(q.profileId, `${q.tag} Metformin`, q.documentId).lastInsertRowid
+    );
+
+    // Delete the medication (captured with its live document_id), THEN delete the
+    // source document — the captured copy still holds the now-dead document_id.
+    const undoId = captureDelete("intake-item", q.profileId, itemId)!;
+    db.prepare(
+      "DELETE FROM medical_documents WHERE id = ? AND profile_id = ?"
+    ).run(q.documentId, q.profileId);
+    expect(
+      count(
+        "SELECT COUNT(*) c FROM medical_documents WHERE id = ?",
+        q.documentId
+      )
+    ).toBe(0);
+
+    // Undo must succeed (no FK throw) and restore the item with document_id NULLed.
+    expect(restoreDeletedRow(q.profileId, undoId)).toBe(true);
+    const item = db
+      .prepare(
+        "SELECT document_id FROM intake_items WHERE profile_id = ? AND name = ?"
+      )
+      .get(q.profileId, `${q.tag} Metformin`) as {
+      document_id: number | null;
+    };
+    expect(item).toBeTruthy();
+    expect(item.document_id).toBeNull();
+  });
+});
+
+// Reflection guard closing the #375/#455/#598 gap class: every FK column on a
+// captured table must be handled — remapped as an internal capture link (entity.fks),
+// reconciled as an external ref (entity.externalRefs), or point at an always-present
+// parent (profiles, which outlives the row and whose delete purges deleted_rows too).
+// A new REFERENCES column added to any captured table without one of these fails here.
+describe("captured FK columns are all internal, external, or profiles (#598 class)", () => {
+  it("leaves no unhandled REFERENCES column on any undo kind's captured tables", () => {
+    const ALWAYS_PRESENT = new Set(["profiles"]);
+    const unhandled: string[] = [];
+    for (const spec of Object.values(UNDO_KINDS)) {
+      const tableByEntity = new Map(
+        spec.entities.map((e) => [e.entity, e.table])
+      );
+      for (const entity of spec.entities) {
+        const fks = db
+          .prepare(`PRAGMA foreign_key_list(${entity.table})`)
+          .all() as { table: string; from: string }[];
+        for (const fk of fks) {
+          const internal = (entity.fks ?? []).some(
+            (f) => f.column === fk.from && tableByEntity.get(f.ref) === fk.table
+          );
+          const external = (entity.externalRefs ?? []).some(
+            (r) => r.column === fk.from && r.table === fk.table
+          );
+          if (!internal && !external && !ALWAYS_PRESENT.has(fk.table))
+            unhandled.push(
+              `${spec.kind}.${entity.entity}.${fk.from} -> ${fk.table}`
+            );
+        }
+      }
+    }
+    expect(unhandled).toEqual([]);
   });
 });
 

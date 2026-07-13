@@ -93,7 +93,9 @@ describe("undo-delete registry", () => {
     // #455: intake_items.provider_id is the SAME real enforced FK (migration 006),
     // so a captured supplement/medication whose prescriber was merged/deleted after
     // capture must null its provider link on restore too — the #375 class for
-    // intake_items. Also a GLOBAL ref.
+    // intake_items. Also a GLOBAL ref. #598 adds the two remaining captured FKs on the
+    // root: document_id (an extracted med's source document) and situation_id — both
+    // profile-owned (probed WITH profile_id), nulled when their target is gone.
     const item = getKindSpec("intake-item").entities.find(
       (e) => e.entity === "item"
     )!;
@@ -104,6 +106,8 @@ describe("undo-delete registry", () => {
         onMissing: "null",
         global: true,
       },
+      { column: "document_id", table: "medical_documents", onMissing: "null" },
+      { column: "situation_id", table: "situations", onMissing: "null" },
     ]);
 
     // Every externalRef target is a real table name and its onMissing is one of the

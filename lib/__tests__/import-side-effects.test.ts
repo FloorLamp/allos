@@ -17,6 +17,7 @@ describe("import side-effect inventory", () => {
         "canonical-name-registration",
         "demographics-adoption",
         "flag-reconciliation",
+        "immunization-dismissal-sweep",
         "orphan-biomarker-keyed-state-sweep",
         "smoking-status-adoption",
       ].sort()

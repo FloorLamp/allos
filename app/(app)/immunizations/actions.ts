@@ -9,7 +9,10 @@ import {
   slugifyVaccine,
 } from "@/lib/immunization-catalog";
 import { sweepImmunizationDismissals } from "@/lib/queries";
-import { resolveProviderIdByName } from "@/lib/providers-db";
+import {
+  resolveProviderIdByName,
+  resolveProviderOnEdit,
+} from "@/lib/providers-db";
 import { formError, formOk, type FormResult } from "@/lib/types";
 
 // Immunization writes. Mirrors app/(app)/trends/body-actions.ts: session-scoped,
@@ -71,7 +74,10 @@ export async function updateImmunization(
   if (!isRealIsoDate(date)) return formError("Enter a valid date given.");
   const doseLabel = String(formData.get("dose_label") ?? "").trim() || null;
   const notes = String(formData.get("notes") ?? "").trim() || null;
-  const providerId = resolveProviderIdByName(
+  // Keep the loaded link unless the provider field was actually changed (#601).
+  const providerId = resolveProviderOnEdit(
+    Number(formData.get("provider_id")) || null,
+    String(formData.get("provider_loaded") ?? ""),
     String(formData.get("provider") ?? "")
   );
   // Read the prior code before rewriting it: re-coding a dose un-backs the old

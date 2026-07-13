@@ -145,6 +145,22 @@ export default function CarePlanForm({
           defaultValue={item?.provider_name ?? ""}
           placeholder="e.g. Dr. Smith"
         />
+        {/* Round-trip the loaded link so the action keeps it when the field is
+            untouched, instead of re-resolving an ambiguous name into a dup (#601). */}
+        {editing && (
+          <>
+            <input
+              type="hidden"
+              name="provider_id"
+              value={item?.provider_id ?? ""}
+            />
+            <input
+              type="hidden"
+              name="provider_loaded"
+              value={item?.provider_name ?? ""}
+            />
+          </>
+        )}
       </div>
       <div>
         <label className="label" htmlFor={`cp-notes-${uid}`}>
