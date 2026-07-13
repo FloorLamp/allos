@@ -10,8 +10,7 @@
 //
 // Exit codes: 0 = ok (ran or nothing due); 1 = a backup/verification failure.
 
-import { loadEnvConfig } from "@next/env";
-loadEnvConfig(process.cwd());
+import "./load-env";
 
 import {
   performBackup,

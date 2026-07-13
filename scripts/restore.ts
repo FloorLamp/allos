@@ -20,8 +20,7 @@
 // not be detected, so ALWAYS stop the container before restoring. `--force`
 // overrides both the running check and a failed-integrity refusal.
 
-import { loadEnvConfig } from "@next/env";
-loadEnvConfig(process.cwd());
+import "./load-env";
 
 import fs from "node:fs";
 import path from "node:path";

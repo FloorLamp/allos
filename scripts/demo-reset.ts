@@ -16,8 +16,7 @@
 // STOPPED (stop-reset-start): reseeding opens a fresh connection, and a live app
 // holding the old DB open would race it.
 
-import { loadEnvConfig } from "@next/env";
-loadEnvConfig(process.cwd());
+import "./load-env";
 
 import fs from "node:fs";
 import path from "node:path";

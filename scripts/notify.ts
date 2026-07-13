@@ -17,8 +17,7 @@
 // Exit codes: 0 = sent / nothing due / no channel; 1 = a configured channel failed
 // (for any profile); 2 = bad argument.
 
-import { loadEnvConfig } from "@next/env";
-loadEnvConfig(process.cwd());
+import "./load-env";
 
 import {
   buildSupplementReminder,

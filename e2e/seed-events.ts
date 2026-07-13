@@ -3,8 +3,7 @@
 // including one currently-failing provider (Strava) that must surface under
 // "Needs attention" and drive the profile-menu badge. Runs against the same
 // ALLOS_DB_PATH the webServer boots with (see playwright.config.ts).
-import { loadEnvConfig } from "@next/env";
-loadEnvConfig(process.cwd());
+import "../scripts/load-env";
 
 import fs from "node:fs";
 import path from "node:path";
