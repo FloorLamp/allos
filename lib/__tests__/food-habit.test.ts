@@ -3,7 +3,13 @@ import {
   foodHabitSignalKey,
   isFoodHabitBehind,
   FOOD_HABIT_PREFIX,
+  FOOD_GROUP_INTERACTION_KEYS,
+  foodHabitInteractions,
+  foodHabitInteractionNote,
 } from "@/lib/food-habit";
+import { matchFoodInteractions } from "@/lib/food-drug-interactions";
+import { isValidFoodGroup } from "@/lib/food-groups";
+import type { SafetyMedication } from "@/lib/supplement-safety";
 import type { FrequencyTargetProgress } from "@/lib/queries/training/goals";
 
 // Pure-tier tests for the food-habit finding identity + behind decision (#580).
@@ -54,5 +60,64 @@ describe("isFoodHabitBehind", () => {
 
   it("ignores non-food_group (training) targets", () => {
     expect(isFoodHabitBehind(progress("type", "cardio", 0, 4))).toBe(false);
+  });
+});
+
+// ---- Food–drug interaction screen for habit targets (#661) ----
+
+const warfarin: SafetyMedication = {
+  name: "Warfarin",
+  rxcui: null,
+  rxcuiIngredients: null,
+};
+const atorvastatin: SafetyMedication = {
+  name: "Atorvastatin",
+  rxcui: null,
+  rxcuiIngredients: null,
+};
+
+describe("foodHabitInteractions (#661)", () => {
+  it("warns when a leafy-greens habit meets warfarin — the SAME hit the med row shows", () => {
+    const hits = foodHabitInteractions("leafy_greens", [warfarin]);
+    expect(hits).toHaveLength(1);
+    expect(hits[0].key).toBe("vitamin-k-warfarin");
+    expect(hits[0].medication).toBe("Warfarin");
+    // Parity: the advice is literally what matchFoodInteractions(warfarin) carries for
+    // the same entry — one computation, two surfaces (#661.3).
+    const medHit = matchFoodInteractions(warfarin).find(
+      (h) => h.key === "vitamin-k-warfarin"
+    );
+    expect(hits[0].advice).toBe(medHit?.advice);
+    expect(foodHabitInteractionNote(hits[0])).toContain("Warfarin");
+    expect(foodHabitInteractionNote(hits[0])).toBe(
+      `You take Warfarin — ${medHit?.advice}`
+    );
+  });
+
+  it("does not warn when the habit's group is unrelated to the stack", () => {
+    // Leafy greens do not conflict with a statin; grapefruit would, but there is no
+    // grapefruit food group (deliberately unmapped — no over-warning of fruit habits).
+    expect(foodHabitInteractions("leafy_greens", [atorvastatin])).toEqual([]);
+    // An unmapped group (fruit) never warns even with a relevant med.
+    expect(foodHabitInteractions("fruit", [atorvastatin])).toEqual([]);
+  });
+
+  it("returns nothing for an empty stack", () => {
+    expect(foodHabitInteractions("leafy_greens", [])).toEqual([]);
+  });
+});
+
+describe("FOOD_GROUP_INTERACTION_KEYS anti-drift (#661)", () => {
+  it("every mapped slug is a real food group and every key a real interaction entry", async () => {
+    const data = (await import("@/lib/food-drug-interactions.json")).default;
+    const entryKeys = new Set(
+      (data.interactions as { key: string }[]).map((e) => e.key)
+    );
+    for (const [slug, keys] of Object.entries(FOOD_GROUP_INTERACTION_KEYS)) {
+      expect(isValidFoodGroup(slug), `unknown food group: ${slug}`).toBe(true);
+      for (const k of keys) {
+        expect(entryKeys.has(k), `unknown interaction key: ${k}`).toBe(true);
+      }
+    }
   });
 });

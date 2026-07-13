@@ -492,7 +492,7 @@ export default async function SupplementsPage() {
                   <div>
                     <p className="font-semibold">{ulWarningTitle(w)}</p>
                     <p className="mt-0.5 text-amber-700 dark:text-amber-300">
-                      {ulWarningDetail(w)}
+                      {ulWarningDetail(w, w.conditionCaveat)}
                     </p>
                     <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
                       From: {ulWarningEvidence(w)}

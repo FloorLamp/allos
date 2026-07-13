@@ -6,11 +6,8 @@
 
 import { db, today } from "../db";
 import { getCurrentFlaggedBiomarkers } from "./medical";
-import { getAllergies, getConditions } from "./clinical";
-import { getSupplements } from "./intake";
+import { getIntakeSafetyContext } from "./intake";
 import { weekWindowStart, recentWindowStart } from "./training/common";
-import { getActiveSituations } from "../settings";
-import { parseRxcuiIngredients } from "../rxnorm";
 import { suggestFoods, type FoodSuggestion } from "../food-suggest";
 import {
   rollupServings,
@@ -25,7 +22,6 @@ import {
 } from "../food-groups";
 import { decayedWeight } from "../decay";
 import { rankByFrequency } from "../rank-by-frequency";
-import type { SafetyMedication } from "../supplement-safety";
 
 // Safety-screened food suggestions for the profile's currently-flagged, diet-responsive
 // biomarker families. Deterministic; the AI narration tier (deferred, #576 Phase 3)
@@ -37,20 +33,12 @@ export function getFoodSuggestions(profileId: number): FoodSuggestion[] {
   }));
   if (flagged.length === 0) return [];
 
-  const allergens = getAllergies(profileId)
-    .filter((a) => a.status !== "resolved")
-    .map((a) => a.substance);
-  const medications: SafetyMedication[] = getSupplements(profileId)
-    .filter((s) => s.active && s.kind === "medication")
-    .map((s) => ({
-      name: s.name,
-      rxcui: s.rxcui,
-      rxcuiIngredients: parseRxcuiIngredients(s.rxcui_ingredients),
-    }));
-  const conditions = getConditions(profileId, { status: "active" }).map(
-    (c) => c.name
-  );
-  const situations = getActiveSituations(profileId);
+  // Allergens + medications + conditions + situations come from the ONE shared
+  // intake-safety gather (#661), the same context the AI supplement belt screens
+  // against — so a food suggestion and a supplement suggestion can't disagree about
+  // the profile's safety facts.
+  const { allergens, medications, conditions, situations } =
+    getIntakeSafetyContext(profileId);
 
   return suggestFoods({
     flagged,

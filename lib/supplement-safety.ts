@@ -21,6 +21,7 @@
 
 import { findCrossReactivity } from "./allergen-cross-reactivity";
 import { matchFoodInteractions } from "./food-drug-interactions";
+import { CONDITION_NUTRIENT_RULES } from "./condition-nutrient";
 
 // Normalize a phrase to comparable token form: lowercased, apostrophes dropped,
 // any non-alphanumeric run collapsed to a single space, trimmed. Mirrors the
@@ -162,6 +163,45 @@ export function interactionConflict(
   return null;
 }
 
+// A recorded condition a supplement suggestion is contraindicated for.
+export interface ConditionHit {
+  // The active condition that contraindicates it (display form).
+  condition: string;
+  // The nutrient token the suggestion carried that the condition contraindicates.
+  nutrient: string;
+  // The curated caution copy (from the shared condition→nutrient dataset).
+  caution: string;
+}
+
+// The recorded condition a supplement suggestion is contraindicated for, or null when
+// clear (issue #657). Reuses the SAME curated drop-severity condition→nutrient rules
+// the food-suggestion engine hard-drops on (lib/condition-nutrient, derived from
+// nutrient-food-map): a CKD condition drops a supplemental "Potassium …" or
+// "Magnesium …" suggestion the model may have surfaced despite the prompt's tempering
+// rule. Screened over the suggestion NAME (nutrient identity lives there, like the
+// medication interaction screen). Conservative for an ingestible — a hard drop, not an
+// annotation, since the belt distrusts the model.
+export function conditionConflict(
+  name: string,
+  conditions: readonly string[]
+): ConditionHit | null {
+  const clean = conditions.map((c) => (c ?? "").trim()).filter(Boolean);
+  if (clean.length === 0) return null;
+  for (const rule of CONDITION_NUTRIENT_RULES) {
+    if (!rule.nutrientTokens.some((t) => tokenContains(name, t))) continue;
+    for (const c of clean) {
+      if (c.toLowerCase().includes(rule.match)) {
+        return {
+          condition: c,
+          nutrient: rule.nutrientTokens[0],
+          caution: rule.caution,
+        };
+      }
+    }
+  }
+  return null;
+}
+
 // The profile's safety facts, gathered once and fed to both the prompt and this
 // guard.
 export interface SafetyContext {
@@ -169,11 +209,13 @@ export interface SafetyContext {
   allergens: string[];
   // Current medications (kind === 'medication', active).
   medications: SafetyMedication[];
+  // Active condition names (display form) — the deterministic condition screen (#657).
+  conditions: string[];
 }
 
 // Why a suggestion was dropped by the safety guard, or null when it passes.
 export interface SafetyDrop {
-  field: "allergen" | "interaction";
+  field: "allergen" | "interaction" | "condition";
   // A short, self-contained reason for the AI log.
   detail: string;
 }
@@ -207,6 +249,14 @@ export function screenSuggestionSafety(
     return {
       field: "interaction",
       detail: `"${suggestion.name}" dropped — interacts with current medication "${interaction.medication}"`,
+    };
+  }
+
+  const condition = conditionConflict(suggestion.name, ctx.conditions);
+  if (condition) {
+    return {
+      field: "condition",
+      detail: `"${suggestion.name}" dropped — not advised with recorded condition "${condition.condition}" (${condition.caution})`,
     };
   }
 

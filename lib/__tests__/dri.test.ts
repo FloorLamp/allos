@@ -11,6 +11,7 @@ import {
   dietaryLimitSignalKey,
   ulWarningTitle,
   ulWarningDetail,
+  ulConditionCaveat,
   ulWarningEvidence,
   rdaAdequacySignalKey,
   rdaAdequacyTitle,
@@ -340,6 +341,22 @@ describe("warning copy + keys", () => {
     const vitADetail = ulWarningDetail(vitA);
     expect(vitADetail).toContain("total intake");
     expect(vitADetail).toContain("food and drink add still more");
+  });
+
+  it("annotates the UL line for a condition that lowers the ceiling (#657)", () => {
+    // CKD lowers the safe magnesium ceiling — the population UL bands only on age/sex,
+    // so the line carries a caveat.
+    const caveat = ulConditionCaveat("magnesium", ["chronic kidney disease"]);
+    expect(caveat).not.toBeNull();
+    expect(caveat).toContain("chronic kidney disease");
+    expect(caveat).toContain("magnesium");
+    expect(caveat).toContain("discuss with your clinician");
+
+    // Appended to the detail when present, absent otherwise.
+    expect(ulWarningDetail(mag, caveat)).toContain("may not apply to you");
+    expect(ulWarningDetail(mag)).not.toContain("may not apply to you");
+    // No matching condition → no caveat.
+    expect(ulConditionCaveat("magnesium", ["asthma"])).toBeNull();
   });
 
   it("evidence lists the contributing products, largest first", () => {

@@ -29,6 +29,7 @@ import {
 } from "@/lib/rule-findings";
 import { foodSuggestSignalKey } from "@/lib/food-suggest";
 import { foodHabitSignalKey } from "@/lib/food-habit";
+import { matchFoodInteractions } from "@/lib/food-drug-interactions";
 import {
   weekdayMissSignalKey,
   ADHERENCE_PREFIX,
@@ -592,6 +593,34 @@ describe("buildFoodHabitFindings (#580)", () => {
     logServing(profileId, "fatty_fish", anchor); // 2 of 2 (two servings one day)
 
     expect(buildFoodHabitFindings(profileId)).toEqual([]);
+  });
+
+  // #661: a behind food-habit target that conflicts with the active stack carries the
+  // SAME interaction note the medication's own row shows — encouragement and warning
+  // from one computation.
+  it("a behind leafy-greens habit on warfarin carries the vitamin-K note (same as the med row)", () => {
+    const { profileId, anchor } = makeProfile("food-habit-warfarin");
+    // Active warfarin medication in the stack.
+    db.prepare(
+      `INSERT INTO intake_items (profile_id, name, active, kind, condition, priority, as_needed)
+       VALUES (?, 'Warfarin', 1, 'medication', 'daily', 'high', 0)`
+    ).run(profileId);
+    addFoodTarget(profileId, "leafy_greens", 5);
+    logServing(profileId, "leafy_greens", anchor); // 1 of 5 → behind
+
+    const findings = buildFoodHabitFindings(profileId);
+    expect(findings).toHaveLength(1);
+    expect(findings[0].dedupeKey).toBe(foodHabitSignalKey("leafy_greens"));
+    // Parity with the medication surface: the exact vitamin-K advice appears.
+    const medAdvice = matchFoodInteractions({
+      name: "Warfarin",
+      rxcui: null,
+      rxcuiIngredients: null,
+    }).find((h) => h.key === "vitamin-k-warfarin")!.advice;
+    expect(findings[0].detail).toContain(medAdvice);
+    expect(findings[0].detail).toContain("You take Warfarin");
+    // The encouragement is still present alongside the warning.
+    expect(findings[0].detail).toContain("1 of 5");
   });
 });
 

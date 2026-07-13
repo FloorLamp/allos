@@ -8,6 +8,7 @@ import {
   getGoals,
   getMedicalRecords,
   getSupplements,
+  getIntakeSafetyContext,
 } from "./queries";
 import { biomarkerFamily } from "./canonical-name";
 import { isGoalLive } from "./goals";
@@ -24,7 +25,6 @@ import {
   FOOD_TIMINGS,
 } from "./supplement-schedule";
 import { isNonOptimal, isOutOfRange } from "./reference-range";
-import { parseRxcuiIngredients } from "./rxnorm";
 import {
   screenSuggestionSafety,
   type SafetyContext,
@@ -240,14 +240,11 @@ function buildContext(
 
   if (opts.feedback) lines.push(`\n## User note\n${opts.feedback}`);
 
-  const safety: SafetyContext = {
-    allergens: getAllergies(profileId).map((a) => a.substance),
-    medications: meds.map((m) => ({
-      name: m.name,
-      rxcui: m.rxcui,
-      rxcuiIngredients: parseRxcuiIngredients(m.rxcui_ingredients),
-    })),
-  };
+  // The deterministic belt's facts come from the ONE shared intake-safety gather
+  // (#661) — allergens, active medications, AND active conditions (#657) — so the
+  // prompt above and this guard screen against the same profile context and can't
+  // drift. Active conditions now feed the belt's condition screen, not just the prompt.
+  const safety: SafetyContext = getIntakeSafetyContext(profileId);
 
   return { text: lines.join("\n"), lowLabNames, safety };
 }

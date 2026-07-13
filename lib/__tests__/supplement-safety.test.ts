@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   allergenConflict,
   interactionConflict,
+  conditionConflict,
   screenSuggestionSafety,
   type SafetyMedication,
 } from "../supplement-safety";
@@ -86,11 +87,43 @@ describe("interactionConflict (#413)", () => {
   });
 });
 
+describe("conditionConflict (#657)", () => {
+  it("drops supplemental potassium when the profile has CKD", () => {
+    const hit = conditionConflict("Potassium Citrate", [
+      "Chronic kidney disease, stage 3",
+    ]);
+    expect(hit?.condition).toBe("Chronic kidney disease, stage 3");
+    expect(hit?.nutrient).toBe("potassium");
+    expect(hit?.caution.toLowerCase()).toContain("kidney");
+  });
+
+  it("drops supplemental magnesium when the profile has CKD", () => {
+    const hit = conditionConflict("Magnesium Glycinate", [
+      "chronic kidney disease",
+    ]);
+    expect(hit?.nutrient).toBe("magnesium");
+  });
+
+  it("does not drop an unrelated nutrient or an unrelated condition", () => {
+    // CKD does not contraindicate vitamin D.
+    expect(
+      conditionConflict("Vitamin D3", ["chronic kidney disease"])
+    ).toBeNull();
+    // Potassium with an unrelated condition is fine.
+    expect(conditionConflict("Potassium Citrate", ["asthma"])).toBeNull();
+  });
+
+  it("returns null with no conditions", () => {
+    expect(conditionConflict("Potassium Citrate", [])).toBeNull();
+    expect(conditionConflict("Potassium Citrate", ["", "  "])).toBeNull();
+  });
+});
+
 describe("screenSuggestionSafety (#413)", () => {
   it("reports the allergen field with a self-contained reason", () => {
     const drop = screenSuggestionSafety(
       { name: "Fish Oil" },
-      { allergens: ["fish"], medications: [] }
+      { allergens: ["fish"], medications: [], conditions: [] }
     );
     expect(drop?.field).toBe("allergen");
     expect(drop?.detail).toContain("fish");
@@ -99,7 +132,7 @@ describe("screenSuggestionSafety (#413)", () => {
   it("checks brand/product text too, not just the name", () => {
     const drop = screenSuggestionSafety(
       { name: "Omega-3", product: "Wild Fish Oil Softgels" },
-      { allergens: ["fish"], medications: [] }
+      { allergens: ["fish"], medications: [], conditions: [] }
     );
     expect(drop?.field).toBe("allergen");
   });
@@ -112,10 +145,26 @@ describe("screenSuggestionSafety (#413)", () => {
         medications: [
           { name: "Warfarin", rxcui: null, rxcuiIngredients: null },
         ],
+        conditions: [],
       }
     );
     expect(drop?.field).toBe("interaction");
     expect(drop?.detail).toContain("Warfarin");
+  });
+
+  it("reports the condition field for a contraindicated nutrient regardless of model output (#657)", () => {
+    // The headline #657 scenario: a potassium suggestion for a CKD profile is dropped
+    // by the deterministic belt even though the model surfaced it.
+    const drop = screenSuggestionSafety(
+      { name: "Potassium Citrate" },
+      {
+        allergens: [],
+        medications: [],
+        conditions: ["Chronic kidney disease, stage 4"],
+      }
+    );
+    expect(drop?.field).toBe("condition");
+    expect(drop?.detail).toContain("Chronic kidney disease, stage 4");
   });
 
   it("passes a clean suggestion", () => {
@@ -127,6 +176,7 @@ describe("screenSuggestionSafety (#413)", () => {
           medications: [
             { name: "Warfarin", rxcui: null, rxcuiIngredients: null },
           ],
+          conditions: ["hypertension"],
         }
       )
     ).toBeNull();
