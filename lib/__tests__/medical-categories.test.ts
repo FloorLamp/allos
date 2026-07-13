@@ -53,7 +53,9 @@ describe("medical-categories: importers do not re-declare the enums", () => {
   const read = (rel: string) => fs.readFileSync(path.join(REPO, rel), "utf8");
 
   const ACTION = "app/(app)/medical/actions.ts";
-  const EXTRACT = "lib/medical-extract.ts";
+  // The AI extractor was barrel-split (#597); the shared-constant import now
+  // lives in the extraction constants submodule rather than the barrel.
+  const EXTRACT = "lib/medical-extract/constants.ts";
 
   it("the medical write action imports the shared constants", () => {
     const src = read(ACTION);
@@ -68,7 +70,7 @@ describe("medical-categories: importers do not re-declare the enums", () => {
   it("the AI extractor imports the shared constants", () => {
     const src = read(EXTRACT);
     expect(src).toMatch(
-      /import\s*\{[^}]*\bMEDICAL_CATEGORIES\b[^}]*\bMEDICAL_FLAGS\b[^}]*\}\s*from\s*["']\.\/medical-categories["']/s
+      /import\s*\{[^}]*\bMEDICAL_CATEGORIES\b[^}]*\bMEDICAL_FLAGS\b[^}]*\}\s*from\s*["']\.\.\/medical-categories["']/s
     );
     // The extractor may alias to local CATEGORIES/FLAGS names, but must not
     // build them from a fresh array literal.
