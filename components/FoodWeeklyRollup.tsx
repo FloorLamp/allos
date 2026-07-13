@@ -1,15 +1,17 @@
 import type { GroupServingTotal } from "@/lib/food-log";
 import { EmptyState } from "@/components/ui";
+import FoodGroupIcon from "@/components/FoodGroupIcon";
 
 // Presentational weekly food-servings rollup (issue #579). A pure formatter over the
 // ONE computation (getWeeklyFoodRollup → rollupServings), shared by the /nutrition
 // card and the Trends → Nutrition tab so they can't disagree. Servings per group this
-// week, encourage-first (the catalog order the rollup already returns).
+// week, encourage-first (the catalog order the rollup already returns). The food-group
+// icon (#591) is tinted by tier, so a single glyph conveys both the group and its tier.
 
-const TIER_DOT: Record<string, string> = {
-  encourage: "bg-emerald-500",
-  neutral: "bg-slate-400",
-  limit: "bg-amber-500",
+const TIER_TINT: Record<string, string> = {
+  encourage: "text-emerald-500",
+  neutral: "text-slate-400",
+  limit: "text-amber-500",
 };
 
 export default function FoodWeeklyRollup({
@@ -35,8 +37,9 @@ export default function FoodWeeklyRollup({
           className="flex items-center justify-between gap-3 text-sm"
         >
           <span className="flex items-center gap-2 text-slate-700 dark:text-slate-200">
-            <span
-              className={`h-2 w-2 shrink-0 rounded-full ${TIER_DOT[g.tier] ?? "bg-slate-400"}`}
+            <FoodGroupIcon
+              slug={g.slug}
+              className={`h-4 w-4 shrink-0 ${TIER_TINT[g.tier] ?? "text-slate-400"}`}
             />
             {g.name}
           </span>

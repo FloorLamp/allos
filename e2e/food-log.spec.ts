@@ -30,6 +30,28 @@ test("logging a serving shows in the day count and the weekly rollup, undo decre
   await expect(count).toHaveText(String(before));
 });
 
+test("the labs food-suggestions card is collapsed by default and expands on click (#591)", async ({
+  page,
+}) => {
+  await page.goto("/nutrition");
+
+  // The container (native <details>) is present, keeping its testid, with a compact
+  // one-line summary showing the count. The seeded profile has flagged-low omega-3 +
+  // folate readings (e2e/seed-events.ts), so a suggestion exists.
+  const card = page.getByTestId("nutrition-suggestions");
+  await expect(card).toBeVisible();
+  const summary = page.getByTestId("nutrition-suggestions-summary");
+  await expect(summary).toContainText("Food suggestions from your labs");
+
+  // Collapsed by default: a suggestion inside is not shown until the card is opened.
+  const suggestion = page.getByTestId("food-suggestion-omega-3");
+  await expect(suggestion).toBeHidden();
+
+  // Expand → the suggestion becomes visible.
+  await summary.click();
+  await expect(suggestion).toBeVisible();
+});
+
 test("the Trends → Nutrition tab renders the food-servings rollup (#579)", async ({
   page,
 }) => {

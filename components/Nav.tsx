@@ -47,6 +47,10 @@ type Leaf = {
   // meaningless with a single profile, so a single-profile login (member or a
   // one-profile instance) never sees it, while any login granted 2+ profiles does.
   requiresMultiProfile?: boolean;
+  // `requiresFoodLogging` entries are dropped for an infant profile (< 1 y) — the
+  // adult food-group serving catalog is meaningless there (issue #591). Cosmetic;
+  // the page re-checks isFoodLoggingRelevant server-side. Eligible on unknown age.
+  requiresFoodLogging?: boolean;
 };
 
 type Group = {
@@ -103,7 +107,13 @@ const entries: Entry[] = [
   { href: "/", label: "Dashboard", icon: IconLayoutDashboard },
   { href: "/timeline", label: "Timeline", icon: IconTimelineEvent },
   { href: "/trends", label: "Trends", icon: IconTrendingUp },
-  { href: "/nutrition", label: "Nutrition", icon: IconSalad },
+  {
+    href: "/nutrition",
+    label: "Nutrition",
+    icon: IconSalad,
+    // Hidden for an infant profile (< 1 y); the page also gates server-side (#591).
+    requiresFoodLogging: true,
+  },
   { href: "/protocols", label: "Protocols", icon: IconFlask2 },
   { href: "/upcoming", label: "Upcoming", icon: IconCalendarClock },
   {
@@ -159,23 +169,26 @@ function NavGroup({
   restricted,
   isAdmin,
   multiProfile,
+  foodLoggingRelevant,
 }: {
   group: Group;
   restricted: boolean;
   isAdmin: boolean;
   multiProfile: boolean;
+  foodLoggingRelevant: boolean;
 }) {
   const pathname = usePathname();
   // Reuse the same visibility predicate as the top-level entries so a group
-  // child honors the age-gate (RESTRICTED_HREFS), `adminOnly`, and
-  // `requiresMultiProfile` identically — otherwise appending a gated leaf to a
-  // group's children (which the array shape invites) would leak it in the
-  // sidebar.
+  // child honors the age-gate (RESTRICTED_HREFS), `adminOnly`,
+  // `requiresMultiProfile`, and `requiresFoodLogging` identically — otherwise
+  // appending a gated leaf to a group's children (which the array shape invites)
+  // would leak it in the sidebar.
   const children = group.children.filter((c) =>
     isNavLeafVisible(c, {
       isAdmin,
       restricted,
       multiProfile,
+      foodLoggingRelevant,
       restrictedHrefs: RESTRICTED_HREFS,
     })
   );
@@ -230,12 +243,17 @@ export default function Nav({
   restricted = false,
   isAdmin = false,
   multiProfile = false,
+  foodLoggingRelevant = true,
 }: {
   restricted?: boolean;
   isAdmin?: boolean;
   // True when the caller has more than one ACCESSIBLE profile; gates entries
   // flagged `requiresMultiProfile` (e.g. the Household cross-profile overview).
   multiProfile?: boolean;
+  // True unless the active profile is an infant (< 1 y); gates entries flagged
+  // `requiresFoodLogging` (Nutrition). Defaults true so a caller that doesn't
+  // thread it never over-hides.
+  foodLoggingRelevant?: boolean;
 }) {
   const visible = entries.filter((e) =>
     isGroup(e)
@@ -244,6 +262,7 @@ export default function Nav({
           isAdmin,
           restricted,
           multiProfile,
+          foodLoggingRelevant,
           restrictedHrefs: RESTRICTED_HREFS,
         })
   );
@@ -257,6 +276,7 @@ export default function Nav({
             restricted={restricted}
             isAdmin={isAdmin}
             multiProfile={multiProfile}
+            foodLoggingRelevant={foodLoggingRelevant}
           />
         ) : (
           <NavLink key={e.href} leaf={e} nested={false} />

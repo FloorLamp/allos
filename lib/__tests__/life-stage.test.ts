@@ -5,6 +5,7 @@ import {
   isMinor,
   isAdultBpRegime,
   isGrowthTracked,
+  isFoodLoggingRelevant,
   INFANT_MAX_AGE,
   PEDIATRIC_BP_MAX_AGE,
   ADULT_MIN_AGE,
@@ -89,6 +90,23 @@ describe("isGrowthTracked — Body-tab growth line (< 20)", () => {
     expect(isGrowthTracked(20)).toBe(false);
     expect(isGrowthTracked(40)).toBe(false);
     expect(isGrowthTracked(null)).toBe(false);
+  });
+});
+
+describe("isFoodLoggingRelevant — nutrition logger line (≥ 1, or unknown)", () => {
+  it("hides only on a positive infant match", () => {
+    expect(isFoodLoggingRelevant(0)).toBe(false);
+    expect(isFoodLoggingRelevant(0.5)).toBe(false);
+  });
+  it("is eligible for every non-infant known age", () => {
+    expect(isFoodLoggingRelevant(INFANT_MAX_AGE)).toBe(true); // exactly 1 y
+    expect(isFoodLoggingRelevant(4)).toBe(true);
+    expect(isFoodLoggingRelevant(12)).toBe(true);
+    expect(isFoodLoggingRelevant(40)).toBe(true);
+  });
+  it("is eligible on unknown age (never hides on missing data)", () => {
+    expect(isFoodLoggingRelevant(null)).toBe(true);
+    expect(isFoodLoggingRelevant(undefined)).toBe(true);
   });
 });
 

@@ -52,6 +52,7 @@ describe("isNavLeafVisible", () => {
     isAdmin: true,
     restricted: false,
     multiProfile: true,
+    foodLoggingRelevant: true,
     restrictedHrefs,
     ...over,
   });
@@ -98,6 +99,23 @@ describe("isNavLeafVisible", () => {
     expect(
       isNavLeafVisible(household, ctx({ isAdmin: false, multiProfile: false }))
     ).toBe(false); // single-profile member
+  });
+
+  it("hides requiresFoodLogging leaves for an infant profile (issue #591)", () => {
+    const leaf = { href: "/nutrition", requiresFoodLogging: true };
+    expect(isNavLeafVisible(leaf, ctx({ foodLoggingRelevant: true }))).toBe(
+      true
+    );
+    expect(isNavLeafVisible(leaf, ctx({ foodLoggingRelevant: false }))).toBe(
+      false
+    );
+    // A plain leaf is unaffected by the food-logging gate.
+    expect(
+      isNavLeafVisible(
+        { href: "/biomarkers" },
+        ctx({ foodLoggingRelevant: false })
+      )
+    ).toBe(true);
   });
 
   it("honors the age-gate only for hrefs in the restricted set", () => {

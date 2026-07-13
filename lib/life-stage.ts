@@ -102,6 +102,18 @@ export function isAdultBpRegime(age: number | null | undefined): boolean {
   return !known(age) || age >= PEDIATRIC_BP_MAX_AGE;
 }
 
+// Food-group serving logging (issue #591). One serving = one tap over the adult
+// habit catalog (leafy greens, whole grains, …), which is meaningless for an
+// INFANT (< 1 y — milk/formula only), so the /nutrition logger and its nav entry
+// hide on a positive infant match. Unknown age → true (eligible) — the module's
+// documented presentation policy: hide a surface only on a positive under-age
+// match, never on missing data. Every non-infant life stage stays eligible; the
+// adult-sized serving descriptions are acceptable at the habit tier for older
+// children (per #591). (age ≥ 1, or unknown)
+export function isFoodLoggingRelevant(age: number | null | undefined): boolean {
+  return lifeStage(age) !== "infant";
+}
+
 // The Body-tab growth-led presentation: height-first chart order, body-fat
 // de-prioritized, growth-percentile card floated to the top, height/head-circ
 // quick-add offered. True when the profile is within WHO/CDC growth-chart range
