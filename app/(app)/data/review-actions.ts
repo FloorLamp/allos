@@ -13,6 +13,38 @@ import { writeImportTombstoneForRow } from "@/lib/integrations/tombstones";
 import { parseOverrideFields } from "@/lib/import-review/conflicts";
 import { mergeBodyMetric } from "@/lib/body-metric-extract";
 import type { PairDecision } from "@/lib/import-review/detect";
+import { formError, formOk, type FormResult } from "@/lib/types";
+
+// The imported tables that carry a user-edit lock (`edited`, #133): the sync upserts
+// leave a locked row untouched. Maps each to the surfaces that render the row, for
+// revalidation after the lock is cleared. Whitelisted KEYS only ever reach the SQL
+// below (never a raw client string), so the interpolated table name is one of these
+// three constants.
+const EDIT_LOCK_REVALIDATE: Record<string, string[]> = {
+  activities: ["/data", "/training", "/journal", "/trends", "/"],
+  body_metrics: ["/data", "/trends", "/"],
+  medical_records: ["/data", "/biomarkers", "/biomarkers/view", "/"],
+};
+
+// Clear the user-edit lock on one imported row so the next sync resumes updating it
+// (issue #659 — the undo-inverts-side-state convention applied to the lock). This is
+// the ONLY app path that writes `edited = 0` on a real row; it warns in the UI that
+// the next sync may overwrite the hand-fix. Profile-scoped + write-gated: a member
+// without write access, or an id from another profile, changes nothing.
+export async function clearEditLock(formData: FormData): Promise<FormResult> {
+  const { profile } = await requireWriteAccess();
+  const table = String(formData.get("table") ?? "");
+  const id = Number(formData.get("id"));
+  const paths = EDIT_LOCK_REVALIDATE[table];
+  if (!paths) return formError("Unknown record type.");
+  if (!Number.isInteger(id) || id <= 0) return formError("Invalid record.");
+  const info = db
+    .prepare(`UPDATE ${table} SET edited = 0 WHERE id = ? AND profile_id = ?`)
+    .run(id, profile.id);
+  if (info.changes === 0) return formError("Record not found.");
+  for (const p of paths) revalidatePath(p);
+  return formOk();
+}
 
 // Server actions behind the Data → Review duplicate/conflict resolver (issue #10,
 // Phase 2). All writes are transactional + profile-scoped, and every one records a

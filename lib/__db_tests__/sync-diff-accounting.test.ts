@@ -53,6 +53,7 @@ describe("upsert accounting: inserted → unchanged → updated", () => {
       updated: 0,
       unchanged: 0,
       suppressed: 0,
+      edited: 0,
     });
     // Identical re-ingest → unchanged (a no-op that info.changes would mis-report).
     expect(upsertActivities(profileId, rows, SOURCE)).toEqual({
@@ -60,6 +61,7 @@ describe("upsert accounting: inserted → unchanged → updated", () => {
       updated: 0,
       unchanged: 1,
       suppressed: 0,
+      edited: 0,
     });
     // Mutate one field → updated.
     const changed = [{ ...rows[0], title: "Evening run" }];
@@ -68,6 +70,7 @@ describe("upsert accounting: inserted → unchanged → updated", () => {
       updated: 1,
       unchanged: 0,
       suppressed: 0,
+      edited: 0,
     });
     // And a metric-only change (avg_hr) is also an update.
     const metricChanged = [{ ...changed[0], avg_hr: 150 }];
@@ -76,10 +79,11 @@ describe("upsert accounting: inserted → unchanged → updated", () => {
       updated: 1,
       unchanged: 0,
       suppressed: 0,
+      edited: 0,
     });
   });
 
-  it("upsertActivities counts a hand-edited row as unchanged (left untouched)", () => {
+  it("upsertActivities counts a hand-edited row as edited (left untouched, #659)", () => {
     const rows: NormActivity[] = [
       {
         external_id: "hc:act:edited",
@@ -102,8 +106,9 @@ describe("upsert accounting: inserted → unchanged → updated", () => {
     expect(upsertActivities(profileId, changed, SOURCE)).toEqual({
       inserted: 0,
       updated: 0,
-      unchanged: 1,
+      unchanged: 0,
       suppressed: 0,
+      edited: 1,
     });
     const stored = db
       .prepare(
@@ -164,12 +169,14 @@ describe("upsert accounting: inserted → unchanged → updated", () => {
       updated: 0,
       unchanged: 0,
       suppressed: 0,
+      edited: 0,
     });
     expect(upsertBodyMetrics(profileId, rows, SOURCE)).toEqual({
       inserted: 0,
       updated: 0,
       unchanged: 1,
       suppressed: 0,
+      edited: 0,
     });
     const changed = [{ ...rows[0], weight_kg: 79.5 }];
     expect(upsertBodyMetrics(profileId, changed, SOURCE)).toEqual({
@@ -177,6 +184,7 @@ describe("upsert accounting: inserted → unchanged → updated", () => {
       updated: 1,
       unchanged: 0,
       suppressed: 0,
+      edited: 0,
     });
     // A window carrying only an already-stored subset is still unchanged (merge
     // fills no gap and overwrites nothing).
@@ -186,10 +194,11 @@ describe("upsert accounting: inserted → unchanged → updated", () => {
       updated: 0,
       unchanged: 1,
       suppressed: 0,
+      edited: 0,
     });
   });
 
-  it("upsertBodyMetrics counts a hand-edited row as unchanged (edit survives)", () => {
+  it("upsertBodyMetrics counts a hand-edited row as edited (edit survives, #659)", () => {
     const rows: NormBodyMetric[] = [
       { date: "2024-05-13", weight_kg: 82, body_fat_pct: 20, resting_hr: 60 },
     ];
@@ -204,8 +213,9 @@ describe("upsert accounting: inserted → unchanged → updated", () => {
     expect(upsertBodyMetrics(profileId, rows, SOURCE)).toEqual({
       inserted: 0,
       updated: 0,
-      unchanged: 1,
+      unchanged: 0,
       suppressed: 0,
+      edited: 1,
     });
     const stored = db
       .prepare(
@@ -215,7 +225,7 @@ describe("upsert accounting: inserted → unchanged → updated", () => {
     expect(stored.weight_kg).toBe(79);
   });
 
-  it("upsertVitals leaves a hand-edited imported vital untouched (unchanged, id not re-touched)", () => {
+  it("upsertVitals leaves a hand-edited imported vital untouched (edited, id not re-touched, #659)", () => {
     const rows: NormVital[] = [
       {
         external_id: "hc:vital:edited",
@@ -239,8 +249,9 @@ describe("upsert accounting: inserted → unchanged → updated", () => {
     expect(second.counts).toEqual({
       inserted: 0,
       updated: 0,
-      unchanged: 1,
+      unchanged: 0,
       suppressed: 0,
+      edited: 1,
     });
     expect(second.ids).toEqual([]);
     const stored = db
@@ -266,12 +277,14 @@ describe("upsert accounting: inserted → unchanged → updated", () => {
       updated: 0,
       unchanged: 0,
       suppressed: 0,
+      edited: 0,
     });
     expect(upsertMetricSamples(profileId, rows, SOURCE)).toEqual({
       inserted: 0,
       updated: 0,
       unchanged: 1,
       suppressed: 0,
+      edited: 0,
     });
     const changed = [{ ...rows[0], value: 8500 }];
     expect(upsertMetricSamples(profileId, changed, SOURCE)).toEqual({
@@ -279,6 +292,7 @@ describe("upsert accounting: inserted → unchanged → updated", () => {
       updated: 1,
       unchanged: 0,
       suppressed: 0,
+      edited: 0,
     });
   });
 
@@ -291,12 +305,14 @@ describe("upsert accounting: inserted → unchanged → updated", () => {
       updated: 0,
       unchanged: 0,
       suppressed: 0,
+      edited: 0,
     });
     expect(upsertHrMinutes(profileId, rows, SOURCE)).toEqual({
       inserted: 0,
       updated: 0,
       unchanged: 1,
       suppressed: 0,
+      edited: 0,
     });
     const changed = [{ ...rows[0], bpm: 72 }];
     expect(upsertHrMinutes(profileId, changed, SOURCE)).toEqual({
@@ -304,6 +320,7 @@ describe("upsert accounting: inserted → unchanged → updated", () => {
       updated: 1,
       unchanged: 0,
       suppressed: 0,
+      edited: 0,
     });
   });
 
@@ -325,6 +342,7 @@ describe("upsert accounting: inserted → unchanged → updated", () => {
       updated: 0,
       unchanged: 0,
       suppressed: 0,
+      edited: 0,
     });
     expect(first.ids).toHaveLength(1);
 
@@ -334,6 +352,7 @@ describe("upsert accounting: inserted → unchanged → updated", () => {
       updated: 0,
       unchanged: 1,
       suppressed: 0,
+      edited: 0,
     });
     // The row id is still returned on an unchanged pass (reconcileFlags needs it).
     expect(second.ids).toEqual(first.ids);
@@ -345,6 +364,7 @@ describe("upsert accounting: inserted → unchanged → updated", () => {
       updated: 1,
       unchanged: 0,
       suppressed: 0,
+      edited: 0,
     });
     expect(third.ids).toEqual(first.ids);
   });
@@ -356,5 +376,35 @@ describe("upsert accounting: inserted → unchanged → updated", () => {
     expect(upsertMetricSamples(profileId, [], SOURCE)).toEqual(emptyCounts());
     expect(upsertHrMinutes(profileId, [], SOURCE)).toEqual(emptyCounts());
     expect(upsertVitals(profileId, [], SOURCE).counts).toEqual(emptyCounts());
+  });
+});
+
+describe("edit-locked skip is counted `edited`, not `unchanged` (#659)", () => {
+  it("a hand-edited imported body-metric row is left alone and split-counted edited", () => {
+    const date = "2024-09-09";
+    const src = "edit-lock-src";
+    // Initial sync inserts the row.
+    expect(
+      upsertBodyMetrics(profileId, [{ date, weight_kg: 80 }], src).inserted
+    ).toBe(1);
+    // The user hand-edits it → the row is edit-locked.
+    db.prepare(
+      "UPDATE body_metrics SET weight_kg = 79, edited = 1 WHERE profile_id = ? AND date = ? AND source = ?"
+    ).run(profileId, date, src);
+    // The next rolling-window push carries a DIFFERENT provider value: the lock keeps
+    // the hand-fix, and the split reports it as `edited` (not `unchanged`/`updated`).
+    const counts = upsertBodyMetrics(profileId, [{ date, weight_kg: 80 }], src);
+    expect(counts).toMatchObject({
+      inserted: 0,
+      updated: 0,
+      unchanged: 0,
+      edited: 1,
+    });
+    const stored = db
+      .prepare(
+        "SELECT weight_kg FROM body_metrics WHERE profile_id = ? AND date = ? AND source = ?"
+      )
+      .get(profileId, date, src) as { weight_kg: number };
+    expect(stored.weight_kg).toBe(79); // the hand-fix survived
   });
 });

@@ -51,9 +51,11 @@ import { isTrainingRestricted } from "@/lib/age-gate";
 import { lastNDates, zonedDateParts } from "@/lib/date";
 import {
   getActiveSituations,
+  getSituationEvents,
   getSituations,
   getTimezone,
 } from "@/lib/settings";
+import { situationHistoryResolver } from "@/lib/trend-annotations";
 import { suggestedSituationsFromConditions } from "@/lib/situations";
 import {
   isDueOn,
@@ -148,6 +150,13 @@ export default async function SupplementsPage() {
   const taken = getTakenDoseIds(profile.id, today(profile.id));
   const skipped = getSkippedDoseIds(profile.id, today(profile.id));
   const activeSituations = new Set(getActiveSituations(profile.id));
+  // Per-day situation resolver for the adherence strip: a past day is scored against
+  // the situations active THAT day (#654), reconstructed from the change-log, not the
+  // current toggle applied retroactively.
+  const situationsOn = situationHistoryResolver(
+    activeSituations,
+    getSituationEvents(profile.id)
+  );
   const todaysActivities = getActivitiesByDate(profile.id, today(profile.id));
   const isWorkoutDay = todaysActivities.length > 0;
   // #558: a pre_workout supplement should surface on a PREDICTED training day
@@ -195,7 +204,7 @@ export default async function SupplementsPage() {
         doseIds,
         dates,
         workoutDays,
-        activeSituations,
+        situationsOn,
         takenByDose
       )
     );

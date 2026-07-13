@@ -44,11 +44,13 @@ import {
 import { getRecentNarratives } from "../queries";
 import {
   getActiveSituations,
+  getSituationEvents,
   getWeekMode,
   getWeekStart,
   getZone2WeeklyTargetMin,
   setProfileSetting,
 } from "../settings";
+import { situationHistoryResolver } from "../trend-annotations";
 import type { WeightUnit } from "../settings";
 import { dispatch } from "./index";
 import { createLogger } from "../log";
@@ -87,7 +89,12 @@ function windowAdherence(
     suppById.has(d.item_id)
   );
   if (doses.length === 0) return null;
-  const situations = new Set(getActiveSituations(profileId));
+  // Per-day situation resolver (#654): each past day in the recap window is scored
+  // against the situations active THAT day, not today's toggle applied retroactively.
+  const situationsOn = situationHistoryResolver(
+    getActiveSituations(profileId),
+    getSituationEvents(profileId)
+  );
 
   let taken = 0;
   let skipped = 0;
@@ -98,7 +105,7 @@ function windowAdherence(
       .filter((dose) =>
         isDueOn(suppById.get(dose.item_id)!, {
           isWorkoutDay,
-          activeSituations: situations,
+          activeSituations: situationsOn(d),
         })
       )
       .map((dose) => dose.id);

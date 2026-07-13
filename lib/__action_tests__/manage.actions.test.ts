@@ -133,3 +133,52 @@ describe("deleteDatasetRows — browse-only datasets are rejected", () => {
     expect(res).toEqual({ ok: false, error: "Unknown dataset." });
   });
 });
+
+describe("deleteDatasetRows — metric_samples writes a re-import tombstone (#653)", () => {
+  function addSample(profileId: number, source: string): number {
+    return Number(
+      db
+        .prepare(
+          `INSERT INTO metric_samples
+             (profile_id, source, metric, date, start_time, end_time, value)
+           VALUES (?, ?, 'lean_mass_kg', '2026-03-10', ?, ?, 42.5)`
+        )
+        .run(profileId, source, "2026-03-10T07:00:00Z", "2026-03-10T07:00:00Z")
+        .lastInsertRowid
+    );
+  }
+
+  it("a deleted synced sample leaves a tombstone so the next sync can't resurrect it", async () => {
+    const { profile } = seedActor();
+    const source = "withings";
+    const id = addSample(profile.id, source);
+
+    const res = await deleteDatasetRows("metric_samples", [id]);
+    expect(res).toMatchObject({ ok: true, deleted: 1 });
+
+    const { upsertMetricSamples } =
+      await import("@/lib/integrations/normalize");
+    const counts = upsertMetricSamples(
+      profile.id,
+      [
+        {
+          metric: "lean_mass_kg",
+          date: "2026-03-10",
+          start_time: "2026-03-10T07:00:00Z",
+          end_time: "2026-03-10T07:00:00Z",
+          value: 42.5,
+        },
+      ],
+      source
+    );
+    expect(counts).toMatchObject({ inserted: 0, suppressed: 1 });
+    const remaining = (
+      db
+        .prepare(
+          "SELECT COUNT(*) AS c FROM metric_samples WHERE profile_id = ?"
+        )
+        .get(profile.id) as { c: number }
+    ).c;
+    expect(remaining).toBe(0);
+  });
+});

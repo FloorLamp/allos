@@ -18,6 +18,40 @@ import {
   intakeItemDoseIds,
   sweepIntakeItemMarkers,
 } from "@/lib/intake-marker-cleanup";
+import { writeImportTombstoneForRow } from "@/lib/integrations/tombstones";
+import { TOMBSTONE_TABLES } from "@/lib/integrations/tombstone-keys";
+
+// A dataset whose plain (non-undo) bulk delete must leave a re-import tombstone so
+// the next rolling-window sync can't resurrect the removed row (#653). The undoable
+// roots (activities/body_metrics/medical_records) already tombstone via captureDelete;
+// this covers the tombstone-tracked tables that DON'T route through undo — today just
+// metric_samples, which is independently deletable but has no undoable parent. The row
+// pre-images are captured BEFORE the delete so their natural keys survive it.
+function tombstonePreImages(
+  table: string,
+  ids: number[],
+  profileId: number
+): Record<string, unknown>[] {
+  if (!(TOMBSTONE_TABLES as readonly string[]).includes(table)) return [];
+  if (undoKindForDataset(table)) return []; // handled by captureDelete instead
+  const placeholders = ids.map(() => "?").join(",");
+  return db
+    .prepare(
+      `SELECT * FROM ${table} WHERE id IN (${placeholders}) AND profile_id = ?`
+    )
+    .all(...ids, profileId) as Record<string, unknown>[];
+}
+
+function tombstoneAllPreImages(
+  table: string,
+  profileId: number
+): Record<string, unknown>[] {
+  if (!(TOMBSTONE_TABLES as readonly string[]).includes(table)) return [];
+  if (undoKindForDataset(table)) return [];
+  return db
+    .prepare(`SELECT * FROM ${table} WHERE profile_id = ?`)
+    .all(profileId) as Record<string, unknown>[];
+}
 
 // The per-dataset deletion policy (which pages to revalidate, whether to clean up
 // orphaned biomarker stars) lives beside DATASETS in lib/export as pure data —
@@ -131,6 +165,9 @@ export async function deleteDatasetRows(
           .all(...clean, profile.id) as { vaccine: string }[]
       ).map((r) => r.vaccine)
     : [];
+  // Capture the natural-key pre-images of any tombstone-tracked rows BEFORE the
+  // delete removes them, so the next rolling-window sync can't resurrect them (#653).
+  const tombstoneRows = tombstonePreImages(resolved.table, clean, profile.id);
   // Scope the delete to this profile's rows — the whitelisted tables are all
   // profile-owned, so an id belonging to another profile must not be touched.
   const info = db
@@ -138,6 +175,8 @@ export async function deleteDatasetRows(
       `DELETE FROM ${resolved.table} WHERE id IN (${placeholders}) AND profile_id = ?`
     )
     .run(...clean, profile.id);
+  for (const row of tombstoneRows)
+    writeImportTombstoneForRow(profile.id, resolved.table, row);
 
   afterDelete(key, resolved.policy, profile.id, removedVaccines);
   return { ok: true, deleted: info.changes, undoIds: [] };
@@ -165,12 +204,17 @@ export async function deleteAllDatasetRows(
           .all(profile.id) as { vaccine: string }[]
       ).map((r) => r.vaccine)
     : [];
+  // Tombstone-tracked rows must survive a wipe as tombstones too, so a re-sync can't
+  // resurrect the whole set (#653). Captured before the delete.
+  const tombstoneRows = tombstoneAllPreImages(resolved.table, profile.id);
   // "Delete all" is still scoped to this profile — never wipe another profile's
   // rows from the shared table. It is intentionally NOT undoable (the confirm
   // says so): capturing an entire table into the holding store could be huge.
   const info = db
     .prepare(`DELETE FROM ${resolved.table} WHERE profile_id = ?`)
     .run(profile.id);
+  for (const row of tombstoneRows)
+    writeImportTombstoneForRow(profile.id, resolved.table, row);
 
   afterDelete(key, resolved.policy, profile.id, removedVaccines);
   return { ok: true, deleted: info.changes, undoIds: [] };

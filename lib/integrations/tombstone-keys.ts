@@ -11,13 +11,21 @@
 // The tables whose keyed upserts consult the tombstone. Each maps to a natural key the
 // upsert dedups on (see lib/integrations/normalize.ts): activities/medical_records by
 // external_id, body_metrics by (date, source), metric_samples by
-// (metric, source, start_time, end_time), hr_minutes by (ts, source).
+// (metric, source, start_time, end_time).
+//
+// `hr_minutes` was covered on the READ side historically but never had a tombstone
+// WRITER (#653): its dataset is browse/export-only (`deletable: false` in lib/export.ts)
+// and it has no per-row delete path — the only mutation besides a sync upsert is the
+// timezone re-import sweep (which must NOT be suppressed, or the re-import is lost) and
+// a whole-profile delete. So there is no deletion that a sync could resurrect, and the
+// read-side entry was dormant coverage implying a protection that didn't exist. It is
+// intentionally NOT in this set; if hr_minutes ever gains a per-row delete affordance,
+// re-add it here AND emit a tombstone on that delete path (see hrMinuteTombstoneKey).
 export const TOMBSTONE_TABLES = [
   "activities",
   "body_metrics",
   "medical_records",
   "metric_samples",
-  "hr_minutes",
 ] as const;
 export type TombstoneTable = (typeof TOMBSTONE_TABLES)[number];
 
@@ -51,18 +59,21 @@ export function metricSampleTombstoneKey(
   return [metric, source, startTime, endTime].join(SEP);
 }
 
-// hr_minutes dedups on (ts, source).
+// hr_minutes dedups on (ts, source). Retained as pure key math for a POSSIBLE future
+// per-row HR delete; hr_minutes is NOT currently in TOMBSTONE_TABLES (no delete path —
+// see the note there), so nothing writes/consults this today.
 export function hrMinuteTombstoneKey(ts: string, source: string): string {
   return `${ts}${SEP}${source}`;
 }
 
-// Derive the tombstone (table, key) for a captured/deleted ROOT row of an undoable
-// kind's owned table, or null when the row is NOT source-owned (a manual/document row
-// the rolling-window sync never re-creates -> no tombstone needed). Used by
-// captureDelete (write), restoreDeletedRow (remove on undo), and the Review-resolver
-// merges. Only the three undoable roots that a sync can resurrect are covered
-// (activities, body_metrics, medical_records); intake_items and other roots aren't
-// source-keyed, so they return null. Pure.
+// Derive the tombstone (table, key) for a captured/deleted row of a covered table,
+// or null when the row is NOT source-owned (a manual/document row the rolling-window
+// sync never re-creates -> no tombstone needed). Used by captureDelete (write) and
+// restoreDeletedRow (remove on undo) for the undoable roots (activities, body_metrics,
+// medical_records), the Review-resolver merges, and the Data → Manage bulk delete for
+// metric_samples (#653) — its rows are independently deletable but have no undoable
+// parent, so their delete emits a tombstone here directly. Tables the sync can't
+// resurrect (intake_items, etc.) return null. Pure.
 export function importTombstoneForRow(
   ownedTable: string,
   row: Record<string, unknown>
@@ -85,6 +96,28 @@ export function importTombstoneForRow(
       const date = row.date;
       return typeof src === "string" && src && typeof date === "string" && date
         ? { table: "body_metrics", key: bodyMetricTombstoneKey(date, src) }
+        : null;
+    }
+    case "metric_samples": {
+      // metric_samples dedups on (metric, source, start_time, end_time) — all four
+      // must be present for a stable, sync-matching key. A row missing any of them
+      // isn't a source-owned re-import target, so no tombstone.
+      const metric = row.metric;
+      const src = row.source;
+      const start = row.start_time;
+      const end = row.end_time;
+      return typeof metric === "string" &&
+        metric &&
+        typeof src === "string" &&
+        src &&
+        typeof start === "string" &&
+        start &&
+        typeof end === "string" &&
+        end
+        ? {
+            table: "metric_samples",
+            key: metricSampleTombstoneKey(metric, src, start, end),
+          }
         : null;
     }
     default:

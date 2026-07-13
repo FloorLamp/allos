@@ -260,7 +260,7 @@ describe("supplementAdherenceStrip", () => {
       [1, 2],
       dates,
       new Set(),
-      new Set(),
+      () => new Set(),
       takenByDose
     );
     expect(strip).toEqual([
@@ -276,7 +276,7 @@ describe("supplementAdherenceStrip", () => {
       [1],
       ["d0", "d1"],
       new Set(["d0"]), // d0 was a workout day → rest_day supp not due
-      new Set(),
+      () => new Set(),
       indexTakenByDose([{ dose_id: 1, date: "d1", status: "taken" }])
     );
     expect(strip).toEqual([
@@ -291,26 +291,25 @@ describe("supplementAdherenceStrip", () => {
       [1],
       ["d0"],
       new Set(),
-      new Set(),
+      () => new Set(),
       indexTakenByDose([{ dose_id: 1, date: "d0", status: "skipped" }])
     );
     expect(strip).toEqual([{ date: "d0", state: "skipped" }]);
   });
 
-  it("respects active situations for a situational supplement", () => {
+  it("respects the per-day situation resolver for a situational supplement", () => {
     const dates = ["d0", "d1"];
     const s = supp({
       condition: "situational" as SupplementCondition,
       situation: "travel",
     });
-    // Situational due-ness is date-independent here (driven by activeSituations),
-    // so an active situation makes every date due.
+    // An always-active resolver makes every date due.
     const active = supplementAdherenceStrip(
       s,
       [1],
       dates,
       new Set(),
-      new Set(["travel"]),
+      () => new Set(["travel"]),
       indexTakenByDose([{ dose_id: 1, date: "d0", status: "taken" }])
     );
     expect(active.map((d) => d.state)).toEqual(["taken", "missed"]);
@@ -320,10 +319,31 @@ describe("supplementAdherenceStrip", () => {
       [1],
       dates,
       new Set(),
-      new Set(),
+      () => new Set(),
       indexTakenByDose([])
     );
     expect(inactive.map((d) => d.state)).toEqual(["na", "na"]);
+  });
+
+  it("scores each day against the situation set active THAT day (#654)", () => {
+    const dates = ["d0", "d1", "d2"];
+    const s = supp({
+      condition: "situational" as SupplementCondition,
+      situation: "travel",
+    });
+    // Travel turned on only on d2 — a per-day resolver keeps d0/d1 "na" even though
+    // the situation is active "now", instead of retroactively marking them missed.
+    const situationsOn = (date: string) =>
+      date >= "d2" ? new Set(["travel"]) : new Set<string>();
+    const strip = supplementAdherenceStrip(
+      s,
+      [1],
+      dates,
+      new Set(),
+      situationsOn,
+      indexTakenByDose([])
+    );
+    expect(strip.map((d) => d.state)).toEqual(["na", "na", "missed"]);
   });
 
   it("feeds adherenceSummary end-to-end", () => {
@@ -333,7 +353,7 @@ describe("supplementAdherenceStrip", () => {
       [1],
       dates,
       new Set(),
-      new Set(),
+      () => new Set(),
       indexTakenByDose([
         { dose_id: 1, date: "d0", status: "taken" },
         { dose_id: 1, date: "d1", status: "taken" },

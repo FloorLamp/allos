@@ -26,6 +26,7 @@ function sync(over: Partial<FeedSyncEvent> = {}): FeedSyncEvent {
     unchanged: 0,
     written: 40,
     suppressed: 0,
+    edited: 0,
     skipped: 2,
     error: null,
     raw_ref: null,

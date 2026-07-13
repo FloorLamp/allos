@@ -19,9 +19,11 @@ import {
 import { isDueOn } from "../supplement-schedule";
 import {
   getActiveSituations,
+  getSituationEvents,
   getProfileSetting,
   setProfileSetting,
 } from "../settings";
+import { situationHistoryResolver } from "../trend-annotations";
 import { dispatch } from "./index";
 import {
   buildDigest,
@@ -109,7 +111,13 @@ export function gatherDigestInput(
   const doses = getSupplementDoses(profileId).filter((d) =>
     suppById.has(d.item_id)
   );
-  const situations = new Set(getActiveSituations(profileId));
+  // Per-day situation resolver (#654): "today" sees the current set (no events after
+  // today), while yesterday's adherence is scored against the situations active THAT
+  // day, not today's toggle applied retroactively.
+  const situationsOn = situationHistoryResolver(
+    getActiveSituations(profileId),
+    getSituationEvents(profileId)
+  );
 
   // For TODAY, a pre_workout/rest_day item keys on the PREDICTED training day
   // (issue #558) so the morning digest lists it before the session, not only after
@@ -124,7 +132,7 @@ export function gatherDigestInput(
         const supp = suppById.get(d.item_id)!;
         return isDueOn(supp, {
           isWorkoutDay,
-          activeSituations: situations,
+          activeSituations: situationsOn(date),
           predictedWorkoutDay,
         });
       })

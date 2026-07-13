@@ -1663,3 +1663,18 @@ if (
 console.log(
   `e2e: seeded low omega-3 + folate readings and a fish allergy on profile ${PROFILE_ID} for food suggestions (#577)`
 );
+
+// A hand-edited imported body-metric row (the user-edit lock, #133) on the default
+// profile so the Trends → Body edit-lock badge + "Resume sync updates" affordance
+// (#659) has a row to render. Synthetic value; source is an integration so the row
+// is genuinely sync-owned (only those carry the lock). Idempotent by (date, source).
+db.prepare(
+  `DELETE FROM body_metrics WHERE profile_id = ? AND date = '2026-06-02' AND source = 'withings'`
+).run(PROFILE_ID);
+db.prepare(
+  `INSERT INTO body_metrics (profile_id, date, weight_kg, source, edited)
+   VALUES (?, '2026-06-02', 77.7, 'withings', 1)`
+).run(PROFILE_ID);
+console.log(
+  `e2e: seeded an edit-locked (hand-edited) Withings body-metric row on profile ${PROFILE_ID} for the edit-lock badge (#659)`
+);

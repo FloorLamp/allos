@@ -217,7 +217,8 @@ describe("body_metrics upsert — two sources coexist, edit lock respected", () 
       [{ date: DATE, resting_hr: 61 }],
       "health-connect"
     );
-    expect(counts).toMatchObject({ inserted: 0, updated: 0, unchanged: 1 });
+    // The locked HC row is left alone and counted `edited`, not `unchanged` (#659).
+    expect(counts).toMatchObject({ inserted: 0, updated: 0, edited: 1 });
 
     const oura = upsertBodyMetrics(
       profileId,

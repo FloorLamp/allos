@@ -7,7 +7,10 @@ import {
   diffSituations,
   parseSituationEvents,
   serializeSituationEvents,
+  situationsActiveOn,
+  situationHistoryResolver,
   SITUATION_LOG_CAP,
+  type SituationEvent,
   type TrendAnnotation,
 } from "../trend-annotations";
 
@@ -279,5 +282,68 @@ describe("situation-event log (parse / serialize)", () => {
     expect(parsed).toHaveLength(SITUATION_LOG_CAP);
     expect(parsed[parsed.length - 1]).toEqual(added[0]);
     expect(parsed[0].situation).toBe("S1"); // oldest dropped
+  });
+});
+
+describe("situationsActiveOn — adherence history reconstruction (#654)", () => {
+  const ev = (
+    date: string,
+    situation: string,
+    change: "start" | "stop"
+  ): SituationEvent => ({ date, situation, change });
+
+  it("scores past days against the state THAT day, not the current toggle", () => {
+    // Travel turned on today (d5); it is active "now" but was off before.
+    const events = [ev("2026-07-05", "Travel", "start")];
+    const current = ["Travel"];
+    // Days before the start: inactive.
+    expect(
+      situationsActiveOn("2026-07-01", current, events).has("Travel")
+    ).toBe(false);
+    expect(
+      situationsActiveOn("2026-07-04", current, events).has("Travel")
+    ).toBe(false);
+    // The start day and after: active (start on D ⇒ active on D).
+    expect(
+      situationsActiveOn("2026-07-05", current, events).has("Travel")
+    ).toBe(true);
+    expect(
+      situationsActiveOn("2026-07-09", current, events).has("Travel")
+    ).toBe(true);
+  });
+
+  it("preserves real past active days when a situation is turned OFF today", () => {
+    // Travel started long ago and was turned off today (d9); current set is empty.
+    const events = [
+      ev("2026-06-01", "Travel", "start"),
+      ev("2026-07-09", "Travel", "stop"),
+    ];
+    const current: string[] = [];
+    // A day inside the active interval is still active (real misses preserved).
+    expect(
+      situationsActiveOn("2026-07-03", current, events).has("Travel")
+    ).toBe(true);
+    // The stop day and after: inactive (stop on D ⇒ inactive on D).
+    expect(
+      situationsActiveOn("2026-07-09", current, events).has("Travel")
+    ).toBe(false);
+  });
+
+  it("keeps a situation active across the whole window when there is no log entry", () => {
+    // Active "now" with no recorded transition (e.g. active since before the log):
+    // seeded from the present, it stays active for every past day.
+    const active = situationsActiveOn("2026-01-01", ["Illness"], []);
+    expect(active.has("Illness")).toBe(true);
+  });
+
+  it("the resolver reproduces the 25-days-off / 3-days-on travel scenario", () => {
+    const events = [ev("2026-07-26", "Travel", "start")];
+    const on = situationHistoryResolver(["Travel"], events);
+    // Days 1–25 (before activation): inactive → the item scores "na".
+    expect(on("2026-07-10").has("Travel")).toBe(false);
+    expect(on("2026-07-25").has("Travel")).toBe(false);
+    // Days 26–28: active.
+    expect(on("2026-07-26").has("Travel")).toBe(true);
+    expect(on("2026-07-28").has("Travel")).toBe(true);
   });
 });

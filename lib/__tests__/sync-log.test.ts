@@ -74,25 +74,32 @@ describe("foldCounts", () => {
       updated: 0,
       unchanged: 0,
       suppressed: 0,
+      edited: 0,
     });
   });
 
   it("sums each field across parts", () => {
     expect(
       foldCounts([
-        { inserted: 3, updated: 1, unchanged: 5, suppressed: 1 },
-        { inserted: 0, updated: 2, unchanged: 4, suppressed: 0 },
-        { inserted: 1, updated: 0, unchanged: 0, suppressed: 2 },
+        { inserted: 3, updated: 1, unchanged: 5, suppressed: 1, edited: 2 },
+        { inserted: 0, updated: 2, unchanged: 4, suppressed: 0, edited: 0 },
+        { inserted: 1, updated: 0, unchanged: 0, suppressed: 2, edited: 1 },
       ])
-    ).toEqual({ inserted: 4, updated: 3, unchanged: 9, suppressed: 3 });
+    ).toEqual({
+      inserted: 4,
+      updated: 3,
+      unchanged: 9,
+      suppressed: 3,
+      edited: 3,
+    });
   });
 });
 
 describe("summarizeSplit", () => {
-  it("derives received as inserted + updated + unchanged + suppressed + skipped", () => {
+  it("derives received as inserted + updated + unchanged + suppressed + edited + skipped", () => {
     expect(
       summarizeSplit(
-        { inserted: 3, updated: 2, unchanged: 5, suppressed: 1 },
+        { inserted: 3, updated: 2, unchanged: 5, suppressed: 1, edited: 2 },
         4
       )
     ).toEqual({
@@ -100,15 +107,16 @@ describe("summarizeSplit", () => {
       updated: 2,
       unchanged: 5,
       suppressed: 1,
+      edited: 2,
       skipped: 4,
-      received: 15,
+      received: 17,
     });
   });
 
   it("handles an all-unchanged batch (received still counts the unchanged rows)", () => {
     expect(
       summarizeSplit(
-        { inserted: 0, updated: 0, unchanged: 6, suppressed: 0 },
+        { inserted: 0, updated: 0, unchanged: 6, suppressed: 0, edited: 0 },
         0
       )
     ).toEqual({
@@ -116,6 +124,7 @@ describe("summarizeSplit", () => {
       updated: 0,
       unchanged: 6,
       suppressed: 0,
+      edited: 0,
       skipped: 0,
       received: 6,
     });
@@ -124,7 +133,7 @@ describe("summarizeSplit", () => {
   it("counts tombstone-suppressed rows in received (no silent cap)", () => {
     expect(
       summarizeSplit(
-        { inserted: 0, updated: 0, unchanged: 0, suppressed: 2 },
+        { inserted: 0, updated: 0, unchanged: 0, suppressed: 2, edited: 0 },
         0
       )
     ).toEqual({
@@ -132,15 +141,39 @@ describe("summarizeSplit", () => {
       updated: 0,
       unchanged: 0,
       suppressed: 2,
+      edited: 0,
       skipped: 0,
       received: 2,
+    });
+  });
+
+  it("counts edit-locked skips in received (no silent cap, #659)", () => {
+    expect(
+      summarizeSplit(
+        { inserted: 0, updated: 0, unchanged: 0, suppressed: 0, edited: 3 },
+        0
+      )
+    ).toEqual({
+      inserted: 0,
+      updated: 0,
+      unchanged: 0,
+      suppressed: 0,
+      edited: 3,
+      skipped: 0,
+      received: 3,
     });
   });
 
   it("clamps negatives to zero and rounds fractional inputs", () => {
     expect(
       summarizeSplit(
-        { inserted: -1, updated: 2.4, unchanged: 1.6, suppressed: -2 },
+        {
+          inserted: -1,
+          updated: 2.4,
+          unchanged: 1.6,
+          suppressed: -2,
+          edited: 1.4,
+        },
         -3
       )
     ).toEqual({
@@ -148,8 +181,9 @@ describe("summarizeSplit", () => {
       updated: 2,
       unchanged: 2,
       suppressed: 0,
+      edited: 1,
       skipped: 0,
-      received: 4,
+      received: 5,
     });
   });
 });
@@ -216,6 +250,31 @@ describe("formatSplitLabel", () => {
         suppressed: 0,
       })
     ).toEqual({ primary: "nothing new", muted: true });
+  });
+
+  it("shows an edited segment, even when nothing else landed (#659)", () => {
+    expect(
+      formatSplitLabel({
+        inserted: 0,
+        updated: 0,
+        unchanged: 0,
+        written: 0,
+        edited: 2,
+      })
+    ).toEqual({ primary: "2 edited", muted: false });
+    expect(
+      formatSplitLabel({
+        inserted: 1,
+        updated: 0,
+        unchanged: 3,
+        written: 1,
+        suppressed: 1,
+        edited: 2,
+      })
+    ).toEqual({
+      primary: "1 new · 3 unchanged · 1 suppressed · 2 edited",
+      muted: false,
+    });
   });
 
   it("falls back to the flat written count on a legacy (all-null-split) event", () => {
@@ -340,6 +399,29 @@ describe("isNoOpSyncEvent", () => {
   it("is false for a legacy event whose split columns are all null (kept visible)", () => {
     expect(
       isNoOpSyncEvent({ ok: 1, inserted: null, updated: null, unchanged: null })
+    ).toBe(false);
+  });
+
+  it("is NOT a no-op when the only activity was a suppressed or edit-locked skip", () => {
+    // A tombstone blocked a resurrection (#507) — meaningful, must stay visible.
+    expect(
+      isNoOpSyncEvent({
+        ok: 1,
+        inserted: 0,
+        updated: 0,
+        unchanged: 3,
+        suppressed: 2,
+      })
+    ).toBe(false);
+    // An edit-lock held off an overwrite (#659) — likewise meaningful.
+    expect(
+      isNoOpSyncEvent({
+        ok: 1,
+        inserted: 0,
+        updated: 0,
+        unchanged: 3,
+        edited: 1,
+      })
     ).toBe(false);
   });
 });

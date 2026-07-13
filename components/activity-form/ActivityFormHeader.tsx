@@ -55,6 +55,14 @@ export default function ActivityFormHeader({
             )}
             createdAt={editData.created_at}
             updatedAt={editData.updated_at ?? null}
+            editLockId={
+              editData.edited &&
+              editData.source &&
+              editData.source !== "manual" &&
+              !editData.source.startsWith("document:")
+                ? editData.id
+                : undefined
+            }
             className="mt-1"
           />
         )}

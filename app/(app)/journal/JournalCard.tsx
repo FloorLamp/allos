@@ -54,6 +54,7 @@ export default function JournalCard({
     label: string;
     createdAt: string;
     updatedAt: string | null;
+    editLocked: boolean;
   };
   // The activity's encoded GPS route polyline (issue #569), or null — rendered as a
   // tile-free SVG route thumbnail. Default null so a render site without route data
@@ -297,6 +298,7 @@ export default function JournalCard({
         label={provenance.label}
         createdAt={provenance.createdAt}
         updatedAt={provenance.updatedAt}
+        editLockId={provenance.editLocked ? activity.id : undefined}
         className="mt-3"
       />
     </div>

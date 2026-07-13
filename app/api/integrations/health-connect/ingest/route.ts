@@ -305,6 +305,7 @@ export async function POST(req: Request) {
     updated: tally.updated,
     unchanged: tally.unchanged,
     suppressed: tally.suppressed,
+    edited: tally.edited,
     skipped: tally.skipped,
     raw_ref: rawRef,
   });

@@ -211,6 +211,63 @@ export function diffSituations(
   );
 }
 
+// Which situations were active on a GIVEN past day, reconstructed from the
+// authoritative CURRENT active set plus the dated start/stop change-log (#654).
+// Adherence HISTORY must reflect when a situation was actually active, not today's
+// toggle applied retroactively — turning "Travel" on today must not make 25 prior
+// days of a travel supplement read as due-and-missed, and turning it off must not
+// erase real past misses.
+//
+// The state on `date` is decided by each situation's EARLIEST transition strictly
+// AFTER `date`: a future "start" means it was OFF on `date` (about to turn on); a
+// future "stop" means it was ON on `date` (about to turn off). With no transition
+// after `date`, its state on `date` equals its CURRENT state — which is why the
+// authoritative present set is the seed: a situation active since before the log
+// began (no "start" event) correctly stays active across the whole window. Names
+// are trimmed to match diffSituations / getActiveSituations. Pure.
+export function situationsActiveOn(
+  date: string,
+  currentActive: Iterable<string>,
+  events: readonly SituationEvent[]
+): Set<string> {
+  const current = new Set<string>();
+  for (const s of currentActive) {
+    const t = s.trim();
+    if (t) current.add(t);
+  }
+  // Earliest transition strictly after `date`, per situation.
+  const nextChange = new Map<string, "start" | "stop">();
+  const nextDate = new Map<string, string>();
+  for (const e of events) {
+    const name = e.situation.trim();
+    if (!name || !(e.date > date)) continue;
+    const seen = nextDate.get(name);
+    if (seen === undefined || e.date < seen) {
+      nextDate.set(name, e.date);
+      nextChange.set(name, e.change);
+    }
+  }
+  const active = new Set<string>();
+  for (const name of new Set<string>([...current, ...nextChange.keys()])) {
+    const next = nextChange.get(name);
+    const wasActive = next ? next === "stop" : current.has(name);
+    if (wasActive) active.add(name);
+  }
+  return active;
+}
+
+// Build a per-date "situations active that day" resolver over a window, from the
+// current active set + the change-log (#654). One computation the medicine page,
+// the notifier's adherence strip, the weekly recap, and the digest all reuse so
+// their historical dueness can never disagree about when a situation was active.
+export function situationHistoryResolver(
+  currentActive: Iterable<string>,
+  events: readonly SituationEvent[]
+): (date: string) => Set<string> {
+  const current = [...currentActive];
+  return (date: string) => situationsActiveOn(date, current, events);
+}
+
 // Cap on the stored situation-event log, so a chatty toggler can't bloat the blob.
 // The most-recent events are kept.
 export const SITUATION_LOG_CAP = 200;

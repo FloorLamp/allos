@@ -112,7 +112,10 @@ export function doseStrip(
 // else `aggregateDoseDay` over how many of its doses were taken vs deliberately
 // skipped on that date. The per-day workout context comes from `workoutDays` (a set
 // of the dates that had activity) so a workout/rest-day supplement's due-ness varies
-// across the window. `takenByDose` is the per-dose taken/skipped index from
+// across the window. `situationsOn` resolves which situations were active ON EACH
+// PAST DAY (#654) — NOT one snapshot of "now" — so a situational item scores "na" on
+// days its situation was inactive and only "due" once it actually turned on (see
+// situationHistoryResolver). `takenByDose` is the per-dose taken/skipped index from
 // `indexTakenByDose`. `lib/household.supplementAdherenceToday` is the today-only
 // sibling; this is the windowed version a weekly recap or history surface wants.
 export function supplementAdherenceStrip(
@@ -120,14 +123,14 @@ export function supplementAdherenceStrip(
   doseIds: number[],
   dates: string[],
   workoutDays: ReadonlySet<string>,
-  activeSituations: Set<string>,
+  situationsOn: (date: string) => Set<string>,
   takenByDose: Map<number, DoseDateStatus>
 ): AdherenceDot[] {
   const total = doseIds.length;
   return dates.map((date) => {
     const applicable = isDueOn(supp, {
       isWorkoutDay: workoutDays.has(date),
-      activeSituations,
+      activeSituations: situationsOn(date),
     });
     if (!applicable) return { date, state: "na" };
     const takenN = doseIds.reduce(

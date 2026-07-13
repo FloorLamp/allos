@@ -113,6 +113,14 @@ export interface MedicalRecord {
   // unlinked.
   provider_id: number | null;
   provider_name?: string | null;
+  // Integration/import provenance: `source` names the provider ('health-connect',
+  // etc.), `external_id` is the sync's natural key (NULL for manual/document rows).
+  // `edited` is 1 when a source-owned row was hand-edited so ingest leaves it alone
+  // on re-sync (#133); it drives the edit-lock badge (#659). Absent on some minimal
+  // read shapes that don't select them.
+  source?: string | null;
+  external_id?: string | null;
+  edited?: number | null;
   // Set on VIRTUAL records computed at read time from other readings (issue #40 —
   // derived clinical indices like Non-HDL, HOMA-IR, eGFR). These are never stored:
   // they carry a synthetic negative `id`, no `document_id`, and are read-only in the
