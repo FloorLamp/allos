@@ -10,16 +10,23 @@ Configure it in **Settings → Server → Automated backups** (admin only): enab
 the hour (in the instance timezone), and retention (keep _N_ dailies + _M_ weeklies,
 default 7/8). Snapshots are written to `data/backups/allos-<YYYY-MM-DD-HHmm>.db`, older
 ones are pruned only after a successful new snapshot, and the card shows the last backup's
-time/size (plus any failure) with a **Back up now** button.
+time/size (plus any failure) with a **Back up now** button. The card also shows the last
+**live database integrity** verdict and a **Recheck integrity now** button.
 
 **Integrity verification.** Each fresh snapshot is opened read-only and checked with
 `PRAGMA integrity_check`; the result is written to a JSON sidecar next to it
 (`allos-<stamp>.db.json`). A snapshot that **fails** the check is kept for forensics but is
-**not** counted as a successful backup and older good snapshots are **not** pruned, so a
-corrupt copy never rotates a healthy one away. The same tick also runs a **weekly**
-`integrity_check` on the live database (gated by a stored marker), logging the result loudly
-on failure **and caching the verdict** — a failed live check makes the health endpoint report
-unhealthy (see [Health endpoint](#health-endpoint)) so the container healthcheck flips.
+**not** counted as a successful backup, is **never** counted as a retention keeper, and older
+good snapshots are **not** pruned — so a corrupt (or partial, sidecar-less) copy never
+occupies a keep slot, evicts a healthy one, or shows up as "the last backup" (the card and
+`restore` always prefer the newest **verified** snapshot). The same tick also runs a
+**weekly** `integrity_check` on the live database (gated by a stored marker), logging the
+result loudly on failure **and caching the verdict** — a failed live check makes the health
+endpoint report unhealthy (see [Health endpoint](#health-endpoint)) so the container
+healthcheck flips. If you repair the database by any route **other** than restoring a snapshot
+(e.g. `.recover`, or the failure was a transient glitch), the failed verdict re-runs every
+tick until it passes — and **Recheck integrity now** re-tests it immediately so the health
+endpoint recovers without waiting for the next weekly window.
 
 Snapshots live under `DATA_DIR` (the Docker bind mount, outside the checkout) and are
 **never served by any route** — they contain multi-profile health data.
@@ -62,6 +69,13 @@ verify sidecar) and **`data/uploads/`** (medical files). It does **not** mirror
 or `data/logs/ai.jsonl` (the AI audit log) — this is a deliberate scope decision to keep the
 mirror to the recoverable clinical dataset; if you want those off-volume too, copy them with
 your own out-of-band job.
+
+The uploads mirror is **append-only** for ordinary single-row deletes (a re-synced or
+hand-corrected row keeps its durable copy) — with one exception: **deleting a profile**
+(Settings → Family) is a deliberate "right to delete" that best-effort unlinks that person's
+medical files **and** their off-volume mirror copies (when `BACKUP_DEST_DIR` is mounted and
+verified), so a deleted person's documents don't linger on the NAS after their DB traces have
+rotated out of every snapshot.
 
 ```bash
 # docker-compose: mount a second host directory and point the env at it
@@ -169,10 +183,14 @@ container unhealthy:
   previously such an instance stayed permanently green because the never-backed-up exemption
   never expired. A genuinely fresh install is exempt until it crosses the grace window
   (instance age comes from an `install_first_boot_at` marker seeded on first boot).
-- **`offsite-stale`** — an off-volume destination (`BACKUP_DEST_DIR`) is configured and its
-  last successful replica is older than the staleness threshold, so a mirror that silently
-  stopped is visible to uptime monitors (a never-succeeded mirror surfaces instead as an
-  off-volume error on the admin card — see [Off-volume backups](#off-volume-backups-backup_dest_dir)).
+- **`offsite-stale`** — backups are **enabled**, an off-volume destination (`BACKUP_DEST_DIR`)
+  is configured, and its last successful replica is older than the staleness threshold, so a
+  mirror that silently stopped is visible to uptime monitors (a never-succeeded mirror surfaces
+  instead as an off-volume error on the admin card — see [Off-volume backups](#off-volume-backups-backup_dest_dir)).
+  Like the primary `backup-stale`/`backups-never-ran` alarms, this is suppressed when backups
+  are **disabled** — replication only runs as a byproduct of the snapshot schedule, so a
+  disabled schedule (with `BACKUP_DEST_DIR` still set) doesn't flip the endpoint to a permanent
+  `offsite-stale`.
 
 The body stays deliberately coarse (a `status`, a single `reason`, and `lastBackupAgeHours`)
 with no paths, versions, or PHI, since the endpoint is unauthenticated — details go to the

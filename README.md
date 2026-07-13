@@ -42,6 +42,7 @@ The short tour — [docs/features.md](docs/features.md) is the full guide, with 
 - **Offline quick-log queue** — dose confirms, weigh-ins, and vitals queue on-device when you're offline and replay exactly once on reconnect; anything that can't be applied lands in a review panel, never silently dropped
 - **Undo delete** — deleting an activity, body-metric entry, biomarker record, or supplement/medication offers a one-tap 24-hour Undo
 - **AI activity log** — every AI call and failure recorded to a file and streamed live in **Settings → AI logs** (admin-only)
+- **Server error log** — unexpected server errors (an unhandled action exception, a route 500, a crashed background task) persisted to a size-capped file and shown under **Settings → Errors** (admin-only); clients only ever see a generic error
 - **Audit log** — a durable record of who accessed or modified which profile's data, identifiers only, with configurable retention (**Settings → Audit**, admin-only)
 - **Data hub** — bring data in (uploads, pasted logs, devices) under **Data → Import**, review every sync and resolve duplicates under **Data → Review**, and take everything with you via the **Export all my data** ZIP (JSON/CSV + FHIR passport + your files)
 

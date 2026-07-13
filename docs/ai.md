@@ -16,6 +16,17 @@ spends can see where it goes (tokens only — no dollar math; the model is recor
 so compute cost from your provider's prices). Failures surface there (and inline
 where you triggered them), not just in the console.
 
+Separately, **unexpected** server errors — an unhandled exception in a Server
+Action, a route 500, a crashed fire-and-forget task — are captured server-side to
+`data/logs/errors.jsonl` and surfaced newest-first under **Settings → Errors**
+(admin only). Every `error` that funnels through the central logger is persisted
+there with its logger scope, message, and a redacted, size-capped detail (any
+stack), tagged with the acting profile when a request context is in scope. Clients
+still get a generic error (the real cause never leaves this log); the file
+self-trims by size/line count so a crash loop can't fill the disk, and a Clear
+button empties it. This generalizes the "failures surface in the UI" pattern (the
+notification-delivery marker, backup health) to everything.
+
 For debugging integration syncs, each sync can capture the raw provider payload
 (the Health Connect POST body, the Strava activity JSON, the Oura sleep/workout JSON) under
 `data/integration-payloads/<profileId>/`. These are byte-capped, retained
