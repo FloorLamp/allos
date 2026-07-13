@@ -8,6 +8,9 @@ import {
   isNoKnownProblemText,
   allergyExternalId,
   conditionExternalId,
+  isBirthEventOrEpisodic,
+  isSelfLimitedCondition,
+  decideImportedConditionStatus,
 } from "../clinical-parse";
 
 describe("normalizeClinicalStatus", () => {
@@ -103,5 +106,223 @@ describe("external-id builders", () => {
     expect(conditionExternalId({ name: "Asthma" })).toBe(
       "ccda:condition:asthma:"
     );
+  });
+});
+
+// ---- imported-condition status intelligence (#590) ----
+
+describe("isBirthEventOrEpisodic", () => {
+  it("detects ICD-10 Z38.* birth codes", () => {
+    expect(isBirthEventOrEpisodic({ name: "Newborn", code: "Z38.0" })).toBe(
+      true
+    );
+    expect(
+      isBirthEventOrEpisodic({ name: "Liveborn infant", code: "Z38.00" })
+    ).toBe(true);
+    expect(isBirthEventOrEpisodic({ name: "Twin liveborn", code: "Z38" })).toBe(
+      true
+    );
+  });
+  it("detects liveborn SNOMED codes and narratives", () => {
+    expect(
+      isBirthEventOrEpisodic({
+        name: "Single liveborn, born in hospital",
+        code: null,
+      })
+    ).toBe(true);
+    expect(
+      isBirthEventOrEpisodic({ name: "Liveborn", code: "281050002" })
+    ).toBe(true);
+  });
+  it("detects leaked 'encounter for…' Z-codes by name", () => {
+    expect(
+      isBirthEventOrEpisodic({
+        name: "Encounter for immunization",
+        code: "Z23",
+      })
+    ).toBe(true);
+  });
+  it("does not flag ordinary conditions", () => {
+    expect(
+      isBirthEventOrEpisodic({ name: "Essential hypertension", code: "I10" })
+    ).toBe(false);
+    expect(
+      isBirthEventOrEpisodic({
+        name: "Personal history of cancer",
+        code: "Z85",
+      })
+    ).toBe(false);
+  });
+});
+
+describe("isSelfLimitedCondition", () => {
+  it("matches curated acute names", () => {
+    for (const name of [
+      "Fever",
+      "Acute upper respiratory infection",
+      "Viral syndrome",
+      "Acute otitis media",
+      "Influenza",
+      "Acute cough",
+      "Acute pharyngitis",
+      "Acute bronchitis",
+      "Acute sinusitis",
+      "Common cold",
+      "Viral gastroenteritis",
+    ]) {
+      expect(isSelfLimitedCondition({ name })).toBe(true);
+    }
+  });
+  it("matches by acute ICD-10 code when the name is unusual", () => {
+    expect(isSelfLimitedCondition({ name: "Pyrexia NOS", code: "R50.9" })).toBe(
+      true
+    );
+  });
+  it("never lists chronic-capable conditions (exclusion discipline)", () => {
+    for (const name of [
+      "Hypertension",
+      "Asthma",
+      "Type 2 diabetes mellitus",
+      "COPD",
+      "Chronic bronchitis",
+      "Chronic sinusitis",
+      "Allergic rhinitis",
+      "Migraine",
+    ]) {
+      expect(isSelfLimitedCondition({ name })).toBe(false);
+    }
+  });
+  it("chronic guard overrides an acute code sibling", () => {
+    // J44 (COPD) is not in the acute code set; chronic bronchitis name is guarded.
+    expect(
+      isSelfLimitedCondition({ name: "Chronic bronchitis", code: "J44.9" })
+    ).toBe(false);
+  });
+});
+
+describe("decideImportedConditionStatus", () => {
+  const now = new Date("2026-07-13T00:00:00Z");
+
+  it("downgrades a birth event active row to resolved unconditionally", () => {
+    const out = decideImportedConditionStatus({
+      name: "Single liveborn, born in hospital",
+      code: "Z38.0",
+      status: "active",
+      onsetDate: null,
+      resolvedDate: null,
+      explicitStatus: false,
+      now,
+    });
+    expect(out.status).toBe("resolved");
+    expect(out.resolved_date).toBeNull();
+  });
+
+  it("downgrades a stale self-limited problem-list active row", () => {
+    const out = decideImportedConditionStatus({
+      name: "Acute pharyngitis",
+      code: "J02.9",
+      status: "active",
+      onsetDate: "2024-01-01", // > 90 days before `now`
+      resolvedDate: null,
+      explicitStatus: false,
+      now,
+    });
+    expect(out.status).toBe("resolved");
+    expect(out.onset_date).toBe("2024-01-01");
+  });
+
+  it("keeps a RECENT self-limited problem-list active row active (within horizon)", () => {
+    const out = decideImportedConditionStatus({
+      name: "Influenza",
+      code: "J11.1",
+      status: "active",
+      onsetDate: "2026-07-01", // < 90 days before `now`
+      resolvedDate: null,
+      explicitStatus: false,
+      now,
+    });
+    expect(out.status).toBe("active");
+  });
+
+  it("keeps an UNDATED self-limited problem-list row active (needs a date to age)", () => {
+    const out = decideImportedConditionStatus({
+      name: "Fever",
+      code: "R50.9",
+      status: "active",
+      onsetDate: null,
+      resolvedDate: null,
+      explicitStatus: false,
+      now,
+    });
+    expect(out.status).toBe("active");
+  });
+
+  it("downgrades a self-limited EPISODIC (visit-dx) row unconditionally, even undated", () => {
+    const out = decideImportedConditionStatus({
+      name: "Fever",
+      code: "R50.9",
+      status: "active",
+      onsetDate: null,
+      resolvedDate: null,
+      explicitStatus: false,
+      episodic: true,
+      now,
+    });
+    expect(out.status).toBe("resolved");
+  });
+
+  it("keeps a chronic-capable episodic visit-dx active", () => {
+    const out = decideImportedConditionStatus({
+      name: "Essential hypertension",
+      code: "I10",
+      status: "active",
+      onsetDate: "2020-01-01",
+      resolvedDate: null,
+      explicitStatus: false,
+      episodic: true,
+      now,
+    });
+    expect(out.status).toBe("active");
+  });
+
+  it("never touches an explicit clinical-status active on a listed name", () => {
+    const out = decideImportedConditionStatus({
+      name: "Influenza",
+      code: "J11.1",
+      status: "active",
+      onsetDate: "2020-01-01",
+      resolvedDate: null,
+      explicitStatus: true,
+      now,
+    });
+    expect(out.status).toBe("active");
+  });
+
+  it("never upgrades or rewrites a non-active status", () => {
+    const out = decideImportedConditionStatus({
+      name: "Fever",
+      code: "R50.9",
+      status: "resolved",
+      onsetDate: "2020-01-01",
+      resolvedDate: "2020-02-01",
+      explicitStatus: false,
+      episodic: true,
+      now,
+    });
+    expect(out.status).toBe("resolved");
+    expect(out.resolved_date).toBe("2020-02-01");
+  });
+
+  it("leaves an unlisted, non-birth active condition untouched", () => {
+    const out = decideImportedConditionStatus({
+      name: "Asthma",
+      code: "J45.909",
+      status: "active",
+      onsetDate: "2015-01-01",
+      resolvedDate: null,
+      explicitStatus: false,
+      now,
+    });
+    expect(out.status).toBe("active");
   });
 });
