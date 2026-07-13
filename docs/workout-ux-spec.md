@@ -138,12 +138,15 @@ type MuscleId =
 
 ### Anatomy component
 
-`components/MuscleAnatomy.tsx`: hand-authored inline SVG (front + back body
-outlines) where each `MuscleId` maps to one or more `<path>` groups. Inline
+`components/MuscleAnatomy.tsx`: **hand-authored** inline SVG (front + back
+body outlines) where each `MuscleId` maps to one or more `<path>` groups —
+decided over adapting a third-party base, so there is no license/attribution
+obligation and the paths are drawn to exactly the `MuscleId` granularity
+(a borrowed anatomical illustration would need regrouping anyway). Stylized
+and diagrammatic is fine; anatomical-atlas fidelity is not the bar. Inline
 and self-contained (no external assets), theme-aware fills, and never
 color-only: hover/tap names the muscle, and a text list of primary/secondary
-muscles always accompanies the figure. Authoring the SVG (or adapting a
-permissively-licensed base, with attribution recorded here) is the main real
+muscles always accompanies the figure. Authoring the SVG is the main real
 cost of this pillar.
 
 Three rendering modes, each fed by one computation:
@@ -255,7 +258,12 @@ attach the existing next-set seed per lift for concrete "3×8 @ 62.5 kg"
 targets. No active routine ⇒ exactly today's behavior. Telegram, dashboard,
 and Training overview all render this one result, so they agree by
 construction (#221). Completing a session (logging an activity that credits
-the day's focus) advances `position`.
+the day's focus) advances `position` — and ONLY that: skipped days, rest
+days, and calendar time never advance it. A routine is a sequence, not a
+calendar; a missed Push day is still the next day up. (The mesocycle
+week-in-cycle counter in Pillar 4b is deliberately the opposite —
+calendar-derived — because a deload schedules recovery in real time, not
+after N sessions.)
 
 A "log this session" action pre-fills the activity form with the resolved
 slate.
@@ -284,7 +292,11 @@ Builds directly on Pillar 2's coverage math.
 - **Indirect credit:** a set counts 1.0 toward each of the lift's
   `primaryMuscles` and 0.5 toward each `secondaryMuscles` — ONE constant,
   applied inside `lib/muscle-coverage.ts`, which grows a band verdict per
-  muscle: `below | within | above | untrained`.
+  muscle: `below | within | above | untrained`. During an active routine's
+  deload week (Pillar 4b) the `below` observation is suppressed — the week is
+  supposed to be light — via the same week-in-cycle flag the nudge softening
+  reads, decided in the ONE gather (the figure still shows real numbers; only
+  the finding is held).
 - **Surfaces (formatters over the one computation):** the coverage anatomy
   figure tints by verdict (with the text list carrying exact numbers — never
   color-only); a coaching-tier observation per sustained shortfall ("side
@@ -399,16 +411,16 @@ else about them.
 
 ## Open questions
 
-- SVG source: hand-author vs adapt a permissively-licensed base (license and
-  attribution to be recorded here before Phase 2 merges).
-- Whether `position` should also advance on a skipped/rest day or strictly on
-  credited sessions (proposed: strictly on credited sessions; a routine is a
-  sequence, not a calendar).
 - Guide depth for the long tail of equipment variants (start with
   `equipmentNotes` only where cues genuinely differ).
 - Volume-band default values and the secondary-credit factor (proposed 0.5)
   — to be justified with sources in the `lib/muscle-volume-bands.ts` header
   before Phase 4 merges.
-- Whether the deload week should also soften the volume-band observation
-  (proposed: yes — the band verdict formatter checks the same week-in-cycle
-  flag, ONE gather decision).
+
+## Resolved questions
+
+- **SVG source:** hand-author (no third-party base) — see Anatomy component.
+- **`position` advancement:** strictly on credited sessions, never on
+  skipped/rest days — see Today's session.
+- **Deload week vs volume-band observation:** the deload week suppresses the
+  `below` finding through the same week-in-cycle flag — see Pillar 4a.
