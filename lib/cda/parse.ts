@@ -38,6 +38,7 @@ import {
   socialHistorySex,
   visitDiagnosesFromSections,
 } from "./extractors";
+import { decideImportedConditionStatus } from "../clinical-parse";
 import { asArray, effTime, hl7Date, parser, textOf } from "./normalize";
 
 // Detect a CCD/CDA XML string (vs a SMART Health Card / other).
@@ -257,17 +258,33 @@ function mergeDedupe<T extends { external_id: string }>(
 // condition (tied to the document like any other) yet never conflated with an
 // Active-Problems row of the same name.
 function visitDiagnosisToCondition(
-  d: StandaloneVisitDiagnosis
+  d: StandaloneVisitDiagnosis,
+  documentDate: string | null
 ): ImportedCondition {
+  // For a visit diagnosis the visit date IS the diagnosis date (#590): use the
+  // encounter/document date as onset when the narrative carried none — accurate,
+  // not fabricated. Then let the import intelligence downgrade an episodic
+  // self-limited / birth-event dx to resolved (a chronic-capable dx stays active).
+  // A visit dx never carries an explicit clinical-status observation.
+  const onset = d.onset_date ?? documentDate;
+  const decided = decideImportedConditionStatus({
+    name: d.name,
+    code: d.code,
+    status: "active",
+    onsetDate: onset,
+    resolvedDate: null,
+    explicitStatus: false,
+    episodic: true,
+  });
   return {
     name: d.name,
     code: d.code,
     code_system: d.code_system,
-    status: "active",
-    onset_date: d.onset_date,
-    resolved_date: null,
+    status: decided.status,
+    onset_date: decided.onset_date,
+    resolved_date: decided.resolved_date,
     external_id: `ccda:visit-dx:${d.name.toLowerCase()}:${d.code ?? ""}:${
-      d.onset_date ?? ""
+      onset ?? ""
     }`,
   };
 }
@@ -447,7 +464,7 @@ export function extractFromCcda(
     }
   } else {
     for (const d of visitDiagnoses) {
-      conditions.push(visitDiagnosisToCondition(d));
+      conditions.push(visitDiagnosisToCondition(d, documentDate));
     }
   }
   // Progress Notes + per-clinician Notes: attach to the same-document encounter's

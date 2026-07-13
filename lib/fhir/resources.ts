@@ -3,6 +3,7 @@ import {
   careGoalExternalId,
   carePlanExternalId,
   conditionExternalId,
+  decideImportedConditionStatus,
   familyHistoryExternalId,
   isNoKnownAllergyText,
   medicationExternalId,
@@ -156,21 +157,32 @@ export function mapConditionResource(r: any): ImportedCondition | null {
   // Mirror the CDA pickCode preference (billing ICD-10 first, else the primary /
   // first coding) so the `ccda:condition:` key matches across formats.
   const { code, system } = pickCoding(r?.code, [ICD10]);
-  const status = toConditionStatus(
-    firstCodingCode(r?.clinicalStatus) ?? conceptName(r?.clinicalStatus)
-  );
+  const clinicalStatus =
+    firstCodingCode(r?.clinicalStatus) ?? conceptName(r?.clinicalStatus);
+  const status = toConditionStatus(clinicalStatus);
   const onset = isoDate(r?.onsetDateTime ?? r?.onsetPeriod?.start);
   const resolved =
     status === "resolved"
       ? isoDate(r?.abatementDateTime ?? r?.abatementPeriod?.end)
       : null;
+  // Import intelligence (#590), parity with the CDA path: downgrade a birth-event
+  // or stale self-limited active row to resolved. A present clinicalStatus is
+  // authoritative (never downgraded); onset is never fabricated.
+  const decided = decideImportedConditionStatus({
+    name,
+    code,
+    status,
+    onsetDate: onset,
+    resolvedDate: resolved,
+    explicitStatus: clinicalStatus != null,
+  });
   return {
     name,
     code,
     code_system: system,
-    status,
-    onset_date: onset,
-    resolved_date: resolved,
+    status: decided.status,
+    onset_date: decided.onset_date,
+    resolved_date: decided.resolved_date,
     external_id: conditionExternalId({ name, code, onsetDate: onset }),
   };
 }

@@ -79,6 +79,84 @@ const VISIT_DX = `
   </observation></entry>
 </section>`;
 
+// A standalone "Fever" visit diagnosis (self-limited, episodic). Uncorrelatable
+// when the document carries no single encounter → lands as a condition (#590).
+const FEVER_VISIT_DX = `
+<section>
+  <code code="29308-4" codeSystem="2.16.840.1.113883.6.1" displayName="Diagnosis"/>
+  <title>Visit Diagnoses</title>
+  <entry><observation classCode="OBS" moodCode="EVN">
+    <templateId root="2.16.840.1.113883.10.20.22.4.4"/>
+    <code code="386661006" codeSystem="2.16.840.1.113883.6.96"/>
+    <value xsi:type="CD" code="386661006" codeSystem="2.16.840.1.113883.6.96" displayName="Fever">
+      <translation code="R50.9" codeSystem="2.16.840.1.113883.6.90" displayName="Fever, unspecified"/>
+    </value>
+  </observation></entry>
+</section>`;
+
+// A birth-EVENT problem-list entry (ICD-10 Z38.0) with only the concern act's
+// tracking status "active" — no explicit clinical-status observation (#590).
+const BIRTH_EVENT_PROBLEM = `
+<section>
+  <templateId root="2.16.840.1.113883.10.20.22.2.5.1"/>
+  <code code="11450-4" codeSystem="2.16.840.1.113883.6.1"/>
+  <title>Active Problems</title>
+  <entry><act classCode="ACT" moodCode="EVN">
+    <templateId root="2.16.840.1.113883.10.20.22.4.3"/>
+    <statusCode code="active"/>
+    <entryRelationship typeCode="SUBJ"><observation classCode="OBS" moodCode="EVN">
+      <templateId root="2.16.840.1.113883.10.20.22.4.4"/>
+      <value xsi:type="CD" code="442311008" codeSystem="2.16.840.1.113883.6.96" displayName="Single liveborn, born in hospital">
+        <translation code="Z38.0" codeSystem="2.16.840.1.113883.6.90" displayName="Single liveborn infant, delivered vaginally"/>
+      </value>
+    </observation></entryRelationship>
+  </act></entry>
+</section>`;
+
+// A chronic-capable problem (Asthma) with only the tracking status "active" and no
+// explicit clinical-status observation — must stay active (#590 non-regression).
+const ASTHMA_NO_STATUS = `
+<section>
+  <templateId root="2.16.840.1.113883.10.20.22.2.5.1"/>
+  <code code="11450-4" codeSystem="2.16.840.1.113883.6.1"/>
+  <title>Active Problems</title>
+  <entry><act classCode="ACT" moodCode="EVN">
+    <templateId root="2.16.840.1.113883.10.20.22.4.3"/>
+    <statusCode code="active"/>
+    <entryRelationship typeCode="SUBJ"><observation classCode="OBS" moodCode="EVN">
+      <templateId root="2.16.840.1.113883.10.20.22.4.4"/>
+      <value xsi:type="CD" code="195967001" codeSystem="2.16.840.1.113883.6.96" displayName="Asthma">
+        <translation code="J45.909" codeSystem="2.16.840.1.113883.6.90" displayName="Unspecified asthma"/>
+      </value>
+    </observation></entryRelationship>
+  </act></entry>
+</section>`;
+
+// A self-limited name (Influenza) carrying an EXPLICIT clinical-status observation
+// "active" (template 4.6) with an OLD onset — explicit status is authoritative, so
+// it stays active despite being on the self-limited list (#590).
+const INFLUENZA_EXPLICIT_ACTIVE = `
+<section>
+  <templateId root="2.16.840.1.113883.10.20.22.2.5.1"/>
+  <code code="11450-4" codeSystem="2.16.840.1.113883.6.1"/>
+  <title>Active Problems</title>
+  <entry><act classCode="ACT" moodCode="EVN">
+    <templateId root="2.16.840.1.113883.10.20.22.4.3"/>
+    <statusCode code="active"/>
+    <entryRelationship typeCode="SUBJ"><observation classCode="OBS" moodCode="EVN">
+      <templateId root="2.16.840.1.113883.10.20.22.4.4"/>
+      <effectiveTime><low value="20200101"/></effectiveTime>
+      <value xsi:type="CD" code="6142004" codeSystem="2.16.840.1.113883.6.96" displayName="Influenza">
+        <translation code="J11.1" codeSystem="2.16.840.1.113883.6.90" displayName="Influenza with other respiratory manifestations"/>
+      </value>
+      <entryRelationship typeCode="REFR"><observation classCode="OBS" moodCode="EVN">
+        <templateId root="2.16.840.1.113883.10.20.22.4.6"/>
+        <value xsi:type="CD" code="55561003" displayName="Active"/>
+      </observation></entryRelationship>
+    </observation></entryRelationship>
+  </act></entry>
+</section>`;
+
 const PROGRESS_NOTES = `
 <section>
   <code code="11506-3" codeSystem="2.16.840.1.113883.6.1"/>
@@ -182,5 +260,59 @@ describe("CCD notes + visit diagnoses persist (#219)", () => {
 
     // One condition + one note-only encounter = 2 rows counted.
     expect(outcome.extractedCount).toBe(2);
+  });
+});
+
+// #590 — CCD-imported conditions: status/date fallbacks used to make everything
+// permanently "active". The import now only ever DOWNGRADES active → resolved
+// (never invents active), for birth events and stale/episodic self-limited rows,
+// while an explicit clinical-status observation stays authoritative.
+describe("CCD condition status/date intelligence (#590)", () => {
+  function landCondition(name: string, section: string) {
+    const pid = newProfile(name);
+    const docId = newDocument(pid, `${name}.xml`);
+    importXml(pid, docId, doc(section));
+    return db
+      .prepare(
+        `SELECT name, code, status, onset_date, resolved_date
+           FROM conditions WHERE profile_id = ? AND document_id = ?`
+      )
+      .get(pid, docId) as {
+      name: string;
+      code: string | null;
+      status: string;
+      onset_date: string | null;
+      resolved_date: string | null;
+    };
+  }
+
+  it("(1) an uncorrelatable Fever visit dx from a dated document → resolved, onset = visit date", () => {
+    const c = landCondition("fever-visit", FEVER_VISIT_DX);
+    expect(c.name).toBe("Fever");
+    expect(c.status).toBe("resolved");
+    // Onset falls back to the document effectiveTime (the visit date), not fabricated
+    // for a problem-list row but correct for a visit diagnosis.
+    expect(c.onset_date).toBe("2026-06-08");
+    expect(c.resolved_date).toBeNull();
+  });
+
+  it("(2) a Z38.0 birth-event problem (tracking-active, no clinical status) → resolved", () => {
+    const c = landCondition("birth-event", BIRTH_EVENT_PROBLEM);
+    expect(c.name).toBe("Single liveborn, born in hospital");
+    expect(c.code).toBe("Z38.0");
+    expect(c.status).toBe("resolved");
+  });
+
+  it("(3) an active Asthma problem with no clinical-status observation → still active", () => {
+    const c = landCondition("asthma-active", ASTHMA_NO_STATUS);
+    expect(c.name).toBe("Asthma");
+    expect(c.status).toBe("active");
+  });
+
+  it("(4) an explicit clinical-status 'active' on a listed name → stays active", () => {
+    const c = landCondition("influenza-explicit", INFLUENZA_EXPLICIT_ACTIVE);
+    expect(c.name).toBe("Influenza");
+    expect(c.status).toBe("active");
+    expect(c.onset_date).toBe("2020-01-01");
   });
 });

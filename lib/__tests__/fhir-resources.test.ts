@@ -96,6 +96,91 @@ describe("FHIR Condition → ImportedCondition", () => {
     expect(r.conditions![0].status).toBe("active");
     expect(r.conditions![0].resolved_date).toBeNull();
   });
+
+  // #590 parity: the same import intelligence the CDA path applies (birth-event /
+  // stale self-limited downgrade, explicit-status authority) fires on FHIR too, so
+  // the two formats can't drift.
+  it("downgrades a Z38 birth-event problem to resolved (parity)", () => {
+    const r = parseFhirBundle(
+      bundle([
+        {
+          resourceType: "Condition",
+          // No clinicalStatus → would default active; the Z38 code downgrades it.
+          code: {
+            text: "Single liveborn, born in hospital",
+            coding: [
+              { system: "http://hl7.org/fhir/sid/icd-10-cm", code: "Z38.0" },
+            ],
+          },
+        },
+      ])
+    );
+    expect(r.conditions![0].status).toBe("resolved");
+    expect(r.conditions![0].resolved_date).toBeNull();
+  });
+
+  it("downgrades a stale self-limited active problem to resolved (parity)", () => {
+    const r = parseFhirBundle(
+      bundle([
+        {
+          resourceType: "Condition",
+          code: {
+            text: "Acute pharyngitis",
+            coding: [
+              { system: "http://hl7.org/fhir/sid/icd-10-cm", code: "J02.9" },
+            ],
+          },
+          onsetDateTime: "2020-01-01", // decades-old on any plausible run date
+        },
+      ])
+    );
+    expect(r.conditions![0].status).toBe("resolved");
+  });
+
+  it("keeps an explicit clinicalStatus active on a listed name (authoritative)", () => {
+    const r = parseFhirBundle(
+      bundle([
+        {
+          resourceType: "Condition",
+          clinicalStatus: {
+            coding: [
+              {
+                system:
+                  "http://terminology.hl7.org/CodeSystem/condition-clinical",
+                code: "active",
+              },
+            ],
+          },
+          code: {
+            text: "Influenza",
+            coding: [
+              { system: "http://hl7.org/fhir/sid/icd-10-cm", code: "J11.1" },
+            ],
+          },
+          onsetDateTime: "2020-01-01",
+        },
+      ])
+    );
+    expect(r.conditions![0].status).toBe("active");
+  });
+
+  it("leaves a chronic-capable active problem untouched (parity)", () => {
+    const r = parseFhirBundle(
+      bundle([
+        {
+          resourceType: "Condition",
+          code: {
+            text: "Asthma",
+            coding: [
+              { system: "http://hl7.org/fhir/sid/icd-10-cm", code: "J45.909" },
+            ],
+          },
+          onsetDateTime: "2010-01-01",
+        },
+      ])
+    );
+    expect(r.conditions![0].status).toBe("active");
+  });
 });
 
 describe("FHIR AllergyIntolerance → ImportedAllergy", () => {

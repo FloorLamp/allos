@@ -4,6 +4,7 @@ import {
   careGoalExternalId,
   carePlanExternalId,
   conditionExternalId,
+  decideImportedConditionStatus,
   familyHistoryExternalId,
   isNoKnownAllergy,
   isNoKnownProblemText,
@@ -408,13 +409,26 @@ export function mapCondition(
     .map((t: any) => t?.high?.["@_value"])
     .find(Boolean);
   const resolved = status === "resolved" ? hl7Date(highRaw) : null;
+  // Import intelligence (#590): downgrade a birth-event or stale self-limited
+  // active row to resolved. An EXPLICIT clinical-status observation (template 4.6)
+  // is authoritative — flag it so the decision leaves it untouched. Onset is left
+  // exactly as the document carried it (a problem-list entry never gets a fabricated
+  // document-date onset — issue non-goal).
+  const decided = decideImportedConditionStatus({
+    name,
+    code,
+    status,
+    onsetDate: onset,
+    resolvedDate: resolved,
+    explicitStatus: clinicalStatus != null,
+  });
   return {
     name,
     code,
     code_system: system,
-    status,
-    onset_date: onset,
-    resolved_date: resolved,
+    status: decided.status,
+    onset_date: decided.onset_date,
+    resolved_date: decided.resolved_date,
     external_id: conditionExternalId({ name, code, onsetDate: onset }),
   };
 }

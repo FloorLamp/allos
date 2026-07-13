@@ -232,11 +232,18 @@ describe("History of Past Illness / Resolved Problems (11348-0, #265)", () => {
 
   it("does not disturb the Active Problems default (regression)", () => {
     // The same concern shape under the PROBLEMS section (11450-4) still lands
-    // active — the resolved default is scoped to the past-illness section.
+    // active — the resolved default is scoped to the past-illness section. Use a
+    // chronic-capable name so the #590 self-limited downgrade (which would legitimately
+    // resolve the "Viral sinusitis" fixture) doesn't mask what this test checks.
     const activeProblems = PAST_ILLNESS_ACTIVE_CONCERN.replace(
       '<templateId root="2.16.840.1.113883.10.20.22.2.20"/>',
       '<templateId root="2.16.840.1.113883.10.20.22.2.5.1"/>'
-    ).replace('code="11348-0"', 'code="11450-4"');
+    )
+      .replace('code="11348-0"', 'code="11450-4"')
+      .replace(
+        'displayName="Viral sinusitis"',
+        'displayName="Essential hypertension"'
+      );
     const r = extractFromCcda(doc(activeProblems));
     expect(r.conditions).toHaveLength(1);
     expect(r.conditions![0].status).toBe("active");
