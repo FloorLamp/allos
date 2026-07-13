@@ -18,7 +18,7 @@ import {
   formatWorkoutReminder,
   type WorkoutRecommendation,
 } from "@/lib/notifications/workout-format";
-import { suggestTitle } from "@/lib/lifts";
+import { suggestTitle, exerciseHistoryKey } from "@/lib/lifts";
 import { trainingSignalKey } from "@/lib/workout-nudge";
 
 // A Wednesday, so the weekday-habit dates below (all Wednesdays) line up.
@@ -272,5 +272,70 @@ describe("cross-surface consistency (#221)", () => {
     const nw = recommendNextWorkout(fixture);
     expect(nw.behind.map((t) => t.id)).toEqual([42]);
     expect(trainingSignalKey(nw.behind[0].id!)).toBe("training:42");
+  });
+});
+
+describe("recommendNextWorkout — divergent merged-lift spellings (#626/#432)", () => {
+  // "Curl", "Barbell Curl", "Dumbbell Curl" all collapse to exerciseHistoryKey
+  // "curl" under the #331/#432 variant-collapse convention. The aggregate row from
+  // getStrengthByExercise keeps the FIRST-SEEN spelling ("Curl"); the recent dated
+  // window's frequency-top spelling is a DIFFERENT one ("Barbell Curl"). A raw ===
+  // match between them dropped `primary` to null.
+  const recentBarbellCurl: DatedExercise[] = [
+    dEx("Barbell Curl", "2026-07-01"),
+    dEx("Barbell Curl", "2026-06-24"),
+    dEx("Barbell Curl", "2026-06-17"),
+  ];
+  const aggregateFirstSeen = sRec({ exercise: "Curl", lastDate: "2026-07-01" });
+
+  it("no-routine habit path keeps the strength suggestion when spellings diverge", () => {
+    const nw = recommendNextWorkout(
+      input({
+        routine: [],
+        strength: [aggregateFirstSeen],
+        datedExercises: recentBarbellCurl,
+      })
+    );
+    // Focus is the Arms habit, the lead is the recent spelling, and — the fix —
+    // `primary` resolves to the merged aggregate row by canonical identity instead
+    // of falling to null (which would have skipped strength and suggested cardio).
+    expect(nw.focus).toContain("Arms");
+    expect(nw.exercises[0]).toBe("Barbell Curl");
+    expect(nw.items[0].kind).toBe("strength");
+    expect(nw.primary?.exercise).toBe("Curl");
+    expect(nw.items[0].exercise?.exercise).toBe("Curl");
+  });
+
+  it("routine-gap strength path seeds the progression from the merged aggregate", () => {
+    const nw = recommendNextWorkout(
+      input({
+        routine: [tgt({ met: false })],
+        strength: [aggregateFirstSeen],
+        datedExercises: recentBarbellCurl,
+      })
+    );
+    const strengthItem = nw.items.find((i) => i.kind === "strength");
+    expect(strengthItem).toBeDefined();
+    // The behind-target strength card carries the real aggregate (its next-set seed)
+    // rather than a null generic "train this scope".
+    expect(strengthItem!.exercise?.exercise).toBe("Curl");
+  });
+
+  it("counts merged spellings as ONE exercise in the ranked list (secondary symptom)", () => {
+    const nw = recommendNextWorkout(
+      input({
+        routine: [],
+        strength: [aggregateFirstSeen],
+        datedExercises: [
+          dEx("Barbell Curl", "2026-07-01"),
+          dEx("Barbell Curl", "2026-06-24"),
+          dEx("Curl", "2026-06-17"),
+        ],
+      })
+    );
+    const curlEntries = nw.exercises.filter(
+      (e) => exerciseHistoryKey(e) === "curl"
+    );
+    expect(curlEntries).toHaveLength(1);
   });
 });

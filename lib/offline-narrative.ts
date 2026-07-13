@@ -103,6 +103,16 @@ export function offlineModelTag(reason: OfflineReason): string {
   return `offline/${reason}`;
 }
 
+// The stored-model prefix that marks an insight as offline-fallback rather than a
+// real AI generation. All offlineModelTag(...) values start with it, so a caller
+// can tell a degraded result from a real one without enumerating the reasons —
+// used by the recommendation engine's overwrite guard (#633).
+export const OFFLINE_MODEL_PREFIX = "offline/";
+
+export function isOfflineModelTag(model: string): boolean {
+  return model.startsWith(OFFLINE_MODEL_PREFIX);
+}
+
 // Max findings named in a single sentence before collapsing to "+N more".
 const MAX_NAMED = 3;
 

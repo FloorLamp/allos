@@ -54,6 +54,27 @@ export function getWeights(
     .all(profileId, limit) as (BodyMetric & { weight_kg: number })[];
 }
 
+// Weight rows collapsed to ONE source per day (the profile's primary source first,
+// #14), row id preserved, newest first — the day-over-day anomaly detector's input
+// (#634). getWeights returns every source's row interleaved, so two scales
+// reporting the same/adjacent day (body_metrics keys on (profile_id, date, source))
+// feed the detector a false cross-source "jump"; collapsing per day mirrors the
+// Trends → Body chart's getBodyMetricDailySeries so the finding and the chart it
+// links to can't disagree. Unlike that series this keeps the id (the anomaly finding
+// links to the exact offending row) and doesn't average — it hands whole rows to the
+// pure detector.
+export function getWeightsOneSourcePerDay(
+  profileId: number,
+  limit = 365
+): (BodyMetric & { weight_kg: number })[] {
+  return pickRowsOneSourcePerDay(
+    getWeights(profileId, limit),
+    preferenceFor(profileId, "weight"),
+    (r) => r.date,
+    (r) => r.source
+  );
+}
+
 // Human label for a source document: its lab/provider, else doc type, else
 // filename. Shared by the body-metrics history and the biomarker readings table
 // so the same document is named identically on every provenance surface.

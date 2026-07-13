@@ -17,6 +17,7 @@ import {
   getExerciseSetCountsSince,
   getExerciseE1rmSeries,
   getWeights,
+  getWeightsOneSourcePerDay,
   getBodyMetricDailySeries,
   getGoals,
   getSupplements,
@@ -270,7 +271,12 @@ export function buildBodyHygieneFindings(
   today: string,
   wu: WeightUnit
 ): Finding[] {
-  const weights = getWeights(profileId).map((w) => ({
+  // ONE source per day (id preserved), not the raw all-source getWeights rows: two
+  // scales landing the same/adjacent day would otherwise feed the day-over-day
+  // detector a false cross-source "jump", and the finding would link to a Trends →
+  // Body chart (one source/day) that never shows the flagged value (#634 — the
+  // cross-source half of #434).
+  const weights = getWeightsOneSourcePerDay(profileId).map((w) => ({
     id: w.id,
     date: w.date,
     weightKg: w.weight_kg,

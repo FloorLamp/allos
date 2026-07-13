@@ -118,6 +118,23 @@ export function isDueOn(
   }
 }
 
+// Whether an item's dose amounts count toward the DAILY Tolerable Upper Intake
+// Level (UL) / RDA sum (issue #635). The UL is a chronic *daily* threshold, so only
+// an item taken EVERY day contributes its full amount each day. A PRN (as_needed)
+// item is taken on demand — never a standing daily intake (mirroring isDueOn's PRN
+// short-circuit) — and a pre_workout / post_workout / rest_day / situational item
+// applies only on some days; counting either as a full daily dose overstates the
+// daily total and produces a standing false "above upper limit" (care-tier) alarm.
+// Conservatively, only an unconditional `daily` item contributes — the safe choice
+// for a care-tier gather where a false positive is worse than a missed occasional
+// exceedance.
+export function contributesToDailyLimit(
+  item: Pick<Supplement, "condition"> & { as_needed?: number }
+): boolean {
+  if (item.as_needed) return false;
+  return item.condition === "daily";
+}
+
 // Parse an "HH:MM" / "HH:MM:SS" wall-clock time to minutes-since-midnight, or null.
 function timeToMinutes(t: string | null | undefined): number | null {
   if (!t) return null;
