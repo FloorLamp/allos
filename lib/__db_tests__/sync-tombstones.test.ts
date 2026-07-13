@@ -13,9 +13,12 @@ import { db } from "@/lib/db";
 import {
   upsertActivities,
   upsertBodyMetrics,
+  upsertMetricSamples,
   type NormActivity,
+  type NormMetricSample,
 } from "@/lib/integrations/normalize";
 import { captureDelete, restoreDeletedRow } from "@/lib/undo-delete-db";
+import { writeImportTombstoneForRow } from "@/lib/integrations/tombstones";
 import {
   writeActivityFold,
   snapshotKeeperFold,
@@ -301,5 +304,67 @@ describe("sync-event accounting persists the suppressed count", () => {
       )
       .get(profileId) as { suppressed: number | null };
     expect(row.suppressed).toBe(2);
+  });
+
+  it("recordSyncEvent stores the edited column (#659)", () => {
+    recordSyncEvent(profileId, "withings", {
+      ok: true,
+      inserted: 0,
+      updated: 0,
+      unchanged: 1,
+      suppressed: 0,
+      edited: 4,
+      skipped: 0,
+      received: 5,
+      written: 1,
+    });
+    const row = db
+      .prepare(
+        "SELECT edited FROM integration_sync_events WHERE profile_id = ? ORDER BY id DESC LIMIT 1"
+      )
+      .get(profileId) as { edited: number | null };
+    expect(row.edited).toBe(4);
+  });
+});
+
+describe("metric_samples delete → resync (no resurrection, #653)", () => {
+  const SAMPLE: NormMetricSample = {
+    metric: "lean_mass_kg",
+    date: DATE,
+    start_time: "2026-03-10T07:00:00Z",
+    end_time: "2026-03-10T07:00:00Z",
+    value: 42.5,
+  };
+  const source = "withings";
+  const sampleCount = () =>
+    count(
+      "SELECT COUNT(*) c FROM metric_samples WHERE profile_id = ? AND metric = ?",
+      profileId,
+      SAMPLE.metric
+    );
+
+  it("a deleted synced sample stays gone and the resync counts it suppressed", () => {
+    // Initial sync inserts the sample.
+    expect(upsertMetricSamples(profileId, [SAMPLE], source).inserted).toBe(1);
+    expect(sampleCount()).toBe(1);
+
+    // The Data → Manage bulk delete's tombstone-write half: capture the row's
+    // pre-image, delete it, write the tombstone (mirrors manage-actions).
+    const row = db
+      .prepare(
+        "SELECT * FROM metric_samples WHERE profile_id = ? AND metric = ?"
+      )
+      .get(profileId, SAMPLE.metric) as Record<string, unknown>;
+    db.prepare(
+      "DELETE FROM metric_samples WHERE id = ? AND profile_id = ?"
+    ).run(row.id, profileId);
+    writeImportTombstoneForRow(profileId, "metric_samples", row);
+    expect(sampleCount()).toBe(0);
+
+    // The next rolling-window push replays the same sample: the tombstone blocks the
+    // re-insert and the split counts it suppressed (honest received).
+    const counts = upsertMetricSamples(profileId, [SAMPLE], source);
+    expect(counts).toMatchObject({ inserted: 0, suppressed: 1 });
+    expect(sampleCount()).toBe(0);
   });
 });

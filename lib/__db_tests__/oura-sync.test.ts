@@ -90,18 +90,21 @@ describe("Oura sync upsert/dedup", () => {
       updated: 0,
       unchanged: 0,
       suppressed: 0,
+      edited: 0,
     });
     expect(first.acts).toEqual({
       inserted: 1,
       updated: 0,
       unchanged: 0,
       suppressed: 0,
+      edited: 0,
     });
     expect(first.body).toEqual({
       inserted: 1,
       updated: 0,
       unchanged: 0,
       suppressed: 0,
+      edited: 0,
     });
 
     // Re-push the same rolling window → every row dedups on its natural key.
@@ -111,18 +114,21 @@ describe("Oura sync upsert/dedup", () => {
       updated: 0,
       unchanged: 7,
       suppressed: 0,
+      edited: 0,
     });
     expect(second.acts).toEqual({
       inserted: 0,
       updated: 0,
       unchanged: 1,
       suppressed: 0,
+      edited: 0,
     });
     expect(second.body).toEqual({
       inserted: 0,
       updated: 0,
       unchanged: 1,
       suppressed: 0,
+      edited: 0,
     });
 
     // The workout landed with the right source + external id and grouping component.
@@ -167,8 +173,9 @@ describe("Oura sync upsert/dedup", () => {
     expect(res.acts).toEqual({
       inserted: 0,
       updated: 0,
-      unchanged: 1,
+      unchanged: 0,
       suppressed: 0,
+      edited: 1,
     });
     const stored = db
       .prepare(
@@ -187,8 +194,9 @@ describe("Oura sync upsert/dedup", () => {
     expect(res.body).toEqual({
       inserted: 0,
       updated: 0,
-      unchanged: 1,
+      unchanged: 0,
       suppressed: 0,
+      edited: 1,
     });
     const bm = db
       .prepare(
@@ -224,6 +232,7 @@ describe("Oura sync upsert/dedup", () => {
       updated: 1,
       unchanged: 0,
       suppressed: 0,
+      edited: 0,
     });
     const stored = db
       .prepare(
@@ -240,6 +249,7 @@ describe("Oura sync upsert/dedup", () => {
       updated: 0,
       unchanged: 1,
       suppressed: 0,
+      edited: 0,
     });
   });
 

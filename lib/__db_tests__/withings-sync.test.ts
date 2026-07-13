@@ -116,6 +116,7 @@ describe("Withings sync upsert/dedup", () => {
       updated: 0,
       unchanged: 0,
       suppressed: 0,
+      edited: 0,
     });
     // Systolic + diastolic = 2 vitals.
     expect(first.vitals.counts).toEqual({
@@ -123,6 +124,7 @@ describe("Withings sync upsert/dedup", () => {
       updated: 0,
       unchanged: 0,
       suppressed: 0,
+      edited: 0,
     });
     // sleep_min + 4 stages = 5 sleep samples, plus 4 composition point samples
     // (lean/muscle/bone mass + body water) from the weigh-in = 9.
@@ -131,6 +133,7 @@ describe("Withings sync upsert/dedup", () => {
       updated: 0,
       unchanged: 0,
       suppressed: 0,
+      edited: 0,
     });
 
     const second = apply();
@@ -139,18 +142,21 @@ describe("Withings sync upsert/dedup", () => {
       updated: 0,
       unchanged: 1,
       suppressed: 0,
+      edited: 0,
     });
     expect(second.vitals.counts).toEqual({
       inserted: 0,
       updated: 0,
       unchanged: 2,
       suppressed: 0,
+      edited: 0,
     });
     expect(second.samples).toEqual({
       inserted: 0,
       updated: 0,
       unchanged: 9,
       suppressed: 0,
+      edited: 0,
     });
   });
 
@@ -212,6 +218,7 @@ describe("Withings sync upsert/dedup", () => {
       updated: 0,
       unchanged: 0,
       suppressed: 0,
+      edited: 0,
     });
     const vo2 = db
       .prepare(
@@ -236,6 +243,7 @@ describe("Withings sync upsert/dedup", () => {
       updated: 0,
       unchanged: 1,
       suppressed: 0,
+      edited: 0,
     });
   });
 
@@ -265,8 +273,9 @@ describe("Withings sync upsert/dedup", () => {
     expect(res.body).toEqual({
       inserted: 0,
       updated: 0,
-      unchanged: 1,
+      unchanged: 0,
       suppressed: 0,
+      edited: 1,
     });
     const bm = db
       .prepare(
@@ -282,7 +291,9 @@ describe("Withings sync upsert/dedup", () => {
       "UPDATE medical_records SET edited = 1, value_num = 130, value = '130' WHERE profile_id = ? AND external_id = ?"
     ).run(profileId, "withings:900002:Blood Pressure Systolic");
     const res = apply();
-    expect(res.vitals.counts.unchanged).toBe(2);
+    // The locked systolic is counted `edited` (#659); the diastolic re-sends unchanged.
+    expect(res.vitals.counts.edited).toBe(1);
+    expect(res.vitals.counts.unchanged).toBe(1);
     const sys = db
       .prepare(
         "SELECT value_num FROM medical_records WHERE profile_id = ? AND external_id = ?"

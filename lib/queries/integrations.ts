@@ -139,6 +139,7 @@ function expiredHealthConnectIssue(
     updated: null,
     unchanged: null,
     suppressed: null,
+    edited: null,
     skipped: null,
     raw_ref: null,
     error:

@@ -12,7 +12,6 @@ import { loadImportTombstones } from "./tombstones";
 import {
   bodyMetricTombstoneKey,
   metricSampleTombstoneKey,
-  hrMinuteTombstoneKey,
 } from "./tombstone-keys";
 
 // Provider-agnostic record shapes. Every integration parses its own payload into
@@ -207,10 +206,12 @@ export function upsertBodyMetrics(
       counts.suppressed++;
       continue;
     }
-    // A hand-edited imported row is never overwritten; count it as unchanged (we
-    // deliberately persist nothing), mirroring the activities path.
+    // A hand-edited imported row is never overwritten; count it in its own `edited`
+    // split (#659) — we deliberately persist nothing, but this is NOT an ordinary
+    // no-op re-send, so it must be visible in Review rather than hidden in
+    // `unchanged`. Mirrors the vitals + activities paths below.
     if (mine && isEditLocked(mine.edited)) {
-      counts.unchanged++;
+      counts.edited++;
       continue;
     }
     // Resolved post-image: the merge fills gaps and lets a fresh non-null value
@@ -362,9 +363,10 @@ export function upsertHrMinutes(
        bpm = excluded.bpm, bpm_min = excluded.bpm_min, bpm_max = excluded.bpm_max,
        n = excluded.n`
   );
-  // Re-import tombstones for hr_minutes (#508): a user-deleted minute bucket must not
-  // be re-inserted by the rolling window. Loaded once for the batch.
-  const tombstoned = loadImportTombstones(profileId, "hr_minutes");
+  // No re-import tombstone consult here (#653): hr_minutes has no per-row delete path
+  // (browse/export-only dataset; the only non-sync mutation is the timezone re-import
+  // sweep, which must re-insert), so there is nothing for a sync to resurrect and the
+  // table is intentionally absent from TOMBSTONE_TABLES.
   const counts = emptyCounts();
   for (const r of rows) {
     const found = find.get(profileId, r.ts, source) as
@@ -375,11 +377,6 @@ export function upsertHrMinutes(
           n: number;
         }
       | undefined;
-    // No live row AND a tombstone for this (ts, source): skip the resurrecting insert.
-    if (!found && tombstoned.has(hrMinuteTombstoneKey(r.ts, source))) {
-      counts.suppressed++;
-      continue;
-    }
     stmt.run(profileId, r.ts, r.bpm, r.bpm_min, r.bpm_max, r.n, source);
     if (!found) counts.inserted++;
     else if (
@@ -438,11 +435,12 @@ export function upsertVitals(
     const found = find.get(profileId, r.external_id) as
       | (Record<string, unknown> & { id: number; edited: number | null })
       | undefined;
-    // A hand-edited imported vital is never clobbered by re-ingest. Count it as
-    // unchanged (we persist nothing) and, unlike the value-matched unchanged case,
-    // do NOT push its id — the row is left entirely untouched, no flag re-derivation.
+    // A hand-edited imported vital is never clobbered by re-ingest. Count it in the
+    // `edited` split (#659) — we persist nothing — and, unlike the value-matched
+    // unchanged case, do NOT push its id: the row is left entirely untouched, no flag
+    // re-derivation.
     if (found && isEditLocked(found.edited)) {
-      counts.unchanged++;
+      counts.edited++;
       continue;
     }
     // No live row AND a tombstone for this external_id: the user deleted this vital —
@@ -567,10 +565,11 @@ export function upsertActivities(
       | (Record<string, unknown> & { id: number; edited: number | null })
       | undefined;
     // A source-owned row the user has hand-edited is left alone on re-ingest, so
-    // the rolling 48h/re-scan window never clobbers those edits. Counts as
-    // unchanged — we deliberately persist nothing.
+    // the rolling 48h/re-scan window never clobbers those edits. Counts in the
+    // `edited` split (#659) — we deliberately persist nothing, but this is a lock
+    // the user should be able to see in Review, not a silent no-op.
     if (found && found.edited) {
-      counts.unchanged++;
+      counts.edited++;
       continue;
     }
     if (found) {

@@ -27,19 +27,26 @@ export interface UpsertCounts {
   // re-inserted. Counted (never silently dropped) so the Review feed can show
   // "N suppressed" and `received` stays honest.
   suppressed: number;
+  // Rows the source re-sent that the user-edit LOCK held out (#133/#659): a
+  // hand-corrected imported row the upsert deliberately left untouched. Its own
+  // segment (parallel to `suppressed`) rather than folded into `unchanged`, so a user
+  // who wonders why the scale "stopped updating" a weight can SEE the lock in Review
+  // instead of it hiding behind an ordinary no-op re-send.
+  edited: number;
 }
 
 export function emptyCounts(): UpsertCounts {
-  return { inserted: 0, updated: 0, unchanged: 0, suppressed: 0 };
+  return { inserted: 0, updated: 0, unchanged: 0, suppressed: 0, edited: 0 };
 }
 
 // The user-edit lock (issue #133): true when an integration-owned row has been
 // hand-edited in the app and MUST NOT be overwritten by a re-ingest of the rolling
 // window. Every keyed upsert consults this on the row it found (activities.edited,
 // body_metrics.edited, medical_records.edited) and, when locked, deliberately
-// persists nothing and counts the row as `unchanged` — we touched no value, so the
-// split must not report it as a write. The DB stores 0/1 (nullable historically),
-// so this normalizes any falsy/absent value to "not locked". Pure → unit-testable.
+// persists nothing and counts the row in the `edited` split (#659) — parallel to
+// `suppressed`, so a lock is visible in Review instead of hiding as an ordinary
+// `unchanged` no-op. The DB stores 0/1 (nullable historically), so this normalizes
+// any falsy/absent value to "not locked". Pure → unit-testable.
 export function isEditLocked(edited: number | null | undefined): boolean {
   return !!edited;
 }
@@ -52,6 +59,7 @@ export function foldCounts(parts: UpsertCounts[]): UpsertCounts {
     out.updated += p.updated;
     out.unchanged += p.unchanged;
     out.suppressed += p.suppressed;
+    out.edited += p.edited;
   }
   return out;
 }
@@ -72,16 +80,19 @@ export function summarizeSplit(
   const updated = Math.max(0, Math.round(counts.updated));
   const unchanged = Math.max(0, Math.round(counts.unchanged));
   const suppressed = Math.max(0, Math.round(counts.suppressed));
+  const edited = Math.max(0, Math.round(counts.edited));
   const s = Math.max(0, Math.round(skipped));
   return {
     inserted,
     updated,
     unchanged,
     suppressed,
+    edited,
     skipped: s,
-    // A tombstone-suppressed row WAS handed to us by the source, so it belongs in
-    // `received` (no silent cap) even though it was deliberately not persisted.
-    received: inserted + updated + unchanged + suppressed + s,
+    // A tombstone-suppressed OR edit-locked row WAS handed to us by the source, so it
+    // belongs in `received` (no silent cap) even though it was deliberately not
+    // persisted.
+    received: inserted + updated + unchanged + suppressed + edited + s,
   };
 }
 
@@ -115,6 +126,9 @@ export function formatSplitLabel(ev: {
   // Tombstone-suppressed re-inserts (#507/#508). Absent on rows recorded before the
   // column existed → treated as 0.
   suppressed?: number | null;
+  // Edit-locked skips (#133/#659): imported rows a re-sync left untouched because the
+  // user hand-edited them. Absent on rows recorded before the column existed → 0.
+  edited?: number | null;
 }): { primary: string; muted: boolean } {
   const { inserted, updated, unchanged } = ev;
   if (inserted === null && updated === null && unchanged === null) {
@@ -125,6 +139,7 @@ export function formatSplitLabel(ev: {
   const upd = updated ?? 0;
   const unch = unchanged ?? 0;
   const supp = ev.suppressed ?? 0;
+  const edited = ev.edited ?? 0;
   const segs: string[] = [];
   if (ins > 0) segs.push(`${ins} new`);
   if (upd > 0) segs.push(`${upd} changed`);
@@ -133,7 +148,11 @@ export function formatSplitLabel(ev: {
   // the user merged/deleted and the tombstone blocked it — so it shows even when
   // nothing new landed, and keeps the row from reading as a muted "nothing new".
   if (supp > 0) segs.push(`${supp} suppressed`);
-  if (ins + upd + supp === 0) {
+  // An edit-locked skip is likewise meaningful — the sync tried to overwrite a
+  // hand-corrected row and the lock kept it — so it shows (and un-mutes) too, which
+  // is what lets a user find why the provider "stopped updating" that row.
+  if (edited > 0) segs.push(`${edited} edited`);
+  if (ins + upd + supp + edited === 0) {
     return { primary: "nothing new", muted: true };
   }
   return { primary: segs.join(" · "), muted: false };
@@ -198,12 +217,21 @@ export function isNoOpSyncEvent(ev: {
   // A suppressed re-import is NOT a no-op — the sync actively blocked a resurrection,
   // which the user should see, so it must not collapse into the quiet-sync summary.
   suppressed?: number | null;
+  // An edit-locked skip is likewise NOT a no-op — the sync actively held off an
+  // overwrite of a hand-edited row, which the user should be able to find.
+  edited?: number | null;
 }): boolean {
   if (!ev.ok) return false;
   if (ev.inserted === null && ev.updated === null && ev.unchanged === null) {
     return false;
   }
-  return (ev.inserted ?? 0) + (ev.updated ?? 0) + (ev.suppressed ?? 0) === 0;
+  return (
+    (ev.inserted ?? 0) +
+      (ev.updated ?? 0) +
+      (ev.suppressed ?? 0) +
+      (ev.edited ?? 0) ===
+    0
+  );
 }
 
 // The ids to prune from integration_sync_events on the retention sweep (issue #388):

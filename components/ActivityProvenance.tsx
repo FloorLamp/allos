@@ -1,4 +1,5 @@
 import RelativeTime from "@/components/RelativeTime";
+import EditLockNotice from "@/components/EditLockNotice";
 
 // Shared provenance footer for an activity (issue #11): a small source chip
 // ("Manual" / "Strava" / "Google Health Connect" / "Document", or "<Source> ·
@@ -6,16 +7,25 @@ import RelativeTime from "@/components/RelativeTime";
 // been edited since creation, "edited <when>". Rendered on the Journal card and
 // the training activity views so provenance reads identically everywhere; the
 // label is computed by activityProvenanceLabel (lib/journal-format).
+//
+// When the row is an edit-LOCKED integration import (#133/#659), `editLockId` is its
+// id: the chip gets a consequence tooltip and a "Resume sync updates" affordance, so
+// the lock says WHAT it does ("syncs won't update this row") and offers a way out —
+// not just the bare "· edited" text.
 export default function ActivityProvenance({
   label,
   createdAt,
   updatedAt,
+  editLockId,
   className,
 }: {
   label: string;
   createdAt: string;
   // NULL until the row has been edited since creation.
   updatedAt: string | null;
+  // The activity id when this is a hand-edited integration row (the clearable lock),
+  // else undefined.
+  editLockId?: number;
   className?: string;
 }) {
   // Only surface "edited" when the update is genuinely later than creation — the
@@ -31,6 +41,11 @@ export default function ActivityProvenance({
     >
       <span
         className="badge bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300"
+        title={
+          editLockId != null
+            ? "Hand-edited — imports will no longer update this row."
+            : undefined
+        }
         data-testid="activity-provenance-source"
       >
         {label}
@@ -42,6 +57,9 @@ export default function ActivityProvenance({
         <span>
           · edited <RelativeTime value={updatedAt} />
         </span>
+      )}
+      {editLockId != null && (
+        <EditLockNotice table="activities" id={editLockId} />
       )}
     </div>
   );

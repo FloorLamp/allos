@@ -55,6 +55,7 @@ import BodyQuickAdd from "./BodyQuickAdd";
 import VitalsQuickAdd from "./VitalsQuickAdd";
 import GrowthQuickAdd from "./GrowthQuickAdd";
 import DeleteBodyMetricButton from "./DeleteBodyMetricButton";
+import EditLockNotice from "@/components/EditLockNotice";
 import BodyHygieneFindings from "./BodyHygieneFindings";
 import SourceComparison from "./SourceComparison";
 
@@ -728,6 +729,19 @@ export default async function BodySection({ range }: { range: DateRange }) {
                           {w.source_label}
                         </span>
                       )}
+                      {/* Edit-lock badge + resume affordance for a hand-edited
+                          integration row (#659): only integration-owned rows carry
+                          the lock (manual/document rows can't be re-synced). */}
+                      {!!w.edited &&
+                        w.document_id == null &&
+                        !!w.source &&
+                        w.source !== "manual" && (
+                          <EditLockNotice
+                            table="body_metrics"
+                            id={w.id}
+                            className="mt-1"
+                          />
+                        )}
                     </td>
                     <td className="td text-slate-500 dark:text-slate-400">
                       {w.notes ?? ""}

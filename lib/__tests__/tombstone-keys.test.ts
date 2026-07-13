@@ -6,6 +6,7 @@ import {
   metricSampleTombstoneKey,
   hrMinuteTombstoneKey,
   importTombstoneForRow,
+  TOMBSTONE_TABLES,
 } from "@/lib/integrations/tombstone-keys";
 
 // PURE key math for the re-import tombstone (#507/#508). These keys MUST mirror each
@@ -75,9 +76,45 @@ describe("importTombstoneForRow — derive (table, key) from a captured root row
     ).toBeNull();
   });
 
+  it("metric_samples: keyed by (metric, source, start, end); null when a field is missing (#653)", () => {
+    expect(
+      importTombstoneForRow("metric_samples", {
+        metric: "steps",
+        source: "health-connect",
+        start_time: "t0",
+        end_time: "t1",
+      })
+    ).toEqual({
+      table: "metric_samples",
+      key: metricSampleTombstoneKey("steps", "health-connect", "t0", "t1"),
+    });
+    // A missing natural-key field means it isn't a source-owned re-import target.
+    expect(
+      importTombstoneForRow("metric_samples", {
+        metric: "steps",
+        source: null,
+        start_time: "t0",
+        end_time: "t1",
+      })
+    ).toBeNull();
+  });
+
   it("returns null for tables the sync can't resurrect (intake_items, etc.)", () => {
     expect(
       importTombstoneForRow("intake_items", { external_id: "x" })
     ).toBeNull();
+  });
+});
+
+describe("TOMBSTONE_TABLES coverage (#653)", () => {
+  it("covers metric_samples but NOT hr_minutes (no per-row delete path)", () => {
+    expect(TOMBSTONE_TABLES).toContain("metric_samples");
+    // hr_minutes is browse/export-only — dormant read coverage was removed so the
+    // read side no longer implies a protection with no writer.
+    expect(TOMBSTONE_TABLES as readonly string[]).not.toContain("hr_minutes");
+    // The key helper stays (future HR delete), but composes distinct keys.
+    expect(hrMinuteTombstoneKey("t0", "s")).not.toBe(
+      hrMinuteTombstoneKey("t1", "s")
+    );
   });
 });

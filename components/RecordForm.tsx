@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import DateField from "./DateField";
+import EditLockNotice from "./EditLockNotice";
 import SubmitButton from "./SubmitButton";
 import { useToast } from "./Toast";
 import { useFocusFormOnParam } from "./useFocusFormOnParam";
@@ -263,6 +264,13 @@ export default function RecordForm({
           </button>
         )}
       </div>
+      {/* Edit-lock badge + resume affordance for a hand-edited imported reading
+          (#659): only source-owned rows (external_id set) carry the lock. */}
+      {editing && !!record?.edited && !!record?.external_id && (
+        <div className="sm:col-span-4">
+          <EditLockNotice table="medical_records" id={record!.id} />
+        </div>
+      )}
     </form>
   );
 }

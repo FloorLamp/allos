@@ -32,10 +32,12 @@ import {
 } from "./queries";
 import {
   getActiveSituations,
+  getSituationEvents,
   getHomeLocation,
   getUserSex,
   getUserAge,
 } from "./settings";
+import { situationHistoryResolver } from "./trend-annotations";
 import { optimalStatus } from "./reference-range";
 import { decideSunExposure, SUN_EXPOSURE_WINDOW_WEEKS } from "./sun-exposure";
 import { isGoalLive, frequencyScopeLabel } from "./goals";
@@ -413,7 +415,13 @@ export function buildAdherencePatternFindings(
   );
   const dates = lastNDates(today, ADHERENCE_PATTERN_DAYS);
   const workoutDays = new Set(getActivityDates(profileId));
-  const activeSituations = new Set(getActiveSituations(profileId));
+  // Per-day situation resolver (#654): a past day is scored against the situations
+  // active THAT day, not today's toggle applied retroactively — so a situational
+  // item's pattern observations aren't distorted by a situation activated today.
+  const situationsOn = situationHistoryResolver(
+    getActiveSituations(profileId),
+    getSituationEvents(profileId)
+  );
 
   const inputs: DoseAdherenceInput[] = [];
   for (const d of doses) {
@@ -437,7 +445,7 @@ export function buildAdherencePatternFindings(
         (date) =>
           isDueOn(supp, {
             isWorkoutDay: workoutDays.has(date),
-            activeSituations,
+            activeSituations: situationsOn(date),
           }),
         status?.taken ?? new Set(),
         status?.skipped ?? new Set()

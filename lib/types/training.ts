@@ -200,6 +200,9 @@ export interface BodyMetric {
   // for imported rows so ingest can keep at most one imported row per day.
   // Rows imported from an uploaded medical document use 'document:<id>'.
   source: string | null;
+  // 1 when a source-owned (imported) row has been hand-edited, so ingest leaves it
+  // alone on re-sync (#133); 0/NULL otherwise. Drives the edit-lock badge (#659).
+  edited: number | null;
 }
 
 // A body-metrics row with its provenance resolved for display: document-sourced

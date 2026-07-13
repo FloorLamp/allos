@@ -38,6 +38,8 @@ export interface FeedSyncEvent {
   unchanged: number | null;
   written: number | null;
   suppressed: number | null;
+  // Edit-locked skips (#133/#659). Null on legacy rows.
+  edited: number | null;
   skipped: number | null;
   error: string | null;
   raw_ref: string | null;

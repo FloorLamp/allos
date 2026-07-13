@@ -78,6 +78,9 @@ export interface IntegrationSyncEvent {
   // Rows the source re-sent that a re-import tombstone held out (#507/#508). Null on
   // legacy rows recorded before the column existed.
   suppressed: number | null;
+  // Rows the source re-sent that the user-edit lock held out (#133/#659). Null on
+  // legacy rows recorded before the column existed (migration 033).
+  edited: number | null;
   skipped: number | null;
   // Bare filename of the captured raw provider payload under
   // data/integration-payloads/<profile_id>/ (issue #9), or null. Read back only by

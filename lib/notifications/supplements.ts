@@ -15,7 +15,12 @@ import {
   isPredictedWorkoutDay,
   getSupplementLogsInRange,
 } from "../queries";
-import { getActiveSituations, getTimezone } from "../settings";
+import {
+  getActiveSituations,
+  getSituationEvents,
+  getTimezone,
+} from "../settings";
+import { situationHistoryResolver } from "../trend-annotations";
 import {
   adherenceSummary,
   doseStrip,
@@ -82,6 +87,12 @@ function gatherWindowDoses(
   const taken = getTakenDoseIds(profileId, date);
   const skipped = getSkippedDoseIds(profileId, date);
   const activeSituations = new Set(getActiveSituations(profileId));
+  // Per-day situation resolver for the adherence strip below: each past day is scored
+  // against the situations active THAT day (#654), not today's toggle retroactively.
+  const situationsOn = situationHistoryResolver(
+    activeSituations,
+    getSituationEvents(profileId)
+  );
   const activitiesToday = getActivitiesByDate(profileId, date);
   // #558: a pre_workout reminder fires on a PREDICTED training day (so it can land
   // in the morning, before the session), not only after a workout is logged;
@@ -122,7 +133,10 @@ function gatherWindowDoses(
     const strip = doseStrip(
       windowDates,
       (d) =>
-        isDueOn(supp, { isWorkoutDay: workoutDays.has(d), activeSituations }),
+        isDueOn(supp, {
+          isWorkoutDay: workoutDays.has(d),
+          activeSituations: situationsOn(d),
+        }),
       dd?.taken ?? new Set<string>(),
       dd?.skipped ?? new Set<string>()
     );

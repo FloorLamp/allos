@@ -17,6 +17,7 @@ import type { ActivityEditData } from "./activity-form-model";
 import type { DistanceUnit, UnitPrefs } from "./settings";
 import type { SetStatus } from "./journal-format";
 import { summarizeExercise, activityProvenanceLabel } from "./journal-format";
+import { DOCUMENT_SOURCE_PREFIX } from "./body-metric-extract";
 import { muscleFor } from "./lifts";
 import { storedActivityFault } from "./activity-validate";
 import { pickFoldValues } from "./import-review/conflicts";
@@ -67,6 +68,10 @@ export interface JournalCardData {
     createdAt: string;
     // NULL until the row has been edited since creation.
     updatedAt: string | null;
+    // True when this is a hand-edited INTEGRATION row (the user-edit lock, #133): the
+    // sync leaves it untouched. Drives the "Resume sync updates" affordance (#659).
+    // False for manual/document rows (never re-synced) and un-edited imports.
+    editLocked: boolean;
   };
   // The row's fold-field values (issue #100) — the compact payload the manual-merge
   // conflict preview compares against a same-day sibling. Values are raw canonical
@@ -376,6 +381,13 @@ export function buildJournalCards({
         label: activityProvenanceLabel(a.source, a.edited),
         createdAt: a.created_at,
         updatedAt: a.updated_at,
+        // Only an INTEGRATION row (not manual, not a document projection) can be
+        // re-synced, so only those carry a clearable lock.
+        editLocked:
+          !!a.edited &&
+          !!a.source &&
+          a.source !== "manual" &&
+          !a.source.startsWith(DOCUMENT_SOURCE_PREFIX),
       },
       // Fold-field values for the manual-merge conflict preview (issue #100).
       foldValues: pickFoldValues(a as unknown as Record<string, unknown>),
