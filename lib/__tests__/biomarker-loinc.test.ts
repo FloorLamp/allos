@@ -3,6 +3,8 @@ import {
   LOINC_TO_CANONICAL,
   canonicalBiomarkerForLoinc,
   isVitalLoinc,
+  isNonAnalyteLoinc,
+  isUnmappedLabLoinc,
 } from "@/lib/biomarker-loinc";
 import { reconciledFlag, referenceRange } from "@/lib/reference-range";
 import { convertToCanonical } from "@/lib/unit-conversions";
@@ -83,6 +85,26 @@ describe("canonicalBiomarkerForLoinc — CBC + CMP lab mappings", () => {
   it("classifies the lab codes as non-vitals (FHIR path routes them to 'lab')", () => {
     for (const code of ["718-7", "6690-2", "2345-7", "751-8", "770-8"])
       expect(isVitalLoinc(code)).toBe(false);
+  });
+
+  // #681: body weight + BMI are anthropometric vitals Epic reports in the Results
+  // section — treated as vitals, not unmapped labs.
+  it("treats body weight + BMI as vitals, not unmapped labs (#681)", () => {
+    for (const code of ["29463-7", "39156-5"]) {
+      expect(isVitalLoinc(code)).toBe(true);
+      expect(isUnmappedLabLoinc(code)).toBe(false);
+    }
+  });
+
+  // #681: non-analyte administrative rows are recognized (so the mapper drops them)
+  // and never counted as unmapped labs.
+  it("recognizes non-analyte administrative LOINCs and excludes them from unmapped (#681)", () => {
+    for (const code of ["45374-6", "72486-4", "19066-0", "31208-2", "8262-8"]) {
+      expect(isNonAnalyteLoinc(code)).toBe(true);
+      expect(isUnmappedLabLoinc(code)).toBe(false);
+    }
+    // A genuine analyte code is NOT swept up by the denylist.
+    expect(isNonAnalyteLoinc("2345-7")).toBe(false);
   });
 });
 

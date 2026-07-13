@@ -1,7 +1,11 @@
 // CDA section extractors — observations (lab results, vital signs, functional
 // status). The shared observation mapper plus the result/vitals/functional-status
 // section extractors.
-import { canonicalBiomarkerForLoinc } from "../../biomarker-loinc";
+import {
+  canonicalBiomarkerForLoinc,
+  isNonAnalyteLoinc,
+  isVitalLoinc,
+} from "../../biomarker-loinc";
 import type { ImportedProvider, ImportedRecord } from "../../health-import";
 import { SECTIONS } from "../constants";
 import type { SectionExtractor } from "../constants";
@@ -41,6 +45,16 @@ export function mapObservation(
   // codeSystemName — extract from wherever it lives so distinct analytes get a
   // stable identity and (for known codes) a canonical destination.
   const loinc = loincFromCode(code);
+  // Drop non-analyte administrative rows (specimen dates, "Approved By", accession
+  // numbers, …) Epic packs into the Results section — they are annotations on a
+  // result, not measurements (#681).
+  if (isNonAnalyteLoinc(loinc)) return null;
+  // A vital-sign LOINC that arrives in a lab/results section — Epic reports body
+  // weight and BMI there — is still a vital: classify by the code, not the section
+  // (#681). Mirrors how the FHIR path routes category off isVitalLoinc.
+  const recordCategory: "lab" | "vitals" = isVitalLoinc(loinc)
+    ? "vitals"
+    : category;
   const canonicalName = canonicalBiomarkerForLoinc(loinc);
   // Name resolution order:
   //   1. structured @_displayName on the code, then
@@ -77,7 +91,7 @@ export function mapObservation(
   // the printed name.
   const canonical = canonicalName ?? String(name);
   return {
-    category,
+    category: recordCategory,
     name: String(name),
     canonical,
     value,
@@ -89,7 +103,7 @@ export function mapObservation(
     // share a code/name (or fall back to the same "Result" name with no LOINC)
     // would otherwise collapse to one external_id and dedupe() would drop a real
     // reading. A genuine duplicate (same value) still dedupes.
-    external_id: `ccda:${category === "vitals" ? "vital" : "obs"}:${String(
+    external_id: `ccda:${recordCategory === "vitals" ? "vital" : "obs"}:${String(
       loinc || name
     ).toLowerCase()}:${date}:${value_num ?? value ?? ""}`,
     // The performing lab/org (e.g. "QUEST") — from the observation's own

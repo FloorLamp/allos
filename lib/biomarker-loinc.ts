@@ -228,6 +228,13 @@ const VITAL_LOINCS = new Set([
   // percentile, not a measurement).
   "8287-5", // Head Occipital-frontal circumference by Tape measure
   "9843-4", // Head circumference (alias)
+  // Body weight and BMI are anthropometric vitals, not lab analytes — but Epic
+  // reports them inside the Results section, so without this they classify as
+  // "unmapped labs" (the two highest-frequency such codes across real exports).
+  // Routed to the vitals category by the observation mapper (#681). Not projected
+  // into metric_samples like height/head-circ — they land as vitals records.
+  "29463-7", // Body weight (kg)
+  "39156-5", // Body mass index (BMI) [Ratio] (kg/m2)
 ]);
 
 export function isVitalLoinc(loinc: string | null | undefined): boolean {
@@ -246,6 +253,36 @@ export function isUnmappedLabLoinc(loinc: string | null | undefined): boolean {
     loinc != null &&
     loinc !== "" &&
     !isVitalLoinc(loinc) &&
+    !isNonAnalyteLoinc(loinc) &&
     canonicalBiomarkerForLoinc(loinc) == null
   );
+}
+
+// Non-analyte structural/administrative observations Epic packs into the Results
+// section — a specimen expiration date, the performing method, "Approved By", a
+// bibliography, an accession number. They carry no measurement, so importing them
+// as lab records inflates the record count and the unmapped-code report with rows
+// that are annotations ON a result, not results (#681). Deliberately CONSERVATIVE:
+// only codes that are unambiguously administrative are listed — a code that could
+// carry a real qualitative result (an interpretation, an organism id, an
+// amplification call) is left OUT so a genuine result is never dropped. The
+// observation mapper drops these before they become records.
+const NON_ANALYTE_LOINCS = new Set([
+  "45374-6", // Specimen Expiration Date
+  "49549-9", // Test Method
+  "72486-4", // Approved By
+  "62364-5", // Performance (performing-lab metadata)
+  "75608-0", // References
+  "77202-0", // About The Test
+  "8262-8", // Limitations of The Test
+  "34574-4", // Final Report (status)
+  "106201-7", // Cytology accession #
+  "19066-0", // Status Information
+  "31208-2", // Chlamydia/Gonococcus specimen source
+]);
+
+// Whether a LOINC is a known non-analyte (administrative/structural) observation
+// that should not be imported as a lab record (#681).
+export function isNonAnalyteLoinc(loinc: string | null | undefined): boolean {
+  return loinc != null && NON_ANALYTE_LOINCS.has(loinc);
 }
