@@ -81,3 +81,57 @@ test.describe("Visits — Upcoming (appointments) (#288)", () => {
     ).toHaveCount(0);
   });
 });
+
+// The single "Add visit" entry (issue #566): one affordance that branches on
+// tense instead of two separate add forms. These cases prove the branch selection
+// only — the tense toggle swaps the appointment↔encounter shape, and the date the
+// user enters routes to the matching shape — without saving anything (no DB
+// mutation, so no fixture cleanup). The end-to-end save of each branch is covered
+// by visits-lifecycle.spec (appointment) and encounters.spec (encounter).
+test.describe("Visits — single Add visit entry (#566)", () => {
+  test("the tense toggle swaps between the appointment and encounter branches", async ({
+    page,
+  }) => {
+    test.slow();
+
+    await page.goto("/encounters");
+    const add = page.getByTestId("visits-add");
+    await expect(add).toBeVisible();
+
+    // Default branch is the appointment (future / scheduling) shape.
+    await expect(add.getByLabel("Reason / title")).toBeVisible();
+    await expect(add.getByLabel("Kind (optional)")).toBeVisible();
+    await expect(add.getByLabel("Diagnoses")).toHaveCount(0);
+
+    // "Already happened" reveals the encounter (past / clinical) shape.
+    await add.getByTestId("visit-tense-past").click();
+    await expect(add.getByLabel("Diagnoses")).toBeVisible();
+    await expect(add.getByLabel("Reason (chief complaint)")).toBeVisible();
+    await expect(add.getByLabel("Kind (optional)")).toHaveCount(0);
+
+    // …and back to the appointment shape.
+    await add.getByTestId("visit-tense-upcoming").click();
+    await expect(add.getByLabel("Kind (optional)")).toBeVisible();
+    await expect(add.getByLabel("Diagnoses")).toHaveCount(0);
+  });
+
+  test("a past date routes the entry to the encounter branch, a future date to the appointment branch", async ({
+    page,
+  }) => {
+    test.slow();
+
+    await page.goto("/encounters");
+    const add = page.getByTestId("visits-add");
+    await expect(add).toBeVisible();
+
+    // Starts on the appointment branch; entering a clearly-past date flips the
+    // entry to the encounter (clinical) shape — the "pick a date first" routing.
+    await expect(add.getByLabel("Kind (optional)")).toBeVisible();
+    await add.getByLabel("Date", { exact: true }).fill("2020-01-15");
+    await expect(add.getByLabel("Diagnoses")).toBeVisible();
+
+    // A clearly-future date flips it back to the appointment (scheduling) shape.
+    await add.getByLabel("Date", { exact: true }).fill("2099-01-15");
+    await expect(add.getByLabel("Kind (optional)")).toBeVisible();
+  });
+});

@@ -25,6 +25,9 @@ export default function AppointmentForm({
   onDone,
   defaultDate,
   prefill,
+  date,
+  onDateChange,
+  embedded = false,
 }: {
   action: (formData: FormData) => Promise<FormResult>;
   appointment?: Appointment;
@@ -36,6 +39,14 @@ export default function AppointmentForm({
     location: string | null;
     kind?: string | null;
   };
+  // When the single "Add visit" wrapper (issue #566) owns the date, it passes it
+  // controlled so the value survives a tense flip between this form and the
+  // encounter form. Only used in add mode; edit mode keeps its own stored date.
+  date?: string;
+  onDateChange?: (v: string) => void;
+  // The single "Add visit" wrapper renders its own card heading + tense toggle, so
+  // it suppresses this form's built-in "Add appointment" heading.
+  embedded?: boolean;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -49,6 +60,10 @@ export default function AppointmentForm({
   // (distinguished by its `onDone` Cancel handler) opts out so it never steals
   // focus from the main form.
   useFocusFormOnParam(formRef, "new", undefined, !editing && !onDone);
+
+  // In add mode the wrapper may drive the date (controlled) so it persists across
+  // a tense flip; otherwise the field is uncontrolled and seeded from defaultDate.
+  const controlledDate = !editing && date !== undefined;
 
   // Split any stored "YYYY-MM-DD HH:MM" back into its date + time parts for edit.
   const storedDate = appointment?.scheduled_at?.slice(0, 10) ?? defaultDate;
@@ -88,8 +103,12 @@ export default function AppointmentForm({
   }
 
   return (
-    <form ref={formRef} action={handle} className="card space-y-3">
-      {!editing && (
+    <form
+      ref={formRef}
+      action={handle}
+      className={`${embedded ? "" : "card "}space-y-3`}
+    >
+      {!editing && !embedded && (
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           {onDone ? "Schedule follow-up" : "Add appointment"}
         </h2>
@@ -115,7 +134,9 @@ export default function AppointmentForm({
           <DateField
             id={`appt-date-${uid}`}
             name="date"
-            defaultValue={storedDate}
+            {...(controlledDate
+              ? { value: date, onChange: onDateChange }
+              : { defaultValue: storedDate })}
             required
           />
         </div>

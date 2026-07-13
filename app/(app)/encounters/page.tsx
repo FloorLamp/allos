@@ -9,9 +9,8 @@ import { isRealIsoDate } from "@/lib/date";
 import { isAppointmentKind } from "@/lib/preventive-appointment";
 import ProviderDatalist from "@/components/ProviderDatalist";
 import { PageHeader, EmptyState } from "@/components/ui";
-import AppointmentForm from "./AppointmentForm";
+import AddVisitEntry from "./AddVisitEntry";
 import AppointmentList from "./AppointmentList";
-import EncounterForm from "./EncounterForm";
 import EncounterList from "./EncounterList";
 import { createAppointment } from "./appointment-actions";
 import { addEncounter } from "./actions";
@@ -55,6 +54,9 @@ export default async function VisitsPage(props: {
     ctaTitle || ctaKind
       ? { title: ctaTitle, provider: null, location: null, kind: ctaKind }
       : undefined;
+  // A bare ?new=1 (command palette's "Add appointment" — issue #29) focuses the
+  // entry and, like every deep link here, defaults it to the appointment branch.
+  const focusNew = one(searchParams.new) != null;
 
   // Split scheduled (future-facing, still on Upcoming) from the settled history so
   // the active list stays actionable. getAppointments returns soonest-first.
@@ -112,33 +114,44 @@ export default async function VisitsPage(props: {
           </div>
 
           <div className="min-w-0 space-y-4">
-            <AppointmentForm
-              action={createAppointment}
+            {/* The single "Add visit" entry (issue #566): one affordance that
+                branches on tense — a future/today date books an appointment, a past
+                date logs an encounter — so the user never has to know "which form?".
+                Kept inside the Upcoming section so every existing deep link (#85
+                Book CTA, #29 command palette, calendar feed) lands here on the
+                appointment branch, exactly as before. */}
+            <AddVisitEntry
+              createAppointment={createAppointment}
+              addEncounter={addEncounter}
               defaultDate={bookPrefill ? prefillDate : now}
+              today={now}
               prefill={bookPrefill}
+              focusNew={focusNew}
             />
           </div>
         </div>
       </section>
 
-      {/* Past — the encounters / visit-history surface. */}
+      {/* Past — the encounters / visit-history surface. Its add form is now the
+          single "Add visit" entry above (toggle to "Already happened"), so this
+          section is history-only. */}
       <section data-testid="visits-past">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
           Past
         </h2>
-        <div className="grid gap-6 lg:grid-cols-3">
-          <div className="min-w-0 space-y-4 lg:col-span-2">
-            <EncounterList items={encounters} defaultDate={now} />
-          </div>
-
-          <div className="min-w-0 space-y-4">
-            <EncounterForm action={addEncounter} defaultDate={now} />
-            <p className="px-1 text-xs text-slate-400 dark:text-slate-500">
-              Informational only, not medical advice. Imported visits come from
-              uploaded health records (CCD Encounters section).
-            </p>
-          </div>
-        </div>
+        <p className="mb-3 text-xs text-slate-400 dark:text-slate-500">
+          To log a visit that already happened, use{" "}
+          <span className="font-medium text-slate-500 dark:text-slate-400">
+            Add visit
+          </span>{" "}
+          above and switch it to{" "}
+          <span className="font-medium text-slate-500 dark:text-slate-400">
+            Already happened
+          </span>
+          . Imported visits come from uploaded health records (CCD Encounters
+          section). Informational only, not medical advice.
+        </p>
+        <EncounterList items={encounters} defaultDate={now} />
       </section>
     </div>
   );
