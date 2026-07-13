@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest";
 import {
   FLOW_KINDS,
   buildIntent,
+  chunkIntents,
+  MAX_INTENTS,
   newIdempotencyKey,
   localDate,
   isSettled,
@@ -31,46 +33,94 @@ describe("newIdempotencyKey", () => {
 });
 
 describe("buildIntent", () => {
-  it("stamps a fresh key + capture timestamp and carries the payload/date", () => {
+  it("stamps a fresh key + capture timestamp + the capturing profile, and carries the payload/date", () => {
     const now = new Date("2026-02-03T14:30:00.000Z");
-    const intent = buildIntent("dose", "2026-02-03", { doseId: 7 }, now);
+    const intent = buildIntent("dose", "2026-02-03", { doseId: 7 }, 5, now);
     expect(intent.flow).toBe("dose");
     expect(intent.date).toBe("2026-02-03");
     expect(intent.capturedAt).toBe("2026-02-03T14:30:00.000Z");
     expect(intent.payload).toEqual({ doseId: 7 });
+    // The profile the write was captured under (issue #599) — replay attributes it here.
+    expect(intent.profileId).toBe(5);
     expect(intent.key.length).toBeGreaterThan(0);
   });
 
   it("gives distinct keys to two intents built back-to-back", () => {
-    const a = buildIntent("vitals", "2026-01-01", {
-      systolic: "120",
-      diastolic: "80",
-      glucose: null,
-      glucoseUnit: null,
-      spo2: null,
-      temperature: null,
-      tempUnit: null,
-      sleepHours: null,
-      hrv: null,
-      gripStrength: null,
-      chairStand: null,
-      balance: null,
-    });
-    const b = buildIntent("vitals", "2026-01-01", {
-      systolic: "121",
-      diastolic: "81",
-      glucose: null,
-      glucoseUnit: null,
-      spo2: null,
-      temperature: null,
-      tempUnit: null,
-      sleepHours: null,
-      hrv: null,
-      gripStrength: null,
-      chairStand: null,
-      balance: null,
-    });
+    const a = buildIntent(
+      "vitals",
+      "2026-01-01",
+      {
+        systolic: "120",
+        diastolic: "80",
+        glucose: null,
+        glucoseUnit: null,
+        spo2: null,
+        temperature: null,
+        tempUnit: null,
+        sleepHours: null,
+        hrv: null,
+        gripStrength: null,
+        chairStand: null,
+        balance: null,
+      },
+      1
+    );
+    const b = buildIntent(
+      "vitals",
+      "2026-01-01",
+      {
+        systolic: "121",
+        diastolic: "81",
+        glucose: null,
+        glucoseUnit: null,
+        spo2: null,
+        temperature: null,
+        tempUnit: null,
+        sleepHours: null,
+        hrv: null,
+        gripStrength: null,
+        chairStand: null,
+        balance: null,
+      },
+      1
+    );
     expect(a.key).not.toBe(b.key);
+  });
+});
+
+describe("chunkIntents (issue #604)", () => {
+  it("splits N items into ceil(N/size) chunks, preserving order", () => {
+    const items = Array.from({ length: 5 }, (_, i) => i);
+    expect(chunkIntents(items, 2)).toEqual([[0, 1], [2, 3], [4]]);
+  });
+
+  it("returns a single chunk when the queue fits under the cap", () => {
+    const items = [1, 2, 3];
+    expect(chunkIntents(items, 200)).toEqual([[1, 2, 3]]);
+  });
+
+  it("returns no chunks for an empty queue", () => {
+    expect(chunkIntents([], 200)).toEqual([]);
+  });
+
+  it("makes exactly ceil(201/200)=2 chunks at the 200-cap boundary", () => {
+    const items = Array.from({ length: 201 }, (_, i) => i);
+    const chunks = chunkIntents(items, MAX_INTENTS);
+    expect(chunks).toHaveLength(2);
+    expect(chunks[0]).toHaveLength(MAX_INTENTS);
+    expect(chunks[1]).toHaveLength(1);
+    // Order + completeness preserved across the split.
+    expect(chunks.flat()).toEqual(items);
+  });
+
+  it("defaults the chunk size to the shared MAX_INTENTS cap", () => {
+    const items = Array.from({ length: MAX_INTENTS + 1 }, (_, i) => i);
+    expect(chunkIntents(items)).toHaveLength(2);
+  });
+
+  it("rejects a non-positive size (a zero/negative would loop forever)", () => {
+    expect(() => chunkIntents([1, 2], 0)).toThrow();
+    expect(() => chunkIntents([1, 2], -1)).toThrow();
   });
 });
 
@@ -237,13 +287,18 @@ describe("planFlushDisposition (issue #475)", () => {
 
 describe("describeIntent (issue #475)", () => {
   it("names the flow + captured date so the user can recognise a dropped entry", () => {
-    const i = buildIntent("body-metric", "2026-07-10", {
-      weight: "80",
-      weightUnit: "kg",
-      bodyFatPct: null,
-      restingHr: null,
-      notes: null,
-    });
+    const i = buildIntent(
+      "body-metric",
+      "2026-07-10",
+      {
+        weight: "80",
+        weightUnit: "kg",
+        bodyFatPct: null,
+        restingHr: null,
+        notes: null,
+      },
+      1
+    );
     expect(describeIntent(i)).toBe("Body metric · 2026-07-10");
   });
 });

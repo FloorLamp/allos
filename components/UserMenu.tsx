@@ -126,13 +126,13 @@ export default function UserMenu({
                   type="submit"
                   aria-current={isActive ? "true" : undefined}
                   onClick={() => {
-                    // Switching profiles must not leak the previous profile's
-                    // offline emergency card; drop it before the switch action
-                    // navigates (#42). The new profile re-caches on its next
-                    // /emergency visit. Same for any queued offline writes (#28) —
-                    // they belong to the outgoing profile, so clear them too.
-                    clearEmergencyPayload();
-                    void clearQueue();
+                    // The switch-time device-local cleanup is centralized in
+                    // ProfileSwitchWatcher (#600) — it wipes the previous profile's
+                    // emergency card whenever the active profile id changes, so EVERY
+                    // switch affordance is covered by construction rather than each
+                    // hand-mirroring the wipe here. The offline queue is deliberately
+                    // NOT wiped on switch anymore: its intents are profile-stamped
+                    // (#599) and replay onto their own profile.
                     setOpen(false);
                   }}
                   className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm font-medium transition ${

@@ -1,8 +1,13 @@
 import { revalidatePath } from "next/cache";
-import { getCurrentSession } from "@/lib/auth";
+import {
+  getCurrentSession,
+  getAccessibleProfiles,
+  accessForProfile,
+} from "@/lib/auth";
 import { applyIntent } from "@/lib/offline/writes";
 import {
   FLOW_KINDS,
+  MAX_INTENTS,
   type QueuedIntent,
   type ReplayResult,
 } from "@/lib/offline/queue";
@@ -16,17 +21,20 @@ import {
 //
 // AUTH — this is a ROUTE HANDLER, not a Server Action, so it authenticates the way
 // the export routes do: cookie-authoritative getCurrentSession() (never the coarse
-// middleware cookie-presence check), then an explicit WRITE-access assertion that
-// mirrors requireWriteAccess() (which redirects; a route must return a status). A
-// missing session → 401 and a read-only grant → 403; on either the client keeps the
+// middleware cookie-presence check). A missing session → 401; the client keeps the
 // queue and prompts to log in — a queued write is NEVER dropped because the session
-// lapsed while offline. Writes land on the session's ACTIVE profile.
+// lapsed while offline.
+//
+// PROFILE ATTRIBUTION (issue #599) — a queued write lands on the profile it was
+// CAPTURED under (intent.profileId), NOT whatever profile is active at flush time.
+// Per intent: the login must still hold WRITE access to the stamped profile
+// (accessible AND a non-read grant), verified per-intent below; if that access is
+// gone the intent is reported "rejected" (an honest dead-letter reason) rather than
+// silently rerouted to the active profile. A LEGACY intent queued before the
+// profileId stamp shipped has none — it falls back to the active profile (its only
+// possible attribution), still gated on write access to that profile.
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-// The absolute cap on intents accepted per POST — the queue only holds a person's
-// own manual quick-logs, so a batch this large is abuse, not legitimate use.
-const MAX_INTENTS = 200;
 
 function isFlow(v: unknown): v is QueuedIntent["flow"] {
   return typeof v === "string" && (FLOW_KINDS as readonly string[]).includes(v);
@@ -34,7 +42,8 @@ function isFlow(v: unknown): v is QueuedIntent["flow"] {
 
 // Structural guard — a replayed intent must carry a string key + known flow + a
 // date + an object payload. A malformed entry is reported "rejected" so the client
-// drops it rather than retrying forever.
+// drops it rather than retrying forever. profileId is validated separately (an
+// absent one is the legacy-intent fallback, not a malformed entry).
 function isIntent(v: unknown): v is QueuedIntent {
   if (!v || typeof v !== "object") return false;
   const o = v as Record<string, unknown>;
@@ -57,13 +66,15 @@ export async function POST(req: Request) {
       { status: 401 }
     );
   }
-  if (session.access !== "write") {
-    return Response.json(
-      { ok: false, error: "forbidden", results: [] },
-      { status: 403 }
-    );
-  }
-  const profileId = session.profile.id;
+  const { login } = session;
+  // The set of profiles this login can WRITE right now — a stamped intent targeting
+  // anything outside it is dead-lettered, never applied. accessForProfile assumes the
+  // profile is already reachable (it defaults an ungranted member to 'write'), so
+  // accessibility is checked FIRST via this set, exactly like requireProfileWriteAccess.
+  const accessible = await getAccessibleProfiles();
+  const canWriteProfile = (targetId: number): boolean =>
+    accessible.some((p) => p.id === targetId) &&
+    accessForProfile(login.id, login.role, targetId) === "write";
 
   let body: unknown;
   try {
@@ -97,8 +108,24 @@ export async function POST(req: Request) {
         });
       continue;
     }
+    // Resolve WHICH profile this write lands on (issue #599). A stamped intent
+    // targets its captured profile; a legacy unstamped one falls back to the active
+    // profile. Either way the login must hold WRITE access to the target NOW — a
+    // caregiver who lost the grant while the write sat queued gets an honest reject,
+    // never a silent reroute onto the active profile.
+    const targetProfileId =
+      typeof raw.profileId === "number" ? raw.profileId : session.profile.id;
+    if (!canWriteProfile(targetProfileId)) {
+      results.push({
+        key: raw.key,
+        status: "rejected",
+        reason:
+          "You no longer have permission to save this entry to that profile.",
+      });
+      continue;
+    }
     try {
-      const outcome = applyIntent(profileId, raw);
+      const outcome = applyIntent(targetProfileId, raw);
       if (outcome === "done") anyApplied = true;
       // A server-side rejection carries a coarse reason so the client can tell the
       // user WHY their offline entry couldn't be applied (issue #475); the full

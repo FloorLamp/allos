@@ -12,9 +12,11 @@ import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import {
   buildIntent,
+  chunkIntents,
   planFlushDisposition,
   describeIntent,
   isAuthFailure,
+  MAX_INTENTS,
   type FlowKind,
   type IntentPayload,
   type ReplayResult,
@@ -93,8 +95,14 @@ async function registerBackgroundSync(): Promise<void> {
 
 export default function OfflineQueueProvider({
   children,
+  activeProfileId,
 }: {
   children: React.ReactNode;
+  // The session's active profile at render time (issue #599). Every intent enqueued
+  // here is STAMPED with it, so a late replay lands on the profile the write was
+  // captured under — not whatever profile is active at flush time. The layout passes
+  // the current session's profile.id; a profile switch re-renders with the new value.
+  activeProfileId: number;
 }) {
   const [pending, setPending] = useState(0);
   // Parked rejected/undeliverable entries the user can review + re-enter (issue
@@ -161,62 +169,89 @@ export default function OfflineQueueProvider({
         await refreshCount();
         return;
       }
-      let res: Response;
-      try {
-        res = await fetch("/api/offline-replay", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ intents }),
-        });
-      } catch {
-        // Still offline / a blip mid-flush — keep everything queued. When the
-        // browser SAYS it's online, this was likely the reconnect race (the
-        // "online" event can fire while the network stack is still coming up and
-        // the flush's own fetch then dies), and no other trigger may follow for
-        // a long time — so schedule ONE short retry (per failure streak) rather
-        // than stranding the queue until the next visibility change.
-        if (
-          typeof navigator !== "undefined" &&
-          navigator.onLine !== false &&
-          !retriedAfterFailure.current
-        ) {
-          retriedAfterFailure.current = true;
-          setTimeout(() => void flush(), 1500);
+      // Chunk the queue into ≤MAX_INTENTS POSTs (issue #604): a long offline stretch
+      // can accumulate 200+ intents, and one over-size batch dead-ends on a permanent
+      // 413 that the old "send everything" path silently swallowed. The per-intent
+      // replayed_keys ledger makes each chunk independently idempotent, so we apply
+      // each chunk's disposition as it settles and iterate until the queue drains or a
+      // chunk fails.
+      const chunks = chunkIntents(intents, MAX_INTENTS);
+      let totalSynced = 0;
+      let totalRejected = 0;
+      let batchTooLarge = false;
+      for (const chunk of chunks) {
+        let res: Response;
+        try {
+          res = await fetch("/api/offline-replay", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ intents: chunk }),
+          });
+        } catch {
+          // Still offline / a blip mid-flush — keep everything queued. When the
+          // browser SAYS it's online, this was likely the reconnect race (the
+          // "online" event can fire while the network stack is still coming up and
+          // the flush's own fetch then dies), and no other trigger may follow for
+          // a long time — so schedule ONE short retry (per failure streak) rather
+          // than stranding the queue until the next visibility change.
+          if (
+            typeof navigator !== "undefined" &&
+            navigator.onLine !== false &&
+            !retriedAfterFailure.current
+          ) {
+            retriedAfterFailure.current = true;
+            setTimeout(() => void flush(), 1500);
+          }
+          break;
         }
-        return;
+        retriedAfterFailure.current = false;
+        if (isAuthFailure(res.status)) {
+          // Session lapsed (maybe while offline). Never drop the queue — prompt login.
+          toast(
+            "You've been signed out. Log back in to sync your offline entries.",
+            { tone: "error", duration: null }
+          );
+          break;
+        }
+        if (res.status === 413) {
+          // Belt-and-suspenders (issue #604): chunking should keep every POST under
+          // the cap, so a 413 means an unexpected over-size chunk. Surface it
+          // persistently instead of silently returning, and stop — retrying the same
+          // over-size chunk would only 413 again.
+          batchTooLarge = true;
+          break;
+        }
+        if (!res.ok) break;
+        const data = (await res.json()) as { results?: ReplayResult[] };
+        const results = data.results ?? [];
+        // Split the honest per-intent answers into the four dispositions (issue #475):
+        // synced (done/duplicate) → delete; server-rejected → park in the dead-letter
+        // store, NEVER silently discard; transient error → re-persist with a bumped
+        // attempt count, or park once it exhausts the retry cap. `synced` counts
+        // done+duplicate — "duplicate" means a racing actor (the service worker's
+        // Background Sync) applied it first, which is still a safe sync worth
+        // confirming (only counting "done" made the toast vanish on that race).
+        const plan = planFlushDisposition(chunk, results);
+        await removeIntents(plan.deleteKeys);
+        await putIntents(plan.retry);
+        await saveRejected(plan.rejected);
+        totalSynced += plan.syncedCount;
+        totalRejected += plan.rejected.length;
       }
-      retriedAfterFailure.current = false;
-      if (isAuthFailure(res.status)) {
-        // Session lapsed (maybe while offline). Never drop the queue — prompt login.
-        toast(
-          "You've been signed out. Log back in to sync your offline entries.",
-          { tone: "error", duration: null }
-        );
-        return;
-      }
-      if (!res.ok) return;
-      const data = (await res.json()) as { results?: ReplayResult[] };
-      const results = data.results ?? [];
-      // Split the honest per-intent answers into the four dispositions (issue #475):
-      // synced (done/duplicate) → delete; server-rejected → park in the dead-letter
-      // store, NEVER silently discard; transient error → re-persist with a bumped
-      // attempt count, or park once it exhausts the retry cap. `synced` counts
-      // done+duplicate — "duplicate" means a racing actor (the service worker's
-      // Background Sync) applied it first, which is still a safe sync worth
-      // confirming (only counting "done" made the toast vanish on that race).
-      const plan = planFlushDisposition(intents, results);
-      await removeIntents(plan.deleteKeys);
-      await putIntents(plan.retry);
-      await saveRejected(plan.rejected);
       await refreshCount();
       await refreshRejected();
-      announceSynced(plan.syncedCount);
-      if (plan.rejected.length > 0) {
+      announceSynced(totalSynced);
+      if (totalRejected > 0) {
         // A dropped record is data loss — surface it persistently (never
         // auto-dismiss), and the review panel below lets the user re-enter it.
-        const n = plan.rejected.length;
         toast(
-          `${n} offline ${n === 1 ? "entry" : "entries"} couldn't be applied. Review below to re-enter.`,
+          `${totalRejected} offline ${totalRejected === 1 ? "entry" : "entries"} couldn't be applied. Review below to re-enter.`,
+          { tone: "error", duration: null }
+        );
+      }
+      if (batchTooLarge) {
+        toast(
+          "Some offline entries couldn't be synced (batch too large). They're still queued — reload to retry.",
           { tone: "error", duration: null }
         );
       }
@@ -227,11 +262,13 @@ export default function OfflineQueueProvider({
 
   const enqueue = useCallback(
     async (flow: FlowKind, date: string, payload: IntentPayload) => {
-      await enqueueIntent(buildIntent(flow, date, payload));
+      // Stamp the write with the profile it's captured under (issue #599) so replay
+      // attributes it correctly no matter which profile is active on reconnect.
+      await enqueueIntent(buildIntent(flow, date, payload, activeProfileId));
       await refreshCount();
       void registerBackgroundSync();
     },
-    [refreshCount]
+    [refreshCount, activeProfileId]
   );
 
   useEffect(() => {
