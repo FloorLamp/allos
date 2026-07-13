@@ -105,6 +105,10 @@ export interface QualitativeFlagRow {
   notes: string | null;
   reference: string | null;
   flag: string | null;
+  // The reading's LOINC, when stored — gives the classifier a deterministic class
+  // hint that overrides the name regexes (#684). Optional: rows without a LOINC
+  // fall back to name-based classification.
+  loinc?: string | null;
 }
 
 // The qualitative counterpart of computeFlagReconciliation (issue #549): the numeric
@@ -125,7 +129,8 @@ export function computeQualitativeFlagChanges(
       r.value,
       r.notes,
       r.reference,
-      r.flag
+      r.flag,
+      r.loinc
     );
     if (next === undefined) continue;
     out.push({ id: r.id, flag: next });

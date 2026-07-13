@@ -9,6 +9,7 @@ import type {
   Sex,
 } from "./types";
 import { convertToCanonical } from "./unit-conversions";
+import { qualitativeClassForLoinc } from "./biomarker-loinc";
 
 // The identity of the age band a range came from, returned by referenceRange /
 // optimalBand for labeling ("range for age 6–12"). Null when the adult (top-level)
@@ -886,11 +887,36 @@ export function classifyQualitativeResult(
   name: string | null | undefined,
   value?: string | null,
   notes?: string | null,
-  reference?: string | null
+  reference?: string | null,
+  loinc?: string | null
 ): QualitativeClassification | null {
   const n = (name ?? "").trim().toLowerCase();
   if (!n) return null;
   const presence = qualitativePresence(value, notes);
+
+  // LOINC-hinted class (#684) takes precedence over the name regexes below —
+  // deterministic across EHR naming variance (a positive HPV genotype, culture
+  // organism, or influenza PCR the name regexes don't recognize still classifies).
+  // Falls through to the name-based resolution when the LOINC is unknown. These
+  // branches mirror the name-based infection/immunity cases exactly.
+  switch (qualitativeClassForLoinc(loinc)) {
+    case "infection":
+      if (presence === "positive")
+        return { presence, polarity: "bad", immutable: false };
+      if (presence === "negative")
+        return { presence, polarity: "good", immutable: false };
+      return null;
+    case "immunity":
+      if (isImmunePositiveResult({ name, value, notes, reference }))
+        return { presence: "positive", polarity: "good", immutable: false };
+      return null;
+    case "screen":
+      // Prenatal/genetic risk screen — the low/high-risk axis is #687; no
+      // positive/negative verdict yet, so defer to the existing flag.
+      return null;
+    default:
+      break; // unknown LOINC → name-based resolution below
+  }
 
   // 1. Immutable identity attributes (blood type, genotype) — never abnormal, never stale.
   if (IMMUTABLE_ATTRIBUTE.test(n))
@@ -935,9 +961,10 @@ export function qualitativeFlagResolution(
   value: string | null | undefined,
   notes: string | null | undefined,
   reference: string | null | undefined,
-  currentFlag: string | null | undefined
+  currentFlag: string | null | undefined,
+  loinc?: string | null
 ): "immune" | "abnormal" | null | undefined {
-  const c = classifyQualitativeResult(name, value, notes, reference);
+  const c = classifyQualitativeResult(name, value, notes, reference, loinc);
   if (!c) return undefined; // unrecognized → leave the extractor/existing flag
   if (c.polarity === "bad") {
     // A bad-polarity positive (positive HBsAg/HCV/HIV, a positive culture) that the

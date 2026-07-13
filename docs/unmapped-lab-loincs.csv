@@ -1,65 +1,65 @@
-loinc,printed_name,unit,occurrences,source_zips,suggested_action
-39156-5,BMI,kg/m2,29,p1;p2,candidate-analyte
-29463-7,Body weight,kg,27,p1;p2,candidate-analyte
-56850-1,Lab Interpretation,,11,p1;p2,narrative-noise
-19066-0,Status Information,,6,p2,narrative-noise
-20507-0,RPR Qualitative,,6,p2,candidate-analyte
-45374-6,Specimen Expiration Date,,6,p2,narrative-noise
+loinc,printed_name,unit,occurrences,source_zips,disposition
+39156-5,BMI,kg/m2,29,p1;p2,vital
+29463-7,Body weight,kg,27,p1;p2,vital
+56850-1,Lab Interpretation,,11,p1;p2,candidate-analyte
+19066-0,Status Information,,6,p2,filtered
+20507-0,RPR Qualitative,,6,p2,qualitative:infection
+45374-6,Specimen Expiration Date,,6,p2,filtered
 58413-6,Nucleated RBC Auto,%,5,p2,candidate-analyte
 771-6,Absolute NRBC,x10(3)/uL,5,p2,candidate-analyte
-21026-0,TSO Interp,,4,p2,narrative-noise
-31208-2,Chlamydia Gonococcus Source,,4,p2,narrative-noise
+21026-0,TSO Interp,,4,p2,candidate-analyte
+31208-2,Chlamydia Gonococcus Source,,4,p2,filtered
 26515-7,Platelet,x10(3)/uL,3,p2,mapped
 28542-9,Mean Platelet Volume,fL,3,p2,mapped
-882-1,TSO Interp,,3,p2,narrative-noise
-890-4,ABSCO Interp,,3,p2,narrative-noise
-13955-0,Hepatitis C Antibody,,2,p2,candidate-analyte
+882-1,TSO Interp,,3,p2,candidate-analyte
+890-4,ABSCO Interp,,3,p2,candidate-analyte
+13955-0,Hepatitis C Antibody,,2,p2,qualitative:infection
 1504-0,"Glucose, Gestationalscreen (50G)-135 Cutoff",mg/dL,2,p2,candidate-analyte
-21613-5,C. trachomatis Amplification,,2,p2,narrative-noise
+21613-5,C. trachomatis Amplification,,2,p2,qualitative:infection
 32623-1,Mean Platelet Volume,fL,2,p2,mapped
-48683-7,Group B Streptococcus,,2,p2,candidate-analyte
-49549-9,Test Method,,2,p2,narrative-noise
-5196-1,Hepatitis B Surface Antigen,,2,p2,candidate-analyte
-62364-5,Performance,,2,p2,narrative-noise
-72486-4,Approved By,,2,p2,narrative-noise
-73824-5,Trisomy 13 (Patau Syndrome),,2,p2,candidate-analyte
-75558-7,Trisomy 18 (Edwards Syndrome),,2,p2,candidate-analyte
-75605-6,Fetal Fraction,,2,p2,candidate-analyte
-75608-0,References,,2,p2,narrative-noise
-75980-3,Result,,2,p2,narrative-noise
-75983-7,Trisomy 21 (Down Syndrome),,2,p2,candidate-analyte
-77202-0,About The Test,,2,p2,narrative-noise
+48683-7,Group B Streptococcus,,2,p2,qualitative:infection
+49549-9,Test Method,,2,p2,filtered
+5196-1,Hepatitis B Surface Antigen,,2,p2,qualitative:infection
+62364-5,Performance,,2,p2,filtered
+72486-4,Approved By,,2,p2,filtered
+73824-5,Trisomy 13 (Patau Syndrome),,2,p2,qualitative:screen
+75558-7,Trisomy 18 (Edwards Syndrome),,2,p2,qualitative:screen
+75605-6,Fetal Fraction,,2,p2,qualitative:screen
+75608-0,References,,2,p2,filtered
+75980-3,Result,,2,p2,candidate-analyte
+75983-7,Trisomy 21 (Down Syndrome),,2,p2,qualitative:screen
+77202-0,About The Test,,2,p2,filtered
 77307-7,Lead Level,ug/dL,2,p2,mapped
-8262-8,Limitations of The Test,,2,p2,narrative-noise
-94500-6,POC Sars-Cov-2 Cepheid PCR,,2,p1;p2,candidate-analyte
-106201-7,Cytology Accn #,,1,p2,narrative-noise
+8262-8,Limitations of The Test,,2,p2,filtered
+94500-6,POC Sars-Cov-2 Cepheid PCR,,2,p1;p2,qualitative:infection
+106201-7,Cytology Accn #,,1,p2,filtered
 13514-5,Hemoglobin Electrophoresis Interpretation,,1,p2,candidate-analyte
 19057-9,ABORh Interpretation,,1,p2,candidate-analyte
-20479-2,Measles IgG,,1,p2,candidate-analyte
+20479-2,Measles IgG,,1,p2,qualitative:immunity
 20572-4,Hemoglobin A Percent,%,1,p2,candidate-analyte
-24111-7,N. gonorrhoeae Amplification,,1,p2,narrative-noise
-25418-5,Mumps Virus Antibody (IgG),,1,p2,candidate-analyte
-25514-1,Rubella Antibody IgG,,1,p2,candidate-analyte
-30167-1,HPV High Risk,,1,p2,candidate-analyte
+24111-7,N. gonorrhoeae Amplification,,1,p2,qualitative:infection
+25418-5,Mumps Virus Antibody (IgG),,1,p2,qualitative:immunity
+25514-1,Rubella Antibody IgG,,1,p2,qualitative:immunity
+30167-1,HPV High Risk,,1,p2,qualitative:infection
 32682-7,Hemoglobin F Percent,%,1,p2,candidate-analyte
-34574-4,Final Report,,1,p2,narrative-noise
-36334-1,ICD-10,,1,p2,narrative-noise
+34574-4,Final Report,,1,p2,filtered
+36334-1,ICD-10,,1,p2,candidate-analyte
 38518-7,Imm Gran %,%,1,p2,candidate-analyte
-44841-5,Organism 2,,1,p2,narrative-noise
+44841-5,Organism 2,,1,p2,qualitative:infection
 4552-6,Hemoglobin A2 Percent,%,1,p2,candidate-analyte
-5028-6,N. gonorrhoeae Amplification,,1,p2,narrative-noise
+5028-6,N. gonorrhoeae Amplification,,1,p2,qualitative:infection
 51584-1,Imm Gran Abs,x10(3)/uL,1,p2,candidate-analyte
-5244-9,Measles Antibody (IgG),AU/mL,1,p2,candidate-analyte
-5334-8,Rubella Antibody (IgG),Index,1,p2,candidate-analyte
-5403-1,Varicella Zoster Virus Antibody (IgG),S/CO,1,p2,candidate-analyte
-56888-1,"HIV Ag/Ab, 4Th Generation",,1,p2,candidate-analyte
-59263-4,HPV Genotype 16,,1,p2,candidate-analyte
-60489-2,PCR Strep A Cepheid,,1,p1,candidate-analyte
-6463-4,Organism 1,,1,p2,narrative-noise
-75694-0,HPV Genotype 18/45,,1,p2,candidate-analyte
-7966-5,Mumps Antibody IgG,,1,p2,candidate-analyte
-8046-5,Varicella Zoster Antibody IgG,,1,p2,candidate-analyte
-85479-4,POC RSV PCR Cepheid,,1,p1,candidate-analyte
+5244-9,Measles Antibody (IgG),AU/mL,1,p2,qualitative:immunity
+5334-8,Rubella Antibody (IgG),Index,1,p2,qualitative:immunity
+5403-1,Varicella Zoster Virus Antibody (IgG),S/CO,1,p2,qualitative:immunity
+56888-1,"HIV Ag/Ab, 4Th Generation",,1,p2,qualitative:infection
+59263-4,HPV Genotype 16,,1,p2,qualitative:infection
+60489-2,PCR Strep A Cepheid,,1,p1,qualitative:infection
+6463-4,Organism 1,,1,p2,qualitative:infection
+75694-0,HPV Genotype 18/45,,1,p2,qualitative:infection
+7966-5,Mumps Antibody IgG,,1,p2,qualitative:immunity
+8046-5,Varicella Zoster Antibody IgG,,1,p2,qualitative:immunity
+85479-4,POC RSV PCR Cepheid,,1,p1,qualitative:infection
 893-8,Antibody Screen Interpretation,,1,p2,candidate-analyte
-92141-1,POC Influenza virus B Cepheid PCR,,1,p1,candidate-analyte
-92142-9,POC Influenza virus A Cepheid PCR,,1,p1,candidate-analyte
+92141-1,POC Influenza virus B Cepheid PCR,,1,p1,qualitative:infection
+92142-9,POC Influenza virus A Cepheid PCR,,1,p1,qualitative:infection
