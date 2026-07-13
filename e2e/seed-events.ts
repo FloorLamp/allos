@@ -6,6 +6,9 @@
 import { loadEnvConfig } from "@next/env";
 loadEnvConfig(process.cwd());
 
+import fs from "node:fs";
+import path from "node:path";
+
 import { db, today } from "../lib/db";
 import { shiftDateStr } from "../lib/date";
 import { writeRawPayload } from "../lib/integrations/raw-log";
@@ -41,6 +44,29 @@ setSetting(
 );
 setSetting("notify_last_error_at", "2026-07-09T08:00:00.000Z");
 setSetting("notify_last_error_channel", "telegram");
+
+// A persisted unexpected server error (#596) so Settings → Errors has a row to
+// render for the admin-access e2e. Synthetic message — no PHI. Written straight
+// to the errors.jsonl the admin page reads (data/logs/errors.jsonl), so the test
+// doesn't need to provoke a real 500. Mirrors what recordErrorEvent appends.
+// WRITE, not append: unlike the DB, errors.jsonl isn't reset between e2e runs,
+// and a second appended copy of the same message would strict-mode-break the
+// spec's getByText assertion.
+{
+  const errorLogPath = path.join(process.cwd(), "data", "logs", "errors.jsonl");
+  fs.mkdirSync(path.dirname(errorLogPath), { recursive: true });
+  const event = {
+    id: `${Date.now()}-000000`,
+    time: new Date().toISOString(),
+    level: "error",
+    scope: "e2e-seed",
+    message: "Seeded server error for the admin errors surface",
+    detail: "Error: synthetic failure\n    at seedEvents (e2e/seed-events.ts)",
+    loginId: null,
+    profileId: null,
+  };
+  fs.writeFileSync(errorLogPath, JSON.stringify(event) + "\n");
+}
 
 const PROFILE_ID = 1;
 

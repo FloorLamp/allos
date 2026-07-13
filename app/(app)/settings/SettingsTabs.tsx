@@ -5,12 +5,12 @@ import { usePathname } from "next/navigation";
 import type { AppRoute } from "@/lib/hrefs";
 
 // The tabs follow the three settings tiers: Preferences (login), Profile
-// (active profile), and Server (global) — plus Family, AI logs, and Audit.
-// Server, Family, AI logs, and Audit are admin-only (global config,
-// login/profile management, extraction content mixed across profiles, and the
-// cross-profile access trail), so they're appended only when isAdmin. The order
-// interleaves them where they belong: Server sits after the per-person tabs,
-// before Family.
+// (active profile), and Server (global) — plus Family, AI logs, Errors, and
+// Audit. Server, Family, AI logs, Errors, and Audit are admin-only (global
+// config, login/profile management, extraction content mixed across profiles,
+// unexpected server errors whose detail is PHI-adjacent, and the cross-profile
+// access trail), so they're appended only when isAdmin. The order interleaves
+// them where they belong: Server sits after the per-person tabs, before Family.
 //
 // Equipment used to be a tab here; it moved to its own top-level registry
 // (/equipment — issue #343), so it's no longer a settings surface.
@@ -22,6 +22,7 @@ const ADMIN_TABS: { href: AppRoute; label: string }[] = [
   { href: "/settings/family", label: "Family" },
   { href: "/settings/server", label: "Server" },
   { href: "/settings/logs", label: "AI logs" },
+  { href: "/settings/errors", label: "Errors" },
   { href: "/settings/audit", label: "Audit" },
 ];
 
