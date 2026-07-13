@@ -31,8 +31,15 @@ test.describe("mobile tab strips scroll instead of clipping (#640)", () => {
     // The Insights tab — last in the strip — is clickable: Playwright scrolls the
     // strip to it, which was impossible when the strip was clipped, not scrollable.
     const insights = page.getByRole("tab", { name: "Insights" });
-    await insights.click();
-    await expect(insights).toHaveAttribute("aria-selected", "true");
+    // Retry the click until selection sticks: under local `next dev` a click can
+    // land in the pre-hydration window and be swallowed (CI's `next start`
+    // hydrates fast enough that one click suffices).
+    await expect(async () => {
+      await insights.click();
+      await expect(insights).toHaveAttribute("aria-selected", "true", {
+        timeout: 1_000,
+      });
+    }).toPass();
     await expect(page.getByText("Date to analyze")).toBeVisible();
   });
 });
@@ -84,19 +91,25 @@ test.describe("touch targets clear the 40px minimum (#644)", () => {
 
     // Dose take/skip circles render on any due, active dose. When present, both
     // clear 40px and don't overlap (a mis-tap between taken and skipped on a
-    // medication is a real correctness cost).
-    const takes = page.getByTestId("dose-take");
-    if ((await takes.count()) > 0) {
-      const take = takes.first();
-      const skip = page.getByTestId("dose-skip").first();
-      const tBox = await take.boundingBox();
-      const sBox = await skip.boundingBox();
+    // medication is a real correctness cost). Scope BOTH circles to the SAME
+    // dose-status control — page-wide .first() on each testid can pair circles
+    // from two different rows, whose boxes bear no spatial relation (the CI
+    // failure mode this replaces).
+    // The 40px sizing applies to the CIRCLE variant; the pill variant (compact
+    // by design) also renders on this page, so target circles explicitly.
+    const control = page
+      .locator('[data-testid="dose-status"][data-variant="circle"]')
+      .first();
+    if ((await control.count()) > 0) {
+      const tBox = await control.getByTestId("dose-take").boundingBox();
+      const sBox = await control.getByTestId("dose-skip").boundingBox();
       expect(tBox).not.toBeNull();
       expect(sBox).not.toBeNull();
       expect(tBox!.width).toBeGreaterThanOrEqual(40);
       expect(tBox!.height).toBeGreaterThanOrEqual(40);
       expect(sBox!.width).toBeGreaterThanOrEqual(40);
-      // The skip circle starts to the right of the take circle, with a gap.
+      // Within one control (a no-wrap flex row) the skip circle sits fully to
+      // the right of the take circle, with the widened gap between them.
       expect(sBox!.x).toBeGreaterThanOrEqual(tBox!.x + tBox!.width);
     }
   });

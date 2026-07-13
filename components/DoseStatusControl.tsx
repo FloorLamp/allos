@@ -140,6 +140,7 @@ export default function DoseStatusControl({
         variant === "circle" ? "gap-3" : "gap-1.5"
       }`}
       data-testid="dose-status"
+      data-variant={variant}
     >
       <button
         type="button"
