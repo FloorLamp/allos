@@ -64,13 +64,6 @@ Pin a specific build by exporting `IMAGE` (defaults to `:latest`):
 IMAGE=ghcr.io/floorlamp/allos:<git-sha> docker compose up -d --pull always
 ```
 
-To **build from source** locally instead of pulling, layer on the build
-override:
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
-```
-
 The app is served at `http://localhost:3000` (set `PORT` to change the host
 port). The SQLite schema is created automatically on first boot — no migration
 step. On the very first boot set **`ADMIN_PASSWORD`** in `.env` so you know the
@@ -86,16 +79,7 @@ the container starts as root, the entrypoint chowns the data dir to the app user
 Prefer a managed **named volume** if you don't need direct host access — see the
 commented block in `docker-compose.yml`.
 
-### Published images
-
-`.github/workflows/deploy.yml` builds the image on every push to `main` (and via
-a manual **Run workflow**) and pushes it to GHCR as `ghcr.io/<owner>/<repo>`,
-tagged with both `:latest` and the commit `:<sha>`, authenticating with the
-built-in `GITHUB_TOKEN` (no extra registry secret). The in-image `next build`
-(which runs tsc) is the CI gate: a type error fails the job and nothing is
-pushed, so the published `:latest` always builds cleanly.
-
-Deploying is up to you: on the box, `docker compose pull && docker compose up -d`
+**Updating.** On the box, `docker compose pull && docker compose up -d`
 picks up the new `:latest` (pin a `:<sha>` tag instead for a fixed version). Run
 it by hand or from a host cron/systemd timer. If the GHCR package is private,
 `docker login ghcr.io` with a token that has `read:packages` first.
@@ -110,29 +94,29 @@ the app and the `npm run seed` script, and is gitignored:
 cp .env.example .env.local   # then edit in your values
 ```
 
-| Variable                    | Description                                                                                                                                                                                                                                                                                                                                 |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ADMIN_USERNAME`            | Optional. Username for the bootstrap admin login created on first boot (default `admin`). Read only when no login exists yet.                                                                                                                                                                                                               |
-| `ADMIN_PASSWORD`            | Password for the bootstrap admin login. If unset on first boot, a random one is generated and printed to the log **once** — capture it. Read only when no login exists yet.                                                                                                                                                                 |
-| `ALLOS_DISABLE_2FA`         | Optional bootstrap-recovery escape hatch. Comma-separated username(s) whose TOTP second factor is **skipped** at login (for an admin locked out after losing their authenticator + recovery codes). Every bypass is logged loudly and audited (`login.2fa-bypass`). Remove it and re-enroll once access is restored.                        |
-| `ALLOS_DEMO_MODE`           | Optional. Set to `1` to run this instance as a **public read-only demo** — login-page demo credentials, a persistent "synthetic data — do not enter real health information" banner on every page, and every non-admin write refused. Leave **unset** for any real deployment. See **[Running a demo instance](#running-a-demo-instance)**. |
-| `ANTHROPIC_API_KEY`         | Enables Claude-powered insights and medical-document extraction. Optional when `AI_BASE_URL` points at a local server that ignores keys.                                                                                                                                                                                                    |
-| `AI_BASE_URL`               | Optional. Point the app at a self-hosted / local inference server exposing an Anthropic-compatible API (Ollama, a proxy, …) for zero external egress. Set alone, or with a key it forwards.                                                                                                                                                 |
-| `HEALTH_AI_MODEL`           | Optional. Override the AI model (defaults to `claude-sonnet-5`).                                                                                                                                                                                                                                                                            |
-| `HEALTH_AI_MAX_TOKENS`      | Optional. Max output tokens for document extraction (default `16000`).                                                                                                                                                                                                                                                                      |
-| `AI_DAILY_EXTRACTION_LIMIT` | Optional. Max medical-document extractions per day (default `50`).                                                                                                                                                                                                                                                                          |
-| `AI_DAILY_INSIGHT_LIMIT`    | Optional. Max AI insight generations per day (default `100`).                                                                                                                                                                                                                                                                               |
-| `AI_EXTRACTION_CONCURRENCY` | Optional. How many document extractions run at once (default `3`).                                                                                                                                                                                                                                                                          |
-| `AI_EXTRACTION_QUEUE_MAX`   | Optional. Max extractions queued behind the running ones (default `100`).                                                                                                                                                                                                                                                                   |
-| `EXTRACTION_LEASE_MINUTES`  | Optional. How long a claimed extraction lease is held before it can be reclaimed (default `30`).                                                                                                                                                                                                                                            |
-| `LOG_LEVEL`                 | Optional. `debug`/`info`/`warn`/`error` (default `info`).                                                                                                                                                                                                                                                                                   |
-| `LOG_FORMAT`                | Optional. `text` or `json`. Defaults to `text` in dev, `json` in prod.                                                                                                                                                                                                                                                                      |
-| `AI_LOG_PROMPTS`            | Optional. Set `0` to keep prompts/responses out of the AI activity log.                                                                                                                                                                                                                                                                     |
-| `PORT`                      | Optional (Docker). Host port to expose (container listens on `3000`).                                                                                                                                                                                                                                                                       |
-| `TRUST_PROXY`               | Optional. Set (`1`/`true`/`yes`) when the app runs **behind a reverse proxy** that sets `X-Forwarded-For`. Only then does the Telegram-webhook rate limiter trust that header to key its per-client budget; left unset (direct-to-Node exposure) the header is spoofable, so all webhook traffic shares one bucket. Has no effect on auth.  |
-| `TZ`                        | Optional. Timezone is DB-backed — the instance default under **Settings → Server**, per-profile under **Settings → Profile**; a `TZ` env only seeds the instance default on first boot.                                                                                                                                                     |
-| `DATA_DIR`                  | Optional (Docker). Host path for persistent data — see **Deploy with Docker**.                                                                                                                                                                                                                                                              |
-| `BACKUP_DEST_DIR`           | Optional. A **second mounted directory** to copy each verified snapshot to (and mirror `data/uploads/` to), so backups survive loss of the `DATA_DIR` volume — see **[Backups → Off-volume backups](docs/backups.md#off-volume-backups-backup_dest_dir)**.                                                                                  |
+| Variable                    | Description                                                                                                                                                                                                                                                                                                                                |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `ADMIN_USERNAME`            | Optional. Username for the bootstrap admin login created on first boot (default `admin`). Read only when no login exists yet.                                                                                                                                                                                                              |
+| `ADMIN_PASSWORD`            | Password for the bootstrap admin login. If unset on first boot, a random one is generated and printed to the log **once** — capture it. Read only when no login exists yet.                                                                                                                                                                |
+| `ALLOS_DISABLE_2FA`         | Optional bootstrap-recovery escape hatch. Comma-separated username(s) whose TOTP second factor is **skipped** at login (for an admin locked out after losing their authenticator + recovery codes). Every bypass is logged loudly and audited (`login.2fa-bypass`). Remove it and re-enroll once access is restored.                       |
+| `ALLOS_DEMO_MODE`           | Optional. Set to `1` to run this instance as a **public read-only demo** — login-page demo credentials, a persistent "synthetic data — do not enter real health information" banner on every page, and every non-admin write refused. Leave **unset** for any real deployment. See **[docs/demo.md](docs/demo.md)**.                       |
+| `ANTHROPIC_API_KEY`         | Enables Claude-powered insights and medical-document extraction. Optional when `AI_BASE_URL` points at a local server that ignores keys.                                                                                                                                                                                                   |
+| `AI_BASE_URL`               | Optional. Point the app at a self-hosted / local inference server exposing an Anthropic-compatible API (Ollama, a proxy, …) for zero external egress. Set alone, or with a key it forwards.                                                                                                                                                |
+| `HEALTH_AI_MODEL`           | Optional. Override the AI model (defaults to `claude-sonnet-5`).                                                                                                                                                                                                                                                                           |
+| `HEALTH_AI_MAX_TOKENS`      | Optional. Max output tokens for document extraction (default `16000`).                                                                                                                                                                                                                                                                     |
+| `AI_DAILY_EXTRACTION_LIMIT` | Optional. Max medical-document extractions per day (default `50`).                                                                                                                                                                                                                                                                         |
+| `AI_DAILY_INSIGHT_LIMIT`    | Optional. Max AI insight generations per day (default `100`).                                                                                                                                                                                                                                                                              |
+| `AI_EXTRACTION_CONCURRENCY` | Optional. How many document extractions run at once (default `3`).                                                                                                                                                                                                                                                                         |
+| `AI_EXTRACTION_QUEUE_MAX`   | Optional. Max extractions queued behind the running ones (default `100`).                                                                                                                                                                                                                                                                  |
+| `EXTRACTION_LEASE_MINUTES`  | Optional. How long a claimed extraction lease is held before it can be reclaimed (default `30`).                                                                                                                                                                                                                                           |
+| `LOG_LEVEL`                 | Optional. `debug`/`info`/`warn`/`error` (default `info`).                                                                                                                                                                                                                                                                                  |
+| `LOG_FORMAT`                | Optional. `text` or `json`. Defaults to `text` in dev, `json` in prod.                                                                                                                                                                                                                                                                     |
+| `AI_LOG_PROMPTS`            | Optional. Set `0` to keep prompts/responses out of the AI activity log.                                                                                                                                                                                                                                                                    |
+| `PORT`                      | Optional (Docker). Host port to expose (container listens on `3000`).                                                                                                                                                                                                                                                                      |
+| `TRUST_PROXY`               | Optional. Set (`1`/`true`/`yes`) when the app runs **behind a reverse proxy** that sets `X-Forwarded-For`. Only then does the Telegram-webhook rate limiter trust that header to key its per-client budget; left unset (direct-to-Node exposure) the header is spoofable, so all webhook traffic shares one bucket. Has no effect on auth. |
+| `TZ`                        | Optional. Timezone is DB-backed — the instance default under **Settings → Server**, per-profile under **Settings → Profile**; a `TZ` env only seeds the instance default on first boot.                                                                                                                                                    |
+| `DATA_DIR`                  | Optional (Docker). Host path for persistent data — see **Deploy with Docker**.                                                                                                                                                                                                                                                             |
+| `BACKUP_DEST_DIR`           | Optional. A **second mounted directory** to copy each verified snapshot to (and mirror `data/uploads/` to), so backups survive loss of the `DATA_DIR` volume — see **[Backups → Off-volume backups](docs/backups.md#off-volume-backups-backup_dest_dir)**.                                                                                 |
 
 You can also `export` these directly instead of using a file.
 
@@ -199,10 +183,6 @@ Full guide — off-volume setup, what the mirror covers, restore walkthrough, mo
 
 `GET /api/health` (unauthenticated — it's the Docker healthcheck) returns a deliberately coarse `{ status, reason?, lastBackupAgeHours }` and flips to HTTP **503** when the DB is unreadable, `data/` is unwritable, the cached weekly integrity check found corruption, or backups are stale / have never run — each reason is documented in [docs/backups.md](docs/backups.md#health-endpoint). Notification delivery failures surface separately as a channel-aware marker on **Settings → Server**, cleared by a successful **Send test**.
 
-## Running a demo instance
-
-Set `ALLOS_DEMO_MODE=1` and reseed to run a **public, read-only demo**: the login page advertises the `demo`/`demo` credentials (a read-only member — every non-admin write is refused at the auth boundary, and the shared login can't change its own password or 2FA), a persistent "synthetic data" banner shows on every page, and `npm run demo-reset` restores a pristine seed on a nightly cron. `demo-reset` refuses to run unless the flag is set, so it can never wipe a real instance — but a demo is destructive by design: **never co-host it with a real family instance**. Setup, nightly-reset cron, and the isolation warning: [docs/demo.md](docs/demo.md).
-
 ## Development
 
 Everything above is the self-hoster's manual; this section is for working on Allos itself. `AGENTS.md` is the contributor/agent guide (architecture, conventions, test tiers), with deep-dives under `docs/internals/`.
@@ -225,6 +205,26 @@ npm run dev        # start the dev server at http://localhost:3000
 
 The SQLite database is created automatically at `data/allos.db` on first run
 (the `data/` directory is gitignored). Delete that file to start fresh.
+
+### Building & publishing images
+
+To **build from source** locally instead of pulling the published image, layer on the build
+override:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+```
+
+`.github/workflows/deploy.yml` builds the image on every push to `main` (and via
+a manual **Run workflow**) and pushes it to GHCR as `ghcr.io/<owner>/<repo>`,
+tagged with both `:latest` and the commit `:<sha>`, authenticating with the
+built-in `GITHUB_TOKEN` (no extra registry secret). The in-image `next build`
+(which runs tsc) is the CI gate: a type error fails the job and nothing is
+pushed, so the published `:latest` always builds cleanly.
+
+### Demo instance
+
+`ALLOS_DEMO_MODE=1` runs a public, **read-only demo** (login `demo`/`demo`, every write refused server-side, nightly `npm run demo-reset`) — setup, nightly-reset cron, and the isolation warning are in [docs/demo.md](docs/demo.md). Never co-host a demo with a real instance.
 
 ### Scripts
 
