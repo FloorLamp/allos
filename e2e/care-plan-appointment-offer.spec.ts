@@ -54,11 +54,19 @@ test.describe("Care-plan close-the-loop on appointment completion (#658)", () =>
     await expect(row).toBeVisible();
     await row.getByRole("button", { name: "Mark completed" }).click();
 
-    // The care-plan offer lists the matching item; take it.
+    // The care-plan offer lists the matching item; take it. Click the button in
+    // OUR item's own row — the offer can also list other matching open items
+    // (the seed's "Repeat screening colonoscopy" matches the same needle and
+    // date window), and a bare .first() closed the seeded item instead, breaking
+    // care-plan.spec.ts downstream (fixture blast radius).
     const offer = upcoming.getByTestId("care-plan-offer");
     await expect(offer).toBeVisible();
     await expect(offer).toContainText(ITEM);
-    await offer.getByTestId("care-plan-offer-done").first().click();
+    await offer
+      .locator("div")
+      .filter({ hasText: ITEM })
+      .getByTestId("care-plan-offer-done")
+      .click();
     await expect(page.getByText("Care-plan item marked done")).toBeVisible();
 
     // The item is now closed on the care-plan page.
