@@ -1041,13 +1041,33 @@ async function extractPersistInputForPreview(
       skip: "Daily AI limit reached — cannot preview a re-extraction today.",
     };
   }
-  const result = await extractMedicalDocument(
-    buffer,
-    d.mime_type || "application/octet-stream",
-    d.filename,
-    getCanonicalVocabulary()
-  );
+  // Charged a unit above, so route the Claude call through the SAME process-wide
+  // concurrency limiter every other extraction dispatch uses (#135 item 2) instead
+  // of firing unbounded concurrent previews past AI_EXTRACTION_CONCURRENCY. A
+  // saturated queue sheds to a skip + refund like the sibling reprocess paths.
+  let result: Awaited<ReturnType<typeof extractMedicalDocument>>;
+  try {
+    result = await extractionSemaphore.run(() =>
+      extractMedicalDocument(
+        buffer,
+        d.mime_type || "application/octet-stream",
+        d.filename,
+        getCanonicalVocabulary()
+      )
+    );
+  } catch (err) {
+    if (err instanceof QueueFullError) {
+      refundAiUsage(profileId, "extraction");
+      return { skip: AI_QUEUE_FULL_DOC_MESSAGE };
+    }
+    throw err;
+  }
   if (result.status !== "done") {
+    // A transient model failure (timeout/429/5xx) refunds the charged unit exactly
+    // as runExtraction does (#135 item 3) — a flaky preview must not permanently burn
+    // the profile's daily extraction quota. A deterministic `skipped` (unextractable
+    // doc) legitimately consumes the unit, matching runExtraction's non-refund there.
+    if (result.status === "failed") refundAiUsage(profileId, "extraction");
     return {
       skip:
         result.status === "skipped"
