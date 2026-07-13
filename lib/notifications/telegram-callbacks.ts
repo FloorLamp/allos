@@ -42,6 +42,7 @@ import {
   parseSkipCallback,
   parseTakeCallback,
   preventiveAnswerText,
+  preventiveCloseText,
   refillAnswerText,
   removeButton,
   removeRowContaining,
@@ -174,21 +175,24 @@ function applyPreventiveTap(
   pv: PreventiveCallback
 ): PreventiveTapOutcome {
   const rule = preventiveRuleByKey(pv.ruleKey);
-  if (!rule) return "unknown-rule";
+  if (!rule) return { kind: "unknown-rule" };
   if (pv.action === "done") {
     recordPreventiveDone(profileId, pv.ruleKey, today(profileId));
-    return "done";
+    return { kind: "done" };
   }
   if (pv.action === "na") {
     setPreventiveOverride(profileId, pv.ruleKey, "not_applicable");
-    return "not-applicable";
+    return { kind: "not-applicable" };
   }
+  // The snooze-until date rides the outcome so the toast + closing text can say
+  // when the reminder resumes — the same one-applied-write the bus row records.
+  const snoozeUntil = shiftDateStr(today(profileId), PREVENTIVE_SNOOZE_DAYS);
   snoozeFinding(
     profileId,
     preventiveSignalKey(rule.kind, pv.ruleKey),
-    shiftDateStr(today(profileId), PREVENTIVE_SNOOZE_DAYS)
+    snoozeUntil
   );
-  return "reminded";
+  return { kind: "reminded", snoozeUntil };
 }
 
 // Handle a preventive-nudge button. Resolve WHO tapped from the chat (a family
@@ -209,12 +213,10 @@ async function handlePreventiveTap(
   }
   const outcome = applyPreventiveTap(profileId, pv);
   await answerCallbackQuery(cq.id, preventiveAnswerText(outcome));
-  await consumeRow(
-    cq,
-    outcome === "unknown-rule"
-      ? OUTDATED_MESSAGE_TEXT
-      : "Preventive reminder handled ✅"
-  );
+  // The closing line states the resolved state in detail (done / not applicable /
+  // snoozed-until-when) — toast and body come from the same outcome, so they
+  // can't disagree.
+  await consumeRow(cq, preventiveCloseText(outcome));
 }
 
 // Apply a refill tap: verify the item is still the profile's (a forged id →

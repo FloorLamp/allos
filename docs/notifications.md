@@ -20,8 +20,10 @@ regardless of the alert toggle. The recap is also available as an off-by-default
 **Weekly recap** dashboard card (enable it from the dashboard's **Customize** control).
 
 Newly-due **preventive care** (an age/sex-appropriate checkup or screening) also sends a
-single proactive nudge, so a due mammogram/colonoscopy/lipid panel doesn't wait to be
-noticed in the "what's due" digest. It's deduped **once per due episode** (not once a
+proactive nudge — **one message per screening**, so each message names its item and its
+✅ Done / 🚫 Not applicable / ⏰ Remind later buttons are unambiguous — and a due
+mammogram/colonoscopy/lipid panel doesn't wait to be noticed in the "what's due" digest.
+Each screening is deduped **once per due episode** (not once a
 day): the ping fires when an item first becomes due or overdue and stays quiet until the
 item is satisfied or ages out, then re-fires when the next interval comes due. The whole
 domain is a per-profile toggle — **Settings → Profile → Preventive-care reminders** (on by

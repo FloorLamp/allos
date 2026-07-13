@@ -2,6 +2,7 @@
 // unit-tested (lib/__tests__). Consumed by telegram-callbacks.ts.
 
 import type { DoseTakenOutcome, EscalationAckOutcome } from "../types";
+import { formatRecordDate } from "../record-format";
 import type { ReminderWindow } from "./supplement-format";
 
 // A keyboard button carries EITHER a callback token or a deep-link url (issue
@@ -243,21 +244,47 @@ export function parsePreventiveCallback(
 
 // The outcome a preventive tap answers from. `unknown-rule` covers a tampered or
 // stale token whose rule isn't in the catalog — nothing is written, so the tap is
-// never falsely confirmed.
+// never falsely confirmed. `snoozeUntil` (the profile-local date the bus snooze
+// runs to) rides along on a `reminded` outcome so both the toast and the closing
+// text can say WHEN the reminder resumes — the dose handlers' outcome-honesty
+// discipline: state what actually happened, from the one applied write.
 export type PreventiveTapOutcome =
-  "done" | "not-applicable" | "reminded" | "unknown-rule";
+  | { kind: "done" }
+  | { kind: "not-applicable" }
+  | { kind: "reminded"; snoozeUntil: string }
+  | { kind: "unknown-rule" };
 
 export function preventiveAnswerText(outcome: PreventiveTapOutcome): string {
-  switch (outcome) {
+  switch (outcome.kind) {
     case "done":
       return "Marked done ✅";
     case "not-applicable":
       return "Marked not applicable 🚫";
     case "reminded":
-      return "Okay — I'll remind you later ⏰";
+      return `Snoozed until ${formatRecordDate(outcome.snoozeUntil)} ⏰`;
     case "unknown-rule":
     default:
       return "Not recorded — this reminder is out of date. Open the app.";
+  }
+}
+
+// The closing line a resolved preventive message collapses to (its title — which
+// names the screening — is retained above it by replacementWithTitle). Unlike the
+// old generic "handled ✅", it states the suppressed/resolved state in detail:
+// what was recorded, and for a snooze, until when and where to undo it.
+export function preventiveCloseText(outcome: PreventiveTapOutcome): string {
+  switch (outcome.kind) {
+    case "done":
+      return "Marked done ✅ — recorded to preventive care.";
+    case "not-applicable":
+      return "Marked not applicable 🚫 — it won't be suggested again.";
+    case "reminded":
+      return `Snoozed until ${formatRecordDate(
+        outcome.snoozeUntil
+      )} ⏰ — hidden from Upcoming and reminders until then (restore it on Upcoming any time).`;
+    case "unknown-rule":
+    default:
+      return OUTDATED_MESSAGE_TEXT;
   }
 }
 
