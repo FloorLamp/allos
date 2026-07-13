@@ -115,9 +115,17 @@ export function buildHealthStatus(opts: {
   }
 
   // Off-volume staleness is the least severe (a mirror lag is less urgent than the
-  // primary snapshot dying), so it's checked last.
+  // primary snapshot dying), so it's checked last. Gated on `backupsEnabled` like
+  // the primary `backup-stale`/`backups-never-ran` alarms (#620): replication only
+  // ever runs as a byproduct of a scheduled snapshot (performBackup refreshes
+  // `backup_offsite_last_at`), so a disabled schedule stops refreshing the offsite
+  // marker too — without this gate an operator who disables backups (e.g. switching
+  // to host-level volume snapshots) while BACKUP_DEST_DIR stays set would flip to a
+  // permanent `offsite-stale` 503 48h later, exactly the state the primary alarm is
+  // deliberately suppressed for.
   const offsiteAgeHours = backupAgeHours(opts.lastOffsiteAt, opts.now);
   if (
+    opts.backupsEnabled &&
     opts.offsiteConfigured &&
     offsiteAgeHours !== null &&
     offsiteAgeHours > threshold

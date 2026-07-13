@@ -7,6 +7,7 @@ import {
   saveBackupSettings,
   backupNow,
   verifyOffsiteDestination,
+  recheckLiveIntegrity,
 } from "./actions";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus } from "@/components/useSaveStatus";
@@ -17,6 +18,7 @@ export default function BackupSettings({
   settings,
   lastBackup,
   lastError,
+  integrity,
   offsite,
 }: {
   settings: BackupSettings;
@@ -27,6 +29,14 @@ export default function BackupSettings({
     failed: boolean;
   } | null;
   lastError: string | null;
+  // Weekly live-DB integrity verdict (#621): ok === false is the state that drives
+  // `/api/health` to 503; the "Recheck integrity now" button re-tests it so a DB
+  // repaired outside a snapshot restore can clear the failure without waiting a week.
+  integrity: {
+    ok: boolean | null;
+    at: string | null;
+    detail: string | null;
+  };
   // Off-volume replication status (#130): whether BACKUP_DEST_DIR is configured
   // (env-driven, not editable here) plus whether it's presently mounted/verified
   // (#463) and the last off-volume copy time / error.
@@ -82,6 +92,20 @@ export default function BackupSettings({
   function verifyOffsite() {
     startRunNow(async () => {
       setResult(await verifyOffsiteDestination());
+      router.refresh();
+    });
+  }
+
+  function recheckIntegrity() {
+    startRunNow(async () => {
+      try {
+        setResult(await recheckLiveIntegrity());
+      } catch {
+        setResult({
+          ok: false,
+          message: "Couldn’t re-check integrity. Please try again.",
+        });
+      }
       router.refresh();
     });
   }
@@ -187,6 +211,39 @@ export default function BackupSettings({
       </div>
 
       <div
+        data-testid="backup-integrity"
+        className="rounded-lg bg-slate-50 p-3 text-xs text-slate-500 dark:bg-slate-800/50 dark:text-slate-400"
+      >
+        <span className="font-medium text-slate-600 dark:text-slate-300">
+          Live database integrity:
+        </span>{" "}
+        {integrity.ok === null ? (
+          <>not checked yet (runs weekly from the notify tick).</>
+        ) : integrity.ok ? (
+          <span className="text-emerald-600 dark:text-emerald-400">
+            OK{integrity.at ? ` — last checked ${integrity.at}` : ""}.
+          </span>
+        ) : (
+          <>
+            <span className="font-medium text-rose-600 dark:text-rose-400">
+              FAILED{integrity.at ? ` — last checked ${integrity.at}` : ""}.
+            </span>
+            <div className="mt-1 text-rose-600 dark:text-rose-400">
+              The health endpoint is reporting <code>integrity-failed</code>.
+              After repairing or restoring the database, click{" "}
+              <strong>Recheck integrity now</strong> to re-test and clear the
+              alarm without waiting for the next weekly check.
+            </div>
+            {integrity.detail && (
+              <div className="mt-1 font-mono text-rose-600 dark:text-rose-400">
+                {integrity.detail}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      <div
         data-testid="backup-offsite"
         className="rounded-lg bg-slate-50 p-3 text-xs text-slate-500 dark:bg-slate-800/50 dark:text-slate-400"
       >
@@ -238,6 +295,15 @@ export default function BackupSettings({
           className="btn-ghost"
         >
           Back up now
+        </button>
+        <button
+          type="button"
+          onClick={recheckIntegrity}
+          disabled={busy}
+          className="btn-ghost"
+          data-testid="backup-recheck-integrity"
+        >
+          Recheck integrity now
         </button>
         {offsite.configured && (
           <button

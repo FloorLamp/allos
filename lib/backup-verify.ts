@@ -67,12 +67,21 @@ export function backupAgeHours(
   return Math.round(Math.max(0, hours) * 100) / 100;
 }
 
-// Whether the periodic live-DB integrity check is due: run once per ISO week,
-// gated by the stored week key of the last run.
+// Whether the periodic live-DB integrity check is due. Normally once per ISO week,
+// gated by the stored week key of the last run — BUT a prior FAILED verdict
+// (`lastOk === false`) makes it due EVERY tick until the DB is repaired (#621).
+// Without that, a Monday corruption verdict advanced the week marker and could not
+// be re-tested until the next ISO week, so a DB repaired by any route other than a
+// snapshot restore left `/api/health` stuck at 503 `integrity-failed` for up to 7
+// days with no clearing path. Rechecking a corrupt DB hourly is cheap relative to a
+// week of false 503s; a passing recheck clears the marker on its next run. A `null`/
+// `undefined` `lastOk` ("never run" or "last passed") keeps the weekly cadence.
 export function isLiveIntegrityCheckDue(
   lastWeekKey: string | undefined | null,
-  currentWeekKey: string
+  currentWeekKey: string,
+  lastOk?: boolean | null
 ): boolean {
+  if (lastOk === false) return true;
   return lastWeekKey !== currentWeekKey;
 }
 

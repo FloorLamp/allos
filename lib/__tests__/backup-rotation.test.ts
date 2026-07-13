@@ -6,6 +6,8 @@ import {
   planBackupRotation,
   planAsidePrune,
   isBackupDue,
+  selectLatestVerified,
+  type SnapshotStatus,
 } from "../backup-rotation";
 
 describe("backupFilename / parseBackupStamp", () => {
@@ -83,6 +85,85 @@ describe("planBackupRotation", () => {
     });
     expect(keep).toEqual(["allos-2026-07-06-0300.db"]);
     expect(prune).toEqual([]);
+  });
+
+  // #622: integrity-failed forensics files and no-sidecar partials must NOT count as
+  // retention keepers — a corrupt file can't evict a verified good one from a slot.
+  describe("verification-aware keepers (#622)", () => {
+    const bad = "allos-2026-07-06-0300.db"; // W28, newest — failed integrity
+    const good1 = "allos-2026-07-05-0300.db"; // W27
+    const good2 = "allos-2026-07-04-0300.db"; // W27
+    const good3 = "allos-2026-06-28-0300.db"; // W26
+    const mix = [bad, good1, good2, good3];
+    const statusOf = (n: string): SnapshotStatus =>
+      n === bad ? "failed" : "ok";
+
+    it("does not let a failed newest occupy a daily slot", () => {
+      const { keep, prune } = planBackupRotation(
+        mix,
+        { keepDaily: 2, keepWeekly: 0 },
+        statusOf
+      );
+      // The two newest VERIFIED files fill the two daily slots; the failed file is
+      // never a keeper and is pruned.
+      expect(keep).toContain(good1);
+      expect(keep).toContain(good2);
+      expect(keep).not.toContain(bad);
+      expect(prune).toContain(bad);
+      expect(prune).toContain(good3); // beyond keepDaily, no weeklies kept
+    });
+
+    it("treats a no-sidecar partial as prune-eligible, never a keeper", () => {
+      const partial = "allos-2026-07-07-0900.db"; // newest, unverified partial
+      const status = (n: string): SnapshotStatus =>
+        n === partial ? "unverified" : "ok";
+      const { keep, prune } = planBackupRotation(
+        [partial, good1, good2],
+        { keepDaily: 1, keepWeekly: 0 },
+        status
+      );
+      expect(keep).toEqual([good1]); // newest verified fills the only slot
+      expect(prune).toContain(partial);
+      expect(prune).toContain(good2);
+    });
+
+    it("defaults to filename-only (all keeper-eligible) with no statusOf", () => {
+      const { keep } = planBackupRotation(mix, {
+        keepDaily: 1,
+        keepWeekly: 0,
+      });
+      expect(keep).toEqual([bad]); // newest by name, unverified-agnostic
+    });
+  });
+});
+
+describe("selectLatestVerified (#622)", () => {
+  const bad = "allos-2026-07-06-0300.db"; // newest
+  const good = "allos-2026-07-05-0300.db";
+  const older = "allos-2026-07-04-0300.db";
+
+  it("skips a failed newest and returns the newest verified", () => {
+    const statusOf = (n: string): SnapshotStatus =>
+      n === bad ? "failed" : "ok";
+    expect(selectLatestVerified([bad, good, older], statusOf)).toBe(good);
+  });
+
+  it("skips an unverified partial newest too", () => {
+    const statusOf = (n: string): SnapshotStatus =>
+      n === bad ? "unverified" : "ok";
+    expect(selectLatestVerified([bad, good, older], statusOf)).toBe(good);
+  });
+
+  it("returns null when nothing is verified", () => {
+    expect(selectLatestVerified([bad, good], () => "failed")).toBeNull();
+  });
+
+  it("defaults to newest-by-name when no statusOf is given", () => {
+    expect(selectLatestVerified([good, bad, older])).toBe(bad);
+  });
+
+  it("ignores foreign filenames", () => {
+    expect(selectLatestVerified(["notes.txt", good], () => "ok")).toBe(good);
   });
 });
 
