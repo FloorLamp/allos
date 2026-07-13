@@ -238,12 +238,37 @@ export const UNDO_KINDS: Record<string, KindSpec> = {
         // intake_items). Null the now-dangling link on restore: the item survives,
         // its prescriber link is honestly gone. `providers` is a GLOBAL
         // (family-shared) table with no profile_id, so it's probed by id alone.
+        //
+        // document_id → medical_documents is ALSO a real enforced FK (001-baseline,
+        // converged by migration 006): an extracted prescription auto-structured into
+        // a kind='medication' row carries the source document_id (#414). Deleting that
+        // source document (deleteMedicalDocument / clearImportedDocumentRows clears
+        // only LIVE extracted meds) AFTER the item was captured leaves the captured
+        // copy holding a dead document_id, so a verbatim re-insert would violate the
+        // FK and abort the undo (#598). medical_documents is profile-owned, so it's
+        // probed WITH the profile_id scope (not global).
         externalRefs: [
           {
             column: "provider_id",
             table: "providers",
             onMissing: "null",
             global: true,
+          },
+          {
+            column: "document_id",
+            table: "medical_documents",
+            onMissing: "null",
+          },
+          // situation_id → situations is a real nullable FK (migration 029) that
+          // points OUTSIDE this capture. Situations are soft-deleted today (active
+          // flag, never DROPped), so it can't dangle in practice — but a captured link
+          // to a situation that IS later hard-deleted would abort the undo the same
+          // way, so reconcile it defensively (the #598 reflection guard would flag an
+          // unhandled captured FK). Profile-owned, so probed WITH the profile_id scope.
+          {
+            column: "situation_id",
+            table: "situations",
+            onMissing: "null",
           },
         ],
       },

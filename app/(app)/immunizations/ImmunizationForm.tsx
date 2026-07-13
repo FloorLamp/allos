@@ -142,6 +142,21 @@ export default function ImmunizationForm({
           defaultValue={immunization?.provider_name ?? ""}
           placeholder="e.g. Example Medical Center, Dr. Smith"
         />
+        {/* Round-trip the loaded link so an untouched field keeps its id (#601). */}
+        {editing && (
+          <>
+            <input
+              type="hidden"
+              name="provider_id"
+              value={immunization?.provider_id ?? ""}
+            />
+            <input
+              type="hidden"
+              name="provider_loaded"
+              value={immunization?.provider_name ?? ""}
+            />
+          </>
+        )}
       </div>
       {error && (
         <p role="alert" className="text-sm text-rose-600 dark:text-rose-400">

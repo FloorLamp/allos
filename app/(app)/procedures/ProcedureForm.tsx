@@ -119,6 +119,21 @@ export default function ProcedureForm({
           defaultValue={procedure?.provider_name ?? ""}
           placeholder="e.g. Dr. Smith"
         />
+        {/* Round-trip the loaded link so an untouched field keeps its id (#601). */}
+        {editing && (
+          <>
+            <input
+              type="hidden"
+              name="provider_id"
+              value={procedure?.provider_id ?? ""}
+            />
+            <input
+              type="hidden"
+              name="provider_loaded"
+              value={procedure?.provider_name ?? ""}
+            />
+          </>
+        )}
       </div>
       <div>
         <label className="label" htmlFor={`proc-notes-${uid}`}>

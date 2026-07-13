@@ -9,8 +9,15 @@ import { describe, it, expect, vi } from "vitest";
 import * as auth from "@/lib/auth";
 import fs from "node:fs";
 import path from "node:path";
-import { reassignDocument } from "@/app/(app)/medical/document-actions";
+import {
+  reassignDocument,
+  deleteMedicalDocument,
+} from "@/app/(app)/medical/document-actions";
 import { getReprocessSnapshot, reconcileFlags } from "@/lib/queries";
+import {
+  immunizationDismissalKey,
+  immunizationCodesLosingBacking,
+} from "@/lib/dismissal-keys";
 import {
   persistDocumentImport,
   IMPORT_FOOTPRINT_TABLES,
@@ -392,6 +399,82 @@ describe("reassignDocument", () => {
     } finally {
       spy.mockRestore();
     }
+  });
+
+  // #602: a document delete/reassign/reprocess un-backs immunization rows, so the
+  // `immunization:<code>` due-nudge dismissal must be swept on the source (the #376
+  // sweep the per-dose delete does), else a later re-add stays silenced by the stale
+  // dismissal. makeInput() imports one influenza dose; we dismiss its component codes,
+  // exercise each document path, and assert the dismissal is gone.
+  const VACCINE = "influenza";
+  // The component codes whose `immunization:<code>` dismissal loses its backing once
+  // the doc's only influenza dose is removed (remaining = [] → all its components).
+  function dismissedCodes(): string[] {
+    return immunizationCodesLosingBacking(VACCINE, []);
+  }
+  function dismiss(profileId: number, codes: string[]): void {
+    for (const c of codes)
+      db.prepare(
+        `INSERT INTO upcoming_dismissals (profile_id, signal_key, dismissed_at)
+         VALUES (?, ?, datetime('now'))`
+      ).run(profileId, immunizationDismissalKey(c));
+  }
+  function liveDismissals(profileId: number, codes: string[]): number {
+    const keys = codes.map(immunizationDismissalKey);
+    const ph = keys.map(() => "?").join(",");
+    return (
+      db
+        .prepare(
+          `SELECT COUNT(*) c FROM upcoming_dismissals WHERE profile_id = ? AND signal_key IN (${ph})`
+        )
+        .get(profileId, ...keys) as { c: number }
+    ).c;
+  }
+
+  it("sweeps immunization dismissals on the source when the document is deleted (#602)", async () => {
+    const admin = createLogin({ role: "admin" });
+    const a = createProfile("IMM-DEL");
+    const docId = newDocument(a.id);
+    persistDocumentImport(a.id, docId, makeInput());
+    const codes = dismissedCodes();
+    expect(codes.length).toBeGreaterThan(0);
+    dismiss(a.id, codes);
+    expect(liveDismissals(a.id, codes)).toBe(codes.length);
+    actAs(admin, a);
+
+    await deleteMedicalDocument(fd({ id: docId }));
+    // The influenza dose left with the document, so its dismissal is swept.
+    expect(liveDismissals(a.id, codes)).toBe(0);
+  });
+
+  it("sweeps immunization dismissals on the source when the document is reassigned (#602)", async () => {
+    const admin = createLogin({ role: "admin" });
+    const a = createProfile("IMM-REA-A");
+    const b = createProfile("IMM-REA-B");
+    const docId = newDocument(a.id);
+    persistDocumentImport(a.id, docId, makeInput());
+    const codes = dismissedCodes();
+    dismiss(a.id, codes);
+    expect(liveDismissals(a.id, codes)).toBe(codes.length);
+    actAs(admin, a);
+
+    const res = await reassignDocument(fd({ id: docId, destProfileId: b.id }));
+    expect(res.status).toBe("done");
+    // The dose moved to B, so A's dismissal (now un-backed on A) is swept.
+    expect(liveDismissals(a.id, codes)).toBe(0);
+  });
+
+  it("sweeps immunization dismissals when a reprocess drops the dose (#602)", () => {
+    const a = createProfile("IMM-REPROC");
+    const docId = newDocument(a.id);
+    persistDocumentImport(a.id, docId, makeInput());
+    const codes = dismissedCodes();
+    dismiss(a.id, codes);
+    expect(liveDismissals(a.id, codes)).toBe(codes.length);
+
+    // Re-extract to a shape that no longer contains the influenza dose.
+    persistDocumentImport(a.id, docId, { ...makeInput(), immunizations: [] });
+    expect(liveDismissals(a.id, codes)).toBe(0);
   });
 
   it("re-derives biomarker flags against the destination after the move", async () => {

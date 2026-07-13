@@ -10,6 +10,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import {
   addImmunization,
+  updateImmunization,
   setImmunizationOverride,
   clearImmunizationOverride,
 } from "@/app/(app)/immunizations/actions";
@@ -88,6 +89,96 @@ describe("addImmunization", () => {
       fd({ date: "2001-06-01", vaccine: "MMR" })
     );
     expect(res).toEqual({ ok: true });
+  });
+});
+
+// #601: an edit round-trips the provider link through the NAME only. When two
+// same-name providers exist the #534 ambiguity policy would coin a THIRD row and
+// silently relink the record — from an edit that never touched the provider field.
+// resolveProviderOnEdit keeps the loaded id unless the name actually changed.
+describe("provider edit round-trip (#601)", () => {
+  function newProvider(name: string, dedup: string): number {
+    return Number(
+      db
+        .prepare(
+          `INSERT INTO providers (name, type, dedup_key) VALUES (?, 'organization', ?)`
+        )
+        .run(name, dedup).lastInsertRowid
+    );
+  }
+  function newImmunization(profileId: number, providerId: number): number {
+    return Number(
+      db
+        .prepare(
+          `INSERT INTO immunizations (profile_id, date, vaccine, dose_label, provider_id)
+           VALUES (?, '2001-06-01', 'mmr', '1', ?)`
+        )
+        .run(profileId, providerId).lastInsertRowid
+    );
+  }
+  const providerCount = () =>
+    (db.prepare("SELECT COUNT(*) c FROM providers").get() as { c: number }).c;
+  const linkOf = (immId: number) =>
+    (
+      db
+        .prepare("SELECT provider_id FROM immunizations WHERE id = ?")
+        .get(immId) as { provider_id: number | null }
+    ).provider_id;
+
+  it("keeps the existing link (no new provider) when an unrelated field is edited", async () => {
+    const { profile } = seedActor();
+    // Two providers share the name "Dr. Smith" — an ambiguous name under #534.
+    const smith = newProvider("Dr. Smith", `smith-a-${Math.random()}`);
+    newProvider("Dr. Smith", `smith-b-${Math.random()}`);
+    const immId = newImmunization(profile.id, smith);
+    const before = providerCount();
+
+    // Edit only the notes; the untouched provider field round-trips its loaded id+name.
+    await updateImmunization(
+      fd({
+        id: immId,
+        date: "2001-06-01",
+        vaccine: "mmr",
+        notes: "corrected",
+        provider: "Dr. Smith",
+        provider_id: smith,
+        provider_loaded: "Dr. Smith",
+      })
+    );
+
+    // No junk duplicate coined, and the record still points at the original provider.
+    expect(providerCount()).toBe(before);
+    expect(linkOf(immId)).toBe(smith);
+  });
+
+  it("re-resolves when the provider name is actually changed", async () => {
+    const { profile } = seedActor();
+    const smith = newProvider("Dr. Smith", `smith-c-${Math.random()}`);
+    newProvider("Dr. Smith", `smith-d-${Math.random()}`);
+    const immId = newImmunization(profile.id, smith);
+    const before = providerCount();
+
+    // Change the provider to a brand-new name → it re-resolves (create-on-type).
+    await updateImmunization(
+      fd({
+        id: immId,
+        date: "2001-06-01",
+        vaccine: "mmr",
+        provider: "Dr. Jones",
+        provider_id: smith,
+        provider_loaded: "Dr. Smith",
+      })
+    );
+
+    expect(providerCount()).toBe(before + 1);
+    const now = linkOf(immId);
+    expect(now).not.toBe(smith);
+    const linkedName = (
+      db.prepare("SELECT name FROM providers WHERE id = ?").get(now!) as {
+        name: string;
+      }
+    ).name;
+    expect(linkedName).toBe("Dr. Jones");
   });
 });
 

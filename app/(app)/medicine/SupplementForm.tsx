@@ -622,6 +622,21 @@ export default function SupplementForm({
               className="input"
               placeholder="e.g. Sample Care East"
             />
+            {/* Round-trip the loaded link so an untouched field keeps its id (#601). */}
+            {s && (
+              <>
+                <input
+                  type="hidden"
+                  name="provider_id"
+                  value={s.provider_id ?? ""}
+                />
+                <input
+                  type="hidden"
+                  name="provider_loaded"
+                  value={s.provider_name ?? ""}
+                />
+              </>
+            )}
           </div>
           <div className="flex items-end">
             <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">

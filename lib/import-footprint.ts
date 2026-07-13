@@ -146,4 +146,14 @@ export const IMPORT_SIDE_EFFECTS: readonly ImportSideEffect[] = [
     onReassign: "sweep",
     countsTowardFootprint: false,
   },
+  {
+    key: "immunization-dismissal-sweep",
+    what: "drop the `immunization:<code>` due-nudge dismissal of any vaccine whose last backing dose this document un-backed, so a later re-add re-surfaces the nudge instead of hitting a stale suppression (#203/#376). Vaccines captured (documentImmunizationVaccines) BEFORE the rows leave; the sweep reads the remaining doses to decide which codes truly lost backing",
+    where:
+      "sweepImmunizationDismissals (deleteMedicalDocument + reassignDocument transactions, and the reprocess persist in persistDocumentImport)",
+    inTransaction: true,
+    onDelete: "sweep",
+    onReassign: "sweep",
+    countsTowardFootprint: false,
+  },
 ];

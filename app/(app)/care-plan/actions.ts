@@ -4,7 +4,10 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
 import { formError, formOk, type FormResult } from "@/lib/types";
-import { resolveProviderIdByName } from "@/lib/providers-db";
+import {
+  resolveProviderIdByName,
+  resolveProviderOnEdit,
+} from "@/lib/providers-db";
 
 // Care-plan writes. Session-scoped; every mutation is `WHERE id = ? AND
 // profile_id = ?` and the INSERT carries profile_id. Manual rows carry a NULL
@@ -61,7 +64,11 @@ export async function updateCarePlanItem(
   const description = String(formData.get("description") ?? "").trim();
   if (!id) return formError("Couldn't find that care-plan item.");
   if (!description) return formError("Enter the planned item.");
-  const providerId = resolveProviderIdByName(
+  // Keep the existing link when the provider field wasn't touched (#601); re-resolve
+  // only a genuine name change, so an unrelated edit can't relink an ambiguous name.
+  const providerId = resolveProviderOnEdit(
+    Number(formData.get("provider_id")) || null,
+    String(formData.get("provider_loaded") ?? ""),
     String(formData.get("provider") ?? "")
   );
   db.prepare(

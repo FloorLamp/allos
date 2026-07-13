@@ -187,6 +187,21 @@ export default function AppointmentForm({
           defaultValue={appointment?.provider_name ?? prefill?.provider ?? ""}
           placeholder="e.g. Example Medical Center, Dr. Smith"
         />
+        {/* Round-trip the loaded link so an untouched field keeps its id (#601). */}
+        {editing && (
+          <>
+            <input
+              type="hidden"
+              name="provider_id"
+              value={appointment?.provider_id ?? ""}
+            />
+            <input
+              type="hidden"
+              name="provider_loaded"
+              value={appointment?.provider_name ?? ""}
+            />
+          </>
+        )}
       </div>
       <div>
         <label className="label" htmlFor={`appt-location-${uid}`}>

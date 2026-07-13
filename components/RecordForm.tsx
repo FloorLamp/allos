@@ -232,6 +232,17 @@ export default function RecordForm({
             className="input"
             placeholder="e.g. Quest Diagnostics"
           />
+          {/* Round-trip the loaded link so an untouched field keeps its id (#601). */}
+          <input
+            type="hidden"
+            name="provider_id"
+            value={record?.provider_id ?? ""}
+          />
+          <input
+            type="hidden"
+            name="provider_loaded"
+            value={record?.provider_name ?? ""}
+          />
         </div>
       )}
       {error && (
