@@ -31,7 +31,7 @@ The short tour — [docs/features.md](docs/features.md) is the full guide, with 
 - **Trends** — Overview, Body (vitals quick-add, probable-error data checks), Fitness (a 12-month workout heatmap, HR-zone / Zone 2 / polarization analysis), Biomarkers (a trajectory watch, food-first suggestions for diet-responsive markers, age/sex percentiles & fitness age, pediatric reference ranges), Compare, and AI Insights
 - **Household** — a cross-profile overview card per person; confirm a due dose for anyone without switching profiles
 - **Goals** — targets and progress bars with calm pacing observations and a safe-rate caution
-- **Nutrition** — a one-tap food-group serving log (habit tier by design, not a calorie counter) with weekly habit targets and food-first suggestions from flagged labs
+- **Nutrition** — a one-tap food-group serving log (habit tier by design, not a calorie counter) with weekly habit targets and food-first suggestions from flagged labs, optionally loggable from Telegram (Settings → Profile)
 - **Benchmarks** — estimated 1RMs placed on bodyweight- and sex-specific strength standards, one shared computation behind every "Level" surface
 - **Medical** — the full passport: vitals, labs, genomics, biomarkers, conditions (with ICD-10 suggestions), allergies, procedures, family history, immunizations, visits & appointments, care plan, a providers directory, coverage gaps, and derived indices (non-HDL, HOMA-IR, eGFR, **PhenoAge** biological age)
 - **Allergies** — documented allergies merged with IgE sensitizations detected from labs, plus curated cross-reactivity notes
@@ -161,7 +161,7 @@ Per-provider setup guides and import-mapping tables: [docs/integrations.md](docs
 
 Reminders (doses due, a workout nudge, newly-due preventive care) are delivered over three channels that share one hourly tick and per-day/slot dedup — enable any or all per profile:
 
-- **Telegram** — with one-tap action buttons (✅ take / ⏭ skip a dose, ✅ Done / 🚫 Not applicable / ⏰ Remind later on a screening, 📦 Ordered on a refill, ✅ Confirmed taken on an escalation); button taps reach the app by long-polling (default, no public URL needed) or a webhook
+- **Telegram** — with one-tap action buttons (✅ take / ⏭ skip a dose, ✅ Done / 🚫 Not applicable / ⏰ Remind later on a screening, 📦 Ordered on a refill, ✅ Confirmed taken on an escalation); an **opt-in food-log nudge** (Settings → Profile) can ride the same morning/midday/evening times with one-tap buttons for your most-eaten food groups; button taps reach the app by long-polling (default, no public URL needed) or a webhook
 - **Web Push** — native browser notifications, zero setup (HTTPS required; on iOS 16.4+ after Add to Home Screen)
 - **Home Assistant** — a webhook per profile so HA can announce doses on the right room's speaker, flash lights on a missed critical dose, or hold a message until someone's home ([recipes](docs/home-assistant-notifications.md))
 

@@ -2,8 +2,11 @@
 // unit-tested (lib/__tests__). Consumed by telegram-callbacks.ts.
 
 import type { DoseTakenOutcome, EscalationAckOutcome } from "../types";
+import type { FoodLogOutcome } from "../food-log-write";
 import { formatRecordDate } from "../record-format";
+import { foodGroupName } from "../food-groups";
 import type { ReminderWindow } from "./supplement-format";
+import type { FoodNudgeWindow } from "./food-format";
 
 // A keyboard button carries EITHER a callback token or a deep-link url (issue
 // #233's refill "Open form"); mirrors telegram.ts's InlineKeyboard.
@@ -426,4 +429,86 @@ export function escalationAckCloseText(outcome: EscalationAckOutcome): string {
     default:
       return OUTDATED_MESSAGE_TEXT;
   }
+}
+
+// ---- Food logging over Telegram (issue #682) ----
+// A food quick-log button ("food:<profileId>:<window>:<date>:<slug>") logs one
+// serving of a group; the opt-in prompt buttons ("foodoptin:<profileId>:<yes|no>")
+// flip the per-profile food_telegram_enabled flag. Both mirror a dose tap: the
+// profile id is a cross-check (the handler re-resolves the acting profile from the
+// chat), and the handler answers from the typed write outcome, never unconditionally.
+
+const FOOD_NUDGE_WINDOWS: readonly FoodNudgeWindow[] = [
+  "Morning",
+  "Midday",
+  "Evening",
+];
+
+export interface FoodLogCallback {
+  profileId: number;
+  window: FoodNudgeWindow;
+  date: string;
+  group: string;
+}
+
+// Parse a "food:<profileId>:<window>:<date>:<slug>" token. The slug is the greedy
+// tail (a food-group slug is snake_case with no colons, so this is robust even if a
+// future slug grew unusual characters). Malformed (bad prefix/window/date, missing
+// slug) → null; the handler still validates the slug against the catalog on write.
+export function parseFoodLogCallback(data: unknown): FoodLogCallback | null {
+  if (typeof data !== "string") return null;
+  const m = /^food:(\d+):([A-Za-z]+):(\d{4}-\d{2}-\d{2}):(.+)$/.exec(data);
+  if (!m) return null;
+  const profileId = Number(m[1]);
+  const window = m[2] as FoodNudgeWindow;
+  if (!profileId || !FOOD_NUDGE_WINDOWS.includes(window)) return null;
+  return { profileId, window, date: m[3], group: m[4] };
+}
+
+export interface FoodOptInCallback {
+  profileId: number;
+  enable: boolean;
+}
+
+// Parse a "foodoptin:<profileId>:<yes|no>" token. Malformed → null.
+export function parseFoodOptInCallback(
+  data: unknown
+): FoodOptInCallback | null {
+  if (typeof data !== "string") return null;
+  const m = /^foodoptin:(\d+):(yes|no)$/.exec(data);
+  if (!m) return null;
+  const profileId = Number(m[1]);
+  if (!profileId) return null;
+  return { profileId, enable: m[2] === "yes" };
+}
+
+// The Telegram toast for a food quick-log tap, from the typed write outcome. A
+// logged serving names the group and its running daily total; an unknown group (a
+// stale/forged token, a retired slug) is answered honestly, never falsely confirmed.
+export function foodLogAnswerText(
+  outcome: FoodLogOutcome,
+  group: string
+): string {
+  if (outcome.kind === "unknown-group") {
+    return "Not logged — that food is out of date. Open the app.";
+  }
+  const name = foodGroupName(group);
+  return outcome.servings > 1
+    ? `Logged ✅ ${name} ×${outcome.servings} today`
+    : `Logged ✅ ${name}`;
+}
+
+// The Telegram toast after an opt-in prompt tap.
+export function foodOptInAnswerText(enable: boolean): string {
+  return enable
+    ? "Food logging on 🍽️ — you'll see it at your reminder times."
+    : "No problem — enable it any time in Settings → Profile.";
+}
+
+// The closing line an opt-in prompt collapses to once answered (its title is
+// retained above it by replacementWithTitle).
+export function foodOptInCloseText(enable: boolean): string {
+  return enable
+    ? "Food logging enabled 🍽️ — tap your foods at your reminder times."
+    : "No food logging — you can turn it on later in Settings → Profile.";
 }

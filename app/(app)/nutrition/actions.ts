@@ -4,6 +4,7 @@ import { requireWriteAccess } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { db, today } from "@/lib/db";
 import { isValidFoodGroup } from "@/lib/food-groups";
+import { logFoodServingCore } from "@/lib/food-log-write";
 import { formError, formOk, type FormResult } from "@/lib/types";
 
 // The largest sane weekly serving target — mirrors the protocol practice clamp so a
@@ -30,17 +31,15 @@ function parseFields(
 }
 
 // Log one serving of a food group on a day (default today). Upserts the day's row,
-// incrementing its servings — so tapping twice records two servings in one row.
+// incrementing its servings — so tapping twice records two servings in one row. The
+// write itself is the auth-blind lib core (shared with the Telegram button handler,
+// #682); this action owns the auth gate + validation + revalidation.
 export async function logFoodServing(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const fields = parseFields(formData, profile.id);
   if (!fields) return formError("Unknown food group.");
-  db.prepare(
-    `INSERT INTO food_log (profile_id, date, group_key, servings)
-     VALUES (?, ?, ?, 1)
-     ON CONFLICT (profile_id, date, group_key)
-     DO UPDATE SET servings = servings + 1`
-  ).run(profile.id, fields.date, fields.group);
+  const outcome = logFoodServingCore(profile.id, fields.group, fields.date);
+  if (outcome.kind === "unknown-group") return formError("Unknown food group.");
   revalidatePath("/nutrition");
   revalidatePath("/trends");
   revalidatePath("/");

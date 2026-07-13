@@ -17,8 +17,14 @@ import {
   setUserReproductiveStatus,
   getStoredAge,
   setStoredAge,
+  getUserAge,
   getTimezone,
+  getProfileTelegram,
   setProfileTelegram,
+  getTelegramBotConfig,
+  getFoodTelegramPrompted,
+  setFoodTelegramPrompted,
+  setProfileFoodTelegram,
   setNotifySchedule,
   setProfileHomeAssistant,
   isValidTimezone,
@@ -47,6 +53,8 @@ import {
 import { reconcileFlags } from "@/lib/queries";
 import { sweepIngestWindowForTimezoneChange } from "@/lib/integrations/ingest-timezone-sweep";
 import { dispatch } from "@/lib/notifications";
+import { sendFoodOptInPrompt } from "@/lib/notifications/food";
+import { isFoodLoggingRelevant } from "@/lib/life-stage";
 import {
   WAKING_START_HOUR,
   WAKING_END_HOUR,
@@ -305,11 +313,48 @@ export async function saveEmergencyCardSettings(formData: FormData) {
 // credentials are set separately (admin-only, see saveTelegramBotConfig).
 export async function saveNotificationPrefs(formData: FormData) {
   const { profile } = await requireWriteAccess();
+
+  // Whether the profile's Telegram was fully connectable BEFORE this save, so we can
+  // detect a first connection and offer the one-time food-logging opt-in prompt (#682).
+  const before = getProfileTelegram(profile.id);
+  const wasConfigured = before.telegramEnabled && before.telegramChatId !== "";
+
   const enabledRaw = formData.get("telegram_enabled");
   setProfileTelegram(profile.id, {
     telegramEnabled: enabledRaw === "on" || enabledRaw === "1",
     telegramChatId: String(formData.get("telegram_chat_id") ?? ""),
   });
+
+  // Food logging over Telegram (#682): the per-profile opt-in toggle. Gated on the
+  // field's presence so a form that doesn't render it can't wipe the setting.
+  if (formData.has("food_telegram_enabled")) {
+    const v = formData.get("food_telegram_enabled");
+    setProfileFoodTelegram(profile.id, v === "on" || v === "1");
+  }
+
+  // First-connection prompt: the first time this profile becomes fully connectable
+  // (enabled + chat id + a bot token exists) and we haven't asked before, send a
+  // one-time "want to log food too?" message with Enable/No-thanks buttons, and mark
+  // it prompted so it never re-nags. Skipped for a life stage where food logging is
+  // hidden (infant). Best-effort — a send failure must never fail the settings save.
+  const after = getProfileTelegram(profile.id);
+  const botConfigured = getTelegramBotConfig().telegramBotToken !== "";
+  const nowConfigured =
+    after.telegramEnabled && after.telegramChatId !== "" && botConfigured;
+  if (
+    nowConfigured &&
+    !wasConfigured &&
+    !getFoodTelegramPrompted(profile.id) &&
+    isFoodLoggingRelevant(getUserAge(profile.id))
+  ) {
+    setFoodTelegramPrompted(profile.id);
+    try {
+      await sendFoodOptInPrompt(profile.id);
+    } catch {
+      // A failed prompt send is non-critical (the toggle still lives in Settings);
+      // the prompted marker is already set so we don't retry-spam on the next save.
+    }
+  }
 
   // Per-slot send schedule. "" / "off" → that window is disabled.
   const hour = (key: string): number | null => {

@@ -50,6 +50,7 @@ describe("saveHomeAssistantPrefs", () => {
         "escalation",
         "preventive",
         "workout",
+        "food",
         "digest",
         "upcoming",
         "weekly-recap",

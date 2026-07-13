@@ -51,6 +51,33 @@ export function getProfileTelegram(profileId: number): ProfileTelegram {
   };
 }
 
+// ---- Food logging over Telegram (issue #682) — per-profile opt-in ----
+// Whether this profile gets the morning/midday/evening food-log nudge with one-tap
+// serving buttons. OFF by default (opt-in): a `food_telegram_enabled` "1"/"0" flag
+// in profile_settings, mirroring the telegram_enabled shape. `food_telegram_prompted`
+// records that we've already asked once (on first Telegram connection) so the prompt
+// never re-nags. Both are plain KV markers; the food nudge + button handler gate on
+// the enabled flag, the connection prompt on the prompted marker.
+
+export function getProfileFoodTelegram(profileId: number): boolean {
+  return getProfileSetting(profileId, "food_telegram_enabled") === "1";
+}
+
+export function setProfileFoodTelegram(
+  profileId: number,
+  enabled: boolean
+): void {
+  setProfileSetting(profileId, "food_telegram_enabled", enabled ? "1" : "0");
+}
+
+export function getFoodTelegramPrompted(profileId: number): boolean {
+  return getProfileSetting(profileId, "food_telegram_prompted") === "1";
+}
+
+export function setFoodTelegramPrompted(profileId: number): void {
+  setProfileSetting(profileId, "food_telegram_prompted", "1");
+}
+
 // Resolve every profile a Telegram chat id belongs to. A single chat (e.g. a
 // family group) can be the delivery target for several profiles, so this returns
 // all of them — inbound button taps carry only a chat id, and the callback

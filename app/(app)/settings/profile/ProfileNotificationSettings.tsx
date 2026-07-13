@@ -17,15 +17,20 @@ export default function ProfileNotificationSettings({
   botConfigured,
   schedule,
   workoutSummary,
+  foodTelegramEnabled,
+  foodLoggingRelevant,
 }: {
   telegram: ProfileTelegram;
   botConfigured: boolean;
   schedule: NotifySchedule;
   workoutSummary: string;
+  foodTelegramEnabled: boolean;
+  foodLoggingRelevant: boolean;
 }) {
   const router = useRouter();
   const [enabled, setEnabled] = useState(telegram.telegramEnabled);
   const [chatId, setChatId] = useState(telegram.telegramChatId);
+  const [foodEnabled, setFoodEnabled] = useState(foodTelegramEnabled);
   const [suppHours, setSuppHours] = useState(schedule.supplementHours);
   const [workoutEnabled, setWorkoutEnabled] = useState(schedule.workoutEnabled);
   const [digestHour, setDigestHour] = useState(schedule.digestHour);
@@ -52,6 +57,7 @@ export default function ProfileNotificationSettings({
     const fd = new FormData();
     fd.set("telegram_enabled", enabled ? "1" : "0");
     fd.set("telegram_chat_id", chatId);
+    fd.set("food_telegram_enabled", foodEnabled ? "1" : "0");
     fd.set(
       "supp_morning_hour",
       suppHours.Morning == null ? "" : String(suppHours.Morning)
@@ -151,6 +157,29 @@ export default function ProfileNotificationSettings({
               className="input"
             />
           </div>
+
+          {/* Food logging (#682) — a morning/midday/evening nudge with one-tap
+              buttons for your most-eaten foods, on the same schedule as supplement
+              reminders. Hidden for a profile too young for food-group logging. */}
+          {foodLoggingRelevant && (
+            <div className="border-t border-slate-100 pt-5 dark:border-slate-800">
+              <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
+                <input
+                  type="checkbox"
+                  checked={foodEnabled}
+                  onChange={(e) => setFoodEnabled(e.target.checked)}
+                  className="h-4 w-4 accent-brand-600"
+                  data-testid="food-telegram-enabled"
+                />
+                Log food from Telegram
+              </label>
+              <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+                A quick nudge at your supplement times with one-tap buttons for
+                your most-eaten foods. Tap to log a serving — your full food log
+                stays on the Nutrition page.
+              </p>
+            </div>
+          )}
 
           {/* Schedule — an hourly cron (npm run notify) sends each slot at its hour. */}
           <div className="border-t border-slate-100 pt-5 dark:border-slate-800">
