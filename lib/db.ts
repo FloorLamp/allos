@@ -10,6 +10,12 @@ import {
   acquireBootLock,
   BOOT_LOCK_TIMEOUT_MS,
 } from "./migrations/schema-utils";
+// Side-effect import: registers the fs-backed error sink so createLogger().error()
+// persists to data/logs/errors.jsonl (issue #596). Lives here because db.ts is on
+// the Node boot path for both the app server and CLI scripts, and is NEVER pulled
+// into the Edge middleware / client bundles (where fs is unavailable) — keeping
+// log.ts itself Edge-safe.
+import "./error-log";
 
 // Single shared connection across hot-reloads in dev.
 const globalForDb = globalThis as unknown as { __healthDb?: Database.Database };

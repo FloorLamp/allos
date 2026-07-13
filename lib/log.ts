@@ -8,6 +8,25 @@
 
 export type Level = "debug" | "info" | "warn" | "error";
 
+// Optional persistence sink for surfaced failures (issue #596). log.ts stays
+// pure-console and Edge-safe — it NEVER imports the fs-backed error log. Instead
+// a server-only module (lib/error-log.ts, pulled in on the Node boot path via
+// lib/db.ts) registers a sink here, and every `error` funnels into it so an
+// admin can read unexpected errors after the fact. Left null in Edge/browser
+// bundles (which never load error-log.ts), where fs is unavailable.
+export interface LogSinkEvent {
+  level: "error";
+  scope?: string;
+  msg: string;
+  fields?: Record<string, unknown>;
+}
+type LogSink = (e: LogSinkEvent) => void;
+let errorSink: LogSink | null = null;
+
+export function registerErrorSink(sink: LogSink): void {
+  errorSink = sink;
+}
+
 const LEVELS: Record<Level, number> = {
   debug: 10,
   info: 20,
@@ -50,6 +69,13 @@ function emit(
   msg: string,
   fields?: Record<string, unknown>
 ) {
+  // Persist `error`-level events even when they're below the stdout threshold
+  // (LOG_LEVEL) — the admin error surface is the point, and a raised threshold
+  // shouldn't hide unexpected failures from it. Best-effort; the sink never
+  // throws into the caller (guarded inside error-log.ts).
+  if (level === "error" && errorSink) {
+    errorSink({ level: "error", scope, msg, fields });
+  }
   if (LEVELS[level] < thresholdLevel()) return;
   const time = new Date().toISOString();
   const f = normalizeFields(fields, level === "debug");
