@@ -11,9 +11,9 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { AsyncLocalStorage } from "node:async_hooks";
 import { createLogger } from "./log";
 import { endpointHost } from "./ai-client";
+import { withLogContext, getLogContext, type LogContext } from "./log-context";
 
 const log = createLogger("ai");
 
@@ -95,14 +95,14 @@ export function usageFrom(
 // and recordAiEvent() stamps whatever's in scope. Propagates through the async
 // chain — including fire-and-forget extractions launched with `void` inside the
 // wrapper — because the store is captured when those async ops are created.
-export interface AiLogContext {
-  loginId: number | null;
-  profileId: number | null;
-}
-const aiLogContext = new AsyncLocalStorage<AiLogContext>();
+//
+// The store now lives in lib/log-context.ts so the server error log (issue #596)
+// tags errors thrown inside the SAME request with the same login/profile.
+// `withAiLogContext`/`AiLogContext` are kept as the historical names.
+export type AiLogContext = LogContext;
 
 export function withAiLogContext<T>(ctx: AiLogContext, fn: () => T): T {
-  return aiLogContext.run(ctx, fn);
+  return withLogContext(ctx, fn);
 }
 
 // Monotonic-ish id within a process: time + counter so events appended in the
@@ -137,7 +137,7 @@ function trimIfLarge() {
 export function recordAiEvent(e: Omit<AiEvent, "id" | "time">): AiEvent {
   // Stamp the ambient session context (if any) unless the caller set it
   // explicitly. A missing context (background/notify/CLI) leaves the tags null.
-  const ctx = aiLogContext.getStore();
+  const ctx = getLogContext();
   const event: AiEvent = {
     id: nextId(),
     time: new Date().toISOString(),
