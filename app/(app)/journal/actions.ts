@@ -19,8 +19,14 @@ import {
 } from "@/lib/import-review/detect";
 import { parseOverrideFields } from "@/lib/import-review/conflicts";
 import type { ActivityType, SaveActivityOutcome } from "@/lib/types";
-import { getUnitPrefs } from "@/lib/settings";
-import { toKg, toKm, resolveWeightKg } from "@/lib/units";
+import { getUnitPrefs, type WeightUnit } from "@/lib/settings";
+import {
+  toKg,
+  toKm,
+  resolveWeightKg,
+  submittedWeightUnit,
+  submittedDistanceUnit,
+} from "@/lib/units";
 import { minutesBetween, compositeRollup } from "@/lib/activity-meta";
 import { isRealIsoDate } from "@/lib/date";
 import { isTrainingRestricted, isActivityTypeAllowed } from "@/lib/age-gate";
@@ -151,6 +157,19 @@ export async function saveActivity(
   if (!title || !isRealIsoDate(date)) return { ok: false, reason: "invalid" };
 
   const prefs = getUnitPrefs(login.id);
+  // Honor the unit each value was CAPTURED in (issue #630) instead of re-reading
+  // the login's pref at write time — a debounced auto-save can land after the
+  // login flipped its unit in another tab, which would mis-convert a
+  // correctly-entered set/distance. Falls back to the stored pref when the form
+  // didn't send a unit (older clients).
+  const weightUnit = submittedWeightUnit(
+    formData.get("weight_unit"),
+    prefs.weightUnit
+  );
+  const distanceUnit = submittedDistanceUnit(
+    formData.get("distance_unit"),
+    prefs.distanceUnit
+  );
   const notes = (formData.get("notes") as string)?.trim() || null;
   const intensity = (formData.get("intensity") as string)?.trim() || null;
   const startTime = (formData.get("start_time") as string)?.trim() || null;
@@ -186,8 +205,7 @@ export async function saveActivity(
       return {
         name: c.name.trim(),
         type: c.type,
-        distance_km:
-          distance != null ? toKm(distance, prefs.distanceUnit) : null,
+        distance_km: distance != null ? toKm(distance, distanceUnit) : null,
         duration_min: num(c.duration_min),
       };
     });
@@ -318,8 +336,7 @@ export async function saveActivity(
         );
       activityId = Number(res.lastInsertRowid);
     }
-    if (hasStrength)
-      writeSets(activityId, formData, prefs.weightUnit, storedSets);
+    if (hasStrength) writeSets(activityId, formData, weightUnit, storedSets);
     return activityId;
   });
   // The tx returns null when the (untrusted) form id isn't this profile's — the
@@ -335,14 +352,24 @@ export async function saveActivity(
 // Record the user's bodyweight (entered in their preferred unit) as a body-metrics
 // entry, so bodyweight lifts can fold it into volume / strength stats. Called from
 // the activity form when a bodyweight exercise is logged with no weight on record.
-export async function logBodyweight(weight: number, date: string) {
+export async function logBodyweight(
+  weight: number,
+  date: string,
+  // The unit the value was captured in (issue #630) — honored over the login's
+  // current stored pref so an inline bodyweight log converts with the render-time
+  // unit. Falls back to the stored pref when the caller doesn't pass one.
+  weightUnit?: WeightUnit
+) {
   const { login, profile } = await requireWriteAccess();
   const d = date.trim();
   if (!Number.isFinite(weight) || weight <= 0 || !d) return;
-  const prefs = getUnitPrefs(login.id);
+  const unit = submittedWeightUnit(
+    weightUnit,
+    getUnitPrefs(login.id).weightUnit
+  );
   db.prepare(
     `INSERT INTO body_metrics (date, weight_kg, source, profile_id) VALUES (?,?,?,?)`
-  ).run(d, toKg(weight, prefs.weightUnit), "manual", profile.id);
+  ).run(d, toKg(weight, unit), "manual", profile.id);
   // A bodyweight entry feeds bodyweight-lift volume/strength, so it refreshes the
   // same fitness surfaces an activity write does (plus /trends body charts).
   revalidateActivitySurfaces();

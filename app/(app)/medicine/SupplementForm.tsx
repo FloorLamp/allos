@@ -271,13 +271,20 @@ export default function SupplementForm({
     else {
       formRef.current?.reset();
       setName("");
-      setRxcui(null);
+      // applyRxcui resets the code, its resolved active-ingredient CUIs, AND the
+      // rxcuiRef guard together — resetting `rxcui` alone (issue #627) leaked the
+      // prior item's `rxcui_ingredients` onto the next add (the name-change handler
+      // only clears ingredients when a code is set, and after reset there is none).
+      applyRxcui(null, null);
       setRxCandidates(null);
       setRxError(null);
       setCondition("daily");
       setBrand("");
       setKind("supplement");
       setAsNeeded(false);
+      // The critical checkbox sits outside the medication-only block, so a stale
+      // `checked` state silently saved the next item critical (issue #627).
+      setCritical(false);
       setDoses([emptyDose()]);
       setPairRows([]);
       router.refresh();
@@ -646,6 +653,7 @@ export default function SupplementForm({
             type="checkbox"
             name="critical"
             value="1"
+            data-testid={`supp-critical-${fid}`}
             checked={critical}
             onChange={(e) => setCritical(e.target.checked)}
             className="h-4 w-4 rounded border-slate-300 text-brand-600 dark:border-slate-600"

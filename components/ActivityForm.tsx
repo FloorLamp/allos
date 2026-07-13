@@ -780,6 +780,11 @@ export default function ActivityForm({
     const fd = new FormData();
     const id = savableId();
     if (id != null) fd.set("id", String(id));
+    // Carry the unit each weight/distance was CAPTURED in (issue #630) so the
+    // action converts with the render-time unit, not whatever the login's stored
+    // pref happens to be when this (possibly long-debounced) auto-save lands.
+    fd.set("weight_unit", units.weightUnit);
+    fd.set("distance_unit", units.distanceUnit);
     fd.set("type", primaryType);
     fd.set("title", effectiveTitle);
     fd.set("date", date);
@@ -944,7 +949,7 @@ export default function ActivityForm({
     if (!Number.isFinite(w) || w <= 0) return;
     setBwSaving(true);
     try {
-      await logBodyweight(w, date);
+      await logBodyweight(w, date, units.weightUnit);
       setBwKnown(true);
       router.refresh();
     } finally {

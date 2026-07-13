@@ -66,13 +66,22 @@ export default function GoalForm({
     editGoal?.target_duration_sec != null
       ? formatSeconds(editGoal.target_duration_sec)
       : "";
-  // Body-goal target: weight is stored canonical kg → show in the user's unit.
-  const bodyTargetVal =
-    editGoal?.body_metric === "weight"
-      ? round(kgTo(editGoal.target_value ?? 0, weightUnit), 1)
-      : editGoal?.body_metric
-        ? (editGoal.target_value ?? "")
-        : "";
+  // Body-goal target for a given metric: the stored value only belongs to the
+  // metric the goal was SAVED as — weight in the user's unit (canonical kg →
+  // display), body fat / resting HR as entered. Switching to any OTHER metric
+  // clears the field, so a weight number can never be posted as a bpm target
+  // (issue #631). Create mode ("") is unaffected since editGoal is absent.
+  const bodyTargetFor = (bm: BodyMetricKind): string => {
+    if (editGoal?.body_metric !== bm) return "";
+    if (bm === "weight")
+      return String(round(kgTo(editGoal.target_value ?? 0, weightUnit), 1));
+    return editGoal.target_value != null ? String(editGoal.target_value) : "";
+  };
+  // Controlled so it recomputes on a metric switch (issue #631) — the unit label
+  // already reacts to bodyMetric, so the value must too.
+  const [bodyTarget, setBodyTarget] = useState(() =>
+    bodyTargetFor(editGoal?.body_metric ?? "weight")
+  );
 
   const timed = isTimed(exercise);
   // Timed lifts can only have a hold target; force it.
@@ -122,6 +131,10 @@ export default function GoalForm({
         </p>
       )}
       <input type="hidden" name="kind" value={kind} />
+      {/* Carry the unit the weight target was captured in (issue #630) so the
+          action converts with the render-time unit, not the login's pref if it
+          changed in another tab mid-edit. */}
+      <input type="hidden" name="weight_unit" value={weightUnit} />
 
       {/* Kind toggle */}
       <div className="flex flex-wrap gap-1.5">
@@ -365,7 +378,13 @@ export default function GoalForm({
                   <button
                     key={bm}
                     type="button"
-                    onClick={() => setBodyMetric(bm)}
+                    onClick={() => {
+                      setBodyMetric(bm);
+                      // Recompute the target for the new metric — clears a stale
+                      // weight value that would otherwise post as a bpm/% target
+                      // (issue #631).
+                      setBodyTarget(bodyTargetFor(bm));
+                    }}
                     className={`rounded-full border px-3 py-1 text-sm font-medium transition ${
                       active
                         ? "border-brand-500 bg-brand-500 text-white"
@@ -389,7 +408,8 @@ export default function GoalForm({
               type="number"
               step="0.1"
               name="body_target"
-              defaultValue={bodyTargetVal}
+              value={bodyTarget}
+              onChange={(e) => setBodyTarget(e.target.value)}
               className="input"
               required
             />
