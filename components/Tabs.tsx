@@ -49,7 +49,7 @@ export default function Tabs({
 
   return (
     <div>
-      <div className="mb-4 flex gap-1 border-b border-black/10 dark:border-white/10">
+      <div className="mb-4 flex gap-1 overflow-x-auto border-b border-black/10 dark:border-white/10">
         {tabs.map((t) => {
           const isActive = active === t.id;
           return (
@@ -57,7 +57,7 @@ export default function Tabs({
               key={t.id}
               type="button"
               onClick={() => selectTab(t.id)}
-              className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium transition ${
+              className={`-mb-px shrink-0 whitespace-nowrap border-b-2 px-4 py-2 text-sm font-medium transition ${
                 isActive
                   ? "border-brand-500 text-brand-700 dark:text-brand-400"
                   : "border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"

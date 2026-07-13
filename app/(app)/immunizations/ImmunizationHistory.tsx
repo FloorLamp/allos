@@ -9,7 +9,7 @@ import {
   resolveDoseLabelsByVaccine,
   immunizationHasDuplicateVaccineDate,
 } from "@/lib/immunization-status";
-import { sourceLabel } from "@/lib/record-format";
+import { formatRecordDate, sourceLabel } from "@/lib/record-format";
 import type { Immunization } from "@/lib/types";
 
 // Sortable history table on the shared RecordTable. Click a header to sort
@@ -47,7 +47,7 @@ export default function ImmunizationHistory({
       header: "Date",
       cellClassName: "whitespace-nowrap text-slate-600 dark:text-slate-300",
       sort: { value: (im) => im.date, initialDir: "desc" },
-      cell: (im) => im.date,
+      cell: (im) => formatRecordDate(im.date),
     },
     {
       header: "Dose",

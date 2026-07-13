@@ -130,7 +130,10 @@ export default function OverflowMenu({
         onClick={() => onOpenChange(!open)}
         aria-label={label}
         aria-haspopup="menu"
-        className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-ink-800 dark:hover:text-slate-300"
+        data-testid="overflow-menu-trigger"
+        // ≥40px hit box (#644): a 16px glyph centered in a 40px box so the sole
+        // per-row action affordance clears the touch-target minimum on mobile.
+        className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-ink-800 dark:hover:text-slate-300"
       >
         <IconDots className="h-4 w-4" />
       </button>

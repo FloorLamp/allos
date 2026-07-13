@@ -107,7 +107,7 @@ export default function DoseStatusControl({
 
   const takeClass =
     variant === "circle"
-      ? `flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 text-sm transition ${
+      ? `flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 text-sm transition ${
           isTaken
             ? "border-brand-600 bg-brand-600 text-white"
             : "border-black/10 text-transparent hover:border-brand-400 dark:border-white/10"
@@ -120,7 +120,7 @@ export default function DoseStatusControl({
 
   const skipClass =
     variant === "circle"
-      ? `flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 text-sm transition ${
+      ? `flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 text-sm transition ${
           isSkipped
             ? "border-amber-500 bg-amber-500 text-white"
             : "border-black/10 text-slate-400 hover:border-amber-400 dark:border-white/10 dark:text-slate-500"
@@ -133,8 +133,14 @@ export default function DoseStatusControl({
 
   return (
     <div
-      className="flex shrink-0 items-center gap-1.5"
+      // Wider gap between the two circle targets (#644) so adjacent taps —
+      // taken vs. skipped, consequential for a medication — don't collide on a
+      // phone. The pill variant keeps its tighter spacing.
+      className={`flex shrink-0 items-center ${
+        variant === "circle" ? "gap-3" : "gap-1.5"
+      }`}
       data-testid="dose-status"
+      data-variant={variant}
     >
       <button
         type="button"

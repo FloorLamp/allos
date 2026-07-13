@@ -530,9 +530,12 @@ function LoginRow({
   }
 
   return (
-    <div className="rounded-lg border border-black/10 p-3 dark:border-white/10">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
+    <div
+      data-testid="login-row"
+      className="rounded-lg border border-black/10 p-3 dark:border-white/10"
+    >
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap items-center gap-2">
           <span className="font-medium text-slate-800 dark:text-slate-100">
             {login.username}
           </span>
@@ -551,7 +554,7 @@ function LoginRow({
               : `${sessionCount} active ${sessionCount === 1 ? "session" : "sessions"}`}
           </span>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex flex-wrap items-center gap-1">
           <button
             type="button"
             onClick={() => setOpen((v) => !v)}

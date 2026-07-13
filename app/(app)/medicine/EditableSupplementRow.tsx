@@ -134,7 +134,10 @@ export default function EditableSupplementRow({
         )}
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-            <span className="font-medium text-slate-800 dark:text-slate-100">
+            <span
+              data-testid="medicine-name"
+              className="min-w-0 break-words font-medium text-slate-800 dark:text-slate-100"
+            >
               {s.name}
             </span>
             {(dose.amount || subline) && (

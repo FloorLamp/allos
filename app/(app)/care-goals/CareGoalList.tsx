@@ -4,7 +4,8 @@ import CareGoalForm from "./CareGoalForm";
 import { updateCareGoal, deleteCareGoal } from "./actions";
 import RecordTable, { type RecordColumn } from "@/components/RecordTable";
 import RecordProvenance from "@/components/RecordProvenance";
-import { formatRecordDate, titleCase } from "@/lib/record-format";
+import StatusBadge from "@/components/StatusBadge";
+import { formatRecordDate } from "@/lib/record-format";
 import type { CareGoal } from "@/lib/types";
 
 const COLUMNS: RecordColumn<CareGoal>[] = [
@@ -30,9 +31,8 @@ const COLUMNS: RecordColumn<CareGoal>[] = [
   {
     header: "Status",
     headerClassName: "hidden sm:table-cell",
-    cellClassName:
-      "hidden whitespace-nowrap text-slate-500 sm:table-cell dark:text-slate-400",
-    cell: (g) => (g.status ? titleCase(g.status) : "—"),
+    cellClassName: "hidden whitespace-nowrap sm:table-cell",
+    cell: (g) => <StatusBadge status={g.status} />,
   },
   {
     header: "Source",
