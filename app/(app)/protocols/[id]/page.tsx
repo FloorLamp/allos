@@ -12,6 +12,7 @@ import {
   getProtocolAdherence,
 } from "@/lib/queries";
 import { getEquipment, getEquipmentById } from "@/lib/equipment";
+import { recoveryGearOptions } from "@/lib/protocol-gear";
 import { getUnitPrefs } from "@/lib/settings";
 import { formatUsageSummary } from "@/lib/usage-format";
 import { foodGroupName } from "@/lib/food-groups";
@@ -50,13 +51,17 @@ export default async function ProtocolDetailPage(props: {
     units.weightUnit
   );
   const options = getProtocolOutcomeOptions(profile.id);
-  // includeRetired so a linked-but-retired gear stays selectable in the edit form.
-  const equipment = getEquipment(profile.id, { includeRetired: true });
   const practice = getProtocolPractice(profile.id, protocol);
   const gear =
     protocol.equipment_id != null
       ? getEquipmentById(profile.id, protocol.equipment_id)
       : undefined;
+  // "Recovery gear" (issue #592): offer recovery + uncategorized gear only (kindOf),
+  // not the whole inventory. No blanket includeRetired — a retired device appears
+  // solely as the currently-linked selectedMissing fallback (`gear`, resolved via
+  // getEquipmentById which ignores the retired flag), never as a fresh choice, so an
+  // edit keeps the existing link without resurfacing sold/broken gear for new picks.
+  const equipment = recoveryGearOptions(getEquipment(profile.id), gear);
   const adherence = getProtocolAdherence(profile.id, protocol);
   const usage = getProtocolUsage(profile.id, protocol, todayStr);
   const hasPracticeCard = !!gear || !!practice;

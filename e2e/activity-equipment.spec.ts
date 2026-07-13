@@ -1,4 +1,6 @@
 import { test, expect } from "@playwright/test";
+import { loginAs } from "./nav";
+import { E2E_LOGIN_NOGEAR, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
 // Issue #342: the ACTIVITY-level equipment link. The seed links its "Zone 2 bike"
 // ride to a "Road Bike" (category Bike), so the Journal renders a session-level gear
@@ -57,4 +59,48 @@ test("a run offers shoes (not the bike) in the equipment picker (#339)", async (
   await expect(select.locator("option", { hasText: "Road Bike" })).toHaveCount(
     0
   );
+});
+
+// #592: the activity-level equipment picker used to render NOTHING when the profile
+// owned no fitting gear — hiding the "Manage equipment" link, which is the ONE
+// bootstrap path to the /equipment registry (every other entry point is gated on
+// already having gear). It now shows an empty-state "Add equipment" door instead.
+// Driven on a DEDICATED no-gear profile (see seed-events / fixture-logins) so the
+// empty inventory is provable — profile 1 always owns gear. Read-only (never saves).
+test("the activity form shows an 'Add equipment' door when the profile owns no gear (#592)", async ({
+  browser,
+}) => {
+  test.slow();
+  const page = await loginAs(browser, {
+    username: E2E_LOGIN_NOGEAR,
+    password: E2E_MEMBER_PASSWORD,
+  });
+  try {
+    await page.goto("/training"); // default "Log" tab
+
+    // Open a fresh create form (the seeded activity makes the Journal — and its
+    // "New activity" button — render instead of the empty state).
+    await page
+      .getByRole("main")
+      .getByRole("button", { name: "New activity" })
+      .click();
+
+    // Pick a known cardio activity so the session-level equipment picker mounts;
+    // picking commits the part TYPE (typing the name alone doesn't).
+    await page.getByPlaceholder(/What did you do/).fill("Running");
+    await page
+      .getByRole("listbox")
+      .getByRole("button", { name: "Running", exact: true })
+      .click();
+
+    // With no gear on file the picker renders its empty-state door, not a <select>.
+    await expect(page.getByTestId("activity-equipment-empty")).toBeVisible();
+    await expect(page.getByTestId("activity-equipment-select")).toHaveCount(0);
+    const door = page.getByTestId("activity-equipment-link");
+    await expect(door).toBeVisible();
+    await expect(door).toHaveText(/Add equipment/);
+    await expect(door).toHaveAttribute("href", "/equipment");
+  } finally {
+    await page.context().close();
+  }
 });

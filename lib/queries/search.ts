@@ -628,9 +628,13 @@ const PAGES: {
     keywords: "sex birthdate timezone notifications telegram",
   },
   {
-    title: "Settings: Equipment",
-    href: "/settings/equipment",
-    keywords: "plates barbell dumbbell",
+    // Equipment moved out of Settings to the top-level /equipment registry (#343);
+    // this is the one ungated, discoverable door to it (#592). Keywords span every
+    // gear kind so "sauna"/"barbell"/"bike" all surface it.
+    title: "Equipment",
+    href: "/equipment",
+    keywords:
+      "equipment gear inventory registry plates barbell dumbbell kettlebell machine bike shoes sauna cold plunge red light massage recovery bar",
   },
 ];
 
