@@ -27,7 +27,12 @@ test("tracking a new food habit adds it, and removing it leaves the fixture as f
     .getByTestId("add-habit-form")
     .getByLabel("Food group")
     .selectOption("legumes");
-  await page.getByRole("button", { name: "Track" }).click();
+  // Scoped to the add form: the suggestion cards render their own "Track"
+  // buttons (7 on the seeded page), a strict-mode collision unscoped.
+  await page
+    .getByTestId("add-habit-form")
+    .getByRole("button", { name: "Track" })
+    .click();
 
   await expect(page.getByTestId("habit-legumes")).toBeVisible();
 
