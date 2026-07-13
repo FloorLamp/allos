@@ -24,6 +24,8 @@ import {
   isoWeekKey,
   planAsidePrune,
   planBackupRotation,
+  selectLatestVerified,
+  type SnapshotStatus,
 } from "./backup-rotation";
 import {
   BackupVerification,
@@ -35,6 +37,7 @@ import {
   MirrorEntry,
   OFFSITE_SENTINEL,
   checkOffsiteReadiness,
+  planOffsiteMirrorRemovals,
   planUploadMirror,
   resolveOffsiteDir,
 } from "./backup-offsite";
@@ -148,11 +151,29 @@ export function listBackupNames(dir: string = backupsDir()): string[] {
     .reverse();
 }
 
-// The most recent snapshot's metadata, or null when none exist.
+// Classify a snapshot by its verification sidecar (#622): "ok" (restorable),
+// "failed" (kept for forensics, never a keeper), or "unverified" (a partial from a
+// crashed VACUUM INTO — no sidecar). Reads the sidecar via readVerification.
+export function snapshotStatus(
+  name: string,
+  dir: string = backupsDir()
+): SnapshotStatus {
+  const v = readVerification(name, dir);
+  if (!v) return "unverified";
+  return v.integrity === "ok" ? "ok" : "failed";
+}
+
+// The most recent VERIFIED-ok snapshot's metadata, or null when none exist (#622).
+// Prefers the newest snapshot whose sidecar says integrity ok, so Settings → Server
+// never reports an integrity-failed or partial file as "the last backup" (those are
+// retained on disk for forensics but aren't restorable). Falls back to the newest
+// file overall only when NONE is verified — so an instance with backups still shows
+// one (with its failure surfaced separately) rather than "No backups yet".
 export function getLastBackup(dir: string = backupsDir()): BackupInfo | null {
   const names = listBackupNames(dir);
   if (names.length === 0) return null;
-  const name = names[0];
+  const name =
+    selectLatestVerified(names, (n) => snapshotStatus(n, dir)) ?? names[0];
   const st = fs.statSync(path.join(dir, name));
   return { name, size: st.size, mtimeMs: st.mtimeMs };
 }
@@ -231,15 +252,29 @@ export function verifySnapshot(
 // Periodic integrity check of the LIVE database, gated to run once per ISO week
 // via a stored marker. Called from every scheduled tick (independent of whether
 // a snapshot is due) so slow-growing corruption is noticed even between backups.
-// Best-effort: logs the outcome, never throws.
-export function runLiveIntegrityCheck(now: Date = new Date()): {
+// A prior FAILED verdict re-runs every tick until the DB is repaired (#621), and
+// `opts.force` (the admin "Recheck integrity now" action) bypasses the gate for an
+// immediate re-test — either way a clean recheck clears a stale failure without
+// waiting for the next ISO week. Best-effort: logs the outcome, never throws.
+export function runLiveIntegrityCheck(
+  now: Date = new Date(),
+  opts: { force?: boolean } = {}
+): {
   ran: boolean;
   ok?: boolean;
 } {
   const tz = getInstanceTimezone();
   const weekKey = isoWeekKey(dateStrInTz(tz, now));
+  // "0" = a prior failure to retry, "1"/undefined = passed / never run.
+  const lastOk =
+    getSetting("backup_live_integrity_ok") === "0" ? false : undefined;
   if (
-    !isLiveIntegrityCheckDue(getSetting("backup_live_integrity_week"), weekKey)
+    !opts.force &&
+    !isLiveIntegrityCheckDue(
+      getSetting("backup_live_integrity_week"),
+      weekKey,
+      lastOk
+    )
   ) {
     return { ran: false };
   }
@@ -374,10 +409,11 @@ export function replicateToOffsite(
     keepDaily = keepDaily ?? cfg.keepDaily;
     keepWeekly = keepWeekly ?? cfg.keepWeekly;
   }
-  const { prune } = planBackupRotation(listBackupNames(dest), {
-    keepDaily,
-    keepWeekly,
-  });
+  const { prune } = planBackupRotation(
+    listBackupNames(dest),
+    { keepDaily, keepWeekly },
+    (n) => snapshotStatus(n, dest) // sidecar-aware: a failed/partial copy never a keeper (#622)
+  );
   let pruned = 0;
   for (const p of prune) {
     if (p === snapshotName) continue;
@@ -417,6 +453,48 @@ export function replicateToOffsite(
     uploadsCopied: toCopy.length,
     pruned,
   };
+}
+
+// Remove a deleted profile's medical files + photo from the OFF-VOLUME uploads
+// mirror (#625). The mirror is append-only for single-row deletes by design, but a
+// deleteProfile is a deliberate right-to-delete: it unlinks the person's files
+// locally, so the durable off-volume copy must follow or the complete medical
+// document set stays readable on the NAS forever. Best-effort + path-contained,
+// mirroring the local unlink (deleteFilesUnderRoot): each `localAbsPaths` entry is
+// mapped to its `<dest>/uploads/<rel>` mirror path, and anything that would escape
+// that subtree is skipped. Only runs when the destination is configured AND
+// presently mounted+verified — an unmounted/absent mirror can't (and shouldn't) be
+// touched; the next mount picks up wherever it left off. Returns the count removed.
+export function removeFromOffsiteMirror(
+  localAbsPaths: readonly string[],
+  opts: { destDir?: string | null; uploadsRoot?: string } = {}
+): number {
+  const dest = opts.destDir !== undefined ? opts.destDir : backupDestDir();
+  if (!dest) return 0;
+  // Only sweep a mounted+verified destination (same readiness gate as replication).
+  const rootExists = fs.existsSync(dest);
+  const rootIsDir = rootExists && fs.statSync(dest).isDirectory();
+  const sentinelPresent =
+    rootIsDir && fs.existsSync(path.join(dest, OFFSITE_SENTINEL));
+  if (
+    !checkOffsiteReadiness({ rootExists, rootIsDir, sentinelPresent }).ready
+  ) {
+    return 0;
+  }
+  const uploadsRoot = opts.uploadsRoot ?? uploadsDir();
+  const targets = planOffsiteMirrorRemovals(uploadsRoot, dest, localAbsPaths);
+  let removed = 0;
+  for (const target of targets) {
+    try {
+      fs.rmSync(target, { force: true });
+      removed++;
+    } catch (e) {
+      log.warn("off-volume mirror sweep failed", {
+        err: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+  return removed;
 }
 
 // How many pre-restore aside copies to keep (#472). Restore copies the live DB
@@ -508,12 +586,17 @@ export function performBackup(): {
     return { name, size, verification };
   }
 
-  // Prune only AFTER a successful, verified snapshot, never before.
+  // Prune only AFTER a successful, verified snapshot, never before. Sidecar-aware
+  // (#622): integrity-failed forensics files and partial (no-sidecar) files are
+  // prune-eligible but never keepers, so they can't evict a verified snapshot from
+  // the keepDaily/keepWeekly window. The just-written snapshot is verified-ok here
+  // (we returned early above otherwise) and is additionally guarded below.
   const { keepDaily, keepWeekly } = getBackupSettings();
-  const { prune } = planBackupRotation(listBackupNames(), {
-    keepDaily,
-    keepWeekly,
-  });
+  const { prune } = planBackupRotation(
+    listBackupNames(),
+    { keepDaily, keepWeekly },
+    (n) => snapshotStatus(n, dir)
+  );
   for (const p of prune) {
     // Guard against pruning the snapshot we just wrote (it should always be kept,
     // but never delete the freshest copy).

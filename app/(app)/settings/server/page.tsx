@@ -5,6 +5,7 @@ import {
   getAiPrefs,
   getBackupSettings,
   getAuditRetentionMonths,
+  getSetting,
 } from "@/lib/settings";
 import {
   getLastBackup,
@@ -44,6 +45,15 @@ export default async function ServerSettingsPage() {
   // backup" (#472).
   const lastVerification = last ? readVerification(last.name) : null;
   const offsiteReadiness = getOffsiteReadiness();
+  // Weekly live-DB integrity verdict (#621): "0" = corruption found, "1" = ok,
+  // undefined = never run. Surfaced so an admin can see the failure the health
+  // endpoint reports AND re-test after repairing the DB (Recheck integrity now).
+  const liveIntegrityRaw = getSetting("backup_live_integrity_ok");
+  const liveIntegrity = {
+    ok: liveIntegrityRaw === undefined ? null : liveIntegrityRaw === "1",
+    at: getSetting("backup_live_integrity_at") ?? null,
+    detail: getSetting("backup_live_integrity_detail") || null,
+  };
 
   return (
     <div>
@@ -73,6 +83,13 @@ export default async function ServerSettingsPage() {
             : null
         }
         lastError={getLastBackupError() || null}
+        integrity={{
+          ok: liveIntegrity.ok,
+          at: liveIntegrity.at
+            ? new Date(liveIntegrity.at).toLocaleString()
+            : null,
+          detail: liveIntegrity.detail,
+        }}
         offsite={{
           configured: isOffsiteConfigured(),
           ready: offsiteReadiness.configured ? offsiteReadiness.ready : false,

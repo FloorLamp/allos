@@ -1,3 +1,5 @@
+import path from "node:path";
+
 // Pure decision logic for OFF-VOLUME backup replication (issue #130). The primary
 // backup pipeline (lib/backup.ts) writes verified `VACUUM INTO` snapshots under
 // data/backups — the SAME bind mount as the live DB, so a volume loss destroys the
@@ -74,6 +76,15 @@ export function checkOffsiteReadiness(opts: {
 // A size mismatch (a truncated/partial earlier copy) forces a recopy. The mirror is
 // APPEND-ONLY: files present only at the destination are left untouched, so a row
 // deleted in the app (and its source file unlinked) never removes the durable copy.
+// APPEND-ONLY EXCEPTION — profile deletion (#625). The append-only contract above
+// is right for single-row deletes (a hand-corrected/re-synced row shouldn't drop
+// its durable copy), but deleteProfile is a deliberate "right to delete": it unlinks
+// the person's medical files + profile photo locally, and their DB traces age out of
+// snapshots via retention — while the off-volume uploads mirror was pruned by
+// NOTHING, leaving a deleted person's complete medical document set readable on the
+// NAS forever. This maps each locally-unlinked upload path to its mirror path and
+// returns the mirror paths to remove, so the profile-delete file sweep reaches the
+// mirror too and the two stay in step.
 export function planUploadMirror(
   src: MirrorEntry[],
   dest: MirrorEntry[]
@@ -84,6 +95,44 @@ export function planUploadMirror(
   for (const s of src) {
     const destSize = destSizeByRel.get(s.rel);
     if (destSize === undefined || destSize !== s.size) out.push(s.rel);
+  }
+  return out;
+}
+
+// Where the uploads mirror lives inside the off-volume destination root: the copy
+// side (replicateToOffsite) writes files under `<dest>/uploads/<rel>`, so the sweep
+// removes from the same subtree.
+export function offsiteUploadsRoot(destDir: string): string {
+  return path.join(destDir, "uploads");
+}
+
+// Map local upload files (absolute paths under the local uploads root) to the
+// absolute mirror paths that must be removed to purge them off-volume (#625). Each
+// result is CONTAINED under `<destDir>/uploads` — a local path that isn't actually
+// under `uploadsRoot` (a hostile/corrupt stored_path, e.g. "../../etc/passwd") maps
+// to a rel that escapes the tree and is SKIPPED, never followed — the same
+// path-containment discipline as the local unlink (deleteFilesUnderRoot). Pure: the
+// caller resolves the roots + local paths and does the fs unlink on the results.
+export function planOffsiteMirrorRemovals(
+  uploadsRoot: string,
+  destDir: string,
+  localAbsPaths: readonly string[]
+): string[] {
+  const destUploads = offsiteUploadsRoot(destDir);
+  const out: string[] = [];
+  for (const abs of localAbsPaths) {
+    if (!abs) continue;
+    const rel = path.relative(uploadsRoot, abs);
+    // rel must stay INSIDE uploadsRoot: an empty rel (== root), a "..", or an
+    // absolute rel means the local path escapes the uploads tree — skip it.
+    if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) continue;
+    const target = path.join(destUploads, rel);
+    // Double-guard the destination side: the mirror target must resolve inside
+    // <dest>/uploads, never at or above it.
+    if (target !== destUploads && !target.startsWith(destUploads + path.sep)) {
+      continue;
+    }
+    out.push(target);
   }
   return out;
 }

@@ -17,7 +17,11 @@ import {
   setTelegramBotConfig,
   getPublicUrl,
 } from "@/lib/settings";
-import { performBackup, initOffsiteDestination } from "@/lib/backup";
+import {
+  performBackup,
+  initOffsiteDestination,
+  runLiveIntegrityCheck,
+} from "@/lib/backup";
 import { formatBytes } from "@/lib/format-bytes";
 import { setMinTrainingAge } from "@/lib/age-gate";
 import { normalizePublicUrl } from "@/lib/public-url";
@@ -123,6 +127,32 @@ export async function backupNow(): Promise<{
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : String(e) };
   }
+}
+
+// Force an immediate live-DB integrity re-check (#621), bypassing the once-per-ISO-
+// week gate. The remediation for a stale `integrity-failed` health verdict after the
+// DB was repaired by any route other than a snapshot restore (`.recover`/dump-reload,
+// or a transient FS glitch): re-runs PRAGMA integrity_check now and, on a clean
+// result, clears `backup_live_integrity_ok` so `/api/health` recovers from 503
+// without waiting up to 7 days for the next weekly window.
+export async function recheckLiveIntegrity(): Promise<{
+  ok: boolean;
+  message: string;
+}> {
+  await requireAdmin();
+  const result = runLiveIntegrityCheck(new Date(), { force: true });
+  revalidatePath("/settings/server");
+  if (result.ok) {
+    return {
+      ok: true,
+      message: "Integrity re-check passed ✅ — database is OK.",
+    };
+  }
+  return {
+    ok: false,
+    message:
+      "Integrity re-check FAILED — the live database still reports corruption. Restore from a verified snapshot (see the README “Restore” section).",
+  };
 }
 
 // Verify + initialize the off-volume backup destination (#463): write the sentinel

@@ -81,13 +81,33 @@ export interface BackupPolicy {
   keepWeekly: number; // additional older weeks kept (newest per week)
 }
 
+// A snapshot's verification standing, derived from its sidecar (#622):
+//  - "ok":         sidecar says integrity ok → keeper-eligible + restorable.
+//  - "failed":     sidecar says integrity failed → kept on disk for forensics
+//                  (performBackup never prunes the current bad file) but NEVER a
+//                  retention keeper, so a corrupt file can't evict a good one.
+//  - "unverified": no readable sidecar → a partial from a crashed VACUUM INTO (a
+//                  mid-`HHmm`+1 retry leaves a differently-named partial the
+//                  same-minute cleanup misses). Prune-eligible, never a keeper.
+// Only "ok" snapshots occupy `keepDaily`/`keepWeekly` slots; the rest are still
+// listed for pruning so they stop displacing verified snapshots and masquerading
+// as the latest backup.
+export type SnapshotStatus = "ok" | "failed" | "unverified";
+
 // Decide which snapshots to keep and which to prune. Keeps the newest `keepDaily`
-// snapshots outright, then, from what remains, the newest snapshot of each of the
-// next `keepWeekly` distinct ISO weeks; everything else is pruned. Filenames that
-// aren't ours are ignored entirely (neither kept nor pruned).
+// VERIFIED snapshots outright, then, from what remains, the newest verified snapshot
+// of each of the next `keepWeekly` distinct ISO weeks; everything else is pruned.
+// Filenames that aren't ours are ignored entirely (neither kept nor pruned).
+//
+// `statusOf` classifies each snapshot by its verification sidecar (#622); it
+// defaults to treating every file as "ok" so callers/tests that don't care about
+// verification get the original filename-only behavior. Failed / unverified
+// snapshots never count toward the keep quotas (they're keeper-INELIGIBLE) but are
+// still returned in `prune` — the bad files are pruned like any other non-keeper.
 export function planBackupRotation(
   names: string[],
-  policy: BackupPolicy
+  policy: BackupPolicy,
+  statusOf: (name: string) => SnapshotStatus = () => "ok"
 ): { keep: string[]; prune: string[] } {
   const keepDaily = Math.max(0, Math.floor(policy.keepDaily));
   const keepWeekly = Math.max(0, Math.floor(policy.keepWeekly));
@@ -97,14 +117,18 @@ export function planBackupRotation(
     .filter((s): s is BackupStamp => s !== null)
     .sort((a, b) => (a.sort < b.sort ? 1 : a.sort > b.sort ? -1 : 0)); // newest first
 
+  // Only verified-ok snapshots are keeper-eligible; failed/unverified ones never
+  // occupy a retention slot (#622).
+  const eligible = parsed.filter((s) => statusOf(s.name) === "ok");
+
   const keep = new Set<string>();
-  const dailies = parsed.slice(0, keepDaily);
+  const dailies = eligible.slice(0, keepDaily);
   for (const s of dailies) keep.add(s.name);
 
-  // From the older remainder, keep the newest snapshot of each of the next
+  // From the older eligible remainder, keep the newest snapshot of each of the next
   // keepWeekly distinct weeks.
   const seenWeeks = new Set<string>();
-  for (const s of parsed.slice(keepDaily)) {
+  for (const s of eligible.slice(keepDaily)) {
     if (seenWeeks.has(s.weekKey)) continue;
     if (seenWeeks.size >= keepWeekly) break;
     seenWeeks.add(s.weekKey);
@@ -113,6 +137,23 @@ export function planBackupRotation(
 
   const prune = parsed.filter((s) => !keep.has(s.name)).map((s) => s.name);
   return { keep: [...keep], prune };
+}
+
+// The newest VERIFIED-ok snapshot name, or null when none is verified (#622). Used
+// by getLastBackup so Settings → Server reports a restorable snapshot as "the last
+// backup" instead of a newer-but-corrupt/partial file. `statusOf` defaults to
+// treating everything as "ok" (filename-only), preserving the old newest-by-name
+// behavior for callers that don't pass verification info.
+export function selectLatestVerified(
+  names: string[],
+  statusOf: (name: string) => SnapshotStatus = () => "ok"
+): string | null {
+  const verified = names
+    .map(parseBackupStamp)
+    .filter((s): s is BackupStamp => s !== null)
+    .filter((s) => statusOf(s.name) === "ok")
+    .sort((a, b) => (a.sort < b.sort ? 1 : a.sort > b.sort ? -1 : 0)); // newest first
+  return verified.length > 0 ? verified[0].name : null;
 }
 
 // Whether a scheduled backup should run this tick: enabled, within the configured

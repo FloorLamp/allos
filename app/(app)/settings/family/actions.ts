@@ -24,6 +24,7 @@ import {
   type GrantInput,
 } from "@/lib/grants";
 import { canDeleteLogin, canDeleteProfile } from "@/lib/family-deletion";
+import { removeFromOffsiteMirror } from "@/lib/backup";
 import { OWNED_TABLES } from "@/lib/owned-tables";
 import { PHOTO_ROOT } from "@/lib/profile-photo";
 import { recordAudit } from "@/lib/audit";
@@ -210,6 +211,23 @@ export async function deleteProfile(formData: FormData): Promise<FamilyResult> {
   // Best-effort file cleanup after the DB change is durable.
   deleteFilesUnderRoot(MEDICAL_UPLOAD_ROOT, docPaths);
   if (prof.photo_path) deleteFilesUnderRoot(PHOTO_ROOT, [prof.photo_path]);
+
+  // Sweep the same files from the OFF-VOLUME uploads mirror (#625) so a deleted
+  // person's PHI doesn't linger on the NAS forever (the mirror is append-only for
+  // single-row deletes, but a profile delete is a deliberate right-to-delete that
+  // must reach the durable copy too). Path-contained + best-effort, and a no-op
+  // unless BACKUP_DEST_DIR is configured and presently mounted+verified.
+  const localUploadPaths = [
+    ...docPaths,
+    ...(prof.photo_path ? [prof.photo_path] : []),
+  ].map((rel) => path.resolve(process.cwd(), rel));
+  try {
+    const swept = removeFromOffsiteMirror(localUploadPaths);
+    if (swept > 0)
+      log.info("swept deleted profile from off-volume mirror", { swept });
+  } catch (err) {
+    log.warn("off-volume mirror sweep on profile delete failed", { err });
+  }
 
   revalidatePath("/settings/family");
   revalidatePath("/", "layout"); // switcher drops the profile

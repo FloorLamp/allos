@@ -345,4 +345,24 @@ describe("buildHealthStatus", () => {
     });
     expect(r.reason).toBe("backup-stale");
   });
+
+  // #620: replication only refreshes its marker as a byproduct of a scheduled
+  // snapshot, so disabling backups (while BACKUP_DEST_DIR stays set) must NOT leave
+  // a permanent offsite-stale 503 — the offsite alarm is gated on backupsEnabled
+  // just like the primary backup-stale/never-ran alarms.
+  it("never flags offsite staleness when backups are disabled (#620)", () => {
+    const r = buildHealthStatus({
+      readOk: true,
+      writeOk: true,
+      backupsEnabled: false,
+      stalenessThresholdHours: 48,
+      lastBackupAt: null,
+      offsiteConfigured: true,
+      lastOffsiteAt: "2026-06-01T12:00:00Z", // ancient mirror, but schedule is off
+      now,
+    });
+    expect(r.ok).toBe(true);
+    expect(r.reason).toBeUndefined();
+    expect(r.httpStatus).toBe(200);
+  });
 });

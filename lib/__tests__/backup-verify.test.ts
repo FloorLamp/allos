@@ -97,6 +97,23 @@ describe("isLiveIntegrityCheckDue", () => {
   it("is due once the week rolls over", () => {
     expect(isLiveIntegrityCheckDue("2026-W27", "2026-W28")).toBe(true);
   });
+
+  // #621: a prior FAILED verdict re-runs every tick until the DB is repaired, so a
+  // health `integrity-failed` 503 clears as soon as a recheck passes — not up to 7
+  // days later at the next ISO week.
+  it("is due every tick after a failed verdict, even within the same week", () => {
+    expect(isLiveIntegrityCheckDue("2026-W28", "2026-W28", false)).toBe(true);
+  });
+
+  it("stays weekly-gated when the last verdict passed (or never ran)", () => {
+    expect(isLiveIntegrityCheckDue("2026-W28", "2026-W28", true)).toBe(false);
+    expect(isLiveIntegrityCheckDue("2026-W28", "2026-W28", null)).toBe(false);
+    expect(isLiveIntegrityCheckDue("2026-W28", "2026-W28", undefined)).toBe(
+      false
+    );
+    // A passing verdict still becomes due when the week rolls over.
+    expect(isLiveIntegrityCheckDue("2026-W27", "2026-W28", true)).toBe(true);
+  });
 });
 
 describe("decideRestore", () => {

@@ -17,3 +17,25 @@ test.describe("Settings → Server: off-volume backup status", () => {
     await expect(offsite.getByText(/BACKUP_DEST_DIR/).first()).toBeVisible();
   });
 });
+
+// The backup card exposes a forced live-DB integrity re-check (#621): the
+// remediation for a stale `integrity-failed` health verdict after the DB was
+// repaired outside a snapshot restore. On the seeded (healthy) e2e DB the recheck
+// passes and reports OK, clearing any stale failure without waiting a week.
+test.describe("Settings → Server: forced live-integrity recheck", () => {
+  test("recheck integrity now runs and reports a passing verdict", async ({
+    page,
+  }) => {
+    await page.goto("/settings/server");
+    const integrity = page.getByTestId("backup-integrity");
+    await expect(integrity).toBeVisible();
+    await expect(integrity.getByText("Live database integrity:")).toBeVisible();
+
+    const recheck = page.getByTestId("backup-recheck-integrity");
+    await expect(recheck).toBeVisible();
+    await recheck.click();
+
+    // A passing recheck surfaces the success message (the seeded DB is healthy).
+    await expect(page.getByText(/Integrity re-check passed/)).toBeVisible();
+  });
+});

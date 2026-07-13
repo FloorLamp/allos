@@ -1,7 +1,10 @@
 import { describe, it, expect } from "vitest";
+import path from "node:path";
 import {
   resolveOffsiteDir,
   planUploadMirror,
+  planOffsiteMirrorRemovals,
+  offsiteUploadsRoot,
   checkOffsiteReadiness,
   type MirrorEntry,
 } from "@/lib/backup-offsite";
@@ -110,5 +113,45 @@ describe("planUploadMirror", () => {
 
   it("copies nothing when source is empty", () => {
     expect(planUploadMirror([], [{ rel: "x", size: 1 }])).toEqual([]);
+  });
+});
+
+// #625: the profile-delete sweep maps a deleted person's locally-unlinked upload
+// files to their off-volume mirror paths so the PHI copy on the NAS is removed too.
+describe("planOffsiteMirrorRemovals (#625)", () => {
+  const uploadsRoot = path.join("/app", "data", "uploads");
+  const dest = path.join("/mnt", "nas");
+  const destUploads = path.join(dest, "uploads");
+
+  it("maps local upload paths to contained mirror paths", () => {
+    const local = [
+      path.join(uploadsRoot, "medical", "5", "labs.pdf"),
+      path.join(uploadsRoot, "profile-photos", "5.png"),
+    ];
+    expect(planOffsiteMirrorRemovals(uploadsRoot, dest, local)).toEqual([
+      path.join(destUploads, "medical", "5", "labs.pdf"),
+      path.join(destUploads, "profile-photos", "5.png"),
+    ]);
+  });
+
+  it("skips paths that escape the uploads root (traversal / absolute)", () => {
+    const local = [
+      path.join(uploadsRoot, "..", "..", "etc", "passwd"), // escapes upward
+      "/etc/shadow", // absolute, unrelated
+      path.join(uploadsRoot, "medical", "7", "ok.pdf"), // legit → kept
+    ];
+    expect(planOffsiteMirrorRemovals(uploadsRoot, dest, local)).toEqual([
+      path.join(destUploads, "medical", "7", "ok.pdf"),
+    ]);
+  });
+
+  it("skips the uploads root itself and empty entries", () => {
+    expect(
+      planOffsiteMirrorRemovals(uploadsRoot, dest, [uploadsRoot, ""])
+    ).toEqual([]);
+  });
+
+  it("offsiteUploadsRoot is <dest>/uploads", () => {
+    expect(offsiteUploadsRoot(dest)).toBe(destUploads);
   });
 });
