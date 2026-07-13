@@ -7,7 +7,11 @@ import {
   getProvider,
   updateProviderIdentity,
   mergeProviders,
+  getProviderMergeImpact,
 } from "@/lib/queries";
+import { recordAudit } from "@/lib/audit";
+import { AUDIT_ACTIONS } from "@/lib/audit-actions";
+import { formatProviderMergeAudit } from "@/lib/provider-merge";
 import type { ProviderType } from "@/lib/types";
 
 // Server actions for the provider registry (issue #275). BOTH mutations are on the
@@ -29,7 +33,7 @@ function str(v: FormDataEntryValue | null): string {
 export async function updateProviderAction(
   formData: FormData
 ): Promise<{ error?: string }> {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const id = Number(formData.get("id"));
   if (!id) return { error: "Missing provider." };
   const name = str(formData.get("name"));
@@ -46,6 +50,14 @@ export async function updateProviderAction(
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Could not save." };
   }
+  // Audit the GLOBAL identity edit (issue #655): who edited which shared provider.
+  recordAudit({
+    loginId: admin.login.id,
+    profileId: admin.profile.id,
+    action: AUDIT_ACTIONS.providerUpdate,
+    target: String(id),
+    detail: name,
+  });
   revalidatePath(`/providers/${id}`);
   revalidatePath("/providers");
   return {};
@@ -57,18 +69,36 @@ export async function updateProviderAction(
 export async function mergeProviderAction(
   formData: FormData
 ): Promise<{ error?: string }> {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const survivorId = Number(formData.get("survivorId"));
   const duplicateId = Number(formData.get("duplicateId"));
   if (!survivorId || !duplicateId)
     return { error: "Pick a provider to merge." };
-  if (!getProvider(survivorId) || !getProvider(duplicateId))
+  const duplicate = getProvider(duplicateId);
+  if (!getProvider(survivorId) || !duplicate)
     return { error: "One of the providers no longer exists." };
+  // Read the per-table re-point counts BEFORE the merge — afterward the links point
+  // at the survivor and the absorbed row is gone, so the impact is unrecoverable.
+  const impact = getProviderMergeImpact(duplicateId);
   try {
     mergeProviders(survivorId, duplicateId);
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Could not merge." };
   }
+  // Audit the absorb (issue #655): the absorbed row is now deleted and ids never
+  // recycle, so this event carries its id + name + the surviving id + counts.
+  recordAudit({
+    loginId: admin.login.id,
+    profileId: admin.profile.id,
+    action: AUDIT_ACTIONS.providerMerge,
+    target: String(survivorId),
+    detail: formatProviderMergeAudit({
+      survivorId,
+      absorbedId: duplicateId,
+      absorbedName: duplicate.name,
+      impact,
+    }),
+  });
   revalidatePath("/providers");
   revalidatePath(`/providers/${survivorId}`);
   redirect(`/providers/${survivorId}?merged=1`);

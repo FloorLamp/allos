@@ -7,6 +7,7 @@ import {
   providerLinkTables,
   planProviderMerge,
   formatMergeImpact,
+  formatProviderMergeAudit,
   providerDisambigLabel,
   type ProviderMergeImpact,
 } from "@/lib/provider-merge";
@@ -159,6 +160,42 @@ describe("formatMergeImpact (count-only, no PHI detail)", () => {
     expect(
       formatMergeImpact(impact([{ table: "encounters", count: 0 }], 0))
     ).toBe(null);
+  });
+});
+
+describe("formatProviderMergeAudit (issue #655 — absorb detail)", () => {
+  const impact = (
+    perTable: { table: string; count: number }[]
+  ): ProviderMergeImpact => ({
+    perTable,
+    profiles: 1,
+    total: perTable.reduce((n, t) => n + t.count, 0),
+  });
+
+  it("records the absorbed id + name, surviving id, and per-table counts", () => {
+    expect(
+      formatProviderMergeAudit({
+        survivorId: 7,
+        absorbedId: 12,
+        absorbedName: "Dr. Drop",
+        impact: impact([
+          { table: "encounters", count: 3 },
+          { table: "procedures", count: 1 },
+          { table: "medical_records", count: 0 },
+        ]),
+      })
+    ).toBe('absorbed #12 "Dr. Drop" into #7; re-pointed 3 visits, 1 procedure');
+  });
+
+  it("omits the counts clause when nothing linked the absorbed provider", () => {
+    expect(
+      formatProviderMergeAudit({
+        survivorId: 2,
+        absorbedId: 5,
+        absorbedName: "Empty Clinic",
+        impact: impact([{ table: "encounters", count: 0 }]),
+      })
+    ).toBe('absorbed #5 "Empty Clinic" into #2');
   });
 });
 

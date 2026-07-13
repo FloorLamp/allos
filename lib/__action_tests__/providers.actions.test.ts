@@ -14,9 +14,25 @@ import {
   mergeProviderAction,
 } from "@/app/(app)/providers/actions";
 import { getProvider } from "@/lib/queries";
+import { AUDIT_ACTIONS } from "@/lib/audit-actions";
 import { seedActor, createProfile, fd } from "./harness";
 
 const revalidate = vi.mocked(revalidatePath);
+
+// The most-recent audit event for an action, or undefined.
+function lastAudit(
+  action: string
+):
+  { action: string; target: string | null; detail: string | null } | undefined {
+  return db
+    .prepare(
+      `SELECT action, target, detail FROM audit_events
+        WHERE action = ? ORDER BY id DESC LIMIT 1`
+    )
+    .get(action) as
+    | { action: string; target: string | null; detail: string | null }
+    | undefined;
+}
 
 function newProvider(name: string, dedup: string, npi: string | null = null) {
   return Number(
@@ -68,6 +84,10 @@ describe("updateProviderAction", () => {
     expect(p.npi).toBe("1234567895");
     expect(p.phone).toBe("(555) 010-0142");
     expect(revalidate).toHaveBeenCalledWith(`/providers/${id}`);
+    // Audited (issue #655): who edited which shared provider.
+    const ev = lastAudit(AUDIT_ACTIONS.providerUpdate);
+    expect(ev?.target).toBe(String(id));
+    expect(ev?.detail).toBe("Dr. New");
   });
 
   it("refuses a blank name", async () => {
@@ -119,6 +139,16 @@ describe("mergeProviderAction", () => {
       .get(survivor, survivor) as { e: number; p: number };
     expect(moved.e).toBe(1);
     expect(moved.p).toBe(1);
+
+    // Audited (issue #655): the absorbed row is now deleted and ids never recycle,
+    // so the event carries the absorbed id + NAME, the surviving id, and counts.
+    const ev = lastAudit(AUDIT_ACTIONS.providerMerge);
+    expect(ev?.target).toBe(String(survivor));
+    expect(ev?.detail).toContain(`#${duplicate}`);
+    expect(ev?.detail).toContain("Dr. Drop");
+    expect(ev?.detail).toContain(`into #${survivor}`);
+    expect(ev?.detail).toMatch(/1 visit/);
+    expect(ev?.detail).toMatch(/1 procedure/);
   });
 
   it("errors on a self-merge without touching data", async () => {

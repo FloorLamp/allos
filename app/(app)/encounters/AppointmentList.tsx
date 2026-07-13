@@ -21,11 +21,16 @@ import {
   deleteAppointment,
   recordPreventiveFromAppointment,
   logVisitFromAppointment,
+  completeCarePlanItemFromAppointment,
 } from "./appointment-actions";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useToast } from "@/components/Toast";
 import OpenInMaps from "@/components/OpenInMaps";
 import { satisfiedRuleForCompletedKind } from "@/lib/preventive-appointment";
+import {
+  matchCarePlanItemsForAppointment,
+  type CarePlanMatchItem,
+} from "@/lib/care-plan-appointment";
 import { preventiveRuleByKey } from "@/lib/preventive-catalog";
 import { formatRecordDate, formatRecordDateTime } from "@/lib/record-format";
 import type { Appointment, AppointmentStatus, FormResult } from "@/lib/types";
@@ -68,9 +73,14 @@ async function submit(
 export default function AppointmentList({
   items,
   defaultDate,
+  carePlanItems = [],
 }: {
   items: Appointment[];
   defaultDate: string;
+  // The profile's OPEN care-plan items (issue #658). The close-the-loop offer
+  // computes, client-side, which of these a just-completed appointment plausibly
+  // satisfied — mirroring how satisfiableRuleName derives the preventive offer.
+  carePlanItems?: CarePlanMatchItem[];
 }) {
   const [editingId, setEditingId] = useState<number | null>(null);
   // The visit a follow-up is being scheduled from (prefills the create form).
@@ -81,9 +91,27 @@ export default function AppointmentList({
   // The appointment id whose visit has just been logged this session, so its
   // "Log visit" button flips to a done state without waiting for the refresh.
   const [loggedId, setLoggedId] = useState<number | null>(null);
+  // Care-plan item ids marked done from the close-the-loop offer this session, so
+  // each button flips to "Done ✓" immediately (issue #658).
+  const [doneCareItems, setDoneCareItems] = useState<Set<number>>(new Set());
   const confirm = useConfirm();
   const toast = useToast();
   const router = useRouter();
+
+  // The open care-plan items the just-completed appointment plausibly satisfied —
+  // the confirm-first close-the-loop offer (issue #658). Pure matcher over the
+  // items the page passed; empty when nothing matches (no offer shown).
+  const carePlanMatches = followUpFrom
+    ? matchCarePlanItemsForAppointment(
+        {
+          kind: followUpFrom.kind,
+          title: followUpFrom.title,
+          notes: followUpFrom.notes,
+          scheduledAt: followUpFrom.scheduled_at,
+        },
+        carePlanItems
+      )
+    : [];
 
   // Complete a scheduled visit, then offer to schedule the next one prefilled
   // from it — so recurring visits don't fall off.
@@ -109,6 +137,16 @@ export default function AppointmentList({
     setLoggedId(a.id);
     setFollowUpFrom(null);
     toast("Visit logged");
+    router.refresh();
+  }
+
+  // Close a matched care-plan item from the completed-appointment offer (issue
+  // #658). Marks it done server-side, flips the button locally, then refreshes so
+  // the closed item drops off the offer / Upcoming / the care-plan page.
+  async function onCompleteCareItem(item: CarePlanMatchItem) {
+    await submit(completeCarePlanItemFromAppointment, item.id);
+    setDoneCareItems((prev) => new Set(prev).add(item.id));
+    toast("Care-plan item marked done");
     router.refresh();
   }
 
@@ -171,6 +209,38 @@ export default function AppointmentList({
               >
                 {recordedId === followUpFrom.id ? "Recorded ✓" : "Mark done"}
               </button>
+            </div>
+          )}
+          {/* Close the care-plan loop (issue #658): a completed visit can close the
+              open care-plan items it satisfied (e.g. the "colonoscopy" item), in one
+              click each — confirm-first, so the user chooses. */}
+          {carePlanMatches.length > 0 && (
+            <div
+              data-testid="care-plan-offer"
+              className="mb-3 space-y-2 border-b border-brand-200/60 pb-3 dark:border-brand-900/60"
+            >
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Also close these matching care-plan items?
+              </p>
+              {carePlanMatches.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex flex-wrap items-center gap-2"
+                >
+                  <span className="text-xs font-medium text-slate-700 dark:text-slate-200">
+                    {item.description}
+                  </span>
+                  <button
+                    type="button"
+                    data-testid="care-plan-offer-done"
+                    disabled={doneCareItems.has(item.id)}
+                    onClick={() => onCompleteCareItem(item)}
+                    className="rounded-lg border border-black/10 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 disabled:opacity-60 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"
+                  >
+                    {doneCareItems.has(item.id) ? "Done ✓" : "Mark done"}
+                  </button>
+                </div>
+              ))}
             </div>
           )}
           <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">

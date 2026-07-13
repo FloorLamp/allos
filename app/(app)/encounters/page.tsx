@@ -4,7 +4,10 @@ import {
   getAppointments,
   getEncounters,
   getProviderNames,
+  getCarePlanItems,
 } from "@/lib/queries";
+import { isCarePlanItemOpen } from "@/lib/care-plan-upcoming";
+import type { CarePlanMatchItem } from "@/lib/care-plan-appointment";
 import { isRealIsoDate } from "@/lib/date";
 import { isAppointmentKind } from "@/lib/preventive-appointment";
 import ProviderDatalist from "@/components/ProviderDatalist";
@@ -39,6 +42,18 @@ export default async function VisitsPage(props: {
   const appointments = getAppointments(profile.id);
   const encounters = getEncounters(profile.id);
   const providerNames = getProviderNames();
+  // Open care-plan items a completed appointment can offer to close (issue #658).
+  // Pared to the fields the pure matcher needs; the client computes the per-
+  // appointment matches so the offer mirrors the preventive/log-visit CTAs.
+  const openCarePlanItems: CarePlanMatchItem[] = getCarePlanItems(profile.id)
+    .filter((c) => isCarePlanItemOpen(c.status))
+    .map((c) => ({
+      id: c.id,
+      description: c.description,
+      code: c.code,
+      planned_date: c.planned_date,
+      status: c.status,
+    }));
 
   // Prefill the booking form from a preventive "Book" CTA (issue #85): the item's
   // title + mapped visit kind + suggested date arrive as query params (now pointed
@@ -94,7 +109,11 @@ export default async function VisitsPage(props: {
               {scheduled.length === 0 ? (
                 <EmptyState message="No scheduled appointments. Add one to see it here and on Upcoming." />
               ) : (
-                <AppointmentList items={scheduled} defaultDate={now} />
+                <AppointmentList
+                  items={scheduled}
+                  defaultDate={now}
+                  carePlanItems={openCarePlanItems}
+                />
               )}
             </section>
 
@@ -107,7 +126,11 @@ export default async function VisitsPage(props: {
                   </span>
                 </summary>
                 <div className="mt-3">
-                  <AppointmentList items={settled} defaultDate={now} />
+                  <AppointmentList
+                    items={settled}
+                    defaultDate={now}
+                    carePlanItems={openCarePlanItems}
+                  />
                 </div>
               </details>
             )}
