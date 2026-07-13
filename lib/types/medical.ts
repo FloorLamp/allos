@@ -323,6 +323,10 @@ export interface Encounter {
   provider_name: string | null;
   location_provider_id: number | null;
   location_name: string | null;
+  // The facility provider's free-text address (joined from providers.address on
+  // location_provider_id), for the "Open in Maps" affordance (#568). Null when the
+  // encounter has no linked facility or the facility has no stored address.
+  location_address: string | null;
   notes: string | null;
   source: string | null;
   document_id: number | null;

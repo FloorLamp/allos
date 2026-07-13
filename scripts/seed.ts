@@ -214,19 +214,38 @@ const insertActivityStrava = db.prepare(
       components, source, external_id)
    VALUES (1,?,?,?,?,?,?,?,?,?,?)`
 );
-insertActivityStrava.run(
-  daysAgo(3),
-  "cardio",
-  "Strava morning ride",
-  null,
-  62,
-  24.5,
-  "moderate",
-  JSON.stringify([
-    { name: "Cycling", type: "cardio", distance_km: 24.5, duration_min: 62 },
-  ]),
-  "strava",
-  "strava:seed-ride-1"
+const stravaRideId = Number(
+  insertActivityStrava.run(
+    daysAgo(3),
+    "cardio",
+    "Strava morning ride",
+    null,
+    62,
+    24.5,
+    "moderate",
+    JSON.stringify([
+      { name: "Cycling", type: "cardio", distance_km: 24.5, duration_min: 62 },
+    ]),
+    "strava",
+    "strava:seed-ride-1"
+  ).lastInsertRowid
+);
+
+// A captured GPS route (issue #569) for that ride, so the Journal card renders its
+// tile-free SVG route thumbnail. The polyline is the canonical public Google
+// example vector (three points in remote California wilderness) — a SYNTHETIC,
+// non-residential shape per the no-real-PHI fixture rule, never a real home route.
+db.prepare(
+  `INSERT INTO activity_routes
+     (activity_id, polyline, start_lat, start_lng, end_lat, end_lng, source)
+   VALUES (?, ?, ?, ?, ?, ?, 'strava')`
+).run(
+  stravaRideId,
+  "_p~iF~ps|U_ulLnnqC_mqNvxq`@",
+  38.5,
+  -120.2,
+  43.252,
+  -126.453
 );
 
 // A recent core session with isometric holds, so timed-hold goals have data.
@@ -362,6 +381,18 @@ freq.run("type", "cardio", 2); // one recent run → partial
 // reproductive_status for a male profile.
 db.prepare(
   `INSERT INTO profile_settings (profile_id, key, value) VALUES (1, 'sex', 'male')
+   ON CONFLICT(profile_id, key) DO NOTHING`
+).run();
+
+// A coarse home location (issue #570) so the timeline's sunrise/sunset daylight
+// chips have something to render. Synthetic city-scale coordinates (~NYC),
+// rounded to the ~11 km storage precision — never a real address.
+db.prepare(
+  `INSERT INTO profile_settings (profile_id, key, value) VALUES (1, 'home_lat', '40.7')
+   ON CONFLICT(profile_id, key) DO NOTHING`
+).run();
+db.prepare(
+  `INSERT INTO profile_settings (profile_id, key, value) VALUES (1, 'home_lng', '-74')
    ON CONFLICT(profile_id, key) DO NOTHING`
 ).run();
 

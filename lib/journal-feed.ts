@@ -7,7 +7,12 @@
 // "one question, one computation". Only the built DayGroups (not raw history) cross to
 // the client. Not pure (reads DB + settings); takes the resolved profile + unit prefs.
 
-import { getJournalPage, getSetsForActivities, getWeights } from "./queries";
+import {
+  getJournalPage,
+  getSetsForActivities,
+  getRoutePolylinesForActivities,
+  getWeights,
+} from "./queries";
 import { getEquipment } from "./equipment";
 import { buildJournalCards, type DayGroup } from "./journal-card";
 import type { DatedWeight } from "./calorie-estimate";
@@ -39,10 +44,12 @@ export function buildJournalFeedPage(
     return { groups: [], nextBefore: page.nextBefore };
   }
 
-  const sets = getSetsForActivities(
-    profileId,
-    page.activities.map((a) => a.id)
-  );
+  const activityIds = page.activities.map((a) => a.id);
+  const sets = getSetsForActivities(profileId, activityIds);
+  // GPS route polylines for the tile-free route thumbnails (issue #569). Only
+  // activities with a captured route appear in the map; consumed server-side to
+  // build the card — only the (small) polyline for a rendered card crosses the wire.
+  const routes = getRoutePolylinesForActivities(profileId, activityIds);
   // Resolve per-set / per-activity equipment_id -> implement name. includeRetired: a
   // retired implement must still label the historical sets it was logged against
   // (issue #341). The equipment list is small and profile-owned, so re-reading it per
@@ -67,6 +74,7 @@ export function buildJournalFeedPage(
     // "Today"/"Yesterday" labels relative to the calendar/db notion of today.
     today: todayFn(profileId),
     yesterday: yesterdayFn(profileId),
+    routes,
   });
 
   return { groups, nextBefore: page.nextBefore };

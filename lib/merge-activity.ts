@@ -61,6 +61,21 @@ export function writeActivityFold(
     db.prepare(
       `UPDATE exercise_sets SET activity_id = ? WHERE activity_id = ?`
     ).run(keepId, dropId);
+    // Re-parent the discarded row's GPS route onto the keeper (#569), KEEPER-WINS:
+    // activity_routes is UNIQUE(activity_id), so a blind move would violate the
+    // constraint when the keeper already has a route. Move the drop's route only
+    // when the keeper has none; otherwise the drop keeps its route (it cascade-
+    // deletes with the drop, and is captured by the undo path). Mirrors the sets
+    // re-parent but respects the 1:1 constraint.
+    if (
+      !db
+        .prepare(`SELECT 1 FROM activity_routes WHERE activity_id = ?`)
+        .get(keepId)
+    ) {
+      db.prepare(
+        `UPDATE activity_routes SET activity_id = ? WHERE activity_id = ?`
+      ).run(keepId, dropId);
+    }
   }
   db.prepare(
     `UPDATE activities
@@ -128,6 +143,26 @@ export function dropSetIds(dropId: number): number[] {
   ).map((r) => r.id);
 }
 
+// The id of the discarded row's activity_routes row that writeActivityFold WILL
+// re-parent onto the keeper (#569) — i.e. non-null only when the drop has a route
+// AND the keeper has none (the keeper-wins condition). Captured BEFORE the fold and
+// stored in MergeUndoContext.movedRouteId so undo can move exactly that route back.
+// Returns null when the keeper already has a route (the drop's route then rides the
+// generic child capture instead) or the drop has none.
+export function movedRouteIdForMerge(
+  keepId: number,
+  dropId: number
+): number | null {
+  const keeperHasRoute = db
+    .prepare(`SELECT 1 FROM activity_routes WHERE activity_id = ?`)
+    .get(keepId);
+  if (keeperHasRoute) return null;
+  const dropRoute = db
+    .prepare(`SELECT id FROM activity_routes WHERE activity_id = ?`)
+    .get(dropId) as { id: number } | undefined;
+  return dropRoute?.id ?? null;
+}
+
 // INVERT an activity merge on undo (#199/#200): given the restored discarded row's
 // NEW id, move its re-parented sets back off the keeper, restore the keeper's
 // pre-fold fields, and clear the recorded pair decision so the pair resurfaces in
@@ -147,6 +182,17 @@ export function revertActivityMerge(
       `UPDATE exercise_sets SET activity_id = ?
         WHERE activity_id = ? AND id IN (${placeholders})`
     ).run(newDropId, merge.keeperId, ...merge.movedSetIds);
+  }
+
+  // 1b. Move the drop's re-parented GPS route back off the keeper onto the restored
+  //     row (#569). Bound by id AND the keeper's current parent so a route since
+  //     moved/deleted is skipped; the restored row has a fresh id with no route, so
+  //     the UNIQUE(activity_id) constraint can't collide.
+  if (merge.movedRouteId != null) {
+    db.prepare(
+      `UPDATE activity_routes SET activity_id = ?
+        WHERE activity_id = ? AND id = ?`
+    ).run(newDropId, merge.keeperId, merge.movedRouteId);
   }
 
   // 2. Restore the keeper's pre-fold fold-field values + prior edited flag (#200),

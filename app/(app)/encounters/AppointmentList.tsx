@@ -24,6 +24,7 @@ import {
 } from "./appointment-actions";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useToast } from "@/components/Toast";
+import OpenInMaps from "@/components/OpenInMaps";
 import { satisfiedRuleForCompletedKind } from "@/lib/preventive-appointment";
 import { preventiveRuleByKey } from "@/lib/preventive-catalog";
 import type { Appointment, AppointmentStatus, FormResult } from "@/lib/types";
@@ -223,6 +224,17 @@ export default function AppointmentList({
                   {a.scheduled_at}
                   {a.provider_name ? ` · ${a.provider_name}` : ""}
                   {a.location ? ` · ${a.location}` : ""}
+                  {a.location ? (
+                    <>
+                      {" · "}
+                      <OpenInMaps
+                        address={a.location}
+                        label="Directions"
+                        showIcon={false}
+                        className="text-brand-700 hover:underline dark:text-brand-300"
+                      />
+                    </>
+                  ) : null}
                 </div>
                 {a.notes ? (
                   <div className="mt-0.5 text-xs text-slate-400 dark:text-slate-500">

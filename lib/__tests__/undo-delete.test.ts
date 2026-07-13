@@ -143,6 +143,7 @@ describe("serialize / parse round-trip", () => {
       signature: "id:4|id:5",
       keeperBefore: { components: null, distance_km: null, edited: 0 },
       movedSetIds: [9, 10],
+      movedRouteId: null,
     };
     const back = parsePayload(serializePayload("activity", rows, merge));
     expect(back.merge).toEqual(merge);

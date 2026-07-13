@@ -15,6 +15,8 @@ import {
   type SituationEvent,
 } from "../trend-annotations";
 import { normalizeSituationName } from "../situations";
+import { zipToHome } from "../home-location";
+import { getHomeLocation, setHomeLocation } from "./location";
 import {
   METRIC_SOURCE_PRIORITY_KEY,
   isValidSourceId,
@@ -388,6 +390,7 @@ export interface ProfileAdoption {
   birthdate: string | null; // a birthdate that was adopted (for caller logging)
   age: number | null; // an age fallback that was adopted (for caller logging)
   fullName: string | null; // a full name that was adopted (for caller logging)
+  homeAdopted: boolean; // a coarse home location was adopted from the patient ZIP
   changed: boolean; // any profile field was written
 }
 
@@ -403,6 +406,7 @@ export function adoptProfileFromExtraction(
     patient_birthdate: string | null;
     patient_age: number | null;
     patient_name?: string | null;
+    patient_postal_code?: string | null;
   } | null
 ): ProfileAdoption {
   const out: ProfileAdoption = {
@@ -410,6 +414,7 @@ export function adoptProfileFromExtraction(
     birthdate: null,
     age: null,
     fullName: null,
+    homeAdopted: false,
     changed: false,
   };
   if (!meta) return out;
@@ -432,6 +437,19 @@ export function adoptProfileFromExtraction(
     } else if (meta.patient_age !== null && getStoredAge(profileId) === null) {
       setStoredAge(profileId, meta.patient_age);
       out.age = meta.patient_age;
+      out.changed = true;
+    }
+  }
+  // Home location (issue #570): suggest a COARSE ZIP-centroid home location from the
+  // patient's own postal code, ONLY when none is set (never overwrite a user value) —
+  // the same only-when-unset backfill the demographics above use. The centroid is
+  // already ~11 km coarse (no street address), US-only; a non-US/unknown ZIP resolves
+  // to null and is skipped. Editable/removable in Settings → Profile.
+  if (meta.patient_postal_code && getHomeLocation(profileId) === null) {
+    const home = zipToHome(meta.patient_postal_code);
+    if (home) {
+      setHomeLocation(profileId, home);
+      out.homeAdopted = true;
       out.changed = true;
     }
   }

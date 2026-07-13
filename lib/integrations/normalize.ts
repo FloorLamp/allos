@@ -81,6 +81,19 @@ export interface NormActivity {
   components?: ActivityComponent[] | null;
 }
 
+// A GPS route for an activity → activity_routes (issue #569). Provider-agnostic:
+// carries the encoded polyline as delivered plus optional start/end coordinates,
+// keyed to its parent activity by `external_id` (resolved to the activity's DB id
+// at upsert time). Source-owned and never hand-edited, so no edit-lock applies.
+export interface NormActivityRoute {
+  external_id: string; // the parent activity's external_id (dedup key)
+  polyline: string; // Google encoded polyline, as delivered
+  start_lat: number | null;
+  start_lng: number | null;
+  end_lat: number | null;
+  end_lng: number | null;
+}
+
 // The extra metric columns NormActivity carries beyond the base fields, in a
 // fixed order shared by the INSERT/UPDATE statements below. Kept in one place so
 // the column list, placeholders, and bound values can't drift apart.
@@ -594,6 +607,77 @@ export function upsertActivities(
       );
       counts.inserted++;
     }
+  }
+  return counts;
+}
+
+// Upsert activity GPS routes into the activity_routes child table (issue #569),
+// keyed 1:1 on the parent activity by activity_id (UNIQUE). Each incoming route
+// carries its parent's `external_id`; we resolve that to the activity's DB id with
+// a PROFILE-SCOPED SELECT (so the write can never reach across profiles) and skip a
+// route whose parent activity doesn't exist — e.g. one that was tombstoned/skipped
+// by upsertActivities this same run. Routes are source-owned and never hand-edited,
+// so there's no edit-lock/tombstone path here; the ON CONFLICT keeps re-syncs
+// idempotent, and a SELECT-before-compare counts an unchanged polyline as unchanged
+// rather than a write. Call it AFTER upsertActivities in the same writeTx.
+export function upsertActivityRoutes(
+  profileId: number,
+  rows: NormActivityRoute[],
+  source: string
+): UpsertCounts {
+  const findActivity = db.prepare(
+    "SELECT id FROM activities WHERE profile_id = ? AND external_id = ?"
+  );
+  const findRoute = db.prepare(
+    "SELECT polyline, start_lat, start_lng, end_lat, end_lng FROM activity_routes WHERE activity_id = ?"
+  );
+  const upsert = db.prepare(
+    `INSERT INTO activity_routes
+       (activity_id, polyline, start_lat, start_lng, end_lat, end_lng, source)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(activity_id) DO UPDATE SET
+       polyline = excluded.polyline,
+       start_lat = excluded.start_lat, start_lng = excluded.start_lng,
+       end_lat = excluded.end_lat, end_lng = excluded.end_lng,
+       source = excluded.source`
+  );
+  const counts = emptyCounts();
+  for (const r of rows) {
+    if (!r.polyline) continue;
+    const act = findActivity.get(profileId, r.external_id) as
+      { id: number } | undefined;
+    if (!act) continue; // parent skipped/tombstoned this run — no orphan route
+    const found = findRoute.get(act.id) as
+      | {
+          polyline: string;
+          start_lat: number | null;
+          start_lng: number | null;
+          end_lat: number | null;
+          end_lng: number | null;
+        }
+      | undefined;
+    if (
+      found &&
+      found.polyline === r.polyline &&
+      found.start_lat === r.start_lat &&
+      found.start_lng === r.start_lng &&
+      found.end_lat === r.end_lat &&
+      found.end_lng === r.end_lng
+    ) {
+      counts.unchanged++;
+      continue;
+    }
+    upsert.run(
+      act.id,
+      r.polyline,
+      r.start_lat,
+      r.start_lng,
+      r.end_lat,
+      r.end_lng,
+      source
+    );
+    if (found) counts.updated++;
+    else counts.inserted++;
   }
   return counts;
 }

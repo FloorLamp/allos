@@ -26,6 +26,7 @@ export { DEFAULT_TIMEZONE, isValidTimezone } from "./timezone";
 
 export * from "./settings/kv";
 export * from "./settings/display";
+export * from "./settings/location";
 export * from "./settings/server";
 export * from "./settings/notifications";
 export * from "./settings/profile-attrs";

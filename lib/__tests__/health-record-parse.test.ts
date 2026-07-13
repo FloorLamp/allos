@@ -149,6 +149,7 @@ describe("parseHealthRecord", () => {
       sex: "male",
       birthdate: "1980-01-01",
       name: null,
+      postalCode: null,
     });
   });
 

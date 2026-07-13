@@ -11,3 +11,4 @@ lib/screenings.json
 lib/drug-interactions.json
 lib/nutrient-food-map.json
 lib/food-groups.json
+lib/zip-centroids.json

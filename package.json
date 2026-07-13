@@ -35,6 +35,7 @@
     "gen:screenings": "tsx scripts/gen-screenings.ts",
     "gen:nutrient-food-map": "tsx scripts/gen-nutrient-food-map.ts",
     "gen:food-groups": "tsx scripts/gen-food-groups.ts",
+    "gen:zip-centroids": "tsx scripts/gen-zip-centroids.ts",
     "prepare": "husky"
   },
   "lint-staged": {

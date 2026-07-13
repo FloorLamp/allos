@@ -99,16 +99,39 @@ function cdaName(patient: any): string | null {
 // → sex, and <name> → the patient name (document provenance). Returns null when
 // none is present.
 function mapDemographics(cd: any): ImportDemographics | null {
-  const patient = asArray(cd?.recordTarget)
-    .map((rt: any) => rt?.patientRole?.patient)
-    .find(Boolean);
+  const patientRole = asArray(cd?.recordTarget)
+    .map((rt: any) => rt?.patientRole)
+    .find((pr: any) => pr?.patient);
+  const patient = patientRole?.patient;
   if (!patient) return null;
   const birthdate = hl7Date(patient?.birthTime?.["@_value"]);
   const g = patient?.administrativeGenderCode?.["@_code"];
   const sex = g === "M" ? "male" : g === "F" ? "female" : null;
   const name = cdaName(patient);
-  if (!birthdate && !sex && !name) return null;
-  return { sex, birthdate, name };
+  // The patient's OWN address lives on patientRole/addr (a sibling of <patient>).
+  // We take ONLY the postal code (issue #570) — it resolves offline to a coarse
+  // ZIP-centroid home-location SUGGESTION, never a street address. Handle addr being
+  // an array or a single node, and a nullFlavor'd/empty postalCode.
+  const addr = Array.isArray(patientRole?.addr)
+    ? patientRole.addr[0]
+    : patientRole?.addr;
+  const postalCode = normalizePostalCode(addr?.postalCode);
+  if (!birthdate && !sex && !name && !postalCode) return null;
+  return { sex, birthdate, name, postalCode };
+}
+
+// The XML parser coerces a bare numeric <postalCode> (e.g. 62704) to a NUMBER,
+// which also strips a leading zero from a north-eastern ZIP (07001 → 7001). Coerce
+// back to a string and re-pad a short all-digit value to the 5-digit ZIP form so the
+// offline centroid lookup (#570) still resolves it. Non-numeric (ZIP+4, non-US)
+// values pass through as trimmed text.
+function normalizePostalCode(raw: unknown): string | null {
+  let s: string | null;
+  if (typeof raw === "number") s = String(raw);
+  else s = textOf(raw)?.trim() ?? null;
+  if (!s) return null;
+  if (/^\d{1,4}$/.test(s)) s = s.padStart(5, "0");
+  return s;
 }
 
 // Parse the CCD into its flat list of sections (the seam other tooling reads)

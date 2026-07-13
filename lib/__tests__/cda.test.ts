@@ -212,11 +212,13 @@ describe("demographics", () => {
       sex: "female",
       birthdate: "1985-03-12",
       name: "Jane Q Doe",
+      postalCode: null,
     });
     expect(parseCcdaDocument(xml).demographics).toEqual({
       sex: "female",
       birthdate: "1985-03-12",
       name: "Jane Q Doe",
+      postalCode: null,
     });
   });
 
@@ -224,11 +226,30 @@ describe("demographics", () => {
     expect(
       parseCcda(withPatient(`<administrativeGenderCode code="M"/>`))
         .demographics
-    ).toEqual({ sex: "male", birthdate: null, name: null });
+    ).toEqual({ sex: "male", birthdate: null, name: null, postalCode: null });
     // A name with no sex/birthdate is still carried (document provenance).
     expect(
       parseCcda(withPatient(`<name><family>Solo</family></name>`)).demographics
-    ).toEqual({ sex: null, birthdate: null, name: "Solo" });
+    ).toEqual({ sex: null, birthdate: null, name: "Solo", postalCode: null });
+  });
+
+  it("reads the patient's own postal code from patientRole/addr (#570)", () => {
+    // The addr is a sibling of <patient> under <patientRole>, so the fixture puts
+    // it there. We keep ONLY the ZIP (a synthetic one) — never the street line.
+    const xml = `<?xml version="1.0"?>
+<ClinicalDocument xmlns="urn:hl7-org:v3">
+  <recordTarget><patientRole>
+    <addr><streetAddressLine>1 Test St</streetAddressLine><city>Springfield</city><state>IL</state><postalCode>62704</postalCode></addr>
+    <patient><name><family>Doe</family></name></patient>
+  </patientRole></recordTarget>
+  <component><structuredBody></structuredBody></component>
+</ClinicalDocument>`;
+    expect(parseCcda(xml).demographics).toEqual({
+      sex: null,
+      birthdate: null,
+      name: "Doe",
+      postalCode: "62704",
+    });
   });
 
   it("is null when no demographics are present", () => {

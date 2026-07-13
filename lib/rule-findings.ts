@@ -25,8 +25,18 @@ import {
   getActivityDates,
   getFoodSuggestions,
   getFrequencyTargetProgress,
+  getBiomarkerSeries,
+  getCanonicalBiomarker,
+  getDaylightOutdoorMinutesTotal,
 } from "./queries";
-import { getActiveSituations } from "./settings";
+import {
+  getActiveSituations,
+  getHomeLocation,
+  getUserSex,
+  getUserAge,
+} from "./settings";
+import { optimalStatus } from "./reference-range";
+import { decideSunExposure, SUN_EXPOSURE_WINDOW_WEEKS } from "./sun-exposure";
 import { isGoalLive, frequencyScopeLabel } from "./goals";
 import { foodHabitSignalKey, isFoodHabitBehind } from "./food-habit";
 import { shiftDateStr, lastNDates } from "./date";
@@ -98,6 +108,7 @@ export function collectCoachingFindings(
     ...buildAdherencePatternFindings(profileId, today),
     ...buildFoodSuggestionFindings(profileId),
     ...buildFoodHabitFindings(profileId),
+    ...buildSunExposureFindings(profileId, today),
   ];
 }
 
@@ -444,4 +455,71 @@ export function buildAdherencePatternFindings(
   }
 
   return detectAdherencePatterns(inputs).map(adherencePatternToFinding);
+}
+
+// ---- Domain: sun exposure (coaching tier only, issue #571) ----------------
+
+// The vitamin-D outcome family: getBiomarkerSeries collapses D2/D3/total to one
+// series (#482), so any member name resolves the whole family. This literal is a
+// catalog member name (the passport reads the same one).
+const VITAMIN_D_CANONICAL = "Vitamin D, 25-Hydroxy";
+
+// A calm, OBSERVATIONAL coaching finding when a profile has logged little daylight-
+// outdoor time over the recent window AND its last vitamin D was below optimal.
+// Coaching tier only: it joins collectCoachingFindings, its dedupeKey rides the
+// shared suppression bus (SUN_EXPOSURE_PREFIX is registered in RULE_FINDING_PREFIXES),
+// and it NEVER notifies / never reaches the hero. Copy stays observational — sun
+// exposure is dual-edged, so it surfaces the data and prescribes nothing. Needs a
+// home location (else the daylight math is meaningless) → otherwise empty.
+export function buildSunExposureFindings(
+  profileId: number,
+  today: string
+): Finding[] {
+  const home = getHomeLocation(profileId);
+  if (!home) return [];
+
+  // Latest vitamin-D reading (family-collapsed, oldest→newest → last is latest).
+  const series = getBiomarkerSeries(profileId, VITAMIN_D_CANONICAL);
+  const latest = series.at(-1);
+  if (!latest || latest.value_num == null) return [];
+
+  const cb = getCanonicalBiomarker(
+    latest.canonical_name ?? VITAMIN_D_CANONICAL
+  );
+  const status = optimalStatus(
+    latest.value_num,
+    cb,
+    getUserSex(profileId),
+    getUserAge(profileId)
+  );
+
+  // Daylight-outdoor minutes over the window — the ONE computation (lib/queries/sun),
+  // averaged to a per-week figure the copy formats.
+  const windowDays = SUN_EXPOSURE_WINDOW_WEEKS * 7;
+  const dates = lastNDates(today, windowDays);
+  const totalMin = getDaylightOutdoorMinutesTotal(profileId, dates);
+  const avgWeeklyDaylightMin = totalMin / SUN_EXPOSURE_WINDOW_WEEKS;
+
+  const obs = decideSunExposure({
+    hasHomeLocation: true,
+    avgWeeklyDaylightMin,
+    vitaminDStatus: status,
+    vitaminDValue: latest.value_num,
+    vitaminDUnit: latest.unit,
+    vitaminDDate: latest.date,
+  });
+  if (!obs) return [];
+
+  return [
+    {
+      domain: "sun-exposure",
+      dedupeKey: obs.dedupeKey,
+      title: obs.title,
+      detail: obs.detail,
+      // Calm FYI — a neutral observation, never an alarm.
+      tone: "info",
+      actionHref: "/trends?tab=biomarkers",
+      actionLabel: "View biomarkers",
+    },
+  ];
 }

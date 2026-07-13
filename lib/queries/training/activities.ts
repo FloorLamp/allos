@@ -394,6 +394,26 @@ export function getSetsForActivities(
     .all(profileId, ...ids) as ExerciseSet[];
 }
 
+// The encoded GPS route polyline for each of `ids` that has one (issue #569),
+// returned as activityId -> polyline. Profile-scoped through the activities JOIN
+// (activity_routes carries no profile_id of its own). Feeds the Journal card's
+// tile-free SVG route thumbnail; only activities with a captured route appear.
+export function getRoutePolylinesForActivities(
+  profileId: number,
+  ids: number[]
+): Map<number, string> {
+  if (ids.length === 0) return new Map();
+  const placeholders = ids.map(() => "?").join(",");
+  const rows = db
+    .prepare(
+      `SELECT r.activity_id, r.polyline
+         FROM activity_routes r JOIN activities a ON a.id = r.activity_id
+        WHERE a.profile_id = ? AND r.activity_id IN (${placeholders})`
+    )
+    .all(profileId, ...ids) as { activity_id: number; polyline: string }[];
+  return new Map(rows.map((r) => [r.activity_id, r.polyline]));
+}
+
 // The single most recent activity as an ActivityEditData (issue #337): the seed
 // for a "Repeat last activity" command palette entry / mobile quick action, so
 // repeat-last isn't desktop-only. Newest by (date, id); null when nothing is

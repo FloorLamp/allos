@@ -9,6 +9,7 @@ import {
   getTelegramBotConfig,
   getNotifySchedule,
   getTimezone,
+  getHomeLocation,
   getWeekStart,
   getWeekMode,
   getEmergencyCardEnabled,
@@ -63,6 +64,7 @@ export default async function ProfileSettingsPage() {
   const timezone = getTimezone(profile.id);
   const weekStart = getWeekStart(profile.id);
   const weekMode = getWeekMode(profile.id);
+  const home = getHomeLocation(profile.id);
   const telegram = getProfileTelegram(profile.id);
   const botConfigured = getTelegramBotConfig().telegramBotToken !== "";
 
@@ -83,6 +85,8 @@ export default async function ProfileSettingsPage() {
         timezone={timezone}
         weekStart={weekStart}
         weekMode={weekMode}
+        homeLat={home?.lat ?? null}
+        homeLng={home?.lng ?? null}
       />
       {!isTrainingRestricted(profile.id) && (
         <TrainingZonesForm

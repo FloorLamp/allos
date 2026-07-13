@@ -20,6 +20,7 @@ import {
   writeActivityFold,
   snapshotKeeperFold,
   dropSetIds,
+  movedRouteIdForMerge,
 } from "@/lib/merge-activity";
 import { loadImportTombstones } from "@/lib/integrations/tombstones";
 import {
@@ -97,6 +98,7 @@ function mergeAbsorbingStrava(
     .get(dropId) as Record<string, unknown>;
   const keeperBefore = snapshotKeeperFold(keep);
   const movedSetIds = dropSetIds(dropId);
+  const movedRouteId = movedRouteIdForMerge(keepId, dropId);
   writeActivityFold(profileId, keepId, keep, drop);
   const signature = pairSignature(
     activityToken(keep as { id: number; external_id: string | null }),
@@ -109,6 +111,7 @@ function mergeAbsorbingStrava(
     signature,
     keeperBefore,
     movedSetIds,
+    movedRouteId,
   })!;
 }
 

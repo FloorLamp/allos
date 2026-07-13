@@ -1,6 +1,10 @@
 import type { ActivityType } from "@/lib/types";
 import { boundedOrNull, inMetricBounds } from "@/lib/ingest-bounds";
-import type { NormActivity, NormMetricSample } from "./normalize";
+import type {
+  NormActivity,
+  NormMetricSample,
+  NormActivityRoute,
+} from "./normalize";
 
 // Maps Strava activities (https://developers.strava.com/docs/reference/) into the
 // provider-agnostic normalized records (see normalize.ts), so the shared upserts
@@ -170,7 +174,11 @@ function workoutTypeLabel(code: unknown): string | null {
 export function mapStravaActivity(
   a: unknown,
   detail?: unknown
-): { activity: NormActivity; samples: NormMetricSample[] } | null {
+): {
+  activity: NormActivity;
+  samples: NormMetricSample[];
+  route: NormActivityRoute | null;
+} | null {
   if (!a || typeof a !== "object") return null;
   const rec = a as Record<string, unknown>;
   const id = num(rec.id);
@@ -308,7 +316,34 @@ export function mapStravaActivity(
     });
   }
 
-  return { activity, samples };
+  // GPS route → activity_routes (issue #569). PREFER the summary polyline: it
+  // respects the athlete's Strava privacy zones (endpoints near flagged addresses
+  // are trimmed), a free privacy win over the full-resolution detail polyline. The
+  // summary rides on both the list summary and the detail; fall back to the detail
+  // polyline only if no summary is present. Capturing this costs zero extra API
+  // calls (the detail is already fetched for calories).
+  const summaryMap = (rec.map ?? null) as Record<string, unknown> | null;
+  const detailMap = (detailRec?.map ?? null) as Record<string, unknown> | null;
+  const polyline =
+    str(summaryMap?.summary_polyline) ??
+    str(detailMap?.summary_polyline) ??
+    str(detailMap?.polyline);
+  const latOf = (v: unknown): number | null =>
+    Array.isArray(v) ? num(v[0]) : null;
+  const lngOf = (v: unknown): number | null =>
+    Array.isArray(v) ? num(v[1]) : null;
+  const route: NormActivityRoute | null = polyline
+    ? {
+        external_id: `${STRAVA_ID}:${id}`,
+        polyline,
+        start_lat: latOf(rec.start_latlng),
+        start_lng: lngOf(rec.start_latlng),
+        end_lat: latOf(rec.end_latlng),
+        end_lng: lngOf(rec.end_latlng),
+      }
+    : null;
+
+  return { activity, samples, route };
 }
 
 function roundOrNull(v: number | null): number | null {

@@ -10,6 +10,7 @@ import { getEncounter } from "@/lib/queries";
 import { formatRecordDate, sourceLabel } from "@/lib/record-format";
 import { PageHeader } from "@/components/ui";
 import ProviderName from "@/components/ProviderName";
+import OpenInMaps from "@/components/OpenInMaps";
 import type { Encounter } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -152,6 +153,18 @@ export default async function EncounterDetailPage(props: {
                   {encounter.location_name}
                 </span>
               )}
+              {encounter.location_address ? (
+                <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  {encounter.location_address}
+                  {" · "}
+                  <OpenInMaps
+                    address={encounter.location_address}
+                    label="Directions"
+                    showIcon={false}
+                    className="text-brand-700 hover:underline dark:text-brand-300"
+                  />
+                </div>
+              ) : null}
             </DetailRow>
           ) : null}
 

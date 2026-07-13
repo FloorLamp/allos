@@ -198,3 +198,43 @@ describe("mapStravaActivity — plausibility bounds (#132)", () => {
     expect(res!.samples[0].value).toBe(600);
   });
 });
+
+describe("mapStravaActivity — route capture (#569)", () => {
+  it("captures the summary polyline + start/end coordinates", () => {
+    // Synthetic polyline over a public-park loop (no residential anchor), per the
+    // no-real-PHI fixture rule.
+    const res = mapStravaActivity(
+      stravaRec({
+        map: { id: "a12345", summary_polyline: "_p~iF~ps|U_ulLnnqC" },
+        start_latlng: [38.5, -120.2],
+        end_latlng: [40.7, -120.95],
+      })
+    );
+    expect(res).not.toBeNull();
+    expect(res!.route).not.toBeNull();
+    expect(res!.route!.external_id).toBe("strava:12345");
+    expect(res!.route!.polyline).toBe("_p~iF~ps|U_ulLnnqC");
+    expect(res!.route!.start_lat).toBe(38.5);
+    expect(res!.route!.end_lng).toBe(-120.95);
+  });
+
+  it("prefers the summary polyline over the full-res detail polyline (privacy zones)", () => {
+    const res = mapStravaActivity(
+      stravaRec({ map: { summary_polyline: "SUMMARY" } }),
+      { map: { summary_polyline: "SUMMARY", polyline: "FULLRES" } }
+    );
+    expect(res!.route!.polyline).toBe("SUMMARY");
+  });
+
+  it("falls back to the detail polyline only when no summary is present", () => {
+    const res = mapStravaActivity(stravaRec({ map: {} }), {
+      map: { polyline: "FULLRES" },
+    });
+    expect(res!.route!.polyline).toBe("FULLRES");
+  });
+
+  it("returns a null route for an activity with no map (e.g. a trainer ride)", () => {
+    const res = mapStravaActivity(stravaRec({ trainer: true }));
+    expect(res!.route).toBeNull();
+  });
+});

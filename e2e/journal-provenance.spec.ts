@@ -32,6 +32,32 @@ test("journal cards show a source provenance chip and 'added' timestamp (#11)", 
   );
 });
 
+// #569: the seeded Strava ride carries a captured GPS route, so its journal card
+// renders a tile-free SVG route thumbnail (decoded from the encoded polyline, no
+// basemap, no external request). Manual rows carry no route → no thumbnail.
+test("an imported ride with a route shows a tile-free SVG route thumbnail (#569)", async ({
+  page,
+}) => {
+  await page.goto("/training");
+
+  const stravaCard = page.locator(".card", {
+    hasText: "Strava morning ride",
+  });
+  await expect(stravaCard).toBeVisible();
+  const routeMap = stravaCard.getByTestId("route-map");
+  await expect(routeMap).toBeVisible();
+  // It's an inline <svg> tracing a <path> — not an <img> (nothing is fetched).
+  await expect(routeMap).toHaveJSProperty("tagName", "svg");
+  await expect(routeMap.locator("path")).toHaveCount(1);
+
+  // A hand-logged session has no route → no thumbnail.
+  const manualCard = page
+    .locator(".card", { hasText: "Basketball pickup" })
+    .first();
+  await expect(manualCard).toBeVisible();
+  await expect(manualCard.getByTestId("route-map")).toHaveCount(0);
+});
+
 // The imported Strava ride is stored with the athlete's free-text title ("Strava
 // morning ride") but a canonical "Cycling" component. The journal must icon it
 // off the structured sport (a bike), matching the activity form — not fall back

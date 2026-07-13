@@ -120,6 +120,11 @@ export interface MergeUndoContext {
   // ids of the discarded row's exercise_sets that were re-parented onto the keeper
   // at merge time (#199). Undo moves exactly these back onto the restored row.
   movedSetIds: number[];
+  // id of the discarded row's activity_routes row that was re-parented onto the
+  // keeper at merge time (#569), or null when the keeper already had a route (so the
+  // drop's route stayed on the drop and was captured as a child instead). Undo moves
+  // exactly this route back onto the restored row. Mirrors movedSetIds.
+  movedRouteId: number | null;
 }
 
 // ── The kind registry ─────────────────────────────────────────────────────────
@@ -154,6 +159,16 @@ export const UNDO_KINDS: Record<string, KindSpec> = {
         externalRefs: [
           { column: "equipment_id", table: "equipment", onMissing: "null" },
         ],
+        childWhere: "activity_id = ?",
+        childBinds: 1,
+      },
+      {
+        // The GPS route (#569) — a 1:1 child cascade-deleted with the activity, so a
+        // plain delete captures and restores it exactly like the sets. It has no FK
+        // outside this capture, so no externalRefs.
+        entity: "route",
+        table: "activity_routes",
+        fks: [{ column: "activity_id", ref: "activity" }],
         childWhere: "activity_id = ?",
         childBinds: 1,
       },

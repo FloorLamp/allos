@@ -409,6 +409,32 @@ export const DATASETS: ExportDataset[] = [
        WHERE a.profile_id = ?`,
   }),
   tableDataset({
+    // GPS route polylines (#569) — the encoded shape behind an activity's route
+    // card. A child of activities (JOINed via a.profile_id), so browse/export-only.
+    key: "activity_routes",
+    label: "Activity routes",
+    table: "activity_routes",
+    deletable: false,
+    columns: [
+      "date",
+      "activity",
+      "polyline",
+      "start_lat",
+      "start_lng",
+      "end_lat",
+      "end_lng",
+      "source",
+    ],
+    select: `SELECT r.id, a.date, a.title AS activity, r.polyline,
+              r.start_lat, r.start_lng, r.end_lat, r.end_lng, r.source
+       FROM activity_routes r JOIN activities a ON a.id = r.activity_id
+       WHERE a.profile_id = ?
+       ORDER BY a.date DESC, r.activity_id DESC`,
+    countSql: `SELECT COUNT(*) AS n
+       FROM activity_routes r JOIN activities a ON a.id = r.activity_id
+       WHERE a.profile_id = ?`,
+  }),
+  tableDataset({
     key: "body_metrics",
     label: "Body metrics",
     table: "body_metrics",

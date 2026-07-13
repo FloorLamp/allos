@@ -9,6 +9,7 @@ import {
   writeActivityFold,
   snapshotKeeperFold,
   dropSetIds,
+  movedRouteIdForMerge,
 } from "@/lib/merge-activity";
 import { recordPairDecision } from "@/lib/queries";
 import {
@@ -404,6 +405,9 @@ export async function mergeActivities(
     // writeActivityFold re-parents them onto the keeper.
     const keeperBefore = snapshotKeeperFold(keep);
     const movedSetIds = dropSetIds(dropId);
+    // Which route (if any) the fold will re-parent onto the keeper (#569) — captured
+    // BEFORE the fold so undo can move exactly that route back.
+    const movedRouteId = movedRouteIdForMerge(keepId, dropId);
 
     writeActivityFold(profile.id, keepId, keep, drop, overrideFields);
     const signature = pairSignature(
@@ -420,6 +424,7 @@ export async function mergeActivities(
       signature,
       keeperBefore,
       movedSetIds,
+      movedRouteId,
     });
     return true;
   });

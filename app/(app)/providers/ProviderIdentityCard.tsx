@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { IconPhone, IconMapPin, IconId, IconPencil } from "@tabler/icons-react";
 import SubmitButton from "@/components/SubmitButton";
+import OpenInMaps from "@/components/OpenInMaps";
 import { useToast } from "@/components/Toast";
 import type { Provider } from "@/lib/types";
 import { updateProviderAction } from "./actions";
@@ -176,12 +177,18 @@ export default function ProviderIdentityCard({
             </div>
           ) : null}
           {provider.address ? (
-            <div className="flex items-center gap-2 text-slate-600 dark:text-slate-300">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-slate-600 dark:text-slate-300">
               <IconMapPin
                 className="h-4 w-4 shrink-0 text-slate-400"
                 stroke={1.75}
               />
               <span>{provider.address}</span>
+              <OpenInMaps
+                address={provider.address}
+                label="Directions"
+                showIcon={false}
+                className="text-xs text-brand-700 hover:underline dark:text-brand-300"
+              />
             </div>
           ) : null}
           {!hasDetails ? (
