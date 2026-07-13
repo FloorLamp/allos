@@ -1,8 +1,10 @@
-// PURE cadence-decision logic for AI recommendation runs (issue #424). Imports
-// NOTHING (no db, no network), so it lives in the pure test suite
+// PURE cadence-decision logic for AI recommendation runs (issue #424). No db /
+// network (only a pure sibling helper), so it lives in the pure test suite
 // (lib/__tests__/recommendation-run.test.ts). The impure orchestration — the
 // context/signature gather and the actual AI calls — lives in
 // lib/recommendation-engine.ts, which reuses this decision.
+
+import { isOfflineModelTag } from "./offline-narrative";
 //
 // A "recommendation run" generalizes the two proactive AI features (supplement
 // suggestions + the daily insight) into ONE cadence-gated generation, dispatched
@@ -147,4 +149,20 @@ export function decideRecommendationRun(opts: {
     run: true,
     reason: trigger === "document-imported" ? "upload" : "due",
   };
+}
+
+// Whether a freshly generated daily insight should overwrite the stored row for its
+// date (#633). generateInsight NEVER throws — a transient API blip, output
+// truncation, or insight-cap exhaustion returns the deterministic OFFLINE
+// composition tagged `offline/*` instead of erroring. Saving that unconditionally
+// lets a mid-day cadence run (a page view, an import hook) clobber a good AI insight
+// already stored today with degraded "temporarily unavailable" text. So an offline
+// result is only worth saving when NOTHING is stored yet (an offline insight still
+// beats an empty slot); a real-model result always saves. `hasExisting` is whether a
+// prior insight row exists for that date.
+export function shouldSaveInsight(opts: {
+  newModel: string;
+  hasExisting: boolean;
+}): boolean {
+  return !isOfflineModelTag(opts.newModel) || !opts.hasExisting;
 }

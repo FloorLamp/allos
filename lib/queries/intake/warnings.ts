@@ -20,6 +20,7 @@ import {
   type InteractionItem,
 } from "../../drug-interactions";
 import { parseRxcuiIngredients } from "../../rxnorm";
+import { contributesToDailyLimit } from "../../supplement-schedule";
 import { getSupplements, getSupplementDoses } from "./schedule";
 
 // ---- Dietary limits: supplement stack-total UL warnings (issue #148) ----
@@ -73,11 +74,18 @@ function stackDriContext(
     arr.push(d.amount);
     dosesBySupp.set(d.item_id, arr);
   }
-  const items: StackItem[] = supplements.map((s) => ({
-    name: s.name,
-    active: !!s.active,
-    doseAmounts: dosesBySupp.get(s.id) ?? [],
-  }));
+  // Only items taken EVERY day contribute to the DAILY UL/RDA totals (#635): a PRN
+  // item is on-demand and a workout/rest/situational item applies only on some
+  // days, so summing either as a full daily dose was a standing false "above upper
+  // limit" care-tier alarm. The pure contributesToDailyLimit mirrors isDueOn's PRN
+  // short-circuit; the item's active flag is still gated downstream in the DRI math.
+  const items: StackItem[] = supplements
+    .filter((s) => contributesToDailyLimit(s))
+    .map((s) => ({
+      name: s.name,
+      active: !!s.active,
+      doseAmounts: dosesBySupp.get(s.id) ?? [],
+    }));
 
   const birthdate = getUserBirthdate(profileId);
   const ageYears = birthdate

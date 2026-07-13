@@ -19,6 +19,7 @@
 import {
   regionForExercise,
   regionsForGroup,
+  exerciseHistoryKey,
   LIFT_OPTIONS,
   type MuscleRegion,
   type BodyGroup,
@@ -307,7 +308,19 @@ function withEquipmentPreference(
   primary: StrengthRecent | null;
 } {
   const ranked = deRankUnavailableLifts(exercises, input.availableEquipment);
-  const primary = input.strength.find((s) => s.exercise === ranked[0]) ?? null;
+  // Match the lead lift to its strength aggregate by CANONICAL identity, not raw
+  // spelling (#626/#432): getStrengthByExercise emits one aggregate row per merged
+  // lift under its first-seen spelling, while `ranked[0]` is the recent-window
+  // frequency-top spelling — a raw `===` misses when the two diverge (logged "Curl"
+  // long ago, "Barbell Curl" recently), dropping `primary` to null and losing the
+  // progression seed / the whole strength suggestion.
+  const lead = ranked[0];
+  const key = lead != null ? exerciseHistoryKey(lead) : null;
+  const primary =
+    key != null
+      ? (input.strength.find((s) => exerciseHistoryKey(s.exercise) === key) ??
+        null)
+      : null;
   return { focus, exercises: ranked, primary };
 }
 
@@ -382,13 +395,26 @@ function rankExercises(
   rows: DatedExercise[],
   focusRegions: MuscleRegion[]
 ): string[] {
+  // Count and dedup by CANONICAL identity (#626/#432): "Curl" and "Barbell Curl"
+  // are one merged lift, so they must count as ONE exercise and never both surface
+  // in the list. Each key is displayed under its most-recently-logged spelling.
   const exCount = new Map<string, number>();
-  for (const r of rows)
-    exCount.set(r.exercise, (exCount.get(r.exercise) ?? 0) + 1);
+  const repSpelling = new Map<string, string>();
+  const repDate = new Map<string, string>();
+  for (const r of rows) {
+    const k = exerciseHistoryKey(r.exercise);
+    exCount.set(k, (exCount.get(k) ?? 0) + 1);
+    const seen = repDate.get(k);
+    if (seen == null || r.date >= seen) {
+      repDate.set(k, r.date);
+      repSpelling.set(k, r.exercise);
+    }
+  }
 
   const perRegion = new Map<MuscleRegion, string[]>();
   for (const reg of focusRegions) perRegion.set(reg, []);
-  for (const [ex] of [...exCount.entries()].sort((a, b) => b[1] - a[1])) {
+  for (const [k] of [...exCount.entries()].sort((a, b) => b[1] - a[1])) {
+    const ex = repSpelling.get(k)!;
     const reg = regionForExercise(ex);
     if (reg && perRegion.has(reg) && !perRegion.get(reg)!.includes(ex))
       perRegion.get(reg)!.push(ex);

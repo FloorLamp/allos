@@ -29,8 +29,10 @@ import {
 } from "./settings";
 import {
   decideRecommendationRun,
+  shouldSaveInsight,
   type RecommendationTrigger,
 } from "./recommendation-run";
+import { getInsight } from "./queries/intake/insights";
 import {
   autoSuggestFromBiomarkers,
   generateAndStoreSuggestions,
@@ -148,12 +150,20 @@ export async function runRecommendation(
     // Insight half: refresh today's daily coaching insight (idempotent upsert).
     let insightModel = "";
     try {
-      const result = await generateInsight(
-        profileId,
-        today(profileId),
-        opts.loginId
-      );
-      saveInsight(profileId, today(profileId), result);
+      const date = today(profileId);
+      const result = await generateInsight(profileId, date, opts.loginId);
+      // Don't let a transient offline-fallback (API blip / truncation / cap
+      // exhaustion — generateInsight never throws) clobber a good AI insight
+      // already stored today; only save an offline result when the slot is empty
+      // (#633).
+      if (
+        shouldSaveInsight({
+          newModel: result.model,
+          hasExisting: getInsight(profileId, date) !== undefined,
+        })
+      ) {
+        saveInsight(profileId, date, result);
+      }
       insightModel = result.model;
     } catch (err) {
       log.error("recommendation: insight step failed", { profileId, err });

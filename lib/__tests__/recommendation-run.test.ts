@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   decideRecommendationRun,
+  shouldSaveInsight,
   cadencePeriodDays,
   clampMaxRunsPerDay,
   parseCadence,
@@ -9,6 +10,7 @@ import {
   MAX_RUNS_PER_DAY_CEILING,
   type RecommendationCadence,
 } from "../recommendation-run";
+import { offlineModelTag } from "../offline-narrative";
 
 const NOW = "2026-07-12T09:00:00.000Z";
 
@@ -152,6 +154,39 @@ describe("decideRecommendationRun", () => {
         inputSignature: "same",
         lastSignature: "same",
       }).run
+    ).toBe(true);
+  });
+});
+
+describe("shouldSaveInsight — offline overwrite guard (#633)", () => {
+  it("keeps a stored insight when a transient offline result comes back", () => {
+    // generateInsight never throws: a blip / truncation / cap exhaustion returns
+    // an offline-tagged composition. It must NOT clobber today's good AI insight.
+    for (const reason of ["failed", "cap-exhausted", "no-key"] as const) {
+      expect(
+        shouldSaveInsight({
+          newModel: offlineModelTag(reason),
+          hasExisting: true,
+        })
+      ).toBe(false);
+    }
+  });
+
+  it("saves an offline result when nothing is stored yet (beats an empty slot)", () => {
+    expect(
+      shouldSaveInsight({
+        newModel: offlineModelTag("failed"),
+        hasExisting: false,
+      })
+    ).toBe(true);
+  });
+
+  it("always saves a real-model result, overwriting or not", () => {
+    expect(
+      shouldSaveInsight({ newModel: "claude-sonnet-5", hasExisting: true })
+    ).toBe(true);
+    expect(
+      shouldSaveInsight({ newModel: "claude-sonnet-5", hasExisting: false })
     ).toBe(true);
   });
 });

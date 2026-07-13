@@ -34,10 +34,14 @@ import {
   ADHERENCE_PREFIX,
 } from "@/lib/adherence-patterns";
 import { TRAINING_OBS_PREFIX } from "@/lib/training-observations";
-import { weightAnomalySignalKey } from "@/lib/weight-anomaly";
+import {
+  weightAnomalySignalKey,
+  detectWeightAnomalies,
+} from "@/lib/weight-anomaly";
 import {
   getBodyMetricDailySeries,
   getWeights,
+  getWeightsOneSourcePerDay,
   getGoals,
   getFindingSuppressions,
   dismissFinding,
@@ -308,6 +312,68 @@ describe("buildBodyHygieneFindings — out-and-back collapse (#434)", () => {
     ).toBe(false);
     // The middle row reads as a unit mix-up (ratio ≈ 2.2×).
     expect(findings[0].detail).toMatch(/kg\/lb entry mix-up/i);
+  });
+});
+
+// ---- #634: weight anomaly collapses cross-source rows (the #434 other half) --
+
+describe("buildBodyHygieneFindings — cross-source collapse (#634)", () => {
+  it("does not flag two scales disagreeing on the same day", () => {
+    const { profileId, anchor } = makeProfile("anomaly-634");
+
+    // A stable Health Connect weight trend, plus a single day where a SECOND scale
+    // (Withings) also reported — 3.5% lower. Raw all-source rows sort the two
+    // same-day readings adjacent (gap 0) and read as a day-over-day "jump"; the
+    // primary-source-per-day collapse keeps ONE reading per day, so there is no
+    // cross-source pair to flag.
+    const insWeight = db.prepare(
+      `INSERT INTO body_metrics (profile_id, date, weight_kg, source) VALUES (?, ?, ?, ?)`
+    );
+    insWeight.run(profileId, shiftDateStr(anchor, -3), 80.0, "health-connect");
+    insWeight.run(profileId, shiftDateStr(anchor, -2), 80.1, "health-connect");
+    insWeight.run(profileId, shiftDateStr(anchor, -1), 80.0, "health-connect");
+    // The disputed second scale on the most recent day (Withings reads 77.2).
+    insWeight.run(profileId, shiftDateStr(anchor, -1), 77.2, "withings");
+
+    // The collapse keeps exactly one row per day (health-connect wins the disputed
+    // day per the default provider preference) — the id is preserved for linking.
+    const collapsed = getWeightsOneSourcePerDay(profileId);
+    expect(collapsed).toHaveLength(3);
+    expect(collapsed.every((r) => typeof r.id === "number")).toBe(true);
+
+    // Genuine trap: the RAW all-source rows would have produced a false anomaly.
+    const rawAnomalies = detectWeightAnomalies(
+      getWeights(profileId).map((w) => ({
+        id: w.id,
+        date: w.date,
+        weightKg: w.weight_kg,
+      })),
+      anchor
+    );
+    expect(rawAnomalies.length).toBeGreaterThan(0);
+
+    // The builder, fed the collapsed one-source-per-day rows, flags nothing.
+    expect(buildBodyHygieneFindings(profileId, anchor, "kg")).toHaveLength(0);
+  });
+
+  it("still flags a genuine within-source jump after the collapse", () => {
+    const { profileId, anchor } = makeProfile("anomaly-634-control");
+    const insWeight = db.prepare(
+      `INSERT INTO body_metrics (profile_id, date, weight_kg, source) VALUES (?, ?, ?, ?)`
+    );
+    insWeight.run(profileId, shiftDateStr(anchor, -2), 80.0, "health-connect");
+    const badId = Number(
+      insWeight.run(
+        profileId,
+        shiftDateStr(anchor, -1),
+        176.4,
+        "health-connect"
+      ).lastInsertRowid
+    );
+
+    const findings = buildBodyHygieneFindings(profileId, anchor, "kg");
+    expect(findings).toHaveLength(1);
+    expect(findings[0].dedupeKey).toBe(weightAnomalySignalKey(badId));
   });
 });
 

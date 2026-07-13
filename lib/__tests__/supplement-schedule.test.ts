@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   availableConditions,
   CONDITIONS,
+  contributesToDailyLimit,
   defaultFoodTiming,
   isDueOn,
   isPostWorkoutReady,
@@ -175,6 +176,33 @@ describe("isDueOn", () => {
     expect(
       isDueOn({ condition: "daily", situation: null, as_needed: 0 }, ctx())
     ).toBe(true);
+  });
+});
+
+describe("contributesToDailyLimit (#635)", () => {
+  it("counts an unconditional daily item", () => {
+    expect(contributesToDailyLimit({ condition: "daily", as_needed: 0 })).toBe(
+      true
+    );
+    // as_needed omitted defaults to not-PRN.
+    expect(contributesToDailyLimit({ condition: "daily" })).toBe(true);
+  });
+
+  it("excludes a PRN (as_needed) item even when daily", () => {
+    expect(contributesToDailyLimit({ condition: "daily", as_needed: 1 })).toBe(
+      false
+    );
+  });
+
+  it("excludes workout/rest/situational items (not taken every day)", () => {
+    for (const condition of [
+      "pre_workout",
+      "post_workout",
+      "rest_day",
+      "situational",
+    ] as const) {
+      expect(contributesToDailyLimit({ condition, as_needed: 0 })).toBe(false);
+    }
   });
 });
 
