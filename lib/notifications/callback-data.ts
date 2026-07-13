@@ -6,7 +6,7 @@ import type { FoodLogOutcome } from "../food-log-write";
 import { formatRecordDate } from "../record-format";
 import { foodGroupName } from "../food-groups";
 import type { ReminderWindow } from "./supplement-format";
-import type { FoodNudgeWindow } from "./food-format";
+import { FOOD_NUDGE_WINDOWS, type FoodNudgeWindow } from "./food-format";
 
 // A keyboard button carries EITHER a callback token or a deep-link url (issue
 // #233's refill "Open form"); mirrors telegram.ts's InlineKeyboard.
@@ -437,12 +437,8 @@ export function escalationAckCloseText(outcome: EscalationAckOutcome): string {
 // flip the per-profile food_telegram_enabled flag. Both mirror a dose tap: the
 // profile id is a cross-check (the handler re-resolves the acting profile from the
 // chat), and the handler answers from the typed write outcome, never unconditionally.
-
-const FOOD_NUDGE_WINDOWS: readonly FoodNudgeWindow[] = [
-  "Morning",
-  "Midday",
-  "Evening",
-];
+// The window allowlist is FOOD_NUDGE_WINDOWS, imported from the renderer so the parser
+// and the send path can't drift on which windows are valid.
 
 export interface FoodLogCallback {
   profileId: number;

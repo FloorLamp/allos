@@ -42,7 +42,7 @@ import {
   getTelegramBotConfig,
   getAuditRetentionMonths,
 } from "../lib/settings";
-import { getUpdates } from "../lib/notifications/telegram";
+import { getUpdates, telegramChannel } from "../lib/notifications/telegram";
 import { handleCallbackQuery } from "../lib/notifications/telegram-callbacks";
 import { runEscalations } from "../lib/notifications/escalate";
 import { runRefills } from "../lib/notifications/refill";
@@ -266,7 +266,16 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
   // coexists with the supplement reminder in the same slot. Bedtime is deliberately
   // excluded. buildFoodNudge returns null for a life stage where food logging is
   // hidden (infant), which the dueSlots loop treats as "nothing due".
-  if (getProfileFoodTelegram(profile.id)) {
+  //
+  // Gated on Telegram actually being deliverable, not just the opt-in flag: the nudge
+  // is a button-driven Telegram feature (the buttons do nothing on a channel that
+  // can't render them), and the flag can linger "on" after Telegram is disabled (the
+  // Settings toggle is hidden once Telegram is off). Without this a profile with the
+  // stale flag + Web Push would get a content-less "tap what you've eaten" push.
+  if (
+    getProfileFoodTelegram(profile.id) &&
+    telegramChannel.isConfigured(profile.id)
+  ) {
     for (const w of FOOD_NUDGE_WINDOWS) {
       const slotHour = sched.supplementHours[w];
       if (slotHour != null && slotDue(slotHour, hour))
