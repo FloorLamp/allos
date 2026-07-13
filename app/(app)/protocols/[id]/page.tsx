@@ -14,6 +14,7 @@ import {
 import { getEquipment, getEquipmentById } from "@/lib/equipment";
 import { getUnitPrefs } from "@/lib/settings";
 import { formatUsageSummary } from "@/lib/usage-format";
+import { foodGroupName } from "@/lib/food-groups";
 import ProtocolControls from "../ProtocolControls";
 import ProtocolCompare from "../ProtocolCompare";
 import { updateProtocol, endProtocol, deleteProtocol } from "../actions";
@@ -128,8 +129,9 @@ export default async function ProtocolDetailPage(props: {
                     <span className="font-semibold tabular-nums">
                       {adherence?.count ?? 0} / {practice.perWeek}
                     </span>{" "}
-                    {PRACTICE_TYPE_LABELS[practice.type] ?? practice.type}{" "}
-                    sessions
+                    {practice.scopeKind === "food_group"
+                      ? `${foodGroupName(practice.value)} servings`
+                      : `${PRACTICE_TYPE_LABELS[practice.value] ?? practice.value} sessions`}
                     {adherence?.met ? (
                       <span className="badge ml-1.5 bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
                         On track

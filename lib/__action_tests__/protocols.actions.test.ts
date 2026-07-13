@@ -178,6 +178,28 @@ describe("recovery gear + practice adherence (#344)", () => {
     });
   });
 
+  it("CREATES an owned FOOD_GROUP target for a food-habit practice (#580)", async () => {
+    const { profile } = seedActor();
+    await createProtocol(
+      protocolForm({
+        name: "Fatty fish 2x",
+        start_date: "2026-05-01",
+        practice_type: "food_group:fatty_fish",
+        practice_per_week: 2,
+      })
+    );
+    const p = getProtocols(profile.id)[0];
+    expect(p.frequency_target_id).not.toBeNull();
+    expect(p.owns_frequency_target).toBe(1);
+    const targets = getFrequencyTargets(profile.id);
+    expect(targets).toHaveLength(1);
+    expect(targets[0]).toMatchObject({
+      scope_kind: "food_group",
+      scope_value: "fatty_fish",
+      per_week: 2,
+    });
+  });
+
   it("REFERENCES a pre-existing routine target without owning or clobbering it", async () => {
     const { profile } = seedActor();
     // A routine target the user already made (per_week 2).

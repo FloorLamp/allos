@@ -136,7 +136,11 @@ describe("getProtocolUsage / getProtocolPractice / getProtocolAdherence", () => 
       frequency_target_id: tid,
     });
     const p = getProtocol(1, pid)!;
-    expect(getProtocolPractice(1, p)).toEqual({ type: "cardio", perWeek: 4 });
+    expect(getProtocolPractice(1, p)).toEqual({
+      scopeKind: "type",
+      value: "cardio",
+      perWeek: 4,
+    });
 
     // A cardio activity this week counts toward the SAME frequency-target progress.
     insertActivity(1, today(1), "cardio", null);

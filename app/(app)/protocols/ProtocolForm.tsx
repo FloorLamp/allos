@@ -7,7 +7,8 @@ import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
 import type { Protocol, FormResult, Equipment } from "@/lib/types";
 import type { OutcomeOption, ProtocolPractice } from "@/lib/queries/protocols";
-import { PRACTICE_TYPES } from "@/lib/protocol-practice";
+import { PRACTICE_TYPES, practiceSelectValue } from "@/lib/protocol-practice";
+import { FOOD_GROUPS } from "@/lib/food-groups";
 
 const PRACTICE_TYPE_LABELS: Record<string, string> = {
   strength: "Strength",
@@ -212,15 +213,31 @@ export default function ProtocolForm({
               id={`pr-practice-type-${uid}`}
               name="practice_type"
               className="input"
-              defaultValue={practice?.type ?? ""}
+              defaultValue={
+                practice
+                  ? practiceSelectValue(practice.scopeKind, practice.value)
+                  : ""
+              }
               data-testid="protocol-practice-type"
             >
               <option value="">No adherence tracking</option>
-              {PRACTICE_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {PRACTICE_TYPE_LABELS[t] ?? t}
-                </option>
-              ))}
+              <optgroup label="Activity">
+                {PRACTICE_TYPES.map((t) => (
+                  <option key={t} value={t}>
+                    {PRACTICE_TYPE_LABELS[t] ?? t}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="Food habit">
+                {FOOD_GROUPS.map((g) => (
+                  <option
+                    key={g.slug}
+                    value={practiceSelectValue("food_group", g.slug)}
+                  >
+                    {g.name}
+                  </option>
+                ))}
+              </optgroup>
             </select>
           </div>
           <div className="flex items-center gap-1.5">

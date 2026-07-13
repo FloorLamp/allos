@@ -24,9 +24,11 @@ import {
   getSupplementLogsInRange,
   getActivityDates,
   getFoodSuggestions,
+  getFrequencyTargetProgress,
 } from "./queries";
 import { getActiveSituations } from "./settings";
-import { isGoalLive } from "./goals";
+import { isGoalLive, frequencyScopeLabel } from "./goals";
+import { foodHabitSignalKey, isFoodHabitBehind } from "./food-habit";
 import { shiftDateStr, lastNDates } from "./date";
 import { fmtWeight, round } from "./units";
 import { formatLongDate } from "./format-date";
@@ -95,7 +97,34 @@ export function collectCoachingFindings(
     ...buildGoalPacingFindings(profileId, today),
     ...buildAdherencePatternFindings(profileId, today),
     ...buildFoodSuggestionFindings(profileId),
+    ...buildFoodHabitFindings(profileId),
   ];
+}
+
+// ---- Nutrition input (#580): behind-target food-habit observations --------
+
+// One calm coaching finding per tracked food-habit target that's behind this week
+// ("2 more servings of fatty fish to hit your weekly habit"). Progress is the shared
+// getFrequencyTargetProgress (the #579 rollup, food_group branch) — one computation, no
+// parallel count. dedupeKey is keyed on the group slug (food-habit:<slug>). Coaching
+// tier only — no notification (the #245 bus-gating precedent would apply if a nudge is
+// ever added, out of scope here). No owned SQL added here.
+export function buildFoodHabitFindings(profileId: number): Finding[] {
+  return getFrequencyTargetProgress(profileId)
+    .filter(isFoodHabitBehind)
+    .map((p) => {
+      const label = frequencyScopeLabel("food_group", p.target.scope_value);
+      const remaining = p.per_week - p.count;
+      return {
+        domain: "food-habit",
+        dedupeKey: foodHabitSignalKey(p.target.scope_value),
+        title: `${label} habit is behind this week`,
+        detail: `${p.count} of ${p.per_week} servings so far — ${remaining} to go to hit your weekly ${label.toLowerCase()} habit.`,
+        tone: "info" as const,
+        actionHref: "/nutrition",
+        actionLabel: "Log servings",
+      };
+    });
 }
 
 // ---- Nutrition output (#577): deterministic biomarker→food suggestions ------

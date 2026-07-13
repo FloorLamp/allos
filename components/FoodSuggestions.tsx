@@ -23,9 +23,14 @@ function noteIcon(kind: FoodSafetyNoteKind) {
 export default function FoodSuggestions({
   suggestions,
   testid = "food-suggestions",
+  trackAction,
 }: {
   suggestions: FoodSuggestion[];
   testid?: string;
+  // When provided (#580), each suggested food that maps to a loggable food group gets a
+  // "Track as weekly habit" button posting its group_key — the suggestion→target
+  // affordance. Reversible, user-initiated, never auto-created.
+  trackAction?: (formData: FormData) => void | Promise<void>;
 }) {
   if (suggestions.length === 0) return null;
   return (
@@ -63,6 +68,23 @@ export default function FoodSuggestions({
                     <span className="block text-xs text-slate-500 dark:text-slate-400">
                       {f.serving}
                     </span>
+                    {trackAction && f.foodGroup && (
+                      <form action={trackAction} className="mt-1">
+                        <input
+                          type="hidden"
+                          name="group_key"
+                          value={f.foodGroup}
+                        />
+                        <input type="hidden" name="per_week" value={2} />
+                        <button
+                          type="submit"
+                          data-testid={`track-${f.foodGroup}`}
+                          className="rounded-full border border-emerald-300 px-2 py-0.5 text-xs font-medium text-emerald-700 transition hover:bg-emerald-100 dark:border-emerald-700 dark:text-emerald-300 dark:hover:bg-emerald-900"
+                        >
+                          + Track as weekly habit
+                        </button>
+                      </form>
+                    )}
                   </li>
                 ))}
               </ul>

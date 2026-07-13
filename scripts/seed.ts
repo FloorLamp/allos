@@ -1520,6 +1520,14 @@ for (let d = 13; d >= 0; d--) {
   if (d === 2 || d === 9) foodLog.run(date, "added_sugar", 1);
 }
 
+// A food-habit target (#580): "fatty fish ≥2×/week" — a food_group frequency target on
+// the shared table, so it shows on /nutrition Weekly habits with the #579 rollup as its
+// progress and can be adopted by a protocol as an intervention.
+db.prepare(
+  `INSERT INTO frequency_targets (profile_id, scope_kind, scope_value, per_week)
+   VALUES (1, 'food_group', 'fatty_fish', 2)`
+).run();
+
 // ── Active situations + change log (Trends Ph3 annotations) ──────────────────
 // profile_settings stores only the CURRENT set; the dated start/stop log
 // (situation_events) is what makes situations chartable. Build a small history so

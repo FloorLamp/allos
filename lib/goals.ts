@@ -2,6 +2,7 @@ import type { BodyMetricKind, Goal, GoalStatus } from "./types";
 import { GOAL_STATUSES } from "./types";
 import type { GoalProgress } from "./goal-progress";
 import { baseLiftName, variantOf } from "./lifts";
+import { foodGroupName } from "./food-groups";
 import { fmtWeight, round } from "./units";
 import type { WeightUnit } from "./settings";
 import { formatSeconds } from "./duration";
@@ -130,6 +131,7 @@ export function frequencyScopeLabel(kind: string, value: string): string {
   if (!value) return value;
   if (kind === "group") return GROUP_LABELS[value] ?? value;
   if (kind === "type") return value[0].toUpperCase() + value.slice(1);
+  if (kind === "food_group") return foodGroupName(value);
   return value;
 }
 

@@ -24,9 +24,11 @@ import {
   buildGoalPacingFindings,
   buildBodyHygieneFindings,
   buildFoodSuggestionFindings,
+  buildFoodHabitFindings,
   collectCoachingFindings,
 } from "@/lib/rule-findings";
 import { foodSuggestSignalKey } from "@/lib/food-suggest";
+import { foodHabitSignalKey } from "@/lib/food-habit";
 import {
   weekdayMissSignalKey,
   ADHERENCE_PREFIX,
@@ -491,6 +493,42 @@ describe("buildFoodSuggestionFindings (#577)", () => {
   });
 });
 
+// ---- #580: behind-target food-habit findings --------------------------------
+describe("buildFoodHabitFindings (#580)", () => {
+  function addFoodTarget(profileId: number, group: string, perWeek: number) {
+    db.prepare(
+      `INSERT INTO frequency_targets (profile_id, scope_kind, scope_value, per_week)
+       VALUES (?, 'food_group', ?, ?)`
+    ).run(profileId, group, perWeek);
+  }
+  function logServing(profileId: number, group: string, date: string) {
+    db.prepare(
+      `INSERT INTO food_log (profile_id, date, group_key, servings) VALUES (?, ?, ?, 1)
+       ON CONFLICT (profile_id, date, group_key) DO UPDATE SET servings = servings + 1`
+    ).run(profileId, date, group);
+  }
+
+  it("fires a food-habit:<group> finding when this week's servings are behind", () => {
+    const { profileId, anchor } = makeProfile("food-habit-behind");
+    addFoodTarget(profileId, "fatty_fish", 2);
+    logServing(profileId, "fatty_fish", anchor); // 1 of 2
+
+    const findings = buildFoodHabitFindings(profileId);
+    expect(findings).toHaveLength(1);
+    expect(findings[0].dedupeKey).toBe(foodHabitSignalKey("fatty_fish"));
+    expect(findings[0].detail).toContain("1 of 2");
+  });
+
+  it("does not fire when the weekly target is met", () => {
+    const { profileId, anchor } = makeProfile("food-habit-met");
+    addFoodTarget(profileId, "fatty_fish", 2);
+    logServing(profileId, "fatty_fish", anchor);
+    logServing(profileId, "fatty_fish", anchor); // 2 of 2 (two servings one day)
+
+    expect(buildFoodHabitFindings(profileId)).toEqual([]);
+  });
+});
+
 // ---- Reflection guard: every builder key parses against the registry --------
 
 describe("rule-findings builders — dedupeKey prefix registry (#448)", () => {
@@ -576,12 +614,19 @@ describe("rule-findings builders — dedupeKey prefix registry (#448)", () => {
        VALUES (?, ?, 'lab', 'Omega-3 EPA', '0.3', '% by wt', 'Omega-3 EPA', 'low')`
     ).run(profileId, anchor);
 
+    // (f) nutrition input: a behind food-habit target → a food-habit finding.
+    db.prepare(
+      `INSERT INTO frequency_targets (profile_id, scope_kind, scope_value, per_week)
+       VALUES (?, 'food_group', 'fatty_fish', 2)`
+    ).run(profileId);
+
     const keys = [
       ...buildAdherencePatternFindings(profileId, anchor),
       ...buildTrainingObservationFindings(profileId, anchor),
       ...buildGoalPacingFindings(profileId, anchor),
       ...buildBodyHygieneFindings(profileId, anchor, "kg"),
       ...buildFoodSuggestionFindings(profileId),
+      ...buildFoodHabitFindings(profileId),
     ].map((f) => f.dedupeKey);
 
     // At least one finding fired in each domain, and EVERY key parses against the
@@ -637,6 +682,7 @@ describe("collectCoachingFindings — the #449 unified rollup", () => {
       ...buildGoalPacingFindings(profileId, anchor),
       ...buildAdherencePatternFindings(profileId, anchor),
       ...buildFoodSuggestionFindings(profileId),
+      ...buildFoodHabitFindings(profileId),
     ].map((f) => f.dedupeKey);
 
     const rolled = collectCoachingFindings(profileId, anchor, "kg").map(

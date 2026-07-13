@@ -8,8 +8,17 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { logFoodServing, undoFoodServing } from "@/app/(app)/nutrition/actions";
-import { getFoodServingsOnDate, getFoodRollupInRange } from "@/lib/queries";
+import {
+  logFoodServing,
+  undoFoodServing,
+  trackFoodHabit,
+  untrackFoodHabit,
+} from "@/app/(app)/nutrition/actions";
+import {
+  getFoodServingsOnDate,
+  getFoodRollupInRange,
+  getFrequencyTargets,
+} from "@/lib/queries";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 
 const revalidate = vi.mocked(revalidatePath);
@@ -73,6 +82,52 @@ describe("undoFoodServing", () => {
 
     await undoFoodServing(fd({ group_key: "legumes", date: DATE }));
     expect(rows(profile.id)).toEqual([]); // dropped at zero
+  });
+});
+
+describe("trackFoodHabit / untrackFoodHabit (#580)", () => {
+  it("tracks a food group as a food_group frequency target, updating cadence on re-track", async () => {
+    const login = createLogin();
+    const profile = createProfile("habit-tracker", login.id);
+    actAs(login, profile);
+
+    await trackFoodHabit(fd({ group_key: "fatty_fish", per_week: 2 }));
+    let targets = getFrequencyTargets(profile.id);
+    expect(targets).toHaveLength(1);
+    expect(targets[0]).toMatchObject({
+      scope_kind: "food_group",
+      scope_value: "fatty_fish",
+      per_week: 2,
+    });
+
+    // Re-tracking updates the cadence rather than duplicating.
+    await trackFoodHabit(fd({ group_key: "fatty_fish", per_week: 3 }));
+    targets = getFrequencyTargets(profile.id);
+    expect(targets).toHaveLength(1);
+    expect(targets[0].per_week).toBe(3);
+  });
+
+  it("untrack nulls a referencing protocol's link, then removes the target", async () => {
+    const login = createLogin();
+    const profile = createProfile("habit-untracker", login.id);
+    actAs(login, profile);
+
+    await trackFoodHabit(fd({ group_key: "legumes", per_week: 4 }));
+    const target = getFrequencyTargets(profile.id)[0];
+    // A protocol adopts it as its intervention.
+    db.prepare(
+      `INSERT INTO protocols
+         (profile_id, name, start_date, outcome_keys, frequency_target_id, owns_frequency_target)
+       VALUES (?, 'Legumes', '2026-05-01', '[]', ?, 1)`
+    ).run(profile.id, target.id);
+
+    await untrackFoodHabit(fd({ target_id: target.id }));
+
+    expect(getFrequencyTargets(profile.id)).toEqual([]);
+    const p = db
+      .prepare("SELECT frequency_target_id FROM protocols WHERE profile_id = ?")
+      .get(profile.id) as { frequency_target_id: number | null };
+    expect(p.frequency_target_id).toBeNull();
   });
 });
 

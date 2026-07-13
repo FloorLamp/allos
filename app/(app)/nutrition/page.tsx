@@ -7,6 +7,8 @@ import {
 } from "@/lib/queries";
 import { PageHeader } from "@/components/ui";
 import FoodLogBar from "./FoodLogBar";
+import WeeklyHabits from "./WeeklyHabits";
+import { trackFoodHabit } from "./actions";
 import FoodWeeklyRollup from "@/components/FoodWeeklyRollup";
 import FoodSuggestions from "@/components/FoodSuggestions";
 
@@ -39,7 +41,13 @@ export default async function NutritionPage() {
           <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
             Food suggestions from your labs
           </h2>
-          <FoodSuggestions suggestions={suggestions} />
+          <FoodSuggestions
+            suggestions={suggestions}
+            trackAction={async (fd) => {
+              "use server";
+              await trackFoodHabit(fd);
+            }}
+          />
         </div>
       )}
 
@@ -51,11 +59,14 @@ export default async function NutritionPage() {
           <FoodLogBar date={date} initial={initial} />
         </div>
 
-        <div className="card self-start">
-          <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-            This week
-          </h2>
-          <FoodWeeklyRollup rollup={rollup} />
+        <div className="space-y-6 self-start">
+          <WeeklyHabits profileId={profile.id} />
+          <div className="card">
+            <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
+              This week
+            </h2>
+            <FoodWeeklyRollup rollup={rollup} />
+          </div>
         </div>
       </div>
     </div>

@@ -251,7 +251,10 @@ export interface Goal {
   archived: number;
 }
 
-export type FrequencyScopeKind = "region" | "group" | "type";
+// region/group/type are training scopes (muscle region, body group, activity type);
+// food_group (#580) is a food-habit scope (a lib/food-groups.json slug) whose progress
+// is the #579 weekly serving rollup — the same target table, a different data source.
+export type FrequencyScopeKind = "region" | "group" | "type" | "food_group";
 
 // A user-defined "hit X at least N times/week" target.
 export interface FrequencyTarget {
