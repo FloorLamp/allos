@@ -1,9 +1,11 @@
 // Proactive preventive-care nudge (issue #87). Once per hour per profile, checks
 // the profile's due/overdue preventive visits & screenings (the SAME assessment
-// the Upcoming page and its digest use) and sends a single Telegram ping when a NEW
-// item comes due — rather than the item only ever appearing in the "what's due"
-// digest. The pure episode/dedup decision is lib/preventive-nudge; this file is the
-// DB gather + marker read/write + send, mirroring ./refill.
+// the Upcoming page and its digest use) and pings when a NEW item comes due —
+// rather than the item only ever appearing in the "what's due" digest. Each
+// newly-due screening is its own message (rendering: ./preventive-format) so its
+// buttons attach to the named item. The pure episode/dedup decision is
+// lib/preventive-nudge; this file is the DB gather + marker read/write + send,
+// mirroring ./refill.
 //
 // Dedup semantics — "once per due EPISODE", not once per day:
 //   - notify_last_preventive_<ruleKey> is set (to the send date) once a nudge goes
@@ -34,7 +36,7 @@ import {
   deleteProfileSetting,
 } from "../settings";
 import { dispatch } from "./index";
-import type { NotificationMessage } from "./types";
+import { renderPreventiveMessage } from "./preventive-format";
 import { createLogger } from "../log";
 
 const log = createLogger("notify");
@@ -44,51 +46,6 @@ const log = createLogger("notify");
 const MARKER_PREFIX = "notify_last_preventive_";
 const markerKey = (ruleKey: string) => `${MARKER_PREFIX}${ruleKey}`;
 const ruleKeyFromMarker = (key: string) => key.slice(MARKER_PREFIX.length);
-
-// The preventive nudge. Names the profile (a shared/caregiver chat may carry
-// several profiles) and lists each due/overdue item. Each item carries three
-// buttons (issue #233) mapping 1:1 onto the SAME functions the Upcoming page uses
-// — ✅ Done → recordPreventiveDone, 🚫 Not applicable → setPreventiveOverride,
-// ⏰ Remind later → findings-bus snooze (#227) — grouped one row per rule (its
-// stable catalog key, never a name, is the token payload and the row key).
-export function renderPreventiveMessage(
-  profileName: string,
-  items: PreventiveNudgeItem[],
-  profileId: number
-): NotificationMessage {
-  const who = profileName ? `${profileName} — ` : "";
-  const head =
-    items.length === 1 ? items[0].name : `${items.length} preventive items due`;
-  const lines = items.map((it) => {
-    const tag = it.status === "overdue" ? "Overdue" : "Due";
-    const extra = it.detail ? ` — ${it.detail}` : "";
-    return `• ${it.name}: ${tag}${extra}`;
-  });
-  const actions = items.flatMap((it) => {
-    const row = `pv:${it.ruleKey}`;
-    return [
-      { label: "✅ Done", data: `pvdone:${profileId}:${it.ruleKey}`, row },
-      {
-        label: "🚫 Not applicable",
-        data: `pvna:${profileId}:${it.ruleKey}`,
-        row,
-      },
-      {
-        label: "⏰ Remind later",
-        data: `pvlater:${profileId}:${it.ruleKey}`,
-        row,
-      },
-    ];
-  });
-  return {
-    title: `🩺 Preventive care: ${who}${head}`,
-    body: `Recommended preventive care is due:\n${lines.join(
-      "\n"
-    )}\n\nInformational only — not medical advice.`,
-    actions,
-    kind: "preventive",
-  };
-}
 
 // Send any newly-due preventive nudges for one profile. Returns whether a send
 // failed (aggregated into the tick's exit code). Never throws for an ordinary send
@@ -155,19 +112,23 @@ export async function runPreventive(
 
   if (toSend.length === 0) return { failed: false };
 
-  const results = await dispatch(
-    profileId,
-    renderPreventiveMessage(profileName, toSend, profileId)
-  );
-  if (results.length === 0) {
-    // No channel configured — leave markers unset so it can send once configured.
-    log.info("preventive nudge skipped: no channel", { profile: profileId });
-    return { failed: false };
-  }
-  const delivered = results.some((r) => r.ok);
-  const failed = results.some((r) => !r.ok);
-  if (delivered) {
-    for (const it of toSend) {
+  // One message PER screening (see preventive-format.ts): the buttons attach to
+  // the named item. Each item's episode marker is set on ITS OWN delivery, so a
+  // mid-loop failure re-attempts only the items that never went out.
+  let failed = false;
+  for (const it of toSend) {
+    const results = await dispatch(
+      profileId,
+      renderPreventiveMessage(profileName, it, profileId)
+    );
+    if (results.length === 0) {
+      // No channel configured — leave markers unset so it can send once
+      // configured. Channels don't appear mid-loop; stop instead of re-logging.
+      log.info("preventive nudge skipped: no channel", { profile: profileId });
+      return { failed };
+    }
+    if (results.some((r) => !r.ok)) failed = true;
+    if (results.some((r) => r.ok)) {
       setProfileSetting(profileId, markerKey(it.ruleKey), date);
       log.info("preventive nudge sent", {
         profile: profileId,

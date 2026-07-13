@@ -11,6 +11,7 @@ import {
   parseSkipCallback,
   parseTakeCallback,
   preventiveAnswerText,
+  preventiveCloseText,
   refillAnswerText,
   removeButton,
   removeRowContaining,
@@ -306,11 +307,45 @@ describe("parsePreventiveCallback", () => {
 
 describe("preventiveAnswerText", () => {
   it("confirms each action and never claims success for an unknown rule", () => {
-    expect(preventiveAnswerText("done")).toMatch(/done/i);
-    expect(preventiveAnswerText("not-applicable")).toMatch(/not applicable/i);
-    expect(preventiveAnswerText("reminded")).toMatch(/later/i);
-    expect(preventiveAnswerText("unknown-rule")).toMatch(/^Not recorded/);
-    expect(preventiveAnswerText("unknown-rule")).not.toMatch(/✅/);
+    expect(preventiveAnswerText({ kind: "done" })).toMatch(/done/i);
+    expect(preventiveAnswerText({ kind: "not-applicable" })).toMatch(
+      /not applicable/i
+    );
+    expect(preventiveAnswerText({ kind: "unknown-rule" })).toMatch(
+      /^Not recorded/
+    );
+    expect(preventiveAnswerText({ kind: "unknown-rule" })).not.toMatch(/✅/);
+  });
+
+  it("a snooze answer states WHEN the reminder resumes, not a vague 'later'", () => {
+    const text = preventiveAnswerText({
+      kind: "reminded",
+      snoozeUntil: "2026-07-20",
+    });
+    expect(text).toContain("Jul 20, 2026");
+    expect(text).toMatch(/snoozed/i);
+  });
+});
+
+describe("preventiveCloseText", () => {
+  it("states the resolved state in detail per outcome", () => {
+    expect(preventiveCloseText({ kind: "done" })).toMatch(/done ✅/i);
+    expect(preventiveCloseText({ kind: "not-applicable" })).toMatch(
+      /won't be suggested again/i
+    );
+    expect(preventiveCloseText({ kind: "unknown-rule" })).toBe(
+      OUTDATED_MESSAGE_TEXT
+    );
+  });
+
+  it("a snoozed closing says until when, what it silences, and how to undo", () => {
+    const text = preventiveCloseText({
+      kind: "reminded",
+      snoozeUntil: "2026-07-20",
+    });
+    expect(text).toContain("Jul 20, 2026");
+    expect(text).toMatch(/Upcoming and reminders/);
+    expect(text).toMatch(/restore/i);
   });
 });
 
