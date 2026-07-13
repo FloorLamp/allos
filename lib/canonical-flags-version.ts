@@ -18,7 +18,12 @@ import canonicalSeed from "./canonical-biomarkers.json";
 // durable-immunity titer to "immune" (#544) and clearing a blunt "abnormal" on a
 // context-neutral attribute like a blood type (#548 §1). Existing stored rows must
 // re-reconcile once so the boot pass corrects flags frozen by the extractor's guess.
-export const FLAG_LOGIC_VERSION = 5;
+// v6: qualitative bad-polarity promotion (#629) — qualitativeFlagResolution now sets
+// "abnormal" on a bad-polarity positive (positive HBsAg/HCV/HIV, positive culture) the
+// extractor left null/normal, instead of leaving it displayed as "Normal". Existing
+// unflagged infection-positive rows must re-reconcile once so they reach the attention
+// hero.
+export const FLAG_LOGIC_VERSION = 6;
 
 // The canonical fields that can change a record's derived flag: the reference and
 // optimal ranges (incl. sex-specific and age-banded variants), the unit +

@@ -98,29 +98,34 @@ describe("getHrDailySummary — bounded window equals full-history slice (#387)"
   });
 });
 
-describe("getHrSeriesBySource — bounded scan returns the same rows (#387)", () => {
-  it("bounded per-source rows are byte-identical to the old unbounded LIMIT query", () => {
-    const p = newProfile("hr series bounds");
+describe("getHrSeriesBySource — full per-source window, no group LIMIT (#623)", () => {
+  it("each source spans the full limitDays window, not limitDays/(#sources)", () => {
+    // Two sources report daily (2 (date,source) groups per day). The old
+    // `ORDER BY date DESC LIMIT limitDays` counted GROUP rows, so N sources shrank
+    // each source's series to ~limitDays/N days — a source-COMPARISON overlay that
+    // silently covered half the intended window. With the cutoff-only window, every
+    // source gets the full k distinct days.
+    const p = newProfile("hr series full window");
     seedHr(p, END, 200);
 
-    const oldSql = db.prepare(
-      `SELECT substr(ts,1,10) AS date, source, AVG(bpm) AS value
-         FROM hr_minutes
-        WHERE profile_id = ?
-        GROUP BY substr(ts,1,10), source ORDER BY date DESC LIMIT ?`
-    );
-    const newSql = db.prepare(
-      `SELECT substr(ts,1,10) AS date, source, AVG(bpm) AS value
-         FROM hr_minutes
-        WHERE profile_id = ? AND substr(ts,1,10) >= ?
-        GROUP BY substr(ts,1,10), source ORDER BY date DESC LIMIT ?`
-    );
-
-    for (const k of [1, 15, 61, 400]) {
+    for (const k of [1, 15, 61, 120]) {
+      const series = getHrSeriesBySource(p, k);
+      expect(series.map((s) => s.source).sort()).toEqual([
+        "health-connect",
+        "oura",
+      ]);
+      // Each source spans exactly the k most-recent distinct days (dense fixture);
+      // the pre-#623 LIMIT would have yielded ~ceil(k/2) here.
+      for (const s of series) {
+        expect(s.data.length).toBe(k);
+      }
+      // The window's oldest day is the k-th most-recent distinct day, identical
+      // across sources (no mid-day cut where one source falls inside the LIMIT and
+      // the other outside — the discrepancy #623 called out).
       const cutoff = cutoffFor(p, k);
-      const oldRows = oldSql.all(p, k);
-      const newRows = newSql.all(p, cutoff, k);
-      expect(newRows).toEqual(oldRows);
+      for (const s of series) {
+        expect(s.data[0].date).toBe(cutoff);
+      }
     }
   });
 

@@ -1,5 +1,8 @@
 import { db } from "../db";
-import { isTrainingRestricted } from "../age-gate";
+import {
+  isTrainingRestricted,
+  restrictedActivityTypeClause,
+} from "../age-gate";
 import { vaccineDisplayName } from "../immunization-catalog";
 import {
   matchTier,
@@ -12,6 +15,7 @@ import {
   CONDITION_REPRESENTATIVE_IDS,
   PROCEDURE_REPRESENTATIVE_IDS,
   FAMILY_HISTORY_REPRESENTATIVE_IDS,
+  ALLERGY_REPRESENTATIVE_IDS,
 } from "./clinical";
 import {
   biomarkerViewHref,
@@ -120,12 +124,19 @@ function documentHits(profileId: number, like: string): SearchHit[] {
   });
 }
 
-function activityHits(profileId: number, like: string): SearchHit[] {
+// For a restricted profile only the age-neutral duration activities (sport/cardio)
+// that /training's RestrictedActivityView shows are searchable; strength (and
+// goals, skipped entirely in searchAll) stay gated (#489/#618).
+function activityHits(
+  profileId: number,
+  like: string,
+  restricted: boolean
+): SearchHit[] {
   const rows = db
     .prepare(
       `SELECT id, title, type, date
          FROM activities
-        WHERE profile_id = ?
+        WHERE profile_id = ?${restrictedActivityTypeClause(restricted)}
           AND (title LIKE ? ESCAPE '\\' OR notes LIKE ? ESCAPE '\\')
         ORDER BY date DESC
         LIMIT ?`
@@ -281,18 +292,22 @@ function conditionHits(profileId: number, like: string): SearchHit[] {
 // entries are surfaced on the allergies page itself. We match the substance AND
 // the reaction text so "hives" finds the allergy it's a reaction to.
 function allergyHits(profileId: number, like: string): SearchHit[] {
+  // De-duplicated across documents (#134/#384/#617): representative rows only, so
+  // the per-document duplicates two overlapping CCDs produce collapse to ONE hit,
+  // matching the /allergies page and Timeline. Its profile_id bind comes first.
   const rows = db
     .prepare(
       `SELECT id, substance, reaction, severity, status, onset_date
          FROM allergies
         WHERE profile_id = ?
+          AND id IN (${ALLERGY_REPRESENTATIVE_IDS})
           AND (substance LIKE ? ESCAPE '\\'
                OR reaction LIKE ? ESCAPE '\\'
                OR notes LIKE ? ESCAPE '\\')
         ORDER BY (status = 'active') DESC, substance
         LIMIT ?`
     )
-    .all(profileId, like, like, like, CANDIDATE_LIMIT) as {
+    .all(profileId, profileId, like, like, like, CANDIDATE_LIMIT) as {
     id: number;
     substance: string;
     reaction: string | null;
@@ -554,10 +569,13 @@ const PAGES: {
     restricted: true,
   },
   {
+    // Not restricted: #489 un-gated the Training page for restricted profiles (it
+    // renders RestrictedActivityView with sport/cardio logging), so its palette
+    // entry must stay reachable (#618). The adult "Training history" tab below
+    // stays restricted.
     title: "Training",
     href: "/training",
     keywords: "workouts strength cardio sport exercise lifts",
-    restricted: true,
   },
   {
     title: "Body Metrics",
@@ -681,11 +699,13 @@ export function searchAll(profileId: number, rawQuery: string): SearchGroup[] {
     ...carePlanHits(profileId, like),
     ...careGoalHits(profileId, like),
     ...pageHits(query, restricted),
+    // Type-aware (#489/#618): a restricted profile keeps sport/cardio activities
+    // (the set /training still shows), so activityHits is always included but
+    // filters to those types when restricted. Goals stay fully gated.
+    ...activityHits(profileId, like, restricted),
   ];
-  // Training history/goals live behind the age-gated Training page; skip their
-  // links for restricted profiles, matching Nav.
   if (!restricted) {
-    hits.push(...activityHits(profileId, like), ...goalHits(profileId, like));
+    hits.push(...goalHits(profileId, like));
   }
 
   return rankAndGroup(hits, query, PER_DOMAIN_CAP);

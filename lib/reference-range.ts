@@ -531,6 +531,15 @@ export function isOutOfRange(flag: string | null | undefined): boolean {
   return flag === "high" || flag === "low" || flag === "abnormal";
 }
 
+// Whether a flag reads as "Normal" — null/empty or any value the label/tone layer
+// treats as unflagged (i.e. NOT one of the recognized non-normal flags). The inverse
+// of "already-flagged", so a qualitative bad-polarity resolution (#629) only promotes
+// a row that would otherwise display "Normal", never one the extractor already flagged
+// (out-of-range, non-optimal, or immune).
+export function isNormalFlag(flag: string | null | undefined): boolean {
+  return !(isOutOfRange(flag) || isNonOptimal(flag) || flag === "immune");
+}
+
 // The shared color tier for a flag. Out-of-range takes precedence over
 // non-optimal; anything unrecognized/normal/null is neutral. Components map this
 // tone onto their own Tailwind classes (the class strings stay local; the tier
@@ -915,21 +924,32 @@ export function classifyQualitativeResult(
 }
 
 // The stored flag a qualitative reading should carry, given its classifier verdict
-// and current flag (issue #549, routing #544 + #548 §1). The qualitative counterpart
-// of reconciledFlag: "immune" for a good durable-immunity titer, null (clear to
+// and current flag (issue #549, routing #544 + #548 §1; #629). The qualitative
+// counterpart of reconciledFlag: "immune" for a good durable-immunity titer,
+// "abnormal" for a bad-polarity positive the extractor left unflagged, null (clear to
 // normal) for a neutral attribute or good non-immunity result that a blunt "abnormal"
-// mis-flagged, and undefined (leave unchanged) for a bad-polarity infection marker or
-// an unrecognized value. Never touches a flag it can't confidently reclassify.
+// mis-flagged, and undefined (leave unchanged) otherwise. Never touches a flag it
+// can't confidently reclassify.
 export function qualitativeFlagResolution(
   name: string | null | undefined,
   value: string | null | undefined,
   notes: string | null | undefined,
   reference: string | null | undefined,
   currentFlag: string | null | undefined
-): "immune" | null | undefined {
+): "immune" | "abnormal" | null | undefined {
   const c = classifyQualitativeResult(name, value, notes, reference);
   if (!c) return undefined; // unrecognized → leave the extractor/existing flag
-  if (c.polarity === "bad") return undefined; // infection-positive stays flagged
+  if (c.polarity === "bad") {
+    // A bad-polarity positive (positive HBsAg/HCV/HIV, a positive culture) that the
+    // extractor left null/normal would otherwise display as "Normal" and never reach
+    // the attention hero (#629). #549 established the extractor's qualitative flag is
+    // NOT trusted, so we can't rely on it having set a red flag here — the
+    // highest-stakes category. Given the harm asymmetry (a positive infection marker
+    // shown as Normal vs. a false red on a benign qualitative), set "abnormal" when
+    // the row is currently unflagged/normal; leave an already-flagged row alone —
+    // never override the extractor's specific verdict (high/low/abnormal/immune).
+    return isNormalFlag(currentFlag) ? "abnormal" : undefined;
+  }
   if (c.polarity === "good" && isDurableImmunityTiter(name))
     return currentFlag === "immune" ? undefined : "immune";
   // Neutral attribute, or good non-immunity: never "abnormal". Clear an out-of-range

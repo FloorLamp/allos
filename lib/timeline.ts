@@ -4,7 +4,11 @@ import { db } from "./db";
 import { vaccineDisplayName } from "./immunization-catalog";
 import { medicationCourseEvents } from "./medication-history";
 import { ENCOUNTER_REPRESENTATIVE_IDS } from "./queries/medical";
-import { CONDITION_REPRESENTATIVE_IDS } from "./queries/clinical";
+import {
+  CONDITION_REPRESENTATIVE_IDS,
+  ALLERGY_REPRESENTATIVE_IDS,
+} from "./queries/clinical";
+import { restrictedActivityTypeClause } from "./age-gate";
 import type { MedStopReason } from "./types";
 import { summarizeExercise, type SetRow } from "./journal-format";
 import { getTimezone, type UnitPrefs } from "./settings";
@@ -37,6 +41,12 @@ export interface TimelineOptions {
   limit?: number;
   units?: UnitPrefs;
   includeTrainingEvents?: boolean;
+  // Age-restricted profile (#489/#618): the FULL training domain (strength
+  // activities + goals) is hidden, but the age-neutral duration activities
+  // (sport/cardio) that /training's RestrictedActivityView still shows remain
+  // visible — the type-aware successor to the old all-or-nothing
+  // includeTrainingEvents=false. Ignored when includeTrainingEvents is false.
+  restricted?: boolean;
 }
 
 export interface TimelinePage {
@@ -148,6 +158,7 @@ function collectEvents(
 ): TimelineEvent[] {
   const units = options.units ?? { weightUnit: "kg", distanceUnit: "km" };
   const includeTrainingEvents = options.includeTrainingEvents ?? true;
+  const restricted = options.restricted ?? false;
   const tz = getTimezone(profileId);
   const events: TimelineEvent[] = [];
 
@@ -173,7 +184,9 @@ function collectEvents(
       .prepare(
         `SELECT id, date, type, title, duration_min, distance_km, intensity, start_time, notes, source, components
            FROM activities
-          WHERE profile_id = ?${activityBounds.clause}
+          WHERE profile_id = ?${restrictedActivityTypeClause(
+            restricted
+          )}${activityBounds.clause}
           ORDER BY date DESC, id DESC
           LIMIT ?`
       )
@@ -575,15 +588,20 @@ function collectEvents(
   const allergyBounds = loose(
     "COALESCE(onset_date, substr(created_at, 1, 10))"
   );
+  // De-duplicated across documents (#134/#384/#617) via ALLERGY_REPRESENTATIVE_IDS
+  // so two overlapping CCDs each carrying "Penicillin — hives" show one event, the
+  // same collapse the /allergies page and Search apply — its profile_id bind comes
+  // right after the main WHERE's, before the date-bounds params.
   const allergies = db
     .prepare(
       `SELECT id, substance, reaction, severity, status, onset_date, notes, created_at
          FROM allergies
-        WHERE profile_id = ?${allergyBounds.clause}
+        WHERE profile_id = ?
+          AND id IN (${ALLERGY_REPRESENTATIVE_IDS})${allergyBounds.clause}
         ORDER BY COALESCE(onset_date, substr(created_at, 1, 10)) DESC, id DESC
         LIMIT ?`
     )
-    .all(profileId, ...allergyBounds.params, perTableLimit) as {
+    .all(profileId, profileId, ...allergyBounds.params, perTableLimit) as {
     id: number;
     substance: string;
     reaction: string | null;
@@ -661,7 +679,7 @@ function collectEvents(
     );
   }
 
-  if (includeTrainingEvents) {
+  if (includeTrainingEvents && !restricted) {
     const goalBounds = loose(
       "COALESCE(target_date, substr(created_at, 1, 10))"
     );
@@ -794,51 +812,95 @@ export function getTimelinePage(
 
 export function getTimelineDates(
   profileId: number,
-  options: Pick<TimelineOptions, "includeTrainingEvents"> = {}
+  options: Pick<TimelineOptions, "includeTrainingEvents" | "restricted"> = {}
 ): string[] {
   const includeTrainingEvents = options.includeTrainingEvents ?? true;
-  const trainingDateSelects = includeTrainingEvents
-    ? [
-        "SELECT date FROM activities WHERE profile_id = @profileId",
-        `SELECT COALESCE(target_date, substr(created_at, 1, 10)) AS date
-           FROM goals
-          WHERE profile_id = @profileId`,
-      ]
-    : [];
-  const sql = [
-    ...trainingDateSelects,
+  const restricted = options.restricted ?? false;
+  const tz = getTimezone(profileId);
+  const dates = new Set<string>();
+  const add = (d: string | null | undefined) => {
+    if (d) dates.add(d);
+  };
+
+  // Explicit-date tables: the event date IS a stored calendar column, so the raw
+  // slice matches where the timeline places the event. Activities are type-aware
+  // for a restricted profile (#618, same set RestrictedActivityView shows); goals
+  // stay gated. `date`-column selects go straight into this UNION.
+  const explicitSelects: string[] = [
     "SELECT date FROM body_metrics WHERE profile_id = @profileId",
     "SELECT date FROM medical_records WHERE profile_id = @profileId",
-    `SELECT COALESCE(document_date, substr(uploaded_at, 1, 10)) AS date
-       FROM medical_documents
-      WHERE profile_id = @profileId`,
     `SELECT l.date AS date
        FROM intake_item_logs l
        JOIN intake_items ii ON ii.id = l.item_id
       WHERE ii.profile_id = @profileId`,
     "SELECT date FROM immunizations WHERE profile_id = @profileId",
-    `SELECT COALESCE(resolved_date, onset_date, substr(created_at, 1, 10)) AS date
-       FROM conditions
-      WHERE profile_id = @profileId`,
-    `SELECT COALESCE(onset_date, substr(created_at, 1, 10)) AS date
-       FROM allergies
-      WHERE profile_id = @profileId`,
     "SELECT date FROM encounters WHERE profile_id = @profileId",
     "SELECT date FROM insights WHERE profile_id = @profileId",
     "SELECT achieved_on AS date FROM milestones WHERE profile_id = @profileId",
     "SELECT start_date AS date FROM protocols WHERE profile_id = @profileId",
     `SELECT end_date AS date FROM protocols
       WHERE profile_id = @profileId AND end_date IS NOT NULL`,
-  ].join("\nUNION\n");
+  ];
+  if (includeTrainingEvents) {
+    explicitSelects.push(
+      `SELECT date FROM activities
+        WHERE profile_id = @profileId${restrictedActivityTypeClause(restricted)}`
+    );
+  }
+  for (const r of db
+    .prepare(
+      `SELECT DISTINCT date FROM (${explicitSelects.join("\nUNION\n")})
+        WHERE date IS NOT NULL AND date != ''`
+    )
+    .all({ profileId }) as { date: string }[]) {
+    add(r.date);
+  }
 
-  return (
+  // Created-at-fallback tables: when the explicit calendar column is NULL the
+  // event date is derived in the profile timezone (dateFromCreatedAt), which can
+  // differ by a day from the raw UTC slice. Return the explicit date + the raw
+  // stamp and resolve in JS EXACTLY as collectEvents does, so a highlighted day is
+  // the same day the timeline filter will place the event on (#619). Rows with an
+  // explicit date are unaffected.
+  const resolveFallback = (
+    rows: { explicit: string | null; stamp: string | null }[]
+  ) => {
+    for (const r of rows) add(r.explicit ?? dateFromCreatedAt(r.stamp, tz));
+  };
+  resolveFallback(
     db
       .prepare(
-        `SELECT DISTINCT date
-           FROM (${sql})
-          WHERE date IS NOT NULL AND date != ''
-          ORDER BY date DESC`
+        `SELECT document_date AS explicit, uploaded_at AS stamp
+           FROM medical_documents WHERE profile_id = ?`
       )
-      .all({ profileId }) as { date: string }[]
-  ).map((r) => r.date);
+      .all(profileId) as { explicit: string | null; stamp: string | null }[]
+  );
+  resolveFallback(
+    db
+      .prepare(
+        `SELECT COALESCE(resolved_date, onset_date) AS explicit, created_at AS stamp
+           FROM conditions WHERE profile_id = ?`
+      )
+      .all(profileId) as { explicit: string | null; stamp: string | null }[]
+  );
+  resolveFallback(
+    db
+      .prepare(
+        `SELECT onset_date AS explicit, created_at AS stamp
+           FROM allergies WHERE profile_id = ?`
+      )
+      .all(profileId) as { explicit: string | null; stamp: string | null }[]
+  );
+  if (includeTrainingEvents && !restricted) {
+    resolveFallback(
+      db
+        .prepare(
+          `SELECT target_date AS explicit, created_at AS stamp
+             FROM goals WHERE profile_id = ?`
+        )
+        .all(profileId) as { explicit: string | null; stamp: string | null }[]
+    );
+  }
+
+  return Array.from(dates).sort((a, b) => (a < b ? 1 : a > b ? -1 : 0));
 }

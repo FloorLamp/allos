@@ -1145,3 +1145,68 @@ describe("qualitativeFlagResolution (#549 routing #544 + #548)", () => {
     ).toBeUndefined();
   });
 });
+
+describe("qualitativeFlagResolution — bad-polarity promotion (#629)", () => {
+  it("sets 'abnormal' on an infection-positive the extractor left unflagged", () => {
+    // A positive HBsAg with flag=null would otherwise display as "Normal" and never
+    // reach the attention hero. #549 established the extractor's qualitative flag is
+    // untrusted, so we promote rather than assume it flagged the row.
+    expect(
+      qualitativeFlagResolution(
+        "Hepatitis B Surface Antigen",
+        "Positive",
+        null,
+        null,
+        null
+      )
+    ).toBe("abnormal");
+    // Empty-string / "normal" flag are equally treated as unflagged.
+    expect(
+      qualitativeFlagResolution(
+        "Hepatitis C Antibody",
+        "Reactive",
+        null,
+        null,
+        "normal"
+      )
+    ).toBe("abnormal");
+  });
+
+  it("leaves an already-flagged infection-positive alone (never overrides the verdict)", () => {
+    for (const flag of ["abnormal", "high", "low", "immune"]) {
+      expect(
+        qualitativeFlagResolution(
+          "Hepatitis B Surface Antigen",
+          "Positive",
+          null,
+          null,
+          flag
+        )
+      ).toBeUndefined();
+    }
+  });
+
+  it("an immunity positive resolves to 'immune', not 'abnormal', even when unflagged", () => {
+    expect(
+      qualitativeFlagResolution(
+        "Hepatitis B Surface Antibody",
+        "Positive",
+        null,
+        null,
+        null
+      )
+    ).toBe("immune");
+  });
+
+  it("a negative infection marker is not promoted", () => {
+    expect(
+      qualitativeFlagResolution(
+        "Hepatitis B Surface Antigen",
+        "Negative",
+        null,
+        null,
+        null
+      )
+    ).toBeUndefined();
+  });
+});

@@ -24,6 +24,7 @@ import {
 } from "@/lib/integrations/normalize";
 import {
   getBodyMetricDailySeries,
+  getBodyMetricSeriesBySource,
   getDashboardStats,
   getHrDailySummary,
   getLatestBodyMetricDated,
@@ -451,5 +452,53 @@ describe("getDashboardStats — Current weight honors the primary source (#302)"
     expect(getLatestBodyMetricDated(profileId, "weight")).toEqual(
       getDashboardStats(profileId).latestWeight
     );
+  });
+});
+
+describe("getBodyMetricSeriesBySource — full per-source window (#623)", () => {
+  // Two sources each report weight daily. The pre-#623 query applied an outer row
+  // LIMIT over (date,source) GROUP rows, so N sources shrank each source's series
+  // to ~limitDays/N days. The distinct-dates cutoff gives every source the full
+  // window, matching getMetricSeriesBySource.
+  function dayStr(minusDays: number): string {
+    const d = new Date("2024-05-01T00:00:00Z");
+    d.setUTCDate(d.getUTCDate() - minusDays);
+    return d.toISOString().slice(0, 10);
+  }
+
+  it("each source spans the full limitDays window, not limitDays/(#sources)", () => {
+    const p = Number(
+      db
+        .prepare("INSERT INTO profiles (name) VALUES ('body series #623')")
+        .run().lastInsertRowid
+    );
+    const ins = db.prepare(
+      "INSERT INTO body_metrics (profile_id, date, weight_kg, source) VALUES (?, ?, ?, ?)"
+    );
+    const DAYS = 40;
+    const tx = db.transaction(() => {
+      for (let i = 0; i < DAYS; i++) {
+        const date = dayStr(i);
+        ins.run(p, date, 80 + i * 0.1, "health-connect");
+        ins.run(p, date, 79 + i * 0.1, "oura");
+      }
+    });
+    tx();
+
+    for (const k of [5, 20, 40]) {
+      const series = getBodyMetricSeriesBySource(p, "weight", k);
+      expect(series.map((s) => s.source).sort()).toEqual([
+        "health-connect",
+        "oura",
+      ]);
+      // Full window per source (dense fixture); the old row LIMIT would have
+      // yielded ~ceil(k/2) days here.
+      for (const s of series) {
+        expect(s.data.length).toBe(k);
+        // Oldest rendered day is the k-th most-recent distinct day, identical
+        // across sources — no mid-day cut between the two overlays.
+        expect(s.data[0].date).toBe(dayStr(k - 1));
+      }
+    }
   });
 });

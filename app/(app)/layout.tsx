@@ -68,7 +68,7 @@ export default async function AppLayout({
   const restricted = isTrainingRestricted(profile.id);
   const suggestions = getActivitySuggestions(profile.id);
   const timelineDates = getTimelineDates(profile.id, {
-    includeTrainingEvents: !restricted,
+    restricted,
   });
   // One extra session per exercise: the editor filters out the activity being
   // logged (which auto-save inserts into its own history) and still shows 3.
