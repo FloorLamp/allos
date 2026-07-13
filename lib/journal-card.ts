@@ -2,7 +2,7 @@
 // ~150 lines of derivation that used to live inline in
 // app/(app)/training/HistorySection.tsx: set-grouping by lowercased exercise, the
 // components-vs-legacy branch, the single-pure-effort header fold, the cardio
-// distance/duration/speed detail string, and the imported-metric chips. Extracting
+// distance/duration/speed detail string, and the imported metrics. Extracting
 // it here (like lib/activity-form-model.ts did for form parsing) makes the whole
 // derivation unit-testable and keeps HistorySection a thin data-fetch + render.
 //
@@ -159,7 +159,7 @@ export interface BuildJournalCardsInput {
   routes?: Map<number, string>;
 }
 
-// Compact, unit-aware chips for the richer per-activity metrics carried by pull
+// Compact, unit-aware values for the richer per-activity metrics carried by pull
 // integrations (Strava). Each appears only when its column is present, so manual
 // entries and Health Connect imports render nothing extra. Power, cadence, and
 // kilojoules are cycling-only; temperature is outdoor-only; workout_type is a
@@ -199,7 +199,7 @@ export function activityMetrics(
 }
 
 // Bucket activities (already date-desc) into ordered day groups, building each
-// activity's JournalCardData: display parts, header texts, metric chips, fault, and
+// activity's JournalCardData: display parts, header texts, metrics, fault, and
 // provenance. Pure — every side input (sets, equipment names, weights, today) is
 // passed in, so the same fixture always yields the same cards.
 export function buildJournalCards({
@@ -299,10 +299,9 @@ export function buildJournalCards({
     } else {
       allParts = exOrder.map(strengthLine);
     }
-    // A single cardio/sport part is normally folded into the header meta. For a
-    // pure cardio/sport activity, surface it as a clickable row instead (so it
-    // opens its detail, like strength exercises do) and drop the now-redundant
-    // header meta below.
+    // A pure cardio/sport activity keeps its canonical component as a clickable
+    // row (so it opens detail, like strength exercises do), but its measurements
+    // belong in the scan-first header summary rather than being repeated here.
     const multi = allParts.length > 1;
     const single = allParts.length === 1 ? allParts[0] : null;
     const singlePureEffort =
@@ -310,7 +309,7 @@ export function buildJournalCards({
       (single.kind === "cardio" || single.kind === "sport") &&
       (a.type === "cardio" || a.type === "sport");
     const parts = singlePureEffort
-      ? allParts
+      ? [{ ...single, detail: "" }]
       : allParts.filter((p) => p.kind === "strength" || multi);
 
     const editData: ActivityEditData = {
@@ -350,17 +349,12 @@ export function buildJournalCards({
 
     const card: JournalCardData = {
       activity: editData,
-      durationText:
-        singlePureEffort || a.duration_min == null
-          ? null
-          : `${a.duration_min} min`,
+      durationText: a.duration_min == null ? null : `${a.duration_min} min`,
       distanceText:
-        singlePureEffort || a.distance_km == null
+        a.distance_km == null
           ? null
           : fmtDistance(a.distance_km, units.distanceUnit),
-      speedText: singlePureEffort
-        ? null
-        : fmtSpeed(a.distance_km, a.duration_min, units.distanceUnit),
+      speedText: fmtSpeed(a.distance_km, a.duration_min, units.distanceUnit),
       metrics: activityMetrics(
         a,
         units.distanceUnit,

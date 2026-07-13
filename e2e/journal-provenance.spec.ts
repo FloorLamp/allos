@@ -58,6 +58,74 @@ test("an imported ride with a route shows a tile-free SVG route thumbnail (#569)
   await expect(manualCard.getByTestId("route-map")).toHaveCount(0);
 });
 
+test("journal cards prioritize a summary and progressively disclose details", async ({
+  page,
+}) => {
+  await page.goto("/training");
+
+  const ride = page.locator(".card", { hasText: "Strava morning ride" });
+  await expect(ride).toBeVisible();
+
+  // Primary measurements and intensity read as one quiet, scan-friendly line.
+  const summary = ride.getByTestId("activity-summary");
+  await expect(summary).toContainText("62 min");
+  await expect(summary).toContainText("24.5 km");
+  await expect(summary).toContainText("Moderate");
+
+  // Rich measurements are structured list values, not a collection of badges.
+  const metrics = ride.getByTestId("activity-metrics");
+  await expect(metrics.locator("li")).toHaveCount(3);
+  await expect(metrics).toContainText("148/171 bpm");
+  await expect(metrics.locator(".badge")).toHaveCount(0);
+
+  // Provenance remains present but uses the card's quiet footer treatment.
+  const source = ride.getByTestId("activity-provenance-source");
+  await expect(source).toHaveText("Strava");
+  await expect(source).not.toHaveClass(/badge/);
+
+  // Long notes disclose in place without opening the activity editor.
+  const notes = ride.getByTestId("activity-notes");
+  await expect(notes).toHaveClass(/line-clamp-2/);
+  const more = ride.getByRole("button", { name: "More" });
+  await more.click();
+  await expect(more).toHaveAttribute("aria-expanded", "true");
+  await expect(notes).not.toHaveClass(/line-clamp-2/);
+
+  // Desktop places the compact route beside the metric block.
+  const desktopMetrics = await metrics.boundingBox();
+  const desktopRoute = await ride.getByTestId("route-map").boundingBox();
+  expect(desktopMetrics).not.toBeNull();
+  expect(desktopRoute).not.toBeNull();
+  expect(desktopRoute!.x).toBeGreaterThan(desktopMetrics!.x);
+
+  // On a phone the same shared route surface becomes a shallow full-width strip.
+  await page.setViewportSize({ width: 390, height: 844 });
+  const mobileMetrics = await metrics.boundingBox();
+  const mobileRoute = await ride.getByTestId("route-map").boundingBox();
+  expect(mobileMetrics).not.toBeNull();
+  expect(mobileRoute).not.toBeNull();
+  expect(mobileRoute!.y).toBeGreaterThan(mobileMetrics!.y);
+  expect(mobileRoute!.width).toBeGreaterThan(mobileRoute!.height * 2);
+});
+
+test("strength target status is named and muscle filters are quiet text", async ({
+  page,
+}) => {
+  await page.goto("/training");
+
+  const push = page.locator(".card", { hasText: "Push day" }).first();
+  await expect(push).toBeVisible();
+  await expect(
+    push.getByRole("img", { name: "All sets hit their target reps" })
+  ).toBeVisible();
+
+  const muscleFilter = push
+    .getByRole("button", { name: "Chest", exact: true })
+    .first();
+  await expect(muscleFilter).toBeVisible();
+  await expect(muscleFilter).not.toHaveClass(/badge/);
+});
+
 // The imported Strava ride is stored with the athlete's free-text title ("Strava
 // morning ride") but a canonical "Cycling" component. The journal must icon it
 // off the structured sport (a bike), matching the activity form — not fall back

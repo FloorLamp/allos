@@ -1,9 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { IconCheck, IconAlertTriangle } from "@tabler/icons-react";
 import { useActivityEditor } from "@/components/ActivityEditorProvider";
-import { ActivityTypeIcon, IntensityBadge } from "@/components/ui";
+import { ActivityTypeIcon } from "@/components/ui";
 import ActivityProvenance from "@/components/ActivityProvenance";
 import RouteMap from "@/components/RouteMap";
 import type { ActivityEditData } from "@/components/ActivityForm";
@@ -40,7 +41,7 @@ export default function JournalCard({
   durationText: string | null;
   distanceText: string | null;
   speedText: string | null;
-  // Compact chips for richer imported metrics (HR, elevation, power, etc.).
+  // Compact values for richer imported metrics (HR, elevation, power, etc.).
   metrics?: string[];
   // Session-level gear name (issue #342), e.g. a ride's bike; null when unlinked.
   gear?: string | null;
@@ -49,7 +50,7 @@ export default function JournalCard({
   // data), or null. Required so a new render site can't silently drop the
   // warning this exists to show.
   fault: string | null;
-  // Provenance chip ("Manual" / "Strava" / …) + created/updated timestamps.
+  // Provenance label ("Manual" / "Strava" / …) + created/updated timestamps.
   provenance: {
     label: string;
     createdAt: string;
@@ -75,14 +76,24 @@ export default function JournalCard({
   onSelectCardio?: (name: string) => void;
   // Likewise for a sport activity name → its records/trend.
   onSelectSport?: (name: string) => void;
-  // When provided, the muscle badge filters the feed by that muscle.
+  // When provided, the muscle label filters the feed by that muscle.
   onFilterTag?: (kind: "muscle" | "region", value: string) => void;
 }) {
   const { openEdit, open, editData } = useActivityEditor();
+  const [notesExpanded, setNotesExpanded] = useState(false);
   // Highlight the card whose activity is open in the docked editor, so it's
   // clear which feed row the right-column form belongs to. (On mobile the
   // editor is a full-screen overlay, so the ring is only ever seen on desktop.)
   const selected = open && editData?.id === activity.id;
+  const summary = [
+    durationText,
+    distanceText,
+    speedText,
+    activity.intensity
+      ? activity.intensity.replace(/^\w/, (c) => c.toUpperCase())
+      : null,
+  ].filter((value): value is string => !!value);
+  const notesCanExpand = (activity.notes?.length ?? 0) > 120;
 
   return (
     <div
@@ -106,47 +117,29 @@ export default function JournalCard({
             >
               {activity.title}
             </button>
-            <div className="mt-0.5 flex flex-wrap items-center gap-x-3 text-xs text-slate-500 dark:text-slate-400">
-              {durationText && <span>{durationText}</span>}
-              {distanceText && <span>{distanceText}</span>}
-              {speedText && <span>{speedText}</span>}
-            </div>
-            {(metrics.length > 0 || gear) && (
-              <div className="mt-1.5 flex flex-wrap gap-1.5">
-                {gear &&
-                  (activity.equipment_id != null ? (
-                    // Contextual link to the gear's registry detail (issue #343).
-                    <Link
-                      href={`/equipment/${activity.equipment_id}`}
-                      data-testid="activity-gear"
-                      className="badge bg-brand-50 text-brand-700 transition hover:ring-1 hover:ring-current dark:bg-brand-500/15 dark:text-brand-300"
-                      title="View equipment"
-                    >
-                      🚲 {gear}
-                    </Link>
-                  ) : (
-                    <span
-                      data-testid="activity-gear"
-                      className="badge bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300"
-                      title="Equipment used"
-                    >
-                      🚲 {gear}
-                    </span>
-                  ))}
-                {metrics.map((m, i) => (
-                  <span
-                    key={i}
-                    className="badge bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300"
-                  >
-                    {m}
+            {summary.length > 0 && (
+              <div
+                data-testid="activity-summary"
+                className="mt-0.5 flex flex-wrap items-center text-xs text-slate-500 dark:text-slate-400"
+              >
+                {summary.map((value, i) => (
+                  <span key={value} className="whitespace-nowrap">
+                    {i > 0 && (
+                      <span
+                        aria-hidden
+                        className="mx-1.5 text-slate-300 dark:text-slate-600"
+                      >
+                        ·
+                      </span>
+                    )}
+                    {value}
                   </span>
                 ))}
               </div>
             )}
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-1.5">
-          {activity.intensity && <IntensityBadge value={activity.intensity} />}
+        <div className="flex shrink-0 items-center">
           <ActivityCardMenu
             activity={activity}
             siblings={mergeSiblings}
@@ -173,17 +166,87 @@ export default function JournalCard({
       )}
 
       {activity.notes && (
-        <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-          {activity.notes}
-        </p>
+        <div className="mt-2">
+          <p
+            data-testid="activity-notes"
+            className={`text-sm leading-relaxed text-slate-600 dark:text-slate-300 ${
+              notesCanExpand && !notesExpanded ? "line-clamp-2" : ""
+            }`}
+          >
+            {activity.notes}
+          </p>
+          {notesCanExpand && (
+            <button
+              type="button"
+              aria-expanded={notesExpanded}
+              onClick={() => setNotesExpanded((value) => !value)}
+              className="mt-0.5 text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
+            >
+              {notesExpanded ? "Less" : "More"}
+            </button>
+          )}
+        </div>
       )}
 
-      {/* Tile-free SVG route thumbnail (issue #569) for an imported outdoor
-          activity that carries a captured GPS route — the route's shape only, no
-          basemap, no external request. */}
-      {routePolyline && (
-        <div className="mt-3">
-          <RouteMap polyline={routePolyline} size={132} />
+      {(metrics.length > 0 || gear || routePolyline) && (
+        <div
+          className={`mt-3 grid items-start gap-3 ${
+            routePolyline ? "sm:grid-cols-[minmax(0,1fr)_10rem]" : ""
+          }`}
+        >
+          {(metrics.length > 0 || gear) && (
+            <div className="space-y-2">
+              {metrics.length > 0 && (
+                <ul
+                  data-testid="activity-metrics"
+                  aria-label="Activity metrics"
+                  className="flex flex-wrap text-xs tabular-nums text-slate-600 dark:text-slate-300"
+                >
+                  {metrics.map((metric, i) => (
+                    <li key={metric} className="whitespace-nowrap">
+                      {i > 0 && (
+                        <span
+                          aria-hidden
+                          className="mx-2 text-slate-300 dark:text-slate-600"
+                        >
+                          ·
+                        </span>
+                      )}
+                      {metric}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {gear &&
+                (activity.equipment_id != null ? (
+                  <Link
+                    href={`/equipment/${activity.equipment_id}`}
+                    data-testid="activity-gear"
+                    className="inline-flex text-xs font-medium text-brand-700 hover:underline dark:text-brand-300"
+                    title="View equipment"
+                  >
+                    Equipment: {gear}
+                  </Link>
+                ) : (
+                  <span
+                    data-testid="activity-gear"
+                    className="block text-xs text-slate-500 dark:text-slate-400"
+                  >
+                    Equipment: {gear}
+                  </span>
+                ))}
+            </div>
+          )}
+          {/* A wide, shallow route uses the card width on phones and becomes a
+              compact right-hand preview beside the metrics on larger screens. */}
+          {routePolyline && (
+            <RouteMap
+              polyline={routePolyline}
+              width={240}
+              height={96}
+              className="h-auto w-full rounded-md border border-slate-200 bg-slate-50 text-brand-600 dark:border-ink-700 dark:bg-ink-900 dark:text-brand-400"
+            />
+          )}
         </div>
       )}
 
@@ -215,9 +278,11 @@ export default function JournalCard({
                       {p.name}
                     </span>
                   )}
-                  <span className="min-w-0 text-right text-sm tabular-nums text-slate-600 dark:text-slate-300">
-                    {p.detail}
-                  </span>
+                  {p.detail && (
+                    <span className="min-w-0 text-right text-sm tabular-nums text-slate-600 dark:text-slate-300">
+                      {p.detail}
+                    </span>
+                  )}
                 </div>
               );
             }
@@ -228,9 +293,9 @@ export default function JournalCard({
               // the sets text flows onto the next line, left-aligned.
               <div
                 key={i}
-                className="flex items-start justify-between gap-3 py-1"
+                className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 py-1.5"
               >
-                <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+                <div className="min-w-0">
                   {onSelectExercise ? (
                     <button
                       type="button"
@@ -245,19 +310,38 @@ export default function JournalCard({
                       {p.name}
                     </span>
                   )}
+                  {(p.muscle || p.equipment) && (
+                    <div className="mt-0.5 flex flex-wrap items-center text-xs text-slate-400 dark:text-slate-500">
+                      {p.muscle &&
+                        (onFilterTag ? (
+                          <button
+                            type="button"
+                            onClick={() => onFilterTag("muscle", p.muscle!)}
+                            title={`Show ${p.muscle} activities`}
+                            className="hover:text-brand-600 hover:underline dark:hover:text-brand-400"
+                          >
+                            {p.muscle}
+                          </button>
+                        ) : (
+                          <span>{p.muscle}</span>
+                        ))}
+                      {p.muscle && p.equipment && (
+                        <span aria-hidden className="mx-1.5">
+                          ·
+                        </span>
+                      )}
+                      {p.equipment && <span>{p.equipment}</span>}
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5 text-right">
                   <span className="text-sm tabular-nums text-slate-600 dark:text-slate-300">
                     {p.text}
                   </span>
-                  {p.equipment && (
-                    <span
-                      className="badge shrink-0 bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
-                      title="Equipment used"
-                    >
-                      {p.equipment}
-                    </span>
-                  )}
                   {p.status === "met" && (
                     <span
+                      role="img"
+                      aria-label={SET_STATUS_TITLES.met}
                       className="text-brand-600 dark:text-brand-400"
                       title={SET_STATUS_TITLES.met}
                     >
@@ -266,6 +350,8 @@ export default function JournalCard({
                   )}
                   {p.status === "missed" && (
                     <span
+                      role="img"
+                      aria-label={SET_STATUS_TITLES.missed}
                       className="text-amber-500 dark:text-amber-400"
                       title={SET_STATUS_TITLES.missed}
                     >
@@ -273,21 +359,6 @@ export default function JournalCard({
                     </span>
                   )}
                 </div>
-                {p.muscle &&
-                  (onFilterTag ? (
-                    <button
-                      type="button"
-                      onClick={() => onFilterTag("muscle", p.muscle!)}
-                      title={`Show ${p.muscle} activities`}
-                      className="badge mt-0.5 shrink-0 cursor-pointer bg-brand-50 text-brand-700 transition hover:ring-1 hover:ring-current dark:bg-brand-950 dark:text-brand-300"
-                    >
-                      {p.muscle}
-                    </button>
-                  ) : (
-                    <span className="badge mt-0.5 shrink-0 bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300">
-                      {p.muscle}
-                    </span>
-                  ))}
               </div>
             );
           })}
@@ -299,6 +370,7 @@ export default function JournalCard({
         createdAt={provenance.createdAt}
         updatedAt={provenance.updatedAt}
         editLockId={provenance.editLocked ? activity.id : undefined}
+        variant="quiet"
         className="mt-3"
       />
     </div>

@@ -71,6 +71,32 @@ setSetting("notify_last_error_channel", "telegram");
 
 const PROFILE_ID = 1;
 
+// Dense Journal-card fixture: the base seed's synthetic Strava ride gets richer
+// metrics plus a deliberately long note so the scan-first summary, structured
+// metrics, responsive route placement, and notes disclosure can be exercised in
+// one stable card without adding another activity to the feed.
+db.prepare(
+  `UPDATE activities
+      SET notes = ?, avg_hr = 148, max_hr = 171, elevation_m = 210,
+          avg_power_w = 186, weighted_avg_power_w = 193
+    WHERE profile_id = ? AND external_id = 'strava:seed-ride-1'`
+).run(
+  "Synthetic training note: steady endurance work with controlled breathing through the first half, then a slightly stronger finish while keeping cadence smooth and effort comfortably below threshold.",
+  PROFILE_ID
+);
+
+// Give one recent strength row an explicit met target so the card's visible and
+// accessible status treatment is covered by the browser tier.
+db.prepare(
+  `UPDATE exercise_sets
+      SET target_reps = reps
+    WHERE activity_id = (
+      SELECT id FROM activities
+       WHERE profile_id = ? AND title = 'Push day'
+       ORDER BY date DESC, id DESC LIMIT 1
+    ) AND exercise = 'Barbell Bench Press'`
+).run(PROFILE_ID);
+
 db.prepare(
   `DELETE FROM integration_sync_events WHERE profile_id = ? AND provider IN ('strava','health-connect')`
 ).run(PROFILE_ID);

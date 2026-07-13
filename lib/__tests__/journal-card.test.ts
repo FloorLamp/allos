@@ -1,7 +1,7 @@
 // PURE tier — pins the Journal feed's card construction (issue #334) that used to
 // live inline in app/(app)/training/HistorySection.tsx. Covers set-grouping, the
 // components-vs-legacy branch, the single-pure-effort header fold, the cardio
-// distance/duration/speed detail string, the imported-metric chips, and day
+// distance/duration/speed detail string, the imported metrics, and day
 // grouping/labels. No DB — buildJournalCards takes already-loaded rows.
 
 import { describe, it, expect } from "vitest";
@@ -212,7 +212,7 @@ describe("buildJournalCards — components vs legacy", () => {
 });
 
 describe("buildJournalCards — single-pure-effort header fold", () => {
-  it("surfaces a lone cardio effort as a clickable row and drops the header meta", () => {
+  it("keeps a lone cardio effort clickable while moving its metrics to the header", () => {
     const a = activity({
       id: 1,
       type: "cardio",
@@ -225,13 +225,17 @@ describe("buildJournalCards — single-pure-effort header fold", () => {
     });
     const [group] = build([a], []);
     const card = group.cards[0];
-    // The single cardio part is shown as a row…
+    // The single cardio part remains a detail link without repeated metrics…
     expect(card.parts).toHaveLength(1);
-    expect(card.parts[0]).toMatchObject({ kind: "cardio", name: "Run" });
-    // …and the now-redundant header meta is suppressed.
-    expect(card.durationText).toBeNull();
-    expect(card.distanceText).toBeNull();
-    expect(card.speedText).toBeNull();
+    expect(card.parts[0]).toMatchObject({
+      kind: "cardio",
+      name: "Run",
+      detail: "",
+    });
+    // …while the scan-first header carries the primary measurements together.
+    expect(card.durationText).toBe("30 min");
+    expect(card.distanceText).toBe("5 km");
+    expect(card.speedText).toBe("10 km/h");
   });
 
   it("keeps the header meta for a strength activity and hides a lone folded part", () => {
@@ -258,8 +262,8 @@ describe("buildJournalCards — single-pure-effort header fold", () => {
   });
 });
 
-describe("buildJournalCards — metric chips + provenance", () => {
-  it("emits imported-metric chips and a source/edited provenance label", () => {
+describe("buildJournalCards — metrics + provenance", () => {
+  it("emits imported metrics and a source/edited provenance label", () => {
     const a = activity({
       id: 1,
       type: "cardio",

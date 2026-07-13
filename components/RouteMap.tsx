@@ -12,17 +12,25 @@ import { encodedPolylineToSvg } from "@/lib/polyline";
 export default function RouteMap({
   polyline,
   size = 120,
+  width,
+  height,
   className,
   title = "Activity route",
 }: {
   polyline: string | null | undefined;
   size?: number;
+  // Optional non-square canvas for compact feed strips. `size` remains the
+  // backwards-compatible square default used by existing render sites.
+  width?: number;
+  height?: number;
   className?: string;
   title?: string;
 }) {
+  const routeWidth = width ?? size;
+  const routeHeight = height ?? size;
   const route = encodedPolylineToSvg(polyline, {
-    width: size,
-    height: size,
+    width: routeWidth,
+    height: routeHeight,
     padding: 6,
   });
   if (!route) return null;
@@ -31,8 +39,8 @@ export default function RouteMap({
   return (
     <svg
       viewBox={`0 0 ${route.width} ${route.height}`}
-      width={size}
-      height={size}
+      width={routeWidth}
+      height={routeHeight}
       role="img"
       aria-label={title}
       data-testid="route-map"
