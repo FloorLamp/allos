@@ -471,3 +471,150 @@ describe("shared-chat attribution survives a tap (#377)", () => {
     expect(edited).toContain("Confirmed taken ✅");
   });
 });
+
+// ---- Escalation authz binds the caregiver chat to the DOSE's supplement (#615) ----
+// A caregiver chat is authorized only for the doses of the supplement actually
+// routed to it — not every dose of the profile. The token can't pair supplement
+// X's escalate chat with a dose of a different, un-escalated supplement Y.
+describe("escalation authz binds to the dose's own supplement (#615)", () => {
+  // Med Y: same profile, its OWN dose, but NO caregiver escalate chat.
+  let sensitiveSuppId: number;
+  let sensitiveDoseId: number;
+  beforeAll(() => {
+    sensitiveSuppId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items
+             (profile_id, name, active, kind, condition, priority, critical)
+           VALUES (?, 'TG615 Sensitive Med', 1, 'medication', 'daily', 'mandatory', 1)`
+        )
+        .run(p.profileId).lastInsertRowid
+    );
+    sensitiveDoseId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+           VALUES (?, '10 mg', 'morning', 'any', 0)`
+        )
+        .run(sensitiveSuppId).lastInsertRowid
+    );
+  });
+  beforeEach(() => {
+    db.prepare("DELETE FROM intake_item_logs WHERE dose_id = ?").run(
+      sensitiveDoseId
+    );
+    db.prepare(
+      "DELETE FROM profile_settings WHERE profile_id = ? AND key = ?"
+    ).run(p.profileId, escalationMarkerKey(sensitiveDoseId));
+  });
+
+  it("med X's caregiver chat cannot ✅-confirm a dose of med Y (no log)", async () => {
+    const date = today(p.profileId);
+    // Forge: Y's dose, but naming X's suppId so the OLD code would authorize via
+    // X's escalate chat. From X's caregiver chat.
+    await handleCallbackQuery(
+      cq(
+        `esctake:${p.profileId}:${sensitiveDoseId}:${criticalSuppId}:${date}`,
+        CARE_CHAT
+      )
+    );
+    const log = db
+      .prepare(`SELECT 1 FROM intake_item_logs WHERE dose_id = ? AND date = ?`)
+      .get(sensitiveDoseId, date);
+    expect(log).toBeFalsy();
+    // Unauthorized → bare ack, no toast text.
+    expect(lastAnswerText()).toBeUndefined();
+  });
+
+  it("med X's caregiver chat cannot escack-silence med Y's escalation (no marker)", async () => {
+    const date = today(p.profileId);
+    await handleCallbackQuery(
+      cq(
+        `escack:${p.profileId}:${sensitiveDoseId}:${criticalSuppId}:${date}`,
+        CARE_CHAT
+      )
+    );
+    expect(
+      getProfileSetting(p.profileId, escalationMarkerKey(sensitiveDoseId))
+    ).toBeFalsy();
+    expect(lastAnswerText()).toBeUndefined();
+  });
+
+  it("the profile's OWN chat still confirms med Y with a correct token", async () => {
+    const date = today(p.profileId);
+    await handleCallbackQuery(
+      cq(
+        `esctake:${p.profileId}:${sensitiveDoseId}:${sensitiveSuppId}:${date}`,
+        OWN_CHAT
+      )
+    );
+    const row = db
+      .prepare(
+        `SELECT status FROM intake_item_logs WHERE dose_id = ? AND date = ?`
+      )
+      .get(sensitiveDoseId, date) as { status: string } | undefined;
+    expect(row?.status).toBe("taken");
+    expect(lastAnswerText()).toBe("Logged ✅");
+  });
+});
+
+// ---- ✅-All tolerates an already-logged dose in the window (#616) ----
+// A tap racing/following a concurrent write of one dose must still log the rest;
+// the unique-constraint guard means the loop no longer throws and abandons them.
+describe("handleAllTaken tolerates an already-logged dose (#616)", () => {
+  const ALL_CHAT = "5550616";
+  let hp: SeededProfile;
+  let itemA: number;
+  let doseA: number;
+  let itemB: number;
+  let doseB: number;
+  beforeAll(() => {
+    hp = seedProfile("TG616");
+    setProfileSetting(hp.profileId, "telegram_chat_id", ALL_CHAT);
+    setProfileSetting(hp.profileId, "telegram_enabled", "1");
+    const mkItem = (name: string) =>
+      Number(
+        db
+          .prepare(
+            `INSERT INTO intake_items
+               (profile_id, name, active, kind, condition, priority)
+             VALUES (?, ?, 1, 'supplement', 'daily', 'high')`
+          )
+          .run(hp.profileId, name).lastInsertRowid
+      );
+    const mkDose = (itemId: number) =>
+      Number(
+        db
+          .prepare(
+            `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+             VALUES (?, '1 cap', 'morning', 'any', 0)`
+          )
+          .run(itemId).lastInsertRowid
+      );
+    itemA = mkItem("TG616 Morning A");
+    doseA = mkDose(itemA);
+    itemB = mkItem("TG616 Morning B");
+    doseB = mkDose(itemB);
+  });
+
+  it("logs the remaining pending dose when one is already logged, without throwing", async () => {
+    const date = today(hp.profileId);
+    // Pre-log dose A (as a concurrent writer would).
+    db.prepare(
+      "INSERT INTO intake_item_logs (dose_id, item_id, date, status) VALUES (?,?,?,'taken')"
+    ).run(doseA, itemA, date);
+
+    await handleCallbackQuery(
+      cq(`all:${hp.profileId}:Morning:${date}`, ALL_CHAT)
+    );
+
+    // Dose B (the remaining pending one) is now logged — the loop didn't abort.
+    const rowB = db
+      .prepare(
+        `SELECT status FROM intake_item_logs WHERE dose_id = ? AND date = ?`
+      )
+      .get(doseB, date) as { status: string } | undefined;
+    expect(rowB?.status).toBe("taken");
+    expect(lastAnswerText()).toBe("All logged ✅");
+  });
+});

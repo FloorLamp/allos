@@ -5,14 +5,27 @@
 // Adherence / dose-log reads and writes: taken/skipped dose sets, the idempotent
 // mark-taken/skipped log writers (the notification-webhook counterparts), the
 // escalation-authorization helpers, and the adherence-strip range read.
-import { db, today } from "../../db";
-import { shiftDateStr } from "../../date";
+import { db, today, writeTx } from "../../db";
+import { shiftDateStr, daysBetweenDateStr } from "../../date";
+import { isUniqueConstraintError } from "../../sqlite-error";
 import { decrementSupply } from "./refill";
 import type {
   DoseStatus,
   DoseTakenOutcome,
   EscalationAckOutcome,
 } from "../../types";
+
+// A Telegram dose token carries the day the reminder was sent so a late tap still
+// logs to the right calendar date — but the token is client-supplied, so an
+// arbitrary past/future date must not be honored (the web path pins today()). Bound
+// the accepted date to a small window around the profile's today so a legitimate
+// late/after-midnight tap still lands while a forged far-off date is refused.
+const DOSE_LOG_DATE_WINDOW_DAYS = 2;
+
+function isDoseDateAccepted(profileId: number, date: string): boolean {
+  const diff = daysBetweenDateStr(today(profileId), date);
+  return diff != null && Math.abs(diff) <= DOSE_LOG_DATE_WINDOW_DAYS;
+}
 
 // Supplement ids with at least one dose actually TAKEN on `date` (supplement-
 // level view for the dashboard / AI summary). A skipped dose (issue #232) is not
@@ -79,44 +92,78 @@ export function markDoseTaken(
   supplementId: number | null,
   date: string
 ): DoseTakenOutcome {
-  // The dose id arrives from a Telegram callback, so verify it belongs to this
-  // profile (via its parent supplement) before logging anything against it. Read
-  // the supplement id from the row rather than trusting the callback token. A
-  // retired dose is no longer part of the schedule — treat it like a deleted one.
-  const owned = db
-    .prepare(
-      `SELECT d.item_id AS item_id, d.amount AS amount,
-              s.active AS active
-         FROM intake_item_doses d
-         JOIN intake_items s ON s.id = d.item_id
-        WHERE d.id = ? AND s.profile_id = ? AND d.retired = 0`
-    )
-    .get(doseId, profileId) as
-    { item_id: number; amount: string | null; active: number } | undefined;
-  if (!owned) return "stale-dose";
-  // A paused/stopped item keeps its buttons in old messages; refuse the tap so
-  // a lingering reminder can't silently log doses (and burn supply) for an item
-  // the user has deliberately paused.
-  if (!owned.active) return "inactive";
-  // An existing log resolves the day; report its ACTUAL status (issue #280) so
-  // a ✅ tap on a dose meanwhile marked skipped is never answered "Logged".
-  const existing = db
-    .prepare(
-      "SELECT status FROM intake_item_logs WHERE dose_id = ? AND date = ?"
-    )
-    .get(doseId, date) as { status: DoseStatus } | undefined;
-  if (existing) {
-    // Don't re-decrement supply, and never overwrite a deliberate skip.
-    return existing.status === "skipped" ? "already-skipped" : "already-taken";
-  }
-  // Snapshot the dose amount at confirm time: history must keep showing what
-  // was actually taken even after a later dosage edit rewrites the dose row.
-  db.prepare(
-    "INSERT INTO intake_item_logs (dose_id, item_id, date, amount) VALUES (?,?,?,?)"
-  ).run(doseId, supplementId ?? owned.item_id, date, owned.amount);
-  // Guarded by the dedup above: a confirmed dose decrements on-hand supply once.
-  decrementSupply(profileId, owned.item_id);
-  return "logged";
+  // A far-off (forged) date can't land a misdated row (issue #614); a legitimate
+  // late tap within the window still logs to the reminder's own day.
+  if (!isDoseDateAccepted(profileId, date)) return "stale-dose";
+  // The check + insert + supply decrement run as one IMMEDIATE transaction (issue
+  // #616 / #468): three processes write this DB, so a bare SELECT-then-INSERT both
+  // races the UNIQUE(dose_id, date) constraint (throwing, aborting handleAllTaken's
+  // remaining doses) and can strand supply on a crash between the two statements.
+  return writeTx((): DoseTakenOutcome => {
+    // The dose id arrives from a Telegram callback, so verify it belongs to this
+    // profile (via its parent supplement) before logging anything against it. Read
+    // the supplement id from the row rather than trusting the callback token. A
+    // retired dose is no longer part of the schedule — treat it like a deleted one.
+    const owned = db
+      .prepare(
+        `SELECT d.item_id AS item_id, d.amount AS amount,
+                s.active AS active
+           FROM intake_item_doses d
+           JOIN intake_items s ON s.id = d.item_id
+          WHERE d.id = ? AND s.profile_id = ? AND d.retired = 0`
+      )
+      .get(doseId, profileId) as
+      { item_id: number; amount: string | null; active: number } | undefined;
+    if (!owned) return "stale-dose";
+    // A paused/stopped item keeps its buttons in old messages; refuse the tap so
+    // a lingering reminder can't silently log doses (and burn supply) for an item
+    // the user has deliberately paused.
+    if (!owned.active) return "inactive";
+    // The callback token's supplement id is client-supplied and NEVER trusted for
+    // the write (issue #613/#614): the item is always derived from the dose row. A
+    // token whose supp id contradicts the dose's real item is a forged/stale token,
+    // so answer stale rather than logging (the write below uses owned.item_id).
+    if (supplementId != null && supplementId !== owned.item_id) {
+      return "stale-dose";
+    }
+    // An existing log resolves the day; report its ACTUAL status (issue #280) so
+    // a ✅ tap on a dose meanwhile marked skipped is never answered "Logged".
+    const existing = db
+      .prepare(
+        "SELECT status FROM intake_item_logs WHERE dose_id = ? AND date = ?"
+      )
+      .get(doseId, date) as { status: DoseStatus } | undefined;
+    if (existing) {
+      // Don't re-decrement supply, and never overwrite a deliberate skip.
+      return existing.status === "skipped"
+        ? "already-skipped"
+        : "already-taken";
+    }
+    // Snapshot the dose amount at confirm time: history must keep showing what
+    // was actually taken even after a later dosage edit rewrites the dose row.
+    // Always write the dose's OWN item id — never the callback token's.
+    try {
+      db.prepare(
+        "INSERT INTO intake_item_logs (dose_id, item_id, date, amount) VALUES (?,?,?,?)"
+      ).run(doseId, owned.item_id, date, owned.amount);
+    } catch (err) {
+      // UNIQUE(dose_id, date) lost race (issue #616): a concurrent writer (a web
+      // replica or the sibling notify process) already logged this dose today and
+      // owns the row AND its supply move. Re-read and report the standing status
+      // instead of throwing (which would abort handleAllTaken's remaining doses).
+      if (!isUniqueConstraintError(err)) throw err;
+      const raced = db
+        .prepare(
+          "SELECT status FROM intake_item_logs WHERE dose_id = ? AND date = ?"
+        )
+        .get(doseId, date) as { status: DoseStatus } | undefined;
+      return raced?.status === "skipped" ? "already-skipped" : "already-taken";
+    }
+    // Guarded by the dedup + the lost-race no-op above: only the writer that
+    // actually inserted the taken row decrements on-hand supply, once.
+    decrementSupply(profileId, owned.item_id);
+    return "logged";
+  });
 }
 
 // Log a single dose as SKIPPED on `date` (issue #232) — the sibling of
@@ -134,37 +181,61 @@ export function markDoseTaken(
 export function markDoseSkipped(
   profileId: number,
   doseId: number,
-  _supplementId: number | null,
+  supplementId: number | null,
   date: string
 ): DoseTakenOutcome {
-  const owned = db
-    .prepare(
-      `SELECT d.item_id AS item_id, s.active AS active
-         FROM intake_item_doses d
-         JOIN intake_items s ON s.id = d.item_id
-        WHERE d.id = ? AND s.profile_id = ? AND d.retired = 0`
-    )
-    .get(doseId, profileId) as { item_id: number; active: number } | undefined;
-  if (!owned) return "stale-dose";
-  if (!owned.active) return "inactive";
-  // Any existing log (taken OR skipped) means this dose is already resolved for
-  // the day. A stale ⏭ tap must not overwrite a taken dose (the explicit
-  // taken→skipped toggle lives in the web setDoseStatus action); an already-
-  // skipped dose is an idempotent no-op. Either way: leave it, and report the
-  // status that actually stands (issue #280).
-  const existing = db
-    .prepare(
-      "SELECT status FROM intake_item_logs WHERE dose_id = ? AND date = ?"
-    )
-    .get(doseId, date) as { status: DoseStatus } | undefined;
-  if (existing) {
-    return existing.status === "skipped" ? "already-skipped" : "already-taken";
-  }
-  db.prepare(
-    "INSERT INTO intake_item_logs (dose_id, item_id, date, amount, status) VALUES (?,?,?,NULL,'skipped')"
-  ).run(doseId, _supplementId ?? owned.item_id, date);
-  // Deliberately no decrementSupply: a skipped dose consumes nothing.
-  return "skipped";
+  // Same forged-date guard as markDoseTaken (issue #614).
+  if (!isDoseDateAccepted(profileId, date)) return "stale-dose";
+  return writeTx((): DoseTakenOutcome => {
+    const owned = db
+      .prepare(
+        `SELECT d.item_id AS item_id, s.active AS active
+           FROM intake_item_doses d
+           JOIN intake_items s ON s.id = d.item_id
+          WHERE d.id = ? AND s.profile_id = ? AND d.retired = 0`
+      )
+      .get(doseId, profileId) as
+      { item_id: number; active: number } | undefined;
+    if (!owned) return "stale-dose";
+    if (!owned.active) return "inactive";
+    // The token's supp id is never trusted for the write (issue #613/#614): a
+    // token contradicting the dose's real item is forged/stale.
+    if (supplementId != null && supplementId !== owned.item_id) {
+      return "stale-dose";
+    }
+    // Any existing log (taken OR skipped) means this dose is already resolved for
+    // the day. A stale ⏭ tap must not overwrite a taken dose (the explicit
+    // taken→skipped toggle lives in the web setDoseStatus action); an already-
+    // skipped dose is an idempotent no-op. Either way: leave it, and report the
+    // status that actually stands (issue #280).
+    const existing = db
+      .prepare(
+        "SELECT status FROM intake_item_logs WHERE dose_id = ? AND date = ?"
+      )
+      .get(doseId, date) as { status: DoseStatus } | undefined;
+    if (existing) {
+      return existing.status === "skipped"
+        ? "already-skipped"
+        : "already-taken";
+    }
+    // Write the dose's OWN item id (never the callback token's).
+    try {
+      db.prepare(
+        "INSERT INTO intake_item_logs (dose_id, item_id, date, amount, status) VALUES (?,?,?,NULL,'skipped')"
+      ).run(doseId, owned.item_id, date);
+    } catch (err) {
+      // UNIQUE(dose_id, date) lost race (issue #616): report the standing status.
+      if (!isUniqueConstraintError(err)) throw err;
+      const raced = db
+        .prepare(
+          "SELECT status FROM intake_item_logs WHERE dose_id = ? AND date = ?"
+        )
+        .get(doseId, date) as { status: DoseStatus } | undefined;
+      return raced?.status === "taken" ? "already-taken" : "already-skipped";
+    }
+    // Deliberately no decrementSupply: a skipped dose consumes nothing.
+    return "skipped";
+  });
 }
 
 // Whether an intake item (supplement/med) exists for this profile — a scoped
@@ -194,6 +265,29 @@ export function getSupplementEscalateChatId(
     )
     .get(supplementId, profileId) as
     { escalate_chat_id: string | null } | undefined;
+  return row?.escalate_chat_id ?? null;
+}
+
+// The escalate_chat_id (caregiver chat) of the supplement a specific DOSE belongs
+// to, or null. This is the authorization anchor for an escalation tap (issue #615):
+// the caregiver chat that authorizes a tap must be the one routed to the SUPPLEMENT
+// the tapped dose actually belongs to — NOT whatever supp id the client-supplied
+// token names. Deriving the chat from the dose row (profile-scoped through the
+// parent item) closes the widening where a token could pair one supplement's
+// escalate chat with a different supplement's dose. Returns null for a dose that
+// isn't this profile's (so only the profile's own chat can then authorize).
+export function getDoseEscalateChatId(
+  profileId: number,
+  doseId: number
+): string | null {
+  const row = db
+    .prepare(
+      `SELECT s.escalate_chat_id AS escalate_chat_id
+         FROM intake_item_doses d
+         JOIN intake_items s ON s.id = d.item_id
+        WHERE d.id = ? AND s.profile_id = ?`
+    )
+    .get(doseId, profileId) as { escalate_chat_id: string | null } | undefined;
   return row?.escalate_chat_id ?? null;
 }
 
