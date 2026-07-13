@@ -59,6 +59,50 @@ test.describe("Visit detail page", () => {
   });
 });
 
+// The single "Add visit" entry (issue #566): switching the tense toggle to "Already
+// happened" and entering a past date logs a real encounter that lands in the Past
+// section — the encounter branch end-to-end (the appointment branch is covered by
+// visits-lifecycle.spec). Self-cleaning via a unique reason marker so the shared
+// e2e DB stays pristine across CI retries (raw connection, like the specs above).
+test.describe("Visits — single Add visit entry logs a past visit (#566)", () => {
+  const MARKER = "E2E 566 logged past visit";
+
+  function cleanup() {
+    const handle = new Database(DB_PATH);
+    try {
+      handle.prepare("DELETE FROM encounters WHERE reason = ?").run(MARKER);
+    } finally {
+      handle.close();
+    }
+  }
+
+  test.beforeAll(cleanup);
+  test.afterAll(cleanup);
+
+  test("choosing 'Already happened' logs an encounter into Past", async ({
+    page,
+  }) => {
+    test.slow();
+
+    await page.goto("/encounters");
+    const add = page.getByTestId("visits-add");
+    await expect(add).toBeVisible();
+
+    // Branch to the encounter (past) shape and fill it. A past date is entered
+    // directly; the toggle already selected the encounter branch.
+    await add.getByTestId("visit-tense-past").click();
+    await add.getByLabel("Visit type").fill("Office Visit");
+    await add.getByLabel("Date", { exact: true }).fill("2024-03-04");
+    await add.getByLabel("Reason (chief complaint)").fill(MARKER);
+    await add.getByRole("button", { name: "Add", exact: true }).click();
+    await expect(page.getByText("Visit saved")).toBeVisible();
+
+    // The logged visit appears in the Past (visit-history) section by its reason.
+    const past = page.getByTestId("visits-past");
+    await expect(past.getByText(MARKER)).toBeVisible();
+  });
+});
+
 // Issue #211: on the detail page the "View source document" link (only shown when the
 // encounter carries a document_id) was placed INLINE beside the Source label value, so
 // it read as a stray button jammed against the source name. It should sit on its own
