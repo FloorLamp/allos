@@ -16,8 +16,11 @@ import {
   toggleTaken,
   setDoseStatus,
   toggleActive,
+  stopMedication,
+  restartMedication,
   dismissMedicineFinding,
 } from "@/app/(app)/medicine/actions";
+import { deleteDatasetRows } from "@/app/(app)/data/manage-actions";
 import {
   getSupplements,
   getSupplementDoses,
@@ -26,6 +29,7 @@ import {
 } from "@/lib/queries";
 import { getProfileSetting, setProfileSetting } from "@/lib/settings";
 import { refillMarkerKey } from "@/lib/refill-nudge";
+import { escalationMarkerKey } from "@/lib/notifications/escalation-keys";
 import { seedActor, fd } from "./harness";
 
 const revalidate = vi.mocked(revalidatePath);
@@ -507,6 +511,92 @@ describe("refill episode marker cleanup on state change (#325)", () => {
     await toggleActive(fd({ id }));
     expect(itemRow(id).active).toBe(0);
     expect(getProfileSetting(profile.id, refillMarkerKey(id))).toBeUndefined();
+  });
+});
+
+// Refill-marker cleanup on the medication Stop/Restart lifecycle (issue #603). The
+// eager clear existed on Pause/Resume (toggleActive) but Stop/Restart cleared
+// nothing — so a Stop then Restart within the same hour (before a notify tick's
+// self-healing sweep) stranded a stale low-supply marker and no refill nudge
+// re-fired until an actual refill. Stop now mirrors Pause (leaves the tracked set →
+// clear); Restart is the enter-side twin and clears any lingering marker so a still-
+// low resumed med re-nudges.
+describe("refill marker cleanup on Stop/Restart (#603)", () => {
+  async function seedTrackedMedWithMarker() {
+    const { profile } = seedActor();
+    await addSupplement(
+      fd({
+        name: "Metformin",
+        kind: "medication",
+        quantity_on_hand: 30,
+        qty_per_dose: 1,
+      })
+    );
+    const id = getSupplements(profile.id)[0].id;
+    setProfileSetting(profile.id, refillMarkerKey(id), "2026-07-01");
+    return { profile, id };
+  }
+
+  it("stopMedication clears the low-supply marker (parity with Pause)", async () => {
+    const { profile, id } = await seedTrackedMedWithMarker();
+    await stopMedication(fd({ id }));
+    expect(itemRow(id).active).toBe(0);
+    expect(getProfileSetting(profile.id, refillMarkerKey(id))).toBeUndefined();
+  });
+
+  it("stop → restart leaves no stale marker to silence the re-nudge", async () => {
+    const { profile, id } = await seedTrackedMedWithMarker();
+    await stopMedication(fd({ id }));
+    await restartMedication(fd({ id }));
+    expect(itemRow(id).active).toBe(1);
+    expect(getProfileSetting(profile.id, refillMarkerKey(id))).toBeUndefined();
+  });
+
+  it("restartMedication alone clears a lingering marker (enter-side twin)", async () => {
+    const { profile, id } = await seedTrackedMedWithMarker();
+    // A med left inactive with a stale marker (e.g. stopped by a path that predates
+    // the sweep) must re-nudge on Restart — the tick can't self-heal it once it's a
+    // candidate again.
+    db.prepare("UPDATE intake_items SET active = 0 WHERE id = ?").run(id);
+    await restartMedication(fd({ id }));
+    expect(itemRow(id).active).toBe(1);
+    expect(getProfileSetting(profile.id, refillMarkerKey(id))).toBeUndefined();
+  });
+});
+
+// The Data → Manage bulk delete of supplements must sweep the SAME notification
+// markers deleteSupplement does (issue #603 / #328 parity): the item's low-supply
+// refill marker AND each dose's missed-dose escalation marker. Before the shared
+// cleanup helper, the undoable bulk-delete branch stranded both — permanently, for
+// the id-keyed escalation markers.
+describe("bulk delete sweeps intake markers (#603)", () => {
+  const dosesJson = (doses: { amount: string; time_of_day: string }[]) =>
+    JSON.stringify(doses.map((d) => ({ ...d, food_timing: "any" })));
+
+  it("deleteDatasetRows('supplements') clears the refill + escalation markers", async () => {
+    const { profile } = seedActor();
+    await addSupplement(
+      fd({
+        name: "Atorvastatin",
+        kind: "medication",
+        quantity_on_hand: 30,
+        qty_per_dose: 1,
+        doses: dosesJson([{ amount: "20 mg", time_of_day: "20:00" }]),
+      })
+    );
+    const id = getSupplements(profile.id)[0].id;
+    const doseId = getSupplementDoses(profile.id)[0].id;
+    // Simulate a prior low-supply nudge + a prior missed-dose escalation.
+    setProfileSetting(profile.id, refillMarkerKey(id), "2026-07-01");
+    setProfileSetting(profile.id, escalationMarkerKey(doseId), "2026-07-01");
+
+    const res = await deleteDatasetRows("supplements", [id]);
+    expect(res.ok).toBe(true);
+    expect(getSupplements(profile.id)).toHaveLength(0);
+    expect(getProfileSetting(profile.id, refillMarkerKey(id))).toBeUndefined();
+    expect(
+      getProfileSetting(profile.id, escalationMarkerKey(doseId))
+    ).toBeUndefined();
   });
 });
 

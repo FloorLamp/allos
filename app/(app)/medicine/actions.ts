@@ -42,7 +42,10 @@ import {
 import { orderIntakePair } from "@/lib/intake-pairs";
 import { leftRefillTrackedSet, refillMarkerKey } from "@/lib/refill-nudge";
 import { parseQuantityOnHand, resolveOnHandWrite } from "@/lib/refill";
-import { escalationMarkerKey } from "@/lib/notifications/escalation-keys";
+import {
+  intakeItemDoseIds,
+  sweepIntakeItemMarkers,
+} from "@/lib/intake-marker-cleanup";
 import { withAiLogContext } from "@/lib/ai-log";
 import {
   CONDITIONS,
@@ -677,6 +680,12 @@ export async function stopMedication(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that medication.");
+  const before = db
+    .prepare(
+      "SELECT active, quantity_on_hand FROM intake_items WHERE id = ? AND profile_id = ?"
+    )
+    .get(id, profile.id) as
+    { active: number; quantity_on_hand: number | null } | undefined;
   stopMedicationCourses(profile.id, id, {
     date: today(profile.id),
     reason: normalizeStopReason(formData.get("stop_reason")),
@@ -684,6 +693,20 @@ export async function stopMedication(formData: FormData): Promise<FormResult> {
     effect: strOrNull(formData.get("effect")),
     severity: normalizeSeverity(formData.get("severity")),
   });
+  // Stopping a tracked medication clears `active`, removing it from the refill-nudge
+  // tracked set — so drop its low-supply episode marker, exactly as Pause does
+  // (`toggleActive`), so a Restart while still low re-fires a fresh nudge instead of
+  // being silenced by a stale marker (issue #325 parity: Stop/Restart mirrors
+  // Pause/Resume).
+  if (
+    before &&
+    leftRefillTrackedSet(
+      { active: !!before.active, quantityOnHand: before.quantity_on_hand },
+      { active: false, quantityOnHand: before.quantity_on_hand }
+    )
+  ) {
+    deleteProfileSetting(profile.id, refillMarkerKey(id));
+  }
   revalidatePath("/medicine");
   revalidatePath("/");
   return formOk();
@@ -697,6 +720,12 @@ export async function restartMedication(
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that medication.");
   restartMedicationCourse(profile.id, id, today(profile.id));
+  // Restart re-activates the med, putting a refill-tracked one back INTO the nudge
+  // set — the enter-side twin of Stop's leave-side clear above. `leftRefillTrackedSet`
+  // only fires on a LEAVE, so drop any lingering low-supply marker here directly, so a
+  // med that still sits under threshold re-fires a fresh nudge (a stale marker whose
+  // item is a candidate again isn't reached by the tick's self-healing sweep — #325).
+  deleteProfileSetting(profile.id, refillMarkerKey(id));
   revalidatePath("/medicine");
   revalidatePath("/");
   return formOk();
@@ -799,24 +828,14 @@ export async function deleteSupplement(
   // Enumerate the item's dose ids BEFORE the cascade delete removes them, so we can
   // sweep their per-dose escalation markers below (profile-scoped via the parent
   // JOIN).
-  const doseIds = db
-    .prepare(
-      `SELECT d.id AS id FROM intake_item_doses d
-         JOIN intake_items ii ON ii.id = d.item_id
-        WHERE d.item_id = ? AND ii.profile_id = ?`
-    )
-    .all(id, profile.id) as { id: number }[];
+  const doseIds = intakeItemDoseIds(profile.id, id);
   const undoId = captureDelete("intake-item", profile.id, id);
   // Drop the item's low-supply episode marker with it (issue #203) AND its per-dose
   // escalation dedup markers (issue #328). Both are dead rows rather than wrong
   // suppression — ids never recycle — but the delete seam sweeping ONE marker family
-  // and not the other was inconsistency, not principle: a stranded
-  // `notify_last_refill_<id>` / `notify_last_esc_<doseId>` setting outlives the item
-  // it backed, so clear both here.
-  deleteProfileSetting(profile.id, refillMarkerKey(id));
-  for (const { id: doseId } of doseIds) {
-    deleteProfileSetting(profile.id, escalationMarkerKey(doseId));
-  }
+  // and not the other was inconsistency, not principle. Shared with the Data → Manage
+  // bulk delete so both paths sweep both families identically.
+  sweepIntakeItemMarkers(profile.id, id, doseIds);
   revalidatePath("/medicine");
   revalidatePath("/");
   return { undoId };

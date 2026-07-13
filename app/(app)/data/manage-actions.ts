@@ -14,6 +14,10 @@ import {
 } from "@/lib/queries";
 import { undoKindForDataset } from "@/lib/dataset-undo";
 import { captureDelete } from "@/lib/undo-delete-db";
+import {
+  intakeItemDoseIds,
+  sweepIntakeItemMarkers,
+} from "@/lib/intake-marker-cleanup";
 
 // The per-dataset deletion policy (which pages to revalidate, whether to clean up
 // orphaned biomarker stars) lives beside DATASETS in lib/export as pure data —
@@ -91,10 +95,24 @@ export async function deleteDatasetRows(
   // isn't this profile's returns null and is skipped.
   const kind = undoKindForDataset(key);
   if (kind) {
+    // Intake items (supplements/meds) leave notification dedup markers behind on
+    // delete; capture each item's dose ids BEFORE its cascade delete removes them, so
+    // we can sweep the per-dose escalation markers + the refill marker afterward —
+    // the SAME sweep deleteSupplement runs, so the two delete paths stay consistent
+    // (#328 parity; without this the bulk path stranded escalation markers).
+    const isIntakeItem = kind === "intake-item";
     const undoIds: number[] = [];
+    const sweeps: { id: number; doseIds: number[] }[] = [];
     for (const id of clean) {
+      const doseIds = isIntakeItem ? intakeItemDoseIds(profile.id, id) : [];
       const token = captureDelete(kind, profile.id, id);
-      if (token != null) undoIds.push(token);
+      if (token != null) {
+        undoIds.push(token);
+        if (isIntakeItem) sweeps.push({ id, doseIds });
+      }
+    }
+    for (const { id, doseIds } of sweeps) {
+      sweepIntakeItemMarkers(profile.id, id, doseIds);
     }
     afterDelete(key, resolved.policy, profile.id);
     return { ok: true, deleted: undoIds.length, undoIds };
