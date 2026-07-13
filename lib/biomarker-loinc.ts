@@ -32,6 +32,11 @@ export const LOINC_TO_CANONICAL: Record<string, string> = {
   "777-3": "Platelet Count", // Platelets [#/volume] in Blood by Automated count (10^3/uL)
   "6690-2": "White Blood Cell Count", // Leukocytes [#/volume] in Blood by Automated count (10^3/uL)
   "776-5": "MPV", // Platelet mean volume [Entitic volume] in Blood by Automated count (fL)
+  // Alternate platelet/MPV LOINCs emitted by real Epic exports — same unit as the
+  // automated-count forms above, so they route to the same canonical entries.
+  "26515-7": "Platelet Count", // Platelets [#/volume] in Blood (method-less; 10^3/uL)
+  "28542-9": "MPV", // Platelet mean volume [Entitic volume] in Blood (method-less; fL)
+  "32623-1": "MPV", // Platelet mean volume [Entitic volume] in Blood by Rees-Ecker (fL)
 
   // WBC differential. The differential is reported in TWO complementary quantities
   // — an absolute count (cells/uL) and a fraction of leukocytes (%) — which are
@@ -182,6 +187,10 @@ export const LOINC_TO_CANONICAL: Record<string, string> = {
   "17849-1": "Reticulocytes", // Reticulocytes/Erythrocytes in Blood by Automated count (%)
   "4679-7": "Reticulocytes", // Reticulocytes/Erythrocytes in Blood (method-less; %)
   "60474-4": "Reticulocytes, Absolute", // Reticulocytes [#/volume] in Blood (10^3/uL)
+
+  // ── Toxic / trace metals ────────────────────────────────────────────────────
+  // Blood lead. Canonical "Lead" is ug/dL (venous/capillary blood) — unit-matched.
+  "77307-7": "Lead", // Lead [Mass/volume] in Venous blood (ug/dL)
 };
 
 // The canonical biomarker name for a LOINC code, or null when unmapped.

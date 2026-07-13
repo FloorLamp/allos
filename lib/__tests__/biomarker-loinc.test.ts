@@ -201,6 +201,19 @@ describe("full clinical-lab panel mappings", () => {
     );
   });
 
+  // Alternate CBC LOINCs + blood lead observed in real Epic exports (the three
+  // patient XDM packages). Each routes to an EXISTING canonical entry whose unit
+  // matches the observed unit — no new canonical entry, no rescale.
+  it("maps alternate platelet/MPV LOINCs and blood lead to unit-matched entries", () => {
+    expect(canonicalBiomarkerForLoinc("26515-7")).toBe("Platelet Count");
+    expect(cb("Platelet Count").unit).toBe("10^3/uL");
+    expect(canonicalBiomarkerForLoinc("28542-9")).toBe("MPV");
+    expect(canonicalBiomarkerForLoinc("32623-1")).toBe("MPV");
+    expect(cb("MPV").unit).toBe("fL");
+    expect(canonicalBiomarkerForLoinc("77307-7")).toBe("Lead");
+    expect(cb("Lead").unit).toBe("ug/dL");
+  });
+
   // These six candidate codes were WRONG (bad check digit or a different analyte
   // entirely — 2285-5 is Follitropin in Semen, 25130-6 a urine ratio); a wrong
   // code silently false-flags patient data. Pin the CORRECTED codes and assert the
