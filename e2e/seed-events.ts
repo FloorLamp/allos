@@ -1561,3 +1561,47 @@ db.prepare(
 console.log(
   `e2e: seeded uncatalogued biomarker "${COVERAGE_GAP_ANALYTE}" on profile ${PROFILE_ID} for coverage gaps (#550)`
 );
+
+// Deterministic biomarker→food suggestion fixtures (#577). Currently-flagged-LOW
+// diet-responsive readings on profile 1 so the food-suggestion surfaces render, and a
+// synthetic "fish" allergy so the omega-3 suggestion shows its algae/ALA ALTERNATIVE
+// (the allergy screen). The seeded Warfarin med (scripts/seed.ts) supplies the
+// MEDICATION screen — the folate suggestion carries the vitamin-K consistency note.
+// Idempotent: cleared by canonical_name then re-inserted; value_num is genuinely below
+// the reference low so the flag stays 'low' through any reconcile.
+for (const bm of [
+  { name: "Omega-3 Total (OmegaCheck)", value: 3.0, unit: "% by wt" },
+  { name: "Folate", value: 2.0, unit: "ng/mL" },
+]) {
+  db.prepare(
+    `DELETE FROM medical_records WHERE profile_id = ? AND canonical_name = ?`
+  ).run(PROFILE_ID, bm.name);
+  db.prepare(
+    `INSERT INTO medical_records
+       (profile_id, date, category, name, value_num, value, unit, canonical_name, flag)
+     VALUES (?, ?, 'lab', ?, ?, ?, ?, ?, 'low')`
+  ).run(
+    PROFILE_ID,
+    shiftDateStr(today(PROFILE_ID), -7),
+    bm.name,
+    bm.value,
+    String(bm.value),
+    bm.unit,
+    bm.name
+  );
+}
+if (
+  !db
+    .prepare(
+      `SELECT 1 FROM allergies WHERE profile_id = ? AND substance = 'fish' COLLATE NOCASE`
+    )
+    .get(PROFILE_ID)
+) {
+  db.prepare(
+    `INSERT INTO allergies (profile_id, substance, reaction, severity, status, source)
+     VALUES (?, 'fish', 'Hives', 'moderate', 'active', 'manual')`
+  ).run(PROFILE_ID);
+}
+console.log(
+  `e2e: seeded low omega-3 + folate readings and a fish allergy on profile ${PROFILE_ID} for food suggestions (#577)`
+);

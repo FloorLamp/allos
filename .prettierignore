@@ -9,3 +9,5 @@ lib/icd10-common.json
 lib/bp-percentiles.json
 lib/screenings.json
 lib/drug-interactions.json
+lib/nutrient-food-map.json
+lib/food-groups.json

@@ -995,6 +995,7 @@ export async function dismissAdherencePattern(
 const MEDICINE_FINDING_PREFIXES = [
   "interaction:",
   "dietary-limit:",
+  "rda-adequacy:",
   FOOD_TIMING_PREFIX,
   KEEP_APART_PREFIX,
 ];

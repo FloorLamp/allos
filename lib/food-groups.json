@@ -1,0 +1,218 @@
+{
+  "$comment": "Curated food-group catalog for the serving log (issue #579): ~24 groups at the habit tier (one serving = one tap), each with a stable slug (food_log.group_key), a serving description, a tier (encourage/limit/neutral), and the #577 nutrient-food-map keys it's a source of. Committed + HUMAN-REVIEWABLE. Regenerate with `npm run gen:food-groups`. INFORMATIONAL dietary guidance, NOT medical advice.",
+  "groups": [
+    {
+      "slug": "fatty_fish",
+      "name": "Fatty fish",
+      "serving": "A palm-sized fillet (~4 oz) of salmon, sardines, mackerel, herring",
+      "tier": "encourage",
+      "nutrients": [
+        "omega-3",
+        "vitamin-d",
+        "vitamin-b12"
+      ]
+    },
+    {
+      "slug": "lean_fish",
+      "name": "White / lean fish",
+      "serving": "A palm-sized fillet (~4 oz) of cod, tilapia, haddock",
+      "tier": "encourage",
+      "nutrients": [
+        "vitamin-b12"
+      ]
+    },
+    {
+      "slug": "shellfish",
+      "name": "Shellfish",
+      "serving": "~3 oz of shrimp, clams, mussels, oysters",
+      "tier": "encourage",
+      "nutrients": [
+        "iron",
+        "vitamin-b12",
+        "omega-3"
+      ]
+    },
+    {
+      "slug": "leafy_greens",
+      "name": "Leafy greens",
+      "serving": "A cup of raw (or ½ cup cooked) spinach, kale, chard, romaine",
+      "tier": "encourage",
+      "nutrients": [
+        "folate",
+        "potassium",
+        "iron"
+      ]
+    },
+    {
+      "slug": "cruciferous",
+      "name": "Cruciferous vegetables",
+      "serving": "½ cup of broccoli, cauliflower, Brussels sprouts, cabbage",
+      "tier": "encourage",
+      "nutrients": [
+        "folate"
+      ]
+    },
+    {
+      "slug": "other_vegetables",
+      "name": "Other vegetables",
+      "serving": "½ cup of peppers, carrots, tomatoes, squash",
+      "tier": "encourage",
+      "nutrients": [
+        "potassium"
+      ]
+    },
+    {
+      "slug": "legumes",
+      "name": "Legumes & beans",
+      "serving": "½ cup of cooked lentils, chickpeas, black beans, tofu",
+      "tier": "encourage",
+      "nutrients": [
+        "iron",
+        "folate",
+        "magnesium",
+        "potassium"
+      ]
+    },
+    {
+      "slug": "nuts_seeds",
+      "name": "Nuts & seeds",
+      "serving": "A small handful (~1 oz) of almonds, walnuts, pumpkin seeds, chia",
+      "tier": "encourage",
+      "nutrients": [
+        "magnesium",
+        "omega-3"
+      ]
+    },
+    {
+      "slug": "whole_grains",
+      "name": "Whole grains",
+      "serving": "½ cup of cooked oats, brown rice, quinoa, whole-grain bread",
+      "tier": "encourage",
+      "nutrients": [
+        "magnesium"
+      ]
+    },
+    {
+      "slug": "fruit",
+      "name": "Fruit",
+      "serving": "One piece or ~½ cup of whole fruit",
+      "tier": "encourage",
+      "nutrients": [
+        "potassium"
+      ]
+    },
+    {
+      "slug": "berries",
+      "name": "Berries",
+      "serving": "½ cup of blueberries, strawberries, raspberries",
+      "tier": "encourage",
+      "nutrients": []
+    },
+    {
+      "slug": "fermented",
+      "name": "Fermented foods",
+      "serving": "A serving of yogurt, kefir, sauerkraut, kimchi, miso",
+      "tier": "encourage",
+      "nutrients": [
+        "vitamin-b12"
+      ]
+    },
+    {
+      "slug": "poultry",
+      "name": "Poultry",
+      "serving": "A palm-sized portion (~4 oz) of chicken or turkey",
+      "tier": "neutral",
+      "nutrients": [
+        "vitamin-b12"
+      ]
+    },
+    {
+      "slug": "eggs",
+      "name": "Eggs",
+      "serving": "One to two eggs",
+      "tier": "neutral",
+      "nutrients": [
+        "vitamin-b12",
+        "vitamin-d"
+      ]
+    },
+    {
+      "slug": "dairy",
+      "name": "Dairy",
+      "serving": "A cup of milk, a slice of cheese, ¾ cup of yogurt",
+      "tier": "neutral",
+      "nutrients": [
+        "vitamin-b12",
+        "vitamin-d"
+      ]
+    },
+    {
+      "slug": "red_meat",
+      "name": "Red meat",
+      "serving": "A palm-sized portion (~4 oz) of beef, pork, lamb",
+      "tier": "neutral",
+      "nutrients": [
+        "iron",
+        "vitamin-b12"
+      ]
+    },
+    {
+      "slug": "tubers",
+      "name": "Potatoes & starchy veg",
+      "serving": "One medium potato or ½ cup of sweet potato, corn, peas",
+      "tier": "neutral",
+      "nutrients": [
+        "potassium"
+      ]
+    },
+    {
+      "slug": "water",
+      "name": "Water",
+      "serving": "A glass (~8 oz) of water or unsweetened drink",
+      "tier": "neutral",
+      "nutrients": []
+    },
+    {
+      "slug": "processed_meat",
+      "name": "Processed meat",
+      "serving": "A serving of bacon, sausage, deli meat, hot dogs",
+      "tier": "limit",
+      "nutrients": []
+    },
+    {
+      "slug": "refined_grains",
+      "name": "Refined grains",
+      "serving": "A serving of white bread, white rice, pasta, crackers",
+      "tier": "limit",
+      "nutrients": []
+    },
+    {
+      "slug": "fried_food",
+      "name": "Fried / fast food",
+      "serving": "A serving of fried or fast food",
+      "tier": "limit",
+      "nutrients": []
+    },
+    {
+      "slug": "added_sugar",
+      "name": "Sugary foods & desserts",
+      "serving": "A dessert, candy, or sweetened snack",
+      "tier": "limit",
+      "nutrients": []
+    },
+    {
+      "slug": "sugary_drinks",
+      "name": "Sugar-sweetened drinks",
+      "serving": "A soda, juice drink, or sweetened coffee/tea",
+      "tier": "limit",
+      "nutrients": []
+    },
+    {
+      "slug": "alcohol",
+      "name": "Alcohol",
+      "serving": "One standard drink (12 oz beer, 5 oz wine, 1.5 oz spirits)",
+      "tier": "limit",
+      "nutrients": []
+    }
+  ]
+}

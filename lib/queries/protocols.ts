@@ -133,9 +133,10 @@ export function getProtocolUsage(
   today: string
 ): ProtocolUsage {
   const end = protocol.end_date ?? today;
-  // The practice's activity type comes from the linked frequency target (only a
-  // scope_kind='type' target names an activity type).
+  // The practice from the linked frequency target: an activity type (counted over
+  // activities) or a food group (#580 — counted over food_log).
   let practiceType: string | null = null;
+  let practiceFoodGroup: string | null = null;
   if (protocol.frequency_target_id != null) {
     const t = db
       .prepare(
@@ -145,7 +146,29 @@ export function getProtocolUsage(
       .get(protocol.frequency_target_id, profileId) as
       { scope_kind: string; scope_value: string } | undefined;
     if (t && t.scope_kind === "type") practiceType = t.scope_value;
+    else if (t && t.scope_kind === "food_group")
+      practiceFoodGroup = t.scope_value;
   }
+
+  // Food-group practice: distinct days the group was logged in the protocol window —
+  // the "during this protocol" tally for a diet intervention (fatty fish for omega-3).
+  if (practiceFoodGroup != null) {
+    const rows = db
+      .prepare(
+        `SELECT DISTINCT date FROM food_log
+          WHERE profile_id = ? AND date >= ? AND date <= ?
+            AND group_key = ? AND servings > 0
+          ORDER BY date`
+      )
+      .all(profileId, protocol.start_date, end, practiceFoodGroup) as {
+      date: string;
+    }[];
+    return {
+      sessions: rows.length,
+      lastUsed: rows.length ? rows[rows.length - 1].date : null,
+    };
+  }
+
   if (protocol.equipment_id == null && practiceType == null)
     return { sessions: 0, lastUsed: null };
 
@@ -175,11 +198,13 @@ export function getProtocolUsage(
   };
 }
 
-// The protocol's CONFIGURED practice (issue #344): the linked frequency target's
-// activity type + per-week, for seeding the edit form. Null when unlinked or the
-// target is not a type target. Profile-scoped.
+// The protocol's CONFIGURED practice (issue #344, generalized in #580): the linked
+// frequency target's scope + value + per-week, for the adherence card and the edit
+// form. A practice is an activity TYPE or a FOOD GROUP (both first-class protocol
+// interventions); a region/group training target is not a "practice". Profile-scoped.
 export interface ProtocolPractice {
-  type: string;
+  scopeKind: "type" | "food_group";
+  value: string;
   perWeek: number;
 }
 
@@ -195,8 +220,13 @@ export function getProtocolPractice(
     )
     .get(protocol.frequency_target_id, profileId) as
     { scope_kind: string; scope_value: string; per_week: number } | undefined;
-  if (!t || t.scope_kind !== "type") return null;
-  return { type: t.scope_value, perWeek: t.per_week };
+  if (!t || (t.scope_kind !== "type" && t.scope_kind !== "food_group"))
+    return null;
+  return {
+    scopeKind: t.scope_kind,
+    value: t.scope_value,
+    perWeek: t.per_week,
+  };
 }
 
 // Adherence for a protocol's practice (issue #344): the linked frequency target's

@@ -339,3 +339,85 @@ export function ulWarningEvidence(w: UlWarning): string {
     .map((c) => `${c.name} ${fmtAmount(c.amount)} ${w.unit}`)
     .join(" + ");
 }
+
+// ---- RDA adequacy (issue #578): the INVERSE of the UL check ----
+//
+// The UL check asks "does the stack ALONE exceed the safe ceiling?" — and because
+// supplements-alone over a UL is definitely over once food is added, an exceedance is
+// a DEFINITE fact. Adequacy is the mirror image and NOT symmetric: food intake is
+// unknown, so the stack providing only X% of the RDA is NOT a definite shortfall — the
+// user almost certainly gets the rest from food. So this reports, for a nutrient the
+// stack is ACTIVELY supplementing, how much of the RDA those supplements ALONE cover —
+// "your supplements provide X% of the RDA," never "you are deficient." The `basis`
+// flag is carried through for parity but the wording is uniform here (an RDA is a
+// total-diet requirement regardless of a UL's supplemental/total basis).
+
+// A nutrient the stack supplements at BELOW its RDA, with the share the supplements
+// alone cover. `sharePct` is total/rda as a percent (0–99, since >= 100 is not a
+// shortfall). Payload behind the /medicine adequacy row.
+export interface RdaAdequacy {
+  key: string;
+  label: string;
+  unit: "mg" | "mcg";
+  basis: "supplemental" | "total";
+  total: number;
+  rda: number;
+  sharePct: number;
+  contributors: NutrientContribution[];
+}
+
+// The below-RDA subset of the stack: nutrients the active stack ACTUALLY contributes
+// (so a nutrient the user isn't supplementing never shows — we won't imply a food gap
+// we can't see) whose supplemental total is STRICTLY BELOW the RDA for the profile's
+// age/sex. A total at/above the RDA is not reported (the stack already meets it on its
+// own). Nutrients with no RDA for the band (e.g. boron) are skipped. Dataset order.
+export function stackRdaAdequacy(
+  items: StackItem[],
+  ageYears: number | null,
+  sex: Sex | null
+): RdaAdequacy[] {
+  return summarizeStack(items, ageYears, sex)
+    .filter((t): t is StackNutrientTotal & { rda: number } => t.rda != null)
+    .filter((t) => t.total < t.rda)
+    .map((t) => ({
+      key: t.key,
+      label: t.label,
+      unit: t.unit,
+      basis: t.basis,
+      total: t.total,
+      rda: t.rda,
+      sharePct: Math.round((t.total / t.rda) * 100),
+      contributors: t.contributors,
+    }));
+}
+
+// The suppression/identity key for an adequacy note: one per nutrient
+// (`rda-adequacy:<key>`). Deliberately DISTINCT from dietaryLimitSignalKey — a
+// dismissal of the "over-UL magnesium" warning must not also silence the (unrelated)
+// "40% of the folate RDA" note, and vice-versa.
+export function rdaAdequacySignalKey(nutrientKey: string): string {
+  return `rda-adequacy:${nutrientKey}`;
+}
+
+export function rdaAdequacyTitle(a: RdaAdequacy): string {
+  return `${a.label}: supplements provide ${a.sharePct}% of the RDA`;
+}
+
+// The informational detail. The load-bearing wording (#578): "your supplements alone
+// provide X% of the RDA" — NEVER "you are deficient," because food (unknown here)
+// makes up the rest. This is the inverse of the UL case's definite-exceedance wording.
+export function rdaAdequacyDetail(a: RdaAdequacy): string {
+  const amt = `${fmtAmount(a.total)} ${a.unit}`;
+  const rda = `${fmtAmount(a.rda)} ${a.unit}`;
+  return (
+    `Your supplements alone provide about ${amt}/day of ${a.label} — roughly ${a.sharePct}% of the ${rda}/day RDA for your age. ` +
+    `Food provides the rest, so a low share here does NOT mean a shortfall — it's just what your stack contributes. Informational, not medical advice.`
+  );
+}
+
+// The "what's contributing" evidence line, mirroring ulWarningEvidence.
+export function rdaAdequacyEvidence(a: RdaAdequacy): string {
+  return a.contributors
+    .map((c) => `${c.name} ${fmtAmount(c.amount)} ${a.unit}`)
+    .join(" + ");
+}

@@ -183,6 +183,20 @@ export function getFrequencyTargetProgress(
       if (c?.type) addType(c.type, a.date);
   }
 
+  // Food-habit (#580) targets count this week's SERVINGS for the group — the #579
+  // weekly rollup's per-group sum, NOT a second count (one question, one computation).
+  // Gathered once for all food_group targets. Profile-scoped by the same window.
+  const foodServings = new Map<string, number>();
+  if (targets.some((t) => t.scope_kind === "food_group")) {
+    for (const r of db
+      .prepare(
+        `SELECT group_key, COALESCE(SUM(servings), 0) AS n FROM food_log
+          WHERE profile_id = ? AND date >= ? GROUP BY group_key`
+      )
+      .all(profileId, since) as { group_key: string; n: number }[])
+      foodServings.set(r.group_key, r.n);
+  }
+
   return targets.map((t) => {
     let count = 0;
     if (t.scope_kind === "region") {
@@ -192,6 +206,8 @@ export function getFrequencyTargetProgress(
       for (const reg of regionsForGroup(t.scope_value as BodyGroup))
         for (const d of regionDates.get(reg) ?? []) union.add(d);
       count = union.size;
+    } else if (t.scope_kind === "food_group") {
+      count = foodServings.get(t.scope_value) ?? 0;
     } else {
       count = typeDates.get(t.scope_value)?.size ?? 0;
     }

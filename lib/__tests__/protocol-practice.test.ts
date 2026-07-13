@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { parseProtocolPractice } from "../protocol-practice";
+import {
+  parseProtocolPractice,
+  parseScopedPractice,
+  practiceSelectValue,
+} from "../protocol-practice";
 
 describe("parseProtocolPractice", () => {
   it("parses a valid type + per-week", () => {
@@ -32,5 +36,46 @@ describe("parseProtocolPractice", () => {
     expect(parseProtocolPractice("sport", "3.9")?.perWeek).toBe(3);
     expect(parseProtocolPractice("sport", "70")?.perWeek).toBe(14);
     expect(parseProtocolPractice("sport", "1")?.perWeek).toBe(1);
+  });
+});
+
+describe("parseScopedPractice (#580 — activity OR food group)", () => {
+  it("parses a bare activity type as a 'type' scope", () => {
+    expect(parseScopedPractice("cardio", "4")).toEqual({
+      scopeKind: "type",
+      scopeValue: "cardio",
+      perWeek: 4,
+    });
+  });
+
+  it("parses a food_group:<slug> value as a 'food_group' scope", () => {
+    expect(parseScopedPractice("food_group:fatty_fish", "2")).toEqual({
+      scopeKind: "food_group",
+      scopeValue: "fatty_fish",
+      perWeek: 2,
+    });
+  });
+
+  it("rejects an unknown food group slug", () => {
+    expect(parseScopedPractice("food_group:not_a_group", "2")).toBeNull();
+  });
+
+  it("rejects blank / unknown value or non-positive per-week", () => {
+    expect(parseScopedPractice("", "2")).toBeNull();
+    expect(parseScopedPractice("nonsense", "2")).toBeNull();
+    expect(parseScopedPractice("food_group:fatty_fish", "0")).toBeNull();
+  });
+
+  it("round-trips through practiceSelectValue", () => {
+    expect(practiceSelectValue("type", "cardio")).toBe("cardio");
+    expect(practiceSelectValue("food_group", "fatty_fish")).toBe(
+      "food_group:fatty_fish"
+    );
+    const v = practiceSelectValue("food_group", "legumes");
+    expect(parseScopedPractice(v, "3")).toEqual({
+      scopeKind: "food_group",
+      scopeValue: "legumes",
+      perWeek: 3,
+    });
   });
 });

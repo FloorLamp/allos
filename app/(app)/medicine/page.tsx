@@ -15,6 +15,7 @@ import {
   getMedicationCourses,
   getMedicationSideEffects,
   getDietaryLimitWarnings,
+  getDietaryAdequacy,
   getInteractionWarnings,
   getFindingSuppressions,
 } from "@/lib/queries";
@@ -25,7 +26,12 @@ import {
   ulWarningDetail,
   ulWarningEvidence,
   dietaryLimitSignalKey,
+  rdaAdequacyTitle,
+  rdaAdequacyDetail,
+  rdaAdequacyEvidence,
+  rdaAdequacySignalKey,
 } from "@/lib/dri";
+import { foodSourcesForDriNutrient } from "@/lib/food-suggest";
 import { FOOD_TIMING_PREFIX } from "@/lib/food-drug-interactions";
 import {
   interactionTitle,
@@ -341,6 +347,18 @@ export default async function SupplementsPage() {
     todayStr
   );
 
+  // Stack RDA-adequacy (issue #578): nutrients the active stack supplements at BELOW
+  // the NIH RDA for this profile's age/sex — the inverse of the UL check, over the
+  // previously-unused RDA half of dri.json. Wording is "supplements provide X% of the
+  // RDA", never "deficient" (food intake is unknown). Same findings bus (#435), keyed
+  // distinctly by rdaAdequacySignalKey so it can't collide with a UL dismissal.
+  const rdaAdequacy = activeByKey(
+    getDietaryAdequacy(profile.id, todayStr),
+    (a) => rdaAdequacySignalKey(a.key),
+    suppressions,
+    todayStr
+  );
+
   // Known drug-/supplement-interactions among the ACTIVE stack (issue #148's drug
   // twin, issue #144). Severity-ranked; the create/edit inline check + the
   // dismissible Upcoming finding format over the SAME detectInteractions. Routed
@@ -488,6 +506,44 @@ export default async function SupplementsPage() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Stack RDA-adequacy (issue #578) — calm, informational; distinct from the
+          amber UL hazard blocks (slate, not a warning). Links to food-first sources. */}
+      {rdaAdequacy.length > 0 && (
+        <div className="mb-4 space-y-2" data-testid="rda-adequacy">
+          {rdaAdequacy.map((a) => {
+            const foods = foodSourcesForDriNutrient(a.key);
+            return (
+              <div
+                key={a.key}
+                data-testid={`rda-adequacy-${a.key}`}
+                className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-700 dark:border-slate-800 dark:bg-slate-900/40 dark:text-slate-200"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="font-semibold">{rdaAdequacyTitle(a)}</p>
+                    <p className="mt-0.5 text-slate-600 dark:text-slate-300">
+                      {rdaAdequacyDetail(a)}
+                    </p>
+                    {foods.length > 0 && (
+                      <p className="mt-1 text-xs text-emerald-700 dark:text-emerald-300">
+                        Food sources: {foods.join("; ")}.
+                      </p>
+                    )}
+                    <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+                      From: {rdaAdequacyEvidence(a)}
+                    </p>
+                  </div>
+                  <DismissFindingButton
+                    dedupeKey={rdaAdequacySignalKey(a.key)}
+                    label={`Dismiss ${rdaAdequacyTitle(a)}`}
+                  />
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 

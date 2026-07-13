@@ -6,6 +6,7 @@
 // unit-tested in lib/__tests__/protocol-practice.test.ts.
 
 import { TYPE_SCOPES } from "./lifts";
+import { isValidFoodGroup } from "./food-groups";
 
 // The activity types a practice can target — the same coarse type set
 // frequency_targets already supports for scope_kind='type' (strength/cardio/sport).
@@ -39,4 +40,48 @@ export function parseProtocolPractice(
   if (!Number.isFinite(n) || n < 1) return null;
   const perWeek = Math.min(MAX_PER_WEEK, Math.floor(n));
   return { practiceType: type as PracticeType, perWeek };
+}
+
+// A protocol practice generalized over its scope (#580): an activity type OR a food
+// group, the two frequency_target scopes a protocol can adopt as its intervention.
+export interface ScopedPractice {
+  scopeKind: "type" | "food_group";
+  scopeValue: string;
+  perWeek: number;
+}
+
+// The `<select>` value prefix a food-group practice option carries, so ONE select can
+// list activity types (bare values) and food groups (`food_group:<slug>`) without a
+// second form field.
+const FOOD_PRACTICE_PREFIX = "food_group:";
+
+export function practiceSelectValue(
+  scopeKind: "type" | "food_group",
+  value: string
+): string {
+  return scopeKind === "food_group" ? `${FOOD_PRACTICE_PREFIX}${value}` : value;
+}
+
+// Parse the combined practice select value into a scoped practice, or null. A value
+// prefixed `food_group:` resolves to a food-group scope (validated against the curated
+// catalog); a bare value resolves to an activity-type scope; anything else — or a
+// non-positive per-week — is "no practice". Per-week clamped to [1, MAX_PER_WEEK].
+export function parseScopedPractice(
+  rawValue: string | null | undefined,
+  rawPerWeek: string | number | null | undefined
+): ScopedPractice | null {
+  const value = (rawValue ?? "").trim();
+  const n =
+    typeof rawPerWeek === "number" ? rawPerWeek : Number(rawPerWeek ?? "");
+  if (!value || !Number.isFinite(n) || n < 1) return null;
+  const perWeek = Math.min(MAX_PER_WEEK, Math.floor(n));
+
+  if (value.startsWith(FOOD_PRACTICE_PREFIX)) {
+    const slug = value.slice(FOOD_PRACTICE_PREFIX.length);
+    if (!isValidFoodGroup(slug)) return null;
+    return { scopeKind: "food_group", scopeValue: slug, perWeek };
+  }
+  if (PRACTICE_TYPES.includes(value as PracticeType))
+    return { scopeKind: "type", scopeValue: value, perWeek };
+  return null;
 }

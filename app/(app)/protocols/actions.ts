@@ -9,7 +9,7 @@ import { isRealIsoDate } from "@/lib/date";
 import { normalizeOutcomeKeys } from "@/lib/protocol-metrics";
 import { getProtocol, situationUsedByOtherProtocol } from "@/lib/queries";
 import { getEquipmentById } from "@/lib/equipment";
-import { parseProtocolPractice } from "@/lib/protocol-practice";
+import { parseScopedPractice } from "@/lib/protocol-practice";
 import { formError, formOk, type FormResult } from "@/lib/types";
 
 function revalidateProtocols(id?: number) {
@@ -100,7 +100,10 @@ function syncPracticeTarget(
   formData: FormData,
   prev: PracticeLink
 ): PracticeLink & { staleOwnedTargetId: number | null } {
-  const practice = parseProtocolPractice(
+  // A practice can be an activity type OR a food group (#580) — parseScopedPractice
+  // resolves the combined select value into (scopeKind, scopeValue). The create-vs-
+  // reference + ownership machinery below is scope-agnostic, so both kinds reuse it.
+  const practice = parseScopedPractice(
     str(formData, "practice_type"),
     formData.get("practice_per_week") as string | null
   );
@@ -112,10 +115,11 @@ function syncPracticeTarget(
     const found = db
       .prepare(
         `SELECT id FROM frequency_targets
-          WHERE profile_id = ? AND scope_kind = 'type' AND scope_value = ?
+          WHERE profile_id = ? AND scope_kind = ? AND scope_value = ?
           LIMIT 1`
       )
-      .get(profileId, practice.practiceType) as { id: number } | undefined;
+      .get(profileId, practice.scopeKind, practice.scopeValue) as
+      { id: number } | undefined;
     if (found) {
       tid = found.id;
       // If the protocol already OWNED this exact target, keep ownership and let the
@@ -130,9 +134,14 @@ function syncPracticeTarget(
       const info = db
         .prepare(
           `INSERT INTO frequency_targets (profile_id, scope_kind, scope_value, per_week)
-           VALUES (?, 'type', ?, ?)`
+           VALUES (?, ?, ?, ?)`
         )
-        .run(profileId, practice.practiceType, practice.perWeek);
+        .run(
+          profileId,
+          practice.scopeKind,
+          practice.scopeValue,
+          practice.perWeek
+        );
       tid = Number(info.lastInsertRowid);
       owns = 1;
     }

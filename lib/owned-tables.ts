@@ -81,6 +81,7 @@ export const OWNED_TABLES = [
   "protocols",
   "coverage_gaps",
   "situations",
+  "food_log",
 ] as const;
 
 export type OwnedTable = (typeof OWNED_TABLES)[number];
