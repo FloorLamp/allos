@@ -46,100 +46,6 @@ The short tour — [docs/features.md](docs/features.md) is the full guide, with 
 - **Audit log** — a durable record of who accessed or modified which profile's data, identifiers only, with configurable retention (**Settings → Audit**, admin-only)
 - **Data hub** — bring data in (uploads, pasted logs, devices) under **Data → Import**, review every sync and resolve duplicates under **Data → Review**, and take everything with you via the **Export all my data** ZIP (JSON/CSV + FHIR passport + your files)
 
-## Requirements
-
-- **Node.js ≥ 24** (Next.js 16 requires ≥ 20.9; this repo is pinned to Node 24 via `.nvmrc`)
-
-```bash
-nvm use            # picks up Node 24 from .nvmrc
-```
-
-## Setup
-
-```bash
-npm install        # install dependencies
-npm run seed       # (optional) load ~3 weeks of realistic sample data
-npm run dev        # start the dev server at http://localhost:3000
-```
-
-The SQLite database is created automatically at `data/allos.db` on first run
-(the `data/` directory is gitignored). Delete that file to start fresh.
-
-## Signing in
-
-The app is login-gated and multi-user. On first boot it creates a single **admin login** and a matching **profile** — set **`ADMIN_PASSWORD`** (and optionally **`ADMIN_USERNAME`**, default `admin`) before that first boot; if unset, a random password is generated and printed to the log **once**. In the Docker setup the bootstrap usually runs in the **notify sidecar**, so check `docker logs allos-notify` if it isn't in the app container's log.
-
-Two concepts:
-
-- **Logins** are login identities (username + password). Roles are **admin** or **member**; admins can access every profile and the admin screens.
-- **Profiles** are the people whose data is tracked. A profile needs no login — adding a family member (e.g. a kid) is just a name.
-
-Admins manage everyone under **Settings → Family**: add or rename profiles, create logins, reset passwords, and grant each member login access to specific profiles. Each grant is **read & write** or **read-only** — enforced on the server (every mutating action is rejected for a read-only grant), not merely hidden in the UI.
-
-Any login can change its own password (minimum 10 characters, mixed character classes) and enroll **TOTP two-factor authentication** under **Settings → Preferences** — strongly recommended for admins; 8 one-time recovery codes are shown once at enrollment. If an admin loses both the authenticator and the recovery codes, the `ALLOS_DISABLE_2FA` env var (see **Configuration**) is the loudly-logged, audited escape hatch.
-
-## Configuration
-
-Configuration is read from environment variables. The easiest way is a
-**`.env.local`** file in the project root — it is loaded automatically by both
-the app and the `npm run seed` script, and is gitignored:
-
-```bash
-cp .env.example .env.local   # then edit in your values
-```
-
-| Variable                    | Description                                                                                                                                                                                                                                                                                                                                 |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ADMIN_USERNAME`            | Optional. Username for the bootstrap admin login created on first boot (default `admin`). Read only when no login exists yet.                                                                                                                                                                                                               |
-| `ADMIN_PASSWORD`            | Password for the bootstrap admin login. If unset on first boot, a random one is generated and printed to the log **once** — capture it. Read only when no login exists yet.                                                                                                                                                                 |
-| `ALLOS_DISABLE_2FA`         | Optional bootstrap-recovery escape hatch. Comma-separated username(s) whose TOTP second factor is **skipped** at login (for an admin locked out after losing their authenticator + recovery codes). Every bypass is logged loudly and audited (`login.2fa-bypass`). Remove it and re-enroll once access is restored.                        |
-| `ALLOS_DEMO_MODE`           | Optional. Set to `1` to run this instance as a **public read-only demo** — login-page demo credentials, a persistent "synthetic data — do not enter real health information" banner on every page, and every non-admin write refused. Leave **unset** for any real deployment. See **[Running a demo instance](#running-a-demo-instance)**. |
-| `ANTHROPIC_API_KEY`         | Enables Claude-powered insights and medical-document extraction. Optional when `AI_BASE_URL` points at a local server that ignores keys.                                                                                                                                                                                                    |
-| `AI_BASE_URL`               | Optional. Point the app at a self-hosted / local inference server exposing an Anthropic-compatible API (Ollama, a proxy, …) for zero external egress. Set alone, or with a key it forwards.                                                                                                                                                 |
-| `HEALTH_AI_MODEL`           | Optional. Override the AI model (defaults to `claude-sonnet-5`).                                                                                                                                                                                                                                                                            |
-| `HEALTH_AI_MAX_TOKENS`      | Optional. Max output tokens for document extraction (default `16000`).                                                                                                                                                                                                                                                                      |
-| `AI_DAILY_EXTRACTION_LIMIT` | Optional. Max medical-document extractions per day (default `50`).                                                                                                                                                                                                                                                                          |
-| `AI_DAILY_INSIGHT_LIMIT`    | Optional. Max AI insight generations per day (default `100`).                                                                                                                                                                                                                                                                               |
-| `AI_EXTRACTION_CONCURRENCY` | Optional. How many document extractions run at once (default `3`).                                                                                                                                                                                                                                                                          |
-| `AI_EXTRACTION_QUEUE_MAX`   | Optional. Max extractions queued behind the running ones (default `100`).                                                                                                                                                                                                                                                                   |
-| `EXTRACTION_LEASE_MINUTES`  | Optional. How long a claimed extraction lease is held before it can be reclaimed (default `30`).                                                                                                                                                                                                                                            |
-| `LOG_LEVEL`                 | Optional. `debug`/`info`/`warn`/`error` (default `info`).                                                                                                                                                                                                                                                                                   |
-| `LOG_FORMAT`                | Optional. `text` or `json`. Defaults to `text` in dev, `json` in prod.                                                                                                                                                                                                                                                                      |
-| `AI_LOG_PROMPTS`            | Optional. Set `0` to keep prompts/responses out of the AI activity log.                                                                                                                                                                                                                                                                     |
-| `PORT`                      | Optional (Docker). Host port to expose (container listens on `3000`).                                                                                                                                                                                                                                                                       |
-| `TRUST_PROXY`               | Optional. Set (`1`/`true`/`yes`) when the app runs **behind a reverse proxy** that sets `X-Forwarded-For`. Only then does the Telegram-webhook rate limiter trust that header to key its per-client budget; left unset (direct-to-Node exposure) the header is spoofable, so all webhook traffic shares one bucket. Has no effect on auth.  |
-| `TZ`                        | Optional. Timezone is DB-backed — the instance default under **Settings → Server**, per-profile under **Settings → Profile**; a `TZ` env only seeds the instance default on first boot.                                                                                                                                                     |
-| `DATA_DIR`                  | Optional (Docker). Host path for persistent data — see **Deploy with Docker**.                                                                                                                                                                                                                                                              |
-| `BACKUP_DEST_DIR`           | Optional. A **second mounted directory** to copy each verified snapshot to (and mirror `data/uploads/` to), so backups survive loss of the `DATA_DIR` volume — see **[Backups → Off-volume backups](docs/backups.md#off-volume-backups-backup_dest_dir)**.                                                                                  |
-
-You can also `export` these directly instead of using a file.
-
-## AI
-
-AI is optional and degrades gracefully: with nothing configured, insights fall back to a deterministic offline summary and uploaded documents are stored but not extracted. Configure it two ways (see **Configuration**):
-
-- **`ANTHROPIC_API_KEY`** enables Claude-powered daily insights, **weekly/monthly recap narratives**, **lab-trend interpretation** (biomarker movements read in the context of your medications and conditions — observations, not diagnoses), and **medical-document extraction** (labs and vitals plus the full clinical narrative: conditions, allergies, procedures, visits, family history, care plan).
-- **`AI_BASE_URL`** points the app at a local Anthropic-compatible inference server (Ollama, a proxy, …) instead, for **zero external egress**; the endpoint and model are env-driven only and shown read-only under **Settings → Server → AI**.
-
-Proactive runs (supplement suggestions + a refreshed daily insight) can be put on a per-profile **cadence** (off / on document upload / daily / weekly / monthly) with an admin-set daily ceiling. Every AI call is appended to `data/logs/ai.jsonl` and streamed live under **Settings → AI logs** (admin-only), with per-call token usage and a today / 7-day rollup by feature × profile. Drug-interaction checking runs entirely **on-box** — the optional, user-initiated RxNorm name lookup is its only network egress (one drug name out, candidate codes back, nothing else).
-
-The full guide — insights & narratives, recommendation runs, the extraction pipeline, local-inference setup and its quality trade-offs, logging, and the exact privacy posture — is [docs/ai.md](docs/ai.md).
-
-## Integrations
-
-Connect devices and services under **Data → Import**:
-
-- **Google Health Connect** — push-based: an authenticated ingest endpoint here, fed by a phone exporter app on a rolling 48-hour window (weight, body composition, steps, sleep + stages, continuous HR, HRV, exercise sessions, vitals, nutrition, and more — including a **Sleep Regularity Index** card once enough nights accumulate)
-- **Strava** — OAuth; runs/rides with HR, pace, elevation, power, and a GPS route thumbnail rendered locally from the stored polyline (no map tiles, no external requests)
-- **Oura Ring** — a pasted personal access token; sleep + stages, nightly HRV, resting HR, workouts
-- **Withings** — your own OAuth app; scale and BP-cuff measurements, body composition, SpO₂, temperature, sleep
-- **Calendar feed** — an outbound `.ics` subscription per profile (choose which categories it carries and how much PHI each event shows), plus a consolidated per-login **family calendar**
-- **Garmin** — planned
-
-Every sync is **incremental and idempotent**: rows dedup on natural keys so re-fetches never double-count, incoming values are sanity-checked against a physiological envelope, **manually entered rows are never overwritten**, and a row you've hand-edited survives the next sync. When two sources report the same metric, additive metrics are never summed across sources, and a **Compare sources** section (**Trends → Body**) appears with a per-metric **primary source** picker.
-
-Per-provider setup guides and import-mapping tables: [docs/integrations.md](docs/integrations.md).
-
 ## Deploy with Docker
 
 Run the app as a container with Docker + Compose. By default Compose **pulls a
@@ -194,6 +100,81 @@ picks up the new `:latest` (pin a `:<sha>` tag instead for a fixed version). Run
 it by hand or from a host cron/systemd timer. If the GHCR package is private,
 `docker login ghcr.io` with a token that has `read:packages` first.
 
+## Configuration
+
+Configuration is read from environment variables. The easiest way is a
+**`.env.local`** file in the project root — it is loaded automatically by both
+the app and the `npm run seed` script, and is gitignored:
+
+```bash
+cp .env.example .env.local   # then edit in your values
+```
+
+| Variable                    | Description                                                                                                                                                                                                                                                                                                                                 |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ADMIN_USERNAME`            | Optional. Username for the bootstrap admin login created on first boot (default `admin`). Read only when no login exists yet.                                                                                                                                                                                                               |
+| `ADMIN_PASSWORD`            | Password for the bootstrap admin login. If unset on first boot, a random one is generated and printed to the log **once** — capture it. Read only when no login exists yet.                                                                                                                                                                 |
+| `ALLOS_DISABLE_2FA`         | Optional bootstrap-recovery escape hatch. Comma-separated username(s) whose TOTP second factor is **skipped** at login (for an admin locked out after losing their authenticator + recovery codes). Every bypass is logged loudly and audited (`login.2fa-bypass`). Remove it and re-enroll once access is restored.                        |
+| `ALLOS_DEMO_MODE`           | Optional. Set to `1` to run this instance as a **public read-only demo** — login-page demo credentials, a persistent "synthetic data — do not enter real health information" banner on every page, and every non-admin write refused. Leave **unset** for any real deployment. See **[Running a demo instance](#running-a-demo-instance)**. |
+| `ANTHROPIC_API_KEY`         | Enables Claude-powered insights and medical-document extraction. Optional when `AI_BASE_URL` points at a local server that ignores keys.                                                                                                                                                                                                    |
+| `AI_BASE_URL`               | Optional. Point the app at a self-hosted / local inference server exposing an Anthropic-compatible API (Ollama, a proxy, …) for zero external egress. Set alone, or with a key it forwards.                                                                                                                                                 |
+| `HEALTH_AI_MODEL`           | Optional. Override the AI model (defaults to `claude-sonnet-5`).                                                                                                                                                                                                                                                                            |
+| `HEALTH_AI_MAX_TOKENS`      | Optional. Max output tokens for document extraction (default `16000`).                                                                                                                                                                                                                                                                      |
+| `AI_DAILY_EXTRACTION_LIMIT` | Optional. Max medical-document extractions per day (default `50`).                                                                                                                                                                                                                                                                          |
+| `AI_DAILY_INSIGHT_LIMIT`    | Optional. Max AI insight generations per day (default `100`).                                                                                                                                                                                                                                                                               |
+| `AI_EXTRACTION_CONCURRENCY` | Optional. How many document extractions run at once (default `3`).                                                                                                                                                                                                                                                                          |
+| `AI_EXTRACTION_QUEUE_MAX`   | Optional. Max extractions queued behind the running ones (default `100`).                                                                                                                                                                                                                                                                   |
+| `EXTRACTION_LEASE_MINUTES`  | Optional. How long a claimed extraction lease is held before it can be reclaimed (default `30`).                                                                                                                                                                                                                                            |
+| `LOG_LEVEL`                 | Optional. `debug`/`info`/`warn`/`error` (default `info`).                                                                                                                                                                                                                                                                                   |
+| `LOG_FORMAT`                | Optional. `text` or `json`. Defaults to `text` in dev, `json` in prod.                                                                                                                                                                                                                                                                      |
+| `AI_LOG_PROMPTS`            | Optional. Set `0` to keep prompts/responses out of the AI activity log.                                                                                                                                                                                                                                                                     |
+| `PORT`                      | Optional (Docker). Host port to expose (container listens on `3000`).                                                                                                                                                                                                                                                                       |
+| `TRUST_PROXY`               | Optional. Set (`1`/`true`/`yes`) when the app runs **behind a reverse proxy** that sets `X-Forwarded-For`. Only then does the Telegram-webhook rate limiter trust that header to key its per-client budget; left unset (direct-to-Node exposure) the header is spoofable, so all webhook traffic shares one bucket. Has no effect on auth.  |
+| `TZ`                        | Optional. Timezone is DB-backed — the instance default under **Settings → Server**, per-profile under **Settings → Profile**; a `TZ` env only seeds the instance default on first boot.                                                                                                                                                     |
+| `DATA_DIR`                  | Optional (Docker). Host path for persistent data — see **Deploy with Docker**.                                                                                                                                                                                                                                                              |
+| `BACKUP_DEST_DIR`           | Optional. A **second mounted directory** to copy each verified snapshot to (and mirror `data/uploads/` to), so backups survive loss of the `DATA_DIR` volume — see **[Backups → Off-volume backups](docs/backups.md#off-volume-backups-backup_dest_dir)**.                                                                                  |
+
+You can also `export` these directly instead of using a file.
+
+## Signing in
+
+The app is login-gated and multi-user. On first boot it creates a single **admin login** and a matching **profile** — set **`ADMIN_PASSWORD`** (and optionally **`ADMIN_USERNAME`**, default `admin`) before that first boot; if unset, a random password is generated and printed to the log **once**. In the Docker setup the bootstrap usually runs in the **notify sidecar**, so check `docker logs allos-notify` if it isn't in the app container's log.
+
+Two concepts:
+
+- **Logins** are login identities (username + password). Roles are **admin** or **member**; admins can access every profile and the admin screens.
+- **Profiles** are the people whose data is tracked. A profile needs no login — adding a family member (e.g. a kid) is just a name.
+
+Admins manage everyone under **Settings → Family**: add or rename profiles, create logins, reset passwords, and grant each member login access to specific profiles. Each grant is **read & write** or **read-only** — enforced on the server (every mutating action is rejected for a read-only grant), not merely hidden in the UI.
+
+Any login can change its own password (minimum 10 characters, mixed character classes) and enroll **TOTP two-factor authentication** under **Settings → Preferences** — strongly recommended for admins; 8 one-time recovery codes are shown once at enrollment. If an admin loses both the authenticator and the recovery codes, the `ALLOS_DISABLE_2FA` env var (see **Configuration**) is the loudly-logged, audited escape hatch.
+
+## AI
+
+AI is optional and degrades gracefully: with nothing configured, insights fall back to a deterministic offline summary and uploaded documents are stored but not extracted. Configure it two ways (see **Configuration**):
+
+- **`ANTHROPIC_API_KEY`** enables Claude-powered daily insights, **weekly/monthly recap narratives**, **lab-trend interpretation** (biomarker movements read in the context of your medications and conditions — observations, not diagnoses), and **medical-document extraction** (labs and vitals plus the full clinical narrative: conditions, allergies, procedures, visits, family history, care plan).
+- **`AI_BASE_URL`** points the app at a local Anthropic-compatible inference server (Ollama, a proxy, …) instead, for **zero external egress**; the endpoint and model are env-driven only and shown read-only under **Settings → Server → AI**.
+
+Proactive runs (supplement suggestions + a refreshed daily insight) can be put on a per-profile **cadence** (off / on document upload / daily / weekly / monthly) with an admin-set daily ceiling. Every AI call is appended to `data/logs/ai.jsonl` and streamed live under **Settings → AI logs** (admin-only), with per-call token usage and a today / 7-day rollup by feature × profile. Drug-interaction checking runs entirely **on-box** — the optional, user-initiated RxNorm name lookup is its only network egress (one drug name out, candidate codes back, nothing else).
+
+The full guide — insights & narratives, recommendation runs, the extraction pipeline, local-inference setup and its quality trade-offs, logging, and the exact privacy posture — is [docs/ai.md](docs/ai.md).
+
+## Integrations
+
+Connect devices and services under **Data → Import**:
+
+- **Google Health Connect** — push-based: an authenticated ingest endpoint here, fed by a phone exporter app on a rolling 48-hour window (weight, body composition, steps, sleep + stages, continuous HR, HRV, exercise sessions, vitals, nutrition, and more — including a **Sleep Regularity Index** card once enough nights accumulate)
+- **Strava** — OAuth; runs/rides with HR, pace, elevation, power, and a GPS route thumbnail rendered locally from the stored polyline (no map tiles, no external requests)
+- **Oura Ring** — a pasted personal access token; sleep + stages, nightly HRV, resting HR, workouts
+- **Withings** — your own OAuth app; scale and BP-cuff measurements, body composition, SpO₂, temperature, sleep
+- **Calendar feed** — an outbound `.ics` subscription per profile (choose which categories it carries and how much PHI each event shows), plus a consolidated per-login **family calendar**
+- **Garmin** — planned
+
+Every sync is **incremental and idempotent**: rows dedup on natural keys so re-fetches never double-count, incoming values are sanity-checked against a physiological envelope, **manually entered rows are never overwritten**, and a row you've hand-edited survives the next sync. When two sources report the same metric, additive metrics are never summed across sources, and a **Compare sources** section (**Trends → Body**) appears with a per-metric **primary source** picker.
+
+Per-provider setup guides and import-mapping tables: [docs/integrations.md](docs/integrations.md).
+
 ## Notifications
 
 Reminders (doses due, a workout nudge, newly-due preventive care) are delivered over three channels that share one hourly tick and per-day/slot dedup — enable any or all per profile:
@@ -222,7 +203,30 @@ Full guide — off-volume setup, what the mirror covers, restore walkthrough, mo
 
 Set `ALLOS_DEMO_MODE=1` and reseed to run a **public, read-only demo**: the login page advertises the `demo`/`demo` credentials (a read-only member — every non-admin write is refused at the auth boundary, and the shared login can't change its own password or 2FA), a persistent "synthetic data" banner shows on every page, and `npm run demo-reset` restores a pristine seed on a nightly cron. `demo-reset` refuses to run unless the flag is set, so it can never wipe a real instance — but a demo is destructive by design: **never co-host it with a real family instance**. Setup, nightly-reset cron, and the isolation warning: [docs/demo.md](docs/demo.md).
 
-## Scripts
+## Development
+
+Everything above is the self-hoster's manual; this section is for working on Allos itself. `AGENTS.md` is the contributor/agent guide (architecture, conventions, test tiers), with deep-dives under `docs/internals/`.
+
+### Requirements
+
+- **Node.js ≥ 24** (Next.js 16 requires ≥ 20.9; this repo is pinned to Node 24 via `.nvmrc`)
+
+```bash
+nvm use            # picks up Node 24 from .nvmrc
+```
+
+### Run from source
+
+```bash
+npm install        # install dependencies
+npm run seed       # (optional) load ~3 weeks of realistic sample data
+npm run dev        # start the dev server at http://localhost:3000
+```
+
+The SQLite database is created automatically at `data/allos.db` on first run
+(the `data/` directory is gitignored). Delete that file to start fresh.
+
+### Scripts
 
 | Command              | Description                                        |
 | -------------------- | -------------------------------------------------- |
@@ -236,7 +240,7 @@ Set `ALLOS_DEMO_MODE=1` and reseed to run a **public, read-only demo**: the logi
 | `npm run test:db`    | DB-tier + server-action tests (in-memory SQLite)   |
 | `npm run test:e2e`   | Playwright browser tests (isolated seeded DB)      |
 
-## Tech
+### Tech
 
 - Next.js 16 (App Router, Server Actions)
 - better-sqlite3 (synchronous SQLite, schema auto-migrated on boot)
