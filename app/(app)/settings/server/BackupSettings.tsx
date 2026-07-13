@@ -160,7 +160,7 @@ export default function BackupSettings({
         <code>BACKUP_DEST_DIR</code> to a{" "}
         <strong>second mounted directory</strong> (a NAS, another disk, a synced
         folder) to copy each verified snapshot off-volume and mirror uploads
-        there — see the README &ldquo;Backups&rdquo; section.
+        there — see the backups guide (<code>docs/backups.md</code>).
       </p>
 
       <div className="rounded-lg bg-slate-50 p-3 text-xs text-slate-500 dark:bg-slate-800/50 dark:text-slate-400">
