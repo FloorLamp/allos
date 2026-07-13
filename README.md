@@ -54,7 +54,6 @@ pre-built image** from the GitHub Container Registry
 
 ```bash
 cp .env.example .env          # set ANTHROPIC_API_KEY, DATA_DIR, …
-docker login ghcr.io          # only if the package is private
 docker compose up -d --pull always  # pull + start
 ```
 
@@ -81,8 +80,7 @@ commented block in `docker-compose.yml`.
 
 **Updating.** On the box, `docker compose pull && docker compose up -d`
 picks up the new `:latest` (pin a `:<sha>` tag instead for a fixed version). Run
-it by hand or from a host cron/systemd timer. If the GHCR package is private,
-`docker login ghcr.io` with a token that has `read:packages` first.
+it by hand or from a host cron/systemd timer.
 
 ## Configuration
 
