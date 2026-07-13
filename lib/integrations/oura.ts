@@ -129,7 +129,12 @@ export function mapOuraSleep(
   // shared body_metrics.resting_hr, deduped per (date, source) like every other RHR.
   const restingHr = boundedOrNull("resting_hr", num(rec.lowest_heart_rate));
   const bodyMetric: NormBodyMetric | null =
-    restingHr != null ? { date, resting_hr: restingHr } : null;
+    restingHr != null
+      ? // `measured_at` = the night's bedtime end, so two long-sleep periods that Oura
+        // assigns to the same wake `day` collapse deterministically in the shared
+        // upsert (#605) — the later night's resting HR wins.
+        { date, measured_at: end, resting_hr: restingHr }
+      : null;
 
   return { samples, bodyMetric };
 }

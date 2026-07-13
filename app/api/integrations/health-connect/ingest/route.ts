@@ -5,6 +5,7 @@ import { log } from "@/lib/log";
 import { reconcileFlags, addCanonicalNames } from "@/lib/queries";
 import {
   resolveHealthConnectProfile,
+  recordUnmatchedHealthConnectPush,
   recordSync,
   recordSyncEvent,
 } from "@/lib/integrations/connections";
@@ -92,6 +93,10 @@ export async function POST(req: Request) {
   // phone carries its own profile's token. Resolve it to a profile id (or reject).
   const INGEST_PROFILE_ID = resolveHealthConnectProfile(token);
   if (INGEST_PROFILE_ID === null) {
+    // A presented-but-unmatched token with an existing HC connection is a rotated /
+    // expired token — record a rate-limited failure so ingest doesn't stop silently
+    // (#607). Best-effort: never throws, so it can't affect the 401 response.
+    recordUnmatchedHealthConnectPush(token);
     return Response.json(
       {
         ok: false,

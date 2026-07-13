@@ -5,7 +5,11 @@ import {
   shouldShowConnectedSource,
 } from "@/lib/integrations/sync-log";
 import { INTEGRATIONS } from "@/lib/integrations/registry";
-import { getConnection } from "@/lib/integrations/connections";
+import {
+  getConnection,
+  isHealthConnectTokenExpired,
+} from "@/lib/integrations/connections";
+import { HEALTH_CONNECT_ID } from "@/lib/integrations/health-connect";
 import {
   findActivityDuplicates,
   findBodyMetricConflicts,
@@ -105,10 +109,42 @@ export function getLatestSyncEventPerProvider(
 // per-provider (issue #304) so a broken integration can't be missed just because a
 // chatty provider crowds a global-N window.
 export function getImportReviewCount(profileId: number): number {
-  return (
-    currentlyFailingProviders(getLatestSyncEventPerProvider(profileId)).length +
-    getReviewPairCount(profileId)
-  );
+  // getImportIssues folds in the expired-Health-Connect-token signal (#607), so the
+  // badge count matches the Issues list exactly — one source for both.
+  return getImportIssues(profileId).length + getReviewPairCount(profileId);
+}
+
+// A synthetic failing sync event for an expired Health Connect ingest token (#607).
+// The expiry is fully known server-side (stored on the connection), so an expired
+// token surfaces as a failing provider even when the phone has stopped pushing — no
+// real sync event is ever recorded for it (an expired token drops out of candidacy,
+// so its pushes 401 with nothing to attribute). Returns null when the HC token isn't
+// expired. The negative id can't collide with a real AUTOINCREMENT row.
+function expiredHealthConnectIssue(
+  profileId: number
+): IntegrationSyncEvent | null {
+  if (!isHealthConnectTokenExpired(profileId)) return null;
+  const conn = getConnection(profileId, HEALTH_CONNECT_ID);
+  return {
+    id: -1,
+    profile_id: profileId,
+    provider: HEALTH_CONNECT_ID,
+    at: conn?.updated_at ?? new Date().toISOString(),
+    ok: 0,
+    window_start: null,
+    window_end: null,
+    received: null,
+    written: null,
+    inserted: null,
+    updated: null,
+    unchanged: null,
+    suppressed: null,
+    skipped: null,
+    raw_ref: null,
+    error:
+      "Health Connect token expired — mint a new token on Integrations → Google Health Connect and update the phone exporter.",
+    created_at: conn?.updated_at ?? new Date().toISOString(),
+  };
 }
 
 // ── Duplicate/conflict detection + durable decisions (issue #10, Phase 2) ──────
@@ -305,7 +341,17 @@ export function getReviewPairCount(profileId: number): number {
 // Profile-scoped via getLatestSyncEventPerProvider — per-provider, so it can't miss a
 // broken provider whose failure has aged out of a global recent-events window (#304).
 export function getImportIssues(profileId: number): IntegrationSyncEvent[] {
-  return currentlyFailingProviders(getLatestSyncEventPerProvider(profileId));
+  const failing = currentlyFailingProviders(
+    getLatestSyncEventPerProvider(profileId)
+  );
+  // Fold in the expired-Health-Connect-token signal (#607), but only when a real HC
+  // failure event isn't already representing the provider (a rotated-token push
+  // records its own via recordUnmatchedHealthConnectPush) — so HC appears at most once.
+  if (!failing.some((e) => e.provider === HEALTH_CONNECT_ID)) {
+    const expired = expiredHealthConnectIssue(profileId);
+    if (expired) failing.push(expired);
+  }
+  return failing;
 }
 
 // The single most recent event (any outcome) for a provider, or null — the grid

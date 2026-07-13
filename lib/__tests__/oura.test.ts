@@ -67,8 +67,13 @@ describe("mapOuraSleep", () => {
       expect(s.start_time).toBe("2024-05-01T23:10:00-07:00");
       expect(s.end_time).toBe("2024-05-02T07:10:00-07:00");
     }
-    // Resting (lowest) HR → a body_metrics row on the wake day.
-    expect(res!.bodyMetric).toEqual({ date: "2024-05-02", resting_hr: 48 });
+    // Resting (lowest) HR → a body_metrics row on the wake day; measured_at = the
+    // bedtime end, so two same-wake-day periods collapse deterministically (#605).
+    expect(res!.bodyMetric).toEqual({
+      date: "2024-05-02",
+      measured_at: "2024-05-02T07:10:00-07:00",
+      resting_hr: 48,
+    });
   });
 
   it("skips naps and rest periods (only long_sleep is mapped)", () => {

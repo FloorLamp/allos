@@ -392,8 +392,77 @@ export function resolveHealthConnectProfile(
     candidates.push({ profileId: 1, token: env });
   }
   const matched = matchTokenToProfile(presented, candidates);
-  if (matched !== null) recordHealthConnectUse(matched);
+  if (matched !== null) {
+    recordHealthConnectUse(matched);
+    // A good push self-clears a prior rotated/expired-token failure (#607): flip the
+    // connection back to `connected` if it had been marked needs_reauth. Cheap — the
+    // write only fires while it's actually needs_reauth.
+    clearHealthConnectReauth(matched);
+  }
   return matched;
+}
+
+// Flip a health-connect connection from `needs_reauth` back to `connected` — used
+// after a successful ingest resolves, so a token that was rotated/expired and later
+// re-copied to the phone (or freshly minted) stops showing as failing (#607). Only
+// writes when it's currently needs_reauth, so the ingest hot path stays cheap.
+function clearHealthConnectReauth(profileId: number): void {
+  const conn = getConnection(profileId, "health-connect");
+  if (conn?.status !== "needs_reauth") return;
+  upsertConnection(profileId, "health-connect", { status: "connected" });
+}
+
+// True when this profile's stored Health Connect ingest token is present AND past its
+// optional expiry (#607). The env-fallback token carries no expiry, and a profile with
+// no DB token has nothing to enforce — both read false. Read at page render time by
+// the Review/Issues surfaces so an expired token surfaces as a failing provider even
+// when the phone has stopped pushing entirely (an expired token is dropped from
+// candidacy, so its pushes 401 with nothing to attribute a sync event to).
+export function isHealthConnectTokenExpired(profileId: number): boolean {
+  const cfg = readConfig(getConnection(profileId, "health-connect"));
+  if (!str(cfg.token)) return false;
+  return isTokenExpired(str(cfg.tokenExpiresAt), Date.now());
+}
+
+// Record a best-effort failure sync event when a presented bearer token matched NO
+// Health Connect connection but at least one is configured (#607) — i.e. the phone is
+// pushing with a rotated or expired token, which otherwise 401s silently with no sync
+// event, leaving the badge/Issues/card green while data stops flowing.
+//
+// Attribution: connection-scoped only when EXACTLY ONE non-disconnected HC connection
+// exists (the overwhelmingly common single-user case); with several we can't tell
+// which phone is misconfigured, so we skip rather than misattribute to the wrong
+// profile. RATE-LIMITED to once per hour per profile so a phone hammering the ingest
+// with a stale token can't flood integration_sync_events. The recorded ok:0 event
+// flows through the existing currentlyFailingProviders read (badge, Issues, card) and
+// self-clears on the next successful ingest; we also flip the connection needs_reauth
+// so the setup card shows a Reconnect prompt.
+export function recordUnmatchedHealthConnectPush(
+  presented: string | null
+): void {
+  if (!presented) return; // a missing Authorization header isn't a rotated token
+  const rows = db
+    .prepare(
+      "SELECT profile_id FROM integration_connections WHERE provider = 'health-connect' AND status != 'disconnected'"
+    )
+    .all() as { profile_id: number }[];
+  if (rows.length !== 1) return; // can't attribute (0 or many) — skip
+  const profileId = rows[0].profile_id;
+  // Rate limit: skip if any failure event for this provider landed within the hour.
+  const recent = db
+    .prepare(
+      `SELECT 1 FROM integration_sync_events
+        WHERE profile_id = ? AND provider = 'health-connect' AND ok = 0
+          AND at > datetime('now', '-1 hour') LIMIT 1`
+    )
+    .get(profileId);
+  if (recent) return;
+  markConnectionNeedsReauth(profileId, "health-connect");
+  recordSyncEvent(profileId, "health-connect", {
+    ok: false,
+    error:
+      "Ingest rejected: the pushed token no longer matches this connection. Mint a new token on Integrations → Google Health Connect and update the phone exporter.",
+  });
 }
 
 // Short server-side timeout on the OAuth token-refresh fetches (issue #476, the same

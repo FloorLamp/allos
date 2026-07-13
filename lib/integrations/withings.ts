@@ -158,6 +158,10 @@ export function mapWithingsMeasureGroup(
     weight != null || bodyFat != null || restingHr != null
       ? {
           date: loc.date,
+          // The measure group's true instant, so the shared upsert can collapse two
+          // same-day weigh-ins deterministically (#605 — Withings returns groups
+          // newest-first with no per-date collapse).
+          measured_at: loc.iso,
           ...(weight != null ? { weight_kg: weight } : {}),
           ...(bodyFat != null ? { body_fat_pct: bodyFat } : {}),
           ...(restingHr != null ? { resting_hr: restingHr } : {}),

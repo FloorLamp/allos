@@ -55,6 +55,8 @@ describe("mapWithingsMeasureGroup", () => {
     expect(res).not.toBeNull();
     expect(res!.bodyMetric).toEqual({
       date: "2023-11-14",
+      // The group's true instant, carried so same-day weigh-ins collapse in order (#605).
+      measured_at: "2023-11-14T22:13:20.000Z",
       weight_kg: 70.5,
       body_fat_pct: 18.5,
       resting_hr: 62,
@@ -97,7 +99,11 @@ describe("mapWithingsMeasureGroup", () => {
       unit: "mmHg",
     });
     // The pulse from a BP cuff still lands as resting HR.
-    expect(res!.bodyMetric).toEqual({ date: "2023-11-14", resting_hr: 68 });
+    expect(res!.bodyMetric).toEqual({
+      date: "2023-11-14",
+      measured_at: "2023-11-14T22:13:20.000Z",
+      resting_hr: 68,
+    });
   });
 
   it("maps SpO2 and converts body temperature °C → °F canonical", () => {
@@ -133,7 +139,11 @@ describe("mapWithingsMeasureGroup", () => {
       "UTC"
     );
     // Weight rejected, pulse kept.
-    expect(res!.bodyMetric).toEqual({ date: "2023-11-14", resting_hr: 62 });
+    expect(res!.bodyMetric).toEqual({
+      date: "2023-11-14",
+      measured_at: "2023-11-14T22:13:20.000Z",
+      resting_hr: 62,
+    });
   });
 
   it("returns null when the group has no id or an unusable timestamp", () => {

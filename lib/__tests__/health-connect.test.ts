@@ -88,8 +88,10 @@ describe("parseHealthConnectPayload — body metrics", () => {
         { time: "2026-06-16T08:00:00Z", kg: 82 },
       ],
     });
+    // The oldest day of a multi-day window is flagged partial (#606); it only guards
+    // the averaged fields on upsert, so weight is unaffected (still last-of-day wins).
     expect(out.bodyMetrics).toEqual([
-      { date: "2026-06-15", weight_kg: 81 },
+      { date: "2026-06-15", partial_day: true, weight_kg: 81 },
       { date: "2026-06-16", weight_kg: 82 },
     ]);
   });
@@ -133,6 +135,33 @@ describe("parseHealthConnectPayload — body metrics", () => {
     expect(out.bodyMetrics).toEqual([
       { date: "2026-06-16", body_fat_pct: 20, resting_hr: 62 },
     ]);
+  });
+
+  it("flags ONLY the oldest day of a multi-day window as partial (#606)", () => {
+    // A rolling window spanning three days: the earliest day is only partially
+    // covered, so its averaged fields must not overwrite a fuller stored value.
+    const out = parse({
+      resting_heart_rate: [
+        { time: "2026-06-14T21:00:00Z", bpm: 62 }, // oldest day — partial tail
+        { time: "2026-06-15T07:00:00Z", bpm: 58 },
+        { time: "2026-06-15T13:00:00Z", bpm: 60 },
+        { time: "2026-06-16T08:00:00Z", bpm: 59 },
+      ],
+    });
+    const byDate = Object.fromEntries(out.bodyMetrics.map((b) => [b.date, b]));
+    expect(byDate["2026-06-14"].partial_day).toBe(true);
+    expect(byDate["2026-06-15"].partial_day).toBeUndefined();
+    expect(byDate["2026-06-16"].partial_day).toBeUndefined();
+  });
+
+  it("does NOT flag a single-day push as partial (avoids freezing 'today')", () => {
+    const out = parse({
+      resting_heart_rate: [
+        { time: "2026-06-16T06:00:00Z", bpm: 60 },
+        { time: "2026-06-16T21:00:00Z", bpm: 64 },
+      ],
+    });
+    expect(out.bodyMetrics).toEqual([{ date: "2026-06-16", resting_hr: 62 }]);
   });
 });
 

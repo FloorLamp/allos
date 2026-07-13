@@ -230,6 +230,23 @@ export function parseHealthConnectPayload(
     }
     return a;
   };
+  // Track the earliest body-metric instant in this batch (#606). The exporter re-sends
+  // a rolling 48h window, so the OLDEST day in a MULTI-day push is only partially
+  // covered: its body-fat / resting-HR "day average" is computed from a partial tail
+  // and would otherwise overwrite the fuller value stored when the day was wholly in
+  // the window. The day containing the earliest instant is the (only) partial one —
+  // every later day is fully spanned by [earliest, now]. We flag it ONLY when ≥2
+  // distinct body-metric days are present: with a single day we can't tell the trailing
+  // old edge from an in-progress "today" (freezing today's average at its first-seen
+  // value would be its own bug), so we leave the normal last-wins merge in place. The
+  // flag holds only the AVERAGED fields on the upsert; weight is last-of-day, unaffected.
+  let earliestBodyMs: number | null = null;
+  const noteInstant = (iso: unknown) => {
+    if (typeof iso !== "string") return;
+    const t = new Date(iso).getTime();
+    if (Number.isNaN(t) || !inTimeWindow(t)) return;
+    if (earliestBodyMs === null || t < earliestBodyMs) earliestBodyMs = t;
+  };
   for (const w of asArray(payload.weight)) {
     const p = parts(w.time, tz);
     const kg = boundedOrNull("weight_kg", num(w.kilograms, w.kg, w.weight));
@@ -237,6 +254,7 @@ export function parseHealthConnectPayload(
       out.skipped++;
       continue;
     }
+    noteInstant(w.time);
     dayFor(p.date).weight_kg = kg; // last reading of the day wins
   }
   for (const b of asArray(payload.body_fat)) {
@@ -249,6 +267,7 @@ export function parseHealthConnectPayload(
       out.skipped++;
       continue;
     }
+    noteInstant(b.time);
     const a = dayFor(p.date);
     a.bfSum += pct;
     a.bfN++;
@@ -263,12 +282,21 @@ export function parseHealthConnectPayload(
       out.skipped++;
       continue;
     }
+    noteInstant(r.time);
     const a = dayFor(p.date);
     a.rhrSum += bpm;
     a.rhrN++;
   }
+  // Only the oldest day of a MULTI-day window is treated as partial (see above).
+  const partialDate =
+    earliestBodyMs !== null && byDate.size >= 2
+      ? zonedDateParts(tz, new Date(earliestBodyMs)).date
+      : null;
   out.bodyMetrics = [...byDate.entries()].map(([date, a]) => ({
     date,
+    ...(partialDate !== null && date === partialDate
+      ? { partial_day: true }
+      : {}),
     ...(a.weight_kg != null ? { weight_kg: a.weight_kg } : {}),
     ...(a.bfN ? { body_fat_pct: Math.round((a.bfSum / a.bfN) * 10) / 10 } : {}),
     ...(a.rhrN ? { resting_hr: Math.round(a.rhrSum / a.rhrN) } : {}),
