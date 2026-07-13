@@ -19,8 +19,7 @@
 // script keeps only the generator LOGIC (the Anthropic calls, the merge/write
 // orchestration, and the API-free --curated-only / --age-bands-only paths).
 
-import { loadEnvConfig } from "@next/env";
-loadEnvConfig(process.cwd());
+import "./load-env";
 
 import fs from "node:fs";
 import path from "node:path";

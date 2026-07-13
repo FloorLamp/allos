@@ -1,7 +1,6 @@
 // Load .env / .env.local so scripts respect the same config as the app.
 // (The Next.js runtime does this automatically; tsx-run scripts do not.)
-import { loadEnvConfig } from "@next/env";
-loadEnvConfig(process.cwd());
+import "./load-env";
 
 import { db, today } from "../lib/db";
 import { shiftDateStr } from "../lib/date";
