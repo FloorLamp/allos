@@ -41,6 +41,12 @@ or visually:
    profile-owned routine tables; the engine only ever reads the DB shape.
    (Rejected: engine reads templates from code with a custom-routine special
    case — two code paths that would drift, the #221 disease.)
+5. **Coaching depth ships too (Pillar 4):** per-muscle weekly volume bands,
+   mesocycle/deload awareness on routines, and optional RPE logging feeding
+   progression. All three stay inside the existing philosophy — informational
+   bands and user-owned cycles (never a dynamic priority engine, #559),
+   nullable signals that degrade to today's behavior when absent (the
+   sleep/resting-HR pattern).
 
 ## Pillar 1 — Exercise how-to guides
 
@@ -177,6 +183,7 @@ CREATE TABLE routines (
   active INTEGER NOT NULL DEFAULT 0,
   started_date TEXT,           -- set on activation
   position INTEGER NOT NULL DEFAULT 0, -- rotation cursor into routine_days
+  cycle_weeks INTEGER,         -- mesocycle length; NULL = no cycle (see Pillar 4)
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   profile_id INTEGER NOT NULL REFERENCES profiles(id)
 );
@@ -260,22 +267,114 @@ Needs-attention hero. The only push-tier touch is the existing workout nudge,
 which gains richer copy ("Push day: Bench, Overhead Press, Dips") through its
 existing dedupe/dismissal key — no new notification.
 
+## Pillar 4 — Coaching depth
+
+Three additions that close the biggest remaining gaps in the coaching engine
+(longitudinal programming and autoregulation) without breaking its designed
+ceiling: the engine gates, suggests, and phrases — the user owns the program.
+
+### 4a. Per-muscle weekly volume bands
+
+Builds directly on Pillar 2's coverage math.
+
+- **Bands are checked-in defaults**, `lib/muscle-volume-bands.ts`: a
+  `{ low, high }` weekly _working-set_ band per `MuscleId` (large movers
+  ~10–20, small/indirect muscles lower). Like the guides, static reference
+  content — no per-profile override in v1 (follow-up if wanted).
+- **Indirect credit:** a set counts 1.0 toward each of the lift's
+  `primaryMuscles` and 0.5 toward each `secondaryMuscles` — ONE constant,
+  applied inside `lib/muscle-coverage.ts`, which grows a band verdict per
+  muscle: `below | within | above | untrained`.
+- **Surfaces (formatters over the one computation):** the coverage anatomy
+  figure tints by verdict (with the text list carrying exact numbers — never
+  color-only); a coaching-tier observation per sustained shortfall ("side
+  delts: 2 sets this week, band floor is 6"), emitted alongside the existing
+  training observations with an episodic `dedupeKey` in a new registered
+  prefix (`muscle-volume:`), so a dismissal is per-episode (#436) and the
+  #448 reflection guard covers it. Calm tier only — never a push
+  notification, never the hero.
+- **Not a priority engine (#559):** bands inform the coverage display and one
+  dismissible observation. They do NOT reorder the recommendation core's
+  exercise ranking in v1; at most the routine builder shows a band summary of
+  the routine being authored ("this plan gives rear delts ~3 sets/week").
+
+### 4b. Mesocycle & deload awareness on routines
+
+Routines gain an optional, user-owned cycle — declarative, like everything
+else about them.
+
+- **Model:** `routines.cycle_weeks` (nullable — NULL means no cycle, all
+  current behavior). Convention: the LAST week of the cycle is the deload
+  week. Week-in-cycle is calendar-derived, pure:
+  `weekInCycle = floor(daysSince(started_date)/7) % cycle_weeks`. Templates
+  may declare a cycle (the beginner 5×5-style ships 8+1); the custom builder
+  exposes the field.
+- **Deload behavior**, all inside existing chokepoints:
+  - The next-set engine (`lib/coaching/strength.ts`) gains one pure
+    adjustment, `deloadAdjust(nextSet)`: roughly −10% load, −1 working set
+    per slot (exact factors are named constants with rationale, pure-tested
+    at boundaries). Applied ONLY when the active routine says this is a
+    deload week; the recommendation core phrases it ("Deload week: Bench
+    3×5 @ 56 kg").
+  - Behind-target nudges soften during the deload week (the week is
+    _supposed_ to be lighter): the workout nudge keeps firing but with deload
+    copy; the frequency-target "behind" finding is suppressed for
+    region/group scopes that week — decided in the one gather, not per
+    surface.
+  - The plateau observation cross-references the cycle: if a deload week is
+    ≤2 weeks away, its suggestion says so instead of recommending an ad-hoc
+    deload.
+- **Explicitly NOT in scope:** auto-inserted deloads from fatigue signals, or
+  multi-block periodization (volume→intensity phases). The cycle is a counter
+  the user set, not a model of readiness — rest/recovery overrides in
+  `lib/coaching` already handle acute fatigue and stay independent.
+
+### 4c. RPE logging → progression
+
+- **Schema:** `exercise_sets` gains nullable `rpe REAL` (append migration;
+  `CHECK (rpe IS NULL OR (rpe >= 5 AND rpe <= 10))`, half-point steps
+  enforced at the action boundary). Composes with the existing declared
+  intent (`target_reps` / `to_failure`) rather than replacing it.
+- **UI:** an optional compact selector on the set row in the activity form
+  (blank by default — logging RPE is never required); shown on history rows
+  when present.
+- **Progression:** the double-progression engine consumes the anchor set's
+  RPE when present, as a modifier on its existing verdicts (named constants,
+  boundary-tested): top-of-range reps at RPE ≤ 7 ⇒ a larger load increment;
+  at RPE ≥ 9.5 while below the rep-range floor ⇒ hold the load (repeat) or,
+  when persistent, phrase toward the deload/variation vocabulary the plateau
+  finding already uses. **No RPE on the seed ⇒ byte-for-byte today's
+  behavior** — the sleep/resting-HR nullable-signal pattern.
+- The seed plumbing (`NextSetSeed`, `pickSeedSessions`) carries `rpe`
+  through, so every surface that renders a next-set target (editor chip,
+  detail panel, coaching card, Telegram) reflects it identically by
+  construction.
+
 ## Cross-cutting obligations
 
-- **Migration:** one append-only migration for the three routine tables
-  (+ `versions/index.ts` + `manifest.json`); tables added to
+- **Migrations:** one append-only migration for the three routine tables
+  (incl. `cycle_weeks`) and one for `exercise_sets.rpe`
+  (+ `versions/index.ts` + `manifest.json` each); routine tables added to
   `lib/owned-tables.ts`.
+- **Findings registry:** the volume-band observation registers its
+  `muscle-volume:` prefix in `lib/rule-finding-prefixes.ts` and, as a
+  findings builder, ships a realistic-fixture DB-tier test (#448) plus the
+  reflection-guard coverage that comes with the registry.
 - **Auth shape:** routine writes are auth-blind `lib/` write cores
   (`profileId` first); gates live in `app/(app)/training/actions.ts`
   (`requireWriteAccess` → validate → core → `revalidatePath`).
 - **Tests per tier:** pure — guide-key resolution, `MuscleId` rollup
-  invariants, `muscle-coverage`, template-day resolution + slot filling at
-  boundaries, target-derivation (incl. the food_group non-replacement);
-  action tier — adopt/activate/deactivate/edit-routine actions incl. the
-  targets-replacement transaction; DB tier — if routine state feeds a findings
-  builder, it ships a realistic fixture test (#448); e2e — guide sheet opens
-  from the picker, anatomy figure renders per-exercise and coverage modes,
-  adopt-template flow, custom-routine builder round-trip.
+  invariants, `muscle-coverage` (incl. secondary-credit and band-verdict
+  boundaries), template-day resolution + slot filling at boundaries,
+  target-derivation (incl. the food_group non-replacement), `weekInCycle` /
+  `deloadAdjust` at cycle boundaries, RPE-modified progression at its named
+  thresholds and the no-RPE identity case; action tier —
+  adopt/activate/deactivate/edit-routine actions incl. the
+  targets-replacement transaction, set-save with/without `rpe`; DB tier — if
+  routine state feeds a findings builder, it ships a realistic fixture test
+  (#448); e2e — guide sheet opens from the picker, anatomy figure renders
+  per-exercise and coverage modes, adopt-template flow, custom-routine
+  builder round-trip, RPE selector round-trips through the activity form.
 - **README + seed:** update Training docs/nav in the same PR; seed gains a
   sample active routine so the overview/coverage surfaces render on a fresh
   seed.
@@ -288,9 +387,15 @@ existing dedupe/dismissal key — no new notification.
    schema change. Highest value/effort ratio.
 2. **`MuscleId` enrichment + anatomy SVG** — per-exercise mode first (drops
    into the Phase-1 sheet), then weekly coverage on Overview.
-3. **Routines** — schema + engine changes + builder UI; lands last so its
-   output is legible (a recommended session whose exercises each open a guide
-   and light the anatomy figure).
+3. **Routines** — schema + engine changes + builder UI; lands after 1–2 so
+   its output is legible (a recommended session whose exercises each open a
+   guide and light the anatomy figure).
+4. **Volume bands** — extends Phase 2's coverage computation + one new
+   observation; no schema change.
+5. **Mesocycle/deload** — extends Phase 3's routines (`cycle_weeks` ships in
+   the Phase-3 migration; this phase adds the engine/nudge behavior).
+6. **RPE logging** — independent of 3–5 (own migration + form field +
+   progression modifier); can land any time after Phase 1.
 
 ## Open questions
 
@@ -301,3 +406,9 @@ existing dedupe/dismissal key — no new notification.
   sequence, not a calendar).
 - Guide depth for the long tail of equipment variants (start with
   `equipmentNotes` only where cues genuinely differ).
+- Volume-band default values and the secondary-credit factor (proposed 0.5)
+  — to be justified with sources in the `lib/muscle-volume-bands.ts` header
+  before Phase 4 merges.
+- Whether the deload week should also soften the volume-band observation
+  (proposed: yes — the band verdict formatter checks the same week-in-cycle
+  flag, ONE gather decision).
