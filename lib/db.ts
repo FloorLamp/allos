@@ -6,6 +6,10 @@ import { dateStrInTz, shiftDateStr } from "./date";
 import { runMigrations } from "./migrations/runner";
 import { bootTasks } from "./migrations/boot-tasks";
 import { MIGRATIONS } from "./migrations/versions";
+import {
+  acquireBootLock,
+  BOOT_LOCK_TIMEOUT_MS,
+} from "./migrations/schema-utils";
 
 // Single shared connection across hot-reloads in dev.
 const globalForDb = globalThis as unknown as { __healthDb?: Database.Database };
@@ -39,24 +43,46 @@ function createDb(): Database.Database {
   // worker's lock — it fails the caller with a raw SQLITE_BUSY ("database is
   // locked"). Setting busy_timeout first installs the busy handler so EVERY
   // subsequent lock acquisition (the WAL switch, the migration/boot writes) waits
-  // out a peer instead of throwing. A generous timeout lets a writer wait out
-  // another's write lock rather than failing an IMMEDIATE transaction (see
-  // rebuildTable / runBootTx).
+  // out a peer instead of throwing.
+  //
+  // The BOOT PHASE uses a much larger timeout (BOOT_LOCK_TIMEOUT_MS = 60s) than the
+  // runtime value set after boot below: a cold boot is a one-time cost and waiting
+  // beats dying, and the boot phase is also where a non-cooperating writer (an old
+  // image, sqlite3 CLI) could hold the file longest. Requests never see this value.
+  db.pragma(`busy_timeout = ${BOOT_LOCK_TIMEOUT_MS}`);
+  // Serialize the ENTIRE boot (WAL establishment + migrations + boot tasks) across
+  // processes with the advisory boot lock (issue #581 residual — see
+  // lib/migrations/schema-utils.ts). busy_timeout alone bounds ONE lock
+  // acquisition, but N parallel build workers each make ~30 sequential IMMEDIATE
+  // acquisitions and SQLite's busy poll is unfair, so a starved worker could
+  // exceed any per-acquisition timeout. With the lock, the first worker does the
+  // whole boot alone; every peer waits on the sidecar file, then replays the boot
+  // as a version-gated no-op with near-zero contention on the main DB. Advisory +
+  // fail-open: if the lock can't be taken, boot proceeds unserialized (the
+  // pre-lock, busy-tolerant path).
+  const bootLock = acquireBootLock(dbPath);
+  try {
+    db.pragma("journal_mode = WAL");
+    db.pragma("foreign_keys = ON");
+    // synchronous=NORMAL is the recommended companion to WAL: commits no longer
+    // fsync on every transaction (only at checkpoint), removing a per-commit fsync
+    // stall on this single-threaded, synchronous better-sqlite3 process. It stays
+    // crash-safe under WAL — a power loss can lose the last few committed
+    // transactions but never corrupts the database. temp_store=MEMORY keeps
+    // transient sorters / temp b-trees off disk.
+    db.pragma("synchronous = NORMAL");
+    db.pragma("temp_store = MEMORY");
+    // Apply the versioned schema migrations (lib/migrations/runner), then the
+    // per-boot tasks that must re-run on every process start (boot-tasks).
+    runMigrations(db);
+    bootTasks(db);
+  } finally {
+    bootLock?.release();
+  }
+  // Runtime busy timeout: generous enough for the three-writer steady state (web
+  // app, notify tick, poll sidecar — see writeTx / rebuildTable), but bounded so a
+  // genuinely wedged peer fails a request in seconds, not the boot-phase minute.
   db.pragma("busy_timeout = 10000");
-  db.pragma("journal_mode = WAL");
-  db.pragma("foreign_keys = ON");
-  // synchronous=NORMAL is the recommended companion to WAL: commits no longer
-  // fsync on every transaction (only at checkpoint), removing a per-commit fsync
-  // stall on this single-threaded, synchronous better-sqlite3 process. It stays
-  // crash-safe under WAL — a power loss can lose the last few committed
-  // transactions but never corrupts the database. temp_store=MEMORY keeps
-  // transient sorters / temp b-trees off disk.
-  db.pragma("synchronous = NORMAL");
-  db.pragma("temp_store = MEMORY");
-  // Apply the versioned schema migrations (lib/migrations/runner), then the
-  // per-boot tasks that must re-run on every process start (boot-tasks).
-  runMigrations(db);
-  bootTasks(db);
   return db;
 }
 
