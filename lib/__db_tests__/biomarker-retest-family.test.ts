@@ -3,7 +3,9 @@
 // breakdown was flagged overdue even though a recent total vitamin D exists).
 // Proves end-to-end against the real query layer that a fresh reading of any
 // family member satisfies the retest for the whole family, while a genuinely
-// distinct analyte (1,25-dihydroxy) keeps its own retest lifecycle.
+// distinct analyte (1,25-dihydroxy) is treated as its OWN family — never folded
+// into the 25-OH retest (it's an incidental one-off dropped by the #587 worthiness
+// gate, not silenced by a fresh 25-OH reading).
 
 import { describe, it, expect, beforeAll } from "vitest";
 import { db } from "@/lib/db";
@@ -64,17 +66,21 @@ describe("vitamin-D 25-hydroxy retest family", () => {
     expect(keys).toEqual(["biomarker:family:vitamin-d-25-hydroxy"]);
   });
 
-  it("the active 1,25-dihydroxy metabolite is a separate retest lifecycle", () => {
+  it("the active 1,25-dihydroxy metabolite is a separate (non-worthy) family", () => {
     db.prepare(
       "DELETE FROM medical_records WHERE profile_id = ? AND panel = 'Vitamin D'"
     ).run(p.profileId);
-    // Fresh total 25-OH, but an old active metabolite — the active test is
-    // distinct and must still be flagged overdue.
+    // Fresh total 25-OH, plus an old active metabolite. The active 1,25 test is a
+    // DISTINCT family (never folded into / satisfied by the 25-OH retest — the point
+    // of #482) but is itself an incidental one-off, not routine monitoring, so after
+    // the #587 worthiness gate it's excluded from the retest nudge entirely rather
+    // than nagging overdue. Neither the (recent) 25-OH family nor the 1,25 metabolite
+    // surfaces here — proving 1,25 didn't inherit the 25-OH clock in either direction.
     addReading("Vitamin D, 25-Hydroxy", recentDate, 34);
     addReading("Vitamin D, 1,25-Dihydroxy", oldDate, 40);
 
     const keys = biomarkerKeys();
-    expect(keys).not.toContain("biomarker:vitamin d, 25-hydroxy");
-    expect(keys).toContain("biomarker:vitamin d, 1,25-dihydroxy");
+    expect(keys).not.toContain("biomarker:family:vitamin-d-25-hydroxy");
+    expect(keys).not.toContain("biomarker:vitamin d, 1,25-dihydroxy");
   });
 });

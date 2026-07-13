@@ -99,12 +99,6 @@ import { getFindingSuppressions } from "./suppressions";
 // cadence is per-analyte now (curated retest_days, default 365) rather than flat.
 const RETEST_CATEGORIES = new Set(["lab", "biomarker"]);
 
-// The priority an incidental (non-retest-worthy, non-risk-elevated) analyte's retest
-// item carries (issue #546): below the default 0 so it sorts UNDER worthy retests and
-// risk-elevated items within a band — the "low, dismissable tier" for ancient one-offs
-// that shouldn't nag with a lipid panel's standing.
-const RETEST_LOW_TIER_PRIORITY = -1;
-
 // Doses pending TODAY across active supplements + medications (reuses the
 // supplement schedule's isDueOn with today's workout/situation context, and the
 // per-dose taken-log read). A PRN (as_needed) med is never scheduled-due, so
@@ -402,15 +396,14 @@ function biomarkerItems(profileId: number, today: string): UpcomingItem[] {
     // then test staleness + band against the MODULATED interval so a high-risk
     // analyte comes due sooner.
     const mod = retestModulationFor(name, riskFactors);
-    // Retest-worthiness tier (issue #546): the recurring-monitoring set (lipids, A1c,
-    // key metabolic/CBC/thyroid/renal…) ranks at its risk-modulated priority; an
-    // incidental one-off (heavy metal, allergen IgE, LDL subfraction…) with no risk
-    // elevation drops to a LOW, dismissable tier instead of nagging with a lipid
-    // panel's standing — feeding the #517 priority rather than forking it.
-    const priority =
-      isRetestWorthy(name) || mod.priority > 0
-        ? mod.priority
-        : RETEST_LOW_TIER_PRIORITY;
+    // Retest-worthiness gate (issues #546 / #587): an incidental one-off analyte
+    // (heavy metal, allergen IgE, LDL subfraction…) with no risk-layer elevation isn't
+    // a standing recurring action — drop it from the retest nudge entirely rather than
+    // ranking it -1 (which is invisible when it's alone in its band). A flagged one-off
+    // is still surfaced by the Biomarkers flag/trajectory treatment; a risk-elevated
+    // analyte (mod.priority > 0) keeps its retest clock.
+    if (!isRetestWorthy(name) && mod.priority === 0) continue;
+    const priority = mod.priority;
     const interval = Math.max(
       1,
       Math.round(retestIntervalDays(retestDays) * mod.multiplier)

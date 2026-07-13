@@ -905,11 +905,11 @@ export const VELOCITY_PER_YEAR: Record<string, number> = {
 // the core CMP/CBC, inflammation, and the commonly-monitored/repleted nutritionals).
 // An analyte OUTSIDE this set is an incidental one-off from a workup (heavy metals,
 // PFAS, the allergen-specific IgE panel, trace minerals, LDL subfractions, urine
-// microscopy, thyroid antibodies…): it shouldn't carry the SAME standing as a lipid
-// panel in the retest nudge, so the Upcoming retest signal ranks it into a low,
-// dismissable tier (feeding the #517 priority) rather than nagging it like a lipid.
-// This is a priority DIMENSION, not a cadence — an unlisted analyte keeps its clock;
-// it just doesn't rank as a standing recurring action. Curated CONSERVATIVELY and
+// microscopy, thyroid antibodies…): it shouldn't nag with the SAME standing as a lipid
+// panel in the retest nudge, so — unless it is risk-elevated — the Upcoming retest
+// signal drops an unlisted one-off from the nudge entirely (issue #587; a flagged
+// one-off still surfaces on the Biomarkers flag/trajectory path) rather than nagging
+// it like a lipid. A risk-elevated unlisted analyte keeps its clock. Curated CONSERVATIVELY and
 // INFORMATIONAL (not medical advice); reviewed against routine-panel practice. Keyed
 // by exact canonical name (matched family-aware by lib/biomarker-retest, so the
 // vitamin-D 25-OH isoforms inherit "Vitamin D, 25-Hydroxy"'s worthiness).

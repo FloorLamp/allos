@@ -47,10 +47,11 @@ const WORTHY_FAMILIES: Set<string> = new Set(
   RETEST_WORTHY.map((n) => biomarkerFamily(n))
 );
 
-// Whether a biomarker is on the curated recurring-monitoring tier (issue #546). An
-// analyte NOT on the tier is an incidental one-off — the Upcoming retest signal still
-// tracks its clock but ranks it into a low, dismissable tier rather than nagging it
-// with a lipid panel's standing. Family-aware (see WORTHY_FAMILIES) and case-
+// Whether a biomarker is on the curated recurring-monitoring tier (issues #546 /
+// #587). An analyte NOT on the tier is an incidental one-off — unless it is
+// risk-elevated, the Upcoming retest signal drops it from the nudge entirely rather
+// than nagging it with a lipid panel's standing (a flagged one-off still surfaces on
+// the Biomarkers flag/trajectory path). Family-aware (see WORTHY_FAMILIES) and case-
 // insensitive on the canonical name.
 export function isRetestWorthy(name: string | null | undefined): boolean {
   if (!name) return false;
