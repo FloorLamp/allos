@@ -43,9 +43,11 @@ What that means in practice:
 
 ## The pipeline (per unit of work)
 
-1. **Triage.** Sweep open issues. Bugs first. Read the bodies — this repo's
-   audit issues are excellent (root cause + file:line + prescribed fix) and are
-   the real interface to agents.
+1. **Triage.** Sweep open issues. Bugs first. Read the bodies **and all issue
+   comments** — clarifications, scope changes, and owner decisions get buried in
+   comment threads, and a fix that honors the body but misses a comment is wrong.
+   This repo's audit issues are excellent (root cause + file:line + prescribed
+   fix) and are the real interface to agents.
 2. **Cluster.** Group 2–6 related issues per agent by domain/files. One PR per
    cluster. Check clusters for file overlap with each other and with anything
    the owner is editing (ask/observe); sequence or fence accordingly.
@@ -71,7 +73,10 @@ Every agent prompt must contain, verbatim where marked:
 - Worktree setup: git fetch origin main && git worktree add $SCRATCH/wt-<x> -b <branch> origin/main
 - cp -al $SCRATCH/wt-408/node_modules $SCRATCH/wt-<x>/node_modules
 - export PATH=/opt/node24/bin:$PATH   (nvm is BROKEN — do not use)
-- FETCH AND READ ALL ISSUE BODIES FIRST (curl the REST API); trust symbol names over line numbers
+- FETCH AND READ ALL ISSUE BODIES AND ALL ISSUE COMMENTS FIRST
+  (GET /repos/OWNER/REPO/issues/N and /issues/N/comments) — clarifications and
+  scope changes hide in comment threads; a comment overrides the body when they
+  conflict. Trust symbol names over line numbers.
 - Checks: npm run format && npm run lint && npm run typecheck && npm test && npm run test:db
   — run format LAST before committing (a late edit after formatting is a known CI breaker)
 - Do NOT run Playwright locally — the orchestrator runs e2e centrally; author specs only
@@ -128,7 +133,8 @@ well (including reverting already-made edits) — use it instead of killing/redi
 
 ## Review checklist
 
-- Does the fix match the issue's prescription, and are deviations argued?
+- Does the fix match the issue's prescription **including any clarifications in
+  the issue's comment thread**, and are deviations argued?
   (Good agents deviate correctly — e.g. matching an existing accounting
   contract over the issue's looser wording. Reward that; don't reflex-reject.)
 - Grep-verify claims: testids, fixture names, helper functions, "already
