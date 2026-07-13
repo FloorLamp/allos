@@ -20,79 +20,30 @@ Five commitments run through every feature. They explain most of Allos's design 
 
 ## Features
 
-- **Dashboard** — your health at a glance, attention-first. A pinned **Needs attention** banner leads every visit with the **act-now slice** of one shared attention model — banded by urgency (**Urgent / Today / Needs review**) — that merges everything needing you now: overdue and due-today doses/appointments/care-plan items plus the "something's off" signals (newly-flagged labs, low supply, failing integrations, review-inbox items). It renders from the **same computation** as the **Upcoming** page — the banner is a strict **subset** of it, so the numbers always reconcile: this-week and later scheduled work isn't dropped, it moves to Upcoming behind a "**+N more in Upcoming**" link. A flagged lab carries a verb ("Review HDL Cholesterol") and deep-links to its series, never a dead-end "flagged result". Snooze or dismiss any item right there (it stays hidden on Upcoming and in the digest too), and an empty banner is a quiet "all clear". Below it, a login that reaches more than one profile gets a **household strip** of their other people with a per-profile attention count, one tap to switch and view. The rest is a **customizable widget grid** — reorder and show/hide per profile (the banner itself can't be hidden) — surfacing medical differentiators (**recent labs**, **next appointment**, **care plan due**) alongside fitness widgets, the coaching next-workout suggestion, and a **Coaching observations** rollup — a calm, dismissible summary of the observational patterns that otherwise live only on their own tabs (a training plateau/imbalance, a suspect weight reading, an off-pace goal, an adherence pattern, a **food suggestion** for a diet-responsive biomarker reading low) so they're discoverable from the dashboard without becoming a notification; a widget whose domain has no data yet shows a one-tap **setup CTA** (import labs, connect Health Connect, add an appointment) so the dashboard doubles as the onboarding checklist. A **Healthspan pillars** widget surfaces a row of evidence-backed longevity signals — VO₂ Max percentile, your strongest **strength standard** across the core barbell lifts (for your bodyweight & sex), sleep regularity, biological age, and the share of tracked biomarkers in their **optimal** range ("31 of 38 markers optimal") — deliberately as separate pillars (never a single invented score); each pillar deep-links to its detail surface and appears only when its data exists
-- **Timeline** — day-by-day health history across activity, body metrics, labs, medications, documents, visits, goals, protocol start/end, and milestones; each day header also shows **sunrise/sunset daylight chips** once a home location is set (**Settings → Profile → Home location** — optional coarse coordinates you enter or detect, stored rounded to ~11 km and used only for on-device sun math, never sent anywhere; a US ZIP from an imported CCD suggests one). Solar times come from the NOAA algorithm computed locally — no location service, no external calls
-- **Protocols** — run an **N-of-1 experiment**: name a dated intervention (creatine, a sauna block, Zone 2 emphasis, time-restricted eating), pick the **outcome metrics** you care about (any tracked biomarker, resting HR / weight / body-fat, or a derived index like **PhenoAge** or the **Sleep Regularity Index**), and Allos compares a **baseline window** against the **intervention window** on its detail page — an honest mean/median shift with the n per window ("resting HR −3.2 bpm vs the 8 weeks prior"), no p-value theater; sparse labs fall back to the nearest draw before/during. Starting a protocol can **activate a situation** (reusing the supplements situations wiring so its situational stack surfaces), and start/end land on your **Timeline**. A protocol's delete/end reverses that situation activation. A protocol can also reference the **recovery gear** it studies (which sauna / plunge, linking to its Equipment detail) and declare a **practice** to track — an activity type **or a food group** (#580, e.g. "fatty fish 2×/week" for an omega-3 protocol) × N/week — whose **adherence** is the same weekly-count your Weekly routine targets use (so "sauna 4×/week" shows "2 / 4 this week"), plus a usage-during-window tally ("23 sessions · last 3 days ago") over the protocol's dates; the practice reuses a matching weekly routine target if you already have one, or creates one it cleans up on delete. **Start from a template** prefills the form for a common experiment — the **Sun exposure** template pairs daily **outdoor daylight minutes** (intersecting your outdoor activities' time windows with the local daylight window from your home location's sunrise/sunset) against your **vitamin D** family, so you can ask "did my lunch-walk habit move my 25-OH D?"; when daylight-outdoor time has been scarce over recent weeks and your last vitamin D was below optimal, a calm **coaching observation** notes it (coaching tier only — never a notification, and deliberately observational rather than prescriptive, since sun exposure is dual-edged). Informational only, not medical advice
-- **Upcoming** — one forward-looking list of everything due soon, bucketed by urgency (**Overdue / Today / This week / Later**), with the orthogonal "something's off" signals the dashboard banner also surfaces — newly-**flagged labs**, **failing integrations**, and **review-inbox** items — grouped under their own **Flagged** / **For review** headings rather than mixed into the date bands: supplement/medication doses, low refills, **supplement intake-limit** warnings (a nutrient whose stack total exceeds its NIH upper limit), **drug-interaction** warnings (two active stack items known to interact), scheduled appointments, **planned care** (provider-ordered or manually entered **care-plan items** with a planned date — e.g. an imported "colonoscopy in March" — surfaced from the **Care plan** page, with an inline **Mark done** that completes the item), **preventive well-visits & screenings** (age/sex-appropriate checkups and screenings from curated general guidelines — the adult screening set is the USPSTF grade A/B core baked into `lib/screenings.json` (blood pressure, cholesterol, colorectal, diabetes/A1c, **depression**, **anxiety**, **HIV**, hepatitis C, cervical, mammography, osteoporosis, plus the risk-gated hepatitis-B/lung/AAA rules), regenerated with `npm run gen:screenings`; **informational only, not medical advice** — mark one **done**, or set it **not applicable** / **declined**, or hit **Book** to open the appointment form prefilled with the visit's reason, kind, and a suggested date — informational only, and shown only once a birthdate is on file; a matching record already on file **satisfies a screening/visit automatically** — a coded or named colonoscopy/mammogram/DEXA, a lab result (cholesterol, A1c, glucose), a blood-pressure reading, or a completed physical/dental/eye visit is detected and clears the reminder without a manual mark-done; once you **book a matching visit** (an appointment whose **Kind** matches — e.g. a dental appointment for the dental reminder) the item quiets to a **Scheduled** state instead of nagging, and completing that kind-tagged visit offers to record the preventive care as done; the smoking-related screenings (low-dose CT lung screening, abdominal aortic aneurysm ultrasound) activate once a **smoking history** is recorded under **Settings → Profile → Smoking history**, seeded automatically from an imported CCD's tobacco status), immunizations due, **biomarker retests** (each stated as an action — "Retest HDL Cholesterol" — and, when the last reading was out of range or non-optimal, noting that status so a flagged value isn't mistaken for a bare retest), goal deadlines, and training targets. Retests, screenings, and immunizations are **risk-stratified**: your **family history**, **active conditions**, life stage, smoking history, and the self-declared factors under **Settings → Profile → Health risk factors** (healthcare worker, immunocompromised, on dialysis, pregnant) bring some labs due sooner and rank them higher with a calm one-line reason (family history of heart disease → lipids retested sooner and prioritized; immunocompromised / dialysis / healthcare worker → hepatitis-A immunity checked sooner; pregnancy → gestational-diabetes (glucose) and anemia (CBC/ferritin) checks brought due sooner and prioritized), rank up the vaccines they make more important (immunocompromised / dialysis → pneumococcal & meningococcal, healthcare worker → hepatitis B / influenza / MMR / varicella, pregnancy → Tdap & influenza), and a birth-anchored newborn panel (e.g. a newborn bilirubin) is treated as a one-time milestone rather than a recurring retest. Only the **recurring-monitoring** analytes (lipids, A1c, thyroid, kidney, liver, the core metabolic/CBC panels, and the commonly-tracked nutritionals) carry a lipid-panel's standing; an incidental one-off from a workup (a heavy metal, an allergen-specific IgE, an LDL subfraction) drops to a low, dismissable tier, and a reading older than ~10 years reads as historical baseline rather than "retest overdue". A documented **positive immunity titer** (hepatitis A/B surface antibody, MMR/varicella IgG) is durable evidence — like a genetic result it never nags for a yearly retest, while a **negative or equivocal** titer keeps its normal clock (and the risk factors above can prioritize revaccination) — informational only, not medical advice. On the biomarker page that positive titer reads as a neutral **Immune** status (with a cross-link to your immunity record) rather than a red "abnormal" flag, and other context-neutral qualitative results (a blood type, a urinalysis color) are never mis-flagged as abnormal or nagged for retest; a purely qualitative analyte (positive/negative/immune) that has no numeric value renders as a dated timeline instead of a blank chart. Any item can be **snoozed** or **dismissed** (and restored later), and the same list feeds the optional Telegram "what's due" digest and the calendar feed
-- **Training** — workout history, goals, strength analysis, cardio records, sport summaries, and per-exercise history; the Overview tab carries a **Training watch** card of calm, dismissible observations over your recent training — a push/pull volume imbalance, an exercise that's gone quiet (in your rotation but untrained for a few weeks), and a lift whose estimated 1RM has **plateaued** (~6 weeks flat → try a deload or a variation) — kept separate from the next-workout suggestion; a workout's **⋯ → Merge with…** menu folds two of that day's activities into one for duplicates no auto-detector caught (undoable) — and when the two genuinely disagree on a field (e.g. duration 42 vs 51 min) a quick preview lets you pick which value to keep per field. Manually logged activities also get an **estimated calorie burn** — computed from a baked MET (metabolic-equivalent) table, the activity's type/intensity/duration, and your nearest bodyweight — which auto-fills on the activity form (editable, so you can override it) and rolls into the weekly recap; it's always shown as an estimate (`≈`) and kept separate from device-measured calories (imported activities keep their device value). For logging at the gym rather than after the fact, **Start workout** (the command palette, the Journal header, or the mobile top bar) opens the same editor in a **live** layout: today's date and start time are pre-stamped, each lift's coached next set is pre-seeded so you just confirm it, and a client-side **rest timer** (a lift-appropriate default — longer for heavy compounds, shorter for accessories — with preset chips and a beep/vibrate at zero) starts automatically when you log the next set; **Finish workout** stamps your end time and drops back to the normal form for notes and intensity. It's a strength-focused surface, so it's hidden for age-restricted profiles. A non-strength session can also be tagged with the **gear** it used — a bike for a ride, shoes for a run — picked from your **Equipment** registry, with the picker filtered to what fits the activity (only bikes for a ride, only shoes for a run) and defaulting to the last gear you used for that kind of activity (your last-worn shoes for a run, your last-ridden bike for a ride); the linked gear shows as a chip on the workout card that links to its detail page (strength keeps its separate per-set implement tags)
-- **Equipment** — your per-profile registry of bars, implements, cardio gear, and recovery devices, at **/equipment** (reached from the activity form's "Manage equipment"/"Add equipment" link — shown even before you own any gear, so it's a bootstrap door — a link in the Training page header, the command palette, a workout card's gear chip, or a protocol's gear reference — it's an occasionally-visited inventory, not a top-level nav item). The index groups gear by kind (strength / cardio / recovery / other) with an active/retired split and a per-item **usage** badge; each item's **detail page** shows its category, own weight, when it was added, and the usage payoff — sessions count, last used, total volume lifted (or total distance for shoes/bikes) with a small trend chart — and is where you **retire** (soft-hide, keeping history) or **delete** it. Gear you no longer own is retired rather than deleted so "which bar did I PR on" survives. Your registry also **shapes suggestions**: once you own gear, the exercise picker and the "train today" recommendation (dashboard, Training overview, and the Telegram nudge — one shared computation) **prefer lifts you can actually do**, gently de-ranking (never hiding) ones whose implement you don't have; an **empty** registry means "everything's available" (the gym-goer default), so gating only kicks in once you've listed some gear
-- **Trends** — charts and analysis in one place, tab by tab: **Overview** (the default landing tab — a "what's trending" digest of pinnable tiles), **Body** (weight, body fat %, resting heart rate, plus a **Log vitals** quick-add for blood pressure, glucose, SpO₂, temperature, sleep, and HRV — the same measures the Health Connect exporter syncs, so manual and synced readings share one home, plus a **Data check** card that flags a probable-error day-over-day weight jump (a scale glitch or a kg/lb entry mix-up) before it skews the charts, and impossible values are rejected at entry — and for the **functional-fitness markers** grip strength (kg), 30-second chair-stand (reps), and single-leg balance (seconds)), **Fitness** (a GitHub-style **workout-density heatmap** — one cell per day over the trailing 12 months, shaded by how many sessions you logged, with each active day deep-linking to its Timeline view; plus strength/cardio/sport progress and a **training-intensity distribution** — weekly heart-rate-zone minutes, weekly **Zone 2** volume vs a configurable target, and the easy/hard **polarization split**, computed from per-minute HR scoped to your workout windows; zones use Karvonen heart-rate-reserve when a resting HR is known, else % of max HR, with the formula shown and a manual max-HR override in **Settings → Profile**), **Biomarkers** (including a **Trajectory watch** that warns before a reading crosses a line — a value projected to cross its reference/optimal boundary, a persistent non-optimal pattern, or a fast decline/rise; and, when a **diet-responsive** marker (omega-3 index, ferritin/iron, B12, folate, magnesium, potassium, vitamin D) reads low, a deterministic **food-first suggestion** on the biomarker detail page — the curated food sources that address it, each **safety-screened** against your allergies (a fish allergy swaps fatty fish for an algae/ALA alternative), medications (a warfarin stack carries the keep-vitamin-K-consistent note), and conditions (CKD withholds a "more potassium" nudge), citing the flagged marker as its reason and **informational, not medical advice**, from a baked dataset (`lib/nutrient-food-map.json`, regenerated with `npm run gen:nutrient-food-map`), plus an optional AI **lab-trend interpretation** that reads recent movements against your medications and conditions; **VO₂ Max and the functional-fitness markers** — grip strength, chair-stand, single-leg balance — also get an **age/sex percentile** and an inverse **fitness age** on the biomarker detail page and inline in the Biomarkers table, computed from published population norms — VO₂ Max from the **FRIEND registry** (Kaminsky et al., _Mayo Clin. Proc._ 2015), grip strength from **Dodds et al.** (_PLoS ONE_ 2014), chair-stand from the **Rikli & Jones** Senior Fitness Test, and balance from **Springer et al.** (_J. Geriatr. Phys. Ther._ 2007) — baked into `lib/fitness-norms.json` (regenerated with `npm run gen:fitness-norms`); informational only, and shown only for an adult profile with sex and birthdate on file; conversely, **child profiles** get **age-appropriate interpretation** — age-banded pediatric reference ranges for the labs that shift with growth (e.g. alkaline phosphatase, which is normal-high in a growing child) resolve a reading against the subject's **age at the collection date** instead of the adult range, and a child's **blood pressure** is scored by the **AAP 2017** age/sex/**height-percentile** tables into **Normal / Elevated / Stage 1 / Stage 2** with its percentile-for-age, rather than the adult cutoffs — baked into `lib/bp-percentiles.json` (regenerated with `npm run gen:bp-percentiles`)), **Compare**, and Claude-powered **Insights** (a daily analysis of your activity, metrics, and goals, plus **weekly/monthly recap** narratives)
-- **Household** — for any login that can reach more than one profile (an admin, or a caregiver **member** granted several profiles), a cross-profile overview: one card per person showing today's **attention items** — supplement/medication doses due, low refills, and the next scheduled visit — alongside at-a-glance stats. **Confirm** a due dose for anyone straight from their card **without switching profiles** (the button shows only where you have write access; a read-only grant sees the card but no actions), or tap a card to open that profile. Hidden for single-profile logins.
-- **Goals** — set targets, track progress bars, mark achieved/archived; a body-weight goal that's off pace for its target date surfaces a calm **Goal pacing** note (trending away, or landing well past the deadline at your current robust trend), alongside a gentle safe-rate caution when weight is dropping faster than ~1%/week — each dismissible
-- **Nutrition** (`/nutrition`) — a food-group serving log at the **habit tier**, deliberately _not_ a calorie counter. A curated ~24-group catalog (fatty fish, leafy greens, legumes, nuts & seeds, whole grains, red/processed meat, sugary drinks, alcohol, …; `lib/food-groups.json`, regenerated with `npm run gen:food-groups`) is logged as **servings, one tap each** (undo decrements), grouped by whether the guidance is to eat _more_, _balance_, or _less_. A **weekly rollup** — ONE pure computation (`lib/food-log.ts`) — feeds both the on-page "this week" card and the **Trends → Nutrition** tab, and food-habit target progress, so the surfaces can't disagree. The page also surfaces the deterministic food suggestions from your flagged labs (#577) as "food before pills," each offering a one-tap **Track as weekly habit**. A **Weekly habits** card makes "fatty fish 2×/week" a first-class **food-habit target** — a `food_group` scope on the same `frequency_targets` table the training weekly-routine uses, so its progress is the same weekly serving rollup (one question, one computation) and it can be adopted by a **Protocol** as an intervention. A behind-target habit surfaces as a calm, dismissible **coaching** observation (never a notification). This granularity is where dietary evidence actually lives ("2 servings of fatty fish a week") and is sufficient for the biomarker→food and habit-target features; full macro tracking stays possible later as an additive tier. Informational, not medical advice
-- **Benchmarks** — estimated 1-rep maxes (Epley) and a single **bodyweight-band strength-standard** model that drives every "Level" surface from one computation: the per-lift **Level** badge, the Analyze **Benchmarks** ladder, an exercise-detail coaching line, and a healthspan pillar all agree because they read the same source. It places your estimated 1RM among beginner→elite standards **for your exact bodyweight and sex** and tells you how far to the next level ("at the intermediate standard for men at your bodyweight — 12 kg to advanced"). Thresholds are **derived, not scraped** (no proprietary tables): the project's own anchor ratios scaled by bodyweight^(2/3) — the cross-sectional-area law (Lietzke 1956) — and interpolated between bodyweight bands, baked into `lib/strength-standards.json` (regenerated with `npm run gen:strength-standards`). Covers the main barbell lifts (back/front squat, bench, incline bench, overhead press, deadlift) and the weighted pull-up/chin-up; shown only when sex and a bodyweight are on file, informational only
-- **Medical** — vitals, labs, genomics, biomarkers, conditions, allergies, procedures, family history, immunizations, **visits** (one page pairing **Upcoming** appointments — booking, kinds, reminders — with your **Past** encounter history; a single **Add visit** entry branches on tense — a future date books an appointment, a past date logs a visit — so you never pick between two forms; completing an appointment can **log a linked visit**, and a synced encounter auto-completes the appointment it matches), a shared **Providers** registry, a Passport summary, and an offline **Emergency Card**. **Providers** (`/providers`) is the instance-wide directory of your clinicians and organizations, minted automatically from imported Care Teams: a provider name links wherever it renders (records, visits, prescribers) to a detail page with a global identity card (name, NPI, phone, address — admin-only to edit) and the active profile's activity with that provider (visits, labs, medications, immunizations, procedures, care plan). A stored address (on the provider card, and on visits/appointments that resolve to a facility) gets an **Open in Maps / Directions** link that opens the address in your own maps app — the only thing that leaves the box is the address you clicked, sent by your browser (no geocoding, no stored coordinates, no map tiles). Import-minted duplicates ("John Smith MD" / "Dr. John Smith") can be **merged** by an admin — one transaction re-points every linked record onto the survivor. When you enter a **condition** by its everyday name without a code, Allos suggests a matching **ICD-10-CM** diagnosis code from a baked common-conditions map (`lib/icd10-common.json`, regenerated with `npm run gen:icd10`) that you confirm with one tap — public-domain ICD-10-CM only (SNOMED deliberately avoided), so the code travels with the record into the FHIR export and sharpens cross-document de-duplication. **Coverage gaps** (`/coverage`, under Medical) surfaces the biomarkers, medications, and conditions on your record that the curated catalogs _don't_ cover yet — where the app would otherwise silently fall back to defaults (no reference range, flag, retest cadence, interaction, or description). Track one to fill it two ways: **generate descriptive context with your configured AI** (with `AI_BASE_URL` pointed at a local inference server this stays on the box — zero egress) — labeled "AI-generated, unverified" and **descriptive only** (it never sets a reference range, flag, or interaction; curated data drives all clinical logic) — or file a **de-identified catalog request** to the maintainer (a copy-to-clipboard blurb or a prefilled GitHub-issue link you review and submit yourself, carrying only the item's public name/code — never your values, dates, or profile). A tracked gap that a later catalog update covers shows a **"now available"** state. Informational, not medical advice. Standard **derived indices** (Non-HDL cholesterol, triglyceride/HDL ratio, HOMA-IR, race-free CKD-EPI 2021 eGFR, and Levine **PhenoAge** — a biological-age estimate in years) are computed from your existing labs and shown alongside them, marked "derived" with their formula (eGFR/HOMA-IR/PhenoAge only appear when the needed labs and age/sex are on file; PhenoAge requires a full nine-analyte draw and an adult profile). PhenoAge is also surfaced as a **biological-age card** pinned above the Biomarkers table: your estimated biological age, how it compares to your calendar age (younger is better), your pace of aging across draws, and the nine inputs it's built from — with a checklist prompt when the panel is incomplete. It's framed as a population-level estimate (Levine 2018, NHANES-validated adults ~20–84), is hidden for child profiles, and is also available as an opt-in **Biological age** dashboard widget (Customize)
-- **Allergies** — documented allergies merged with allergen-specific IgE sensitizations detected from your labs (RAST / ImmunoCAP), plus informational **cross-reactivity** notes from a curated reference dataset of well-established families (birch-pollen oral allergy syndrome, latex-fruit, crustacean/mollusk shellfish, cashew-pistachio & walnut-pecan tree nuts, mammalian milk). Shown on the Allergies page and the Passport, framed as "commonly cross-reacts with" — reference only, never a diagnosis
-- **Immunizations** — record vaccines and doses, track them against the CDC schedule (due / overdue / up to date), and see immunity titers pulled from your labs. Age-inappropriate childhood-only vaccines with no adult catch-up (rotavirus, the childhood PCV/Hib series) are shown as **not applicable** for adults rather than surfaced as gaps, and the self-declared **Health risk factors** rank up the vaccines they make more important with a calm reason line (immunocompromised / dialysis → pneumococcal & meningococcal, healthcare worker → hepatitis B / influenza / MMR / varicella, pregnancy → Tdap & influenza) — informational only, not medical advice
-- **Health-record import** — pull immunizations, labs, and vitals straight from a MyChart “Download Summary” (CCD/XDM), a SMART Health Card, or an Epic / Apple Health FHIR bundle; a FHIR bundle's **Appointment** resources also import into your scheduled appointments (they appear on the Visits page and Upcoming)
-- **Supplements & medications** — schedule intake and check off each dose as **taken**, **skipped**, or clear (a tri-state — a deliberate skip is a decision, not a missed dose), with adherence and refill tracking. Skips are excluded from the adherence percentage and shown as their own count, never decrement your on-hand supply, and never trigger a missed-dose escalation; each reminder (web and Telegram) offers a **✅ take** and a **⏭ skip** beside each dose. The page also checks your **stack totals against safe upper limits** — it sums the active stack's daily dose per nutrient (across products, e.g. two magnesium forms) and warns when a total exceeds the NIH **Tolerable Upper Intake Level (UL)** for your age/sex ("800 mg supplemental magnesium/day — the UL is 350 mg"), respecting whether each UL is defined over _supplemental_ intake (magnesium, niacin, folic acid) or _total_ intake from all sources (vitamin A, D, calcium, iron). It's informational ("discuss with your clinician", never prescriptive) and the same warning surfaces as a dismissible **Upcoming** finding. Reference values are a baked, public-domain dataset from the NIH Office of Dietary Supplements / National Academies DRI tables (`lib/dri.json`, regenerated with `npm run gen:dri`). The same data drives a calm **RDA-adequacy** read alongside the UL warnings — for a nutrient your stack supplements _below_ its NIH **Recommended Dietary Allowance**, it notes the share your supplements alone provide ("your supplements alone provide about 50% of the calcium RDA") and, where a food-first source exists, links it — worded carefully as _what your supplements contribute_, **never "you are deficient"** (food intake is unknown, so a low supplemental share is not a shortfall), the deliberate inverse of the definite over-UL case. The page also runs **drug-interaction checking** across your active stack — because supplements and medications live in one place, it catches the **supplement-drug** interactions pharmacy systems miss (St. John's Wort × an SSRI, vitamin K × warfarin, calcium/iron × levothyroxine) alongside the classic drug-drug ones (warfarin × NSAIDs, statins × macrolides, an SSRI × an MAOI). Each interacting pair shows a **severity-ranked** warning (major / moderate / minor) with a one-line mechanism and a source citation, there's an inline notice when you **add or edit** an item that would interact, and the same finding is a dismissible **Upcoming** item — all **informational, "discuss with your prescriber or pharmacist", never prescriptive** (absence of a flag doesn't mean a combination is safe). Detection runs against a bundled, public-domain-sourced dataset (`lib/drug-interactions.json`, regenerated with `npm run gen:interactions`); to match on a stable code rather than only the name, an item's name can be normalized to an **RxNorm** concept (RxCUI) you **confirm** on its edit form (see **Privacy** below). **Combination medications** are handled too: confirming a code also resolves and caches the product's **active-ingredient** RxCUIs (so a combo like losartan/HCTZ matches every ingredient's interactions, not nothing), and common combination brand names (Hyzaar, Zestoretic, Vytorin, Glucovance, …) are in the name-matching vocabulary for items without a code. Alongside drug–drug checking, each item also carries **food–drug guidance** — the classic per-item food notes that need no second medication (grapefruit × statins / calcium-channel blockers, vitamin-K foods & alcohol × warfarin, dairy/minerals × tetracyclines, fluoroquinolones & levothyroxine, tyramine foods × MAOIs, alcohol × metronidazole): a short line on the medication/supplement row ("Grapefruit: avoid grapefruit juice — it raises statin blood levels"), the same notice when you **add or edit** a matching item, and a food note folded into the dose-reminder message. These are also **informational, never prescriptive**, from a curated, cited, hand-maintained public-domain dataset (`lib/food-drug-interactions.json`, keyed on RxNorm ingredient CUIs with a name/synonym fallback). The page also surfaces **adherence patterns** — calm, dismissible observations over your recent dose history that say _where_ your misses cluster and suggest a concrete schedule tweak: a specific weekday you tend to slip ("you miss your evening dose most Fridays — moving it earlier tends to help") or a weekend-vs-weekday gap. Pure, threshold-based detection (`lib/adherence-patterns.ts`) over the same taken/skipped/missed states the adherence strip is built from; each one can be dismissed through the shared findings bus. Each item can also carry a **schedule context** so it surfaces only when it applies: **daily**, **pre-workout** / **post-workout** / **rest day** (a pre-workout supplement is due on the days you _usually_ train — inferred from your recent cadence — so its reminder can land before the session, not only after you log it; a post-workout item waits until an actual session is logged), or **situational** — a lightweight, non-clinical context toggle (**Illness**, **Travel**, **High stress**, **Poor sleep**) you flip on the **Situations** bar; a situational supplement shows only while its situation is active, and an active **illness/injury condition** on your record suggests turning the matching situation on so you don't toggle it twice. Your own **mandatory / high / low** priority is the sort order — always your call, never re-ranked by the app
-- **Undo delete** — deleting an activity, body-metrics entry, biomarker record, or supplement/medication offers a one-tap **Undo** toast; the row (and its children) is held for 24 hours and restored intact if you undo, then purged
-- **AI activity log** — every AI call and failure recorded to a file and streamed live in Settings → AI logs
-- **Server error log** — unexpected server errors (an unhandled exception in a Server Action, a route 500, a crashed background task) are persisted to `data/logs/errors.jsonl` and shown newest-first under **Settings → Errors** (admin only), so a recurring failure is visible after the fact instead of only in `docker logs`. Clients still see a generic error; the cause lands in this log only, and the size-capped file self-trims so a crash loop can't fill the disk
-- **Audit log** — a durable record of who accessed or modified which profile's data (logins in/out, profile switches, medical-file and share-link views, document uploads/deletes, and admin/family changes), reviewable with filters under **Settings → Audit** (admin only); identifiers only, never medical content, retained for a configurable window (default **24 months**, set under **Settings → Server → Audit-log retention**; the hourly notify tick prunes older events)
-- **Data hub** — bring data in (upload documents, paste logs, connect a device or service) under **Data → Import**, then see everything that has ever imported in one place under **Data → Review**, split into two sections that match how you actually read them: **Connected sources** lists only the recurring providers you've actually set up — each currently connected, one you connected before and later removed (which keeps showing its historical logs as a **Not connected** card with a **Reconnect** link), or one whose token expired or was revoked (a **Needs reconnect** card — a dead connection self-marks and stops silently retrying forever, instead of looking healthy while never syncing); a provider you never configured is left out entirely rather than shown as an empty card. Each source collapses to one card showing its latest sync outcome + relative time + the new/changed/unchanged split, with an expandable recent-sync history, a per-provider **Sync now** for connected pull providers (Strava, Oura, and Withings; Health Connect is push-only, so its card explains the phone exporter drives it), and an admin **View raw** to inspect the exact provider payload; **Imports** is the chronological one-off feed of uploaded documents + pasted/CSV jobs, each showing what it produced and linking to its detail/verify view, with a **Re-extract all documents** button in its header that previews the AI cost before running (e.g. "9 health records re-imported instantly, no AI · 5 scans/PDFs — 5 AI extractions, 43 of 50 daily remaining"; an all–health-record run has no AI cost and skips the confirm). Spanning both sections at the top: any integration that's **currently failing**, and **possible duplicates** — a Strava run and a manual/Health Connect run on the same day, two same-source imports of one workout (upstream double-feeding, e.g. Strava ingesting the same session from both Garmin and Health Connect), or two body-metric rows that would double-count, detected across sources and resolved by **Merge**, **Keep both**, or **Dismiss** (Merge shows a per-field preview when the two rows disagree on a value), with the decision remembered so a later re-sync won't undo it — a device row you merge away or delete stays gone instead of silently re-importing on the next rolling-window sync (counted as **suppressed** in the feed split), and if a resync ever does re-form a merged pair it resurfaces here rather than hiding — all surfaced with a badge on the profile menu. Finally, browse and export everything you've logged under **Data → Manage & Export** — the "Export all my data" download is one portable ZIP (every dataset as JSON + CSV, the clinical passport as a FHIR bundle, and copies of your uploaded files), captured as a consistent point-in-time snapshot; it is a **portability artifact you can read or take elsewhere, not the restore path** — restoring an instance uses the [server backups](#backups) (`npm run restore`), not this ZIP. Integrations available today are **Google Health Connect**, **Strava**, **Oura Ring**, and **Withings** (Garmin planned)
+The short tour — [docs/features.md](docs/features.md) is the full guide, with every behavior, caveat, and data source spelled out.
 
-## Emergency card (offline)
-
-**Medical → Emergency Card** is a terse, printable summary of the facts a first
-responder needs when you can't speak for yourself: allergies (worst first),
-active medications with doses, major conditions, blood type, and an emergency
-contact — with an "as of" date so a reader knows how fresh it is. It reuses the
-same records as the Passport, so it never disagrees with them. Print it with the
-**Print** button (it has its own print stylesheet).
-
-Because the moment you most need it is often the moment you have no signal, the
-card can be kept **offline**: enable **Settings → Profile → Emergency card → "Keep
-an offline copy on this device"** and the card is cached (in this browser's
-localStorage) on each visit while online, so it stays readable with no network.
-When you're offline, the app's reconnect screen offers a **View emergency card**
-button instead of dead-ending.
-
-Offline caching is **off by default** and strictly opt-in, per profile: a cached
-card is readable on that device _without logging in_ — which is the whole point in
-an emergency, but also the trade-off if the phone is lost while unlocked. The
-offline copy is wiped automatically on logout and when you switch profiles, and it
-refreshes on your next online visit so a medication or allergy change propagates.
-Set your blood type and emergency contact on **Settings → Profile → Emergency
-card** (the blood type there overrides one derived from lab records).
-
-## Offline quick-log queue
-
-Logging often happens exactly where the signal doesn't: a set at a gym with dead
-reception, a dose on a flight, a weigh-in during an outage. For a small set of
-**idempotent quick-logs** — confirming a **dose taken** or **skipped** (Supplements &
-Meds), a **body-metric** weigh-in (Trends → Body), and a **vitals** entry (Trends → Body) —
-the app no longer fails when you're offline: it **queues the entry on your device**
-(in this browser's IndexedDB) and shows a "Saved offline — will sync when you
-reconnect" confirmation plus a **pending badge** counting the queued writes.
-
-On reconnect the queue **replays automatically** — on the browser's `online` event,
-on the next page load, and (on Chromium/Android, where it's supported) via the
-Background Sync API even if the tab was closed. Each queued write carries a
-client-generated key and the **date you captured it**, so a late sync lands on the
-right day and can never double-log: replays are applied exactly once and build on
-the existing per-dose/day and per-metric dedup. If your session expired while you
-were away, the queue is **kept** and you're prompted to log back in — nothing is
-silently dropped. If an entry can't be applied on replay — the server rejects it, or
-it keeps failing after several tries — it is **never silently discarded**: it's moved
-to a small **review panel** (with the reason) so you can re-enter it, rather than the
-badge just decrementing under a "synced" toast. As with the emergency card, the queue
-(and the review panel) are cleared on logout and profile switch.
-
-Everything else still needs connectivity: this is a queue for a few one-tap logs,
-not a general offline mode. Forms with server-derived state (anything that reads or
-computes against your existing data) stay online-only, and page navigation while
-offline still shows the reconnect screen.
+- **Dashboard** — attention-first: a pinned **Needs attention** banner (urgency-banded, the same computation as Upcoming so the numbers always reconcile) above a customizable widget grid, a household strip for multi-profile logins, and **Healthspan pillars** (VO₂ max percentile, strength standard, sleep regularity, biological age — separate signals, never one invented score)
+- **Timeline** — day-by-day history across activity, body metrics, labs, medications, documents, visits, goals, protocols, and milestones, with locally-computed sunrise/sunset chips once a home location is set
+- **Protocols** — dated N-of-1 experiments: compare a baseline window against an intervention window on the outcome metrics you pick, with templates, situation activation, and practice-adherence tracking
+- **Upcoming** — one forward-looking list of everything due (doses, refills, appointments, planned & preventive care, immunizations, biomarker retests, goal deadlines, training targets), risk-stratified by your history and risk factors, snooze/dismissable — the same list feeds the Telegram digest and the calendar feed
+- **Training** — workout history, goals, strength/cardio/sport analysis, a live in-gym workout mode with a rest timer, calm "Training watch" observations, duplicate merge with per-field conflict resolution, and estimated calorie burn
+- **Equipment** — a gear registry with usage stats and retirement (history survives); owned gear gently shapes exercise suggestions
+- **Trends** — Overview, Body (vitals quick-add, probable-error data checks), Fitness (a 12-month workout heatmap, HR-zone / Zone 2 / polarization analysis), Biomarkers (a trajectory watch, food-first suggestions for diet-responsive markers, age/sex percentiles & fitness age, pediatric reference ranges), Compare, and AI Insights
+- **Household** — a cross-profile overview card per person; confirm a due dose for anyone without switching profiles
+- **Goals** — targets and progress bars with calm pacing observations and a safe-rate caution
+- **Nutrition** — a one-tap food-group serving log (habit tier by design, not a calorie counter) with weekly habit targets and food-first suggestions from flagged labs
+- **Benchmarks** — estimated 1RMs placed on bodyweight- and sex-specific strength standards, one shared computation behind every "Level" surface
+- **Medical** — the full passport: vitals, labs, genomics, biomarkers, conditions (with ICD-10 suggestions), allergies, procedures, family history, immunizations, visits & appointments, care plan, a providers directory, coverage gaps, and derived indices (non-HDL, HOMA-IR, eGFR, **PhenoAge** biological age)
+- **Allergies** — documented allergies merged with IgE sensitizations detected from labs, plus curated cross-reactivity notes
+- **Immunizations** — doses tracked against the CDC schedule, with titer-aware immunity status
+- **Health-record import** — MyChart CCD/XDM "Download Summary", SMART Health Cards, and Epic / Apple Health FHIR bundles (scheduled appointments included)
+- **Supplements & medications** — schedules with tri-state dose confirms (taken / skipped / clear), adherence & refill tracking, NIH UL/RDA stack checks, drug–drug / supplement–drug / food–drug interaction warnings, adherence-pattern observations, and context-aware scheduling (pre/post-workout, rest-day, situational)
+- **Emergency card** — a terse, printable first-responder summary that can be kept offline per device (strictly opt-in) and stays readable with no login and no network
+- **Offline quick-log queue** — dose confirms, weigh-ins, and vitals queue on-device when you're offline and replay exactly once on reconnect; anything that can't be applied lands in a review panel, never silently dropped
+- **Undo delete** — deleting an activity, body-metric entry, biomarker record, or supplement/medication offers a one-tap 24-hour Undo
+- **AI activity log** — every AI call and failure recorded to a file and streamed live in **Settings → AI logs** (admin-only)
+- **Audit log** — a durable record of who accessed or modified which profile's data, identifiers only, with configurable retention (**Settings → Audit**, admin-only)
+- **Data hub** — bring data in (uploads, pasted logs, devices) under **Data → Import**, review every sync and resolve duplicates under **Data → Review**, and take everything with you via the **Export all my data** ZIP (JSON/CSV + FHIR passport + your files)
 
 ## Requirements
 
@@ -115,50 +66,16 @@ The SQLite database is created automatically at `data/allos.db` on first run
 
 ## Signing in
 
-The app is login-gated and multi-user. On first boot it creates a single **admin
-login** and a matching **profile**. Set **`ADMIN_PASSWORD`** (and optionally
-**`ADMIN_USERNAME`**, default `admin`) before that first boot to choose the
-credentials; if you don't set a password, a random one is generated and printed
-to the log **once** — capture it from the console/`docker logs`.
-
-> **Which log?** The bootstrap runs in whichever process opens the database
-> first. In the Docker setup that is usually the **notify sidecar** (it opens
-> the shared DB at startup, while the web app only touches it on its first
-> request) — so if the password isn't in the app container's log, check
-> `docker logs allos-notify`. After logging in, change the password in
-> Settings → Preferences so the logged value stops mattering.
+The app is login-gated and multi-user. On first boot it creates a single **admin login** and a matching **profile** — set **`ADMIN_PASSWORD`** (and optionally **`ADMIN_USERNAME`**, default `admin`) before that first boot; if unset, a random password is generated and printed to the log **once**. In the Docker setup the bootstrap usually runs in the **notify sidecar**, so check `docker logs allos-notify` if it isn't in the app container's log.
 
 Two concepts:
 
-- **Logins** are login identities (username + password). Roles are **admin** or
-  **member**; admins can access every profile and the admin screens.
-- **Profiles** are the people whose data is tracked. A profile needs no login —
-  adding a family member (e.g. a kid) is just a name.
+- **Logins** are login identities (username + password). Roles are **admin** or **member**; admins can access every profile and the admin screens.
+- **Profiles** are the people whose data is tracked. A profile needs no login — adding a family member (e.g. a kid) is just a name.
 
-Once signed in as an admin, manage everyone under **Settings → Family**: add or
-rename profiles, create logins, reset passwords, and grant each member login
-access to specific profiles (admins see all automatically). Any login can
-change its own password and turn on **two-factor authentication (2FA)** under
-**Settings → Preferences**.
+Admins manage everyone under **Settings → Family**: add or rename profiles, create logins, reset passwords, and grant each member login access to specific profiles. Each grant is **read & write** or **read-only** — enforced on the server (every mutating action is rejected for a read-only grant), not merely hidden in the UI.
 
-**Two-factor authentication (TOTP).** Any login can add a time-based one-time
-code from an authenticator app (Google Authenticator, Authy, 1Password, …) as a
-second step at sign-in — strongly recommended for admins. Enrolling shows an
-`otpauth://` URI + manual key and, after you verify one code, **8 one-time
-recovery codes** shown once (save them). At sign-in, a correct password then
-prompts for a code before any session is created. Passwords must be at least 10
-characters with a mix of character classes. If an admin is ever locked out (lost
-authenticator **and** recovery codes), the operator can set `ALLOS_DISABLE_2FA`
-(below) to bypass 2FA for that username at the next login — logged loudly and
-audited.
-
-Each grant carries an **access level**: **read & write** (the default — the
-member can view _and_ edit that profile) or **read-only** (view everything, but
-can't add, edit, upload, or delete). Pick the level per profile in the
-**Settings → Family** access matrix. A read-only member gets a "read-only" badge
-in the profile menu, and the boundary is enforced on the server — every mutating
-action is rejected for a read-only grant, not merely hidden in the UI. Admins
-always have full read/write on every profile.
+Any login can change its own password (minimum 10 characters, mixed character classes) and enroll **TOTP two-factor authentication** under **Settings → Preferences** — strongly recommended for admins; 8 one-time recovery codes are shown once at enrollment. If an admin loses both the authenticator and the recovery codes, the `ALLOS_DISABLE_2FA` env var (see **Configuration**) is the loudly-logged, audited escape hatch.
 
 ## Configuration
 
@@ -192,346 +109,35 @@ cp .env.example .env.local   # then edit in your values
 | `TRUST_PROXY`               | Optional. Set (`1`/`true`/`yes`) when the app runs **behind a reverse proxy** that sets `X-Forwarded-For`. Only then does the Telegram-webhook rate limiter trust that header to key its per-client budget; left unset (direct-to-Node exposure) the header is spoofable, so all webhook traffic shares one bucket. Has no effect on auth.  |
 | `TZ`                        | Optional. Timezone is DB-backed — the instance default under **Settings → Server**, per-profile under **Settings → Profile**; a `TZ` env only seeds the instance default on first boot.                                                                                                                                                     |
 | `DATA_DIR`                  | Optional (Docker). Host path for persistent data — see **Deploy with Docker**.                                                                                                                                                                                                                                                              |
-| `BACKUP_DEST_DIR`           | Optional. A **second mounted directory** to copy each verified snapshot to (and mirror `data/uploads/` to), so backups survive loss of the `DATA_DIR` volume — see **[Backups → Off-volume backups](#off-volume-backups-backup_dest_dir)**.                                                                                                 |
+| `BACKUP_DEST_DIR`           | Optional. A **second mounted directory** to copy each verified snapshot to (and mirror `data/uploads/` to), so backups survive loss of the `DATA_DIR` volume — see **[Backups → Off-volume backups](docs/backups.md#off-volume-backups-backup_dest_dir)**.                                                                                  |
 
 You can also `export` these directly instead of using a file.
 
-## Logging & the AI activity log
+## AI
 
-The app logs to stdout/stderr via a small leveled logger (`LOG_LEVEL`,
-`LOG_FORMAT`), so `docker logs` captures everything. Every AI call (extraction,
-suggestions, insights) and its outcome is also appended to
-`data/logs/ai.jsonl` — readable directly on the host and streamed live in
-**Settings → AI logs**, now with **token usage** (input / output) per call and a
-**today / 7-day rollup by feature × profile** so the admin whose API key everyone
-spends can see where it goes (tokens only — no dollar math; the model is recorded,
-so compute cost from your provider's prices). Failures surface there (and inline
-where you triggered them), not just in the console.
+AI is optional and degrades gracefully: with nothing configured, insights fall back to a deterministic offline summary and uploaded documents are stored but not extracted. Configure it two ways (see **Configuration**):
 
-Separately, **unexpected** server errors — an unhandled exception in a Server
-Action, a route 500, a crashed fire-and-forget task — are captured server-side to
-`data/logs/errors.jsonl` and surfaced newest-first under **Settings → Errors**
-(admin only). Every `error` that funnels through the central logger is persisted
-there with its logger scope, message, and a redacted, size-capped detail (any
-stack), tagged with the acting profile when a request context is in scope. Clients
-still get a generic error (the real cause never leaves this log); the file
-self-trims by size/line count so a crash loop can't fill the disk, and a Clear
-button empties it. This generalizes the "failures surface in the UI" pattern (the
-notification-delivery marker, backup health) to everything.
+- **`ANTHROPIC_API_KEY`** enables Claude-powered daily insights, **weekly/monthly recap narratives**, **lab-trend interpretation** (biomarker movements read in the context of your medications and conditions — observations, not diagnoses), and **medical-document extraction** (labs and vitals plus the full clinical narrative: conditions, allergies, procedures, visits, family history, care plan).
+- **`AI_BASE_URL`** points the app at a local Anthropic-compatible inference server (Ollama, a proxy, …) instead, for **zero external egress**; the endpoint and model are env-driven only and shown read-only under **Settings → Server → AI**.
 
-For debugging integration syncs, each sync can capture the raw provider payload
-(the Health Connect POST body, the Strava activity JSON, the Oura sleep/workout JSON) under
-`data/integration-payloads/<profileId>/`. These are byte-capped, retained
-newest-N per provider, and gitignored (part of `/data`). They're **admin-only**
-and profile-scoped: expand **View raw** on a sync in **Data → Review** to fetch
-one through an admin-gated route — members never see the affordance or the data.
+Proactive runs (supplement suggestions + a refreshed daily insight) can be put on a per-profile **cadence** (off / on document upload / daily / weekly / monthly) with an admin-set daily ceiling. Every AI call is appended to `data/logs/ai.jsonl` and streamed live under **Settings → AI logs** (admin-only), with per-call token usage and a today / 7-day rollup by feature × profile. Drug-interaction checking runs entirely **on-box** — the optional, user-initiated RxNorm name lookup is its only network egress (one drug name out, candidate codes back, nothing else).
 
-## AI Insights
-
-Insight generation works out of the box with a built-in offline summary. Set
-`ANTHROPIC_API_KEY` (see **Configuration**) to enable **Claude-powered**
-coaching analysis, then use **Trends → Insights → Generate analysis**.
-
-Beyond the single-day insight, two AI **narratives** read across your history:
-
-- **Weekly / monthly recap** (**Trends → Insights**) — a narrative of your
-  training, adherence, and body-metric trends over the last week or month,
-  grounded in the same recap facts the dashboard **Weekly recap** card shows.
-- **Lab-trend interpretation** (**Trends → Biomarkers**) — an optional read of
-  your recent biomarker movements _in context_ (medication start/stop dates and
-  conditions), so a change reads as "LDL up since the statin was stopped" rather
-  than a bare number. Observations, not diagnoses — it points you at what to
-  raise with a clinician.
-
-Both are stored (like daily insights) and regenerate on demand. Without a key
-they fall back to a deterministic offline summary. Their per-profile daily cap is
-`AI_DAILY_NARRATIVE_LIMIT` (default 30).
-
-**Recommendation runs.** Instead of hitting Generate by hand, you can put the
-proactive AI features (supplement suggestions + a refreshed daily insight) on a
-**cadence** per profile — **off**, **on document upload only** (the default),
-**daily**, **weekly**, or **monthly** — under **Settings → Profile → AI
-recommendations** (admin-editable; the admin owns the API key). A scheduled run
-fires lazily on a page view once the period has elapsed, and only when the
-underlying data actually changed (an unchanged input signature skips the run,
-logged in **Settings → AI logs**). The admin sets a per-profile **max runs per
-day** ceiling on **Settings → Server**. Runs happen only in the web app, never the
-notification tick.
-
-Uploaded medical documents (**Data → Import**) are extracted into
-structured records by the same API — not just labs, vitals, and immunizations but
-the full clinical narrative a scanned/photographed summary carries: **conditions,
-allergies, procedures, visits, family history, and care-plan items & goals**, the
-same domains the MyChart/FHIR importer produces (a discharge or after-visit summary
-with no numeric analytes no longer imports as "0 records"). Without a key the file
-is still stored but extraction is skipped. Each upload then appears in the **Data →
-Review** feed —
-click through to verify what it produced, reprocess it, or see the extraction
-error. The detail view browses everything the import produced in one tabbed
-strip — one tab per type (labs, vitals, prescriptions, visits, conditions,
-allergies, immunizations, procedures, family history, care plan/goals,
-medications, body metrics), each row linking to where it now lives.
-
-### Local / self-hosted inference (zero external egress)
-
-For a fully private setup, point the app at a **local inference server** that
-exposes an Anthropic-compatible API (Ollama and others, or a translating proxy)
-by setting `AI_BASE_URL` (e.g. `http://localhost:11434`). Then **no request ever
-leaves your machine beyond that endpoint** — the SDK talks only to the configured
-base URL. Local servers usually ignore the API key, so `ANTHROPIC_API_KEY` is
-optional when `AI_BASE_URL` is set (a placeholder is sent to satisfy the SDK);
-AI counts as configured when **either** is present.
-
-The endpoint and model are **environment-driven only** — the active endpoint,
-model, and configured/offline status are shown read-only under **Settings →
-Server → AI** (not editable in the UI, so no endpoint or credential is stored in
-the database). Each entry in the AI activity log is tagged with the backend host
-so you can tell which endpoint produced it.
-
-Quality trade-off: coaching **insights** and supplement **suggestions** work
-well on capable local models, but **medical-document extraction** is demanding
-(long documents, structured tool output) — a small local model may extract less
-reliably than Claude. Everything still degrades gracefully: with neither
-`ANTHROPIC_API_KEY` nor `AI_BASE_URL` set, insights fall back to the offline
-summary and uploads are stored but not extracted.
-
-### Privacy — the RxNorm lookup is the only interaction-checker egress
-
-Drug-interaction checking runs entirely **on-box** against the bundled
-`lib/drug-interactions.json` dataset — no interaction API is called at request
-time, and detection works with **no network at all**. The single, optional
-exception is the **name → RxNorm** normalization: when you press **Find RxNorm
-code** on an item's edit form, the app sends **just that drug/supplement name**
-(no profile id, no other PHI) to NLM's public **RxNav `approximateTerm`** service
-to fetch candidate codes for you to confirm, and when you confirm one it sends
-**just that code** back to RxNav (`/rxcui/{id}/related`) to resolve the product's
-active-ingredient codes (how combination medications get matched). Those are the
-**only** things the feature ever sends off the box. The lookup has a short timeout and **degrades silently** —
-if it's unreachable (or you never use it), the item simply has no RxCUI and
-interactions still match by name. Nothing about interaction detection, the
-`/medicine` warnings, or the Upcoming finding contacts the network.
+The full guide — insights & narratives, recommendation runs, the extraction pipeline, local-inference setup and its quality trade-offs, logging, and the exact privacy posture — is [docs/ai.md](docs/ai.md).
 
 ## Integrations
 
-Connect outside services under **Data → Import** so your health data syncs
-automatically. Each provider has its own setup page (linked from the Import tab's
-"Connect a device or service" card). **Google Health Connect**, **Strava**,
-**Oura Ring**, and **Withings** are available today; **Garmin** is scaffolded as
-"coming soon".
+Connect devices and services under **Data → Import**:
 
-### Google Health Connect
+- **Google Health Connect** — push-based: an authenticated ingest endpoint here, fed by a phone exporter app on a rolling 48-hour window (weight, body composition, steps, sleep + stages, continuous HR, HRV, exercise sessions, vitals, nutrition, and more — including a **Sleep Regularity Index** card once enough nights accumulate)
+- **Strava** — OAuth; runs/rides with HR, pace, elevation, power, and a GPS route thumbnail rendered locally from the stored polyline (no map tiles, no external requests)
+- **Oura Ring** — a pasted personal access token; sleep + stages, nightly HRV, resting HR, workouts
+- **Withings** — your own OAuth app; scale and BP-cuff measurements, body composition, SpO₂, temperature, sleep
+- **Calendar feed** — an outbound `.ics` subscription per profile (choose which categories it carries and how much PHI each event shows), plus a consolidated per-login **family calendar**
+- **Garmin** — planned
 
-Health Connect is an Android **on-device** API, so data leaves the phone via an
-exporter app that POSTs to this app. The integration is **push-based**: you enable
-an authenticated ingest endpoint here and point the exporter at it.
+Every sync is **incremental and idempotent**: rows dedup on natural keys so re-fetches never double-count, incoming values are sanity-checked against a physiological envelope, **manually entered rows are never overwritten**, and a row you've hand-edited survives the next sync. When two sources report the same metric, additive metrics are never summed across sources, and a **Compare sources** section (**Trends → Body**) appears with a per-metric **primary source** picker.
 
-1. Go to **Data → Import → Google Health Connect** and click **Generate token &
-   enable**. The page shows your **Endpoint URL** and **Bearer token**.
-2. Install [Health Connect Webhook](https://github.com/mcnaveen/health-connect-webhook)
-   on your phone (Android 14+, with Health Connect installed) and grant it the
-   health permissions you want to sync.
-3. In the app, add a webhook with the **Endpoint URL** and an `Authorization:
-Bearer <token>` header, then pick a sync schedule (a 15–60 min interval and/or
-   fixed times). Each sync sends new records from a rolling 48-hour window.
-4. Tap **Sync Now** to test.
-
-**What gets imported** (mapped from the app's native payload):
-
-| Health Connect data                                                 | Where it lands                                                                                                                                                                 |
-| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Weight                                                              | **Trends → Body** (one imported weigh-in per day)                                                                                                                              |
-| Body fat, resting HR                                                | **Trends → Body** charts (kept lossless even on days without a weigh-in)                                                                                                       |
-| Steps, distance, calories                                           | **Trends → Body** charts (daily totals)                                                                                                                                        |
-| Sleep                                                               | **Trends → Body** charts: total per night + a stacked deep/REM/light/awake stage breakdown (attributed to the wake-up day), plus a **Sleep Regularity Index** card (see below) |
-| Heart rate (continuous)                                             | Bucketed to 1-minute averages → daily + intraday HR charts                                                                                                                     |
-| Heart rate variability                                              | Stored per day                                                                                                                                                                 |
-| Exercise sessions                                                   | **Training history** (cardio or sport activities)                                                                                                                              |
-| Blood pressure, glucose, SpO₂, body temp, respiratory rate, VO₂ max | **Medical / Biomarkers** (with reference-range flags)                                                                                                                          |
-| Lean mass, bone mass, BMR, height                                   | **Trends → Body** charts (height also drives a BMI chart)                                                                                                                      |
-| Hydration                                                           | **Trends → Body** chart (liters/day)                                                                                                                                           |
-| Nutrition                                                           | **Trends → Body** charts: calories + a protein/carbs/fat macros breakdown                                                                                                      |
-
-Ingest is **idempotent**: the rolling 48-hour window means records are resent, so
-imports dedup on natural keys (time windows) and never double-count. Manually
-entered rows are never overwritten by a sync.
-
-### Sleep Regularity Index (SRI)
-
-Consistency of sleep timing turns out to predict mortality risk _better than sleep
-duration_ (Windred et al., "Sleep regularity is a stronger predictor of mortality
-risk than sleep duration", _SLEEP_ 2023, UK Biobank; the index itself is from
-Phillips et al., _Sci. Rep._ 2017). So beyond the nightly-duration chart, **Trends →
-Body** shows a **Sleep Regularity Index** card once you have enough recorded nights
-(a rolling 28-night window with a minimum-nights gate). The SRI runs −100 (fully
-irregular) to 100 (a perfectly reproducible schedule) and measures the probability
-of being in the same sleep/wake state at the same clock time on consecutive days.
-Alongside it are two companions — the standard deviation of your bedtime and
-wake time, and **social jetlag** (how much your mid-sleep shifts between weekdays
-and weekends). All clock math is done in your **profile timezone**, so DST changes
-and travel don't distort it, and missing nights are skipped (never treated as
-"awake") rather than faked. The current SRI also rides the **weekly recap**.
-
-Incoming records are also **sanity-checked**: values outside a wide physiological
-envelope (e.g. a 5,000 kg weight, a 500 bpm heart rate, negative steps, an SpO₂
-above 100 %) or with an implausible timestamp (before 1900 or more than a day in
-the future) are dropped and counted as **skipped** in the Review feed's
-"· N skipped" tally, rather than poisoning trends and coaching. (A row the source
-re-sends that you had merged away or deleted is likewise held out and counted
-**suppressed**, so it can't resurrect.) A single payload
-is also capped at 10,000 records (a generous ceiling above any real 48-hour batch);
-an over-cap push is rejected with a `400` and a recorded sync failure.
-
-The token is normally managed in the UI (Data → Import → Google Health Connect),
-where you can **rotate** it in one click, set an optional **expiry** (90 days / 1
-year / never), and see when it was **last used**. `HEALTH_CONNECT_TOKEN` is a
-**headless-bootstrap-only fallback** (see `.env.example`) that maps to profile 1;
-it has no expiry, rotation, or last-used tracking, so prefer generating a
-DB-backed token in the UI once the app is reachable. **Keep the token secret** —
-anyone with it can post data to your instance.
-
-The calendar `.ics` subscribe feed (Data → Import → "Connect a device or service" → Calendar feed) shares
-the same lifecycle controls — rotate the link, set an optional expiry, and see the
-last fetch time. Rotating either token immediately invalidates the previous one,
-and an expired token is rejected exactly like an invalid one.
-
-**Customize what the feed contains** (per profile, right on the setup page): pick
-which categories become calendar events — medical **appointments** (the default),
-plus optional **doses due**, **refills running low**, **planned care**, **preventive
-visits & screenings due**, **immunizations due**, **biomarker retests**, **goal
-deadlines**, and **training targets** — toggle the
-1-day/1-hour **reminders** on or off, and bound the **past window** and optional
-**future horizon**. A **minimal ↔ full** detail switch controls PHI for every
-category (minimal emits only a neutral label like "Medical appointment"; full sends
-the real name/provider/reason). The in-app **Preview** mirrors exactly what a
-subscribed calendar will receive at the current settings. Defaults preserve the
-historical behaviour (appointments only, reminders on, 30-day past window), so an
-existing subscription is unchanged until you opt in.
-
-The same page also offers a **Family calendar** — one consolidated `.ics` feed (and
-an in-app preview grouped by date) that merges the upcoming appointments of **every
-profile you can access** into a single calendar, each event labeled with the
-profile's name. Its token is per **login** (not per profile), so it rides the same
-rotate/expiry/last-used lifecycle, and the set of profiles it exposes is resolved
-**live on each fetch** from your current grants — losing access to a profile removes
-it from the feed at once, and deleting the login kills the feed. Each profile keeps
-its **own** detail level, so a profile set to minimal still shows only "Medical
-appointment" even inside the shared feed.
-
-### Strava
-
-Connect once with OAuth and your runs, rides, and other activities sync
-automatically — with heart rate, elevation, pace, calories, and cycling
-power/cadence. A synced activity's **GPS route** (Strava's summary polyline,
-which respects your privacy zones) is captured too and drawn on its Journal card
-as a small **tile-free SVG route thumbnail** — the route's shape, rendered from
-the stored polyline with no basemap and **no map tiles or external requests**
-(nothing about where you were leaves the box).
-
-1. Create an API application in your [Strava API settings](https://www.strava.com/settings/api)
-   to get a **Client ID** and **Client Secret**.
-2. Set the shared **Settings → Server → Public app URL** — it's used to build
-   Strava's OAuth redirect (the callback carries your session cookie, so it must
-   be the URL you're signed in on).
-3. Go to **Data → Import → Strava**, enter the Client ID and Secret, then click
-   **Connect with Strava** and authorize.
-4. Hit **Sync now** to pull recent activities; new ones sync automatically
-   afterward. Manually entered rows are never overwritten.
-
-### Oura Ring
-
-Oura's API v2 supports **personal access tokens** — so there's no OAuth app,
-redirect, or callback URL to set up. You paste a token and the app pulls your data
-from Oura's REST API on the hourly tick (and on demand).
-
-1. Sign in to the [Oura developer portal](https://cloud.ouraring.com/personal-access-tokens)
-   and **create a personal access token**.
-2. Go to **Data → Import → Oura Ring** and paste the token, then click **Connect
-   Oura**. The token is validated with an Oura whoami call (`GET
-/v2/usercollection/personal_info`) before it's saved — a bad or expired token is
-   rejected up front.
-3. Sleep, HRV, resting heart rate, and workouts then sync automatically every hour;
-   hit **Sync now** any time. **Disconnect** clears the stored token.
-
-**What gets imported** (mapped from the Oura API v2 responses):
-
-| Oura data                                | Where it lands                                                                                                     |
-| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| Sleep (nightly `long_sleep`)             | **Trends → Body** charts: total per night + a deep/REM/light/awake stage breakdown (attributed to the wake-up day) |
-| Nightly HRV (average RMSSD)              | **Trends → Body** (stored per day)                                                                                 |
-| Resting heart rate (lowest during sleep) | **Trends → Body** charts                                                                                           |
-| Workouts                                 | **Training history** (cardio / strength / sport, with distance + calories)                                         |
-
-The sync is **incremental and idempotent**: a per-profile cursor tracks the newest
-synced day, each run re-scans a short trailing window (so a night Oura finalizes a
-day late isn't missed), and every row dedups on its natural key (the sleep bedtime
-window, or `oura:<workout-id>`) so re-fetches never double-count. **Manually entered
-rows are never overwritten**, and a row you've hand-edited is left untouched on the
-next sync. Rate limits (HTTP 429) truncate the run and keep the cursor so the next
-tick resumes. Naps/rest periods and Oura's baseline-relative **temperature deviation**
-are not imported (the latter has no home in the app's absolute-value metric vocab).
-
-### Withings
-
-Withings makes the clinical home devices — smart **scales**, **blood-pressure
-cuffs**, and sleep sensors — and its developer API is open to individual
-registration (no partner program), so you can connect it with your own OAuth app.
-The app pulls your measurements from Withings' REST API on the hourly tick (and on
-demand), so no public webhook is required.
-
-1. Register an application in the [Withings developer dashboard](https://developer.withings.com/dashboard/)
-   and set its **Callback URI** to the URL shown on the setup page
-   (`https://<your-app-domain>/api/integrations/withings/callback`). The callback
-   carries your session cookie (SameSite=Lax), so it binds to the active profile and
-   requires a live session — it is **not** a public endpoint. Set the **Public app
-   URL** in **Settings → Server** first if you're behind a reverse proxy, so the
-   callback resolves to a reachable address rather than localhost.
-2. Go to **Data → Import → Withings**, enter the Client ID and Secret, then click
-   **Connect with Withings** and authorize (scope `user.metrics,user.activity`).
-3. Measurements then sync automatically every hour; hit **Sync now** any time.
-   **Disconnect** clears the stored tokens but keeps your entered credentials so you
-   can reconnect without re-pasting them.
-
-**What gets imported** (mapped from the Withings measure + sleep APIs):
-
-| Withings data                         | Where it lands                                                                               |
-| ------------------------------------- | -------------------------------------------------------------------------------------------- |
-| Weight, body fat %                    | **Trends → Body** charts (stored per day, source `withings`)                                 |
-| Heart pulse (scale / BP cuff)         | **Trends → Body** resting heart rate                                                         |
-| Lean & bone mass                      | **Trends → Body** composition charts (`metric_samples`, one reading per weigh-in)            |
-| Muscle mass, total body water         | `metric_samples` (`muscle_mass_kg` / `body_water_kg`) — captured per weigh-in                |
-| VO₂ max                               | **Vitals** biomarker (`medical_records`) — appears in **Trends → Biomarkers**                |
-| Blood pressure (systolic + diastolic) | **Vitals** (`medical_records`) — appears in **Trends → Biomarkers** like manually-entered BP |
-| SpO₂, body temperature                | **Vitals** (temperature converted °C → °F canonical)                                         |
-| Sleep (deep / REM / light / awake)    | **Trends → Body** — total per night + stage breakdown (attributed to the wake day)           |
-
-The sync is **incremental and idempotent**: measures use Withings' `lastupdate`
-cursor (its `updatetime` echo is the next cursor), sleep uses a trailing date
-window, and every row dedups on its natural key — `(date, source)` for body metrics,
-`withings:<grpid>:<analyte>` for vitals, and the sleep window for sleep samples — so
-re-fetches never double-count. **Manually entered rows are never overwritten**, and a
-row you've hand-edited is left untouched on the next sync. Rate limits truncate the
-run and keep the cursor so the next tick resumes. Blood pressure lands as vitals and
-is reference-range flagged exactly like a manual reading.
-
-### Comparing sources & picking a primary one
-
-With more than one source reporting the same metric (say Health Connect **and**
-Oura both tracking sleep, HRV, or resting heart rate), every source's stream is
-stored side by side — they never overwrite each other — and the app reconciles
-them on read:
-
-- **Additive metrics** (steps, calories, sleep minutes) are **never summed across
-  sources**: each day keeps one source's total, so two devices can't double your
-  step count or produce a 16-hour night.
-- **Point metrics** (weight, body fat, resting HR, HRV) keep every source's
-  readings for comparison; charts and latest-value readouts resolve to one value.
-- **Trends → Body** grows a **Compare sources** section as soon as any metric has
-  two or more reporting sources: a per-source overlay chart for each such metric,
-  with a **Primary source** picker beside it. "Automatic" (the default) prefers a
-  manual entry, then Health Connect, then Oura, then Withings, then Strava; picking a source
-  makes it authoritative for that metric's totals, charts, and latest-value
-  surfaces (with a fallback whenever it has no data). The section is invisible
-  until a second source actually shows up.
+Per-provider setup guides and import-mapping tables: [docs/integrations.md](docs/integrations.md).
 
 ## Deploy with Docker
 
@@ -589,404 +195,31 @@ it by hand or from a host cron/systemd timer. If the GHCR package is private,
 
 ## Notifications
 
-Reminders (supplements due in a window, and a workout nudge when you're behind on a
-weekly target) are delivered over three channels — **Telegram**, **Web Push**, and a
-**Home Assistant** webhook — that share the same schedule and per-day/slot dedup. Enable
-any or all; a profile with several configured gets each reminder on each.
+Reminders (doses due, a workout nudge, newly-due preventive care) are delivered over three channels that share one hourly tick and per-day/slot dedup — enable any or all per profile:
 
-Beyond reminders, two opt-in retention nudges ride the same channels: a **weekly recap**
-— a quiet once-a-week summary of your week (workouts + volume, PRs, supplement
-adherence, a body-weight trend, and streak status), covering the same "this week" your
-routine counters use per your **week mode** (a calendar week or a rolling seven days —
-**Settings → Profile**), set the send day/hour under
-**Settings → Profile**; and **milestone alerts** — a brief note when you cross a
-milestone (your 10th/50th/100th/… workout, a 7/30/100/365-day streak, a completed goal, or
-a 7/30-day adherence run). Both are rule-based and work with **no AI configured**.
-Milestones are always recorded to your **Timeline** (under the **Milestone** filter)
-regardless of the alert toggle. The recap is also available as an off-by-default
-**Weekly recap** dashboard card (enable it from the dashboard's **Customize** control).
+- **Telegram** — with one-tap action buttons (✅ take / ⏭ skip a dose, ✅ Done / 🚫 Not applicable / ⏰ Remind later on a screening, 📦 Ordered on a refill, ✅ Confirmed taken on an escalation); button taps reach the app by long-polling (default, no public URL needed) or a webhook
+- **Web Push** — native browser notifications, zero setup (HTTPS required; on iOS 16.4+ after Add to Home Screen)
+- **Home Assistant** — a webhook per profile so HA can announce doses on the right room's speaker, flash lights on a missed critical dose, or hold a message until someone's home ([recipes](docs/home-assistant-notifications.md))
 
-Newly-due **preventive care** (an age/sex-appropriate checkup or screening) also sends a
-single proactive nudge, so a due mammogram/colonoscopy/lipid panel doesn't wait to be
-noticed in the "what's due" digest. It's deduped **once per due episode** (not once a
-day): the ping fires when an item first becomes due or overdue and stays quiet until the
-item is satisfied or ages out, then re-fires when the next interval comes due. The whole
-domain is a per-profile toggle — **Settings → Profile → Preventive-care reminders** (on by
-default). Turning it off suppresses both the nudge and the preventive lines in the
-digest; due items still appear on your **Upcoming** page either way (that's a pull view,
-not a push). Informational only — not medical advice.
+Opt-in **weekly recap** and **milestone alerts** ride the same channels (rule-based, no AI needed). **Quiet hours** hold non-urgent nudges to a per-profile waking window, and **"dismiss once, silence everywhere"** links a page dismissal to its push nudge — while **dose reminders and missed-dose escalations are deliberately never silenceable** by a dismissal or quiet hours: an escalation at 2am for a missed critical med is the feature working. Docker's `allos-notify` sidecar drives the tick automatically; without it, cron `npm run notify` hourly.
 
-**Dismiss once, silence everywhere.** Snoozing or dismissing a **refill**,
-**preventive-care**, or **training-target** item on the **Upcoming** page (or the
-dashboard attention banner) now also silences its **push nudge**, not just the page and
-digest lines — the reminder and the nudge share the same identity, so one "I've decided
-about this" hides both. For the workout nudge that means dismissing every behind
-training target quiets the "today's workout" reminder (a still-behind target keeps it
-coming). A snooze
-resumes nudging after its date; restoring the item brings the nudge back. Safety-critical
-reminders are deliberately **not** silenceable this way — scheduled **dose reminders** and
-**missed-dose escalations** keep firing on their own per-day dedup regardless of a page
-dismissal.
-
-**Quiet hours.** The non-urgent episode nudges (refill, preventive, milestone) are only
-sent during a per-profile **waking window** — set the start/end hours under
-**Settings → Profile → Quiet hours** (this profile's timezone; defaults to 08:00–21:00).
-An overnight span like 20:00 → 08:00 is supported for a night-shift rhythm. Outside the
-window a due nudge simply waits for the next in-window tick (its once-per-episode dedup is
-unchanged). Slot-anchored sends (dose reminders, morning digest, workout, weekly recap)
-already fire at their own chosen hours and are unaffected; safety-critical **dose
-reminders** and **missed-dose escalations** are **never** held by quiet hours — an
-escalation at 2am for a missed critical med is the feature working.
-
-### Telegram
-
-Configure the bot token and mode under **Settings → Server** (global, admin-only);
-enable notifications, set the chat id, and choose per-slot send times per person under
-**Settings → Profile**.
-
-Several nudges carry one-tap action buttons that make the obvious response without
-opening the app: a **dose reminder** has ✅ take / ⏭ skip (and ✅ All); a **preventive**
-nudge has ✅ Done / 🚫 Not applicable / ⏰ Remind later; a **refill** nudge has 📦 Ordered —
-remind me in 3 days (plus a link to the refill form); and a **missed-dose escalation** has
-✅ Confirmed taken / 👍 I'm on it (an acknowledgement that stops the re-nudge without
-claiming the dose was taken — anyone in the caregiver escalate chat can tap it). A snooze
-tapped here is the same fact as a page snooze, so it's silenced everywhere. Buttons whose
-answer needs a number (e.g. "mark refilled") deep-link to the form instead.
-
-These button taps reach the app one of two ways (pick under **Button taps**):
-
-- **Polling** (default) — the notify service long-polls Telegram's `getUpdates`, so it
-  works without the app being publicly reachable. The Docker `allos-notify` service
-  runs the poller automatically; without Docker, keep `npm run notify -- poll` running.
-- **Webhook** — Telegram POSTs taps to `<public URL>/api/telegram/webhook`. Set the
-  shared **Settings → Server → Public app URL** (also used for Strava OAuth callbacks
-  and the Health Connect ingest endpoint), then register the webhook from
-  **Settings → Server**. Telegram requires HTTPS.
-
-### Web Push (browser notifications)
-
-No Telegram account needed: subscribe a browser under **Settings → Preferences → Web
-Push notifications** and reminders arrive as native OS/browser notifications, opening
-the app when tapped. Notes:
-
-- **HTTPS required.** Web Push needs a service worker, which browsers only run over
-  HTTPS (or `localhost`). It works on the deployed/installed app, **not** over plain
-  `http://` on a LAN IP, and not in local `next dev` (the service worker is disabled
-  there).
-- **Per browser, per login.** A subscription belongs to the browser you enable it on
-  and to your login — enable it on each device you want notified. A subscribed browser
-  receives reminders for every profile that login can access.
-- **Browser support.** Chrome/Edge/Firefox (desktop + Android) and, on **iOS 16.4+**,
-  Safari **only after you install the app to the Home Screen** (Add to Home Screen).
-- **Zero setup.** The instance's VAPID keypair is generated automatically the first
-  time anyone enables push; the private key stays on the server. Payloads carry only a
-  title + short body (the same text Telegram would show) and a link — no record detail.
-
-### Home Assistant (presence/room-aware reminders)
-
-If you run **Home Assistant** on the same LAN, Allos can send each reminder to an HA
-**webhook** so HA presents it with what only it knows — _who is home, and which room_:
-kitchen-speaker **TTS dose announcements** when the person is actually in the kitchen
-(the accessibility win for a household member who'll never install Telegram), **escalation
-theatrics** (a critical dose left unconfirmed flashes the lights / announces on the
-caregiver's floor), and **presence-aware delivery** (hold an announcement until someone's
-home, or suppress the phone push once the wall panel has spoken). Configure it per person
-under **Settings → Profile → Notifications (Home Assistant)**: enable it, paste your HA
-webhook URL (`http(s)://<host>:8123/api/webhook/<id>` — HA's built-in
-[webhook trigger](https://www.home-assistant.io/docs/automation/trigger/#webhook-trigger),
-no custom component needed), optionally set a shared secret, choose which reminder kinds to
-forward (a household may want doses announced but not weekly recaps), and **Send test**.
-Allos joins the same channel-aware delivery-health marker, so a wrong URL / unreachable HA
-surfaces on **Settings → Server**.
-
-- **Payload.** A JSON POST with `title`, `body`, a machine-readable `kind`
-  (`dose`/`escalation`/`refill`/…), the profile display `name`, and — for actionable dose
-  reminders — the `doses` (`dose_id` + `date` + `taken`/`skipped`) so an HA automation can
-  wire a voice/button confirmation back to the Allos `POST /dose` endpoint. Full shape and
-  copy-paste automation recipes (TTS announcement + confirm-to-`/dose`; escalation lights)
-  are in [`docs/home-assistant-notifications.md`](docs/home-assistant-notifications.md).
-- **PHI posture.** The body contains medication names and usually travels LAN-to-LAN. Use
-  an `https` HA URL when the instances aren't co-located, and set a shared secret (sent as
-  the `X-Allos-Webhook-Secret` header) so an HA automation can reject calls without it.
-- **Delivery only, not a decision surface.** Snooze/dismiss (the "dismiss once, silence
-  everywhere" bus) and the safety-tier rules apply _upstream_ of this channel exactly as
-  they do for Telegram — a suppressed reminder never reaches HA either.
-
-Sending is driven by a tick that runs **every hour**. Each tick sends whatever is scheduled
-for the current hour (supplement windows at their configured hours; the workout reminder on
-your inferred training days/time) and not already sent today, deduped per day/slot so a retry
-never double-sends. Timing follows the per-profile timezone you pick in **Settings → Profile**
-(stored in the DB and shared with the notifier; new profiles inherit the **Settings → Server**
-instance default), defaulting to UTC until set.
-
-**Docker (default):** the `allos-notify` service in `docker-compose.yml` runs the tick on the hour
-automatically — no host crontab needed — and keeps the Telegram button-tap poller running
-alongside it (idle unless polling mode is selected). It shares the app's image and database; bring it up
-with the rest of the stack (`docker compose up -d`). Remove that service if you'd rather drive
-the tick yourself.
-
-**Without Docker / external scheduler:** add an hourly cron entry instead:
-
-```cron
-0 * * * * cd /app && npm run notify
-```
-
-Manual sends for testing: `npm run notify -- morning|midday|evening|bedtime|workout` (in the running
-container: `docker compose exec allos-notify node dist/notify.cjs workout`).
+Channel setup, button behavior, digests, and scheduling details: [docs/notifications.md](docs/notifications.md).
 
 ## Backups
 
-The hourly tick takes a **nightly SQLite snapshot** of the database via
-`VACUUM INTO` (a compact single-file copy, safe against the live connection).
-Configure it in **Settings → Server → Automated backups** (admin only): enable/disable,
-the hour (in the instance timezone), and retention (keep _N_ dailies + _M_ weeklies,
-default 7/8). Snapshots are written to `data/backups/allos-<YYYY-MM-DD-HHmm>.db`, older
-ones are pruned only after a successful new snapshot, and the card shows the last backup's
-time/size (plus any failure) with a **Back up now** button. The card also shows the last
-**live database integrity** verdict and a **Recheck integrity now** button.
+The hourly tick takes a nightly, **integrity-verified** `VACUUM INTO` snapshot of the database (schedule and retention under **Settings → Server → Automated backups**; a snapshot that fails verification never rotates a good one away, and a weekly live-DB integrity check feeds the health endpoint). Snapshots land on the **same volume** as the live DB, so for real durability set **`BACKUP_DEST_DIR`** to a second mounted directory: each verified snapshot is copied there and `data/uploads/` is mirrored incrementally. The destination requires a one-time **Verify destination** click (a sentinel file, so a missing mount fails honestly instead of "backing up" into a container layer), and a mirror that goes stale degrades the health endpoint.
 
-**Integrity verification.** Each fresh snapshot is opened read-only and checked with
-`PRAGMA integrity_check`; the result is written to a JSON sidecar next to it
-(`allos-<stamp>.db.json`). A snapshot that **fails** the check is kept for forensics but is
-**not** counted as a successful backup, is **never** counted as a retention keeper, and older
-good snapshots are **not** pruned — so a corrupt (or partial, sidecar-less) copy never
-occupies a keep slot, evicts a healthy one, or shows up as "the last backup" (the card and
-`restore` always prefer the newest **verified** snapshot). The same tick also runs a
-**weekly** `integrity_check` on the live database (gated by a stored marker), logging the
-result loudly on failure **and caching the verdict** — a failed live check makes the health
-endpoint report unhealthy (see [Health endpoint](#health-endpoint)) so the container
-healthcheck flips. If you repair the database by any route **other** than restoring a snapshot
-(e.g. `.recover`, or the failure was a transient glitch), the failed verdict re-runs every
-tick until it passes — and **Recheck integrity now** re-tests it immediately so the health
-endpoint recovers without waiting for the next weekly window.
+Restore with `npm run restore` — it lists snapshots with integrity status and schema version, keeps an atomic rollback aside, and refuses a newer-schema snapshot without `--force`. To migrate hosts, copy the whole `DATA_DIR` (the export ZIP is a portability artifact, not a restore image).
 
-Snapshots live under `DATA_DIR` (the Docker bind mount, outside the checkout) and are
-**never served by any route** — they contain multi-profile health data.
-
-### Off-volume backups (`BACKUP_DEST_DIR`)
-
-> **Same-volume caveat:** by default snapshots land in `data/backups` — the **same** bind
-> mount as the live database. A disk or volume loss destroys the database **and** every
-> snapshot together, and uploaded medical files (`data/uploads/`) aren't in a snapshot at
-> all. On-volume backups are not a durability story on their own.
-
-Set **`BACKUP_DEST_DIR`** to a **second mounted directory** — a NAS, another disk, or a
-synced folder the operator controls — and after each verified snapshot the app copies it
-(and its `.json` verify sidecar) there, prunes that destination to the same retention, and
-**mirrors `data/uploads/`** to `BACKUP_DEST_DIR/uploads`. The uploads mirror is incremental
-and append-only: because uploaded files are content-hashed and immutable, only new files are
-copied each night, so it stays cheap. Keep the destination **operator-controlled** — it holds
-multi-profile PHI, so no cloud/network target is wired up (mount your own if you want one).
-
-**Verify the mount (avoids silent evaporation).** The app **never creates the destination
-root** — a missing mount must fail honestly, not `mkdir` a fake backup into the container's
-ephemeral layer that vanishes on the next redeploy. So replication requires a one-time
-**sentinel** (`.allos-backup-destination`) written into the mounted volume: after mounting
-`BACKUP_DEST_DIR`, click **Verify destination** on the backups card. If the sentinel is
-absent (never verified, or the volume later unmounted), replication is **skipped** and the
-reason is recorded under `backup_offsite_last_error` — off-volume backups don't silently
-succeed into nowhere.
-
-The **Settings → Server → Automated backups** card shows whether `BACKUP_DEST_DIR` is
-configured, whether the destination is currently **mounted and verified**, and the time of the
-last off-volume copy (or its last error). Off-volume failures are recorded under their own
-marker and never fail the primary snapshot, but an off-volume mirror that has gone **stale**
-(older than the backup-staleness threshold, default 48h) now also degrades the
-[health endpoint](#health-endpoint) (`reason: "offsite-stale"`), so a mirror that quietly
-stopped is visible to uptime monitors.
-
-**What the off-volume mirror covers.** The mirror copies the **database snapshot** (+ its
-verify sidecar) and **`data/uploads/`** (medical files). It does **not** mirror
-`data/integration-payloads/` (raw provider payloads, re-syncable from the source integration)
-or `data/logs/ai.jsonl` (the AI audit log) — this is a deliberate scope decision to keep the
-mirror to the recoverable clinical dataset; if you want those off-volume too, copy them with
-your own out-of-band job.
-
-The uploads mirror is **append-only** for ordinary single-row deletes (a re-synced or
-hand-corrected row keeps its durable copy) — with one exception: **deleting a profile**
-(Settings → Family) is a deliberate "right to delete" that best-effort unlinks that person's
-medical files **and** their off-volume mirror copies (when `BACKUP_DEST_DIR` is mounted and
-verified), so a deleted person's documents don't linger on the NAS after their DB traces have
-rotated out of every snapshot.
-
-```bash
-# docker-compose: mount a second host directory and point the env at it
-#   volumes:
-#     - "${DATA_DIR:-./data}:/app/data"
-#     - "/mnt/nas/allos-backup:/backup"     # second, independent volume
-#   environment:
-#     BACKUP_DEST_DIR: /backup
-```
-
-> **Uploads caveat (no second mount):** without `BACKUP_DEST_DIR`, uploaded medical files
-> (`data/uploads/`) and captured integration payloads (`data/integration-payloads/`) live on
-> disk, _not_ in the database, so the snapshot does **not** include them. For a complete
-> backup then, copy the whole `DATA_DIR` (database + `uploads/` + `integration-payloads/`).
-
-### Scheduling without the notify sidecar
-
-Backups are driven from the hourly notify tick by default. If you removed the notify
-sidecar, drive them with the standalone entrypoint instead — it applies the same
-schedule/retention/verification and is safe to run hourly by cron:
-
-```cron
-0 * * * * cd /app && npm run backup
-```
-
-`npm run backup -- now` forces an immediate (verified) snapshot regardless of the schedule.
-
-### Restore
-
-Use the restore tool (`npm run restore`) — it lists snapshots with their integrity status
-**and schema version**, verifies the chosen one before trusting it, copies the current live
-DB aside as a rollback (`allos.db.pre-restore-<timestamp>`, **including its `-wal`/`-shm`** so a
-rollback keeps WAL-only committed transactions), then installs the snapshot via an **atomic
-rename** (a kill mid-restore leaves the old DB intact, not a torn file) and clears any stale
-`-wal`/`-shm` sidecars. It **refuses a snapshot whose schema is newer than the running build**
-(which would only trip the boot-time downgrade guard) unless you pass `--force`. Old aside
-copies are pruned to the newest few by the backup tick.
-
-```bash
-npm run restore                       # list snapshots + integrity status
-npm run restore -- allos-<stamp>.db   # restore that snapshot (prompts to confirm)
-npm run restore -- allos-<stamp>.db --yes    # skip the confirmation prompt
-npm run restore -- allos-<stamp>.db --force  # also override safety refusals
-
-# Restore from an OFF-VOLUME copy (BACKUP_DEST_DIR mirror):
-npm run restore -- --from /backup                     # list snapshots on the mirror
-npm run restore -- --from /backup allos-<stamp>.db    # restore one from the mirror
-npm run restore -- --from                             # bare --from uses BACKUP_DEST_DIR
-```
-
-**Stop the container/app before restoring.** The tool makes a best-effort check for a live
-DB connection and refuses if it detects one, but in WAL mode an _idle_ connection may not be
-detected, so always stop the app first. `--force` overrides both the running check and a
-failed-integrity refusal.
-
-**Putting uploads back.** A snapshot restores only the database. When recovering from an
-off-volume mirror (or any full-directory backup), also copy the uploaded medical files back
-so `medical_documents` rows aren't left pointing at missing files — `--from` prints the exact
-command, e.g. `cp -a /backup/uploads/. data/uploads/`.
-
-You can still restore by hand if you prefer: stop the container, `cp
-data/backups/allos-<stamp>.db data/allos.db`, delete any `data/allos.db-wal` /
-`data/allos.db-shm`, and start it again.
-
-### Moving to a new server
-
-To migrate a running instance to a new host, **copy the whole `DATA_DIR`** — the
-database plus everything alongside it on disk (`uploads/`, `integration-payloads/`,
-`backups/`). Everything Allos persists lives under that one directory (outside the
-checkout), so a faithful move is a directory copy, not a database-only step:
-
-```bash
-# on the OLD host, with the app stopped:
-rsync -a "$DATA_DIR"/ newhost:/path/to/allos-data/
-# on the NEW host: point DATA_DIR at the copy and start the container
-```
-
-Stop the app on the old host first so the SQLite WAL is checkpointed and no file
-changes mid-copy. Do **not** use the **Data → Export all my data** ZIP for this — that
-is a readable **portability** artifact (JSON/CSV + a FHIR passport) for taking a
-profile's record to another tool, **not** a restore image: it omits operational state
-(connections, sessions, sync history) and can't rebuild an instance. The `DATA_DIR`
-copy (or a [backup snapshot](#backups) plus its `uploads/`) is the restore path.
-
-## Running a demo instance
-
-Allos can run as a **public, read-only demo** so people can explore the data model
-before self-hosting. Set one env flag and reseed:
-
-```bash
-ALLOS_DEMO_MODE=1 npm run seed   # creates the read-only "demo" login + grants
-ALLOS_DEMO_MODE=1 npm start      # (or set it in .env for Docker)
-```
-
-With `ALLOS_DEMO_MODE=1`:
-
-- The **login page** shows the demo credentials — username `demo`, password `demo`.
-- A **persistent, non-dismissible banner** appears on every page: _"Public demo —
-  synthetic data — resets nightly — do not enter real health information."_
-- The **demo login is a read-only member** (view-only grants, issue #33) to the
-  seeded profiles. Every non-admin write is refused at the auth boundary
-  (`requireWriteAccess`) even if a grant is misconfigured, and the PHI-entry
-  surfaces are trimmed: no change-password, no Telegram/send-test config, and the
-  document-upload input is disabled with a hint.
-- The shared demo login's **account management is locked** too: password change,
-  2FA enrollment, and session revocation are refused server-side
-  (`requireLoginWriteAccess`, and hidden in Settings), so one visitor can't lock
-  every other visitor out of the demo.
-- The **admin login stays fully functional** (for maintaining the instance) and is
-  never advertised in the UI. Set a strong `ADMIN_PASSWORD` — it is not read-only.
-
-Same seed, same GHCR image, same boot as a normal deploy — demo mode is presentation
-plus a belt-and-braces write block, so the demo doubles as a release smoke test.
-
-### Nightly reset
-
-Return the demo to a pristine state on a schedule with `npm run demo-reset` — it
-wipes the live DB (and its `-wal`/`-shm` sidecars), clears `data/uploads`, reseeds a
-fresh demo database, and integrity-checks the result. Run it with the app **stopped**
-(stop-reset-start), e.g. a host cron:
-
-```bash
-# 4am daily: stop, reset, start (adjust to your process manager / compose setup)
-0 4 * * *  cd /srv/allos && docker compose stop app && ALLOS_DEMO_MODE=1 npm run demo-reset -- --yes && docker compose start app
-```
-
-`demo-reset` **refuses to run unless `ALLOS_DEMO_MODE` is set** (so it can never wipe
-a real instance by accident); `--force` overrides that single refusal, `--yes` skips
-the confirmation prompt for non-interactive cron.
-
-> **Isolation warning.** A demo instance is destructive by design — the nightly reset
-> deletes its entire database and all uploads. **Never co-host a demo with a real
-> family instance**, and never point `ALLOS_DEMO_MODE` at a `DATA_DIR` that holds real
-> records. Run the demo as its own container with its own volume.
+Full guide — off-volume setup, what the mirror covers, restore walkthrough, moving to a new server: [docs/backups.md](docs/backups.md).
 
 ### Health endpoint
 
-The container healthcheck hits `GET /api/health`. It returns
-`{ status, reason?, lastBackupAgeHours }` and flips to HTTP **503**
-(`status: "degraded"`) for any of the following, so the Docker healthcheck marks the
-container unhealthy:
+`GET /api/health` (unauthenticated — it's the Docker healthcheck) returns a deliberately coarse `{ status, reason?, lastBackupAgeHours }` and flips to HTTP **503** when the DB is unreadable, `data/` is unwritable, the cached weekly integrity check found corruption, or backups are stale / have never run — each reason is documented in [docs/backups.md](docs/backups.md#health-endpoint). Notification delivery failures surface separately as a channel-aware marker on **Settings → Server**, cleared by a successful **Send test**.
 
-- **`db-failed`** — the DB is not readable.
-- **`write-failed`** — `data/` is not writable (a full or read-only disk answers reads but
-  fails writes).
-- **`integrity-failed`** — the cached weekly live-DB `integrity_check` (above) last found
-  **corruption**. The endpoint only reads this cached verdict; it never runs the expensive
-  `integrity_check` itself, so it stays cheap enough for a frequent uptime poll.
-- **`backup-stale`** — backups are enabled and the newest snapshot is older than the
-  staleness threshold (**48h** by default; override with the `backup_staleness_hours`
-  global setting). A brand-new instance inside its grace window is **not** flagged here — see
-  `backups-never-ran` below for the perpetually-unbackuped case.
-- **`backups-never-ran`** — backups are enabled but **no snapshot has ever been taken** and
-  the instance is older than a short grace period (**72h**). This catches a deployment with
-  no backup scheduler at all (the notify sidecar dropped and no cron replacing it) —
-  previously such an instance stayed permanently green because the never-backed-up exemption
-  never expired. A genuinely fresh install is exempt until it crosses the grace window
-  (instance age comes from an `install_first_boot_at` marker seeded on first boot).
-- **`offsite-stale`** — backups are **enabled**, an off-volume destination (`BACKUP_DEST_DIR`)
-  is configured, and its last successful replica is older than the staleness threshold, so a
-  mirror that silently stopped is visible to uptime monitors (a never-succeeded mirror surfaces
-  instead as an off-volume error on the admin card — see [Off-volume backups](#off-volume-backups-backup_dest_dir)).
-  Like the primary `backup-stale`/`backups-never-ran` alarms, this is suppressed when backups
-  are **disabled** — replication only runs as a byproduct of the snapshot schedule, so a
-  disabled schedule (with `BACKUP_DEST_DIR` still set) doesn't flip the endpoint to a permanent
-  `offsite-stale`.
+## Running a demo instance
 
-The body stays deliberately coarse (a `status`, a single `reason`, and `lastBackupAgeHours`)
-with no paths, versions, or PHI, since the endpoint is unauthenticated — details go to the
-server logs. `lastBackupAgeHours` reports hours since the last successful backup (null when
-never backed up).
-
-**Notification delivery failures.** A failed Telegram, push, or Home Assistant send is
-also persisted as a global marker (`notify_last_error`, naming the channel that failed,
-cleared on the next successful send to that channel) and surfaced on
-**Settings → Server → Telegram bot**, so a revoked bot token, wrong chat id, or an
-unreachable HA webhook is visible
-instead of only appearing as a notify-tick exit code. The per-profile **Send test** button
-on **Settings → Profile** is the remediation path — a successful test clears the marker.
+Set `ALLOS_DEMO_MODE=1` and reseed to run a **public, read-only demo**: the login page advertises the `demo`/`demo` credentials (a read-only member — every non-admin write is refused at the auth boundary, and the shared login can't change its own password or 2FA), a persistent "synthetic data" banner shows on every page, and `npm run demo-reset` restores a pristine seed on a nightly cron. `demo-reset` refuses to run unless the flag is set, so it can never wipe a real instance — but a demo is destructive by design: **never co-host it with a real family instance**. Setup, nightly-reset cron, and the isolation warning: [docs/demo.md](docs/demo.md).
 
 ## Scripts
 
