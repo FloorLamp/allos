@@ -11,8 +11,10 @@ import { getAppVersion } from "@/lib/version";
 import { TimezoneProvider } from "@/components/TimezoneProvider";
 import { WeekStartProvider } from "@/components/WeekStartProvider";
 import { getUnitPrefs, getTimezone, getWeekStart } from "@/lib/settings";
+import { getUserAge } from "@/lib/settings/profile-attrs";
 import { getEquipment } from "@/lib/equipment";
 import { isTrainingRestricted } from "@/lib/age-gate";
+import { isFoodLoggingRelevant } from "@/lib/life-stage";
 import { requireSession, getAccessibleProfiles } from "@/lib/auth";
 import {
   getActivitySuggestions,
@@ -89,6 +91,11 @@ export default async function AppLayout({
   // reach 2+ profiles (issue #31) — an admin sees every profile, a caregiver
   // member sees their granted set, and a single-profile login never sees it.
   const multiProfile = profiles.length > 1;
+  // Hides the Nutrition nav entry for an infant profile (< 1 y) — the adult
+  // food-group serving catalog is meaningless there (issue #591). Cosmetic; the
+  // /nutrition page independently gates on the same predicate. Eligible on
+  // unknown age (hide only on a positive infant match).
+  const foodLoggingRelevant = isFoodLoggingRelevant(getUserAge(profile.id));
   // Count of integrations currently in a failed state — drives the header
   // "import review" badge (Data → Review). Self-clearing on the next good sync.
   const reviewCount = getImportReviewCount(profile.id);
@@ -121,6 +128,7 @@ export default async function AppLayout({
                     restricted={restricted}
                     isAdmin={isAdmin}
                     multiProfile={multiProfile}
+                    foodLoggingRelevant={foodLoggingRelevant}
                     reviewCount={reviewCount}
                     readOnly={readOnly}
                   />
@@ -138,6 +146,7 @@ export default async function AppLayout({
                     restricted={restricted}
                     isAdmin={isAdmin}
                     multiProfile={multiProfile}
+                    foodLoggingRelevant={foodLoggingRelevant}
                     reviewCount={reviewCount}
                     readOnly={readOnly}
                   />

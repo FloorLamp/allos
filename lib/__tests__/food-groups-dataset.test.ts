@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildFoodGroups } from "@/scripts/gen-food-groups";
 import { FOOD_GROUPS, foodGroupSlugs } from "@/lib/food-groups";
+import { foodGroupIconKey, GENERIC_FOOD_ICON_KEY } from "@/lib/food-group-icon";
 import {
   nutrientFoodMapGroupSlugs,
   NUTRIENT_FOOD_ENTRIES,
@@ -40,6 +41,24 @@ describe("food-groups.json dataset", () => {
   it("has a healthy number of groups (habit tier ~20–30)", () => {
     expect(FOOD_GROUPS.length).toBeGreaterThanOrEqual(20);
     expect(FOOD_GROUPS.length).toBeLessThanOrEqual(30);
+  });
+
+  // ── #591 icon coverage (reflection guard) ──
+  it("every catalog slug resolves to a real (non-generic) food-group icon key", () => {
+    // The generic fallback is only for retired/unknown slugs — every CURRENT
+    // catalog group must have a curated icon, so the log bar / rollup / habits /
+    // suggestion buttons never fall back to the plate-of-cutlery glyph.
+    const generic = FOOD_GROUPS.filter(
+      (g) => foodGroupIconKey(g.slug) === GENERIC_FOOD_ICON_KEY
+    ).map((g) => g.slug);
+    expect(
+      generic,
+      `food groups with no curated icon (falls back to generic): ${generic}`
+    ).toEqual([]);
+  });
+
+  it("resolves an unknown slug to the generic glyph rather than throwing (#203)", () => {
+    expect(foodGroupIconKey("__retired_slug__")).toBe(GENERIC_FOOD_ICON_KEY);
   });
 
   // ── #577 ↔ #579 cross-reference (both directions) ──

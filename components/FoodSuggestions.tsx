@@ -3,6 +3,7 @@ import {
   IconAlertTriangle,
   IconInfoCircle,
 } from "@tabler/icons-react";
+import FoodGroupIcon from "@/components/FoodGroupIcon";
 import type { FoodSuggestion, FoodSafetyNoteKind } from "@/lib/food-suggest";
 
 // Presentational renderer for the DETERMINISTIC food suggestions (issue #577). A pure
@@ -79,9 +80,13 @@ export default function FoodSuggestions({
                         <button
                           type="submit"
                           data-testid={`track-${f.foodGroup}`}
-                          className="rounded-full border border-emerald-300 px-2 py-0.5 text-xs font-medium text-emerald-700 transition hover:bg-emerald-100 dark:border-emerald-700 dark:text-emerald-300 dark:hover:bg-emerald-900"
+                          className="inline-flex items-center gap-1 rounded-full border border-emerald-300 px-2 py-0.5 text-xs font-medium text-emerald-700 transition hover:bg-emerald-100 dark:border-emerald-700 dark:text-emerald-300 dark:hover:bg-emerald-900"
                         >
-                          + Track as weekly habit
+                          <FoodGroupIcon
+                            slug={f.foodGroup}
+                            className="h-3.5 w-3.5 shrink-0"
+                          />
+                          Track as weekly habit
                         </button>
                       </form>
                     )}

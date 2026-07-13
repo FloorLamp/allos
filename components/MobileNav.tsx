@@ -25,6 +25,7 @@ export default function MobileNav({
   restricted = false,
   isAdmin = false,
   multiProfile = false,
+  foodLoggingRelevant = true,
   reviewCount = 0,
   readOnly = false,
 }: {
@@ -43,6 +44,8 @@ export default function MobileNav({
   isAdmin?: boolean;
   // True when the instance has >1 profile; gates the Household overview.
   multiProfile?: boolean;
+  // True unless the active profile is an infant (< 1 y); gates Nutrition (#591).
+  foodLoggingRelevant?: boolean;
   // Integrations-needing-attention count for the profile-menu badge (Data →
   // Review). Resolved on the server and threaded through the shared sidebar.
   reviewCount?: number;
@@ -143,6 +146,7 @@ export default function MobileNav({
               restricted={restricted}
               isAdmin={isAdmin}
               multiProfile={multiProfile}
+              foodLoggingRelevant={foodLoggingRelevant}
               reviewCount={reviewCount}
               readOnly={readOnly}
               onNavigate={() => setOpen(false)}

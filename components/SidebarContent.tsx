@@ -37,6 +37,7 @@ export default function SidebarContent({
   restricted = false,
   isAdmin = false,
   multiProfile = false,
+  foodLoggingRelevant = true,
   reviewCount = 0,
   readOnly = false,
   onNavigate,
@@ -53,6 +54,10 @@ export default function SidebarContent({
   // True when the caller has >1 ACCESSIBLE profile; gates the Household overview
   // (issue #31), which is meaningless with a single profile.
   multiProfile?: boolean;
+  // True unless the active profile is an infant (< 1 y); gates the Nutrition
+  // entry (issue #591). Defaults true so a caller that doesn't thread it never
+  // over-hides.
+  foodLoggingRelevant?: boolean;
   // Count of integrations currently needing attention (failed syncs) — shown as
   // a badge on the profile menu, linking to Data → Review. Resolved server-side.
   reviewCount?: number;
@@ -103,6 +108,7 @@ export default function SidebarContent({
         restricted={restricted}
         isAdmin={isAdmin}
         multiProfile={multiProfile}
+        foodLoggingRelevant={foodLoggingRelevant}
       />
       {/* Profile switcher/logout above one bordered box holding the theme toggle
       and version hash as equal, borderless halves (a single segmented control). */}

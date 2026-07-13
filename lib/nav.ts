@@ -32,17 +32,29 @@ export function isGroupActive(childHrefs: string[], pathname: string): boolean {
 //   - age-gate: hidden when the active profile is age-restricted AND the href is
 //     in the caller's restricted set (see lib/age-gate.ts / Nav's
 //     RESTRICTED_HREFS).
+//   - `requiresFoodLogging`: hidden when the active profile is an infant (< 1 y),
+//     for whom food-group serving logging is meaningless (issue #591). Cosmetic —
+//     the /nutrition page independently gates on the same predicate
+//     (isFoodLoggingRelevant), so a direct URL still shows the calm note. Eligible
+//     on unknown age (hide only on a positive infant match).
 export function isNavLeafVisible(
-  leaf: { href: string; adminOnly?: boolean; requiresMultiProfile?: boolean },
+  leaf: {
+    href: string;
+    adminOnly?: boolean;
+    requiresMultiProfile?: boolean;
+    requiresFoodLogging?: boolean;
+  },
   ctx: {
     isAdmin: boolean;
     restricted: boolean;
     multiProfile: boolean;
+    foodLoggingRelevant: boolean;
     restrictedHrefs: ReadonlySet<string>;
   }
 ): boolean {
   if (leaf.adminOnly && !ctx.isAdmin) return false;
   if (leaf.requiresMultiProfile && !ctx.multiProfile) return false;
+  if (leaf.requiresFoodLogging && !ctx.foodLoggingRelevant) return false;
   if (ctx.restricted && ctx.restrictedHrefs.has(leaf.href)) return false;
   return true;
 }

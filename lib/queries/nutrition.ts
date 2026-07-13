@@ -8,7 +8,7 @@ import { db, today } from "../db";
 import { getCurrentFlaggedBiomarkers } from "./medical";
 import { getAllergies, getConditions } from "./clinical";
 import { getSupplements } from "./intake";
-import { weekWindowStart } from "./training/common";
+import { weekWindowStart, recentWindowStart } from "./training/common";
 import { getActiveSituations } from "../settings";
 import { parseRxcuiIngredients } from "../rxnorm";
 import { suggestFoods, type FoodSuggestion } from "../food-suggest";
@@ -17,6 +17,14 @@ import {
   type FoodLogEntry,
   type GroupServingTotal,
 } from "../food-log";
+import {
+  FOOD_GROUPS,
+  foodGroupBySlug,
+  foodGroupSlugs,
+  type FoodGroup,
+} from "../food-groups";
+import { decayedWeight } from "../decay";
+import { rankByFrequency } from "../rank-by-frequency";
 import type { SafetyMedication } from "../supplement-safety";
 
 // Safety-screened food suggestions for the profile's currently-flagged, diet-responsive
@@ -149,4 +157,48 @@ export function getWeeklyDaysForGroup(
 // Convenience: today's date for the acting profile (the logging bar's default day).
 export function foodLogToday(profileId: number): string {
   return today(profileId);
+}
+
+// The full food-group catalog ordered so the profile's staples lead WITHIN each
+// tier (issue #591), reusing the activity-picker machinery (#195): each food_log
+// row over the trailing recent window is weighted by `servings × decayedWeight`
+// (60-day half-life, lib/decay.ts) so a recent habit outranks a stale one, and
+// `rankByFrequency` ranks the curated slugs by that weight (the catalog's curated
+// order breaks ties and is the whole order for a fresh profile). The FoodLogBar
+// sections the result by tier, which preserves this order within each tier.
+// Profile-scoped via the food_log filter. Every group is returned exactly once
+// (a retired/unknown logged slug can't resolve to a catalog group, so it's dropped
+// — the bar only logs current groups).
+export function getFoodGroupLogOrder(profileId: number): FoodGroup[] {
+  const t = today(profileId);
+  const rows = db
+    .prepare(
+      `SELECT group_key AS name, date, servings FROM food_log
+        WHERE profile_id = ? AND date >= ? AND servings > 0`
+    )
+    .all(profileId, recentWindowStart(profileId)) as {
+    name: string;
+    date: string;
+    servings: number;
+  }[];
+  // Aggregate a recency-decayed serving weight per group.
+  const weights = new Map<string, number>();
+  for (const r of rows) {
+    const w = r.servings * decayedWeight(r.date, t);
+    weights.set(r.name, (weights.get(r.name) ?? 0) + w);
+  }
+  const rankRows = [...weights].map(([name, c]) => ({ name, c }));
+  const ranked = rankByFrequency(foodGroupSlugs(), rankRows);
+  const out: FoodGroup[] = [];
+  for (const slug of ranked) {
+    const g = foodGroupBySlug(slug);
+    if (g) out.push(g);
+  }
+  // Defensive: if ranking somehow dropped a catalog group, append it in catalog
+  // order so the bar always shows all 24.
+  if (out.length !== FOOD_GROUPS.length) {
+    const seen = new Set(out.map((g) => g.slug));
+    for (const g of FOOD_GROUPS) if (!seen.has(g.slug)) out.push(g);
+  }
+  return out;
 }

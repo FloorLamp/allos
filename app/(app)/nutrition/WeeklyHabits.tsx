@@ -2,6 +2,7 @@ import { IconX } from "@tabler/icons-react";
 import { getFrequencyTargetProgress } from "@/lib/queries";
 import { frequencyScopeLabel } from "@/lib/goals";
 import { FOOD_GROUPS } from "@/lib/food-groups";
+import FoodGroupIcon from "@/components/FoodGroupIcon";
 import SubmitButton from "@/components/SubmitButton";
 import { trackFoodHabit, untrackFoodHabit } from "./actions";
 
@@ -33,7 +34,11 @@ export default function WeeklyHabits({ profileId }: { profileId: number }) {
               data-testid={`habit-${p.target.scope_value}`}
               className="flex items-center justify-between gap-3 text-sm"
             >
-              <span className="text-slate-700 dark:text-slate-200">
+              <span className="flex items-center gap-2 text-slate-700 dark:text-slate-200">
+                <FoodGroupIcon
+                  slug={p.target.scope_value}
+                  className="h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500"
+                />
                 {frequencyScopeLabel("food_group", p.target.scope_value)}
               </span>
               <span className="flex items-center gap-2">
