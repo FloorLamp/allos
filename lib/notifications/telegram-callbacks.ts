@@ -9,7 +9,7 @@ import {
   setPreventiveOverride,
   snoozeFinding,
   supplementExists,
-  getSupplementEscalateChatId,
+  getDoseEscalateChatId,
   escalationAckState,
 } from "../queries";
 import { today } from "../db";
@@ -272,14 +272,15 @@ async function handleEscalationTap(
     await answerCallbackQuery(cq.id);
     return;
   }
-  // The chats authorized to act on this escalation for this profile: the
-  // profile's own delivery chat and the supplement's escalate override (both
-  // read profile-scoped, so a forged supp id can't widen the auth set).
+  // The chats authorized to act on this escalation: the profile's own delivery
+  // chat and the escalate override of the supplement the tapped DOSE actually
+  // belongs to (issue #615). The caregiver chat is derived from the dose row, NOT
+  // from the token's supp id — otherwise a token could pair supplement X's
+  // escalate chat with a dose of supplement Y, letting X's caregiver confirm/silence
+  // Y's doses. Both reads are profile-scoped, so a forged id can't widen the set.
   const authorizedChats = [
     getProfileTelegram(esc.profileId).telegramChatId,
-    esc.suppId != null
-      ? getSupplementEscalateChatId(esc.profileId, esc.suppId)
-      : null,
+    getDoseEscalateChatId(esc.profileId, esc.doseId),
   ];
   const profileId = resolveEscalationTap(esc, String(chatId), authorizedChats);
   if (profileId == null) {

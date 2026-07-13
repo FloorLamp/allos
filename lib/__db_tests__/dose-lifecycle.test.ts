@@ -19,15 +19,17 @@
 // The db singleton is redirected at a per-file temp DB by setup.ts.
 
 import { describe, it, expect } from "vitest";
-import { db } from "@/lib/db";
+import { db, today } from "@/lib/db";
 import {
   getSupplementDoses,
+  getSupplementLogsForDate,
   getTakenDoseIds,
   getSkippedDoseIds,
   markDoseTaken,
   markDoseSkipped,
   escalationAckState,
 } from "@/lib/queries";
+import { shiftDateStr } from "@/lib/date";
 import {
   tapAnswerText,
   tapSkipAnswerText,
@@ -91,7 +93,12 @@ function onHand(itemId: number): number | null {
   ).q;
 }
 
-const DATE = "2026-07-09";
+// Anchored on the app's real today: markDoseTaken/markDoseSkipped now bound the
+// token's date to a small window around today (issue #614), so a fixed calendar
+// literal would drift out of that window as wall-clock time moves. (The offline
+// writers confirmDoseTaken/skipDose don't share the window, but sharing one
+// today-anchored constant keeps the fixture consistent.)
+const DATE = today(1);
 
 describe("markDoseTaken outcomes", () => {
   it("logs with an amount snapshot, decrements supply, and dedups the repeat", () => {
@@ -274,6 +281,106 @@ describe("markDoseSkipped outcomes (#232)", () => {
       "inactive"
     );
     expect(logRow(pausedDose, DATE)).toBeUndefined();
+  });
+});
+
+// The write cores treat the callback token's supplement id and date as untrusted
+// (issues #613/#614): the item is always derived from the DOSE row, and a date
+// outside a small window around today is refused. A duplicate/raced write never
+// throws (issue #616).
+describe("dose write-path hardening (#613/#614/#616)", () => {
+  it("ignores a forged cross-profile item id — writes the dose's OWN item, no foreign row", () => {
+    const profileId = seedProfileRow();
+    const itemId = seedItem(profileId, { quantityOnHand: 10 });
+    const doseId = seedDose(itemId, "500 mg");
+
+    // A second profile whose item id the attacker splices into the token.
+    const victim = seedProfileRow();
+    const victimItem = seedItem(victim, { quantityOnHand: 10 });
+
+    // Forged token: this profile's dose, but the victim's item id.
+    expect(markDoseTaken(profileId, doseId, victimItem, DATE)).toBe(
+      "stale-dose"
+    );
+    // Nothing written for the dose, and the victim profile's taken set is clean.
+    expect(logRow(doseId, DATE)).toBeUndefined();
+    expect(getSupplementLogsForDate(victim, DATE).has(victimItem)).toBe(false);
+    // The victim's supply is untouched (no decrement against a foreign item).
+    expect(onHand(victimItem)).toBe(10);
+  });
+
+  it("writes owned.item_id even when the token carries no supp id", () => {
+    const profileId = seedProfileRow();
+    const itemId = seedItem(profileId, { quantityOnHand: 10 });
+    const doseId = seedDose(itemId, "500 mg");
+
+    expect(markDoseTaken(profileId, doseId, null, DATE)).toBe("logged");
+    const row = db
+      .prepare(
+        "SELECT item_id FROM intake_item_logs WHERE dose_id = ? AND date = ?"
+      )
+      .get(doseId, DATE) as { item_id: number };
+    expect(row.item_id).toBe(itemId);
+  });
+
+  it("refuses a forged out-of-window date so a misdated row can't land", () => {
+    const profileId = seedProfileRow();
+    const itemId = seedItem(profileId, { quantityOnHand: 10 });
+    const doseId = seedDose(itemId, "500 mg");
+
+    const farFuture = shiftDateStr(DATE, 400);
+    const farPast = shiftDateStr(DATE, -400);
+    expect(markDoseTaken(profileId, doseId, itemId, farFuture)).toBe(
+      "stale-dose"
+    );
+    expect(markDoseSkipped(profileId, doseId, itemId, farPast)).toBe(
+      "stale-dose"
+    );
+    expect(logRow(doseId, farFuture)).toBeUndefined();
+    expect(logRow(doseId, farPast)).toBeUndefined();
+    // Supply never moved and today's slot is still open.
+    expect(onHand(itemId)).toBe(10);
+    // A same-day tap still works.
+    expect(markDoseTaken(profileId, doseId, itemId, DATE)).toBe("logged");
+  });
+
+  it("markDoseSkipped also ignores a forged item id", () => {
+    const profileId = seedProfileRow();
+    const itemId = seedItem(profileId);
+    const doseId = seedDose(itemId, "5 mg");
+    const victim = seedProfileRow();
+    const victimItem = seedItem(victim);
+
+    expect(markDoseSkipped(profileId, doseId, victimItem, DATE)).toBe(
+      "stale-dose"
+    );
+    expect(logRow(doseId, DATE)).toBeUndefined();
+  });
+
+  it("a pre-existing (dose,date) log makes a repeat report its standing status, never throwing (#616)", () => {
+    const profileId = seedProfileRow();
+    const itemId = seedItem(profileId, { quantityOnHand: 10 });
+    const doseId = seedDose(itemId, "5 mg");
+
+    // Simulate a concurrent web/offline writer having already logged today.
+    db.prepare(
+      "INSERT INTO intake_item_logs (dose_id, item_id, date, status) VALUES (?,?,?,'taken')"
+    ).run(doseId, itemId, DATE);
+
+    // The Telegram path must NOT throw on the duplicate — it reports already-taken
+    // and leaves supply alone.
+    expect(() => markDoseTaken(profileId, doseId, itemId, DATE)).not.toThrow();
+    expect(markDoseTaken(profileId, doseId, itemId, DATE)).toBe(
+      "already-taken"
+    );
+    expect(onHand(itemId)).toBe(10);
+    // Exactly one row survives.
+    const n = db
+      .prepare(
+        "SELECT COUNT(*) AS n FROM intake_item_logs WHERE dose_id = ? AND date = ?"
+      )
+      .get(doseId, DATE) as { n: number };
+    expect(n.n).toBe(1);
   });
 });
 

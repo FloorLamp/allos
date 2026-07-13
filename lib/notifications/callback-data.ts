@@ -335,10 +335,13 @@ export function parseEscalationCallback(
 // profile's OWN Telegram chat, or the supplement's escalate_chat_id (a caregiver
 // chat). This deliberately means ANYONE in that chat can confirm/ack on the
 // profile's behalf, consistent with the existing dose-button model and intended
-// for household caregiving; the escalation flow logs which chat tapped. Returns
-// the token's profile id when authorized, else null. The caller still passes the
-// resolved id to markDoseTaken, which re-verifies the dose→supplement→profile
-// chain, so a forged dose/supp id from an authorized chat is rejected there.
+// for household caregiving. Returns the token's profile id when authorized, else
+// null. `authorizedChatIds` must be built from the DOSE's own supplement (issue
+// #615), never the token's supp id, so a caregiver chat can only act on the doses
+// of the supplement actually routed to it. The caller still passes the resolved id
+// to markDoseTaken, which re-verifies the dose→supplement→profile chain (and
+// refuses a token whose supp id contradicts the dose), so a forged dose/supp id
+// from an authorized chat is rejected there too.
 export function resolveEscalationTap(
   token: { profileId: number },
   tappingChatId: string,
