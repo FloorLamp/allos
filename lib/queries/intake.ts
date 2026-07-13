@@ -10,3 +10,4 @@ export * from "./intake/pairs";
 export * from "./intake/warnings";
 export * from "./intake/medications";
 export * from "./intake/insights";
+export * from "./intake/safety";

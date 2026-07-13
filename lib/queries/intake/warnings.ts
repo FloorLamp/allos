@@ -10,10 +10,12 @@ import { getUserSex, getUserBirthdate, getStoredAge } from "../../settings";
 import {
   stackUlWarnings,
   stackRdaAdequacy,
+  ulConditionCaveat,
   type StackItem,
   type UlWarning,
   type RdaAdequacy,
 } from "../../dri";
+import { getConditions } from "../clinical";
 import {
   detectInteractions,
   type InteractionHit,
@@ -25,6 +27,14 @@ import { getSupplements, getSupplementDoses } from "./schedule";
 
 // ---- Dietary limits: supplement stack-total UL warnings (issue #148) ----
 
+// A UL warning enriched with an optional condition caveat: when an active condition
+// makes the population UL unreliable for the nutrient (CKD × magnesium, #657), the
+// caveat is computed here — the ONE place with the conditions in hand — and both
+// surfaces (the /medicine row, the Upcoming finding) format it, so they can't disagree.
+export type UlWarningWithCaveat = UlWarning & {
+  conditionCaveat: string | null;
+};
+
 // The active stack's nutrients whose summed daily supplemental intake exceeds the
 // NIH Tolerable Upper Intake Level (UL) for the profile's age/sex. The SINGLE
 // gather behind both surfaces — the /medicine warning rows and the dismissible
@@ -32,13 +42,20 @@ import { getSupplements, getSupplementDoses } from "./schedule";
 // (AGENTS.md "one question, one computation"). Reuses the profile-scoped
 // getSupplements + getSupplementDoses reads (no new SQL, so profile scoping is
 // already enforced) and resolves age/sex from profile_settings; the UL math is the
-// pure lib/dri.stackUlWarnings. `today` selects the age from a birthdate.
+// pure lib/dri.stackUlWarnings. `today` selects the age from a birthdate. Each warning
+// carries the #657 condition caveat when an active condition lowers the nutrient's ceiling.
 export function getDietaryLimitWarnings(
   profileId: number,
   todayStr: string = today(profileId)
-): UlWarning[] {
+): UlWarningWithCaveat[] {
   const { items, ageYears, sex } = stackDriContext(profileId, todayStr);
-  return stackUlWarnings(items, ageYears, sex);
+  const conditions = getConditions(profileId, { status: "active" }).map(
+    (c) => c.name
+  );
+  return stackUlWarnings(items, ageYears, sex).map((w) => ({
+    ...w,
+    conditionCaveat: ulConditionCaveat(w.key, conditions),
+  }));
 }
 
 // The active stack's nutrients whose supplemental total falls BELOW the RDA for the

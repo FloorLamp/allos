@@ -198,7 +198,7 @@ function dietaryLimitItems(profileId: number, today: string): UpcomingItem[] {
     key: dietaryLimitSignalKey(w.key),
     domain: "dietary-limit" as const,
     title: ulWarningTitle(w),
-    detail: ulWarningDetail(w),
+    detail: ulWarningDetail(w, w.conditionCaveat),
     href: "/medicine",
     dueDate: null,
     band: "today" as const,

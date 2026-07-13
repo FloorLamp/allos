@@ -27,6 +27,7 @@
 
 import driData from "./dri.json";
 import type { Sex } from "./types";
+import { conditionsContraindicatingNutrient } from "./condition-nutrient";
 
 export interface DriBand {
   min_age: number;
@@ -319,17 +320,43 @@ export function ulWarningTitle(w: UlWarning): string {
   return `${w.label} above the upper limit`;
 }
 
+// A caveat appended to a UL line when an active condition makes the POPULATION UL
+// unreliable for this nutrient (issue #657). The bands here are age/sex only, so a
+// condition that lowers a nutrient's safe ceiling (CKD × magnesium is the anchor)
+// isn't captured by the band — this annotates the line rather than silently trusting
+// the population figure. Reuses the SAME curated drop-severity condition→nutrient data
+// the food engine and the supplement belt use (lib/condition-nutrient), so the three
+// surfaces can't disagree. Returns null when no active condition qualifies. Never
+// prescriptive.
+export function ulConditionCaveat(
+  nutrientKey: string,
+  conditions: readonly string[]
+): string | null {
+  const hits = conditionsContraindicatingNutrient(nutrientKey, conditions);
+  if (hits.length === 0) return null;
+  const label = BY_KEY.get(nutrientKey)?.label.toLowerCase() ?? nutrientKey;
+  return (
+    `You have ${hits[0].condition} on file — the population upper limit for ` +
+    `supplemental ${label} may not apply to you; discuss with your clinician.`
+  );
+}
+
 // The informational, never-prescriptive detail line. Wording respects the basis:
 // a supplemental-only UL states the stack total directly; a total-intake UL notes
-// that food adds still more.
-export function ulWarningDetail(w: UlWarning): string {
+// that food adds still more. An optional condition caveat (ulConditionCaveat) is
+// appended when the population UL may be unreliable for an active condition (#657).
+export function ulWarningDetail(
+  w: UlWarning,
+  conditionCaveat?: string | null
+): string {
   const amt = `${fmtAmount(w.total)} ${w.unit}`;
   const ul = `${fmtAmount(w.ul)} ${w.unit}`;
   const lead =
     w.basis === "supplemental"
       ? `Your supplements total about ${amt}/day of supplemental ${w.label} — above the ${ul} Tolerable Upper Intake Level (UL) for your age.`
       : `Your supplements alone total about ${amt}/day of ${w.label} — above the ${ul} Tolerable Upper Intake Level (UL) for total intake at your age, and food and drink add still more.`;
-  return `${lead} This is informational, not a diagnosis — discuss with your clinician before changing anything.`;
+  const base = `${lead} This is informational, not a diagnosis — discuss with your clinician before changing anything.`;
+  return conditionCaveat ? `${base} ${conditionCaveat}` : base;
 }
 
 // A short "what's contributing" evidence line: the items feeding the total, each

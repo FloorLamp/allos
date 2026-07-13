@@ -26,6 +26,7 @@ import {
   getActivityDates,
   getFoodSuggestions,
   getFrequencyTargetProgress,
+  getIntakeSafetyContext,
   getBiomarkerSeries,
   getCanonicalBiomarker,
   getDaylightOutdoorMinutesTotal,
@@ -39,7 +40,12 @@ import {
 import { optimalStatus } from "./reference-range";
 import { decideSunExposure, SUN_EXPOSURE_WINDOW_WEEKS } from "./sun-exposure";
 import { isGoalLive, frequencyScopeLabel } from "./goals";
-import { foodHabitSignalKey, isFoodHabitBehind } from "./food-habit";
+import {
+  foodHabitSignalKey,
+  isFoodHabitBehind,
+  foodHabitInteractions,
+  foodHabitInteractionNote,
+} from "./food-habit";
 import { shiftDateStr, lastNDates } from "./date";
 import { fmtWeight, round } from "./units";
 import { formatLongDate } from "./format-date";
@@ -122,16 +128,28 @@ export function collectCoachingFindings(
 // tier only — no notification (the #245 bus-gating precedent would apply if a nudge is
 // ever added, out of scope here). No owned SQL added here.
 export function buildFoodHabitFindings(profileId: number): Finding[] {
+  // Active medications from the ONE shared intake-safety gather (#661), so the "behind
+  // this week" encouragement and any food–drug warning come from one computation and
+  // can't disagree with the medication row (#661.3).
+  const medications = getIntakeSafetyContext(profileId).medications;
   return getFrequencyTargetProgress(profileId)
     .filter(isFoodHabitBehind)
     .map((p) => {
       const label = frequencyScopeLabel("food_group", p.target.scope_value);
       const remaining = p.per_week - p.count;
+      const notes = foodHabitInteractions(
+        p.target.scope_value,
+        medications
+      ).map(foodHabitInteractionNote);
+      const detail = [
+        `${p.count} of ${p.per_week} servings so far — ${remaining} to go to hit your weekly ${label.toLowerCase()} habit.`,
+        ...notes,
+      ].join(" ");
       return {
         domain: "food-habit",
         dedupeKey: foodHabitSignalKey(p.target.scope_value),
         title: `${label} habit is behind this week`,
-        detail: `${p.count} of ${p.per_week} servings so far — ${remaining} to go to hit your weekly ${label.toLowerCase()} habit.`,
+        detail,
         tone: "info" as const,
         actionHref: "/nutrition",
         actionLabel: "Log servings",
