@@ -16,15 +16,24 @@ function expectGlobalHeaders(headers: Record<string, string>) {
   expect(headers["permissions-policy"]).toBe(
     "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
   );
-  // frame-ancestors is enforced immediately; the rest of the CSP is report-only.
-  expect(headers["content-security-policy"]).toContain(
-    "frame-ancestors 'none'"
-  );
+  // The non-script directives are now ENFORCED (issue #595). Pin each graduated
+  // directive so a regression that drops one — or silently moves it back to
+  // report-only — fails CI.
+  const csp = headers["content-security-policy"];
+  expect(csp).toContain("default-src 'self'");
+  expect(csp).toContain("base-uri 'self'");
+  expect(csp).toContain("object-src 'none'");
+  expect(csp).toContain("form-action 'self'");
+  expect(csp).toContain("frame-ancestors 'none'");
+  expect(csp).toContain("img-src 'self' data: blob:");
+  expect(csp).toContain("connect-src 'self'");
+  // script-src/style-src stay permissive (unsafe-inline) in the enforced header
+  // pending the nonce follow-up; they must NOT have been tightened here.
+  expect(csp).toContain("script-src 'self' 'unsafe-inline'");
+  expect(csp).toContain("style-src 'self' 'unsafe-inline'");
+  // The report-only header is now the nonce test bed for script/style only.
   expect(headers["content-security-policy-report-only"]).toContain(
-    "default-src 'self'"
-  );
-  expect(headers["content-security-policy-report-only"]).toContain(
-    "object-src 'none'"
+    "script-src"
   );
 }
 
@@ -44,6 +53,22 @@ test("authenticated app page carries the global security headers", async ({
   const resp = await page.goto("/");
   expect(resp!.status()).toBeLessThan(400);
   expectGlobalHeaders(resp!.headers());
+});
+
+test("document viewer page still renders under the enforced CSP", async ({
+  page,
+}) => {
+  // The import document viewer embeds the stored file via a same-origin <img>
+  // (or <iframe> for PDFs). object-src 'none' governs <object>/<embed> only —
+  // not iframes — and the same-origin preview is allowed by default-src 'self',
+  // so the enforced graduation must not break this surface. Assert the page
+  // renders its preview card and still carries the enforced header.
+  const resp = await page.goto("/import/908");
+  expect(resp!.status()).toBeLessThan(400);
+  expectGlobalHeaders(resp!.headers());
+  await expect(
+    page.getByRole("heading", { name: "Document", exact: true })
+  ).toBeVisible();
 });
 
 test("share route keeps its stricter middleware headers", async ({

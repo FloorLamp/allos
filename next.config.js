@@ -1,37 +1,65 @@
 // Global security response headers (issue #21). Applied to every route by the
 // `headers()` hook below. Route handlers (API, .ics feed, SSE, icons) get the
 // same set — these are all response headers and none constrain a JSON/stream/
-// binary body; the only body-shaping header, the CSP, is report-only (except the
-// always-safe `frame-ancestors`), so nothing can be blocked in this rollout.
+// binary body.
 //
 // The /share/* responses layer STRICTER values on top in middleware.ts
 // (withShareHeaders: Referrer-Policy: no-referrer, plus Cache-Control/X-Robots-
 // Tag) — middleware runs per-request and its `res.headers.set(...)` overrides
 // these config defaults for that route, which is verified by the e2e spec.
+// withShareHeaders does NOT touch the CSP, so the enforced policy below rides
+// along on share pages unchanged (it never weakens or double-sets their headers).
 //
-// CSP graduation plan. We ship the FULL policy as report-only
-// (Content-Security-Policy-Report-Only) so it can be observed in the field
-// without breaking anything, and enforce ONLY `frame-ancestors 'none'` today via
-// a separate real Content-Security-Policy header — that directive is
-// clickjacking defense equivalent to X-Frame-Options: DENY and is safe to turn on
-// immediately. `script-src`/`style-src` keep `'unsafe-inline'` because Next's
-// App Router emits inline bootstrap/runtime <script> and Tailwind emits inline
-// styles; a nonce-based strict CSP requires threading a per-request nonce through
-// the framework and is deliberately left as a follow-up. Once the report-only
-// policy shows no legitimate violations, graduate directives out of report-only
-// into the enforced header one at a time (start with the non-script directives —
-// object-src/base-uri/form-action/default-src — then tackle script/style behind
-// nonces last).
-const REPORT_ONLY_CSP = [
+// CSP graduation (issue #595, executing the #21 rollout plan). Step 2 is now
+// DONE: the non-script directives are ENFORCED in the real Content-Security-
+// Policy header — `default-src 'self'`, `base-uri 'self'`, `object-src 'none'`,
+// `form-action 'self'`, `img-src 'self' data: blob:`, `connect-src 'self'`,
+// alongside the always-safe `frame-ancestors 'none'` (clickjacking defense that
+// mirrors X-Frame-Options: DENY). These were audited quiet against every app
+// surface before flipping: same-origin avatar/profile-photo images and data:
+// icons (img-src), blob: crop-preview URLs (img-src blob:), same-origin SSE for
+// the AI-log stream (connect-src), the same-origin PDF <iframe> document preview
+// (frame-src falls back to default-src 'self' — NOT constrained by object-src,
+// which only governs <object>/<embed>/<applet>, none of which exist in the tree),
+// and external maps links which are top-level <a> navigations, not subresources
+// any directive governs. No form posts to external hosts.
+//
+// NOTE: `script-src`/`style-src` ARE declared in the enforced header, but only
+// because `default-src 'self'` would otherwise become their fallback and block
+// Next's inline App Router bootstrap <script> and the theme-boot inline script
+// (app/layout.tsx) plus Tailwind's inline styles. Their enforced value keeps
+// `'unsafe-inline'` — i.e. exactly today's permissiveness, NOT a tightening.
+// Step 3 (the follow-up) removes `'unsafe-inline'` via a per-request nonce
+// threaded through the framework (Next supports this via middleware + the `nonce`
+// request header); `style-src 'unsafe-inline'` may have to stay for Tailwind and
+// that call gets made explicitly then. The strict, nonce-based script/style
+// policy will be trialed in the Content-Security-Policy-Report-Only header first
+// (its purpose from here on) before it graduates into the enforced header.
+
+// ENFORCED policy (real Content-Security-Policy header). See the note above on
+// why script-src/style-src appear here with 'unsafe-inline' rather than being
+// left to the default-src fallback.
+const ENFORCED_CSP = [
   "default-src 'self'",
   "base-uri 'self'",
   "object-src 'none'",
   "form-action 'self'",
   "frame-ancestors 'none'",
   "img-src 'self' data: blob:",
-  "style-src 'self' 'unsafe-inline'",
-  "script-src 'self' 'unsafe-inline'",
   "connect-src 'self'",
+  "script-src 'self' 'unsafe-inline'",
+  "style-src 'self' 'unsafe-inline'",
+].join("; ");
+
+// REPORT-ONLY policy (Content-Security-Policy-Report-Only header). Now scoped to
+// the directives still awaiting the nonce work (step 3): it is the test bed where
+// a stricter, nonce-based `script-src`/`style-src` (dropping 'unsafe-inline') gets
+// trialed in the field before it graduates into the enforced header above. Until
+// that trial begins it mirrors the enforced permissive value, so it reports
+// nothing today — that's intentional; it holds the place for the tightening.
+const REPORT_ONLY_CSP = [
+  "script-src 'self' 'unsafe-inline'",
+  "style-src 'self' 'unsafe-inline'",
 ].join("; ");
 
 const SECURITY_HEADERS = [
@@ -49,9 +77,11 @@ const SECURITY_HEADERS = [
     key: "Permissions-Policy",
     value: "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
   },
-  // Enforced now: clickjacking defense (mirrors X-Frame-Options: DENY for CSP-
-  // aware browsers). Everything else in the policy is report-only below.
-  { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
+  // Enforced now (issue #595): the full non-script policy plus the always-safe
+  // frame-ancestors clickjacking defense. script-src/style-src ride along with
+  // 'unsafe-inline' only to keep default-src from blocking framework inline
+  // script/style — the nonce tightening is trialed report-only below first.
+  { key: "Content-Security-Policy", value: ENFORCED_CSP },
   { key: "Content-Security-Policy-Report-Only", value: REPORT_ONLY_CSP },
 ];
 
