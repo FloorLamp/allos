@@ -9,6 +9,8 @@ import {
   round,
   stripNegative,
   stripNonPositive,
+  submittedDistanceUnit,
+  submittedWeightUnit,
   toKg,
   toKm,
 } from "@/lib/units";
@@ -113,6 +115,32 @@ describe("resolveWeightKg (issue #194)", () => {
   it("falls back to toKg when there is no stored value (create path)", () => {
     expect(resolveWeightKg(150, null, "lb")).toBeCloseTo(toKg(150, "lb"), 9);
     expect(resolveWeightKg(80, undefined, "kg")).toBe(80);
+  });
+});
+
+describe("submittedWeightUnit / submittedDistanceUnit (issue #630)", () => {
+  it("trusts a valid submitted weight unit over the fallback pref", () => {
+    // The number was captured in kg; the login's stored pref is now lb — the
+    // captured unit must win so the value isn't re-converted as lb.
+    expect(submittedWeightUnit("kg", "lb")).toBe("kg");
+    expect(submittedWeightUnit("lb", "kg")).toBe("lb");
+  });
+
+  it("falls back to the pref for an absent/garbage weight unit", () => {
+    expect(submittedWeightUnit(null, "lb")).toBe("lb");
+    expect(submittedWeightUnit(undefined, "kg")).toBe("kg");
+    expect(submittedWeightUnit("", "lb")).toBe("lb");
+    expect(submittedWeightUnit("stone", "kg")).toBe("kg");
+  });
+
+  it("trusts a valid submitted distance unit over the fallback pref", () => {
+    expect(submittedDistanceUnit("km", "mi")).toBe("km");
+    expect(submittedDistanceUnit("mi", "km")).toBe("mi");
+  });
+
+  it("falls back to the pref for an absent/garbage distance unit", () => {
+    expect(submittedDistanceUnit(null, "mi")).toBe("mi");
+    expect(submittedDistanceUnit("furlong", "km")).toBe("km");
   });
 });
 

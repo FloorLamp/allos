@@ -11,7 +11,7 @@ import {
   type GoalMetric,
 } from "@/lib/types";
 import { getUnitPrefs } from "@/lib/settings";
-import { toKg, resolveWeightKg } from "@/lib/units";
+import { resolveWeightKg, submittedWeightUnit } from "@/lib/units";
 import { parseSeconds } from "@/lib/duration";
 import { BODY_METRIC_LABELS, isGoalStatus } from "@/lib/goals";
 import {
@@ -86,20 +86,24 @@ function goalColsFromForm(
   };
   const str = (k: string) => (formData.get(k) as string)?.trim() || null;
 
+  // Honor the unit the weight target was CAPTURED in (issue #630): the form posts
+  // the render-time unit, and we trust it over the login's current stored pref so
+  // a mid-edit pref flip in another tab can't re-convert a correctly-entered
+  // target. Falls back to the stored pref when the field is absent (older client).
+  const weightUnit = submittedWeightUnit(
+    formData.get("weight_unit"),
+    getUnitPrefs(loginId).weightUnit
+  );
+
   if (kind === "exercise") {
     const exercise = String(formData.get("exercise") ?? "").trim();
     const metric = String(formData.get("metric") ?? "").trim() as GoalMetric;
     const ALLOWED: GoalMetric[] = ["weight", "reps", "sets", "hold"];
     if (!exercise || !ALLOWED.includes(metric)) return null;
-    const prefs = getUnitPrefs(loginId);
     const weightUser = num("target_weight");
     const targetWeightKg =
       weightUser != null
-        ? resolveWeightKg(
-            weightUser,
-            stored?.target_weight_kg,
-            prefs.weightUnit
-          )
+        ? resolveWeightKg(weightUser, stored?.target_weight_kg, weightUnit)
         : null;
     const targetReps = num("target_reps");
     const targetSets = num("target_sets");
@@ -150,11 +154,7 @@ function goalColsFromForm(
     // (%) and resting HR (bpm) are stored as entered.
     const target =
       bm === "weight"
-        ? resolveWeightKg(
-            raw,
-            stored?.target_value,
-            getUnitPrefs(loginId).weightUnit
-          )
+        ? resolveWeightKg(raw, stored?.target_value, weightUnit)
         : raw;
     return {
       title:

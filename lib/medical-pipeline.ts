@@ -176,7 +176,15 @@ function dispatchExtraction(
         if (charged) refundAiUsage(profileId, "extraction");
         return;
       }
-      return runExtraction(profileId, docId, buffer, mime, filename, charged);
+      return runExtraction(
+        profileId,
+        docId,
+        buffer,
+        mime,
+        filename,
+        charged,
+        loginId
+      );
     })
   ).catch((err) => {
     // The limiter shed this dispatch (wait queue full): keep the file, mark it
@@ -546,7 +554,12 @@ export async function runExtraction(
   buffer: Buffer,
   mime: string,
   filename: string,
-  charged: boolean = false
+  charged: boolean = false,
+  // The acting login, threaded so the post-import daily-insight regeneration
+  // formats weights/distances in the reader's unit preference instead of the
+  // canonical kg/km fallback (issue #632). Absent for background contexts with
+  // no reader (falls back to kg/km, matching the pre-#632 behavior).
+  loginId?: number
 ): Promise<"done" | "failed" | "skipped"> {
   try {
     // Pass the known canonical vocabulary so the model reuses existing names
@@ -650,6 +663,10 @@ export async function runExtraction(
       void runRecommendation(profileId, {
         trigger: "document-imported",
         recordIds: insertedIds,
+        // Thread the reader's login (issue #632) so the regenerated insight's PRs
+        // and weight-trend deltas render in their lb/mi preference, matching the
+        // scheduled first-page-view trigger; absent → the kg/km fallback.
+        loginId,
       })
         .then(() => revalidatePath("/medicine"))
         .catch((err) => log.error("recommendation run failed", { docId, err }));
@@ -732,7 +749,10 @@ function beginReprocess(
 // Does not revalidate or clean up stars — callers do.
 export async function reprocessOne(
   profileId: number,
-  docId: number
+  docId: number,
+  // Acting login, threaded into runExtraction so a reprocess-triggered insight
+  // regeneration uses the reader's unit preference (issue #632).
+  loginId?: number
 ): Promise<"done" | "failed" | "skipped" | "missing" | "processing"> {
   const prep = beginReprocess(profileId, docId);
   if ("status" in prep) return prep.status;
@@ -765,7 +785,8 @@ export async function reprocessOne(
         prep.buffer,
         prep.mime,
         prep.filename,
-        true
+        true,
+        loginId
       )
     );
   } catch (err) {
@@ -837,7 +858,7 @@ export async function reprocessAllForProfile(
   let skipped = 0;
   for (const id of ids) {
     const status = await withAiLogContext({ loginId, profileId }, () =>
-      reprocessOne(profileId, id)
+      reprocessOne(profileId, id, loginId)
     );
     if (status === "done") done++;
     else if (status === "missing") missing++;
@@ -913,7 +934,15 @@ export function reprocessDocumentById(
     extractionSemaphore.run(() =>
       // charged=true — key present + cap allowed, so a transient failure refunds
       // the unit (#135 item 3).
-      runExtraction(profileId, id, prep.buffer, prep.mime, prep.filename, true)
+      runExtraction(
+        profileId,
+        id,
+        prep.buffer,
+        prep.mime,
+        prep.filename,
+        true,
+        loginId
+      )
     )
   )
     .then(() => {

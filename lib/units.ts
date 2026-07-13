@@ -22,6 +22,30 @@ export function round(n: number, decimals = 1): number {
   return Math.round(n * f) / f;
 }
 
+// Resolve the unit a submitted display-value was CAPTURED in, honoring a unit
+// carried alongside the value over the login's current stored preference (issue
+// #630). A weight/distance form renders the number in the login's unit at render
+// time, but the write can fire long after (the docked journal editor auto-saves
+// on a debounce) — if the login flips its preference in another tab meanwhile, a
+// write that re-reads the pref would mis-convert a correctly-entered number. So
+// the form posts the render-time unit and the action trusts it, falling back to
+// the stored pref only when the field is absent/garbage (older clients, other
+// callers). This is the general form of #467's compare-and-set: carry the
+// interpretation with the value whenever the interpretation depends on a mutable
+// pref.
+export function submittedWeightUnit(
+  raw: unknown,
+  fallback: WeightUnit
+): WeightUnit {
+  return raw === "kg" || raw === "lb" ? raw : fallback;
+}
+export function submittedDistanceUnit(
+  raw: unknown,
+  fallback: DistanceUnit
+): DistanceUnit {
+  return raw === "km" || raw === "mi" ? raw : fallback;
+}
+
 // Resolve a submitted display-unit weight back to canonical kg, treating a
 // value that is materially unchanged from the stored canonical value as a true
 // no-op. Edit forms pre-fill `round(kgTo(stored, unit), decimals)`; on save the
