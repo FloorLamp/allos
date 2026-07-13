@@ -49,6 +49,9 @@ setSetting("notify_last_error_channel", "telegram");
 // render for the admin-access e2e. Synthetic message — no PHI. Written straight
 // to the errors.jsonl the admin page reads (data/logs/errors.jsonl), so the test
 // doesn't need to provoke a real 500. Mirrors what recordErrorEvent appends.
+// WRITE, not append: unlike the DB, errors.jsonl isn't reset between e2e runs,
+// and a second appended copy of the same message would strict-mode-break the
+// spec's getByText assertion.
 {
   const errorLogPath = path.join(process.cwd(), "data", "logs", "errors.jsonl");
   fs.mkdirSync(path.dirname(errorLogPath), { recursive: true });
@@ -62,7 +65,7 @@ setSetting("notify_last_error_channel", "telegram");
     loginId: null,
     profileId: null,
   };
-  fs.appendFileSync(errorLogPath, JSON.stringify(event) + "\n");
+  fs.writeFileSync(errorLogPath, JSON.stringify(event) + "\n");
 }
 
 const PROFILE_ID = 1;
