@@ -29,9 +29,17 @@ test("Settings → Profile shows the coarse home location and can update it", as
   await expect(lng).toHaveValue("-74");
 
   // Updating a coordinate auto-saves (rounded to 0.1° server-side).
+  // Note: keep fills OFF the .05 rounding boundary — JS Math.round takes half
+  // toward +inf, so "-87.65" coarsens to -87.6 (not -87.7 as half-away-from-zero
+  // would give). Deterministic either way; the boundary just makes a confusing
+  // fixture.
   await lat.fill("41.85");
-  await lng.fill("-87.65");
+  await lng.fill("-87.68");
   await lng.blur();
+  // Wait for the autosave to COMMIT before reloading — a reload aborts the
+  // in-flight server-action POST and silently loses the save (the ai-settings
+  // race class, PR #586). SaveStatus renders aria-label="Saved" on success.
+  await expect(page.getByLabel("Saved").first()).toBeVisible();
   // Reload and confirm the coarse value persisted.
   await page.reload();
   await expect(page.getByTestId("home-lat")).toHaveValue("41.9");
@@ -41,6 +49,7 @@ test("Settings → Profile shows the coarse home location and can update it", as
   await page.getByTestId("home-lat").fill("40.7");
   await page.getByTestId("home-lng").fill("-74");
   await page.getByTestId("home-lng").blur();
+  await expect(page.getByLabel("Saved").first()).toBeVisible();
   await page.reload();
   await expect(page.getByTestId("home-lat")).toHaveValue("40.7");
 });
