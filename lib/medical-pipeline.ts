@@ -75,7 +75,18 @@ export const UPLOAD_DIR = path.join(
   "uploads",
   "medical"
 );
-const MAX_BYTES = 32 * 1024 * 1024; // 32MB (Anthropic request cap)
+// AI-extracted uploads (PDF / image / spreadsheet) are inlined as base64 into the
+// Anthropic Messages request, whose body Anthropic caps at 32MB — a HARD external
+// limit for that path, not a tunable (raising it would need the Files API).
+const MAX_AI_BYTES = 32 * 1024 * 1024; // 32MB (Anthropic request cap)
+// Health-record uploads (CCD/XDM/SHC/FHIR) are parsed DETERMINISTICALLY with no API
+// call, so they aren't bound by the Anthropic limit — only by memory and the zip
+// decompression caps (lib/zip.ts: 64MB/entry, 256MB total). A large multi-document
+// MyChart XDM can exceed 32MB, so health records get their own higher cap. NB: the
+// next.config transport caps (experimental.proxyClientMaxBodySize AND
+// serverActions.bodySizeLimit) must both stay >= this, or Next truncates/rejects the
+// request body before ingest ever runs — keep all three in lockstep.
+const MAX_HEALTH_BYTES = 64 * 1024 * 1024; // 64MB
 
 // Model-supplied dates are only *asked* to be ISO — validate before storing so a
 // hallucinated "Friday" or "2026-13-45" can't land in a YYYY-MM-DD column.
@@ -256,15 +267,17 @@ export async function ingestMedicalUpload(
 ): Promise<void> {
   const mime = file.type || "application/octet-stream";
   // Reject an oversized upload BEFORE buffering the whole file into memory —
-  // file.size is known from the multipart headers, so we needn't read a 100MB
-  // body just to reject it. The post-buffer check below is a backstop.
-  if (file.size > MAX_BYTES) {
+  // file.size is known from the multipart headers, so we needn't read a huge body
+  // just to reject it. This gates at the ABSOLUTE max (the health-record cap); the
+  // stricter AI cap is applied below, once we've sniffed whether this is a
+  // deterministic health record (which isn't bound by the Anthropic request limit).
+  if (file.size > MAX_HEALTH_BYTES) {
     insertFailedDoc(
       profileId,
       file.name,
       mime,
       file.size,
-      `File too large (max ${Math.round(MAX_BYTES / 1024 / 1024)}MB).`
+      `File too large (max ${Math.round(MAX_HEALTH_BYTES / 1024 / 1024)}MB).`
     );
     revalidatePath("/data");
     return;
@@ -284,15 +297,18 @@ export async function ingestMedicalUpload(
     revalidatePath("/data");
     return;
   }
-  // Backstop the pre-buffer size gate against a lying/absent file.size, now that
-  // the actual byte length is known.
-  if (buffer.length > MAX_BYTES) {
+  // Enforce the per-path size cap now that the byte length AND the kind are known:
+  // an AI-extracted file is bound by the Anthropic request limit (it's inlined as
+  // base64), a deterministic health record is not. Also backstops the pre-buffer
+  // gate against a lying/absent file.size.
+  const sizeCap = healthKind ? MAX_HEALTH_BYTES : MAX_AI_BYTES;
+  if (buffer.length > sizeCap) {
     insertFailedDoc(
       profileId,
       file.name,
       mime,
       buffer.length,
-      `File too large (max ${Math.round(MAX_BYTES / 1024 / 1024)}MB).`
+      `File too large (max ${Math.round(sizeCap / 1024 / 1024)}MB).`
     );
     revalidatePath("/data");
     return;

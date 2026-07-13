@@ -60,18 +60,63 @@ describe("medical-pipeline: ingestMedicalUpload validation", () => {
 
   it("rejects an oversized file before buffering", async () => {
     const { login, profile } = seedActor();
-    // A File larger than the 32MB cap, reported via file.size — the pre-buffer
-    // gate must reject it without reading the body.
+    // A File larger than the 64MB absolute cap (MAX_HEALTH_BYTES), reported via
+    // file.size — the pre-buffer gate must reject it without reading the body.
     const big = new File([Buffer.from("x")], "huge.pdf", {
       type: "application/pdf",
     });
-    Object.defineProperty(big, "size", { value: 40 * 1024 * 1024 });
+    Object.defineProperty(big, "size", { value: 70 * 1024 * 1024 });
     await ingestMedicalUpload(login.id, profile.id, big);
 
     const rows = docRows(profile.id);
     expect(rows).toHaveLength(1);
     expect(rows[0].status).toBe("failed");
     expect(rows[0].error).toMatch(/too large/i);
+  });
+
+  it("still rejects a >32MB NON-health file (the Anthropic-bound AI cap)", async () => {
+    const { login, profile } = seedActor();
+    // A real 33MB PDF: over the 32MB AI cap (MAX_AI_BYTES) but under the 64MB
+    // pre-buffer gate, so it passes the pre-buffer gate and is rejected by the
+    // per-path post-buffer check — an AI-extracted file is inlined as base64 into
+    // the Anthropic request and can't exceed 32MB.
+    const pdf = Buffer.concat([
+      Buffer.from("%PDF-1.4\n"),
+      Buffer.alloc(33 * 1024 * 1024),
+    ]);
+    const big = new File([pdf], "scan.pdf", { type: "application/pdf" });
+    await ingestMedicalUpload(login.id, profile.id, big);
+
+    const rows = docRows(profile.id);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].status).toBe("failed");
+    expect(rows[0].error).toMatch(/too large \(max 32MB\)/i);
+  });
+
+  it("accepts a >32MB HEALTH record (deterministic parse, no Anthropic cap)", async () => {
+    const { login, profile } = seedActor();
+    // A real 33MB FHIR bundle: over the 32MB AI cap but under the 64MB health cap
+    // (MAX_HEALTH_BYTES). Health records are parsed deterministically (no API call),
+    // so the AI cap must NOT apply — this upload is accepted, stored, and imported.
+    // The `_pad` string keeps the JSON valid while inflating it past 32MB; the head
+    // still sniffs as a FHIR Bundle.
+    const pad = "X".repeat(33 * 1024 * 1024);
+    const fhir = `{"resourceType":"Bundle","type":"collection","_pad":"${pad}","entry":[]}`;
+    const health = new File([Buffer.from(fhir)], "export.json", {
+      type: "application/fhir+json",
+    });
+    await ingestMedicalUpload(login.id, profile.id, health);
+    // A health record over 1MB persists on a deferred tick; flush it so the parse
+    // settles to a terminal status before asserting (persistHealthRecordDoc is sync).
+    await new Promise((resolve) => setImmediate(resolve));
+
+    const rows = docRows(profile.id);
+    expect(rows).toHaveLength(1);
+    // Accepted, not size-rejected: an empty bundle parses cleanly to 'done'.
+    expect(rows[0].status).not.toBe("failed");
+    expect(rows[0].error ?? "").not.toMatch(/too large/i);
+    // The original file was stored (it got past every gate into persistence).
+    expect(rows[0].stored_path).toBeTruthy();
   });
 });
 
