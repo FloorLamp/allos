@@ -7,6 +7,7 @@ import {
   bodyMetricKind,
   hasBodyMetric,
   mergeBodyMetric,
+  mergeBodyMetricPartialAware,
   roundBodyMetric,
   foldSampleIntoRow,
   documentRowAddsMetric,
@@ -401,6 +402,50 @@ describe("mergeBodyMetric (integration upsert merge)", () => {
         resting_hr: null,
       })
     ).toEqual(existing);
+  });
+});
+
+describe("mergeBodyMetricPartialAware (#606 partial-window guard)", () => {
+  const stored = { weight_kg: 76, body_fat_pct: 20, resting_hr: 58 };
+
+  it("on a fully-covered day, behaves exactly like mergeBodyMetric (incoming wins)", () => {
+    const incoming = { weight_kg: 75.5, body_fat_pct: 19, resting_hr: 60 };
+    expect(mergeBodyMetricPartialAware(stored, incoming, false)).toEqual(
+      mergeBodyMetric(stored, incoming)
+    );
+    expect(mergeBodyMetricPartialAware(stored, incoming, false)).toEqual(
+      incoming
+    );
+  });
+
+  it("on a partial day, a partial-tail body-fat/RHR average never overwrites the stored value", () => {
+    // The batch's partial-tail "day average" (60 bpm from one late sample) must not
+    // clobber the fuller stored 58 computed when the day was wholly in the window.
+    const incoming = { weight_kg: null, body_fat_pct: 21, resting_hr: 60 };
+    expect(mergeBodyMetricPartialAware(stored, incoming, true)).toEqual({
+      weight_kg: 76, // kept (incoming had none)
+      body_fat_pct: 20, // stored wins on a partial day
+      resting_hr: 58, // stored wins on a partial day
+    });
+  });
+
+  it("on a partial day, weight (last-of-day, not an average) still overwrites", () => {
+    const incoming = { weight_kg: 74.8, body_fat_pct: null, resting_hr: null };
+    expect(mergeBodyMetricPartialAware(stored, incoming, true)).toEqual({
+      weight_kg: 74.8,
+      body_fat_pct: 20,
+      resting_hr: 58,
+    });
+  });
+
+  it("on a partial day, a gap the stored row lacks is still filled", () => {
+    const existing = { weight_kg: 76, body_fat_pct: null, resting_hr: null };
+    const incoming = { weight_kg: null, body_fat_pct: 22, resting_hr: 61 };
+    expect(mergeBodyMetricPartialAware(existing, incoming, true)).toEqual({
+      weight_kg: 76,
+      body_fat_pct: 22, // filled (existing was null)
+      resting_hr: 61, // filled (existing was null)
+    });
   });
 });
 

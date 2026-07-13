@@ -2,9 +2,10 @@ import { db } from "@/lib/db";
 import type { ActivityType, ActivityComponent } from "@/lib/types";
 import {
   hasBodyMetric,
-  mergeBodyMetric,
+  mergeBodyMetricPartialAware,
   type BodyMetricValues,
 } from "@/lib/body-metric-extract";
+import { collapseBodyMetricsByDate } from "./body-metric-collapse";
 import { emptyCounts, rowsEqual, isEditLocked } from "./sync-log";
 import type { UpsertCounts } from "./sync-log";
 import { loadImportTombstones } from "./tombstones";
@@ -24,6 +25,18 @@ export interface NormBodyMetric {
   weight_kg?: number;
   body_fat_pct?: number;
   resting_hr?: number;
+  // The absolute instant (ISO) this reading was taken. Only used to collapse multiple
+  // same-date readings within a batch deterministically (#605) — the LATEST non-null
+  // value wins per field. Providers that already emit one row per date (Health
+  // Connect) omit it; Withings/Oura set it so their unsorted per-reading rows fold
+  // in chronological order. Never persisted.
+  measured_at?: string;
+  // The day is only PARTIALLY covered by this batch's rolling window (#606): its
+  // body-fat / resting-HR day-averages were computed from a partial tail of the day's
+  // samples, so they must not overwrite a fuller value stored when the day was wholly
+  // in the window. Set by the Health Connect parser for the oldest day in a push.
+  // Never persisted.
+  partial_day?: boolean;
 }
 
 export interface NormMetricSample {
@@ -174,7 +187,12 @@ export function upsertBodyMetrics(
   // deleted must NOT be re-inserted by the rolling window (#507/#508). Loaded once.
   const tombstoned = loadImportTombstones(profileId, "body_metrics");
   const counts = emptyCounts();
-  for (const r of rows) {
+  // Collapse multiple same-date readings in this batch to one row per date FIRST
+  // (#605), so the stored triple is independent of the order the provider returned
+  // its readings (Withings/Oura push one row per reading with no per-date collapse)
+  // and a multi-weigh-in day no longer flip-flops on every re-scan.
+  const collapsed = collapseBodyMetricsByDate(rows);
+  for (const r of collapsed) {
     const incoming: BodyMetricValues = {
       weight_kg: r.weight_kg ?? null,
       body_fat_pct: r.body_fat_pct ?? null,
@@ -197,7 +215,12 @@ export function upsertBodyMetrics(
     }
     // Resolved post-image: the merge fills gaps and lets a fresh non-null value
     // (a corrected weight) overwrite; a fresh row stores the incoming triple as-is.
-    const post = mine ? mergeBodyMetric(mine, incoming) : incoming;
+    // On a partially-covered day (#606) the incoming body-fat/RHR "day average" was
+    // computed from only a tail of the day's samples, so it must NOT overwrite a
+    // fuller stored value — the partial-aware merge keeps the existing average there.
+    const post = mine
+      ? mergeBodyMetricPartialAware(mine, incoming, !!r.partial_day)
+      : incoming;
     if (
       mine &&
       rowsEqual(

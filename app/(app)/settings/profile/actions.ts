@@ -17,6 +17,7 @@ import {
   setUserReproductiveStatus,
   getStoredAge,
   setStoredAge,
+  getTimezone,
   setProfileTelegram,
   setNotifySchedule,
   setProfileHomeAssistant,
@@ -44,6 +45,7 @@ import {
   parseSmokingStatus,
 } from "@/lib/smoking";
 import { reconcileFlags } from "@/lib/queries";
+import { sweepIngestWindowForTimezoneChange } from "@/lib/integrations/ingest-timezone-sweep";
 import { dispatch } from "@/lib/notifications";
 import {
   WAKING_START_HOUR,
@@ -147,7 +149,18 @@ export async function saveProfileSettings(formData: FormData) {
   // reminders). Ignore an invalid value rather than throwing — keep the prior
   // setting.
   const tz = String(formData.get("timezone") ?? "").trim();
-  if (tz && isValidTimezone(tz)) setTimezone(profile.id, tz);
+  if (tz && isValidTimezone(tz)) {
+    const prevTz = getTimezone(profile.id);
+    if (tz !== prevTz) {
+      setTimezone(profile.id, tz);
+      // The ingest tables that store profile-LOCAL time computed at ingest
+      // (hr_minutes.ts and Health Connect body_metrics.date) re-key on a timezone
+      // change, so the next rolling-window push would duplicate ~48h of data under the
+      // shifted keys (#608). Sweep the current window's push-sourced rows so the next
+      // push repopulates them cleanly under the new keys.
+      sweepIngestWindowForTimezoneChange(profile.id);
+    }
+  }
 
   // Home location (issue #570): the coarse "where am I" coordinates that drive sun /
   // daylight features. Gated on the field's presence so a form that doesn't render it

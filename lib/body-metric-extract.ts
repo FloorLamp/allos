@@ -244,6 +244,28 @@ export function mergeBodyMetric(
   };
 }
 
+// Like mergeBodyMetric, but aware that the incoming reading came from a batch that
+// only PARTIALLY covered its day (#606 — the Health Connect exporter re-sends a
+// rolling 48h window, so the oldest day in each push is clipped). Body fat % and
+// resting HR are stored as the DAY AVERAGE, so a partial tail's average is a WORSE
+// estimate than the fuller value stored when the day was wholly inside the window —
+// it must only fill a gap, never overwrite (existing wins). Weight is "last reading
+// of the day wins", not an average, so a partial window's latest weigh-in is still a
+// real value and overwrites as usual. On a fully-covered day (partialDay = false)
+// this is identical to mergeBodyMetric (incoming wins for all three).
+export function mergeBodyMetricPartialAware(
+  existing: BodyMetricValues,
+  incoming: BodyMetricValues,
+  partialDay: boolean
+): BodyMetricValues {
+  if (!partialDay) return mergeBodyMetric(existing, incoming);
+  return {
+    weight_kg: incoming.weight_kg ?? existing.weight_kg,
+    body_fat_pct: existing.body_fat_pct ?? incoming.body_fat_pct,
+    resting_hr: existing.resting_hr ?? incoming.resting_hr,
+  };
+}
+
 // Round a raw (possibly day-averaged) value to each column's stored precision:
 // resting HR to a whole bpm, body fat to 0.1%, weight to 0.01 kg.
 export function roundBodyMetric(
