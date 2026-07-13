@@ -256,6 +256,17 @@ export async function reassignDocument(
     }
   }
 
+  // Audit the cross-profile move (issue #655): a document + its whole import
+  // footprint just crossed profiles — the app's most audit-worthy data movement.
+  // Identifiers only: the document id and the source→destination profile ids.
+  recordAudit({
+    loginId: session.login.id,
+    profileId: src,
+    action: AUDIT_ACTIONS.medicalDocReassign,
+    target: String(id),
+    detail: `profile ${src} → ${dest}`,
+  });
+
   revalidatePath("/import/[id]", "page");
   revalidatePath("/data");
   revalidatePath("/biomarkers");

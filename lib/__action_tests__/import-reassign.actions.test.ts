@@ -24,6 +24,7 @@ import {
 } from "@/lib/import-persist";
 import { computeImportDiff } from "@/lib/import-diff";
 import type { PersistInput } from "@/lib/import-shape";
+import { AUDIT_ACTIONS } from "@/lib/audit-actions";
 import { db } from "@/lib/db";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 
@@ -249,6 +250,51 @@ describe("reassignDocument", () => {
     // The imported content is intact under B — identical to A's reconciled snapshot.
     const snapshotB = getReprocessSnapshot(b.id, docId);
     expect(computeImportDiff(snapshotA, snapshotB).hasChanges).toBe(false);
+  });
+
+  it("writes a medical-document.reassign audit event and preserves a non-null provider_id (#655)", async () => {
+    const admin = createLogin({ role: "admin" });
+    const a = createProfile("AUD-A");
+    const b = createProfile("AUD-B");
+    const docId = newDocument(a.id);
+    persistDocumentImport(a.id, docId, makeInput());
+    // The seed rows carry provider: null; explicitly link a real provider to the
+    // imported records so the move's provenance-preservation is actually asserted
+    // (the seed-null gap the issue's related nit called out).
+    const providerId = Number(
+      db
+        .prepare(
+          `INSERT INTO providers (name, type, dedup_key) VALUES ('Dr. Keep', 'individual', ?)`
+        )
+        .run(`keep-${Math.random()}`).lastInsertRowid
+    );
+    db.prepare(
+      "UPDATE medical_records SET provider_id = ? WHERE document_id = ? AND profile_id = ?"
+    ).run(providerId, docId, a.id);
+    actAs(admin, a);
+
+    const res = await reassignDocument(fd({ id: docId, destProfileId: b.id }));
+    expect(res.status).toBe("done");
+
+    // The provider_id crossed to B intact (a global link — the move doesn't drop it).
+    const moved = db
+      .prepare(
+        "SELECT DISTINCT provider_id FROM medical_records WHERE document_id = ? AND profile_id = ? AND provider_id IS NOT NULL"
+      )
+      .all(docId, b.id) as { provider_id: number }[];
+    expect(moved.some((r) => r.provider_id === providerId)).toBe(true);
+
+    // The cross-profile move is audited: document id + source→destination profiles.
+    const ev = db
+      .prepare(
+        `SELECT target, detail FROM audit_events
+          WHERE action = ? ORDER BY id DESC LIMIT 1`
+      )
+      .get(AUDIT_ACTIONS.medicalDocReassign) as
+      { target: string | null; detail: string | null } | undefined;
+    expect(ev?.target).toBe(String(docId));
+    expect(ev?.detail).toContain(String(a.id));
+    expect(ev?.detail).toContain(String(b.id));
   });
 
   it("moves the on-disk file into the destination profile's directory", async () => {

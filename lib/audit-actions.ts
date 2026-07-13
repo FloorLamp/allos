@@ -35,6 +35,19 @@ export const AUDIT_ACTIONS = {
   medicalFileView: "medical-file.view",
   medicalDocUpload: "medical-document.upload",
   medicalDocDelete: "medical-document.delete",
+  // Moving a document — and its ENTIRE import footprint — across profiles (issue
+  // #655) is the single most audit-worthy data movement in the app, so it earns its
+  // own action alongside the file view/upload/delete events. target = document id,
+  // detail = source→destination profile ids (identifiers only, no medical content).
+  medicalDocReassign: "medical-document.reassign",
+  // Provider registry admin mutations (issue #655). The GLOBAL, admin-only edits to
+  // the shared provider rows: an identity edit (provider.update) and a duplicate
+  // merge (provider.merge), which re-points every link then DELETES the absorbed
+  // row. Because the absorbed row is gone and integer ids never recycle, the merge
+  // detail records the absorbed id + NAME + surviving id + per-table re-point counts
+  // — otherwise "what did this merge absorb" is unrecoverable.
+  providerUpdate: "provider.update",
+  providerMerge: "provider.merge",
   shareLinkCreate: "share-link.create",
   shareLinkRevoke: "share-link.revoke",
   shareLinkView: "share-link.view",

@@ -7,7 +7,7 @@ import {
   resolveProviderIdByName,
   resolveProviderOnEdit,
 } from "@/lib/providers-db";
-import { recordPreventiveDone } from "@/lib/queries";
+import { recordPreventiveDone, markCarePlanItemDone } from "@/lib/queries";
 import {
   isAppointmentKind,
   satisfiedRuleForCompletedKind,
@@ -171,6 +171,26 @@ export async function recordPreventiveFromAppointment(
     row.scheduled_at.slice(0, 10),
     "appointment"
   );
+  revalidate();
+  return formOk();
+}
+
+// Close the care-plan loop (issue #658): completing an appointment offers to close
+// the OPEN care-plan items it plausibly satisfied (a "colonoscopy in March" item vs
+// the completed colonoscopy visit). The client computes the matches from the pure
+// matcher (lib/care-plan-appointment) over the same open items the page passes it,
+// then calls this per accepted item — always confirm-first, never a silent
+// auto-complete. This is just the write behind that offer: mark the item completed
+// (the shared markCarePlanItemDone), profile-scoped so a tampered id can only ever
+// touch the acting profile's own care plan. Idempotent — a re-mark is a no-op.
+export async function completeCarePlanItemFromAppointment(
+  formData: FormData
+): Promise<FormResult> {
+  const { profile } = await requireWriteAccess();
+  const id = Number(formData.get("id"));
+  if (!id) return formError("Couldn't find that care-plan item.");
+  markCarePlanItemDone(profile.id, id);
+  revalidatePath("/care-plan");
   revalidate();
   return formOk();
 }

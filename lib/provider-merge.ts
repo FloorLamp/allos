@@ -157,3 +157,24 @@ export function formatMergeImpact(impact: ProviderMergeImpact): string | null {
     impact.profiles === 1 ? "1 profile" : `${impact.profiles} profiles`;
   return `${parts.join(" · ")} across ${across}`;
 }
+
+// The audit-log `detail` string for a provider merge (issue #655). The absorbed row
+// is DELETED by the merge and integer ids never recycle, so the audit event is the
+// only surviving record of what happened — it must carry the absorbed provider's id
+// AND name (otherwise unrecoverable), the surviving id, and the per-table re-point
+// counts. Identifiers/counts only, never medical content (the audit-log PHI rule).
+// Pure so the action and its test share one wording; the recordAudit backstop caps
+// length, but this stays compact.
+export function formatProviderMergeAudit(args: {
+  survivorId: number;
+  absorbedId: number;
+  absorbedName: string;
+  impact: ProviderMergeImpact;
+}): string {
+  const counts = args.impact.perTable
+    .filter((t) => t.count > 0)
+    .map((t) => plural(t.table, t.count))
+    .join(", ");
+  const base = `absorbed #${args.absorbedId} "${args.absorbedName}" into #${args.survivorId}`;
+  return counts ? `${base}; re-pointed ${counts}` : base;
+}
