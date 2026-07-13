@@ -289,7 +289,7 @@ export default async function TimelinePage(props: {
     endDate: range.to,
     limit: show,
     units,
-    includeTrainingEvents: !trainingRestricted,
+    restricted: trainingRestricted,
   });
   const days = groupTimelineDays(events);
   // Daylight-outdoor minutes per visible day (issue #571) — the same

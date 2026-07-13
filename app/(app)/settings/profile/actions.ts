@@ -87,29 +87,25 @@ export async function saveProfileSettings(formData: FormData) {
     reproductiveStatus !== getUserReproductiveStatus(profile.id);
   if (rsChanged) setUserReproductiveStatus(profile.id, reproductiveStatus);
 
-  // Both sex and reproductive status feed the reference-range selection, so a
-  // change to either re-reconciles the flags and refreshes the biomarker views.
-  if (sexChanged || rsChanged) {
-    reconcileFlags(profile.id);
-    revalidatePath("/biomarkers");
-    revalidatePath("/biomarkers/view", "page");
-  }
-
   // Birthdate (ISO YYYY-MM-DD); the profile's age is derived from it. An <input
   // type="date"> emits either a valid date or "". Setting a birthdate also
   // clears any stored age fallback (handled in setUserBirthdate).
   const bdRaw = String(formData.get("birthdate") ?? "").trim();
   const birthdate = /^\d{4}-\d{2}-\d{2}$/.test(bdRaw) ? bdRaw : null;
-  if (birthdate !== getUserBirthdate(profile.id))
-    setUserBirthdate(profile.id, birthdate);
+  const birthdateChanged = birthdate !== getUserBirthdate(profile.id);
+  if (birthdateChanged) setUserBirthdate(profile.id, birthdate);
 
   // Manual age is editable only while no birthdate is set (a birthdate always
   // derives the age and clears this). Blank clears the fallback; an invalid
   // number is ignored so a fat-fingered entry can't wipe a good value.
+  let ageChanged = false;
   if (!birthdate) {
     const ageRaw = String(formData.get("age") ?? "").trim();
     if (ageRaw === "") {
-      if (getStoredAge(profile.id) !== null) setStoredAge(profile.id, null);
+      if (getStoredAge(profile.id) !== null) {
+        setStoredAge(profile.id, null);
+        ageChanged = true;
+      }
     } else {
       const age = Number(ageRaw);
       if (
@@ -117,9 +113,25 @@ export async function saveProfileSettings(formData: FormData) {
         age > 0 &&
         age < 150 &&
         age !== getStoredAge(profile.id)
-      )
+      ) {
         setStoredAge(profile.id, age);
+        ageChanged = true;
+      }
     }
+  }
+
+  // Sex, reproductive status, AND age all feed the age-banded / sex-specific
+  // reference-range selection, so a change to ANY of them re-reconciles the stored
+  // flags and refreshes the biomarker views (#628). Age matters because 26 analytes
+  // carry ranges_by_age: filling in a child's birthdate later must recompute a
+  // reading flagged against the adult fallback band to its correct pediatric band —
+  // reconcileFlags recomputes each historical reading against its own reading-date
+  // age (ageForRecord), so the trigger is all that's needed. Runs after birthdate/
+  // age are persisted so the reconcile reads the new demographics.
+  if (sexChanged || rsChanged || birthdateChanged || ageChanged) {
+    reconcileFlags(profile.id);
+    revalidatePath("/biomarkers");
+    revalidatePath("/biomarkers/view", "page");
   }
 
   // Full/legal name of the tracked person — distinct from the profile's display

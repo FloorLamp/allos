@@ -48,6 +48,13 @@ test.describe("Type-aware training restriction (#489)", () => {
       await expect(
         member.getByTestId("activity-log-list").getByText(title)
       ).toBeVisible();
+
+      // #618: the sport session is age-neutral, so it must ALSO surface on the
+      // Timeline for the restricted profile — not be hidden with the adult
+      // strength/goals domain (the surface-parity gap #489 left behind). The
+      // session date defaults to today, so it lands at the top of the feed.
+      await member.goto("/timeline");
+      await expect(member.getByText(title).first()).toBeVisible();
     } finally {
       await member.context().close();
     }

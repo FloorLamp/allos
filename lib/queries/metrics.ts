@@ -631,20 +631,33 @@ export function getMetricSeriesBySource(
 }
 
 // Per-source daily series for a body_metrics column (weight/body fat/resting HR),
-// canonical units.
+// canonical units, windowed to the limitDays most-recent dates-with-data.
 export function getBodyMetricSeriesBySource(
   profileId: number,
   metric: BodyMetricKind,
-  limit = 365
+  limitDays = 365
 ): MetricSourceSeries[] {
   const col = bodyMetricColumn(metric);
+  // Window by the limitDays most-recent DISTINCT dates (issue #623), NOT an outer
+  // row LIMIT over (date,source) groups: a row LIMIT counts group rows, so N
+  // sources would shrink each source's span to ~limitDays/N. `>= cutoff` gives
+  // every source the full window, exactly as getMetricSeriesBySource does.
+  const recentDates = db
+    .prepare(
+      `SELECT DISTINCT date FROM body_metrics
+        WHERE profile_id = ? AND ${col} IS NOT NULL
+        ORDER BY date DESC LIMIT ?`
+    )
+    .all(profileId, limitDays) as { date: string }[];
+  if (recentDates.length === 0) return [];
+  const cutoff = recentDates[recentDates.length - 1].date;
   const rows = db
     .prepare(
       `SELECT date, source, AVG(${col}) AS value FROM body_metrics
-        WHERE profile_id = ? AND ${col} IS NOT NULL
-        GROUP BY date, source ORDER BY date DESC LIMIT ?`
+        WHERE profile_id = ? AND ${col} IS NOT NULL AND date >= ?
+        GROUP BY date, source`
     )
-    .all(profileId, limit) as {
+    .all(profileId, cutoff) as {
     date: string;
     source: string | null;
     value: number;
@@ -657,11 +670,12 @@ export function getHrSeriesBySource(
   profileId: number,
   limitDays = 180
 ): MetricSourceSeries[] {
-  // Bound the GROUP BY to the limitDays most-recent days-with-data (issue #387).
-  // `>= cutoff` keeps at least limitDays (date,source) groups in the same newest-
-  // first order, so the unchanged `ORDER BY date DESC LIMIT ?` returns the identical
-  // top-limitDays rows it did over the full-table scan — just without sorting all
-  // history first.
+  // Bound the GROUP BY to the limitDays most-recent DISTINCT days-with-data
+  // (issue #387/#623) via `>= cutoff` and NO outer row LIMIT: an outer
+  // `LIMIT limitDays` counts (date,source) GROUP rows, so N sources would consume
+  // the window N× faster (2 sources → only ~limitDays/2 days per source). The
+  // cutoff already bounds the day span, exactly as getMetricSeriesBySource does,
+  // giving every source the full window.
   const cutoff = recentHrCutoff(profileId, limitDays);
   if (cutoff === null) return [];
   const rows = db
@@ -669,9 +683,9 @@ export function getHrSeriesBySource(
       `SELECT substr(ts,1,10) AS date, source, AVG(bpm) AS value
          FROM hr_minutes
         WHERE profile_id = ? AND substr(ts,1,10) >= ?
-        GROUP BY substr(ts,1,10), source ORDER BY date DESC LIMIT ?`
+        GROUP BY substr(ts,1,10), source`
     )
-    .all(profileId, cutoff, limitDays) as {
+    .all(profileId, cutoff) as {
     date: string;
     source: string | null;
     value: number;

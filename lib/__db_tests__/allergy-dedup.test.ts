@@ -9,7 +9,8 @@
 // substances only (no PHI).
 
 import { describe, it, expect } from "vitest";
-import { getAllergies, getAllergy } from "@/lib/queries";
+import { getAllergies, getAllergy, searchAll } from "@/lib/queries";
+import { getTimelineEvents } from "@/lib/timeline";
 import { db } from "@/lib/db";
 
 function newProfile(name: string): number {
@@ -86,5 +87,46 @@ describe("getAllergies cross-document dedup (#384)", () => {
     const id2 = insertAllergy(p, "Aspirin", "Wheezing", "active", d2);
     expect(getAllergy(p, id1)?.id).toBe(id1);
     expect(getAllergy(p, id2)?.id).toBe(id2);
+  });
+});
+
+describe("allergy dedup is identical on Timeline and Search (#617)", () => {
+  it("two cross-document duplicate allergies show once everywhere", () => {
+    const p = newProfile("allergy-surfaces");
+    const d1 = newDoc(p);
+    const d2 = newDoc(p);
+    insertAllergy(p, "Penicillin", "Hives", "active", d1);
+    insertAllergy(p, "Penicillin", "Hives", "active", d2);
+
+    // Page (already deduped post-#384) — the reference count.
+    expect(
+      getAllergies(p).filter((r) => r.substance === "Penicillin")
+    ).toHaveLength(1);
+
+    // Timeline: exactly one allergy event for the pair (was two pre-#617).
+    const events = getTimelineEvents(p, { category: "allergy" });
+    expect(
+      events.filter((e) => e.title === "Penicillin" && e.category === "allergy")
+    ).toHaveLength(1);
+
+    // Search: exactly one allergy hit (was two, eating 2 of the domain's slots).
+    const groups = searchAll(p, "penicillin");
+    const allergyGroup = groups.find((g) => g.domain === "allergy");
+    expect(allergyGroup?.hits ?? []).toHaveLength(1);
+  });
+
+  it("genuinely distinct allergies still each appear on both surfaces", () => {
+    const p = newProfile("allergy-surfaces-distinct");
+    const d1 = newDoc(p);
+    insertAllergy(p, "Codeine", "Hives", "active", d1);
+    insertAllergy(p, "Codeine", "Anaphylaxis", "active", d1); // different reaction
+
+    const events = getTimelineEvents(p, { category: "allergy" });
+    expect(
+      events.filter((e) => e.title === "Codeine" && e.category === "allergy")
+    ).toHaveLength(2);
+    const groups = searchAll(p, "codeine");
+    const allergyGroup = groups.find((g) => g.domain === "allergy");
+    expect(allergyGroup?.hits ?? []).toHaveLength(2);
   });
 });

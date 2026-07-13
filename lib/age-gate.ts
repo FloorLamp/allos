@@ -46,6 +46,22 @@ export function isActivityTypeAllowed(
   return !restricted || isDurationActivityType(type);
 }
 
+// SQL fragment (with a leading " AND ", or empty) restricting an activity query's
+// type column to the types a `restricted` profile may SEE — the age-neutral
+// duration types /training's RestrictedActivityView shows and the write path
+// allows. Empty when unrestricted (every type visible). Shared by the Timeline,
+// sidebar calendar, and Search so a restricted profile's sport/cardio sessions
+// surface identically everywhere and can't drift from the page (#618). `col` lets
+// a JOINed query qualify the column; the type list is trusted constant literals.
+export function restrictedActivityTypeClause(
+  restricted: boolean,
+  col = "type"
+): string {
+  if (!restricted) return "";
+  const list = DURATION_ACTIVITY_TYPES.map((t) => `'${t}'`).join(", ");
+  return ` AND ${col} IN (${list})`;
+}
+
 const SETTING_KEY = "min_training_age";
 
 // Parse a raw threshold value into a positive whole-year age, or null (gate

@@ -9,6 +9,7 @@ import { db } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { getTimelineDates, getTimelineEvents } from "@/lib/timeline";
 import { seedProfile, type SeededProfile } from "./fixtures";
+import { setTimezone } from "@/lib/settings";
 
 let imperial: SeededProfile;
 let other: SeededProfile;
@@ -287,5 +288,49 @@ describe("getTimelineEvents", () => {
     expect(activityEvents.map((e) => e.id)).not.toContain(
       `activity:${oldActivityId}`
     );
+  });
+});
+
+describe("getTimelineDates — tz-correct created-at fallback (#619)", () => {
+  it("highlights the day the timeline places a created-at-fallback event on", () => {
+    // Profile in America/New_York; a document uploaded 01:00 UTC July 13 = 21:00
+    // local July 12. The event resolves to July 12 (dateFromCreatedAt), so the
+    // calendar highlight must be July 12 too — not the raw-UTC July 13 the old
+    // substr() slice emitted (which highlighted an EMPTY day).
+    const p = Number(
+      db.prepare("INSERT INTO profiles (name) VALUES ('tz fallback')").run()
+        .lastInsertRowid
+    );
+    setTimezone(p, "America/New_York");
+    db.prepare(
+      `INSERT INTO medical_documents
+         (profile_id, filename, stored_path, extraction_status, uploaded_at)
+       VALUES (?, 'labs.pdf', '', 'done', '2026-07-13 01:00:00')`
+    ).run(p);
+
+    // Where the timeline actually places the event.
+    const eventDates = getTimelineEvents(p, { category: "document" }).map(
+      (e) => e.date
+    );
+    expect(eventDates).toContain("2026-07-12");
+
+    // The calendar dates must agree: July 12 highlighted, July 13 not.
+    const calDates = getTimelineDates(p);
+    expect(calDates).toContain("2026-07-12");
+    expect(calDates).not.toContain("2026-07-13");
+  });
+
+  it("a document with an explicit document_date is unaffected by tz", () => {
+    const p = Number(
+      db.prepare("INSERT INTO profiles (name) VALUES ('tz explicit')").run()
+        .lastInsertRowid
+    );
+    setTimezone(p, "America/New_York");
+    db.prepare(
+      `INSERT INTO medical_documents
+         (profile_id, filename, stored_path, extraction_status, document_date, uploaded_at)
+       VALUES (?, 'labs.pdf', '', 'done', '2026-07-13', '2026-07-13 01:00:00')`
+    ).run(p);
+    expect(getTimelineDates(p)).toContain("2026-07-13");
   });
 });
