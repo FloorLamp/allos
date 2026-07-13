@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { followLink } from "./nav";
+import { followLink, openCommandPalette } from "./nav";
 
 // Equipment registry (issue #343): equipment moved out of Settings into a
 // top-level /equipment index + /equipment/[id] detail with usage history. This
@@ -70,6 +70,28 @@ test.describe("Equipment registry (#343)", () => {
     await page.waitForURL((u) => u.pathname === "/equipment", {
       timeout: 20_000,
     });
+    await expect(page).toHaveURL(/\/equipment$/);
+    await expect(
+      page.getByRole("heading", { name: "Your equipment" })
+    ).toBeVisible();
+  });
+
+  // #592: the command palette is the one discoverable, ungated door to the registry.
+  // Its entry was retitled "Equipment" → /equipment (was the stale "Settings:
+  // Equipment" → /settings/equipment) with keywords spanning every gear kind, so a
+  // search for "sauna" surfaces it and selecting it navigates to /equipment.
+  test("the command palette 'Equipment' entry navigates to the registry", async ({
+    page,
+  }) => {
+    test.slow();
+    await page.goto("/");
+    const input = await openCommandPalette(page);
+    // A gear-kind keyword (not the title) — proves the extended keywords match.
+    await input.fill("sauna");
+    const results = page.getByRole("listbox", { name: "Results" });
+    const hit = results.getByRole("option", { name: "Equipment", exact: true });
+    await expect(hit).toBeVisible();
+    await followLink(page, hit.first(), /\/equipment$/);
     await expect(page).toHaveURL(/\/equipment$/);
     await expect(
       page.getByRole("heading", { name: "Your equipment" })

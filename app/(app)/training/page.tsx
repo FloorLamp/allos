@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { PageHeader } from "@/components/ui";
 import Tabs from "@/components/Tabs";
 import { requireSession } from "@/lib/auth";
@@ -27,6 +28,17 @@ export default async function TrainingPage(props: {
       <PageHeader
         title="Training"
         subtitle="Review workouts, compare progress, and manage training goals."
+        // A stable, ungated door to the equipment registry (#592) — gear lives
+        // conceptually under training, but /equipment has no top-level nav item.
+        action={
+          <Link
+            href="/equipment"
+            data-testid="training-equipment-link"
+            className="shrink-0 text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
+          >
+            Equipment
+          </Link>
+        }
       />
       <Tabs
         paramKey="tab"

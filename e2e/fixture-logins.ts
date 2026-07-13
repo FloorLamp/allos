@@ -50,3 +50,12 @@ export const DUP_REVIEW_PROFILE = "Dup Review (e2e)";
 // a SHARED surface between single- and multi-source states gets its own profile.
 export const E2E_LOGIN_COMPARE = "e2e_compare";
 export const SOURCE_COMPARE_PROFILE = "Source Compare (e2e)";
+
+// A member granted a dedicated ADULT profile that owns NO equipment (issue #592),
+// so the activity form's equipment picker hits its empty state and renders the
+// "Add equipment" bootstrap door to /equipment. Dedicated on purpose — profile 1
+// (and every other fixture profile that a spec logs a non-strength activity on)
+// owns gear, so the door only appears where the inventory is provably empty. No
+// birthdate → adult → never training-restricted, so /training renders the full log.
+export const E2E_LOGIN_NOGEAR = "e2e_nogear";
+export const NO_GEAR_PROFILE = "No Gear (e2e)";

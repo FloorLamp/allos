@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireSession } from "@/lib/auth";
 import { getProtocols, getProtocolOutcomeOptions } from "@/lib/queries";
 import { getEquipment } from "@/lib/equipment";
+import { recoveryGearOptions } from "@/lib/protocol-gear";
 import { PageHeader } from "@/components/ui";
 import ProtocolForm from "./ProtocolForm";
 import ProtocolList from "./ProtocolList";
@@ -25,7 +26,10 @@ export default async function ProtocolsPage({
   const { profile } = await requireSession();
   const protocols = getProtocols(profile.id);
   const options = getProtocolOutcomeOptions(profile.id);
-  const equipment = getEquipment(profile.id);
+  // "Recovery gear" (issue #592): the picker studies a recovery device, so filter
+  // the inventory to recovery + uncategorized gear (kindOf) instead of offering
+  // every barbell/bike. Add mode has no linked row, so no selectedMissing fallback.
+  const equipment = recoveryGearOptions(getEquipment(profile.id));
   // A starter template (issue #571) selected from the templates strip, seeding the
   // add form. Null when no/unknown template is requested.
   const template = protocolTemplateById((await searchParams).template);

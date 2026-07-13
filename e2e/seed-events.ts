@@ -27,10 +27,12 @@ import {
   E2E_LOGIN_COMPARE,
   E2E_LOGIN_DUP,
   E2E_LOGIN_HC,
+  E2E_LOGIN_NOGEAR,
   E2E_LOGIN_STRAVA,
   E2E_MEMBER_PASSWORD,
   DUP_REVIEW_PROFILE,
   HEALTH_CONNECT_PROFILE,
+  NO_GEAR_PROFILE,
   SOURCE_COMPARE_PROFILE,
   STRAVA_REAUTH_PROFILE,
 } from "./fixture-logins";
@@ -1336,6 +1338,24 @@ seedMemberLogin(E2E_LOGIN_HC, healthConnectId);
 // visibly differ; body_metrics allows two NULL-source rows on one day.
 const dupReviewId = fixtureProfileId(DUP_REVIEW_PROFILE);
 seedMemberLogin(E2E_LOGIN_DUP, dupReviewId);
+
+// A dedicated ADULT profile that owns NO equipment (issue #592) so the activity
+// form's equipment picker renders its empty-state "Add equipment" bootstrap door.
+// It owns nothing else either — the spec only opens the log form and reads the door.
+const noGearId = fixtureProfileId(NO_GEAR_PROFILE);
+db.prepare(`DELETE FROM equipment WHERE profile_id = ?`).run(noGearId);
+seedMemberLogin(E2E_LOGIN_NOGEAR, noGearId);
+// One logged activity so the Training "Log" tab renders the Journal (with its "New
+// activity" button) instead of the empty state — the spec opens that add form to
+// reach the equipment picker's empty-state door. An activity creates no equipment,
+// so the profile's inventory stays empty. Idempotent by external_id.
+db.prepare(
+  `DELETE FROM activities WHERE profile_id = ? AND external_id = 'e2e:nogear-seed'`
+).run(noGearId);
+db.prepare(
+  `INSERT INTO activities (profile_id, date, type, title, duration_min, source, external_id, edited)
+   VALUES (?, ?, 'cardio', 'E2E No Gear Walk', 20, 'manual', 'e2e:nogear-seed', 0)`
+).run(noGearId, today(noGearId));
 db.prepare(`DELETE FROM body_metrics WHERE profile_id = ?`).run(dupReviewId);
 const insDupWeighIn = db.prepare(
   `INSERT INTO body_metrics (profile_id, date, weight_kg, source)
@@ -1419,6 +1439,18 @@ db.prepare(
 db.prepare(
   `INSERT INTO equipment (profile_id, name, weight_kg, category)
    VALUES (?, 'E2E Protocol Sauna', NULL, 'Sauna')`
+).run(PROFILE_ID);
+
+// A dedicated STRENGTH implement on profile 1 for the protocols "Recovery gear"
+// filter spec (issue #592): the protocol form must offer the recovery Sauna above
+// but NOT this Barbell. Distinct name so it never collides with the equipment
+// specs' "E2E Delete Bar" (which the manager delete spec removes). Idempotent.
+db.prepare(
+  `DELETE FROM equipment WHERE profile_id = ? AND name = 'E2E Protocol Barbell'`
+).run(PROFILE_ID);
+db.prepare(
+  `INSERT INTO equipment (profile_id, name, weight_kg, category)
+   VALUES (?, 'E2E Protocol Barbell', 20, 'Barbell')`
 ).run(PROFILE_ID);
 
 // A dedicated, open, FUTURE-dated care-plan item on profile 1 for the care-plan

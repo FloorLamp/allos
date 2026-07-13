@@ -66,6 +66,34 @@ test.describe("protocols create → compare (issue #161)", () => {
   });
 });
 
+// #592: the protocol "Recovery gear" selector must offer only recovery (+
+// uncategorized) gear, not the whole inventory. Profile 1 owns a seeded recovery
+// "E2E Protocol Sauna" and a strength "E2E Protocol Barbell" (see seed-events); the
+// add form's gear select must list the sauna and exclude the barbell (and the
+// cardio Road Bike). Read-only — never submits — so it leaves the seed untouched.
+test.describe("protocols recovery-gear filter (#592)", () => {
+  test("the gear selector offers recovery gear but not a barbell", async ({
+    page,
+  }) => {
+    test.slow();
+    await page.goto("/protocols");
+    const select = page.getByTestId("protocol-equipment");
+    await expect(select).toBeVisible();
+
+    // The recovery sauna is offered.
+    await expect(
+      select.locator("option", { hasText: "E2E Protocol Sauna" })
+    ).toHaveCount(1);
+    // The strength barbell and the cardio bike are filtered out.
+    await expect(
+      select.locator("option", { hasText: "E2E Protocol Barbell" })
+    ).toHaveCount(0);
+    await expect(
+      select.locator("option", { hasText: "Road Bike" })
+    ).toHaveCount(0);
+  });
+});
+
 test.describe("healthspan pillars widget (issue #161)", () => {
   test("renders the pillars widget with available pillars", async ({
     page,
