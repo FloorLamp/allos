@@ -78,6 +78,14 @@ body::before {
   .input {
     @apply w-full rounded-lg border border-black/10 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 dark:border-white/10 dark:bg-ink-950 dark:text-slate-100 dark:placeholder:text-slate-500;
   }
+  .number-no-spinner {
+    appearance: textfield;
+  }
+  .number-no-spinner::-webkit-inner-spin-button,
+  .number-no-spinner::-webkit-outer-spin-button {
+    margin: 0;
+    appearance: none;
+  }
   /* Native <select> draws its dropdown caret hard against the right edge. Swap
      it for a custom chevron with breathing room, and reserve right padding so
      the option text never slides under it. */

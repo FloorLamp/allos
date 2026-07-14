@@ -10,6 +10,8 @@ import { formatSeconds } from "@/lib/duration";
 import { round, kgTo } from "@/lib/units";
 import { sideCompleteBy, sidePartialBy } from "@/lib/activity-validate";
 import { cachedDateTimeFormat, dateStrInTz } from "@/lib/date";
+import type { ImportedActivityMetrics } from "@/lib/activity-import-details";
+import type { ZoneId } from "@/lib/training-zones";
 
 export interface ActivityEditData {
   id: number;
@@ -38,6 +40,18 @@ export interface ActivityEditData {
   // (Equipment.id), or null. Preloads the activity-level picker on edit; distinct
   // from the per-set implement below (sets[].equipment_id).
   equipment_id?: number | null;
+  // Read-only provider measurements shown while editing an imported activity.
+  // The save action never accepts these fields, so form edits cannot overwrite
+  // the integration's source data.
+  imported_metrics?: ImportedActivityMetrics;
+  // Card-derived display context carried into the editor. These values are
+  // read-only and never enter the save payload.
+  calorie_kcal?: number | null;
+  calorie_estimated?: boolean;
+  route_polyline?: string | null;
+  // The profile-relative zone for the displayed average HR. It is computed once
+  // while the Journal model is assembled, then shared by the card and editor.
+  heart_rate_zone?: ZoneId | null;
   sets: {
     exercise: string;
     set_number: number;
@@ -79,6 +93,11 @@ export function buildRepeatPrefill(
     edited: null,
     created_at: undefined,
     updated_at: null,
+    imported_metrics: undefined,
+    calorie_kcal: undefined,
+    calorie_estimated: undefined,
+    route_polyline: undefined,
+    heart_rate_zone: undefined,
     // Deep-copy the sets so the prefill can't alias (and later mutate) the
     // source row's array.
     sets: source.sets.map((s) => ({ ...s })),

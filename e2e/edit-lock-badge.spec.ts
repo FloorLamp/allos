@@ -15,7 +15,7 @@ test("edit-locked imported body metric shows the badge and can resume sync (#659
   const notice = page.getByTestId("edit-lock-notice").first();
   await expect(notice).toBeVisible();
   await expect(page.getByTestId("edit-lock-badge").first()).toContainText(
-    "Imports won’t update this"
+    "Sync locked"
   );
 
   // Resume sync updates → confirm → success toast.

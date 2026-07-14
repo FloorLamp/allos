@@ -13,6 +13,7 @@ import {
   zone2Adherence,
   zone2Minutes,
   zoneForBpm,
+  zonePresentation,
   zoneMinuteTotals,
   type HrBucket,
   type ZoneModel,
@@ -97,6 +98,22 @@ describe("zoneForBpm", () => {
     expect(zoneForBpm(160, model)).toBe(4);
     expect(zoneForBpm(170, model)).toBe(5);
     expect(zoneForBpm(250, model)).toBe(5); // above Z5 floor → clamped Z5
+  });
+});
+
+describe("zonePresentation", () => {
+  it("returns the shared name, label, and color for a zone", () => {
+    expect(zonePresentation(3)).toEqual({
+      color: "#eab308",
+      name: "Zone 3",
+      label: "Tempo",
+      title: "Zone 3 · Tempo",
+    });
+  });
+
+  it("returns null when no zone could be resolved", () => {
+    expect(zonePresentation(null)).toBeNull();
+    expect(zonePresentation(undefined)).toBeNull();
   });
 });
 

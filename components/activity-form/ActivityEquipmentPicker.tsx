@@ -23,12 +23,14 @@ export default function ActivityEquipmentPicker({
   activityName = null,
   equipment,
   value,
+  compact = false,
   onChange,
 }: {
   activityType: ActivityType;
   activityName?: string | null;
   equipment: Equipment[];
   value: number | null;
+  compact?: boolean;
   onChange: (id: number | null) => void;
 }) {
   const options = equipmentForActivity(equipment, activityType, activityName);
@@ -41,7 +43,7 @@ export default function ActivityEquipmentPicker({
   const isEmpty = options.length === 0 && !selectedMissing;
 
   return (
-    <div className="mt-2">
+    <div className={compact ? "" : "mt-2"}>
       <div className="flex items-center justify-between">
         <label className="label" htmlFor="activity-equipment">
           Equipment

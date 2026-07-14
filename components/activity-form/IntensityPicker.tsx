@@ -6,15 +6,17 @@ import { INTENSITIES } from "./model";
 // only — extracted from ActivityForm so the parent stays composition (#319).
 export default function IntensityPicker({
   intensity,
+  compact = false,
   onChange,
 }: {
   intensity: string;
+  compact?: boolean;
   onChange: (v: string) => void;
 }) {
   const selected = INTENSITIES.find((o) => o.value === intensity);
   return (
-    <div>
-      <label className="label">Intensity</label>
+    <fieldset>
+      <legend className="label">Intensity</legend>
       <div className="grid grid-cols-3 gap-2">
         {INTENSITIES.map((opt) => {
           const active = intensity === opt.value;
@@ -24,7 +26,7 @@ export default function IntensityPicker({
               type="button"
               title={opt.hint}
               onClick={() => onChange(active ? "" : opt.value)}
-              className={`rounded-lg border px-3 py-2 text-sm font-medium transition ${
+              className={`rounded-lg border px-2 py-2 text-sm font-medium transition ${
                 active
                   ? opt.active
                   : `bg-white dark:bg-ink-900 ${opt.cls} hover:bg-slate-50 dark:hover:bg-ink-800`
@@ -37,11 +39,13 @@ export default function IntensityPicker({
       </div>
       {/* Explain the selected level and that it drives the calorie estimate — the
           control used to silently feed the MET tier with no descriptor (#336). */}
-      <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+      <p
+        className={`${compact ? "mt-0.5" : "mt-1"} text-xs text-slate-400 dark:text-slate-500`}
+      >
         {selected
           ? `${selected.hint} · affects the calorie estimate`
           : "Sets effort level — affects the calorie estimate"}
       </p>
-    </div>
+    </fieldset>
   );
 }

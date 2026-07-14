@@ -4,6 +4,7 @@ import "./load-env";
 
 import { db, today } from "../lib/db";
 import { shiftDateStr } from "../lib/date";
+import { zonedWallTimeToUtc } from "../lib/calendar-ics";
 import { reconcileFlags } from "../lib/queries";
 import { providerDedupKey } from "../lib/providers";
 import { orderIntakePair } from "../lib/intake-pairs";
@@ -14,6 +15,7 @@ import {
   diffSituations,
   serializeSituationEvents,
 } from "../lib/trend-annotations";
+import { getTimezone } from "../lib/settings";
 
 // The seed populates the bootstrap profile. Owned-table
 // rows are born NOT NULL on a fresh DB, so every insert carries profile_id = 1.
@@ -174,7 +176,49 @@ logEffort(
   null,
   "hard"
 );
-logEffort(2, "cardio", "Running", "5k run", "New tempo PB", 24, 5.0, "hard");
+// A synthetic Health Connect exercise-session import carrying every activity
+// field that provider supplies: local date/type/title, duration, distance,
+// local start/end clocks, provider provenance, and its start-instant natural
+// key. Health Connect does not populate manual notes/intensity/components or
+// Strava-only rich metrics, so those deliberately remain NULL.
+const healthConnect5kDate = daysAgo(2);
+const [healthConnectYear, healthConnectMonth, healthConnectDay] =
+  healthConnect5kDate.split("-").map(Number);
+const healthConnect5kStart = zonedWallTimeToUtc(
+  healthConnectYear,
+  healthConnectMonth,
+  healthConnectDay,
+  6,
+  45,
+  getTimezone(SEED_PROFILE_ID)
+);
+const healthConnect5kEnd = new Date(
+  healthConnect5kStart.getTime() + 24 * 60_000
+);
+const healthConnect5kStartIso = healthConnect5kStart.toISOString();
+const healthConnect5kEndIso = healthConnect5kEnd.toISOString();
+db.prepare(
+  `INSERT INTO activities
+     (profile_id, date, type, title, duration_min, distance_km,
+      start_time, end_time, source, external_id, edited)
+   VALUES (1, ?, 'cardio', '5k run', 24, 5.0,
+           '06:45', '07:09', 'health-connect', ?, 0)`
+).run(healthConnect5kDate, `health-connect:${healthConnect5kStartIso}`);
+// Health Connect reports active energy as a separate interval metric rather
+// than an activities column. Key it to the same absolute exercise window so
+// re-ingest dedups exactly as the real normalization path does.
+db.prepare(
+  `INSERT INTO metric_samples
+     (profile_id, source, metric, date, start_time, end_time, value,
+      activity_external_id)
+   VALUES (1, 'health-connect', 'active_kcal', ?, ?, ?, ?, ?)`
+).run(
+  healthConnect5kDate,
+  healthConnect5kStartIso,
+  healthConnect5kEndIso,
+  372,
+  `health-connect:${healthConnect5kStartIso}`
+);
 logEffort(
   1,
   "sport",
@@ -203,31 +247,67 @@ db.prepare(
      WHERE profile_id = 1 AND type = 'cardio' AND title = 'Zone 2 bike'`
 ).run(roadBikeId);
 
-// A Strava-imported ride (issue #11): provenance chip reads "Strava". Carries a
-// source + external_id like the real Strava pull, so the Journal's provenance
-// surface has an integration-sourced row to render (the manual seed rows all
-// read "Manual"). Richer per-activity metrics stay NULL — the chip is the point.
+// A synthetic Strava-imported ride (issue #11) carrying every Strava activity
+// field the schema supports. The values form one plausible, internally-consistent
+// outdoor cycling effort so Journal/Trends surfaces exercise the full payload:
+// timing, HR, elevation, speed, effort, power, cadence, temperature, mechanical
+// work, workout type, measured active calories, route, provenance, and dedup key.
+const stravaRideDate = daysAgo(3);
 const insertActivityStrava = db.prepare(
   `INSERT INTO activities
-     (profile_id, date, type, title, notes, duration_min, distance_km, intensity,
-      components, source, external_id)
-   VALUES (1,?,?,?,?,?,?,?,?,?,?)`
+     (profile_id, date, type, title, duration_min, distance_km,
+      start_time, end_time, components, source, external_id,
+      avg_hr, max_hr, elevation_m, avg_speed_kmh, max_speed_kmh,
+      relative_effort, avg_power_w, max_power_w, weighted_avg_power_w,
+      avg_cadence, avg_temp_c, kilojoules, workout_type)
+   VALUES (1, @date, 'cardio', @title, @durationMin, @distanceKm,
+           @startTime, @endTime, @components, 'strava', @externalId,
+           @avgHr, @maxHr, @elevationM, @avgSpeedKmh, @maxSpeedKmh,
+           @relativeEffort, @avgPowerW, @maxPowerW, @weightedAvgPowerW,
+           @avgCadence, @avgTempC, @kilojoules, @workoutType)`
 );
 const stravaRideId = Number(
-  insertActivityStrava.run(
-    daysAgo(3),
-    "cardio",
-    "Strava morning ride",
-    null,
-    62,
-    24.5,
-    "moderate",
-    JSON.stringify([
+  insertActivityStrava.run({
+    date: stravaRideDate,
+    title: "Strava morning ride",
+    durationMin: 62,
+    distanceKm: 24.5,
+    startTime: "07:15",
+    endTime: "08:17",
+    components: JSON.stringify([
       { name: "Cycling", type: "cardio", distance_km: 24.5, duration_min: 62 },
     ]),
-    "strava",
-    "strava:seed-ride-1"
-  ).lastInsertRowid
+    externalId: "strava:seed-ride-1",
+    avgHr: 148,
+    maxHr: 171,
+    elevationM: 210,
+    avgSpeedKmh: 23.7,
+    maxSpeedKmh: 41.8,
+    relativeEffort: 72,
+    avgPowerW: 186,
+    maxPowerW: 612,
+    weightedAvgPowerW: 193,
+    avgCadence: 88,
+    avgTempC: 18,
+    // 186 W × 3,720 s ≈ 692 kJ of mechanical work.
+    kilojoules: 692,
+    workoutType: "workout",
+  }).lastInsertRowid
+);
+
+// Strava's detailed-activity calories land in metric_samples, not activities:
+// this is device-measured active energy and must never masquerade as the manual
+// activity estimate stored in activities.est_calories.
+db.prepare(
+  `INSERT INTO metric_samples
+     (profile_id, source, metric, date, start_time, end_time, value,
+      activity_external_id)
+   VALUES (1, 'strava', 'active_kcal', ?, ?, ?, ?, 'strava:seed-ride-1')`
+).run(
+  stravaRideDate,
+  `${stravaRideDate}T07:15:00.000Z`,
+  `${stravaRideDate}T08:17:00.000Z`,
+  648
 );
 
 // A captured GPS route (issue #569) for that ride, so the Journal card renders its

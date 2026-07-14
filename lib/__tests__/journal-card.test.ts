@@ -1,19 +1,22 @@
 // PURE tier — pins the Journal feed's card construction (issue #334) that used to
 // live inline in app/(app)/training/HistorySection.tsx. Covers set-grouping, the
 // components-vs-legacy branch, the single-pure-effort header fold, the cardio
-// distance/duration/speed detail string, the imported-metric chips, and day
+// distance/duration/speed detail string, the imported metrics, and day
 // grouping/labels. No DB — buildJournalCards takes already-loaded rows.
 
 import { describe, it, expect } from "vitest";
 import {
   buildJournalCards,
   activityMetrics,
+  activityHeartRateText,
+  activityTimeText,
   appendDayGroups,
   reconcileJournalPaging,
 } from "@/lib/journal-card";
 import type { Activity, ExerciseSet } from "@/lib/types";
 import type { UnitPrefs } from "@/lib/settings";
 import type { DatedWeight } from "@/lib/calorie-estimate";
+import { buildZoneModel, type ZoneModel } from "@/lib/training-zones";
 
 const KG: UnitPrefs = { weightUnit: "kg", distanceUnit: "km" };
 
@@ -82,6 +85,9 @@ const build = (
     units: UnitPrefs;
     today: string;
     yesterday: string;
+    activeCalories: Map<number, number>;
+    routes: Map<number, string>;
+    zoneModel: ZoneModel | null;
   }> = {}
 ) =>
   buildJournalCards({
@@ -92,6 +98,9 @@ const build = (
     units: opts.units ?? KG,
     today: opts.today ?? "2026-06-11",
     yesterday: opts.yesterday ?? "2026-06-10",
+    activeCalories: opts.activeCalories,
+    routes: opts.routes,
+    zoneModel: opts.zoneModel,
   });
 
 describe("buildJournalCards — day grouping", () => {
@@ -127,6 +136,28 @@ describe("buildJournalCards — day grouping", () => {
       "Second",
       "First",
     ]);
+  });
+});
+
+describe("activityTimeText", () => {
+  it("formats stored clock ranges and start-only activities", () => {
+    expect(activityTimeText("07:15", "08:17")).toBe("07:15–08:17");
+    expect(activityTimeText("18:30", null)).toBe("18:30");
+  });
+
+  it("accepts ISO-like imported values and requires a start", () => {
+    expect(activityTimeText("2026-07-13T07:15:00", "2026-07-13T08:17:00")).toBe(
+      "07:15–08:17"
+    );
+    expect(activityTimeText(null, "08:17")).toBeNull();
+  });
+});
+
+describe("activityHeartRateText", () => {
+  it("formats average/maximum heart rate and requires an average", () => {
+    expect(activityHeartRateText(148, 171)).toBe("♥ 148/171 bpm");
+    expect(activityHeartRateText(148, null)).toBe("♥ 148 bpm");
+    expect(activityHeartRateText(null, 171)).toBeNull();
   });
 });
 
@@ -212,7 +243,7 @@ describe("buildJournalCards — components vs legacy", () => {
 });
 
 describe("buildJournalCards — single-pure-effort header fold", () => {
-  it("surfaces a lone cardio effort as a clickable row and drops the header meta", () => {
+  it("keeps a lone cardio effort clickable while moving its metrics to the header", () => {
     const a = activity({
       id: 1,
       type: "cardio",
@@ -225,13 +256,17 @@ describe("buildJournalCards — single-pure-effort header fold", () => {
     });
     const [group] = build([a], []);
     const card = group.cards[0];
-    // The single cardio part is shown as a row…
+    // The single cardio part remains a detail link without repeated metrics…
     expect(card.parts).toHaveLength(1);
-    expect(card.parts[0]).toMatchObject({ kind: "cardio", name: "Run" });
-    // …and the now-redundant header meta is suppressed.
-    expect(card.durationText).toBeNull();
-    expect(card.distanceText).toBeNull();
-    expect(card.speedText).toBeNull();
+    expect(card.parts[0]).toMatchObject({
+      kind: "cardio",
+      name: "Run",
+      detail: "",
+    });
+    // …while the scan-first header carries the primary measurements together.
+    expect(card.durationText).toBe("30 min");
+    expect(card.distanceText).toBe("5 km");
+    expect(card.speedText).toBe("10 km/h");
   });
 
   it("keeps the header meta for a strength activity and hides a lone folded part", () => {
@@ -258,8 +293,8 @@ describe("buildJournalCards — single-pure-effort header fold", () => {
   });
 });
 
-describe("buildJournalCards — metric chips + provenance", () => {
-  it("emits imported-metric chips and a source/edited provenance label", () => {
+describe("buildJournalCards — metrics + provenance", () => {
+  it("emits imported metrics and a source/edited provenance label", () => {
     const a = activity({
       id: 1,
       type: "cardio",
@@ -269,10 +304,20 @@ describe("buildJournalCards — metric chips + provenance", () => {
       avg_hr: 150,
       max_hr: 172,
     });
-    const [group] = build([a], []);
+    const [group] = build([a], [], {
+      zoneModel: buildZoneModel({ age: 40, restingHr: 60 }),
+    });
     const card = group.cards[0];
-    expect(card.metrics).toContain("♥ 150/172 bpm");
+    expect(card.heartRateText).toBe("♥ 150/172 bpm");
+    expect(card.activity.heart_rate_zone).toBe(3);
+    expect(card.metrics).not.toContain("♥ 150/172 bpm");
     expect(card.provenance.label).toBe("Strava · edited");
+  });
+
+  it("leaves heart rate unzoned when the profile has no zone model", () => {
+    const a = activity({ id: 1, avg_hr: 150, max_hr: 172 });
+    const [group] = build([a], [], { zoneModel: null });
+    expect(group.cards[0].activity.heart_rate_zone).toBeNull();
   });
 
   it("carries createdAt/updatedAt onto the provenance block", () => {
@@ -286,6 +331,49 @@ describe("buildJournalCards — metric chips + provenance", () => {
       createdAt: "2026-06-10 08:00:00",
       updatedAt: "2026-06-10 09:00:00",
     });
+  });
+
+  it("keeps estimated calories in the primary summary, not rich metrics", () => {
+    const a = activity({ id: 1, source: null, est_calories: 320 });
+    const [group] = build([a], []);
+    const card = group.cards[0];
+    expect(card.calorieText).toBe("≈ 320 kcal");
+    expect(card.metrics).not.toContain("≈ 320 kcal");
+  });
+
+  it("prefers measured energy and estimates imported activities only when it is missing", () => {
+    const imported = activity({
+      id: 1,
+      type: "cardio",
+      title: "Running",
+      source: "health-connect",
+      duration_min: 30,
+    });
+    const weights = [{ date: imported.date, weightKg: 80 }];
+    const measured = build([imported], [], {
+      weights,
+      activeCalories: new Map([[imported.id, 372]]),
+    })[0].cards[0];
+    expect(measured.calorieText).toBe("372 kcal");
+    expect(measured.activity.calorie_kcal).toBe(372);
+    expect(measured.activity.calorie_estimated).toBe(false);
+
+    const estimated = build([imported], [], { weights })[0].cards[0];
+    expect(estimated.calorieText).toMatch(/^≈ .* kcal$/);
+    expect(estimated.activity.calorie_kcal).toBeGreaterThan(0);
+    expect(estimated.activity.calorie_estimated).toBe(true);
+
+    const impossible = build([imported], [])[0].cards[0];
+    expect(impossible.calorieText).toBeNull();
+  });
+
+  it("carries the same route into the card and editor detail data", () => {
+    const a = activity({ id: 9, source: "strava" });
+    const card = build([a], [], {
+      routes: new Map([[a.id, "encoded-route"]]),
+    })[0].cards[0];
+    expect(card.routePolyline).toBe("encoded-route");
+    expect(card.activity.route_polyline).toBe("encoded-route");
   });
 });
 
@@ -305,7 +393,6 @@ describe("activityMetrics", () => {
     });
     expect(activityMetrics(a, "km")).toEqual([
       "Long run",
-      "♥ 150 bpm",
       "↑ 120 m",
       "200 W (210 NP)",
       "85 rpm",

@@ -313,6 +313,7 @@ export function mapStravaActivity(
       start_time: startIso,
       end_time: endIso,
       value: Math.round(calories),
+      activity_external_id: activity.external_id,
     });
   }
 

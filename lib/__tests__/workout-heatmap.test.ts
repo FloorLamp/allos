@@ -3,6 +3,7 @@ import {
   intensityLevel,
   heatmapStart,
   buildWorkoutHeatmap,
+  buildActiveDaysStrip,
   type WorkoutDayDensity,
 } from "@/lib/workout-heatmap";
 import { weekdayOfDateStr, daysBetweenDateStr } from "@/lib/date";
@@ -19,6 +20,26 @@ describe("intensityLevel", () => {
 
   it("treats negative/absent as none", () => {
     expect(intensityLevel(-1)).toBe(0);
+  });
+});
+
+describe("buildActiveDaysStrip", () => {
+  it("builds a literal trailing 14-day strip and totals only that window", () => {
+    const strip = buildActiveDaysStrip(
+      [
+        { date: "2025-01-01", count: 5, minutes: 300 },
+        { date: "2025-01-02", count: 1, minutes: 30 },
+        { date: "2025-01-15", count: 2, minutes: 60 },
+      ],
+      "2025-01-15"
+    );
+
+    expect(strip.days).toHaveLength(14);
+    expect(strip.days[0].date).toBe("2025-01-02");
+    expect(strip.days.at(-1)?.date).toBe("2025-01-15");
+    expect(strip.totalSessions).toBe(3);
+    expect(strip.activeDays).toBe(2);
+    expect(strip.totalMinutes).toBe(90);
   });
 });
 

@@ -56,6 +56,29 @@ export const ZONE_COLORS = [
   "#ef4444", // Z5 red-500 (VO2 max)
 ] as const;
 
+export interface ZonePresentation {
+  color: (typeof ZONE_COLORS)[number];
+  name: string;
+  label: string;
+  title: string;
+}
+
+// Shared presentation metadata for every surface that colors a heart-rate value.
+// Keeping the label and color beside the canonical zone definitions prevents the
+// Journal card and activity editor from inventing their own palettes or wording.
+export function zonePresentation(
+  zone: ZoneId | null | undefined
+): ZonePresentation | null {
+  if (zone == null) return null;
+  const definition = ZONES[zone - 1];
+  return {
+    color: ZONE_COLORS[zone - 1],
+    name: definition.name,
+    label: definition.label,
+    title: `${definition.name} · ${definition.label}`,
+  };
+}
+
 // ---- Max HR resolution ----
 
 export type MaxHrSource = "override" | "estimated";

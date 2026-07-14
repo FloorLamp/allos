@@ -101,6 +101,8 @@ export interface ActivityFormAnalysis {
   namedParts: PartEntry[];
   // End time before start time.
   timeError: boolean;
+  // Missing, malformed, or impossible YYYY-MM-DD value.
+  dateError: boolean;
   // A full start–end range, which can stand in for a cardio/sport duration.
   timeRange: boolean;
   // Every gate passed — the auto-save may fire.
@@ -111,6 +113,28 @@ export interface ActivityFormAnalysis {
   saveBlocker: string | null;
   // Per-part fault for flagging its card + inputs (null when the part is fine).
   partFault: (p: PartEntry) => PartFault;
+}
+
+// Resolve the parent activity duration from the form's three possible sources.
+// A complete clock range always wins. Strength/mixed sessions own a separate
+// total-duration field; cardio/sport-only sessions do not, so their parent total
+// must follow the visible component durations instead of stale edit seed state.
+export function resolveFormSessionDuration({
+  clockDuration,
+  standaloneDuration,
+  componentDuration,
+  hasStrength,
+}: {
+  clockDuration: number | null;
+  standaloneDuration: number | null;
+  componentDuration: number | null;
+  hasStrength: boolean;
+}): number | null {
+  return (
+    clockDuration ??
+    (hasStrength ? standaloneDuration : componentDuration) ??
+    null
+  );
 }
 
 export function analyzeActivityForm(
@@ -216,6 +240,7 @@ export function analyzeActivityForm(
     if (timeError) return "End time must be after the start time.";
     if (!noPartialSets)
       return "A set is only half-filled — finish it or clear it.";
+    if (!dateValid) return "Enter a valid date in YYYY-MM-DD format.";
     if (!hasContent) {
       const empty = namedParts.find((p) => !partHasContent(p));
       return empty && partType(empty) === "strength"
@@ -228,6 +253,7 @@ export function analyzeActivityForm(
   return {
     namedParts,
     timeError,
+    dateError: !dateValid,
     timeRange,
     canSave,
     canAddPart,

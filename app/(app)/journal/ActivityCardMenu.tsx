@@ -5,6 +5,7 @@ import OverflowMenu, { MENU_ITEM } from "@/components/OverflowMenu";
 import { useUndoableDelete } from "@/components/useUndoableDelete";
 import { useActivityEditor } from "@/components/ActivityEditorProvider";
 import MergeConflictDialog from "@/components/MergeConflictDialog";
+import { useResumeSyncUpdates } from "@/components/EditLockNotice";
 import type { ActivityEditData } from "@/components/ActivityForm";
 import type { UnitPrefs } from "@/lib/settings";
 import type { FieldConflict } from "@/lib/import-review/conflicts";
@@ -25,7 +26,7 @@ export interface MergeSibling {
   setCount: number;
 }
 
-// The kebab (⋯) action menu on a Journal activity card. Two affordances:
+// The kebab (⋯) action menu on a Journal activity card. Its affordances:
 //
 //  • "Log again" (issue #29) — opens a CREATE form pre-filled from this activity
 //    (title, exercises, sets) with the date reset to today, so repeating a
@@ -37,10 +38,13 @@ export interface MergeSibling {
 //    When the two rows genuinely disagree on a field (issue #100), a conflict
 //    preview opens first so the user picks per field; with zero conflicts the merge
 //    stays a single click, unchanged.
+//  • "Resume sync updates" — only for hand-edited integration rows. The compact
+//    provenance footer keeps the lock status; this menu owns the deliberate action.
 export default function ActivityCardMenu({
   activity,
   siblings,
   keeperLabel,
+  editLocked,
   units,
 }: {
   // The full card activity — the source for "Log again".
@@ -49,6 +53,9 @@ export default function ActivityCardMenu({
   siblings: MergeSibling[];
   // Provenance label for THIS card's values (the keeper side in a conflict).
   keeperLabel: string;
+  // A hand-edited integration row keeps its compact lock marker in provenance;
+  // the deliberate re-enable action lives here rather than lengthening the card.
+  editLocked: boolean;
   units: UnitPrefs;
 }) {
   const [open, setOpen] = useState(false);
@@ -57,6 +64,10 @@ export default function ActivityCardMenu({
   const [conflictFor, setConflictFor] = useState<MergeSibling | null>(null);
   const undoable = useUndoableDelete();
   const { openRepeat } = useActivityEditor();
+  const { busy: resumingSync, resumeSyncUpdates } = useResumeSyncUpdates(
+    "activities",
+    activity.id
+  );
 
   async function runMerge(dropId: number, overrideFields: string[]) {
     const fd = new FormData();
@@ -142,6 +153,21 @@ export default function ActivityCardMenu({
                   onClick={() => setPicking(true)}
                 >
                   Merge with…
+                </button>
+              )}
+              {editLocked && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  data-testid="edit-lock-resume"
+                  className={MENU_ITEM}
+                  disabled={resumingSync}
+                  onClick={() => {
+                    setOpen(false);
+                    void resumeSyncUpdates();
+                  }}
+                >
+                  Resume sync updates
                 </button>
               )}
             </>

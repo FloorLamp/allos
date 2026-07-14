@@ -35,7 +35,7 @@ export default function EstimatedCalories({
           step={1}
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className="input max-w-[10rem]"
+          className="input max-w-[10rem] bg-white dark:bg-ink-900"
           placeholder="—"
         />
         <span className="text-sm text-slate-400 dark:text-slate-500">kcal</span>

@@ -7,10 +7,13 @@ import { db, today } from "../../db";
 import { getWeekStart } from "../../settings";
 import {
   buildWorkoutHeatmap,
+  buildActiveDaysStrip,
   heatmapStart,
+  type ActiveDaysStrip,
   type WorkoutDayDensity,
   type WorkoutHeatmap,
 } from "../../workout-heatmap";
+import { shiftDateStr } from "../../date";
 
 // Sessions + total training minutes per profile-local day, on/after `since`. ONE
 // SQL pass, profile-scoped. `activities.date` is already the profile-local calendar
@@ -45,4 +48,17 @@ export function getWorkoutHeatmap(
   const since = heatmapStart(end, weeks, weekStart);
   const density = getWorkoutDayDensity(profileId, since);
   return buildWorkoutHeatmap(density, end, weeks, weekStart);
+}
+
+export function getActiveDaysStrip(
+  profileId: number,
+  length = 14
+): ActiveDaysStrip {
+  const end = today(profileId);
+  const since = shiftDateStr(end, -(length - 1));
+  return buildActiveDaysStrip(
+    getWorkoutDayDensity(profileId, since),
+    end,
+    length
+  );
 }

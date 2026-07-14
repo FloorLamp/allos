@@ -326,6 +326,7 @@ export function parseHealthConnectPayload(
         start_time: start,
         end_time: end,
         value,
+        activity_external_id: null,
       });
     }
   };
@@ -630,6 +631,11 @@ export function parseHealthConnectPayload(
   }
 
   // --- exercise sessions → activities ---
+  // Active-calorie records are independent intervals in Health Connect. A shared
+  // start alone does not prove that a calorie interval describes an exercise, so
+  // remember the complete original windows and attach a stable activity identity
+  // only after an exact start+end match.
+  const exerciseByWindow = new Map<string, string>();
   for (const e of asArray(payload.exercise)) {
     const start = typeof e.start_time === "string" ? e.start_time : undefined;
     const end = typeof e.end_time === "string" ? e.end_time : undefined;
@@ -654,8 +660,9 @@ export function parseHealthConnectPayload(
       meters != null ? meters / 1000 : null
     );
     const endParts = end ? parts(end, tz) : null;
+    const externalId = `${HEALTH_CONNECT_ID}:${start}`;
     out.activities.push({
-      external_id: `${HEALTH_CONNECT_ID}:${start}`,
+      external_id: externalId,
       date: p.date,
       type,
       title,
@@ -664,6 +671,12 @@ export function parseHealthConnectPayload(
       start_time: p.hhmm,
       end_time: endParts?.hhmm ?? null,
     });
+    if (end) exerciseByWindow.set(`${start}\0${end}`, externalId);
+  }
+  for (const sample of out.samples) {
+    if (sample.metric !== "active_kcal") continue;
+    sample.activity_external_id =
+      exerciseByWindow.get(`${sample.start_time}\0${sample.end_time}`) ?? null;
   }
 
   return out;

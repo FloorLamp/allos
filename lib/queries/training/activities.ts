@@ -11,6 +11,7 @@ import { LIFT_OPTIONS, baseLiftName } from "../../lifts";
 import { rankByFrequency } from "../../rank-by-frequency";
 import { currentStreak } from "../../streak";
 import type { ActivityEditData } from "../../activity-form-model";
+import { pickImportedActivityMetrics } from "../../activity-import-details";
 import type { Activity, ActivityType, ExerciseSet } from "../../types";
 import { getLatestBodyMetricDated } from "../metrics";
 import {
@@ -414,6 +415,114 @@ export function getRoutePolylinesForActivities(
   return new Map(rows.map((r) => [r.activity_id, r.polyline]));
 }
 
+// Device active energy is stored as a metric_sample rather than on activities.
+// New samples carry the activity's stable provider identity, so user edits to
+// date/clock fields and profile timezone changes cannot break the association.
+// The window matcher below remains only for pre-migration samples that have not
+// yet been backfilled or seen in a provider re-sync.
+export function getActiveCaloriesForActivities(
+  profileId: number,
+  activities: Activity[]
+): Map<number, number> {
+  const linkedCandidates = activities.filter(
+    (activity) => activity.source && activity.external_id
+  );
+  const linked = new Map<number, number>();
+  if (linkedCandidates.length > 0) {
+    const externalIds = [
+      ...new Set(linkedCandidates.map((activity) => activity.external_id!)),
+    ];
+    const placeholders = externalIds.map(() => "?").join(",");
+    const rows = db
+      .prepare(
+        `SELECT source, activity_external_id, value
+           FROM metric_samples
+          WHERE profile_id = ? AND metric = 'active_kcal'
+            AND activity_external_id IN (${placeholders})`
+      )
+      .all(profileId, ...externalIds) as {
+      source: string;
+      activity_external_id: string;
+      value: number;
+    }[];
+    const byIdentity = new Map(
+      rows.map((row) => [
+        `${row.source}\0${row.activity_external_id}`,
+        row.value,
+      ])
+    );
+    for (const activity of linkedCandidates) {
+      const value = byIdentity.get(
+        `${activity.source!}\0${activity.external_id!}`
+      );
+      if (value != null) linked.set(activity.id, value);
+    }
+  }
+
+  const legacyCandidates = activities.filter(
+    (activity) =>
+      !linked.has(activity.id) &&
+      activity.source === "strava" &&
+      activity.start_time &&
+      activity.end_time
+  );
+  if (legacyCandidates.length === 0) return linked;
+  const dates = legacyCandidates.map((activity) => activity.date).sort();
+  const rows = db
+    .prepare(
+      `SELECT source, date, start_time, end_time, value
+         FROM metric_samples
+        WHERE profile_id = ? AND metric = 'active_kcal'
+          AND source = 'strava'
+          AND activity_external_id IS NULL
+          AND date BETWEEN ? AND ?`
+    )
+    .all(profileId, dates[0], dates[dates.length - 1]) as {
+    source: string;
+    date: string;
+    start_time: string;
+    end_time: string;
+    value: number;
+  }[];
+  const storedClock = (value: string): string =>
+    /T(\d{2}:\d{2})/.exec(value)?.[1] ?? value.slice(0, 5);
+  // Only Strava has a safe window fallback: its old sample timestamps encode the
+  // same local wall-clock numerals stored on the activity. Health Connect and Oura
+  // legacy rows are linked by migration 035; projecting their remaining null-link
+  // instants through the profile's mutable timezone would recreate the bug this
+  // stable identity column fixes.
+  const sampleKey = (
+    source: string,
+    date: string,
+    start: string,
+    end: string
+  ): string => `${source}\0${date}\0${storedClock(start)}\0${storedClock(end)}`;
+  const activityKey = (
+    source: string,
+    date: string,
+    start: string,
+    end: string
+  ): string => `${source}\0${date}\0${storedClock(start)}\0${storedClock(end)}`;
+  const byWindow = new Map(
+    rows.map((row) => [
+      sampleKey(row.source, row.date, row.start_time, row.end_time),
+      row.value,
+    ])
+  );
+  for (const activity of legacyCandidates) {
+    const value = byWindow.get(
+      activityKey(
+        activity.source!,
+        activity.date,
+        activity.start_time!,
+        activity.end_time!
+      )
+    );
+    if (value != null) linked.set(activity.id, value);
+  }
+  return linked;
+}
+
 // The single most recent activity as an ActivityEditData (issue #337): the seed
 // for a "Repeat last activity" command palette entry / mobile quick action, so
 // repeat-last isn't desktop-only. Newest by (date, id); null when nothing is
@@ -449,6 +558,7 @@ export function getMostRecentActivityEditData(
     updated_at: a.updated_at,
     est_calories: a.est_calories,
     equipment_id: a.equipment_id,
+    imported_metrics: pickImportedActivityMetrics(a),
     sets: sets.map((s) => ({
       exercise: s.exercise,
       set_number: s.set_number,

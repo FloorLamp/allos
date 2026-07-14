@@ -26,6 +26,7 @@ export default function Combobox({
   freeTextLabel,
   onPick,
   closeStopsPropagation = false,
+  inputClassName = "",
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -43,6 +44,7 @@ export default function Combobox({
   freeTextLabel?: (query: string) => React.ReactNode;
   onPick?: (v: string) => void;
   closeStopsPropagation?: boolean;
+  inputClassName?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [highlight, setHighlight] = useState(0);
@@ -124,7 +126,7 @@ export default function Combobox({
             setOpen(false);
           }
         }}
-        className={`input ${badge ? "pr-28" : ""} ${
+        className={`input ${inputClassName} ${badge ? "pr-28" : ""} ${
           invalid
             ? "border-rose-300 focus:border-rose-400 focus:ring-rose-400 dark:border-rose-800 dark:focus:border-rose-700 dark:focus:ring-rose-700"
             : ""

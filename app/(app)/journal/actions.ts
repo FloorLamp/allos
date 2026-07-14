@@ -216,10 +216,25 @@ export async function saveActivity(
   // clock-time-wins duration.
   const clockDurationMin =
     startTime && endTime ? minutesBetween(startTime, endTime) : null;
+  const enteredDurationValue = num(formData.get("duration_min"));
+  const enteredDurationMin =
+    enteredDurationValue != null && enteredDurationValue > 0
+      ? enteredDurationValue
+      : null;
   const { distanceKm, durationMin, hasStrength } = compositeRollup(
     components,
-    clockDurationMin
+    clockDurationMin ?? enteredDurationMin
   );
+  const explicitComponentDuration = components.reduce(
+    (total, component) => total + (component.duration_min ?? 0),
+    0
+  );
+  if (
+    hasStrength &&
+    durationMin != null &&
+    explicitComponentDuration > durationMin
+  )
+    return { ok: false, reason: "invalid" };
 
   // Estimated calories (issue #151): the activity form fills this from the MET
   // dataset × nearest bodyweight × duration, and the user can override it. Stored

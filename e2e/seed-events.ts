@@ -71,6 +71,30 @@ setSetting("notify_last_error_channel", "telegram");
 
 const PROFILE_ID = 1;
 
+// Dense Journal-card fixture: the base seed already carries the full synthetic
+// Strava payload; e2e adds only a deliberately long note and the hand-edit lock so
+// disclosure + lock affordances can be exercised without another activity row.
+db.prepare(
+  `UPDATE activities
+      SET notes = ?, edited = 1
+    WHERE profile_id = ? AND external_id = 'strava:seed-ride-1'`
+).run(
+  "Synthetic training note: steady endurance work with controlled breathing through the first half, then a slightly stronger finish while keeping cadence smooth and effort comfortably below threshold.",
+  PROFILE_ID
+);
+
+// Give one recent strength row an explicit met target so the card's visible and
+// accessible status treatment is covered by the browser tier.
+db.prepare(
+  `UPDATE exercise_sets
+      SET target_reps = reps
+    WHERE activity_id = (
+      SELECT id FROM activities
+       WHERE profile_id = ? AND title = 'Push day'
+       ORDER BY date DESC, id DESC LIMIT 1
+    ) AND exercise = 'Barbell Bench Press'`
+).run(PROFILE_ID);
+
 db.prepare(
   `DELETE FROM integration_sync_events WHERE profile_id = ? AND provider IN ('strava','health-connect')`
 ).run(PROFILE_ID);

@@ -39,7 +39,12 @@ import {
   stripNegative,
   stripNonPositive,
 } from "@/lib/units";
-import { IconX, IconBarbell, IconAlertTriangle } from "@tabler/icons-react";
+import {
+  IconX,
+  IconBarbell,
+  IconAlertTriangle,
+  IconCheck,
+} from "@tabler/icons-react";
 import {
   partIntent,
   partTotal,
@@ -54,6 +59,41 @@ import {
   type SetEntry,
   type PartFault,
 } from "./model";
+
+function BrandedCheckbox({
+  checked,
+  onChange,
+  inputTestId,
+  controlTestId,
+}: {
+  checked: boolean;
+  onChange: () => void;
+  inputTestId?: string;
+  controlTestId?: string;
+}) {
+  return (
+    <span className="relative inline-flex">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={onChange}
+        data-testid={inputTestId}
+        className="peer sr-only"
+      />
+      <span
+        data-testid={controlTestId}
+        aria-hidden
+        className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition peer-focus-visible:ring-2 peer-focus-visible:ring-brand-500 peer-focus-visible:ring-offset-1 dark:peer-focus-visible:ring-offset-ink-900 ${
+          checked
+            ? "border-brand-600 bg-brand-600 text-white dark:border-brand-500 dark:bg-brand-500"
+            : "border-black/20 bg-white text-transparent dark:border-white/20 dark:bg-ink-900"
+        }`}
+      >
+        <IconCheck className="h-3 w-3" stroke={3} />
+      </span>
+    </span>
+  );
+}
 
 // The strength editor for one part: bodyweight prompt, equipment chips, recent
 // sessions, coached next set, per-side + intent options, the set rows, and the
@@ -221,12 +261,16 @@ export default function StrengthSets({
   // same shared rule the saved data will be (completed sets only).
   const intent = partIntent(p);
   const showPerSide = isUnilateral(p.name);
-  const belowTarget =
-    judgeTargets(
-      p.sets
-        .filter((s) => setComplete(p.name, s, false))
-        .map((s) => ({ reps: Number(s.reps), target_reps: intent.target }))
-    ) === "missed";
+  const targetStatus = judgeTargets(
+    p.sets
+      .filter((s) => setComplete(p.name, s, false))
+      .map((s) => ({
+        reps: Number(s.reps),
+        target_reps: intent.target,
+        to_failure: intent.toFailure ? 1 : 0,
+        warmup: s.warmup ? 1 : 0,
+      }))
+  );
   // Inherit the rep target from last session (#335): when the coached suggestion
   // carries a declared target (the user's scheme) and this fresh part has none,
   // adopt it so a fixed-scheme lifter (5×5) doesn't retype the target each time.
@@ -265,7 +309,7 @@ export default function StrengthSets({
       onClick={() => onPlateTarget(si, field)}
       title="Plate builder"
       aria-label="Open plate builder"
-      className="-mx-1.5 flex h-9 w-9 shrink-0 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-brand-600 dark:text-slate-500 dark:hover:bg-ink-800 dark:hover:text-brand-400"
+      className="flex h-9 w-7 shrink-0 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-brand-600 dark:text-slate-500 dark:hover:bg-ink-800 dark:hover:text-brand-400"
     >
       <IconBarbell className="h-4 w-4" />
     </button>
@@ -294,18 +338,6 @@ export default function StrengthSets({
     const next = Math.max(0, cur + delta);
     onUpdateSet(si, { [field]: next > 0 ? String(next) : "" });
   };
-  // A compact ±/+ stepper button — pointer affordance, so out of the tab order.
-  const stepButton = (label: string, onClick: () => void, aria: string) => (
-    <button
-      type="button"
-      tabIndex={-1}
-      onClick={onClick}
-      aria-label={aria}
-      className="flex h-9 w-6 shrink-0 items-center justify-center rounded text-sm font-semibold text-slate-400 hover:bg-slate-100 hover:text-brand-600 dark:text-slate-500 dark:hover:bg-ink-800 dark:hover:text-brand-400"
-    >
-      {label}
-    </button>
-  );
   // The "effort" input is reps for normal lifts, a m:ss hold time for timed.
   const effortInput = (
     value: string,
@@ -313,7 +345,8 @@ export default function StrengthSets({
     blocked: boolean,
     ghostReps?: number | null,
     onGhostFocus?: () => void,
-    onEnter?: () => void
+    onEnter?: () => void,
+    segmented = false
   ) => {
     if (!timed) {
       return (
@@ -337,9 +370,11 @@ export default function StrengthSets({
               : undefined
           }
           placeholder={ghostReps != null ? String(ghostReps) : "reps"}
-          className={`input bg-white dark:bg-ink-900 ${
-            blocked ? blockedField : ""
-          }`}
+          className={
+            segmented
+              ? "number-no-spinner min-w-0 w-full border-y-0 border-r border-l-0 border-black/10 bg-transparent px-2 py-2 text-sm outline-none focus:ring-0 dark:border-white/10 dark:text-slate-100 dark:placeholder:text-slate-500"
+              : `input bg-white dark:bg-ink-900 ${blocked ? blockedField : ""}`
+          }
         />
       );
     }
@@ -614,11 +649,11 @@ export default function StrengthSets({
         <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-medium text-slate-500 dark:text-slate-400">
           {showPerSide && (
             <label className="flex cursor-pointer items-center gap-2">
-              <input
-                type="checkbox"
+              <BrandedCheckbox
                 checked={p.perSide}
                 onChange={() => onUpdatePart({ perSide: !p.perSide })}
-                className="h-3.5 w-3.5 cursor-pointer accent-brand-600"
+                inputTestId="per-side-checkbox"
+                controlTestId="per-side-control"
               />
               Track sides separately
             </label>
@@ -642,11 +677,11 @@ export default function StrengthSets({
                 />
               </label>
               <label className="flex cursor-pointer items-center gap-1.5">
-                <input
-                  type="checkbox"
+                <BrandedCheckbox
                   checked={p.toFailure}
                   onChange={() => onUpdatePart({ toFailure: !p.toFailure })}
-                  className="h-3.5 w-3.5 cursor-pointer accent-brand-600"
+                  inputTestId="to-failure-checkbox"
+                  controlTestId="to-failure-control"
                 />
                 To failure
               </label>
@@ -654,19 +689,41 @@ export default function StrengthSets({
           )}
         </div>
       )}
-      {/* A compact "last time" strip pinned right above the set rows (issue
-          #337): the Recent panel scrolls away above a long set list, so mirror
-          the newest prior session's sets here — the same summarizeExercise text,
-          so "match last time" needs no scrolling. */}
-      {recent.length > 0 && (
-        <p
-          data-testid="last-session-strip"
-          className="mt-2 text-xs tabular-nums text-slate-400 dark:text-slate-500"
-        >
-          <span className="font-medium uppercase tracking-wide">Last</span>{" "}
-          {summarizeExercise(recent[0].sets, units.weightUnit).text}
-        </p>
-      )}
+      {/* On phones, keep the set schema immediately below the sticky exercise
+          picker while long sessions scroll. Desktop has room to keep the whole
+          editor context visible, so the row returns to normal flow there. */}
+      <div
+        data-testid="set-column-headings"
+        className="sticky top-11 z-[9] -mx-1 mt-2 flex items-center gap-2 bg-white/95 px-1 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400 backdrop-blur md:static md:mx-0 md:bg-transparent md:px-0 md:backdrop-blur-none dark:bg-ink-900/95 dark:text-slate-500 dark:md:bg-transparent"
+      >
+        <span className="w-12 shrink-0">Set</span>
+        {!timed && !isBodyweight(p.name) ? (
+          <div className="flex min-w-0 flex-1 items-center gap-2 text-center">
+            {p.perSide && <span className="w-4 shrink-0" aria-hidden />}
+            <span
+              data-testid="weight-column-heading"
+              className="min-w-20 flex-1 basis-0"
+            >
+              Weight ({units.weightUnit})
+            </span>
+            {showPlate && <span className="w-7 shrink-0" aria-hidden />}
+            <span className="w-2 shrink-0" aria-hidden>
+              ×
+            </span>
+            <span
+              data-testid="reps-column-heading"
+              className="min-w-20 flex-1 basis-0"
+            >
+              Reps
+            </span>
+          </div>
+        ) : (
+          <span className="flex-1 text-center">
+            {timed ? "Hold time" : "Reps"}
+          </span>
+        )}
+        <span className="w-16 shrink-0 text-right">Options</span>
+      </div>
       <div className="mt-2 space-y-2">
         {p.sets.map((s, si) => (
           <div key={si} className="flex items-start gap-2">
@@ -686,175 +743,320 @@ export default function StrengthSets({
                       <span className="w-4 shrink-0 text-xs font-semibold text-slate-400 dark:text-slate-500">
                         {isRight ? "R" : "L"}
                       </span>
-                      {!timed &&
-                        !isBodyweight(p.name) &&
-                        stepButton(
-                          "−",
-                          () =>
-                            stepWeight(
+                      {!timed && !isBodyweight(p.name) ? (
+                        <div
+                          data-testid="weight-stepper"
+                          className={`flex min-w-20 flex-1 basis-0 overflow-hidden rounded-lg border bg-white focus-within:border-brand-500 focus-within:ring-1 focus-within:ring-brand-500 dark:bg-ink-900 ${
+                            flags.weight
+                              ? blockedField
+                              : "border-black/10 dark:border-white/10"
+                          }`}
+                        >
+                          <button
+                            type="button"
+                            tabIndex={-1}
+                            onClick={() =>
+                              stepWeight(
+                                si,
+                                isRight ? "weightRight" : "weight",
+                                -weightStep
+                              )
+                            }
+                            aria-label="Decrease weight"
+                            className="flex h-9 w-7 shrink-0 items-center justify-center text-sm font-semibold text-slate-400 hover:bg-slate-100 hover:text-brand-600 dark:text-slate-500 dark:hover:bg-ink-800 dark:hover:text-brand-400"
+                          >
+                            −
+                          </button>
+                          <input
+                            type="number"
+                            step="0.5"
+                            min="0"
+                            inputMode="decimal"
+                            value={sideW}
+                            onChange={(e) =>
+                              onUpdateSet(
+                                si,
+                                isRight
+                                  ? {
+                                      weightRight: stripNegative(
+                                        e.target.value
+                                      ),
+                                    }
+                                  : { weight: stripNegative(e.target.value) }
+                              )
+                            }
+                            placeholder={units.weightUnit}
+                            className="number-no-spinner min-w-0 w-full border-x border-y-0 border-black/10 bg-transparent px-2 py-2 text-sm outline-none focus:ring-0 dark:border-white/10 dark:text-slate-100 dark:placeholder:text-slate-500"
+                          />
+                          <button
+                            type="button"
+                            tabIndex={-1}
+                            onClick={() =>
+                              stepWeight(
+                                si,
+                                isRight ? "weightRight" : "weight",
+                                weightStep
+                              )
+                            }
+                            aria-label="Increase weight"
+                            className="flex h-9 w-7 shrink-0 items-center justify-center text-sm font-semibold text-slate-400 hover:bg-slate-100 hover:text-brand-600 dark:text-slate-500 dark:hover:bg-ink-800 dark:hover:text-brand-400"
+                          >
+                            +
+                          </button>
+                        </div>
+                      ) : (
+                        <input
+                          type="number"
+                          step="0.5"
+                          min="0"
+                          inputMode="decimal"
+                          value={sideW}
+                          onChange={(e) =>
+                            onUpdateSet(
                               si,
-                              isRight ? "weightRight" : "weight",
-                              -weightStep
-                            ),
-                          "Decrease weight"
-                        )}
-                      <input
-                        type="number"
-                        step="0.5"
-                        min="0"
-                        inputMode="decimal"
-                        value={sideW}
-                        onChange={(e) =>
-                          onUpdateSet(
-                            si,
-                            isRight
-                              ? { weightRight: stripNegative(e.target.value) }
-                              : { weight: stripNegative(e.target.value) }
-                          )
-                        }
-                        placeholder={units.weightUnit}
-                        className={`input bg-white dark:bg-ink-900 ${
-                          flags.weight ? blockedField : ""
-                        }`}
-                      />
-                      {!timed &&
-                        !isBodyweight(p.name) &&
-                        stepButton(
-                          "+",
-                          () =>
-                            stepWeight(
-                              si,
-                              isRight ? "weightRight" : "weight",
-                              weightStep
-                            ),
-                          "Increase weight"
-                        )}
+                              isRight
+                                ? { weightRight: stripNegative(e.target.value) }
+                                : { weight: stripNegative(e.target.value) }
+                            )
+                          }
+                          placeholder={units.weightUnit}
+                          className={`input bg-white dark:bg-ink-900 ${
+                            flags.weight ? blockedField : ""
+                          }`}
+                        />
+                      )}
                       {showPlate &&
                         plateButton(si, isRight ? "weightRight" : "weight")}
-                      <span className="text-slate-400 dark:text-slate-500">
+                      <span className="w-2 shrink-0 text-center text-slate-400 dark:text-slate-500">
                         ×
                       </span>
-                      {effortInput(
-                        timed ? sideD : sideR,
-                        (v) =>
-                          onUpdateSet(
-                            si,
-                            isRight
-                              ? timed
-                                ? { durationRight: v }
-                                : { repsRight: v }
-                              : timed
-                                ? { duration: v }
-                                : { reps: v }
-                          ),
-                        flags.effort,
-                        null,
-                        undefined,
-                        canAddSet ? onAddSet : undefined
+                      {!timed ? (
+                        <div
+                          data-testid="reps-stepper"
+                          className={`flex min-w-20 flex-1 basis-0 overflow-hidden rounded-lg border bg-white focus-within:border-brand-500 focus-within:ring-1 focus-within:ring-brand-500 dark:bg-ink-900 ${
+                            flags.effort
+                              ? blockedField
+                              : "border-black/10 dark:border-white/10"
+                          }`}
+                        >
+                          {effortInput(
+                            sideR,
+                            (v) =>
+                              onUpdateSet(
+                                si,
+                                isRight ? { repsRight: v } : { reps: v }
+                              ),
+                            flags.effort,
+                            null,
+                            undefined,
+                            canAddSet ? onAddSet : undefined,
+                            true
+                          )}
+                          <button
+                            type="button"
+                            tabIndex={-1}
+                            onClick={() =>
+                              stepReps(si, isRight ? "repsRight" : "reps", 1)
+                            }
+                            aria-label="Add a rep"
+                            className="flex h-9 w-7 shrink-0 items-center justify-center text-sm font-semibold text-slate-400 hover:bg-slate-100 hover:text-brand-600 dark:text-slate-500 dark:hover:bg-ink-800 dark:hover:text-brand-400"
+                          >
+                            +
+                          </button>
+                        </div>
+                      ) : (
+                        effortInput(
+                          sideD,
+                          (v) =>
+                            onUpdateSet(
+                              si,
+                              isRight ? { durationRight: v } : { duration: v }
+                            ),
+                          flags.effort,
+                          null,
+                          undefined,
+                          canAddSet ? onAddSet : undefined
+                        )
                       )}
-                      {!timed &&
-                        stepButton(
-                          "+",
-                          () => stepReps(si, isRight ? "repsRight" : "reps", 1),
-                          "Add a rep"
-                        )}
                     </div>
                   );
                 })}
               </div>
             ) : (
-              <div className="flex flex-1 items-center gap-2">
-                {!timed &&
-                  !isBodyweight(p.name) &&
-                  stepButton(
-                    "−",
-                    () => stepWeight(si, "weight", -weightStep),
-                    "Decrease weight"
-                  )}
-                <input
-                  type="number"
-                  step="0.5"
-                  min="0"
-                  inputMode="decimal"
-                  data-testid={si === 0 ? "set1-weight" : undefined}
-                  value={s.weight}
-                  onChange={(e) =>
-                    onUpdateSet(si, {
-                      weight: stripNegative(e.target.value),
-                    })
-                  }
-                  onFocus={
+              <div className="flex min-w-0 flex-1 items-center gap-2">
+                {!timed && !isBodyweight(p.name) ? (
+                  <div
+                    data-testid={
+                      si === 0 ? "set1-weight-stepper" : "weight-stepper"
+                    }
+                    className={`flex min-w-20 flex-1 basis-0 overflow-hidden rounded-lg border bg-white focus-within:border-brand-500 focus-within:ring-1 focus-within:ring-brand-500 dark:bg-ink-900 ${
+                      sideFlags(s.weight, s.reps, s.duration).weight
+                        ? blockedField
+                        : "border-black/10 dark:border-white/10"
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      tabIndex={-1}
+                      onClick={() => stepWeight(si, "weight", -weightStep)}
+                      aria-label="Decrease weight"
+                      className="flex h-9 w-7 shrink-0 items-center justify-center text-sm font-semibold text-slate-400 hover:bg-slate-100 hover:text-brand-600 dark:text-slate-500 dark:hover:bg-ink-800 dark:hover:text-brand-400"
+                    >
+                      −
+                    </button>
+                    <input
+                      type="number"
+                      step="0.5"
+                      min="0"
+                      inputMode="decimal"
+                      data-testid={si === 0 ? "set1-weight" : undefined}
+                      value={s.weight}
+                      onChange={(e) =>
+                        onUpdateSet(si, {
+                          weight: stripNegative(e.target.value),
+                        })
+                      }
+                      onFocus={
+                        si === 0 && ghost
+                          ? () => onApplySuggestion(ghost)
+                          : undefined
+                      }
+                      placeholder={
+                        si === 0 && ghost && !ghost.bodyweight
+                          ? String(
+                              dispWeight(ghost.weightKg, units.weightUnit, 1)
+                            )
+                          : units.weightUnit
+                      }
+                      className="number-no-spinner min-w-0 w-full border-x border-y-0 border-black/10 bg-transparent px-2 py-2 text-sm outline-none focus:ring-0 dark:border-white/10 dark:text-slate-100 dark:placeholder:text-slate-500"
+                    />
+                    <button
+                      type="button"
+                      tabIndex={-1}
+                      onClick={() => stepWeight(si, "weight", weightStep)}
+                      aria-label="Increase weight"
+                      className="flex h-9 w-7 shrink-0 items-center justify-center text-sm font-semibold text-slate-400 hover:bg-slate-100 hover:text-brand-600 dark:text-slate-500 dark:hover:bg-ink-800 dark:hover:text-brand-400"
+                    >
+                      +
+                    </button>
+                  </div>
+                ) : (
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="0"
+                    inputMode="decimal"
+                    data-testid={si === 0 ? "set1-weight" : undefined}
+                    value={s.weight}
+                    onChange={(e) =>
+                      onUpdateSet(si, {
+                        weight: stripNegative(e.target.value),
+                      })
+                    }
+                    onFocus={
+                      si === 0 && ghost
+                        ? () => onApplySuggestion(ghost)
+                        : undefined
+                    }
+                    placeholder={
+                      si === 0 && ghost && !ghost.bodyweight
+                        ? String(
+                            dispWeight(ghost.weightKg, units.weightUnit, 1)
+                          )
+                        : units.weightUnit
+                    }
+                    className={`input bg-white dark:bg-ink-900 ${
+                      sideFlags(s.weight, s.reps, s.duration).weight
+                        ? blockedField
+                        : ""
+                    }`}
+                  />
+                )}
+                {showPlate && plateButton(si, "weight")}
+                <span className="w-2 shrink-0 text-center text-slate-400 dark:text-slate-500">
+                  ×
+                </span>
+                {!timed ? (
+                  <div
+                    data-testid={
+                      si === 0 ? "set1-reps-stepper" : "reps-stepper"
+                    }
+                    className={`flex min-w-20 flex-1 basis-0 overflow-hidden rounded-lg border bg-white focus-within:border-brand-500 focus-within:ring-1 focus-within:ring-brand-500 dark:bg-ink-900 ${
+                      sideFlags(s.weight, s.reps, s.duration).effort
+                        ? blockedField
+                        : "border-black/10 dark:border-white/10"
+                    }`}
+                  >
+                    {effortInput(
+                      s.reps,
+                      (v) => onUpdateSet(si, { reps: v }),
+                      sideFlags(s.weight, s.reps, s.duration).effort,
+                      si === 0 && ghost ? ghost.reps : null,
+                      si === 0 && ghost
+                        ? () => onApplySuggestion(ghost)
+                        : undefined,
+                      canAddSet ? onAddSet : undefined,
+                      true
+                    )}
+                    <button
+                      type="button"
+                      tabIndex={-1}
+                      onClick={() => stepReps(si, "reps", 1)}
+                      aria-label="Add a rep"
+                      className="flex h-9 w-7 shrink-0 items-center justify-center text-sm font-semibold text-slate-400 hover:bg-slate-100 hover:text-brand-600 dark:text-slate-500 dark:hover:bg-ink-800 dark:hover:text-brand-400"
+                    >
+                      +
+                    </button>
+                  </div>
+                ) : (
+                  effortInput(
+                    s.duration,
+                    (v) => onUpdateSet(si, { duration: v }),
+                    sideFlags(s.weight, s.reps, s.duration).effort,
+                    null,
                     si === 0 && ghost
                       ? () => onApplySuggestion(ghost)
-                      : undefined
-                  }
-                  placeholder={
-                    si === 0 && ghost && !ghost.bodyweight
-                      ? String(dispWeight(ghost.weightKg, units.weightUnit, 1))
-                      : units.weightUnit
-                  }
-                  className={`input bg-white dark:bg-ink-900 ${
-                    sideFlags(s.weight, s.reps, s.duration).weight
-                      ? blockedField
-                      : ""
-                  }`}
-                />
-                {!timed &&
-                  !isBodyweight(p.name) &&
-                  stepButton(
-                    "+",
-                    () => stepWeight(si, "weight", weightStep),
-                    "Increase weight"
-                  )}
-                {showPlate && plateButton(si, "weight")}
-                <span className="text-slate-400 dark:text-slate-500">×</span>
-                {effortInput(
-                  timed ? s.duration : s.reps,
-                  (v) => onUpdateSet(si, timed ? { duration: v } : { reps: v }),
-                  sideFlags(s.weight, s.reps, s.duration).effort,
-                  si === 0 && ghost && !timed ? ghost.reps : null,
-                  si === 0 && ghost
-                    ? () => onApplySuggestion(ghost)
-                    : undefined,
-                  canAddSet ? onAddSet : undefined
+                      : undefined,
+                    canAddSet ? onAddSet : undefined
+                  )
                 )}
-                {!timed &&
-                  stepButton("+", () => stepReps(si, "reps", 1), "Add a rep")}
               </div>
             )}
-            {/* Warmup toggle (#338): a light per-set "W" — a warmup is excluded
+            <div className="flex w-16 shrink-0 items-start justify-end gap-1">
+              {/* Warmup toggle (#338): a light per-set "W" — a warmup is excluded
                 from the part's volume total and target markers. One toggle per
                 set (both sides of a per-side set share it). */}
-            <button
-              type="button"
-              tabIndex={-1}
-              onClick={() => onUpdateSet(si, { warmup: !s.warmup })}
-              aria-pressed={s.warmup}
-              data-testid={si === 0 ? "set1-warmup" : undefined}
-              title={
-                s.warmup
-                  ? "Warmup set — excluded from volume & target markers"
-                  : "Mark as a warmup set"
-              }
-              aria-label={s.warmup ? "Unmark warmup set" : "Mark warmup set"}
-              className={`mt-1 flex h-8 w-7 shrink-0 items-center justify-center rounded text-xs font-bold ${
-                s.warmup
-                  ? "bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400"
-                  : "text-slate-300 hover:bg-slate-100 hover:text-slate-500 dark:text-slate-600 dark:hover:bg-ink-800"
-              }`}
-            >
-              W
-            </button>
-            {p.sets.length > 1 && (
               <button
                 type="button"
-                onClick={() => onRemoveSet(si)}
-                className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded text-rose-400 hover:bg-rose-50 hover:text-rose-600 dark:text-rose-500/80 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
-                aria-label="Remove set"
+                tabIndex={-1}
+                onClick={() => onUpdateSet(si, { warmup: !s.warmup })}
+                aria-pressed={s.warmup}
+                data-testid={si === 0 ? "set1-warmup" : undefined}
+                title={
+                  s.warmup
+                    ? "Warmup set — excluded from volume & target markers"
+                    : "Mark as a warmup set"
+                }
+                aria-label={s.warmup ? "Unmark warmup set" : "Mark warmup set"}
+                className={`mt-1 flex h-8 w-7 shrink-0 items-center justify-center rounded text-xs font-bold ${
+                  s.warmup
+                    ? "bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400"
+                    : "text-slate-300 hover:bg-slate-100 hover:text-slate-500 dark:text-slate-600 dark:hover:bg-ink-800"
+                }`}
               >
-                <IconX className="h-4 w-4" />
+                W
               </button>
-            )}
+              {p.sets.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => onRemoveSet(si)}
+                  className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded text-rose-400 hover:bg-rose-50 hover:text-rose-600 dark:text-rose-500/80 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
+                  aria-label="Remove set"
+                >
+                  <IconX className="h-4 w-4" />
+                </button>
+              )}
+            </div>
           </div>
         ))}
       </div>
@@ -881,13 +1083,22 @@ export default function StrengthSets({
           + Add set
         </button>
         <span className="flex items-center gap-3">
-          {belowTarget && (
+          {targetStatus && (
             <span
-              className="flex items-center gap-1 text-xs font-medium text-amber-500 dark:text-amber-400"
-              title={`At least one set fell short of the ${intent.target}-rep target`}
+              data-testid="activity-target-status"
+              className={`flex items-center gap-1 text-xs font-medium ${
+                targetStatus === "missed"
+                  ? "text-amber-500 dark:text-amber-400"
+                  : "text-brand-600 dark:text-brand-400"
+              }`}
+              title={SET_STATUS_TITLES[targetStatus]}
             >
-              <IconAlertTriangle className="h-3.5 w-3.5" stroke={2} />
-              Below target
+              {targetStatus === "missed" ? (
+                <IconAlertTriangle className="h-3.5 w-3.5" stroke={2} />
+              ) : (
+                <IconCheck className="h-3.5 w-3.5" stroke={2.5} />
+              )}
+              {targetStatus === "missed" ? "Below target" : "Target met"}
             </span>
           )}
           {total > 0 && (

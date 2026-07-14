@@ -196,6 +196,7 @@ describe("mapStravaActivity — plausibility bounds (#132)", () => {
     expect(res!.activity.avg_power_w).toBe(220);
     expect(res!.samples).toHaveLength(1);
     expect(res!.samples[0].value).toBe(600);
+    expect(res!.samples[0].activity_external_id).toBe("strava:12345");
   });
 });
 

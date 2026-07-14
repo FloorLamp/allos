@@ -1,5 +1,6 @@
 "use client";
 
+import { useId } from "react";
 import type { UnitPrefs } from "@/lib/settings";
 import { round, stripNegative } from "@/lib/units";
 import { formatSeconds } from "@/lib/duration";
@@ -28,6 +29,8 @@ export default function CardioFields({
   onDistance: (v: string) => void;
   onDurationMin: (v: string) => void;
 }) {
+  const distanceId = useId();
+  const durationId = useId();
   const p = part;
   const dist = Number(p.distance);
   // The part's own Duration wins; otherwise fall back to the session clock span
@@ -43,8 +46,11 @@ export default function CardioFields({
       <div className="mt-2 grid grid-cols-2 gap-2">
         {showDist && (
           <div>
-            <label className="label">Distance ({distanceUnit})</label>
+            <label className="label" htmlFor={distanceId}>
+              Distance ({distanceUnit})
+            </label>
             <input
+              id={distanceId}
               type="number"
               step="0.01"
               min="0"
@@ -59,8 +65,11 @@ export default function CardioFields({
           </div>
         )}
         <div>
-          <label className="label">Duration (min)</label>
+          <label className="label" htmlFor={durationId}>
+            Duration (min)
+          </label>
           <input
+            id={durationId}
             type="number"
             min="0"
             inputMode="numeric"

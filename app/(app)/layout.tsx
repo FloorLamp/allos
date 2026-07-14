@@ -155,7 +155,10 @@ export default async function AppLayout({
                   {/* max(padding, safe-area inset) keeps content clear of the
               notch in landscape and the home indicator at the bottom now
               that the viewport paints edge-to-edge (viewportFit cover). */}
-                  <div className="mx-auto max-w-6xl pt-8 pb-[max(2rem,env(safe-area-inset-bottom))] pl-[max(1.25rem,env(safe-area-inset-left))] pr-[max(1.25rem,env(safe-area-inset-right))] 2xl:max-w-7xl 3xl:max-w-[110rem]">
+                  <div
+                    data-testid="app-content-container"
+                    className="mx-auto pt-8 pb-[max(2rem,env(safe-area-inset-bottom))] pl-[max(1.25rem,env(safe-area-inset-left))] pr-[max(1.25rem,env(safe-area-inset-right))] 3xl:max-w-[110rem]"
+                  >
                     {children}
                   </div>
                 </main>

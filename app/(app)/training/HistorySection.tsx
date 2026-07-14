@@ -8,6 +8,7 @@ import {
   getLatestBodyMetric,
   getJournalWeekSummary,
   getRecentByExercise,
+  getActiveDaysStrip,
 } from "@/lib/queries";
 import { frequencyScopeLabel } from "@/lib/goals";
 import { getUnitPrefs, getUserSex } from "@/lib/settings";
@@ -66,6 +67,7 @@ export default async function HistorySection() {
         streak: summary.streak,
         targets,
       }}
+      activeDaysStrip={getActiveDaysStrip(profile.id, 21)}
       showHeader={false}
       sex={getUserSex(profile.id)}
     />

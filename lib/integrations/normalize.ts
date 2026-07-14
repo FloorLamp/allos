@@ -44,6 +44,10 @@ export interface NormMetricSample {
   start_time: string; // absolute ISO instant; point records set start == end
   end_time: string;
   value: number;
+  // Stable identity of the imported activity this sample describes. Unlike the
+  // sample window, this survives user edits to the activity's date/clock fields.
+  // Null/omitted for standalone metrics (steps, sleep, daily energy, etc.).
+  activity_external_id?: string | null;
 }
 
 // A pre-aggregated 1-minute heart-rate bucket from the incoming batch.
@@ -285,13 +289,19 @@ export function upsertMetricSamples(
   // the rolling window that lands the same value/date is counted unchanged rather
   // than a write (info.changes can't see that the values matched).
   const find = db.prepare(
-    "SELECT value, date FROM metric_samples WHERE profile_id = ? AND metric = ? AND source = ? AND start_time = ? AND end_time = ?"
+    "SELECT value, date, activity_external_id FROM metric_samples WHERE profile_id = ? AND metric = ? AND source = ? AND start_time = ? AND end_time = ?"
   );
   const stmt = db.prepare(
-    `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
-       VALUES (?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO metric_samples
+       (profile_id, source, metric, date, start_time, end_time, value, activity_external_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(profile_id, metric, source, start_time, end_time) DO UPDATE SET
-       value = excluded.value, date = excluded.date`
+       value = excluded.value,
+       date = excluded.date,
+       activity_external_id = COALESCE(
+         excluded.activity_external_id,
+         metric_samples.activity_external_id
+       )`
   );
   // Re-import tombstones for metric_samples (#508): a user-deleted sample must not be
   // re-inserted by the rolling window. Loaded once for the batch.
@@ -309,7 +319,9 @@ export function upsertMetricSamples(
       source,
       r.start_time,
       r.end_time
-    ) as { value: number; date: string } | undefined;
+    ) as
+      | { value: number; date: string; activity_external_id: string | null }
+      | undefined;
     // No live row AND a tombstone for this natural key: skip the resurrecting insert.
     if (
       !found &&
@@ -327,10 +339,16 @@ export function upsertMetricSamples(
       r.date,
       r.start_time,
       r.end_time,
-      r.value
+      r.value,
+      r.activity_external_id ?? null
     );
     if (!found) counts.inserted++;
-    else if (found.value === r.value && found.date === r.date)
+    else if (
+      found.value === r.value &&
+      found.date === r.date &&
+      (r.activity_external_id == null ||
+        found.activity_external_id === r.activity_external_id)
+    )
       counts.unchanged++;
     else counts.updated++;
   }

@@ -11,6 +11,7 @@ import {
   getJournalPage,
   getSetsForActivities,
   getRoutePolylinesForActivities,
+  getActiveCaloriesForActivities,
   getWeights,
 } from "./queries";
 import { getEquipment } from "./equipment";
@@ -18,6 +19,7 @@ import { buildJournalCards, type DayGroup } from "./journal-card";
 import type { DatedWeight } from "./calorie-estimate";
 import type { UnitPrefs } from "./settings";
 import { today as todayFn, yesterday as yesterdayFn } from "./db";
+import { getProfileZoneModel } from "./queries/zones";
 
 // Days per page. Matches the client's 14-day reveal increment so a "Load more" click
 // fetches roughly one screen of older history at a time.
@@ -50,6 +52,10 @@ export function buildJournalFeedPage(
   // activities with a captured route appear in the map; consumed server-side to
   // build the card — only the (small) polyline for a rendered card crosses the wire.
   const routes = getRoutePolylinesForActivities(profileId, activityIds);
+  const activeCalories = getActiveCaloriesForActivities(
+    profileId,
+    page.activities
+  );
   // Resolve per-set / per-activity equipment_id -> implement name. includeRetired: a
   // retired implement must still label the historical sets it was logged against
   // (issue #341). The equipment list is small and profile-owned, so re-reading it per
@@ -75,6 +81,8 @@ export function buildJournalFeedPage(
     today: todayFn(profileId),
     yesterday: yesterdayFn(profileId),
     routes,
+    activeCalories,
+    zoneModel: getProfileZoneModel(profileId),
   });
 
   return { groups, nextBefore: page.nextBefore };

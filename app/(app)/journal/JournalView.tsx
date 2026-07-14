@@ -1,7 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { IconX, IconAlertTriangle } from "@tabler/icons-react";
+import {
+  IconX,
+  IconAlertTriangle,
+  IconBolt,
+  IconPlus,
+  IconRepeat,
+  IconSearch,
+} from "@tabler/icons-react";
 import type { ActivityType, Goal, Sex } from "@/lib/types";
 import type {
   CardioStat,
@@ -15,7 +22,6 @@ import { exerciseHistoryKey, regionForExercise } from "@/lib/lifts";
 import { PageHeader, EmptyState } from "@/components/ui";
 import { WeeklyTargets } from "@/components/WeeklyTargets";
 import MobileDetailPage from "@/components/MobileDetailPage";
-import { LG_QUERY, openDetailOnMobile } from "@/components/mobileDetail";
 import ExerciseDetailPanel from "@/components/ExerciseDetailPanel";
 import CardioDetailPanel from "@/components/CardioDetailPanel";
 import SportDetailPanel from "@/components/SportDetailPanel";
@@ -23,6 +29,8 @@ import JournalCard from "./JournalCard";
 import type { MergeSibling } from "./ActivityCardMenu";
 import { detectFieldConflicts } from "@/lib/import-review/conflicts";
 import { loadJournalPage } from "./actions";
+import ActiveDaysStrip from "@/components/ActiveDaysStrip";
+import type { ActiveDaysStrip as ActiveDaysStripData } from "@/lib/workout-heatmap";
 
 // JournalCardData / DayGroup moved to lib/journal-card.ts (issue #334), built by the
 // pure buildJournalCards. Re-exported so existing `../journal/JournalView` importers
@@ -61,6 +69,8 @@ const TYPE_FILTERS: { value: "all" | ActivityType; label: string }[] = [
   { value: "sport", label: "Sport" },
 ];
 
+const JOURNAL_DESKTOP_QUERY = "(min-width: 1280px)";
+
 export default function JournalView({
   groups: initialGroups,
   initialCursor = null,
@@ -72,6 +82,7 @@ export default function JournalView({
   bodyweightKg,
   units,
   weekSummary,
+  activeDaysStrip,
   recentByExercise,
   showHeader = true,
   showWeeklyTargets = true,
@@ -91,6 +102,7 @@ export default function JournalView({
   bodyweightKg: number | null;
   units: UnitPrefs;
   weekSummary: WeekSummary;
+  activeDaysStrip: ActiveDaysStripData;
   recentByExercise: RecentByExercise;
   showHeader?: boolean;
   showWeeklyTargets?: boolean;
@@ -182,14 +194,15 @@ export default function JournalView({
   const lastActivity = groups[0]?.cards[0]?.activity ?? null;
 
   // The dock is a desktop concept: it exists so the editor can live beside the
-  // feed in the two-column layout. Below lg there is no second column — the
+  // feed in the two-column layout. Below xl there is no second column — the
   // provider falls back to ActivityOverlay, so the editor looks and behaves the
-  // same as on every other page. (Crossing the breakpoint mid-edit closes the
+  // same as on every other page. The Journal needs xl width for two usable
+  // columns. (Crossing the breakpoint mid-edit closes the
   // editor; any pending auto-save is flushed on unmount.)
-  const [isLg, setIsLg] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(false);
   useEffect(() => {
-    const mq = window.matchMedia(LG_QUERY);
-    const update = () => setIsLg(mq.matches);
+    const mq = window.matchMedia(JOURNAL_DESKTOP_QUERY);
+    const update = () => setIsDesktop(mq.matches);
     update();
     mq.addEventListener("change", update);
     return () => mq.removeEventListener("change", update);
@@ -198,13 +211,13 @@ export default function JournalView({
   // Lend the editor this column so create/edit auto-saves inline here instead of
   // popping the centered modal. Only ever register a real dock: passing null
   // means "the dock went away" and closes the editor — running that on a mount
-  // where isLg hasn't settled yet (it starts false) would force-close an editor
+  // where isDesktop hasn't settled yet (it starts false) would force-close an editor
   // that survived navigation as the overlay.
   useEffect(() => {
-    if (!isLg) return;
+    if (!isDesktop) return;
     registerDock(dockRef.current);
     return () => registerDock(null);
-  }, [registerDock, isLg]);
+  }, [registerDock, isDesktop]);
 
   const [typeFilter, setTypeFilter] = useState<"all" | ActivityType>("all");
   const [query, setQuery] = useState("");
@@ -480,7 +493,11 @@ export default function JournalView({
   function showDetail(kind: "exercise" | "cardio" | "sport", name: string) {
     if (open) close();
     setDetail({ kind, name });
-    openDetailOnMobile(() => setDetailOpen(true));
+    if (
+      typeof window !== "undefined" &&
+      !window.matchMedia(JOURNAL_DESKTOP_QUERY).matches
+    )
+      setDetailOpen(true);
   }
 
   // Desktop-only ✕ inside the panel header; the mobile detail page has its own.
@@ -489,7 +506,7 @@ export default function JournalView({
       type="button"
       onClick={dismissPanel}
       aria-label="Close details"
-      className="hidden text-slate-400 hover:text-slate-600 lg:block dark:text-slate-500 dark:hover:text-slate-300"
+      className="hidden text-slate-400 hover:text-slate-600 xl:block dark:text-slate-500 dark:hover:text-slate-300"
     >
       <IconX className="h-4 w-4" />
     </button>
@@ -566,87 +583,161 @@ export default function JournalView({
         />
       )}
 
-      {/* Weekly frequency targets — see WeeklyTargets for the chip design. */}
-      {showWeeklyTargets && weekSummary.targets.length > 0 && (
-        <div className="mb-5">
-          <h2 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
-            Weekly routine
-          </h2>
-          <WeeklyTargets targets={weekSummary.targets} />
+      {/* Routine progress and a compact, literal trailing-14-day cadence strip. */}
+      {showWeeklyTargets && (
+        <div
+          data-testid="journal-routine-row"
+          className="mb-5 space-y-3 xl:flex xl:items-center xl:gap-5 xl:space-y-0"
+        >
+          {weekSummary.targets.length > 0 && (
+            <div className="lg:flex lg:min-w-0 lg:items-center lg:gap-3">
+              <h2 className="mb-1.5 shrink-0 text-xs font-semibold tracking-wide text-slate-400 uppercase lg:mb-0 dark:text-slate-500">
+                Weekly routine
+              </h2>
+              <WeeklyTargets targets={weekSummary.targets} />
+            </div>
+          )}
+          <ActiveDaysStrip data={activeDaysStrip} />
         </div>
       )}
 
       {/* Controls */}
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <input
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search activities or exercises…"
-          className="input max-w-xs"
-        />
-        <div className="flex flex-wrap gap-1.5">
-          {TYPE_FILTERS.map((f) => {
-            const active = typeFilter === f.value;
-            return (
-              <button
-                key={f.value}
-                type="button"
-                onClick={() => setTypeFilter(f.value)}
-                className={`rounded-full border px-3 py-1 text-sm font-medium transition ${
-                  active
-                    ? "border-brand-500 bg-brand-500 text-white"
-                    : "border-black/10 bg-white text-slate-600 hover:bg-slate-50 dark:border-white/10 dark:bg-ink-900 dark:text-slate-300 dark:hover:bg-ink-800"
-                }`}
-              >
-                {f.label}
-              </button>
-            );
-          })}
+      <div
+        data-testid="journal-controls"
+        className="mb-4 grid gap-2 lg:grid-cols-[minmax(12rem,1fr)_auto]"
+      >
+        <div className="relative min-w-48 lg:col-start-1 lg:row-start-1">
+          <IconSearch
+            aria-hidden
+            className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500"
+            stroke={2}
+          />
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search activities or exercises…"
+            className="input appearance-none bg-white pr-10 pl-9 [&::-webkit-search-cancel-button]:appearance-none dark:bg-ink-900"
+          />
+          {query && (
+            <button
+              type="button"
+              onClick={() => setQuery("")}
+              aria-label="Clear search"
+              className="absolute top-1/2 right-1 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-ink-800 dark:hover:text-slate-300"
+            >
+              <IconX className="h-4 w-4" />
+            </button>
+          )}
         </div>
-        {/* Only shown while some row can't be saved as-is; disappears once the
-            last one is fixed (faultCount → 0, which also clears the toggle). */}
-        {faultCount > 0 && (
-          <button
-            type="button"
-            onClick={() => setFaultOnly((v) => !v)}
-            aria-pressed={faultOnly}
-            title="Show only rows that can't be saved as-is"
-            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-medium transition ${
-              faultOnly
-                ? "border-rose-500 bg-rose-500 text-white"
-                : "border-rose-300 bg-white text-rose-600 hover:bg-rose-50 dark:border-rose-500/40 dark:bg-ink-900 dark:text-rose-400 dark:hover:bg-rose-950/40"
-            }`}
+        <div className="flex flex-wrap items-center gap-2 lg:col-span-2 lg:row-start-2">
+          <div
+            role="group"
+            aria-label="Activity type"
+            className="inline-flex overflow-hidden rounded-lg border border-black/10 bg-white divide-x divide-black/10 dark:border-white/10 dark:bg-ink-900 dark:divide-white/10"
           >
-            <IconAlertTriangle className="h-4 w-4" stroke={2} />
-            Can’t be saved
-            <span
-              className={`rounded-full px-1.5 text-xs tabular-nums ${
+            {TYPE_FILTERS.map((f) => {
+              const active = typeFilter === f.value;
+              return (
+                <button
+                  key={f.value}
+                  type="button"
+                  onClick={() => setTypeFilter(f.value)}
+                  aria-pressed={active}
+                  className={`px-3 py-1.5 text-sm font-medium transition ${
+                    active
+                      ? "bg-brand-500 text-white"
+                      : "text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-ink-800"
+                  }`}
+                >
+                  {f.label}
+                </button>
+              );
+            })}
+          </div>
+          {/* Only shown while some row can't be saved as-is; disappears once the
+              last one is fixed (faultCount → 0, which also clears the toggle). */}
+          {faultCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setFaultOnly((v) => !v)}
+              aria-pressed={faultOnly}
+              title="Show only rows that can't be saved as-is"
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-medium transition ${
                 faultOnly
-                  ? "bg-white/25"
-                  : "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300"
+                  ? "border-rose-500 bg-rose-500 text-white"
+                  : "border-rose-300 bg-white text-rose-600 hover:bg-rose-50 dark:border-rose-500/40 dark:bg-ink-900 dark:text-rose-400 dark:hover:bg-rose-950/40"
               }`}
             >
-              {faultCount}
+              <IconAlertTriangle className="h-4 w-4" stroke={2} />
+              Can’t be saved
+              <span
+                className={`rounded-full px-1.5 text-xs tabular-nums ${
+                  faultOnly
+                    ? "bg-white/25"
+                    : "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300"
+                }`}
+              >
+                {faultCount}
+              </span>
+            </button>
+          )}
+          {tagFilter && (
+            <span className="inline-flex items-center rounded-full border border-brand-300 bg-brand-50 px-3 py-1 text-sm font-medium text-brand-700 dark:border-brand-800 dark:bg-brand-950 dark:text-brand-300">
+              {tagFilter.value}
             </span>
+          )}
+          {filtersActive && (
+            <button
+              type="button"
+              onClick={() => {
+                setQuery("");
+                setTypeFilter("all");
+                setFaultOnly(false);
+                setTagFilter(null);
+              }}
+              className="inline-flex items-center gap-1 px-1 py-1 text-sm font-medium text-slate-500 hover:text-brand-600 dark:text-slate-400 dark:hover:text-brand-400"
+            >
+              <IconX className="h-3.5 w-3.5" />
+              Clear filters
+            </button>
+          )}
+        </div>
+        <div
+          data-testid="journal-actions"
+          className="hidden flex-wrap items-center gap-2 md:ml-auto md:flex lg:col-start-2 lg:row-start-1 lg:ml-0"
+        >
+          {lastActivity && (
+            <button
+              type="button"
+              onClick={() => openRepeat(lastActivity)}
+              data-testid="repeat-last"
+              title={`Log again: ${lastActivity.title}`}
+              className="btn-ghost"
+            >
+              <IconRepeat className="h-4 w-4" stroke={2} />
+              Repeat last
+            </button>
+          )}
+          {canStartWorkout && (
+            <button
+              type="button"
+              onClick={openLive}
+              data-testid="start-workout"
+              className="btn-ghost"
+            >
+              <IconBolt className="h-4 w-4" stroke={2} />
+              Start workout
+            </button>
+          )}
+          <button type="button" onClick={openCreate} className="btn">
+            <IconPlus className="h-4 w-4" stroke={2.5} />
+            New activity
           </button>
-        )}
-        {tagFilter && (
-          <button
-            type="button"
-            onClick={() => setTagFilter(null)}
-            title="Clear filter"
-            className="inline-flex items-center gap-1 rounded-full border border-brand-500 bg-brand-500 px-3 py-1 text-sm font-medium text-white transition hover:bg-brand-600"
-          >
-            {tagFilter.value}
-            <span aria-hidden className="text-base leading-none">
-              ×
-            </span>
-          </button>
-        )}
+        </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-6 xl:grid-cols-2">
         {/* Day-grouped feed */}
         <div>
           {shown.length === 0 ? (
@@ -681,9 +772,12 @@ export default function JournalView({
                       <JournalCard
                         key={c.activity.id}
                         activity={c.activity}
+                        timeText={c.timeText}
                         durationText={c.durationText}
                         distanceText={c.distanceText}
                         speedText={c.speedText}
+                        heartRateText={c.heartRateText}
+                        calorieText={c.calorieText}
                         metrics={c.metrics}
                         gear={c.gear}
                         parts={c.parts}
@@ -728,53 +822,28 @@ export default function JournalView({
 
         {/* Detail / editor pane — desktop column only; on mobile the detail
             renders in MobileDetailPage below and the editor in the overlay. */}
-        <aside className="hidden lg:block">
+        <aside className="hidden xl:block">
           {/* Sticky so it follows the feed; capped to the viewport with its own
-              scroll when the content (e.g. a long editor) overflows. The header
-              keeps the first card aligned with the feed's dated cards. */}
-          <div className="sticky top-8 max-h-[calc(100vh-3rem)] overflow-y-auto pr-1">
-            <div className="mb-2 flex min-h-9 items-center justify-between gap-2">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                {open ? "Activity" : "Details"}
-              </h2>
-              <div className="flex items-center gap-2">
-                {lastActivity && (
-                  <button
-                    type="button"
-                    onClick={() => openRepeat(lastActivity)}
-                    data-testid="repeat-last"
-                    title={`Log again: ${lastActivity.title}`}
-                    className="btn-ghost"
-                  >
-                    Repeat last
-                  </button>
-                )}
-                {/* Start a live workout (issue #340): the in-gym rest-timer +
-                    set check-off flow. Strength-centric, so hidden for
-                    age-restricted profiles (#489). */}
-                {canStartWorkout && (
-                  <button
-                    type="button"
-                    onClick={openLive}
-                    data-testid="start-workout"
-                    className="btn-ghost"
-                  >
-                    Start workout
-                  </button>
-                )}
-                <button type="button" onClick={openCreate} className="btn">
-                  New activity
-                </button>
-              </div>
-            </div>
+              scroll when the content (e.g. a long editor) overflows. */}
+          <div
+            data-testid="activity-editor-scroll"
+            className="sticky top-0 max-h-screen overflow-y-auto pr-1"
+          >
+            {/* Match the first feed row's h-9 date heading + mb-2 so the two
+                cards align. This spacer scrolls away; it is not sticky chrome. */}
+            <div aria-hidden className="mb-2 h-9" />
             {/* The provider portals the auto-saving editor here when open. */}
-            <div ref={dockRef} className={open ? "card" : ""} />
+            <div
+              ref={dockRef}
+              data-testid="activity-editor-dock"
+              className={open ? "card pt-0" : ""}
+            />
 
-            {/* isLg gate: below lg the aside is display:none but React would
+            {/* isDesktop gate: below xl the aside is display:none but React would
                 still mount the panel (charts and all) — MobileDetailPage is
                 the only mobile surface, so don't build it twice. */}
             {!open &&
-              (isLg && detailPanel ? (
+              (isDesktop && detailPanel ? (
                 <div className="card">{detailPanel}</div>
               ) : (
                 <div className="card">
@@ -790,6 +859,7 @@ export default function JournalView({
 
       <MobileDetailPage
         open={detailOpen}
+        desktopAt="xl"
         // dismissPanel (not just setDetailOpen(false)) so `detail` doesn't
         // linger and reappear in the desktop column after a resize.
         onClose={dismissPanel}
