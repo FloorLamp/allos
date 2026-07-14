@@ -100,9 +100,6 @@ export default async function NutritionPage() {
           truncate/flex handling takes over. */}
       <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
         <div className="card min-w-0">
-          <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-            Log today
-          </h2>
           <FoodLogBar date={date} initial={initial} groups={groups} />
         </div>
 
