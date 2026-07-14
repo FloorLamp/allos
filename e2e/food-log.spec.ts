@@ -52,6 +52,79 @@ test("the labs food-suggestions card is collapsed by default and expands on clic
   await expect(suggestion).toBeVisible();
 });
 
+test("logging a serving keeps the row order fixed (no reorder under the finger)", async ({
+  page,
+}) => {
+  await page.goto("/nutrition");
+  await expect(page.getByTestId("food-log-bar")).toBeVisible();
+
+  const rowIds = () =>
+    page.$$eval('li[data-testid^="food-group-"]', (els) =>
+      els.map((e) => e.getAttribute("data-testid"))
+    );
+  const before = await rowIds();
+
+  // Tap a low-ranked, zero-weight group twice. The server re-ranks by
+  // recency-decayed frequency, so WITHOUT the client-side order freeze these
+  // taps would push this row up its tier on the refresh; with the freeze the row
+  // stays put until the user navigates away.
+  await page.getByTestId("log-other_vegetables").click();
+  await page.getByTestId("log-other_vegetables").click();
+  // The weekly rollup is server-rendered, so its row appearing proves the
+  // router.refresh() (which carries the re-ranked order) has landed.
+  await expect(page.getByTestId("rollup-other_vegetables")).toBeVisible();
+
+  expect(await rowIds()).toEqual(before);
+
+  // Restore the fixture.
+  await page.getByTestId("undo-other_vegetables").click();
+  await page.getByTestId("undo-other_vegetables").click();
+});
+
+test("the header shows today's total, ticking up on log and back on undo", async ({
+  page,
+}) => {
+  await page.goto("/nutrition");
+  const total = page.getByTestId("food-day-total");
+  await expect(total).toBeVisible();
+  const read = async () =>
+    Number((await total.textContent())?.match(/\d+/)?.[0] ?? "0");
+
+  const before = await read();
+  await page.getByTestId("log-eggs").click();
+  await expect.poll(read).toBe(before + 1);
+  await page.getByTestId("undo-eggs").click();
+  await expect.poll(read).toBe(before);
+});
+
+test.describe("tapping a category expands its serving detail on mobile", () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  test("the truncated serving line expands in place on tap", async ({
+    page,
+  }) => {
+    await page.goto("/nutrition");
+
+    const toggle = page.getByTestId("detail-leafy_greens");
+    await expect(toggle).toBeVisible();
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+
+    // Collapsed: the serving line is clamped to one line.
+    const desc = toggle.locator("span span").last();
+    const collapsedH = (await desc.boundingBox())!.height;
+
+    // Tap the label → it expands, the flag flips, and the (long) line wraps taller.
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    const expandedH = (await desc.boundingBox())!.height;
+    expect(expandedH).toBeGreaterThan(collapsedH);
+
+    // Tap again → collapses back.
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  });
+});
+
 test("the Trends → Nutrition tab renders the food-servings rollup (#579)", async ({
   page,
 }) => {
