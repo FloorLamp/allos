@@ -36,7 +36,14 @@ export function mapObservation(
   narrativeIds: Record<string, string> = {},
   // The performing org resolved off the parent organizer, used when the
   // observation itself carries no <performer> (Epic puts it at either level).
-  fallbackProvider: ImportedProvider | null = null
+  fallbackProvider: ImportedProvider | null = null,
+  // Whether a vital-sign LOINC may override the section's category to "vitals".
+  // True for the Results/Vitals extractors (Epic files body weight/BMI/height under
+  // Results, and they ARE vitals — #681). False for the functionalStatusExtractor:
+  // a functional-status assessment that happens to reuse a VITAL_LOINCS code must
+  // stay a `lab` assessment, not become a "vitals" record (#694) — its own extractor
+  // nulls the loinc AFTER mapping, too late to undo a category override.
+  allowCategoryOverride = true
 ): ImportedRecord | null {
   if (!obs || truthyNegation(obs["@_negationInd"])) return null;
   const date = effTime(obs.effectiveTime);
@@ -54,10 +61,11 @@ export function mapObservation(
   if (isNonAnalyteLoinc(loinc) || isDerivedPercentileLoinc(loinc)) return null;
   // A vital-sign LOINC that arrives in a lab/results section — Epic reports body
   // weight and BMI there — is still a vital: classify by the code, not the section
-  // (#681). Mirrors how the FHIR path routes category off isVitalLoinc.
-  const recordCategory: "lab" | "vitals" = isVitalLoinc(loinc)
-    ? "vitals"
-    : category;
+  // (#681). Mirrors how the FHIR path routes category off isVitalLoinc. Gated by
+  // allowCategoryOverride so a functional-status assessment reusing a vital LOINC is
+  // NOT reclassified (#694).
+  const recordCategory: "lab" | "vitals" =
+    allowCategoryOverride && isVitalLoinc(loinc) ? "vitals" : category;
   const canonicalName = canonicalBiomarkerForLoinc(loinc);
   // Name resolution order:
   //   1. structured @_displayName on the code, then
@@ -118,7 +126,8 @@ export function mapObservation(
 function observationsFromEntries(
   entries: any[],
   category: "lab" | "vitals",
-  narrativeIds: Record<string, string> = {}
+  narrativeIds: Record<string, string> = {},
+  allowCategoryOverride = true
 ): ImportedRecord[] {
   const out: ImportedRecord[] = [];
   for (const entry of entries) {
@@ -130,7 +139,13 @@ function observationsFromEntries(
       (c: any) => c?.observation
     );
     for (const o of [...nested, ...asArray(entry?.observation)]) {
-      const rec = mapObservation(o, category, narrativeIds, orgProvider);
+      const rec = mapObservation(
+        o,
+        category,
+        narrativeIds,
+        orgProvider,
+        allowCategoryOverride
+      );
       if (rec) out.push(rec);
     }
   }
@@ -175,10 +190,14 @@ export const functionalStatusExtractor: SectionExtractor = {
   key: "functionalStatus",
   matches: (s) => sectionIs(s, SECTIONS.functionalStatus),
   extract: (s) => ({
+    // allowCategoryOverride=false: a functional-status assessment reusing a
+    // VITAL_LOINCS code must stay a `lab` assessment, never flip to "vitals"
+    // (#694) — nulling the loinc below is too late to undo a category override.
     records: observationsFromEntries(
       s.entries,
       "lab",
-      buildNarrativeIdMap(s.raw?.text)
+      buildNarrativeIdMap(s.raw?.text),
+      false
     ).map((r) => ({ ...r, loinc: null })),
   }),
 };

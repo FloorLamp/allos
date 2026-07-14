@@ -1,4 +1,8 @@
-import { isUnmappedLabLoinc } from "../biomarker-loinc";
+import {
+  isDerivedPercentileLoinc,
+  isNonAnalyteLoinc,
+  isUnmappedLabLoinc,
+} from "../biomarker-loinc";
 import { isNoKnownAllergyText } from "../clinical-parse";
 import { codeFromVaccineCode } from "../cvx-map";
 import type {
@@ -29,6 +33,7 @@ import {
   buildResolver,
   conceptName,
   isoDate,
+  loincFromFhirCode,
   pickCoding,
 } from "./common";
 import type { FhirBundleCtx, FhirEntry } from "./common";
@@ -245,6 +250,12 @@ function fhirDropReason(resourceType: string, r: any): DropReason {
       !isoDate(r?.effectiveDateTime ?? r?.issued ?? r?.effectivePeriod?.start)
     )
       return "other";
+    // A non-analyte administrative code or a derived anthropometric percentile is
+    // dropped by observationRecords (mirroring the CDA mapper, #681/#684/#722) — so
+    // classify it precisely, not as generic no_value (#693).
+    const loinc = loincFromFhirCode(r?.code);
+    if (isNonAnalyteLoinc(loinc)) return "non_analyte";
+    if (isDerivedPercentileLoinc(loinc)) return "derived_percentile";
     return "no_value";
   }
   if (resourceType === "AllergyIntolerance") {

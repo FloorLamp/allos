@@ -348,6 +348,15 @@ export function readFhirObservationValue(node: any): FhirObsValue | null {
   return null;
 }
 
+// The LOINC code carried on a FHIR CodeableConcept (the coding whose system is
+// LOINC), or undefined. Shared so the reading builder and the drop classifier read
+// an Observation's LOINC the same way.
+export function loincFromFhirCode(
+  code: FhirCodeableConcept | undefined
+): string | undefined {
+  return code?.coding?.find((c) => (c.system ?? "").includes("loinc"))?.code;
+}
+
 // Build one ImportedRecord from a code + resolved value + the parent's date /
 // provenance. Shared by the scalar Observation path and each component reading, so
 // a BP component (LOINC 8480-6 / 8462-4) canonicalizes and routes to `vitals`
@@ -363,9 +372,7 @@ export function fhirReadingFromCode(
     code?.text ||
     code?.coding?.find((c) => c.display)?.display ||
     "Observation";
-  const loinc = code?.coding?.find((c) =>
-    (c.system ?? "").includes("loinc")
-  )?.code;
+  const loinc = loincFromFhirCode(code);
   // Classify vitals vs labs by LOINC (a FHIR Observation has no section to read),
   // so vital signs land under the vitals category — and don't get registered into
   // the AI biomarker vocabulary — exactly as the CDA path routes them.
