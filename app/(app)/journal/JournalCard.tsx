@@ -11,6 +11,7 @@ import type { ActivityEditData } from "@/components/ActivityForm";
 import type { UnitPrefs } from "@/lib/settings";
 import { SET_STATUS_TITLES } from "@/lib/journal-format";
 import { activityComponentSportNames } from "@/lib/activity-icon";
+import { zonePresentation } from "@/lib/training-zones";
 // DisplayPart moved to lib/journal-card.ts (issue #334); re-exported here so the
 // existing `./JournalCard` import path keeps working.
 import type { DisplayPart } from "@/lib/journal-card";
@@ -23,6 +24,14 @@ const INTENSITY_DOT: Record<string, string> = {
   moderate: "bg-amber-500 dark:bg-amber-400",
   hard: "bg-rose-500 dark:bg-rose-400",
 };
+
+interface SummaryItem {
+  value: string | null;
+  intensity?: string | null;
+  heartRate?: boolean;
+  color?: string;
+  title?: string;
+}
 
 export default function JournalCard({
   activity,
@@ -98,10 +107,16 @@ export default function JournalCard({
   // editor is a full-screen overlay, so the ring is only ever seen on desktop.)
   const selected = open && editData?.id === activity.id;
   const intensityKey = activity.intensity?.toLowerCase() ?? null;
-  const summary = [
+  const heartRateZone = zonePresentation(activity.heart_rate_zone);
+  const summaryItems: SummaryItem[] = [
     { value: timeText },
     { value: durationText },
-    { value: heartRateText },
+    {
+      value: heartRateText,
+      heartRate: true,
+      color: heartRateZone?.color,
+      title: heartRateZone?.title,
+    },
     { value: distanceText },
     { value: speedText },
     { value: calorieText },
@@ -111,8 +126,9 @@ export default function JournalCard({
         : null,
       intensity: intensityKey,
     },
-  ].filter((item): item is { value: string; intensity?: string | null } =>
-    Boolean(item.value)
+  ];
+  const summary = summaryItems.filter(
+    (item): item is SummaryItem & { value: string } => Boolean(item.value)
   );
   const notesCanExpand = (activity.notes?.length ?? 0) > 120;
   const hasSupportingDetails = metrics.length > 0 || !!gear;
@@ -149,8 +165,14 @@ export default function JournalCard({
                   <span
                     key={i}
                     data-testid={
-                      item.intensity ? "activity-intensity" : undefined
+                      item.intensity
+                        ? "activity-intensity"
+                        : item.heartRate
+                          ? "activity-heart-rate"
+                          : undefined
                     }
+                    style={item.color ? { color: item.color } : undefined}
+                    title={item.title}
                     className="inline-flex items-center whitespace-nowrap"
                   >
                     {i > 0 && (

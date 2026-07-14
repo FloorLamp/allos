@@ -148,6 +148,9 @@ test("journal cards prioritize a summary and progressively disclose details", as
   await expect(summary).toContainText("07:15–08:17");
   await expect(summary).toContainText("62 min");
   await expect(summary).toContainText("148/171 bpm");
+  const heartRate = ride.getByTestId("activity-heart-rate");
+  await expect(heartRate).toHaveCSS("color", "rgb(234, 179, 8)");
+  await expect(heartRate).toHaveAttribute("title", "Zone 3 · Tempo");
   await expect(summary).toContainText("24.5 km");
   await expect(summary).toContainText("648 kcal");
   await expect(summary).not.toContainText("≈ 648 kcal");
@@ -361,6 +364,9 @@ test("the activity editor shows all stored Strava measurements as read-only", as
   const primary = details.getByTestId("strava-primary-stats");
   await expect(primary.locator(":scope > div")).toHaveCount(4);
   await expect(primary).toContainText("Heart rate148 bpm171 max");
+  const heartRate = primary.getByTestId("imported-heart-rate");
+  await expect(heartRate).toHaveCSS("color", "rgb(234, 179, 8)");
+  await expect(heartRate).toHaveAttribute("title", "Zone 3 · Tempo");
   await expect(primary).toContainText("Power186 W193 weighted · 612 max");
   await expect(primary).toContainText("Speed23.7 km/h41.8 max");
   await expect(primary).toContainText("Elevation gain210 m");

@@ -33,6 +33,7 @@ import {
   importedActivityDetails,
   pickImportedActivityMetrics,
 } from "./activity-import-details";
+import { zoneForBpm, type ZoneModel } from "./training-zones";
 
 // One rendered line under a card: a strength exercise (with its summary + status),
 // or a cardio/sport effort (with its distance/duration/speed detail string). The
@@ -170,6 +171,9 @@ export interface BuildJournalCardsInput {
   routes?: Map<number, string>;
   // Device-measured active energy matched to each imported activity window.
   activeCalories?: Map<number, number>;
+  // The active profile's canonical HR-zone model. The zone is resolved once per
+  // activity and carried by ActivityEditData into both card and form renderers.
+  zoneModel?: ZoneModel | null;
 }
 
 // Compact, unit-aware values for the richer per-activity metrics carried by pull
@@ -250,6 +254,7 @@ export function buildJournalCards({
   yesterday,
   routes,
   activeCalories,
+  zoneModel,
 }: BuildJournalCardsInput): DayGroup[] {
   const wu = units.weightUnit;
 
@@ -357,6 +362,10 @@ export function buildJournalCards({
       activeCalories?.get(a.id)
     );
     const routePolyline = routes?.get(a.id) ?? null;
+    const heartRateZone =
+      zoneModel != null && a.avg_hr != null
+        ? zoneForBpm(a.avg_hr, zoneModel)
+        : null;
     const editData: ActivityEditData = {
       id: a.id,
       type: a.type,
@@ -383,6 +392,7 @@ export function buildJournalCards({
       calorie_kcal: calorieDisplay?.kcal ?? null,
       calorie_estimated: calorieDisplay?.estimated ?? false,
       route_polyline: routePolyline,
+      heart_rate_zone: heartRateZone,
       sets: aSets.map((s) => ({
         exercise: s.exercise,
         set_number: s.set_number,

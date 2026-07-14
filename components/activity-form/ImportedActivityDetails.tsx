@@ -3,6 +3,7 @@
 import type { ActivityEditData } from "./model";
 import type { DistanceUnit } from "@/lib/settings";
 import { importedActivityStats } from "@/lib/activity-import-details";
+import { zonePresentation } from "@/lib/training-zones";
 
 export default function ImportedActivityDetails({
   activity,
@@ -27,6 +28,7 @@ export default function ImportedActivityDetails({
     activity.calorie_kcal != null
       ? activity.calorie_kcal
       : null;
+  const heartRateZone = zonePresentation(activity.heart_rate_zone);
   if (
     primary.length === 0 &&
     secondary.length === 0 &&
@@ -51,7 +53,20 @@ export default function ImportedActivityDetails({
               <dt className="text-xs text-slate-500 dark:text-slate-400">
                 {stat.label}
               </dt>
-              <dd className="mt-0.5 text-base font-semibold tabular-nums text-slate-800 dark:text-slate-100">
+              <dd
+                data-testid={
+                  stat.key === "heart_rate" ? "imported-heart-rate" : undefined
+                }
+                className="mt-0.5 text-base font-semibold tabular-nums text-slate-800 dark:text-slate-100"
+                style={
+                  stat.key === "heart_rate" && heartRateZone
+                    ? { color: heartRateZone.color }
+                    : undefined
+                }
+                title={
+                  stat.key === "heart_rate" ? heartRateZone?.title : undefined
+                }
+              >
                 {stat.value}
               </dd>
               {stat.detail && (

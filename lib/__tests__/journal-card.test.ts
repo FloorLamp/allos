@@ -16,6 +16,7 @@ import {
 import type { Activity, ExerciseSet } from "@/lib/types";
 import type { UnitPrefs } from "@/lib/settings";
 import type { DatedWeight } from "@/lib/calorie-estimate";
+import { buildZoneModel, type ZoneModel } from "@/lib/training-zones";
 
 const KG: UnitPrefs = { weightUnit: "kg", distanceUnit: "km" };
 
@@ -86,6 +87,7 @@ const build = (
     yesterday: string;
     activeCalories: Map<number, number>;
     routes: Map<number, string>;
+    zoneModel: ZoneModel | null;
   }> = {}
 ) =>
   buildJournalCards({
@@ -98,6 +100,7 @@ const build = (
     yesterday: opts.yesterday ?? "2026-06-10",
     activeCalories: opts.activeCalories,
     routes: opts.routes,
+    zoneModel: opts.zoneModel,
   });
 
 describe("buildJournalCards — day grouping", () => {
@@ -301,11 +304,20 @@ describe("buildJournalCards — metrics + provenance", () => {
       avg_hr: 150,
       max_hr: 172,
     });
-    const [group] = build([a], []);
+    const [group] = build([a], [], {
+      zoneModel: buildZoneModel({ age: 40, restingHr: 60 }),
+    });
     const card = group.cards[0];
     expect(card.heartRateText).toBe("♥ 150/172 bpm");
+    expect(card.activity.heart_rate_zone).toBe(3);
     expect(card.metrics).not.toContain("♥ 150/172 bpm");
     expect(card.provenance.label).toBe("Strava · edited");
+  });
+
+  it("leaves heart rate unzoned when the profile has no zone model", () => {
+    const a = activity({ id: 1, avg_hr: 150, max_hr: 172 });
+    const [group] = build([a], [], { zoneModel: null });
+    expect(group.cards[0].activity.heart_rate_zone).toBeNull();
   });
 
   it("carries createdAt/updatedAt onto the provenance block", () => {
