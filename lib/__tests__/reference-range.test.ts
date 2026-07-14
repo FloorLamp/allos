@@ -1114,7 +1114,13 @@ describe("classifyQualitativeResult — LOINC-hinted class (#684)", () => {
   it("leaves a genetic-risk SCREEN unclassified (the risk axis is #687)", () => {
     // NIPT trisomy 21 (75983-7): no positive/negative polarity yet → null.
     expect(
-      classifyQualitativeResult("Trisomy 21", "High Risk", null, null, "75983-7")
+      classifyQualitativeResult(
+        "Trisomy 21",
+        "High Risk",
+        null,
+        null,
+        "75983-7"
+      )
     ).toBeNull();
   });
 });
@@ -1153,7 +1159,13 @@ describe("qualitativeFlagResolution — LOINC hint (#684)", () => {
     // A name the durable-immunity regex does NOT recognize: without the LOINC the
     // immune promotion re-checks the name and misses, so the row is left as-is.
     expect(
-      qualitativeFlagResolution("IgG serology", "Immune", null, null, "abnormal")
+      qualitativeFlagResolution(
+        "IgG serology",
+        "Immune",
+        null,
+        null,
+        "abnormal"
+      )
     ).toBeUndefined();
     // With the Rubella IgG LOINC (25514-1), the immune-positive titer promotes to
     // "immune" — NOT cleared to Normal (the gap the LOINC hint closes).

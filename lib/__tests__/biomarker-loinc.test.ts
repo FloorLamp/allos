@@ -99,7 +99,13 @@ describe("canonicalBiomarkerForLoinc — CBC + CMP lab mappings", () => {
   // #681: non-analyte administrative rows are recognized (so the mapper drops them)
   // and never counted as unmapped labs.
   it("recognizes non-analyte administrative LOINCs and excludes them from unmapped (#681)", () => {
-    for (const code of ["45374-6", "72486-4", "19066-0", "8262-8", "106201-7"]) {
+    for (const code of [
+      "45374-6",
+      "72486-4",
+      "19066-0",
+      "8262-8",
+      "106201-7",
+    ]) {
       expect(isNonAnalyteLoinc(code)).toBe(true);
       expect(isUnmappedLabLoinc(code)).toBe(false);
     }
