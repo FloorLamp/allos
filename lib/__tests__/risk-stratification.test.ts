@@ -4,6 +4,7 @@ import {
   retestModulationFor,
   screeningPriorityFor,
   immunizationPriorityFor,
+  visitModulationFor,
   isAnchoredOneShotReading,
   EMPTY_RISK_ATTRIBUTES,
   NO_MODULATION,
@@ -239,6 +240,110 @@ describe("immunizationPriorityFor (issue #553)", () => {
     // 'influenza' is not an analyte, but assert the retest layer stays a no-op for
     // a real analyte name under a factor whose only new rule is immunization-side.
     expect(screeningPriorityFor("lipid_screening", hcw)).toEqual({
+      priority: 0,
+      reasons: [],
+    });
+  });
+});
+
+describe("deriveRiskFactors — visit-cadence inputs (Substrate 3, #707)", () => {
+  it("derives family-glaucoma from a glaucoma family-history label", () => {
+    const f = deriveRiskFactors({
+      familyConditions: ["Open-angle glaucoma"],
+      activeConditions: [],
+      attributes: EMPTY_RISK_ATTRIBUTES,
+    });
+    expect(f.has("family-glaucoma")).toBe(true);
+  });
+
+  it("derives current-smoking ONLY from a `current` smoking status", () => {
+    const base = {
+      familyConditions: [],
+      activeConditions: [],
+      attributes: EMPTY_RISK_ATTRIBUTES,
+    };
+    expect(
+      deriveRiskFactors({ ...base, smokingStatus: "current" }).has(
+        "current-smoking"
+      )
+    ).toBe(true);
+    // former / never / unknown never activate it (absence is data, not a guess).
+    for (const s of ["former", "never", null, undefined] as const) {
+      expect(
+        deriveRiskFactors({ ...base, smokingStatus: s }).has("current-smoking")
+      ).toBe(false);
+    }
+  });
+});
+
+describe("visitModulationFor (Substrate 3, #707)", () => {
+  it("is a no-op when no factor targets the visit rule", () => {
+    expect(visitModulationFor("vision_exam", new Set<RiskFactor>())).toEqual(
+      NO_MODULATION
+    );
+    // A matching factor but a non-targeted visit rule still no-ops.
+    expect(
+      visitModulationFor("skin_check", new Set<RiskFactor>(["diabetes"]))
+    ).toEqual(NO_MODULATION);
+  });
+
+  it("diabetes tightens vision_exam to half cadence with the ADA reason", () => {
+    const mod = visitModulationFor(
+      "vision_exam",
+      new Set<RiskFactor>(["diabetes"])
+    );
+    expect(mod.multiplier).toBe(0.5);
+    expect(mod.priority).toBe(2);
+    expect(mod.reasons).toContain(
+      "Diabetes on file — annual dilated eye exam recommended (ADA)"
+    );
+  });
+
+  it("family-glaucoma brings vision_exam sooner with the AAO reason", () => {
+    const mod = visitModulationFor(
+      "vision_exam",
+      new Set<RiskFactor>(["family-glaucoma"])
+    );
+    expect(mod.multiplier).toBeLessThan(1);
+    expect(mod.priority).toBeGreaterThan(0);
+    expect(mod.reasons).toContain(
+      "Family history of glaucoma — earlier, more frequent eye exams (AAO)"
+    );
+  });
+
+  it("diabetes AND current-smoking both tighten dental_cleaning, tightest wins", () => {
+    const diabetes = visitModulationFor(
+      "dental_cleaning",
+      new Set<RiskFactor>(["diabetes"])
+    );
+    expect(diabetes.multiplier).toBe(0.5);
+    expect(diabetes.reasons).toContain(
+      "Diabetes on file — periodontal disease risk is higher; more frequent dental visits recommended"
+    );
+
+    const smoker = visitModulationFor(
+      "dental_cleaning",
+      new Set<RiskFactor>(["current-smoking"])
+    );
+    expect(smoker.reasons).toContain(
+      "Current smoking — elevated periodontal risk"
+    );
+
+    // Both factors present: multiplier is the min, both reasons ride.
+    const both = visitModulationFor(
+      "dental_cleaning",
+      new Set<RiskFactor>(["diabetes", "current-smoking"])
+    );
+    expect(both.multiplier).toBe(0.5);
+    expect(both.reasons).toHaveLength(2);
+  });
+
+  it("does not modulate a retest or screening (visit rules are their own dimension)", () => {
+    const f = new Set<RiskFactor>(["diabetes"]);
+    // The diabetes visit rules carry no analyte/screening key, so the retest and
+    // screening arms are unaffected by them (they still see only their own rules).
+    expect(retestModulationFor("vision_exam", f)).toEqual(NO_MODULATION);
+    expect(screeningPriorityFor("vision_exam", f)).toEqual({
       priority: 0,
       reasons: [],
     });

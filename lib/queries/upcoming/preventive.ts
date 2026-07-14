@@ -32,6 +32,7 @@ import {
   getCarePlanItems,
   getProcedures,
 } from "../clinical";
+import { getRiskFactors } from "./risk";
 
 // ---- Preventive care (issue #82) ------------------------------------------
 // The manual "mark done" SATISFACTION stream for a profile: each row is a rule
@@ -230,6 +231,12 @@ export function assessProfilePreventive(
       getSmokingHistory(profileId),
       hasImportedSmokingHistory(profileId)
     ),
+    // Risk-stratified VISIT cadence (Substrate 3, #707): the SAME per-request
+    // getRiskFactors gather the retest/screening/immunization arms use — so a
+    // diabetic profile's eye/dental visit comes due sooner (with a cited reason)
+    // through the ONE shared assessor, and the Upcoming page + the preventive nudge
+    // can never disagree on when a visit is due.
+    riskFactors: getRiskFactors(profileId),
     today,
   });
 }

@@ -22,6 +22,7 @@
 // are unit-tested in isolation (lib/__tests__/risk-stratification.test.ts).
 
 import type { LifeStage } from "./life-stage";
+import type { SmokingStatusValue } from "./smoking";
 
 // The curated risk factors the layer recognizes. A stable, closed set — a new
 // factor is added here with its rule(s) below and its derivation in
@@ -30,9 +31,11 @@ export type RiskFactor =
   | "family-cardiovascular"
   | "family-cancer"
   | "family-diabetes"
+  | "family-glaucoma"
   | "diabetes"
   | "hypertension"
   | "chronic-kidney-disease"
+  | "current-smoking"
   | "healthcare-worker"
   | "immunocompromised"
   | "dialysis"
@@ -63,6 +66,12 @@ export interface RiskInputs {
   // Names of the profile's ACTIVE conditions.
   activeConditions: string[];
   attributes: RiskAttributes;
+  // The profile's resolved smoking status (lib/smoking) — `current` activates the
+  // current-smoking factor (a periodontal-risk input for the dental visit cadence,
+  // #706). Optional so existing callers/tests that predate the smoking input keep
+  // working (absence/null → no smoking factor), mirroring the smoking-history
+  // resolver's "null is data, not a guess" tri-state.
+  smokingStatus?: SmokingStatusValue | null;
 }
 
 // Normalize a free-text clinical label for keyword matching: lowercased, trimmed,
@@ -97,6 +106,10 @@ const FAMILY_KEYWORDS: { factor: RiskFactor; stems: string[] }[] = [
     stems: ["cancer", "carcinoma", "melanoma", "lymphoma", "leukemia"],
   },
   { factor: "family-diabetes", stems: ["diabetes", "diabetic"] },
+  // Family history of glaucoma → earlier / more frequent comprehensive eye exams
+  // (AAO). Drives the vision_exam visit cadence (#699). "glaucoma" is specific
+  // enough to substring-match without false positives.
+  { factor: "family-glaucoma", stems: ["glaucoma"] },
 ];
 
 const CONDITION_KEYWORDS: { factor: RiskFactor; stems: string[] }[] = [
@@ -134,6 +147,12 @@ export function deriveRiskFactors(inputs: RiskInputs): Set<RiskFactor> {
     }
   }
 
+  // Current smoking is a major periodontal-risk factor (#706). Only a CONFIRMED
+  // `current` status activates it — an unknown/imported-only ever-smoker (status
+  // null) does not, matching the smoking resolver's conservative tri-state (absence
+  // is data, not a guess); `never`/`former` never tighten the dental cadence.
+  if (inputs.smokingStatus === "current") factors.add("current-smoking");
+
   if (inputs.attributes.healthcareWorker) factors.add("healthcare-worker");
   if (inputs.attributes.immunocompromised) factors.add("immunocompromised");
   if (inputs.attributes.dialysis) {
@@ -158,6 +177,15 @@ export interface RiskRule {
   names?: string[];
   nameContains?: string[];
   screeningRules?: string[];
+  // Preventive VISIT rule keys whose cadence this rule modulates (Substrate 3 of
+  // the #707 roadmap; consumers #699 vision / #706 dental / future #717 hearing).
+  // A recurring `kind: "visit"` catalog rule (vision_exam, dental_cleaning, …) has
+  // no analyte/screening key, so it needs its own target dimension — the same
+  // pattern as `names`/`screeningRules`/`immunizationCodes`, just for visit cadence.
+  // A matching rule tightens the visit interval by `cadenceMultiplier` and ranks +
+  // explains it via `priority`/`reason` (fed by visitModulationFor). Curated rows
+  // are all a future visit-cadence domain needs — no per-domain fork.
+  visitRules?: string[];
   // Vaccine catalog codes this rule ranks up (issue #553) — the immunization arm
   // of #517. A rule targeting `immunizationCodes` carries no cadence/analyte side
   // (cadenceMultiplier 1, no `names`/`screeningRules`), so it feeds ONLY
@@ -272,6 +300,65 @@ export const RISK_RULES: RiskRule[] = [
   // targeted input exists — the same "documented out-of-scope" discipline the
   // screening catalog uses for risk-defined recommendations.
 
+  // ---- Visit-kind cadence modulation (Substrate 3, #707) -----------------------
+  // The visit arm of the risk layer: the same curated-factor pattern that tightens a
+  // retest / ranks a screening now modulates a recurring `kind: "visit"` preventive
+  // rule's cadence, so a condition/behavior/family-history factor brings a routine
+  // eye or dental visit due SOONER and explains WHY in a calm, cited line (fed by
+  // visitModulationFor → the pure preventive assessor scales the interval; the reason
+  // rides the Upcoming/hero item exactly like the retest reasons). Deliberately
+  // conservative + informational, mirroring the retest/screening rules' discipline.
+  //
+  // ROOM FOR OWN-RECORD INPUTS (#699 point 6): a recorded elevated IOP or a
+  // glaucoma-suspect / ocular-hypertension condition is the SAME kind of risk
+  // evidence and belongs on this table as its own factor targeting vision_exam once
+  // the IOP analyte lands (#698) — a flagged finding should not only trend, it should
+  // pull the next exam sooner. The factor set + RiskInputs are shaped to accept that
+  // additional input without a mechanism change (a new factor + row, nothing more).
+
+  // Diabetes → annual dilated eye exam (ADA standard of care; diabetic retinopathy is
+  // the leading cause of working-age blindness and is asymptomatic until late).
+  // vision_exam base cadence 24mo → ~12mo.
+  {
+    factor: "diabetes",
+    visitRules: ["vision_exam"],
+    cadenceMultiplier: 0.5,
+    priority: 2,
+    reason: "Diabetes on file — annual dilated eye exam recommended (ADA)",
+    source: "ADA (informational)",
+  },
+  // Family history of glaucoma → earlier, more frequent comprehensive eye exams
+  // (AAO). Brings vision_exam due sooner and ranks it up.
+  {
+    factor: "family-glaucoma",
+    visitRules: ["vision_exam"],
+    cadenceMultiplier: 0.5,
+    priority: 1,
+    reason:
+      "Family history of glaucoma — earlier, more frequent eye exams (AAO)",
+    source: "AAO (informational)",
+  },
+  // Diabetes → higher periodontal-disease risk, bidirectional with glycemic control;
+  // more frequent dental visits recommended (#706). dental_cleaning base 6mo → ~3mo.
+  {
+    factor: "diabetes",
+    visitRules: ["dental_cleaning"],
+    cadenceMultiplier: 0.5,
+    priority: 2,
+    reason:
+      "Diabetes on file — periodontal disease risk is higher; more frequent dental visits recommended",
+    source: "ADA / AAP (informational)",
+  },
+  // Current smoking → major periodontal risk factor (#706). Tightens dental_cleaning.
+  {
+    factor: "current-smoking",
+    visitRules: ["dental_cleaning"],
+    cadenceMultiplier: 0.5,
+    priority: 2,
+    reason: "Current smoking — elevated periodontal risk",
+    source: "ADA / AAP (informational)",
+  },
+
   // ---- Immunization priority (issue #553) --------------------------------------
   // The immunization arm of #517: the same curated risk factors that tighten a
   // retest / rank a screening also rank up the vaccines ACIP flags for a person
@@ -376,6 +463,29 @@ export function screeningPriorityFor(
   );
   if (matched.length === 0) return { priority: 0, reasons: [] };
   return {
+    priority: Math.max(...matched.map((r) => r.priority)),
+    reasons: uniqueReasons(matched),
+  };
+}
+
+// The cadence modulation + priority + reasons a recurring VISIT rule earns from the
+// active factors (Substrate 3, #707). Mirrors retestModulationFor but keyed on
+// `visitRules` (a visit rule has no analyte name): `multiplier` is the TIGHTEST
+// matched multiplier (min — the most cautious cadence wins), `priority` the highest
+// weight, `reasons` the unique calm lines. NO_MODULATION (multiplier 1, priority 0)
+// when nothing matched, so a routine visit keeps its catalog cadence untouched. The
+// pure preventive assessor applies `multiplier` to the visit interval; the generator
+// surfaces `reasons`/`priority` on the item. `ruleKey` is a PreventiveRule.key.
+export function visitModulationFor(
+  ruleKey: string,
+  factors: ReadonlySet<RiskFactor>
+): RetestModulation {
+  const matched = RISK_RULES.filter(
+    (r) => factors.has(r.factor) && r.visitRules?.includes(ruleKey)
+  );
+  if (matched.length === 0) return NO_MODULATION;
+  return {
+    multiplier: Math.min(...matched.map((r) => r.cadenceMultiplier)),
     priority: Math.max(...matched.map((r) => r.priority)),
     reasons: uniqueReasons(matched),
   };

@@ -16,6 +16,8 @@ import {
   type PreventiveInput,
 } from "@/lib/preventive-status";
 
+import type { RiskFactor } from "@/lib/risk-stratification";
+
 const Y = 12;
 const TODAY = "2026-07-10";
 
@@ -493,6 +495,8 @@ describe("overrides", () => {
       href: null,
       override: null,
       citation: { source: "s", summary: "", reviewed: "2026-07" },
+      riskReasons: [],
+      riskPriority: 0,
     };
     expect(applyPreventiveOverride(base, undefined)).toBe(base);
   });
@@ -555,5 +559,69 @@ describe("assessPreventiveCare with a custom rule list", () => {
     });
     expect(s.assessments).toHaveLength(1);
     expect(s.assessments[0].key).toBe("colorectal_cancer");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Visit-kind cadence modulation (Substrate 3, #707) — a risk factor tightens a
+// recurring VISIT's interval and rides a cited reason on the assessment.
+// ---------------------------------------------------------------------------
+describe("visit-kind cadence modulation", () => {
+  const diabetic = new Set<RiskFactor>(["diabetes"]);
+
+  it("diabetes brings a vision_exam done 14mo ago due (base 24mo would be up-to-date)", () => {
+    const input = {
+      ageMonths: 40 * Y,
+      satisfactions: [{ ruleKey: "vision_exam", date: "2025-05-10" }], // ~14mo before TODAY
+    };
+    // Baseline (no risk factors): 24-month cadence → not yet due.
+    expect(statusOf("vision_exam", assess(input))!.status).toBe("up_to_date");
+
+    // Diabetic: cadence halves to ~12mo → now due, carrying the ADA reason + rank.
+    const a = statusOf(
+      "vision_exam",
+      assess({ ...input, riskFactors: diabetic })
+    )!;
+    expect(a.status).toBe("due");
+    expect(a.riskPriority).toBe(2);
+    expect(a.riskReasons).toContain(
+      "Diabetes on file — annual dilated eye exam recommended (ADA)"
+    );
+    // The modulated next-due date is ~12mo from the last visit, not 24mo.
+    expect(a.nextDueDate).toBe("2026-05-10");
+  });
+
+  it("diabetes brings a dental_cleaning done 4mo ago due (base 6mo would be up-to-date)", () => {
+    const input = {
+      ageMonths: 40 * Y,
+      satisfactions: [{ ruleKey: "dental_cleaning", date: "2026-03-10" }], // 4mo before TODAY
+    };
+    expect(statusOf("dental_cleaning", assess(input))!.status).toBe(
+      "up_to_date"
+    );
+
+    const a = statusOf(
+      "dental_cleaning",
+      assess({ ...input, riskFactors: diabetic })
+    )!;
+    expect(a.status).toBe("due");
+    expect(a.riskReasons).toContain(
+      "Diabetes on file — periodontal disease risk is higher; more frequent dental visits recommended"
+    );
+    // 6mo × 0.5 = 3mo cadence from the last visit.
+    expect(a.nextDueDate).toBe("2026-06-10");
+  });
+
+  it("leaves an unmodulated visit (skin_check) on its catalog cadence", () => {
+    const a = statusOf(
+      "skin_check",
+      assess({
+        ageMonths: 40 * Y,
+        satisfactions: [{ ruleKey: "skin_check", date: "2025-07-10" }],
+        riskFactors: diabetic,
+      })
+    )!;
+    expect(a.riskReasons).toEqual([]);
+    expect(a.riskPriority).toBe(0);
   });
 });

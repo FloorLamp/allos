@@ -304,11 +304,18 @@ function preventiveItems(profileId: number, today: string): UpcomingItem[] {
       today,
       scheduledDate: scheduledMatchForRule(a.key, scheduled, today),
     });
-    const { priority, reasons } = screeningPriorityFor(a.key, riskFactors);
-    if (priority > 0) {
-      item.priority = priority;
+    // A screening ranks up via screeningPriorityFor; a VISIT whose cadence the risk
+    // factors tightened (Substrate 3, #707) carries the reason + rank the assessor
+    // already computed (riskReasons/riskPriority) — one computation, surfaced here.
+    const { priority, reasons } =
+      a.kind === "visit"
+        ? { priority: a.riskPriority, reasons: a.riskReasons }
+        : screeningPriorityFor(a.key, riskFactors);
+    if (priority > 0 || reasons.length > 0) {
+      if (priority > 0) item.priority = priority;
       const suffix = reasons.join(", ");
-      item.detail = item.detail ? `${item.detail} · ${suffix}` : suffix;
+      if (suffix)
+        item.detail = item.detail ? `${item.detail} · ${suffix}` : suffix;
     }
     return item;
   });

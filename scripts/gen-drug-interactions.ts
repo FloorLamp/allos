@@ -640,6 +640,90 @@ const CONCEPTS: RawConcept[] = [
       "drospirenone",
     ],
   },
+  // Ophthalmic (eye-drop) timolol and other topical ophthalmic beta-blockers — a
+  // glaucoma/ocular-hypertension mainstay (issue #699 point 4). Eye drops are NOT
+  // systemically inert: a clinically meaningful fraction is absorbed through the
+  // nasolacrimal mucosa, so ophthalmic timolol carries the same systemic beta-blockade
+  // as an oral dose and interacts with systemic beta-blockers and non-dihydropyridine
+  // calcium-channel blockers. Combination drops (timolol + dorzolamide "Cosopt",
+  // timolol + brimonidine "Combigan") are listed so a name match still resolves.
+  {
+    key: "ophthalmic_timolol",
+    label: "Ophthalmic beta-blocker (timolol eye drops)",
+    rxcuis: [],
+    synonyms: [
+      "timolol",
+      "timolol ophthalmic",
+      "timolol eye drops",
+      "timoptic",
+      "istalol",
+      "betimol",
+      "combigan",
+      "cosopt",
+      "betaxolol ophthalmic",
+      "betoptic",
+      "levobunolol",
+      "betagan",
+    ],
+  },
+  // Systemic (oral) beta-blockers — as a CLASS, for the additive beta-blockade rule
+  // with ophthalmic timolol. RxCUIs are RxNorm ingredient concepts (public domain).
+  {
+    key: "systemic_beta_blocker",
+    label: "Beta-blockers (systemic: metoprolol, atenolol, propranolol, …)",
+    rxcuis: [
+      "6918", // metoprolol
+      "1202", // atenolol
+      "8787", // propranolol
+      "20352", // carvedilol
+      "19484", // bisoprolol
+      "7226", // nadolol
+      "6185", // labetalol
+      "10600", // sotalol
+    ],
+    synonyms: [
+      "metoprolol",
+      "toprol",
+      "lopressor",
+      "atenolol",
+      "tenormin",
+      "propranolol",
+      "inderal",
+      "carvedilol",
+      "coreg",
+      "bisoprolol",
+      "zebeta",
+      "nadolol",
+      "corgard",
+      "labetalol",
+      "sotalol",
+      "nebivolol",
+      "bystolic",
+    ],
+  },
+  // Non-dihydropyridine calcium-channel blockers (verapamil, diltiazem) — the rate-
+  // controlling CCBs that suppress the AV node. Named explicitly in the ophthalmic
+  // timolol interaction (issue #699 point 4); the dihydropyridines (amlodipine, …)
+  // are NOT included — they do not carry the same bradycardic/AV-block risk.
+  {
+    key: "nondihydro_ccb",
+    label:
+      "Non-dihydropyridine calcium-channel blockers (verapamil, diltiazem)",
+    rxcuis: [
+      "11170", // verapamil
+      "3443", // diltiazem
+    ],
+    synonyms: [
+      "verapamil",
+      "calan",
+      "verelan",
+      "isoptin",
+      "diltiazem",
+      "cardizem",
+      "tiazac",
+      "cartia",
+    ],
+  },
 ];
 
 // ---- Interaction rules ----------------------------------------------------
@@ -1057,6 +1141,26 @@ const INTERACTIONS: RawInteraction[] = [
     mechanism:
       "St. John's Wort induces CYP3A4 and lowers contraceptive hormone levels, risking breakthrough bleeding and unintended pregnancy.",
     source: "NCCIH St. John's Wort herb-drug interaction summary",
+  },
+
+  // ---- Ophthalmic beta-blocker (eye drops are not systemically inert) — #699 ----
+  {
+    a: "ophthalmic_timolol",
+    b: "systemic_beta_blocker",
+    severity: "moderate",
+    mechanism:
+      "Ophthalmic timolol is absorbed systemically and adds to an oral beta-blocker's effect, so the two together can cause additive bradycardia, hypotension, and bronchospasm.",
+    source:
+      "FDA timolol ophthalmic solution prescribing information (DailyMed)",
+  },
+  {
+    a: "ophthalmic_timolol",
+    b: "nondihydro_ccb",
+    severity: "major",
+    mechanism:
+      "Systemically absorbed ophthalmic timolol plus verapamil or diltiazem compounds AV-nodal suppression, risking serious bradycardia, AV block, or hypotension.",
+    source:
+      "FDA timolol ophthalmic solution prescribing information (DailyMed)",
   },
 ];
 

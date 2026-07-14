@@ -17,11 +17,13 @@ import { ADHERENCE_PREFIX } from "./adherence-patterns";
 import { FOOD_SUGGEST_PREFIX } from "./food-suggest";
 import { FOOD_HABIT_PREFIX } from "./food-habit";
 import { SUN_EXPOSURE_PREFIX } from "./sun-exposure";
+import { ORAL_HEALTH_PREFIX } from "./oral-health-observation";
 
 // Every namespace the rule-findings builders (buildTrainingObservationFindings,
 // buildBodyHygieneFindings, buildGoalPacingFindings, buildAdherencePatternFindings,
-// buildFoodSuggestionFindings, buildFoodHabitFindings) key their dedupeKeys under.
-// Order is irrelevant; membership is what's guarded.
+// buildFoodSuggestionFindings, buildFoodHabitFindings, buildSunExposureFindings,
+// buildOralHealthFindings) key their dedupeKeys under. Order is irrelevant;
+// membership is what's guarded.
 export const RULE_FINDING_PREFIXES: readonly string[] = [
   TRAINING_OBS_PREFIX,
   BODY_HYGIENE_PREFIX,
@@ -30,6 +32,7 @@ export const RULE_FINDING_PREFIXES: readonly string[] = [
   FOOD_SUGGEST_PREFIX,
   FOOD_HABIT_PREFIX,
   SUN_EXPOSURE_PREFIX,
+  ORAL_HEALTH_PREFIX,
 ];
 
 // Whether a finding's dedupeKey belongs to a known builder namespace (so a page

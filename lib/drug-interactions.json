@@ -410,6 +410,24 @@
       ]
     },
     {
+      "key": "nondihydro_ccb",
+      "label": "Non-dihydropyridine calcium-channel blockers (verapamil, diltiazem)",
+      "rxcuis": [
+        "11170",
+        "3443"
+      ],
+      "synonyms": [
+        "calan",
+        "cardizem",
+        "cartia",
+        "diltiazem",
+        "isoptin",
+        "tiazac",
+        "verapamil",
+        "verelan"
+      ]
+    },
+    {
       "key": "nsaid",
       "label": "NSAIDs (ibuprofen, naproxen, diclofenac, …)",
       "rxcuis": [
@@ -439,6 +457,25 @@
         "toradol",
         "treximet",
         "voltaren"
+      ]
+    },
+    {
+      "key": "ophthalmic_timolol",
+      "label": "Ophthalmic beta-blocker (timolol eye drops)",
+      "rxcuis": [],
+      "synonyms": [
+        "betagan",
+        "betaxolol ophthalmic",
+        "betimol",
+        "betoptic",
+        "combigan",
+        "cosopt",
+        "istalol",
+        "levobunolol",
+        "timolol",
+        "timolol eye drops",
+        "timolol ophthalmic",
+        "timoptic"
       ]
     },
     {
@@ -640,6 +677,39 @@
         "glucotrol",
         "glucovance",
         "glyburide"
+      ]
+    },
+    {
+      "key": "systemic_beta_blocker",
+      "label": "Beta-blockers (systemic: metoprolol, atenolol, propranolol, …)",
+      "rxcuis": [
+        "10600",
+        "1202",
+        "19484",
+        "20352",
+        "6185",
+        "6918",
+        "7226",
+        "8787"
+      ],
+      "synonyms": [
+        "atenolol",
+        "bisoprolol",
+        "bystolic",
+        "carvedilol",
+        "coreg",
+        "corgard",
+        "inderal",
+        "labetalol",
+        "lopressor",
+        "metoprolol",
+        "nadolol",
+        "nebivolol",
+        "propranolol",
+        "sotalol",
+        "tenormin",
+        "toprol",
+        "zebeta"
       ]
     },
     {
@@ -980,6 +1050,13 @@
       "source": "FDA sildenafil prescribing information (DailyMed)"
     },
     {
+      "a": "nondihydro_ccb",
+      "b": "ophthalmic_timolol",
+      "severity": "major",
+      "mechanism": "Systemically absorbed ophthalmic timolol plus verapamil or diltiazem compounds AV-nodal suppression, risking serious bradycardia, AV block, or hypotension.",
+      "source": "FDA timolol ophthalmic solution prescribing information (DailyMed)"
+    },
+    {
       "a": "nsaid",
       "b": "ssri",
       "severity": "moderate",
@@ -992,6 +1069,13 @@
       "severity": "major",
       "mechanism": "NSAIDs add antiplatelet and GI-mucosal injury on top of anticoagulation, sharply raising the risk of serious (especially GI) bleeding.",
       "source": "FDA warfarin & ibuprofen prescribing information (DailyMed)"
+    },
+    {
+      "a": "ophthalmic_timolol",
+      "b": "systemic_beta_blocker",
+      "severity": "moderate",
+      "mechanism": "Ophthalmic timolol is absorbed systemically and adds to an oral beta-blocker's effect, so the two together can cause additive bradycardia, hypotension, and bronchospasm.",
+      "source": "FDA timolol ophthalmic solution prescribing information (DailyMed)"
     },
     {
       "a": "oral_contraceptive",
