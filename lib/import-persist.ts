@@ -558,8 +558,8 @@ function insertImportRows(
     `INSERT OR IGNORE INTO medical_records
        (date, category, name, value, value_num, unit, reference_range, notes,
         panel, flag, canonical_name, document_id, source, external_id, provider_id,
-        profile_id)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+        profile_id, loinc)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
   );
 
   // Allergies + problem-list conditions. Own tables, same idempotency
@@ -752,7 +752,8 @@ function insertImportRows(
       r.source,
       scopedExternalId(r.external_id),
       providerIdFor(r.provider),
-      profileId
+      profileId,
+      r.loinc ?? null
     );
     if (info.changes > 0) {
       recCount++;

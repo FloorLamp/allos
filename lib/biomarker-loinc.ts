@@ -32,6 +32,11 @@ export const LOINC_TO_CANONICAL: Record<string, string> = {
   "777-3": "Platelet Count", // Platelets [#/volume] in Blood by Automated count (10^3/uL)
   "6690-2": "White Blood Cell Count", // Leukocytes [#/volume] in Blood by Automated count (10^3/uL)
   "776-5": "MPV", // Platelet mean volume [Entitic volume] in Blood by Automated count (fL)
+  // Alternate platelet/MPV LOINCs emitted by real Epic exports — same unit as the
+  // automated-count forms above, so they route to the same canonical entries.
+  "26515-7": "Platelet Count", // Platelets [#/volume] in Blood (method-less; 10^3/uL)
+  "28542-9": "MPV", // Platelet mean volume [Entitic volume] in Blood (method-less; fL)
+  "32623-1": "MPV", // Platelet mean volume [Entitic volume] in Blood by Rees-Ecker (fL)
 
   // WBC differential. The differential is reported in TWO complementary quantities
   // — an absolute count (cells/uL) and a fraction of leukocytes (%) — which are
@@ -182,6 +187,10 @@ export const LOINC_TO_CANONICAL: Record<string, string> = {
   "17849-1": "Reticulocytes", // Reticulocytes/Erythrocytes in Blood by Automated count (%)
   "4679-7": "Reticulocytes", // Reticulocytes/Erythrocytes in Blood (method-less; %)
   "60474-4": "Reticulocytes, Absolute", // Reticulocytes [#/volume] in Blood (10^3/uL)
+
+  // ── Toxic / trace metals ────────────────────────────────────────────────────
+  // Blood lead. Canonical "Lead" is ug/dL (venous/capillary blood) — unit-matched.
+  "77307-7": "Lead", // Lead [Mass/volume] in Venous blood (ug/dL)
 };
 
 // The canonical biomarker name for a LOINC code, or null when unmapped.
@@ -219,6 +228,15 @@ const VITAL_LOINCS = new Set([
   // percentile, not a measurement).
   "8287-5", // Head Occipital-frontal circumference by Tape measure
   "9843-4", // Head circumference (alias)
+  // Body weight and BMI are anthropometric vitals, not lab analytes — but Epic
+  // reports them inside the Results section, so without this they classify as
+  // "unmapped labs" (the two highest-frequency such codes across real exports).
+  // isVitalLoinc keeps both out of the unmapped-lab report; the observation mapper
+  // routes them to the vitals category. On persist, weight is projected into
+  // body_metrics (the existing weight-reading rule), while BMI — not a body-metric
+  // kind — lands as a vitals record.
+  "29463-7", // Body weight (kg)
+  "39156-5", // Body mass index (BMI) [Ratio] (kg/m2)
 ]);
 
 export function isVitalLoinc(loinc: string | null | undefined): boolean {
@@ -237,6 +255,94 @@ export function isUnmappedLabLoinc(loinc: string | null | undefined): boolean {
     loinc != null &&
     loinc !== "" &&
     !isVitalLoinc(loinc) &&
+    !isNonAnalyteLoinc(loinc) &&
     canonicalBiomarkerForLoinc(loinc) == null
   );
+}
+
+// Non-analyte structural/administrative observations Epic packs into the Results
+// section — a specimen expiration date, the performing method, "Approved By", a
+// bibliography, an accession number. They carry no measurement, so importing them
+// as lab records inflates the record count and the unmapped-code report with rows
+// that are annotations ON a result, not results (#681). Deliberately CONSERVATIVE:
+// only codes that are unambiguously administrative are listed — a code that could
+// carry a real qualitative result (an interpretation, an organism id, an
+// amplification call) is left OUT so a genuine result is never dropped. The
+// observation mapper drops these before they become records.
+const NON_ANALYTE_LOINCS = new Set([
+  "45374-6", // Specimen Expiration Date
+  "49549-9", // Test Method
+  "72486-4", // Approved By
+  "62364-5", // Performance (performing-lab metadata)
+  "75608-0", // References
+  "77202-0", // About The Test
+  "8262-8", // Limitations of The Test
+  "106201-7", // Cytology accession #
+  "19066-0", // Status Information
+]);
+
+// Whether a LOINC is a known non-analyte (administrative/structural) observation
+// that should not be imported as a lab record (#681).
+export function isNonAnalyteLoinc(loinc: string | null | undefined): boolean {
+  return loinc != null && NON_ANALYTE_LOINCS.has(loinc);
+}
+
+// The qualitative CLASS a LOINC belongs to (#684). classifyQualitativeResult
+// (lib/reference-range) resolves a value's meaning-class from the analyte NAME via
+// regexes, which is fragile across EHR naming variance — a positive HPV genotype,
+// culture organism, or influenza PCR the name regex doesn't recognize gets no flag
+// verdict at all. This LOINC-keyed table is the deterministic hint: when a reading
+// carries a known LOINC, the class comes from here instead of the name.
+//   • infection  — a POSITIVE is bad (antigen/NAAT/culture/HPV/STI). Keep flagging.
+//   • immunity   — a durable-immunity IgG titer; an immune-POSITIVE is good (#516).
+//   • screen     — a prenatal/genetic risk screen (NIPT). No positive/negative
+//                  polarity — the risk axis is deferred to #687; treated as
+//                  unrecognized here so nothing is mis-flagged in the meantime.
+// Codes are drawn from real Epic exports (the three patient XDM packages). Only
+// classes whose polarity is unambiguous are listed; immutable attributes (blood
+// type, genotype) stay name-regex driven where that already works.
+export type QualitativeLoincClass = "infection" | "immunity" | "screen";
+
+const QUALITATIVE_CLASS_BY_LOINC: Record<string, QualitativeLoincClass> = {
+  // Infection / active-disease markers (positive = bad).
+  "5196-1": "infection", // Hepatitis B surface antigen
+  "13955-0": "infection", // Hepatitis C antibody
+  "56888-1": "infection", // HIV Ag/Ab, 4th generation
+  "20507-0": "infection", // RPR (syphilis)
+  "48683-7": "infection", // Group B Streptococcus
+  "21613-5": "infection", // C. trachomatis amplification
+  "24111-7": "infection", // N. gonorrhoeae amplification
+  "5028-6": "infection", // N. gonorrhoeae amplification
+  "30167-1": "infection", // HPV high risk
+  "59263-4": "infection", // HPV genotype 16
+  "75694-0": "infection", // HPV genotype 18/45
+  "94500-6": "infection", // SARS-CoV-2 NAAT
+  "60489-2": "infection", // Strep A PCR
+  "85479-4": "infection", // RSV PCR
+  "92141-1": "infection", // Influenza B PCR
+  "92142-9": "infection", // Influenza A PCR
+  "6463-4": "infection", // Culture organism 1
+  "44841-5": "infection", // Culture organism 2
+  // Durable-immunity IgG titers (immune-positive = good, #516).
+  "20479-2": "immunity", // Measles IgG
+  "5244-9": "immunity", // Measles antibody (IgG)
+  "25418-5": "immunity", // Mumps virus antibody (IgG)
+  "7966-5": "immunity", // Mumps antibody IgG
+  "25514-1": "immunity", // Rubella antibody IgG
+  "5334-8": "immunity", // Rubella antibody (IgG)
+  "5403-1": "immunity", // Varicella zoster virus antibody (IgG)
+  "8046-5": "immunity", // Varicella zoster antibody IgG
+  // Prenatal / genetic risk screens (risk axis deferred to #687).
+  "73824-5": "screen", // Trisomy 13 (Patau)
+  "75558-7": "screen", // Trisomy 18 (Edwards)
+  "75983-7": "screen", // Trisomy 21 (Down)
+  "75605-6": "screen", // Fetal fraction
+};
+
+// The qualitative class for a LOINC, or null when unknown (→ name-regex fallback).
+export function qualitativeClassForLoinc(
+  loinc: string | null | undefined
+): QualitativeLoincClass | null {
+  if (!loinc) return null;
+  return QUALITATIVE_CLASS_BY_LOINC[loinc] ?? null;
 }

@@ -19,6 +19,8 @@ let profileId: number;
 let hbsAbId: number; // immune-positive titer (surface ANTIBODY)
 let bloodTypeId: number; // immutable neutral attribute
 let hbsAgId: number; // infection marker (surface ANTIGEN) — must stay flagged
+let orgLoincId: number; // infection classified ONLY by LOINC (#684)
+let orgNoLoincId: number; // same row, no LOINC — name regex is blind → unchanged
 
 function flagOf(id: number): string | null {
   const r = db
@@ -57,6 +59,16 @@ beforeAll(() => {
     insert.run(profileId, "Hepatitis B Surface Antigen", "Positive", null)
       .lastInsertRowid
   );
+  // #684: two rows whose printed name ("Organism 1") no name regex recognizes, so
+  // the name-only classifier gives no verdict. Both arrive "normal"; only the one
+  // carrying the culture-organism LOINC (6463-4) should be re-judged as infection.
+  const insertLoinc = db.prepare(
+    `INSERT INTO medical_records
+       (profile_id, date, category, name, value, canonical_name, notes, flag, loinc)
+     VALUES (?, '2024-01-01', 'lab', 'Organism 1', 'Detected', NULL, NULL, 'normal', ?)`
+  );
+  orgLoincId = Number(insertLoinc.run(profileId, "6463-4").lastInsertRowid);
+  orgNoLoincId = Number(insertLoinc.run(profileId, null).lastInsertRowid);
 });
 
 describe("qualitative-flag version gate (#549 routing #544 + #548)", () => {
@@ -81,6 +93,11 @@ describe("qualitative-flag version gate (#549 routing #544 + #548)", () => {
     expect(flagOf(bloodTypeId)).toBeNull();
     // Infection marker (surface ANTIGEN) positive → STILL "abnormal" (never quieted).
     expect(flagOf(hbsAgId)).toBe("abnormal");
+    // #684: a positive infection classified ONLY by its stored LOINC (the name
+    // "Organism 1" is invisible to the regexes) is promoted normal → abnormal…
+    expect(flagOf(orgLoincId)).toBe("abnormal");
+    // …while the identical row without a LOINC stays as the extractor left it.
+    expect(flagOf(orgNoLoincId)).toBe("normal");
     // …and the gate records the current signature so it runs once per change.
     expect(storedSig()).toBe(canonicalFlagsSignature());
   });
