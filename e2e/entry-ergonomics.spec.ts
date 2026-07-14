@@ -101,32 +101,139 @@ test("'Log again' pre-fills a create form that saves a new activity (#29)", asyn
   await expect(titleCards).toHaveCount(before);
 });
 
-test("'Repeat last' button is not clipped by the editor pane's scroll container (#103)", async ({
+test("Journal actions share the search toolbar and stay outside the editor scroller", async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 1800, height: 900 });
   await page.goto("/training"); // default "Log" tab renders the Journal feed
 
-  // The button lives in the desktop editor aside's header row, which sits inside
-  // a `sticky … overflow-y-auto` scroll container. Issue #103: the header's fixed
-  // height was shorter than the bordered ghost button, so `items-center` pushed
-  // the button's top above the row and the scroll container clipped it.
+  // The shared app shell uses the available desktop width instead of stopping at
+  // the old 6xl/7xl caps. The 3xl ultra-wide cap remains separate.
+  const contentContainer = page.getByTestId("app-content-container");
+  expect((await contentContainer.boundingBox())!.width).toBeGreaterThan(1280);
+  await page.setViewportSize({ width: 1280, height: 720 });
+
+  // The compact cadence strip shares the routine row and represents exactly the
+  // trailing 14 profile-local days using the Fitness heatmap's density scale.
+  const cadence = page.getByTestId("journal-active-days");
+  await expect(cadence).toBeVisible();
+  await expect(cadence.getByTestId("active-days-label-expanded")).toBeVisible();
+  await expect(cadence.getByTestId("active-days-label-expanded")).toContainText(
+    /\d+\/21 days active/
+  );
+  await expect(
+    cadence.locator('[aria-label$="— no workouts"], a[aria-label*="session"]')
+  ).toHaveCount(21);
+  await expect(cadence.getByTestId("active-day").first()).toHaveAttribute(
+    "href",
+    /\/training\?tab=log#day-\d{4}-\d{2}-\d{2}/
+  );
+  const routineRow = page.getByTestId("journal-routine-row");
+  const routineLabelBox = await routineRow
+    .getByText("Weekly routine")
+    .boundingBox();
+  const cadenceBox = await cadence.boundingBox();
+  expect(routineLabelBox).not.toBeNull();
+  expect(cadenceBox).not.toBeNull();
+  expect(Math.abs(routineLabelBox!.y - cadenceBox!.y)).toBeLessThan(12);
+
+  // The longer window is reserved for the largest practical layout. At an
+  // intermediate desktop width, the strip contracts to its newest 14 days.
+  await page.setViewportSize({ width: 1100, height: 844 });
+  await expect(cadence.getByTestId("active-days-label-compact")).toBeVisible();
+  await expect(cadence.getByTestId("active-days-label-expanded")).toBeHidden();
+  await expect(page.getByTestId("activity-editor-scroll")).toBeHidden();
+  const intermediateRoutineBox = await routineRow
+    .getByText("Weekly routine")
+    .boundingBox();
+  const intermediateCadenceBox = await cadence.boundingBox();
+  expect(intermediateRoutineBox).not.toBeNull();
+  expect(intermediateCadenceBox).not.toBeNull();
+  expect(intermediateCadenceBox!.y).toBeGreaterThan(
+    intermediateRoutineBox!.y + intermediateRoutineBox!.height
+  );
+  expect(
+    await cadence
+      .locator('[aria-label$="— no workouts"], a[aria-label*="session"]')
+      .evaluateAll(
+        (days) =>
+          days.filter((day) => getComputedStyle(day).display !== "none").length
+      )
+  ).toBe(14);
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await expect(page.getByTestId("activity-editor-scroll")).toBeVisible();
+
+  const actions = page.getByTestId("journal-actions");
   const button = page.getByTestId("repeat-last");
+  await expect(actions).toContainText("Repeat last");
+  await expect(actions).toContainText("Start workout");
+  await expect(actions).toContainText("New activity");
   await expect(button).toBeVisible();
 
-  // Regression: the button's top edge must not sit above its scrolling ancestor's
-  // top edge (that overflow is exactly what got clipped).
-  const container = button.locator(
-    'xpath=ancestor::div[contains(@class,"overflow-y-auto")][1]'
-  );
+  // These are page-level actions, aligned with search rather than living in the
+  // independently scrolling activity panel.
+  await expect(
+    button.locator('xpath=ancestor::*[@data-testid="journal-controls"][1]')
+  ).toHaveCount(1);
+  await expect(
+    button.locator('xpath=ancestor::*[@data-testid="activity-editor-scroll"]')
+  ).toHaveCount(0);
+  const search = page.getByPlaceholder("Search activities or exercises…");
+  const searchBox = await search.boundingBox();
   const btnBox = await button.boundingBox();
-  const containerBox = await container.boundingBox();
+  expect(searchBox).not.toBeNull();
   expect(btnBox).not.toBeNull();
-  expect(containerBox).not.toBeNull();
-  expect(btnBox!.y).toBeGreaterThanOrEqual(containerBox!.y - 0.5);
-
-  // And it stays fully within the viewport and remains clickable.
-  expect(btnBox!.y).toBeGreaterThanOrEqual(0);
+  expect(searchBox!.width).toBeGreaterThan(320);
+  expect(Math.abs(btnBox!.y - searchBox!.y)).toBeLessThanOrEqual(2);
   await expect(button).toBeEnabled();
+
+  // Search owns an inline clear action, while activity types behave as one
+  // segmented control with a single reset for all active filters.
+  await search.fill("Bench");
+  await page.getByRole("button", { name: "Clear search" }).click();
+  await expect(search).toHaveValue("");
+  const types = page.getByRole("group", { name: "Activity type" });
+  await expect(types.getByRole("button", { name: "All" })).toHaveAttribute(
+    "aria-pressed",
+    "true"
+  );
+  await types.getByRole("button", { name: "Strength" }).click();
+  await page.getByRole("button", { name: "Clear filters" }).click();
+  await expect(types.getByRole("button", { name: "All" })).toHaveAttribute(
+    "aria-pressed",
+    "true"
+  );
+
+  // Mobile navigation already owns activity creation, so the page-level action
+  // group disappears rather than duplicating all three controls.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(cadence.getByTestId("active-days-label-compact")).toBeVisible();
+  expect(
+    await cadence
+      .locator('[aria-label$="— no workouts"], a[aria-label*="session"]')
+      .evaluateAll(
+        (days) =>
+          days.filter((day) => getComputedStyle(day).display !== "none").length
+      )
+  ).toBe(14);
+  await expect(actions).toBeHidden();
+  await expect(
+    actions.getByRole("button", { name: "New activity" })
+  ).toBeHidden();
+
+  // The mobile nav remains through 767px, so page actions must not reappear at
+  // the earlier 640px breakpoint and create duplicate controls.
+  await page.setViewportSize({ width: 700, height: 844 });
+  await expect(actions).toBeHidden();
+  await page.setViewportSize({ width: 800, height: 844 });
+  await expect(actions).toBeVisible();
+  const narrowFiltersBox = await types.boundingBox();
+  const narrowActionsBox = await actions.boundingBox();
+  expect(narrowFiltersBox).not.toBeNull();
+  expect(narrowActionsBox).not.toBeNull();
+  expect(narrowActionsBox!.y).toBeGreaterThan(
+    narrowFiltersBox!.y + narrowFiltersBox!.height
+  );
 });
 
 test("edit mode surfaces the exercise's previous sessions (#188)", async ({
@@ -164,9 +271,74 @@ test("edit mode surfaces the exercise's previous sessions (#188)", async ({
   // being edited never appears in its own Recent list).
   await expect(panel.getByRole("listitem").first()).toBeVisible();
 
+  // Seeded strength rows store a 60-minute duration without start/end times.
+  // It remains an editable top-level session field and feeds the same estimate
+  // the card shows.
+  const duration = page.getByTestId("activity-duration");
+  await expect(duration).toHaveValue("60");
+  await expect(duration).toBeEditable();
+  const dateBox = await page.locator("#activity-date").boundingBox();
+  const durationBox = await duration.boundingBox();
+  const startBox = await page.locator("#activity-start-time").boundingBox();
+  expect(dateBox).not.toBeNull();
+  expect(durationBox).not.toBeNull();
+  expect(startBox).not.toBeNull();
+  expect(Math.abs(durationBox!.y - dateBox!.y)).toBeLessThanOrEqual(2);
+  expect(Math.abs(durationBox!.y - startBox!.y)).toBeLessThanOrEqual(2);
+  const endBox = await page.locator("#activity-end-time").boundingBox();
+  expect(endBox).not.toBeNull();
+  const sessionControlWidths = [
+    dateBox!.width,
+    durationBox!.width,
+    startBox!.width,
+    endBox!.width,
+  ];
+  expect(
+    Math.max(...sessionControlWidths) - Math.min(...sessionControlWidths)
+  ).toBeLessThanOrEqual(2);
+  await expect(page.getByTestId("date-time-fields")).not.toContainText(
+    "min total"
+  );
+  const moreDetails = page.getByRole("button", { name: /^More details/ });
+  if ((await moreDetails.getAttribute("aria-expanded")) === "false")
+    await moreDetails.click();
+  await expect(page.getByTestId("est-calories-input")).toHaveValue(
+    /^[1-9]\d*$/
+  );
+
   // Read-only assertion: no field was touched, so nothing auto-saves and the
   // shared seed DB is left untouched — no cleanup needed. Close the editor.
   await page.keyboard.press("Escape");
+});
+
+test("editing cardio duration updates the parent session total", async ({
+  page,
+}) => {
+  await page.goto("/training");
+
+  // This seeded manual cardio row has no clock range and stores 28 minutes on
+  // both its parent and visible Running component. Editing the visible field
+  // must not resubmit the parent's hidden 28-minute seed.
+  const card = page
+    .locator('[id^="activity-"]')
+    .filter({ hasText: "Intervals" })
+    .first();
+  await expect(card).toBeVisible();
+  await card.getByRole("button", { name: "Intervals" }).click();
+
+  const duration = page.getByTestId("cardio-duration");
+  await expect(duration).toHaveValue("28");
+  await duration.fill("35");
+  await expect(page.getByLabel("Saved").first()).toBeVisible();
+  await page.getByRole("button", { name: "Close" }).click();
+  await expect(card.getByTestId("activity-summary")).toContainText("35 min");
+
+  // Restore the shared seed row so other specs remain order-independent.
+  await card.getByRole("button", { name: "Intervals" }).click();
+  await page.getByTestId("cardio-duration").fill("28");
+  await expect(page.getByLabel("Saved").first()).toBeVisible();
+  await page.getByRole("button", { name: "Close" }).click();
+  await expect(card.getByTestId("activity-summary")).toContainText("28 min");
 });
 
 test("logging a manual cardio activity auto-fills an editable estimated-calorie value (#151)", async ({
@@ -197,14 +369,51 @@ test("logging a manual cardio activity auto-fills an editable estimated-calorie 
   // bodyweight × duration). It also makes the activity savable, so it auto-saves —
   // the draft is deleted at the end to leave the shared seed DB untouched.
   await page.getByTestId("cardio-duration").fill("30");
+  expect(
+    await page
+      .getByTestId("cardio-distance")
+      .evaluate((input) =>
+        Array.from((input as HTMLInputElement).labels ?? []).some((label) =>
+          label.textContent?.includes("Distance")
+        )
+      )
+  ).toBe(true);
+  expect(
+    await page
+      .getByTestId("cardio-duration")
+      .evaluate((input) =>
+        Array.from((input as HTMLInputElement).labels ?? []).some((label) =>
+          label.textContent?.includes("Duration")
+        )
+      )
+  ).toBe(true);
 
   // The estimated-calorie field appears, marked "(estimated)", auto-filled with a
-  // positive number.
+  // positive number inside the shared optional-details disclosure.
+  await page.getByRole("button", { name: /^More details/ }).click();
   const field = page.getByTestId("est-calories-field");
   await expect(field).toBeVisible();
   await expect(field).toContainText("estimated");
   const input = page.getByTestId("est-calories-input");
   await expect(input).toHaveValue(/^[1-9]\d*$/);
+  const comparableControls = [
+    page.getByTestId("cardio-duration"),
+    input,
+    page.getByTestId("activity-equipment-select"),
+    page.getByRole("button", { name: "Easy", exact: true }),
+  ];
+  const comparableStyles = await Promise.all(
+    comparableControls.map((control) =>
+      control.evaluate((node) => {
+        const style = getComputedStyle(node);
+        return { background: style.backgroundColor, height: style.height };
+      })
+    )
+  );
+  expect(new Set(comparableStyles.map((style) => style.background)).size).toBe(
+    1
+  );
+  expect(new Set(comparableStyles.map((style) => style.height)).size).toBe(1);
 
   // It's editable — the user can override the auto value.
   await input.fill("123");
@@ -218,6 +427,190 @@ test("logging a manual cardio activity auto-fills an editable estimated-calorie 
     .getByRole("dialog")
     .getByRole("button", { name: "Delete", exact: true })
     .click();
+});
+
+test("the activity form keeps workout entry primary and context visible across breakpoints", async ({
+  page,
+}) => {
+  await page.goto("/training");
+
+  const pushCard = page
+    .getByRole("main")
+    .locator('[id^="activity-"]')
+    .filter({ hasText: "Push day" })
+    .first();
+  await pushCard.getByRole("button", { name: "Push day" }).click();
+
+  // The single visible title is editable in place; there is no duplicate Name
+  // field beneath it. Its desktop header stays with a long docked form.
+  const activityTitle = page.getByLabel("Activity name");
+  await expect(activityTitle).toHaveValue("Push day");
+  expect(
+    await activityTitle.evaluate((input) => {
+      const canvas = document.createElement("canvas");
+      const context = canvas.getContext("2d");
+      if (!context) return false;
+      const style = getComputedStyle(input);
+      context.font = style.font;
+      return (
+        input.clientWidth >=
+        context.measureText("Afternoon Shoulders Workout").width + 8
+      );
+    })
+  ).toBe(true);
+  await activityTitle.focus();
+  expect(
+    await activityTitle.evaluate(
+      (input) => getComputedStyle(input).boxShadow !== "none"
+    )
+  ).toBe(true);
+  await expect(page.getByText("Name", { exact: true })).toHaveCount(0);
+  const header = page.getByTestId("activity-form-header");
+  await expect(header).toBeVisible();
+  expect(await header.evaluate((node) => getComputedStyle(node).position)).toBe(
+    "sticky"
+  );
+  await expect(header).toHaveCSS("padding-top", "20px");
+  await expect(header).toHaveCSS("padding-bottom", "20px");
+
+  // Workout rows use separators instead of nested cards, session metadata is
+  // grouped, and optional metadata starts behind one disclosure.
+  await expect(
+    page.getByRole("heading", { name: "Workout", exact: true })
+  ).toHaveClass("sr-only");
+  const part = page.getByTestId("activity-part").first();
+  await expect(part).not.toHaveClass(/rounded/);
+  await page.evaluate(() => window.scrollTo(0, 0));
+  const formBox = await page.getByTestId("activity-form").boundingBox();
+  const partBox = await part.boundingBox();
+  expect(formBox).not.toBeNull();
+  expect(partBox).not.toBeNull();
+  expect(partBox!.x).toBeLessThan(formBox!.x);
+  expect(partBox!.x + partBox!.width).toBeGreaterThan(
+    formBox!.x + formBox!.width
+  );
+  const headerBox = await header.boundingBox();
+  const dockBox = await page.getByTestId("activity-editor-dock").boundingBox();
+  const firstJournalCardBox = await page
+    .getByRole("main")
+    .locator('[id^="activity-"]')
+    .first()
+    .boundingBox();
+  expect(headerBox).not.toBeNull();
+  expect(dockBox).not.toBeNull();
+  expect(firstJournalCardBox).not.toBeNull();
+  expect(Math.abs(dockBox!.y - firstJournalCardBox!.y)).toBeLessThanOrEqual(1);
+  expect(headerBox!.x).toBe(partBox!.x);
+  expect(headerBox!.x + headerBox!.width).toBe(partBox!.x + partBox!.width);
+  expect(headerBox!.y).toBeLessThanOrEqual(dockBox!.y + 2);
+
+  // The toolbar scrolls away inside this pane; neither the pane nor the form's
+  // sticky header retains a top offset afterward.
+  const editorScroll = page.getByTestId("activity-editor-scroll");
+  await expect(editorScroll).toHaveCSS("top", "0px");
+  await editorScroll.evaluate((node) => {
+    node.scrollTop = 100;
+  });
+  await expect
+    .poll(async () => {
+      const [scroller, stickyHeader] = await Promise.all([
+        editorScroll.boundingBox(),
+        header.boundingBox(),
+      ]);
+      if (!scroller || !stickyHeader) return Number.POSITIVE_INFINITY;
+      return stickyHeader.y - scroller.y;
+    })
+    .toBeLessThanOrEqual(1);
+  await expect(header).toHaveCSS("padding-top", "20px");
+  await editorScroll.evaluate((node) => {
+    node.scrollTop = 0;
+  });
+  const standardInputs = [
+    page.getByRole("combobox", { name: "Activity" }).first(),
+    page.locator("#activity-date"),
+    page.locator("#activity-start-time"),
+    page.locator("#activity-end-time"),
+  ];
+  const inputStyles = await Promise.all(
+    standardInputs.map((input) =>
+      input.evaluate((node) => {
+        const style = getComputedStyle(node);
+        return { background: style.backgroundColor, height: style.height };
+      })
+    )
+  );
+  expect(new Set(inputStyles.map((style) => style.background)).size).toBe(1);
+  expect(inputStyles.map((style) => style.height)).toEqual(
+    inputStyles.map(() => inputStyles[0].height)
+  );
+  await expect(page.locator('label[for="activity-date"]')).toHaveText("Date");
+  await expect(page.locator('label[for="activity-start-time"]')).toHaveText(
+    "Start"
+  );
+  await expect(page.locator('label[for="activity-end-time"]')).toHaveText(
+    "End"
+  );
+  await expect(page.getByTestId("per-side-control").first()).toBeVisible();
+  const sessionDetails = page.getByTestId("session-details");
+  await expect(sessionDetails).toBeVisible();
+  await expect(sessionDetails).toHaveCSS("border-top-width", "0px");
+  await expect(
+    sessionDetails.getByRole("heading", { name: "Session details" })
+  ).toHaveClass("sr-only");
+  expect(
+    await page
+      .getByTestId("date-time-fields")
+      .evaluate(
+        (node) => getComputedStyle(node).gridTemplateColumns.split(" ").length
+      )
+  ).toBe(2);
+  const startLabelBox = await page
+    .getByTestId("time-range-fields")
+    .getByText("Start", { exact: true })
+    .boundingBox();
+  const startShortcutBox = await page
+    .getByTestId("start-time-shortcut")
+    .boundingBox();
+  expect(startLabelBox).not.toBeNull();
+  expect(startShortcutBox).not.toBeNull();
+  expect(
+    startShortcutBox!.x - (startLabelBox!.x + startLabelBox!.width)
+  ).toBeLessThan(16);
+  await expect(
+    page.getByRole("button", { name: /^More details/ })
+  ).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByText("More details", { exact: true })).toHaveCSS(
+    "text-transform",
+    "uppercase"
+  );
+  await expect(page.getByTestId("more-details-summary")).toContainText("kcal");
+  await expect(page.getByTestId("more-details-chevron")).not.toHaveClass(
+    /rotate-90/
+  );
+  await page.getByRole("button", { name: /^More details/ }).hover();
+  expect(
+    await page
+      .getByTestId("more-details-chevron")
+      .evaluate((node) => getComputedStyle(node).filter)
+  ).not.toBe("none");
+
+  // Crossing into the mobile presentation closes the desktop dock. Reopen the
+  // same activity in the overlay and pin the exercise/set schema while logging.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await pushCard.getByRole("button", { name: "Push day" }).click();
+  const headings = page.getByTestId("set-column-headings").first();
+  await expect(headings).toBeVisible();
+  expect(
+    await headings.evaluate((node) => getComputedStyle(node).position)
+  ).toBe("sticky");
+  await expect(page.getByTestId("set1-weight").first()).toHaveAttribute(
+    "inputmode",
+    "decimal"
+  );
+  await expect(page.getByTestId("activity-form-footer")).toHaveCSS(
+    "position",
+    "sticky"
+  );
 });
 
 test("a fresh strength part auto-seeds set 1 from the coached suggestion (#335)", async ({
@@ -321,6 +714,79 @@ test("weight steppers bump a set's load by the lift-appropriate increment (#337)
   // metric login.
   await pickActivity(page, "Barbell Bench Press");
 
+  const toFailure = page.getByTestId("to-failure-checkbox");
+  await page.getByText("To failure", { exact: true }).click();
+  await expect(toFailure).toBeChecked();
+  await expect(page.getByTestId("to-failure-control")).toHaveClass(
+    /bg-brand-600/
+  );
+  await page.getByText("To failure", { exact: true }).click();
+  await expect(toFailure).not.toBeChecked();
+
+  const weightStepper = page.getByTestId("set1-weight-stepper");
+  const weightInput = page.getByTestId("set1-weight");
+  await expect(weightInput).toHaveClass(/number-no-spinner/);
+  await expect(weightStepper).toHaveCSS("border-top-style", "solid");
+  expect(
+    await weightInput.evaluate((node) => {
+      const style = getComputedStyle(node);
+      return {
+        top: style.borderTopWidth,
+        right: style.borderRightWidth,
+        bottom: style.borderBottomWidth,
+        left: style.borderLeftWidth,
+      };
+    })
+  ).toEqual({ top: "0px", right: "1px", bottom: "0px", left: "1px" });
+  const weightBox = await weightInput.boundingBox();
+  expect(weightBox).not.toBeNull();
+  expect(weightBox!.width).toBeGreaterThanOrEqual(64);
+
+  const repsStepper = page.getByTestId("set1-reps-stepper");
+  const repsInput = repsStepper.locator("input");
+  await expect(repsInput).toHaveClass(/number-no-spinner/);
+  await expect(repsStepper).toHaveCSS("border-top-style", "solid");
+  expect(
+    await repsInput.evaluate((node) => {
+      const style = getComputedStyle(node);
+      return {
+        top: style.borderTopWidth,
+        right: style.borderRightWidth,
+        bottom: style.borderBottomWidth,
+        left: style.borderLeftWidth,
+      };
+    })
+  ).toEqual({ top: "0px", right: "1px", bottom: "0px", left: "0px" });
+  const weightStepperBox = await weightStepper.boundingBox();
+  const repsStepperBox = await repsStepper.boundingBox();
+  expect(weightStepperBox).not.toBeNull();
+  expect(repsStepperBox).not.toBeNull();
+  expect(
+    Math.abs(weightStepperBox!.width - repsStepperBox!.width)
+  ).toBeLessThanOrEqual(1);
+  const weightHeadingBox = await page
+    .getByTestId("weight-column-heading")
+    .boundingBox();
+  const repsHeadingBox = await page
+    .getByTestId("reps-column-heading")
+    .boundingBox();
+  expect(weightHeadingBox).not.toBeNull();
+  expect(repsHeadingBox).not.toBeNull();
+  expect(
+    Math.abs(
+      weightHeadingBox!.x +
+        weightHeadingBox!.width / 2 -
+        (weightStepperBox!.x + weightStepperBox!.width / 2)
+    )
+  ).toBeLessThanOrEqual(1);
+  expect(
+    Math.abs(
+      repsHeadingBox!.x +
+        repsHeadingBox!.width / 2 -
+        (repsStepperBox!.x + repsStepperBox!.width / 2)
+    )
+  ).toBeLessThanOrEqual(1);
+
   // The + stepper bumps the (empty) weight by one increment → 2.5. Only weight is
   // set, so the set stays half-filled and nothing auto-saves — no cleanup needed.
   await page.getByLabel("Increase weight").first().click();
@@ -396,7 +862,11 @@ test("a failed activity save surfaces an error, never a false 'Saved ✓' (#332)
 
   // The failure must surface as the error indicator (SaveStatus, aria-label
   // "Couldn’t save"), and the success check must never appear.
-  await expect(page.getByLabel("Couldn’t save")).toBeVisible();
+  // Desktop renders the active indicator in the sticky header; the mobile
+  // footer copy remains in the DOM but is CSS-hidden at this breakpoint.
+  await expect(
+    page.locator('[aria-label="Couldn’t save"]:visible')
+  ).toBeVisible();
   await expect(page.getByLabel("Saved")).toHaveCount(0);
 
   // Nothing persisted (the save was forced to fail), so there is no draft row to

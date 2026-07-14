@@ -18,11 +18,20 @@ import ActivityCardMenu, { type MergeSibling } from "./ActivityCardMenu";
 
 export type { DisplayPart };
 
+const INTENSITY_DOT: Record<string, string> = {
+  easy: "bg-emerald-500 dark:bg-emerald-400",
+  moderate: "bg-amber-500 dark:bg-amber-400",
+  hard: "bg-rose-500 dark:bg-rose-400",
+};
+
 export default function JournalCard({
   activity,
+  timeText,
   durationText,
   distanceText,
   speedText,
+  heartRateText,
+  calorieText,
   metrics = [],
   gear = null,
   parts,
@@ -38,9 +47,12 @@ export default function JournalCard({
   onFilterTag,
 }: {
   activity: ActivityEditData;
+  timeText: string | null;
   durationText: string | null;
   distanceText: string | null;
   speedText: string | null;
+  heartRateText: string | null;
+  calorieText: string | null;
   // Compact values for richer imported metrics (HR, elevation, power, etc.).
   metrics?: string[];
   // Session-level gear name (issue #342), e.g. a ride's bike; null when unlinked.
@@ -85,14 +97,23 @@ export default function JournalCard({
   // clear which feed row the right-column form belongs to. (On mobile the
   // editor is a full-screen overlay, so the ring is only ever seen on desktop.)
   const selected = open && editData?.id === activity.id;
+  const intensityKey = activity.intensity?.toLowerCase() ?? null;
   const summary = [
-    durationText,
-    distanceText,
-    speedText,
-    activity.intensity
-      ? activity.intensity.replace(/^\w/, (c) => c.toUpperCase())
-      : null,
-  ].filter((value): value is string => !!value);
+    { value: timeText },
+    { value: durationText },
+    { value: heartRateText },
+    { value: distanceText },
+    { value: speedText },
+    { value: calorieText },
+    {
+      value: activity.intensity
+        ? activity.intensity.replace(/^\w/, (c) => c.toUpperCase())
+        : null,
+      intensity: intensityKey,
+    },
+  ].filter((item): item is { value: string; intensity?: string | null } =>
+    Boolean(item.value)
+  );
   const notesCanExpand = (activity.notes?.length ?? 0) > 120;
 
   return (
@@ -120,19 +141,32 @@ export default function JournalCard({
             {summary.length > 0 && (
               <div
                 data-testid="activity-summary"
-                className="mt-0.5 flex flex-wrap items-center text-xs text-slate-500 dark:text-slate-400"
+                className="mt-0.5 flex flex-wrap items-center text-xs text-slate-600 dark:text-slate-300"
               >
-                {summary.map((value, i) => (
-                  <span key={value} className="whitespace-nowrap">
+                {summary.map((item, i) => (
+                  <span
+                    key={i}
+                    data-testid={
+                      item.intensity ? "activity-intensity" : undefined
+                    }
+                    className="inline-flex items-center whitespace-nowrap"
+                  >
                     {i > 0 && (
                       <span
                         aria-hidden
-                        className="mx-1.5 text-slate-300 dark:text-slate-600"
+                        className="mx-1.5 text-slate-400 dark:text-slate-500"
                       >
                         ·
                       </span>
                     )}
-                    {value}
+                    {item.intensity && INTENSITY_DOT[item.intensity] && (
+                      <span
+                        aria-hidden
+                        data-testid="activity-intensity-dot"
+                        className={`mr-1 h-1.5 w-1.5 rounded-full ${INTENSITY_DOT[item.intensity]}`}
+                      />
+                    )}
+                    {item.value}
                   </span>
                 ))}
               </div>
@@ -144,6 +178,7 @@ export default function JournalCard({
             activity={activity}
             siblings={mergeSiblings}
             keeperLabel={keeperLabel}
+            editLocked={provenance.editLocked}
             units={units}
           />
         </div>
@@ -165,8 +200,205 @@ export default function JournalCard({
         </button>
       )}
 
+      {(metrics.length > 0 || gear || routePolyline) && (
+        <div
+          className={`mt-3 grid items-start gap-3 ${
+            routePolyline ? "sm:grid-cols-[minmax(0,1fr)_10rem]" : ""
+          }`}
+        >
+          {(metrics.length > 0 || gear) && (
+            <ul
+              data-testid="activity-metrics"
+              aria-label="Activity details"
+              className="flex flex-wrap text-xs tabular-nums text-slate-400 dark:text-slate-500"
+            >
+              {metrics.map((metric, i) => (
+                <li key={metric} className="whitespace-nowrap">
+                  {i > 0 && (
+                    <span
+                      aria-hidden
+                      className="mx-2 text-slate-400 dark:text-slate-500"
+                    >
+                      ·
+                    </span>
+                  )}
+                  {metric}
+                </li>
+              ))}
+              {gear && (
+                <li className="whitespace-nowrap">
+                  {metrics.length > 0 && (
+                    <span
+                      aria-hidden
+                      className="mx-2 text-slate-400 dark:text-slate-500"
+                    >
+                      ·
+                    </span>
+                  )}
+                  {activity.equipment_id != null ? (
+                    <Link
+                      href={`/equipment/${activity.equipment_id}`}
+                      data-testid="activity-gear"
+                      className="text-slate-400 hover:text-slate-600 hover:underline dark:text-slate-500 dark:hover:text-slate-300"
+                      title={`Equipment: ${gear}`}
+                    >
+                      {gear}
+                    </Link>
+                  ) : (
+                    <span data-testid="activity-gear" title="Equipment">
+                      {gear}
+                    </span>
+                  )}
+                </li>
+              )}
+            </ul>
+          )}
+          {/* A wide, shallow route uses the card width on phones and becomes a
+              compact right-hand preview beside the metrics on larger screens. */}
+          {routePolyline && (
+            <RouteMap
+              polyline={routePolyline}
+              width={240}
+              height={96}
+              className="h-auto w-full rounded-md border border-slate-200 bg-slate-50 text-brand-600 dark:border-ink-700 dark:bg-ink-900 dark:text-brand-400"
+            />
+          )}
+        </div>
+      )}
+
+      {parts.length > 0 && (
+        <div
+          data-testid="activity-parts"
+          className="mt-3 border-t border-black/5 pt-2 dark:border-white/10"
+        >
+          {parts.map((p, i) => {
+            if (p.kind !== "strength") {
+              const onSelect =
+                p.kind === "sport" ? onSelectSport : onSelectCardio;
+              const verb = p.kind === "sport" ? "records" : "trends";
+              return (
+                // Match strength's left-to-right reading order: activity name,
+                // then its compact description. Wrap only when space runs out.
+                <div
+                  key={i}
+                  data-testid="journal-cardio-row"
+                  className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 py-1"
+                >
+                  {onSelect ? (
+                    <button
+                      type="button"
+                      onClick={() => onSelect(p.name)}
+                      className="text-left font-medium text-slate-800 hover:text-brand-600 dark:text-slate-100 dark:hover:text-brand-400"
+                      title={`See ${p.name} ${verb}`}
+                    >
+                      {p.name}
+                    </button>
+                  ) : (
+                    <span className="text-left font-medium text-slate-800 dark:text-slate-100">
+                      {p.name}
+                    </span>
+                  )}
+                  {p.detail && (
+                    <span className="min-w-0 text-left text-sm tabular-nums text-slate-600 dark:text-slate-300">
+                      {p.detail}
+                    </span>
+                  )}
+                </div>
+              );
+            }
+            return (
+              // One compact reading order: exercise → sets → status → context.
+              // flex-wrap is only an overflow escape hatch for genuinely narrow
+              // cards; no field is deliberately pushed onto a second line.
+              <div
+                key={i}
+                data-testid="journal-strength-row"
+                className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 py-0.5"
+              >
+                {onSelectExercise ? (
+                  <button
+                    type="button"
+                    onClick={() => onSelectExercise(p.name)}
+                    className="text-left font-medium text-slate-800 hover:text-brand-600 dark:text-slate-100 dark:hover:text-brand-400"
+                    title={`See ${p.name} progression`}
+                  >
+                    {p.name}
+                  </button>
+                ) : (
+                  <span className="text-left font-medium text-slate-800 dark:text-slate-100">
+                    {p.name}
+                  </span>
+                )}
+                <span
+                  data-testid="exercise-set-summary"
+                  className="text-sm tabular-nums text-slate-600 dark:text-slate-300"
+                >
+                  {p.text}
+                </span>
+                {p.status === "met" && (
+                  <span
+                    role="img"
+                    aria-label={SET_STATUS_TITLES.met}
+                    className="text-brand-600 dark:text-brand-400"
+                    title={SET_STATUS_TITLES.met}
+                  >
+                    <IconCheck className="h-4 w-4" stroke={2.5} />
+                  </span>
+                )}
+                {p.status === "missed" && (
+                  <span
+                    role="img"
+                    aria-label={SET_STATUS_TITLES.missed}
+                    className="text-amber-500 dark:text-amber-400"
+                    title={SET_STATUS_TITLES.missed}
+                  >
+                    <IconAlertTriangle className="h-4 w-4" stroke={2} />
+                  </span>
+                )}
+                {(p.muscle || p.equipment) && (
+                  <span
+                    aria-hidden
+                    className="text-slate-400 dark:text-slate-500"
+                  >
+                    ·
+                  </span>
+                )}
+                {p.muscle &&
+                  (onFilterTag ? (
+                    <button
+                      type="button"
+                      onClick={() => onFilterTag("muscle", p.muscle!)}
+                      title={`Show ${p.muscle} activities`}
+                      className="text-xs text-slate-400 hover:text-brand-600 hover:underline dark:text-slate-500 dark:hover:text-brand-400"
+                    >
+                      {p.muscle}
+                    </button>
+                  ) : (
+                    <span className="text-xs text-slate-400 dark:text-slate-500">
+                      {p.muscle}
+                    </span>
+                  ))}
+                {p.muscle && p.equipment && (
+                  <span
+                    aria-hidden
+                    className="text-xs text-slate-400 dark:text-slate-500"
+                  >
+                    ·
+                  </span>
+                )}
+                {p.equipment && (
+                  <span className="text-xs text-slate-400 dark:text-slate-500">
+                    {p.equipment}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {activity.notes && (
-        <div className="mt-2">
+        <div className="mt-3">
           <p
             data-testid="activity-notes"
             className={`text-sm leading-relaxed text-slate-600 dark:text-slate-300 ${
@@ -185,183 +417,6 @@ export default function JournalCard({
               {notesExpanded ? "Less" : "More"}
             </button>
           )}
-        </div>
-      )}
-
-      {(metrics.length > 0 || gear || routePolyline) && (
-        <div
-          className={`mt-3 grid items-start gap-3 ${
-            routePolyline ? "sm:grid-cols-[minmax(0,1fr)_10rem]" : ""
-          }`}
-        >
-          {(metrics.length > 0 || gear) && (
-            <div className="space-y-2">
-              {metrics.length > 0 && (
-                <ul
-                  data-testid="activity-metrics"
-                  aria-label="Activity metrics"
-                  className="flex flex-wrap text-xs tabular-nums text-slate-600 dark:text-slate-300"
-                >
-                  {metrics.map((metric, i) => (
-                    <li key={metric} className="whitespace-nowrap">
-                      {i > 0 && (
-                        <span
-                          aria-hidden
-                          className="mx-2 text-slate-300 dark:text-slate-600"
-                        >
-                          ·
-                        </span>
-                      )}
-                      {metric}
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {gear &&
-                (activity.equipment_id != null ? (
-                  <Link
-                    href={`/equipment/${activity.equipment_id}`}
-                    data-testid="activity-gear"
-                    className="inline-flex text-xs font-medium text-brand-700 hover:underline dark:text-brand-300"
-                    title="View equipment"
-                  >
-                    Equipment: {gear}
-                  </Link>
-                ) : (
-                  <span
-                    data-testid="activity-gear"
-                    className="block text-xs text-slate-500 dark:text-slate-400"
-                  >
-                    Equipment: {gear}
-                  </span>
-                ))}
-            </div>
-          )}
-          {/* A wide, shallow route uses the card width on phones and becomes a
-              compact right-hand preview beside the metrics on larger screens. */}
-          {routePolyline && (
-            <RouteMap
-              polyline={routePolyline}
-              width={240}
-              height={96}
-              className="h-auto w-full rounded-md border border-slate-200 bg-slate-50 text-brand-600 dark:border-ink-700 dark:bg-ink-900 dark:text-brand-400"
-            />
-          )}
-        </div>
-      )}
-
-      {parts.length > 0 && (
-        <div className="mt-3 border-t border-black/5 pt-2 dark:border-white/10">
-          {parts.map((p, i) => {
-            if (p.kind !== "strength") {
-              const onSelect =
-                p.kind === "sport" ? onSelectSport : onSelectCardio;
-              const verb = p.kind === "sport" ? "records" : "trends";
-              return (
-                // Baseline-aligned so a wrapped name or detail still reads as
-                // one row; the detail right-aligns its wrapped lines.
-                <div
-                  key={i}
-                  className="flex items-baseline justify-between gap-3 py-1"
-                >
-                  {onSelect ? (
-                    <button
-                      type="button"
-                      onClick={() => onSelect(p.name)}
-                      className="text-left font-medium text-slate-800 hover:text-brand-600 dark:text-slate-100 dark:hover:text-brand-400"
-                      title={`See ${p.name} ${verb}`}
-                    >
-                      {p.name}
-                    </button>
-                  ) : (
-                    <span className="text-left font-medium text-slate-800 dark:text-slate-100">
-                      {p.name}
-                    </span>
-                  )}
-                  {p.detail && (
-                    <span className="min-w-0 text-right text-sm tabular-nums text-slate-600 dark:text-slate-300">
-                      {p.detail}
-                    </span>
-                  )}
-                </div>
-              );
-            }
-            return (
-              // items-start (not center) so the muscle badge hugs the first
-              // line when the left side wraps on narrow screens; the left
-              // group wraps as whole units — the name stays in one piece and
-              // the sets text flows onto the next line, left-aligned.
-              <div
-                key={i}
-                className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 py-1.5"
-              >
-                <div className="min-w-0">
-                  {onSelectExercise ? (
-                    <button
-                      type="button"
-                      onClick={() => onSelectExercise(p.name)}
-                      className="text-left font-medium text-slate-800 hover:text-brand-600 dark:text-slate-100 dark:hover:text-brand-400"
-                      title={`See ${p.name} progression`}
-                    >
-                      {p.name}
-                    </button>
-                  ) : (
-                    <span className="text-left font-medium text-slate-800 dark:text-slate-100">
-                      {p.name}
-                    </span>
-                  )}
-                  {(p.muscle || p.equipment) && (
-                    <div className="mt-0.5 flex flex-wrap items-center text-xs text-slate-400 dark:text-slate-500">
-                      {p.muscle &&
-                        (onFilterTag ? (
-                          <button
-                            type="button"
-                            onClick={() => onFilterTag("muscle", p.muscle!)}
-                            title={`Show ${p.muscle} activities`}
-                            className="hover:text-brand-600 hover:underline dark:hover:text-brand-400"
-                          >
-                            {p.muscle}
-                          </button>
-                        ) : (
-                          <span>{p.muscle}</span>
-                        ))}
-                      {p.muscle && p.equipment && (
-                        <span aria-hidden className="mx-1.5">
-                          ·
-                        </span>
-                      )}
-                      {p.equipment && <span>{p.equipment}</span>}
-                    </div>
-                  )}
-                </div>
-                <div className="flex items-center gap-1.5 text-right">
-                  <span className="text-sm tabular-nums text-slate-600 dark:text-slate-300">
-                    {p.text}
-                  </span>
-                  {p.status === "met" && (
-                    <span
-                      role="img"
-                      aria-label={SET_STATUS_TITLES.met}
-                      className="text-brand-600 dark:text-brand-400"
-                      title={SET_STATUS_TITLES.met}
-                    >
-                      <IconCheck className="h-4 w-4" stroke={2.5} />
-                    </span>
-                  )}
-                  {p.status === "missed" && (
-                    <span
-                      role="img"
-                      aria-label={SET_STATUS_TITLES.missed}
-                      className="text-amber-500 dark:text-amber-400"
-                      title={SET_STATUS_TITLES.missed}
-                    >
-                      <IconAlertTriangle className="h-4 w-4" stroke={2} />
-                    </span>
-                  )}
-                </div>
-              </div>
-            );
-          })}
         </div>
       )}
 

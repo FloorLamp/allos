@@ -16,10 +16,17 @@ test("a cardio session shows its gear chip and preloads the equipment picker (#3
     .filter({ hasText: "Zone 2 bike" });
   await expect(card.first()).toBeVisible();
 
-  // The session-level gear chip carries the linked equipment name.
+  // Session gear is quiet metadata in the card's third row, not a standalone
+  // prominent chip/link between the activity and its provenance.
   const gear = card.first().getByTestId("activity-gear");
   await expect(gear).toBeVisible();
   await expect(gear).toContainText("Road Bike");
+  await expect(gear).not.toHaveClass(/font-medium|text-brand/);
+  expect(
+    await gear.evaluate(
+      (node) => node.closest('[data-testid="activity-metrics"]') != null
+    )
+  ).toBe(true);
 
   // Opening the editor (via the card title) preloads the activity-level picker with
   // the linked gear — a real equipment id is selected, labelled "Road Bike".

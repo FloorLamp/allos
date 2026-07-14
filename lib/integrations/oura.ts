@@ -292,6 +292,7 @@ export function mapOuraWorkout(
       start_time: new Date(startMs).toISOString(),
       end_time: new Date(endMs).toISOString(),
       value: Math.round(calories),
+      activity_external_id: activity.external_id,
     });
   }
 

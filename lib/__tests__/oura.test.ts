@@ -131,6 +131,7 @@ describe("mapOuraWorkout", () => {
     expect(res!.samples).toHaveLength(1);
     expect(res!.samples[0].metric).toBe("active_kcal");
     expect(res!.samples[0].value).toBe(480);
+    expect(res!.samples[0].activity_external_id).toBe("oura:workout-abc");
   });
 
   it("maps each intensity level and nulls an unknown/absent one", () => {

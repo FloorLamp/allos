@@ -24,11 +24,15 @@ import { pickFoldValues } from "./import-review/conflicts";
 import { formatLongDate } from "./format-date";
 import { fmtDistance, fmtSpeed } from "./units";
 import {
-  activityEstimateKcal,
+  activityCalorieDisplay,
   nearestBodyweightKg,
-  formatEstimatedKcal,
+  formatActivityCalories,
   type DatedWeight,
 } from "./calorie-estimate";
+import {
+  importedActivityDetails,
+  pickImportedActivityMetrics,
+} from "./activity-import-details";
 
 // One rendered line under a card: a strength exercise (with its summary + status),
 // or a cardio/sport effort (with its distance/duration/speed detail string). The
@@ -48,9 +52,16 @@ export type DisplayPart =
 
 export interface JournalCardData {
   activity: ActivityEditData;
+  timeText: string | null;
   durationText: string | null;
   distanceText: string | null;
   speedText: string | null;
+  // Heart rate is a primary effort signal, shown with time/duration rather than
+  // buried in the lower-priority provider-specific metrics row.
+  heartRateText: string | null;
+  // Measured active energy, or an explicitly approximate fallback when it is
+  // missing, belongs with the primary summary rather than the rich-metrics row.
+  calorieText: string | null;
   // Compact chips for richer imported metrics (HR, elevation, power, etc.).
   metrics: string[];
   // Session-level gear name (issue #342), e.g. "Road Bike" for a ride — resolved
@@ -157,6 +168,8 @@ export interface BuildJournalCardsInput {
   // activityId -> encoded GPS route polyline (issue #569), for the route thumbnail.
   // Optional (defaults to none) so existing pure-test call sites need no route data.
   routes?: Map<number, string>;
+  // Device-measured active energy matched to each imported activity window.
+  activeCalories?: Map<number, number>;
 }
 
 // Compact, unit-aware values for the richer per-activity metrics carried by pull
@@ -166,36 +179,61 @@ export interface BuildJournalCardsInput {
 // label — all set by the parser, so this just formats whatever is non-null.
 export function activityMetrics(
   a: Activity,
-  distanceUnit: DistanceUnit,
-  estKcal: number | null = null
+  distanceUnit: DistanceUnit
 ): string[] {
+  const byKey = new Map(
+    importedActivityDetails(a, distanceUnit).map((detail) => [
+      detail.key,
+      detail.value,
+    ])
+  );
   const m: string[] = [];
-  if (a.workout_type)
-    m.push(a.workout_type.replace(/\b\w/, (c) => c.toUpperCase()));
-  if (a.avg_hr != null) {
-    m.push(`♥ ${a.avg_hr}${a.max_hr != null ? `/${a.max_hr}` : ""} bpm`);
-  }
-  if (a.elevation_m != null && a.elevation_m > 0) {
-    m.push(
-      distanceUnit === "mi"
-        ? `↑ ${Math.round(a.elevation_m * 3.28084)} ft`
-        : `↑ ${Math.round(a.elevation_m)} m`
-    );
-  }
+  const workoutType = byKey.get("workout_type");
+  if (workoutType) m.push(workoutType);
+  const elevation = byKey.get("elevation");
+  if (elevation && a.elevation_m != null && a.elevation_m > 0)
+    m.push(`↑ ${elevation}`);
   if (a.avg_power_w != null) {
     m.push(
       `${a.avg_power_w} W${a.weighted_avg_power_w != null ? ` (${a.weighted_avg_power_w} NP)` : ""}`
     );
   }
-  if (a.avg_cadence != null) m.push(`${a.avg_cadence} rpm`);
-  if (a.kilojoules != null) m.push(`${a.kilojoules} kJ`);
-  if (a.avg_temp_c != null) m.push(`${Math.round(a.avg_temp_c)}°C`);
-  if (a.relative_effort != null) m.push(`Effort ${a.relative_effort}`);
-  // Estimated calories (issue #151) — the "≈" marks it as an estimate, visually
-  // distinct from a device-measured value. Only present for manual activities.
-  const est = formatEstimatedKcal(estKcal);
-  if (est) m.push(est);
+  for (const key of ["cadence", "kilojoules", "temperature"] as const) {
+    const value = byKey.get(key);
+    if (value) m.push(value);
+  }
+  const effort = byKey.get("relative_effort");
+  if (effort) m.push(`Effort ${effort}`);
   return m;
+}
+
+export function activityHeartRateText(
+  avgHr: number | null,
+  maxHr: number | null
+): string | null {
+  if (avgHr == null) return null;
+  return `♥ ${avgHr}${maxHr != null ? `/${maxHr}` : ""} bpm`;
+}
+
+// Compact stored wall-clock range for the Journal summary. Activity form values
+// are HH:MM, while a few import/legacy paths may carry an ISO-like value; keep only
+// the clock portion in either case and never invent a start from an end alone.
+export function activityTimeText(
+  startTime: string | null,
+  endTime: string | null
+): string | null {
+  const clock = (value: string | null): string | null => {
+    if (!value) return null;
+    return (
+      /^(\d{1,2}:\d{2})/.exec(value)?.[1] ??
+      /T(\d{2}:\d{2})/.exec(value)?.[1] ??
+      null
+    );
+  };
+  const start = clock(startTime);
+  if (!start) return null;
+  const end = clock(endTime);
+  return end ? `${start}–${end}` : start;
 }
 
 // Bucket activities (already date-desc) into ordered day groups, building each
@@ -211,6 +249,7 @@ export function buildJournalCards({
   today,
   yesterday,
   routes,
+  activeCalories,
 }: BuildJournalCardsInput): DayGroup[] {
   const wu = units.weightUnit;
 
@@ -312,6 +351,12 @@ export function buildJournalCards({
       ? [{ ...single, detail: "" }]
       : allParts.filter((p) => p.kind === "strength" || multi);
 
+    const calorieDisplay = activityCalorieDisplay(
+      a,
+      nearestBodyweightKg(weights, a.date),
+      activeCalories?.get(a.id)
+    );
+    const routePolyline = routes?.get(a.id) ?? null;
     const editData: ActivityEditData = {
       id: a.id,
       type: a.type,
@@ -331,6 +376,13 @@ export function buildJournalCards({
       updated_at: a.updated_at,
       est_calories: a.est_calories,
       equipment_id: a.equipment_id,
+      imported_metrics: pickImportedActivityMetrics(
+        a,
+        activeCalories?.get(a.id) ?? null
+      ),
+      calorie_kcal: calorieDisplay?.kcal ?? null,
+      calorie_estimated: calorieDisplay?.estimated ?? false,
+      route_polyline: routePolyline,
       sets: aSets.map((s) => ({
         exercise: s.exercise,
         set_number: s.set_number,
@@ -349,20 +401,19 @@ export function buildJournalCards({
 
     const card: JournalCardData = {
       activity: editData,
+      timeText: activityTimeText(a.start_time, a.end_time),
       durationText: a.duration_min == null ? null : `${a.duration_min} min`,
       distanceText:
         a.distance_km == null
           ? null
           : fmtDistance(a.distance_km, units.distanceUnit),
       speedText: fmtSpeed(a.distance_km, a.duration_min, units.distanceUnit),
-      metrics: activityMetrics(
-        a,
-        units.distanceUnit,
-        // Estimated calories for a manual activity, scored against the bodyweight
-        // nearest its date (issue #151). null (no chip) for imported rows and when
-        // no estimate can be computed.
-        activityEstimateKcal(a, nearestBodyweightKg(weights, a.date))
-      ),
+      heartRateText: activityHeartRateText(a.avg_hr, a.max_hr),
+      // Prefer device-measured active energy; when a provider omitted it, show
+      // the same explicit "≈" MET estimate manual activities use whenever a
+      // duration + nearby bodyweight make that possible.
+      calorieText: formatActivityCalories(calorieDisplay),
+      metrics: activityMetrics(a, units.distanceUnit),
       gear:
         a.equipment_id != null
           ? (equipmentNames.get(a.equipment_id) ?? null)
@@ -386,7 +437,7 @@ export function buildJournalCards({
       // Fold-field values for the manual-merge conflict preview (issue #100).
       foldValues: pickFoldValues(a as unknown as Record<string, unknown>),
       // GPS route polyline for the tile-free SVG thumbnail (issue #569), or null.
-      routePolyline: routes?.get(a.id) ?? null,
+      routePolyline,
     };
 
     let group = byDate.get(a.date);

@@ -13,7 +13,13 @@
 // it is DST-immune and timezone-independent. Day bucketing itself already happened
 // upstream: `activities.date` is stored as the profile-local calendar day at
 // ingest (issue #94), so grouping by it buckets in the profile timezone.
-import { shiftDateStr, startOfWeekStr, weekdayOrder, monthNames } from "./date";
+import {
+  lastNDates,
+  shiftDateStr,
+  startOfWeekStr,
+  weekdayOrder,
+  monthNames,
+} from "./date";
 
 // One profile-local day's workout totals (the grouped query's row shape).
 export interface WorkoutDayDensity {
@@ -43,6 +49,13 @@ export interface WorkoutHeatmap {
   totalMinutes: number; // training minutes across the window
 }
 
+export interface ActiveDaysStrip {
+  days: HeatmapCell[]; // oldest→newest, ending on `end`
+  totalSessions: number;
+  activeDays: number;
+  totalMinutes: number;
+}
+
 // Session count → color bucket (0 = none … 4 = 4+). Fixed thresholds, deliberately
 // boring: real training days almost never exceed a handful of sessions, so a flat
 // 1/2/3/4+ ladder reads cleanly without needing per-user normalization.
@@ -52,6 +65,35 @@ export function intensityLevel(count: number): 0 | 1 | 2 | 3 | 4 {
   if (count === 2) return 2;
   if (count === 3) return 3;
   return 4;
+}
+
+// Compact companion to the full heatmap: a literal trailing-N-day window rather
+// than week-aligned columns, so "14 days" always means today plus the previous
+// 13 profile-local calendar days.
+export function buildActiveDaysStrip(
+  density: WorkoutDayDensity[],
+  end: string,
+  length = 14
+): ActiveDaysStrip {
+  const byDate = new Map(density.map((day) => [day.date, day]));
+  const days = lastNDates(end, length).map((date) => {
+    const day = byDate.get(date);
+    const count = day?.count ?? 0;
+    return {
+      date,
+      count,
+      minutes: day?.minutes ?? 0,
+      level: intensityLevel(count),
+      future: false,
+    } satisfies HeatmapCell;
+  });
+
+  return {
+    days,
+    totalSessions: days.reduce((sum, day) => sum + day.count, 0),
+    activeDays: days.filter((day) => day.count > 0).length,
+    totalMinutes: days.reduce((sum, day) => sum + day.minutes, 0),
+  };
 }
 
 // The top-left cell date of a `weeks`-column heatmap whose LAST column is the week

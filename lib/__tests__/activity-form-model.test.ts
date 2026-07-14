@@ -49,6 +49,9 @@ describe("buildRepeatPrefill", () => {
     edited: 1,
     created_at: "2026-06-01 07:30:00",
     updated_at: "2026-06-02 09:00:00",
+    calorie_kcal: 648,
+    calorie_estimated: false,
+    route_polyline: "encoded-route",
     sets: [
       storedSet({
         set_number: 1,
@@ -76,6 +79,9 @@ describe("buildRepeatPrefill", () => {
     expect(p.edited).toBeNull();
     expect(p.created_at).toBeUndefined();
     expect(p.updated_at).toBeNull();
+    expect(p.calorie_kcal).toBeUndefined();
+    expect(p.calorie_estimated).toBeUndefined();
+    expect(p.route_polyline).toBeUndefined();
   });
 
   it("deep-copies sets so mutating the prefill can't touch the source", () => {

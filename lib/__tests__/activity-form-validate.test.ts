@@ -5,6 +5,7 @@ import {
   analyzeActivityForm,
   buildActivityPayload,
   generateActivityTitle,
+  resolveFormSessionDuration,
 } from "@/lib/activity-form-validate";
 import { blankPart, type PartEntry } from "@/lib/activity-form-model";
 import type { ActivityType } from "@/lib/types";
@@ -20,6 +21,38 @@ const typeByName = new Map<string, ActivityType>([
   ["tennis", "sport"],
 ]);
 const classifier = makeNameClassifier(typeByName);
+
+describe("resolveFormSessionDuration", () => {
+  it("derives cardio-only totals from visible components, not stale standalone state", () => {
+    expect(
+      resolveFormSessionDuration({
+        clockDuration: null,
+        standaloneDuration: 30,
+        componentDuration: 45,
+        hasStrength: false,
+      })
+    ).toBe(45);
+  });
+
+  it("keeps the standalone total for strength/mixed sessions and lets clocks win", () => {
+    expect(
+      resolveFormSessionDuration({
+        clockDuration: null,
+        standaloneDuration: 75,
+        componentDuration: 20,
+        hasStrength: true,
+      })
+    ).toBe(75);
+    expect(
+      resolveFormSessionDuration({
+        clockDuration: 60,
+        standaloneDuration: 75,
+        componentDuration: 20,
+        hasStrength: true,
+      })
+    ).toBe(60);
+  });
+});
 
 // A part builder over the model's blankPart, so new fields can't be missed.
 function part(o: Partial<PartEntry>): PartEntry {
@@ -173,7 +206,9 @@ describe("analyzeActivityForm — save gating & blockers", () => {
   });
   it("an invalid date blocks even a complete part", () => {
     const a = session([strengthPart("Dumbbell Curl")], { date: "Friday" });
+    expect(a.dateError).toBe(true);
     expect(a.canSave).toBe(false);
+    expect(a.saveBlocker).toBe("Enter a valid date in YYYY-MM-DD format.");
   });
   it("canAddPart is false while the last part is unfinished", () => {
     const a = session([part({ name: "Dumbbell Curl", sets: [set({})] })]);

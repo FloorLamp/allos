@@ -11,6 +11,7 @@ import {
   getJournalPage,
   getSetsForActivities,
   getRoutePolylinesForActivities,
+  getActiveCaloriesForActivities,
   getWeights,
 } from "./queries";
 import { getEquipment } from "./equipment";
@@ -50,6 +51,10 @@ export function buildJournalFeedPage(
   // activities with a captured route appear in the map; consumed server-side to
   // build the card — only the (small) polyline for a rendered card crosses the wire.
   const routes = getRoutePolylinesForActivities(profileId, activityIds);
+  const activeCalories = getActiveCaloriesForActivities(
+    profileId,
+    page.activities
+  );
   // Resolve per-set / per-activity equipment_id -> implement name. includeRetired: a
   // retired implement must still label the historical sets it was logged against
   // (issue #341). The equipment list is small and profile-owned, so re-reading it per
@@ -75,6 +80,7 @@ export function buildJournalFeedPage(
     today: todayFn(profileId),
     yesterday: yesterdayFn(profileId),
     routes,
+    activeCalories,
   });
 
   return { groups, nextBefore: page.nextBefore };

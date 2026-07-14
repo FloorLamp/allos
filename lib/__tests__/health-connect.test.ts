@@ -166,6 +166,57 @@ describe("parseHealthConnectPayload — body metrics", () => {
 });
 
 describe("parseHealthConnectPayload — metric samples", () => {
+  it("links active energy to the exercise's stable provider identity", () => {
+    const out = parse({
+      exercise: [
+        {
+          type: "running",
+          start_time: "2026-06-15T07:00:00Z",
+          end_time: "2026-06-15T08:00:00Z",
+        },
+      ],
+      active_calories: [
+        {
+          start_time: "2026-06-15T07:00:00Z",
+          end_time: "2026-06-15T08:00:00Z",
+          calories: 0,
+        },
+      ],
+    });
+    expect(out.samples).toContainEqual(
+      expect.objectContaining({
+        metric: "active_kcal",
+        value: 0,
+        activity_external_id: "health-connect:2026-06-15T07:00:00Z",
+      })
+    );
+  });
+
+  it("does not link an energy interval that only shares the exercise start", () => {
+    const out = parse({
+      exercise: [
+        {
+          type: "running",
+          start_time: "2026-06-15T07:00:00Z",
+          end_time: "2026-06-15T08:00:00Z",
+        },
+      ],
+      active_calories: [
+        {
+          start_time: "2026-06-15T07:00:00Z",
+          end_time: "2026-06-15T07:30:00Z",
+          calories: 240,
+        },
+      ],
+    });
+    expect(out.samples).toContainEqual(
+      expect.objectContaining({
+        metric: "active_kcal",
+        activity_external_id: null,
+      })
+    );
+  });
+
   it("converts interval distance from meters to km", () => {
     const out = parse({
       steps: [

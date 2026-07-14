@@ -44,7 +44,7 @@ export default function ActivityOverlay({
       {/* Bottom padding is plain p-4: the form's sticky footer re-spans it and
           carries the safe-area inset itself. */}
       <div
-        className="min-h-full w-full bg-white p-4 pt-[max(1rem,env(safe-area-inset-top))] sm:min-h-0 sm:max-w-lg sm:rounded-xl sm:p-6 sm:shadow-xl dark:bg-ink-900"
+        className="min-h-full w-full bg-white p-4 pt-[max(1rem,env(safe-area-inset-top))] sm:min-h-0 sm:max-w-lg sm:rounded-xl sm:p-6 sm:pt-0 sm:shadow-xl dark:bg-ink-900"
         onClick={(e) => e.stopPropagation()}
       >
         <ActivityForm

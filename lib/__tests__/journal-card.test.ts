@@ -8,6 +8,8 @@ import { describe, it, expect } from "vitest";
 import {
   buildJournalCards,
   activityMetrics,
+  activityHeartRateText,
+  activityTimeText,
   appendDayGroups,
   reconcileJournalPaging,
 } from "@/lib/journal-card";
@@ -82,6 +84,8 @@ const build = (
     units: UnitPrefs;
     today: string;
     yesterday: string;
+    activeCalories: Map<number, number>;
+    routes: Map<number, string>;
   }> = {}
 ) =>
   buildJournalCards({
@@ -92,6 +96,8 @@ const build = (
     units: opts.units ?? KG,
     today: opts.today ?? "2026-06-11",
     yesterday: opts.yesterday ?? "2026-06-10",
+    activeCalories: opts.activeCalories,
+    routes: opts.routes,
   });
 
 describe("buildJournalCards — day grouping", () => {
@@ -127,6 +133,28 @@ describe("buildJournalCards — day grouping", () => {
       "Second",
       "First",
     ]);
+  });
+});
+
+describe("activityTimeText", () => {
+  it("formats stored clock ranges and start-only activities", () => {
+    expect(activityTimeText("07:15", "08:17")).toBe("07:15–08:17");
+    expect(activityTimeText("18:30", null)).toBe("18:30");
+  });
+
+  it("accepts ISO-like imported values and requires a start", () => {
+    expect(activityTimeText("2026-07-13T07:15:00", "2026-07-13T08:17:00")).toBe(
+      "07:15–08:17"
+    );
+    expect(activityTimeText(null, "08:17")).toBeNull();
+  });
+});
+
+describe("activityHeartRateText", () => {
+  it("formats average/maximum heart rate and requires an average", () => {
+    expect(activityHeartRateText(148, 171)).toBe("♥ 148/171 bpm");
+    expect(activityHeartRateText(148, null)).toBe("♥ 148 bpm");
+    expect(activityHeartRateText(null, 171)).toBeNull();
   });
 });
 
@@ -275,7 +303,8 @@ describe("buildJournalCards — metrics + provenance", () => {
     });
     const [group] = build([a], []);
     const card = group.cards[0];
-    expect(card.metrics).toContain("♥ 150/172 bpm");
+    expect(card.heartRateText).toBe("♥ 150/172 bpm");
+    expect(card.metrics).not.toContain("♥ 150/172 bpm");
     expect(card.provenance.label).toBe("Strava · edited");
   });
 
@@ -290,6 +319,49 @@ describe("buildJournalCards — metrics + provenance", () => {
       createdAt: "2026-06-10 08:00:00",
       updatedAt: "2026-06-10 09:00:00",
     });
+  });
+
+  it("keeps estimated calories in the primary summary, not rich metrics", () => {
+    const a = activity({ id: 1, source: null, est_calories: 320 });
+    const [group] = build([a], []);
+    const card = group.cards[0];
+    expect(card.calorieText).toBe("≈ 320 kcal");
+    expect(card.metrics).not.toContain("≈ 320 kcal");
+  });
+
+  it("prefers measured energy and estimates imported activities only when it is missing", () => {
+    const imported = activity({
+      id: 1,
+      type: "cardio",
+      title: "Running",
+      source: "health-connect",
+      duration_min: 30,
+    });
+    const weights = [{ date: imported.date, weightKg: 80 }];
+    const measured = build([imported], [], {
+      weights,
+      activeCalories: new Map([[imported.id, 372]]),
+    })[0].cards[0];
+    expect(measured.calorieText).toBe("372 kcal");
+    expect(measured.activity.calorie_kcal).toBe(372);
+    expect(measured.activity.calorie_estimated).toBe(false);
+
+    const estimated = build([imported], [], { weights })[0].cards[0];
+    expect(estimated.calorieText).toMatch(/^≈ .* kcal$/);
+    expect(estimated.activity.calorie_kcal).toBeGreaterThan(0);
+    expect(estimated.activity.calorie_estimated).toBe(true);
+
+    const impossible = build([imported], [])[0].cards[0];
+    expect(impossible.calorieText).toBeNull();
+  });
+
+  it("carries the same route into the card and editor detail data", () => {
+    const a = activity({ id: 9, source: "strava" });
+    const card = build([a], [], {
+      routes: new Map([[a.id, "encoded-route"]]),
+    })[0].cards[0];
+    expect(card.routePolyline).toBe("encoded-route");
+    expect(card.activity.route_polyline).toBe("encoded-route");
   });
 });
 
@@ -309,7 +381,6 @@ describe("activityMetrics", () => {
     });
     expect(activityMetrics(a, "km")).toEqual([
       "Long run",
-      "♥ 150 bpm",
       "↑ 120 m",
       "200 W (210 NP)",
       "85 rpm",

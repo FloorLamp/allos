@@ -6,6 +6,8 @@ import {
   nearestBodyweightKg,
   estimateActivityKcal,
   activityEstimateKcal,
+  activityCalorieDisplay,
+  formatActivityCalories,
   totalEstimatedKcal,
   isEstimable,
   formatEstimatedKcal,
@@ -175,6 +177,35 @@ describe("estimateActivityKcal", () => {
   it("returns null with no bodyweight (missing-bodyweight fallback)", () => {
     expect(estimateActivityKcal(cardioActivity(), null)).toBeNull();
   });
+
+  it("assigns a mixed session's unallocated time to one strength block", () => {
+    const mixed = cardioActivity({
+      type: "strength",
+      title: "Lifting and running",
+      duration_min: 75,
+      components: JSON.stringify([
+        {
+          name: "Barbell Bench Press",
+          type: "strength",
+          distance_km: null,
+          duration_min: null,
+        },
+        {
+          name: "Running",
+          type: "cardio",
+          distance_km: 3,
+          duration_min: 20,
+        },
+      ]),
+    });
+    const run = estimateKcal(metsForActivity("Running", "cardio"), 80, 20)!;
+    const strength = estimateKcal(
+      metsForActivity("Barbell Bench Press", "strength"),
+      80,
+      55
+    )!;
+    expect(estimateActivityKcal(mixed, 80)).toBe(run + strength);
+  });
   it("returns null when there is no usable duration anywhere", () => {
     const noDur = cardioActivity({
       duration_min: null,
@@ -239,5 +270,25 @@ describe("formatEstimatedKcal", () => {
   it("returns null for a null/zero value (no chip)", () => {
     expect(formatEstimatedKcal(null)).toBeNull();
     expect(formatEstimatedKcal(0)).toBeNull();
+  });
+});
+
+describe("activityCalorieDisplay", () => {
+  it("prefers a measurement and labels only the fallback as estimated", () => {
+    const imported = { ...cardioActivity(), source: "health-connect" };
+    expect(activityCalorieDisplay(imported, 80, 372)).toEqual({
+      kcal: 372,
+      estimated: false,
+    });
+    expect(activityCalorieDisplay(imported, 80, 0)).toEqual({
+      kcal: 0,
+      estimated: false,
+    });
+    const fallback = activityCalorieDisplay(imported, 80, null);
+    expect(fallback).toEqual({ kcal: 784, estimated: true });
+    expect(formatActivityCalories(fallback)).toBe("≈ 784 kcal");
+    expect(formatActivityCalories({ kcal: 372, estimated: false })).toBe(
+      "372 kcal"
+    );
   });
 });

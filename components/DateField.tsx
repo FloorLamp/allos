@@ -49,6 +49,7 @@ export default function DateField({
   showCountdown = false,
   min,
   max,
+  inputClassName = "",
 }: {
   name?: string;
   value?: string;
@@ -65,6 +66,7 @@ export default function DateField({
   // native <input type="date"> min/max attributes.
   min?: string;
   max?: string;
+  inputClassName?: string;
 }) {
   const controlled = value !== undefined;
   const [inner, setInner] = useState(defaultValue);
@@ -218,7 +220,7 @@ export default function DateField({
         autoComplete="off"
         onChange={(e) => setVal(e.target.value)}
         onFocus={() => setOpen(true)}
-        className="input pr-10"
+        className={`input pr-10 ${inputClassName}`}
       />
       {/* The visible field can show a friendly date, so the ISO value is
           submitted via a hidden input for uncontrolled (name) usage. */}
