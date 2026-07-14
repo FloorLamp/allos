@@ -117,6 +117,11 @@ export interface UpcomingItem {
   // Explicit due-text override for status-driven signals ("Overdue", "2/3 this
   // week"); date-driven items fall back to a computed countdown label.
   dueText?: string;
+  // Optional primary navigation CTA for status-driven items whose next step is
+  // clearer than a generic title link (for example Reconnect / Review result).
+  // This is presentation data carried on the shared model so Dashboard and
+  // Upcoming never have to infer different actions from the same domain.
+  actionLabel?: string;
   // Optional within-band ordering key (issue #297). Generic — any domain that
   // wants an intra-day order beyond date/domain/title supplies one. Dose items
   // set it from the shared dose-day sort key (bucket → priority → stack → name),

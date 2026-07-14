@@ -19,14 +19,17 @@ export default function CoachingObservations({
   findings: Finding[];
 }) {
   const n = findings.length;
+  const shown = findings.slice(0, 2);
   return (
     <FindingsList
-      findings={findings}
+      findings={shown}
       dismissAction={dismissCoachingObservation}
       heading="Coaching observations"
-      subtitle={`${n} pattern${
-        n === 1 ? "" : "s"
-      } worth a look across training, body metrics, goals, and supplements — calm FYIs, not alerts. Open any to see it on its own tab.`}
+      subtitle={
+        n > shown.length
+          ? `${shown.length} of ${n} patterns worth reviewing. The rest stay in their related sections.`
+          : `${n} pattern${n === 1 ? "" : "s"} worth reviewing.`
+      }
       icon={
         <IconBinoculars
           className="h-4 w-4 shrink-0 text-slate-400"

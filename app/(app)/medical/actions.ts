@@ -32,7 +32,7 @@ function revalidateMedical() {
   revalidatePath("/biomarkers");
   revalidatePath("/biomarkers/view", "page");
   revalidatePath("/immunizations");
-  // The dashboard renders StarredBiomarkers, so a record mutation must refresh
+  // Biomarkers and Trends render StarredBiomarkers, so a record mutation must refresh
   // it too (a new/edited/deleted reading changes a pinned biomarker's tile).
   revalidatePath("/");
 }

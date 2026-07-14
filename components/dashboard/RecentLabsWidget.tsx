@@ -1,38 +1,24 @@
 import Link from "next/link";
 import WidgetHeader from "@/components/dashboard/WidgetHeader";
-import { flagLabel, flagTone } from "@/lib/reference-range";
-import type { MedicalFlag } from "@/lib/types";
+import { MedicalValue } from "@/components/ui";
 import type { RecentLabRow } from "@/lib/recent-labs";
+import { formatRelativeDate } from "@/lib/format-date";
 
 // One latest lab/biomarker reading, flattened for display by the page. The shape
 // and its selection policy live in lib/recent-labs (issue #313); re-exported here
 // so existing import sites (the dashboard page) stay unchanged.
 export type { RecentLabRow };
 
-const BADGE_BAD =
-  "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300";
-const BADGE_WARN =
-  "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300";
-const BADGE_DEFAULT =
-  "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300";
-
-// Map the shared flag tone (issue #306) onto this widget's badge classes:
-// out-of-range → "bad" (rose), non-optimal → "warn" (amber), else neutral.
-function flagBadge(flag: MedicalFlag): string {
-  switch (flagTone(flag)) {
-    case "bad":
-      return BADGE_BAD;
-    case "warn":
-      return BADGE_WARN;
-    default:
-      return BADGE_DEFAULT;
-  }
-}
-
 // Recent labs widget (issue #171 — medical presence). The latest reading per marker
 // from the newest panels, flagged markers surfaced first so an out-of-range result
 // is the headline rather than buried. Read-only; the analysis lives in Trends.
-export default function RecentLabsWidget({ rows }: { rows: RecentLabRow[] }) {
+export default function RecentLabsWidget({
+  rows,
+  today,
+}: {
+  rows: RecentLabRow[];
+  today: string;
+}) {
   return (
     <div className="card">
       <WidgetHeader
@@ -47,7 +33,6 @@ export default function RecentLabsWidget({ rows }: { rows: RecentLabRow[] }) {
       ) : (
         <ul className="space-y-1.5">
           {rows.map((r) => {
-            const flagged = r.flag != null && r.flag !== "normal";
             return (
               <li key={r.name} className="flex items-center gap-3">
                 <Link
@@ -57,16 +42,11 @@ export default function RecentLabsWidget({ rows }: { rows: RecentLabRow[] }) {
                   {r.name}
                 </Link>
                 <span className="shrink-0 whitespace-nowrap text-sm text-slate-600 dark:text-slate-300">
-                  {r.value ?? "—"}
-                  {r.unit ? ` ${r.unit}` : ""}
+                  <MedicalValue value={r.value} unit={r.unit} flag={r.flag} />
                 </span>
-                {flagged && (
-                  <span
-                    className={`shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 text-[0.65rem] font-semibold ${flagBadge(r.flag!)}`}
-                  >
-                    {flagLabel(r.flag!)}
-                  </span>
-                )}
+                <span className="hidden w-16 shrink-0 text-right text-xs text-slate-400 dark:text-slate-500 sm:block">
+                  {formatRelativeDate(r.date, today)}
+                </span>
               </li>
             );
           })}

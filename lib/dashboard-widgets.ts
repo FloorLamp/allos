@@ -51,12 +51,11 @@ export interface DashboardLayout {
 // The catalog. Array order is the default display order; new widgets appended to
 // the end appear automatically for existing profiles (see resolveWidgetList).
 //
-// Order posture (issue #171): the medical differentiators (recent labs, next
-// appointment, care plan) lead, the coaching next-workout recommendation is
-// promoted near the top ("what should I do today" is core content — the promoted
-// slot's suggestion quality is tightened separately in #185), and the vanity
-// defaults (quick stats, streak) are demoted lower. Defaults are the product;
-// customization is the valve.
+// The registry now contains only distinct overview questions. Signals already
+// represented by Needs attention / Upcoming (low supply, immunizations, care plan),
+// or by a richer sibling widget (quick stats, bio age, recent activity, streak),
+// do not get a second dashboard surface. Legacy layout ids are filtered safely by
+// resolveWidgetList.
 export const DASHBOARD_WIDGETS: WidgetDef[] = [
   {
     id: "needs-attention",
@@ -75,7 +74,7 @@ export const DASHBOARD_WIDGETS: WidgetDef[] = [
       "Your latest lab panel — flagged and recently-changed markers.",
     defaultOn: true,
     fitness: false,
-    span: "two-thirds",
+    span: "half",
     dataAware: true,
   },
   {
@@ -84,17 +83,7 @@ export const DASHBOARD_WIDGETS: WidgetDef[] = [
     description: "Your soonest scheduled medical visit.",
     defaultOn: true,
     fitness: false,
-    span: "third",
-    dataAware: true,
-  },
-  {
-    id: "care-plan-due",
-    label: "Care plan",
-    description: "Provider-ordered care items coming due.",
-    defaultOn: true,
-    fitness: false,
     span: "half",
-    dataAware: true,
   },
   {
     id: "coaching",
@@ -103,7 +92,7 @@ export const DASHBOARD_WIDGETS: WidgetDef[] = [
       "One focused suggestion — train or rest — from your routine and recovery.",
     defaultOn: true,
     fitness: true,
-    span: "third",
+    span: "half",
   },
   {
     id: "coaching-observations",
@@ -130,28 +119,7 @@ export const DASHBOARD_WIDGETS: WidgetDef[] = [
     // show sleep/biomarker pillars.
     defaultOn: true,
     fitness: false,
-    span: "full",
-    dataAware: true,
-  },
-  {
-    id: "starred-biomarkers",
-    label: "Starred biomarkers",
-    description: "Your pinned biomarkers with latest values and trends.",
-    defaultOn: true,
-    fitness: false,
-    span: "full",
-  },
-  {
-    id: "bio-age",
-    label: "Biological age",
-    description:
-      "Your PhenoAge biological-age estimate and its gap to your calendar age.",
-    // Off by default (issue #171 growth-valve): a specialized medical signal that
-    // only lands for adults with a complete nine-analyte panel — opt in from
-    // Customize. Data-aware so an incomplete panel shows an import CTA, not a blank.
-    defaultOn: false,
-    fitness: false,
-    span: "third",
+    span: "half",
     dataAware: true,
   },
   {
@@ -160,74 +128,17 @@ export const DASHBOARD_WIDGETS: WidgetDef[] = [
     description: "Your recent body-weight chart.",
     defaultOn: true,
     fitness: false,
-    span: "two-thirds",
-    dataAware: true,
-  },
-  {
-    id: "active-goals",
-    label: "Active goals",
-    description: "Progress toward your active goals.",
-    defaultOn: true,
-    fitness: true,
-    span: "half",
-  },
-  {
-    id: "weekly-routine",
-    label: "Weekly routine",
-    description: "This week's frequency targets and how you're tracking.",
-    defaultOn: true,
-    fitness: true,
-    span: "full",
-  },
-  {
-    id: "recent-activity",
-    label: "Recent activity",
-    description: "Your most recently logged workouts.",
-    defaultOn: true,
-    fitness: true,
     span: "half",
     dataAware: true,
   },
   {
-    id: "immunizations",
-    label: "Immunizations",
-    description: "Next-due and overdue vaccines against the schedule.",
-    defaultOn: true,
-    fitness: false,
-    span: "full",
-  },
-  {
-    id: "todays-insight",
-    label: "Today's insight",
-    description: "The AI-generated summary for today.",
-    defaultOn: true,
-    fitness: true,
-    span: "third",
-  },
-  {
-    id: "quick-stats",
-    label: "Quick stats",
+    id: "goals-habits",
+    label: "Goals and habits",
     description:
-      "Activities, weight, active goals, and supplements at a glance.",
+      "Progress toward active goals and this week's recurring targets in one place.",
     defaultOn: true,
-    fitness: false,
-    span: "full",
-  },
-  {
-    id: "streak",
-    label: "Activity streak",
-    description: "Your current consecutive-day activity streak.",
-    defaultOn: false,
     fitness: true,
-    span: "third",
-  },
-  {
-    id: "low-supply",
-    label: "Low supply",
-    description: "Supplements and medications running low on refills.",
-    defaultOn: false,
-    fitness: false,
-    span: "half",
+    span: "full",
   },
   {
     id: "weekly-recap",

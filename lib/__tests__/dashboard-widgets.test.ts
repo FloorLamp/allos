@@ -31,54 +31,77 @@ describe("resolveWidgets / resolveWidgetList", () => {
 
   it("stored order with a removed/unknown id → that id is dropped, rest preserved", () => {
     const layout: DashboardLayout = {
-      order: ["weight-trend", "does-not-exist", "quick-stats"],
+      order: ["weight-trend", "does-not-exist", "recent-labs"],
       hidden: [],
     };
     const visible = resolveWidgets(layout, false);
     expect(ids(visible)).not.toContain("does-not-exist");
     // stored order honored for the ids it lists
     expect(visible[0].id).toBe("weight-trend");
-    expect(visible[1].id).toBe("quick-stats");
+    expect(visible[1].id).toBe("recent-labs");
+  });
+
+  it("drops every retired dashboard widget from legacy saved layouts", () => {
+    const retired = [
+      "quick-stats",
+      "care-plan-due",
+      "starred-biomarkers",
+      "bio-age",
+      "recent-activity",
+      "immunizations",
+      "todays-insight",
+      "streak",
+      "low-supply",
+      "active-goals",
+      "weekly-routine",
+    ];
+    const list = resolveWidgetList(
+      { order: [...retired, "weight-trend"], hidden: retired },
+      false
+    );
+    expect(list.map((w) => w.def.id)).not.toEqual(
+      expect.arrayContaining(retired)
+    );
+    expect(list.map((w) => w.def.id)).toContain("goals-habits");
   });
 
   it("registry widget missing from stored order → appended honoring defaultOn", () => {
     // A layout that only mentions one widget; everything else is "new" to it.
-    const layout: DashboardLayout = { order: ["quick-stats"], hidden: [] };
+    const layout: DashboardLayout = { order: ["weight-trend"], hidden: [] };
     const list = resolveWidgetList(layout, false);
-    // quick-stats leads, appended ids follow in registry order
-    expect(list[0].def.id).toBe("quick-stats");
+    expect(list[0].def.id).toBe("weight-trend");
     const appended = list.slice(1).map((w) => w.def.id);
     const expectedAppended = customizable
       .map((w) => w.id)
-      .filter((id) => id !== "quick-stats");
+      .filter((id) => id !== "weight-trend");
     expect(appended).toEqual(expectedAppended);
     // an off-by-default widget the layout has never seen stays hidden
-    const lowSupply = list.find((w) => w.def.id === "low-supply")!;
-    expect(lowSupply.visible).toBe(false);
+    const recap = list.find((w) => w.def.id === "weekly-recap")!;
+    expect(recap.visible).toBe(false);
     // an on-by-default widget the layout has never seen shows
-    const starred = list.find((w) => w.def.id === "starred-biomarkers")!;
-    expect(starred.visible).toBe(true);
+    const goals = list.find((w) => w.def.id === "goals-habits")!;
+    expect(goals.visible).toBe(true);
   });
 
   it("hidden id → not visible but still present in the full list", () => {
     const layout: DashboardLayout = {
       order: customizable.map((w) => w.id),
-      hidden: ["quick-stats"],
+      hidden: ["recent-labs"],
     };
     const visible = resolveWidgets(layout, false);
-    expect(ids(visible)).not.toContain("quick-stats");
+    expect(ids(visible)).not.toContain("recent-labs");
     const list = resolveWidgetList(layout, false);
-    const qs = list.find((w) => w.def.id === "quick-stats")!;
-    expect(qs.visible).toBe(false);
+    const labs = list.find((w) => w.def.id === "recent-labs")!;
+    expect(labs.visible).toBe(false);
   });
 
   it("explicitly enabling an off-by-default widget (in order, not hidden) makes it visible", () => {
     const layout: DashboardLayout = {
-      order: ["low-supply", "quick-stats"],
+      order: ["weekly-recap", "recent-labs"],
       hidden: [],
     };
     const visible = resolveWidgets(layout, false);
-    expect(ids(visible)).toContain("low-supply");
+    expect(ids(visible)).toContain("weekly-recap");
   });
 
   it("restricted → no fitness widget appears in either output", () => {
@@ -91,31 +114,31 @@ describe("resolveWidgets / resolveWidgetList", () => {
       expect(ids(visible)).not.toContain(id);
     }
     // non-fitness default widgets survive
-    expect(ids(visible)).toContain("quick-stats");
+    expect(ids(visible)).toContain("recent-labs");
     expect(ids(visible)).toContain("weight-trend");
   });
 
   it("restricted → a stored order that references a fitness widget still drops it, keeps the rest ordered", () => {
     const layout: DashboardLayout = {
-      order: ["streak", "weight-trend", "recent-activity", "quick-stats"],
+      order: ["goals-habits", "weight-trend", "coaching", "recent-labs"],
       hidden: [],
     };
     const visible = resolveWidgets(layout, true);
-    expect(ids(visible)).not.toContain("streak");
-    expect(ids(visible)).not.toContain("recent-activity");
+    expect(ids(visible)).not.toContain("goals-habits");
+    expect(ids(visible)).not.toContain("coaching");
     // relative order of the surviving non-fitness ids preserved
     expect(ids(visible).indexOf("weight-trend")).toBeLessThan(
-      ids(visible).indexOf("quick-stats")
+      ids(visible).indexOf("recent-labs")
     );
   });
 
   it("dedupes a stored order that repeats an id", () => {
     const layout: DashboardLayout = {
-      order: ["quick-stats", "quick-stats", "weight-trend"],
+      order: ["recent-labs", "recent-labs", "weight-trend"],
       hidden: [],
     };
     const list = resolveWidgetList(layout, false);
-    const occurrences = list.filter((w) => w.def.id === "quick-stats").length;
+    const occurrences = list.filter((w) => w.def.id === "recent-labs").length;
     expect(occurrences).toBe(1);
   });
 });
@@ -131,7 +154,7 @@ describe("pinned widgets (the hero)", () => {
     // Even a layout that explicitly names it (a tampered/legacy blob) can't pull
     // the pin into the grid — it's not eligible, so it's dropped.
     const layout: DashboardLayout = {
-      order: ["needs-attention", "quick-stats"],
+      order: ["needs-attention", "recent-labs"],
       hidden: [],
     };
     for (const restricted of [false, true]) {
@@ -175,14 +198,9 @@ describe("data-aware empty resolution", () => {
   });
 
   it("a non-data-aware widget is never marked empty, even if its id is in emptyIds", () => {
-    // starred-biomarkers is not dataAware; passing it in emptyIds must be ignored.
-    const list = resolveWidgetList(
-      null,
-      false,
-      new Set(["starred-biomarkers"])
-    );
-    const starred = list.find((w) => w.def.id === "starred-biomarkers")!;
-    expect(starred.def.dataAware).toBeFalsy();
-    expect(starred.empty).toBe(false);
+    const list = resolveWidgetList(null, false, new Set(["coaching"]));
+    const coaching = list.find((w) => w.def.id === "coaching")!;
+    expect(coaching.def.dataAware).toBeFalsy();
+    expect(coaching.empty).toBe(false);
   });
 });

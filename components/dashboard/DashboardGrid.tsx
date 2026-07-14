@@ -209,19 +209,23 @@ export default function DashboardGrid({
       .filter((w): w is GridWidget => !!w);
     return (
       <div>
-        <div className="mb-4 flex justify-end">
+        <div className="mb-3 flex justify-end">
           <button
             type="button"
             onClick={enterEdit}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50 dark:border-ink-700 dark:text-slate-300 dark:hover:bg-ink-900"
+            className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-ink-900 dark:hover:text-slate-300"
           >
             <IconAdjustmentsHorizontal className="h-4 w-4" />
-            Customize
+            Edit dashboard
           </button>
         </div>
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-6">
           {visible.map((w) => (
-            <div key={w.id} className={SPAN_CLASS[w.span]}>
+            <div
+              key={w.id}
+              className={SPAN_CLASS[w.span]}
+              data-testid={`dashboard-widget-${w.id}`}
+            >
               {w.node}
             </div>
           ))}

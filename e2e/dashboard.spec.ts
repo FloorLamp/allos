@@ -30,6 +30,83 @@ test("the Needs attention hero renders with the seeded profile's items", async (
   ).toBeVisible();
 });
 
+test("the streamlined grid combines goals and habits and caps observations", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const main = page.getByRole("main");
+
+  const goalsHabits = main.getByTestId("goals-habits");
+  await expect(goalsHabits).toBeVisible();
+  await expect(goalsHabits.getByText("Active goals")).toBeVisible();
+  await expect(goalsHabits.getByText("Still to do this week")).toBeVisible();
+
+  const observations = main.getByTestId("coaching-observations");
+  if (await observations.isVisible()) {
+    expect(
+      await observations.getByTestId("coaching-observations-item").count()
+    ).toBeLessThanOrEqual(2);
+  }
+});
+
+test("recent labs uses a balanced span and directional result carets", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const recentLabs = page
+    .getByRole("main")
+    .getByTestId("dashboard-widget-recent-labs");
+
+  await expect(recentLabs).toHaveClass(/lg:col-span-3/);
+  await expect(
+    recentLabs.locator(
+      '[aria-label="above target"], [aria-label="below target"]'
+    )
+  ).not.toHaveCount(0);
+  await expect(
+    page.getByRole("main").getByTestId("dashboard-widget-healthspan-pillars")
+  ).toHaveClass(/lg:col-span-3/);
+  await expect(
+    page.getByRole("main").getByTestId("dashboard-widget-weight-trend")
+  ).toHaveClass(/lg:col-span-3/);
+});
+
+test("attention review signals expose an explicit primary action", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const hero = page.getByRole("main").getByTestId("needs-attention");
+
+  // The seeded newly-flagged result is the review-band representative under the
+  // total cap. Its next step is explicit rather than inferred from the title.
+  await expect(
+    hero.getByRole("link", { name: "Review result", exact: true })
+  ).toBeVisible();
+});
+
+test("attention rows move status and actions below content on mobile", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  const row = page
+    .getByRole("main")
+    .getByTestId("needs-attention")
+    .locator('[data-testid^="attention-item-"]')
+    .first();
+  const title = row.getByRole("link").first();
+  const actions = row.getByTestId("attention-item-actions");
+  await expect(actions).toBeVisible();
+
+  const [titleBox, actionsBox] = await Promise.all([
+    title.boundingBox(),
+    actions.boundingBox(),
+  ]);
+  expect(titleBox).not.toBeNull();
+  expect(actionsBox).not.toBeNull();
+  expect(actionsBox!.y).toBeGreaterThan(titleBox!.y);
+});
+
 test("the card is a strict act-now subset: this-week + later scheduled items live only on Upcoming (issue #524)", async ({
   page,
 }) => {
@@ -100,7 +177,7 @@ test("the household strip shows the caregiver's other profiles", async ({
   await expect(strip.getByTestId("household-chip-2")).toBeVisible();
 });
 
-test("a data-less profile shows an onboarding empty-state CTA", async ({
+test("a profile without a scheduled visit hides Next appointment", async ({
   browser,
 }) => {
   // Fresh, cookie-less context + its own admin session, so switching the active
@@ -121,8 +198,8 @@ test("a data-less profile shows an onboarding empty-state CTA", async ({
     // Switch to profile 2 — "Riley (child)" (growth data only, no labs or
     // appointments; the seed-events "Sam Rivers" insert is a no-op because
     // scripts/seed.ts's Riley already owns id 2) — via its household chip. The
-    // data-aware Recent-labs / Next-appointment widgets then render their
-    // onboarding CTA instead of a blank card. Wait on the user-menu trigger
+    // Next appointment widget then stays out of the grid instead of rendering a
+    // blank card. Wait on the user-menu trigger
     // naming the new profile — the definitive switch signal (we're already on
     // "/", so a URL wait could resolve before the action round-trips).
     await page.goto("/");
@@ -132,8 +209,8 @@ test("a data-less profile shows an onboarding empty-state CTA", async ({
     );
 
     await expect(
-      page.getByRole("main").getByTestId("widget-empty").first()
-    ).toBeVisible();
+      page.getByRole("main").getByTestId("dashboard-widget-next-appointment")
+    ).toHaveCount(0);
   } finally {
     await ctx.close();
   }
