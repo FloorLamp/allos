@@ -219,20 +219,28 @@ test("journal cards prioritize a summary and progressively disclose details", as
   );
   await expect(notes).not.toHaveClass(/line-clamp-2/);
 
-  // Desktop places the compact route beside the metric block.
+  // Desktop places the compact route beside the complete supporting-detail block,
+  // so the activity row uses the space beneath short metric text instead of leaving
+  // a map-height empty pocket.
   const desktopMetrics = await metrics.boundingBox();
   const desktopRoute = await ride.getByTestId("route-map").boundingBox();
+  const desktopParts = await ride.getByTestId("activity-parts").boundingBox();
   expect(desktopMetrics).not.toBeNull();
   expect(desktopRoute).not.toBeNull();
+  expect(desktopParts).not.toBeNull();
   expect(desktopRoute!.x).toBeGreaterThan(desktopMetrics!.x);
+  expect(desktopParts!.y).toBeLessThan(desktopRoute!.y + desktopRoute!.height);
 
-  // On a phone the same shared route surface becomes a shallow full-width strip.
+  // On a phone the same shared route surface follows all details as a shallow,
+  // full-width strip.
   await page.setViewportSize({ width: 390, height: 844 });
   const mobileMetrics = await metrics.boundingBox();
   const mobileRoute = await ride.getByTestId("route-map").boundingBox();
+  const mobileParts = await ride.getByTestId("activity-parts").boundingBox();
   expect(mobileMetrics).not.toBeNull();
   expect(mobileRoute).not.toBeNull();
-  expect(mobileRoute!.y).toBeGreaterThan(mobileMetrics!.y);
+  expect(mobileParts).not.toBeNull();
+  expect(mobileRoute!.y).toBeGreaterThan(mobileParts!.y + mobileParts!.height);
   expect(mobileRoute!.width).toBeGreaterThan(mobileRoute!.height * 2);
 });
 
