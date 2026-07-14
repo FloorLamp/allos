@@ -189,8 +189,12 @@ export const LOINC_TO_CANONICAL: Record<string, string> = {
   "60474-4": "Reticulocytes, Absolute", // Reticulocytes [#/volume] in Blood (10^3/uL)
 
   // ── Toxic / trace metals ────────────────────────────────────────────────────
-  // Blood lead. Canonical "Lead" is ug/dL (venous/capillary blood) — unit-matched.
+  // Blood lead. Canonical "Lead" is ug/dL; venous (confirmatory) and capillary
+  // (pediatric screening) specimens share the unit and interpretation threshold, so
+  // both LOINCs route to the one entry (mcg/dL == ug/dL). Kept as distinct readings
+  // by LOINC, grouped under Lead — like the eGFR variants above.
   "77307-7": "Lead", // Lead [Mass/volume] in Venous blood (ug/dL)
+  "10368-9": "Lead", // Lead [Mass/volume] in Capillary blood (mcg/dL)
 };
 
 // The canonical biomarker name for a LOINC code, or null when unmapped.
@@ -256,6 +260,7 @@ export function isUnmappedLabLoinc(loinc: string | null | undefined): boolean {
     loinc !== "" &&
     !isVitalLoinc(loinc) &&
     !isNonAnalyteLoinc(loinc) &&
+    !isDerivedPercentileLoinc(loinc) &&
     canonicalBiomarkerForLoinc(loinc) == null
   );
 }
@@ -280,6 +285,28 @@ const NON_ANALYTE_LOINCS = new Set([
   "106201-7", // Cytology accession #
   "19066-0", // Status Information
 ]);
+
+// Derived anthropometric PERCENTILES that pediatric CCDs report alongside the raw
+// measurement — a BMI / weight-for-length / head-circumference percentile "per age
+// and sex". They are computed values, not measurements, and the app derives its own
+// growth percentiles from the raw height/weight/head-circ readings, so importing the
+// source's percentile as a lab record just yields a range-less, ungrouped row (the
+// same reasoning that already keeps the head-circ percentile 8289-1 out of
+// VITAL_LOINCS). The observation mapper drops these, and they're excluded from the
+// unmapped-lab report. Keyed by LOINC — the percentile codes are stable.
+const DERIVED_PERCENTILE_LOINCS = new Set([
+  "59576-9", // Body mass index (BMI) [Percentile] Per age and sex
+  "77606-2", // Weight-for-length [Percentile] Per age and sex
+  "8289-1", // Head Occipital-frontal circumference [Percentile] Per age and sex
+]);
+
+// Whether a LOINC is a derived anthropometric percentile that should not import as a
+// lab record (#684 follow-up).
+export function isDerivedPercentileLoinc(
+  loinc: string | null | undefined
+): boolean {
+  return loinc != null && DERIVED_PERCENTILE_LOINCS.has(loinc);
+}
 
 // Whether a LOINC is a known non-analyte (administrative/structural) observation
 // that should not be imported as a lab record (#681).
@@ -321,6 +348,9 @@ const QUALITATIVE_CLASS_BY_LOINC: Record<string, QualitativeLoincClass> = {
   "85479-4": "infection", // RSV PCR
   "92141-1": "infection", // Influenza B PCR
   "92142-9": "infection", // Influenza A PCR
+  "80382-5": "infection", // Rapid Influenza A antigen
+  "80383-3": "infection", // Rapid Influenza B antigen
+  "94558-4": "infection", // SARS-CoV-2 rapid antigen
   "6463-4": "infection", // Culture organism 1
   "44841-5": "infection", // Culture organism 2
   // Durable-immunity IgG titers (immune-positive = good, #516).
