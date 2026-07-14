@@ -85,7 +85,7 @@ export default function FoodLogBar({
                       aria-label={`Remove a ${g.name} serving`}
                       disabled={count <= 0}
                       onClick={() => bump(g.slug, -1)}
-                      className="flex h-7 w-7 items-center justify-center rounded-full text-slate-400 transition hover:bg-black/5 disabled:opacity-30 dark:hover:bg-white/10"
+                      className="tap-target flex h-7 w-7 items-center justify-center rounded-full text-slate-400 transition hover:bg-black/5 disabled:opacity-30 dark:hover:bg-white/10"
                     >
                       <IconMinus className="h-4 w-4" stroke={2} />
                     </button>
@@ -100,7 +100,7 @@ export default function FoodLogBar({
                       data-testid={`log-${g.slug}`}
                       aria-label={`Add a ${g.name} serving`}
                       onClick={() => bump(g.slug, 1)}
-                      className="flex h-7 w-7 items-center justify-center rounded-full bg-brand-600 text-white transition hover:bg-brand-700"
+                      className="tap-target flex h-7 w-7 items-center justify-center rounded-full bg-brand-600 text-white transition hover:bg-brand-700"
                     >
                       <IconPlus className="h-4 w-4" stroke={2} />
                     </button>

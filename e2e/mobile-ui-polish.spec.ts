@@ -115,6 +115,40 @@ test.describe("touch targets clear the 40px minimum (#644)", () => {
   });
 });
 
+test.describe("nutrition food-log controls stay in the viewport on mobile", () => {
+  test.use({ viewport: PHONE });
+
+  // The /nutrition two-column grid (lg:grid-cols-[1fr_320px]) collapses to a
+  // single column below lg. A CSS grid item defaults to min-width:auto
+  // (min-content), so without min-w-0 on the cells the column grew to the widest
+  // food row's intrinsic width (~609px) and overflowed — <main>'s overflow-x-clip
+  // then swallowed the +/- log controls off the right edge, making the page's
+  // primary action untappable. min-w-0 lets the column shrink to the viewport.
+  test("the +/- serving controls are within the 390px viewport", async ({
+    page,
+  }) => {
+    await page.goto("/nutrition");
+
+    // The one-tap logger renders for an adult profile (the seeded admin).
+    await expect(page.getByTestId("food-log-bar")).toBeVisible();
+
+    // The first row's add (+) button is the affordance that was clipped off-screen;
+    // its right edge must stay within the viewport.
+    const addBtn = page.locator('[data-testid^="log-"]').first();
+    await expect(addBtn).toBeVisible();
+    const box = await addBtn.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.x + box!.width).toBeLessThanOrEqual(PHONE.width + 1);
+    expect(box!.x).toBeGreaterThanOrEqual(0);
+
+    // And the page body itself does not scroll sideways.
+    const noBodyScroll = await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth + 1
+    );
+    expect(noBodyScroll).toBe(true);
+  });
+});
+
 test.describe("long unbreakable names wrap instead of clipping (#646)", () => {
   test.use({ viewport: PHONE });
 
