@@ -149,8 +149,12 @@ test("journal cards prioritize a summary and progressively disclose details", as
   await expect(summary).toContainText("62 min");
   await expect(summary).toContainText("148/171 bpm");
   const heartRate = ride.getByTestId("activity-heart-rate");
-  await expect(heartRate).toHaveCSS("color", "rgb(234, 179, 8)");
   await expect(heartRate).toHaveAttribute("title", "Zone 3 · Tempo");
+  await expect(heartRate).toHaveCSS("color", "rgb(71, 85, 105)");
+  await expect(heartRate.getByTestId("activity-heart-rate-icon")).toHaveCSS(
+    "color",
+    "rgb(234, 179, 8)"
+  );
   await expect(summary).toContainText("24.5 km");
   await expect(summary).toContainText("648 kcal");
   await expect(summary).not.toContainText("≈ 648 kcal");

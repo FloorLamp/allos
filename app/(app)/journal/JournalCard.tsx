@@ -171,7 +171,6 @@ export default function JournalCard({
                           ? "activity-heart-rate"
                           : undefined
                     }
-                    style={item.color ? { color: item.color } : undefined}
                     title={item.title}
                     className="inline-flex items-center whitespace-nowrap"
                   >
@@ -190,7 +189,22 @@ export default function JournalCard({
                         className={`mr-1 h-1.5 w-1.5 rounded-full ${INTENSITY_DOT[item.intensity]}`}
                       />
                     )}
-                    {item.value}
+                    {item.heartRate ? (
+                      <>
+                        <span
+                          aria-hidden
+                          data-testid="activity-heart-rate-icon"
+                          style={item.color ? { color: item.color } : undefined}
+                        >
+                          ♥
+                        </span>
+                        <span className="ml-1">
+                          {item.value.replace(/^♥\s*/, "")}
+                        </span>
+                      </>
+                    ) : (
+                      item.value
+                    )}
                   </span>
                 ))}
               </div>
