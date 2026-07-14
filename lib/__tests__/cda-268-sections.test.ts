@@ -137,6 +137,53 @@ const FUNCTIONAL_STATUS = `
   </observation></entry>
 </section>`;
 
+// A Functional Status assessment whose LOINC COLLIDES with a vital-sign code
+// (8302-2 Body height): a contrived-but-plausible cross-section code reuse. The
+// assessment must stay a `lab` record — never be reclassified to "vitals" by the
+// #681 code-based routing (#694).
+const FUNCTIONAL_STATUS_VITAL_COLLISION = `
+<section>
+  <templateId root="2.16.840.1.113883.10.20.22.2.14"/>
+  <code code="47420-5" codeSystem="2.16.840.1.113883.6.1"/>
+  <title>Functional Status</title>
+  <entry><observation classCode="OBS" moodCode="EVN">
+    <templateId root="2.16.840.1.113883.10.20.22.4.67"/>
+    <code code="8302-2" codeSystem="2.16.840.1.113883.6.1" displayName="Reach ability"/>
+    <effectiveTime value="20260601"/>
+    <value xsi:type="CD" code="165245003" codeSystem="2.16.840.1.113883.6.96" displayName="Full reach"/>
+  </observation></entry>
+</section>`;
+
+// A Results section carrying administrative NON-ANALYTE rows (45374-6 Specimen
+// Expiration Date, 72486-4 Approved By) and a DERIVED PERCENTILE (59576-9 BMI
+// percentile) alongside a real analyte (2345-7 Glucose) — the mapper drops the
+// first three; only Glucose imports. All values synthetic.
+const RESULTS_WITH_NOISE = `
+<section>
+  <code code="30954-2" codeSystem="2.16.840.1.113883.6.1"/>
+  <title>Results</title>
+  <entry><observation classCode="OBS" moodCode="EVN">
+    <code code="2345-7" codeSystem="2.16.840.1.113883.6.1" displayName="Glucose"/>
+    <effectiveTime value="20260601"/>
+    <value xsi:type="PQ" value="95" unit="mg/dL"/>
+  </observation></entry>
+  <entry><observation classCode="OBS" moodCode="EVN">
+    <code code="45374-6" codeSystem="2.16.840.1.113883.6.1" displayName="Specimen Expiration Date"/>
+    <effectiveTime value="20260601"/>
+    <value xsi:type="ST">2026-06-30</value>
+  </observation></entry>
+  <entry><observation classCode="OBS" moodCode="EVN">
+    <code code="72486-4" codeSystem="2.16.840.1.113883.6.1" displayName="Approved By"/>
+    <effectiveTime value="20260601"/>
+    <value xsi:type="ST">A. Reviewer</value>
+  </observation></entry>
+  <entry><observation classCode="OBS" moodCode="EVN">
+    <code code="59576-9" codeSystem="2.16.840.1.113883.6.1" displayName="BMI percentile"/>
+    <effectiveTime value="20260601"/>
+    <value xsi:type="PQ" value="62" unit="%"/>
+  </observation></entry>
+</section>`;
+
 // Insurance / Payers (48768-6 / 2.2.18): a Coverage Activity — deliberately not
 // imported. All identifiers synthetic.
 const INSURANCE = `
@@ -251,6 +298,49 @@ describe("Functional Status (47420-5, #268)", () => {
     expect(drop!.kind).toBe("lab");
     expect(drop!.reason).toBe("null_flavor");
     expect(drop!.section).toBe("Functional Status");
+  });
+
+  // #694: an assessment reusing a VITAL_LOINCS code (8302-2 height) must NOT be
+  // reclassified to "vitals" — the mapper's vitals-override is disabled for the
+  // functional-status extractor, so the record stays a `lab` assessment (and its
+  // loinc is still stripped, so the misclassification can't hide either).
+  it("keeps a vital-LOINC-colliding assessment as a lab, never 'vitals' (#694)", () => {
+    const r = extractFromCcda(doc(FUNCTIONAL_STATUS_VITAL_COLLISION));
+    const rec = r.records.find((x) => x.name === "Reach ability");
+    expect(rec, "assessment record present").toBeTruthy();
+    expect(rec!.category).toBe("lab");
+    expect(rec!.value).toBe("Full reach");
+    expect(rec!.loinc).toBeNull();
+    // And it never leaks into the vitals category.
+    expect(r.records.some((x) => x.category === "vitals")).toBe(false);
+  });
+});
+
+describe("Results noise drops (#681/#684/#722/#693 — precise reasons)", () => {
+  it("drops non-analyte + derived-percentile rows, keeps the real analyte", () => {
+    const r = extractFromCcda(doc(RESULTS_WITH_NOISE));
+    const names = r.records.map((x) => x.name).sort();
+    expect(names).toEqual(["Glucose"]);
+    // The administrative + percentile codes never surface in the unmapped-code report.
+    expect(r.report!.unmappedLoincs).toEqual([]);
+  });
+
+  it("classifies the administrative row as 'non_analyte', not 'other'", () => {
+    const r = extractFromCcda(doc(RESULTS_WITH_NOISE));
+    const specimen = r.report!.drops.find(
+      (d) => d.label === "Specimen Expiration Date"
+    );
+    expect(specimen).toBeTruthy();
+    expect(specimen!.reason).toBe("non_analyte");
+    const approved = r.report!.drops.find((d) => d.label === "Approved By");
+    expect(approved!.reason).toBe("non_analyte");
+  });
+
+  it("classifies the derived percentile as 'derived_percentile', not 'other'", () => {
+    const r = extractFromCcda(doc(RESULTS_WITH_NOISE));
+    const pct = r.report!.drops.find((d) => d.label === "BMI percentile");
+    expect(pct).toBeTruthy();
+    expect(pct!.reason).toBe("derived_percentile");
   });
 });
 

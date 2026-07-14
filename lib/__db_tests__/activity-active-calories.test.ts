@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import { upsertMetricSamples } from "@/lib/integrations/normalize";
 import { getActiveCaloriesForActivities } from "@/lib/queries/training/activities";
-import { up as linkLegacyActivityEnergy } from "@/lib/migrations/versions/034-metric-sample-activity-link";
+import { up as linkLegacyActivityEnergy } from "@/lib/migrations/versions/035-metric-sample-activity-link";
 import type { Activity } from "@/lib/types";
 
 describe("getActiveCaloriesForActivities", () => {

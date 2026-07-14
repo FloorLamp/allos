@@ -1085,6 +1085,103 @@ describe("classifyQualitativeResult (#549 qualitative choke-point)", () => {
   });
 });
 
+describe("classifyQualitativeResult — LOINC-hinted class (#684)", () => {
+  it("classifies an infection code the NAME regex misses", () => {
+    // "Organism 1" matches no name regex, so with no LOINC there's no verdict.
+    expect(classifyQualitativeResult("Organism 1", "Detected")).toBeNull();
+    // The LOINC (6463-4 = culture organism) makes a positive bad (keeps flagging).
+    expect(
+      classifyQualitativeResult("Organism 1", "Detected", null, null, "6463-4")
+    ).toEqual({ presence: "positive", polarity: "bad", immutable: false });
+    // Influenza A PCR (92142-9): "Not Detected" is reassuring (good).
+    expect(
+      classifyQualitativeResult(
+        "POC Influenza A",
+        "Not Detected",
+        null,
+        null,
+        "92142-9"
+      )
+    ).toEqual({ presence: "negative", polarity: "good", immutable: false });
+  });
+
+  it("classifies an immunity titer by LOINC (immune-positive is good)", () => {
+    expect(
+      classifyQualitativeResult("Rubella Ab", "Immune", null, null, "25514-1")
+    ).toEqual({ presence: "positive", polarity: "good", immutable: false });
+  });
+
+  it("leaves a genetic-risk SCREEN unclassified (the risk axis is #687)", () => {
+    // NIPT trisomy 21 (75983-7): no positive/negative polarity yet → null.
+    expect(
+      classifyQualitativeResult(
+        "Trisomy 21",
+        "High Risk",
+        null,
+        null,
+        "75983-7"
+      )
+    ).toBeNull();
+  });
+});
+
+describe("qualitativeFlagResolution — LOINC hint (#684)", () => {
+  it("promotes a positive infection NAAT the extractor left normal to abnormal", () => {
+    // Without the LOINC the bland name yields no verdict → leave the flag as-is.
+    expect(
+      qualitativeFlagResolution("Organism 1", "Detected", null, null, "normal")
+    ).toBeUndefined();
+    // With the LOINC, a positive infection shown "normal" is promoted to abnormal.
+    expect(
+      qualitativeFlagResolution(
+        "Organism 1",
+        "Detected",
+        null,
+        null,
+        "normal",
+        "6463-4"
+      )
+    ).toBe("abnormal");
+    // A negative infection result clears a stray out-of-range flag.
+    expect(
+      qualitativeFlagResolution(
+        "Organism 1",
+        "Not Detected",
+        null,
+        null,
+        "abnormal",
+        "6463-4"
+      )
+    ).toBeNull();
+  });
+
+  it("promotes a LOINC-only immunity titer to 'immune' (name regex is blind)", () => {
+    // A name the durable-immunity regex does NOT recognize: without the LOINC the
+    // immune promotion re-checks the name and misses, so the row is left as-is.
+    expect(
+      qualitativeFlagResolution(
+        "IgG serology",
+        "Immune",
+        null,
+        null,
+        "abnormal"
+      )
+    ).toBeUndefined();
+    // With the Rubella IgG LOINC (25514-1), the immune-positive titer promotes to
+    // "immune" — NOT cleared to Normal (the gap the LOINC hint closes).
+    expect(
+      qualitativeFlagResolution(
+        "IgG serology",
+        "Immune",
+        null,
+        null,
+        "abnormal",
+        "25514-1"
+      )
+    ).toBe("immune");
+  });
+});
+
 describe("qualitativePresence (#549 shared vocabulary)", () => {
   it("reads negative before positive (non-reactive contains reactive)", () => {
     expect(qualitativePresence("Non-Reactive")).toBe("negative");

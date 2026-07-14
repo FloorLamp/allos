@@ -116,15 +116,31 @@ const nextConfig = {
     // sub-object that tunes them still lives under `experimental`.
     serverActions: {
       // Server Action body cap. Next defaults this to 1MB, which would silently
-      // reject the 1–32MB uploads `uploadMedicalDocument` explicitly permits before
-      // the action runs. Set to 33MB (not 32MB) on purpose: the multipart body is
-      // the file bytes PLUS boundary/field overhead, so a file at the action's 32MB
-      // `MAX_BYTES` (lib/medical-pipeline.ts) produces a body just over 32MB.
-      // The 1MB of headroom keeps the action's own 32MB gate authoritative, so an
-      // over-size file hits its friendly `insertFailedDoc` audit path instead of an
-      // opaque framework rejection.
-      bodySizeLimit: "33mb",
+      // reject the large uploads `uploadMedicalDocument` explicitly permits before
+      // the action runs. Set to 65MB (64MB + 1MB): the largest permitted upload is a
+      // 64MB deterministic health record (`MAX_HEALTH_BYTES`, lib/upload-gate.ts,
+      // re-exported from lib/medical-pipeline.ts), whose multipart body is the file
+      // bytes PLUS boundary/field overhead. The 1MB of headroom keeps the app's own
+      // per-path gates (32MB AI / 64MB health) authoritative, so an over-size file
+      // hits its friendly `insertFailedDoc` audit path instead of an opaque framework
+      // rejection. This lockstep is guarded by
+      // lib/__tests__/upload-size-lockstep.test.ts (issue #696) — bump both together.
+      bodySizeLimit: "65mb",
     },
+    // SECOND, EARLIER body cap that `bodySizeLimit` above does NOT cover. Next 16
+    // clones the request body for middleware (this app has a middleware.ts whose
+    // matcher covers the upload route), and that clone is capped by
+    // `proxyClientMaxBodySize` — default 10MB. Over the cap, Next does NOT reject:
+    // it `console.warn`s and TRUNCATES the body to the first 10MB, then hands the
+    // truncated stream to the Server Action. An over-10MB health-record upload
+    // (e.g. a multi-document MyChart XDM) then arrives as a broken multipart whose
+    // file field is cut off, so `uploadMedicalDocument` sees an empty File and
+    // silently returns — an upload that "fails" with no error row and only a
+    // buried framework warning. Keep it in lockstep with `bodySizeLimit` above (65MB)
+    // so the app's own per-path gates (32MB AI / 64MB health, lib/upload-gate.ts)
+    // stay the single authoritative limit. Guarded by
+    // lib/__tests__/upload-size-lockstep.test.ts (issue #696).
+    proxyClientMaxBodySize: "65mb",
   },
 };
 

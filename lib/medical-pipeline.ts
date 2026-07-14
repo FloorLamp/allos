@@ -18,6 +18,11 @@ import { revalidatePath } from "next/cache";
 import { db, today, writeTx } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
 import { extractMedicalDocument, isSupportedFile } from "@/lib/medical-extract";
+import {
+  MAX_AI_BYTES,
+  MAX_HEALTH_BYTES,
+  preBufferSizeCap,
+} from "@/lib/upload-gate";
 import { sniffUploadType } from "@/lib/file-sniff";
 import { aiConfigured } from "@/lib/ai-client";
 import { claimDocumentForExtraction } from "@/lib/extraction-claim";
@@ -75,7 +80,12 @@ export const UPLOAD_DIR = path.join(
   "uploads",
   "medical"
 );
-const MAX_BYTES = 32 * 1024 * 1024; // 32MB (Anthropic request cap)
+// The upload size ceilings and the pre-buffer gate policy live in the pure
+// lib/upload-gate module (no DB import) so they stay unit-testable and importable
+// by the next.config lockstep guard. Re-exported here (issue #696) so existing
+// importers of MAX_AI_BYTES / MAX_HEALTH_BYTES keep their `@/lib/medical-pipeline`
+// path.
+export { MAX_AI_BYTES, MAX_HEALTH_BYTES } from "@/lib/upload-gate";
 
 // Model-supplied dates are only *asked* to be ISO — validate before storing so a
 // hallucinated "Friday" or "2026-13-45" can't land in a YYYY-MM-DD column.
@@ -256,15 +266,22 @@ export async function ingestMedicalUpload(
 ): Promise<void> {
   const mime = file.type || "application/octet-stream";
   // Reject an oversized upload BEFORE buffering the whole file into memory —
-  // file.size is known from the multipart headers, so we needn't read a 100MB
-  // body just to reject it. The post-buffer check below is a backstop.
-  if (file.size > MAX_BYTES) {
+  // file.size is known from the multipart headers, so we needn't read a huge body
+  // just to reject it. The pre-buffer ceiling defaults to the stricter 32MB AI cap
+  // and only rises to the 64MB health-record cap when a CHEAP pre-buffer signal
+  // (filename extension / declared MIME) suggests a genuine deterministic health
+  // record — so a large non-health file is rejected here WITHOUT ever being fully
+  // buffered (issue #695), instead of admitting everything to 64MB and only
+  // rejecting after the whole body was read into memory. The per-path post-buffer
+  // cap below re-checks the true length once the content is actually sniffed.
+  const preCap = preBufferSizeCap(file.name, mime);
+  if (file.size > preCap) {
     insertFailedDoc(
       profileId,
       file.name,
       mime,
       file.size,
-      `File too large (max ${Math.round(MAX_BYTES / 1024 / 1024)}MB).`
+      `File too large (max ${Math.round(preCap / 1024 / 1024)}MB).`
     );
     revalidatePath("/data");
     return;
@@ -284,15 +301,18 @@ export async function ingestMedicalUpload(
     revalidatePath("/data");
     return;
   }
-  // Backstop the pre-buffer size gate against a lying/absent file.size, now that
-  // the actual byte length is known.
-  if (buffer.length > MAX_BYTES) {
+  // Enforce the per-path size cap now that the byte length AND the kind are known:
+  // an AI-extracted file is bound by the Anthropic request limit (it's inlined as
+  // base64), a deterministic health record is not. Also backstops the pre-buffer
+  // gate against a lying/absent file.size.
+  const sizeCap = healthKind ? MAX_HEALTH_BYTES : MAX_AI_BYTES;
+  if (buffer.length > sizeCap) {
     insertFailedDoc(
       profileId,
       file.name,
       mime,
       buffer.length,
-      `File too large (max ${Math.round(MAX_BYTES / 1024 / 1024)}MB).`
+      `File too large (max ${Math.round(sizeCap / 1024 / 1024)}MB).`
     );
     revalidatePath("/data");
     return;

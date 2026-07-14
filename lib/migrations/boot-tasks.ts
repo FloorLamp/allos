@@ -448,8 +448,16 @@ function reconcileNonOptimalFlags(db: Database.Database) {
   // Qualitative (value_num IS NULL) rows for the shared classifier pass (#549). It's
   // profile-independent (a blood type / immunity titer classifies the same for
   // everyone), so scan them once across all profiles rather than per-profile.
+  // bootTasks is version-agnostic — it can run against a schema that predates the
+  // migration 034 `loinc` column (e.g. a migration test that boots at an earlier
+  // revision), so select it only when present and fall back to NULL (→ the
+  // classifier's name-based path) otherwise (#684).
+  const hasLoinc = (
+    db.prepare(`PRAGMA table_info(medical_records)`).all() as { name: string }[]
+  ).some((c) => c.name === "loinc");
   const qualRowsStmt = db.prepare(
-    `SELECT id, canonical_name, name, value, notes, reference_range, flag
+    `SELECT id, canonical_name, name, value, notes, reference_range, flag,
+            ${hasLoinc ? "loinc" : "NULL AS loinc"}
        FROM medical_records
       WHERE value_num IS NULL AND category IN ('lab','biomarker')`
   );
@@ -494,6 +502,7 @@ function reconcileNonOptimalFlags(db: Database.Database) {
         notes: string | null;
         reference_range: string | null;
         flag: string | null;
+        loinc: string | null;
       }[]
     ).map((r) => ({
       id: r.id,
@@ -502,6 +511,7 @@ function reconcileNonOptimalFlags(db: Database.Database) {
       notes: r.notes,
       reference: r.reference_range,
       flag: r.flag,
+      loinc: r.loinc,
     }));
     for (const c of computeQualitativeFlagChanges(qrows)) {
       if (c.flag === null) clear.run(c.id);

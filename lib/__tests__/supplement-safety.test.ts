@@ -167,6 +167,19 @@ describe("screenSuggestionSafety (#413)", () => {
     expect(drop?.detail).toContain("Chronic kidney disease, stage 4");
   });
 
+  it("still drops an allergen the belt was handed even if it was clinically resolved (#691)", () => {
+    // The belt is status-BLIND by design: it screens whatever allergen substances the
+    // gather feeds it. #691's fix restores resolved allergies to that gather
+    // (getSuggestSafetyContext), so a resolved "fish" allergy must still drop fish
+    // oil here — the DB-tier test pins that the gather actually includes it.
+    const drop = screenSuggestionSafety(
+      { name: "Omega-3", product: "Wild Fish Oil" },
+      { allergens: ["fish"], medications: [], conditions: [] }
+    );
+    expect(drop?.field).toBe("allergen");
+    expect(drop?.detail).toContain("fish");
+  });
+
   it("passes a clean suggestion", () => {
     expect(
       screenSuggestionSafety(

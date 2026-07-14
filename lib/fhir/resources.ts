@@ -1,4 +1,8 @@
 import {
+  isDerivedPercentileLoinc,
+  isNonAnalyteLoinc,
+} from "../biomarker-loinc";
+import {
   allergyExternalId,
   careGoalExternalId,
   carePlanExternalId,
@@ -129,7 +133,15 @@ export function observationRecords(
       )
     );
   }
-  return out;
+  // Drop non-analyte administrative rows (specimen dates, "Approved By", accession
+  // numbers) and derived anthropometric percentiles the SAME way the CDA mapper does
+  // (#681/#684/#722) — the shared isUnmappedLabLoinc already excludes them from the
+  // unmapped-code report, so without this the FHIR path would persist them as junk
+  // labs that never surface in that report (#693).
+  return out.filter(
+    (rec) =>
+      !isNonAnalyteLoinc(rec.loinc) && !isDerivedPercentileLoinc(rec.loinc)
+  );
 }
 
 // Back-compat single-reading accessor: the FIRST reading an Observation yields, or

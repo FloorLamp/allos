@@ -139,6 +139,59 @@ describe("parseFhirBundle", () => {
     expect(r.records.some((x) => x.value_num === 999)).toBe(false);
   });
 
+  // #693: the FHIR importer must drop non-analyte administrative rows and derived
+  // anthropometric percentiles just like the CDA path — otherwise they persist as
+  // junk lab records that no longer even show up in the unmapped-code report (the
+  // shared isUnmappedLabLoinc excludes them). Fixtures synthetic.
+  it("drops non-analyte + derived-percentile observations, keeps the real analyte (#693)", () => {
+    const r = parseFhirBundle(
+      bundle([
+        {
+          resourceType: "Observation",
+          status: "final",
+          code: {
+            text: "Glucose",
+            coding: [{ system: "http://loinc.org", code: "2345-7" }],
+          },
+          valueQuantity: { value: 95, unit: "mg/dL" },
+          effectiveDateTime: "2026-06-01",
+        },
+        {
+          resourceType: "Observation",
+          status: "final",
+          code: {
+            text: "Specimen Expiration Date",
+            coding: [{ system: "http://loinc.org", code: "45374-6" }],
+          },
+          valueString: "2026-06-30",
+          effectiveDateTime: "2026-06-01",
+        },
+        {
+          resourceType: "Observation",
+          status: "final",
+          code: {
+            text: "BMI percentile",
+            coding: [{ system: "http://loinc.org", code: "59576-9" }],
+          },
+          valueQuantity: { value: 62, unit: "%" },
+          effectiveDateTime: "2026-06-01",
+        },
+      ])
+    );
+    // Only the real analyte imports.
+    expect(r.records.map((x) => x.name)).toEqual(["Glucose"]);
+    // Neither administrative noise nor the percentile leaks into the unmapped-code
+    // report (the exact regression #693 describes for the FHIR path).
+    expect(r.report!.unmappedLoincs).toEqual([]);
+    // The drops are classified precisely, not as generic no_value.
+    const specimen = r.report!.drops.find(
+      (d) => d.label === "Specimen Expiration Date"
+    );
+    expect(specimen?.reason).toBe("non_analyte");
+    const pct = r.report!.drops.find((d) => d.label === "BMI percentile");
+    expect(pct?.reason).toBe("derived_percentile");
+  });
+
   it("returns null demographics when no Patient / no birthDate+gender", () => {
     expect(
       parseFhirBundle(bundle([immunization("08", "2010-06-15")])).demographics

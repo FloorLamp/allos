@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Migration } from "../runner";
 
-// Migration 034: active-energy samples can describe an imported activity, but
+// Migration 035: active-energy samples can describe an imported activity, but
 // their original association was implicit in the provider/time window. Activity
 // clocks are user-editable and profile timezones can change, so that window is
 // not a stable relationship. Persist the activity's source-owned external_id on
@@ -132,7 +132,7 @@ export function up(db: Database.Database): void {
 }
 
 export const migration: Migration = {
-  id: 34,
-  name: "034-metric-sample-activity-link",
+  id: 35,
+  name: "035-metric-sample-activity-link",
   up,
 };

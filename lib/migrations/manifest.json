@@ -32,5 +32,6 @@
   "031-frequency-target-food-group.ts": "27259fb11cb509b2f50f652d8b015ff6f2203a23a9dda82371a7d391c8948c8e",
   "032-activity-routes.ts": "f72126e8b5718c46ddeae29523b326d9257a0c005e5bbab11e6024b28b06d65e",
   "033-sync-event-edited-count.ts": "890aab7eb6cd54291455d58e33ee4e266133908fdeda5fb083f9fe2c0dc8bf07",
-  "034-metric-sample-activity-link.ts": "2ef06f3653dac25bd25beb79d97b9c53fbe8f61f8b07d80e2fa6f3eb17fd08da"
+  "034-medical-record-loinc.ts": "3f08672462d5b7f3a985017a7e53e770be1335a8d08172fd6b728148efdbf6c2",
+  "035-metric-sample-activity-link.ts": "c25c8586b9bb9a8c4d2220bf371fa7cecf740859bb43ae1f4ee871878ff3c720"
 }

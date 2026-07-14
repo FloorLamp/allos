@@ -75,6 +75,11 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     why: "boot-time qualitative flag reconcile (#549): a GLOBAL maintenance re-derivation run once per canonical-flags-signature change — a qualitative value classifies the same for every profile (blood type / immunity titer), so it is intentionally profile-agnostic; it only rewrites the row's own flag, never reads across profiles",
   },
   {
+    file: "lib/migrations/boot-tasks.ts",
+    includes: "PRAGMA table_info(medical_records)",
+    why: "schema introspection (#684): checks whether the migration-034 loinc column exists so the version-agnostic boot reconcile can run against an earlier schema — not a data query, reads no rows",
+  },
+  {
     file: "lib/integrations/normalize.ts",
     includes: "UPDATE medical_records SET date = ?",
     why: "upsertVitals: the id comes from a profile-scoped find() just above",

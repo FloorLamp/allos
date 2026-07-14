@@ -3,6 +3,10 @@ import {
   LOINC_TO_CANONICAL,
   canonicalBiomarkerForLoinc,
   isVitalLoinc,
+  isNonAnalyteLoinc,
+  isDerivedPercentileLoinc,
+  isUnmappedLabLoinc,
+  qualitativeClassForLoinc,
 } from "@/lib/biomarker-loinc";
 import { reconciledFlag, referenceRange } from "@/lib/reference-range";
 import { convertToCanonical } from "@/lib/unit-conversions";
@@ -83,6 +87,53 @@ describe("canonicalBiomarkerForLoinc — CBC + CMP lab mappings", () => {
   it("classifies the lab codes as non-vitals (FHIR path routes them to 'lab')", () => {
     for (const code of ["718-7", "6690-2", "2345-7", "751-8", "770-8"])
       expect(isVitalLoinc(code)).toBe(false);
+  });
+
+  // #681: body weight + BMI are anthropometric vitals Epic reports in the Results
+  // section — treated as vitals, not unmapped labs.
+  it("treats body weight + BMI as vitals, not unmapped labs (#681)", () => {
+    for (const code of ["29463-7", "39156-5"]) {
+      expect(isVitalLoinc(code)).toBe(true);
+      expect(isUnmappedLabLoinc(code)).toBe(false);
+    }
+  });
+
+  // #681: non-analyte administrative rows are recognized (so the mapper drops them)
+  // and never counted as unmapped labs.
+  it("recognizes non-analyte administrative LOINCs and excludes them from unmapped (#681)", () => {
+    for (const code of [
+      "45374-6",
+      "72486-4",
+      "19066-0",
+      "8262-8",
+      "106201-7",
+    ]) {
+      expect(isNonAnalyteLoinc(code)).toBe(true);
+      expect(isUnmappedLabLoinc(code)).toBe(false);
+    }
+    // A genuine analyte code is NOT swept up by the denylist — and the deliberately
+    // conservative set excludes anything that could carry a real result, e.g. an
+    // STI specimen-source code (31208-2) is left in place, not dropped.
+    expect(isNonAnalyteLoinc("2345-7")).toBe(false);
+    expect(isNonAnalyteLoinc("31208-2")).toBe(false);
+  });
+
+  // p3/p4 (pediatric): derived anthropometric percentiles are dropped (the app
+  // recomputes its own), not imported as range-less unmapped labs.
+  it("recognizes derived anthropometric percentiles and excludes them from unmapped", () => {
+    for (const code of ["59576-9", "77606-2", "8289-1"]) {
+      expect(isDerivedPercentileLoinc(code)).toBe(true);
+      expect(isUnmappedLabLoinc(code)).toBe(false);
+    }
+    // The raw measurements are NOT percentiles.
+    expect(isDerivedPercentileLoinc("29463-7")).toBe(false); // body weight
+  });
+
+  // p4 added rapid-antigen infection tests the qualitative class table missed
+  // (it had the PCR variants only).
+  it("classifies rapid influenza / SARS-CoV-2 antigen LOINCs as infection", () => {
+    for (const code of ["80382-5", "80383-3", "94558-4"])
+      expect(qualitativeClassForLoinc(code)).toBe("infection");
   });
 });
 
@@ -199,6 +250,25 @@ describe("full clinical-lab panel mappings", () => {
     expect(canonicalBiomarkerForLoinc("60474-4")).toBe(
       "Reticulocytes, Absolute"
     );
+  });
+
+  // Alternate CBC LOINCs + blood lead observed in real Epic exports (the three
+  // patient XDM packages). Each routes to an EXISTING canonical entry whose unit
+  // matches the observed unit — no new canonical entry, no rescale.
+  it("maps alternate platelet/MPV LOINCs and blood lead to unit-matched entries", () => {
+    expect(canonicalBiomarkerForLoinc("26515-7")).toBe("Platelet Count");
+    expect(cb("Platelet Count").unit).toBe("10^3/uL");
+    expect(canonicalBiomarkerForLoinc("28542-9")).toBe("MPV");
+    expect(canonicalBiomarkerForLoinc("32623-1")).toBe("MPV");
+    expect(cb("MPV").unit).toBe("fL");
+    expect(canonicalBiomarkerForLoinc("77307-7")).toBe("Lead");
+    expect(cb("Lead").unit).toBe("ug/dL");
+  });
+
+  // p3/p4 (pediatric exports) added a capillary lead LOINC — the same analyte/unit
+  // as the venous form, routed to the one canonical Lead entry.
+  it("maps capillary blood lead to the Lead entry (alt of venous 77307-7)", () => {
+    expect(canonicalBiomarkerForLoinc("10368-9")).toBe("Lead");
   });
 
   // These six candidate codes were WRONG (bad check digit or a different analyte

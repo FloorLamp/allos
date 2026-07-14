@@ -22,6 +22,7 @@ import { createLogger } from "../log";
 import type { NotificationChannel, NotificationMessage } from "./types";
 import {
   buildPushPayload,
+  isPushDeliverableKind,
   isSubscriptionGone,
   vapidConfigured,
   type StoredPushSubscription,
@@ -231,6 +232,19 @@ export const pushChannel: NotificationChannel = {
     );
   },
   async send(profileId: number, msg: NotificationMessage) {
+    // An interaction-only kind (e.g. the food-log nudge) would arrive here as a
+    // content-less, button-less push since the payload drops actions — so no-op it,
+    // a healthy success like the HA channel's disabled-kind gate (#692). This also
+    // covers the both-channels case the tick's telegramChannel.isConfigured guard
+    // can't: Telegram + Web Push both on must not turn one food nudge into a useless
+    // push alongside the real Telegram one.
+    if (!isPushDeliverableKind(msg.kind)) {
+      log.info("skipped: kind not deliverable to push", {
+        profile: profileId,
+        kind: msg.kind ?? "other",
+      });
+      return;
+    }
     await sendToSubscriptions(getPushSubscriptionsForProfile(profileId), msg);
   },
 };

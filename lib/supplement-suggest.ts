@@ -156,8 +156,11 @@ function buildContext(
   // Safety context (issue #413): allergies, active conditions, sex/age, and the
   // active MEDICATIONS distinguished from supplements. All one profile-scoped
   // query away and previously never reaching the one AI feature that proposes
-  // ingestibles. A resolved allergy is left in the DROP set too (being
-  // conservative about an ingestible), but not surfaced as a live one to the model.
+  // ingestibles. The model is shown only LIVE (non-resolved) allergies here in the
+  // PROMPT — a resolved allergy isn't a live caution to describe — but the
+  // deterministic belt below still screens against ALL recorded allergens, resolved
+  // included (see getSuggestSafetyContext, #691), so a mis-marked/corrected-then-
+  // reverted allergy can't sneak an ingestible past the guard.
   const allergies = getAllergies(profileId).filter(
     (a) => a.status !== "resolved"
   );
@@ -240,13 +243,30 @@ function buildContext(
 
   if (opts.feedback) lines.push(`\n## User note\n${opts.feedback}`);
 
-  // The deterministic belt's facts come from the ONE shared intake-safety gather
-  // (#661) — allergens, active medications, AND active conditions (#657) — so the
-  // prompt above and this guard screen against the same profile context and can't
-  // drift. Active conditions now feed the belt's condition screen, not just the prompt.
-  const safety: SafetyContext = getIntakeSafetyContext(profileId);
+  // The deterministic belt's facts come from getSuggestSafetyContext (#691): active
+  // medications + active conditions from the ONE shared intake-safety gather (#661)
+  // so the prompt above and this guard can't drift, but a DELIBERATELY broader
+  // allergen set (resolved allergies included) so the belt stays conservative about
+  // an ingestible even after an allergy is marked resolved.
+  const safety: SafetyContext = getSuggestSafetyContext(profileId);
 
   return { text: lines.join("\n"), lowLabNames, safety };
+}
+
+// The deterministic SAFETY belt's facts for the supplement-suggest path. Non-allergen
+// facts (active medications + active conditions, plus the food engine's situations)
+// come straight from the ONE shared intake-safety gather (getIntakeSafetyContext, #661)
+// so the prompt and the belt can't drift. The ALLERGEN set is deliberately BROADER than
+// that shared gather's active-only list (#691): the belt screens ALL recorded allergens
+// INCLUDING resolved ones — dropping an ingestible suggestion should stay conservative
+// even after an allergy is marked resolved (the prompt still hides resolved allergies
+// from the model; this is the belt that distrusts the model). Exported for the DB-tier
+// test that pins this gather over a seeded resolved allergy.
+export function getSuggestSafetyContext(profileId: number): SafetyContext {
+  return {
+    ...getIntakeSafetyContext(profileId),
+    allergens: getAllergies(profileId).map((a) => a.substance),
+  };
 }
 
 const str = strOrNull;

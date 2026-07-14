@@ -488,7 +488,7 @@ export function getActiveCaloriesForActivities(
     /T(\d{2}:\d{2})/.exec(value)?.[1] ?? value.slice(0, 5);
   // Only Strava has a safe window fallback: its old sample timestamps encode the
   // same local wall-clock numerals stored on the activity. Health Connect and Oura
-  // legacy rows are linked by migration 034; projecting their remaining null-link
+  // legacy rows are linked by migration 035; projecting their remaining null-link
   // instants through the profile's mutable timezone would recreate the bug this
   // stable identity column fixes.
   const sampleKey = (

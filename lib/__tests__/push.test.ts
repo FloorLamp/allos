@@ -3,6 +3,7 @@ import {
   isSubscriptionGone,
   parsePushSubscription,
   buildPushPayload,
+  isPushDeliverableKind,
   vapidConfigured,
   DEFAULT_PUSH_URL,
   PUSH_GONE_STATUSES,
@@ -113,6 +114,19 @@ describe("push-core: buildPushPayload", () => {
     const parsed = JSON.parse(json);
     expect(Object.keys(parsed).sort()).toEqual(["body", "title", "url"]);
     expect(json).not.toContain("take:9:3");
+  });
+});
+
+describe("push-core: isPushDeliverableKind (#692)", () => {
+  it("declines the interaction-only food kind (its body is meaningless without buttons)", () => {
+    expect(isPushDeliverableKind("food")).toBe(false);
+  });
+
+  it("allows content-bearing kinds and an unset kind", () => {
+    expect(isPushDeliverableKind("dose")).toBe(true);
+    expect(isPushDeliverableKind("refill")).toBe(true);
+    expect(isPushDeliverableKind("digest")).toBe(true);
+    expect(isPushDeliverableKind(undefined)).toBe(true);
   });
 });
 

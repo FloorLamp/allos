@@ -92,15 +92,18 @@ export default async function NutritionPage() {
         </details>
       )}
 
+      {/* min-w-0 on both grid cells: a grid item defaults to min-width:auto
+          (min-content), so the single mobile column would otherwise grow to the
+          widest row's intrinsic width and overflow — <main>'s overflow-x-clip
+          then silently clips the +/- log controls off the right edge. min-w-0
+          lets the column shrink to the viewport so each card's own
+          truncate/flex handling takes over. */}
       <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
-        <div className="card">
-          <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-            Log today
-          </h2>
+        <div className="card min-w-0">
           <FoodLogBar date={date} initial={initial} groups={groups} />
         </div>
 
-        <div className="space-y-6 self-start">
+        <div className="min-w-0 space-y-6 self-start">
           <WeeklyHabits profileId={profile.id} />
           <div className="card">
             <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">

@@ -243,6 +243,102 @@ describe("narrative-referenced analyte names (mode a)", () => {
   });
 });
 
+// #681: Epic reports body weight + BMI and a batch of administrative rows inside
+// the Results section. Weight/BMI are vitals (routed by LOINC, not section); the
+// administrative rows (Specimen Expiration Date, Approved By) are non-analytes and
+// must not import as lab records.
+const RESULTS_WITH_VITALS_AND_NOISE_CCD = `<?xml version="1.0" encoding="UTF-8"?>
+<ClinicalDocument xmlns="urn:hl7-org:v3" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <component><structuredBody><component><section>
+    <templateId root="2.16.840.1.113883.10.20.22.2.3.1"/>
+    <code code="30954-2" codeSystem="2.16.840.1.113883.6.1"/>
+    <title>Results</title>
+    <entry><organizer classCode="BATTERY" moodCode="EVN">
+      <component><observation classCode="OBS" moodCode="EVN">
+        <code code="2345-7" codeSystem="2.16.840.1.113883.6.1" displayName="Glucose"/>
+        <effectiveTime value="20240101"/>
+        <value xsi:type="PQ" value="99" unit="mg/dL"/>
+      </observation></component>
+      <component><observation classCode="OBS" moodCode="EVN">
+        <code code="29463-7" codeSystem="2.16.840.1.113883.6.1" displayName="Body weight"/>
+        <effectiveTime value="20240101"/>
+        <value xsi:type="PQ" value="70" unit="kg"/>
+      </observation></component>
+      <component><observation classCode="OBS" moodCode="EVN">
+        <code code="39156-5" codeSystem="2.16.840.1.113883.6.1" displayName="BMI"/>
+        <effectiveTime value="20240101"/>
+        <value xsi:type="PQ" value="24.2" unit="kg/m2"/>
+      </observation></component>
+      <component><observation classCode="OBS" moodCode="EVN">
+        <code code="45374-6" codeSystem="2.16.840.1.113883.6.1" displayName="Specimen Expiration Date"/>
+        <effectiveTime value="20240101"/>
+        <value xsi:type="ST">2024-02-01</value>
+      </observation></component>
+      <component><observation classCode="OBS" moodCode="EVN">
+        <code code="72486-4" codeSystem="2.16.840.1.113883.6.1" displayName="Approved By"/>
+        <effectiveTime value="20240101"/>
+        <value xsi:type="ST">A. Reviewer</value>
+      </observation></component>
+    </organizer></entry>
+  </section></component></structuredBody></component>
+</ClinicalDocument>`;
+
+describe("Results-section vitals + non-analyte filtering (#681)", () => {
+  it("routes body weight/BMI to vitals and drops administrative rows", () => {
+    const recs = parseCcda(RESULTS_WITH_VITALS_AND_NOISE_CCD).records;
+    // The administrative rows never become records at all.
+    expect(recs.some((r) => /expiration|approved/i.test(r.name))).toBe(false);
+    // Glucose stays a lab; weight + BMI are reclassified as vitals despite the
+    // Results section they arrived in.
+    const glucose = recs.find((r) => r.loinc === "2345-7")!;
+    expect(glucose.category).toBe("lab");
+    const weight = recs.find((r) => r.loinc === "29463-7")!;
+    expect(weight.category).toBe("vitals");
+    expect(weight.value_num).toBe(70);
+    const bmi = recs.find((r) => r.loinc === "39156-5")!;
+    expect(bmi.category).toBe("vitals");
+    // The vital reclassification carries into the dedup key namespace.
+    expect(weight.external_id.startsWith("ccda:vital:")).toBe(true);
+  });
+});
+
+// p3/p4 (pediatric) follow-up: a capillary lead maps to the canonical Lead entry,
+// and a derived BMI percentile is dropped (the app recomputes growth percentiles).
+const RESULTS_LEAD_AND_PERCENTILE_CCD = `<?xml version="1.0" encoding="UTF-8"?>
+<ClinicalDocument xmlns="urn:hl7-org:v3" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <component><structuredBody><component><section>
+    <templateId root="2.16.840.1.113883.10.20.22.2.3.1"/>
+    <code code="30954-2" codeSystem="2.16.840.1.113883.6.1"/>
+    <title>Results</title>
+    <entry><organizer classCode="BATTERY" moodCode="EVN">
+      <component><observation classCode="OBS" moodCode="EVN">
+        <code code="10368-9" codeSystem="2.16.840.1.113883.6.1" displayName="Lead, Capillary"/>
+        <effectiveTime value="20240101"/>
+        <value xsi:type="PQ" value="3.2" unit="mcg/dL"/>
+      </observation></component>
+      <component><observation classCode="OBS" moodCode="EVN">
+        <code code="59576-9" codeSystem="2.16.840.1.113883.6.1" displayName="BMI percentile"/>
+        <effectiveTime value="20240101"/>
+        <value xsi:type="PQ" value="85" unit="%"/>
+      </observation></component>
+    </organizer></entry>
+  </section></component></structuredBody></component>
+</ClinicalDocument>`;
+
+describe("Results-section lead mapping + derived-percentile drop (p3/p4)", () => {
+  it("maps capillary lead to Lead and drops the BMI percentile", () => {
+    const recs = parseCcda(RESULTS_LEAD_AND_PERCENTILE_CCD).records;
+    // The derived percentile never becomes a record.
+    expect(recs.some((r) => r.loinc === "59576-9")).toBe(false);
+    expect(recs.some((r) => /percentile/i.test(r.name))).toBe(false);
+    // Capillary lead imports as a lab and groups under the canonical Lead entry.
+    const lead = recs.find((r) => r.loinc === "10368-9")!;
+    expect(lead.category).toBe("lab");
+    expect(lead.canonical).toBe("Lead");
+    expect(lead.value_num).toBe(3.2);
+  });
+});
+
 describe("LOINC carried via translation / codeSystemName (mode b)", () => {
   it("extracts the LOINC and reaches the canonical identity", () => {
     const vitals = parseCcda(TRANSLATION_LOINC_CCD).records.filter(

@@ -2,7 +2,7 @@
 // web-push import, no network — so this stays in the "pure logic" test tier
 // (lib/__tests__/push.test.ts). The DB + web-push wiring lives in ./push.ts.
 
-import type { NotificationMessage } from "./types";
+import type { NotificationKind, NotificationMessage } from "./types";
 
 // Where a tapped push notification opens. Deep links carry NO detail beyond the
 // message the user already sees; tapping just opens the app (see the SW's
@@ -73,6 +73,26 @@ export function buildPushPayload(
       : msg.body;
   const payload: PushPayload = { title: msg.title, body, url };
   return JSON.stringify(payload);
+}
+
+// Kinds whose ENTIRE value is their interactive buttons. A Web Push notification
+// drops actions (buildPushPayload carries only title/body/url), so pushing one of
+// these delivers a content-less, button-less notification — e.g. a food nudge whose
+// body ("Tap what you've eaten to log a serving.") means nothing without its
+// food-group buttons (#692). The push channel treats these as a no-op success,
+// mirroring the Home Assistant channel's per-kind gate (isKindEnabled). Deliberately
+// narrow: dose/refill/etc. carry real content in their body and stay push-deliverable
+// even when their tap actions are dropped.
+const PUSH_UNDELIVERABLE_KINDS: ReadonlySet<NotificationKind> = new Set([
+  "food",
+]);
+
+// Whether a message of this kind is worth delivering over Web Push. Pure so the
+// channel send and any test agree on one rule. An unset kind ("other") is deliverable.
+export function isPushDeliverableKind(
+  kind: NotificationKind | undefined
+): boolean {
+  return !PUSH_UNDELIVERABLE_KINDS.has(kind ?? "other");
 }
 
 // A VAPID keypair is usable only when BOTH halves are present. Pure predicate so
