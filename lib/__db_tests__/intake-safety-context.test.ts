@@ -8,6 +8,8 @@
 import { describe, it, expect } from "vitest";
 import { db } from "@/lib/db";
 import { getIntakeSafetyContext, getDietaryLimitWarnings } from "@/lib/queries";
+import { getSuggestSafetyContext } from "@/lib/supplement-suggest";
+import { screenSuggestionSafety } from "@/lib/supplement-safety";
 
 function makeProfile(name: string): number {
   return Number(
@@ -51,6 +53,36 @@ describe("getIntakeSafetyContext (#661)", () => {
     expect(ctx.medications.map((m) => m.name)).toEqual(["Warfarin"]);
     expect(ctx.conditions).toEqual(["Chronic kidney disease"]);
     expect(Array.isArray(ctx.situations)).toBe(true);
+  });
+});
+
+describe("getSuggestSafetyContext — resolved allergies still block the belt (#691)", () => {
+  it("keeps a RESOLVED allergen in the supplement-suggest belt set and drops a fish-oil suggestion", () => {
+    const profileId = makeProfile("suggest-belt-resolved");
+
+    // A "fish" allergy the user (or a clinician) marked RESOLVED, plus an active one.
+    db.prepare(
+      `INSERT INTO allergies (profile_id, substance, status) VALUES (?, 'fish', 'resolved')`
+    ).run(profileId);
+    db.prepare(
+      `INSERT INTO allergies (profile_id, substance, status) VALUES (?, 'penicillin', 'active')`
+    ).run(profileId);
+
+    // The shared gather (food engine / prompt) narrows to active-only — fish is gone.
+    expect(getIntakeSafetyContext(profileId).allergens).toEqual(["penicillin"]);
+
+    // The suggest belt gather is deliberately broader: resolved fish is still present,
+    // so the deterministic screen drops a fish-oil suggestion the model may surface.
+    const belt = getSuggestSafetyContext(profileId);
+    expect(belt.allergens).toContain("fish");
+    expect(belt.allergens).toContain("penicillin");
+
+    const drop = screenSuggestionSafety(
+      { name: "Omega-3", product: "Wild Fish Oil" },
+      belt
+    );
+    expect(drop?.field).toBe("allergen");
+    expect(drop?.detail).toContain("fish");
   });
 });
 

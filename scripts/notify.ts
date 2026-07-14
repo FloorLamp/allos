@@ -270,8 +270,11 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
   // Gated on Telegram actually being deliverable, not just the opt-in flag: the nudge
   // is a button-driven Telegram feature (the buttons do nothing on a channel that
   // can't render them), and the flag can linger "on" after Telegram is disabled (the
-  // Settings toggle is hidden once Telegram is off). Without this a profile with the
-  // stale flag + Web Push would get a content-less "tap what you've eaten" push.
+  // Settings toggle is hidden once Telegram is off). This keeps a profile with the
+  // stale flag but no Telegram from building a food nudge at all. The push channel
+  // ALSO self-gates food-kind messages (isPushDeliverableKind, #692), which is what
+  // stops the both-channels case — Telegram AND Web Push on — from fanning the nudge
+  // out to a content-less "tap what you've eaten" push alongside the real Telegram one.
   if (
     getProfileFoodTelegram(profile.id) &&
     telegramChannel.isConfigured(profile.id)
