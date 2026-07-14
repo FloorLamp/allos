@@ -12,6 +12,7 @@ import {
   IconUsersGroup,
   IconBarbell,
   IconChartLine,
+  IconDna,
   IconPill,
   IconVaccine,
   IconCalendarEvent,
@@ -75,6 +76,7 @@ const RECORDS: Group = {
   icon: IconReportMedical,
   children: [
     { href: "/biomarkers", label: "Biomarkers", icon: IconChartLine },
+    { href: "/genomics", label: "Genomics", icon: IconDna },
     { href: "/conditions", label: "Conditions", icon: IconStethoscope },
     { href: "/allergies", label: "Allergies", icon: IconAlertTriangle },
     { href: "/procedures", label: "Procedures", icon: IconMedicalCross },

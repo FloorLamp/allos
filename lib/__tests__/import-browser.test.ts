@@ -12,6 +12,7 @@ import {
   familyHistoryItem,
   carePlanItemRow,
   careGoalItem,
+  genomicVariantItem,
   medicationItem,
   bodyItems,
 } from "../import-browser";
@@ -286,5 +287,57 @@ describe("bodyItems (merged Body tab)", () => {
     expect(new Set(items.map((i) => i.href))).toEqual(
       new Set(["/trends?tab=body"])
     );
+  });
+});
+
+describe("genomic variants (#709)", () => {
+  it("adds a Genomic variants tab when the import produced any", () => {
+    const strip = buildImportTabs(counts({ genomicVariants: 2 }));
+    const tab = strip.tabs.find((t) => t.key === "genomic-variants");
+    expect(tab).toBeTruthy();
+    expect(tab?.label).toBe("Genomic variants");
+    expect(tab?.count).toBe(2);
+    expect(tab?.kind).toBe("genomic-variants");
+  });
+
+  it("omits the tab when none were produced", () => {
+    const strip = buildImportTabs(counts({ genomicVariants: 0 }));
+    expect(strip.tabs.some((t) => t.key === "genomic-variants")).toBe(false);
+  });
+
+  it("shapes a variant row factually, with no risk text and a /genomics link", () => {
+    const item = genomicVariantItem({
+      id: 7,
+      gene: "CYP2C19",
+      variant: "rs4244285",
+      genotype: null,
+      star_allele: "*2/*2",
+      zygosity: "homozygous",
+      significance: null,
+      result_type: "pharmacogenomic",
+      report_date: "2024-02-01",
+    });
+    expect(item.title).toBe("CYP2C19 *2/*2 (rs4244285)");
+    // Detail is the reported classification only — no metabolizer/risk commentary.
+    expect(item.detail).toBe("Pharmacogenomic");
+    expect(item.date).toBe("2024-02-01");
+    expect(item.href).toBe("/genomics");
+  });
+
+  it("shows the ACMG significance for a hereditary-risk variant", () => {
+    const item = genomicVariantItem({
+      id: 8,
+      gene: "BRCA1",
+      variant: "c.68_69del",
+      genotype: null,
+      star_allele: null,
+      zygosity: "heterozygous",
+      significance: "pathogenic",
+      result_type: "hereditary-risk",
+      report_date: null,
+    });
+    expect(item.title).toBe("BRCA1 heterozygous (c.68_69del)");
+    expect(item.detail).toBe("Pathogenic · Hereditary risk");
+    expect(item.date).toBeNull();
   });
 });

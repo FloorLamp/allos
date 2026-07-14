@@ -22,8 +22,8 @@
 // persistDocumentImport writes:
 //   - "document_id": the row carries the document_id (medical_records, allergies,
 //     conditions, encounters, procedures, family_history, care_plan_items,
-//     care_goals, appointments, and the auto-structured extracted medications, which
-//     ALSO carry `extra: source = 'extracted'`).
+//     care_goals, genomic_variants, appointments, and the auto-structured extracted
+//     medications, which ALSO carry `extra: source = 'extracted'`).
 //   - "source": the row carries the document's source STRING
 //     (documentSource(docId)) rather than a document_id (body_metrics,
 //     immunizations, and the height/head-circumference metric_samples, the latter
@@ -44,6 +44,10 @@ export const IMPORT_FOOTPRINT_TABLES: readonly ImportFootprintTable[] = [
   { table: "family_history", key: "document_id" },
   { table: "care_plan_items", key: "document_id" },
   { table: "care_goals", key: "document_id" },
+  // Structured genomic variants imported from a clinical genetics / PGx report
+  // (#709). Keyed on document_id like the other clinical domains; a manual variant
+  // carries a NULL document_id and is never touched.
+  { table: "genomic_variants", key: "document_id" },
   // Scheduled appointments imported from a FHIR Appointment resource (#416). A
   // manual booking carries a NULL document_id and is never touched.
   { table: "appointments", key: "document_id" },

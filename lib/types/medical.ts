@@ -362,6 +362,56 @@ export interface Procedure {
   created_at: string;
 }
 
+// ── Genomic variants (#709) ──────────────────────────────────────────────────
+// A stored genetic result, captured STRUCTURALLY from a clinical genetics / PGx
+// report (never re-interpreted from raw calls — see #712). The `result_type`
+// discriminator is the load-bearing routing key: `pharmacogenomic` feeds the PGx
+// cross-check (#710), `hereditary-risk` feeds the screening-cadence consumer
+// (#711). Predictive variants are stored FACTUALLY with no risk editorializing.
+
+// Where a variant routes downstream. `other` is the safe default for anything not
+// clearly one of the actionable classes.
+export type GenomicResultType =
+  "pharmacogenomic" | "hereditary-risk" | "carrier" | "diagnostic" | "other";
+
+// ACMG clinical-significance terms (VUS is stored as 'uncertain-significance').
+// Null for a result the report states without an ACMG call (e.g. a PGx star-allele
+// whose meaning is its metabolizer function, not a pathogenicity classification).
+export type GenomicSignificance =
+  | "pathogenic"
+  | "likely-pathogenic"
+  | "uncertain-significance"
+  | "likely-benign"
+  | "benign";
+
+// Zygosity of the call, when the report states one.
+export type Zygosity = "heterozygous" | "homozygous" | "hemizygous";
+
+// A structured genomic variant (table: genomic_variants). `gene` is the HGNC
+// symbol (the identity anchor, required). `variant` holds the rsID and/or HGVS.
+// `genotype` / `star_allele` / `zygosity` carry the call as the report states it.
+// `interpretation` is the report's own text (stored verbatim, never editorialized).
+// Provenance/dedup (`source`/`document_id`/`external_id`) mirror the conditions
+// table so the import footprint clears/moves/counts it by document_id.
+export interface GenomicVariant {
+  id: number;
+  gene: string;
+  variant: string | null;
+  genotype: string | null;
+  star_allele: string | null;
+  zygosity: Zygosity | null;
+  significance: GenomicSignificance | null;
+  result_type: GenomicResultType;
+  interpretation: string | null;
+  source_lab: string | null;
+  report_date: string | null;
+  notes: string | null;
+  source: string | null;
+  document_id: number | null;
+  external_id: string | null;
+  created_at: string;
+}
+
 // A family-history entry (table: family_history): one condition affecting one
 // relative. `relation` is the affected relative (mother/father/sibling/…);
 // `condition` the display term for their diagnosis; `code`/`code_system` its coded

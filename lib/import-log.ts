@@ -171,6 +171,7 @@ export interface DocumentProducedCounts {
   familyHistory: number;
   carePlanItems: number;
   careGoals: number;
+  genomicVariants: number;
   appointments: number;
   medications: number;
   bodyMetrics: number;
@@ -197,6 +198,7 @@ export function producedTotal(counts: DocumentProducedCounts): number {
     counts.familyHistory +
     counts.carePlanItems +
     counts.careGoals +
+    counts.genomicVariants +
     counts.appointments +
     counts.medications +
     counts.bodyMetrics +

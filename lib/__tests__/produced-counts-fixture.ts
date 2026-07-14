@@ -13,6 +13,7 @@ export const EMPTY_PRODUCED_COUNTS: DocumentProducedCounts = {
   familyHistory: 0,
   carePlanItems: 0,
   careGoals: 0,
+  genomicVariants: 0,
   appointments: 0,
   medications: 0,
   bodyMetrics: 0,

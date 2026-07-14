@@ -13,6 +13,16 @@ import type { DocumentProducedCounts } from "./import-log";
 import type { WeightUnit } from "./settings";
 import { fmtWeight } from "./units";
 import { biomarkerViewHref, encounterHref, type AppRoute } from "./hrefs";
+import {
+  variantDisplayLabel,
+  resultTypeLabel,
+  significanceLabel,
+} from "./genomic-variant";
+import type {
+  GenomicResultType,
+  GenomicSignificance,
+  Zygosity,
+} from "./types/medical";
 
 // The non-record tab kinds, in display order (after the record-category tabs).
 // "records" tabs are data-driven from recordsByCategory. Providers are NOT a tab
@@ -28,6 +38,7 @@ export type ImportTabKind =
   | "family-history"
   | "care-plan"
   | "care-goals"
+  | "genomic-variants"
   | "appointments"
   | "medications"
   | "body";
@@ -99,6 +110,7 @@ const DOMAIN_TAB_KEYS = new Set<string>([
   "family-history",
   "care-plan",
   "care-goals",
+  "genomic-variants",
   "appointments",
   "medications",
   "body",
@@ -141,6 +153,7 @@ export function buildImportTabs(
   add("family-history", "Family history", counts.familyHistory);
   add("care-plan", "Care plan", counts.carePlanItems);
   add("care-goals", "Care goals", counts.careGoals);
+  add("genomic-variants", "Genomic variants", counts.genomicVariants);
   add("appointments", "Appointments", counts.appointments);
   add("medications", "Medications", counts.medications);
   add(
@@ -333,6 +346,31 @@ export function careGoalItem(row: {
     detail: detailLine(row.status),
     date: row.target_date,
     href: "/care-goals",
+  };
+}
+
+export function genomicVariantItem(row: {
+  id: number;
+  gene: string;
+  variant: string | null;
+  genotype: string | null;
+  star_allele: string | null;
+  zygosity: Zygosity | null;
+  significance: GenomicSignificance | null;
+  result_type: GenomicResultType;
+  report_date: string | null;
+}): ProducedItem {
+  return {
+    id: row.id,
+    title: variantDisplayLabel(row),
+    // Factual detail only — the significance term as reported + the routing class.
+    // No risk interpretation (see #711 product decision).
+    detail: detailLine(
+      row.significance ? significanceLabel(row.significance) : null,
+      resultTypeLabel(row.result_type)
+    ),
+    date: row.report_date,
+    href: "/genomics",
   };
 }
 
