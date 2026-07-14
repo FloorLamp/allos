@@ -61,7 +61,8 @@ describe("medical-pipeline: ingestMedicalUpload validation", () => {
   it("rejects an oversized file before buffering", async () => {
     const { login, profile } = seedActor();
     // A File larger than the 64MB absolute cap (MAX_HEALTH_BYTES), reported via
-    // file.size — the pre-buffer gate must reject it without reading the body.
+    // file.size. A ".pdf" carries no health-record pre-buffer signal, so the gate
+    // caps it at the 32MB AI ceiling and rejects it without reading the body.
     const big = new File([Buffer.from("x")], "huge.pdf", {
       type: "application/pdf",
     });
@@ -74,12 +75,40 @@ describe("medical-pipeline: ingestMedicalUpload validation", () => {
     expect(rows[0].error).toMatch(/too large/i);
   });
 
+  it("rejects a large NON-health-signaled upload WITHOUT buffering its body (issue #695)", async () => {
+    const { login, profile } = seedActor();
+    // A 60MB ".pdf": no health-record extension/MIME signal, so the pre-buffer
+    // gate caps it at the 32MB AI ceiling and must reject it BEFORE the whole body
+    // is read into memory. Before #695 the gate admitted everything to 64MB and
+    // buffered it, only rejecting afterward — doubling worst-case buffered memory.
+    // We assert arrayBuffer() is never called.
+    const file = new File([Buffer.from("x")], "notes.pdf", {
+      type: "application/pdf",
+    });
+    Object.defineProperty(file, "size", { value: 60 * 1024 * 1024 });
+    let buffered = false;
+    const realArrayBuffer = file.arrayBuffer.bind(file);
+    Object.defineProperty(file, "arrayBuffer", {
+      value: async () => {
+        buffered = true;
+        return realArrayBuffer();
+      },
+    });
+    await ingestMedicalUpload(login.id, profile.id, file);
+
+    expect(buffered).toBe(false);
+    const rows = docRows(profile.id);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].status).toBe("failed");
+    expect(rows[0].error).toMatch(/too large \(max 32MB\)/i);
+  });
+
   it("still rejects a >32MB NON-health file (the Anthropic-bound AI cap)", async () => {
     const { login, profile } = seedActor();
-    // A real 33MB PDF: over the 32MB AI cap (MAX_AI_BYTES) but under the 64MB
-    // pre-buffer gate, so it passes the pre-buffer gate and is rejected by the
-    // per-path post-buffer check — an AI-extracted file is inlined as base64 into
-    // the Anthropic request and can't exceed 32MB.
+    // A real 33MB PDF: over the 32MB AI cap (MAX_AI_BYTES). A ".pdf" carries no
+    // health-record pre-buffer signal, so the pre-buffer gate now caps it at 32MB
+    // and rejects it here (post-#695). An AI-extracted file is inlined as base64
+    // into the Anthropic request and can't exceed 32MB regardless.
     const pdf = Buffer.concat([
       Buffer.from("%PDF-1.4\n"),
       Buffer.alloc(33 * 1024 * 1024),

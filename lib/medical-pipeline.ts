@@ -18,6 +18,11 @@ import { revalidatePath } from "next/cache";
 import { db, today, writeTx } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
 import { extractMedicalDocument, isSupportedFile } from "@/lib/medical-extract";
+import {
+  MAX_AI_BYTES,
+  MAX_HEALTH_BYTES,
+  preBufferSizeCap,
+} from "@/lib/upload-gate";
 import { sniffUploadType } from "@/lib/file-sniff";
 import { aiConfigured } from "@/lib/ai-client";
 import { claimDocumentForExtraction } from "@/lib/extraction-claim";
@@ -75,18 +80,12 @@ export const UPLOAD_DIR = path.join(
   "uploads",
   "medical"
 );
-// AI-extracted uploads (PDF / image / spreadsheet) are inlined as base64 into the
-// Anthropic Messages request, whose body Anthropic caps at 32MB — a HARD external
-// limit for that path, not a tunable (raising it would need the Files API).
-const MAX_AI_BYTES = 32 * 1024 * 1024; // 32MB (Anthropic request cap)
-// Health-record uploads (CCD/XDM/SHC/FHIR) are parsed DETERMINISTICALLY with no API
-// call, so they aren't bound by the Anthropic limit — only by memory and the zip
-// decompression caps (lib/zip.ts: 64MB/entry, 256MB total). A large multi-document
-// MyChart XDM can exceed 32MB, so health records get their own higher cap. NB: the
-// next.config transport caps (experimental.proxyClientMaxBodySize AND
-// serverActions.bodySizeLimit) must both stay >= this, or Next truncates/rejects the
-// request body before ingest ever runs — keep all three in lockstep.
-const MAX_HEALTH_BYTES = 64 * 1024 * 1024; // 64MB
+// The upload size ceilings and the pre-buffer gate policy live in the pure
+// lib/upload-gate module (no DB import) so they stay unit-testable and importable
+// by the next.config lockstep guard. Re-exported here (issue #696) so existing
+// importers of MAX_AI_BYTES / MAX_HEALTH_BYTES keep their `@/lib/medical-pipeline`
+// path.
+export { MAX_AI_BYTES, MAX_HEALTH_BYTES } from "@/lib/upload-gate";
 
 // Model-supplied dates are only *asked* to be ISO — validate before storing so a
 // hallucinated "Friday" or "2026-13-45" can't land in a YYYY-MM-DD column.
@@ -268,16 +267,21 @@ export async function ingestMedicalUpload(
   const mime = file.type || "application/octet-stream";
   // Reject an oversized upload BEFORE buffering the whole file into memory —
   // file.size is known from the multipart headers, so we needn't read a huge body
-  // just to reject it. This gates at the ABSOLUTE max (the health-record cap); the
-  // stricter AI cap is applied below, once we've sniffed whether this is a
-  // deterministic health record (which isn't bound by the Anthropic request limit).
-  if (file.size > MAX_HEALTH_BYTES) {
+  // just to reject it. The pre-buffer ceiling defaults to the stricter 32MB AI cap
+  // and only rises to the 64MB health-record cap when a CHEAP pre-buffer signal
+  // (filename extension / declared MIME) suggests a genuine deterministic health
+  // record — so a large non-health file is rejected here WITHOUT ever being fully
+  // buffered (issue #695), instead of admitting everything to 64MB and only
+  // rejecting after the whole body was read into memory. The per-path post-buffer
+  // cap below re-checks the true length once the content is actually sniffed.
+  const preCap = preBufferSizeCap(file.name, mime);
+  if (file.size > preCap) {
     insertFailedDoc(
       profileId,
       file.name,
       mime,
       file.size,
-      `File too large (max ${Math.round(MAX_HEALTH_BYTES / 1024 / 1024)}MB).`
+      `File too large (max ${Math.round(preCap / 1024 / 1024)}MB).`
     );
     revalidatePath("/data");
     return;
