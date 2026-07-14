@@ -118,11 +118,13 @@ const nextConfig = {
       // Server Action body cap. Next defaults this to 1MB, which would silently
       // reject the large uploads `uploadMedicalDocument` explicitly permits before
       // the action runs. Set to 65MB (64MB + 1MB): the largest permitted upload is a
-      // 64MB deterministic health record (`MAX_HEALTH_BYTES`, lib/medical-pipeline.ts),
-      // whose multipart body is the file bytes PLUS boundary/field overhead. The 1MB
-      // of headroom keeps the app's own per-path gates (32MB AI / 64MB health)
-      // authoritative, so an over-size file hits its friendly `insertFailedDoc` audit
-      // path instead of an opaque framework rejection.
+      // 64MB deterministic health record (`MAX_HEALTH_BYTES`, lib/upload-gate.ts,
+      // re-exported from lib/medical-pipeline.ts), whose multipart body is the file
+      // bytes PLUS boundary/field overhead. The 1MB of headroom keeps the app's own
+      // per-path gates (32MB AI / 64MB health) authoritative, so an over-size file
+      // hits its friendly `insertFailedDoc` audit path instead of an opaque framework
+      // rejection. This lockstep is guarded by
+      // lib/__tests__/upload-size-lockstep.test.ts (issue #696) — bump both together.
       bodySizeLimit: "65mb",
     },
     // SECOND, EARLIER body cap that `bodySizeLimit` above does NOT cover. Next 16
@@ -135,8 +137,9 @@ const nextConfig = {
     // file field is cut off, so `uploadMedicalDocument` sees an empty File and
     // silently returns — an upload that "fails" with no error row and only a
     // buried framework warning. Keep it in lockstep with `bodySizeLimit` above (65MB)
-    // so the app's own per-path gates (32MB AI / 64MB health, lib/medical-pipeline.ts)
-    // stay the single authoritative limit.
+    // so the app's own per-path gates (32MB AI / 64MB health, lib/upload-gate.ts)
+    // stay the single authoritative limit. Guarded by
+    // lib/__tests__/upload-size-lockstep.test.ts (issue #696).
     proxyClientMaxBodySize: "65mb",
   },
 };
