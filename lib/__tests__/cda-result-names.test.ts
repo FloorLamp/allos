@@ -302,6 +302,43 @@ describe("Results-section vitals + non-analyte filtering (#681)", () => {
   });
 });
 
+// p3/p4 (pediatric) follow-up: a capillary lead maps to the canonical Lead entry,
+// and a derived BMI percentile is dropped (the app recomputes growth percentiles).
+const RESULTS_LEAD_AND_PERCENTILE_CCD = `<?xml version="1.0" encoding="UTF-8"?>
+<ClinicalDocument xmlns="urn:hl7-org:v3" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <component><structuredBody><component><section>
+    <templateId root="2.16.840.1.113883.10.20.22.2.3.1"/>
+    <code code="30954-2" codeSystem="2.16.840.1.113883.6.1"/>
+    <title>Results</title>
+    <entry><organizer classCode="BATTERY" moodCode="EVN">
+      <component><observation classCode="OBS" moodCode="EVN">
+        <code code="10368-9" codeSystem="2.16.840.1.113883.6.1" displayName="Lead, Capillary"/>
+        <effectiveTime value="20240101"/>
+        <value xsi:type="PQ" value="3.2" unit="mcg/dL"/>
+      </observation></component>
+      <component><observation classCode="OBS" moodCode="EVN">
+        <code code="59576-9" codeSystem="2.16.840.1.113883.6.1" displayName="BMI percentile"/>
+        <effectiveTime value="20240101"/>
+        <value xsi:type="PQ" value="85" unit="%"/>
+      </observation></component>
+    </organizer></entry>
+  </section></component></structuredBody></component>
+</ClinicalDocument>`;
+
+describe("Results-section lead mapping + derived-percentile drop (p3/p4)", () => {
+  it("maps capillary lead to Lead and drops the BMI percentile", () => {
+    const recs = parseCcda(RESULTS_LEAD_AND_PERCENTILE_CCD).records;
+    // The derived percentile never becomes a record.
+    expect(recs.some((r) => r.loinc === "59576-9")).toBe(false);
+    expect(recs.some((r) => /percentile/i.test(r.name))).toBe(false);
+    // Capillary lead imports as a lab and groups under the canonical Lead entry.
+    const lead = recs.find((r) => r.loinc === "10368-9")!;
+    expect(lead.category).toBe("lab");
+    expect(lead.canonical).toBe("Lead");
+    expect(lead.value_num).toBe(3.2);
+  });
+});
+
 describe("LOINC carried via translation / codeSystemName (mode b)", () => {
   it("extracts the LOINC and reaches the canonical identity", () => {
     const vitals = parseCcda(TRANSLATION_LOINC_CCD).records.filter(

@@ -4,7 +4,9 @@ import {
   canonicalBiomarkerForLoinc,
   isVitalLoinc,
   isNonAnalyteLoinc,
+  isDerivedPercentileLoinc,
   isUnmappedLabLoinc,
+  qualitativeClassForLoinc,
 } from "@/lib/biomarker-loinc";
 import { reconciledFlag, referenceRange } from "@/lib/reference-range";
 import { convertToCanonical } from "@/lib/unit-conversions";
@@ -114,6 +116,24 @@ describe("canonicalBiomarkerForLoinc — CBC + CMP lab mappings", () => {
     // STI specimen-source code (31208-2) is left in place, not dropped.
     expect(isNonAnalyteLoinc("2345-7")).toBe(false);
     expect(isNonAnalyteLoinc("31208-2")).toBe(false);
+  });
+
+  // p3/p4 (pediatric): derived anthropometric percentiles are dropped (the app
+  // recomputes its own), not imported as range-less unmapped labs.
+  it("recognizes derived anthropometric percentiles and excludes them from unmapped", () => {
+    for (const code of ["59576-9", "77606-2", "8289-1"]) {
+      expect(isDerivedPercentileLoinc(code)).toBe(true);
+      expect(isUnmappedLabLoinc(code)).toBe(false);
+    }
+    // The raw measurements are NOT percentiles.
+    expect(isDerivedPercentileLoinc("29463-7")).toBe(false); // body weight
+  });
+
+  // p4 added rapid-antigen infection tests the qualitative class table missed
+  // (it had the PCR variants only).
+  it("classifies rapid influenza / SARS-CoV-2 antigen LOINCs as infection", () => {
+    for (const code of ["80382-5", "80383-3", "94558-4"])
+      expect(qualitativeClassForLoinc(code)).toBe("infection");
   });
 });
 
@@ -243,6 +263,12 @@ describe("full clinical-lab panel mappings", () => {
     expect(cb("MPV").unit).toBe("fL");
     expect(canonicalBiomarkerForLoinc("77307-7")).toBe("Lead");
     expect(cb("Lead").unit).toBe("ug/dL");
+  });
+
+  // p3/p4 (pediatric exports) added a capillary lead LOINC — the same analyte/unit
+  // as the venous form, routed to the one canonical Lead entry.
+  it("maps capillary blood lead to the Lead entry (alt of venous 77307-7)", () => {
+    expect(canonicalBiomarkerForLoinc("10368-9")).toBe("Lead");
   });
 
   // These six candidate codes were WRONG (bad check digit or a different analyte

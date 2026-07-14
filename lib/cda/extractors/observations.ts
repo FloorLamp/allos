@@ -3,6 +3,7 @@
 // section extractors.
 import {
   canonicalBiomarkerForLoinc,
+  isDerivedPercentileLoinc,
   isNonAnalyteLoinc,
   isVitalLoinc,
 } from "../../biomarker-loinc";
@@ -47,8 +48,10 @@ export function mapObservation(
   const loinc = loincFromCode(code);
   // Drop non-analyte administrative rows (specimen dates, "Approved By", accession
   // numbers, …) Epic packs into the Results section — they are annotations on a
-  // result, not measurements (#681).
-  if (isNonAnalyteLoinc(loinc)) return null;
+  // result, not measurements (#681) — and derived anthropometric percentiles
+  // (BMI/weight-for-length/head-circ percentile), which the app recomputes from the
+  // raw measurements rather than importing as range-less lab rows.
+  if (isNonAnalyteLoinc(loinc) || isDerivedPercentileLoinc(loinc)) return null;
   // A vital-sign LOINC that arrives in a lab/results section — Epic reports body
   // weight and BMI there — is still a vital: classify by the code, not the section
   // (#681). Mirrors how the FHIR path routes category off isVitalLoinc.
