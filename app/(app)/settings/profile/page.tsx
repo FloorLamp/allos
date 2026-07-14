@@ -5,6 +5,7 @@ import {
   getUserAge,
   getUserFullName,
   getProfileTelegram,
+  getProfileFoodTelegram,
   getProfileHomeAssistant,
   getTelegramBotConfig,
   getNotifySchedule,
@@ -25,6 +26,7 @@ import { inferWorkoutSchedule } from "@/lib/queries";
 import { requireSession } from "@/lib/auth";
 import { isDemoMode, isDemoRestricted } from "@/lib/demo";
 import { isTrainingRestricted } from "@/lib/age-gate";
+import { isFoodLoggingRelevant } from "@/lib/life-stage";
 import { estimateMaxHr } from "@/lib/training-zones";
 import { PageHeader } from "@/components/ui";
 import SettingsTabs from "../SettingsTabs";
@@ -108,6 +110,8 @@ export default async function ProfileSettingsPage() {
             botConfigured={botConfigured}
             schedule={getNotifySchedule(profile.id)}
             workoutSummary={workoutScheduleSummary(profile.id)}
+            foodTelegramEnabled={getProfileFoodTelegram(profile.id)}
+            foodLoggingRelevant={isFoodLoggingRelevant(getUserAge(profile.id))}
           />
           <HomeAssistantNotificationSettings
             config={getProfileHomeAssistant(profile.id)}

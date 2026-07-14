@@ -16,6 +16,7 @@ export type NotificationKind =
   | "refill" // low-supply refill nudge
   | "preventive" // preventive-care nudge
   | "workout" // training/workout reminder
+  | "food" // food-log nudge / first-connection opt-in prompt (#682)
   | "digest" // morning digest
   | "upcoming" // "what's due" upcoming digest
   | "weekly-recap" // weekly recap summary

@@ -18,7 +18,10 @@ import {
   getProfilesByTelegramChatId,
   getProfileTelegram,
   setProfileSetting,
+  setProfileFoodTelegram,
+  setFoodTelegramPrompted,
 } from "../settings";
+import { logFoodServingCore } from "../food-log-write";
 import { preventiveRuleByKey } from "../preventive-catalog";
 import { preventiveSignalKey } from "../preventive-upcoming";
 import { refillSignalKey } from "../refill-nudge";
@@ -26,6 +29,8 @@ import { escalationMarkerKey } from "./escalate";
 import {
   type AllCallback,
   type EscalationCallback,
+  type FoodLogCallback,
+  type FoodOptInCallback,
   type PreventiveCallback,
   type PreventiveTapOutcome,
   type RefillCallback,
@@ -35,8 +40,13 @@ import {
   escalationAckAnswerText,
   escalationAckCloseText,
   escalationTakeCloseText,
+  foodLogAnswerText,
+  foodOptInAnswerText,
+  foodOptInCloseText,
   parseAllCallback,
   parseEscalationCallback,
+  parseFoodLogCallback,
+  parseFoodOptInCallback,
   parsePreventiveCallback,
   parseRefillCallback,
   parseSkipCallback,
@@ -55,6 +65,7 @@ import {
 } from "./callback-data";
 import { collectWindowDoses, windowSessionForDose } from "./supplements";
 import { renderWindowMessage } from "./supplement-format";
+import { buildFoodNudge } from "./food";
 import {
   answerCallbackQuery,
   closeMessage,
@@ -112,6 +123,19 @@ export async function handleCallbackQuery(
   const escalation = parseEscalationCallback(cq.data);
   if (escalation) {
     await handleEscalationTap(cq, escalation);
+    return;
+  }
+
+  // Food logging (#682): a quick-log button logs one serving of a group; the
+  // first-connection opt-in prompt flips the per-profile food-logging flag.
+  const foodLog = parseFoodLogCallback(cq.data);
+  if (foodLog) {
+    await handleFoodLog(cq, foodLog);
+    return;
+  }
+  const foodOptIn = parseFoodOptInCallback(cq.data);
+  if (foodOptIn) {
+    await handleFoodOptIn(cq, foodOptIn);
     return;
   }
 
@@ -472,4 +496,62 @@ async function handleAllTaken(
     messageId,
     renderWindowMessage(profileId, all.window, all.date, refreshed)
   );
+}
+
+// Handle a food quick-log button (#682): resolve the acting profile from the chat,
+// log one serving through the shared auth-blind write core (the SAME core the web
+// one-tap bar uses), answer honestly from the typed outcome, then rebuild the nudge
+// so the tapped group's running count updates. Unlike a dose tap the buttons are NOT
+// consumed — a meal is several servings/groups — so the whole nudge is re-rendered
+// with every button intact rather than the tapped one removed.
+async function handleFoodLog(
+  cq: TelegramCallbackQuery,
+  food: FoodLogCallback
+): Promise<void> {
+  const chatId = cq.message?.chat?.id;
+  const profileId =
+    chatId != null
+      ? resolveTapProfile(food, getProfilesByTelegramChatId(String(chatId)))
+      : null;
+  if (profileId == null) {
+    await answerCallbackQuery(cq.id);
+    return;
+  }
+  const outcome = logFoodServingCore(profileId, food.group, food.date);
+  await answerCallbackQuery(cq.id, foodLogAnswerText(outcome, food.group));
+
+  const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
+  const messageId = cq.message?.message_id;
+  // Only rebuild when the message actually had buttons — an absent keyboard would
+  // otherwise wrongly overwrite the message text.
+  if (chatId == null || messageId == null || rows.length === 0) return;
+  // Re-render the whole nudge from current state (same builder as the send, so the
+  // ranking + tally stay one computation) and edit in place through the chokepoint,
+  // which re-applies the "[Name] " prefix for a shared chat.
+  const rebuilt = buildFoodNudge(profileId, food.window, food.date);
+  if (rebuilt) await rebuildMessage(profileId, chatId, messageId, rebuilt);
+}
+
+// Handle the first-connection food opt-in prompt (#682): flip the per-profile
+// food-logging flag from the tapped choice and collapse the prompt to a closing
+// line. Profile resolved from the chat like every other tap; the prompted marker was
+// already set when the prompt was sent, but set it again defensively so a manual
+// re-send can't reopen the loop.
+async function handleFoodOptIn(
+  cq: TelegramCallbackQuery,
+  opt: FoodOptInCallback
+): Promise<void> {
+  const chatId = cq.message?.chat?.id;
+  const profileId =
+    chatId != null
+      ? resolveTapProfile(opt, getProfilesByTelegramChatId(String(chatId)))
+      : null;
+  if (profileId == null) {
+    await answerCallbackQuery(cq.id);
+    return;
+  }
+  setProfileFoodTelegram(profileId, opt.enable);
+  setFoodTelegramPrompted(profileId);
+  await answerCallbackQuery(cq.id, foodOptInAnswerText(opt.enable));
+  await replaceMessage(cq, foodOptInCloseText(opt.enable));
 }
