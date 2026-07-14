@@ -19,6 +19,8 @@ export type DropReason =
   | "placeholder_noise" // a resolved value that is a bare placeholder ("—", "N/A", …)
   | "deduped" // a duplicate of a reading already imported (same external_id)
   | "no_value" // the observation carried no productive value at all
+  | "non_analyte" // an administrative/structural observation (specimen date, "Approved By", accession #) — not a measurement (#681/#693)
+  | "derived_percentile" // a derived anthropometric percentile (BMI/weight-for-length/head-circ) the app recomputes itself, not a raw measurement (#684/#722/#693)
   | "negated" // a negated / retracted / entered-in-error assertion
   | "unrecognized_section" // a whole section / resource type no extractor consumes
   | "other"; // anything else (e.g. no usable date)
@@ -189,6 +191,8 @@ const REASON_LABELS: Record<DropReason, string> = {
   placeholder_noise: "Placeholder / noise",
   deduped: "Duplicate (already imported)",
   no_value: "No value",
+  non_analyte: "Non-analyte / administrative",
+  derived_percentile: "Derived percentile (recomputed)",
   negated: "Negated / retracted",
   unrecognized_section: "Section not consumed",
   other: "Other",
@@ -204,6 +208,8 @@ const REASON_ORDER: DropReason[] = [
   "no_value",
   "null_flavor",
   "placeholder_noise",
+  "non_analyte",
+  "derived_percentile",
   "negated",
   "deduped",
   "unrecognized_section",

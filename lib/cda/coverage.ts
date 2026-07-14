@@ -1,5 +1,7 @@
 import {
   canonicalBiomarkerForLoinc,
+  isDerivedPercentileLoinc,
+  isNonAnalyteLoinc,
   isUnmappedLabLoinc,
 } from "../biomarker-loinc";
 import { isNoKnownAllergy, isNoKnownProblemText } from "../clinical-parse";
@@ -81,7 +83,8 @@ function observationLabel(obs: any, ids: Record<string, string>): string {
 
 // Classify WHY a lab/vital observation was dropped (called only when mapObservation
 // returned null). Order mirrors mapObservation's guards: negation, then no date, then
-// the value: an explicit nullFlavor, a placeholder ("—"/"N/A"), or truly no value.
+// the non-analyte administrative + derived-percentile drops, then the value: an
+// explicit nullFlavor, a placeholder ("—"/"N/A"), or truly no value.
 function classifyObservationDrop(
   obs: any,
   category: "lab" | "vitals",
@@ -93,6 +96,13 @@ function classifyObservationDrop(
   let reason: ImportDrop["reason"] = "other";
   if (truthyNegation(obs?.["@_negationInd"])) reason = "negated";
   else if (!effTime(obs?.effectiveTime)) reason = "other";
+  // A non-analyte administrative row (specimen date, "Approved By", accession #) or a
+  // derived anthropometric percentile is dropped by mapObservation before its value
+  // is ever read (#681/#684/#722/#693) — each carries a real value and would
+  // otherwise fall through to "other". Same order as mapObservation's guard.
+  else if (isNonAnalyteLoinc(loincFromCode(obs?.code))) reason = "non_analyte";
+  else if (isDerivedPercentileLoinc(loincFromCode(obs?.code)))
+    reason = "derived_percentile";
   else {
     const v = Array.isArray(obs?.value) ? obs.value[0] : obs?.value;
     if (v?.["@_nullFlavor"] != null) reason = "null_flavor";
