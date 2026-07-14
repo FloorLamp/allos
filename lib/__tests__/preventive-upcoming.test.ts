@@ -28,6 +28,8 @@ function mkAssessment(
     href: null,
     override: null,
     citation: CITATION,
+    riskReasons: [],
+    riskPriority: 0,
     ...over,
   };
 }

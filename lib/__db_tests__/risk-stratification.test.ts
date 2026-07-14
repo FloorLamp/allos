@@ -10,6 +10,7 @@ import {
   setUserBirthdate,
   setUserSex,
   setRiskAttributes,
+  setSmokingHistory,
   EMPTY_RISK_ATTRIBUTES,
 } from "@/lib/settings";
 import { collectUpcoming } from "@/lib/queries";
@@ -237,5 +238,102 @@ describe("issue #517 — cadence modulation & one-shots via collectUpcoming", ()
     expect(
       collectUpcoming(pid, now).some((i) => i.key === "biomarker:creatinine")
     ).toBe(true);
+  });
+});
+
+// Substrate 3 (#707) — visit-kind cadence modulation end-to-end through
+// collectUpcoming, per the #448 findings-builder convention: a seeded diabetes
+// condition / current-smoking status must bring a recurring VISIT due sooner with
+// its cited reason, which the pure tier can't see (it needs the DB gather of the
+// last-visit satisfaction + the risk factors).
+function recordVisit(profileId: number, ruleKey: string, date: string): void {
+  db.prepare(
+    `INSERT INTO preventive_events (profile_id, rule_key, date, source)
+       VALUES (?, ?, ?, 'manual')`
+  ).run(profileId, ruleKey, date);
+}
+
+function activeDiabetes(profileId: number): void {
+  db.prepare(
+    `INSERT INTO conditions (profile_id, name, status)
+       VALUES (?, 'Type 2 diabetes', 'active')`
+  ).run(profileId);
+}
+
+describe("issue #699/#706 — visit cadence modulation via collectUpcoming", () => {
+  it("diabetes brings a vision_exam done ~14mo ago due, with the ADA reason (#699)", () => {
+    const pid = makeProfile("Diabetic eyes", "1980-01-01");
+    // Base vision cadence 24mo → a 14mo-old exam is up-to-date (no item).
+    recordVisit(pid, "vision_exam", shiftDateStr(now, -420));
+    expect(
+      collectUpcoming(pid, now).some((i) => i.key === "visit:vision_exam")
+    ).toBe(false);
+
+    // Active diabetes halves the cadence to ~12mo → now due, with the reason line.
+    activeDiabetes(pid);
+    const item = collectUpcoming(pid, now).find(
+      (i) => i.key === "visit:vision_exam"
+    );
+    expect(item, "vision exam now due").toBeTruthy();
+    expect(item!.priority).toBe(2);
+    expect(item!.detail).toContain(
+      "Diabetes on file — annual dilated eye exam recommended (ADA)"
+    );
+  });
+
+  it("family history of glaucoma brings a vision_exam due sooner, with the AAO reason (#699)", () => {
+    const pid = makeProfile("Glaucoma FH", "1980-01-01");
+    recordVisit(pid, "vision_exam", shiftDateStr(now, -420));
+    expect(
+      collectUpcoming(pid, now).some((i) => i.key === "visit:vision_exam")
+    ).toBe(false);
+
+    db.prepare(
+      `INSERT INTO family_history (profile_id, relation, condition)
+         VALUES (?, 'mother', 'Open-angle glaucoma')`
+    ).run(pid);
+    const item = collectUpcoming(pid, now).find(
+      (i) => i.key === "visit:vision_exam"
+    );
+    expect(item, "vision exam now due").toBeTruthy();
+    expect(item!.detail).toContain("Family history of glaucoma");
+  });
+
+  it("diabetes brings a dental_cleaning done ~4mo ago due, with the periodontal reason (#706)", () => {
+    const pid = makeProfile("Diabetic gums", "1980-01-01");
+    // Base dental cadence 6mo → a 4mo-old cleaning is up-to-date (no item).
+    recordVisit(pid, "dental_cleaning", shiftDateStr(now, -120));
+    expect(
+      collectUpcoming(pid, now).some((i) => i.key === "visit:dental_cleaning")
+    ).toBe(false);
+
+    activeDiabetes(pid);
+    const item = collectUpcoming(pid, now).find(
+      (i) => i.key === "visit:dental_cleaning"
+    );
+    expect(item, "dental cleaning now due").toBeTruthy();
+    expect(item!.priority).toBe(2);
+    expect(item!.detail).toContain("periodontal disease risk is higher");
+  });
+
+  it("current smoking brings a dental_cleaning due sooner, with the smoking reason (#706)", () => {
+    const pid = makeProfile("Smoker gums", "1980-01-01");
+    recordVisit(pid, "dental_cleaning", shiftDateStr(now, -120));
+    expect(
+      collectUpcoming(pid, now).some((i) => i.key === "visit:dental_cleaning")
+    ).toBe(false);
+
+    setSmokingHistory(
+      pid,
+      { status: "current", packYears: null, quitYear: null },
+      "manual"
+    );
+    const item = collectUpcoming(pid, now).find(
+      (i) => i.key === "visit:dental_cleaning"
+    );
+    expect(item, "dental cleaning now due").toBeTruthy();
+    expect(item!.detail).toContain(
+      "Current smoking — elevated periodontal risk"
+    );
   });
 });

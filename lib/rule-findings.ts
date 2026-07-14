@@ -41,6 +41,11 @@ import {
 import { situationHistoryResolver } from "./trend-annotations";
 import { optimalStatus } from "./reference-range";
 import { decideSunExposure, SUN_EXPOSURE_WINDOW_WEEKS } from "./sun-exposure";
+import { decidePeriodontalObservation } from "./oral-health-observation";
+import {
+  deriveRiskFactors,
+  EMPTY_RISK_ATTRIBUTES,
+} from "./risk-stratification";
 import { isGoalLive, frequencyScopeLabel } from "./goals";
 import {
   foodHabitSignalKey,
@@ -118,6 +123,47 @@ export function collectCoachingFindings(
     ...buildFoodSuggestionFindings(profileId),
     ...buildFoodHabitFindings(profileId),
     ...buildSunExposureFindings(profileId, today),
+    ...buildOralHealthFindings(profileId),
+  ];
+}
+
+// ---- Oral health: diabetes↔periodontitis link (coaching tier only, #706) ----
+
+// A calm, informational coaching finding for a profile with active diabetes: the
+// bidirectional gum-health ↔ glycemic-control link, worth knowing alongside the
+// (separately surfaced) tighter dental cadence. Coaching tier ONLY (#449): it joins
+// collectCoachingFindings, its dedupeKey rides the shared suppression bus
+// (ORAL_HEALTH_PREFIX is registered in RULE_FINDING_PREFIXES), and it NEVER notifies
+// / never reaches the hero. "Has diabetes" is resolved through the SAME
+// deriveRiskFactors engine the visit-cadence tightening uses, so the note and the
+// tightened dental cadence key on one answer (one question, one computation). No
+// owned SQL is added here (reads through the profile-scoped intake-safety gather).
+export function buildOralHealthFindings(profileId: number): Finding[] {
+  // Active conditions from the ONE shared intake-safety gather (#661).
+  const conditions = getIntakeSafetyContext(profileId).conditions;
+  const factors = deriveRiskFactors({
+    familyConditions: [],
+    activeConditions: conditions,
+    attributes: EMPTY_RISK_ATTRIBUTES,
+  });
+  const obs = decidePeriodontalObservation({
+    hasDiabetes: factors.has("diabetes"),
+  });
+  if (!obs) return [];
+  return [
+    {
+      domain: "oral-health",
+      dedupeKey: obs.dedupeKey,
+      title: obs.title,
+      detail: obs.detail,
+      // Calm FYI — informational, never an alarm and never a push.
+      tone: "info",
+      evidence:
+        "Diabetes and periodontitis are bidirectionally linked (ADA / AAP). " +
+        "Informational, not medical advice.",
+      actionHref: "/encounters",
+      actionLabel: "Dental care",
+    },
   ];
 }
 

@@ -273,6 +273,8 @@ describe("preventiveSignalKey ↔ Upcoming item key", () => {
     href: null,
     override: null,
     citation: { source: "USPSTF", summary: "test", reviewed: "2026-07" },
+    riskReasons: [],
+    riskPriority: 0,
   };
 
   it("namespaces by kind: `<kind>:<ruleKey>`", () => {

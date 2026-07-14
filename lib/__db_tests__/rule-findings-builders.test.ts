@@ -25,8 +25,10 @@ import {
   buildBodyHygieneFindings,
   buildFoodSuggestionFindings,
   buildFoodHabitFindings,
+  buildOralHealthFindings,
   collectCoachingFindings,
 } from "@/lib/rule-findings";
+import { periodontalObservationKey } from "@/lib/oral-health-observation";
 import { foodSuggestSignalKey } from "@/lib/food-suggest";
 import { foodHabitSignalKey } from "@/lib/food-habit";
 import { matchFoodInteractions } from "@/lib/food-drug-interactions";
@@ -793,5 +795,45 @@ describe("collectCoachingFindings — the #449 unified rollup", () => {
         true
       );
     }
+  });
+});
+
+// #706 — the diabetes↔periodontitis coaching observation. A builder that GATHERS
+// the active-conditions state and hands "has diabetes" to the pure decision engine,
+// per the #448 findings-builder rule (one fixture per builder, end-to-end output).
+describe("buildOralHealthFindings — diabetes↔periodontitis note (#706)", () => {
+  it("emits nothing for a profile without diabetes", () => {
+    const { profileId } = makeProfile("oral-no-dm");
+    expect(buildOralHealthFindings(profileId)).toEqual([]);
+  });
+
+  it("emits the calm, guardable note for a profile with active diabetes", () => {
+    const { profileId } = makeProfile("oral-dm");
+    db.prepare(
+      `INSERT INTO conditions (profile_id, name, status)
+         VALUES (?, 'Type 2 diabetes mellitus', 'active')`
+    ).run(profileId);
+
+    const findings = buildOralHealthFindings(profileId);
+    expect(findings).toHaveLength(1);
+    expect(findings[0].dedupeKey).toBe(periodontalObservationKey());
+    expect(findings[0].tone).toBe("info");
+    expect(dedupeKeyHasKnownPrefix(findings[0].dedupeKey)).toBe(true);
+    // Coaching tier: it flows through the unified rollup (never a push, never hero).
+    const rolled = collectCoachingFindings(
+      profileId,
+      today(profileId),
+      "kg"
+    ).map((f) => f.dedupeKey);
+    expect(rolled).toContain(periodontalObservationKey());
+  });
+
+  it("does not fire for a RESOLVED diabetes condition", () => {
+    const { profileId } = makeProfile("oral-dm-resolved");
+    db.prepare(
+      `INSERT INTO conditions (profile_id, name, status)
+         VALUES (?, 'Type 2 diabetes mellitus', 'resolved')`
+    ).run(profileId);
+    expect(buildOralHealthFindings(profileId)).toEqual([]);
   });
 });

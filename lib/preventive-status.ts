@@ -13,6 +13,7 @@ import {
   NO_SMOKING,
   type ResolvedSmoking,
 } from "./smoking";
+import { visitModulationFor, type RiskFactor } from "./risk-stratification";
 
 // Pure, DB-free assessment of a profile's preventive-care status against the
 // curated catalog (`lib/preventive-catalog.ts`), mirroring the immunization
@@ -79,6 +80,14 @@ export interface PreventiveAssessment {
   // the status is purely schedule-derived.
   override: PreventiveOverrideKind | null;
   citation: Citation; // passed through for the auditable "based on X" disclaimer
+  // Risk-stratified visit-cadence modulation (Substrate 3, #707): the calm, cited
+  // reason line(s) a recurring VISIT rule earned from the profile's risk factors
+  // (empty when none), and the within-band ranking weight (0 when none). Populated
+  // only for visit rules whose cadence a factor tightened — the same modulation that
+  // brought the item due sooner also explains WHY. The surfacing layer joins the
+  // reasons into the item detail and lifts the priority (issue #699/#706).
+  riskReasons: string[];
+  riskPriority: number;
 }
 
 export interface PreventiveSummary {
@@ -138,6 +147,8 @@ function make(
     href: null,
     override: null,
     citation: rule.citation,
+    riskReasons: [],
+    riskPriority: 0,
     ...extra,
   };
 }
@@ -148,6 +159,9 @@ interface Ctx {
   today: string;
   year: number; // calendar year of `today`, for the lung-screening recency window
   smoking: ResolvedSmoking; // resolved smoking facts for the risk-gated rules
+  // The profile's active risk factors (Substrate 3, #707) — modulate recurring
+  // visit cadence. Empty set → visits keep their catalog cadence untouched.
+  riskFactors: ReadonlySet<RiskFactor>;
   lastByRule: Map<string, string>;
 }
 
@@ -164,6 +178,21 @@ function assessRecurring(
 ): PreventiveAssessment {
   const last = ctx.lastByRule.get(rule.key) ?? null;
   const grace = rule.graceMonths;
+
+  // Visit-kind cadence modulation (Substrate 3, #707): a recurring VISIT rule whose
+  // cadence the profile's risk factors tighten comes due sooner and carries the calm,
+  // cited reason. Computed once here (independent of `last`) so it rides both the
+  // interval recurrence AND the never-satisfied age-based due state. Screenings keep
+  // their catalog cadence — their risk side is priority/reason only, applied
+  // downstream via screeningPriorityFor. No-op (multiplier 1) when nothing matched.
+  const visitMod =
+    rule.kind === "visit"
+      ? visitModulationFor(rule.key, ctx.riskFactors)
+      : { multiplier: 1, priority: 0, reasons: [] as string[] };
+  const riskExtra: Partial<PreventiveAssessment> =
+    visitMod.reasons.length > 0
+      ? { riskReasons: visitMod.reasons, riskPriority: visitMod.priority }
+      : {};
 
   // Aged out of the routine window (above end age). Screenings past their end
   // age are individualized rather than routine; recurring visits hand off.
@@ -200,6 +229,7 @@ function assessRecurring(
       {
         nextDueAgeMonths: startMonths,
         nextLabel: overdue ? "Overdue — none on record" : "Due now",
+        ...riskExtra,
       }
     );
   }
@@ -212,15 +242,22 @@ function assessRecurring(
     });
   }
 
-  // Interval recurrence: the clock runs from the last satisfaction.
-  const dueDate = addMonths(last, intervalMonths);
-  const leadDate = addMonths(last, intervalMonths - LEAD_MONTHS);
-  const overdueDate = addMonths(last, intervalMonths + grace);
+  // Interval recurrence: the clock runs from the last satisfaction, modulated (for a
+  // visit rule) by the matched risk factors — the tightest multiplier wins, rounded
+  // to whole months and floored at 1 so the from-last date math stays clean.
+  const effectiveInterval =
+    visitMod.multiplier < 1
+      ? Math.max(1, Math.round(intervalMonths * visitMod.multiplier))
+      : intervalMonths;
+  const dueDate = addMonths(last, effectiveInterval);
+  const leadDate = addMonths(last, effectiveInterval - LEAD_MONTHS);
+  const overdueDate = addMonths(last, effectiveInterval + grace);
   if (ctx.today < leadDate) {
     return make(rule, "up_to_date", `Done ${last}`, {
       lastDate: last,
       nextDueDate: dueDate,
       nextLabel: `Next by ${dueDate}`,
+      ...riskExtra,
     });
   }
   if (ctx.today < overdueDate) {
@@ -228,12 +265,14 @@ function assessRecurring(
       lastDate: last,
       nextDueDate: dueDate,
       nextLabel: `Due by ${dueDate}`,
+      ...riskExtra,
     });
   }
   return make(rule, "overdue", `Last done ${last}`, {
     lastDate: last,
     nextDueDate: dueDate,
     nextLabel: `Was due ${dueDate}`,
+    ...riskExtra,
   });
 }
 
@@ -373,6 +412,11 @@ export interface PreventiveInput {
   // rules stay inert (NO_SMOKING), preserving the pre-#83 behavior for any caller
   // that doesn't resolve smoking.
   smoking?: ResolvedSmoking;
+  // The profile's active risk factors (Substrate 3, #707) — modulate recurring visit
+  // cadence (a diabetic profile's eye/dental visits come due sooner, with a reason).
+  // Omitted → empty set → visits keep their catalog cadence (pre-#707 behavior for
+  // any caller that doesn't gather risk factors).
+  riskFactors?: ReadonlySet<RiskFactor>;
   today: string;
 }
 
@@ -397,6 +441,7 @@ export function assessPreventiveCare(
     today: input.today,
     year: Number(input.today.slice(0, 4)) || 0,
     smoking: input.smoking ?? NO_SMOKING,
+    riskFactors: input.riskFactors ?? new Set<RiskFactor>(),
     lastByRule: lastByRule(input.satisfactions),
   };
   const overrideByKey = new Map(

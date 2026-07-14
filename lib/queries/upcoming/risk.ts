@@ -8,8 +8,13 @@
 
 import { cache } from "../../request-cache";
 import { deriveRiskFactors, type RiskFactor } from "../../risk-stratification";
-import { getRiskAttributes } from "../../settings";
-import { getConditions, getFamilyHistory } from "../clinical";
+import { getRiskAttributes, getSmokingHistory } from "../../settings";
+import { resolveSmoking } from "../../smoking";
+import {
+  getConditions,
+  getFamilyHistory,
+  hasImportedSmokingHistory,
+} from "../clinical";
 
 // The profile's active risk-factor set. Family conditions come from every
 // family_history row; personal conditions from the ACTIVE conditions only (a
@@ -24,5 +29,12 @@ export const getRiskFactors = cache(function getRiskFactors(
       (c) => c.name
     ),
     attributes: getRiskAttributes(profileId),
+    // Resolved smoking status (#706): the structured record wins, else the imported
+    // social-history fallback — the SAME resolution the preventive lung/AAA gates
+    // use. A `current` status is the periodontal-risk input for the dental cadence.
+    smokingStatus: resolveSmoking(
+      getSmokingHistory(profileId),
+      hasImportedSmokingHistory(profileId)
+    ).status,
   });
 });
