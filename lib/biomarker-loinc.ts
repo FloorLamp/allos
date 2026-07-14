@@ -298,7 +298,7 @@ export function isNonAnalyteLoinc(loinc: string | null | undefined): boolean {
 //   • screen     — a prenatal/genetic risk screen (NIPT). No positive/negative
 //                  polarity — the risk axis is deferred to #687; treated as
 //                  unrecognized here so nothing is mis-flagged in the meantime.
-// Codes are drawn from real Epic exports (see docs/unmapped-lab-loincs.csv). Only
+// Codes are drawn from real Epic exports (the three patient XDM packages). Only
 // classes whose polarity is unambiguous are listed; immutable attributes (blood
 // type, genotype) stay name-regex driven where that already works.
 export type QualitativeLoincClass = "infection" | "immunity" | "screen";
