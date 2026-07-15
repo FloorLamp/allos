@@ -1,0 +1,1373 @@
+// Hand-authored exercise-guide CONTENT (setup/execution/mistakes/etc.), keyed by
+// exerciseHistoryKey. Muscles are NOT authored here — the generator folds them in
+// from the catalog (#735). Imported by scripts/gen-exercise-guides.ts.
+//
+// INFORMATIONAL FORM REFERENCE, NOT MEDICAL ADVICE.
+
+import type { Equipment } from "@/lib/lifts";
+
+export interface GuideContent {
+  setup: string[];
+  execution: string[];
+  breathing?: string;
+  commonMistakes: string[];
+  safetyNotes?: string[];
+  equipmentNotes?: Partial<Record<Equipment, string>>;
+}
+
+export const GUIDE_CONTENT: Record<string, GuideContent> = {
+  "ab wheel rollout": {
+    setup: [
+      "Kneel on a pad and grip the wheel under your shoulders, arms straight.",
+      "Brace your abs and tuck your ribs down so your lower back is flat, not arched.",
+    ],
+    execution: [
+      "Roll the wheel forward slowly, extending your hips and shoulders together.",
+      "Reach only as far as you can hold a flat back — no sag in the lower back.",
+      "Pull with your abs to roll the wheel back to the start under control.",
+    ],
+    breathing: "Exhale as you roll out, inhale as you return.",
+    commonMistakes: [
+      "Letting the hips pike up so the arms do the work instead of the abs.",
+      "Allowing the lower back to arch and sag at full reach.",
+      "Rolling out farther than you can control, then collapsing.",
+    ],
+    safetyNotes: [
+      "Start with a short range and increase only as your brace holds; a sudden sag loads the lower back.",
+    ],
+  },
+  "arnold press": {
+    setup: [
+      "Sit or stand tall holding dumbbells at shoulder height, palms facing you.",
+      "Set your elbows in front of your torso with a braced core.",
+    ],
+    execution: [
+      "Press up while rotating your palms to face forward at the top.",
+      "Finish with arms extended, dumbbells stacked over your shoulders.",
+      "Reverse the rotation on the way down to return palms toward you.",
+    ],
+    breathing: "Inhale before the press, exhale as you drive up.",
+    commonMistakes: [
+      "Leaning back and turning it into an incline press.",
+      "Rushing the rotation instead of blending it into the press.",
+      "Flaring the elbows wide at the bottom and stressing the shoulders.",
+    ],
+  },
+  "back extension": {
+    setup: [
+      "Set the pad at the hip crease and hook your heels under the rollers.",
+      "Cross your arms or hold a plate at your chest, spine neutral.",
+    ],
+    execution: [
+      "Hinge at the hips to lower your torso until you feel your hamstrings load.",
+      "Squeeze your glutes to raise your torso back in line with your legs.",
+      "Stop at a straight line — do not hyperextend past it.",
+    ],
+    breathing: "Inhale as you lower, exhale as you rise.",
+    commonMistakes: [
+      "Rounding the back to gain range instead of hinging at the hips.",
+      "Hyperextending at the top and cranking the lower back.",
+      "Using momentum to swing up rather than a controlled squeeze.",
+    ],
+    safetyNotes: [
+      "Add load slowly; the lower back is working through a long lever here.",
+    ],
+  },
+  "back squat": {
+    setup: [
+      "Set the bar on your upper traps (high bar) or rear delts (low bar) and grip it firmly.",
+      "Unrack, step back, and set your feet about shoulder-width, toes slightly out.",
+      "Take a big breath, brace your core, and screw your feet into the floor.",
+    ],
+    execution: [
+      "Break at the hips and knees together, sitting down between your legs.",
+      "Descend until your hip crease is at or below the top of your knee.",
+      "Drive through your whole foot to stand, keeping your chest up.",
+    ],
+    breathing:
+      "Big breath and brace at the top, hold through the rep, exhale near lockout.",
+    commonMistakes: [
+      "Letting the knees cave inward on the way up.",
+      "Rising hips-first so the bar tips you forward.",
+      "Cutting depth short and quarter-squatting heavy loads.",
+    ],
+    safetyNotes: [
+      "Squat in a rack with safety pins set at depth, or be ready to dump the bar.",
+      "Build load gradually; this is a heavy compound lift on the spine.",
+    ],
+  },
+  "bench press": {
+    setup: [
+      "Lie back with eyes under the bar, feet flat, and a slight natural arch.",
+      "Grip a bit wider than shoulder width and pull your shoulder blades back and down.",
+      "Unrack to arms straight, bar stacked over your shoulders.",
+    ],
+    execution: [
+      "Lower the bar under control to your lower chest, elbows tucked ~45°.",
+      "Touch lightly, then press up and slightly back toward your shoulders.",
+      "Lock out with the bar over your shoulder joints.",
+    ],
+    breathing: "Inhale as you lower, exhale as you press up.",
+    commonMistakes: [
+      "Flaring the elbows straight out to the sides.",
+      "Bouncing the bar off the chest.",
+      "Letting the shoulder blades come unpinched and rounding forward.",
+    ],
+    safetyNotes: [
+      "Use a spotter or safety arms for heavy sets; never bench heavy alone with collars on and no catch.",
+    ],
+    equipmentNotes: {
+      Barbell:
+        "Keep both hands even on the bar and press it as one unit; the fixed bar path means wrist and shoulder alignment matter most.",
+      Dumbbell:
+        "Dumbbells allow a deeper stretch and a more natural arc; keep them tracking over the elbows and control the descent since there's no fixed bar to stabilize them.",
+    },
+  },
+  "bulgarian split squat": {
+    setup: [
+      "Rest the top of your rear foot on a bench behind you.",
+      "Step the front foot far enough forward that the knee can track over mid-foot.",
+      "Stand tall with a braced core; hold dumbbells at your sides if loading.",
+    ],
+    execution: [
+      "Lower straight down until your front thigh is about parallel.",
+      "Keep most of your weight on the front foot's heel and mid-foot.",
+      "Drive up through the front foot to stand.",
+    ],
+    breathing: "Inhale as you lower, exhale as you drive up.",
+    commonMistakes: [
+      "Placing the front foot too close so the knee shoots far past the toes.",
+      "Pushing off the rear foot instead of loading the front leg.",
+      "Letting the front knee cave inward.",
+    ],
+  },
+  "cable crunch": {
+    setup: [
+      "Kneel facing a high pulley and hold the rope beside your head.",
+      "Hinge slightly forward and set a braced, rounded-forward starting position.",
+    ],
+    execution: [
+      "Crunch your ribs toward your pelvis, rounding the spine.",
+      "Move at the abs, not the hips — keep the hips fixed.",
+      "Return under control to a full stretch without letting the weight pull you upright.",
+    ],
+    breathing: "Exhale hard as you crunch down, inhale as you return.",
+    commonMistakes: [
+      "Turning it into a hip hinge by rocking back and forth at the hips.",
+      "Pulling with the arms instead of curling with the abs.",
+      "Using so much weight the range collapses.",
+    ],
+  },
+  "cable fly": {
+    setup: [
+      "Set both pulleys near shoulder height and take a handle in each hand.",
+      "Stagger your stance, lean in slightly, and keep a soft bend in the elbows.",
+    ],
+    execution: [
+      "Bring your hands together in a wide arc in front of your chest.",
+      "Keep the elbow angle fixed — hug, don't press.",
+      "Return under control to a stretch across the chest.",
+    ],
+    breathing: "Exhale as you bring the hands together, inhale on the return.",
+    commonMistakes: [
+      "Bending and straightening the elbows so it becomes a press.",
+      "Shrugging the shoulders up toward the ears.",
+      "Over-stretching at the bottom and stressing the shoulder.",
+    ],
+  },
+  "cable kickback": {
+    setup: [
+      "Attach an ankle cuff to a low pulley and face the machine.",
+      "Hinge slightly forward, brace, and hold on for balance.",
+    ],
+    execution: [
+      "Drive the working leg back and up by squeezing the glute.",
+      "Keep a slight knee bend and stop when the hip is fully extended.",
+      "Lower under control without swinging.",
+    ],
+    breathing: "Exhale as you kick back, inhale as you return.",
+    commonMistakes: [
+      "Arching the lower back to gain range instead of extending the hip.",
+      "Swinging the leg with momentum.",
+      "Rotating the torso to cheat the weight up.",
+    ],
+  },
+  "calf raise": {
+    setup: [
+      "Stand with the balls of your feet on a step or block, heels free.",
+      "Stand tall with a braced core; hold a support or load if needed.",
+    ],
+    execution: [
+      "Rise as high as possible onto the balls of your feet.",
+      "Pause briefly at the top squeeze.",
+      "Lower slowly to a full stretch below the step.",
+    ],
+    breathing: "Exhale as you rise, inhale as you lower.",
+    commonMistakes: [
+      "Bouncing through a short, fast range.",
+      "Skipping the bottom stretch.",
+      "Rolling onto the outer edge of the foot.",
+    ],
+  },
+  "chin up": {
+    setup: [
+      "Grip the bar with palms facing you, about shoulder-width apart.",
+      "Hang with arms straight, shoulders set down and back.",
+    ],
+    execution: [
+      "Pull your chest toward the bar, driving the elbows down.",
+      "Bring your chin over the bar.",
+      "Lower under control to a full hang.",
+    ],
+    breathing: "Exhale as you pull up, inhale as you lower.",
+    commonMistakes: [
+      "Kipping or swinging to generate momentum.",
+      "Stopping short of a full hang each rep.",
+      "Shrugging the shoulders instead of pulling the elbows down.",
+    ],
+    safetyNotes: [
+      "Add weight via a belt or dumbbell only once you own clean bodyweight reps.",
+    ],
+  },
+  "close-grip bench press": {
+    setup: [
+      "Lie back and grip the bar about shoulder-width — no narrower than that.",
+      "Pull the shoulder blades back and down; unrack over the shoulders.",
+    ],
+    execution: [
+      "Lower the bar to your lower chest, keeping elbows tucked close.",
+      "Press up in a straight line, driving with the triceps and chest.",
+      "Lock out over the shoulders.",
+    ],
+    breathing: "Inhale as you lower, exhale as you press.",
+    commonMistakes: [
+      "Gripping so narrow the wrists bend painfully.",
+      "Flaring the elbows out, which shifts load and stresses the shoulders.",
+      "Bouncing the bar off the chest.",
+    ],
+    safetyNotes: ["Use safety arms or a spotter for heavy sets."],
+  },
+  "concentration curl": {
+    setup: [
+      "Sit and brace your working elbow against the inside of your thigh.",
+      "Let the dumbbell hang with your arm extended.",
+    ],
+    execution: [
+      "Curl the dumbbell up by contracting the biceps, elbow fixed.",
+      "Squeeze hard at the top.",
+      "Lower slowly to a full stretch.",
+    ],
+    breathing: "Exhale as you curl, inhale as you lower.",
+    commonMistakes: [
+      "Swinging the torso to help the weight up.",
+      "Lifting the elbow off the thigh.",
+      "Cutting the bottom stretch short.",
+    ],
+  },
+  crunch: {
+    setup: [
+      "Lie on your back with knees bent and feet flat.",
+      "Rest your hands lightly by your head — don't pull on your neck.",
+    ],
+    execution: [
+      "Curl your ribs toward your pelvis, lifting the shoulder blades off the floor.",
+      "Pause at the top contraction.",
+      "Lower under control without fully relaxing between reps.",
+    ],
+    breathing: "Exhale as you curl up, inhale as you lower.",
+    commonMistakes: [
+      "Yanking on the neck with the hands.",
+      "Using momentum to bounce off the floor.",
+      "Lifting the whole back up (that's a sit-up, not a crunch).",
+    ],
+  },
+  curl: {
+    setup: [
+      "Stand tall holding the load with palms facing forward, arms extended.",
+      "Pin your elbows to your sides and brace your core.",
+    ],
+    execution: [
+      "Curl the weight up by bending the elbows, keeping them still.",
+      "Squeeze the biceps at the top.",
+      "Lower slowly to a full stretch.",
+    ],
+    breathing: "Exhale as you curl, inhale as you lower.",
+    commonMistakes: [
+      "Swinging the torso or heaving the weight up.",
+      "Letting the elbows drift forward so the front delts take over.",
+      "Dropping the weight quickly instead of controlling the lowering.",
+    ],
+    equipmentNotes: {
+      Barbell:
+        "A fixed bar keeps both arms even; keep the wrists neutral and don't let the bar drift away from the body.",
+      Dumbbell:
+        "Free dumbbells let each arm work independently and let you supinate (rotate the palm up) through the rep for a fuller biceps contraction.",
+      Cable:
+        "The cable keeps constant tension through the whole range, including the top; stand back far enough that the line stays taut.",
+      Machine:
+        "The machine fixes the path and pad-supports the arm, so just focus on a full range and a controlled lowering.",
+    },
+  },
+  "dead hang": {
+    setup: [
+      "Grip a pull-up bar about shoulder-width, palms facing away.",
+      "Let your body hang with arms straight.",
+    ],
+    execution: [
+      "Keep the shoulders slightly active — don't fully collapse into the joint.",
+      "Hold a still, steady hang for the target time.",
+      "Keep the core gently braced so you don't swing.",
+    ],
+    breathing: "Breathe steadily and evenly throughout the hold.",
+    commonMistakes: [
+      "Completely relaxing so the shoulders shrug up to the ears.",
+      "Swinging or kicking to pass the time.",
+      "Gripping with a weak, half-open hand.",
+    ],
+    safetyNotes: [
+      "Build grip and shoulder tolerance gradually before long or weighted hangs.",
+    ],
+  },
+  deadlift: {
+    setup: [
+      "Stand with mid-foot under the bar, shins an inch or two away.",
+      "Hinge and grip just outside your legs; drop the hips until the shins touch the bar.",
+      "Set a flat back, chest up, lats tight, and take the slack out of the bar.",
+    ],
+    execution: [
+      "Push the floor away and stand, keeping the bar dragging up your legs.",
+      "Extend the hips and knees together; finish tall with the glutes.",
+      "Return by hinging the hips back first, then bending the knees.",
+    ],
+    breathing:
+      "Big breath and brace before you pull; hold it through the rep, exhale at lockout.",
+    commonMistakes: [
+      "Rounding the lower back under load.",
+      "Letting the hips shoot up first so it becomes a stiff-leg pull.",
+      "Jerking the bar off the floor instead of taking out the slack first.",
+    ],
+    safetyNotes: [
+      "Keep the bar close to your body throughout; a bar that drifts forward loads the spine.",
+      "Progress load conservatively — this is a maximal posterior-chain and spinal lift.",
+    ],
+  },
+  "decline bench press": {
+    setup: [
+      "Secure your legs and lie back on a decline bench.",
+      "Grip a bit wider than shoulders; pull the shoulder blades back and down.",
+    ],
+    execution: [
+      "Lower the bar to your lower chest with elbows tucked.",
+      "Press up over the shoulders in a straight line.",
+      "Lock out and repeat.",
+    ],
+    breathing: "Inhale as you lower, exhale as you press.",
+    commonMistakes: [
+      "Flaring the elbows wide.",
+      "Bouncing the bar off the chest.",
+      "Losing the shoulder-blade set at the bottom.",
+    ],
+    safetyNotes: [
+      "Have a spotter hand off and catch the bar — self-spotting on a decline is awkward.",
+    ],
+  },
+  dip: {
+    setup: [
+      "Grip parallel bars and press up to arms straight, shoulders down.",
+      "Lean the torso slightly forward for chest emphasis, or stay upright for triceps.",
+    ],
+    execution: [
+      "Lower under control until your upper arms reach about parallel.",
+      "Keep the elbows tracking back, not flaring wide.",
+      "Press back up to lockout.",
+    ],
+    breathing: "Inhale as you lower, exhale as you press up.",
+    commonMistakes: [
+      "Dropping too deep and overstressing the shoulders.",
+      "Shrugging the shoulders up at the bottom.",
+      "Bouncing out of the bottom.",
+    ],
+    safetyNotes: [
+      "Go only as deep as your shoulders comfortably allow; add weight with a belt once bodyweight is easy.",
+    ],
+  },
+  "face pull": {
+    setup: [
+      "Set a rope at upper-chest to face height and grip it with thumbs back.",
+      "Step back to tension with arms extended.",
+    ],
+    execution: [
+      "Pull the rope toward your face, splitting the ends past your ears.",
+      "Lead with the elbows high and squeeze the rear delts and upper back.",
+      "Return under control.",
+    ],
+    breathing: "Exhale as you pull, inhale as you return.",
+    commonMistakes: [
+      "Letting the elbows drop so it becomes a row.",
+      "Using too much weight and turning it into a body heave.",
+      "Shrugging the traps up instead of squeezing the rear delts.",
+    ],
+  },
+  "farmers carry": {
+    setup: [
+      "Stand between two heavy dumbbells or handles and hinge to grip them.",
+      "Brace hard, set the shoulders down, and stand up tall.",
+    ],
+    execution: [
+      "Walk with short, controlled steps, staying upright.",
+      "Keep the core braced and the shoulders packed the whole way.",
+      "Set the weights down under control, hinging at the hips.",
+    ],
+    breathing: "Breathe in short, braced breaths as you walk.",
+    commonMistakes: [
+      "Leaning to one side under uneven load.",
+      "Letting the shoulders round and slump forward.",
+      "Dropping the weights carelessly at the end.",
+    ],
+    safetyNotes: [
+      "Keep a clear path; set the load down with a hip hinge rather than dropping from a rounded back.",
+    ],
+  },
+  "front squat": {
+    setup: [
+      "Rack the bar across the front of your shoulders with elbows high.",
+      "Set your feet about shoulder-width, toes slightly out, and brace.",
+    ],
+    execution: [
+      "Sit straight down, keeping the torso as upright as possible.",
+      "Descend until the hip crease reaches the top of the knee.",
+      "Drive up through the whole foot, keeping the elbows high.",
+    ],
+    breathing:
+      "Big breath and brace at the top, exhale near the top of the rep.",
+    commonMistakes: [
+      "Dropping the elbows so the bar rolls forward.",
+      "Letting the chest cave and rounding the upper back.",
+      "Rising hips-first and tipping forward.",
+    ],
+    safetyNotes: [
+      "Use a rack with safety pins; if you miss, let the bar roll off the shoulders forward.",
+    ],
+  },
+  "glute bridge": {
+    setup: [
+      "Lie on your back, knees bent, feet flat and hip-width.",
+      "Set your arms at your sides and tuck the ribs down.",
+    ],
+    execution: [
+      "Drive through your heels and squeeze your glutes to lift the hips.",
+      "Rise until your body forms a straight line from knees to shoulders.",
+      "Lower under control without fully relaxing between reps.",
+    ],
+    breathing: "Exhale as you lift, inhale as you lower.",
+    commonMistakes: [
+      "Overextending and arching the lower back at the top.",
+      "Pushing through the toes instead of the heels.",
+      "Not reaching full hip extension.",
+    ],
+  },
+  "glute ham raise": {
+    setup: [
+      "Anchor your feet against the plate and pad, knees on the pad.",
+      "Start with your torso upright and body in a straight line.",
+    ],
+    execution: [
+      "Lower your torso forward by extending the knees, staying rigid.",
+      "Go as far as you can control, then pull yourself back with the hamstrings.",
+      "Finish upright with the glutes squeezed.",
+    ],
+    breathing: "Inhale as you lower, exhale as you raise.",
+    commonMistakes: [
+      "Bending at the hips instead of staying rigid from knee to head.",
+      "Dropping fast and using a bounce to come back up.",
+      "Under-ranging because the hamstrings aren't ready — regress with a band if needed.",
+    ],
+    safetyNotes: [
+      "This heavily loads the hamstrings eccentrically; start with a small range or band assistance to avoid cramping or strain.",
+    ],
+  },
+  "goblet squat": {
+    setup: [
+      "Hold a dumbbell or kettlebell vertically against your chest.",
+      "Set your feet about shoulder-width, toes slightly out, and brace.",
+    ],
+    execution: [
+      "Sit straight down between your legs, elbows tracking inside the knees.",
+      "Descend to at least parallel, keeping the chest up.",
+      "Drive up through the whole foot.",
+    ],
+    breathing: "Inhale before you descend, exhale as you stand.",
+    commonMistakes: [
+      "Letting the chest collapse forward under the weight.",
+      "Knees caving inward.",
+      "Rising onto the toes instead of pushing through the whole foot.",
+    ],
+  },
+  "good morning": {
+    setup: [
+      "Set the bar on your upper back as for a squat.",
+      "Feet hip- to shoulder-width, soft knees, braced core.",
+    ],
+    execution: [
+      "Hinge at the hips, pushing them back and lowering the torso.",
+      "Keep a flat back and feel the hamstrings load.",
+      "Drive the hips forward to return to standing.",
+    ],
+    breathing: "Inhale as you hinge, exhale as you stand.",
+    commonMistakes: [
+      "Rounding the back instead of hinging.",
+      "Bending the knees so it becomes a squat.",
+      "Going heavy before the hinge pattern is grooved.",
+    ],
+    safetyNotes: [
+      "Start light and prioritize a flat back; this loads the spine through a long lever.",
+    ],
+  },
+  "hack squat": {
+    setup: [
+      "Set your back and shoulders against the machine pads.",
+      "Place your feet about shoulder-width on the platform and release the safeties.",
+    ],
+    execution: [
+      "Lower under control until your thighs reach about parallel.",
+      "Keep your whole foot planted and knees tracking over the toes.",
+      "Drive up through the platform without locking the knees hard.",
+    ],
+    breathing: "Inhale as you lower, exhale as you press up.",
+    commonMistakes: [
+      "Letting the knees cave inward.",
+      "Bouncing out of the bottom.",
+      "Lifting the heels off the platform.",
+    ],
+  },
+  "hammer curl": {
+    setup: [
+      "Stand tall holding dumbbells with palms facing each other.",
+      "Pin the elbows to your sides and brace.",
+    ],
+    execution: [
+      "Curl the dumbbells up keeping the palms facing in (neutral grip).",
+      "Squeeze at the top, elbows fixed.",
+      "Lower slowly to a full stretch.",
+    ],
+    breathing: "Exhale as you curl, inhale as you lower.",
+    commonMistakes: [
+      "Swinging the body to help the weight up.",
+      "Letting the elbows drift forward.",
+      "Rushing the lowering.",
+    ],
+  },
+  "hang clean": {
+    setup: [
+      "Start standing, holding the bar at the hips with a shoulder-width grip.",
+      "Hinge to lower the bar to about knee height, flat back, shoulders over the bar.",
+    ],
+    execution: [
+      "Explosively extend the hips and knees, shrugging the bar upward.",
+      "Pull yourself under and catch the bar on the front shoulders in a partial squat.",
+      "Stand up to finish, then return the bar to the hang.",
+    ],
+    breathing: "Brace at the hang, exhale after standing up with the catch.",
+    commonMistakes: [
+      "Pulling early with the arms instead of driving with the hips first.",
+      "Letting the bar swing out away from the body.",
+      "Catching with a low, soft elbow rack.",
+    ],
+    safetyNotes: [
+      "This is a technical explosive lift — groove it light before adding load, ideally with coaching.",
+    ],
+  },
+  "hanging leg raise": {
+    setup: [
+      "Hang from a bar with a shoulder-width grip, shoulders slightly active.",
+      "Brace your core and stop any swinging before you start.",
+    ],
+    execution: [
+      "Raise your legs by curling the pelvis up toward your ribs.",
+      "Lift to at least hip height (or higher with straight legs).",
+      "Lower under control without swinging back.",
+    ],
+    breathing: "Exhale as you raise, inhale as you lower.",
+    commonMistakes: [
+      "Swinging and using momentum instead of the abs.",
+      "Only bending the hips without curling the pelvis (hip flexors take over).",
+      "Dropping the legs fast and building a swing.",
+    ],
+  },
+  "hip abduction": {
+    setup: [
+      "Sit in the machine with the pads against the outside of your thighs.",
+      "Sit tall with a braced core.",
+    ],
+    execution: [
+      "Press your thighs outward against the pads.",
+      "Squeeze at the fully-open position.",
+      "Return under control without letting the stack slam.",
+    ],
+    breathing: "Exhale as you open, inhale as you return.",
+    commonMistakes: [
+      "Using body english by leaning back to force the weight.",
+      "Letting the pads snap back instead of controlling the return.",
+      "Using so much weight the range collapses.",
+    ],
+  },
+  "hip adduction": {
+    setup: [
+      "Sit in the machine with the pads against the inside of your thighs.",
+      "Sit tall with a braced core and legs spread to a comfortable stretch.",
+    ],
+    execution: [
+      "Squeeze your thighs together against the pads.",
+      "Pause at the closed position.",
+      "Return under control to a stretch without letting the stack slam.",
+    ],
+    breathing: "Exhale as you close, inhale as you return.",
+    commonMistakes: [
+      "Starting from too wide a stretch and straining the groin.",
+      "Letting the pads snap back.",
+      "Leaning back to cheat the weight.",
+    ],
+  },
+  "hip thrust": {
+    setup: [
+      "Set your upper back against a bench and roll a padded bar over your hips.",
+      "Plant your feet flat so shins are vertical at the top; tuck the chin.",
+    ],
+    execution: [
+      "Drive through your heels and thrust the hips up by squeezing the glutes.",
+      "Rise to a flat torso, ribs down — a straight line from knees to shoulders.",
+      "Lower under control and repeat.",
+    ],
+    breathing: "Exhale as you thrust up, inhale as you lower.",
+    commonMistakes: [
+      "Overextending the lower back instead of finishing with the glutes.",
+      "Pushing through the toes rather than the heels.",
+      "Not reaching full hip extension at the top.",
+    ],
+  },
+  "hollow hold": {
+    setup: [
+      "Lie on your back and press your lower back flat into the floor.",
+      "Extend your arms overhead and legs out straight.",
+    ],
+    execution: [
+      "Lift your shoulders and legs a few inches off the floor into a shallow banana shape.",
+      "Keep the lower back pressed down the entire time.",
+      "Hold steady for the target time.",
+    ],
+    breathing: "Breathe in short, shallow breaths while keeping the brace.",
+    commonMistakes: [
+      "Letting the lower back arch off the floor.",
+      "Raising the legs so high the tension leaves the abs.",
+      "Holding the breath and losing the brace.",
+    ],
+  },
+  "incline bench press": {
+    setup: [
+      "Set the bench to about 30°; lie back with a slight arch and feet flat.",
+      "Grip a bit wider than shoulders; pull the shoulder blades back and down.",
+    ],
+    execution: [
+      "Lower the bar to your upper chest, just below the collarbone, elbows tucked.",
+      "Press up over the shoulders in a straight line.",
+      "Lock out and repeat.",
+    ],
+    breathing: "Inhale as you lower, exhale as you press.",
+    commonMistakes: [
+      "Setting the incline too steep so it becomes a shoulder press.",
+      "Flaring the elbows straight out.",
+      "Bouncing the bar off the chest.",
+    ],
+    safetyNotes: ["Use a spotter or safety arms for heavy sets."],
+  },
+  "l-sit": {
+    setup: [
+      "Sit or support on parallettes, the floor, or dip bars with arms straight.",
+      "Press the shoulders down and away from the ears.",
+    ],
+    execution: [
+      "Lift your legs straight out in front to form an L.",
+      "Point the toes and keep the legs together and locked.",
+      "Hold steady for the target time.",
+    ],
+    breathing: "Breathe steadily while holding the brace.",
+    commonMistakes: [
+      "Shrugging the shoulders up to the ears.",
+      "Rounding the lower back and dropping the legs.",
+      "Bending the knees to make the hold easier without regressing on purpose.",
+    ],
+    safetyNotes: [
+      "Regress to a tuck or one-leg hold if you can't keep the legs straight and shoulders down.",
+    ],
+  },
+  "lat pulldown": {
+    setup: [
+      "Grip the bar wider than shoulders and secure your thighs under the pad.",
+      "Sit tall, chest up, with a slight lean back.",
+    ],
+    execution: [
+      "Pull the bar to your upper chest, driving the elbows down and back.",
+      "Squeeze the lats at the bottom without over-leaning.",
+      "Return under control to a full stretch.",
+    ],
+    breathing: "Exhale as you pull down, inhale as you return.",
+    commonMistakes: [
+      "Leaning way back and heaving with the whole body.",
+      "Pulling the bar behind the neck.",
+      "Using the arms and letting the shoulders shrug up instead of driving the elbows.",
+    ],
+  },
+  "lateral raise": {
+    setup: [
+      "Stand tall holding the load at your sides with a slight elbow bend.",
+      "Brace the core and set the shoulders down.",
+    ],
+    execution: [
+      "Raise your arms out to the sides up to about shoulder height.",
+      "Lead with the elbows, pinkies slightly higher than thumbs.",
+      "Lower slowly under control.",
+    ],
+    breathing: "Exhale as you raise, inhale as you lower.",
+    commonMistakes: [
+      "Swinging and using momentum to throw the weight up.",
+      "Shrugging the traps up instead of raising with the side delts.",
+      "Going above shoulder height and turning it into an upright shrug.",
+    ],
+    equipmentNotes: {
+      Dumbbell:
+        "Tension is lowest at the bottom and highest near the top; control the lowering and resist swinging.",
+      Cable:
+        "A cable keeps tension on the side delt even at the bottom of the range; run it from the low pulley behind you across the body.",
+      Machine:
+        "The lateral-raise machine fixes the path and pads the arms, so just drive to shoulder height and control the return.",
+    },
+  },
+  "leg curl": {
+    setup: [
+      "Position the pad just above your heels (lying or seated variant).",
+      "Set the hips and thigh support; grip the handles.",
+    ],
+    execution: [
+      "Curl your heels toward your glutes by contracting the hamstrings.",
+      "Pause at the fully-flexed position.",
+      "Lower under control to a full stretch.",
+    ],
+    breathing: "Exhale as you curl, inhale as you lower.",
+    commonMistakes: [
+      "Letting the hips lift off the pad to cheat the weight.",
+      "Using momentum to fling the pad up.",
+      "Cutting the range short at both ends.",
+    ],
+  },
+  "leg extension": {
+    setup: [
+      "Sit with the pad on your lower shins and back against the seat.",
+      "Align the knee joint with the machine's pivot.",
+    ],
+    execution: [
+      "Extend your knees to straighten the legs against the pad.",
+      "Pause and squeeze the quads at the top.",
+      "Lower under control to the start.",
+    ],
+    breathing: "Exhale as you extend, inhale as you lower.",
+    commonMistakes: [
+      "Using momentum to kick the weight up.",
+      "Slamming the stack back down.",
+      "Setting the pad too high so it presses on the shin.",
+    ],
+  },
+  "leg press": {
+    setup: [
+      "Sit back into the seat and place your feet about shoulder-width on the platform.",
+      "Release the safeties and hold the handles.",
+    ],
+    execution: [
+      "Lower the platform by bending the knees toward your chest.",
+      "Descend until your knees reach about 90°, keeping your lower back on the seat.",
+      "Press through the whole foot without locking the knees hard.",
+    ],
+    breathing: "Inhale as you lower, exhale as you press.",
+    commonMistakes: [
+      "Going so deep the lower back rounds and lifts off the seat.",
+      "Letting the knees cave inward.",
+      "Snapping the knees into a hard lockout.",
+    ],
+    safetyNotes: [
+      "Keep the safety catches usable and don't lower so far your hips tuck under (rounds the spine).",
+    ],
+  },
+  lunge: {
+    setup: [
+      "Stand tall, feet hip-width; hold dumbbells at your sides if loading.",
+      "Brace the core.",
+    ],
+    execution: [
+      "Step forward and lower until both knees are about 90°.",
+      "Keep the front knee tracking over the foot and the torso upright.",
+      "Drive through the front heel to return to standing.",
+    ],
+    breathing: "Inhale as you lower, exhale as you drive up.",
+    commonMistakes: [
+      "Taking too short a step so the front knee shoots past the toes.",
+      "Letting the front knee cave inward.",
+      "Leaning the torso far forward.",
+    ],
+  },
+  "nordic curl": {
+    setup: [
+      "Kneel with your ankles anchored under a pad or held by a partner.",
+      "Start upright with the body in a straight line from knees to head.",
+    ],
+    execution: [
+      "Lower your torso forward slowly, resisting with the hamstrings.",
+      "Stay rigid — no bending at the hips.",
+      "Push off lightly at the bottom and pull yourself back up with the hamstrings.",
+    ],
+    breathing: "Inhale as you lower, exhale as you return.",
+    commonMistakes: [
+      "Bending at the hips instead of staying straight.",
+      "Dropping fast because the hamstrings can't hold the descent yet.",
+      "Skipping the assisted push-back when you can't yet pull all the way up.",
+    ],
+    safetyNotes: [
+      "This is a very demanding eccentric — start with a tiny range or band assistance to avoid a hamstring strain.",
+    ],
+  },
+  "overhead press": {
+    setup: [
+      "Hold the load at shoulder height, elbows slightly in front, feet hip-width.",
+      "Brace the core and squeeze the glutes so you don't lean back.",
+    ],
+    execution: [
+      "Press straight overhead, moving the head slightly back to clear the path.",
+      "Lock out with the weight stacked over the mid-foot and shoulders.",
+      "Lower under control back to the shoulders.",
+    ],
+    breathing: "Big breath and brace before the press, exhale near lockout.",
+    commonMistakes: [
+      "Leaning back and arching the lower back to press.",
+      "Pressing around the face instead of moving the head back.",
+      "Stopping short of a full overhead lockout.",
+    ],
+    safetyNotes: [
+      "Keep the ribs down and glutes tight so the load stays over the shoulders, not the lower back.",
+    ],
+    equipmentNotes: {
+      Barbell:
+        "A single bar path lets you press heavy; move the head back to let the bar travel straight up over the mid-foot.",
+      Dumbbell:
+        "Dumbbells free each arm and allow a slightly wider, more shoulder-friendly path; keep them from drifting apart or clashing at the top.",
+    },
+  },
+  "pec deck": {
+    setup: [
+      "Sit with your back flat against the pad and forearms or handles on the pads.",
+      "Set the seat so your arms are at about chest height.",
+    ],
+    execution: [
+      "Bring the pads together in front of your chest in a hugging arc.",
+      "Squeeze the chest at the middle.",
+      "Return under control to a stretch without over-reaching.",
+    ],
+    breathing: "Exhale as you close, inhale as you return.",
+    commonMistakes: [
+      "Shrugging the shoulders up toward the ears.",
+      "Letting the pads snap back at the stretch.",
+      "Using a too-heavy load and losing the chest squeeze.",
+    ],
+  },
+  "pendlay row": {
+    setup: [
+      "Set the bar on the floor, hinge to a flat back parallel to the ground.",
+      "Grip just outside the knees; brace hard.",
+    ],
+    execution: [
+      "Explosively row the bar to your lower chest/upper stomach.",
+      "Keep the torso still and horizontal — no rising up.",
+      "Lower the bar all the way back to the floor each rep.",
+    ],
+    breathing: "Brace before each rep, exhale after the bar returns.",
+    commonMistakes: [
+      "Rising the torso up to help pull the bar.",
+      "Not returning the bar fully to the floor between reps.",
+      "Rounding the lower back in the bent-over position.",
+    ],
+    safetyNotes: [
+      "Hold a strict flat back; the bent-over position loads the spine under a heavy row.",
+    ],
+  },
+  plank: {
+    setup: [
+      "Set your forearms under your shoulders and extend your legs behind you.",
+      "Tuck the ribs down and squeeze the glutes so the body is one straight line.",
+    ],
+    execution: [
+      "Hold the straight-line position, hips level with the shoulders.",
+      "Keep the core braced and don't let the hips sag or pike.",
+      "Hold for the target time.",
+    ],
+    breathing: "Breathe steadily; don't hold your breath.",
+    commonMistakes: [
+      "Letting the hips sag toward the floor.",
+      "Piking the hips up into an inverted V.",
+      "Dropping the head or shrugging the shoulders.",
+    ],
+  },
+  "power clean": {
+    setup: [
+      "Set up over the bar as for a deadlift, shoulders just over the bar, flat back.",
+      "Grip about shoulder-width with a hook grip if you can.",
+    ],
+    execution: [
+      "Pull the bar off the floor, then explosively extend the hips and shrug.",
+      "Pull yourself under and catch the bar on the front shoulders in a partial squat.",
+      "Stand up tall to finish, then reset the bar for the next rep.",
+    ],
+    breathing: "Brace before the pull, exhale after standing with the catch.",
+    commonMistakes: [
+      "Pulling early with the arms before the hips extend.",
+      "Letting the bar loop out away from the body.",
+      "Catching in a soft, low-elbow rack position.",
+    ],
+    safetyNotes: [
+      "A technical explosive lift — learn the positions light, ideally with coaching, before adding load.",
+    ],
+  },
+  "preacher curl": {
+    setup: [
+      "Set your upper arms flat on the preacher pad, armpits near the top.",
+      "Grip the bar or dumbbell with palms up, arms extended.",
+    ],
+    execution: [
+      "Curl the weight up by contracting the biceps, upper arms pinned to the pad.",
+      "Squeeze at the top.",
+      "Lower slowly to a near-full extension.",
+    ],
+    breathing: "Exhale as you curl, inhale as you lower.",
+    commonMistakes: [
+      "Lifting the elbows or shoulders off the pad.",
+      "Bouncing out of the bottom stretch.",
+      "Fully snapping the elbows straight under heavy load at the bottom.",
+    ],
+    safetyNotes: [
+      "The stretched bottom position is vulnerable — control the lowering and avoid a hard, fast full extension.",
+    ],
+  },
+  "pull up": {
+    setup: [
+      "Grip the bar wider than shoulders, palms facing away.",
+      "Hang with arms straight, shoulders set down and back.",
+    ],
+    execution: [
+      "Pull your chest toward the bar, driving the elbows down and back.",
+      "Bring your chin over the bar.",
+      "Lower under control to a full hang.",
+    ],
+    breathing: "Exhale as you pull up, inhale as you lower.",
+    commonMistakes: [
+      "Kipping or swinging to cheat reps.",
+      "Not reaching a full hang at the bottom.",
+      "Shrugging up rather than driving the elbows down.",
+    ],
+    safetyNotes: [
+      "Add weight only once you own several clean, full-range bodyweight reps.",
+    ],
+  },
+  "push press": {
+    setup: [
+      "Hold the bar at your shoulders, elbows slightly forward, feet hip-width.",
+      "Brace the core and set a tall posture.",
+    ],
+    execution: [
+      "Dip a few inches at the knees, keeping the torso upright.",
+      "Explosively drive up with the legs and press the bar overhead as it leaves.",
+      "Lock out overhead, then lower back to the shoulders.",
+    ],
+    breathing: "Breathe in and brace before the dip, exhale near lockout.",
+    commonMistakes: [
+      "Dipping forward at the hips instead of straight down.",
+      "Dipping too deep so it becomes a squat.",
+      "Leaning back and pressing off the lower back.",
+    ],
+    safetyNotes: [
+      "Keep the dip shallow and vertical; the leg drive should feed straight into the overhead press.",
+    ],
+  },
+  "rear delt fly": {
+    setup: [
+      "Hinge at the hips with a flat back (or sit leaning forward), arms hanging.",
+      "Hold the load with a slight elbow bend, palms facing each other.",
+    ],
+    execution: [
+      "Raise your arms out to the sides, leading with the elbows.",
+      "Squeeze the rear delts and upper back at the top.",
+      "Lower under control.",
+    ],
+    breathing: "Exhale as you raise, inhale as you lower.",
+    commonMistakes: [
+      "Using momentum to swing the weights up.",
+      "Turning it into a row by pulling the elbows way back.",
+      "Shrugging the traps instead of squeezing the rear delts.",
+    ],
+    equipmentNotes: {
+      Dumbbell:
+        "Bent-over with dumbbells, keep the chest down and don't let the torso rise as you raise; go light and strict.",
+      Cable:
+        "Run the cables across the body (each hand to the opposite low pulley) for constant tension through the whole arc.",
+    },
+  },
+  "reverse curl": {
+    setup: [
+      "Stand tall holding the bar or dumbbells with palms facing down.",
+      "Pin the elbows to your sides and brace.",
+    ],
+    execution: [
+      "Curl the weight up keeping the palms facing down (pronated).",
+      "Squeeze the forearms and biceps at the top.",
+      "Lower slowly to a full stretch.",
+    ],
+    breathing: "Exhale as you curl, inhale as you lower.",
+    commonMistakes: [
+      "Swinging the body to help the weight up.",
+      "Letting the wrists break instead of staying firm.",
+      "Using too much weight and losing the strict path.",
+    ],
+  },
+  "romanian deadlift": {
+    setup: [
+      "Hold the bar at the hips with a shoulder-width grip, feet hip-width.",
+      "Soft knees, chest up, shoulders back, braced core.",
+    ],
+    execution: [
+      "Push your hips back and lower the bar down the front of your legs.",
+      "Keep the bar close and go until you feel a hamstring stretch (bar around mid-shin).",
+      "Drive the hips forward to return to standing, squeezing the glutes.",
+    ],
+    breathing: "Inhale as you hinge down, exhale as you stand up.",
+    commonMistakes: [
+      "Rounding the lower back instead of hinging at the hips.",
+      "Turning it into a squat by bending the knees too much.",
+      "Letting the bar drift away from the legs.",
+    ],
+    safetyNotes: [
+      "Range is set by your hamstring flexibility, not by touching the floor — stop where the back would round.",
+    ],
+  },
+  row: {
+    setup: [
+      "Hinge at the hips to a flat back, torso around 45° or lower.",
+      "Let the load hang with arms straight and a braced core.",
+    ],
+    execution: [
+      "Row the weight to your lower ribs/stomach, driving the elbows back.",
+      "Squeeze the shoulder blades together at the top.",
+      "Lower under control to a full stretch.",
+    ],
+    breathing: "Exhale as you row, inhale as you lower.",
+    commonMistakes: [
+      "Standing up out of the hinge to heave the weight.",
+      "Shrugging the shoulders up instead of squeezing the blades together.",
+      "Using momentum rather than a controlled pull.",
+    ],
+    safetyNotes: ["Keep a flat, braced back throughout the bent-over hold."],
+    equipmentNotes: {
+      Barbell:
+        "Both hands on a fixed bar; hold a strict bent-over position and row to the lower stomach.",
+      Dumbbell:
+        "A single-arm dumbbell row braced on a bench lets you row through a longer range and even out left/right differences.",
+      Cable:
+        "The seated cable row keeps constant tension; sit tall and pull to the stomach without rocking the torso for momentum.",
+      Machine:
+        "The chest-supported machine removes the lower-back demand, so focus on driving the elbows back and squeezing the blades.",
+    },
+  },
+  "russian twist": {
+    setup: [
+      "Sit with knees bent and lean back to about 45°, feet up or lightly down.",
+      "Hold a weight or clasp your hands at your chest.",
+    ],
+    execution: [
+      "Rotate your torso to one side, moving the weight across your body.",
+      "Rotate to the opposite side under control.",
+      "Keep the rotation coming from the trunk, not just the arms.",
+    ],
+    breathing: "Exhale on each rotation, breathe steadily.",
+    commonMistakes: [
+      "Just swinging the arms while the torso stays still.",
+      "Rounding the back and collapsing.",
+      "Going so fast the obliques stop doing the work.",
+    ],
+  },
+  "seated calf raise": {
+    setup: [
+      "Sit with the balls of your feet on the platform and the pad over your knees.",
+      "Release the safety.",
+    ],
+    execution: [
+      "Lower your heels to a full stretch below the platform.",
+      "Rise as high as possible onto the balls of your feet.",
+      "Pause at the top squeeze, then lower slowly.",
+    ],
+    breathing: "Exhale as you rise, inhale as you lower.",
+    commonMistakes: [
+      "Bouncing through a short, fast range.",
+      "Skipping the bottom stretch.",
+      "Rolling onto the outer edge of the foot.",
+    ],
+  },
+  shrug: {
+    setup: [
+      "Stand tall holding the load at your sides, arms straight.",
+      "Brace the core and set a neutral neck.",
+    ],
+    execution: [
+      "Shrug your shoulders straight up toward your ears.",
+      "Pause and squeeze the traps at the top.",
+      "Lower under control to a full stretch.",
+    ],
+    breathing: "Exhale as you shrug up, inhale as you lower.",
+    commonMistakes: [
+      "Rolling the shoulders in circles instead of straight up.",
+      "Bending the elbows to help lift.",
+      "Using momentum and cutting the range short.",
+    ],
+  },
+  "side plank": {
+    setup: [
+      "Lie on your side with the elbow under the shoulder and legs stacked.",
+      "Stack the top foot on the bottom (or stagger for balance).",
+    ],
+    execution: [
+      "Lift the hips so the body is a straight line from head to feet.",
+      "Keep the hips forward and stacked, not rotated back.",
+      "Hold steady for the target time, then switch sides.",
+    ],
+    breathing: "Breathe steadily while holding the brace.",
+    commonMistakes: [
+      "Letting the hips sag toward the floor.",
+      "Rotating the chest toward the floor.",
+      "Putting the elbow ahead of or behind the shoulder.",
+    ],
+  },
+  skullcrusher: {
+    setup: [
+      "Lie on a bench holding the bar or dumbbells over your chest, arms straight.",
+      "Set the elbows pointing up, upper arms roughly vertical.",
+    ],
+    execution: [
+      "Bend the elbows to lower the weight toward your forehead or just behind it.",
+      "Keep the upper arms still — only the forearms move.",
+      "Extend the elbows to press back to the start.",
+    ],
+    breathing: "Inhale as you lower, exhale as you extend.",
+    commonMistakes: [
+      "Flaring the elbows wide.",
+      "Letting the upper arms drift so it becomes a press.",
+      "Lowering toward the nose too fast and losing control.",
+    ],
+    safetyNotes: [
+      "Control the descent toward the head; keep it light enough to stop the bar cleanly.",
+    ],
+  },
+  snatch: {
+    setup: [
+      "Set up over the bar with a wide (snatch) grip, flat back, shoulders over the bar.",
+      "Brace hard with a hook grip if you can.",
+    ],
+    execution: [
+      "Pull the bar off the floor, then explosively extend the hips and shrug.",
+      "Pull yourself under and catch the bar locked out overhead in a squat.",
+      "Stand up to finish the lift.",
+    ],
+    breathing: "Brace before the pull, exhale after standing with the catch.",
+    commonMistakes: [
+      "Pulling early with the arms before the hip extension.",
+      "Letting the bar loop away from the body.",
+      "Catching with soft, unlocked arms overhead.",
+    ],
+    safetyNotes: [
+      "The most technical barbell lift — learn it light with coaching before loading; bail by dropping the bar if a rep goes wrong.",
+    ],
+  },
+  "step up": {
+    setup: [
+      "Stand facing a sturdy box or bench about knee height.",
+      "Hold dumbbells at your sides if loading; brace the core.",
+    ],
+    execution: [
+      "Place one full foot on the box and drive through that heel to stand up on it.",
+      "Bring the trailing leg up under control (or leave it hanging).",
+      "Lower back down under control, leading with the same working leg.",
+    ],
+    breathing: "Exhale as you step up, inhale as you lower.",
+    commonMistakes: [
+      "Pushing off the bottom (trailing) leg instead of the top leg.",
+      "Using a box so high the knee caves or the hip strains.",
+      "Dropping down fast instead of lowering under control.",
+    ],
+  },
+  "straight-arm pulldown": {
+    setup: [
+      "Stand facing a high pulley, holding a bar with arms nearly straight.",
+      "Hinge slightly forward with a braced core and a small elbow bend.",
+    ],
+    execution: [
+      "Pull the bar down to your thighs in an arc, keeping the arms nearly straight.",
+      "Squeeze the lats at the bottom.",
+      "Return under control to a full overhead stretch.",
+    ],
+    breathing: "Exhale as you pull down, inhale as you return.",
+    commonMistakes: [
+      "Bending the elbows so it becomes a triceps pushdown.",
+      "Using the whole body to heave the bar down.",
+      "Cutting the top stretch short.",
+    ],
+  },
+  "sumo deadlift": {
+    setup: [
+      "Take a wide stance with toes pointed out, shins near-vertical.",
+      "Grip inside your knees, drop the hips, chest up, flat back.",
+      "Set the lats, take out the slack, and brace.",
+    ],
+    execution: [
+      "Push the floor apart with your feet and stand, keeping the bar close.",
+      "Open the knees and drive the hips through to lockout.",
+      "Return by hinging the hips back and bending the knees.",
+    ],
+    breathing: "Big breath and brace before the pull, exhale at lockout.",
+    commonMistakes: [
+      "Letting the hips shoot up first so the back rounds.",
+      "Knees caving inward instead of tracking over the toes.",
+      "Letting the bar drift away from the body.",
+    ],
+    safetyNotes: [
+      "Keep the bar against your legs and a flat back; build load gradually.",
+    ],
+  },
+  "t-bar row": {
+    setup: [
+      "Straddle the bar, hinge to a flat back, and grip the handles.",
+      "Brace hard with the chest up and torso bent forward.",
+    ],
+    execution: [
+      "Row the handle to your stomach, driving the elbows back.",
+      "Squeeze the shoulder blades together at the top.",
+      "Lower under control to a full stretch.",
+    ],
+    breathing: "Exhale as you row, inhale as you lower.",
+    commonMistakes: [
+      "Standing up out of the hinge to heave the weight.",
+      "Rounding the lower back.",
+      "Shrugging up instead of driving the elbows back.",
+    ],
+    safetyNotes: ["Hold a flat, braced back throughout the bent-over row."],
+  },
+  "trap bar deadlift": {
+    setup: [
+      "Stand inside the trap bar, feet hip-width, and grip the neutral handles.",
+      "Drop the hips, chest up, flat back; take out the slack and brace.",
+    ],
+    execution: [
+      "Push the floor away and stand tall, the load hanging at your sides.",
+      "Extend the hips and knees together to lockout.",
+      "Return by hinging the hips back and bending the knees.",
+    ],
+    breathing: "Big breath and brace before the pull, exhale at lockout.",
+    commonMistakes: [
+      "Rounding the lower back under load.",
+      "Letting the hips rise first so it becomes a stiff-leg pull.",
+      "Jerking the bar off the floor without taking out the slack.",
+    ],
+    safetyNotes: [
+      "The neutral handles are easier on the back than a straight bar, but still progress load conservatively.",
+    ],
+  },
+  "tricep extension": {
+    setup: [
+      "Hold the load overhead or at a cable, upper arms beside your head.",
+      "Brace the core and keep the elbows pointing forward.",
+    ],
+    execution: [
+      "Bend the elbows to lower the weight behind your head.",
+      "Keep the upper arms still — only the forearms move.",
+      "Extend the elbows to press back overhead, squeezing the triceps.",
+    ],
+    breathing: "Inhale as you lower, exhale as you extend.",
+    commonMistakes: [
+      "Letting the elbows flare wide.",
+      "Moving the upper arms so it becomes a press.",
+      "Going too heavy and straining the elbow at full stretch.",
+    ],
+  },
+  "tricep pushdown": {
+    setup: [
+      "Face a high pulley and grip the bar or rope, elbows pinned to your sides.",
+      "Stand tall with a slight forward lean and braced core.",
+    ],
+    execution: [
+      "Push the attachment down by extending the elbows.",
+      "Keep the upper arms still against your sides.",
+      "Squeeze the triceps at the bottom, then return under control.",
+    ],
+    breathing: "Exhale as you push down, inhale as you return.",
+    commonMistakes: [
+      "Letting the elbows drift forward and away from the sides.",
+      "Leaning over and using body weight to push the bar down.",
+      "Cutting the top range short so the elbows never fully bend.",
+    ],
+  },
+  "upright row": {
+    setup: [
+      "Stand tall holding the bar or dumbbells in front of your thighs.",
+      "Use a grip a little wider than shoulder-width; brace the core.",
+    ],
+    execution: [
+      "Pull the load straight up along your body, leading with the elbows.",
+      "Raise to about chest height with the elbows above the hands.",
+      "Lower under control.",
+    ],
+    breathing: "Exhale as you pull up, inhale as you lower.",
+    commonMistakes: [
+      "Pulling too high with a narrow grip, which can pinch the shoulder.",
+      "Using momentum to heave the weight up.",
+      "Letting the wrists bend awkwardly at the top.",
+    ],
+    safetyNotes: [
+      "Stop the elbows around shoulder height and avoid a very narrow grip to keep the shoulders comfortable.",
+    ],
+  },
+  "wall sit": {
+    setup: [
+      "Stand with your back flat against a wall, feet about shoulder-width.",
+      "Slide down until your thighs are about parallel, knees over ankles.",
+    ],
+    execution: [
+      "Hold the seated position with your back flat on the wall.",
+      "Keep the weight in your heels and the knees tracking over the feet.",
+      "Hold for the target time.",
+    ],
+    breathing: "Breathe steadily throughout the hold.",
+    commonMistakes: [
+      "Letting the knees drift far past the toes.",
+      "Sitting too high so the quads barely work.",
+      "Letting the knees cave inward.",
+    ],
+  },
+  "wrist curl": {
+    setup: [
+      "Rest your forearms on your thighs or a bench, palms up, wrists past the edge.",
+      "Hold the bar or dumbbells and let the wrists extend.",
+    ],
+    execution: [
+      "Curl the weight up by flexing the wrists.",
+      "Squeeze at the top.",
+      "Lower slowly to a full stretch, letting the bar roll to the fingers.",
+    ],
+    breathing: "Exhale as you curl, inhale as you lower.",
+    commonMistakes: [
+      "Moving the forearms instead of isolating the wrists.",
+      "Using too much weight and cutting the range short.",
+      "Rushing the reps instead of controlling the stretch.",
+    ],
+  },
+};
