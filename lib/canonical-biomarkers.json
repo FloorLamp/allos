@@ -2640,6 +2640,117 @@
       "note": "Basophils as a fraction of leukocytes (relative count). Companion to the absolute 'Basophils' (cells/uL) entry."
     },
     {
+      "name": "Nucleated Red Blood Cells",
+      "category": "lab",
+      "unit": "%",
+      "ref_low": null,
+      "ref_high": 0.5,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "lower_better",
+      "note": "Nucleated (immature) red cells as a fraction of leukocytes (NRBC/100 WBC). Normally absent in children/adults; present at birth and clears within the first week (see infancy age band). Companion to the absolute NRBC count.",
+      "ranges_by_age": [
+        {
+          "min_age": 0,
+          "max_age": 1,
+          "ref_low": null,
+          "ref_high": 10,
+          "note": "Term newborns normally show up to ~5–10 NRBC/100 WBC at birth, clearing within the first week; a whole-year band is coarse (it can UNDER-flag a genuinely raised NRBC later in infancy)."
+        }
+      ]
+    },
+    {
+      "name": "Nucleated Red Blood Cells, Absolute",
+      "category": "lab",
+      "unit": "10^3/uL",
+      "ref_low": null,
+      "ref_high": 0.01,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "lower_better",
+      "note": "Absolute nucleated-red-cell count (×10^3/uL). Normally ≈0 in children/adults; elevated at birth and clears within the first week (see infancy age band). Companion to the NRBC percentage.",
+      "ranges_by_age": [
+        {
+          "min_age": 0,
+          "max_age": 1,
+          "ref_low": null,
+          "ref_high": 1.5,
+          "note": "Newborn absolute NRBC is elevated at birth and clears within the first week; a whole-year band is coarse."
+        }
+      ]
+    },
+    {
+      "name": "Immature Granulocytes",
+      "category": "lab",
+      "unit": "%",
+      "ref_low": null,
+      "ref_high": 0.5,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "lower_better",
+      "note": "Immature granulocytes (metamyelocytes/myelocytes/promyelocytes) as a fraction of leukocytes — a left-shift marker. Adult reference ~0.0–0.5% (Sysmex IG%); mildly higher in early infancy (see age band). Companion to the absolute IG count.",
+      "ranges_by_age": [
+        {
+          "min_age": 0,
+          "max_age": 1,
+          "ref_low": null,
+          "ref_high": 2
+        }
+      ]
+    },
+    {
+      "name": "Immature Granulocytes, Absolute",
+      "category": "lab",
+      "unit": "10^3/uL",
+      "ref_low": null,
+      "ref_high": 0.03,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "lower_better",
+      "note": "Absolute immature-granulocyte count (×10^3/uL) — a left-shift marker. Adult reference ~0.00–0.03 (Sysmex IG#); mildly higher in early infancy (see age band). Companion to the IG percentage.",
+      "ranges_by_age": [
+        {
+          "min_age": 0,
+          "max_age": 1,
+          "ref_low": null,
+          "ref_high": 0.3
+        }
+      ]
+    },
+    {
+      "name": "Hemoglobin A",
+      "category": "lab",
+      "unit": "%",
+      "ref_low": 95.8,
+      "ref_high": null,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": "Hemoglobin A (α2β2), the dominant adult hemoglobin, as a fraction of total hemoglobin on electrophoresis. The clinically meaningful abnormality is a REDUCED HbA (a structural/variant hemoglobinopathy displacing it), so only a lower bound is set. Physiologically LOW in infancy (fetal-hemoglobin switch)."
+    },
+    {
+      "name": "Hemoglobin A2",
+      "category": "lab",
+      "unit": "%",
+      "ref_low": 2,
+      "ref_high": 3.3,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": "Hemoglobin A2 (α2δ2) fraction on electrophoresis. An ELEVATED HbA2 (>~3.3%) is the classic marker of beta-thalassemia trait; a low HbA2 can accompany iron deficiency or alpha/delta-thalassemia. Adult range ~2.0–3.3%."
+    },
+    {
+      "name": "Hemoglobin F",
+      "category": "lab",
+      "unit": "%",
+      "ref_low": 0,
+      "ref_high": 2,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": "Fetal hemoglobin (α2γ2) fraction on electrophoresis. Predominant at birth and normally falls to <~2% in adults; an elevated adult HbF occurs in hereditary persistence of fetal hemoglobin and some thalassemias/hemoglobinopathies. Physiologically HIGH in infancy (fetal-hemoglobin switch)."
+    },
+    {
       "name": "Total T4",
       "category": "lab",
       "unit": "ug/dL",

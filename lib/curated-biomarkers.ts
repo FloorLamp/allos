@@ -388,6 +388,42 @@ export const AGE_BANDS: Record<string, AgeBandedRange[]> = {
   // infant. Only an infancy band is modeled (older children match adults).
   // (Harriet Lane; Nelson.)
   Potassium: [{ min_age: 0, max_age: 1, ref_low: 3.7, ref_high: 6 }],
+  // Nucleated RBC and immature granulocytes are normally ABSENT (≈0) in the
+  // peripheral blood of children and adults, but present physiologically in the
+  // NEONATE (highest at birth, clearing over the first week of life). A single
+  // coarse infancy band keeps a newborn's normal reading in range WITHOUT relaxing
+  // the adult ≈0 ceiling — so a pathologic NRBC / marrow left-shift still flags at
+  // any older age. Direction is lower_better, so the bands set ref_high only (a
+  // low/zero reading is never flagged). Whole-year bands are coarse for a birth
+  // phenomenon that clears in days — interpret a neonate against age in days.
+  // (Nathan & Oski's Hematology and Oncology of Infancy and Childhood.)
+  "Nucleated Red Blood Cells": [
+    {
+      min_age: 0,
+      max_age: 1,
+      ref_low: null,
+      ref_high: 10,
+      note: "Term newborns normally show up to ~5–10 NRBC/100 WBC at birth, clearing within the first week; a whole-year band is coarse (it can UNDER-flag a genuinely raised NRBC later in infancy).",
+    },
+  ],
+  "Nucleated Red Blood Cells, Absolute": [
+    {
+      min_age: 0,
+      max_age: 1,
+      ref_low: null,
+      ref_high: 1.5,
+      note: "Newborn absolute NRBC is elevated at birth and clears within the first week; a whole-year band is coarse.",
+    },
+  ],
+  // Immature granulocytes carry a modest physiologic left shift in early infancy
+  // (higher than the near-zero adult reference), so a single infancy band lifts
+  // only the upper bound. (Sysmex IG parameter pediatric intervals; Nathan & Oski.)
+  "Immature Granulocytes": [
+    { min_age: 0, max_age: 1, ref_low: null, ref_high: 2 },
+  ],
+  "Immature Granulocytes, Absolute": [
+    { min_age: 0, max_age: 1, ref_low: null, ref_high: 0.3 },
+  ],
 };
 
 // Curated lab entries that don't require the model — well-established, standard
@@ -520,6 +556,106 @@ export const CURATED_LABS: Biomarker[] = [
     optimal_high: null,
     direction: "in_range",
     note: "Basophils as a fraction of leukocytes (relative count). Companion to the absolute 'Basophils' (cells/uL) entry.",
+  },
+  // ── Extended CBC / hematology (issue #723) ────────────────────────────────
+  // Hematology analytes that import from real Epic CBCs but had NO canonical home,
+  // so they landed ungrouped and range-less. Each abs-vs-% pair is TWO distinct
+  // entries — a count (×10^3/uL) and a fraction (%) are NOT interconvertible
+  // without the WBC, the same #482 identity discipline as the WBC differential
+  // above — and the alternate LOINCs of each form route to its ONE entry
+  // (lib/biomarker-loinc). Nucleated RBC and immature granulocytes are normally
+  // ABSENT (≈0) in child/adult peripheral blood, so direction is lower_better
+  // (only a high bound matters; a low/zero reading is normal). They run HIGH in
+  // neonates, so each carries a coarse infancy age band (see AGE_BANDS) that keeps
+  // a newborn's normal reading in range without relaxing the adult ≈0 ceiling.
+  // These are incidental CBC-differential findings, not recurring monitors, so
+  // they are intentionally left out of RETEST_DAYS/RETEST_WORTHY (default annual
+  // cadence, dropped from the retest nudge as a one-off unless risk-elevated).
+  // Sources: Nathan & Oski's Hematology and Oncology of Infancy and Childhood
+  // (neonatal NRBC clearance); Sysmex IG parameter reference intervals; Mayo/ARUP.
+  {
+    name: "Nucleated Red Blood Cells",
+    category: "lab",
+    unit: "%",
+    ref_low: null,
+    ref_high: 0.5,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "lower_better",
+    note: "Nucleated (immature) red cells as a fraction of leukocytes (NRBC/100 WBC). Normally absent in children/adults; present at birth and clears within the first week (see infancy age band). Companion to the absolute NRBC count.",
+  },
+  {
+    name: "Nucleated Red Blood Cells, Absolute",
+    category: "lab",
+    unit: "10^3/uL",
+    ref_low: null,
+    ref_high: 0.01,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "lower_better",
+    note: "Absolute nucleated-red-cell count (×10^3/uL). Normally ≈0 in children/adults; elevated at birth and clears within the first week (see infancy age band). Companion to the NRBC percentage.",
+  },
+  {
+    name: "Immature Granulocytes",
+    category: "lab",
+    unit: "%",
+    ref_low: null,
+    ref_high: 0.5,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "lower_better",
+    note: "Immature granulocytes (metamyelocytes/myelocytes/promyelocytes) as a fraction of leukocytes — a left-shift marker. Adult reference ~0.0–0.5% (Sysmex IG%); mildly higher in early infancy (see age band). Companion to the absolute IG count.",
+  },
+  {
+    name: "Immature Granulocytes, Absolute",
+    category: "lab",
+    unit: "10^3/uL",
+    ref_low: null,
+    ref_high: 0.03,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "lower_better",
+    note: "Absolute immature-granulocyte count (×10^3/uL) — a left-shift marker. Adult reference ~0.00–0.03 (Sysmex IG#); mildly higher in early infancy (see age band). Companion to the IG percentage.",
+  },
+  // Hemoglobin electrophoresis fractions — DISTINCT from Hemoglobin (g/dL) and
+  // HbA1c (%). Adult ranges; the fetal→adult hemoglobin switch means an infant
+  // differs markedly (HbF high, HbA low in the first ~year), so an infant reading
+  // may flag against these adult ranges — no age band is modeled (the switch is
+  // month-by-month in the first year; interpret an infant fraction against age).
+  // Sources: Mayo Clinic Laboratories / ARUP adult hemoglobin-electrophoresis
+  // reference intervals. INFORMATIONAL, not medical advice.
+  {
+    name: "Hemoglobin A",
+    category: "lab",
+    unit: "%",
+    ref_low: 95.8,
+    ref_high: null,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    note: "Hemoglobin A (α2β2), the dominant adult hemoglobin, as a fraction of total hemoglobin on electrophoresis. The clinically meaningful abnormality is a REDUCED HbA (a structural/variant hemoglobinopathy displacing it), so only a lower bound is set. Physiologically LOW in infancy (fetal-hemoglobin switch).",
+  },
+  {
+    name: "Hemoglobin A2",
+    category: "lab",
+    unit: "%",
+    ref_low: 2.0,
+    ref_high: 3.3,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    note: "Hemoglobin A2 (α2δ2) fraction on electrophoresis. An ELEVATED HbA2 (>~3.3%) is the classic marker of beta-thalassemia trait; a low HbA2 can accompany iron deficiency or alpha/delta-thalassemia. Adult range ~2.0–3.3%.",
+  },
+  {
+    name: "Hemoglobin F",
+    category: "lab",
+    unit: "%",
+    ref_low: 0,
+    ref_high: 2.0,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    note: "Fetal hemoglobin (α2γ2) fraction on electrophoresis. Predominant at birth and normally falls to <~2% in adults; an elevated adult HbF occurs in hereditary persistence of fetal hemoglobin and some thalassemias/hemoglobinopathies. Physiologically HIGH in infancy (fetal-hemoglobin switch).",
   },
   // ── Missing common clinical-lab analytes ──────────────────────────────────
   {
