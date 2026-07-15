@@ -24,6 +24,7 @@ import {
   getSupplementDoses,
   getSupplementLogsInRange,
   getActivityDates,
+  getRecentDatedExercises,
   getFoodSuggestions,
   getFrequencyTargetProgress,
   getIntakeSafetyContext,
@@ -69,6 +70,13 @@ import {
   PLATEAU_WINDOW_DAYS,
   type TrainingObservation,
 } from "./training-observations";
+import { coverageFromSets } from "./muscle-coverage";
+import {
+  detectVolumeShortfalls,
+  countDistinctWeeks,
+  VOLUME_BAND_WINDOW_DAYS,
+  type VolumeBandObservation,
+} from "./muscle-volume-bands";
 import {
   detectWeightAnomalies,
   weightAnomalySignalKey,
@@ -117,6 +125,7 @@ export function collectCoachingFindings(
 ): Finding[] {
   return [
     ...buildTrainingObservationFindings(profileId, today),
+    ...buildMuscleVolumeFindings(profileId, today),
     ...buildBodyHygieneFindings(profileId, today, wu),
     ...buildGoalPacingFindings(profileId, today),
     ...buildAdherencePatternFindings(profileId, today),
@@ -300,6 +309,66 @@ export function buildTrainingObservationFindings(
   observations.push(...detectPlateaus(e1rmSeries, today));
 
   return observations.map(trainingObservationToFinding);
+}
+
+// ---- Domain 4b: per-muscle weekly volume bands (Training → Overview, #742) --
+
+// GUARDED deload hook (#741). During an active routine's DELOAD week the `below`
+// volume observation is held — the week is supposed to be light — via the SAME
+// week-in-cycle flag the nudge softening will read (decided in the ONE gather, not
+// per surface). #741 has not shipped: there is no routine cycle to consult yet, so
+// this is inert and always returns false, making the deload branch a no-op today. When
+// #741 lands, its body resolves the active routine's cycle_weeks / week-in-cycle and
+// returns true on the deload week — no call site changes, the finding simply starts
+// holding on those weeks.
+function isRoutineDeloadWeek(_profileId: number, _today: string): boolean {
+  return false; // guarded — activates when #741 provides the week-in-cycle flag
+}
+
+function volumeObservationToFinding(o: VolumeBandObservation): Finding {
+  return {
+    domain: "muscle-volume",
+    dedupeKey: o.key,
+    title: o.title,
+    detail: o.detail,
+    // Calm, observational FYI — never a push, never the Needs-attention hero (#449).
+    tone: "info",
+    actionHref: "/training?tab=overview",
+    actionLabel: "View coverage",
+  };
+}
+
+// Every per-muscle volume-band shortfall finding for a profile: one calm observation
+// per muscle trained BELOW its weekly band floor over the trailing 7 days. Reads
+// through the SAME getRecentDatedExercises gather + coverageFromSets attribution the
+// Overview coverage list renders (one computation, #221/#482) — the list's verdict
+// chips and this finding can never disagree. Cold start (#719) and the guarded deload
+// hook (#741) are decided HERE in the one gather. Not suppression-filtered — the
+// caller applies the shared findings-bus filter. No owned SQL added (reads through the
+// profile-scoped getRecentDatedExercises).
+export function buildMuscleVolumeFindings(
+  profileId: number,
+  today: string
+): Finding[] {
+  // ONE scan: the same recent (date, exercise) rows the Overview coverage list uses.
+  const datedExercises = getRecentDatedExercises(profileId);
+  // Weekly per-muscle credited sets — the SAME attribution the list renders.
+  const coverage = coverageFromSets(
+    datedExercises,
+    today,
+    VOLUME_BAND_WINDOW_DAYS
+  );
+  const inputs = [...coverage.entries()].map(([muscle, c]) => ({
+    muscle,
+    sets: c.sets,
+  }));
+  // Cold-start signal: distinct strength-training weeks in the trailing scan.
+  const historyWeeks = countDistinctWeeks(datedExercises.map((d) => d.date));
+  return detectVolumeShortfalls(inputs, {
+    historyWeeks,
+    deloadActive: isRoutineDeloadWeek(profileId, today),
+    monthAnchor: today.slice(0, 7), // YYYY-MM episode anchor (#436)
+  }).map(volumeObservationToFinding);
 }
 
 // ---- Domain 5: body-metric data hygiene (Trends → Body) -------------------

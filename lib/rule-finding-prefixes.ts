@@ -11,6 +11,7 @@
 // client-safe and importable from any tier.
 
 import { TRAINING_OBS_PREFIX } from "./training-observations";
+import { MUSCLE_VOLUME_PREFIX } from "./muscle-volume-bands";
 import { BODY_HYGIENE_PREFIX } from "./weight-anomaly";
 import { GOAL_PACE_PREFIX } from "./goal-pacing";
 import { ADHERENCE_PREFIX } from "./adherence-patterns";
@@ -22,10 +23,11 @@ import { ORAL_HEALTH_PREFIX } from "./oral-health-observation";
 // Every namespace the rule-findings builders (buildTrainingObservationFindings,
 // buildBodyHygieneFindings, buildGoalPacingFindings, buildAdherencePatternFindings,
 // buildFoodSuggestionFindings, buildFoodHabitFindings, buildSunExposureFindings,
-// buildOralHealthFindings) key their dedupeKeys under. Order is irrelevant;
-// membership is what's guarded.
+// buildOralHealthFindings, buildMuscleVolumeFindings) key their dedupeKeys under.
+// Order is irrelevant; membership is what's guarded.
 export const RULE_FINDING_PREFIXES: readonly string[] = [
   TRAINING_OBS_PREFIX,
+  MUSCLE_VOLUME_PREFIX,
   BODY_HYGIENE_PREFIX,
   GOAL_PACE_PREFIX,
   ADHERENCE_PREFIX,
