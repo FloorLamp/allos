@@ -435,7 +435,7 @@ function reconcileNonOptimalFlags(db: Database.Database) {
   };
 
   const rowsStmt = db.prepare(
-    `SELECT id, value_num, unit, canonical_name, flag, date FROM medical_records
+    `SELECT id, value_num, unit, canonical_name, flag, date, reference_range FROM medical_records
        WHERE profile_id = ? AND canonical_name IS NOT NULL AND value_num IS NOT NULL
          AND (flag IS NULL OR flag IN ('normal','non-optimal','non-optimal-high','non-optimal-low','high','low'))`
   );
@@ -468,14 +468,17 @@ function reconcileNonOptimalFlags(db: Database.Database) {
       const birthdate = readBirthdate(p.id);
       const age = readAge(p.id);
       const reproductiveStatus = readReproductiveStatus(p.id);
-      const rows = rowsStmt.all(p.id) as {
-        id: number;
-        value_num: number;
-        unit: string | null;
-        canonical_name: string;
-        flag: string | null;
-        date: string;
-      }[];
+      const rows = (
+        rowsStmt.all(p.id) as {
+          id: number;
+          value_num: number;
+          unit: string | null;
+          canonical_name: string;
+          flag: string | null;
+          date: string;
+          reference_range: string | null;
+        }[]
+      ).map((r) => ({ ...r, reference: r.reference_range }));
       // Same pure per-row derivation queries.reconcileFlags uses, so the boot-time
       // reconcile and the request-time one can't drift (lib/flag-reconcile). Age is
       // derived per row from birthdate + the record's own date (age on the

@@ -8,6 +8,7 @@ import type { FeedEntry } from "@/lib/import-feed";
 import RelativeTime from "@/components/RelativeTime";
 import RawPayloadViewer from "@/components/RawPayloadViewer";
 import DuplicateReview from "@/components/DuplicateReview";
+import UnitMislabelReview from "@/components/UnitMislabelReview";
 import ConnectedSources from "@/components/ConnectedSources";
 import ImportFeed from "@/components/ImportFeed";
 import type {
@@ -15,6 +16,7 @@ import type {
   BodyMetricConflictRow,
   ConnectedSource,
 } from "@/lib/queries/integrations";
+import type { UnitMislabelReview as UnitMislabelReviewRow } from "@/lib/queries/medical";
 import type {
   ActivityDupPair,
   BodyMetricConflictPair,
@@ -45,6 +47,7 @@ export default function ReviewInbox({
   knownNames,
   activityPairs = [],
   bodyMetricPairs = [],
+  unitMislabels = [],
   units,
   isAdmin = false,
 }: {
@@ -58,6 +61,8 @@ export default function ReviewInbox({
   // Detected, still-unresolved duplicate/conflict pairs (issue #10).
   activityPairs?: ActivityDupPair<ActivityDupRow>[];
   bodyMetricPairs?: BodyMetricConflictPair<BodyMetricConflictRow>[];
+  // Probable power-of-ten unit mislabels (issue #761), each a one-click correction.
+  unitMislabels?: UnitMislabelReviewRow[];
   units: UnitPrefs;
   // Admins can inspect the raw provider payload captured per sync (issue #9). The
   // "View raw" affordance is only rendered for admins on events that carry a
@@ -71,6 +76,8 @@ export default function ReviewInbox({
         bodyMetricPairs={bodyMetricPairs}
         units={units}
       />
+
+      <UnitMislabelReview items={unitMislabels} />
 
       {issues.length > 0 && (
         <div className="card border-rose-200 dark:border-rose-900/50">

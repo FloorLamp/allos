@@ -460,6 +460,128 @@ type CanonicalRanges = Pick<CanonicalBiomarker, "name" | "unit" | "direction"> &
 // catch a value the lab didn't flag (Vitamin D 19.8 below our 30 → low). Where
 // we have no reference range, we don't override a lab clinical flag, but still
 // derive non-optimal from the optimal band. 'abnormal' (qualitative) is left as-is.
+// ---------------------------------------------------------------------------
+// Unit-mislabel plausibility cross-check (issue #761). A lab report that
+// MISLABELS a unit — the string parses cleanly but is factually wrong (MCHC "33
+// g/L" that is really g/dL) — converts faithfully into a confident, spuriously-
+// extreme flag (3.3 g/dL → "low"). This is the parse-but-WRONG sibling of #759
+// (parse failures). The single unused signal that catches it is the report's own
+// STATED reference range: a correctly-labeled lab's printed range roughly agrees
+// with our canonical range; a clean power-of-ten disagreement is the fingerprint
+// of a mislabeled unit. Pure, parse-on-read — no schema change.
+// ---------------------------------------------------------------------------
+
+export interface UnitMislabel {
+  // The power-of-ten factor the reading is off by (10 / 100 / 1000), i.e. the
+  // canonical range is `factor`× the stated range as-converted by the stated unit.
+  factor: number;
+  // The proposed correction: the reading's own numeric value, relabeled to the
+  // canonical unit (the dominant real-world target — "33 g/L" → "33 g/dL").
+  corrected: { unit: string; value: number };
+}
+
+// Each shared bound's ratio (canonical ÷ stated-as-converted) must round to the
+// SAME power of ten within this log-tolerance. ±0.10 in log10 ≈ ±26% — generous
+// for real cohort-range noise around a true 10×, yet tight enough to REJECT a
+// non-decimal disagreement (a 5×/7× cohort difference is not a clean power of ten
+// and yields no signal, per the conservative "false positive is worse than a
+// missed catch" discipline).
+const POWER_OF_TEN_LOG_TOL = 0.1;
+
+// Classify a single ratio as a clean power-of-ten factor (10 / 100 / 1000 or their
+// reciprocals), or null when it is ~1 (no mismatch), beyond 1000×, or a messy
+// non-decimal near-miss. The tolerance keeps genuinely-different cohort ranges
+// (off by a fraction, not a decade) from reading as a mislabel.
+function powerOfTenFactor(ratio: number): number | null {
+  if (!(ratio > 0) || !Number.isFinite(ratio)) return null;
+  const l = Math.log10(ratio);
+  const k = Math.round(l);
+  if (k === 0 || Math.abs(k) > 3) return null; // ~1× (agreement) or beyond 1000×
+  if (Math.abs(l - k) > POWER_OF_TEN_LOG_TOL) return null; // messy near-miss
+  return Math.pow(10, k);
+}
+
+// The single power-of-ten factor every ratio agrees on, or null when the list is
+// empty, any ratio is not a clean power of ten, or the ratios disagree on the
+// decade (a mixed/near-miss disagreement — no signal).
+function cleanPowerOfTen(ratios: number[]): number | null {
+  if (ratios.length === 0) return null;
+  let f: number | null = null;
+  for (const r of ratios) {
+    const p = powerOfTenFactor(r);
+    if (p == null) return null;
+    if (f == null) f = p;
+    else if (f !== p) return null;
+  }
+  return f;
+}
+
+// Detect a probable power-of-ten unit MISLABEL for one numeric reading, off the
+// report's stated reference range (issue #761). Returns the proposed correction, or
+// null when there is no clean evidence. Conservative and evidence-gated — it fires
+// ONLY when ALL hold:
+//   1. the reading has a stated unit + a parseable stated range, and the canonical
+//      entry has a unit + a resolved reference range (else: no signal);
+//   2. the stated range, converted BY THE STATED UNIT into canonical space, is off
+//      from the canonical range by a CLEAN power of ten on every shared bound
+//      (a messy/non-decimal disagreement could be a different lab's cohort → null);
+//   3. the value, as-labeled by the stated unit, is currently OUT of the canonical
+//      range (there is an actual false flag to prevent);
+//   4. the value, relabeled to the canonical unit, lands back IN range (the
+//      correction is corroborated by the reading itself);
+//   5. the value's own scale jump (canonical ÷ stated) is the SAME power of ten as
+//      the range's — the two independent signals agree.
+// Only the canonical unit is proposed as the correction target (the dominant case:
+// the report's numbers are right, the label is a decade-off sibling of the
+// canonical unit); a true unit that is itself non-canonical is left as no-signal.
+export function detectUnitMislabel(
+  reference: string | null | undefined,
+  unit: string | null | undefined,
+  valueNum: number | null | undefined,
+  cb: CanonicalRanges | null | undefined,
+  sex?: Sex | null,
+  age?: number | null,
+  status?: ReproductiveStatus | null
+): UnitMislabel | null {
+  const canonUnit = cb?.unit ?? null;
+  if (!canonUnit || !unit || valueNum == null) return null;
+
+  const parsed = parseReferenceRange(reference);
+  if (!parsed || (parsed.low == null && parsed.high == null)) return null;
+
+  const rr = referenceRange(cb, sex, age, status);
+  if (rr.low == null && rr.high == null) return null;
+
+  // The value + stated range bounds, converted by the STATED (suspect) unit.
+  const vStated = convertToCanonical(valueNum, unit, cb);
+  if (vStated == null || vStated === 0) return null;
+  const sLow =
+    parsed.low != null ? convertToCanonical(parsed.low, unit, cb) : null;
+  const sHigh =
+    parsed.high != null ? convertToCanonical(parsed.high, unit, cb) : null;
+
+  // Range evidence: canonical ÷ stated-as-converted, per shared bound.
+  const ratios: number[] = [];
+  if (sLow != null && sLow !== 0 && rr.low != null) ratios.push(rr.low / sLow);
+  if (sHigh != null && sHigh !== 0 && rr.high != null)
+    ratios.push(rr.high / sHigh);
+  const factor = cleanPowerOfTen(ratios);
+  if (factor == null) return null;
+
+  // The as-labeled value must be OUT of range (a real false flag), and the value
+  // relabeled to the canonical unit must land IN range (correction corroborated).
+  if (referenceStatus(vStated, rr.low, rr.high) === "in") return null;
+  const vCanon = convertToCanonical(valueNum, canonUnit, cb);
+  if (vCanon == null) return null;
+  if (referenceStatus(vCanon, rr.low, rr.high) !== "in") return null;
+
+  // The value's own scale jump must be the SAME clean power of ten as the range's.
+  if (vStated === 0) return null;
+  if (cleanPowerOfTen([vCanon / vStated]) !== factor) return null;
+
+  return { factor, corrected: { unit: canonUnit, value: valueNum } };
+}
+
 export function reconciledFlag(
   currentFlag: MedicalFlag | string | null | undefined,
   valueNum: number | null | undefined,
@@ -467,13 +589,25 @@ export function reconciledFlag(
   cb: CanonicalRanges | null | undefined,
   sex?: Sex | null,
   age?: number | null,
-  status?: ReproductiveStatus | null
+  status?: ReproductiveStatus | null,
+  // The reading's stored free-text reference range (issue #761). When it reveals a
+  // probable power-of-ten unit mislabel, reconciledFlag declines to DERIVE an
+  // out-of-range flag from the faithfully-converted-but-wrong value — the same
+  // "can't validate → don't assert" stance it takes when convertToCanonical returns
+  // null — so the alarming false flag never shows, even before any user correction.
+  reference?: string | null
 ): MedicalFlag | null | undefined {
   const f = currentFlag ?? null;
   if (f === "abnormal") return undefined;
   if (valueNum == null || !cb) return undefined;
   const v = convertToCanonical(valueNum, unit, cb);
   if (v == null) return undefined; // can't convert to the canonical unit — can't judge
+
+  // A probable unit mislabel (#761): the converted value is faithful but the unit
+  // is wrong, so any flag derived from it would be a fabricated abnormality. Leave
+  // the stored flag unchanged (don't assert) until the user approves the fix.
+  if (detectUnitMislabel(reference, unit, valueNum, cb, sex, age, status))
+    return undefined;
 
   const rr = referenceRange(cb, sex, age, status);
   const ref = referenceStatus(v, rr.low, rr.high);
