@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE, SESSION_COOKIE_SECURE } from "./lib/session-cookie";
+import { buildCsp, generateNonce } from "./lib/csp";
 
 // Coarse, non-authoritative auth gate. The Edge runtime can't open SQLite, so
 // this only checks for the *presence* of a session cookie: it bounces obviously
@@ -15,6 +16,15 @@ import { SESSION_COOKIE, SESSION_COOKIE_SECURE } from "./lib/session-cookie";
 // (lib/auth.ts) import, so the `__Host-` prefix decision can never drift between
 // the two. Only the TTL is duplicated here (a trivial constant).
 const SESSION_TTL_SEC = 30 * 24 * 60 * 60;
+
+// Content-Security-Policy (issue #595, step 3). The full CSP is built and set
+// HERE, per-request, because script-src carries a per-request nonce — next.config
+// no longer declares a Content-Security-Policy header at all, so lib/csp.ts is the
+// single source of truth (the enforced policy applies to every document route this
+// middleware matches; static _next assets, excluded by the matcher, are governed
+// by the CSP on the document that loads them). See lib/csp.ts for the
+// script-src/style-src/dev-mode reasoning.
+const IS_DEV = process.env.NODE_ENV !== "production";
 
 // Reachable without a session. Everything else requires the cookie.
 const PUBLIC_PATHS = new Set([
@@ -84,30 +94,56 @@ export function middleware(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
   const token = req.cookies.get(SESSION_COOKIE)?.value;
 
+  // Build the per-request nonce + CSP once, then stamp it onto EVERY response we
+  // return below (share, redirect, 401, normal) so no route escapes the policy.
+  const nonce = generateNonce();
+  const csp = buildCsp(nonce, IS_DEV);
+
+  // Thread the nonce into the REQUEST headers for the document routes: `x-nonce`
+  // is read by app/layout.tsx (theme-boot <script nonce>), and the request-header
+  // Content-Security-Policy is what Next parses to stamp its own inline bootstrap
+  // scripts with the same nonce. Cloned so we don't mutate the incoming headers.
+  const requestHeaders = new Headers(req.headers);
+  requestHeaders.set("x-nonce", nonce);
+  requestHeaders.set("content-security-policy", csp);
+  const passNonce = { request: { headers: requestHeaders } };
+
+  // Apply the response-header CSP to any response before it leaves middleware.
+  const withCsp = (res: NextResponse): NextResponse => {
+    res.headers.set("content-security-policy", csp);
+    return res;
+  };
+
   if (isPublic(pathname)) {
     // Share links are public but must never be cached or associated with a
     // session — serve them with hardened headers and without touching the cookie.
+    // The CSP still rides along (it does not weaken withShareHeaders' stricter
+    // Referrer-Policy/cache posture — the two header sets are disjoint).
     if (pathname.startsWith("/share/")) {
-      return withShareHeaders(NextResponse.next());
+      return withCsp(withShareHeaders(NextResponse.next(passNonce)));
     }
     // Keep sliding an authenticated user's cookie even on public paths.
-    return token
-      ? withSlidingCookie(NextResponse.next(), token)
-      : NextResponse.next();
+    return withCsp(
+      token
+        ? withSlidingCookie(NextResponse.next(passNonce), token)
+        : NextResponse.next(passNonce)
+    );
   }
 
   if (!token) {
     if (pathname.startsWith("/api/")) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return withCsp(
+        NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+      );
     }
     const url = req.nextUrl.clone();
     url.pathname = "/login";
     url.search = "";
     url.searchParams.set("next", pathname + search);
-    return NextResponse.redirect(url);
+    return withCsp(NextResponse.redirect(url));
   }
 
-  return withSlidingCookie(NextResponse.next(), token);
+  return withCsp(withSlidingCookie(NextResponse.next(passNonce), token));
 }
 
 export const config = {
