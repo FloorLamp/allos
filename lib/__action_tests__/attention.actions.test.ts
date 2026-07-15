@@ -98,7 +98,8 @@ describe("markAttentionDose", () => {
     await markAttentionDose(fd({ dose_id: doseId }));
     expect(getTakenDoseIds(profile.id, today(profile.id)).size).toBe(1);
     expect(revalidate).toHaveBeenCalledWith("/");
-    expect(revalidate).toHaveBeenCalledWith("/medicine");
+    expect(revalidate).toHaveBeenCalledWith("/nutrition");
+    expect(revalidate).toHaveBeenCalledWith("/medications");
   });
 
   it("a bogus dose id is a safe no-op", async () => {

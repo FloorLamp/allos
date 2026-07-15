@@ -7,10 +7,10 @@ import {
   foodTimingSignalKey,
 } from "@/lib/food-drug-interactions";
 import { parseRxcuiIngredients } from "@/lib/rxnorm";
-import { dismissMedicineFinding } from "./actions";
+import { dismissIntakeFinding } from "@/app/(app)/nutrition/supplement-actions";
 
 // Food–drug guidance line(s) for one intake item (issue #154). Rendered on the
-// /medicine medication + supplement rows: a per-item food note like "Grapefruit:
+// intake surfaces' medication + supplement rows (#746): a per-item food note like "Grapefruit:
 // Avoid grapefruit juice — it raises statin blood levels". A formatter over the
 // pure matchFoodInteractions — the SAME computation the create/edit item-form
 // notice and the dose-reminder Telegram copy use, so they can't disagree. Shared
@@ -54,7 +54,7 @@ export default function FoodGuidance({
       {hits.map((hit) => (
         // A <div>, not a <p>: the dismiss <form> may not nest inside a <p> —
         // invalid HTML that React rejects at hydration, crashing the whole
-        // /medicine tree (dose cards included).
+        // intake surface tree (dose cards included).
         <div
           key={hit.key}
           className="flex items-start gap-1 text-xs text-amber-700 dark:text-amber-300"
@@ -67,7 +67,7 @@ export default function FoodGuidance({
           {/* Dismiss through the shared findings-bus suppression store (#435). */}
           <form
             action={async (fd) => {
-              await dismissMedicineFinding(fd);
+              await dismissIntakeFinding(fd);
             }}
           >
             <input

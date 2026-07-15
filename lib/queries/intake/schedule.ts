@@ -11,6 +11,17 @@ import type {
   SupplementSuggestion,
 } from "../../types";
 
+// Whether this profile has ANY intake item (supplement or medication). Drives the
+// Nutrition nav entry's visibility for an infant profile (#746): the food-group
+// serving log is meaningless before age 1, but infant supplements are real (e.g.
+// vitamin D drops), so the nav entry (→ the Supplements tab) stays reachable when
+// the profile tracks any intake item even though the Food tab shows a calm note.
+export function profileHasIntakeItems(profileId: number): boolean {
+  return !!db
+    .prepare("SELECT 1 FROM intake_items WHERE profile_id = ? LIMIT 1")
+    .get(profileId);
+}
+
 // ---- Supplements ----
 export function getSupplements(profileId: number): Supplement[] {
   // COALESCE(situations.name, intake_items.situation): a situational item's

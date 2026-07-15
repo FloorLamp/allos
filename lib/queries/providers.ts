@@ -1,5 +1,5 @@
 import { db } from "../db";
-import { encounterHref, type AppRoute } from "../hrefs";
+import { encounterHref, MEDICATIONS_HREF, type AppRoute } from "../hrefs";
 
 // PER-PROFILE activity reads for the provider detail/index pages (issue #275).
 //
@@ -262,7 +262,7 @@ export function getProviderMedications(
     date: null,
     label: r.name,
     sublabel: r.active ? r.kind : `${r.kind} · inactive`,
-    href: "/medicine",
+    href: MEDICATIONS_HREF,
   }));
 }
 

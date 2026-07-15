@@ -38,6 +38,7 @@ export default function SidebarContent({
   isAdmin = false,
   multiProfile = false,
   foodLoggingRelevant = true,
+  hasIntakeItems = false,
   reviewCount = 0,
   readOnly = false,
   onNavigate,
@@ -58,6 +59,9 @@ export default function SidebarContent({
   // entry (issue #591). Defaults true so a caller that doesn't thread it never
   // over-hides.
   foodLoggingRelevant?: boolean;
+  // True when the active profile tracks any intake item (#746); keeps the
+  // Nutrition entry (→ Supplements tab) reachable for an infant supplement user.
+  hasIntakeItems?: boolean;
   // Count of integrations currently needing attention (failed syncs) — shown as
   // a badge on the profile menu, linking to Data → Review. Resolved server-side.
   reviewCount?: number;
@@ -109,6 +113,7 @@ export default function SidebarContent({
         isAdmin={isAdmin}
         multiProfile={multiProfile}
         foodLoggingRelevant={foodLoggingRelevant}
+        hasIntakeItems={hasIntakeItems}
       />
       {/* Profile switcher/logout above one bordered box holding the theme toggle
       and version hash as equal, borderless halves (a single segmented control). */}

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { IconCheck, IconPlayerTrackNext } from "@tabler/icons-react";
 import { useToast } from "@/components/Toast";
 import { useOfflineQueue } from "@/components/OfflineQueueProvider";
-import { setDoseStatus } from "@/app/(app)/medicine/actions";
+import { setDoseStatus } from "@/app/(app)/nutrition/supplement-actions";
 import { localDate, shouldQueueOffline } from "@/lib/offline/queue";
 
 // Tri-state dose check-off (issue #232): one dose is taken, deliberately skipped,

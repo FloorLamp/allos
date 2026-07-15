@@ -89,7 +89,11 @@ const RECORDS: Group = {
     },
     { href: "/care-plan", label: "Care Plan", icon: IconClipboardList },
     { href: "/care-goals", label: "Health Goals", icon: IconTarget },
-    { href: "/medicine", label: "Supplements & Meds", icon: IconPill },
+    // Supplements left this group for the Nutrition → Supplements tab (#746);
+    // Medications kept a Medical-group home of their own (next to Conditions /
+    // Allergies / Providers). The old combined "/medicine" surface now redirects
+    // to the Supplements tab.
+    { href: "/medications", label: "Medications", icon: IconPill },
     { href: "/immunizations", label: "Immunizations", icon: IconVaccine },
     { href: "/encounters", label: "Visits", icon: IconCalendarEvent },
     { href: "/providers", label: "Providers", icon: IconStethoscope },
@@ -174,12 +178,14 @@ function NavGroup({
   isAdmin,
   multiProfile,
   foodLoggingRelevant,
+  hasIntakeItems,
 }: {
   group: Group;
   restricted: boolean;
   isAdmin: boolean;
   multiProfile: boolean;
   foodLoggingRelevant: boolean;
+  hasIntakeItems: boolean;
 }) {
   const pathname = usePathname();
   // Reuse the same visibility predicate as the top-level entries so a group
@@ -193,6 +199,7 @@ function NavGroup({
       restricted,
       multiProfile,
       foodLoggingRelevant,
+      hasIntakeItems,
       restrictedHrefs: RESTRICTED_HREFS,
     })
   );
@@ -248,6 +255,7 @@ export default function Nav({
   isAdmin = false,
   multiProfile = false,
   foodLoggingRelevant = true,
+  hasIntakeItems = false,
 }: {
   restricted?: boolean;
   isAdmin?: boolean;
@@ -258,6 +266,11 @@ export default function Nav({
   // `requiresFoodLogging` (Nutrition). Defaults true so a caller that doesn't
   // thread it never over-hides.
   foodLoggingRelevant?: boolean;
+  // True when the active profile tracks any intake item (#746). Keeps the
+  // Nutrition entry (→ Supplements tab) visible for an infant who takes a
+  // supplement even though food-group logging isn't relevant. Defaults false so
+  // the Food-logging gate stands on its own when a caller doesn't thread it.
+  hasIntakeItems?: boolean;
 }) {
   const visible = entries.filter((e) =>
     isGroup(e)
@@ -267,6 +280,7 @@ export default function Nav({
           restricted,
           multiProfile,
           foodLoggingRelevant,
+          hasIntakeItems,
           restrictedHrefs: RESTRICTED_HREFS,
         })
   );
@@ -281,6 +295,7 @@ export default function Nav({
             isAdmin={isAdmin}
             multiProfile={multiProfile}
             foodLoggingRelevant={foodLoggingRelevant}
+            hasIntakeItems={hasIntakeItems}
           />
         ) : (
           <NavLink key={e.href} leaf={e} nested={false} />

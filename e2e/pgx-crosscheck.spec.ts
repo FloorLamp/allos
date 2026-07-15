@@ -4,7 +4,7 @@ import path from "node:path";
 
 // Pharmacogenomics cross-check (issue #710): a stored PGx result (a genomic_variants
 // row, result_type='pharmacogenomic') affecting a medication in the active stack must
-// surface (a) an inline note on /medicine + the create/edit form, and (b) a
+// surface (a) an inline note on the Medications page + the create/edit form, and (b) a
 // dismissible finding on Upcoming — the same shape as the drug–drug interaction
 // warnings. CPIC's guidance is relayed AS INFORMATION with its citation; never
 // prescriptive.
@@ -79,10 +79,10 @@ test.describe("Pharmacogenomics cross-check (#710)", () => {
   });
   test.afterAll(cleanup);
 
-  test("shows the HLA-B*57:01 × abacavir contraindication note on /medicine", async ({
+  test("shows the HLA-B*57:01 × abacavir contraindication note on /medications", async ({
     page,
   }) => {
-    await page.goto("/medicine");
+    await page.goto("/medications");
     const main = page.getByRole("main");
 
     const warnings = main.getByTestId("pgx-warnings");
@@ -116,10 +116,10 @@ test.describe("Pharmacogenomics cross-check (#710)", () => {
   test("shows the inline PGx notice while adding an affected medication", async ({
     page,
   }) => {
-    await page.goto("/medicine");
+    await page.goto("/medications");
     const addCard = page
       .locator("div.card")
-      .filter({ hasText: "Add supplement or medication" });
+      .filter({ hasText: "Add medication" });
 
     // Typing a CYP2D6-affected opioid with an ultrarapid variant on file lights the
     // inline note — no save needed; the pure crossCheckPgx runs client-side.

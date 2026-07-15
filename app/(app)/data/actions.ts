@@ -619,7 +619,7 @@ export async function commitBiomarkers(
     revalidatePath("/trends");
     revalidatePath("/body");
   }
-  if (outcome.medCount) revalidatePath("/medicine");
+  if (outcome.medCount) revalidatePath("/medications");
   if (adopted.changed) revalidatePath("/settings");
   return {
     ok: true,

@@ -35,8 +35,41 @@
 
 import type { Route } from "next";
 import type { IntegrationId } from "./types/integrations";
+import type { SupplementKind } from "./types/intake";
 
 export type AppRoute = Route;
+
+// --------------------------------------------------------------------------
+// Intake (supplements / medications) surface seam (issue #746)
+// --------------------------------------------------------------------------
+
+// The Nutrition umbrella's deep-linkable tabs (#746): Food is the default (no
+// query), Supplements is the former /medicine supplement surface folded in as a
+// tab. Source of truth for the union — the page parses `?tab=`, so a tab rename
+// is one edit and every caller of `nutritionTabHref` is re-checked by the
+// compiler (typedRoutes validates the `/nutrition` path but NOT the `?tab=`
+// value — this union does, mirroring dataSectionHref).
+export const NUTRITION_TABS = ["food", "supplements"] as const;
+export type NutritionTab = (typeof NUTRITION_TABS)[number];
+
+export function nutritionTabHref(tab: NutritionTab): AppRoute {
+  return tab === "food" ? "/nutrition" : `/nutrition?tab=${tab}`;
+}
+
+// The standalone Medications page (#746) — medications left the old combined
+// /medicine surface for their own Medical-group page.
+export const MEDICATIONS_HREF: AppRoute = "/medications";
+
+// The kind-aware deep link for an intake item / dose (#746): a supplement points
+// at the Nutrition → Supplements tab, a medication at the Medications page. The
+// ONE place the intake-surface seam is encoded, so every deep-linker (Upcoming,
+// Timeline, search, refill/dose Telegram buttons, imports) agrees on where each
+// kind lives — a #285 "rule-carrying link" (the rule = kind → surface).
+export function intakeHref(kind: SupplementKind): AppRoute {
+  return kind === "medication"
+    ? MEDICATIONS_HREF
+    : nutritionTabHref("supplements");
+}
 
 // --------------------------------------------------------------------------
 // Query-rule helpers

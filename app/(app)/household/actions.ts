@@ -38,6 +38,7 @@ export async function confirmDoseAction(formData: FormData) {
   await requireProfileWriteAccess(profileId);
   markDoseTaken(profileId, doseId, null, today(profileId));
   revalidatePath("/household");
-  revalidatePath("/medicine");
+  revalidatePath("/nutrition");
+  revalidatePath("/medications");
   revalidatePath("/");
 }

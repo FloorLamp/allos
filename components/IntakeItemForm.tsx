@@ -3,10 +3,13 @@
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { IconX, IconAlertTriangle } from "@tabler/icons-react";
-import SupplementCombobox from "./SupplementCombobox";
+import SupplementCombobox from "@/components/SupplementCombobox";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
-import { lookupRxcui, lookupRxcuiIngredients } from "./actions";
+import {
+  lookupRxcui,
+  lookupRxcuiIngredients,
+} from "@/app/(app)/nutrition/supplement-actions";
 import { parseRxcuiIngredients, serializeRxcuiIngredients } from "@/lib/rxnorm";
 import {
   interactionsForCandidate,
@@ -72,9 +75,15 @@ interface PairState {
   note: string;
 }
 
-// Shared add/edit form. With no `supplement` it's an add form; with one it edits
-// in place (its doses passed in) and calls `onDone` after a successful save.
-export default function SupplementForm({
+// Shared add/edit intake-item form (#746). `kind` is FIXED by the caller — a
+// supplement surface renders it as `SupplementForm` (kind="supplement", no
+// prescriber/PRN block), the Medications page as `MedicationForm`
+// (kind="medication", medication identity + PRN shown). There is no in-form
+// kind toggle anymore: the surface owns the kind. With no `supplement` it's an add
+// form; with one it edits in place (its doses passed in) and calls `onDone` after a
+// successful save.
+export default function IntakeItemForm({
+  kind,
   action,
   supplement,
   doses: initialDoses,
@@ -85,6 +94,8 @@ export default function SupplementForm({
   onDone,
   trainingRestricted = false,
 }: {
+  // Fixed by the surface — supplement vs medication (#746).
+  kind: SupplementKind;
   action: (formData: FormData) => Promise<FormResult>;
   supplement?: Supplement;
   doses?: SupplementDose[];
@@ -211,9 +222,9 @@ export default function SupplementForm({
 
   const [condition, setCondition] = useState(s?.condition ?? "daily");
   const [brand, setBrand] = useState(s?.brand ?? "");
-  // Medication identity — a medication reveals prescriber/pharmacy/
-  // Rx + an "as needed" (PRN) toggle that suppresses scheduled reminders.
-  const [kind, setKind] = useState<SupplementKind>(s?.kind ?? "supplement");
+  // Medication identity — a medication (kind fixed by the surface) reveals
+  // prescriber/pharmacy/Rx + an "as needed" (PRN) toggle that suppresses scheduled
+  // reminders.
   const [asNeeded, setAsNeeded] = useState(s?.as_needed === 1);
   // Missed-dose escalation — critical meds get a follow-up nudge.
   const [critical, setCritical] = useState(s?.critical === 1);
@@ -273,7 +284,8 @@ export default function SupplementForm({
     setError(null);
     formData.set("doses", JSON.stringify(doses));
     formData.set("pairs", JSON.stringify(pairRows));
-    const label = name.trim() || "Supplement";
+    const label =
+      name.trim() || (kind === "medication" ? "Medication" : "Supplement");
     let result: FormResult;
     try {
       result = await action(formData);
@@ -300,7 +312,6 @@ export default function SupplementForm({
       setRxError(null);
       setCondition("daily");
       setBrand("");
-      setKind("supplement");
       setAsNeeded(false);
       // The critical checkbox sits outside the medication-only block, so a stale
       // `checked` state silently saved the next item critical (issue #627).
@@ -321,28 +332,6 @@ export default function SupplementForm({
         name="rxcui_ingredients"
         value={serializeRxcuiIngredients(rxcuiIngredients ?? []) ?? ""}
       />
-
-      {/* Kind toggle — Supplement vs Medication */}
-      <div className="sm:col-span-2">
-        <label className="label">Type</label>
-        <div className="inline-flex overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700">
-          {(["supplement", "medication"] as const).map((k) => (
-            <button
-              key={k}
-              type="button"
-              onClick={() => setKind(k)}
-              aria-pressed={kind === k}
-              className={`px-3 py-1.5 text-sm font-medium capitalize ${
-                kind === k
-                  ? "bg-brand-600 text-white"
-                  : "bg-transparent text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-ink-800"
-              }`}
-            >
-              {k}
-            </button>
-          ))}
-        </div>
-      </div>
 
       <div>
         <label className="label">Name</label>

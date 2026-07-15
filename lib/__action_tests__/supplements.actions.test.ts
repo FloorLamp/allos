@@ -16,10 +16,12 @@ import {
   toggleTaken,
   setDoseStatus,
   toggleActive,
+  dismissIntakeFinding,
+} from "@/app/(app)/nutrition/supplement-actions";
+import {
   stopMedication,
   restartMedication,
-  dismissMedicineFinding,
-} from "@/app/(app)/medicine/actions";
+} from "@/app/(app)/medications/actions";
 import { deleteDatasetRows } from "@/app/(app)/data/manage-actions";
 import {
   getSupplements,
@@ -88,7 +90,7 @@ describe("addSupplement", () => {
     expect(row.source).toBe("manual");
     // parseDoses always yields at least one dose row.
     expect(getSupplementDoses(profile.id)).toHaveLength(1);
-    expect(revalidate).toHaveBeenCalledWith("/medicine");
+    expect(revalidate).toHaveBeenCalledWith("/nutrition");
   });
 
   it("blank name is rejected (no row)", async () => {
@@ -672,9 +674,9 @@ describe("rxcui_ingredients write path (issue #279)", () => {
   });
 });
 
-// #435: the /medicine observation dismiss action writes to the shared findings bus
+// #435: the intake observation dismiss action writes to the shared findings bus
 // for its four namespaces and refuses anything else.
-describe("dismissMedicineFinding (#435)", () => {
+describe("dismissIntakeFinding (#435)", () => {
   it("suppresses each medicine-surface namespace, rejecting foreign keys", async () => {
     const { profile } = seedActor();
     const suppressed = () => getFindingSuppressions(profile.id);
@@ -685,13 +687,13 @@ describe("dismissMedicineFinding (#435)", () => {
       "food-timing:12:grapefruit",
       "keep-apart:1-2",
     ]) {
-      await dismissMedicineFinding(fd({ dedupe_key: key }));
+      await dismissIntakeFinding(fd({ dedupe_key: key }));
       expect(suppressed().has(key)).toBe(true);
     }
 
     // A key outside the medicine namespaces is refused (the prefix guard), so this
     // action can never silence an arbitrary finding.
-    await dismissMedicineFinding(fd({ dedupe_key: "biomarker:ldl" }));
+    await dismissIntakeFinding(fd({ dedupe_key: "biomarker:ldl" }));
     expect(suppressed().has("biomarker:ldl")).toBe(false);
   });
 });

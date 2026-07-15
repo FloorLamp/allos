@@ -26,9 +26,12 @@ import type { AdherenceDot } from "@/lib/supplement-adherence";
 import type { DoseRate } from "@/lib/refill";
 import { formatLongDate } from "@/lib/format-date";
 import { getMedicationInfo } from "@/lib/medication-info";
-import { RefillBadge, AdherenceSummaryLine } from "./AdherenceRefill";
-import SupplementForm from "./SupplementForm";
-import FoodGuidance from "./FoodGuidance";
+import {
+  RefillBadge,
+  AdherenceSummaryLine,
+} from "@/components/AdherenceRefill";
+import MedicationForm from "@/components/MedicationForm";
+import FoodGuidance from "@/components/FoodGuidance";
 import DoseStatusControl from "@/components/DoseStatusControl";
 import SubmitButton from "@/components/SubmitButton";
 import OverflowMenu, {
@@ -40,6 +43,8 @@ import { useUndoableDelete } from "@/components/useUndoableDelete";
 import {
   updateSupplement,
   deleteSupplement,
+} from "@/app/(app)/nutrition/supplement-actions";
+import {
   stopMedication,
   restartMedication,
   addSideEffect,
@@ -110,7 +115,7 @@ export default function MedicationCard({
   if (editing) {
     return (
       <div className="card bg-slate-50/60 dark:bg-ink-900/60">
-        <SupplementForm
+        <MedicationForm
           action={updateSupplement}
           supplement={s}
           doses={doses}

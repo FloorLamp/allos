@@ -26,6 +26,7 @@ export default function MobileNav({
   isAdmin = false,
   multiProfile = false,
   foodLoggingRelevant = true,
+  hasIntakeItems = false,
   reviewCount = 0,
   readOnly = false,
 }: {
@@ -46,6 +47,9 @@ export default function MobileNav({
   multiProfile?: boolean;
   // True unless the active profile is an infant (< 1 y); gates Nutrition (#591).
   foodLoggingRelevant?: boolean;
+  // True when the active profile tracks any intake item (#746); keeps Nutrition
+  // (→ Supplements tab) reachable for an infant supplement user.
+  hasIntakeItems?: boolean;
   // Integrations-needing-attention count for the profile-menu badge (Data →
   // Review). Resolved on the server and threaded through the shared sidebar.
   reviewCount?: number;
@@ -147,6 +151,7 @@ export default function MobileNav({
               isAdmin={isAdmin}
               multiProfile={multiProfile}
               foodLoggingRelevant={foodLoggingRelevant}
+              hasIntakeItems={hasIntakeItems}
               reviewCount={reviewCount}
               readOnly={readOnly}
               onNavigate={() => setOpen(false)}

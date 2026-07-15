@@ -1,16 +1,16 @@
 import { test, expect } from "@playwright/test";
 
 // Food–drug interaction guidance (issue #154). The seed gives profile 1 a synthetic
-// active Simvastatin (rxcui-keyed) — a CYP3A4 statin — so /medicine must show a
+// active Simvastatin (rxcui-keyed) — a CYP3A4 statin — so the Medications page must show a
 // per-item food-guidance line about grapefruit, with no second medication needed.
 // The same finding is a formatter over the pure matcher shared by the item form and
 // the dose reminder. Assertions are scoped to the page's main region; the seed shares
 // the DB with other specs, so we filter to the distinctive grapefruit guidance.
 
-test("shows the seeded Simvastatin grapefruit food-drug guidance on /medicine", async ({
+test("shows the seeded Simvastatin grapefruit food-drug guidance on /medications", async ({
   page,
 }) => {
-  await page.goto("/medicine");
+  await page.goto("/medications");
   const main = page.getByRole("main");
 
   // The medication card for the seeded statin is present.
@@ -31,10 +31,10 @@ test("shows the seeded Simvastatin grapefruit food-drug guidance on /medicine", 
   await expect(guidance).toContainText("statin blood levels");
 });
 
-test("shows the seeded Warfarin vitamin-K food-drug guidance on /medicine", async ({
+test("shows the seeded Warfarin vitamin-K food-drug guidance on /medications", async ({
   page,
 }) => {
-  await page.goto("/medicine");
+  await page.goto("/medications");
   const main = page.getByRole("main");
 
   // Warfarin (active in the seed) carries two food notes — vitamin K and alcohol.

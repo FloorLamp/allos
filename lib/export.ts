@@ -969,7 +969,7 @@ export const DELETE_POLICY: Record<string, DatasetDeletePolicy> = {
     cleanupImmunizations: true,
   },
   goals: { revalidate: ["/training", "/"] },
-  supplements: { revalidate: ["/medicine", "/"] },
+  supplements: { revalidate: ["/nutrition", "/medications", "/"] },
   allergies: { revalidate: ["/allergies", "/"] },
   conditions: { revalidate: ["/conditions", "/"] },
   encounters: { revalidate: ["/encounters", "/"] },

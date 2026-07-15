@@ -8,9 +8,12 @@ import { CONDITION_LABELS, FOOD_TIMING_HINTS } from "@/lib/supplement-schedule";
 import { medicationMetaLine } from "@/lib/medication-history";
 import type { AdherenceDot } from "@/lib/supplement-adherence";
 import type { DoseRate } from "@/lib/refill";
-import { RefillBadge, AdherenceSummaryLine } from "./AdherenceRefill";
-import SupplementForm from "./SupplementForm";
-import FoodGuidance from "./FoodGuidance";
+import {
+  RefillBadge,
+  AdherenceSummaryLine,
+} from "@/components/AdherenceRefill";
+import SupplementForm from "@/components/SupplementForm";
+import FoodGuidance from "@/components/FoodGuidance";
 import DoseStatusControl from "@/components/DoseStatusControl";
 import OverflowMenu, {
   MENU_ITEM,
@@ -18,7 +21,11 @@ import OverflowMenu, {
 } from "@/components/OverflowMenu";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useUndoableDelete } from "@/components/useUndoableDelete";
-import { updateSupplement, toggleActive, deleteSupplement } from "./actions";
+import {
+  updateSupplement,
+  toggleActive,
+  deleteSupplement,
+} from "./supplement-actions";
 
 // One scheduled dose of a supplement, as it appears in a time bucket. A
 // supplement with multiple doses renders one of these per dose. Editing opens

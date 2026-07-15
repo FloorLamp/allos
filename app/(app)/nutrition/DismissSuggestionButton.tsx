@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useConfirm } from "@/components/ConfirmDialog";
-import { dismissSuggestion } from "./actions";
+import { dismissSuggestion } from "./supplement-actions";
 
 // Dismiss control for an AI supplement suggestion. Dismissing is permanent (the
 // suggestion is marked dismissed and won't reappear), so it routes through a

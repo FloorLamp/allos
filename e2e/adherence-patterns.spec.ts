@@ -12,7 +12,7 @@ import path from "node:path";
 test("Supplements & Meds shows an every-Friday adherence pattern (#45)", async ({
   page,
 }) => {
-  await page.goto("/medicine");
+  await page.goto("/nutrition?tab=supplements");
   const card = page.getByRole("main").getByTestId("adherence-findings");
   await expect(card).toBeVisible();
   await expect(card).toContainText(/Vitamin C/i);
@@ -45,7 +45,7 @@ test("an adherence-pattern finding can be dismissed (#45)", async ({
   page,
 }) => {
   resetAdherenceDismissals();
-  await page.goto("/medicine");
+  await page.goto("/nutrition?tab=supplements");
   const main = page.getByRole("main");
   const finding = main
     .getByTestId("adherence-findings-item")

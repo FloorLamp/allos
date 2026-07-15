@@ -14,12 +14,12 @@ const NAME = "History Guard D3";
 test("dosage restructure keeps the taken history at its original amount", async ({
   page,
 }) => {
-  await page.goto("/medicine");
+  await page.goto("/nutrition?tab=supplements");
 
   // ── Create a split-dose supplement: 500 mg Morning + 500 mg Evening ────────
   const addCard = page
     .locator("div.card")
-    .filter({ hasText: "Add supplement or medication" });
+    .filter({ hasText: "Add supplement" });
   await addCard.getByLabel("Name").fill(NAME);
   await addCard.getByLabel("Amount").first().fill("500 mg");
   await addCard.getByLabel("Time of day").first().selectOption("Morning");

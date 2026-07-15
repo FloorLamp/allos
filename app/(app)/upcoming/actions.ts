@@ -27,7 +27,8 @@ export async function markTaken(formData: FormData): Promise<FormResult> {
   if (!doseId) return formError("Couldn't find that dose.");
   markDoseTaken(profile.id, doseId, null, today(profile.id));
   revalidatePath("/upcoming");
-  revalidatePath("/medicine");
+  revalidatePath("/nutrition");
+  revalidatePath("/medications");
   revalidatePath("/");
   return formOk();
 }
