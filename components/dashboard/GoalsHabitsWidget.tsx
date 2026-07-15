@@ -1,7 +1,10 @@
 import Link from "next/link";
 import { WeeklyTargets } from "@/components/WeeklyTargets";
 import LogActivityButton from "@/components/LogActivityButton";
-import { summarizeDashboardHabits } from "@/lib/dashboard-widgets";
+import {
+  dashboardGoalsHabitsLayout,
+  summarizeDashboardHabits,
+} from "@/lib/dashboard-widgets";
 import { frequencyScopeLabel, goalBarClass, goalPct } from "@/lib/goals";
 import type { GoalProgress } from "@/lib/goal-progress";
 import type { FrequencyTargetProgress } from "@/lib/queries";
@@ -23,22 +26,43 @@ export default function GoalsHabitsWidget({
   const {
     open: allOpenTargets,
     shown: openTargets,
+    hidden: hiddenOpenTargets,
     completedCount: completedTargets,
-    hiddenOpenCount,
   } = summarizeDashboardHabits(freqTargets);
+  const hasGoals = goals.length > 0;
+  const hasHabits = freqTargets.length > 0;
+  const layout = dashboardGoalsHabitsLayout(hasGoals, hasHabits);
+  const hasTrainingContent =
+    hasGoals ||
+    freqTargets.some((target) => target.target.scope_kind !== "food_group");
+  const hasFoodContent = freqTargets.some(
+    (target) => target.target.scope_kind === "food_group"
+  );
   const hasOpenTrainingTarget = allOpenTargets.some(
     (target) => target.target.scope_kind !== "food_group"
   );
   const hasOpenFoodTarget = allOpenTargets.some(
     (target) => target.target.scope_kind === "food_group"
   );
+  const hiddenTrainingTargets = hiddenOpenTargets.filter(
+    (target) => target.target.scope_kind !== "food_group"
+  );
+  const hiddenFoodTargets = hiddenOpenTargets.filter(
+    (target) => target.target.scope_kind === "food_group"
+  );
+  const headerHref =
+    hasFoodContent && !hasTrainingContent
+      ? ("/nutrition" as const)
+      : ("/training?tab=goals" as const);
+  const headerLabel =
+    hasFoodContent && !hasTrainingContent ? "Nutrition" : "Training goals";
 
   return (
     <div className="card" data-testid="goals-habits">
       <WidgetHeader
         title="Goals and habits"
-        href="/training"
-        linkLabel="Manage"
+        href={headerHref}
+        linkLabel={headerLabel}
       />
 
       {goals.length === 0 && freqTargets.length === 0 ? (
@@ -53,7 +77,11 @@ export default function GoalsHabitsWidget({
           .
         </p>
       ) : (
-        <div className="grid gap-5 lg:grid-cols-2">
+        <div
+          data-testid="goals-habits-sections"
+          data-layout={layout}
+          className={`grid gap-5 ${layout === "split" ? "lg:grid-cols-2" : ""}`}
+        >
           {goals.length > 0 && (
             <section aria-label="Active goals">
               <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
@@ -119,15 +147,28 @@ export default function GoalsHabitsWidget({
                   All weekly habits complete.
                 </p>
               )}
-              {hiddenOpenCount > 0 && (
-                <Link
-                  href="/training"
-                  className="mt-2 inline-block text-xs font-medium text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400"
-                >
-                  +{hiddenOpenCount} more to do →
-                </Link>
+              {hiddenOpenTargets.length > 0 && (
+                <div className="mt-2 flex flex-wrap items-center gap-3">
+                  {hiddenTrainingTargets.length > 0 && (
+                    <Link
+                      href="/training?tab=goals"
+                      className="text-xs font-medium text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400"
+                    >
+                      +{hiddenTrainingTargets.length} more training →
+                    </Link>
+                  )}
+                  {hiddenFoodTargets.length > 0 && (
+                    <Link
+                      href="/nutrition"
+                      className="text-xs font-medium text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400"
+                    >
+                      +{hiddenFoodTargets.length} more food habits →
+                    </Link>
+                  )}
+                </div>
               )}
-              {openTargets.length > 0 && (
+              {(openTargets.length > 0 ||
+                (hasFoodContent && hasTrainingContent)) && (
                 <div className="mt-3 flex flex-wrap items-center gap-3">
                   {hasOpenTrainingTarget && (
                     <LogActivityButton className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400">
@@ -140,6 +181,14 @@ export default function GoalsHabitsWidget({
                       className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
                     >
                       Log food serving →
+                    </Link>
+                  )}
+                  {hasFoodContent && hasTrainingContent && (
+                    <Link
+                      href="/nutrition"
+                      className="text-xs font-medium text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400"
+                    >
+                      Manage food habits →
                     </Link>
                   )}
                 </div>

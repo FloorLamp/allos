@@ -1,8 +1,23 @@
 import Link from "next/link";
 import WidgetHeader from "@/components/dashboard/WidgetHeader";
 import { MedicalValue } from "@/components/ui";
-import type { RecentLabRow } from "@/lib/recent-labs";
+import {
+  recentLabDirectionlessStatus,
+  type RecentLabRow,
+} from "@/lib/recent-labs";
 import { formatRelativeDate } from "@/lib/format-date";
+import type { FlagTone } from "@/lib/reference-range";
+
+function directionlessStatusClass(tone: FlagTone): string {
+  switch (tone) {
+    case "bad":
+      return "text-rose-600 dark:text-rose-400";
+    case "warn":
+      return "text-amber-600 dark:text-amber-400";
+    default:
+      return "text-slate-500 dark:text-slate-400";
+  }
+}
 
 // One latest lab/biomarker reading, flattened for display by the page. The shape
 // and its selection policy live in lib/recent-labs (issue #313); re-exported here
@@ -33,6 +48,7 @@ export default function RecentLabsWidget({
       ) : (
         <ul className="space-y-1.5">
           {rows.map((r) => {
+            const status = recentLabDirectionlessStatus(r.flag);
             return (
               <li key={r.name} className="flex items-center gap-3">
                 <Link
@@ -43,6 +59,14 @@ export default function RecentLabsWidget({
                 </Link>
                 <span className="shrink-0 whitespace-nowrap text-sm text-slate-600 dark:text-slate-300">
                   <MedicalValue value={r.value} unit={r.unit} flag={r.flag} />
+                  {status && (
+                    <span
+                      data-testid="recent-lab-status"
+                      className={`ml-1 text-xs font-medium ${directionlessStatusClass(status.tone)}`}
+                    >
+                      · {status.label}
+                    </span>
+                  )}
                 </span>
                 <span
                   data-testid="recent-lab-date"

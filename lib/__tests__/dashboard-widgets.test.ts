@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   DASHBOARD_WIDGETS,
+  dashboardGoalsHabitsLayout,
   resolveWidgets,
   resolveWidgetList,
   pinnedWidgets,
@@ -232,7 +233,16 @@ describe("summarizeDashboardHabits", () => {
       "half",
       "almost",
     ]);
+    expect(summary.hidden.map((target) => target.id)).toEqual(["almost"]);
     expect(summary.completedCount).toBe(1);
     expect(summary.hiddenOpenCount).toBe(1);
+  });
+});
+
+describe("dashboardGoalsHabitsLayout", () => {
+  it("splits only when both goals and habits are present", () => {
+    expect(dashboardGoalsHabitsLayout(true, true)).toBe("split");
+    expect(dashboardGoalsHabitsLayout(true, false)).toBe("full");
+    expect(dashboardGoalsHabitsLayout(false, true)).toBe("full");
   });
 });

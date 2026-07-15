@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { recentLabHighlights } from "@/lib/recent-labs";
+import {
+  recentLabDirectionlessStatus,
+  recentLabHighlights,
+} from "@/lib/recent-labs";
 import type { MedicalRecord } from "@/lib/types";
 
 // The dashboard's recent-labs highlight selection (issue #313): of the current
@@ -89,5 +92,29 @@ describe("recentLabHighlights", () => {
     ];
     recentLabHighlights(input);
     expect(input.map((r) => r.name)).toEqual(["A", "B"]);
+  });
+});
+
+describe("recentLabDirectionlessStatus", () => {
+  it("labels every valid status that cannot carry a directional caret", () => {
+    expect(recentLabDirectionlessStatus("abnormal")).toEqual({
+      label: "Abnormal",
+      tone: "bad",
+    });
+    expect(recentLabDirectionlessStatus("non-optimal")).toEqual({
+      label: "Non-optimal",
+      tone: "warn",
+    });
+    expect(recentLabDirectionlessStatus("immune")).toEqual({
+      label: "Immune",
+      tone: "default",
+    });
+  });
+
+  it("leaves directional and normal flags to MedicalValue", () => {
+    expect(recentLabDirectionlessStatus("high")).toBeNull();
+    expect(recentLabDirectionlessStatus("non-optimal-low")).toBeNull();
+    expect(recentLabDirectionlessStatus("normal")).toBeNull();
+    expect(recentLabDirectionlessStatus(null)).toBeNull();
   });
 });

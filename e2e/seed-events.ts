@@ -1241,6 +1241,26 @@ qualInsert.run(
 // already stamped the current signature, so it would skip these post-seed inserts).
 reconcileFlags(PROFILE_ID);
 
+// A recent qualitative lab with a valid directionless provider flag. The compact
+// dashboard must say "Abnormal" explicitly: unlike high/low, this status cannot
+// communicate its meaning with a directional caret. Inserted after reconciliation
+// because this fixture models the provider-authored flag before a later canonical
+// mapping is available.
+const DIRECTIONLESS_LAB_MARKER = "E2E Directionless Lab Status";
+db.prepare(
+  `DELETE FROM medical_records WHERE profile_id = ? AND canonical_name = ?`
+).run(PROFILE_ID, DIRECTIONLESS_LAB_MARKER);
+db.prepare(
+  `INSERT INTO medical_records
+     (profile_id, date, category, name, value, canonical_name, flag, source)
+   VALUES (?, ?, 'lab', ?, 'Detected', ?, 'abnormal', 'manual')`
+).run(
+  PROFILE_ID,
+  shiftDateStr(today(PROFILE_ID), -1),
+  DIRECTIONLESS_LAB_MARKER,
+  DIRECTIONLESS_LAB_MARKER
+);
+
 // #383 — a lab whose raw name ("...CHOLESTEROL, TOTAL") differs from its
 // displayed canonical heading ("...Total Cholesterol"), so the biomarker search
 // must match the canonical name a user actually sees.

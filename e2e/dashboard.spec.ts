@@ -60,6 +60,15 @@ test("the streamlined grid combines goals and habits and caps observations", asy
   await expect(goalsHabits).toBeVisible();
   await expect(goalsHabits.getByText("Active goals")).toBeVisible();
   await expect(goalsHabits.getByText("Still to do this week")).toBeVisible();
+  await expect(
+    goalsHabits.getByTestId("goals-habits-sections")
+  ).toHaveAttribute("data-layout", "split");
+  await expect(
+    goalsHabits.getByRole("link", { name: /Training goals/ })
+  ).toHaveAttribute("href", "/training?tab=goals");
+  await expect(
+    goalsHabits.getByRole("link", { name: "Manage food habits →" })
+  ).toHaveAttribute("href", "/nutrition");
 
   const observations = main.getByTestId("coaching-observations");
   if (await observations.isVisible()) {
@@ -69,7 +78,7 @@ test("the streamlined grid combines goals and habits and caps observations", asy
   }
 });
 
-test("recent labs uses a balanced span and directional result carets", async ({
+test("recent labs keeps dates intact and makes every result direction explicit", async ({
   page,
 }) => {
   await page.goto("/");
@@ -83,6 +92,9 @@ test("recent labs uses a balanced span and directional result carets", async ({
       '[aria-label="above target"], [aria-label="below target"]'
     )
   ).not.toHaveCount(0);
+  await expect(
+    recentLabs.getByTestId("recent-lab-status").filter({ hasText: "Abnormal" })
+  ).toHaveCount(1);
   const firstDate = recentLabs.getByTestId("recent-lab-date").first();
   await expect(firstDate).toBeVisible();
   expect(

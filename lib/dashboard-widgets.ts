@@ -63,6 +63,7 @@ export function summarizeDashboardHabits<T extends DashboardHabitProgress>(
 ): {
   open: T[];
   shown: T[];
+  hidden: T[];
   completedCount: number;
   hiddenOpenCount: number;
 } {
@@ -76,12 +77,23 @@ export function summarizeDashboardHabits<T extends DashboardHabitProgress>(
     )
     .map(({ target }) => target);
   const shown = open.slice(0, Math.max(0, Math.trunc(limit)));
+  const hidden = open.slice(shown.length);
   return {
     open,
     shown,
+    hidden,
     completedCount: targets.length - open.length,
-    hiddenOpenCount: open.length - shown.length,
+    hiddenOpenCount: hidden.length,
   };
+}
+
+// The combined card splits only when both domains are present. A lone section
+// should use the full card width instead of leaving an empty desktop column.
+export function dashboardGoalsHabitsLayout(
+  hasGoals: boolean,
+  hasHabits: boolean
+): "split" | "full" {
+  return hasGoals && hasHabits ? "split" : "full";
 }
 
 // The catalog. Array order is the default display order; new widgets appended to
