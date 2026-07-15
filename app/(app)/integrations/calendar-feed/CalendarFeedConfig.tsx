@@ -336,7 +336,7 @@ export default function CalendarFeedConfig({
             </p>
             <div className="grid gap-4 sm:grid-cols-2">
               <fieldset className="space-y-1.5">
-                <legend className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                <legend className="mb-1 section-label">
                   Appointments &amp; due items
                 </legend>
                 {CONCRETE_FEED_CATEGORIES.map((c) => (
@@ -357,9 +357,7 @@ export default function CalendarFeedConfig({
                 ))}
               </fieldset>
               <fieldset className="space-y-1.5">
-                <legend className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                  Suggestions
-                </legend>
+                <legend className="mb-1 section-label">Suggestions</legend>
                 {SUGGESTED_FEED_CATEGORIES.map((c) => (
                   <label
                     key={c}

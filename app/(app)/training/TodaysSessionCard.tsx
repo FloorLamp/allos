@@ -37,9 +37,7 @@ export default function TodaysSessionCard({
     <div className="card" data-testid="todays-session-card">
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0">
-          <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-            Today&apos;s session
-          </h3>
+          <h3 className="section-label">Today&apos;s session</h3>
           <p
             className="mt-1 text-lg font-semibold text-slate-900 dark:text-slate-100"
             data-testid="todays-session-title"

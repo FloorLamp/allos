@@ -82,9 +82,7 @@ function Stat({
 }) {
   return (
     <div>
-      <div className="text-[0.65rem] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
-        {label}
-      </div>
+      <div className="section-label">{label}</div>
       <div className="mt-0.5 text-sm font-semibold text-slate-800 dark:text-slate-100">
         {children}
       </div>
@@ -137,9 +135,7 @@ function Attention({ data }: { data: HouseholdCardData }) {
 
   return (
     <div className="mt-4 space-y-2 border-t border-slate-100 pt-3 dark:border-slate-800">
-      <div className="text-[0.65rem] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
-        Attention today
-      </div>
+      <div className="section-label">Attention today</div>
       {nothing ? (
         <div
           className="text-sm text-slate-500 dark:text-slate-400"

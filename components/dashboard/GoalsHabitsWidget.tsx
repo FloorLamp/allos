@@ -92,9 +92,7 @@ export default function GoalsHabitsWidget({
         >
           {goals.length > 0 && (
             <section aria-label="Active goals">
-              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                Active goals
-              </h3>
+              <h3 className="mb-2 section-label">Active goals</h3>
               <ul className="space-y-3">
                 {goals.map((goal) => {
                   const pct = goalPct(goal, goalProgress.get(goal.id));
@@ -135,9 +133,7 @@ export default function GoalsHabitsWidget({
           {freqTargets.length > 0 && (
             <section aria-label="Weekly habits">
               <div className="mb-2 flex items-center justify-between gap-3">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                  Still to do this week
-                </h3>
+                <h3 className="section-label">Still to do this week</h3>
                 {completedTargets > 0 && (
                   <span className="text-xs text-emerald-600 dark:text-emerald-400">
                     {completedTargets} complete

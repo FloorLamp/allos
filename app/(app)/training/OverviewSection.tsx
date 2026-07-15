@@ -217,18 +217,14 @@ export default async function OverviewSection() {
               <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
                 {nextWorkout.target && (
                   <div>
-                    <dt className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                      Target
-                    </dt>
+                    <dt className="section-label">Target</dt>
                     <dd className="mt-0.5 font-semibold text-slate-700 dark:text-slate-200">
                       {nextWorkout.target}
                     </dd>
                   </div>
                 )}
                 <div>
-                  <dt className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                    Reason
-                  </dt>
+                  <dt className="section-label">Reason</dt>
                   <dd className="mt-0.5 text-slate-500 dark:text-slate-400">
                     {nextWorkout.detail}
                   </dd>
@@ -258,25 +254,19 @@ export default async function OverviewSection() {
           </h3>
           <dl className="mt-4 grid grid-cols-3 gap-3 text-center">
             <div>
-              <dt className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                Sessions
-              </dt>
+              <dt className="section-label">Sessions</dt>
               <dd className="mt-1 text-2xl font-semibold text-slate-900 dark:text-slate-100">
                 {summary.sessions}
               </dd>
             </div>
             <div>
-              <dt className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                Days
-              </dt>
+              <dt className="section-label">Days</dt>
               <dd className="mt-1 text-2xl font-semibold text-slate-900 dark:text-slate-100">
                 {summary.activeDays}
               </dd>
             </div>
             <div>
-              <dt className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                Streak
-              </dt>
+              <dt className="section-label">Streak</dt>
               <dd className="mt-1 text-2xl font-semibold text-slate-900 dark:text-slate-100">
                 {summary.streak}
               </dd>
@@ -395,9 +385,7 @@ export default async function OverviewSection() {
 
       <div className="space-y-6 opacity-85">
         <div>
-          <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-            Trends and records
-          </h3>
+          <h3 className="section-label">Trends and records</h3>
         </div>
 
         <div className="grid gap-6 lg:grid-cols-2">

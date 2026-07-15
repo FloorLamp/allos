@@ -58,7 +58,7 @@ export default function UsageRollup({
           <ScrollFade>
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-black/5 text-left text-xs uppercase tracking-wide text-slate-500 dark:border-white/10 dark:text-slate-400">
+                <tr className="border-b border-black/5 dark:border-white/10">
                   <th className="th">Feature</th>
                   <th className="th">Profile</th>
                   <th className="th text-right">Today calls</th>

@@ -289,7 +289,7 @@ export default function MedicationCard({
 
       {/* Detail: course history, side effects, lifecycle actions. */}
       <details className="mt-2">
-        <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+        <summary className="cursor-pointer section-label">
           History &amp; side effects
         </summary>
 
@@ -388,9 +388,7 @@ export default function MedicationCard({
 
           {/* Course mini-timeline. */}
           <div>
-            <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-              Courses ({ordered.length})
-            </div>
+            <div className="mb-1 section-label">Courses ({ordered.length})</div>
             <ul className="space-y-1">
               {ordered.map((c) => (
                 <li
@@ -424,7 +422,7 @@ export default function MedicationCard({
           {/* Side effects. */}
           <div>
             <div className="mb-1 flex items-center justify-between">
-              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              <span className="section-label">
                 Side effects ({sideEffects.length})
               </span>
               <button

@@ -534,9 +534,7 @@ export default function PlateBuilderModal({
         {/* Total + actions */}
         <div className="mt-5 flex items-center justify-between border-t border-slate-100 pt-4 dark:border-slate-800">
           <div>
-            <div className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-              Total
-            </div>
+            <div className="section-label">Total</div>
             <div className="text-2xl font-bold tabular-nums text-slate-900 dark:text-slate-100">
               {total} {unit}
             </div>

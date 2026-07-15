@@ -280,7 +280,7 @@ export default function ScheduleGrid({
                 <tr>
                   <td
                     colSpan={BANDS.length + 1}
-                    className="sticky left-0 bg-slate-50 px-3 py-1.5 text-[0.7rem] font-semibold uppercase tracking-wide text-slate-500 dark:bg-ink-850 dark:text-slate-400"
+                    className="sticky left-0 bg-slate-50 px-3 py-1.5 section-label text-[0.7rem] dark:bg-ink-850"
                   >
                     {GROUP_LABELS[group]}
                   </td>

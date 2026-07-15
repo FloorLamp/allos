@@ -400,9 +400,7 @@ export default async function SupplementsTab() {
         className="mb-4 flex flex-wrap items-center gap-2"
         data-testid="situations-bar"
       >
-        <span className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
-          Situations
-        </span>
+        <span className="section-label">Situations</span>
         {situationChips.map((sit) => {
           const on = activeSituations.has(sit);
           return (
@@ -529,9 +527,7 @@ export default async function SupplementsTab() {
             const warnings = bucketWarnings(items);
             return (
               <section key={bucket}>
-                <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                  {bucket}
-                </h2>
+                <h2 className="mb-2 section-label">{bucket}</h2>
                 {warnings.map((w) => (
                   <div
                     key={w.key}
@@ -556,7 +552,7 @@ export default async function SupplementsTab() {
 
           {notScheduled.length > 0 && (
             <details>
-              <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              <summary className="cursor-pointer section-label">
                 Not scheduled today ({notScheduled.length})
               </summary>
               <div className="mt-2 space-y-3">
@@ -567,7 +563,7 @@ export default async function SupplementsTab() {
 
           {paused.length > 0 && (
             <details>
-              <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              <summary className="cursor-pointer section-label">
                 Paused ({paused.length})
               </summary>
               <div className="mt-2 space-y-3">
@@ -654,7 +650,7 @@ export default async function SupplementsTab() {
       {/* Add supplement — always expanded, like the other "Add entry" forms
           (e.g. Body Metrics). Medications are added on the Medications page. */}
       <div className="card mt-6">
-        <h2 className="mb-4 font-semibold text-slate-800 dark:text-slate-100">
+        <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
           Add supplement
         </h2>
         <SupplementForm

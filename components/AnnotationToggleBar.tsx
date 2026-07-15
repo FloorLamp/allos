@@ -23,9 +23,7 @@ export default function AnnotationToggleBar({
   if (kinds.length === 0) return null;
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <span className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
-        Events
-      </span>
+      <span className="section-label">Events</span>
       {kinds.map((kind) => {
         const meta = ANNOTATION_KIND_META[kind];
         const on = enabled[kind];

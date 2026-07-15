@@ -258,7 +258,7 @@ export default function DataTableManager({
         <>
           <ScrollFade>
             <table className="w-full text-left text-sm">
-              <thead className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              <thead className="section-label">
                 <tr>
                   {editing && (
                     <th className="w-8 py-1 pr-3">

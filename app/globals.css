@@ -120,6 +120,14 @@ body::before {
   .label {
     @apply mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400;
   }
+  /* Uppercase micro-heading / section label. Typography only (no margin or
+     layout) so call sites keep their own element + spacing; a brand/rose/tone
+     text color utility can override the default muted slate. Winner of the
+     8-variant sweep (issue #794 cluster 1): text-xs font-semibold, matching
+     .th. A source-scan guard (section-label.test.ts) blocks new hand-rolls. */
+  .section-label {
+    @apply text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400;
+  }
   .btn {
     @apply inline-flex items-center justify-center gap-2 rounded-lg bg-gradient-to-b from-brand-500 to-brand-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:from-brand-600 hover:to-brand-700 disabled:opacity-50;
   }

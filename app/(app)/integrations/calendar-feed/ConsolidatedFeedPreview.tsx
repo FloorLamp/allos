@@ -47,9 +47,7 @@ export default function ConsolidatedFeedPreview({
         <div className="space-y-4">
           {visible.map((g) => (
             <div key={g.dateKey}>
-              <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                {g.dateLabel}
-              </h3>
+              <h3 className="mb-1.5 section-label">{g.dateLabel}</h3>
               <ul className="divide-y divide-black/5 dark:divide-white/5">
                 {g.rows.map((r) => (
                   <li

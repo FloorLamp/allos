@@ -366,7 +366,7 @@ function WorkoutPreview({
       </h2>
       <ScrollFade className="mt-2">
         <table className="w-full text-left text-sm">
-          <thead className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+          <thead className="section-label">
             <tr>
               <th className="py-1 pr-3">Date</th>
               <th className="py-1 pr-3">Exercise</th>
@@ -430,7 +430,7 @@ function BiomarkerPreview({
       </h2>
       <ScrollFade className="mt-2">
         <table className="w-full text-left text-sm">
-          <thead className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+          <thead className="section-label">
             <tr>
               <th className="py-1 pr-3">Name</th>
               <th className="py-1 pr-3">Value</th>

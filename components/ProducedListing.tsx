@@ -17,7 +17,7 @@ export default function ProducedListing({
 }) {
   return (
     <div className="card" data-testid="produced-listing">
-      <h2 className="mb-1 font-semibold text-slate-800 dark:text-slate-100">
+      <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
         {title}{" "}
         <span className="font-normal text-slate-500 dark:text-slate-400">
           ({items.length})

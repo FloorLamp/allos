@@ -200,9 +200,7 @@ export default async function BioAgeHero() {
       {/* The nine inputs it was built from, each linking to its own series (the
           "why", and an honest-uncertainty affordance). */}
       <div className="mt-4">
-        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-          Built from
-        </h3>
+        <h3 className="mb-2 section-label">Built from</h3>
         <ul className="grid grid-cols-1 gap-x-6 gap-y-1.5 sm:grid-cols-3">
           {latest.inputs.map((inp) => (
             <li

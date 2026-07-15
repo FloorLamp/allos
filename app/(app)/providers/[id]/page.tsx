@@ -91,9 +91,7 @@ function RelationshipStat({
 }) {
   return (
     <div className="rounded-lg border border-black/5 bg-white/60 px-4 py-3 dark:border-white/10 dark:bg-black/10">
-      <div className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
-        {label}
-      </div>
+      <div className="section-label">{label}</div>
       <div className="mt-1 text-sm font-semibold text-slate-800 dark:text-slate-100">
         {value ? formatRecordDate(value, "—") : "—"}
       </div>

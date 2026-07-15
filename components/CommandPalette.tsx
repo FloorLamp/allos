@@ -356,9 +356,7 @@ export default function CommandPalette({
           {/* Quick log — the inline `weight 82.5` fast path. */}
           {quickLog && (
             <div className="mb-2">
-              <div className="px-2 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                Quick log
-              </div>
+              <div className="px-2 pb-1 pt-2 section-label">Quick log</div>
               <button
                 type="button"
                 role="option"
@@ -393,9 +391,7 @@ export default function CommandPalette({
           {/* Create actions. */}
           {actions.length > 0 && (
             <div className="mb-2">
-              <div className="px-2 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                Actions
-              </div>
+              <div className="px-2 pb-1 pt-2 section-label">Actions</div>
               <ul>
                 {actions.map((action, i) => {
                   const itemIdx = actionStart + i;
@@ -474,9 +470,7 @@ function SearchResults({
     <>
       {groups.map((group) => (
         <div key={group.domain} className="mb-2">
-          <div className="px-2 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-            {group.label}
-          </div>
+          <div className="px-2 pb-1 pt-2 section-label">{group.label}</div>
           <ul>
             {group.hits.map((hit) => {
               flatIndex += 1;

@@ -46,9 +46,7 @@ function Section({
 }) {
   return (
     <section className="card break-inside-avoid print:border print:border-slate-300 print:shadow-none">
-      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-        {title}
-      </h2>
+      <h2 className="mb-3 section-label">{title}</h2>
       {children}
     </section>
   );
@@ -65,9 +63,7 @@ function Fact({
 }) {
   return (
     <div>
-      <div className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
-        {label}
-      </div>
+      <div className="section-label">{label}</div>
       <div className="mt-0.5 text-lg font-semibold text-slate-900 dark:text-slate-100">
         {value}
       </div>
@@ -589,9 +585,7 @@ export default function ProfilePassport({
                 )}
                 {summary.titers.length > 0 && (
                   <div>
-                    <div className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-400">
-                      Immunity titers
-                    </div>
+                    <div className="mb-1 section-label">Immunity titers</div>
                     <ul className="divide-y divide-black/5 dark:divide-white/5">
                       {summary.titers.map((t, i) => (
                         <li

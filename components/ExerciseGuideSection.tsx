@@ -62,9 +62,7 @@ export default function ExerciseGuideSection({
 
       {muscles && (
         <div className="mt-3" data-testid="guide-muscles">
-          <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-            Muscles
-          </h4>
+          <h4 className="section-label">Muscles</h4>
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
             <span className="font-medium text-slate-700 dark:text-slate-200">
               Primary:
@@ -104,9 +102,7 @@ export default function ExerciseGuideSection({
 
       {guide.breathing && (
         <div className="mt-3">
-          <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-            Breathing
-          </h4>
+          <h4 className="section-label">Breathing</h4>
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
             {guide.breathing}
           </p>
@@ -129,9 +125,7 @@ export default function ExerciseGuideSection({
 
       {notes.length > 0 && (
         <div className="mt-3" data-testid="guide-equipment-notes">
-          <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-            Equipment notes
-          </h4>
+          <h4 className="section-label">Equipment notes</h4>
           <ul className="mt-1 space-y-1 text-sm text-slate-600 dark:text-slate-300">
             {notes.map(({ eq, note }) => (
               <li key={eq}>
@@ -166,9 +160,7 @@ function GuideList({
     " pl-5";
   return (
     <div className="mt-3" data-testid={testid}>
-      <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-        {title}
-      </h4>
+      <h4 className="section-label">{title}</h4>
       {ordered ? (
         <ol className={listClass}>
           {items.map((it, i) => (

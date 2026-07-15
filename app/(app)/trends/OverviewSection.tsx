@@ -82,9 +82,7 @@ export default async function OverviewSection({ range }: { range: DateRange }) {
 
       {pinned.length > 0 && (
         <div className="space-y-3">
-          <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-            Pinned
-          </h2>
+          <h2 className="flex items-center gap-2 section-label">Pinned</h2>
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {pinned.map(renderTile)}
           </div>
