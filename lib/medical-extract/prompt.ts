@@ -74,6 +74,22 @@ Rules:
   - care_plan: planned / ordered FUTURE care — follow-ups, ordered tests, referrals, planned
     procedures (the "Plan" / "Follow-up" section).
   - care_goals: stated clinical goals / targets (e.g. "A1c < 7.0%").
+  - genomic_variants: when the document is a CLINICAL GENETICS or PHARMACOGENOMIC (PGx)
+    report (e.g. Invitae / Color / Myriad / a pharmacy PGx panel), emit one entry per
+    REPORTED variant into the "genomic_variants" array. Capture what the report states,
+    verbatim — do NOT infer, re-interpret raw calls, or add any risk commentary of your
+    own: gene (the HGNC symbol, e.g. "BRCA1", "CYP2C19", "APOE" — REQUIRED), variant
+    (the rsID and/or HGVS, e.g. "rs4986893" / "c.681G>A"), genotype (e.g. "ε3/ε4"),
+    star_allele (e.g. "*2/*2"), zygosity ("heterozygous" / "homozygous" / "hemizygous"),
+    significance (the ACMG term as printed: "pathogenic" / "likely pathogenic" /
+    "uncertain significance" (VUS) / "likely benign" / "benign" — leave null for a PGx
+    star-allele result that carries no ACMG call), result_type (one of "pharmacogenomic",
+    "hereditary-risk", "carrier", "diagnostic", "other" — classify by what the report is:
+    a drug-response / metabolizer panel is "pharmacogenomic", a hereditary-cancer /
+    predisposition finding is "hereditary-risk"), interpretation (the report's own
+    interpretation text, verbatim, if brief), source_lab (the testing lab), report_date
+    (ISO YYYY-MM-DD). A lab report of ordinary blood analytes is NOT a genetics report —
+    leave this array empty for it.
 - Be concise: emit only the structured fields above. Brevity matters — there may be 100+
   results and the response must fit in the output budget.
 - Do not invent data. If the document has no extractable results, return empty arrays.`;
@@ -429,6 +445,59 @@ export const TOOL: Anthropic.Tool = {
             },
           },
           required: ["description"],
+        },
+      },
+      genomic_variants: {
+        type: "array",
+        description:
+          "Reported variants from a clinical genetics / PGx report. Empty for a plain lab/scan report. Capture what the report states verbatim — never re-interpret raw calls or add risk commentary.",
+        items: {
+          type: "object",
+          properties: {
+            gene: {
+              type: "string",
+              description: "HGNC gene symbol, e.g. 'BRCA1', 'CYP2C19', 'APOE'",
+            },
+            variant: {
+              type: ["string", "null"],
+              description: "rsID and/or HGVS, e.g. 'rs4986893' / 'c.681G>A'",
+            },
+            genotype: {
+              type: ["string", "null"],
+              description: "Genotype as printed, e.g. 'ε3/ε4'",
+            },
+            star_allele: {
+              type: ["string", "null"],
+              description: "Star-allele diplotype, e.g. '*2/*2'",
+            },
+            zygosity: {
+              type: ["string", "null"],
+              description: "heterozygous / homozygous / hemizygous, if stated",
+            },
+            significance: {
+              type: ["string", "null"],
+              description:
+                "ACMG significance as printed: pathogenic / likely pathogenic / uncertain significance (VUS) / likely benign / benign. Null for a PGx result with no ACMG call.",
+            },
+            result_type: {
+              type: ["string", "null"],
+              description:
+                "pharmacogenomic / hereditary-risk / carrier / diagnostic / other",
+            },
+            interpretation: {
+              type: ["string", "null"],
+              description: "The report's own interpretation text, verbatim",
+            },
+            source_lab: {
+              type: ["string", "null"],
+              description: "The testing lab, e.g. 'Invitae'",
+            },
+            report_date: {
+              type: ["string", "null"],
+              description: "Report date, ISO YYYY-MM-DD, else null",
+            },
+          },
+          required: ["gene"],
         },
       },
     },

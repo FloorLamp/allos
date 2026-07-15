@@ -19,6 +19,7 @@ import {
   getDocumentFamilyHistory,
   getDocumentCarePlanItems,
   getDocumentCareGoals,
+  getDocumentGenomicVariants,
   getDocumentAppointments,
   getDocumentMedications,
   getDocumentBodyRows,
@@ -50,6 +51,7 @@ import {
   familyHistoryItem,
   carePlanItemRow,
   careGoalItem,
+  genomicVariantItem,
   appointmentItem,
   medicationItem,
   bodyItems,
@@ -102,6 +104,10 @@ function listingItems(
       return getDocumentCarePlanItems(profileId, docId).map(carePlanItemRow);
     case "care-goals":
       return getDocumentCareGoals(profileId, docId).map(careGoalItem);
+    case "genomic-variants":
+      return getDocumentGenomicVariants(profileId, docId).map(
+        genomicVariantItem
+      );
     case "appointments":
       return getDocumentAppointments(profileId, docId).map(appointmentItem);
     case "medications":

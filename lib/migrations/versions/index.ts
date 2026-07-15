@@ -34,6 +34,7 @@ import { migration as m032 } from "./032-activity-routes";
 import { migration as m033 } from "./033-sync-event-edited-count";
 import { migration as m034 } from "./034-medical-record-loinc";
 import { migration as m035 } from "./035-metric-sample-activity-link";
+import { migration as m036 } from "./036-genomic-variants";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
 // CONTRACT: a migration's position (1-based) must equal its `id`, and the runner
@@ -77,4 +78,5 @@ export const MIGRATIONS: Migration[] = [
   m033,
   m034,
   m035,
+  m036,
 ];

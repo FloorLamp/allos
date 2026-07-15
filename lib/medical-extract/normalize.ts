@@ -21,6 +21,7 @@ import type {
   ExtractedFamilyHistory,
   ExtractedCarePlanItem,
   ExtractedCareGoal,
+  ExtractedGenomicVariant,
 } from "./types";
 
 // Normalize a document's stated sex/gender ("M", "Female", "MALE", …) to our
@@ -201,6 +202,7 @@ export function normalizeClinicalDomains(raw: any): {
   familyHistory: ExtractedFamilyHistory[];
   carePlanItems: ExtractedCarePlanItem[];
   careGoals: ExtractedCareGoal[];
+  genomicVariants: ExtractedGenomicVariant[];
   drops: ImportDrop[];
 } {
   const drops: ImportDrop[] = [];
@@ -358,6 +360,36 @@ export function normalizeClinicalDomains(raw: any): {
     });
   }
 
+  // Genomic variants from a clinical genetics / PGx report (#709). A variant with
+  // no gene anchor can't be stored (the gene column is NOT NULL) and drops, exactly
+  // like a nameless condition. result_type / significance / zygosity stay raw here
+  // (normalized to the CHECK sets downstream in import-shape); the report date is
+  // coerced to strict ISO-or-null; the interpretation text is kept verbatim.
+  const genomicVariants: ExtractedGenomicVariant[] = [];
+  for (const g of arr(raw?.genomic_variants)) {
+    const gene = strOrNull(g?.gene);
+    if (!gene) {
+      drops.push({
+        kind: "genomic_variant",
+        label: strOrNull(g?.variant) ?? "(unnamed variant)",
+        reason: "no_value",
+      });
+      continue;
+    }
+    genomicVariants.push({
+      gene,
+      variant: strOrNull(g?.variant),
+      genotype: strOrNull(g?.genotype),
+      star_allele: strOrNull(g?.star_allele),
+      zygosity: strOrNull(g?.zygosity),
+      significance: strOrNull(g?.significance),
+      result_type: strOrNull(g?.result_type),
+      interpretation: strOrNull(g?.interpretation),
+      source_lab: strOrNull(g?.source_lab),
+      report_date: isoDateOrNull(g?.report_date),
+    });
+  }
+
   return {
     conditions,
     allergies,
@@ -366,6 +398,7 @@ export function normalizeClinicalDomains(raw: any): {
     familyHistory,
     carePlanItems,
     careGoals,
+    genomicVariants,
     drops,
   };
 }

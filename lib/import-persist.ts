@@ -624,6 +624,18 @@ function insertImportRows(
         source, document_id, external_id, profile_id)
      VALUES (?,?,?,?,?,?,?,?,?)`
   );
+  // Genomic variants (#709). Same idempotency as the other clinical domains: the
+  // per-document delete-set clears this document's prior rows, then INSERT OR IGNORE
+  // dedups within the document via the per-profile unique external_id index (scoped
+  // with the document source). Keyed to the document via document_id so the import
+  // footprint clears/moves/counts it, exactly like conditions/procedures.
+  const insGenomicVariant = db.prepare(
+    `INSERT OR IGNORE INTO genomic_variants
+       (gene, variant, genotype, star_allele, zygosity, significance,
+        result_type, interpretation, source_lab, report_date,
+        source, document_id, external_id, profile_id)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+  );
   // Scheduled appointments (issue #416). Same idempotency as the other clinical
   // domains: the per-document delete-set clears this document's prior rows, then
   // INSERT OR IGNORE dedups within the document via the per-profile unique external_id
@@ -876,6 +888,26 @@ function insertImportRows(
       docSource,
       docId,
       scopedExternalId(g.external_id),
+      profileId
+    );
+  }
+  // Genomic variants (#709) — optional on PersistInput, so guard with `?? []` for a
+  // fixture / deterministic-path input that carries none.
+  for (const v of input.genomicVariants ?? []) {
+    insGenomicVariant.run(
+      v.gene,
+      v.variant,
+      v.genotype,
+      v.star_allele,
+      v.zygosity,
+      v.significance,
+      v.result_type,
+      v.interpretation,
+      v.source_lab,
+      v.report_date,
+      docSource,
+      docId,
+      scopedExternalId(v.external_id),
       profileId
     );
   }

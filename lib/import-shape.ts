@@ -19,6 +19,16 @@ import {
   type ImportReport,
 } from "./import-report";
 import { toAllergyStatus, toConditionStatus } from "./clinical-parse";
+import {
+  normalizeResultType,
+  normalizeSignificance,
+  normalizeZygosity,
+} from "./genomic-variant";
+import type {
+  GenomicResultType,
+  GenomicSignificance,
+  Zygosity,
+} from "./types/medical";
 import { isRealIsoDate } from "./date";
 import {
   bodyMetricsFromExtraction,
@@ -176,6 +186,24 @@ export interface PersistCareGoal {
   external_id: string | null;
 }
 
+// Genomic-variant projection (#709). The AI report path fills this; the
+// deterministic CCD/FHIR path leaves it empty (consumer genotype bundles are #712,
+// out of scope, and FHIR genomics-reporting is low-priority — #708). result_type /
+// significance / zygosity are already normalized onto the DB CHECK sets here.
+export interface PersistGenomicVariant {
+  gene: string;
+  variant: string | null;
+  genotype: string | null;
+  star_allele: string | null;
+  zygosity: Zygosity | null;
+  significance: GenomicSignificance | null;
+  result_type: GenomicResultType;
+  interpretation: string | null;
+  source_lab: string | null;
+  report_date: string | null;
+  external_id: string | null;
+}
+
 // Scheduled-appointment projection (issue #416). Only the FHIR Appointment resource
 // fills this; the AI and CDA paths leave it empty. The attending clinician
 // (`provider`) is resolved into the shared registry on persist (linked via
@@ -226,6 +254,9 @@ export interface PersistInput {
   familyHistory: PersistFamilyHistory[];
   carePlanItems: PersistCarePlanItem[];
   careGoals: PersistCareGoal[];
+  // Genomic variants (#709). Optional so existing PersistInput literals (the DB-tier
+  // fixtures) need no change; the persist core reads it with a `?? []` fallback.
+  genomicVariants?: PersistGenomicVariant[];
   appointments: PersistAppointment[];
   bodyMetrics: DocBodyMetric[];
   // Body-height samples (metric_samples, metric 'height_cm') — height has no
@@ -499,6 +530,30 @@ export function extractionToPersistInput(
     status: g.status,
     external_id: null,
   }));
+  // Genomic variants (#709). Normalize the model's raw result_type / significance /
+  // zygosity onto the DB CHECK sets here (one shared coercion, lib/genomic-variant),
+  // so an off-vocabulary term can't fail the INSERT. Optional on the done union, so
+  // the `?? []` fallback covers fixtures that predate this field.
+  const genomicVariants: PersistGenomicVariant[] = (
+    result.genomicVariants ?? []
+  )
+    // The gene is the required identity anchor (NOT NULL). A gene-less variant
+    // can't be stored, so it's dropped here — belt-and-suspenders alongside the
+    // normalize-stage drop, since a raw done-result can carry an empty gene.
+    .filter((v) => v.gene?.trim())
+    .map((v) => ({
+      gene: v.gene,
+      variant: v.variant,
+      genotype: v.genotype,
+      star_allele: v.star_allele,
+      zygosity: normalizeZygosity(v.zygosity),
+      significance: normalizeSignificance(v.significance),
+      result_type: normalizeResultType(v.result_type),
+      interpretation: v.interpretation,
+      source_lab: v.source_lab,
+      report_date: v.report_date,
+      external_id: null,
+    }));
 
   // The document-level source ("Quest Diagnostics", the discharge hospital, …) is
   // registered into the shared providers registry — the AI path's answer to item 3
@@ -521,6 +576,7 @@ export function extractionToPersistInput(
     familyHistory.length +
     carePlanItems.length +
     careGoals.length +
+    genomicVariants.length +
     bodyMetrics.length +
     heights.length +
     headCircs.length;
@@ -542,6 +598,7 @@ export function extractionToPersistInput(
     familyHistory,
     carePlanItems,
     careGoals,
+    genomicVariants,
     // The AI medical extractor has no appointment shape (it emits care plans, not
     // scheduled visits), so the AI path never produces appointments (#416).
     appointments: [],

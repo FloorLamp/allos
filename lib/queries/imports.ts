@@ -11,6 +11,11 @@
 
 import { db } from "../db";
 import { documentSource } from "../body-metric-extract";
+import type {
+  GenomicResultType,
+  GenomicSignificance,
+  Zygosity,
+} from "../types/medical";
 import {
   interleaveImportLog,
   type DocumentProducedCounts,
@@ -199,6 +204,13 @@ export function getDocumentProduced(
       )
       .get(profileId, docId)
   );
+  const genomicVariants = scalar(
+    db
+      .prepare(
+        `SELECT COUNT(*) AS c FROM genomic_variants WHERE profile_id = ? AND document_id = ?`
+      )
+      .get(profileId, docId)
+  );
   const appointments = scalar(
     db
       .prepare(
@@ -279,6 +291,7 @@ export function getDocumentProduced(
     familyHistory,
     carePlanItems,
     careGoals,
+    genomicVariants,
     appointments,
     medications,
     bodyMetrics,
@@ -420,6 +433,28 @@ export function getDocumentCareGoals(profileId: number, docId: number) {
     description: string;
     target_date: string | null;
     status: string | null;
+  }[];
+}
+
+export function getDocumentGenomicVariants(profileId: number, docId: number) {
+  return db
+    .prepare(
+      `SELECT id, gene, variant, genotype, star_allele, zygosity, significance,
+              result_type, report_date FROM genomic_variants
+        WHERE profile_id = ? AND document_id = ?
+        ORDER BY gene COLLATE NOCASE, id`
+    )
+    .all(profileId, docId) as {
+    id: number;
+    gene: string;
+    variant: string | null;
+    genotype: string | null;
+    star_allele: string | null;
+    // CHECK-constrained columns, so the stored strings ARE these enum values.
+    zygosity: Zygosity | null;
+    significance: GenomicSignificance | null;
+    result_type: GenomicResultType;
+    report_date: string | null;
   }[];
 }
 

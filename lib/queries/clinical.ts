@@ -22,6 +22,7 @@ import type {
   Procedure,
   CarePlanItem,
   CareGoal,
+  GenomicVariant,
 } from "../types";
 
 // Read layer for the CCD clinical-list domains — allergies and the problem
@@ -230,6 +231,23 @@ export function getProcedures(profileId: number): Procedure[] {
         ORDER BY COALESCE(pr.date, '') DESC, pr.name COLLATE NOCASE ASC, pr.id DESC`
     )
     .all(profileId, profileId) as Procedure[];
+}
+
+// Structured genomic variants (#709), newest report first. Read straight from the
+// table — a genomic result is a durable fact (it never goes stale, never nags for
+// retest, never flags abnormal), so there is no representative-id dedup here.
+// Predictive variants are returned factually; no risk interpretation is derived.
+export function getGenomicVariants(profileId: number): GenomicVariant[] {
+  return db
+    .prepare(
+      `SELECT id, gene, variant, genotype, star_allele, zygosity, significance,
+              result_type, interpretation, source_lab, report_date, notes,
+              source, document_id, external_id, created_at
+         FROM genomic_variants
+        WHERE profile_id = ?
+        ORDER BY COALESCE(report_date, '') DESC, gene COLLATE NOCASE ASC, id DESC`
+    )
+    .all(profileId) as GenomicVariant[];
 }
 
 // Family history, grouped by relative (relation) then condition. Rows with an

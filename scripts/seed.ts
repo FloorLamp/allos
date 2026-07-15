@@ -1517,6 +1517,56 @@ famIns.run(
 famIns.run("Mother", "Breast cancer", "254837009", "SNOMED CT", 60, 0, null);
 famIns.run("Sister", "Asthma", "195967001", "SNOMED CT", null, 0, null);
 
+// ── Genomic variants (#709) ──────────────────────────────────────────────────
+// Synthetic structured genetic results — obviously-fictional, from a fictional lab.
+// Covers the two actionable routing classes (pharmacogenomic → #710, hereditary-risk
+// → #711) plus a predictive-only variant stored FACTUALLY (no risk editorializing).
+const gvIns = db.prepare(
+  `INSERT INTO genomic_variants
+     (profile_id, gene, variant, genotype, star_allele, zygosity, significance,
+      result_type, interpretation, source_lab, report_date, notes, source)
+   VALUES (1,?,?,?,?,?,?,?,?,?,?,?,NULL)`
+);
+gvIns.run(
+  "CYP2C19",
+  "rs4244285",
+  null,
+  "*2/*2",
+  "homozygous",
+  null,
+  "pharmacogenomic",
+  "Poor metabolizer",
+  "Example Genomics Lab",
+  daysAgo(300),
+  null
+);
+gvIns.run(
+  "BRCA1",
+  "c.68_69del",
+  null,
+  null,
+  "heterozygous",
+  "pathogenic",
+  "hereditary-risk",
+  "Pathogenic variant reported",
+  "Example Genomics Lab",
+  daysAgo(300),
+  null
+);
+gvIns.run(
+  "APOE",
+  null,
+  "ε3/ε4",
+  null,
+  "heterozygous",
+  null,
+  "other",
+  null,
+  "Example Genomics Lab",
+  daysAgo(300),
+  "Stored factually; no risk interpretation"
+);
+
 // ── Care plan / plan of treatment ────────────────────────────────────────────
 // Planned / ordered future care (a health record's Plan of Treatment section).
 // daysAgo(negative) yields a FUTURE date.

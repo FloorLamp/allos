@@ -120,6 +120,26 @@ export interface ExtractedCareGoal {
   status: string | null; // free-text passthrough (no enum)
 }
 
+// One REPORTED genomic variant extracted from a clinical genetics / PGx report
+// (#709). These are the PRE-persist AI shapes: result_type / significance /
+// zygosity stay as the model's raw strings (normalized to the CHECK sets in
+// import-shape via lib/genomic-variant), `gene` is required (a variant with no gene
+// anchor is dropped), and the report date is coerced to strict ISO-or-null. Stored
+// factually — the extractor captures WHAT the report concluded, never re-interprets
+// raw calls, and never adds risk editorializing.
+export interface ExtractedGenomicVariant {
+  gene: string; // HGNC symbol (required)
+  variant: string | null; // rsID and/or HGVS
+  genotype: string | null;
+  star_allele: string | null;
+  zygosity: string | null; // raw; normalized in import-shape
+  significance: string | null; // raw ACMG term; normalized in import-shape
+  result_type: string | null; // raw; normalized in import-shape (→ 'other' default)
+  interpretation: string | null; // the report's own text, verbatim
+  source_lab: string | null;
+  report_date: string | null; // YYYY-MM-DD
+}
+
 export interface ExtractionMeta {
   document_type: string | null; // lab | dexa | imaging | immunization | other
   source: string | null;
@@ -143,6 +163,11 @@ export type ExtractionResult =
       familyHistory: ExtractedFamilyHistory[];
       carePlanItems: ExtractedCarePlanItem[];
       careGoals: ExtractedCareGoal[];
+      // Genomic variants from a clinical genetics / PGx report (#709). Optional so
+      // existing done-result fixtures need no change; the real extract path always
+      // sets it (empty for a non-genetics document), and import-shape reads it with
+      // a `?? []` fallback.
+      genomicVariants?: ExtractedGenomicVariant[];
       // Row-level drops (a clinical entity the model emitted but that was rejected
       // for want of its required identifier) — the AI path's drop accounting, folded
       // into a real ImportReport in import-shape. Parity with the deterministic

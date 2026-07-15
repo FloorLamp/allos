@@ -49,6 +49,10 @@ export const OWNED_TABLES = [
   "preventive_overrides",
   "goals",
   "medical_records",
+  // Structured genomic variants (#709). Ordered BEFORE medical_documents so
+  // deleteProfile clears the child rows carrying a document_id FK before it drops
+  // their parent medical_documents rows (the FK carries no ON DELETE action).
+  "genomic_variants",
   "medical_documents",
   "allergies",
   "conditions",
