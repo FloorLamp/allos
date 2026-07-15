@@ -275,6 +275,59 @@ describe("cross-surface consistency (#221)", () => {
   });
 });
 
+describe("formatWorkoutReminder — how-to deep link (#734)", () => {
+  const rec: WorkoutRecommendation = {
+    focus: ["Chest"],
+    exercises: ["Barbell Bench Press", "Incline Bench Press"],
+    behind: [],
+    rest: null,
+    onTrack: null,
+  };
+
+  it("adds a deep-link button to the lead exercise's guide when a base is given", () => {
+    const msg = formatWorkoutReminder(rec, "https://allos.example.com/");
+    expect(msg).not.toBeNull();
+    const action = msg!.actions?.[0];
+    expect(action).toBeDefined();
+    // A URL (deep-link) button — no callback token, so it's never consumed on tap.
+    expect(action!.data).toBeUndefined();
+    expect(action!.url).toBe(
+      "https://allos.example.com/training?tab=analyze&kind=strength&exercise=Barbell%20Bench%20Press"
+    );
+    // Trailing slash on the base is not doubled.
+    expect(action!.url).not.toContain("com//training");
+  });
+
+  it("omits the button without a public URL (no base) — the existing arity still works", () => {
+    const msg = formatWorkoutReminder(rec);
+    expect(msg).not.toBeNull();
+    expect(msg!.actions).toBeUndefined();
+  });
+
+  it("carries the guide button on a rest-day reframe too", () => {
+    const restRec: WorkoutRecommendation = {
+      ...rec,
+      rest: { title: "Rest day", detail: "You trained hard yesterday." },
+    };
+    const msg = formatWorkoutReminder(restRec, "https://allos.example.com");
+    expect(msg!.actions?.[0]?.url).toContain(
+      "exercise=Barbell%20Bench%20Press"
+    );
+  });
+
+  it("omits the button when there is no lead exercise", () => {
+    const focusOnly: WorkoutRecommendation = {
+      focus: ["Chest"],
+      exercises: [],
+      behind: [],
+      rest: null,
+      onTrack: null,
+    };
+    const msg = formatWorkoutReminder(focusOnly, "https://allos.example.com");
+    expect(msg!.actions).toBeUndefined();
+  });
+});
+
 describe("recommendNextWorkout — divergent merged-lift spellings (#626/#432)", () => {
   // "Curl", "Barbell Curl", "Dumbbell Curl" all collapse to exerciseHistoryKey
   // "curl" under the #331/#432 variant-collapse convention. The aggregate row from

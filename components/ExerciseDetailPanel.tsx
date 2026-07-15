@@ -21,6 +21,7 @@ import { suggestNextSet, lastSessionPR, nextSetText } from "@/lib/coaching";
 import LineChartCard from "@/components/LineChartCard";
 import LevelBadge from "@/components/LevelBadge";
 import { StatBox } from "@/components/StatBox";
+import ExerciseGuideSection from "@/components/ExerciseGuideSection";
 
 const PR_CHIP = (
   <span
@@ -315,6 +316,12 @@ export default function ExerciseDetailPanel({
           </ul>
         </div>
       )}
+
+      {/* Static how-to guide for catalog lifts (#734). Renders nothing for a
+          custom (non-catalog) lift — getExerciseGuide returns undefined. The
+          aggregate panel spans every implement, so no single equipment is passed
+          (all per-implement notes are shown). */}
+      <ExerciseGuideSection name={stat.exercise} />
     </div>
   );
 }
