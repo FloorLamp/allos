@@ -134,6 +134,12 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     includes: "PRAGMA table_info(hr_minutes)",
     why: "migration 013 replay sentinel: a schema-shape PRAGMA (is `source` already in the PRIMARY KEY?) that reads column metadata, never rows",
   },
+  {
+    file: "lib/migrations/versions/038-food-habit-unique.ts",
+    includes:
+      "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'frequency_targets'",
+    why: "migration 038 partial-handle guard: a sqlite_master metadata probe (does the table exist yet?) that reads schema, not rows — its de-dupe/UPDATE/DELETE statements below are all profile_id-scoped",
+  },
 ];
 
 // `.prepare(sql)` sites whose argument is a runtime expression (not a string

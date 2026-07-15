@@ -12,7 +12,10 @@ export type FormResult = { ok: true } | { ok: false; error: string };
 
 // A tiny helper so an action's failure guards read as one call. `err` is the
 // human-facing message the form renders; `ok()` marks the persisted-success path.
-export function formError(error: string): FormResult {
+// Narrow return so a failure literal fits both `FormResult` and any richer
+// success-shaped union (e.g. nutrition's `{ ok: true; servings }`) whose error arm is
+// the same `{ ok: false; error }` — the ok arm carries no extra fields on failure.
+export function formError(error: string): { ok: false; error: string } {
   return { ok: false, error };
 }
 

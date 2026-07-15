@@ -1,9 +1,10 @@
-import { IconX, IconAlertTriangle } from "@tabler/icons-react";
+import { IconAlertTriangle } from "@tabler/icons-react";
 import {
   getFrequencyTargetProgress,
+  getFrequencyTargetProtocolNames,
   getIntakeSafetyContext,
 } from "@/lib/queries";
-import { frequencyScopeLabel } from "@/lib/goals";
+import { frequencyScopeLabel, frequencyPaceLabel } from "@/lib/goals";
 import { FOOD_GROUPS } from "@/lib/food-groups";
 import {
   foodHabitInteractions,
@@ -11,7 +12,8 @@ import {
 } from "@/lib/food-habit";
 import FoodGroupIcon from "@/components/FoodGroupIcon";
 import SubmitButton from "@/components/SubmitButton";
-import { trackFoodHabit, untrackFoodHabit } from "./actions";
+import { trackFoodHabit } from "./actions";
+import UntrackHabitButton from "./UntrackHabitButton";
 
 // Food-habit targets card (issue #580): the profile's food_group frequency targets with
 // this-week progress (the #579 rollup via getFrequencyTargetProgress — one computation),
@@ -26,6 +28,9 @@ export default function WeeklyHabits({ profileId }: { profileId: number }) {
   // habit that conflicts with the stack carries the SAME interaction note the
   // medication's own row shows (informational, never blocking the habit).
   const medications = getIntakeSafetyContext(profileId).medications;
+  // The protocol (if any) that adopted each habit as its intervention — so untracking a
+  // measured habit confirms first (#748 item 6).
+  const protocolByTarget = getFrequencyTargetProtocolNames(profileId);
 
   return (
     <div className="card" data-testid="weekly-habits">
@@ -63,33 +68,22 @@ export default function WeeklyHabits({ profileId }: { profileId: number }) {
                       {p.count} / {p.per_week}
                     </span>
                     <span
+                      data-testid={`habit-pace-${p.target.scope_value}`}
+                      data-pace={p.pace}
                       className={`badge ${
-                        p.met
+                        p.pace === "met"
                           ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
-                          : "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
+                          : p.pace === "on-pace"
+                            ? "bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300"
+                            : "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
                       }`}
                     >
-                      {p.met ? "On track" : "Behind"}
+                      {frequencyPaceLabel(p.pace)}
                     </span>
-                    <form
-                      action={async (fd) => {
-                        "use server";
-                        await untrackFoodHabit(fd);
-                      }}
-                    >
-                      <input
-                        type="hidden"
-                        name="target_id"
-                        value={p.target.id}
-                      />
-                      <button
-                        type="submit"
-                        aria-label="Stop tracking this habit"
-                        className="flex h-6 w-6 items-center justify-center rounded-full text-slate-400 hover:bg-black/5 hover:text-slate-600 dark:hover:bg-white/10"
-                      >
-                        <IconX className="h-4 w-4" stroke={2} />
-                      </button>
-                    </form>
+                    <UntrackHabitButton
+                      targetId={p.target.id}
+                      protocolName={protocolByTarget.get(p.target.id) ?? null}
+                    />
                   </span>
                 </div>
                 {interactions.length > 0 && (

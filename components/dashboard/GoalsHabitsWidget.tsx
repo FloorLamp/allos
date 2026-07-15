@@ -140,6 +140,7 @@ export default function GoalsHabitsWidget({
                     count: target.count,
                     perWeek: target.per_week,
                     met: target.met,
+                    pace: target.pace,
                   }))}
                 />
               ) : (
