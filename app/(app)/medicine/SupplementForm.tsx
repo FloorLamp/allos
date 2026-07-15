@@ -15,6 +15,12 @@ import {
   type InteractionItem,
 } from "@/lib/drug-interactions";
 import {
+  pgxForCandidate,
+  pgxStatusLabel,
+  PGX_SEVERITY_LABEL,
+  type PgxVariantInput,
+} from "@/lib/pgx";
+import {
   matchFoodInteractions,
   foodGuidanceLine,
   foodGuidanceDetail,
@@ -74,6 +80,7 @@ export default function SupplementForm({
   doses: initialDoses,
   allSupplements = [],
   stackItems = [],
+  pgxVariants = [],
   pairs: initialPairs = [],
   onDone,
   trainingRestricted = false,
@@ -87,6 +94,10 @@ export default function SupplementForm({
   // bundled dataset, so the inline notice is a formatter over the SAME computation
   // the /medicine warnings + Upcoming finding use.
   stackItems?: InteractionItem[];
+  // The profile's stored PGx variants for the create/edit pharmacogenomics notice
+  // (issue #710). The pure crossCheckPgx runs client-side over the bundled dataset,
+  // so the inline notice can never disagree with the /medicine row + Upcoming finding.
+  pgxVariants?: PgxVariantInput[];
   pairs?: SupplementPair[];
   onDone?: () => void;
   trainingRestricted?: boolean;
@@ -180,6 +191,15 @@ export default function SupplementForm({
     const others = stackItems.filter((x) => x.id !== s?.id);
     return interactionsForCandidate({ name, rxcui, rxcuiIngredients }, others);
   }, [name, rxcui, rxcuiIngredients, stackItems, s?.id]);
+
+  // Pharmacogenomics matches for the item being entered/edited against the profile's
+  // stored PGx variants (issue #710). One pure computation, client-side over the
+  // bundled CPIC dataset — the inline notice can never disagree with the /medicine
+  // row notice or the Upcoming finding. Informational, never prescriptive.
+  const candidatePgx = useMemo(() => {
+    if (!name.trim()) return [];
+    return pgxForCandidate({ name, rxcui, rxcuiIngredients }, pgxVariants);
+  }, [name, rxcui, rxcuiIngredients, pgxVariants]);
 
   // Food–drug guidance for the item being entered/edited (issue #154) — needs no
   // second item, just this one's name + confirmed RxCUI(s). Same pure matcher the
@@ -444,6 +464,39 @@ export default function SupplementForm({
               <p className="text-xs text-amber-600 dark:text-amber-400">
                 Informational only — discuss with your prescriber or pharmacist.
                 You can still save this item.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {candidatePgx.length > 0 && (
+        <div
+          data-testid="pgx-notice"
+          className="sm:col-span-2 rounded-lg border border-violet-300 bg-violet-50 px-3 py-2.5 text-sm text-violet-800 dark:border-violet-900 dark:bg-violet-950 dark:text-violet-200"
+        >
+          <div className="flex items-start gap-1.5">
+            <IconAlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <div className="space-y-1">
+              <p className="font-semibold">
+                Pharmacogenomic note{candidatePgx.length > 1 ? "s" : ""} for
+                this medication
+              </p>
+              {candidatePgx.map((hit) => (
+                <p
+                  key={hit.dedupeKey}
+                  className="text-violet-700 dark:text-violet-300"
+                >
+                  <span className="font-medium">
+                    {PGX_SEVERITY_LABEL[hit.severity]}:
+                  </span>{" "}
+                  {hit.gene} {pgxStatusLabel(hit)} on file — {hit.guidance}
+                </p>
+              ))}
+              <p className="text-xs text-violet-600 dark:text-violet-400">
+                Informational — discuss with your prescriber before any change;
+                do not stop or switch a medication based on this alone. You can
+                still save this item.
               </p>
             </div>
           </div>

@@ -1,0 +1,730 @@
+{
+  "$comment": "Baked pharmacogenomics (PGx) cross-check dataset (issue #710) — flags when a stored PGx result (a genomic_variants row, result_type='pharmacogenomic', #709) affects a medication in the profile's ACTIVE stack. CURATED HIGH-VALUE subset of the best-established CPIC/FDA gene–drug pairs, NOT exhaustive; the recommendation DIRECTION is PARAPHRASED (our words) and CITED to CPIC/FDA (all facts public/public-domain), the star-allele functions are public CPIC/PharmVar reference. INFORMATIONAL, never prescriptive — the absence of a flag is NOT clearance, and the app never auto-changes a medication. Fully OFFLINE: no gene/variant name ever leaves the box. Committed + HUMAN-REVIEWABLE; regenerate with `npm run gen:pgx`.",
+  "version": 1,
+  "severities": [
+    "contraindicated",
+    "high",
+    "moderate"
+  ],
+  "phenotypes": [
+    "poor",
+    "intermediate",
+    "normal",
+    "rapid",
+    "ultrarapid"
+  ],
+  "drugs": [
+    {
+      "key": "abacavir",
+      "label": "Abacavir",
+      "rxcuis": [
+        "190521"
+      ],
+      "synonyms": [
+        "abacavir",
+        "epzicom",
+        "kivexa",
+        "triumeq",
+        "trizivir",
+        "ziagen"
+      ]
+    },
+    {
+      "key": "carbamazepine",
+      "label": "Carbamazepine",
+      "rxcuis": [
+        "2002"
+      ],
+      "synonyms": [
+        "carbamazepine",
+        "carbatrol",
+        "epitol",
+        "equetro",
+        "tegretol"
+      ]
+    },
+    {
+      "key": "clopidogrel",
+      "label": "Clopidogrel",
+      "rxcuis": [
+        "32968"
+      ],
+      "synonyms": [
+        "clopidogrel",
+        "plavix"
+      ]
+    },
+    {
+      "key": "codeine",
+      "label": "Codeine",
+      "rxcuis": [
+        "2670"
+      ],
+      "synonyms": [
+        "codeine"
+      ]
+    },
+    {
+      "key": "fluoropyrimidine",
+      "label": "Fluoropyrimidines (fluorouracil, capecitabine)",
+      "rxcuis": [],
+      "synonyms": [
+        "5 fu",
+        "adrucil",
+        "capecitabine",
+        "fluorouracil",
+        "xeloda"
+      ]
+    },
+    {
+      "key": "nsaid_cyp2c9",
+      "label": "CYP2C9-metabolized NSAIDs (celecoxib, ibuprofen, meloxicam, …)",
+      "rxcuis": [],
+      "synonyms": [
+        "advil",
+        "celebrex",
+        "celecoxib",
+        "feldene",
+        "flurbiprofen",
+        "ibuprofen",
+        "meloxicam",
+        "mobic",
+        "motrin",
+        "piroxicam"
+      ]
+    },
+    {
+      "key": "oxcarbazepine",
+      "label": "Oxcarbazepine",
+      "rxcuis": [
+        "32624"
+      ],
+      "synonyms": [
+        "oxcarbazepine",
+        "oxtellar",
+        "trileptal"
+      ]
+    },
+    {
+      "key": "phenytoin",
+      "label": "Phenytoin",
+      "rxcuis": [
+        "8183"
+      ],
+      "synonyms": [
+        "dilantin",
+        "phenytek",
+        "phenytoin"
+      ]
+    },
+    {
+      "key": "ppi",
+      "label": "Proton-pump inhibitors (omeprazole, esomeprazole, …)",
+      "rxcuis": [],
+      "synonyms": [
+        "aciphex",
+        "dexilant",
+        "dexlansoprazole",
+        "esomeprazole",
+        "lansoprazole",
+        "nexium",
+        "omeprazole",
+        "pantoprazole",
+        "prevacid",
+        "prilosec",
+        "protonix",
+        "rabeprazole"
+      ]
+    },
+    {
+      "key": "simvastatin",
+      "label": "Simvastatin",
+      "rxcuis": [
+        "36567"
+      ],
+      "synonyms": [
+        "flolipid",
+        "simvastatin",
+        "zocor"
+      ]
+    },
+    {
+      "key": "ssri_cyp2c19",
+      "label": "CYP2C19-metabolized SSRIs (citalopram, escitalopram, sertraline)",
+      "rxcuis": [],
+      "synonyms": [
+        "celexa",
+        "citalopram",
+        "escitalopram",
+        "lexapro",
+        "sertraline",
+        "zoloft"
+      ]
+    },
+    {
+      "key": "ssri_cyp2d6",
+      "label": "CYP2D6-metabolized SSRIs (paroxetine, fluvoxamine)",
+      "rxcuis": [],
+      "synonyms": [
+        "fluvoxamine",
+        "luvox",
+        "paroxetine",
+        "paxil"
+      ]
+    },
+    {
+      "key": "tamoxifen",
+      "label": "Tamoxifen",
+      "rxcuis": [
+        "10324"
+      ],
+      "synonyms": [
+        "nolvadex",
+        "soltamox",
+        "tamoxifen"
+      ]
+    },
+    {
+      "key": "tca",
+      "label": "Tricyclic antidepressants (amitriptyline, nortriptyline, …)",
+      "rxcuis": [],
+      "synonyms": [
+        "amitriptyline",
+        "anafranil",
+        "clomipramine",
+        "desipramine",
+        "doxepin",
+        "elavil",
+        "imipramine",
+        "norpramin",
+        "nortriptyline",
+        "pamelor",
+        "tofranil",
+        "trimipramine"
+      ]
+    },
+    {
+      "key": "thiopurine",
+      "label": "Thiopurines (azathioprine, mercaptopurine, thioguanine)",
+      "rxcuis": [],
+      "synonyms": [
+        "6 mp",
+        "azasan",
+        "azathioprine",
+        "imuran",
+        "mercaptopurine",
+        "purinethol",
+        "purixan",
+        "tabloid",
+        "thioguanine",
+        "tioguanine"
+      ]
+    },
+    {
+      "key": "tramadol",
+      "label": "Tramadol",
+      "rxcuis": [
+        "10689"
+      ],
+      "synonyms": [
+        "conzip",
+        "tramadol",
+        "ultram"
+      ]
+    },
+    {
+      "key": "warfarin",
+      "label": "Warfarin",
+      "rxcuis": [
+        "11289"
+      ],
+      "synonyms": [
+        "coumadin",
+        "jantoven",
+        "warfarin"
+      ]
+    }
+  ],
+  "alleles": [
+    {
+      "gene": "CYP2C19",
+      "allele": "*1",
+      "function": "normal"
+    },
+    {
+      "gene": "CYP2C19",
+      "allele": "*17",
+      "function": "increased"
+    },
+    {
+      "gene": "CYP2C19",
+      "allele": "*2",
+      "function": "none"
+    },
+    {
+      "gene": "CYP2C19",
+      "allele": "*3",
+      "function": "none"
+    },
+    {
+      "gene": "CYP2C19",
+      "allele": "*4",
+      "function": "none"
+    },
+    {
+      "gene": "CYP2C19",
+      "allele": "*5",
+      "function": "none"
+    },
+    {
+      "gene": "CYP2C19",
+      "allele": "*6",
+      "function": "none"
+    },
+    {
+      "gene": "CYP2C19",
+      "allele": "*7",
+      "function": "none"
+    },
+    {
+      "gene": "CYP2C19",
+      "allele": "*8",
+      "function": "none"
+    },
+    {
+      "gene": "CYP2C9",
+      "allele": "*1",
+      "function": "normal"
+    },
+    {
+      "gene": "CYP2C9",
+      "allele": "*11",
+      "function": "decreased"
+    },
+    {
+      "gene": "CYP2C9",
+      "allele": "*2",
+      "function": "decreased"
+    },
+    {
+      "gene": "CYP2C9",
+      "allele": "*3",
+      "function": "none"
+    },
+    {
+      "gene": "CYP2C9",
+      "allele": "*5",
+      "function": "decreased"
+    },
+    {
+      "gene": "CYP2C9",
+      "allele": "*6",
+      "function": "none"
+    },
+    {
+      "gene": "CYP2C9",
+      "allele": "*8",
+      "function": "decreased"
+    },
+    {
+      "gene": "CYP2D6",
+      "allele": "*1",
+      "function": "normal"
+    },
+    {
+      "gene": "CYP2D6",
+      "allele": "*10",
+      "function": "decreased"
+    },
+    {
+      "gene": "CYP2D6",
+      "allele": "*17",
+      "function": "decreased"
+    },
+    {
+      "gene": "CYP2D6",
+      "allele": "*2",
+      "function": "normal"
+    },
+    {
+      "gene": "CYP2D6",
+      "allele": "*29",
+      "function": "decreased"
+    },
+    {
+      "gene": "CYP2D6",
+      "allele": "*3",
+      "function": "none"
+    },
+    {
+      "gene": "CYP2D6",
+      "allele": "*4",
+      "function": "none"
+    },
+    {
+      "gene": "CYP2D6",
+      "allele": "*41",
+      "function": "decreased"
+    },
+    {
+      "gene": "CYP2D6",
+      "allele": "*5",
+      "function": "none"
+    },
+    {
+      "gene": "CYP2D6",
+      "allele": "*6",
+      "function": "none"
+    },
+    {
+      "gene": "CYP2D6",
+      "allele": "*7",
+      "function": "none"
+    },
+    {
+      "gene": "CYP2D6",
+      "allele": "*8",
+      "function": "none"
+    },
+    {
+      "gene": "CYP2D6",
+      "allele": "*9",
+      "function": "decreased"
+    },
+    {
+      "gene": "NUDT15",
+      "allele": "*1",
+      "function": "normal"
+    },
+    {
+      "gene": "NUDT15",
+      "allele": "*2",
+      "function": "none"
+    },
+    {
+      "gene": "NUDT15",
+      "allele": "*3",
+      "function": "none"
+    },
+    {
+      "gene": "TPMT",
+      "allele": "*1",
+      "function": "normal"
+    },
+    {
+      "gene": "TPMT",
+      "allele": "*2",
+      "function": "none"
+    },
+    {
+      "gene": "TPMT",
+      "allele": "*3A",
+      "function": "none"
+    },
+    {
+      "gene": "TPMT",
+      "allele": "*3B",
+      "function": "none"
+    },
+    {
+      "gene": "TPMT",
+      "allele": "*3C",
+      "function": "none"
+    },
+    {
+      "gene": "TPMT",
+      "allele": "*4",
+      "function": "none"
+    }
+  ],
+  "guidance": [
+    {
+      "gene": "CYP2C19",
+      "drug": "clopidogrel",
+      "severity": "high",
+      "guidance": "clopidogrel activation is partly reduced, lowering its antiplatelet effect; CPIC recommends considering an alternative antiplatelet (e.g. prasugrel or ticagrelor), especially after PCI/ACS.",
+      "source": "CPIC guideline for clopidogrel and CYP2C19 (cpicpgx.org)",
+      "phenotype": "intermediate"
+    },
+    {
+      "gene": "CYP2C19",
+      "drug": "clopidogrel",
+      "severity": "high",
+      "guidance": "clopidogrel is activated less, so its antiplatelet effect is reduced; CPIC recommends an alternative antiplatelet (e.g. prasugrel or ticagrelor) where clinically appropriate.",
+      "source": "CPIC guideline for clopidogrel and CYP2C19 (cpicpgx.org)",
+      "phenotype": "poor"
+    },
+    {
+      "gene": "CYP2C19",
+      "drug": "ppi",
+      "severity": "moderate",
+      "guidance": "increased metabolism lowers proton-pump-inhibitor exposure and may reduce efficacy; CPIC notes an increased dose may be warranted for the treatment goal.",
+      "source": "CPIC guideline for proton-pump inhibitors and CYP2C19 (cpicpgx.org)",
+      "phenotype": "rapid"
+    },
+    {
+      "gene": "CYP2C19",
+      "drug": "ppi",
+      "severity": "moderate",
+      "guidance": "faster metabolism lowers proton-pump-inhibitor exposure and may reduce efficacy; CPIC notes an increased dose may be warranted for the treatment goal.",
+      "source": "CPIC guideline for proton-pump inhibitors and CYP2C19 (cpicpgx.org)",
+      "phenotype": "ultrarapid"
+    },
+    {
+      "gene": "CYP2C19",
+      "drug": "ssri_cyp2c19",
+      "severity": "moderate",
+      "guidance": "reduced metabolism raises exposure to citalopram/escitalopram/sertraline; CPIC suggests a lower starting dose or an antidepressant not primarily metabolized by CYP2C19.",
+      "source": "CPIC guideline for SSRIs and CYP2D6/CYP2C19 (cpicpgx.org)",
+      "phenotype": "poor"
+    },
+    {
+      "gene": "CYP2C19",
+      "drug": "ssri_cyp2c19",
+      "severity": "moderate",
+      "guidance": "faster metabolism lowers exposure and may reduce response; CPIC suggests considering an antidepressant not primarily metabolized by CYP2C19.",
+      "source": "CPIC guideline for SSRIs and CYP2D6/CYP2C19 (cpicpgx.org)",
+      "phenotype": "ultrarapid"
+    },
+    {
+      "gene": "CYP2C9",
+      "drug": "nsaid_cyp2c9",
+      "severity": "moderate",
+      "guidance": "reduced metabolism raises NSAID exposure and adverse-effect risk; CPIC recommends the lowest effective dose, a shorter course, or an NSAID not metabolized by CYP2C9.",
+      "source": "CPIC guideline for NSAIDs and CYP2C9 (cpicpgx.org)",
+      "phenotype": "poor"
+    },
+    {
+      "gene": "CYP2C9",
+      "drug": "phenytoin",
+      "severity": "moderate",
+      "guidance": "somewhat reduced clearance can raise phenytoin levels; CPIC recommends a reduced dose with therapeutic-level monitoring.",
+      "source": "CPIC guideline for phenytoin and CYP2C9/HLA-B (cpicpgx.org)",
+      "phenotype": "intermediate"
+    },
+    {
+      "gene": "CYP2C9",
+      "drug": "phenytoin",
+      "severity": "high",
+      "guidance": "reduced clearance raises phenytoin levels and toxicity risk; CPIC recommends a reduced dose with therapeutic-level monitoring.",
+      "source": "CPIC guideline for phenytoin and CYP2C9/HLA-B (cpicpgx.org)",
+      "phenotype": "poor"
+    },
+    {
+      "gene": "CYP2C9",
+      "drug": "warfarin",
+      "severity": "moderate",
+      "guidance": "somewhat reduced clearance lowers the warfarin dose requirement; CPIC/validated dosing algorithms recommend a genotype-guided dose with INR monitoring.",
+      "source": "CPIC guideline for warfarin and CYP2C9/VKORC1 (cpicpgx.org)",
+      "phenotype": "intermediate"
+    },
+    {
+      "gene": "CYP2C9",
+      "drug": "warfarin",
+      "severity": "high",
+      "guidance": "reduced clearance lowers the warfarin dose requirement; CPIC/validated dosing algorithms recommend a lower dose with close INR monitoring.",
+      "source": "CPIC guideline for warfarin and CYP2C9/VKORC1 (cpicpgx.org)",
+      "phenotype": "poor"
+    },
+    {
+      "gene": "CYP2D6",
+      "drug": "codeine",
+      "severity": "high",
+      "guidance": "little codeine is converted to morphine, so analgesia is likely inadequate; CPIC recommends an alternative analgesic (not tramadol).",
+      "source": "CPIC guideline for codeine/tramadol and CYP2D6 (cpicpgx.org)",
+      "phenotype": "poor"
+    },
+    {
+      "gene": "CYP2D6",
+      "drug": "codeine",
+      "severity": "contraindicated",
+      "guidance": "codeine is converted to morphine faster, risking toxicity; CPIC recommends AVOIDING codeine and using a non-CYP2D6 analgesic.",
+      "source": "CPIC guideline for codeine/tramadol and CYP2D6 (cpicpgx.org)",
+      "phenotype": "ultrarapid"
+    },
+    {
+      "gene": "CYP2D6",
+      "drug": "ssri_cyp2d6",
+      "severity": "moderate",
+      "guidance": "reduced metabolism raises paroxetine/fluvoxamine exposure; CPIC suggests a lower dose or an SSRI not primarily metabolized by CYP2D6.",
+      "source": "CPIC guideline for SSRIs and CYP2D6/CYP2C19 (cpicpgx.org)",
+      "phenotype": "poor"
+    },
+    {
+      "gene": "CYP2D6",
+      "drug": "tamoxifen",
+      "severity": "moderate",
+      "guidance": "endoxifen formation is somewhat reduced; CPIC notes lower exposure and suggests weighing an alternative where clinically appropriate.",
+      "source": "CPIC guideline for tamoxifen and CYP2D6 (cpicpgx.org)",
+      "phenotype": "intermediate"
+    },
+    {
+      "gene": "CYP2D6",
+      "drug": "tamoxifen",
+      "severity": "high",
+      "guidance": "less active endoxifen is formed, which may lower efficacy; CPIC recommends considering an alternative (e.g. an aromatase inhibitor) where clinically appropriate.",
+      "source": "CPIC guideline for tamoxifen and CYP2D6 (cpicpgx.org)",
+      "phenotype": "poor"
+    },
+    {
+      "gene": "CYP2D6",
+      "drug": "tca",
+      "severity": "moderate",
+      "guidance": "reduced metabolism raises tricyclic exposure; CPIC suggests a ~50% lower dose with monitoring, or an alternative.",
+      "source": "CPIC guideline for tricyclic antidepressants and CYP2D6/CYP2C19 (cpicpgx.org)",
+      "phenotype": "poor"
+    },
+    {
+      "gene": "CYP2D6",
+      "drug": "tca",
+      "severity": "moderate",
+      "guidance": "faster metabolism lowers tricyclic exposure; CPIC suggests an alternative not metabolized by CYP2D6, or therapeutic-level monitoring.",
+      "source": "CPIC guideline for tricyclic antidepressants and CYP2D6/CYP2C19 (cpicpgx.org)",
+      "phenotype": "ultrarapid"
+    },
+    {
+      "gene": "CYP2D6",
+      "drug": "tramadol",
+      "severity": "high",
+      "guidance": "less active metabolite is formed, so analgesia is likely reduced; CPIC recommends an alternative analgesic (not codeine).",
+      "source": "CPIC guideline for codeine/tramadol and CYP2D6 (cpicpgx.org)",
+      "phenotype": "poor"
+    },
+    {
+      "gene": "CYP2D6",
+      "drug": "tramadol",
+      "severity": "contraindicated",
+      "guidance": "more active metabolite is formed, risking toxicity; CPIC recommends AVOIDING tramadol and using a non-CYP2D6 analgesic.",
+      "source": "CPIC guideline for codeine/tramadol and CYP2D6 (cpicpgx.org)",
+      "phenotype": "ultrarapid"
+    },
+    {
+      "gene": "DPYD",
+      "drug": "fluoropyrimidine",
+      "severity": "high",
+      "guidance": "reduced clearance raises toxicity risk; CPIC recommends a reduced starting dose (about 50%) with titration to tolerance.",
+      "source": "CPIC guideline for fluoropyrimidines and DPYD (cpicpgx.org)",
+      "phenotype": "intermediate"
+    },
+    {
+      "gene": "DPYD",
+      "drug": "fluoropyrimidine",
+      "severity": "contraindicated",
+      "guidance": "greatly reduced clearance risks severe or fatal toxicity; CPIC recommends AVOIDING 5-fluorouracil/capecitabine and selecting an alternative.",
+      "source": "CPIC guideline for fluoropyrimidines and DPYD (cpicpgx.org)",
+      "phenotype": "poor"
+    },
+    {
+      "gene": "HLA-A",
+      "drug": "carbamazepine",
+      "severity": "high",
+      "guidance": "HLA-A*31:01 positivity raises the risk of carbamazepine hypersensitivity reactions (including SJS/TEN and DRESS); CPIC recommends considering an alternative.",
+      "source": "CPIC guideline for carbamazepine/oxcarbazepine and HLA-B/HLA-A (cpicpgx.org)",
+      "marker": [
+        "3101"
+      ]
+    },
+    {
+      "gene": "HLA-B",
+      "drug": "abacavir",
+      "severity": "contraindicated",
+      "guidance": "a positive HLA-B*57:01 result marks high risk of a serious abacavir hypersensitivity reaction; CPIC and FDA labeling recommend NOT using abacavir.",
+      "source": "CPIC guideline for abacavir and HLA-B (cpicpgx.org); FDA boxed warning",
+      "marker": [
+        "5701"
+      ]
+    },
+    {
+      "gene": "HLA-B",
+      "drug": "carbamazepine",
+      "severity": "contraindicated",
+      "guidance": "HLA-B*15:02 positivity marks high risk of Stevens–Johnson syndrome / toxic epidermal necrolysis; CPIC recommends AVOIDING carbamazepine in carbamazepine-naïve patients.",
+      "source": "CPIC guideline for carbamazepine/oxcarbazepine and HLA-B/HLA-A (cpicpgx.org)",
+      "marker": [
+        "1502"
+      ]
+    },
+    {
+      "gene": "HLA-B",
+      "drug": "oxcarbazepine",
+      "severity": "contraindicated",
+      "guidance": "HLA-B*15:02 positivity marks high risk of Stevens–Johnson syndrome / toxic epidermal necrolysis; CPIC recommends AVOIDING oxcarbazepine in oxcarbazepine-naïve patients.",
+      "source": "CPIC guideline for carbamazepine/oxcarbazepine and HLA-B/HLA-A (cpicpgx.org)",
+      "marker": [
+        "1502"
+      ]
+    },
+    {
+      "gene": "HLA-B",
+      "drug": "phenytoin",
+      "severity": "high",
+      "guidance": "HLA-B*15:02 positivity raises the risk of Stevens–Johnson syndrome / toxic epidermal necrolysis; CPIC recommends AVOIDING phenytoin if an alternative is available.",
+      "source": "CPIC guideline for phenytoin and CYP2C9/HLA-B (cpicpgx.org)",
+      "marker": [
+        "1502"
+      ]
+    },
+    {
+      "gene": "NUDT15",
+      "drug": "thiopurine",
+      "severity": "moderate",
+      "guidance": "NUDT15 activity is reduced; CPIC recommends a reduced starting dose with monitoring.",
+      "source": "CPIC guideline for thiopurines and TPMT/NUDT15 (cpicpgx.org)",
+      "phenotype": "intermediate"
+    },
+    {
+      "gene": "NUDT15",
+      "drug": "thiopurine",
+      "severity": "high",
+      "guidance": "reduced NUDT15 activity raises the risk of severe myelosuppression at standard doses; CPIC recommends a substantially reduced dose or an alternative.",
+      "source": "CPIC guideline for thiopurines and TPMT/NUDT15 (cpicpgx.org)",
+      "phenotype": "poor"
+    },
+    {
+      "gene": "SLCO1B1",
+      "drug": "simvastatin",
+      "severity": "moderate",
+      "guidance": "decreased transporter function moderately raises simvastatin exposure/myopathy risk; CPIC recommends a lower dose or an alternative statin.",
+      "source": "CPIC guideline for statins and SLCO1B1 (cpicpgx.org)",
+      "phenotype": "intermediate"
+    },
+    {
+      "gene": "SLCO1B1",
+      "drug": "simvastatin",
+      "severity": "high",
+      "guidance": "reduced hepatic uptake raises simvastatin exposure and myopathy risk; CPIC recommends a lower dose or an alternative statin.",
+      "source": "CPIC guideline for statins and SLCO1B1 (cpicpgx.org)",
+      "phenotype": "poor"
+    },
+    {
+      "gene": "TPMT",
+      "drug": "thiopurine",
+      "severity": "moderate",
+      "guidance": "thiopurine inactivation is reduced; CPIC recommends a reduced starting dose with monitoring.",
+      "source": "CPIC guideline for thiopurines and TPMT/NUDT15 (cpicpgx.org)",
+      "phenotype": "intermediate"
+    },
+    {
+      "gene": "TPMT",
+      "drug": "thiopurine",
+      "severity": "high",
+      "guidance": "very little thiopurine is inactivated, so standard doses risk severe myelosuppression; CPIC recommends a substantially reduced dose or an alternative.",
+      "source": "CPIC guideline for thiopurines and TPMT/NUDT15 (cpicpgx.org)",
+      "phenotype": "poor"
+    },
+    {
+      "gene": "VKORC1",
+      "drug": "warfarin",
+      "severity": "moderate",
+      "guidance": "the VKORC1 −1639 A allele increases warfarin sensitivity (a lower dose requirement); CPIC recommends genotype-guided dosing with INR monitoring.",
+      "source": "CPIC guideline for warfarin and CYP2C9/VKORC1 (cpicpgx.org)",
+      "marker": [
+        "1639a",
+        "aa",
+        "ag",
+        "increasedwarfarin",
+        "sensitiv"
+      ]
+    }
+  ]
+}

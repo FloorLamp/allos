@@ -9,6 +9,7 @@ import type {
   SupplementPair,
 } from "@/lib/types";
 import type { InteractionItem } from "@/lib/drug-interactions";
+import type { PgxVariantInput } from "@/lib/pgx";
 import {
   STOP_REASONS,
   STOP_REASON_LABELS,
@@ -54,6 +55,7 @@ export default function MedicationCard({
   doses,
   allSupplements,
   stackItems,
+  pgxVariants,
   pairs,
   takenDoseIds,
   skippedDoseIds,
@@ -68,6 +70,7 @@ export default function MedicationCard({
   doses: SupplementDose[];
   allSupplements: { id: number; name: string }[];
   stackItems: InteractionItem[];
+  pgxVariants: PgxVariantInput[];
   pairs: SupplementPair[];
   takenDoseIds: Set<number>;
   skippedDoseIds: Set<number>;
@@ -104,6 +107,7 @@ export default function MedicationCard({
           doses={doses}
           allSupplements={allSupplements}
           stackItems={stackItems}
+          pgxVariants={pgxVariants}
           pairs={pairs}
           onDone={() => setEditing(false)}
           trainingRestricted={trainingRestricted}

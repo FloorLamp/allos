@@ -21,6 +21,9 @@ import {
   type InteractionHit,
   type InteractionItem,
 } from "../../drug-interactions";
+import { crossCheckPgx, type PgxHit, type PgxMedInput } from "../../pgx";
+import { getGenomicVariants } from "../clinical";
+import { getIntakeSafetyContext } from "./safety";
 import { parseRxcuiIngredients } from "../../rxnorm";
 import { contributesToDailyLimit } from "../../supplement-schedule";
 import { getSupplements, getSupplementDoses } from "./schedule";
@@ -128,4 +131,30 @@ export function getInteractionWarnings(profileId: number): InteractionHit[] {
     active: !!s.active,
   }));
   return detectInteractions(items);
+}
+
+// Pharmacogenomics cross-check (issue #710): the profile's stored PGx variants
+// (genomic_variants, result_type='pharmacogenomic') × its ACTIVE medications, matched
+// against the curated CPIC gene–drug table. The SAME pure crossCheckPgx the /medicine
+// row notice, the create/edit inline notice, and the dismissible Upcoming finding all
+// format over ("one question, one computation"). The active meds come from the ONE
+// shared safety-context gather (getIntakeSafetyContext, #661) — active + kind
+// 'medication', each carrying its intake_items id — so the med set can't drift from
+// the belt/food consumers. Profile-scoped through getGenomicVariants +
+// getIntakeSafetyContext (both profile_id-filtered); no new SQL, so the scoping guard
+// is unaffected. Informational, never prescriptive; absence of a flag is not clearance.
+export function getPgxWarnings(profileId: number): PgxHit[] {
+  const variants = getGenomicVariants(profileId).filter(
+    (v) => v.result_type === "pharmacogenomic"
+  );
+  if (variants.length === 0) return [];
+  const meds: PgxMedInput[] = getIntakeSafetyContext(profileId)
+    .medications.filter((m): m is typeof m & { id: number } => m.id != null)
+    .map((m) => ({
+      id: m.id,
+      name: m.name,
+      rxcui: m.rxcui,
+      rxcuiIngredients: m.rxcuiIngredients,
+    }));
+  return crossCheckPgx(variants, meds);
 }

@@ -17,6 +17,8 @@ import {
   getDietaryLimitWarnings,
   getDietaryAdequacy,
   getInteractionWarnings,
+  getPgxWarnings,
+  getGenomicVariants,
   getFindingSuppressions,
 } from "@/lib/queries";
 import { activeByKey } from "@/lib/findings";
@@ -38,6 +40,12 @@ import {
   SEVERITY_LABEL,
   type InteractionItem,
 } from "@/lib/drug-interactions";
+import {
+  pgxTitle,
+  pgxStatusLabel,
+  PGX_SEVERITY_LABEL,
+  type PgxVariantInput,
+} from "@/lib/pgx";
 import {
   partitionMedications,
   type MedicationWithHistory,
@@ -379,6 +387,35 @@ export default async function SupplementsPage() {
     suppressions,
     todayStr
   );
+
+  // Pharmacogenomics cross-check (issue #710): a stored PGx result (a
+  // genomic_variants row, result_type='pharmacogenomic') affecting a medication in
+  // the active stack, with CPIC's guidance direction as INFORMATION. Same pure
+  // crossCheckPgx the create/edit inline notice + the dismissible Upcoming finding
+  // format over. Care-tier (per #449 — the safety cross-check twin of drug–drug
+  // interactions), routed through the findings bus (#435) keyed by the identical
+  // dedupeKey the Upcoming twin carries, so a dismiss on either surface silences the
+  // other. Informational, never prescriptive; the app never auto-changes a med.
+  const pgxWarnings = activeByKey(
+    getPgxWarnings(profile.id),
+    (hit) => hit.dedupeKey,
+    suppressions,
+    todayStr
+  );
+  // The profile's stored PGx variants, threaded to every form for the client-side
+  // create/edit PGx notice (a lean projection — enough for phenotype resolution + the
+  // marker match, no report prose beyond interpretation/notes the page already holds).
+  const pgxVariants: PgxVariantInput[] = getGenomicVariants(profile.id)
+    .filter((v) => v.result_type === "pharmacogenomic")
+    .map((v) => ({
+      id: v.id,
+      gene: v.gene,
+      star_allele: v.star_allele,
+      genotype: v.genotype,
+      variant: v.variant,
+      interpretation: v.interpretation,
+      notes: v.notes,
+    }));
   // The item stack (name + cached RxCUI(s) + active) threaded to every form for
   // the client-side create/edit interaction notice. Cached ingredient CUIs (issue
   // #279) keep a combination product matchable against ingredient-keyed concepts.
@@ -398,6 +435,7 @@ export default async function SupplementsPage() {
       doses={dosesBySupp.get(it.supplement.id) ?? []}
       allSupplements={supplements}
       stackItems={stackItems}
+      pgxVariants={pgxVariants}
       pairs={pairsFor(it.supplement.id)}
       isTaken={taken.has(it.dose.id)}
       isSkipped={skipped.has(it.dose.id)}
@@ -594,6 +632,48 @@ export default async function SupplementsPage() {
         </div>
       )}
 
+      {/* Pharmacogenomics cross-check (issue #710): a stored PGx result affecting an
+          active medication. CPIC's guidance direction is relayed AS INFORMATION with
+          its citation; never prescriptive — the app never auto-changes a med. */}
+      {pgxWarnings.length > 0 && (
+        <div className="mb-4 space-y-2" data-testid="pgx-warnings">
+          {pgxWarnings.map((hit) => (
+            <div
+              key={hit.dedupeKey}
+              data-testid={`pgx-warning-${hit.dedupeKey}`}
+              className="rounded-lg border border-violet-300 bg-violet-50 px-3 py-2.5 text-sm text-violet-800 dark:border-violet-900 dark:bg-violet-950 dark:text-violet-200"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-start gap-1.5">
+                  <IconAlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <div>
+                    <p className="font-semibold">
+                      <span className="uppercase">
+                        {PGX_SEVERITY_LABEL[hit.severity]}
+                      </span>{" "}
+                      · {pgxTitle(hit)}
+                    </p>
+                    <p className="mt-0.5 text-violet-700 dark:text-violet-300">
+                      {hit.gene} {pgxStatusLabel(hit)} on file. CPIC guidance:{" "}
+                      {hit.guidance}
+                    </p>
+                    <p className="mt-1 text-xs text-violet-600 dark:text-violet-400">
+                      Informational — discuss with your prescriber before any
+                      change; do not stop or switch a medication based on this
+                      alone. Source: {hit.source}
+                    </p>
+                  </div>
+                </div>
+                <DismissFindingButton
+                  dedupeKey={hit.dedupeKey}
+                  label={`Dismiss ${pgxTitle(hit)} pharmacogenomic note`}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Adherence-pattern observations (issue #45, domain 3) */}
       <div className="mb-4">
         <AdherenceFindings />
@@ -616,6 +696,7 @@ export default async function SupplementsPage() {
                     doses={dosesBySupp.get(m.med.id) ?? []}
                     allSupplements={supplements}
                     stackItems={stackItems}
+                    pgxVariants={pgxVariants}
                     pairs={pairsFor(m.med.id)}
                     takenDoseIds={taken}
                     skippedDoseIds={skipped}
@@ -644,6 +725,7 @@ export default async function SupplementsPage() {
                     doses={dosesBySupp.get(m.med.id) ?? []}
                     allSupplements={supplements}
                     stackItems={stackItems}
+                    pgxVariants={pgxVariants}
                     pairs={pairsFor(m.med.id)}
                     takenDoseIds={taken}
                     skippedDoseIds={skipped}
@@ -797,6 +879,7 @@ export default async function SupplementsPage() {
           action={addSupplement}
           allSupplements={supplements}
           stackItems={stackItems}
+          pgxVariants={pgxVariants}
           trainingRestricted={trainingRestricted}
         />
       </div>

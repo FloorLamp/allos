@@ -41,6 +41,9 @@ const ALLOWLIST: Record<string, string> = {
   dietaryLimitItems: "standing UL warning — informational, not risk-ranked",
   interactionItems:
     "standing interaction warning — informational, not risk-ranked",
+  pgxItems:
+    "standing pharmacogenomics cross-check (#710) — a stored PGx result " +
+    "affecting an active med; informational safety note, not a risk-ranked due signal",
   appointmentItems: "carries its own real appointment date",
   goalItems: "carries its own target date",
   trainingItems: "weekly frequency count — not risk-ranked",

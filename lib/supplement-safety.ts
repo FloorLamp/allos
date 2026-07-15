@@ -128,6 +128,11 @@ export interface InteractionHit {
 
 // A current medication, in the shape matchFoodInteractions consumes.
 export interface SafetyMedication {
+  // The intake_items id, when the gather knows it (getIntakeSafetyContext sets it).
+  // Optional — the food/allergen consumers match on name/rxcui and never need it; the
+  // PGx cross-check (lib/pgx.ts, #710) uses it to anchor a finding's dedupeKey to the
+  // specific med. Absent for hand-built SafetyMedication arrays that don't carry one.
+  id?: number;
   name: string;
   rxcui: string | null;
   rxcuiIngredients: string[] | null;
