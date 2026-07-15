@@ -82,11 +82,11 @@ export default function ErrorLogTable({
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-black/5 text-left text-xs uppercase tracking-wide text-slate-500 dark:border-white/10 dark:text-slate-400">
-                  <th className="td">Time</th>
-                  <th className="td">Level</th>
-                  <th className="td">Scope</th>
-                  <th className="td">Profile</th>
-                  <th className="td">Message / detail</th>
+                  <th className="th">Time</th>
+                  <th className="th">Level</th>
+                  <th className="th">Scope</th>
+                  <th className="th">Profile</th>
+                  <th className="th">Message / detail</th>
                 </tr>
               </thead>
               <tbody>

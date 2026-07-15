@@ -65,13 +65,13 @@ export default function LogsStream({ initial }: { initial: AiEvent[] }) {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-black/5 text-left text-xs uppercase tracking-wide text-slate-500 dark:border-white/10 dark:text-slate-400">
-                  <th className="td">Time</th>
-                  <th className="td">Feature</th>
-                  <th className="td">Status</th>
-                  <th className="td">Model</th>
-                  <th className="td">Duration</th>
-                  <th className="td">Tokens</th>
-                  <th className="td">Detail / error</th>
+                  <th className="th">Time</th>
+                  <th className="th">Feature</th>
+                  <th className="th">Status</th>
+                  <th className="th">Model</th>
+                  <th className="th">Duration</th>
+                  <th className="th">Tokens</th>
+                  <th className="th">Detail / error</th>
                 </tr>
               </thead>
               <tbody>

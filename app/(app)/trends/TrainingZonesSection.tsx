@@ -115,29 +115,31 @@ export default async function TrainingZonesSection() {
 
             {/* Zone boundary table with the formula (no black box). */}
             <div className="mt-5 border-t border-black/5 pt-4 dark:border-white/10">
-              <table className="w-full text-sm">
-                <tbody>
-                  {ZONES.map((z) => (
-                    <tr key={z.id}>
-                      <td className="py-1 pr-2">
-                        <span
-                          className="mr-2 inline-block h-2.5 w-2.5 rounded-full align-middle"
-                          style={{ backgroundColor: ZONE_COLORS[z.id - 1] }}
-                        />
-                        <span className="font-medium text-slate-700 dark:text-slate-200">
-                          {z.name}
-                        </span>{" "}
-                        <span className="text-slate-500 dark:text-slate-400">
-                          {z.label}
-                        </span>
-                      </td>
-                      <td className="py-1 text-right tabular-nums text-slate-600 dark:text-slate-300">
-                        {zoneRange(model, z.id)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <tbody>
+                    {ZONES.map((z) => (
+                      <tr key={z.id}>
+                        <td className="py-1 pr-2">
+                          <span
+                            className="mr-2 inline-block h-2.5 w-2.5 rounded-full align-middle"
+                            style={{ backgroundColor: ZONE_COLORS[z.id - 1] }}
+                          />
+                          <span className="font-medium text-slate-700 dark:text-slate-200">
+                            {z.name}
+                          </span>{" "}
+                          <span className="text-slate-500 dark:text-slate-400">
+                            {z.label}
+                          </span>
+                        </td>
+                        <td className="py-1 text-right tabular-nums text-slate-600 dark:text-slate-300">
+                          {zoneRange(model, z.id)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
               <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
                 {model.formula} A lab-tested lactate/ventilatory threshold beats
                 any formula — set a max-HR override in{" "}

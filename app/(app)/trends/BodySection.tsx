@@ -683,7 +683,7 @@ export default async function BodySection({ range }: { range: DateRange }) {
           <EmptyState message="No body metrics yet. Log one above to see the trend." />
         ) : (
           <ScrollFade>
-            <table className="w-full">
+            <table className="w-full" data-testid="body-history-table">
               <thead>
                 <tr className="border-b border-black/5 dark:border-white/10">
                   <th className="th">Date</th>
