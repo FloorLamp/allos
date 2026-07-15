@@ -337,3 +337,125 @@ describe("issue #699/#706 — visit cadence modulation via collectUpcoming", () 
     );
   });
 });
+
+// #711 — hereditary-risk variants drive SCREENING cadence end-to-end through
+// collectUpcoming, per the #448 findings-builder convention: a stored pathogenic
+// `hereditary-risk` variant (#709) in a curated gene must bring the relevant
+// screening due SOONER with its cited reason — AND a predictive-only variant
+// (APOE ε4) or a VUS must produce a stored record with ZERO cadence effect and ZERO
+// risk text (the product constraint the exclusion-disciplined gene table enforces).
+import { getGenomicVariants } from "@/lib/queries";
+
+function insertVariant(
+  profileId: number,
+  gene: string,
+  significance: string | null,
+  resultType = "hereditary-risk"
+): void {
+  db.prepare(
+    `INSERT INTO genomic_variants
+       (profile_id, gene, significance, result_type, interpretation)
+     VALUES (?, ?, ?, ?, ?)`
+  ).run(profileId, gene, significance, resultType, "Reported by lab");
+}
+
+function femaleProfile(name: string, ageYears: number): number {
+  const pid = makeProfile(name, shiftDateStr(now, -ageYears * 365));
+  setUserSex(pid, "female");
+  return pid;
+}
+
+describe("issue #711 — hereditary-risk screening cadence via collectUpcoming", () => {
+  it("a pathogenic BRCA1 variant brings mammography due sooner, with the NCCN reason", () => {
+    const pid = femaleProfile("BRCA carrier", 45);
+    // Base mammography cadence 24mo → an ~18mo-old exam is up-to-date (no item).
+    recordVisit(pid, "mammography", shiftDateStr(now, -540));
+    expect(
+      collectUpcoming(pid, now).some((i) => i.key === "screening:mammography")
+    ).toBe(false);
+
+    insertVariant(pid, "BRCA1", "pathogenic");
+
+    const item = collectUpcoming(pid, now).find(
+      (i) => i.key === "screening:mammography"
+    );
+    expect(item, "mammography now due").toBeTruthy();
+    expect(item!.priority).toBe(3);
+    expect(item!.detail).toContain("BRCA pathogenic variant on file");
+    expect(item!.detail).toContain("breast MRI");
+  });
+
+  it("a pathogenic Lynch (MSH2) variant brings colorectal screening due sooner", () => {
+    const pid = makeProfile("Lynch carrier", shiftDateStr(now, -50 * 365));
+    // Base colorectal cadence 120mo → a ~64mo-old colonoscopy is up-to-date.
+    recordVisit(pid, "colorectal_cancer", shiftDateStr(now, -1950));
+    expect(
+      collectUpcoming(pid, now).some(
+        (i) => i.key === "screening:colorectal_cancer"
+      )
+    ).toBe(false);
+
+    insertVariant(pid, "MSH2", "likely-pathogenic");
+
+    const item = collectUpcoming(pid, now).find(
+      (i) => i.key === "screening:colorectal_cancer"
+    );
+    expect(item, "colorectal screening now due").toBeTruthy();
+    expect(item!.priority).toBe(3);
+    expect(item!.detail).toContain("Lynch syndrome variant on file");
+  });
+
+  it("a pathogenic FH (LDLR) variant brings lipid screening due sooner", () => {
+    const pid = makeProfile("FH carrier", shiftDateStr(now, -45 * 365));
+    // Base lipid cadence 60mo → a ~35mo-old panel is up-to-date.
+    recordVisit(pid, "lipid_screening", shiftDateStr(now, -1050));
+    expect(
+      collectUpcoming(pid, now).some(
+        (i) => i.key === "screening:lipid_screening"
+      )
+    ).toBe(false);
+
+    insertVariant(pid, "LDLR", "pathogenic");
+
+    const item = collectUpcoming(pid, now).find(
+      (i) => i.key === "screening:lipid_screening"
+    );
+    expect(item, "lipid screening now due").toBeTruthy();
+    expect(item!.detail).toContain(
+      "Familial hypercholesterolemia variant on file"
+    );
+  });
+
+  it("an APOE ε4 (predictive-only) variant is stored but drives NO cadence and NO risk text", () => {
+    const pid = femaleProfile("APOE carrier", 45);
+    // Same setup as the BRCA case — mammography positioned so a 0.5 multiplier WOULD
+    // bring it due. A pathogenic APOE hereditary-risk result must NOT.
+    recordVisit(pid, "mammography", shiftDateStr(now, -540));
+    insertVariant(pid, "APOE", "pathogenic");
+
+    // Stored factually (the record exists).
+    const stored = getGenomicVariants(pid);
+    expect(stored.some((v) => v.gene === "APOE")).toBe(true);
+
+    const items = collectUpcoming(pid, now);
+    // No cadence effect: mammography stays up-to-date, absent from Upcoming.
+    expect(items.some((i) => i.key === "screening:mammography")).toBe(false);
+    // No risk text anywhere: nothing mentions APOE / ε4 / Alzheimer's.
+    for (const i of items) {
+      const text = `${i.title} ${i.detail ?? ""}`.toLowerCase();
+      expect(text).not.toContain("apoe");
+      expect(text).not.toContain("ε4");
+      expect(text).not.toContain("alzheimer");
+    }
+  });
+
+  it("a VUS BRCA1 variant does NOT drive cadence (only pathogenic/likely-pathogenic do)", () => {
+    const pid = femaleProfile("BRCA VUS", 45);
+    recordVisit(pid, "mammography", shiftDateStr(now, -540));
+    insertVariant(pid, "BRCA1", "uncertain-significance");
+
+    expect(
+      collectUpcoming(pid, now).some((i) => i.key === "screening:mammography")
+    ).toBe(false);
+  });
+});

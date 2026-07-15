@@ -13,6 +13,7 @@ import { resolveSmoking } from "../../smoking";
 import {
   getConditions,
   getFamilyHistory,
+  getGenomicVariants,
   hasImportedSmokingHistory,
 } from "../clinical";
 
@@ -36,5 +37,15 @@ export const getRiskFactors = cache(function getRiskFactors(
       getSmokingHistory(profileId),
       hasImportedSmokingHistory(profileId)
     ).status,
+    // Stored genomic variants (#709) → the hereditary-risk cadence input class (#711).
+    // The full rows go in; deriveRiskFactors applies the pathogenic/likely-pathogenic
+    // + hereditary-risk gates and the curated gene table, so a predictive-only variant
+    // (APOE ε4, Huntington) or a VUS never becomes a factor. Profile-scoped through
+    // getGenomicVariants (filters profile_id).
+    genomicVariants: getGenomicVariants(profileId).map((v) => ({
+      gene: v.gene,
+      significance: v.significance,
+      result_type: v.result_type,
+    })),
   });
 });

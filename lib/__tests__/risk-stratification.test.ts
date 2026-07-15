@@ -3,6 +3,7 @@ import {
   deriveRiskFactors,
   retestModulationFor,
   screeningPriorityFor,
+  screeningModulationFor,
   immunizationPriorityFor,
   visitModulationFor,
   isAnchoredOneShotReading,
@@ -347,6 +348,178 @@ describe("visitModulationFor (Substrate 3, #707)", () => {
       priority: 0,
       reasons: [],
     });
+  });
+});
+
+describe("deriveRiskFactors — hereditary-risk genomic inputs (#711)", () => {
+  const base = {
+    familyConditions: [],
+    activeConditions: [],
+    attributes: EMPTY_RISK_ATTRIBUTES,
+  };
+
+  it("derives hereditary-breast-cancer from a pathogenic BRCA hereditary-risk variant", () => {
+    for (const gene of ["BRCA1", "BRCA2"]) {
+      for (const significance of ["pathogenic", "likely-pathogenic"] as const) {
+        const f = deriveRiskFactors({
+          ...base,
+          genomicVariants: [
+            { gene, significance, result_type: "hereditary-risk" },
+          ],
+        });
+        expect(f.has("hereditary-breast-cancer")).toBe(true);
+      }
+    }
+  });
+
+  it("derives hereditary-colorectal-cancer from any Lynch-syndrome gene", () => {
+    for (const gene of ["MLH1", "MSH2", "MSH6", "PMS2", "EPCAM"]) {
+      const f = deriveRiskFactors({
+        ...base,
+        genomicVariants: [
+          { gene, significance: "pathogenic", result_type: "hereditary-risk" },
+        ],
+      });
+      expect(f.has("hereditary-colorectal-cancer")).toBe(true);
+    }
+  });
+
+  it("derives familial-hypercholesterolemia from an FH gene", () => {
+    for (const gene of ["LDLR", "APOB", "PCSK9"]) {
+      const f = deriveRiskFactors({
+        ...base,
+        genomicVariants: [
+          { gene, significance: "pathogenic", result_type: "hereditary-risk" },
+        ],
+      });
+      expect(f.has("familial-hypercholesterolemia")).toBe(true);
+    }
+  });
+
+  it("collapses a gene carrying a trailing variant form onto its gene identity (#482)", () => {
+    const f = deriveRiskFactors({
+      ...base,
+      genomicVariants: [
+        {
+          gene: "BRCA1 c.68_69del",
+          significance: "pathogenic",
+          result_type: "hereditary-risk",
+        },
+      ],
+    });
+    expect(f.has("hereditary-breast-cancer")).toBe(true);
+  });
+
+  it("does NOT derive a factor for a predictive-only gene (APOE ε4 — the #711 constraint)", () => {
+    // APOE / Huntington etc. are stored factually but carry NO screening action, so
+    // they are absent from the curated gene table and produce ZERO factors even when
+    // reported as a hereditary-risk result.
+    for (const gene of ["APOE", "HTT"]) {
+      const f = deriveRiskFactors({
+        ...base,
+        genomicVariants: [
+          { gene, significance: "pathogenic", result_type: "hereditary-risk" },
+        ],
+      });
+      expect(f.size).toBe(0);
+    }
+  });
+
+  it("does NOT derive a factor from a VUS / benign / null-significance BRCA variant", () => {
+    for (const significance of [
+      "uncertain-significance",
+      "likely-benign",
+      "benign",
+      null,
+    ] as const) {
+      const f = deriveRiskFactors({
+        ...base,
+        genomicVariants: [
+          { gene: "BRCA1", significance, result_type: "hereditary-risk" },
+        ],
+      });
+      expect(f.has("hereditary-breast-cancer")).toBe(false);
+    }
+  });
+
+  it("does NOT derive a factor when a pathogenic BRCA is routed to another consumer", () => {
+    for (const result_type of [
+      "pharmacogenomic",
+      "carrier",
+      "diagnostic",
+      "other",
+    ] as const) {
+      const f = deriveRiskFactors({
+        ...base,
+        genomicVariants: [
+          { gene: "BRCA1", significance: "pathogenic", result_type },
+        ],
+      });
+      expect(f.has("hereditary-breast-cancer")).toBe(false);
+    }
+  });
+});
+
+describe("screeningModulationFor (#711)", () => {
+  it("is a no-op when no factor targets the screening rule", () => {
+    expect(
+      screeningModulationFor("mammography", new Set<RiskFactor>())
+    ).toEqual(NO_MODULATION);
+    // A matching factor but a non-targeted screening still no-ops.
+    expect(
+      screeningModulationFor(
+        "colorectal_cancer",
+        new Set<RiskFactor>(["hereditary-breast-cancer"])
+      )
+    ).toEqual(NO_MODULATION);
+  });
+
+  it("BRCA tightens mammography to half cadence with the NCCN reason", () => {
+    const mod = screeningModulationFor(
+      "mammography",
+      new Set<RiskFactor>(["hereditary-breast-cancer"])
+    );
+    expect(mod.multiplier).toBe(0.5);
+    expect(mod.priority).toBe(3);
+    expect(mod.reasons[0]).toContain("BRCA pathogenic variant on file");
+    // The breast-MRI consideration rides the reason line (no fabricated MRI rule).
+    expect(mod.reasons[0]).toContain("breast MRI");
+  });
+
+  it("Lynch tightens colorectal_cancer; FH tightens lipid_screening", () => {
+    const lynch = screeningModulationFor(
+      "colorectal_cancer",
+      new Set<RiskFactor>(["hereditary-colorectal-cancer"])
+    );
+    expect(lynch.multiplier).toBe(0.5);
+    expect(lynch.reasons[0]).toContain("Lynch syndrome variant on file");
+
+    const fh = screeningModulationFor(
+      "lipid_screening",
+      new Set<RiskFactor>(["familial-hypercholesterolemia"])
+    );
+    expect(fh.multiplier).toBe(0.5);
+    expect(fh.reasons[0]).toContain(
+      "Familial hypercholesterolemia variant on file"
+    );
+  });
+
+  it("leaves the priority-only screeningRules ranking a separate dimension", () => {
+    // A hereditary cadence factor does not touch a screening's screeningPriorityFor
+    // ranking, and a priority-only factor (family-cardiovascular → lipid) does not
+    // tighten cadence — the two dimensions are independent.
+    expect(
+      screeningModulationFor(
+        "lipid_screening",
+        new Set<RiskFactor>(["family-cardiovascular"])
+      )
+    ).toEqual(NO_MODULATION);
+    expect(
+      screeningPriorityFor(
+        "mammography",
+        new Set<RiskFactor>(["hereditary-breast-cancer"])
+      )
+    ).toEqual({ priority: 0, reasons: [] });
   });
 });
 

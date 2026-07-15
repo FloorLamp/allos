@@ -313,6 +313,23 @@ function immunizationItems(profileId: number, today: string): UpcomingItem[] {
     });
 }
 
+// Combine a screening's two additive risk dimensions (#711): the priority-only
+// ranking (screeningPriorityFor — family-history → lipid) and the assessor's
+// hereditary-risk cadence reason/priority (screeningModulationFor, stashed on
+// riskReasons/riskPriority). Highest priority wins; the cadence reasons lead
+// (they explain why it's due sooner), then the ranking reasons, de-duplicated.
+function mergeScreeningRisk(
+  ranking: { priority: number; reasons: string[] },
+  cadenceReasons: string[],
+  cadencePriority: number
+): { priority: number; reasons: string[] } {
+  const reasons: string[] = [];
+  for (const r of [...cadenceReasons, ...ranking.reasons]) {
+    if (!reasons.includes(r)) reasons.push(r);
+  }
+  return { priority: Math.max(ranking.priority, cadencePriority), reasons };
+}
+
 // Maps the preventive actionable slice into Upcoming items, adding the prefilled
 // "Book" CTA and — when a matching-kind visit is already booked (issue #85) — a
 // quiet "Scheduled" state (from the profile's still-scheduled appointments). The
@@ -330,13 +347,21 @@ function preventiveItems(profileId: number, today: string): UpcomingItem[] {
       today,
       scheduledDate: scheduledMatchForRule(a.key, scheduled, today),
     });
-    // A screening ranks up via screeningPriorityFor; a VISIT whose cadence the risk
-    // factors tightened (Substrate 3, #707) carries the reason + rank the assessor
-    // already computed (riskReasons/riskPriority) — one computation, surfaced here.
+    // A VISIT whose cadence the risk factors tightened (Substrate 3, #707) carries the
+    // reason + rank the assessor already computed (riskReasons/riskPriority). A
+    // SCREENING has TWO additive risk dimensions: the priority-only ranking from
+    // screeningPriorityFor (family-history → lipid) AND, for a hereditary-risk cadence
+    // rule (#711 — BRCA → mammography / Lynch → colorectal), the reason + rank the
+    // assessor stashed (riskReasons/riskPriority) when it also tightened the interval.
+    // Merge them so both surface — one computation each, joined here.
     const { priority, reasons } =
       a.kind === "visit"
         ? { priority: a.riskPriority, reasons: a.riskReasons }
-        : screeningPriorityFor(a.key, riskFactors);
+        : mergeScreeningRisk(
+            screeningPriorityFor(a.key, riskFactors),
+            a.riskReasons,
+            a.riskPriority
+          );
     if (priority > 0 || reasons.length > 0) {
       if (priority > 0) item.priority = priority;
       const suffix = reasons.join(", ");
