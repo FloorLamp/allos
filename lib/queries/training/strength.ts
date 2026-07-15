@@ -56,6 +56,10 @@ export interface RecentSession {
     // sessionBestSet/sessionWorkSets) and its status judgment ignores it, while
     // the Recent panel still SHOWS it.
     warmup: number | null;
+    // Logged RPE (5–10) for the set, or null. Shipped so the editor's seed can
+    // carry the anchor's rating into the progression modifier (#743) and the
+    // Recent panel can show it.
+    rpe: number | null;
   }[];
 }
 
@@ -122,7 +126,7 @@ export const getRecentExerciseHistory = cache(function getRecentExerciseHistory(
       `SELECT s.exercise, a.date, a.id AS activity_id, s.set_number,
               s.weight_kg, s.reps, s.weight_kg_right, s.reps_right,
               s.duration_sec, s.duration_sec_right, s.target_reps, s.to_failure,
-              s.warmup, eq.name AS equipment
+              s.warmup, s.rpe, eq.name AS equipment
        FROM exercise_sets s JOIN activities a ON a.id = s.activity_id
        LEFT JOIN equipment eq ON eq.id = s.equipment_id
        WHERE a.profile_id = ? AND a.date >= ?
@@ -142,6 +146,7 @@ export const getRecentExerciseHistory = cache(function getRecentExerciseHistory(
     target_reps: number | null;
     to_failure: number | null;
     warmup: number | null;
+    rpe: number | null;
     equipment: string | null;
   }[];
 
@@ -199,6 +204,7 @@ export const getRecentExerciseHistory = cache(function getRecentExerciseHistory(
       target_reps: r.target_reps,
       to_failure: r.to_failure,
       warmup: r.warmup,
+      rpe: r.rpe,
     });
   }
 
@@ -570,6 +576,9 @@ export interface ExerciseStat {
     reps: number;
     targetReps: number | null;
     toFailure: boolean;
+    // The anchor set's logged RPE (5–10), or null — read by the progression
+    // modifier (#743).
+    rpe: number | null;
   } | null;
   // Every rep-bearing set of the most recent session (bodyweight folded into the
   // load, each side of a per-side set its own entry), so next-set progression
@@ -600,7 +609,7 @@ export const getStrengthByExercise = cache(function getStrengthByExercise(
     .prepare(
       `SELECT s.exercise, a.date, a.id AS activity_id,
               s.weight_kg, s.reps, s.weight_kg_right, s.reps_right,
-              s.target_reps, s.to_failure
+              s.target_reps, s.to_failure, s.rpe
        FROM exercise_sets s JOIN activities a ON a.id = s.activity_id
        -- Any set with reps, weighted OR bodyweight (bodyweight sets store a
        -- NULL weight); the load is resolved per exercise below. Warmups are
@@ -621,6 +630,7 @@ export const getStrengthByExercise = cache(function getStrengthByExercise(
     reps_right: number | null;
     target_reps: number | null;
     to_failure: number | null;
+    rpe: number | null;
   }[];
 
   const weights = loadWeightsAsc(profileId);

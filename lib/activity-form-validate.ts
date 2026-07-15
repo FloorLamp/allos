@@ -315,6 +315,9 @@ export interface ActivitySetPayload {
   toFailure: boolean;
   // Warmup flag (#338): true marks a ramp-up set, excluded from working-set math.
   warmup: boolean;
+  // Optional logged RPE (5–10) for the set (#743), or null. The save action
+  // canonicalizes it to a half-point value (lib/rpe.ts) before storing.
+  rpe: number | null;
 }
 
 export interface ActivityPayload {
@@ -372,6 +375,7 @@ export function buildActivityPayload(
         targetReps: intent.target,
         toFailure: intent.toFailure,
         warmup: s.warmup,
+        rpe: s.rpe,
       });
     }
   }

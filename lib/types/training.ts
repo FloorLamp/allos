@@ -119,6 +119,10 @@ export interface ExerciseSet {
   // records/e1RM, plateau series, and the next-set seed all exclude it. NOT NULL
   // DEFAULT 0, so imported/legacy rows are working sets exactly as before.
   warmup: number;
+  // Optional per-set RPE (Rate of Perceived Exertion) on the 5–10 half-point
+  // scale (issue #743), or NULL when unlogged. Composes with target_reps/
+  // to_failure; the anchor set's rating modifies the next-set progression.
+  rpe: number | null;
 }
 
 // A user-defined piece of equipment (a custom bar/implement). `weight_kg` is the

@@ -20,6 +20,8 @@ import {
   DEFAULT_COACHING_THRESHOLDS,
   sessionWorkSets,
   sideSets,
+  RPE_EASY_MAX,
+  RPE_HARD_MIN,
   type ExerciseSummary,
   type SessionWorkSet,
   type CardioSummary,
@@ -482,6 +484,101 @@ describe("suggestNextSet — working-set progression (#330)", () => {
       })
     )!;
     expect(ns).toMatchObject({ weightKg: 82.5, reps: 5 });
+  });
+});
+
+describe("suggestNextSet — RPE modifier (#743)", () => {
+  // Bench Press: compound, range 5–8, +2.5 kg standard increment.
+
+  describe("top-of-range at a low RPE ⇒ a larger load increment", () => {
+    it("adds TWO increments (+5 kg) at exactly RPE 7 (the easy boundary)", () => {
+      const ns = suggestNextSet(
+        ex({ lastSessionBest: { weightKg: 80, reps: 8, rpe: RPE_EASY_MAX } })
+      )!;
+      // Standard would be +2.5 → 82.5; the easy modifier banks +5 → 85.
+      expect(ns).toMatchObject({ weightKg: 85, reps: 5, bodyweight: false });
+      expect(ns.rationale).toContain("RPE 7");
+      expect(ns.rationale).toContain("add 5 kg");
+    });
+
+    it("adds the larger jump natively in lb (2 × 5 lb = +10 lb)", () => {
+      const ns = suggestNextSet(
+        ex({ lastSessionBest: { weightKg: toKg(175, "lb"), reps: 8, rpe: 6 } }),
+        "lb"
+      )!;
+      expect(kgTo(ns.weightKg, "lb")).toBeCloseTo(185, 6); // 175 + 10
+      expect(ns.reps).toBe(5);
+    });
+
+    it("does NOT enlarge the jump just above the boundary (RPE 7.5)", () => {
+      const ns = suggestNextSet(
+        ex({ lastSessionBest: { weightKg: 80, reps: 8, rpe: 7.5 } })
+      )!;
+      // Above the easy threshold → the standard single increment.
+      expect(ns).toMatchObject({ weightKg: 82.5, reps: 5 });
+      expect(ns.rationale).toContain("add 2.5 kg");
+    });
+  });
+
+  describe("below the range floor at a high RPE ⇒ hold the load (repeat)", () => {
+    it("holds and repeats at exactly RPE 9.5 (the hard boundary)", () => {
+      const ns = suggestNextSet(
+        ex({ lastSessionBest: { weightKg: 80, reps: 3, rpe: RPE_HARD_MIN } })
+      )!;
+      // Standard below-floor verdict would build back to 5; near failure it holds
+      // the SAME load and repeats the achieved reps instead of chasing the floor.
+      expect(ns).toMatchObject({ weightKg: 80, reps: 3, bodyweight: false });
+      expect(ns.rationale).toContain("RPE 9.5");
+      expect(ns.rationale.toLowerCase()).toContain("deload");
+    });
+
+    it("does NOT hold just below the boundary (RPE 9)", () => {
+      const ns = suggestNextSet(
+        ex({ lastSessionBest: { weightKg: 80, reps: 3, rpe: 9 } })
+      )!;
+      // Below the hard threshold → the standard "build back to the floor" verdict.
+      expect(ns).toMatchObject({ weightKg: 80, reps: 5 });
+      expect(ns.rationale).toContain("Build back to 5");
+    });
+  });
+
+  describe("no RPE on the seed ⇒ byte-for-byte the pre-RPE behavior (identity)", () => {
+    // The load-bearing invariant (the sleep/resting-HR nullable-signal pattern):
+    // a seed carrying no RPE must yield the EXACT pre-RPE suggestion. These pin
+    // the same outputs the pre-#743 engine produced at the two modified branches.
+    it("top of range with no RPE adds the standard single increment", () => {
+      const withoutKey = suggestNextSet(
+        ex({ lastSessionBest: { weightKg: 80, reps: 8 } })
+      );
+      const withNull = suggestNextSet(
+        ex({ lastSessionBest: { weightKg: 80, reps: 8, rpe: null } })
+      );
+      expect(withoutKey).toEqual(withNull);
+      expect(withoutKey).toMatchObject({ weightKg: 82.5, reps: 5 });
+      expect(withoutKey!.rationale).toContain("add 2.5 kg");
+      expect(withoutKey!.rationale).not.toContain("RPE");
+    });
+
+    it("below the floor with no RPE builds back to the floor", () => {
+      const ns = suggestNextSet(
+        ex({ lastSessionBest: { weightKg: 80, reps: 3, rpe: null } })
+      )!;
+      expect(ns).toMatchObject({ weightKg: 80, reps: 5 });
+      expect(ns.rationale).toContain("Build back to 5");
+      expect(ns.rationale).not.toContain("deload");
+    });
+
+    it("leaves the target-driven branch unaffected even when an RPE is present", () => {
+      // A declared rep target follows the user's scheme, not the RPE heuristic:
+      // all sets met the target ⇒ add the STANDARD increment regardless of RPE.
+      const ns = suggestNextSet(
+        ex({
+          lastSessionBest: { weightKg: 80, reps: 5, targetReps: 5, rpe: 6 },
+        })
+      )!;
+      expect(ns).toMatchObject({ weightKg: 82.5, reps: 5, targetReps: 5 });
+      expect(ns.rationale).not.toContain("RPE");
+    });
   });
 });
 

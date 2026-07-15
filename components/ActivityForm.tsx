@@ -706,6 +706,9 @@ export default function ActivityForm({
               // A new set is a working set by default — never inherit the
               // previous row's warmup flag (#338).
               warmup: false,
+              // RPE is logged per set, never carried forward (#743) — blank by
+              // default, so the next set starts unrated.
+              rpe: null,
             },
           ],
         };
