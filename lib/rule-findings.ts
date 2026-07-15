@@ -31,6 +31,7 @@ import {
   getBiomarkerSeries,
   getCanonicalBiomarker,
   getDaylightOutdoorMinutesTotal,
+  getProteinAdequacy,
 } from "./queries";
 import {
   getActiveSituations,
@@ -55,6 +56,12 @@ import {
   foodHabitInteractions,
   foodHabitInteractionNote,
 } from "./food-habit";
+import {
+  proteinAdequacySignalKey,
+  proteinAdequacyTitle,
+  proteinAdequacyDetail,
+  proteinAdequacyEvidence,
+} from "./protein";
 import { shiftDateStr, lastNDates } from "./date";
 import { fmtWeight, round } from "./units";
 import { formatLongDate } from "./format-date";
@@ -132,8 +139,38 @@ export function collectCoachingFindings(
     ...buildAdherencePatternFindings(profileId, today),
     ...buildFoodSuggestionFindings(profileId),
     ...buildFoodHabitFindings(profileId),
+    ...buildProteinAdequacyFindings(profileId),
     ...buildSunExposureFindings(profileId, today),
     ...buildOralHealthFindings(profileId),
+  ];
+}
+
+// ---- Nutrition (#767): goal-scaled protein-adequacy observation ------------
+
+// A calm, coaching-tier observation when this week's protein intake is BELOW the goal-
+// scaled band. Reads through getProteinAdequacy — the SAME computation the /nutrition
+// adequacy card formats — so the card and this finding can never disagree ("one question,
+// one computation"). Coaching tier ONLY (#449): it joins collectCoachingFindings, its
+// dedupeKey rides the shared suppression bus (PROTEIN_ADEQUACY_PREFIX is registered in
+// RULE_FINDING_PREFIXES), and it NEVER notifies / never reaches the hero. Only the `below`
+// verdict surfaces — an estimated basis is a FLOOR, so the copy hedges the shortfall
+// (mirroring the #578 RDA-adequacy split) and never asserts a deficiency. No owned SQL is
+// added here (reads through the profile-scoped gather).
+export function buildProteinAdequacyFindings(profileId: number): Finding[] {
+  const a = getProteinAdequacy(profileId);
+  if (!a || a.status !== "below") return [];
+  return [
+    {
+      domain: "protein-adequacy",
+      dedupeKey: proteinAdequacySignalKey(),
+      title: proteinAdequacyTitle(a),
+      detail: proteinAdequacyDetail(a),
+      // Calm FYI — informational, never an alarm and never a push.
+      tone: "info",
+      evidence: proteinAdequacyEvidence(a),
+      actionHref: "/nutrition",
+      actionLabel: "Log servings",
+    },
   ];
 }
 

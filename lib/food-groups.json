@@ -1,5 +1,5 @@
 {
-  "$comment": "Curated food-group catalog for the serving log (issue #579): ~24 groups at the habit tier (one serving = one tap), each with a stable slug (food_log.group_key), a serving description, a tier (encourage/limit/neutral), and the #577 nutrient-food-map keys it's a source of. Committed + HUMAN-REVIEWABLE. Regenerate with `npm run gen:food-groups`. INFORMATIONAL dietary guidance, NOT medical advice.",
+  "$comment": "Curated food-group catalog for the serving log (issue #579): ~24 groups at the habit tier (one serving = one tap), each with a stable slug (food_log.group_key), a serving description, a tier (encourage/limit/neutral), the #577 nutrient-food-map keys it's a source of, and an optional protein_g (USDA FoodData Central, whole grams per serving) the #767 protein-adequacy estimate sums as a FLOOR. Committed + HUMAN-REVIEWABLE. Regenerate with `npm run gen:food-groups`. INFORMATIONAL dietary guidance, NOT medical advice.",
   "groups": [
     {
       "slug": "fatty_fish",
@@ -10,7 +10,8 @@
         "omega-3",
         "vitamin-d",
         "vitamin-b12"
-      ]
+      ],
+      "protein_g": 30
     },
     {
       "slug": "lean_fish",
@@ -19,7 +20,8 @@
       "tier": "encourage",
       "nutrients": [
         "vitamin-b12"
-      ]
+      ],
+      "protein_g": 28
     },
     {
       "slug": "shellfish",
@@ -30,7 +32,8 @@
         "iron",
         "vitamin-b12",
         "omega-3"
-      ]
+      ],
+      "protein_g": 20
     },
     {
       "slug": "leafy_greens",
@@ -41,7 +44,8 @@
         "folate",
         "potassium",
         "iron"
-      ]
+      ],
+      "protein_g": 2
     },
     {
       "slug": "cruciferous",
@@ -50,7 +54,8 @@
       "tier": "encourage",
       "nutrients": [
         "folate"
-      ]
+      ],
+      "protein_g": 3
     },
     {
       "slug": "other_vegetables",
@@ -59,7 +64,8 @@
       "tier": "encourage",
       "nutrients": [
         "potassium"
-      ]
+      ],
+      "protein_g": 2
     },
     {
       "slug": "legumes",
@@ -71,7 +77,8 @@
         "folate",
         "magnesium",
         "potassium"
-      ]
+      ],
+      "protein_g": 9
     },
     {
       "slug": "nuts_seeds",
@@ -81,7 +88,8 @@
       "nutrients": [
         "magnesium",
         "omega-3"
-      ]
+      ],
+      "protein_g": 5
     },
     {
       "slug": "whole_grains",
@@ -90,7 +98,8 @@
       "tier": "encourage",
       "nutrients": [
         "magnesium"
-      ]
+      ],
+      "protein_g": 5
     },
     {
       "slug": "fruit",
@@ -115,7 +124,8 @@
       "tier": "encourage",
       "nutrients": [
         "vitamin-b12"
-      ]
+      ],
+      "protein_g": 6
     },
     {
       "slug": "poultry",
@@ -124,7 +134,8 @@
       "tier": "neutral",
       "nutrients": [
         "vitamin-b12"
-      ]
+      ],
+      "protein_g": 35
     },
     {
       "slug": "eggs",
@@ -134,7 +145,8 @@
       "nutrients": [
         "vitamin-b12",
         "vitamin-d"
-      ]
+      ],
+      "protein_g": 12
     },
     {
       "slug": "dairy",
@@ -144,7 +156,8 @@
       "nutrients": [
         "vitamin-b12",
         "vitamin-d"
-      ]
+      ],
+      "protein_g": 8
     },
     {
       "slug": "red_meat",
@@ -154,7 +167,8 @@
       "nutrients": [
         "iron",
         "vitamin-b12"
-      ]
+      ],
+      "protein_g": 30
     },
     {
       "slug": "tubers",
@@ -163,7 +177,8 @@
       "tier": "neutral",
       "nutrients": [
         "potassium"
-      ]
+      ],
+      "protein_g": 3
     },
     {
       "slug": "water",
@@ -177,14 +192,16 @@
       "name": "Processed meat",
       "serving": "A serving of bacon, sausage, deli meat, hot dogs",
       "tier": "limit",
-      "nutrients": []
+      "nutrients": [],
+      "protein_g": 8
     },
     {
       "slug": "refined_grains",
       "name": "Refined grains",
       "serving": "A serving of white bread, white rice, pasta, crackers",
       "tier": "limit",
-      "nutrients": []
+      "nutrients": [],
+      "protein_g": 3
     },
     {
       "slug": "fried_food",

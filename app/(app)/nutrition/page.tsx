@@ -6,6 +6,7 @@ import {
   getWeeklyFoodRollup,
   getFoodSuggestions,
   getFoodGroupLogOrder,
+  getProteinAdequacy,
 } from "@/lib/queries";
 import { getUserAge } from "@/lib/settings/profile-attrs";
 import { isFoodLoggingRelevant } from "@/lib/life-stage";
@@ -15,6 +16,7 @@ import WeeklyHabits from "./WeeklyHabits";
 import { trackFoodHabit } from "./actions";
 import FoodWeeklyRollup from "@/components/FoodWeeklyRollup";
 import FoodSuggestions from "@/components/FoodSuggestions";
+import ProteinAdequacyCard from "@/components/ProteinAdequacyCard";
 
 // The food-group serving log (issue #579) — the INPUT half of the nutrition umbrella.
 // One-tap serving logging for today + a weekly rollup, plus the deterministic
@@ -56,6 +58,9 @@ export default async function NutritionPage() {
     initialYesterday[slug] = n;
   const rollup = getWeeklyFoodRollup(profile.id);
   const suggestions = getFoodSuggestions(profile.id);
+  // Goal-scaled protein adequacy (#767): the ONE gather the coaching finding also reads.
+  // Null when there's no intake signal or no bodyweight to scale a target by.
+  const proteinAdequacy = getProteinAdequacy(profile.id);
   // Catalog pre-ordered so the profile's staples lead within each tier (#591).
   const groups = getFoodGroupLogOrder(profile.id);
 
@@ -119,6 +124,9 @@ export default async function NutritionPage() {
         </div>
 
         <div className="min-w-0 space-y-6 self-start">
+          {proteinAdequacy && (
+            <ProteinAdequacyCard adequacy={proteinAdequacy} />
+          )}
           <WeeklyHabits profileId={profile.id} />
           <div className="card">
             <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">

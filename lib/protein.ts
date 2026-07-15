@@ -1,0 +1,276 @@
+// Protein-adequacy — the ONE pure computation behind the /nutrition adequacy card and
+// the coaching-tier adequacy finding (issue #767). No DB, no clock, no network: the DB
+// gather (lib/queries/nutrition.ts → getProteinAdequacy) assembles the typed inputs and
+// hands them here, so the card and the finding are formatters over the SAME result and
+// can never disagree ("one question, one computation").
+//
+// Three bases, source-priority (proteinIntake):
+//   - `tracked`   — an integration's protein_g (Health Connect protein_grams → protein_g;
+//                   surfaced on Trends → Body → Macros). Authoritative — a measured total.
+//   - `logged`    — RESERVED in the basis union but NO writer ships in v1 (a deferred
+//                   fast-follow, #767 item 4: direct protein-grams entry). Reserving it now
+//                   keeps adding it non-breaking.
+//   - `estimated` — servings × per-serving grams from the food-group catalog (#579 rollup,
+//                   reused, never a second engine). This is a FLOOR by construction —
+//                   incidental protein from untracked foods is invisible — so every surface's
+//                   copy says so ("a floor — actual likely higher").
+//
+// Goal-scaled target (proteinTarget): a bodyweight-scaled g/kg band by training goal.
+// Lean body mass is PREFERRED when available (lean_mass_kg) because g/kg-total overshoots
+// for higher-body-fat individuals — the same ISSN band applied to the smaller lean mass
+// yields a smaller, more accurate absolute target for them (a monotonic, conservative
+// correction; a lean person's LBM ≈ total, so it barely moves). Band + evidence + the
+// "informational, not prescriptive" framing follow the RDA-adequacy precedent (#578, lib/dri).
+
+import { foodGroupBySlug } from "./food-groups";
+
+// ---- Intake: tracked > logged (reserved) > estimated -----------------------
+
+export type ProteinBasis = "tracked" | "logged" | "estimated";
+
+export interface ProteinIntake {
+  // Per-day grams. For `estimated` this is a FLOOR (see module header).
+  grams: number;
+  basis: ProteinBasis;
+}
+
+// A group's summed servings, as the #579 rollup produces (GroupServingTotal is a superset).
+export interface ProteinServing {
+  slug: string;
+  servings: number;
+}
+
+// Sum protein grams over a set of food-group servings: servings × the catalog's per-
+// serving protein_g, skipping groups the catalog marks as non-protein-bearing (fruit,
+// water, sweets, alcohol) and any retired/unknown slug. A FLOOR — untracked foods are
+// invisible. Pure over the shared rollup so the estimate and the servings card agree.
+export function estimatedProteinGrams(servings: ProteinServing[]): number {
+  let grams = 0;
+  for (const s of servings) {
+    if (!(s.servings > 0)) continue;
+    const g = foodGroupBySlug(s.slug)?.protein_g;
+    if (g != null) grams += s.servings * g;
+  }
+  return grams;
+}
+
+// Pick the intake per source-priority: tracked (measured) wins, then logged (reserved —
+// v1 always null), then the estimated floor. Each input is an already-per-day figure the
+// gather computed (an average over the days that carry that basis). Returns null when no
+// basis has any signal (no tracked reading and nothing protein-bearing logged).
+export function proteinIntake(args: {
+  dailyTracked: number | null;
+  // Reserved (#767 item 4): no writer in v1, so the gather always passes null/omits it.
+  dailyLogged?: number | null;
+  dailyEstimated: number;
+}): ProteinIntake | null {
+  if (args.dailyTracked != null && args.dailyTracked > 0)
+    return { grams: args.dailyTracked, basis: "tracked" };
+  if (args.dailyLogged != null && args.dailyLogged > 0)
+    return { grams: args.dailyLogged, basis: "logged" };
+  if (args.dailyEstimated > 0)
+    return { grams: args.dailyEstimated, basis: "estimated" };
+  return null;
+}
+
+// ---- Target: goal + bodyweight (LBM-preferred) → g/kg band -----------------
+
+export type ProteinGoalLevel = "rda" | "active" | "hypertrophy" | "cut";
+
+// The g/kg bands per goal (issue #767 table). Applied to lean mass when available, else
+// total bodyweight (see module header). Sedentary RDA is a floor; the active/hypertrophy/
+// cut ranges are the ISSN position-stand figures (Jäger et al. 2017; Morton et al. 2018).
+const GOAL_BANDS: Record<
+  ProteinGoalLevel,
+  { low: number; high: number; label: string }
+> = {
+  rda: { low: 0.8, high: 1.0, label: "general health (RDA)" },
+  active: { low: 1.2, high: 1.6, label: "general fitness" },
+  hypertrophy: { low: 1.6, high: 2.2, label: "muscle gain" },
+  cut: { low: 2.0, high: 2.4, label: "cut / muscle preservation" },
+};
+
+// The default goal level when the profile hasn't set a training goal. Goal onboarding
+// (#719) isn't built yet; "active" is the sensible middle for someone tracking training.
+export const DEFAULT_PROTEIN_GOAL_LEVEL: ProteinGoalLevel = "active";
+
+// Map an (optional) stored goal string to a level, defaulting to active. Forward-compat
+// hook for #719 goal onboarding: the gather reads whatever setting lands and passes it
+// here, so wiring a real goal later is a one-line change with no engine edit.
+export function resolveProteinGoalLevel(
+  goal: string | null | undefined
+): ProteinGoalLevel {
+  switch ((goal ?? "").toLowerCase()) {
+    case "rda":
+    case "general":
+    case "sedentary":
+      return "rda";
+    case "active":
+    case "fitness":
+      return "active";
+    case "hypertrophy":
+    case "muscle":
+    case "muscle_gain":
+    case "bodybuilding":
+      return "hypertrophy";
+    case "cut":
+    case "deficit":
+    case "preservation":
+      return "cut";
+    default:
+      return DEFAULT_PROTEIN_GOAL_LEVEL;
+  }
+}
+
+export interface ProteinTarget {
+  goal: ProteinGoalLevel;
+  goalLabel: string;
+  gPerKgLow: number;
+  gPerKgHigh: number;
+  // The mass the band was scaled by, and which basis it is.
+  massKg: number;
+  massBasis: "lean" | "total";
+  // Absolute grams/day band (rounded to the nearest 5 g for display honesty).
+  gramsLow: number;
+  gramsHigh: number;
+}
+
+function round5(n: number): number {
+  return Math.round(n / 5) * 5;
+}
+
+// The goal-scaled per-day protein band. Prefers lean mass when a positive lean_mass_kg is
+// supplied (else total bodyweight). Returns null when no bodyweight is known (nothing to
+// scale by). Never prescriptive — a band the surfaces frame as informational.
+export function proteinTarget(args: {
+  goal: ProteinGoalLevel;
+  bodyweightKg: number | null;
+  leanMassKg?: number | null;
+}): ProteinTarget | null {
+  const useLean = args.leanMassKg != null && args.leanMassKg > 0;
+  const massKg = useLean
+    ? (args.leanMassKg as number)
+    : args.bodyweightKg != null && args.bodyweightKg > 0
+      ? args.bodyweightKg
+      : null;
+  if (massKg == null) return null;
+  const band = GOAL_BANDS[args.goal];
+  return {
+    goal: args.goal,
+    goalLabel: band.label,
+    gPerKgLow: band.low,
+    gPerKgHigh: band.high,
+    massKg,
+    massBasis: useLean ? "lean" : "total",
+    gramsLow: round5(band.low * massKg),
+    gramsHigh: round5(band.high * massKg),
+  };
+}
+
+// ---- Adequacy: intake vs target -------------------------------------------
+
+export type ProteinAdequacyStatus = "below" | "within" | "above";
+
+export interface ProteinAdequacy {
+  intake: ProteinIntake;
+  target: ProteinTarget;
+  status: ProteinAdequacyStatus;
+}
+
+// Combine intake + target into an adequacy verdict, or null when either is missing.
+// `below` = under the band floor, `above` = over the ceiling, else `within`. For an
+// `estimated` basis a `below` is NOT a definite shortfall (the intake is a floor) — the
+// wording, not this status, carries that caveat (mirroring the #578 RDA-adequacy split).
+export function assessProteinAdequacy(
+  intake: ProteinIntake | null,
+  target: ProteinTarget | null
+): ProteinAdequacy | null {
+  if (!intake || !target) return null;
+  const status: ProteinAdequacyStatus =
+    intake.grams < target.gramsLow
+      ? "below"
+      : intake.grams > target.gramsHigh
+        ? "above"
+        : "within";
+  return { intake, target, status };
+}
+
+// ---- Finding identity + formatting (shared by every surface) ---------------
+
+// The findings-bus namespace for the protein-adequacy coaching observation. One stable
+// key per profile (the subject is "am I hitting my protein target?"), so a dismiss follows
+// the topic. Registered in RULE_FINDING_PREFIXES so a page's prefix guard can match it.
+export const PROTEIN_ADEQUACY_PREFIX = "protein-adequacy:";
+
+export function proteinAdequacySignalKey(): string {
+  return `${PROTEIN_ADEQUACY_PREFIX}shortfall`;
+}
+
+// Round a protein figure for display (whole grams).
+function g(n: number): string {
+  return String(Math.round(n));
+}
+
+// A phrase naming the intake's basis, for the copy.
+export function proteinBasisPhrase(basis: ProteinBasis): string {
+  switch (basis) {
+    case "tracked":
+      return "tracked intake";
+    case "logged":
+      return "logged intake";
+    case "estimated":
+      return "logged foods";
+  }
+}
+
+// The intake summary line. Estimated ALWAYS carries the floor caveat; tracked/logged read
+// as measured totals. e.g. "≈95 g/day from logged foods (a floor — actual likely higher)".
+export function proteinIntakeSummary(intake: ProteinIntake): string {
+  if (intake.basis === "estimated")
+    return `≈${g(intake.grams)} g/day from logged foods (a floor — actual likely higher)`;
+  return `~${g(intake.grams)} g/day from your ${proteinBasisPhrase(intake.basis)}`;
+}
+
+// The target band line. e.g. "~130–180 g/day (1.6–2.2 g/kg lean mass, muscle gain)".
+export function proteinTargetSummary(target: ProteinTarget): string {
+  const massWord = target.massBasis === "lean" ? "g/kg lean mass" : "g/kg";
+  return `~${g(target.gramsLow)}–${g(target.gramsHigh)} g/day (${target.gPerKgLow}–${target.gPerKgHigh} ${massWord}, ${target.goalLabel})`;
+}
+
+export function proteinAdequacyTitle(a: ProteinAdequacy): string {
+  switch (a.status) {
+    case "below":
+      return "Protein may be below your goal range";
+    case "above":
+      return "Protein is above your goal range";
+    case "within":
+      return "Protein is in your goal range";
+  }
+}
+
+// The informational, never-prescriptive detail. An `estimated` basis is stated as a floor
+// (the shortfall is not asserted); a `tracked` basis states the gap directly. Always
+// closes with the framing that this is informational, not prescriptive.
+export function proteinAdequacyDetail(a: ProteinAdequacy): string {
+  const intake = proteinIntakeSummary(a.intake);
+  const target = proteinTargetSummary(a.target);
+  const massNote =
+    a.target.massBasis === "lean" ? " (scaled to your lean body mass)" : "";
+  let lead: string;
+  if (a.status === "below") {
+    lead =
+      a.intake.basis === "estimated"
+        ? `Your logged foods add up to ${intake} — below the ${target}${massNote}. Because that's a floor, your real intake may already be there; if it isn't, a little more protein helps.`
+        : `Your protein is ${intake} — below the ${target}${massNote}. Nudging it up supports your goal.`;
+  } else if (a.status === "above") {
+    lead = `Your protein is ${intake} — above the ${target}${massNote}. That's fine for most people; no action needed.`;
+  } else {
+    lead = `Your protein is ${intake} — within the ${target}${massNote}. Nice.`;
+  }
+  return `${lead} Informational, not medical or dietary advice.`;
+}
+
+// The evidence line: the g/kg basis behind the band.
+export function proteinAdequacyEvidence(a: ProteinAdequacy): string {
+  return `Target ${a.target.gPerKgLow}–${a.target.gPerKgHigh} g/kg (ISSN position stand). Informational, not prescriptive.`;
+}
