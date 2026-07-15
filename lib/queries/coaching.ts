@@ -7,7 +7,8 @@ import {
   getRecentDatedExercises,
   getStrengthByExercise,
 } from "./training";
-import { getIntensitySignal } from "./zones";
+import { getDayLoadInputs, getIntensitySignal } from "./zones";
+import { loadingDates } from "../training-zones";
 import {
   nextRestEpisode,
   recommendCoaching,
@@ -110,6 +111,7 @@ export function gatherCoachingInput(
     strength: getStrengthByExercise(profileId),
     cardio: getCardioByActivity(profileId, distanceUnit),
     trainingDates: getActivityDates(profileId),
+    loadingDates: loadingDates(getDayLoadInputs(profileId)),
     datedExercises: getRecentDatedExercises(profileId),
     availableEquipment: availableEquipmentKinds(profileId),
     activeRoutine: getActiveRoutine(profileId),

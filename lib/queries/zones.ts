@@ -26,6 +26,7 @@ import {
   zoneMinuteTotals,
   AEROBIC_THRESHOLD_ZONE,
   type ActivityWindowInput,
+  type DayLoadInput,
   type HrBucket,
   type PolarizedSplit,
   type WeeklyZoneMinutes,
@@ -163,6 +164,61 @@ export function getZone2MinutesInWindow(
   const windows = activityWindows(activityWindowInputs(profileId, start));
   const scoped = scopeBucketsToWindows(buckets, windows);
   return zoneMinuteTotals(scoped, model)[AEROBIC_THRESHOLD_ZONE - 1];
+}
+
+// Per-day load inputs (issue #754) over a trailing window: for each day with a
+// logged activity, its easy/hard HR split (when window-scoped HR covers it) and its
+// total session minutes, ready for the pure isLoadingDay classifier. The coaching
+// gather runs these through loadingDates() so the overtraining/load rest triggers
+// key on hard sessions, not every activity. No planned-intent yet (#740/#741 will
+// supply routine day-type / deload; the classifier already accepts it).
+export function getDayLoadInputs(profileId: number, days = 42): DayLoadInput[] {
+  const td = today(profileId);
+  const since = shiftDateStr(td, -(days - 1));
+
+  // Total session minutes per day from all activities (the duration fallback).
+  // duration_min is stored regardless of a start time, so this also covers days with
+  // no bounded HR window.
+  const durRows = db
+    .prepare(
+      `SELECT date, COALESCE(SUM(duration_min), 0) AS dur
+         FROM activities
+        WHERE profile_id = ? AND date >= ?
+        GROUP BY date`
+    )
+    .all(profileId, since) as { date: string; dur: number }[];
+  const byDate = new Map<string, DayLoadInput>();
+  for (const r of durRows) {
+    byDate.set(r.date, {
+      date: r.date,
+      durationMin: r.dur > 0 ? r.dur : null,
+    });
+  }
+
+  // Per-day easy/hard split from window-scoped HR buckets, when a zone model exists.
+  const model = getProfileZoneModel(profileId);
+  if (model) {
+    const buckets = hrBuckets(profileId, since);
+    const windows = activityWindows(activityWindowInputs(profileId, since));
+    const scoped = scopeBucketsToWindows(buckets, windows);
+    const byDay = new Map<string, HrBucket[]>();
+    for (const b of scoped) {
+      const day = b.ts.slice(0, 10);
+      let arr = byDay.get(day);
+      if (!arr) byDay.set(day, (arr = []));
+      arr.push(b);
+    }
+    for (const [day, bs] of byDay) {
+      const split = polarizedSplit(bs, model);
+      byDate.set(day, {
+        ...(byDate.get(day) ?? { date: day }),
+        date: day,
+        split,
+      });
+    }
+  }
+
+  return [...byDate.values()];
 }
 
 // The easy/hard polarization split over a trailing rolling window (default 6

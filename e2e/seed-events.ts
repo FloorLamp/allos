@@ -613,8 +613,9 @@ console.log(
 // ── Coaching rest-episode continuity fixtures (#44 item 3b) ───────────────────
 // Force a rest nudge for profile 1 today (a short night, below the 6h floor) and
 // pre-seed a rest episode that started YESTERDAY, so the Training → Overview
-// "Next workout" card reads "Second easy day" (a continuing easy stretch) rather
-// than a fresh "Rest or take it easy today" alert. Dates follow the app timezone
+// "Next workout" card reads "Rest or take it easy — 2nd day" (a persisting
+// recommendation, #752) rather than a fresh "Rest or take it easy today" alert.
+// Dates follow the app timezone
 // via today()/shiftDateStr so this is deterministic regardless of the host TZ.
 // Synthetic values only — no real PHI.
 const COACH_TODAY = today(PROFILE_ID);
