@@ -252,9 +252,13 @@ describe("goalHighlights", () => {
       makeGoal({ id: 4, title: "D" }),
       makeGoal({ id: 5, title: "E" }),
     ];
-    const hi = goalHighlights(goals, new Map(), 2);
+    const hi = goalHighlights(goals, new Map(), "2026-06-01", 2);
     expect(hi.map((h) => h.title)).toEqual(["A", "D"]);
     expect(hi[0].pct).toBe(50);
     expect(hi[1].pct).toBeNull();
+    // Bar tint is the shared pace map: a dateless in-progress goal → on-pace (brand),
+    // never a raw-completion rose; a goal with no numeric basis renders no bar.
+    expect(hi[0].barClass).toBe("bg-brand-500");
+    expect(hi[1].barClass).toBe("");
   });
 });

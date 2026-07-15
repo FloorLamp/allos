@@ -1,4 +1,9 @@
-import type { FrequencyPace } from "@/lib/goals";
+import {
+  type FrequencyPace,
+  type PaceTone,
+  PACE_BORDER_CLASS,
+  PACE_FILL_CLASS,
+} from "@/lib/goals";
 
 // One weekly frequency target's progress, normalized for display.
 export interface WeeklyTarget {
@@ -7,18 +12,27 @@ export interface WeeklyTarget {
   count: number;
   perWeek: number;
   met: boolean;
-  // Paced status (#748 item 3). When supplied it drives the chip's colour so the
-  // dashboard agrees with the /nutrition Weekly-habits badge (one computation:
-  // getFrequencyTargetProgress). Optional so surfaces that predate pacing render
-  // unchanged from the met/count fallback below.
+  // Paced status (#748 item 3 / #760). When supplied it drives the chip's tone so
+  // every surface agrees (one computation: getFrequencyTargetProgress). Optional so
+  // a caller with no pace data falls back to the legacy met/count colouring below.
   pace?: FrequencyPace;
 }
 
-// The canonical weekly-target chip: a labelled row of squares (one per weekly
-// rep, filled by sessions logged) inside a status-coloured border. When `pace` is
-// given: emerald = met, sky = on pace, amber = behind. Without it, the legacy
-// met/count colouring (emerald = met, amber = in progress, rose = not started).
-// Becomes a button when `onClick` is given (e.g. to select it for editing).
+// The chip's pace verdict as a shared PaceTone (#780). With a paced `pace` (every LIVE
+// call site passes it — guarded by pace-chip-wiring.test.ts) the tone IS that
+// FrequencyPace, so a chip is never "failed"/rose: a recurring week resets rather than
+// fails. Only the LEGACY met/count fallback (a caller with no pace data — none of the
+// live four) can reach the old not-started rose, kept solely for backward compat.
+function chipTone(met: boolean, count: number, pace?: FrequencyPace): PaceTone {
+  if (pace) return pace;
+  return met ? "met" : count > 0 ? "behind" : "failed";
+}
+
+// The canonical weekly-target chip: a labelled row of squares (one per weekly rep,
+// filled by sessions logged) inside a pace-coloured border. Border AND square-fill
+// format over the ONE shared tone→class map (#780): emerald = met, brand = on pace,
+// amber = behind (never rose for a paced week). Becomes a button when `onClick` is
+// given (e.g. to select it for editing).
 export function WeeklyTargetChip({
   target: { label, count, perWeek, met, pace },
   onClick,
@@ -28,18 +42,8 @@ export function WeeklyTargetChip({
   onClick?: () => void;
   selected?: boolean;
 }) {
-  const border = pace
-    ? pace === "met"
-      ? "border-emerald-400 dark:border-emerald-700"
-      : pace === "on-pace"
-        ? "border-sky-400 dark:border-sky-700"
-        : "border-amber-400 dark:border-amber-600"
-    : met
-      ? "border-emerald-400 dark:border-emerald-700"
-      : count > 0
-        ? "border-amber-400 dark:border-amber-600"
-        : "border-rose-400 dark:border-rose-800";
-  const base = `flex items-center gap-2 rounded-lg border px-2.5 py-1.5 ${border}`;
+  const tone = chipTone(met, count, pace);
+  const base = `flex items-center gap-2 rounded-lg border px-2.5 py-1.5 ${PACE_BORDER_CLASS[tone]}`;
   const inner = (
     <>
       <span className="text-xs font-medium text-slate-600 dark:text-slate-300">
@@ -50,17 +54,7 @@ export function WeeklyTargetChip({
           <span
             key={j}
             className={`h-3 w-3 rounded-sm ${
-              j < count
-                ? pace
-                  ? pace === "met"
-                    ? "bg-emerald-500"
-                    : pace === "on-pace"
-                      ? "bg-sky-400"
-                      : "bg-amber-400"
-                  : met
-                    ? "bg-emerald-500"
-                    : "bg-amber-400"
-                : "bg-slate-300 dark:bg-ink-700"
+              j < count ? PACE_FILL_CLASS[tone] : "bg-slate-300 dark:bg-ink-700"
             }`}
           />
         ))}
@@ -75,6 +69,8 @@ export function WeeklyTargetChip({
         type="button"
         onClick={onClick}
         title={`${title} — click to edit`}
+        data-testid="weekly-target-chip"
+        data-tone={tone}
         className={`${base} cursor-pointer transition ${
           selected
             ? "ring-2 ring-brand-500 ring-offset-2 ring-offset-white dark:ring-offset-ink-950"
@@ -86,7 +82,12 @@ export function WeeklyTargetChip({
     );
   }
   return (
-    <div title={title} className={base}>
+    <div
+      title={title}
+      data-testid="weekly-target-chip"
+      data-tone={tone}
+      className={base}
+    >
       {inner}
     </div>
   );

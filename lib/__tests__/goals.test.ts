@@ -2,14 +2,19 @@ import { describe, expect, it } from "vitest";
 import {
   BODY_METRIC_LABELS,
   fmtBodyMetric,
+  frequencyPace,
   frequencyScopeLabel,
   goalBarClass,
   goalBodyTargetText,
   goalMatchesExercise,
+  goalPaceTone,
   goalPct,
   goalsForExercise,
   goalTargetText,
   isGoalStatus,
+  PACE_BORDER_CLASS,
+  PACE_FILL_CLASS,
+  type PaceTone,
 } from "@/lib/goals";
 import { GOAL_STATUSES } from "@/lib/types";
 import type { Goal } from "@/lib/types";
@@ -80,14 +85,153 @@ describe("goalBodyTargetText", () => {
   });
 });
 
+// goalPaceTone — a goal's bar colours by a PACE verdict, not raw completion (#780).
+describe("goalPaceTone", () => {
+  const dates = (
+    createdAt: string,
+    targetDate: string | null,
+    today: string
+  ) => ({
+    createdAt,
+    targetDate,
+    today,
+  });
+
+  it("is met at/over target regardless of dates", () => {
+    expect(
+      goalPaceTone(100, dates("2026-01-01", "2026-12-31", "2026-06-01"))
+    ).toBe("met");
+    // Even past a blown deadline, a completed goal is met (done, not failed).
+    expect(
+      goalPaceTone(120, dates("2026-01-01", "2026-02-01", "2026-06-01"))
+    ).toBe("met");
+  });
+
+  it("is on-pace (brand) for a goal with no target date until complete", () => {
+    expect(goalPaceTone(0, dates("2026-01-01", null, "2026-06-01"))).toBe(
+      "on-pace"
+    );
+    expect(goalPaceTone(40, dates("2026-01-01", null, "2026-06-01"))).toBe(
+      "on-pace"
+    );
+  });
+
+  it("fails (rose) ONLY when a dated deadline has passed short of target", () => {
+    // Deadline (Feb 1) is behind today (Jun 1) and progress < 100 → failed.
+    expect(
+      goalPaceTone(80, dates("2026-01-01", "2026-02-01", "2026-06-01"))
+    ).toBe("failed");
+  });
+
+  it("paces linearly between creation and deadline for a live dated goal", () => {
+    // Window Jan1→Jul1 (~181d); at Apr1 ~90d elapsed → ~50% owed.
+    // 60% done ≥ ~50% owed → on-pace.
+    expect(
+      goalPaceTone(60, dates("2026-01-01", "2026-07-01", "2026-04-01"))
+    ).toBe("on-pace");
+    // 20% done < ~50% owed → behind.
+    expect(
+      goalPaceTone(20, dates("2026-01-01", "2026-07-01", "2026-04-01"))
+    ).toBe("behind");
+  });
+
+  it("day-one dated goal is on-pace, NEVER rose (issue #780 regression)", () => {
+    // Created today with a future deadline: 0% elapsed owes 0% → on-pace even at 0%.
+    const created = "2026-06-01";
+    expect(goalPaceTone(0, dates(created, "2026-12-01", created))).toBe(
+      "on-pace"
+    );
+    expect(goalPaceTone(0, dates(created, "2026-12-01", created))).not.toBe(
+      "failed"
+    );
+  });
+});
+
 describe("goalBarClass", () => {
-  it("tints by completion band", () => {
+  it("formats the pace verdict over the shared fill map", () => {
+    // Dateless / no-opts → brand until complete (no false rose verdict).
+    expect(goalBarClass(0)).toBe("bg-brand-500");
+    expect(goalBarClass(40)).toBe("bg-brand-500");
     expect(goalBarClass(100)).toBe("bg-emerald-500");
-    expect(goalBarClass(120)).toBe("bg-emerald-500");
-    expect(goalBarClass(67)).toBe("bg-brand-500");
-    expect(goalBarClass(34)).toBe("bg-amber-500");
-    expect(goalBarClass(33)).toBe("bg-rose-500");
-    expect(goalBarClass(0)).toBe("bg-rose-500");
+    // A blown dated deadline short of target is the only rose.
+    expect(
+      goalBarClass(80, {
+        createdAt: "2026-01-01",
+        targetDate: "2026-02-01",
+        today: "2026-06-01",
+      })
+    ).toBe("bg-rose-500");
+    // Behind a live deadline → amber.
+    expect(
+      goalBarClass(20, {
+        createdAt: "2026-01-01",
+        targetDate: "2026-07-01",
+        today: "2026-04-01",
+      })
+    ).toBe("bg-amber-500");
+  });
+});
+
+// #780: the goal bar and the weekly-habit chip must format over the ONE shared
+// tone→class map so they can't drift into two colour languages. Every PaceTone maps
+// to a fill and a border, and the on-pace hue is `brand` on both (sky retired).
+describe("shared pace tone→class map", () => {
+  const tones: PaceTone[] = ["met", "on-pace", "behind", "failed"];
+
+  it("defines a fill and border class for every tone", () => {
+    for (const t of tones) {
+      expect(PACE_FILL_CLASS[t]).toBeTruthy();
+      expect(PACE_BORDER_CLASS[t]).toBeTruthy();
+    }
+  });
+
+  it("uses brand for on-pace and never the retired sky hue", () => {
+    expect(PACE_FILL_CLASS["on-pace"]).toContain("brand");
+    for (const t of tones) {
+      expect(PACE_FILL_CLASS[t]).not.toContain("sky");
+      expect(PACE_BORDER_CLASS[t]).not.toContain("sky");
+    }
+  });
+
+  it("goalBarClass and a weekly chip render the SAME tone to the SAME fill class", () => {
+    // A shared pace STATE expressed two ways: a goal 40% of the way with 40% of its
+    // window elapsed (on-pace), and a habit 2/5 with 2/5 of the week elapsed
+    // (on-pace). Both must resolve to the same shared fill class.
+    const goalTone = goalPaceTone(40, {
+      createdAt: "2026-01-01",
+      targetDate: "2026-01-11", // 10-day window
+      today: "2026-01-05", // 4/10 elapsed → owes 40%; 40% done → on-pace
+    });
+    const habitPace = frequencyPace(2, 5, 3); // 3/7 elapsed, floor(5*3/7)=2, 2≥2 → on-pace
+    expect(goalTone).toBe("on-pace");
+    expect(habitPace).toBe("on-pace");
+    // The chip's tone is its FrequencyPace; both index the same map.
+    expect(PACE_FILL_CLASS[goalTone]).toBe(PACE_FILL_CLASS[habitPace]);
+    expect(PACE_FILL_CLASS[goalTone]).toBe("bg-brand-500");
+  });
+});
+
+// #780 regression: a fresh week's habit chip must never colour rose. frequencyPace is
+// 3-state (met/on-pace/behind) so it CAN'T return a failed/rose tone at all.
+describe("frequencyPace never fails a week (Monday-morning regression)", () => {
+  it("a not-started habit early in the week is on-pace or behind, never failed", () => {
+    for (let perWeek = 1; perWeek <= 7; perWeek++) {
+      for (let elapsedDays = 1; elapsedDays <= 7; elapsedDays++) {
+        const p = frequencyPace(0, perWeek, elapsedDays);
+        expect(["on-pace", "behind"]).toContain(p);
+        expect(p).not.toBe("met");
+        // Whatever the tone, it maps into the shared map without a rose.
+        expect(PACE_FILL_CLASS[p]).not.toContain("rose");
+      }
+    }
+  });
+
+  it("Monday morning (day 1) of a fresh week is on-pace, not behind", () => {
+    // floor(perWeek * 1 / 7) === 0 for perWeek ≤ 6, so 0 done ≥ 0 owed → on-pace.
+    // (A daily 7×/week habit already owes 1 on day 1 — behind, but still never rose.)
+    for (let perWeek = 1; perWeek <= 6; perWeek++) {
+      expect(frequencyPace(0, perWeek, 1)).toBe("on-pace");
+    }
   });
 });
 

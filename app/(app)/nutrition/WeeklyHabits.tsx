@@ -4,7 +4,11 @@ import {
   getFrequencyTargetProtocolNames,
   getIntakeSafetyContext,
 } from "@/lib/queries";
-import { frequencyScopeLabel, frequencyPaceLabel } from "@/lib/goals";
+import {
+  frequencyScopeLabel,
+  frequencyPaceLabel,
+  PACE_BADGE_CLASS,
+} from "@/lib/goals";
 import { FOOD_GROUPS } from "@/lib/food-groups";
 import {
   foodHabitInteractions,
@@ -70,13 +74,7 @@ export default function WeeklyHabits({ profileId }: { profileId: number }) {
                     <span
                       data-testid={`habit-pace-${p.target.scope_value}`}
                       data-pace={p.pace}
-                      className={`badge ${
-                        p.pace === "met"
-                          ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
-                          : p.pace === "on-pace"
-                            ? "bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300"
-                            : "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
-                      }`}
+                      className={`badge ${PACE_BADGE_CLASS[p.pace]}`}
                     >
                       {frequencyPaceLabel(p.pace)}
                     </span>

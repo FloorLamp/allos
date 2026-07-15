@@ -7,6 +7,7 @@ import type { GoalProgress } from "@/lib/queries";
 import type { WeightUnit } from "@/lib/settings";
 import {
   goalBarClass,
+  goalPaceTone,
   goalPct,
   goalTargetText,
   goalBodyTargetText,
@@ -306,7 +307,20 @@ export default function GoalsManager({
                       )}
                     <div className="mt-1 h-2 w-full rounded-full bg-slate-100 dark:bg-ink-800">
                       <div
-                        className={`h-2 rounded-full transition-colors ${goalBarClass(pct)}`}
+                        data-testid="goal-bar"
+                        data-tone={goalPaceTone(pct, {
+                          createdAt: g.created_at,
+                          targetDate: g.target_date,
+                          today: todayStr,
+                        })}
+                        className={`h-2 rounded-full transition-colors ${goalBarClass(
+                          pct,
+                          {
+                            createdAt: g.created_at,
+                            targetDate: g.target_date,
+                            today: todayStr,
+                          }
+                        )}`}
                         style={{ width: `${pct}%` }}
                       />
                     </div>

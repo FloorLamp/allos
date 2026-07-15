@@ -290,6 +290,7 @@ export default async function Dashboard() {
             goals={goals}
             goalProgress={goalProgress}
             freqTargets={freqTargets}
+            today={on}
           />
         );
       case "coaching":

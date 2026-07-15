@@ -47,6 +47,7 @@ export default async function HistorySection() {
     count: t.count,
     perWeek: t.per_week,
     met: t.met,
+    pace: t.pace,
   }));
 
   return (
