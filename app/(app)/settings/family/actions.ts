@@ -162,44 +162,63 @@ export async function deleteProfile(formData: FormData): Promise<FamilyResult> {
       .all(id) as { stored_path: string }[]
   ).map((r) => r.stored_path);
 
-  writeTx(() => {
-    // Child tables first, reached through their parent (they carry no profile_id
-    // of their own, so these deletes are exempt from the profile-scoping test).
-    db.prepare(
-      "DELETE FROM exercise_sets WHERE activity_id IN (SELECT id FROM activities WHERE profile_id = ?)"
-    ).run(id);
-    db.prepare(
-      "DELETE FROM activity_routes WHERE activity_id IN (SELECT id FROM activities WHERE profile_id = ?)"
-    ).run(id);
-    db.prepare(
-      "DELETE FROM intake_item_logs WHERE item_id IN (SELECT id FROM intake_items WHERE profile_id = ?)"
-    ).run(id);
-    db.prepare(
-      "DELETE FROM intake_item_doses WHERE item_id IN (SELECT id FROM intake_items WHERE profile_id = ?)"
-    ).run(id);
-    db.prepare(
-      `DELETE FROM intake_item_pairs
+  // Disable foreign_keys for the whole subtree sweep (issue #729). The app
+  // connection runs foreign_keys = ON, and OWNED_TABLES lists medical_documents
+  // BEFORE its FK children (conditions/encounters/procedures/family_history/
+  // care_plan_items/care_goals/appointments — each carries a document_id FK with
+  // no ON DELETE action), so `DELETE FROM medical_documents` would fire an
+  // immediate FK violation while those child rows still reference it and abort the
+  // whole transaction — a profile that imported clinical narratives couldn't be
+  // deleted. The entire profile subtree is being removed atomically in this one
+  // writeTx, so intra-subtree FK checks add no safety; we drop them for the sweep
+  // and restore the prior setting after. This mirrors migrate()'s fkWasOn pattern
+  // (lib/db.ts) for FK-parent rebuilds. NOTE: PRAGMA foreign_keys is a NO-OP inside
+  // a transaction, so it MUST be toggled OUTSIDE/around writeTx — writeTx's BEGIN
+  // IMMEDIATE still takes the write lock up front.
+  const fkWasOn = (db.pragma("foreign_keys", { simple: true }) as number) === 1;
+  if (fkWasOn) db.pragma("foreign_keys = OFF");
+  try {
+    writeTx(() => {
+      // Child tables first, reached through their parent (they carry no profile_id
+      // of their own, so these deletes are exempt from the profile-scoping test).
+      db.prepare(
+        "DELETE FROM exercise_sets WHERE activity_id IN (SELECT id FROM activities WHERE profile_id = ?)"
+      ).run(id);
+      db.prepare(
+        "DELETE FROM activity_routes WHERE activity_id IN (SELECT id FROM activities WHERE profile_id = ?)"
+      ).run(id);
+      db.prepare(
+        "DELETE FROM intake_item_logs WHERE item_id IN (SELECT id FROM intake_items WHERE profile_id = ?)"
+      ).run(id);
+      db.prepare(
+        "DELETE FROM intake_item_doses WHERE item_id IN (SELECT id FROM intake_items WHERE profile_id = ?)"
+      ).run(id);
+      db.prepare(
+        `DELETE FROM intake_item_pairs
         WHERE a_id IN (SELECT id FROM intake_items WHERE profile_id = ?)
            OR b_id IN (SELECT id FROM intake_items WHERE profile_id = ?)`
-    ).run(id, id);
+      ).run(id, id);
 
-    // Every directly profile-owned table, deleted by profile_id. (No FK cascade —
-    // upgraded DBs got profile_id via addColumnIfMissing, which can't attach an ON
-    // DELETE action, so rows are removed explicitly here.) OWNED_TABLES is the
-    // shared source of truth (lib/owned-tables.ts): a new owned table added there
-    // is cleared here automatically, so a forgotten table can't silently leave a
-    // deleted person's PHI behind.
-    for (const t of OWNED_TABLES) {
-      db.prepare(`DELETE FROM ${t} WHERE profile_id = ?`).run(id);
-    }
+      // Every directly profile-owned table, deleted by profile_id. (No FK cascade —
+      // upgraded DBs got profile_id via addColumnIfMissing, which can't attach an ON
+      // DELETE action, so rows are removed explicitly here.) OWNED_TABLES is the
+      // shared source of truth (lib/owned-tables.ts): a new owned table added there
+      // is cleared here automatically, so a forgotten table can't silently leave a
+      // deleted person's PHI behind.
+      for (const t of OWNED_TABLES) {
+        db.prepare(`DELETE FROM ${t} WHERE profile_id = ?`).run(id);
+      }
 
-    db.prepare("DELETE FROM profile_settings WHERE profile_id = ?").run(id);
-    db.prepare("DELETE FROM login_profiles WHERE profile_id = ?").run(id);
-    db.prepare(
-      "UPDATE sessions SET active_profile_id = NULL WHERE active_profile_id = ?"
-    ).run(id);
-    db.prepare("DELETE FROM profiles WHERE id = ?").run(id);
-  });
+      db.prepare("DELETE FROM profile_settings WHERE profile_id = ?").run(id);
+      db.prepare("DELETE FROM login_profiles WHERE profile_id = ?").run(id);
+      db.prepare(
+        "UPDATE sessions SET active_profile_id = NULL WHERE active_profile_id = ?"
+      ).run(id);
+      db.prepare("DELETE FROM profiles WHERE id = ?").run(id);
+    });
+  } finally {
+    if (fkWasOn) db.pragma("foreign_keys = ON");
+  }
   recordAudit({
     loginId: admin.login.id,
     profileId: admin.profile.id,
