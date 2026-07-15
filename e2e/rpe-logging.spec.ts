@@ -33,7 +33,12 @@ test("RPE selector round-trips through the activity form (#743)", async ({
 
   const title = "RPE round-trip probe";
   await page.getByRole("textbox", { name: "Activity name" }).fill(title);
-  await pickActivity(page, "Bench Press");
+  // Pick the fully-qualified variant, NOT the bare base "Bench Press": a bare
+  // variant base needs a per-set equipment pick before it can save (#342), and the
+  // frequency-ranked suggestion list reorders as sibling specs log activity, so a
+  // bare-name .first() match nondeterministically lands on the blocked base when
+  // the full suite runs (save pauses → no persisted row → the spec times out).
+  await pickActivity(page, "Barbell Bench Press");
 
   // Fill one complete working set (weight + reps) so the session auto-saves.
   // Retry the fills to ride out the hydration window: a value typed before the
