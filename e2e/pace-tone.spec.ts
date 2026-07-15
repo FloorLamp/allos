@@ -66,8 +66,11 @@ test("dashboard habit chips are pace-coloured and rose-free (#780)", async ({
   await expect(card).toBeVisible();
 
   const chips = card.getByTestId("weekly-target-chip");
-  // The dashboard hides met habits, but the seed leaves partial habits (Chest,
-  // cardio) open, so at least one chip renders.
+  // The dashboard hides MET habits, and by mid-week the scripts/seed.ts activity
+  // history satisfies all of its targets — so determinism comes from the dedicated
+  // e2e/seed-events.ts fixture: a "Glutes 5×/week" region target that no seeded
+  // exercise can ever satisfy (nothing Glutes-primary is logged). It stays 0/5 open
+  // all week, so at least one chip always renders, and its pace is on-pace/behind.
   expect(await chips.count()).toBeGreaterThan(0);
   for (let i = 0; i < (await chips.count()); i++) {
     const chip = chips.nth(i);

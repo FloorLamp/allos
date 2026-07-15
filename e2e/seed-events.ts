@@ -1840,3 +1840,25 @@ db.prepare(
 console.log(
   `e2e: seeded an edit-locked (hand-edited) Withings body-metric row on profile ${PROFILE_ID} for the edit-lock badge (#659)`
 );
+
+// A permanently-OPEN weekly frequency target for the pace-tone spec (#780/#782): a
+// region target on Glutes, the ONE muscle region no seeded exercise maps to
+// (regionForExercise: Deadlift/Row/Pull Up → Back, Squat/RDL/Leg Press/Leg Curl/
+// Calf Raise → Legs, Plank → Core — nothing Glutes-primary in scripts/seed.ts or
+// this file), so the seeded history can never satisfy it in ANY week. The dashboard
+// Goals-and-habits card hides MET habits, and by mid-week the four scripts/seed.ts
+// targets are all met — leaving zero chips and a day-of-week-dependent spec. This
+// target stays 0/5 all week → always at least one open chip, whose pace is
+// "on-pace" (day 1) or "behind" (later) — never met, never rose — exactly the
+// invariant pace-tone.spec.ts pins. Idempotent by (profile, kind, value).
+db.prepare(
+  `DELETE FROM frequency_targets
+    WHERE profile_id = ? AND scope_kind = 'region' AND scope_value = 'Glutes'`
+).run(PROFILE_ID);
+db.prepare(
+  `INSERT INTO frequency_targets (profile_id, scope_kind, scope_value, per_week)
+   VALUES (?, 'region', 'Glutes', 5)`
+).run(PROFILE_ID);
+console.log(
+  `e2e: seeded a never-satisfiable Glutes 5x/week frequency target on profile ${PROFILE_ID} for pace-tone.spec (#780)`
+);
