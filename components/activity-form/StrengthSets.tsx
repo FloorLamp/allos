@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Equipment } from "@/lib/types";
 import { isBarbell } from "@/lib/types";
 import type { UnitPrefs } from "@/lib/settings";
@@ -44,7 +44,11 @@ import {
   IconBarbell,
   IconAlertTriangle,
   IconCheck,
+  IconInfoCircle,
 } from "@tabler/icons-react";
+import { getExerciseGuide } from "@/lib/exercise-guides";
+import ModalShell from "@/components/ModalShell";
+import ExerciseGuideSection from "@/components/ExerciseGuideSection";
 import {
   partIntent,
   partTotal,
@@ -158,6 +162,12 @@ export default function StrengthSets({
   onPlateTarget: (si: number, field: "weight" | "weightRight") => void;
 }) {
   const p = part;
+  // The how-to guide for the current lift (#734). Catalog lifts have one; a
+  // custom (non-catalog) lift resolves to undefined, so the ⓘ affordance simply
+  // doesn't render. The overlay reuses the SAME guide section the exercise detail
+  // panel embeds — one guide component, never a second exercise surface.
+  const [guideOpen, setGuideOpen] = useState(false);
+  const guide = getExerciseGuide(p.name);
   // Recent attempts as a reference — shown when logging fresh AND while editing
   // (issue #188). The current session is always excluded (`currentActivityId`),
   // so a session never appears in its own "Recent": in create that's the
@@ -411,6 +421,33 @@ export default function StrengthSets({
     );
   return (
     <>
+      {/* A "How to" affordance for the current lift (#734) — shown only when a
+          catalog guide exists (custom lifts have none). Opens the shared guide
+          section in an overlay, scoped to the selected implement. */}
+      {guide && (
+        <div className="mt-2 flex justify-end">
+          <button
+            type="button"
+            onClick={() => setGuideOpen(true)}
+            data-testid="exercise-guide-open"
+            className="inline-flex items-center gap-1 text-xs font-medium text-slate-400 transition hover:text-brand-600 dark:text-slate-500 dark:hover:text-brand-400"
+          >
+            <IconInfoCircle className="h-4 w-4" />
+            How to
+          </button>
+        </div>
+      )}
+      {guideOpen && guide && (
+        <ModalShell
+          title={`How to: ${p.name}`}
+          onClose={() => setGuideOpen(false)}
+        >
+          <ExerciseGuideSection
+            name={p.name}
+            equipment={variantOf(p.name)?.equipment ?? null}
+          />
+        </ModalShell>
+      )}
       {showBodyweightPrompt && (
         <div className="mt-2 rounded-md border border-brand-200 bg-brand-50 px-2.5 py-2 text-xs dark:border-brand-900 dark:bg-brand-950/40">
           <div className="font-medium text-slate-600 dark:text-slate-300">

@@ -4,7 +4,7 @@
 // ./recommend (recommendWorkout); ./workouts wires the two together.
 
 import { suggestTitle, type MuscleRegion } from "../lifts";
-import type { NotificationMessage } from "./types";
+import type { NotificationAction, NotificationMessage } from "./types";
 
 export interface WorkoutRecommendation {
   focus: MuscleRegion[];
@@ -20,14 +20,36 @@ export interface WorkoutRecommendation {
 // Render a WorkoutRecommendation as the Telegram message. Split out from the
 // DB-reading path so the cross-surface consistency test can drive it with the
 // same next-workout result the dashboard/overview render.
+//
+// `deepLinkBase` (the instance's public URL) enables the "How to" deep-link
+// button to the lead exercise's detail panel (#734). Two-way principle: it's a
+// URL button — it carries the exercise NAME and deep-links, never a mutation.
+// Empty base (unset public URL / unit tests) ⇒ no button.
 export function formatWorkoutReminder(
-  rec: WorkoutRecommendation | null
+  rec: WorkoutRecommendation | null,
+  deepLinkBase = ""
 ): NotificationMessage | null {
   if (!rec) return null;
 
   const focusLabel = rec.exercises.length
     ? suggestTitle(rec.exercises) // "Push day" / "Chest workout" / "Full body workout"
     : rec.focus.join(" / ");
+
+  // The lead exercise's how-to guide, as a deep-link button to the Analyze panel
+  // (#734). Only when a public URL is configured and a lead lift exists.
+  const base = deepLinkBase.replace(/\/$/, "");
+  const primary = rec.exercises[0];
+  const guideActions: NotificationAction[] =
+    base && primary
+      ? [
+          {
+            label: `📖 How to: ${primary}`,
+            url: `${base}/training?tab=analyze&kind=strength&exercise=${encodeURIComponent(
+              primary
+            )}`,
+          },
+        ]
+      : [];
 
   // Recovery override: a rest day reframes the nudge; the workout suggestion, if
   // any, becomes a "when you're ready" footnote rather than the headline.
@@ -41,6 +63,7 @@ export function formatWorkoutReminder(
       title: `🛌 ${rec.rest.title}`,
       body: lines.join("\n"),
       kind: "workout",
+      ...(guideActions.length ? { actions: guideActions } : {}),
     };
   }
 
@@ -60,5 +83,6 @@ export function formatWorkoutReminder(
         : "🏋️ Today's workout",
     body: lines.join("\n"),
     kind: "workout",
+    ...(guideActions.length ? { actions: guideActions } : {}),
   };
 }

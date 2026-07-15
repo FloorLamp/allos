@@ -8,6 +8,7 @@ import { recommendWorkout } from "./recommend";
 import { formatWorkoutReminder } from "./workout-format";
 import type { NotificationMessage } from "./types";
 import type { CoachingInput } from "../coaching";
+import { getPublicUrl } from "../settings";
 
 // `gathered` (#447): forwards the tick's once-per-profile coaching gather to
 // recommendWorkout so the workout slot and the rest-episode reconcile share ONE
@@ -16,5 +17,8 @@ export function buildWorkoutTargetReminder(
   profileId: number,
   gathered?: CoachingInput
 ): NotificationMessage | null {
-  return formatWorkoutReminder(recommendWorkout(profileId, gathered));
+  return formatWorkoutReminder(
+    recommendWorkout(profileId, gathered),
+    getPublicUrl()
+  );
 }
