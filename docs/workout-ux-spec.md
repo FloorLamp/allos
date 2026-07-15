@@ -1,6 +1,6 @@
 # Spec: Workout UX — exercise guides, muscle anatomy, routines
 
-Status: **draft** · Owner: TBD
+Status: **partial** (Pillar 2: `MuscleId` vocabulary + `muscleRegion` rollup + catalog muscle tagging shipped, #735; the rest still draft) · Owner: TBD
 
 ## Problem
 
