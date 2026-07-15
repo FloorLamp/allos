@@ -78,18 +78,24 @@ and committed. A CI-checked invariant asserts every catalog
 
 ### Surface
 
-One `ExerciseGuideSheet` client component (slide-over), reachable everywhere a
-catalog exercise name appears:
+The app ALREADY has the per-exercise surface: `components/ExerciseDetailPanel.tsx`
+renders e1RM trend, strength-standards standing, the coached next-set target,
+PRs, and linked goals, and is hosted by `JournalView`, the Training Analyze
+section, and `StrengthExplorer`. Guides become a new "How to" section of that
+ONE panel — a separate `ExerciseGuideSheet` would be a hand-mirrored second
+exercise surface, the exact disease the responsive-surfaces/one-computation
+rules exist to prevent.
 
-- the activity-form lift picker (ⓘ affordance per option),
-- `StrengthSection` / `StrengthExplorer` history rows,
+Entry points that don't already host the panel open the same panel in an
+overlay:
+
+- the lift picker in `components/activity-form/StrengthSets.tsx` (the
+  strength set editor after the #721 form decomposition) — ⓘ affordance per
+  option,
+- `StrengthSection` history rows,
 - the next-workout recommendation card's exercise list,
 - Telegram nudges via deep link (`/training?exercise=…` — two-way principle:
   buttons carry names/ids and deep-link, no new mutation).
-
-The sheet is also the natural home for per-exercise data the app already
-computes — next-set seed (`lib/exercise-window.ts`), e1RM trend, PRs,
-`StrengthStandards` — making it a proper exercise-detail surface.
 
 Custom (non-catalog) lifts have no guide; the affordance simply doesn't
 render. One standard disclaimer line ("form reference, not medical advice")
@@ -151,8 +157,8 @@ cost of this pillar.
 
 Three rendering modes, each fed by one computation:
 
-1. **Per-exercise** (in the guide sheet): primary saturated, secondary muted.
-   Pure `LiftDef` lookup.
+1. **Per-exercise** (in the `ExerciseDetailPanel` guide section): primary
+   saturated, secondary muted. Pure `LiftDef` lookup.
 2. **Per-session** (a logged workout / day view): union across the session's
    sets.
 3. **Weekly coverage** (Training → Overview): trailing-window set-volume per
@@ -266,7 +272,10 @@ calendar-derived — because a deload schedules recovery in real time, not
 after N sessions.)
 
 A "log this session" action pre-fills the activity form with the resolved
-slate.
+slate — and since the form already has a live mode (#340:
+`LiveWorkoutPanel` + rest timer + wake lock), a routine day can go straight
+from "here's your session" to working through it at the gym with no new
+in-workout machinery.
 
 ### Reach tier (#449)
 
@@ -299,12 +308,16 @@ Builds directly on Pillar 2's coverage math.
   the finding is held).
 - **Surfaces (formatters over the one computation):** the coverage anatomy
   figure tints by verdict (with the text list carrying exact numbers — never
-  color-only); a coaching-tier observation per sustained shortfall ("side
-  delts: 2 sets this week, band floor is 6"), emitted alongside the existing
-  training observations with an episodic `dedupeKey` in a new registered
-  prefix (`muscle-volume:`), so a dismissal is per-episode (#436) and the
-  #448 reflection guard covers it. Calm tier only — never a push
-  notification, never the hero.
+  color-only). Follow the HR-zone precedent from #721 (`lib/training-zones.ts`):
+  the verdict is precomputed ONCE and every surface consumes the same verdict
+  - one shared palette module, so tints and labels cannot drift between the
+    figure, the text list, and the observation. Also a coaching-tier
+    observation per sustained shortfall ("side
+    delts: 2 sets this week, band floor is 6"), emitted alongside the existing
+    training observations with an episodic `dedupeKey` in a new registered
+    prefix (`muscle-volume:`), so a dismissal is per-episode (#436) and the
+    #448 reflection guard covers it. Calm tier only — never a push
+    notification, never the hero.
 - **Not a priority engine (#559):** bands inform the coverage display and one
   dismissible observation. They do NOT reorder the recommendation core's
   exercise ranking in v1; at most the routine builder shows a band summary of
@@ -347,9 +360,11 @@ else about them.
   `CHECK (rpe IS NULL OR (rpe >= 5 AND rpe <= 10))`, half-point steps
   enforced at the action boundary). Composes with the existing declared
   intent (`target_reps` / `to_failure`) rather than replacing it.
-- **UI:** an optional compact selector on the set row in the activity form
-  (blank by default — logging RPE is never required); shown on history rows
-  when present.
+- **UI:** an optional compact selector on the set row in
+  `components/activity-form/StrengthSets.tsx`, matching the post-#721 set-row
+  ergonomics (steppers, #337) and staying out of the way of live mode's set
+  check-off (#340). Blank by default — logging RPE is never required; shown
+  on history rows when present.
 - **Progression:** the double-progression engine consumes the anchor set's
   RPE when present, as a modifier on its existing verdicts (named constants,
   boundary-tested): top-of-range reps at RPE ≤ 7 ⇒ a larger load increment;
@@ -384,9 +399,10 @@ else about them.
   adopt/activate/deactivate/edit-routine actions incl. the
   targets-replacement transaction, set-save with/without `rpe`; DB tier — if
   routine state feeds a findings builder, it ships a realistic fixture test
-  (#448); e2e — guide sheet opens from the picker, anatomy figure renders
-  per-exercise and coverage modes, adopt-template flow, custom-routine
-  builder round-trip, RPE selector round-trips through the activity form.
+  (#448); e2e — the exercise detail panel (with guide section) opens from
+  the picker, anatomy figure renders per-exercise and coverage modes,
+  adopt-template flow, custom-routine builder round-trip, RPE selector
+  round-trips through the activity form.
 - **README + seed:** update Training docs/nav in the same PR; seed gains a
   sample active routine so the overview/coverage surfaces render on a fresh
   seed.
@@ -395,8 +411,9 @@ else about them.
 
 ## Phasing (each independently shippable)
 
-1. **Exercise detail sheet + static guides** — content + one component, no
-   schema change. Highest value/effort ratio.
+1. **Static guides in the existing `ExerciseDetailPanel`** (+ overlay entry
+   points) — content + one panel section, no schema change. Highest
+   value/effort ratio.
 2. **`MuscleId` enrichment + anatomy SVG** — per-exercise mode first (drops
    into the Phase-1 sheet), then weekly coverage on Overview.
 3. **Routines** — schema + engine changes + builder UI; lands after 1–2 so
