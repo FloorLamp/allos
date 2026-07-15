@@ -37,6 +37,7 @@ import { getActiveRoutine } from "@/lib/routines";
 import { availableEquipmentKinds } from "@/lib/equipment";
 import { buildRoutineSessionPrefill } from "@/lib/activity-form-model";
 import TodaysSessionCard from "./TodaysSessionCard";
+import MuscleAnatomy from "@/components/MuscleAnatomy";
 import { dispWeight, fmtDistance, fmtKmh, fmtWeight } from "@/lib/units";
 import LineChartCard from "@/components/LineChartCard";
 import LogActivityButton from "@/components/LogActivityButton";
@@ -303,42 +304,67 @@ export default async function OverviewSection() {
             No strength sets logged in the last {coverageDays} days.
           </p>
         ) : (
-          <ul className="mt-4 space-y-2">
-            {coverage.map((row) => {
-              // ONE verdict (#221): the shared bandVerdict + palette the finding
-              // engine and the future SVG figure (#737) also read — no second
-              // computation, so chip, tint, and observation cannot drift.
-              const pres = bandPresentation(bandVerdict(row.muscle, row.sets));
-              return (
-                <li
-                  key={row.muscle}
-                  data-testid="muscle-coverage-row"
-                  className="flex items-center gap-3 text-sm"
-                >
-                  <span className="w-28 shrink-0 text-slate-600 dark:text-slate-300">
-                    {row.label}
-                  </span>
-                  <span
-                    className="h-2.5 min-w-[0.375rem] rounded-full bg-emerald-500/80"
-                    style={{
-                      width: `${coverageMax > 0 ? (row.sets / coverageMax) * 100 : 0}%`,
-                    }}
-                    aria-hidden="true"
-                  />
-                  <span
-                    data-testid="muscle-coverage-verdict"
-                    data-verdict={pres.verdict}
-                    className={`ml-auto shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${pres.badgeClass}`}
+          <div className="mt-4 flex flex-col gap-6 sm:flex-row sm:items-start">
+            {/* The accessible per-muscle list stays permanent (#736 list-first);
+                the anatomy figure (#737) renders ALONGSIDE it, never replacing
+                it. */}
+            <ul className="flex-1 space-y-2">
+              {coverage.map((row) => {
+                // ONE verdict (#221): the shared bandVerdict + palette the
+                // finding engine AND the SVG figure (#737) below also read — no
+                // second computation, so chip, tint, and observation cannot
+                // drift.
+                const pres = bandPresentation(
+                  bandVerdict(row.muscle, row.sets)
+                );
+                return (
+                  <li
+                    key={row.muscle}
+                    data-testid="muscle-coverage-row"
+                    className="flex items-center gap-3 text-sm"
                   >
-                    {pres.label}
-                  </span>
-                  <span className="shrink-0 tabular-nums text-slate-500 dark:text-slate-400">
-                    {fmtSets(row.sets)} {row.sets === 1 ? "set" : "sets"}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
+                    <span className="w-28 shrink-0 text-slate-600 dark:text-slate-300">
+                      {row.label}
+                    </span>
+                    <span
+                      className="h-2.5 min-w-[0.375rem] rounded-full bg-emerald-500/80"
+                      style={{
+                        width: `${coverageMax > 0 ? (row.sets / coverageMax) * 100 : 0}%`,
+                      }}
+                      aria-hidden="true"
+                    />
+                    <span
+                      data-testid="muscle-coverage-verdict"
+                      data-verdict={pres.verdict}
+                      className={`ml-auto shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${pres.badgeClass}`}
+                    >
+                      {pres.label}
+                    </span>
+                    <span className="shrink-0 tabular-nums text-slate-500 dark:text-slate-400">
+                      {fmtSets(row.sets)} {row.sets === 1 ? "set" : "sets"}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+            {/* Heat per muscle from the SAME coverageFromSets result the list
+                renders (#221/#482). Each muscle is tinted by the SHARED #742
+                band verdict (bandPresentation(bandVerdict(...)).color), so the
+                figure and the list chips read the same palette — the coordinated
+                outcome #737 designed the per-entry `color` prop for. The
+                component's own intensity ramp stays the fallback for any entry
+                left without a color. */}
+            <MuscleAnatomy
+              mode="coverage"
+              coverage={coverage.map((row) => ({
+                muscle: row.muscle,
+                sets: row.sets,
+                color: bandPresentation(bandVerdict(row.muscle, row.sets))
+                  .color,
+              }))}
+              className="mx-auto w-full max-w-[14rem] shrink-0 sm:mx-0 sm:w-52"
+            />
+          </div>
         )}
       </div>
 
