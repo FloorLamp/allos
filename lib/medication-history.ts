@@ -5,6 +5,7 @@
 // current-vs-past partitioning, course-state derivation, and timeline shaping.
 
 import { daysBetweenDateStr } from "./date";
+import { MEDICATIONS_HREF } from "./hrefs";
 import type { TimelineEvent } from "./timeline-format";
 import type {
   MedStopReason,
@@ -242,7 +243,7 @@ export function medicationCourseEvents(
         title: `Started ${r.medName}`,
         subtitle: "Medication started",
         detail: r.notes,
-        href: "/medicine",
+        href: MEDICATIONS_HREF,
         tone: "good",
       });
     }
@@ -257,7 +258,7 @@ export function medicationCourseEvents(
         title: `Stopped ${r.medName}`,
         subtitle: subtitleParts.join(" — "),
         detail: r.notes,
-        href: "/medicine",
+        href: MEDICATIONS_HREF,
         tone: r.stopReason === "side_effect" ? "warn" : "default",
       });
     }

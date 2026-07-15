@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 
 // Situations are id-keyed rows (#560), not free-text string-keyed state. This drives
-// the real situations bar on /medicine: the seed activates "Illness" (surfacing the
+// the real situations bar on Nutrition → Supplements: the seed activates "Illness" (surfacing the
 // situational Zinc supplement), so toggling the id-keyed situation off/on moves Zinc
 // between "due" and "Not scheduled today" and the active state survives a reload.
 // A casing-variant toggle resolves to the SAME vocabulary row (the exact fragility
@@ -10,7 +10,7 @@ import { test, expect } from "@playwright/test";
 test("situations bar toggles the id-keyed situation and gates its supplement", async ({
   page,
 }) => {
-  await page.goto("/medicine");
+  await page.goto("/nutrition?tab=supplements");
 
   const bar = page.getByTestId("situations-bar");
   const illness = bar.getByRole("button", { name: "Illness", exact: true });
@@ -27,7 +27,7 @@ test("situations bar toggles the id-keyed situation and gates its supplement", a
   await expect(zincDue).toHaveCount(1);
 
   // Toggle Illness OFF → Zinc drops out of the due buckets into "Not scheduled
-  // today" — a COLLAPSED <details> (app/(app)/medicine/page.tsx), so expand it via
+  // today" — a COLLAPSED <details> (app/(app)/nutrition/SupplementsTab.tsx), so expand it via
   // its summary before asserting the row (contents aren't visible while closed).
   await illness.click();
   await expect(illness).toHaveAttribute("aria-pressed", "false");

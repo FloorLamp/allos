@@ -83,5 +83,6 @@ export async function markAttentionDose(formData: FormData) {
   markDoseTaken(profile.id, doseId, null, today(profile.id));
   revalidatePath("/");
   revalidatePath("/upcoming");
-  revalidatePath("/medicine");
+  revalidatePath("/nutrition");
+  revalidatePath("/medications");
 }

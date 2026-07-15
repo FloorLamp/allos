@@ -24,6 +24,7 @@ import {
   getImportReviewCount,
   getRecentActivityEquipmentIds,
   getMostRecentActivityEditData,
+  profileHasIntakeItems,
 } from "@/lib/queries";
 import { getTimelineDates } from "@/lib/timeline";
 
@@ -97,6 +98,10 @@ export default async function AppLayout({
   // /nutrition page independently gates on the same predicate. Eligible on
   // unknown age (hide only on a positive infant match).
   const foodLoggingRelevant = isFoodLoggingRelevant(getUserAge(profile.id));
+  // Keeps the Nutrition nav entry (→ Supplements tab) reachable for an infant who
+  // takes a supplement even though food-group logging isn't relevant (#746). The
+  // Food tab still gates server-side on isFoodLoggingRelevant.
+  const hasIntakeItems = profileHasIntakeItems(profile.id);
   // Count of integrations currently in a failed state — drives the header
   // "import review" badge (Data → Review). Self-clearing on the next good sync.
   const reviewCount = getImportReviewCount(profile.id);
@@ -131,6 +136,7 @@ export default async function AppLayout({
                     isAdmin={isAdmin}
                     multiProfile={multiProfile}
                     foodLoggingRelevant={foodLoggingRelevant}
+                    hasIntakeItems={hasIntakeItems}
                     reviewCount={reviewCount}
                     readOnly={readOnly}
                   />
@@ -149,6 +155,7 @@ export default async function AppLayout({
                     isAdmin={isAdmin}
                     multiProfile={multiProfile}
                     foodLoggingRelevant={foodLoggingRelevant}
+                    hasIntakeItems={hasIntakeItems}
                     reviewCount={reviewCount}
                     readOnly={readOnly}
                   />

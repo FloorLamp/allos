@@ -154,12 +154,12 @@ describe("recordNameLink (category-correct row links)", () => {
     expect(recordNameLink("lab", null)).toBeNull();
     expect(recordNameLink("lab", "  ")).toBeNull();
   });
-  it("REGRESSION: a prescription row links to /medicine, never a biomarker page", () => {
+  it("REGRESSION: a prescription row links to /medications, never a biomarker page", () => {
     const link = recordNameLink("prescription", "Lisinopril 10 mg");
-    expect(link?.href).toBe("/medicine");
+    expect(link?.href).toBe("/medications");
     expect(link?.href).not.toContain("/biomarkers");
     // Even with no canonical name, prescriptions still point at medications.
-    expect(recordNameLink("prescription", null)?.href).toBe("/medicine");
+    expect(recordNameLink("prescription", null)?.href).toBe("/medications");
   });
   it("gives scans and unknown categories NO link rather than a wrong one", () => {
     expect(recordNameLink("scan", "Chest X-ray")).toBeNull();
@@ -255,7 +255,7 @@ describe("row shapers", () => {
     ).toMatchObject({ href: "/care-goals" });
     expect(
       medicationItem({ id: 1, name: "Lisinopril", kind: "medication" })
-    ).toMatchObject({ href: "/medicine", detail: "medication" });
+    ).toMatchObject({ href: "/medications", detail: "medication" });
   });
 });
 

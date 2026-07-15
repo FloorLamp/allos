@@ -4,15 +4,15 @@ import path from "node:path";
 
 // Drug-/supplement-interaction checking (issue #144). The seed gives profile 1 a
 // known-interacting pair — Warfarin (rxcui-keyed) + Ibuprofen (name-matched), a MAJOR
-// bleeding-risk interaction. /medicine must show a severity-ranked warning row, and
+// bleeding-risk interaction. The Medications page must show a severity-ranked warning row, and
 // the SAME finding must appear on Upcoming and stay hidden once dismissed. Assertions
 // are scoped to the page's main region; the Upcoming dismiss mutates seeded state, so
 // this test owns that side effect for the run.
 
-test("shows the seeded warfarin + ibuprofen interaction warning on /medicine", async ({
+test("shows the seeded warfarin + ibuprofen interaction warning on /medications", async ({
   page,
 }) => {
-  await page.goto("/medicine");
+  await page.goto("/medications");
   const main = page.getByRole("main");
 
   const warnings = main.getByTestId("interaction-warnings");
@@ -87,10 +87,10 @@ test("the interaction surfaces on Upcoming and stays hidden once dismissed", asy
 // hyperkalemia warning. Before #279 this pair was a silent false negative: the
 // single scalar product rxcui matched no ingredient-keyed concept and no synonym
 // listed the combo brand.
-test("flags the seeded combination-medication pair (Hyzaar + Klor-Con) on /medicine", async ({
+test("flags the seeded combination-medication pair (Hyzaar + Klor-Con) on /medications", async ({
   page,
 }) => {
-  await page.goto("/medicine");
+  await page.goto("/medications");
   const main = page.getByRole("main");
 
   const warnings = main.getByTestId("interaction-warnings");

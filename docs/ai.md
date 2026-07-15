@@ -117,4 +117,4 @@ active-ingredient codes (how combination medications get matched). Those are the
 **only** things the feature ever sends off the box. The lookup has a short timeout and **degrades silently** —
 if it's unreachable (or you never use it), the item simply has no RxCUI and
 interactions still match by name. Nothing about interaction detection, the
-`/medicine` warnings, or the Upcoming finding contacts the network.
+the Supplements/Medications warnings, or the Upcoming finding contacts the network.

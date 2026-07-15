@@ -10,9 +10,9 @@ import { test, expect } from "@playwright/test";
 test("medication card shows the adherence summary and refill badge (#747)", async ({
   page,
 }) => {
-  await page.goto("/medicine");
+  await page.goto("/medications");
 
-  // The med renders in the (always-open) "Medications — Current" section.
+  // The med renders in the (always-open) "Current" section on the Medications page.
   const card = page
     .locator("div.card")
     .filter({ hasText: "Adherence Refill Med (e2e)" });

@@ -53,6 +53,7 @@ describe("isNavLeafVisible", () => {
     restricted: false,
     multiProfile: true,
     foodLoggingRelevant: true,
+    hasIntakeItems: false,
     restrictedHrefs,
     ...over,
   });
@@ -101,14 +102,27 @@ describe("isNavLeafVisible", () => {
     ).toBe(false); // single-profile member
   });
 
-  it("hides requiresFoodLogging leaves for an infant profile (issue #591)", () => {
+  it("hides requiresFoodLogging leaves for an infant profile (issue #591/#746)", () => {
     const leaf = { href: "/nutrition", requiresFoodLogging: true };
     expect(isNavLeafVisible(leaf, ctx({ foodLoggingRelevant: true }))).toBe(
       true
     );
-    expect(isNavLeafVisible(leaf, ctx({ foodLoggingRelevant: false }))).toBe(
-      false
-    );
+    // Infant, no intake items → hidden.
+    expect(
+      isNavLeafVisible(
+        leaf,
+        ctx({ foodLoggingRelevant: false, hasIntakeItems: false })
+      )
+    ).toBe(false);
+    // #746: an infant who tracks any intake item (e.g. vitamin D drops) keeps the
+    // Nutrition entry so the Supplements tab stays reachable — food-logging gates
+    // the Food tab, not the whole surface.
+    expect(
+      isNavLeafVisible(
+        leaf,
+        ctx({ foodLoggingRelevant: false, hasIntakeItems: true })
+      )
+    ).toBe(true);
     // A plain leaf is unaffected by the food-logging gate.
     expect(
       isNavLeafVisible(

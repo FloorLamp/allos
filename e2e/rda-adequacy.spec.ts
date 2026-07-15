@@ -1,15 +1,15 @@
 import { test, expect } from "@playwright/test";
 
 // RDA-adequacy view (issue #578). The seeded stack (scripts/seed.ts) includes Calcium
-// 500 mg/day — below the ~1000 mg adult RDA — so /medicine must render an adequacy row
+// 500 mg/day — below the ~1000 mg adult RDA — so the Supplements tab must render an adequacy row
 // stating the SHARE the supplements provide, with the load-bearing framing "supplements
 // alone provide X% of the RDA" and never "deficient" (food intake is unknown). Uses the
 // shared authenticated storageState.
 
-test("/medicine shows the RDA-adequacy share for an under-RDA stack nutrient (#578)", async ({
+test("Supplements tab shows the RDA-adequacy share for an under-RDA stack nutrient (#578)", async ({
   page,
 }) => {
-  await page.goto("/medicine");
+  await page.goto("/nutrition?tab=supplements");
 
   const section = page.getByTestId("rda-adequacy");
   await expect(section).toBeVisible();

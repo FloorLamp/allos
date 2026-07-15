@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 //
 // It's a COARSE guard, not a proof (the repo style — cf. profile-scoping.test.ts):
 // it inspects only the brace-matched body of each `export async function`, so a
-// bare `return;` in a PRIVATE helper (e.g. medicine's applyDoseStatus, appointments'
+// bare `return;` in a PRIVATE helper (e.g. supplement-actions' applyDoseStatus, appointments'
 // setStatus) is intentionally out of scope. A genuinely-needed bare return inside a
 // nested callback of an action should be written `return undefined;` (or refactored)
 // — an EMPTY `return;` in an exported action body is exactly the silent-no-op smell
@@ -38,14 +38,17 @@ const MODULES = [
   "medical",
   "goals",
   "protocols",
-  "medicine",
   "upcoming",
   "trends",
 ]
   .map((m) => path.join("app", "(app)", m, "actions.ts"))
   // Appointments merged into the Visits page (#288): their write actions live in
   // encounters/appointment-actions.ts now, not their own route's actions.ts.
-  .concat(path.join("app", "(app)", "encounters", "appointment-actions.ts"));
+  .concat(path.join("app", "(app)", "encounters", "appointment-actions.ts"))
+  // The former /medicine action module split by kind (#746): shared supplement/
+  // dose CRUD under nutrition, medication-lifecycle under medications.
+  .concat(path.join("app", "(app)", "nutrition", "supplement-actions.ts"))
+  .concat(path.join("app", "(app)", "medications", "actions.ts"));
 
 // Length-preserving neutralizer: blanks the contents of line/block comments and
 // string/template literals (keeping newlines) so brace-matching and the bare-return

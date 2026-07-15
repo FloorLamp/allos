@@ -148,7 +148,13 @@ export async function POST(req: Request) {
   // Refresh the surfaces the replayed writes feed, but only when something actually
   // landed (a pure duplicate/rejected batch changed nothing).
   if (anyApplied) {
-    for (const p of ["/", "/medicine", "/trends", "/biomarkers"]) {
+    for (const p of [
+      "/",
+      "/nutrition",
+      "/medications",
+      "/trends",
+      "/biomarkers",
+    ]) {
       revalidatePath(p);
     }
   }

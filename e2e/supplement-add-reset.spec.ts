@@ -14,11 +14,11 @@ const CRITICAL_NAME = "Reset Guard Critical Med";
 test("add-mode form clears the critical flag for the next item (issue #627)", async ({
   page,
 }) => {
-  await page.goto("/medicine");
+  await page.goto("/nutrition?tab=supplements");
 
   const addCard = page
     .locator("div.card")
-    .filter({ hasText: "Add supplement or medication" });
+    .filter({ hasText: "Add supplement" });
 
   const critical = addCard.getByTestId("supp-critical-new");
 

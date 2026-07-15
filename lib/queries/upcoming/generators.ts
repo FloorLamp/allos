@@ -24,7 +24,12 @@ import {
   isLowSupply,
   DEFAULT_LOW_SUPPLY_DAYS,
 } from "../../refill";
-import { biomarkerViewHref } from "../../hrefs";
+import {
+  biomarkerViewHref,
+  intakeHref,
+  nutritionTabHref,
+  MEDICATIONS_HREF,
+} from "../../hrefs";
 import { refillSignalKey } from "../../refill-nudge";
 import { trainingSignalKey } from "../../workout-nudge";
 import { assessSchedule } from "../../immunization-status";
@@ -141,7 +146,7 @@ function doseItems(profileId: number, today: string): UpcomingItem[] {
       domain: "dose",
       title: supp.name,
       detail: detail || null,
-      href: "/medicine",
+      href: intakeHref(supp.kind),
       dueDate: null, // scheduled for today
       // Bucket label as the due-text ("Morning" / "Evening" / "Before sleep"…):
       // informative on its own and it explains the ordering to the user (#297).
@@ -189,7 +194,7 @@ function refillItems(profileId: number, today: string): UpcomingItem[] {
       title: s.name,
       detail:
         daysLeft <= 0 ? "Out of supply" : `≈${daysLeft} days of supply left`,
-      href: "/medicine",
+      href: intakeHref(s.kind),
       dueDate: shiftDateStr(today, daysLeft),
     });
   }
@@ -209,7 +214,7 @@ function dietaryLimitItems(profileId: number, today: string): UpcomingItem[] {
     domain: "dietary-limit" as const,
     title: ulWarningTitle(w),
     detail: ulWarningDetail(w, w.conditionCaveat),
-    href: "/medicine",
+    href: nutritionTabHref("supplements"),
     dueDate: null,
     band: "today" as const,
     dueText: "Review",
@@ -230,7 +235,7 @@ function interactionItems(profileId: number): UpcomingItem[] {
     domain: "interaction" as const,
     title: interactionTitle(hit),
     detail: interactionDetail(hit),
-    href: "/medicine",
+    href: MEDICATIONS_HREF,
     dueDate: null,
     band: "today" as const,
     dueText: "Review",
@@ -254,7 +259,7 @@ function pgxItems(profileId: number): UpcomingItem[] {
     domain: "pgx" as const,
     title: pgxTitle(hit),
     detail: pgxDetail(hit),
-    href: "/medicine",
+    href: MEDICATIONS_HREF,
     dueDate: null,
     band: "today" as const,
     dueText: "Review",

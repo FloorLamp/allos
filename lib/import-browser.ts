@@ -12,7 +12,12 @@
 import type { DocumentProducedCounts } from "./import-log";
 import type { WeightUnit } from "./settings";
 import { fmtWeight } from "./units";
-import { biomarkerViewHref, encounterHref, type AppRoute } from "./hrefs";
+import {
+  biomarkerViewHref,
+  encounterHref,
+  MEDICATIONS_HREF,
+  type AppRoute,
+} from "./hrefs";
 import {
   variantDisplayLabel,
   resultTypeLabel,
@@ -208,7 +213,7 @@ export function recordNameLink(
       };
     }
     case "prescription":
-      return { href: "/medicine", title: "View medications" };
+      return { href: MEDICATIONS_HREF, title: "View medications" };
     default:
       return null;
   }
@@ -444,7 +449,7 @@ export function medicationItem(row: {
     title: row.name,
     detail: detailLine(row.kind),
     date: null,
-    href: "/medicine",
+    href: MEDICATIONS_HREF,
   };
 }
 

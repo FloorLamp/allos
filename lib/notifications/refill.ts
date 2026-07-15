@@ -15,6 +15,7 @@
 //     item has left the tracked set entirely (issue #325).
 
 import { getSupplements, getRefillRates } from "../queries";
+import { nutritionTabHref } from "../hrefs";
 import { getFindingSuppressions } from "../queries/upcoming";
 import {
   daysOfSupplyLeft,
@@ -79,7 +80,11 @@ export function renderRefillMessage(
       },
     ];
     if (base) {
-      perItem.push({ label: "Open refill form", url: `${base}/medicine`, row });
+      perItem.push({
+        label: "Open refill form",
+        url: `${base}${nutritionTabHref("supplements")}`,
+        row,
+      });
     }
     return perItem;
   });

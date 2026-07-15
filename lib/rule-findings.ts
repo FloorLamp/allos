@@ -67,7 +67,7 @@ import { fmtWeight, round } from "./units";
 import { formatLongDate } from "./format-date";
 import { describeEta } from "./trend-projection";
 import type { Finding } from "./findings";
-import { biomarkerViewHref, type AppRoute } from "./hrefs";
+import { biomarkerViewHref, nutritionTabHref, type AppRoute } from "./hrefs";
 import type { FoodSuggestion } from "./food-suggest";
 import type { WeightUnit } from "./settings";
 import {
@@ -571,7 +571,7 @@ function adherencePatternToFinding(p: AdherencePattern): Finding {
     title: p.title,
     detail: p.detail,
     tone: "info",
-    actionHref: "/medicine",
+    actionHref: nutritionTabHref("supplements"),
     actionLabel: "View schedule",
   };
 }

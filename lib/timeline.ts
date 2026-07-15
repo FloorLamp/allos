@@ -38,7 +38,12 @@ export type {
   TimelineDay,
   TimelineEvent,
 } from "./timeline-format";
-import { encounterHref, immunizationHref, importHref } from "./hrefs";
+import {
+  encounterHref,
+  immunizationHref,
+  importHref,
+  intakeHref,
+} from "./hrefs";
 
 export interface TimelineOptions {
   category?: TimelineEvent["category"];
@@ -439,7 +444,7 @@ function collectEvents(
             : "Supplement doses confirmed",
         subtitle: `${l.count} dose${l.count === 1 ? "" : "s"}`,
         detail: compactList((l.names ?? "").split(","), 5),
-        href: "/medicine",
+        href: intakeHref(l.kind),
         tone: "good",
         detailItems: parseDetailItems(l.dose_details),
       },

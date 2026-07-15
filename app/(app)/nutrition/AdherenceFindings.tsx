@@ -5,7 +5,7 @@ import { getFindingSuppressions } from "@/lib/queries";
 import { activeFindings } from "@/lib/findings";
 import { buildAdherencePatternFindings } from "@/lib/rule-findings";
 import FindingsList from "@/components/FindingsList";
-import { dismissAdherencePattern } from "./actions";
+import { dismissAdherencePattern } from "./supplement-actions";
 
 // Adherence-pattern observations (issue #45, domain 3) for the Supplements & Meds
 // page: scheduled doses whose misses cluster on a specific weekday ("most Fridays")

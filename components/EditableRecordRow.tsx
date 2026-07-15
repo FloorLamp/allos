@@ -29,7 +29,7 @@ export default function EditableRecordRow({
   const r = record;
 
   // Category-correct name link (#271): series categories link to the biomarker
-  // series view, prescriptions to /medicine, scans/notes get NO link rather than
+  // series view, prescriptions to /medications, scans/notes get NO link rather than
   // a wrong one. Pure decision in lib/import-browser.
   const nameLink = recordNameLink(r.category, r.canonical_name);
 

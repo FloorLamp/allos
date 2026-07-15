@@ -11,12 +11,12 @@ const NAME = "Skip State Zinc";
 test("dose check-off cycles taken → skipped → clear as a tri-state", async ({
   page,
 }) => {
-  await page.goto("/medicine");
+  await page.goto("/nutrition?tab=supplements");
 
   // ── Create a single daily Morning dose ──────────────────────────────────────
   const addCard = page
     .locator("div.card")
-    .filter({ hasText: "Add supplement or medication" });
+    .filter({ hasText: "Add supplement" });
   await addCard.getByLabel("Name").fill(NAME);
   await addCard.getByLabel("Amount").first().fill("15 mg");
   await addCard.getByLabel("Time of day").first().selectOption("Morning");

@@ -78,7 +78,7 @@ test.describe("touch targets clear the 40px minimum (#644)", () => {
   test("the row kebab and dose circles have a >=40px hit box", async ({
     page,
   }) => {
-    await page.goto("/medicine");
+    await page.goto("/nutrition?tab=supplements");
 
     // The overflow kebab is the sole per-row action affordance; every supplement
     // row renders one.
@@ -157,14 +157,14 @@ test.describe("long unbreakable names wrap instead of clipping (#646)", () => {
   const NAME =
     "Hydrochlorothiazide/Lisinopril/Amlodipine/Metoprolol/Atorvastatin/Losartan";
 
-  test("a long-token medication name stays within the 390px row", async ({
+  test("a long-token item name stays within the 390px row", async ({
     page,
   }) => {
-    await page.goto("/medicine");
+    await page.goto("/nutrition?tab=supplements");
 
     const addCard = page
       .locator("div.card")
-      .filter({ hasText: "Add supplement or medication" });
+      .filter({ hasText: "Add supplement" });
     await addCard.getByLabel("Name").fill(NAME);
     await addCard.getByLabel("Amount").first().fill("1 tab");
     await addCard.getByLabel("Time of day").first().selectOption("Morning");

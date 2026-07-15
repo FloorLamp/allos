@@ -1,9 +1,9 @@
 import type { ReactNode } from "react";
 import { IconAlertTriangle, IconX } from "@tabler/icons-react";
-import { dismissMedicineFinding } from "./actions";
+import { dismissIntakeFinding } from "@/app/(app)/nutrition/supplement-actions";
 
 // Inline dismiss control for the page's finding cards (#435): posts the finding's
-// dedupeKey to the namespace-guarded dismissMedicineFinding action, which hides it
+// dedupeKey to the namespace-guarded dismissIntakeFinding action, which hides it
 // through the shared findings-suppression bus. One helper so every warning block
 // (UL, RDA, interaction, PGx) and the keep-apart bucket banner dismiss identically.
 export function DismissFindingButton({
@@ -17,7 +17,7 @@ export function DismissFindingButton({
     <form
       action={async (fd) => {
         "use server";
-        await dismissMedicineFinding(fd);
+        await dismissIntakeFinding(fd);
       }}
     >
       <input type="hidden" name="dedupe_key" value={dedupeKey} />
@@ -34,7 +34,7 @@ export function DismissFindingButton({
   );
 }
 
-// The shared /medicine finding-card anatomy (#747): an optional alert icon, a
+// The shared intake finding-card anatomy (#747): an optional alert icon, a
 // bold title, a detail line, an optional middle slot (`children` — e.g. the RDA
 // food-sources note), a small evidence/citation footnote, and the dismiss-via-bus
 // button. The blocks differ ONLY in tone (amber UL hazard, slate RDA calm, rose

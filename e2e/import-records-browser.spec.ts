@@ -65,7 +65,7 @@ test.describe("Import detail: tabbed records browser", () => {
     const nameLink = page.getByRole("link", {
       name: "E2E Amoxicillin 500 mg",
     });
-    await expect(nameLink).toHaveAttribute("href", "/medicine");
+    await expect(nameLink).toHaveAttribute("href", "/medications");
     // Nothing in the prescription panel may point at a biomarker series page.
     const biomarkerLinks = page.locator('table a[href^="/biomarkers/view"]');
     await expect(biomarkerLinks).toHaveCount(0);

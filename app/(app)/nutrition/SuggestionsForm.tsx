@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { generateSuggestions, type SuggestState } from "./actions";
+import { generateSuggestions, type SuggestState } from "./supplement-actions";
 import GenerateButton from "./GenerateButton";
 
 // AI-suggestions form. Uses useActionState so the server action's result (a

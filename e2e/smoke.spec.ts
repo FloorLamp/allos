@@ -12,7 +12,8 @@ const ROUTES = [
   "/upcoming",
   "/data",
   "/biomarkers",
-  "/medicine",
+  "/nutrition",
+  "/medications",
   "/settings",
 ];
 
@@ -201,7 +202,7 @@ test("command palette surfaces a seeded allergy for 'penicillin' (#19)", async (
 test("supplements page shows a refill days-left estimate with its basis (#38)", async ({
   page,
 }) => {
-  await page.goto("/medicine");
+  await page.goto("/nutrition?tab=supplements");
   const badge = page.getByTestId("refill-days-left").first();
   await expect(badge).toContainText(/days?\s+left/);
   await expect(badge).toContainText(/based on (your last 30 days|schedule)/);
@@ -214,7 +215,7 @@ test("supplements page shows a refill days-left estimate with its basis (#38)", 
 test("percent-strength medication resolves its 'What is this?' explainer (#272)", async ({
   page,
 }) => {
-  await page.goto("/medicine");
+  await page.goto("/medications");
   const card = page
     .locator(".card", { hasText: "Hydrocortisone 2.5% Cream" })
     .first();

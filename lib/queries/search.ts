@@ -10,6 +10,7 @@ import {
   type SearchGroup,
   type SearchHit,
 } from "../search-rank";
+import type { SupplementKind } from "../types";
 import { ENCOUNTER_REPRESENTATIVE_IDS } from "./medical";
 import {
   CONDITION_REPRESENTATIVE_IDS,
@@ -21,6 +22,9 @@ import {
   biomarkerViewHref,
   encounterHref,
   importHref,
+  intakeHref,
+  nutritionTabHref,
+  MEDICATIONS_HREF,
   type AppRoute,
 } from "../hrefs";
 
@@ -160,7 +164,7 @@ function activityHits(
 function supplementHits(profileId: number, like: string): SearchHit[] {
   const rows = db
     .prepare(
-      `SELECT id, name, active
+      `SELECT id, name, active, kind
          FROM intake_items
         WHERE profile_id = ?
           AND (name LIKE ? ESCAPE '\\' OR notes LIKE ? ESCAPE '\\')
@@ -171,13 +175,14 @@ function supplementHits(profileId: number, like: string): SearchHit[] {
     id: number;
     name: string;
     active: number;
+    kind: SupplementKind;
   }[];
   return rows.map((r) => ({
     domain: "supplement",
     key: `supplement:${r.id}`,
     title: r.name,
     subtitle: r.active ? "Active" : "Inactive",
-    href: "/medicine",
+    href: intakeHref(r.kind),
     date: null,
   }));
 }
@@ -610,9 +615,14 @@ const PAGES: {
       "care goals clinical targets a1c blood pressure goal from records",
   },
   {
-    title: "Supplements & Medications",
-    href: "/medicine",
-    keywords: "vitamins medications meds prescriptions medicine",
+    title: "Supplements",
+    href: nutritionTabHref("supplements"),
+    keywords: "vitamins supplements stack nutrition medicine",
+  },
+  {
+    title: "Medications",
+    href: MEDICATIONS_HREF,
+    keywords: "medications meds prescriptions rx drugs medicine",
   },
   {
     title: "Immunizations",

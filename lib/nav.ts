@@ -32,11 +32,15 @@ export function isGroupActive(childHrefs: string[], pathname: string): boolean {
 //   - age-gate: hidden when the active profile is age-restricted AND the href is
 //     in the caller's restricted set (see lib/age-gate.ts / Nav's
 //     RESTRICTED_HREFS).
-//   - `requiresFoodLogging`: hidden when the active profile is an infant (< 1 y),
-//     for whom food-group serving logging is meaningless (issue #591). Cosmetic —
-//     the /nutrition page independently gates on the same predicate
-//     (isFoodLoggingRelevant), so a direct URL still shows the calm note. Eligible
-//     on unknown age (hide only on a positive infant match).
+//   - `requiresFoodLogging`: gates the Nutrition entry for an infant profile
+//     (< 1 y). Since #746 Nutrition is a Food | Supplements umbrella, and infant
+//     supplements are real (vitamin D drops) even though the food-group serving
+//     log isn't (issue #591): the entry is shown when the profile is food-logging-
+//     eligible OR already tracks any intake item (`hasIntakeItems`). Cosmetic —
+//     the Food TAB independently gates on isFoodLoggingRelevant (a direct URL
+//     still shows the calm note there), and the Supplements tab is always
+//     reachable. Eligible on unknown age (hide only on a positive infant match
+//     AND no intake items).
 export function isNavLeafVisible(
   leaf: {
     href: string;
@@ -49,12 +53,18 @@ export function isNavLeafVisible(
     restricted: boolean;
     multiProfile: boolean;
     foodLoggingRelevant: boolean;
+    hasIntakeItems: boolean;
     restrictedHrefs: ReadonlySet<string>;
   }
 ): boolean {
   if (leaf.adminOnly && !ctx.isAdmin) return false;
   if (leaf.requiresMultiProfile && !ctx.multiProfile) return false;
-  if (leaf.requiresFoodLogging && !ctx.foodLoggingRelevant) return false;
+  if (
+    leaf.requiresFoodLogging &&
+    !ctx.foodLoggingRelevant &&
+    !ctx.hasIntakeItems
+  )
+    return false;
   if (ctx.restricted && ctx.restrictedHrefs.has(leaf.href)) return false;
   return true;
 }

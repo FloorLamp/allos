@@ -688,7 +688,10 @@ export async function runExtraction(
         // scheduled first-page-view trigger; absent → the kg/km fallback.
         loginId,
       })
-        .then(() => revalidatePath("/medicine"))
+        .then(() => {
+          revalidatePath("/nutrition");
+          revalidatePath("/medications");
+        })
         .catch((err) => log.error("recommendation run failed", { docId, err }));
     } catch (err) {
       log.error("post-import steps failed (document already imported)", {

@@ -1052,7 +1052,7 @@ console.log(
 // prescription (medical_records), a visit, a condition, an immunization, and a
 // referenced provider — so the records browser has a multi-tab strip to render:
 // default tab, ?tab= selection, category-correct row links (the prescription →
-// /medicine regression), the read-only visit listing deep-linking to
+// /medications regression), the read-only visit listing deep-linking to
 // /encounters/[id], and the Providers chip (linking to /providers). Fixed id 908; all content
 // synthetic (fictional analytes/clinic/patient — no real PHI).
 const BROWSER_DOC_ID = 908;
