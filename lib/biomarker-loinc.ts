@@ -188,6 +188,26 @@ export const LOINC_TO_CANONICAL: Record<string, string> = {
   "4679-7": "Reticulocytes", // Reticulocytes/Erythrocytes in Blood (method-less; %)
   "60474-4": "Reticulocytes, Absolute", // Reticulocytes [#/volume] in Blood (10^3/uL)
 
+  // ── Hematology (nucleated RBC, immature granulocytes) — issue #723 ──────────
+  // Each analyte imports as an absolute count (×10^3/uL) AND as a fraction of
+  // leukocytes (%); like the WBC differential the two are NOT interconvertible, so
+  // each form routes to the canonical entry carrying its unit — never both onto one
+  // identity. Epic emits alternate LOINCs per form (automated-count vs method-less),
+  // all routing to the one entry (like the eGFR / platelet variants above).
+  "771-6": "Nucleated Red Blood Cells, Absolute", // Nucleated erythrocytes [#/volume] in Blood (10^3/uL)
+  "58413-6": "Nucleated Red Blood Cells", // Nucleated erythrocytes/100 leukocytes in Blood (%)
+  "34165-1": "Immature Granulocytes, Absolute", // Immature granulocytes [#/volume] in Blood (10^3/uL)
+  "51584-1": "Immature Granulocytes, Absolute", // Immature granulocytes [#/volume] in Blood by Automated count (10^3/uL)
+  "71695-1": "Immature Granulocytes", // Immature granulocytes/100 leukocytes in Blood (%)
+  "38518-7": "Immature Granulocytes", // Immature granulocytes/100 leukocytes in Blood by Automated count (%)
+
+  // ── Hemoglobin electrophoresis fractions — issue #723 ───────────────────────
+  // Distinct from Hemoglobin (g/dL, LOINC 718-7) and Hemoglobin A1c (%); each
+  // fraction is its own % entry on electrophoresis.
+  "20572-4": "Hemoglobin A", // Hemoglobin A/Hemoglobin.total in Blood (%)
+  "4552-6": "Hemoglobin A2", // Hemoglobin A2/Hemoglobin.total in Blood (%)
+  "32682-7": "Hemoglobin F", // Hemoglobin F/Hemoglobin.total in Blood (%)
+
   // ── Toxic / trace metals ────────────────────────────────────────────────────
   // Blood lead. Canonical "Lead" is ug/dL; venous (confirmatory) and capillary
   // (pediatric screening) specimens share the unit and interpretation threshold, so

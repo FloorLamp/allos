@@ -207,6 +207,118 @@ describe("new canonical differential entries — range coverage", () => {
   });
 });
 
+describe("hematology extras — NRBC / immature granulocytes / Hgb fractions (#723)", () => {
+  // abs and % are DISTINCT entries (not interconvertible without the WBC — the
+  // #482 identity discipline); the alternate LOINCs of one FORM collapse to that
+  // form's single entry (like the eGFR / MPV variants).
+  it("routes each abs / % form to its own unit-matched entry", () => {
+    // Nucleated RBC
+    expect(canonicalBiomarkerForLoinc("771-6")).toBe(
+      "Nucleated Red Blood Cells, Absolute"
+    );
+    expect(canonicalBiomarkerForLoinc("58413-6")).toBe(
+      "Nucleated Red Blood Cells"
+    );
+    // Immature granulocytes — both alternate LOINCs of each form to the one entry
+    for (const code of ["34165-1", "51584-1"])
+      expect(canonicalBiomarkerForLoinc(code)).toBe(
+        "Immature Granulocytes, Absolute"
+      );
+    for (const code of ["71695-1", "38518-7"])
+      expect(canonicalBiomarkerForLoinc(code)).toBe("Immature Granulocytes");
+    // Distinct identities, unit-matched (count ×10^3/uL vs fraction %).
+    expect(cb("Nucleated Red Blood Cells, Absolute").unit).toBe("10^3/uL");
+    expect(cb("Nucleated Red Blood Cells").unit).toBe("%");
+    expect(cb("Immature Granulocytes, Absolute").unit).toBe("10^3/uL");
+    expect(cb("Immature Granulocytes").unit).toBe("%");
+  });
+
+  it("maps each hemoglobin-electrophoresis fraction to its own % entry", () => {
+    expect(canonicalBiomarkerForLoinc("20572-4")).toBe("Hemoglobin A");
+    expect(canonicalBiomarkerForLoinc("4552-6")).toBe("Hemoglobin A2");
+    expect(canonicalBiomarkerForLoinc("32682-7")).toBe("Hemoglobin F");
+    for (const n of ["Hemoglobin A", "Hemoglobin A2", "Hemoglobin F"])
+      expect(cb(n).unit).toBe("%");
+    // Distinct from the g/dL Hemoglobin and the % HbA1c entries.
+    expect(cb("Hemoglobin").unit).toBe("g/dL");
+    expect("Hemoglobin A").not.toBe("Hemoglobin A1c");
+  });
+
+  it("NRBC / IG are ≈0 in adults (any real reading flags high) but normal in neonates", () => {
+    const nrbcAbs = cb("Nucleated Red Blood Cells, Absolute");
+    // Adult: near-zero ceiling — a real absolute NRBC flags high; 0 is in range.
+    expect(
+      reconciledFlag(null, 0, "10^3/uL", nrbcAbs, null, 40)
+    ).toBeUndefined();
+    expect(reconciledFlag(null, 0.5, "10^3/uL", nrbcAbs, null, 40)).toBe(
+      "high"
+    );
+    // The infancy age band (0–1) is consulted, not the adult ceiling: a newborn's
+    // physiologic NRBC sits in range where the same value flags high for an adult.
+    expect(referenceRange(nrbcAbs, null, 0).high).toBe(1.5);
+    expect(
+      reconciledFlag(null, 0.5, "10^3/uL", nrbcAbs, null, 0)
+    ).toBeUndefined();
+    // A count reported in cells/uL (exponent 0) still converts to the 10^3/uL entry.
+    expect(convertToCanonical(500, "cells/uL", nrbcAbs)).toBeCloseTo(0.5);
+
+    const nrbcPct = cb("Nucleated Red Blood Cells");
+    expect(reconciledFlag(null, 4, "%", nrbcPct, null, 40)).toBe("high");
+    expect(reconciledFlag(null, 4, "%", nrbcPct, null, 0)).toBeUndefined(); // band 0–1: ≤10
+
+    const igAbs = cb("Immature Granulocytes, Absolute");
+    expect(
+      reconciledFlag(null, 0.02, "10^3/uL", igAbs, null, 40)
+    ).toBeUndefined();
+    expect(reconciledFlag(null, 0.2, "10^3/uL", igAbs, null, 40)).toBe("high");
+    const igPct = cb("Immature Granulocytes");
+    expect(reconciledFlag(null, 0.3, "%", igPct, null, 40)).toBeUndefined();
+    expect(reconciledFlag(null, 1.5, "%", igPct, null, 40)).toBe("high");
+    // No false "low" anywhere (lower_better, open low bound): a zero is never low.
+    for (const c of [nrbcAbs, nrbcPct, igAbs, igPct])
+      expect(reconciledFlag(null, 0, c.unit, c, null, 40)).toBeUndefined();
+  });
+
+  it("hemoglobin fractions flag the clinically meaningful direction", () => {
+    // HbA: only a REDUCED fraction is flagged (variant hemoglobinopathy); a normal
+    // ~97% is in range, a sickle-trait ~60% flags low, a high-normal never flags high.
+    const hba = cb("Hemoglobin A");
+    expect(reconciledFlag(null, 97, "%", hba, null, 40)).toBeUndefined();
+    expect(reconciledFlag(null, 60, "%", hba, null, 40)).toBe("low");
+    expect(reconciledFlag(null, 99, "%", hba, null, 40)).toBeUndefined();
+    // HbA2: elevated = beta-thalassemia trait; both bounds meaningful.
+    const hba2 = cb("Hemoglobin A2");
+    expect(reconciledFlag(null, 2.6, "%", hba2, null, 40)).toBeUndefined();
+    expect(reconciledFlag(null, 5, "%", hba2, null, 40)).toBe("high");
+    expect(reconciledFlag(null, 1.2, "%", hba2, null, 40)).toBe("low");
+    // HbF: adults ≈0–2%; a raised adult HbF flags high, zero is in range.
+    const hbf = cb("Hemoglobin F");
+    expect(reconciledFlag(null, 0.5, "%", hbf, null, 40)).toBeUndefined();
+    expect(reconciledFlag(null, 15, "%", hbf, null, 40)).toBe("high");
+    expect(reconciledFlag(null, 0, "%", hbf, null, 40)).toBeUndefined();
+  });
+
+  it("routes the new hematology names end-to-end through snapCanonicalName", () => {
+    const vocabulary = rows.map((b) => b.name);
+    const index = buildCanonicalIndex(vocabulary);
+    // The abs and % forms must land on distinct identities (no "%"-key collision).
+    expect(
+      snapCanonicalName("Nucleated Red Blood Cells, Absolute", index)
+    ).toBe("Nucleated Red Blood Cells, Absolute");
+    expect(snapCanonicalName("Nucleated Red Blood Cells", index)).toBe(
+      "Nucleated Red Blood Cells"
+    );
+    expect(snapCanonicalName("Immature Granulocytes, Absolute", index)).toBe(
+      "Immature Granulocytes, Absolute"
+    );
+    expect(snapCanonicalName("Immature Granulocytes", index)).toBe(
+      "Immature Granulocytes"
+    );
+    for (const n of ["Hemoglobin A", "Hemoglobin A2", "Hemoglobin F"])
+      expect(snapCanonicalName(n, index)).toBe(n);
+  });
+});
+
 describe("full clinical-lab panel mappings", () => {
   it("maps the lipid panel (calc + direct LDL both route to LDL Cholesterol)", () => {
     expect(canonicalBiomarkerForLoinc("2093-3")).toBe("Total Cholesterol");

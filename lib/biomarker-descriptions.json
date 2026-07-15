@@ -799,6 +799,41 @@
       "abbreviation": "TG/HDL",
       "full_name": "Triglyceride to HDL Cholesterol Ratio",
       "description": "This ratio divides triglycerides by HDL cholesterol (both in mg/dL) and is used as a simple surrogate marker of insulin resistance and small, dense LDL particles. Lower ratios are generally considered more favorable; it is calculated from the lipid panel rather than measured directly."
+    },
+    "Nucleated Red Blood Cells": {
+      "abbreviation": "NRBC",
+      "full_name": "Nucleated Red Blood Cell Percentage",
+      "description": "This is the fraction of immature, still-nucleated red blood cells among white cells (reported per 100 white blood cells). They are normal in newborns but essentially absent in healthy children and adults, where they can signal marrow stress, severe anemia, or low oxygen."
+    },
+    "Nucleated Red Blood Cells, Absolute": {
+      "abbreviation": "NRBC#",
+      "full_name": "Absolute Nucleated Red Blood Cell Count",
+      "description": "This is the actual number of nucleated (immature) red blood cells per volume of blood. Normally near zero beyond the newborn period, a rise can accompany marrow stress, hemolysis, or hypoxia."
+    },
+    "Immature Granulocytes": {
+      "abbreviation": "IG",
+      "full_name": "Immature Granulocyte Percentage",
+      "description": "This is the percentage of early, not-yet-mature granulocytes (such as metamyelocytes and myelocytes) among white blood cells. A rise, called a left shift, often reflects infection, inflammation, or increased marrow activity."
+    },
+    "Immature Granulocytes, Absolute": {
+      "abbreviation": "IG#",
+      "full_name": "Absolute Immature Granulocyte Count",
+      "description": "This is the actual number of immature granulocytes per volume of blood. It is normally very low, and an increase (a left shift) commonly points to infection, inflammation, or marrow stimulation."
+    },
+    "Hemoglobin A": {
+      "abbreviation": "HbA",
+      "full_name": "Hemoglobin A",
+      "description": "Hemoglobin A is the main form of hemoglobin in adults, measured as a fraction of total hemoglobin by electrophoresis. A reduced proportion can indicate an inherited hemoglobin variant or disorder such as sickle cell disease or thalassemia."
+    },
+    "Hemoglobin A2": {
+      "abbreviation": "HbA2",
+      "full_name": "Hemoglobin A2",
+      "description": "Hemoglobin A2 is a minor hemoglobin fraction measured on electrophoresis. An elevated level is a classic marker of beta-thalassemia trait, while a low level can accompany iron deficiency or other thalassemias."
+    },
+    "Hemoglobin F": {
+      "abbreviation": "HbF",
+      "full_name": "Fetal Hemoglobin",
+      "description": "Hemoglobin F is the fetal form of hemoglobin, dominant at birth and normally falling to very low levels in adults. Persistently high adult levels can occur in hereditary persistence of fetal hemoglobin and in some thalassemias and hemoglobinopathies."
     }
   }
 }
