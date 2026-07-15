@@ -228,17 +228,18 @@ pushed, so the published `:latest` always builds cleanly.
 
 ### Scripts
 
-| Command              | Description                                        |
-| -------------------- | -------------------------------------------------- |
-| `npm run dev`        | Start the development server                       |
-| `npm run build`      | Production build                                   |
-| `npm start`          | Run the production build                           |
-| `npm run seed`       | Seed the database with sample data                 |
-| `npm run demo-reset` | Wipe + reseed a demo instance (nightly cron)       |
-| `npm run notify`     | Send due notifications for the current hour (cron) |
-| `npm test`           | Pure unit tests (vitest)                           |
-| `npm run test:db`    | DB-tier + server-action tests (in-memory SQLite)   |
-| `npm run test:e2e`   | Playwright browser tests (isolated seeded DB)      |
+| Command                    | Description                                               |
+| -------------------------- | --------------------------------------------------------- |
+| `npm run dev`              | Start the development server                              |
+| `npm run build`            | Production build                                          |
+| `npm start`                | Run the production build                                  |
+| `npm run seed`             | Seed the database with sample data                        |
+| `npm run demo-reset`       | Wipe + reseed a demo instance (nightly cron)              |
+| `npm run notify`           | Send due notifications for the current hour (cron)        |
+| `npm test`                 | Pure unit tests (vitest)                                  |
+| `npm run test:db`          | DB-tier + server-action tests (in-memory SQLite)          |
+| `npm run test:db:coverage` | DB-tier + server-action tests under a coverage floor (CI) |
+| `npm run test:e2e`         | Playwright browser tests (isolated seeded DB)             |
 
 ### Tech
 

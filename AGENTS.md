@@ -28,6 +28,7 @@ npm run lint         # eslint (flat config: eslint.config.mjs)
 npm run typecheck    # tsc --noEmit
 npm test             # vitest run (all lib tests)
 npm run test:watch   # vitest watch mode
+npm run test:db:coverage # DB+action tier under its own coverage floor (vitest.db.config.ts)
 npm run test:e2e     # playwright browser tests (boots the app on an isolated seeded DB)
 npm run format       # prettier --write .
 npm run format:check # prettier --check . (enforced in CI)
@@ -40,7 +41,7 @@ npx vitest run lib/__tests__/strength.test.ts
 npx vitest run -t "estimate1RM"
 ```
 
-Node 24 is required (pinned via `.nvmrc`; `nvm use`). CI (`.github/workflows/ci.yml`) runs two parallel jobs on every PR: a `check` job (`npm audit` — non-blocking; `phi-scan`; `format:check`; `lint`; `typecheck`; `test:coverage` — the coverage-gated unit run; `test:db`) and an `e2e` job (Playwright browser tests). The pre-commit hook runs `prettier` (via lint-staged) and `phi-scan --staged` on staged files.
+Node 24 is required (pinned via `.nvmrc`; `nvm use`). CI (`.github/workflows/ci.yml`) runs two parallel jobs on every PR: a `check` job (`npm audit` — non-blocking; `phi-scan`; `format:check`; `lint`; `typecheck`; `test:coverage` — the coverage-gated pure unit run; `test:db:coverage` — the DB+action tier under its OWN coverage floor, #672) and an `e2e` job (Playwright browser tests). The pre-commit hook runs `prettier` (via lint-staged) and `phi-scan --staged` on staged files.
 
 ## Architecture
 
