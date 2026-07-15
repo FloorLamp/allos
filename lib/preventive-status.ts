@@ -13,7 +13,11 @@ import {
   NO_SMOKING,
   type ResolvedSmoking,
 } from "./smoking";
-import { visitModulationFor, type RiskFactor } from "./risk-stratification";
+import {
+  visitModulationFor,
+  screeningModulationFor,
+  type RiskFactor,
+} from "./risk-stratification";
 
 // Pure, DB-free assessment of a profile's preventive-care status against the
 // curated catalog (`lib/preventive-catalog.ts`), mirroring the immunization
@@ -80,12 +84,13 @@ export interface PreventiveAssessment {
   // the status is purely schedule-derived.
   override: PreventiveOverrideKind | null;
   citation: Citation; // passed through for the auditable "based on X" disclaimer
-  // Risk-stratified visit-cadence modulation (Substrate 3, #707): the calm, cited
-  // reason line(s) a recurring VISIT rule earned from the profile's risk factors
-  // (empty when none), and the within-band ranking weight (0 when none). Populated
-  // only for visit rules whose cadence a factor tightened — the same modulation that
-  // brought the item due sooner also explains WHY. The surfacing layer joins the
-  // reasons into the item detail and lifts the priority (issue #699/#706).
+  // Risk-stratified cadence modulation: the calm, cited reason line(s) a recurring
+  // VISIT rule (Substrate 3, #707) OR a SCREENING rule (hereditary-risk cadence, #711)
+  // earned from the profile's risk factors (empty when none), and the within-band
+  // ranking weight (0 when none). Populated only when a factor tightened the item's
+  // cadence — the same modulation that brought it due sooner also explains WHY. The
+  // surfacing layer joins the reasons into the item detail and lifts the priority
+  // (issue #699/#706/#711).
   riskReasons: string[];
   riskPriority: number;
 }
@@ -179,16 +184,21 @@ function assessRecurring(
   const last = ctx.lastByRule.get(rule.key) ?? null;
   const grace = rule.graceMonths;
 
-  // Visit-kind cadence modulation (Substrate 3, #707): a recurring VISIT rule whose
-  // cadence the profile's risk factors tighten comes due sooner and carries the calm,
-  // cited reason. Computed once here (independent of `last`) so it rides both the
-  // interval recurrence AND the never-satisfied age-based due state. Screenings keep
-  // their catalog cadence — their risk side is priority/reason only, applied
-  // downstream via screeningPriorityFor. No-op (multiplier 1) when nothing matched.
+  // Risk-driven cadence modulation. A recurring VISIT rule tightens via
+  // visitModulationFor (Substrate 3, #707); a SCREENING rule tightens via
+  // screeningModulationFor when a hereditary-risk factor targets it (#711 — a BRCA →
+  // mammography / Lynch → colorectal cadence rule). Both bring the item due sooner and
+  // carry the calm, cited reason. Computed once here (independent of `last`) so it
+  // rides both the interval recurrence AND the never-satisfied age-based due state.
+  // A screening's priority-only `screeningRules` ranking (family-history → lipid) stays
+  // a SEPARATE, additive dimension applied downstream via screeningPriorityFor. No-op
+  // (multiplier 1, no reasons) when nothing matched, leaving the catalog cadence intact.
   const visitMod =
     rule.kind === "visit"
       ? visitModulationFor(rule.key, ctx.riskFactors)
-      : { multiplier: 1, priority: 0, reasons: [] as string[] };
+      : rule.kind === "screening"
+        ? screeningModulationFor(rule.key, ctx.riskFactors)
+        : { multiplier: 1, priority: 0, reasons: [] as string[] };
   const riskExtra: Partial<PreventiveAssessment> =
     visitMod.reasons.length > 0
       ? { riskReasons: visitMod.reasons, riskPriority: visitMod.priority }

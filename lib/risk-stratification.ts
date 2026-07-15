@@ -23,6 +23,7 @@
 
 import type { LifeStage } from "./life-stage";
 import type { SmokingStatusValue } from "./smoking";
+import type { GenomicResultType, GenomicSignificance } from "./types/medical";
 
 // The curated risk factors the layer recognizes. A stable, closed set — a new
 // factor is added here with its rule(s) below and its derivation in
@@ -32,6 +33,13 @@ export type RiskFactor =
   | "family-cancer"
   | "family-diabetes"
   | "family-glaucoma"
+  // Hereditary-risk genomic factors (#711 / #707 Phase 2). Each is activated ONLY
+  // by a stored PATHOGENIC / likely-pathogenic `hereditary-risk` variant in a gene
+  // that carries an ESTABLISHED screening guideline (the exclusion discipline that
+  // keeps predictive-only variants — APOE ε4, Huntington — out of the cadence path).
+  | "hereditary-breast-cancer" // BRCA1/BRCA2 → mammography (+ breast MRI in the reason)
+  | "hereditary-colorectal-cancer" // Lynch (MLH1/MSH2/MSH6/PMS2/EPCAM) → colonoscopy
+  | "familial-hypercholesterolemia" // LDLR/APOB/PCSK9 → lipid screening
   | "diabetes"
   | "hypertension"
   | "chronic-kidney-disease"
@@ -72,6 +80,23 @@ export interface RiskInputs {
   // working (absence/null → no smoking factor), mirroring the smoking-history
   // resolver's "null is data, not a guess" tri-state.
   smokingStatus?: SmokingStatusValue | null;
+  // Stored genomic variants (#709) — the hereditary-risk input class (#711). A
+  // structural subset of GenomicVariant so getGenomicVariants rows satisfy it
+  // directly. Optional so callers/tests predating the genomic input keep working
+  // (absence → no genomic factor). Only PATHOGENIC/likely-pathogenic
+  // `hereditary-risk` variants in a curated gene drive cadence — the significance +
+  // result_type gates live in deriveRiskFactors, NOT here (a raw stored variant is
+  // handed through unfiltered, mirroring how the raw condition/family strings are).
+  genomicVariants?: GenomicRiskInput[];
+}
+
+// The variant fields the hereditary-risk classifier reads — a structural subset of
+// GenomicVariant (gene + the two ROUTING discriminators). Keyed on the GENE (the
+// #482 identity anchor), matching how the PGx cross-check (#710) keys on gene.
+export interface GenomicRiskInput {
+  gene: string;
+  significance: GenomicSignificance | null;
+  result_type: GenomicResultType;
 }
 
 // Normalize a free-text clinical label for keyword matching: lowercased, trimmed,
@@ -128,6 +153,50 @@ const CONDITION_KEYWORDS: { factor: RiskFactor; stems: string[] }[] = [
   },
 ];
 
+// The curated GENE → hereditary-risk factor table (#711). EXCLUSION-DISCIPLINED:
+// only genes with an ESTABLISHED screening guideline get an entry, so a variant in a
+// gene NOT listed here (APOE ε4, HTT/Huntington, and every other predictive-only
+// result) produces ZERO factors — no cadence change, no risk text. This table IS the
+// product constraint "store + cadence only, no risk editorializing for predictive-
+// only variants": adding a gene here is a deliberate assertion that a screening
+// guideline exists for it. Genes are HGNC symbols, matched case-insensitively.
+const HEREDITARY_GENE_FACTORS: { factor: RiskFactor; genes: string[] }[] = [
+  // Hereditary breast/ovarian cancer → earlier, more frequent breast screening
+  // (NCCN: mammography + breast MRI). BRCA1/BRCA2 are the canonical high-penetrance
+  // genes; kept deliberately tight (a broader panel gene like PALB2/CHEK2 is a
+  // separate, lower-penetrance decision — omitted under the conservative discipline).
+  { factor: "hereditary-breast-cancer", genes: ["brca1", "brca2"] },
+  // Lynch syndrome (hereditary nonpolyposis colorectal cancer) → earlier, more
+  // frequent colonoscopy (NCCN). The five established Lynch genes.
+  {
+    factor: "hereditary-colorectal-cancer",
+    genes: ["mlh1", "msh2", "msh6", "pms2", "epcam"],
+  },
+  // Familial hypercholesterolemia → earlier, tighter lipid attention (AHA/NLA). The
+  // three FH genes.
+  { factor: "familial-hypercholesterolemia", genes: ["ldlr", "apob", "pcsk9"] },
+];
+
+// The HGNC gene symbol from a stored `gene` value — lowercased first whitespace-
+// delimited token, so a value that carries a trailing variant form ("BRCA1
+// c.68_69del") still collapses to its gene identity ("brca1"), the #482 identity
+// discipline applied to the gene column.
+function geneSymbol(raw: string): string {
+  return raw.toLowerCase().trim().split(/\s+/)[0] ?? "";
+}
+
+// Whether a stored variant DRIVES cadence: a `hereditary-risk` result that the
+// report classified PATHOGENIC or likely-pathogenic. A VUS / benign / null-
+// significance call, or a variant routed to another consumer (pharmacogenomic /
+// carrier / diagnostic / other), never modulates screening — only an actionable
+// hereditary-risk finding does.
+function drivesHereditaryCadence(v: GenomicRiskInput): boolean {
+  return (
+    v.result_type === "hereditary-risk" &&
+    (v.significance === "pathogenic" || v.significance === "likely-pathogenic")
+  );
+}
+
 // Derive the active risk factors from the gathered inputs. Pure and total — an
 // empty input yields an empty set. Family and personal conditions are keyword-
 // matched; the occupational/immune attributes map straight through.
@@ -153,6 +222,21 @@ export function deriveRiskFactors(inputs: RiskInputs): Set<RiskFactor> {
   // is data, not a guess); `never`/`former` never tighten the dental cadence.
   if (inputs.smokingStatus === "current") factors.add("current-smoking");
 
+  // Hereditary-risk genomic factors (#711). Only a PATHOGENIC / likely-pathogenic
+  // `hereditary-risk` variant in a CURATED gene activates a factor — the significance
+  // + result_type gates (drivesHereditaryCadence) plus the exclusion-disciplined gene
+  // table (HEREDITARY_GENE_FACTORS) together keep predictive-only variants (APOE ε4,
+  // Huntington) and non-actionable calls (VUS/benign) entirely out of the cadence
+  // path. Multiple variants collapse onto the gene identity (a BRCA1 c.68del and a
+  // bare BRCA1 both add the one breast-cancer factor).
+  for (const v of inputs.genomicVariants ?? []) {
+    if (!drivesHereditaryCadence(v)) continue;
+    const g = geneSymbol(v.gene);
+    for (const { factor, genes } of HEREDITARY_GENE_FACTORS) {
+      if (genes.includes(g)) factors.add(factor);
+    }
+  }
+
   if (inputs.attributes.healthcareWorker) factors.add("healthcare-worker");
   if (inputs.attributes.immunocompromised) factors.add("immunocompromised");
   if (inputs.attributes.dialysis) {
@@ -177,6 +261,15 @@ export interface RiskRule {
   names?: string[];
   nameContains?: string[];
   screeningRules?: string[];
+  // Screening rule keys whose CADENCE this rule tightens (#711 hereditary-risk).
+  // Distinct from `screeningRules` (which is priority-only — the screening catalog
+  // interval is intentionally unchanged there): a hereditary-cancer / FH variant is
+  // a genuine guideline reason to screen EARLIER and MORE OFTEN, so these keys feed
+  // screeningModulationFor (the tightest multiplier wins, applied to the screening's
+  // from-last interval) exactly like `visitRules` feeds visitModulationFor. Kept a
+  // separate dimension so a factor can rank a screening WITHOUT shortening its
+  // interval (the existing family-history → lipid behavior) or do both.
+  screeningCadenceRules?: string[];
   // Preventive VISIT rule keys whose cadence this rule modulates (Substrate 3 of
   // the #707 roadmap; consumers #699 vision / #706 dental / future #717 hearing).
   // A recurring `kind: "visit"` catalog rule (vision_exam, dental_cleaning, …) has
@@ -359,6 +452,48 @@ export const RISK_RULES: RiskRule[] = [
     source: "ADA / AAP (informational)",
   },
 
+  // ---- Hereditary-risk screening cadence (#711, #707 Phase 2) -------------------
+  // A stored PATHOGENIC / likely-pathogenic `hereditary-risk` variant (#709) in a
+  // gene with an ESTABLISHED screening guideline is a stronger, screening-actionable
+  // signal than family history, so it TIGHTENS the relevant screening's cadence (via
+  // screeningCadenceRules → screeningModulationFor) and explains WHY in a calm, cited
+  // line — the SAME modulation mechanism the family-history/condition factors use, a
+  // new input class rather than a second cadence engine (#707 substrate reuse). The
+  // exclusion discipline lives one layer up: only the curated HEREDITARY_GENE_FACTORS
+  // genes activate these factors at all, so a predictive-only variant (APOE ε4,
+  // Huntington) never reaches this table — stored factually, ZERO cadence, ZERO risk
+  // text (the #711 product constraint). Priority 3 ranks these above the priority-2
+  // condition/family factors, reflecting the stronger signal. Reasons are the ONLY
+  // place the "earlier + more frequent" guidance is expressed (mammography's breast-
+  // MRI consideration is folded into the reason, NOT a fabricated preventive rule).
+  {
+    factor: "hereditary-breast-cancer",
+    screeningCadenceRules: ["mammography"],
+    cadenceMultiplier: 0.5,
+    priority: 3,
+    reason:
+      "BRCA pathogenic variant on file — earlier, more frequent breast screening (mammography + breast MRI) recommended (NCCN)",
+    source: "NCCN (informational)",
+  },
+  {
+    factor: "hereditary-colorectal-cancer",
+    screeningCadenceRules: ["colorectal_cancer"],
+    cadenceMultiplier: 0.5,
+    priority: 3,
+    reason:
+      "Lynch syndrome variant on file — earlier, more frequent colorectal screening (colonoscopy) recommended (NCCN)",
+    source: "NCCN (informational)",
+  },
+  {
+    factor: "familial-hypercholesterolemia",
+    screeningCadenceRules: ["lipid_screening"],
+    cadenceMultiplier: 0.5,
+    priority: 3,
+    reason:
+      "Familial hypercholesterolemia variant on file — earlier, more frequent lipid screening recommended (AHA/NLA)",
+    source: "AHA / NLA (informational)",
+  },
+
   // ---- Immunization priority (issue #553) --------------------------------------
   // The immunization arm of #517: the same curated risk factors that tighten a
   // retest / rank a screening also rank up the vaccines ACIP flags for a person
@@ -482,6 +617,29 @@ export function visitModulationFor(
 ): RetestModulation {
   const matched = RISK_RULES.filter(
     (r) => factors.has(r.factor) && r.visitRules?.includes(ruleKey)
+  );
+  if (matched.length === 0) return NO_MODULATION;
+  return {
+    multiplier: Math.min(...matched.map((r) => r.cadenceMultiplier)),
+    priority: Math.max(...matched.map((r) => r.priority)),
+    reasons: uniqueReasons(matched),
+  };
+}
+
+// The cadence modulation + priority + reasons a SCREENING rule earns from the active
+// factors' hereditary-risk cadence rules (#711). Mirrors visitModulationFor but keyed
+// on `screeningCadenceRules`: a pathogenic hereditary-cancer / FH variant tightens the
+// screening's from-last interval (`multiplier` = the TIGHTEST matched, min), ranks it
+// (`priority` = the highest), and explains it (`reasons`). NO_MODULATION (multiplier 1,
+// priority 0) when nothing matched, so an ordinary screening keeps its catalog cadence
+// AND its priority-only `screeningRules` ranking (screeningPriorityFor) untouched — the
+// two dimensions are additive. `ruleKey` is a PreventiveRule.key.
+export function screeningModulationFor(
+  ruleKey: string,
+  factors: ReadonlySet<RiskFactor>
+): RetestModulation {
+  const matched = RISK_RULES.filter(
+    (r) => factors.has(r.factor) && r.screeningCadenceRules?.includes(ruleKey)
   );
   if (matched.length === 0) return NO_MODULATION;
   return {
