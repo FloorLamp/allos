@@ -14,6 +14,7 @@ import {
 } from "@/lib/queries";
 import { requireSession } from "@/lib/auth";
 import { exerciseHistoryKey } from "@/lib/lifts";
+import { chartSeries } from "@/lib/chart-colors";
 import { getUnitPrefs, getUserSex } from "@/lib/settings";
 import type { Sex } from "@/lib/types";
 import { today } from "@/lib/db";
@@ -341,7 +342,7 @@ function strengthView({
     metrics: STRENGTH_METRICS,
     chartLabel: chartMetric.chartLabel,
     chartUnit: activeMetric === "reps" ? "" : ` ${units.weightUnit}`,
-    color: "#2563eb",
+    color: chartSeries.violet,
     latestActivityId: newest[0]?.activityId ?? stat.lastActivityId,
     chart: sessions.map((s) => ({
       date: s.date,
@@ -415,7 +416,7 @@ function cardioView({
         : activeMetric === "speed"
           ? ` ${units.distanceUnit}/h`
           : " min",
-    color: activeMetric === "speed" ? "#16a34a" : "#0ea5e9",
+    color: activeMetric === "speed" ? chartSeries.brand : chartSeries.emerald,
     latestActivityId: newest[0]?.activityId ?? stat.lastActivityId,
     chart: sessions.map((s) => ({
       date: s.date,
@@ -459,7 +460,7 @@ function sportView({
     metrics: [{ id: "duration", label: "Duration", chartLabel: "Duration" }],
     chartLabel: "Duration",
     chartUnit: " min",
-    color: "#a855f7",
+    color: chartSeries.violet,
     latestActivityId: newest[0]?.activityId ?? stat.lastActivityId,
     chart: sessions.map((s) => ({
       date: s.date,

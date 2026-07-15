@@ -9,6 +9,7 @@ import { formatLongDate, formatRelativeDate } from "@/lib/format-date";
 import { useTimezone } from "@/components/TimezoneProvider";
 import { dateStrInTz } from "@/lib/date";
 import LineChartCard from "@/components/LineChartCard";
+import { chartSeries } from "@/lib/chart-colors";
 import { StatBox } from "@/components/StatBox";
 
 // Per-cardio-activity detail: records grid, a distance- (or duration-) over-time
@@ -110,7 +111,7 @@ export default function CardioDetailPanel({
             data={chart}
             label={showDistance ? "Distance" : "Duration"}
             unit={showDistance ? ` ${du}` : " min"}
-            color="#0ea5e9"
+            color={chartSeries.emerald}
             heightClass="h-40"
           />
         </div>
@@ -128,7 +129,7 @@ export default function CardioDetailPanel({
             data={speedChart}
             label="Avg speed"
             unit={` ${du}/h`}
-            color="#16a34a"
+            color={chartSeries.brand}
             heightClass="h-40"
           />
         </div>
@@ -146,7 +147,7 @@ export default function CardioDetailPanel({
             data={cumChart}
             label="Cumulative"
             unit={` ${du}`}
-            color="#a855f7"
+            color={chartSeries.violet}
             heightClass="h-40"
           />
         </div>

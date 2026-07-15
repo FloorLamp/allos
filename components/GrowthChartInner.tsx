@@ -11,6 +11,7 @@ import {
   YAxis,
 } from "recharts";
 import { useChartColors } from "./useChartColors";
+import { chartSeries } from "@/lib/chart-colors";
 
 // One reference percentile band curve, sampled across ages.
 export interface GrowthBand {
@@ -217,9 +218,9 @@ export default function GrowthChart({
             <Line
               type="monotone"
               dataKey="traj"
-              stroke="#16a34a"
+              stroke={chartSeries.brand}
               strokeWidth={2.5}
-              dot={{ r: 3, fill: "#16a34a", stroke: "#16a34a" }}
+              dot={{ r: 3, fill: chartSeries.brand, stroke: chartSeries.brand }}
               activeDot={{ r: 4 }}
               isAnimationActive={false}
               connectNulls

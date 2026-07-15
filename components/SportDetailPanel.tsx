@@ -7,6 +7,7 @@ import { formatLongDate, formatRelativeDate } from "@/lib/format-date";
 import { useTimezone } from "@/components/TimezoneProvider";
 import { dateStrInTz } from "@/lib/date";
 import LineChartCard from "@/components/LineChartCard";
+import { chartSeries } from "@/lib/chart-colors";
 import { StatBox } from "@/components/StatBox";
 
 // Per-sport detail: records grid, a duration-over-time trend, and the last few
@@ -80,7 +81,7 @@ export default function SportDetailPanel({
             data={chart}
             label="Duration"
             unit=" min"
-            color="#a855f7"
+            color={chartSeries.violet}
             heightClass="h-40"
           />
         </div>
