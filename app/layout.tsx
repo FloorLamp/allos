@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { headers } from "next/headers";
 import "./globals.css";
 import { ToastProvider } from "@/components/Toast";
 import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
@@ -54,7 +55,7 @@ const themeBoot = `
 // read the DB) lives in app/(app)/layout.tsx behind requireSession(), so the
 // login page renders without any authenticated data. ToastProvider stays here so
 // both trees can raise toasts.
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
@@ -64,10 +65,19 @@ export default function RootLayout({
   // old ones. Passed to the registrar as a query param on /sw.js.
   const { sha } = getAppVersion();
 
+  // Per-request CSP nonce (issue #595, step 3) set by middleware.ts on the
+  // x-nonce request header. The theme-boot inline <script> carries it so it
+  // passes the nonce-based script-src (production) that no longer allows
+  // 'unsafe-inline'. Reading headers() opts the app into dynamic rendering — an
+  // accepted trade-off (the app is mostly dynamic already). In dev the header may
+  // be absent/ignored (script-src keeps 'unsafe-inline' for HMR); undefined then
+  // renders no nonce attribute, which is fine.
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
+
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        <script dangerouslySetInnerHTML={{ __html: themeBoot }} />
+        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: themeBoot }} />
       </head>
       <body>
         <ServiceWorkerRegister version={sha ?? "dev"} />
