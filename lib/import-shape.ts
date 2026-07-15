@@ -24,10 +24,17 @@ import {
   normalizeSignificance,
   normalizeZygosity,
 } from "./genomic-variant";
+import {
+  normalizeModality,
+  normalizeLaterality,
+  normalizeContrast,
+} from "./imaging-study";
 import type {
   GenomicResultType,
   GenomicSignificance,
   Zygosity,
+  ImagingModality,
+  ImagingLaterality,
 } from "./types/medical";
 import { isRealIsoDate } from "./date";
 import {
@@ -204,6 +211,23 @@ export interface PersistGenomicVariant {
   external_id: string | null;
 }
 
+// Imaging-study projection (#702). The AI report path fills this; the deterministic
+// CCD/FHIR path leaves it empty (FHIR ImagingStudy/DiagnosticReport mapping is #708,
+// out of scope). modality / laterality are already normalized onto the DB CHECK sets
+// here and `contrast` is coerced to a 0/1-storable boolean.
+export interface PersistImagingStudy {
+  modality: ImagingModality;
+  body_region: string | null;
+  laterality: ImagingLaterality | null;
+  contrast: boolean;
+  contrast_agent: string | null;
+  study_date: string | null;
+  impression: string | null;
+  indication: string | null;
+  status: string | null;
+  external_id: string | null;
+}
+
 // Scheduled-appointment projection (issue #416). Only the FHIR Appointment resource
 // fills this; the AI and CDA paths leave it empty. The attending clinician
 // (`provider`) is resolved into the shared registry on persist (linked via
@@ -257,6 +281,8 @@ export interface PersistInput {
   // Genomic variants (#709). Optional so existing PersistInput literals (the DB-tier
   // fixtures) need no change; the persist core reads it with a `?? []` fallback.
   genomicVariants?: PersistGenomicVariant[];
+  // Imaging studies (#702). Optional for the same reason; persist reads it `?? []`.
+  imagingStudies?: PersistImagingStudy[];
   appointments: PersistAppointment[];
   bodyMetrics: DocBodyMetric[];
   // Body-height samples (metric_samples, metric 'height_cm') — height has no
@@ -554,6 +580,29 @@ export function extractionToPersistInput(
       report_date: v.report_date,
       external_id: null,
     }));
+  // Imaging studies (#702). Normalize the model's raw modality / laterality onto the
+  // DB CHECK sets and coerce `contrast` to a boolean here (one shared coercion,
+  // lib/imaging-study), so an off-vocabulary term can't fail the INSERT. Optional on
+  // the done union, so the `?? []` fallback covers fixtures that predate this field.
+  const imagingStudies: PersistImagingStudy[] = (result.imagingStudies ?? [])
+    // A study with no modality, no region, AND no impression is noise and can't be
+    // stored meaningfully — drop it here (belt-and-suspenders alongside the
+    // normalize-stage drop, since a raw done-result can carry an empty study).
+    .filter(
+      (s) => s.modality?.trim() || s.body_region?.trim() || s.impression?.trim()
+    )
+    .map((s) => ({
+      modality: normalizeModality(s.modality),
+      body_region: s.body_region,
+      laterality: normalizeLaterality(s.laterality),
+      contrast: normalizeContrast(s.contrast),
+      contrast_agent: s.contrast_agent,
+      study_date: s.study_date,
+      impression: s.impression,
+      indication: s.indication,
+      status: s.status,
+      external_id: null,
+    }));
 
   // The document-level source ("Quest Diagnostics", the discharge hospital, …) is
   // registered into the shared providers registry — the AI path's answer to item 3
@@ -577,6 +626,7 @@ export function extractionToPersistInput(
     carePlanItems.length +
     careGoals.length +
     genomicVariants.length +
+    imagingStudies.length +
     bodyMetrics.length +
     heights.length +
     headCircs.length;
@@ -599,6 +649,7 @@ export function extractionToPersistInput(
     carePlanItems,
     careGoals,
     genomicVariants,
+    imagingStudies,
     // The AI medical extractor has no appointment shape (it emits care plans, not
     // scheduled visits), so the AI path never produces appointments (#416).
     appointments: [],

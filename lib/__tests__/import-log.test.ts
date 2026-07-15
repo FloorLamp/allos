@@ -148,6 +148,7 @@ describe("producedTotal", () => {
       carePlanItems: 1,
       careGoals: 1,
       genomicVariants: 1,
+      imagingStudies: 1,
       appointments: 1,
       medications: 2,
       bodyMetrics: 1,
@@ -155,9 +156,9 @@ describe("producedTotal", () => {
       headCircSamples: 1,
       providers: 4,
     };
-    // 14 records + 3 imms + 9 clinical singles (incl. 1 appointment + 1 genomic
-    // variant) + 2 meds + 3 body samples.
-    expect(producedTotal(counts)).toBe(14 + 3 + 9 + 2 + 3);
+    // 14 records + 3 imms + 10 clinical singles (incl. 1 appointment + 1 genomic
+    // variant + 1 imaging study) + 2 meds + 3 body samples.
+    expect(producedTotal(counts)).toBe(14 + 3 + 10 + 2 + 3);
   });
 });
 

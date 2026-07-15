@@ -22,6 +22,7 @@ import type {
   ExtractedCarePlanItem,
   ExtractedCareGoal,
   ExtractedGenomicVariant,
+  ExtractedImagingStudy,
 } from "./types";
 
 // Normalize a document's stated sex/gender ("M", "Female", "MALE", …) to our
@@ -203,6 +204,7 @@ export function normalizeClinicalDomains(raw: any): {
   carePlanItems: ExtractedCarePlanItem[];
   careGoals: ExtractedCareGoal[];
   genomicVariants: ExtractedGenomicVariant[];
+  imagingStudies: ExtractedImagingStudy[];
   drops: ImportDrop[];
 } {
   const drops: ImportDrop[] = [];
@@ -390,6 +392,38 @@ export function normalizeClinicalDomains(raw: any): {
     });
   }
 
+  // Imaging studies from an uploaded radiology report (#702). A study with NO
+  // impression, NO body region, AND no recognizable modality string is noise and
+  // drops (nothing meaningful to store). modality / laterality / contrast stay raw
+  // here (normalized to the CHECK sets downstream in import-shape); the study date
+  // is coerced to strict ISO-or-null; the impression + indication text are kept
+  // verbatim. Image pixels / DICOM are out of scope — this is the REPORT only.
+  const imagingStudies: ExtractedImagingStudy[] = [];
+  for (const s of arr(raw?.imaging_studies)) {
+    const modality = strOrNull(s?.modality);
+    const bodyRegion = strOrNull(s?.body_region);
+    const impression = strOrNull(s?.impression);
+    if (!modality && !bodyRegion && !impression) {
+      drops.push({
+        kind: "imaging_study",
+        label: strOrNull(s?.body_region) ?? "(empty study)",
+        reason: "no_value",
+      });
+      continue;
+    }
+    imagingStudies.push({
+      modality,
+      body_region: bodyRegion,
+      laterality: strOrNull(s?.laterality),
+      contrast: strOrNull(s?.contrast),
+      contrast_agent: strOrNull(s?.contrast_agent),
+      study_date: isoDateOrNull(s?.study_date),
+      impression,
+      indication: strOrNull(s?.indication),
+      status: strOrNull(s?.status),
+    });
+  }
+
   return {
     conditions,
     allergies,
@@ -399,6 +433,7 @@ export function normalizeClinicalDomains(raw: any): {
     carePlanItems,
     careGoals,
     genomicVariants,
+    imagingStudies,
     drops,
   };
 }

@@ -25,6 +25,12 @@ import {
   type TimelineEvent,
 } from "./timeline-format";
 import { fmtDistance, fmtWeight } from "./units";
+import {
+  studyDisplayLabel,
+  modalityLabel,
+  lateralityLabel,
+} from "./imaging-study";
+import type { ImagingModality, ImagingLaterality } from "./types/medical";
 
 export { TIMELINE_CATEGORIES, timelineCategoryLabel } from "./timeline-format";
 export type {
@@ -679,6 +685,56 @@ function collectEvents(
     );
   }
 
+  // Imaging studies (#702) — one first-class event per study on its study_date.
+  // Study rows carry a document_id but are a distinct entity from the uploaded
+  // document event; the impression is the detail. Loose-bounded on study_date with a
+  // created_at fallback so an undated study still lands somewhere sensible.
+  const imagingBounds = loose(
+    "COALESCE(study_date, substr(created_at, 1, 10))"
+  );
+  const imagingStudies = db
+    .prepare(
+      `SELECT id, modality, body_region, laterality, contrast, study_date,
+              impression, indication, created_at
+         FROM imaging_studies
+        WHERE profile_id = ?${imagingBounds.clause}
+        ORDER BY COALESCE(study_date, substr(created_at, 1, 10)) DESC, id DESC
+        LIMIT ?`
+    )
+    .all(profileId, ...imagingBounds.params, perTableLimit) as {
+    id: number;
+    modality: ImagingModality;
+    body_region: string | null;
+    laterality: ImagingLaterality | null;
+    contrast: number;
+    study_date: string | null;
+    impression: string | null;
+    indication: string | null;
+    created_at: string;
+  }[];
+  for (const s of imagingStudies) {
+    const meta = [
+      modalityLabel(s.modality),
+      s.laterality ? lateralityLabel(s.laterality) : null,
+      s.contrast ? "with contrast" : null,
+      s.indication,
+    ].filter((x): x is string => !!x);
+    pushLimited(
+      events,
+      {
+        id: `imaging:${s.id}`,
+        date: s.study_date ?? dateFromCreatedAt(s.created_at, tz) ?? "",
+        category: "imaging",
+        title: studyDisplayLabel(s),
+        subtitle: compactList(meta, 4),
+        detail: s.impression,
+        href: "/imaging",
+        sortTime: timeFromCreatedAt(s.created_at, tz),
+      },
+      options
+    );
+  }
+
   if (includeTrainingEvents && !restricted) {
     const goalBounds = loose(
       "COALESCE(target_date, substr(created_at, 1, 10))"
@@ -888,6 +944,14 @@ export function getTimelineDates(
       .prepare(
         `SELECT onset_date AS explicit, created_at AS stamp
            FROM allergies WHERE profile_id = ?`
+      )
+      .all(profileId) as { explicit: string | null; stamp: string | null }[]
+  );
+  resolveFallback(
+    db
+      .prepare(
+        `SELECT study_date AS explicit, created_at AS stamp
+           FROM imaging_studies WHERE profile_id = ?`
       )
       .all(profileId) as { explicit: string | null; stamp: string | null }[]
   );

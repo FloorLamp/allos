@@ -40,6 +40,7 @@ export type DropKind =
   | "care_goal"
   | "appointment"
   | "genomic_variant"
+  | "imaging_study"
   | "section" // a whole CDA section
   | "resource"; // a whole FHIR resource type
 

@@ -18,10 +18,17 @@ import {
   resultTypeLabel,
   significanceLabel,
 } from "./genomic-variant";
+import {
+  studyDisplayLabel,
+  modalityLabel,
+  lateralityLabel,
+} from "./imaging-study";
 import type {
   GenomicResultType,
   GenomicSignificance,
   Zygosity,
+  ImagingModality,
+  ImagingLaterality,
 } from "./types/medical";
 
 // The non-record tab kinds, in display order (after the record-category tabs).
@@ -39,6 +46,7 @@ export type ImportTabKind =
   | "care-plan"
   | "care-goals"
   | "genomic-variants"
+  | "imaging-studies"
   | "appointments"
   | "medications"
   | "body";
@@ -111,6 +119,7 @@ const DOMAIN_TAB_KEYS = new Set<string>([
   "care-plan",
   "care-goals",
   "genomic-variants",
+  "imaging-studies",
   "appointments",
   "medications",
   "body",
@@ -154,6 +163,7 @@ export function buildImportTabs(
   add("care-plan", "Care plan", counts.carePlanItems);
   add("care-goals", "Care goals", counts.careGoals);
   add("genomic-variants", "Genomic variants", counts.genomicVariants);
+  add("imaging-studies", "Imaging studies", counts.imagingStudies);
   add("appointments", "Appointments", counts.appointments);
   add("medications", "Medications", counts.medications);
   add(
@@ -371,6 +381,39 @@ export function genomicVariantItem(row: {
     ),
     date: row.report_date,
     href: "/genomics",
+  };
+}
+
+export function imagingStudyItem(row: {
+  id: number;
+  modality: ImagingModality;
+  body_region: string | null;
+  laterality: ImagingLaterality | null;
+  contrast: number | boolean;
+  study_date: string | null;
+  impression: string | null;
+}): ProducedItem {
+  const contrast =
+    row.contrast === 1 || row.contrast === true ? "with contrast" : null;
+  // A real side (left/right/bilateral) is informative; 'na' (midline/whole study)
+  // adds nothing, so it's omitted — same rule the display label uses.
+  const side =
+    row.laterality && row.laterality !== "na"
+      ? lateralityLabel(row.laterality)
+      : null;
+  return {
+    id: row.id,
+    title: studyDisplayLabel(row),
+    // Factual detail: modality + laterality classification, contrast, then the
+    // radiologist's impression (truncated by the UI). No added interpretation.
+    detail: detailLine(
+      modalityLabel(row.modality),
+      side,
+      contrast,
+      row.impression
+    ),
+    date: row.study_date,
+    href: "/imaging",
   };
 }
 

@@ -13,6 +13,7 @@ import {
   carePlanItemRow,
   careGoalItem,
   genomicVariantItem,
+  imagingStudyItem,
   medicationItem,
   bodyItems,
 } from "../import-browser";
@@ -338,6 +339,56 @@ describe("genomic variants (#709)", () => {
     });
     expect(item.title).toBe("BRCA1 heterozygous (c.68_69del)");
     expect(item.detail).toBe("Pathogenic · Hereditary risk");
+    expect(item.date).toBeNull();
+  });
+});
+
+describe("imaging studies (#702)", () => {
+  it("adds an Imaging studies tab when the import produced any", () => {
+    const strip = buildImportTabs(counts({ imagingStudies: 1 }));
+    const tab = strip.tabs.find((t) => t.key === "imaging-studies");
+    expect(tab).toBeTruthy();
+    expect(tab?.label).toBe("Imaging studies");
+    expect(tab?.count).toBe(1);
+    expect(tab?.kind).toBe("imaging-studies");
+  });
+
+  it("omits the tab when none were produced", () => {
+    const strip = buildImportTabs(counts({ imagingStudies: 0 }));
+    expect(strip.tabs.some((t) => t.key === "imaging-studies")).toBe(false);
+  });
+
+  it("shapes a contrast study with modality, laterality, contrast + impression and an /imaging link", () => {
+    const item = imagingStudyItem({
+      id: 7,
+      modality: "mri",
+      body_region: "Knee",
+      laterality: "left",
+      contrast: 1,
+      study_date: "2024-03-01",
+      impression: "Small joint effusion. No tear.",
+    });
+    expect(item.title).toBe("MRI Left Knee");
+    expect(item.detail).toBe(
+      "MRI · Left · with contrast · Small joint effusion. No tear."
+    );
+    expect(item.date).toBe("2024-03-01");
+    expect(item.href).toBe("/imaging");
+  });
+
+  it("shapes a non-contrast study with 'na' laterality omitted from label + detail", () => {
+    const item = imagingStudyItem({
+      id: 8,
+      modality: "x-ray",
+      body_region: "Chest",
+      laterality: "na",
+      contrast: 0,
+      study_date: null,
+      impression: null,
+    });
+    // 'na' laterality (midline/whole study) is not rendered in the label or detail.
+    expect(item.title).toBe("X-ray Chest");
+    expect(item.detail).toBe("X-ray");
     expect(item.date).toBeNull();
   });
 });

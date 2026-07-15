@@ -66,6 +66,16 @@ function linkAllTables(profileId: number, providerId: number): number {
   db.prepare(
     `INSERT INTO appointments (profile_id, scheduled_at, provider_id) VALUES (?, '2030-01-01', ?)`
   ).run(profileId, providerId);
+  // Imaging studies carry TWO provider links (ordering + reading) — one row each so
+  // there is exactly one referencing row per PROVIDER_LINK_COLUMNS entry (#702).
+  db.prepare(
+    `INSERT INTO imaging_studies (profile_id, modality, body_region, ordering_provider_id)
+     VALUES (?, 'x-ray', 'Chest', ?)`
+  ).run(profileId, providerId);
+  db.prepare(
+    `INSERT INTO imaging_studies (profile_id, modality, body_region, reading_provider_id)
+     VALUES (?, 'mri', 'Knee', ?)`
+  ).run(profileId, providerId);
   return PROVIDER_LINK_COLUMNS.length;
 }
 

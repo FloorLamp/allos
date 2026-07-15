@@ -90,6 +90,23 @@ Rules:
     interpretation text, verbatim, if brief), source_lab (the testing lab), report_date
     (ISO YYYY-MM-DD). A lab report of ordinary blood analytes is NOT a genetics report —
     leave this array empty for it.
+  - imaging_studies: when the document is a RADIOLOGY / IMAGING report (an X-ray, CT, MRI,
+    ultrasound, DEXA/bone-density, mammogram, or similar), emit ONE entry into the
+    "imaging_studies" array describing the study. Capture what the report states — do NOT
+    diagnose or add commentary of your own: modality (one of "x-ray", "ct", "mri",
+    "ultrasound", "dexa", "other" — a mammogram or plain film is "x-ray"), body_region
+    (the anatomy imaged, e.g. "Chest", "Left Knee", "Abdomen/Pelvis"), laterality
+    ("left" / "right" / "bilateral" / "na" when not applicable/midline), contrast (was IV
+    or oral contrast given? "with" / "without"), contrast_agent (the agent if named, e.g.
+    "gadolinium", "iodinated"), study_date (ISO YYYY-MM-DD), impression (the radiologist's
+    IMPRESSION / FINDINGS text — the report body — captured VERBATIM; for most imaging this
+    IS the result), indication (the reason the study was ordered / clinical history, e.g.
+    "screening", "cough", "follow-up of nodule"), status (e.g. "final", "preliminary").
+    Extract the STRUCTURED report only — you cannot see the images themselves. A plain lab
+    or genetics report is NOT an imaging study — leave this array empty for it. NOTE: any
+    NUMERIC imaging measurements (DEXA T-scores, coronary calcium score, ejection fraction,
+    carotid IMT) still belong in "results" as their own analytes — the imaging_studies entry
+    is the narrative, not those numbers.
 - Be concise: emit only the structured fields above. Brevity matters — there may be 100+
   results and the response must fit in the output budget.
 - Do not invent data. If the document has no extractable results, return empty arrays.`;
@@ -498,6 +515,56 @@ export const TOOL: Anthropic.Tool = {
             },
           },
           required: ["gene"],
+        },
+      },
+      imaging_studies: {
+        type: "array",
+        description:
+          "One entry per imaging/radiology study described by the document. Empty for a plain lab / genetics report. Capture the report's structured metadata + the radiologist's impression verbatim — never diagnose. Numeric imaging measurements (DEXA T-score, calcium score, EF, IMT) still go in `results`, not here.",
+        items: {
+          type: "object",
+          properties: {
+            modality: {
+              type: ["string", "null"],
+              description:
+                "x-ray / ct / mri / ultrasound / dexa / other (a mammogram or plain film is x-ray)",
+            },
+            body_region: {
+              type: ["string", "null"],
+              description: "Anatomy imaged, e.g. 'Chest', 'Left Knee'",
+            },
+            laterality: {
+              type: ["string", "null"],
+              description: "left / right / bilateral / na, if stated",
+            },
+            contrast: {
+              type: ["string", "null"],
+              description: "'with' or 'without' contrast, if stated",
+            },
+            contrast_agent: {
+              type: ["string", "null"],
+              description: "Contrast agent if named, e.g. 'gadolinium'",
+            },
+            study_date: {
+              type: ["string", "null"],
+              description: "Study date, ISO YYYY-MM-DD, else null",
+            },
+            impression: {
+              type: ["string", "null"],
+              description:
+                "The radiologist's IMPRESSION / FINDINGS text (the report body), verbatim",
+            },
+            indication: {
+              type: ["string", "null"],
+              description:
+                "Reason the study was ordered / clinical history, e.g. 'screening'",
+            },
+            status: {
+              type: ["string", "null"],
+              description: "e.g. 'final', 'preliminary'",
+            },
+          },
+          required: [],
         },
       },
     },

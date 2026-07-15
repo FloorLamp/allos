@@ -15,6 +15,8 @@ import type {
   GenomicResultType,
   GenomicSignificance,
   Zygosity,
+  ImagingModality,
+  ImagingLaterality,
 } from "../types/medical";
 import {
   interleaveImportLog,
@@ -211,6 +213,13 @@ export function getDocumentProduced(
       )
       .get(profileId, docId)
   );
+  const imagingStudies = scalar(
+    db
+      .prepare(
+        `SELECT COUNT(*) AS c FROM imaging_studies WHERE profile_id = ? AND document_id = ?`
+      )
+      .get(profileId, docId)
+  );
   const appointments = scalar(
     db
       .prepare(
@@ -292,6 +301,7 @@ export function getDocumentProduced(
     carePlanItems,
     careGoals,
     genomicVariants,
+    imagingStudies,
     appointments,
     medications,
     bodyMetrics,
@@ -455,6 +465,26 @@ export function getDocumentGenomicVariants(profileId: number, docId: number) {
     significance: GenomicSignificance | null;
     result_type: GenomicResultType;
     report_date: string | null;
+  }[];
+}
+
+export function getDocumentImagingStudies(profileId: number, docId: number) {
+  return db
+    .prepare(
+      `SELECT id, modality, body_region, laterality, contrast, study_date,
+              impression FROM imaging_studies
+        WHERE profile_id = ? AND document_id = ?
+        ORDER BY COALESCE(study_date, '') DESC, id`
+    )
+    .all(profileId, docId) as {
+    id: number;
+    // CHECK-constrained columns, so the stored strings ARE these enum values.
+    modality: ImagingModality;
+    body_region: string | null;
+    laterality: ImagingLaterality | null;
+    contrast: number;
+    study_date: string | null;
+    impression: string | null;
   }[];
 }
 

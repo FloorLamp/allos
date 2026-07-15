@@ -636,6 +636,18 @@ function insertImportRows(
         source, document_id, external_id, profile_id)
      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
   );
+  // Imaging studies (#702). Same idempotency as the other clinical domains: the
+  // per-document delete-set clears this document's prior rows, then INSERT OR IGNORE
+  // dedups within the document via the per-profile unique external_id index (scoped
+  // with the document source). Keyed to the document via document_id so the import
+  // footprint clears/moves/counts it, exactly like conditions/procedures.
+  const insImagingStudy = db.prepare(
+    `INSERT OR IGNORE INTO imaging_studies
+       (modality, body_region, laterality, contrast, contrast_agent, study_date,
+        impression, indication, status,
+        source, document_id, external_id, profile_id)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
+  );
   // Scheduled appointments (issue #416). Same idempotency as the other clinical
   // domains: the per-document delete-set clears this document's prior rows, then
   // INSERT OR IGNORE dedups within the document via the per-profile unique external_id
@@ -908,6 +920,25 @@ function insertImportRows(
       docSource,
       docId,
       scopedExternalId(v.external_id),
+      profileId
+    );
+  }
+  // Imaging studies (#702) — optional on PersistInput, so guard with `?? []` for a
+  // fixture / deterministic-path input that carries none. `contrast` is stored 0/1.
+  for (const s of input.imagingStudies ?? []) {
+    insImagingStudy.run(
+      s.modality,
+      s.body_region,
+      s.laterality,
+      s.contrast ? 1 : 0,
+      s.contrast_agent,
+      s.study_date,
+      s.impression,
+      s.indication,
+      s.status,
+      docSource,
+      docId,
+      scopedExternalId(s.external_id),
       profileId
     );
   }

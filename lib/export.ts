@@ -702,6 +702,28 @@ export const DATASETS: ExportDataset[] = [
     countSql: `SELECT COUNT(*) AS n FROM genomic_variants WHERE profile_id = ?`,
   }),
   tableDataset({
+    key: "imaging_studies",
+    label: "Imaging studies",
+    table: "imaging_studies",
+    columns: [
+      "modality",
+      "body_region",
+      "laterality",
+      "contrast",
+      "contrast_agent",
+      "study_date",
+      "impression",
+      "indication",
+      "status",
+      "notes",
+    ],
+    select: `SELECT id, modality, body_region, laterality, contrast, contrast_agent,
+              study_date, impression, indication, status, notes
+       FROM imaging_studies WHERE profile_id = ?
+       ORDER BY COALESCE(study_date, '') DESC, id DESC`,
+    countSql: `SELECT COUNT(*) AS n FROM imaging_studies WHERE profile_id = ?`,
+  }),
+  tableDataset({
     key: "family_history",
     label: "Family history",
     table: "family_history",
@@ -955,6 +977,7 @@ export const DELETE_POLICY: Record<string, DatasetDeletePolicy> = {
   // Clinical passport domains newly exported/deletable (#465).
   procedures: { revalidate: ["/procedures", "/"] },
   genomic_variants: { revalidate: ["/genomics", "/"] },
+  imaging_studies: { revalidate: ["/imaging", "/"] },
   family_history: { revalidate: ["/family-history", "/"] },
   care_plan_items: { revalidate: ["/care-plan", "/"] },
   care_goals: { revalidate: ["/care-goals", "/"] },

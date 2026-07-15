@@ -82,6 +82,10 @@ export const PROVIDER_LINK_COLUMNS: ProviderLink[] = [
   { table: "procedures", column: "provider_id" },
   { table: "care_plan_items", column: "provider_id" },
   { table: "appointments", column: "provider_id" },
+  // Imaging studies (#702) link both the ordering and the reading (radiologist)
+  // provider — like encounters' two provider columns, so a merge re-points both.
+  { table: "imaging_studies", column: "ordering_provider_id" },
+  { table: "imaging_studies", column: "reading_provider_id" },
 ];
 
 // The link columns grouped by table (a table may carry more than one — encounters
@@ -136,6 +140,7 @@ const TABLE_LABEL: Record<string, [singular: string, plural: string]> = {
   procedures: ["procedure", "procedures"],
   care_plan_items: ["care-plan item", "care-plan items"],
   appointments: ["appointment", "appointments"],
+  imaging_studies: ["imaging study", "imaging studies"],
 };
 
 function plural(table: string, count: number): string {

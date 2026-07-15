@@ -412,6 +412,54 @@ export interface GenomicVariant {
   created_at: string;
 }
 
+// ── Imaging studies (#702) ───────────────────────────────────────────────────
+// A stored radiology STUDY, captured STRUCTURALLY from an uploaded report (the
+// image pixels / DICOM are OUT of scope — Allos holds the report, not the images).
+// This is the NARRATIVE + METADATA home for imaging: modality, body region,
+// laterality, contrast, and the radiologist's `impression` (which for most imaging
+// IS the result). Numeric imaging metrics (DEXA T-scores, coronary calcium, EF,
+// IMT) keep routing to `scan` biomarker rows — the study LINKS to those, it does
+// not absorb them. It is the entity #700's follow-up loop and #701's contrast check
+// hang off.
+
+// Imaging modality. `other` is the safe default for anything not clearly one of the
+// listed classes (normalized in lib/imaging-study.ts).
+export type ImagingModality =
+  "x-ray" | "ct" | "mri" | "ultrasound" | "dexa" | "other";
+
+// Which side the study covers, when stated. `na` = not applicable / midline (e.g. a
+// chest X-ray or an abdominal CT), distinct from an unstated (null) laterality.
+export type ImagingLaterality = "left" | "right" | "bilateral" | "na";
+
+// A structured imaging study (table: imaging_studies). `modality` is the anchor
+// classifier. `body_region` / `laterality` / `contrast` describe what was imaged;
+// `impression` is the radiologist's report body (stored verbatim). `indication` is
+// the reason the study was ordered — captured for a future screening-vs-diagnostic
+// decision (#703), NOT gated on today. `ordering_provider_id` / `reading_provider_id`
+// link the global providers registry (for #701's contrast context). Provenance/dedup
+// (`source`/`document_id`/`external_id`) mirror the conditions table so the import
+// footprint clears/moves/counts it by document_id.
+export interface ImagingStudy {
+  id: number;
+  modality: ImagingModality;
+  body_region: string | null;
+  laterality: ImagingLaterality | null;
+  // Stored 0/1 in SQLite; surfaced as a boolean by the read layer.
+  contrast: boolean;
+  contrast_agent: string | null;
+  study_date: string | null;
+  impression: string | null;
+  indication: string | null;
+  status: string | null;
+  ordering_provider_id: number | null;
+  reading_provider_id: number | null;
+  notes: string | null;
+  source: string | null;
+  document_id: number | null;
+  external_id: string | null;
+  created_at: string;
+}
+
 // A family-history entry (table: family_history): one condition affecting one
 // relative. `relation` is the affected relative (mother/father/sibling/…);
 // `condition` the display term for their diagnosis; `code`/`code_system` its coded

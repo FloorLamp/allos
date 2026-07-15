@@ -22,6 +22,7 @@ export const TIMELINE_CATEGORIES = [
   "condition",
   "allergy",
   "visit",
+  "imaging",
   "goal",
   "insight",
   "milestone",
@@ -80,6 +81,8 @@ export function timelineCategoryLabel(category: TimelineCategory): string {
       return "Allergy";
     case "visit":
       return "Visit";
+    case "imaging":
+      return "Imaging";
     case "goal":
       return "Goal";
     case "insight":

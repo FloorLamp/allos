@@ -140,6 +140,25 @@ export interface ExtractedGenomicVariant {
   report_date: string | null; // YYYY-MM-DD
 }
 
+// One imaging STUDY extracted from an uploaded radiology report (#702). These are
+// the PRE-persist AI shapes: modality / laterality stay as the model's raw strings
+// (normalized to the CHECK sets in import-shape via lib/imaging-study), `contrast`
+// stays a raw string/boolean (coerced downstream), and the study date is coerced to
+// strict ISO-or-null. `impression` is the radiologist's report body, captured
+// verbatim; `indication` is the reason the study was ordered. Image pixels / DICOM
+// are out of scope — the extractor reads the REPORT, never the images.
+export interface ExtractedImagingStudy {
+  modality: string | null; // raw; normalized in import-shape (→ 'other' default)
+  body_region: string | null;
+  laterality: string | null; // raw; normalized in import-shape
+  contrast: string | null; // raw ("with"/"without"/…); coerced to bool in import-shape
+  contrast_agent: string | null;
+  study_date: string | null; // YYYY-MM-DD
+  impression: string | null; // the radiologist's report body, verbatim
+  indication: string | null; // reason the study was ordered
+  status: string | null; // free-text passthrough (no enum)
+}
+
 export interface ExtractionMeta {
   document_type: string | null; // lab | dexa | imaging | immunization | other
   source: string | null;
@@ -168,6 +187,11 @@ export type ExtractionResult =
       // sets it (empty for a non-genetics document), and import-shape reads it with
       // a `?? []` fallback.
       genomicVariants?: ExtractedGenomicVariant[];
+      // Imaging studies from an uploaded radiology report (#702). Optional so
+      // existing done-result fixtures need no change; the real extract path always
+      // sets it (empty for a non-imaging document), and import-shape reads it with a
+      // `?? []` fallback.
+      imagingStudies?: ExtractedImagingStudy[];
       // Row-level drops (a clinical entity the model emitted but that was rejected
       // for want of its required identifier) — the AI path's drop accounting, folded
       // into a real ImportReport in import-shape. Parity with the deterministic
