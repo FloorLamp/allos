@@ -68,3 +68,17 @@ export const NO_GEAR_PROFILE = "No Gear (e2e)";
 // slate and the "Log this session" prefill in isolation.
 export const E2E_LOGIN_ROUTINE = "e2e_routine";
 export const ROUTINE_PROFILE = "Routine (e2e)";
+
+// A member granted a dedicated ADULT profile for the routine-BUILDER specs (#739),
+// SEPARATE from ROUTINE_PROFILE above on purpose: the routine-recommendation spec
+// depends on that profile's routine staying ACTIVE (the Today's-session card), while
+// the builder spec activates/deactivates routines — sharing a profile would let one
+// spec break the other. Also never profile 1: activating a routine DELETES the
+// profile's training-scope frequency_targets and replaces them with the routine's
+// derived ones (profile 1's seeded PPL targets other specs depend on). It's seeded
+// with a couple of training-scope frequency targets so the activate-confirm dialog
+// (which only appears when there ARE targets to replace) is exercised, and NO
+// routines. No birthdate → adult → never training-restricted, so /training renders
+// the full hub with the Routines tab.
+export const E2E_LOGIN_ROUTINE_BUILDER = "e2e_routine_builder";
+export const ROUTINE_BUILDER_PROFILE = "Routine Builder (e2e)";

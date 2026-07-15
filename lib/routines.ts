@@ -37,6 +37,7 @@ import type {
 // lib/routine-derive.ts so the pure tier can test them without importing lib/db.
 export {
   deriveRoutineTargets,
+  deriveFocusFromCandidates,
   validateRoutineInput,
   TRAINING_TARGET_SCOPES,
 } from "./routine-derive";
@@ -147,6 +148,15 @@ export function getRoutineWithDays(
       slots: slotsByDay.get(d.id) ?? [],
     })),
   };
+}
+
+// Every routine with its days + slots — the shape the builder UI (#739) reads to
+// render the list (day count = days.length) and pre-fill the editor. A thin fan-out
+// over getRoutineWithDays; profile counts are small, so N+1 is fine here.
+export function getRoutinesWithDays(profileId: number): RoutineWithDays[] {
+  return getRoutines(profileId)
+    .map((r) => getRoutineWithDays(profileId, r.id))
+    .filter((r): r is RoutineWithDays => r !== null);
 }
 
 // ── Writes ────────────────────────────────────────────────────────────────────
