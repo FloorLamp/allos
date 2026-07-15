@@ -71,16 +71,23 @@ test("clicking a tab switches which section is rendered (#105)", async ({
   await page.goto("/trends");
   await expect(page.getByText(INSIGHTS_MARKER)).toHaveCount(0);
 
-  // Click Insights → its form appears and the URL reflects the tab.
-  await page.getByRole("tab", { name: "Insights" }).click();
+  // Click Insights → its form appears and the URL reflects the tab. Retry the
+  // click until the URL updates: a click landing in the pre-hydration window is
+  // swallowed on a not-yet-hydrated tree (CI's `next start` exposes this more
+  // than local `next dev`).
+  await expect(async () => {
+    await page.getByRole("tab", { name: "Insights" }).click();
+    await expect(page).toHaveURL(/tab=insights/, { timeout: 2000 });
+  }).toPass();
   await expect(page.getByText(INSIGHTS_MARKER)).toBeVisible();
-  await expect(page).toHaveURL(/tab=insights/);
   await expect(page.getByText(FITNESS_MARKER)).toHaveCount(0);
 
   // Click Fitness → its content replaces the Insights form.
-  await page.getByRole("tab", { name: "Fitness" }).click();
+  await expect(async () => {
+    await page.getByRole("tab", { name: "Fitness" }).click();
+    await expect(page).toHaveURL(/tab=fitness/, { timeout: 2000 });
+  }).toPass();
   await expect(page.getByText(FITNESS_MARKER)).toBeVisible();
-  await expect(page).toHaveURL(/tab=fitness/);
   await expect(page.getByText(INSIGHTS_MARKER)).toHaveCount(0);
 });
 
@@ -98,9 +105,14 @@ test("the Fitness nested strip is URL-driven and deep-linkable (#105)", async ({
     "true"
   );
 
-  // Clicking a nested tab navigates, preserving the outer tab.
-  await page.getByRole("tab", { name: "Sport" }).click();
-  await expect(page).toHaveURL(/ftab=sport/);
+  // Clicking a nested tab navigates, preserving the outer tab. Retry the click
+  // until the URL updates: a click landing in the pre-hydration window is
+  // swallowed on a not-yet-hydrated tree (CI's `next start` exposes this more
+  // than local `next dev`).
+  await expect(async () => {
+    await page.getByRole("tab", { name: "Sport" }).click();
+    await expect(page).toHaveURL(/ftab=sport/, { timeout: 2000 });
+  }).toPass();
   await expect(page).toHaveURL(/tab=fitness/);
   await expect(page.getByRole("tab", { name: "Sport" })).toHaveAttribute(
     "aria-selected",
