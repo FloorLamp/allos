@@ -56,6 +56,7 @@ const DOMAIN_ICON: Record<UpcomingDomain, TablerIcon> = {
   "dietary-limit": IconAlertTriangle,
   interaction: IconAlertTriangle,
   pgx: IconAlertTriangle,
+  contrast: IconAlertTriangle,
   appointment: IconStethoscope,
   visit: IconStethoscope,
   screening: IconMicroscope,

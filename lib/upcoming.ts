@@ -31,6 +31,7 @@ export function snoozeUntil(today: string, days: number): string | null {
 //   refill      — a tracked med/supplement running low on supply
 //   interaction — two active stack items with a known drug interaction (issue #144)
 //   pgx         — a stored PGx result affecting an active medication (issue #710)
+//   contrast    — a planned contrast imaging study meeting an allergy/CKD gate (#701)
 //   appointment — a scheduled medical visit on its calendar date
 //   visit       — a preventive well-visit due/overdue (issue #82, satisfied by a visit)
 //   screening   — a preventive screening due/overdue (issue #82, satisfied by a result)
@@ -54,6 +55,7 @@ export type UpcomingDomain =
   | "dietary-limit"
   | "interaction"
   | "pgx"
+  | "contrast"
   | "appointment"
   | "visit"
   | "screening"
@@ -73,21 +75,22 @@ const DOMAIN_ORDER: Record<UpcomingDomain, number> = {
   "dietary-limit": 2,
   interaction: 3,
   pgx: 4,
-  appointment: 5,
-  careplan: 6,
-  visit: 7,
-  screening: 8,
-  immunization: 9,
-  biomarker: 10,
-  goal: 11,
-  training: 12,
+  contrast: 5,
+  appointment: 6,
+  careplan: 7,
+  visit: 8,
+  screening: 9,
+  immunization: 10,
+  biomarker: 11,
+  goal: 12,
+  training: 13,
   // The "something's off" signals (issue #524). They never share a date band with
   // the scheduled domains (they carry `signalGroup`, not a due date), so these
   // ranks only order them WITHIN the Flagged / For-review groupings: the clinical
   // flag leads, then a broken sync, then the housekeeping review count.
-  "biomarker-flag": 13,
-  integration: 14,
-  review: 15,
+  "biomarker-flag": 14,
+  integration: 15,
+  review: 16,
 };
 
 export type UrgencyBand = "overdue" | "today" | "week" | "later";

@@ -44,6 +44,9 @@ const ALLOWLIST: Record<string, string> = {
   pgxItems:
     "standing pharmacogenomics cross-check (#710) — a stored PGx result " +
     "affecting an active med; informational safety note, not a risk-ranked due signal",
+  contrastItems:
+    "standing contrast-safety cross-check (#701) — a planned contrast study meeting " +
+    "an allergy/CKD gate; informational pre-procedure safety note, not a risk-ranked due signal",
   appointmentItems: "carries its own real appointment date",
   goalItems: "carries its own target date",
   trainingItems: "weekly frequency count — not risk-ranked",

@@ -22,7 +22,19 @@ import {
   type InteractionItem,
 } from "../../drug-interactions";
 import { crossCheckPgx, type PgxHit, type PgxMedInput } from "../../pgx";
-import { getGenomicVariants } from "../clinical";
+import {
+  crossCheckContrast,
+  parsePlannedStudy,
+  type ContrastHit,
+  type PlannedContrastStudy,
+} from "../../contrast-safety";
+import {
+  getGenomicVariants,
+  getCarePlanItems,
+  getImagingStudies,
+} from "../clinical";
+import { getScheduledAppointments } from "../appointments";
+import { isCarePlanItemOpen } from "../../care-plan-upcoming";
 import { getIntakeSafetyContext } from "./safety";
 import { parseRxcuiIngredients } from "../../rxnorm";
 import { contributesToDailyLimit } from "../../supplement-schedule";
@@ -157,4 +169,81 @@ export function getPgxWarnings(profileId: number): PgxHit[] {
       rxcuiIngredients: m.rxcuiIngredients,
     }));
   return crossCheckPgx(variants, meds);
+}
+
+// Human modality label for an imaging_studies row's structured contrast study.
+const IMAGING_MODALITY_LABEL: Record<string, string> = {
+  ct: "CT",
+  mri: "MRI",
+};
+
+// Contrast-safety cross-check (issue #701): a PLANNED contrast imaging study meeting a
+// contrast/iodine/gadolinium ALLERGY or a renal (CKD) contraindication on file. The
+// planned-study signal is gathered from THREE profile-scoped sources, then handed to
+// the pure crossCheckContrast — the SAME computation the care-plan inline notice and
+// the dismissible Upcoming finding format over ("one question, one computation"):
+//   • OPEN care_plan_items whose description/notes indicate contrast (the primary
+//     ordered/planned trigger),
+//   • still-scheduled appointments whose title/notes indicate contrast, and
+//   • FUTURE-dated imaging_studies rows with the structured contrast flag (#702) — a
+//     completed/past study is deliberately NOT a trigger (the pre-procedure window has
+//     passed), but a future structured row is a strong planned signal.
+// Allergens + active conditions come from the ONE shared safety-context gather
+// (getIntakeSafetyContext, #661), so this can't drift from the belt/food/PGx consumers.
+// Profile-scoped through the underlying reads (all profile_id-filtered); no new SQL, so
+// the scoping guard is unaffected. Informational, never prescriptive; absence of a flag
+// is not clearance.
+export function getContrastSafetyWarnings(
+  profileId: number,
+  todayStr: string = today(profileId)
+): ContrastHit[] {
+  const studies: PlannedContrastStudy[] = [];
+
+  for (const cp of getCarePlanItems(profileId)) {
+    if (!isCarePlanItemOpen(cp.status)) continue;
+    const s = parsePlannedStudy({
+      source: "careplan",
+      sourceId: cp.id,
+      text: [cp.description, cp.notes].filter(Boolean).join(" "),
+      label: cp.description,
+      date: cp.planned_date,
+    });
+    if (s) studies.push(s);
+  }
+
+  for (const a of getScheduledAppointments(profileId)) {
+    const s = parsePlannedStudy({
+      source: "appointment",
+      sourceId: a.id,
+      text: [a.title, a.notes].filter(Boolean).join(" "),
+      label: a.title?.trim() || "Scheduled imaging",
+      date: a.scheduled_at.slice(0, 10),
+    });
+    if (s) studies.push(s);
+  }
+
+  for (const im of getImagingStudies(profileId)) {
+    // Only a FUTURE-dated, structured-contrast study is a planned trigger.
+    if (!im.contrast) continue;
+    if (!im.study_date || im.study_date <= todayStr) continue;
+    const modLabel = IMAGING_MODALITY_LABEL[im.modality] ?? im.modality;
+    const label = [modLabel, im.body_region, "with contrast"]
+      .filter(Boolean)
+      .join(" ");
+    const s = parsePlannedStudy({
+      source: "imaging",
+      sourceId: im.id,
+      text: label,
+      label,
+      date: im.study_date,
+      modality: im.modality,
+      contrastAgent: im.contrast_agent,
+      contrastFlag: true,
+    });
+    if (s) studies.push(s);
+  }
+
+  if (studies.length === 0) return [];
+  const { allergens, conditions } = getIntakeSafetyContext(profileId);
+  return crossCheckContrast(studies, { allergens, conditions });
 }
