@@ -22,8 +22,11 @@ import {
   unresolvedCount,
   medicationMetaLine,
 } from "@/lib/medication-history";
+import type { AdherenceDot } from "@/lib/supplement-adherence";
+import type { DoseRate } from "@/lib/refill";
 import { formatLongDate } from "@/lib/format-date";
 import { getMedicationInfo } from "@/lib/medication-info";
+import { RefillBadge, AdherenceSummaryLine } from "./AdherenceRefill";
 import SupplementForm from "./SupplementForm";
 import FoodGuidance from "./FoodGuidance";
 import DoseStatusControl from "@/components/DoseStatusControl";
@@ -62,6 +65,8 @@ export default function MedicationCard({
   due,
   courses,
   sideEffects,
+  strip,
+  refillRate,
   todayStr,
   trainingRestricted,
   suppressedFoodKeys = [],
@@ -77,6 +82,10 @@ export default function MedicationCard({
   due: boolean;
   courses: MedicationCourse[];
   sideEffects: MedicationSideEffect[];
+  // 14-day adherence strip + refill rate, threaded so the med card shows the same
+  // adherence summary + "≈N days left" badge as the supplement row (#747 parity).
+  strip: AdherenceDot[];
+  refillRate: DoseRate | null;
   todayStr: string;
   trainingRestricted: boolean;
   // Active food-timing dismissals for this profile (#435), threaded to FoodGuidance.
@@ -168,6 +177,12 @@ export default function MedicationCard({
                 {unresolved} side effect{unresolved === 1 ? "" : "s"}
               </span>
             )}
+            <RefillBadge
+              quantityOnHand={s.quantity_on_hand}
+              qtyPerDose={s.qty_per_dose}
+              refillRate={refillRate}
+              doseCount={doses.length}
+            />
           </div>
           {medMeta && (
             <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
@@ -202,6 +217,7 @@ export default function MedicationCard({
               </div>
             </details>
           )}
+          <AdherenceSummaryLine strip={strip} />
         </div>
         <div className="flex shrink-0 items-center gap-2 text-xs">
           <OverflowMenu

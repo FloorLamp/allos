@@ -51,6 +51,7 @@ import {
   type MedicationWithHistory,
 } from "@/lib/medication-history";
 import MedicationCard from "./MedicationCard";
+import { FindingCard, DismissFindingButton } from "./FindingCard";
 import ProviderDatalist from "@/components/ProviderDatalist";
 import { today } from "@/lib/db";
 import { parseRxcuiIngredients } from "@/lib/rxnorm";
@@ -75,12 +76,13 @@ import {
   CONDITION_LABELS,
   SUGGESTED_SITUATIONS,
   priorityClass,
+  workoutDaySubtitleLabel,
   type TimeBucket,
 } from "@/lib/supplement-schedule";
 import { compareDoseDay, type DoseDayEntry } from "@/lib/dose-order";
 import type { Supplement, SupplementDose } from "@/lib/types";
 import { PageHeader, EmptyState } from "@/components/ui";
-import { IconAlertTriangle, IconX } from "@tabler/icons-react";
+import { IconAlertTriangle } from "@tabler/icons-react";
 import SubmitButton from "@/components/SubmitButton";
 import EditableSupplementRow from "./EditableSupplementRow";
 import DismissSuggestionButton from "./DismissSuggestionButton";
@@ -97,50 +99,13 @@ import {
 import SupplementForm from "./SupplementForm";
 import SuggestionsForm from "./SuggestionsForm";
 import AdherenceFindings from "./AdherenceFindings";
-import {
-  addSupplement,
-  toggleSituation,
-  acceptSuggestion,
-  dismissMedicineFinding,
-} from "./actions";
+import { addSupplement, toggleSituation, acceptSuggestion } from "./actions";
 
 export const dynamic = "force-dynamic";
 
 interface Item {
   supplement: Supplement;
   dose: SupplementDose;
-}
-
-// Inline dismiss control for the page's stack-safety / keep-apart observation cards
-// (#435): posts the finding's dedupeKey to the namespace-guarded dismissMedicineFinding
-// action, which hides it through the shared findings-suppression bus. Kept as one
-// helper so the three warning blocks dismiss identically.
-function DismissFindingButton({
-  dedupeKey,
-  label,
-}: {
-  dedupeKey: string;
-  label: string;
-}) {
-  return (
-    <form
-      action={async (fd) => {
-        "use server";
-        await dismissMedicineFinding(fd);
-      }}
-    >
-      <input type="hidden" name="dedupe_key" value={dedupeKey} />
-      <button
-        type="submit"
-        data-testid="medicine-finding-dismiss"
-        aria-label={label}
-        title="Dismiss"
-        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-slate-400 transition hover:bg-black/5 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-white/10 dark:hover:text-slate-300"
-      >
-        <IconX className="h-4 w-4" stroke={2} />
-      </button>
-    </form>
-  );
 }
 
 export default async function SupplementsPage() {
@@ -271,6 +236,23 @@ export default async function SupplementsPage() {
 
   const takenCount = dueItems.filter((it) => taken.has(it.dose.id)).length;
 
+  // Shared findings-suppression store (#227/#435): the ONE snooze/dismiss ledger
+  // behind both Upcoming and every findings surface. The stack-safety warnings and
+  // food-drug guidance below are routed through it, keyed by the identical dedupeKey
+  // their Upcoming twin carries, so a dismiss/snooze on either surface silences the
+  // other ("dismiss once, silence everywhere", #227's page↔push applied page↔page).
+  // Declared here — BEFORE bucketWarnings and every other warning derivation that
+  // captures it — so no closure references it in its temporal dead zone (#747).
+  const suppressions = getFindingSuppressions(profile.id);
+  // This profile's currently-active food-timing dismissals, threaded into each row's
+  // FoodGuidance so a dismissed food note stays hidden (#435).
+  const suppressedFoodKeys = [...suppressions.entries()]
+    .filter(
+      ([k, rec]) =>
+        k.startsWith(FOOD_TIMING_PREFIX) && isSuppressed(rec, todayStr)
+    )
+    .map(([k]) => k);
+
   // Group due items by time bucket; within a bucket use the SHARED dose-day
   // comparator (priority → stack → name) so this section and the Upcoming /
   // needs-attention surfaces order a dose day identically (issue #297). The
@@ -336,21 +318,6 @@ export default async function SupplementsPage() {
   // item has enough history, else the scheduled-dose-count estimate. Threaded to
   // each row so the badge reflects real consumption and can name its basis.
   const refillRates = getRefillRates(profile.id);
-
-  // Shared findings-suppression store (#227/#435): the ONE snooze/dismiss ledger
-  // behind both Upcoming and every findings surface. The stack-safety warnings and
-  // food-drug guidance below are routed through it, keyed by the identical dedupeKey
-  // their Upcoming twin carries, so a dismiss/snooze on either surface silences the
-  // other ("dismiss once, silence everywhere", #227's page↔push applied page↔page).
-  const suppressions = getFindingSuppressions(profile.id);
-  // This profile's currently-active food-timing dismissals, threaded into each row's
-  // FoodGuidance so a dismissed food note stays hidden (#435).
-  const suppressedFoodKeys = [...suppressions.entries()]
-    .filter(
-      ([k, rec]) =>
-        k.startsWith(FOOD_TIMING_PREFIX) && isSuppressed(rec, todayStr)
-    )
-    .map(([k]) => k);
 
   // Stack-total UL warnings (issue #148): nutrients whose active-stack daily
   // supplemental intake exceeds the NIH Tolerable Upper Intake Level for this
@@ -456,7 +423,7 @@ export default async function SupplementsPage() {
         subtitle={
           trainingRestricted
             ? `${takenCount}/${dueItems.length} taken.`
-            : `${(predictedWorkoutDay ?? isWorkoutDay) ? "Workout day" : "Rest day"} — ${takenCount}/${dueItems.length} taken.`
+            : `${workoutDaySubtitleLabel(predictedWorkoutDay, isWorkoutDay)} — ${takenCount}/${dueItems.length} taken.`
         }
       />
 
@@ -528,30 +495,16 @@ export default async function SupplementsPage() {
       {ulWarnings.length > 0 && (
         <div className="mb-4 space-y-2" data-testid="ul-warnings">
           {ulWarnings.map((w) => (
-            <div
+            <FindingCard
               key={w.key}
-              data-testid={`ul-warning-${w.key}`}
-              className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200"
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-start gap-1.5">
-                  <IconAlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                  <div>
-                    <p className="font-semibold">{ulWarningTitle(w)}</p>
-                    <p className="mt-0.5 text-amber-700 dark:text-amber-300">
-                      {ulWarningDetail(w, w.conditionCaveat)}
-                    </p>
-                    <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
-                      From: {ulWarningEvidence(w)}
-                    </p>
-                  </div>
-                </div>
-                <DismissFindingButton
-                  dedupeKey={dietaryLimitSignalKey(w.key)}
-                  label={`Dismiss ${ulWarningTitle(w)}`}
-                />
-              </div>
-            </div>
+              testid={`ul-warning-${w.key}`}
+              tone="amber"
+              title={ulWarningTitle(w)}
+              detail={ulWarningDetail(w, w.conditionCaveat)}
+              evidence={`From: ${ulWarningEvidence(w)}`}
+              dismissKey={dietaryLimitSignalKey(w.key)}
+              dismissLabel={`Dismiss ${ulWarningTitle(w)}`}
+            />
           ))}
         </div>
       )}
@@ -563,32 +516,23 @@ export default async function SupplementsPage() {
           {rdaAdequacy.map((a) => {
             const foods = foodSourcesForDriNutrient(a.key);
             return (
-              <div
+              <FindingCard
                 key={a.key}
-                data-testid={`rda-adequacy-${a.key}`}
-                className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-700 dark:border-slate-800 dark:bg-slate-900/40 dark:text-slate-200"
+                testid={`rda-adequacy-${a.key}`}
+                tone="slate"
+                icon={false}
+                title={rdaAdequacyTitle(a)}
+                detail={rdaAdequacyDetail(a)}
+                evidence={`From: ${rdaAdequacyEvidence(a)}`}
+                dismissKey={rdaAdequacySignalKey(a.key)}
+                dismissLabel={`Dismiss ${rdaAdequacyTitle(a)}`}
               >
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <p className="font-semibold">{rdaAdequacyTitle(a)}</p>
-                    <p className="mt-0.5 text-slate-600 dark:text-slate-300">
-                      {rdaAdequacyDetail(a)}
-                    </p>
-                    {foods.length > 0 && (
-                      <p className="mt-1 text-xs text-emerald-700 dark:text-emerald-300">
-                        Food sources: {foods.join("; ")}.
-                      </p>
-                    )}
-                    <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
-                      From: {rdaAdequacyEvidence(a)}
-                    </p>
-                  </div>
-                  <DismissFindingButton
-                    dedupeKey={rdaAdequacySignalKey(a.key)}
-                    label={`Dismiss ${rdaAdequacyTitle(a)}`}
-                  />
-                </div>
-              </div>
+                {foods.length > 0 && (
+                  <p className="mt-1 text-xs text-emerald-700 dark:text-emerald-300">
+                    Food sources: {foods.join("; ")}.
+                  </p>
+                )}
+              </FindingCard>
             );
           })}
         </div>
@@ -598,36 +542,23 @@ export default async function SupplementsPage() {
       {interactionWarnings.length > 0 && (
         <div className="mb-4 space-y-2" data-testid="interaction-warnings">
           {interactionWarnings.map((hit) => (
-            <div
+            <FindingCard
               key={hit.dedupeKey}
-              data-testid={`interaction-warning-${hit.dedupeKey}`}
-              className="rounded-lg border border-rose-300 bg-rose-50 px-3 py-2.5 text-sm text-rose-800 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-200"
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-start gap-1.5">
-                  <IconAlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                  <div>
-                    <p className="font-semibold">
-                      <span className="uppercase">
-                        {SEVERITY_LABEL[hit.severity]}
-                      </span>{" "}
-                      · {interactionTitle(hit)}
-                    </p>
-                    <p className="mt-0.5 text-rose-700 dark:text-rose-300">
-                      {hit.mechanism}
-                    </p>
-                    <p className="mt-1 text-xs text-rose-600 dark:text-rose-400">
-                      Informational, not medical advice — discuss with your
-                      prescriber or pharmacist. Source: {hit.source}
-                    </p>
-                  </div>
-                </div>
-                <DismissFindingButton
-                  dedupeKey={hit.dedupeKey}
-                  label={`Dismiss ${interactionTitle(hit)} interaction`}
-                />
-              </div>
-            </div>
+              testid={`interaction-warning-${hit.dedupeKey}`}
+              tone="rose"
+              title={
+                <>
+                  <span className="uppercase">
+                    {SEVERITY_LABEL[hit.severity]}
+                  </span>{" "}
+                  · {interactionTitle(hit)}
+                </>
+              }
+              detail={hit.mechanism}
+              evidence={`Informational, not medical advice — discuss with your prescriber or pharmacist. Source: ${hit.source}`}
+              dismissKey={hit.dedupeKey}
+              dismissLabel={`Dismiss ${interactionTitle(hit)} interaction`}
+            />
           ))}
         </div>
       )}
@@ -638,38 +569,28 @@ export default async function SupplementsPage() {
       {pgxWarnings.length > 0 && (
         <div className="mb-4 space-y-2" data-testid="pgx-warnings">
           {pgxWarnings.map((hit) => (
-            <div
+            <FindingCard
               key={hit.dedupeKey}
-              data-testid={`pgx-warning-${hit.dedupeKey}`}
-              className="rounded-lg border border-violet-300 bg-violet-50 px-3 py-2.5 text-sm text-violet-800 dark:border-violet-900 dark:bg-violet-950 dark:text-violet-200"
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-start gap-1.5">
-                  <IconAlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                  <div>
-                    <p className="font-semibold">
-                      <span className="uppercase">
-                        {PGX_SEVERITY_LABEL[hit.severity]}
-                      </span>{" "}
-                      · {pgxTitle(hit)}
-                    </p>
-                    <p className="mt-0.5 text-violet-700 dark:text-violet-300">
-                      {hit.gene} {pgxStatusLabel(hit)} on file. CPIC guidance:{" "}
-                      {hit.guidance}
-                    </p>
-                    <p className="mt-1 text-xs text-violet-600 dark:text-violet-400">
-                      Informational — discuss with your prescriber before any
-                      change; do not stop or switch a medication based on this
-                      alone. Source: {hit.source}
-                    </p>
-                  </div>
-                </div>
-                <DismissFindingButton
-                  dedupeKey={hit.dedupeKey}
-                  label={`Dismiss ${pgxTitle(hit)} pharmacogenomic note`}
-                />
-              </div>
-            </div>
+              testid={`pgx-warning-${hit.dedupeKey}`}
+              tone="violet"
+              title={
+                <>
+                  <span className="uppercase">
+                    {PGX_SEVERITY_LABEL[hit.severity]}
+                  </span>{" "}
+                  · {pgxTitle(hit)}
+                </>
+              }
+              detail={
+                <>
+                  {hit.gene} {pgxStatusLabel(hit)} on file. CPIC guidance:{" "}
+                  {hit.guidance}
+                </>
+              }
+              evidence={`Informational — discuss with your prescriber before any change; do not stop or switch a medication based on this alone. Source: ${hit.source}`}
+              dismissKey={hit.dedupeKey}
+              dismissLabel={`Dismiss ${pgxTitle(hit)} pharmacogenomic note`}
+            />
           ))}
         </div>
       )}
@@ -703,6 +624,8 @@ export default async function SupplementsPage() {
                     due={medDue(m.med)}
                     courses={m.courses}
                     sideEffects={m.sideEffects}
+                    strip={stripFor(m.med)}
+                    refillRate={refillRates.get(m.med.id) ?? null}
                     todayStr={todayStr}
                     trainingRestricted={trainingRestricted}
                     suppressedFoodKeys={suppressedFoodKeys}
@@ -732,6 +655,8 @@ export default async function SupplementsPage() {
                     due={medDue(m.med)}
                     courses={m.courses}
                     sideEffects={m.sideEffects}
+                    strip={stripFor(m.med)}
+                    refillRate={refillRates.get(m.med.id) ?? null}
                     todayStr={todayStr}
                     trainingRestricted={trainingRestricted}
                     suppressedFoodKeys={suppressedFoodKeys}

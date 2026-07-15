@@ -989,6 +989,64 @@ if (
 
 console.log(`e2e: seeded percent-strength medication "${PCT_MED_NAME}" (#272)`);
 
+// ── Med-card adherence + refill parity fixture (issue #747) ──────────────────
+// A CURRENT (open-course, active, daily) medication carrying refill tracking
+// (quantity_on_hand) AND a run of deterministic taken-logs, so its medication
+// CARD renders BOTH the "≈N days left" refill badge and the 14-day adherence
+// summary line — the parity the med card previously lacked (it received neither
+// strip nor refillRate). Fully synthetic name with no rxcui → matches no
+// interaction/PGx/food-drug dataset, so other specs are undisturbed; supply is
+// set HIGH (90 units ÷ ~1/day ≈ 90 days) so it stays ABOVE the low-supply
+// threshold and never joins the dashboard Low-supply widget / Upcoming refill
+// fixtures. Idempotent: re-created from scratch each boot so the log window
+// stays today-relative.
+const PARITY_MED_NAME = "Adherence Refill Med (e2e)";
+db.prepare(`DELETE FROM intake_items WHERE profile_id = ? AND name = ?`).run(
+  PROFILE_ID,
+  PARITY_MED_NAME
+);
+const parityMedId = Number(
+  db
+    .prepare(
+      `INSERT INTO intake_items
+         (profile_id, name, notes, condition, priority, kind, prescriber,
+          active, as_needed, quantity_on_hand, qty_per_dose)
+       VALUES (?, ?, 'Daily maintenance med — e2e parity fixture', 'daily',
+               'low', 'medication', 'Dr. Test Provider', 1, 0, 90, 1)`
+    )
+    .run(PROFILE_ID, PARITY_MED_NAME).lastInsertRowid
+);
+const parityDoseId = Number(
+  db
+    .prepare(
+      `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+       VALUES (?, '1 tablet', 'Morning', 'any', 0)`
+    )
+    .run(parityMedId).lastInsertRowid
+);
+db.prepare(
+  `INSERT INTO medication_courses (item_id, started_on, stopped_on, stop_reason, notes)
+   VALUES (?, ?, NULL, NULL, 'Ongoing — e2e parity fixture')`
+).run(parityMedId, shiftDateStr(today(PROFILE_ID), -60));
+// Deterministic taken-logs for the last 14 days (every day taken) → 100%
+// adherence and a multi-day streak, so the AdherenceSummaryLine renders with
+// stable text regardless of the run.
+const insParityLog = db.prepare(
+  `INSERT OR IGNORE INTO intake_item_logs (dose_id, item_id, date, status)
+   VALUES (?, ?, ?, 'taken')`
+);
+for (let i = 1; i <= 14; i++) {
+  insParityLog.run(
+    parityDoseId,
+    parityMedId,
+    shiftDateStr(today(PROFILE_ID), -i)
+  );
+}
+
+console.log(
+  `e2e: seeded med-card adherence+refill parity fixture "${PARITY_MED_NAME}" (#747)`
+);
+
 // ── Import-detail tabbed records-browser fixture (issue #271) ─────────────────
 // A 'done' document that produced rows across several kinds — labs + a
 // prescription (medical_records), a visit, a condition, an immunization, and a
