@@ -28,7 +28,7 @@ function ErrorAlert({ message }: { message?: string }) {
   return (
     <p
       role="alert"
-      className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-400"
+      className="rounded-lg bg-rose-500/10 px-3 py-2 text-sm text-rose-600 dark:text-rose-400"
     >
       {message}
     </p>

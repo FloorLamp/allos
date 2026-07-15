@@ -79,7 +79,7 @@ const BADGE_CLASS: Record<TimelineCategory, string> = {
     "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300",
   condition:
     "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300",
-  allergy: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300",
+  allergy: "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300",
   visit: "bg-cyan-100 text-cyan-700 dark:bg-cyan-950 dark:text-cyan-300",
   imaging: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300",
   goal: "bg-brand-100 text-brand-700 dark:bg-brand-950 dark:text-brand-300",

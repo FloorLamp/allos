@@ -15,6 +15,7 @@ import {
 } from "@/lib/queries";
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
+import { chartSeries } from "@/lib/chart-colors";
 import { formatRelativeDate } from "@/lib/format-date";
 import { formatMinutes } from "@/lib/duration";
 import { frequencyScopeLabel } from "@/lib/goals";
@@ -443,7 +444,7 @@ export default async function OverviewSection() {
                 data={volume}
                 label="Volume"
                 unit={` ${wu}`}
-                color="#16a34a"
+                color={chartSeries.brand}
               />
             )}
           </div>

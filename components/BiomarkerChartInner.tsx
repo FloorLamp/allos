@@ -11,6 +11,7 @@ import {
   YAxis,
 } from "recharts";
 import { useChartColors } from "./useChartColors";
+import { chartBand } from "@/lib/chart-colors";
 import { biomarkerAxisDomain } from "@/lib/reference-range";
 import { roundChartValue } from "@/lib/chart-format";
 import { formatLongDate } from "@/lib/format-date";
@@ -143,7 +144,7 @@ export default function BiomarkerChart({
             <ReferenceArea
               y1={refLow ?? domain[0]}
               y2={refHigh ?? domain[1]}
-              fill="#94a3b8"
+              fill={chartBand.reference}
               fillOpacity={0.1}
             />
           ) : null}
@@ -154,12 +155,12 @@ export default function BiomarkerChart({
             <ReferenceArea
               y1={optimalLow ?? domain[0]}
               y2={optimalHigh ?? domain[1]}
-              fill="#0b8f5d"
+              fill={chartBand.optimal}
               fillOpacity={0.14}
               label={{
                 value: "optimal",
                 fontSize: 10,
-                fill: "#0b8f5d",
+                fill: chartBand.optimal,
                 position:
                   optimalHigh != null ? "insideTopRight" : "insideBottomRight",
               }}

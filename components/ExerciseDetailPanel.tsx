@@ -19,6 +19,7 @@ import { useTimezone } from "@/components/TimezoneProvider";
 import { dateStrInTz } from "@/lib/date";
 import { suggestNextSet, lastSessionPR, nextSetText } from "@/lib/coaching";
 import LineChartCard from "@/components/LineChartCard";
+import { chartSeries } from "@/lib/chart-colors";
 import LevelBadge from "@/components/LevelBadge";
 import { StatBox } from "@/components/StatBox";
 import ExerciseGuideSection from "@/components/ExerciseGuideSection";
@@ -274,7 +275,7 @@ export default function ExerciseDetailPanel({
             data={chart}
             label={repsTrend ? "Reps" : "Volume"}
             unit={repsTrend ? "" : ` ${wu}`}
-            color="#7c3aed"
+            color={chartSeries.violet}
           />
         </div>
       )}

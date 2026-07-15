@@ -11,6 +11,7 @@ import {
   YAxis,
 } from "recharts";
 import { useChartColors } from "./useChartColors";
+import { chartSeries } from "@/lib/chart-colors";
 import { formatLongDate } from "@/lib/format-date";
 import { roundChartValue } from "@/lib/chart-format";
 import {
@@ -27,7 +28,7 @@ export default function LineChartCard({
   data,
   dataKey,
   label,
-  color = "#16a34a",
+  color = chartSeries.brand,
   unit = "",
   showDots = true,
   tickFormatter,
@@ -131,7 +132,7 @@ export default function LineChartCard({
           {referenceValue != null && (
             <ReferenceLine
               y={referenceValue.value}
-              stroke={referenceValue.color ?? "#10b981"}
+              stroke={referenceValue.color ?? chartSeries.emerald}
               strokeDasharray="5 4"
               strokeWidth={1.5}
               label={
@@ -140,7 +141,7 @@ export default function LineChartCard({
                       value: referenceValue.label,
                       position: "insideTopLeft",
                       fontSize: 10,
-                      fill: referenceValue.color ?? "#10b981",
+                      fill: referenceValue.color ?? chartSeries.emerald,
                     }
                   : undefined
               }

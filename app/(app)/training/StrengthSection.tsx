@@ -7,6 +7,7 @@ import {
   getGoalProgressMap,
 } from "@/lib/queries";
 import { getUnitPrefs, getUserSex } from "@/lib/settings";
+import { chartSeries } from "@/lib/chart-colors";
 import { requireSession } from "@/lib/auth";
 import { dispWeight, fmtWeight } from "@/lib/units";
 import { today } from "@/lib/db";
@@ -70,7 +71,7 @@ export default async function StrengthSection() {
               data={volume}
               label="Volume"
               unit={` ${wu}`}
-              color="#16a34a"
+              color={chartSeries.brand}
             />
           )}
         </div>

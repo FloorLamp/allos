@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
+import { chartSeries } from "@/lib/chart-colors";
 import {
   getUnitPrefs,
   getUserSex,
@@ -207,7 +208,7 @@ export default async function BodySection({ range }: { range: DateRange }) {
       data: heightChart,
       label: "Height",
       unit: " cm",
-      color: "#2563eb",
+      color: chartSeries.violet,
     },
     head_circumference: {
       key: "head_circumference",
@@ -215,7 +216,7 @@ export default async function BodySection({ range }: { range: DateRange }) {
       data: headCircChart,
       label: "Head circ.",
       unit: " cm",
-      color: "#0891b2",
+      color: chartSeries.emerald,
     },
     weight: {
       key: "weight",
@@ -223,7 +224,7 @@ export default async function BodySection({ range }: { range: DateRange }) {
       data: weightChart,
       label: "Weight",
       unit: ` ${wu}`,
-      color: "#16a34a",
+      color: chartSeries.brand,
       ...goalOverlay("weight", weightChart, ` ${wu}`, 1),
     },
     bodyfat: {
@@ -232,7 +233,7 @@ export default async function BodySection({ range }: { range: DateRange }) {
       data: bodyFatChart,
       label: "Body fat",
       unit: "%",
-      color: "#a855f7",
+      color: chartSeries.violet,
       ...goalOverlay("body_fat", bodyFatChart, "%", 1),
     },
     resting_hr: {
@@ -241,7 +242,7 @@ export default async function BodySection({ range }: { range: DateRange }) {
       data: restingHrChart,
       label: "Resting HR",
       unit: " bpm",
-      color: "#fb923c",
+      color: chartSeries.amber,
       ...goalOverlay("resting_hr", restingHrChart, " bpm", 0),
     },
   };
@@ -467,7 +468,7 @@ export default async function BodySection({ range }: { range: DateRange }) {
                 <LineChartCard
                   data={stepsChart}
                   label="Steps"
-                  color="#0ea5e9"
+                  color={chartSeries.emerald}
                 />
               </div>
             )}
@@ -479,7 +480,7 @@ export default async function BodySection({ range }: { range: DateRange }) {
                 <LineChartCard
                   data={sleepChart}
                   label="Sleep"
-                  color="#6366f1"
+                  color={chartSeries.violet}
                   unit=" h"
                 />
               </div>
@@ -527,7 +528,7 @@ export default async function BodySection({ range }: { range: DateRange }) {
                     <LineChartCard
                       data={sleepRegTrend}
                       label="SRI"
-                      color="#6366f1"
+                      color={chartSeries.violet}
                     />
                   </div>
                 )}
@@ -542,10 +543,14 @@ export default async function BodySection({ range }: { range: DateRange }) {
                   data={sleepStages}
                   unit=" h"
                   series={[
-                    { key: "deep", label: "Deep", color: "#4f46e5" },
-                    { key: "rem", label: "REM", color: "#a855f7" },
-                    { key: "light", label: "Light", color: "#38bdf8" },
-                    { key: "awake", label: "Awake", color: "#f59e0b" },
+                    { key: "deep", label: "Deep", color: chartSeries.violet },
+                    { key: "rem", label: "REM", color: chartSeries.rose },
+                    {
+                      key: "light",
+                      label: "Light",
+                      color: chartSeries.emerald,
+                    },
+                    { key: "awake", label: "Awake", color: chartSeries.amber },
                   ]}
                 />
               </div>
@@ -558,7 +563,7 @@ export default async function BodySection({ range }: { range: DateRange }) {
                 <LineChartCard
                   data={hrChart}
                   label="Avg HR"
-                  color="#f43f5e"
+                  color={chartSeries.rose}
                   unit=" bpm"
                 />
               </div>
@@ -572,7 +577,7 @@ export default async function BodySection({ range }: { range: DateRange }) {
                 <LineChartCard
                   data={hrIntraday}
                   label="HR"
-                  color="#f43f5e"
+                  color={chartSeries.rose}
                   unit=" bpm"
                   showDots={false}
                 />
@@ -583,7 +588,11 @@ export default async function BodySection({ range }: { range: DateRange }) {
                 <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
                   BMI
                 </h2>
-                <LineChartCard data={bmiChart} label="BMI" color="#14b8a6" />
+                <LineChartCard
+                  data={bmiChart}
+                  label="BMI"
+                  color={chartSeries.emerald}
+                />
               </div>
             )}
             {leanMassChart.length > 0 && (
@@ -594,7 +603,7 @@ export default async function BodySection({ range }: { range: DateRange }) {
                 <LineChartCard
                   data={leanMassChart}
                   label="Lean mass"
-                  color="#10b981"
+                  color={chartSeries.emerald}
                   unit=" kg"
                 />
               </div>
@@ -607,7 +616,7 @@ export default async function BodySection({ range }: { range: DateRange }) {
                 <LineChartCard
                   data={boneMassChart}
                   label="Bone mass"
-                  color="#64748b"
+                  color={chartSeries.slate}
                   unit=" kg"
                 />
               </div>
@@ -620,7 +629,7 @@ export default async function BodySection({ range }: { range: DateRange }) {
                 <LineChartCard
                   data={bmrChart}
                   label="BMR"
-                  color="#ef4444"
+                  color={chartSeries.rose}
                   unit=" kcal"
                 />
               </div>
@@ -633,7 +642,7 @@ export default async function BodySection({ range }: { range: DateRange }) {
                 <LineChartCard
                   data={hydrationChart}
                   label="Water"
-                  color="#06b6d4"
+                  color={chartSeries.emerald}
                   unit=" L"
                 />
               </div>
@@ -646,7 +655,7 @@ export default async function BodySection({ range }: { range: DateRange }) {
                 <LineChartCard
                   data={caloriesChart}
                   label="Calories"
-                  color="#f97316"
+                  color={chartSeries.amber}
                   unit=" kcal"
                 />
               </div>
@@ -660,9 +669,13 @@ export default async function BodySection({ range }: { range: DateRange }) {
                   data={macrosChart}
                   unit=" g"
                   series={[
-                    { key: "protein", label: "Protein", color: "#6366f1" },
-                    { key: "carbs", label: "Carbs", color: "#f59e0b" },
-                    { key: "fat", label: "Fat", color: "#ef4444" },
+                    {
+                      key: "protein",
+                      label: "Protein",
+                      color: chartSeries.violet,
+                    },
+                    { key: "carbs", label: "Carbs", color: chartSeries.amber },
+                    { key: "fat", label: "Fat", color: chartSeries.rose },
                   ]}
                 />
               </div>
