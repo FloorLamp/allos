@@ -30,7 +30,7 @@ function TrendArrow({ pillar }: { pillar: Pillar }) {
         ? IconArrowDownRight
         : IconMinus;
   return (
-    <span className="inline-flex items-center gap-0.5 text-xs text-slate-400 dark:text-slate-500">
+    <span className="inline-flex items-center gap-0.5 text-xs text-slate-500 dark:text-slate-400">
       <Icon className="h-3.5 w-3.5" stroke={1.75} aria-hidden />
       {pillar.trend.label}
     </span>
@@ -57,7 +57,7 @@ export default function HealthspanPillarsWidget({
             className="flex flex-col rounded-lg border border-slate-200 p-2.5 transition hover:border-brand-300 dark:border-ink-700 dark:hover:border-brand-700"
             data-testid={`pillar-${p.key}`}
           >
-            <span className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+            <span className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
               {p.label}
             </span>
             <span

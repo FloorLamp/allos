@@ -454,7 +454,7 @@ export default async function BodySection({ range }: { range: DateRange }) {
 
       {hasSynced && (
         <div className="space-y-3">
-          <p className="text-xs text-slate-400 dark:text-slate-500">
+          <p className="text-xs text-slate-500 dark:text-slate-400">
             Synced daily metrics — most recent ~6 months (not filtered by the
             date range above).
           </p>

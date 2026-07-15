@@ -266,7 +266,7 @@ export default async function MedicationsPage() {
 
           {pastMeds.length > 0 && (
             <details>
-              <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+              <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                 Past / discontinued ({pastMeds.length})
               </summary>
               <div className="mt-2 space-y-3">

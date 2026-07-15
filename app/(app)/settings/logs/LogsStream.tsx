@@ -44,7 +44,7 @@ export default function LogsStream({ initial }: { initial: AiEvent[] }) {
 
   return (
     <div>
-      <div className="mb-2 flex items-center gap-2 text-xs text-slate-400 dark:text-slate-500">
+      <div className="mb-2 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
         <span
           className={`inline-block h-2 w-2 rounded-full ${
             live ? "bg-emerald-500" : "bg-slate-300 dark:bg-ink-700"
@@ -55,7 +55,7 @@ export default function LogsStream({ initial }: { initial: AiEvent[] }) {
       </div>
 
       {events.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-black/10 bg-white p-10 text-center text-sm text-slate-400 dark:border-white/10 dark:bg-ink-900 dark:text-slate-500">
+        <div className="rounded-xl border border-dashed border-black/10 bg-white p-10 text-center text-sm text-slate-500 dark:border-white/10 dark:bg-ink-900 dark:text-slate-400">
           No AI activity yet. Trigger an AI feature (e.g. supplement suggestions
           or a document upload) and it will appear here live.
         </div>
@@ -64,7 +64,7 @@ export default function LogsStream({ initial }: { initial: AiEvent[] }) {
           <ScrollFade>
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-black/5 text-left text-xs uppercase tracking-wide text-slate-400 dark:border-white/10 dark:text-slate-500">
+                <tr className="border-b border-black/5 text-left text-xs uppercase tracking-wide text-slate-500 dark:border-white/10 dark:text-slate-400">
                   <th className="td">Time</th>
                   <th className="td">Feature</th>
                   <th className="td">Status</th>

@@ -392,7 +392,7 @@ export default function IntakeItemForm({
           )}
         </div>
         {rxError && (
-          <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
             {rxError}
           </p>
         )}
@@ -408,7 +408,7 @@ export default function IntakeItemForm({
               >
                 <span className="text-slate-600 dark:text-slate-300">
                   {c.name || "(unnamed)"}{" "}
-                  <span className="text-slate-400 dark:text-slate-500">
+                  <span className="text-slate-500 dark:text-slate-400">
                     · {c.rxcui}
                   </span>
                 </span>
@@ -717,7 +717,7 @@ export default function IntakeItemForm({
           />
           Critical medication — escalate a missed dose
         </label>
-        <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           If a reminder for this dose goes unconfirmed, send a follow-up nudge
           (optionally to a second chat, e.g. a caregiver).
         </p>
@@ -758,7 +758,7 @@ export default function IntakeItemForm({
         <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
           Refill tracking (optional)
         </label>
-        <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           Track units on hand to see “≈N days left” and get a refill nudge when
           you’re running low. Leave the quantity blank to skip tracking.
         </p>

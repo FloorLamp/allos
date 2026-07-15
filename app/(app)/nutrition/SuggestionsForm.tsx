@@ -27,7 +27,7 @@ export default function SuggestionsForm() {
         <p
           className={`mt-2 text-sm ${
             state.ok
-              ? "text-slate-400 dark:text-slate-500"
+              ? "text-slate-500 dark:text-slate-400"
               : "text-rose-600 dark:text-rose-400"
           }`}
         >

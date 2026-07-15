@@ -29,7 +29,7 @@ export default async function FamilyHistoryPage() {
 
         <div className="min-w-0 space-y-4">
           <FamilyHistoryForm action={addFamilyHistory} />
-          <p className="px-1 text-xs text-slate-400 dark:text-slate-500">
+          <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
             Informational only, not medical advice. Imported entries come from
             uploaded health records (CCD Family History section).
           </p>

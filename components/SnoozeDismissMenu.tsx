@@ -37,7 +37,7 @@ export default function SnoozeDismissMenu({
     <OverflowMenu label="Snooze or dismiss" open={open} onOpenChange={setOpen}>
       {({ runAction }) => (
         <>
-          <div className="flex items-center gap-1 px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+          <div className="flex items-center gap-1 px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
             <IconClock className="h-3 w-3" stroke={1.75} />
             Snooze
           </div>

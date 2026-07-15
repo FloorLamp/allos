@@ -46,7 +46,7 @@ export default async function SettingsPage() {
         />
       )}
       <ActiveSessions sessions={sessions} canRevoke={!demoRestricted} />
-      <footer className="mt-10 border-t border-black/10 pt-4 text-xs text-slate-400 dark:border-white/10 dark:text-slate-500">
+      <footer className="mt-10 border-t border-black/10 pt-4 text-xs text-slate-500 dark:border-white/10 dark:text-slate-400">
         Version <AppVersion />
       </footer>
     </div>

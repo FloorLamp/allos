@@ -161,7 +161,7 @@ export default function GoalsManager({
                       </span>
                     ) : (
                       g.category && (
-                        <span className="text-xs text-slate-400 dark:text-slate-500">
+                        <span className="text-xs text-slate-500 dark:text-slate-400">
                           {g.category}
                         </span>
                       )
@@ -301,7 +301,7 @@ export default function GoalsManager({
                     {isExercise &&
                       prog &&
                       (prog.lifetimeBest ?? 0) > prog.current && (
-                        <div className="mt-0.5 text-[11px] text-slate-400 dark:text-slate-500">
+                        <div className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
                           PR {goalValueText(g, prog.lifetimeBest!, wu)}
                         </div>
                       )}
@@ -328,7 +328,7 @@ export default function GoalsManager({
                 )}
 
                 {g.target_date && (
-                  <div className="mt-2 text-xs text-slate-400 dark:text-slate-500">
+                  <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
                     Target: {formatLongDate(g.target_date)}
                     {(() => {
                       const label = daysRemainingLabel(g.target_date, todayStr);

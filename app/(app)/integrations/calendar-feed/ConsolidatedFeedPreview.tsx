@@ -23,7 +23,7 @@ export default function ConsolidatedFeedPreview({
     <div className="card space-y-4" data-testid="family-feed-preview">
       <div className="flex items-start gap-2">
         <IconUsersGroup
-          className="mt-0.5 h-5 w-5 shrink-0 text-slate-400 dark:text-slate-500"
+          className="mt-0.5 h-5 w-5 shrink-0 text-slate-500 dark:text-slate-400"
           aria-hidden
         />
         <div>
@@ -47,7 +47,7 @@ export default function ConsolidatedFeedPreview({
         <div className="space-y-4">
           {visible.map((g) => (
             <div key={g.dateKey}>
-              <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+              <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                 {g.dateLabel}
               </h3>
               <ul className="divide-y divide-black/5 dark:divide-white/5">
@@ -67,7 +67,7 @@ export default function ConsolidatedFeedPreview({
                         <span
                           className={`text-sm font-medium ${
                             r.cancelled
-                              ? "text-slate-400 line-through dark:text-slate-500"
+                              ? "text-slate-500 line-through dark:text-slate-400"
                               : "text-slate-800 dark:text-slate-100"
                           }`}
                         >
@@ -107,7 +107,7 @@ export default function ConsolidatedFeedPreview({
       )}
 
       {overflow > 0 && (
-        <p className="text-xs text-slate-400 dark:text-slate-500">
+        <p className="text-xs text-slate-500 dark:text-slate-400">
           + {overflow} more {overflow === 1 ? "appointment" : "appointments"} in
           the feed
         </p>

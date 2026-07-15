@@ -49,7 +49,7 @@ export default async function StarredBiomarkers({
     <div className="card mb-6" data-testid="starred-biomarkers">
       <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
         ★ {title}{" "}
-        <span className="font-normal text-slate-400 dark:text-slate-500">
+        <span className="font-normal text-slate-500 dark:text-slate-400">
           ({starred.length})
         </span>
       </h2>
@@ -120,7 +120,7 @@ export default async function StarredBiomarkers({
                   status={reproductiveStatus}
                 />
               </div>
-              <div className="mt-2 text-xs text-slate-400 dark:text-slate-500">
+              <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
                 {relative}
                 {stale && (
                   <span

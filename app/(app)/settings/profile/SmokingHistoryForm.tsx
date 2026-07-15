@@ -83,7 +83,7 @@ export default function SmokingHistoryForm({
           <option value="former">Former smoker</option>
           <option value="current">Current smoker</option>
         </select>
-        <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           Used to surface the smoking-related screening reminders (low-dose CT
           lung screening; abdominal aortic aneurysm ultrasound). Leave as
           &ldquo;Not recorded&rdquo; if you&rsquo;d rather not say.
@@ -129,7 +129,7 @@ export default function SmokingHistoryForm({
               />
             </div>
           )}
-          <p className="col-span-2 text-xs text-slate-400 dark:text-slate-500">
+          <p className="col-span-2 text-xs text-slate-500 dark:text-slate-400">
             A pack-year is one pack a day for a year. Lung screening is
             generally considered around 20+ pack-years for those still smoking
             or who quit within the last 15 years.
@@ -137,7 +137,7 @@ export default function SmokingHistoryForm({
         </div>
       )}
 
-      <p className="border-t border-black/5 pt-4 text-xs text-slate-400 dark:border-white/10 dark:text-slate-500">
+      <p className="border-t border-black/5 pt-4 text-xs text-slate-500 dark:border-white/10 dark:text-slate-400">
         Privacy: smoking history is sensitive. Like the rest of this
         profile&rsquo;s medical passport, anyone granted access to this profile
         (and any admin) can see it. It is informational only and not medical

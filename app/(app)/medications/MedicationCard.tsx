@@ -289,7 +289,7 @@ export default function MedicationCard({
 
       {/* Detail: course history, side effects, lifecycle actions. */}
       <details className="mt-2">
-        <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+        <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
           History &amp; side effects
         </summary>
 
@@ -388,7 +388,7 @@ export default function MedicationCard({
 
           {/* Course mini-timeline. */}
           <div>
-            <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+            <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
               Courses ({ordered.length})
             </div>
             <ul className="space-y-1">
@@ -412,7 +412,7 @@ export default function MedicationCard({
                     </span>
                   )}
                   {c.notes && (
-                    <span className="text-xs text-slate-400 dark:text-slate-500">
+                    <span className="text-xs text-slate-500 dark:text-slate-400">
                       {c.notes}
                     </span>
                   )}
@@ -424,7 +424,7 @@ export default function MedicationCard({
           {/* Side effects. */}
           <div>
             <div className="mb-1 flex items-center justify-between">
-              <span className="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                 Side effects ({sideEffects.length})
               </span>
               <button
@@ -489,7 +489,7 @@ export default function MedicationCard({
             )}
 
             {sideEffects.length === 0 ? (
-              <p className="text-sm text-slate-400 dark:text-slate-500">
+              <p className="text-sm text-slate-500 dark:text-slate-400">
                 None noted.
               </p>
             ) : (
@@ -502,7 +502,7 @@ export default function MedicationCard({
                     <span
                       className={`font-medium ${
                         se.resolved
-                          ? "text-slate-400 line-through dark:text-slate-500"
+                          ? "text-slate-500 line-through dark:text-slate-400"
                           : "text-slate-700 dark:text-slate-200"
                       }`}
                     >
@@ -514,7 +514,7 @@ export default function MedicationCard({
                       </span>
                     )}
                     {se.noted_on && (
-                      <span className="text-xs text-slate-400 dark:text-slate-500">
+                      <span className="text-xs text-slate-500 dark:text-slate-400">
                         {fmt(se.noted_on)}
                       </span>
                     )}

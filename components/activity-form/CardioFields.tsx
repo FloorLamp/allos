@@ -86,7 +86,7 @@ export default function CardioFields({
         </div>
       </div>
       {speed != null && (
-        <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           Avg speed: {speed} {distanceUnit}/h
           {pace != null && (
             <>

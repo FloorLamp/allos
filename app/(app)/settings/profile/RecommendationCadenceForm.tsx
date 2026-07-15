@@ -70,7 +70,7 @@ export default function RecommendationCadenceForm({
             </option>
           ))}
         </select>
-        <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           How often to proactively run AI recommendations (supplement
           suggestions + a refreshed daily insight) for this profile. Scheduled
           runs fire lazily on a page view once the period has elapsed and only

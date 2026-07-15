@@ -128,7 +128,7 @@ export default async function AuditLogPage(props: {
 
       {rows.length === 0 ? (
         <div
-          className="rounded-xl border border-dashed border-black/10 bg-white p-10 text-center text-sm text-slate-400 dark:border-white/10 dark:bg-ink-900 dark:text-slate-500"
+          className="rounded-xl border border-dashed border-black/10 bg-white p-10 text-center text-sm text-slate-500 dark:border-white/10 dark:bg-ink-900 dark:text-slate-400"
           data-testid="audit-empty"
         >
           No audit events match these filters.
@@ -138,7 +138,7 @@ export default async function AuditLogPage(props: {
           <div className="overflow-x-auto">
             <table className="w-full text-sm" data-testid="audit-table">
               <thead>
-                <tr className="border-b border-black/5 text-left text-xs uppercase tracking-wide text-slate-400 dark:border-white/10 dark:text-slate-500">
+                <tr className="border-b border-black/5 text-left text-xs uppercase tracking-wide text-slate-500 dark:border-white/10 dark:text-slate-400">
                   <th className="td whitespace-nowrap">Time (UTC)</th>
                   <th className="td">Login</th>
                   <th className="td">Action</th>
@@ -183,7 +183,7 @@ export default async function AuditLogPage(props: {
       )}
 
       {/* Pager: server-side LIMIT/OFFSET, so we never ship the whole table. */}
-      <div className="mt-3 flex items-center justify-between text-xs text-slate-400 dark:text-slate-500">
+      <div className="mt-3 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
         <span data-testid="audit-total">{total} events</span>
         <div className="flex items-center gap-3">
           {page > 1 ? (

@@ -182,8 +182,8 @@ test("journal cards prioritize a summary and progressively disclose details", as
   await expect(metrics).toContainText("18°C");
   await expect(metrics).toContainText("Effort 72");
   await expect(metrics.locator(".badge")).toHaveCount(0);
-  await expect(metrics).toHaveClass(/text-slate-400/);
-  await expect(metrics).toHaveClass(/dark:text-slate-500/);
+  await expect(metrics).toHaveClass(/text-slate-500/);
+  await expect(metrics).toHaveClass(/dark:text-slate-400/);
 
   // Cardio descriptions follow their names inline, matching strength rows,
   // rather than being pushed to the far edge of the card.
@@ -196,9 +196,9 @@ test("journal cards prioritize a summary and progressively disclose details", as
   await expect(source).toHaveText("Strava");
   await expect(source).not.toHaveClass(/badge/);
   await expect(ride.getByTestId("activity-provenance")).toHaveClass(
-    /text-slate-400/
+    /text-slate-500/
   );
-  await expect(source).not.toHaveClass(/text-slate-500|text-slate-600/);
+  await expect(source).not.toHaveClass(/text-slate-600/);
 
   // Long notes disclose in place without opening the activity editor.
   const notes = ride.getByTestId("activity-notes");

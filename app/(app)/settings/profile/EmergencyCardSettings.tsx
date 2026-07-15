@@ -59,7 +59,7 @@ export default function EmergencyCardSettings({
         <SaveStatus pending={pending} savedAt={savedAt} error={error} />
       </div>
 
-      <p className="text-xs text-slate-400 dark:text-slate-500">
+      <p className="text-xs text-slate-500 dark:text-slate-400">
         A terse, printable summary of allergies, active medications, conditions,
         blood type, and who to call.{" "}
         <Link
@@ -85,7 +85,7 @@ export default function EmergencyCardSettings({
         />
         <span>
           Keep an offline copy on this device
-          <span className="mt-0.5 block text-xs font-normal text-slate-400 dark:text-slate-500">
+          <span className="mt-0.5 block text-xs font-normal text-slate-500 dark:text-slate-400">
             Off by default. When on, the card is readable on this device with no
             network — and without logging in. That&rsquo;s the point in an
             emergency, but it also means anyone holding the unlocked phone can
@@ -112,7 +112,7 @@ export default function EmergencyCardSettings({
             </option>
           ))}
         </select>
-        <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           Overrides any blood type derived from lab records.
         </p>
       </div>

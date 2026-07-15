@@ -9,7 +9,7 @@ export default function ChartLoading({
 }) {
   return (
     <div
-      className={`flex ${heightClass} w-full items-center justify-center text-sm text-slate-400 dark:text-slate-500`}
+      className={`flex ${heightClass} w-full items-center justify-center text-sm text-slate-500 dark:text-slate-400`}
       aria-hidden
     >
       <span className="animate-pulse">Loading chart…</span>

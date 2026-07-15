@@ -99,7 +99,7 @@ export default async function ProtocolDetailPage(props: {
 
               {gear && (
                 <div>
-                  <div className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                  <div className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
                     Gear
                   </div>
                   <Link
@@ -124,7 +124,7 @@ export default async function ProtocolDetailPage(props: {
 
               {practice && (
                 <div>
-                  <div className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                  <div className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
                     Adherence this week
                   </div>
                   <div
@@ -151,7 +151,7 @@ export default async function ProtocolDetailPage(props: {
               )}
 
               <div>
-                <div className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                <div className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
                   During this protocol
                 </div>
                 <div

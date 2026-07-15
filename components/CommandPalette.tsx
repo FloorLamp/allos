@@ -319,7 +319,7 @@ export default function CommandPalette({
       <div className="mt-3 flex min-h-0 flex-1 flex-col">
         <div className="relative">
           <IconSearch
-            className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400 dark:text-slate-500"
+            className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-500 dark:text-slate-400"
             stroke={1.75}
           />
           <input
@@ -356,7 +356,7 @@ export default function CommandPalette({
           {/* Quick log — the inline `weight 82.5` fast path. */}
           {quickLog && (
             <div className="mb-2">
-              <div className="px-2 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+              <div className="px-2 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                 Quick log
               </div>
               <button
@@ -375,7 +375,7 @@ export default function CommandPalette({
                   <span className="block truncate text-sm font-medium">
                     {quickLog.error ?? quickLog.label}
                   </span>
-                  <span className="block truncate text-xs text-slate-400 dark:text-slate-500">
+                  <span className="block truncate text-xs text-slate-500 dark:text-slate-400">
                     {quickLog.error
                       ? "Fix the value to log it"
                       : committing
@@ -393,7 +393,7 @@ export default function CommandPalette({
           {/* Create actions. */}
           {actions.length > 0 && (
             <div className="mb-2">
-              <div className="px-2 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+              <div className="px-2 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                 Actions
               </div>
               <ul>
@@ -434,7 +434,7 @@ export default function CommandPalette({
               // Only show "no matches" once nothing else stands in for a result.
               actions.length === 0 &&
               !quickLog && (
-                <p className="px-1 py-6 text-center text-sm text-slate-400 dark:text-slate-500">
+                <p className="px-1 py-6 text-center text-sm text-slate-500 dark:text-slate-400">
                   {loading ? "Searching…" : `No matches for “${q}”.`}
                 </p>
               )
@@ -474,7 +474,7 @@ function SearchResults({
     <>
       {groups.map((group) => (
         <div key={group.domain} className="mb-2">
-          <div className="px-2 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+          <div className="px-2 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
             {group.label}
           </div>
           <ul>
@@ -500,7 +500,7 @@ function SearchResults({
                         {hit.title}
                       </span>
                       {hit.subtitle && (
-                        <span className="block truncate text-xs text-slate-400 dark:text-slate-500">
+                        <span className="block truncate text-xs text-slate-500 dark:text-slate-400">
                           {hit.subtitle}
                         </span>
                       )}

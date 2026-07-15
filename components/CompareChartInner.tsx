@@ -69,7 +69,7 @@ export default function CompareChart({
     : [];
   if (data.length === 0) {
     return (
-      <div className="flex h-72 items-center justify-center text-sm text-slate-400 dark:text-slate-500">
+      <div className="flex h-72 items-center justify-center text-sm text-slate-500 dark:text-slate-400">
         No overlapping data in this range
       </div>
     );

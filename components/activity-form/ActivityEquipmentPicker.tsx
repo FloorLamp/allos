@@ -63,7 +63,7 @@ export default function ActivityEquipmentPicker({
       </div>
       {isEmpty ? (
         <p
-          className="mt-1 text-xs text-slate-400 dark:text-slate-500"
+          className="mt-1 text-xs text-slate-500 dark:text-slate-400"
           data-testid="activity-equipment-empty"
         >
           No gear on file yet — add your bikes, shoes, or recovery devices to

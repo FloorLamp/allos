@@ -46,7 +46,7 @@ export default function ActivityProvenance({
   const activityLockConsequence = `You edited this activity, so ${sourceName} won’t update it.`;
   return (
     <div
-      className={`flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-400 dark:text-slate-500${
+      className={`flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500 dark:text-slate-400${
         className ? ` ${className}` : ""
       }`}
       data-testid="activity-provenance"

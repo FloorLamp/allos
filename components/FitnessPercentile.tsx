@@ -43,14 +43,14 @@ export function FitnessPercentileCard({ ctx }: { ctx: FitnessContext | null }) {
             <div className="label">Fitness age</div>
             <div className="text-2xl font-bold text-slate-900 dark:text-slate-100">
               {formatFitnessAge(ctx.fitnessAge)}
-              <span className="ml-1 text-sm font-normal text-slate-400 dark:text-slate-500">
+              <span className="ml-1 text-sm font-normal text-slate-500 dark:text-slate-400">
                 yrs
               </span>
             </div>
           </div>
         )}
       </div>
-      <p className="mt-3 text-xs text-slate-400 dark:text-slate-500">
+      <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
         Compared with same-age, same-sex population norms ({ctx.source}) —
         informational, not medical advice. Fitness age is the age whose median
         value matches your reading.

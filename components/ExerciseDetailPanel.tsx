@@ -263,7 +263,7 @@ export default function ExerciseDetailPanel({
           <h3 className="mb-1 text-sm font-semibold text-slate-700 dark:text-slate-200">
             {repsTrend ? "Reps over time" : "Training volume over time"}
           </h3>
-          <p className="mb-2 text-xs text-slate-400 dark:text-slate-500">
+          <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
             {repsTrend
               ? "Total reps per session"
               : `${wu} lifted per session (weight × reps)`}
@@ -294,7 +294,7 @@ export default function ExerciseDetailPanel({
               >
                 <a
                   href={r.href}
-                  className="shrink-0 text-slate-400 hover:text-brand-600 hover:underline dark:text-slate-500 dark:hover:text-brand-400"
+                  className="shrink-0 text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400"
                 >
                   {r.date}
                 </a>

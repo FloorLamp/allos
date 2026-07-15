@@ -26,7 +26,7 @@ export default function ErrorLogTable({
 
   return (
     <div data-testid="error-log">
-      <div className="mb-2 flex items-center gap-2 text-xs text-slate-400 dark:text-slate-500">
+      <div className="mb-2 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
         <span className="ml-auto">{events.length} errors</span>
         {events.length > 0 &&
           (confirming ? (
@@ -70,7 +70,7 @@ export default function ErrorLogTable({
 
       {events.length === 0 ? (
         <div
-          className="rounded-xl border border-dashed border-black/10 bg-white p-10 text-center text-sm text-slate-400 dark:border-white/10 dark:bg-ink-900 dark:text-slate-500"
+          className="rounded-xl border border-dashed border-black/10 bg-white p-10 text-center text-sm text-slate-500 dark:border-white/10 dark:bg-ink-900 dark:text-slate-400"
           data-testid="error-log-empty"
         >
           No server errors recorded. Unexpected exceptions and 500s will appear
@@ -81,7 +81,7 @@ export default function ErrorLogTable({
           <ScrollFade>
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-black/5 text-left text-xs uppercase tracking-wide text-slate-400 dark:border-white/10 dark:text-slate-500">
+                <tr className="border-b border-black/5 text-left text-xs uppercase tracking-wide text-slate-500 dark:border-white/10 dark:text-slate-400">
                   <th className="td">Time</th>
                   <th className="td">Level</th>
                   <th className="td">Scope</th>

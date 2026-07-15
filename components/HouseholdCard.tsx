@@ -64,7 +64,7 @@ function TrendArrow({ trend, unit }: { trend: WeightTrend; unit: WeightUnit }) {
       : `${trend.dir === "up" ? "up" : "down"} ${fmtWeight(Math.abs(trend.deltaKg), unit)}`;
   return (
     <span
-      className="inline-flex items-center text-slate-400 dark:text-slate-500"
+      className="inline-flex items-center text-slate-500 dark:text-slate-400"
       title={`Weight ${label} since the previous reading`}
     >
       <Icon className="h-4 w-4" stroke={1.75} aria-hidden="true" />
@@ -82,7 +82,7 @@ function Stat({
 }) {
   return (
     <div>
-      <div className="text-[0.65rem] font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+      <div className="text-[0.65rem] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
         {label}
       </div>
       <div className="mt-0.5 text-sm font-semibold text-slate-800 dark:text-slate-100">
@@ -110,7 +110,7 @@ function AttentionRow({
   return (
     <div className="flex items-center gap-2" data-testid={testid}>
       <Icon
-        className="h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500"
+        className="h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400"
         stroke={1.75}
         aria-hidden="true"
       />
@@ -119,7 +119,7 @@ function AttentionRow({
           {title}
         </div>
         {detail && (
-          <div className="truncate text-xs text-slate-400 dark:text-slate-500">
+          <div className="truncate text-xs text-slate-500 dark:text-slate-400">
             {detail}
           </div>
         )}
@@ -137,12 +137,12 @@ function Attention({ data }: { data: HouseholdCardData }) {
 
   return (
     <div className="mt-4 space-y-2 border-t border-slate-100 pt-3 dark:border-slate-800">
-      <div className="text-[0.65rem] font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+      <div className="text-[0.65rem] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
         Attention today
       </div>
       {nothing ? (
         <div
-          className="text-sm text-slate-400 dark:text-slate-500"
+          className="text-sm text-slate-500 dark:text-slate-400"
           data-testid="household-all-clear"
         >
           Nothing needs attention.
@@ -250,12 +250,12 @@ export default function HouseholdCard({ data }: { data: HouseholdCardData }) {
           {adherence.due > 0 ? (
             <span>
               {adherence.taken}/{adherence.due}{" "}
-              <span className="text-xs font-normal text-slate-400 dark:text-slate-500">
+              <span className="text-xs font-normal text-slate-500 dark:text-slate-400">
                 today
               </span>
             </span>
           ) : (
-            <span className="text-slate-400 dark:text-slate-500">none due</span>
+            <span className="text-slate-500 dark:text-slate-400">none due</span>
           )}
         </Stat>
 
@@ -265,7 +265,7 @@ export default function HouseholdCard({ data }: { data: HouseholdCardData }) {
               {oorBiomarkers} biomarker{oorBiomarkers === 1 ? "" : "s"}
             </span>
           ) : (
-            <span className="text-slate-400 dark:text-slate-500">none</span>
+            <span className="text-slate-500 dark:text-slate-400">none</span>
           )}
         </Stat>
 
@@ -273,12 +273,12 @@ export default function HouseholdCard({ data }: { data: HouseholdCardData }) {
           {lastActivity ? (
             <span className="flex items-baseline gap-1">
               <span className="truncate">{lastActivity.title}</span>
-              <span className="shrink-0 text-xs font-normal text-slate-400 dark:text-slate-500">
+              <span className="shrink-0 text-xs font-normal text-slate-500 dark:text-slate-400">
                 {lastActivity.when}
               </span>
             </span>
           ) : (
-            <span className="text-slate-400 dark:text-slate-500">
+            <span className="text-slate-500 dark:text-slate-400">
               nothing logged
             </span>
           )}
@@ -290,13 +290,13 @@ export default function HouseholdCard({ data }: { data: HouseholdCardData }) {
               <span>{weightLabel}</span>
               {trend && <TrendArrow trend={trend} unit={weightUnit} />}
               {weightWhen && (
-                <span className="text-xs font-normal text-slate-400 dark:text-slate-500">
+                <span className="text-xs font-normal text-slate-500 dark:text-slate-400">
                   {weightWhen}
                 </span>
               )}
             </span>
           ) : (
-            <span className="text-slate-400 dark:text-slate-500">
+            <span className="text-slate-500 dark:text-slate-400">
               no entries
             </span>
           )}
@@ -312,7 +312,7 @@ export default function HouseholdCard({ data }: { data: HouseholdCardData }) {
                   {g.title}
                 </span>
                 {g.pct != null && (
-                  <span className="shrink-0 text-slate-400 dark:text-slate-500">
+                  <span className="shrink-0 text-slate-500 dark:text-slate-400">
                     {g.pct}%
                   </span>
                 )}

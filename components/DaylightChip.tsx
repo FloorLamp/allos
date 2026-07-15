@@ -39,7 +39,7 @@ export default function DaylightChip({
     return (
       <div
         data-testid="daylight-chip"
-        className="mt-1 text-xs text-slate-400 dark:text-slate-500"
+        className="mt-1 text-xs text-slate-500 dark:text-slate-400"
       >
         {day.polar === "day" ? "☀ Midnight sun (24h daylight)" : "Polar night"}
       </div>
@@ -49,7 +49,7 @@ export default function DaylightChip({
   return (
     <div
       data-testid="daylight-chip"
-      className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-400 dark:text-slate-500"
+      className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-500 dark:text-slate-400"
     >
       <span className="inline-flex items-center gap-1">
         <IconSunrise className="h-3.5 w-3.5 shrink-0" stroke={1.75} />

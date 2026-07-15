@@ -70,12 +70,12 @@ export default function LevelBadge({
                   type="button"
                   onClick={() => setOpen(false)}
                   aria-label="Close"
-                  className="shrink-0 text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300"
+                  className="shrink-0 text-slate-500 hover:text-slate-600 dark:text-slate-400 dark:hover:text-slate-300"
                 >
                   <IconX className="h-5 w-5" />
                 </button>
               </div>
-              <p className="mb-3 mt-0.5 text-xs text-slate-400 dark:text-slate-500">
+              <p className="mb-3 mt-0.5 text-xs text-slate-500 dark:text-slate-400">
                 What the per-exercise “Level” labels mean.
               </p>
               <StrengthStandards

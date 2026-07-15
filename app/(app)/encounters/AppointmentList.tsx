@@ -308,7 +308,7 @@ export default function AppointmentList({
                   ) : null}
                 </div>
                 {a.notes ? (
-                  <div className="mt-0.5 text-xs text-slate-400 dark:text-slate-500">
+                  <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
                     {a.notes}
                   </div>
                 ) : null}

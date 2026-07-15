@@ -25,7 +25,7 @@ export default function CoachingWidget({ recs }: { recs: Recommendation[] }) {
   return (
     <div className="card">
       <WidgetHeader title="Coaching" href="/training" linkLabel="Training" />
-      <p className="-mt-2 mb-3 text-xs text-slate-400 dark:text-slate-500">
+      <p className="-mt-2 mb-3 text-xs text-slate-500 dark:text-slate-400">
         Based on your routine &amp; recovery
       </p>
       {top ? (
@@ -73,14 +73,14 @@ export default function CoachingWidget({ recs }: { recs: Recommendation[] }) {
             </form>
           </div>
           {secondary && (
-            <p className="mt-3 border-t border-slate-100 pt-3 text-xs text-slate-400 dark:border-ink-800 dark:text-slate-500">
+            <p className="mt-3 border-t border-slate-100 pt-3 text-xs text-slate-500 dark:border-ink-800 dark:text-slate-400">
               <span className="font-medium">Next:</span> {secondary.title} —{" "}
               {secondary.detail}
             </p>
           )}
         </div>
       ) : (
-        <p className="text-sm text-slate-400 dark:text-slate-500">
+        <p className="text-sm text-slate-500 dark:text-slate-400">
           No suggestion right now — log an activity to get started.
         </p>
       )}

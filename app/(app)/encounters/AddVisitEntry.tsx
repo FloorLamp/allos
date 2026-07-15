@@ -102,7 +102,7 @@ export default function AddVisitEntry({
         </button>
       </div>
 
-      <p className="text-xs text-slate-400 dark:text-slate-500">
+      <p className="text-xs text-slate-500 dark:text-slate-400">
         {upcoming
           ? "Scheduling a future visit — it books an appointment and surfaces on Upcoming."
           : "Logging a visit that already happened — it's saved to your visit history below."}

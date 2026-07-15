@@ -79,7 +79,7 @@ export default function FindingsList({
                 data-testid={`${testid}-dismiss`}
                 aria-label={`Dismiss ${f.title}`}
                 title="Dismiss"
-                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-ink-750 dark:hover:text-slate-300"
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-600 dark:text-slate-400 dark:hover:bg-ink-750 dark:hover:text-slate-300"
               >
                 <IconX className="h-4 w-4" stroke={2} />
               </button>

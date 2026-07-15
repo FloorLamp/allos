@@ -186,7 +186,7 @@ export default function FoodLogBar({
           if (tierGroups.length === 0) return null;
           return (
             <div key={tier}>
-              <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+              <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
                 {TIER_LABEL[tier]}
               </h3>
               <ul className="space-y-1.5">
@@ -201,7 +201,7 @@ export default function FoodLogBar({
                     >
                       <FoodGroupIcon
                         slug={g.slug}
-                        className="h-5 w-5 shrink-0 text-slate-400 dark:text-slate-500"
+                        className="h-5 w-5 shrink-0 text-slate-500 dark:text-slate-400"
                       />
                       {/* Tapping the label toggles the full serving detail — the
                         description is truncated to one line by default so the row

@@ -106,7 +106,7 @@ export default async function AllergiesPage() {
                       </span>
                       .
                     </div>
-                    <div className="text-xs text-slate-400 dark:text-slate-500">
+                    <div className="text-xs text-slate-500 dark:text-slate-400">
                       {c.label} · {c.citation}
                     </div>
                   </li>
@@ -128,7 +128,7 @@ export default async function AllergiesPage() {
 
         <div className="min-w-0 space-y-4">
           <AllergyForm action={addAllergy} />
-          <p className="px-1 text-xs text-slate-400 dark:text-slate-500">
+          <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
             Informational only, not medical advice. Allergen-specific IgE
             (RAST/ImmunoCAP) results are surfaced as sensitizations when above
             range or class ≥ 1; total serum IgE is excluded.

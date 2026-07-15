@@ -217,7 +217,7 @@ export default async function OverviewSection() {
               <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
                 {nextWorkout.target && (
                   <div>
-                    <dt className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                    <dt className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
                       Target
                     </dt>
                     <dd className="mt-0.5 font-semibold text-slate-700 dark:text-slate-200">
@@ -226,7 +226,7 @@ export default async function OverviewSection() {
                   </div>
                 )}
                 <div>
-                  <dt className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                  <dt className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
                     Reason
                   </dt>
                   <dd className="mt-0.5 text-slate-500 dark:text-slate-400">
@@ -258,7 +258,7 @@ export default async function OverviewSection() {
           </h3>
           <dl className="mt-4 grid grid-cols-3 gap-3 text-center">
             <div>
-              <dt className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+              <dt className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
                 Sessions
               </dt>
               <dd className="mt-1 text-2xl font-semibold text-slate-900 dark:text-slate-100">
@@ -266,7 +266,7 @@ export default async function OverviewSection() {
               </dd>
             </div>
             <div>
-              <dt className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+              <dt className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
                 Days
               </dt>
               <dd className="mt-1 text-2xl font-semibold text-slate-900 dark:text-slate-100">
@@ -274,7 +274,7 @@ export default async function OverviewSection() {
               </dd>
             </div>
             <div>
-              <dt className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+              <dt className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
                 Streak
               </dt>
               <dd className="mt-1 text-2xl font-semibold text-slate-900 dark:text-slate-100">
@@ -288,11 +288,11 @@ export default async function OverviewSection() {
           <h3 className="font-semibold text-slate-800 dark:text-slate-100">
             Weekly routine
           </h3>
-          <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500">
+          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
             Targets that still need work lead the row.
           </p>
           {targets.length === 0 ? (
-            <p className="mt-4 text-sm text-slate-400 dark:text-slate-500">
+            <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">
               No weekly routine set yet.
             </p>
           ) : (
@@ -319,13 +319,13 @@ export default async function OverviewSection() {
         <h3 className="font-semibold text-slate-800 dark:text-slate-100">
           Muscle coverage
         </h3>
-        <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500">
+        <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
           Sets per muscle over the last {coverageDays} days. Primary movers
           count 1, assisting muscles count {SECONDARY_CREDIT}. The chip shows
           each muscle against its weekly volume band.
         </p>
         {coverage.length === 0 ? (
-          <p className="mt-4 text-sm text-slate-400 dark:text-slate-500">
+          <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">
             No strength sets logged in the last {coverageDays} days.
           </p>
         ) : (
@@ -395,7 +395,7 @@ export default async function OverviewSection() {
 
       <div className="space-y-6 opacity-85">
         <div>
-          <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
             Trends and records
           </h3>
         </div>
@@ -435,7 +435,7 @@ export default async function OverviewSection() {
               Strength volume
             </h3>
             {volume.length === 0 ? (
-              <p className="text-sm text-slate-400 dark:text-slate-500">
+              <p className="text-sm text-slate-500 dark:text-slate-400">
                 No strength sessions logged yet.
               </p>
             ) : (
@@ -453,7 +453,7 @@ export default async function OverviewSection() {
               <h3 className="mb-1 font-semibold text-slate-800 dark:text-slate-100">
                 Cardio volume
               </h3>
-              <p className="mb-2 text-xs text-slate-400 dark:text-slate-500">
+              <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
                 Minutes per week, by activity
               </p>
               <StackedBarCard

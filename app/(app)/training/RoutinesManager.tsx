@@ -146,7 +146,7 @@ export default function RoutinesManager({
           <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
             Routines
           </h2>
-          <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500">
+          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
             Adopt a template or build your own. Activating a routine sets your
             weekly training targets; at most one routine is active at a time.
           </p>
@@ -204,7 +204,7 @@ export default function RoutinesManager({
                         </span>
                       )}
                     </div>
-                    <div className="mt-0.5 text-xs text-slate-400 dark:text-slate-500">
+                    <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
                       {r.source === "template" ? "From template" : "Custom"} ·{" "}
                       {dayCountLabel(r.days.length)}
                       {r.cycle_weeks != null && (
@@ -223,7 +223,7 @@ export default function RoutinesManager({
                       {d.focus.length > 0 && (
                         <span> · {d.focus.join(", ")}</span>
                       )}
-                      <span className="text-slate-400 dark:text-slate-500">
+                      <span className="text-slate-500 dark:text-slate-400">
                         {" "}
                         ({d.slots.length}{" "}
                         {d.slots.length === 1 ? "exercise" : "exercises"})
@@ -324,7 +324,7 @@ export default function RoutinesManager({
                         {t.audience}
                       </span>
                     </div>
-                    <div className="mt-0.5 text-xs text-slate-400 dark:text-slate-500">
+                    <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
                       {dayCountLabel(t.dayCount)}
                     </div>
                     <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">

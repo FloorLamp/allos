@@ -21,7 +21,7 @@ export default function EstimatedCalories({
     <div data-testid="est-calories-field">
       <label className="label" htmlFor="est-calories">
         Calories{" "}
-        <span className="font-normal normal-case text-slate-400 dark:text-slate-500">
+        <span className="font-normal normal-case text-slate-500 dark:text-slate-400">
           (estimated)
         </span>
       </label>
@@ -38,7 +38,7 @@ export default function EstimatedCalories({
           className="input max-w-[10rem] bg-white dark:bg-ink-900"
           placeholder="—"
         />
-        <span className="text-sm text-slate-400 dark:text-slate-500">kcal</span>
+        <span className="text-sm text-slate-500 dark:text-slate-400">kcal</span>
         {edited && autoEstimateKcal != null && (
           <button
             type="button"
@@ -49,7 +49,7 @@ export default function EstimatedCalories({
           </button>
         )}
       </div>
-      <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
         Estimated from activity type, intensity, duration, and your bodyweight —
         edit if you have a measured value.
       </p>

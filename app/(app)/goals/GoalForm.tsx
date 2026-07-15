@@ -191,7 +191,7 @@ export default function GoalForm({
                   );
                 })}
                 {variant!.equipment === null && (
-                  <span className="text-xs text-slate-400 dark:text-slate-500">
+                  <span className="text-xs text-slate-500 dark:text-slate-400">
                     Pick equipment
                   </span>
                 )}
@@ -438,7 +438,7 @@ export default function GoalForm({
             />
           </div>
           <div className="sm:col-span-2">
-            <p className="-mt-1 text-xs text-slate-400 dark:text-slate-500">
+            <p className="-mt-1 text-xs text-slate-500 dark:text-slate-400">
               Progress tracks automatically from your latest Body Metrics entry.
             </p>
           </div>

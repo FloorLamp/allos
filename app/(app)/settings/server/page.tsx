@@ -105,7 +105,7 @@ export default async function ServerSettingsPage() {
       />
       <AgeGateSettings minTrainingAge={minTrainingAge()} />
       <AuditRetentionSettings months={getAuditRetentionMonths()} />
-      <footer className="mt-10 border-t border-black/10 pt-4 text-xs text-slate-400 dark:border-white/10 dark:text-slate-500">
+      <footer className="mt-10 border-t border-black/10 pt-4 text-xs text-slate-500 dark:border-white/10 dark:text-slate-400">
         Version <AppVersion />
       </footer>
     </div>

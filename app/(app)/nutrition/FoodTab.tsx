@@ -81,11 +81,11 @@ export default async function FoodTab() {
           >
             <span className="flex-1">
               Food suggestions from your labs
-              <span className="ml-1.5 font-normal text-slate-400 dark:text-slate-500">
+              <span className="ml-1.5 font-normal text-slate-500 dark:text-slate-400">
                 · {suggestions.length}
               </span>
             </span>
-            <span className="text-xs font-normal text-slate-400 dark:text-slate-500">
+            <span className="text-xs font-normal text-slate-500 dark:text-slate-400">
               Show
             </span>
           </summary>

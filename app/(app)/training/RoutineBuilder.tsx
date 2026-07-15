@@ -231,7 +231,7 @@ export default function RoutineBuilder({
       <div>
         <label className="label" htmlFor="routine-cycle-weeks">
           Cycle length (weeks){" "}
-          <span className="font-normal text-slate-400 dark:text-slate-500">
+          <span className="font-normal text-slate-500 dark:text-slate-400">
             — optional
           </span>
         </label>
@@ -246,7 +246,7 @@ export default function RoutineBuilder({
           className="input w-32"
           placeholder="e.g. 5"
         />
-        <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           Leave blank for no cycle. The last week is treated as a deload week —
           lighter loads and fewer sets to recover.
         </p>
@@ -284,7 +284,7 @@ export default function RoutineBuilder({
 
             {/* Focus regions — auto-derived from the day's exercises, editable. */}
             <div className="mt-2">
-              <div className="text-xs text-slate-400 dark:text-slate-500">
+              <div className="text-xs text-slate-500 dark:text-slate-400">
                 Focus (auto from exercises, tap to adjust)
               </div>
               <div className="mt-1 flex flex-wrap gap-1.5">
@@ -319,7 +319,7 @@ export default function RoutineBuilder({
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex flex-1 flex-wrap items-center gap-1.5">
                       {slot.candidates.length === 0 ? (
-                        <span className="text-xs text-slate-400 dark:text-slate-500">
+                        <span className="text-xs text-slate-500 dark:text-slate-400">
                           Add one or more exercises (first available is used)
                         </span>
                       ) : (

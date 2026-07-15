@@ -37,7 +37,7 @@ export default function TodaysSessionCard({
     <div className="card" data-testid="todays-session-card">
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0">
-          <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
             Today&apos;s session
           </h3>
           <p
@@ -55,7 +55,7 @@ export default function TodaysSessionCard({
             </p>
           )}
           {focus.length > 0 && (
-            <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500">
+            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
               {focus.join(" · ")}
             </p>
           )}

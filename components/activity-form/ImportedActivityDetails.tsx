@@ -70,7 +70,7 @@ export default function ImportedActivityDetails({
                 {stat.value}
               </dd>
               {stat.detail && (
-                <div className="text-xs tabular-nums text-slate-400 dark:text-slate-500">
+                <div className="text-xs tabular-nums text-slate-500 dark:text-slate-400">
                   {stat.key === "power" ? (
                     <>
                       <span
@@ -98,7 +98,7 @@ export default function ImportedActivityDetails({
         >
           {secondary.map((stat) => (
             <div key={stat.key} className="min-w-0">
-              <dt className="text-slate-400 dark:text-slate-500">
+              <dt className="text-slate-500 dark:text-slate-400">
                 {stat.label}
               </dt>
               <dd className="mt-0.5 font-medium tabular-nums text-slate-600 dark:text-slate-300">
@@ -108,7 +108,7 @@ export default function ImportedActivityDetails({
           ))}
           {estimatedCalories != null && (
             <div className="min-w-0" data-testid="estimated-active-energy">
-              <dt className="text-slate-400 dark:text-slate-500">
+              <dt className="text-slate-500 dark:text-slate-400">
                 Active energy
               </dt>
               <dd className="mt-0.5 font-medium tabular-nums text-slate-600 dark:text-slate-300">

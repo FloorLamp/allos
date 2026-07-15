@@ -41,7 +41,7 @@ export default function DismissSuggestionButton({
       type="button"
       onClick={onDismiss}
       disabled={busy}
-      className="text-slate-400 transition hover:text-slate-700 disabled:opacity-50 dark:text-slate-500 dark:hover:text-slate-200"
+      className="text-slate-500 transition hover:text-slate-700 disabled:opacity-50 dark:text-slate-400 dark:hover:text-slate-200"
     >
       {busy ? "Dismissing…" : "Dismiss"}
     </button>

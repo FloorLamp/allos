@@ -203,7 +203,7 @@ export default async function EncounterDetailPage(props: {
         </dl>
       </div>
 
-      <p className="mt-4 px-1 text-xs text-slate-400 dark:text-slate-500">
+      <p className="mt-4 px-1 text-xs text-slate-500 dark:text-slate-400">
         Informational only, not medical advice. Imported visits come from
         uploaded health records (CCD Encounters section).
       </p>

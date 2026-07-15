@@ -42,7 +42,7 @@ export default function UsageRollup({
         <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
           Token usage
         </h2>
-        <span className="text-xs text-slate-400 dark:text-slate-500">
+        <span className="text-xs text-slate-500 dark:text-slate-400">
           Today: {fmt(today.calls)} calls ·{" "}
           {fmt(today.tokensIn + today.tokensOut)} tokens · 7 days:{" "}
           {fmt(week.calls)} calls · {fmt(week.tokensIn + week.tokensOut)} tokens
@@ -50,7 +50,7 @@ export default function UsageRollup({
       </div>
 
       {rows.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-black/10 bg-white p-6 text-center text-sm text-slate-400 dark:border-white/10 dark:bg-ink-900 dark:text-slate-500">
+        <div className="rounded-xl border border-dashed border-black/10 bg-white p-6 text-center text-sm text-slate-500 dark:border-white/10 dark:bg-ink-900 dark:text-slate-400">
           No AI usage recorded in the last 7 days.
         </div>
       ) : (
@@ -58,7 +58,7 @@ export default function UsageRollup({
           <ScrollFade>
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-black/5 text-left text-xs uppercase tracking-wide text-slate-400 dark:border-white/10 dark:text-slate-500">
+                <tr className="border-b border-black/5 text-left text-xs uppercase tracking-wide text-slate-500 dark:border-white/10 dark:text-slate-400">
                   <th className="td">Feature</th>
                   <th className="td">Profile</th>
                   <th className="td text-right">Today calls</th>
@@ -89,7 +89,7 @@ export default function UsageRollup({
           </ScrollFade>
         </div>
       )}
-      <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">
+      <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
         Tokens as reported by the model API (input / output). No dollar figures
         — the model is recorded per event; compute cost from your provider’s
         current prices. Windows use the server’s date.

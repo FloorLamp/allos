@@ -44,7 +44,7 @@ export default function CardioExplorer({
         <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
           Activities
         </h2>
-        <p className="mb-2 text-xs text-slate-400 dark:text-slate-500">
+        <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
           Select an activity to see its trend and records.
         </p>
         <ScrollFade>

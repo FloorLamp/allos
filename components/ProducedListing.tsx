@@ -19,7 +19,7 @@ export default function ProducedListing({
     <div className="card" data-testid="produced-listing">
       <h2 className="mb-1 font-semibold text-slate-800 dark:text-slate-100">
         {title}{" "}
-        <span className="font-normal text-slate-400 dark:text-slate-500">
+        <span className="font-normal text-slate-500 dark:text-slate-400">
           ({items.length})
         </span>
       </h2>
@@ -43,12 +43,12 @@ export default function ProducedListing({
                   {item.title}
                 </span>
                 {item.detail && (
-                  <span className="text-xs text-slate-400 dark:text-slate-500">
+                  <span className="text-xs text-slate-500 dark:text-slate-400">
                     {item.detail}
                   </span>
                 )}
                 {item.date && (
-                  <span className="ml-auto whitespace-nowrap text-xs tabular-nums text-slate-400 dark:text-slate-500">
+                  <span className="ml-auto whitespace-nowrap text-xs tabular-nums text-slate-500 dark:text-slate-400">
                     {item.date}
                   </span>
                 )}

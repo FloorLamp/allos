@@ -1192,7 +1192,7 @@ export default function ActivityForm({
                         type="button"
                         onClick={() => movePart(pi, -1)}
                         disabled={pi === 0}
-                        className="flex h-8 w-7 shrink-0 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-brand-600 disabled:opacity-30 disabled:hover:bg-transparent dark:text-slate-500 dark:hover:bg-ink-800"
+                        className="flex h-8 w-7 shrink-0 items-center justify-center rounded text-slate-500 hover:bg-slate-100 hover:text-brand-600 disabled:opacity-30 disabled:hover:bg-transparent dark:text-slate-400 dark:hover:bg-ink-800"
                         aria-label="Move activity up"
                       >
                         <IconChevronUp className="h-4 w-4" />
@@ -1201,7 +1201,7 @@ export default function ActivityForm({
                         type="button"
                         onClick={() => movePart(pi, 1)}
                         disabled={pi === parts.length - 1}
-                        className="flex h-8 w-7 shrink-0 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-brand-600 disabled:opacity-30 disabled:hover:bg-transparent dark:text-slate-500 dark:hover:bg-ink-800"
+                        className="flex h-8 w-7 shrink-0 items-center justify-center rounded text-slate-500 hover:bg-slate-100 hover:text-brand-600 disabled:opacity-30 disabled:hover:bg-transparent dark:text-slate-400 dark:hover:bg-ink-800"
                         aria-label="Move activity down"
                       >
                         <IconChevronDown className="h-4 w-4" />
@@ -1412,7 +1412,7 @@ export default function ActivityForm({
             <span className="label mb-0">More details</span>
             <span
               data-testid="more-details-summary"
-              className="block truncate text-xs text-slate-400 dark:text-slate-500"
+              className="block truncate text-xs text-slate-500 dark:text-slate-400"
             >
               {moreDetailsSummary.length > 0
                 ? moreDetailsSummary.join(" · ")

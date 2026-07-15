@@ -60,7 +60,7 @@ export default function CalendarFeedPreview({
               className="flex items-start gap-3 py-2.5 first:pt-0 last:pb-0"
             >
               <IconCalendarEvent
-                className="mt-0.5 h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500"
+                className="mt-0.5 h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400"
                 aria-hidden
               />
               <div className="min-w-0 flex-1">
@@ -68,7 +68,7 @@ export default function CalendarFeedPreview({
                   <span
                     className={`text-sm font-medium ${
                       r.cancelled
-                        ? "text-slate-400 line-through dark:text-slate-500"
+                        ? "text-slate-500 line-through dark:text-slate-400"
                         : "text-slate-800 dark:text-slate-100"
                     }`}
                   >
@@ -111,7 +111,7 @@ export default function CalendarFeedPreview({
       )}
 
       {overflow > 0 && (
-        <p className="text-xs text-slate-400 dark:text-slate-500">
+        <p className="text-xs text-slate-500 dark:text-slate-400">
           + {overflow} more {overflow === 1 ? "event" : "events"} in the feed
         </p>
       )}

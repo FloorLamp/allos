@@ -97,7 +97,7 @@ export default function HomeAssistantNotificationSettings({
         <SaveStatus pending={pending} savedAt={savedAt} error={error} />
       </div>
 
-      <p className="text-xs text-slate-400 dark:text-slate-500">
+      <p className="text-xs text-slate-500 dark:text-slate-400">
         Send reminders to a{" "}
         <a
           href="https://www.home-assistant.io/docs/automation/trigger/#webhook-trigger"
@@ -155,7 +155,7 @@ export default function HomeAssistantNotificationSettings({
               className="input"
               data-testid="ha-secret"
             />
-            <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
               Sent as the <code>X-Allos-Webhook-Secret</code> header so an HA
               automation can reject calls that don’t carry it.
             </p>
@@ -163,7 +163,7 @@ export default function HomeAssistantNotificationSettings({
 
           <div className="border-t border-slate-100 pt-5 dark:border-slate-800">
             <label className="label">Announce which reminders</label>
-            <p className="mb-2 text-xs text-slate-400 dark:text-slate-500">
+            <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
               Turn off any kind you’d rather not send to Home Assistant (they
               still go to your other channels).
             </p>

@@ -155,7 +155,7 @@ export default function PushNotificationSettings() {
       <h2 className="font-semibold text-slate-800 dark:text-slate-100">
         Web Push notifications
       </h2>
-      <p className="text-xs text-slate-400 dark:text-slate-500">
+      <p className="text-xs text-slate-500 dark:text-slate-400">
         Get the same reminders as a browser notification on this device — no
         Telegram needed. Subscriptions belong to this browser and cover every
         profile your login can access.

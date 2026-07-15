@@ -139,7 +139,7 @@ export default function ImportClient({
           })}
         </div>
         {!typeTouched && suggested && (
-          <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
             Auto-detected from the header row — tap to override.
           </p>
         )}
@@ -173,7 +173,7 @@ export default function ImportClient({
       >
         {starting ? "Starting…" : "Extract with AI"}
       </button>
-      <p className="text-xs text-slate-400 dark:text-slate-500">
+      <p className="text-xs text-slate-500 dark:text-slate-400">
         Extraction runs in the background — you can leave this page and you’ll
         be notified when it’s ready to review.
       </p>
@@ -278,7 +278,7 @@ function ImportJobCard({ job, unit }: { job: ImportJob; unit: WeightUnit }) {
           <span className="text-slate-300 dark:text-slate-600">·</span>
           <RelativeTime
             value={job.created_at}
-            className="text-slate-400 dark:text-slate-500"
+            className="text-slate-500 dark:text-slate-400"
           />
         </div>
 
@@ -366,7 +366,7 @@ function WorkoutPreview({
       </h2>
       <ScrollFade className="mt-2">
         <table className="w-full text-left text-sm">
-          <thead className="text-xs uppercase tracking-wide text-slate-400 dark:text-slate-500">
+          <thead className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
             <tr>
               <th className="py-1 pr-3">Date</th>
               <th className="py-1 pr-3">Exercise</th>
@@ -430,7 +430,7 @@ function BiomarkerPreview({
       </h2>
       <ScrollFade className="mt-2">
         <table className="w-full text-left text-sm">
-          <thead className="text-xs uppercase tracking-wide text-slate-400 dark:text-slate-500">
+          <thead className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
             <tr>
               <th className="py-1 pr-3">Name</th>
               <th className="py-1 pr-3">Value</th>

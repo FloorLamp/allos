@@ -109,7 +109,7 @@ export default function StrengthStandards({
           </tbody>
         </table>
       </ScrollFade>
-      <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">
+      <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
         Estimated 1RM as a multiple of your bodyweight, adjusted for your
         bodyweight and sex; anything below Beginner is “Untrained”. Bodyweight
         pulls (Pull/Chin Up) count bodyweight as part of the load. Equipment

@@ -126,7 +126,7 @@ function SortableWidget({
             <p className="font-semibold text-slate-700 dark:text-slate-200">
               {widget.label}
             </p>
-            <p className="mt-1 text-sm text-slate-400 dark:text-slate-500">
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
               Nothing to show right now.
             </p>
           </div>
@@ -231,7 +231,7 @@ export default function DashboardGrid({
           <button
             type="button"
             onClick={enterEdit}
-            className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-ink-900 dark:hover:text-slate-300"
+            className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-slate-500 transition hover:bg-slate-100 hover:text-slate-600 dark:text-slate-400 dark:hover:bg-ink-900 dark:hover:text-slate-300"
           >
             <IconAdjustmentsHorizontal className="h-4 w-4" />
             Edit dashboard

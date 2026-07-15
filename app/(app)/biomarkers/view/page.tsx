@@ -461,7 +461,7 @@ export default async function BiomarkerDetailPage(props: {
           <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">
             {info.full_name}
             {info.abbreviation && info.abbreviation !== info.full_name && (
-              <span className="ml-2 font-normal text-slate-400 dark:text-slate-500">
+              <span className="ml-2 font-normal text-slate-500 dark:text-slate-400">
                 {info.abbreviation}
               </span>
             )}
@@ -483,7 +483,7 @@ export default async function BiomarkerDetailPage(props: {
               flag={latest.flag}
             />
           </div>
-          <div className="text-xs text-slate-400 dark:text-slate-500">
+          <div className="text-xs text-slate-500 dark:text-slate-400">
             as of {latest.date}
           </div>
         </div>
@@ -585,7 +585,7 @@ export default async function BiomarkerDetailPage(props: {
             Trend
           </h2>
           {chartUnit ? (
-            <span className="text-xs text-slate-400 dark:text-slate-500">
+            <span className="text-xs text-slate-500 dark:text-slate-400">
               in {chartUnit}
             </span>
           ) : null}
@@ -607,7 +607,7 @@ export default async function BiomarkerDetailPage(props: {
                     className={`h-2.5 w-2.5 shrink-0 rounded-full ${qualitativeTone[polarity]}`}
                     aria-hidden
                   />
-                  <span className="w-24 shrink-0 text-slate-400 dark:text-slate-500">
+                  <span className="w-24 shrink-0 text-slate-500 dark:text-slate-400">
                     {r.date}
                   </span>
                   <span className="font-medium text-slate-800 dark:text-slate-100">
@@ -627,18 +627,18 @@ export default async function BiomarkerDetailPage(props: {
           />
         )}
         {unchartedCount > 0 && (
-          <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">
+          <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
             {unchartedCount} reading(s) in non-convertible units (
             {otherUnits.join(", ")}) not charted.
           </p>
         )}
         {hasBounded && (
-          <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">
+          <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
             Hollow points are bounded results (e.g. “&lt;0.10”), plotted at the
             limit — the true value lies beyond it.
           </p>
         )}
-        <p className="mt-3 text-xs text-slate-400 dark:text-slate-500">
+        <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
           Reference and optimal ranges are informational, not medical advice.
           They may be inaccurate and often vary by sex and age. Consult a
           clinician.
@@ -677,7 +677,7 @@ export default async function BiomarkerDetailPage(props: {
                   <td className="td">
                     {r.derived ? (
                       <span
-                        className="text-slate-400 dark:text-slate-500"
+                        className="text-slate-500 dark:text-slate-400"
                         title={r.derived_formula}
                       >
                         Computed
@@ -690,7 +690,7 @@ export default async function BiomarkerDetailPage(props: {
                         {docLabels.get(r.document_id) ?? "Document"}
                       </Link>
                     ) : (
-                      <span className="text-slate-400 dark:text-slate-500">
+                      <span className="text-slate-500 dark:text-slate-400">
                         Manual entry
                       </span>
                     )}

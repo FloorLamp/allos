@@ -162,7 +162,7 @@ export default async function CalendarFeedPage() {
               hours).
             </li>
           </ol>
-          <p className="text-xs text-slate-400 dark:text-slate-500">
+          <p className="text-xs text-slate-500 dark:text-slate-400">
             Keep this link private — anyone with it can see this profile&apos;s
             appointment schedule. Regenerate it at any time to revoke the old
             link. By default the feed shows only &ldquo;Medical

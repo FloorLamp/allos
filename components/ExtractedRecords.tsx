@@ -66,7 +66,7 @@ export default function ExtractedRecords({
       <div className="flex flex-wrap items-center gap-4 px-5 pt-5">
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           {title}{" "}
-          <span className="font-normal text-slate-400 dark:text-slate-500">
+          <span className="font-normal text-slate-500 dark:text-slate-400">
             ({records.length})
           </span>
         </h2>
@@ -74,7 +74,7 @@ export default function ExtractedRecords({
         <RangeFilterSelect value={range} />
         {processing ? (
           <IconLoader2
-            className="ml-auto h-4 w-4 animate-spin text-slate-400 dark:text-slate-500"
+            className="ml-auto h-4 w-4 animate-spin text-slate-500 dark:text-slate-400"
             aria-label="Processing"
           />
         ) : (
@@ -84,7 +84,7 @@ export default function ExtractedRecords({
             disabled={pending}
             title="Reprocess document"
             aria-label="Reprocess document"
-            className="ml-auto text-slate-400 hover:text-brand-600 disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-500 dark:hover:text-brand-400"
+            className="ml-auto text-slate-500 hover:text-brand-600 disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-400 dark:hover:text-brand-400"
           >
             <IconRefresh className="h-4 w-4" />
           </button>

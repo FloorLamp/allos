@@ -42,7 +42,7 @@ export default function ZoneMinutesCardInner({
   const c = useChartColors();
   if (data.length === 0) {
     return (
-      <div className="flex h-64 items-center justify-center text-sm text-slate-400 dark:text-slate-500">
+      <div className="flex h-64 items-center justify-center text-sm text-slate-500 dark:text-slate-400">
         No zone minutes yet
       </div>
     );

@@ -133,7 +133,7 @@ export default function OverflowMenu({
         data-testid="overflow-menu-trigger"
         // ≥40px hit box (#644): a 16px glyph centered in a 40px box so the sole
         // per-row action affordance clears the touch-target minimum on mobile.
-        className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-ink-800 dark:hover:text-slate-300"
+        className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-300"
       >
         <IconDots className="h-4 w-4" />
       </button>

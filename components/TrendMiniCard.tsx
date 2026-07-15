@@ -101,7 +101,7 @@ export default function TrendMiniCard({
         )}
       </div>
       {data.length === 0 ? (
-        <div className="flex h-40 items-center justify-center text-sm text-slate-400 dark:text-slate-500">
+        <div className="flex h-40 items-center justify-center text-sm text-slate-500 dark:text-slate-400">
           No data in this range
         </div>
       ) : (

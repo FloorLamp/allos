@@ -145,7 +145,7 @@ function dateCell(
         className={`text-xs ${
           stale
             ? "text-amber-600 dark:text-amber-400"
-            : "text-slate-400 dark:text-slate-500"
+            : "text-slate-500 dark:text-slate-400"
         }`}
         title={stale ? "Over a year old — consider retesting" : undefined}
       >
@@ -224,7 +224,7 @@ function BiomarkerRow({
           <Tag value={r.category} />
         </td>
         <td className="td">{dateCell(r, now, !!r.is_latest)}</td>
-        <td className="td text-right text-xs text-slate-400 dark:text-slate-500">
+        <td className="td text-right text-xs text-slate-500 dark:text-slate-400">
           Computed
         </td>
       </tr>
@@ -441,7 +441,7 @@ export default function BiomarkersTable({
       {pagination && pagination.total > 0 && (
         <div
           data-testid="biomarkers-pagination"
-          className="flex items-center justify-between gap-3 border-t border-black/5 px-3 py-2 text-xs text-slate-400 dark:border-white/10 dark:text-slate-500"
+          className="flex items-center justify-between gap-3 border-t border-black/5 px-3 py-2 text-xs text-slate-500 dark:border-white/10 dark:text-slate-400"
         >
           <span>
             {(() => {

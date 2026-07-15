@@ -41,7 +41,7 @@ export default function AgeGateSettings({
         <SaveStatus pending={pending} savedAt={savedAt} error={error} />
       </div>
 
-      <p className="text-xs text-slate-400 dark:text-slate-500">
+      <p className="text-xs text-slate-500 dark:text-slate-400">
         Profiles whose age is below this are shown a slimmed-down app: the adult
         training analytics (1-rep-max, strength standards, fitness age,
         coaching, goals), AI Insights, the Equipment registry, and the related

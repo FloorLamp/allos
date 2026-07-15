@@ -24,7 +24,7 @@ export default function WidgetEmpty({
     <div className="card h-full" data-testid="widget-empty">
       <div className="mb-3 flex items-center gap-2">
         <Icon
-          className="h-5 w-5 text-slate-400 dark:text-slate-500"
+          className="h-5 w-5 text-slate-500 dark:text-slate-400"
           stroke={1.75}
           aria-hidden="true"
         />

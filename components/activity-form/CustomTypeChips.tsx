@@ -25,7 +25,7 @@ export default function CustomTypeChips({
           : ""
       }`}
     >
-      <span className="text-xs font-medium text-slate-400 dark:text-slate-500">
+      <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
         New activity:
       </span>
       {(["cardio", "sport"] as const).map((t) => (

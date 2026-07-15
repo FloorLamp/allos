@@ -88,7 +88,7 @@ export default function FamilyManager({
         grants={grants}
         access={access}
       />
-      <p className="text-xs text-slate-400 dark:text-slate-500">
+      <p className="text-xs text-slate-500 dark:text-slate-400">
         Deleting a profile permanently erases that person&apos;s entire health
         record and cannot be undone. Deleting a login removes the login only —
         the profiles it could access are kept.
@@ -135,7 +135,7 @@ function ProfilesCard({
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Profiles
         </h2>
-        <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           The people you track. Adding a family member (e.g. a kid) is just a
           name — they don&apos;t need their own login unless you want to give
           them one below.
@@ -388,7 +388,7 @@ function LoginsCard({
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Logins
         </h2>
-        <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           Logins. Admins can access every profile and this screen; members see
           only the profiles you grant them below.
         </p>
@@ -548,7 +548,7 @@ function LoginRow({
           >
             {login.role}
           </span>
-          <span className="text-xs text-slate-400 dark:text-slate-500">
+          <span className="text-xs text-slate-500 dark:text-slate-400">
             {sessionCount === 0
               ? "no active sessions"
               : `${sessionCount} active ${sessionCount === 1 ? "session" : "sessions"}`}
@@ -636,7 +636,7 @@ function GrantsCard({
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Access
         </h2>
-        <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           Which profiles each member login can open, and at what level. A
           <strong> read-only</strong> grant can view everything but can&apos;t
           add, edit, upload, or delete. Admins have full access to every profile
@@ -659,7 +659,7 @@ function GrantsCard({
                 <span className="font-medium text-slate-800 dark:text-slate-100">
                   {a.username}
                 </span>
-                <span className="text-xs text-slate-400 dark:text-slate-500">
+                <span className="text-xs text-slate-500 dark:text-slate-400">
                   — all profiles (admin)
                 </span>
               </div>

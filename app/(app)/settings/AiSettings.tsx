@@ -51,24 +51,24 @@ export default function AiSettings({
         className="rounded-md border border-black/10 bg-black/[0.02] p-3 text-xs dark:border-white/10 dark:bg-white/[0.03]"
       >
         <div className="flex items-center justify-between gap-4">
-          <dt className="text-slate-400 dark:text-slate-500">Endpoint</dt>
+          <dt className="text-slate-500 dark:text-slate-400">Endpoint</dt>
           <dd className="font-medium text-slate-700 dark:text-slate-200">
             {endpoint.label}
           </dd>
         </div>
         <div className="mt-1 flex items-center justify-between gap-4">
-          <dt className="text-slate-400 dark:text-slate-500">Model</dt>
+          <dt className="text-slate-500 dark:text-slate-400">Model</dt>
           <dd className="font-mono text-slate-700 dark:text-slate-200">
             {endpoint.model}
           </dd>
         </div>
         <div className="mt-1 flex items-center justify-between gap-4">
-          <dt className="text-slate-400 dark:text-slate-500">Status</dt>
+          <dt className="text-slate-500 dark:text-slate-400">Status</dt>
           <dd className="font-medium text-slate-700 dark:text-slate-200">
             {endpoint.configured ? "Configured" : "Not configured (offline)"}
           </dd>
         </div>
-        <p className="mt-2 text-slate-400 dark:text-slate-500">
+        <p className="mt-2 text-slate-500 dark:text-slate-400">
           Set via environment (<code>AI_BASE_URL</code>,{" "}
           <code>HEALTH_AI_MODEL</code>). Point <code>AI_BASE_URL</code> at a
           local inference server for zero external egress; no requests leave the
@@ -90,7 +90,7 @@ export default function AiSettings({
           />
           Auto-generate supplement suggestions
         </label>
-        <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           When a medical document import adds new or out-of-range biomarkers,
           run an AI recommendation scoped to them. Generating suggestions
           manually on the Supplements page always works.
@@ -115,7 +115,7 @@ export default function AiSettings({
           onBlur={() => save({ autoSuggest, maxRuns })}
           className="mt-1 w-24 rounded-md border border-black/10 bg-white px-2 py-1 text-sm dark:border-white/10 dark:bg-ink-900"
         />
-        <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           The ceiling on cadence-driven AI runs (supplement suggestions + daily
           insight) for any one profile in a day. Scheduled cadence already caps
           at one run per day; this backstops upload/manual bursts. Set each

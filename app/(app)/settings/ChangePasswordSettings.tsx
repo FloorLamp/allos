@@ -37,7 +37,7 @@ export default function ChangePasswordSettings({
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Password
         </h2>
-        <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           Change the password for your login ({username}). Your other signed-in
           devices are logged out.
         </p>

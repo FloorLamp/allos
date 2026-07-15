@@ -45,7 +45,7 @@ function ToneIcon({ tone }: { tone: FeedTone }) {
     case "pending":
       return (
         <IconLoader2
-          className="h-4 w-4 shrink-0 animate-spin text-slate-400 dark:text-slate-500"
+          className="h-4 w-4 shrink-0 animate-spin text-slate-500 dark:text-slate-400"
           stroke={1.75}
         />
       );
@@ -102,7 +102,7 @@ function FeedRow({
       <span className="text-sm text-slate-500 dark:text-slate-400">
         <span
           className={
-            v.detailMuted ? "text-slate-400 dark:text-slate-500" : undefined
+            v.detailMuted ? "text-slate-500 dark:text-slate-400" : undefined
           }
         >
           {v.detail}
@@ -115,13 +115,13 @@ function FeedRow({
         )}
       </span>
       {v.meta && (
-        <span className="text-sm text-slate-400 dark:text-slate-500">
+        <span className="text-sm text-slate-500 dark:text-slate-400">
           {v.meta}
         </span>
       )}
       <RelativeTime
         value={entry.at}
-        className="ml-auto text-xs text-slate-400 dark:text-slate-500"
+        className="ml-auto text-xs text-slate-500 dark:text-slate-400"
       />
       {isAdmin && rawRef && rawId != null && <RawPayloadViewer id={rawId} />}
     </li>

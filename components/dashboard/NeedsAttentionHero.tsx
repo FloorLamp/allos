@@ -191,7 +191,7 @@ export default function NeedsAttentionHero({
             aria-hidden="true"
           />
           <span className="font-medium">All clear</span>
-          <span className="hidden text-slate-400 sm:inline dark:text-slate-500">
+          <span className="hidden text-slate-500 sm:inline dark:text-slate-400">
             Nothing needs your attention right now.
           </span>
         </div>
@@ -244,7 +244,7 @@ export default function NeedsAttentionHero({
               className={`mb-1 text-xs font-semibold uppercase tracking-wide ${BAND_TONE[group.band]}`}
             >
               {group.label}
-              <span className="ml-1 text-slate-400 dark:text-slate-500">
+              <span className="ml-1 text-slate-500 dark:text-slate-400">
                 ({attentionCountLabel(group.items.length, group.overflow)})
               </span>
             </div>

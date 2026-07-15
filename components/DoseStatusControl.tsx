@@ -123,7 +123,7 @@ export default function DoseStatusControl({
       ? `flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 text-sm transition ${
           isSkipped
             ? "border-amber-500 bg-amber-500 text-white"
-            : "border-black/10 text-slate-400 hover:border-amber-400 dark:border-white/10 dark:text-slate-500"
+            : "border-black/10 text-slate-500 hover:border-amber-400 dark:border-white/10 dark:text-slate-400"
         }`
       : `flex items-center rounded-full border px-2.5 py-1 text-sm transition ${
           isSkipped

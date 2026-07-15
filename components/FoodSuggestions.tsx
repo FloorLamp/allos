@@ -141,7 +141,7 @@ export default function FoodSuggestions({
                     {s.caveat}
                   </p>
                 )}
-                <p className="mt-1.5 text-[11px] text-slate-400 dark:text-slate-500">
+                <p className="mt-1.5 text-[11px] text-slate-500 dark:text-slate-400">
                   {s.evidence} Source: {s.source}. Informational, not medical
                   advice.
                 </p>
