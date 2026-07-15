@@ -544,20 +544,31 @@ export default async function BiomarkerDetailPage(props: {
         </div>
       )}
 
-      {/* Deterministic food suggestions (#577): food-first, safety-screened guidance
-          when this diet-responsive biomarker reads low. Informational, not medical
-          advice; hidden when nothing applies. */}
-      {foodSuggestions.length > 0 && (
-        <div
-          data-testid="biomarker-food-suggestions"
-          className="card mb-6 border-l-4 border-l-emerald-300 dark:border-l-emerald-700"
-        >
-          <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-            Food sources
-          </h2>
-          <FoodSuggestions suggestions={foodSuggestions} />
-        </div>
-      )}
+      {/* Deterministic food suggestions (#577/#775): food-first, safety-screened
+          guidance when this diet-responsive biomarker reads low (eat more) OR high (cut
+          back on limit-tier foods). Informational, not medical advice; hidden when
+          nothing applies. Heading/accent follow the direction actually present. */}
+      {foodSuggestions.length > 0 &&
+        (() => {
+          const onlyReduce = foodSuggestions.every(
+            (s) => s.direction === "reduce"
+          );
+          return (
+            <div
+              data-testid="biomarker-food-suggestions"
+              className={
+                onlyReduce
+                  ? "card mb-6 border-l-4 border-l-amber-300 dark:border-l-amber-700"
+                  : "card mb-6 border-l-4 border-l-emerald-300 dark:border-l-emerald-700"
+              }
+            >
+              <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
+                {onlyReduce ? "Foods to cut back" : "Food sources"}
+              </h2>
+              <FoodSuggestions suggestions={foodSuggestions} />
+            </div>
+          );
+        })()}
 
       {/* Pediatric BP percentile + AAP category (#150) — child BP readings only,
           shown INSTEAD OF the adult thresholds; hidden for adults/non-BP markers. */}

@@ -15,7 +15,7 @@ import { MUSCLE_VOLUME_PREFIX } from "./muscle-volume-bands";
 import { BODY_HYGIENE_PREFIX } from "./weight-anomaly";
 import { GOAL_PACE_PREFIX } from "./goal-pacing";
 import { ADHERENCE_PREFIX } from "./adherence-patterns";
-import { FOOD_SUGGEST_PREFIX } from "./food-suggest";
+import { FOOD_SUGGEST_PREFIX, FOOD_REDUCE_PREFIX } from "./food-suggest";
 import { FOOD_HABIT_PREFIX } from "./food-habit";
 import { SUN_EXPOSURE_PREFIX } from "./sun-exposure";
 import { ORAL_HEALTH_PREFIX } from "./oral-health-observation";
@@ -32,6 +32,7 @@ export const RULE_FINDING_PREFIXES: readonly string[] = [
   GOAL_PACE_PREFIX,
   ADHERENCE_PREFIX,
   FOOD_SUGGEST_PREFIX,
+  FOOD_REDUCE_PREFIX,
   FOOD_HABIT_PREFIX,
   SUN_EXPOSURE_PREFIX,
   ORAL_HEALTH_PREFIX,

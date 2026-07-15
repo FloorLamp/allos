@@ -1,20 +1,24 @@
 import {
   IconSalad,
+  IconCircleMinus,
   IconAlertTriangle,
   IconInfoCircle,
 } from "@tabler/icons-react";
 import FoodGroupIcon from "@/components/FoodGroupIcon";
 import type { FoodSuggestion, FoodSafetyNoteKind } from "@/lib/food-suggest";
 
-// Presentational renderer for the DETERMINISTIC food suggestions (issue #577). A pure
-// formatter over the FoodSuggestion[] the ONE computation (getFoodSuggestions) yields —
-// shared by the biomarker detail page and the nutrition/coaching surface so they can't
-// disagree ("one question, one computation"). Informational, food-first, never
-// prescriptive; each suggestion cites the flagged biomarker as its reason and every
-// safety note stays visible.
+// Presentational renderer for the DETERMINISTIC food suggestions (issues #577/#775). A
+// pure formatter over the FoodSuggestion[] the ONE computation (getFoodSuggestions)
+// yields — shared by the biomarker detail page and the nutrition/coaching surface so
+// they can't disagree ("one question, one computation"). Informational, food-first,
+// never prescriptive; each suggestion cites the flagged biomarker as its reason and
+// every safety note stays visible. Two directions from the ONE engine: ADD (a low
+// reading → eat more, emerald) and REDUCE (#775, a high reading → eat less, amber).
 
 function noteIcon(kind: FoodSafetyNoteKind) {
-  return kind === "condition" || kind === "medication" ? (
+  return kind === "condition" ||
+    kind === "medication" ||
+    kind === "biomarker" ? (
     <IconAlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
   ) : (
     <IconInfoCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
@@ -36,89 +40,116 @@ export default function FoodSuggestions({
   if (suggestions.length === 0) return null;
   return (
     <div data-testid={testid} className="space-y-3">
-      {suggestions.map((s) => (
-        <div
-          key={s.key}
-          data-testid={`food-suggestion-${s.key}`}
-          className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm dark:border-emerald-900 dark:bg-emerald-950/40"
-        >
-          <div className="flex items-start gap-1.5">
-            <IconSalad className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-            <div className="min-w-0">
-              <p className="font-semibold text-emerald-900 dark:text-emerald-100">
-                Food for {s.label}
-              </p>
-              {s.triggeredBy.length > 0 && (
-                <p className="mt-0.5 text-xs text-emerald-700 dark:text-emerald-300">
-                  Because your {s.triggeredBy.join(", ")}{" "}
-                  {s.triggeredBy.length > 1 ? "are" : "is"} low.
-                </p>
+      {suggestions.map((s) => {
+        const reduce = s.direction === "reduce";
+        return (
+          <div
+            key={s.dedupeKey}
+            data-testid={`food-suggestion-${s.key}`}
+            data-direction={s.direction}
+            className={
+              reduce
+                ? "rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm dark:border-amber-900 dark:bg-amber-950/40"
+                : "rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm dark:border-emerald-900 dark:bg-emerald-950/40"
+            }
+          >
+            <div className="flex items-start gap-1.5">
+              {reduce ? (
+                <IconCircleMinus className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+              ) : (
+                <IconSalad className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
               )}
-              <ul className="mt-1.5 space-y-1">
-                {s.foods.map((f) => (
-                  <li
-                    key={f.food}
-                    className="text-slate-700 dark:text-slate-200"
+              <div className="min-w-0">
+                <p
+                  className={
+                    reduce
+                      ? "font-semibold text-amber-900 dark:text-amber-100"
+                      : "font-semibold text-emerald-900 dark:text-emerald-100"
+                  }
+                >
+                  {reduce ? "Cut back for" : "Food for"} {s.label}
+                </p>
+                {s.triggeredBy.length > 0 && (
+                  <p
+                    className={
+                      reduce
+                        ? "mt-0.5 text-xs text-amber-700 dark:text-amber-300"
+                        : "mt-0.5 text-xs text-emerald-700 dark:text-emerald-300"
+                    }
                   >
-                    <span className="font-medium">{f.food}</span>
-                    {f.isAlternative && (
-                      <span className="ml-1 rounded bg-emerald-100 px-1 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300">
-                        alternative
-                      </span>
-                    )}
-                    <span className="block text-xs text-slate-500 dark:text-slate-400">
-                      {f.serving}
-                    </span>
-                    {trackAction && f.foodGroup && (
-                      <form action={trackAction} className="mt-1">
-                        <input
-                          type="hidden"
-                          name="group_key"
-                          value={f.foodGroup}
-                        />
-                        <input type="hidden" name="per_week" value={2} />
-                        <button
-                          type="submit"
-                          data-testid={`track-${f.foodGroup}`}
-                          className="inline-flex items-center gap-1 rounded-full border border-emerald-300 px-2 py-0.5 text-xs font-medium text-emerald-700 transition hover:bg-emerald-100 dark:border-emerald-700 dark:text-emerald-300 dark:hover:bg-emerald-900"
-                        >
-                          <FoodGroupIcon
-                            slug={f.foodGroup}
-                            className="h-3.5 w-3.5 shrink-0"
-                          />
-                          Track as weekly habit
-                        </button>
-                      </form>
-                    )}
-                  </li>
-                ))}
-              </ul>
-              {s.safetyNotes.length > 0 && (
-                <ul className="mt-1.5 space-y-0.5">
-                  {s.safetyNotes.map((n, i) => (
+                    Because your {s.triggeredBy.join(", ")}{" "}
+                    {s.triggeredBy.length > 1 ? "are" : "is"}{" "}
+                    {reduce ? "high" : "low"}.
+                  </p>
+                )}
+                <ul className="mt-1.5 space-y-1">
+                  {s.foods.map((f) => (
                     <li
-                      key={i}
-                      className="flex items-start gap-1 text-xs text-amber-700 dark:text-amber-300"
+                      key={f.food}
+                      className="text-slate-700 dark:text-slate-200"
                     >
-                      {noteIcon(n.kind)}
-                      <span>{n.text}</span>
+                      <span className="font-medium">{f.food}</span>
+                      {f.isAlternative && (
+                        <span className="ml-1 rounded bg-emerald-100 px-1 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300">
+                          alternative
+                        </span>
+                      )}
+                      <span className="block text-xs text-slate-500 dark:text-slate-400">
+                        {f.serving}
+                      </span>
+                      {/* Track-as-habit is an ENCOURAGE affordance — offered only for
+                          add suggestions, never for a limit-tier food to reduce. */}
+                      {!reduce && trackAction && f.foodGroup && (
+                        <form action={trackAction} className="mt-1">
+                          <input
+                            type="hidden"
+                            name="group_key"
+                            value={f.foodGroup}
+                          />
+                          <input type="hidden" name="per_week" value={2} />
+                          <button
+                            type="submit"
+                            data-testid={`track-${f.foodGroup}`}
+                            className="inline-flex items-center gap-1 rounded-full border border-emerald-300 px-2 py-0.5 text-xs font-medium text-emerald-700 transition hover:bg-emerald-100 dark:border-emerald-700 dark:text-emerald-300 dark:hover:bg-emerald-900"
+                          >
+                            <FoodGroupIcon
+                              slug={f.foodGroup}
+                              className="h-3.5 w-3.5 shrink-0"
+                            />
+                            Track as weekly habit
+                          </button>
+                        </form>
+                      )}
                     </li>
                   ))}
                 </ul>
-              )}
-              {s.caveat && (
-                <p className="mt-1.5 text-xs italic text-slate-500 dark:text-slate-400">
-                  {s.caveat}
+                {s.safetyNotes.length > 0 && (
+                  <ul className="mt-1.5 space-y-0.5">
+                    {s.safetyNotes.map((n, i) => (
+                      <li
+                        key={i}
+                        className="flex items-start gap-1 text-xs text-amber-700 dark:text-amber-300"
+                      >
+                        {noteIcon(n.kind)}
+                        <span>{n.text}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {s.caveat && (
+                  <p className="mt-1.5 text-xs italic text-slate-500 dark:text-slate-400">
+                    {s.caveat}
+                  </p>
+                )}
+                <p className="mt-1.5 text-[11px] text-slate-400 dark:text-slate-500">
+                  {s.evidence} Source: {s.source}. Informational, not medical
+                  advice.
                 </p>
-              )}
-              <p className="mt-1.5 text-[11px] text-slate-400 dark:text-slate-500">
-                {s.evidence} Source: {s.source}. Informational, not medical
-                advice.
-              </p>
+              </div>
             </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

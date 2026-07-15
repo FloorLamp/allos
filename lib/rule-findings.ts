@@ -228,10 +228,14 @@ export function buildFoodSuggestionFindings(profileId: number): Finding[] {
 }
 
 function foodSuggestionToFinding(s: FoodSuggestion): Finding {
+  const reduce = s.direction === "reduce";
+  const side = reduce ? "high" : "low";
   const because =
     s.triggeredBy.length > 0
-      ? `Because your ${s.triggeredBy.join(", ")} ${s.triggeredBy.length > 1 ? "are" : "is"} low`
-      : "Food sources";
+      ? `Because your ${s.triggeredBy.join(", ")} ${s.triggeredBy.length > 1 ? "are" : "is"} ${side}`
+      : reduce
+        ? "Foods to reduce"
+        : "Food sources";
   const foodLine = s.foods.map((f) => `${f.food} — ${f.serving}`).join(" ");
   const cautions = s.safetyNotes.map((n) => n.text);
   const detail = [because + ".", foodLine, ...cautions, s.caveat]
@@ -240,9 +244,11 @@ function foodSuggestionToFinding(s: FoodSuggestion): Finding {
   return {
     domain: "food-suggest",
     dedupeKey: s.dedupeKey,
-    title: `Food for ${s.label}`,
+    // Add vs reduce framing (#775): "Food for …" (eat more) vs "Cut back for …".
+    title: reduce ? `Cut back for ${s.label}` : `Food for ${s.label}`,
     detail,
-    // Calm, informational lifestyle guidance — never a red attention flag.
+    // Calm, informational lifestyle guidance — never a red attention flag; the reduce
+    // direction is coaching-tier too (#449), never a push/hero.
     tone: "info",
     evidence: `${s.evidence} Source: ${s.source}. Informational, not medical advice.`,
     actionHref: biomarkerViewHref(s.triggeredBy[0] ?? null),

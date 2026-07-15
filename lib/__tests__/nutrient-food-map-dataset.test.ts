@@ -6,9 +6,13 @@ import { buildNutrientFoodMap } from "@/scripts/gen-nutrient-food-map";
 import {
   nutrientFoodMapBiomarkers,
   nutrientFoodMapDrugKeys,
+  DRI_NUTRIENT_BIOMARKERS,
+  flaggableDriNutrients,
+  foodSourcesForDriNutrient,
 } from "@/lib/food-suggest";
 import canonicalSeed from "@/lib/canonical-biomarkers.json";
 import foodDrug from "@/lib/food-drug-interactions.json";
+import dri from "@/lib/dri.json";
 
 // Anti-drift pins for the baked biomarker→food map (issue #577): the committed
 // lib/nutrient-food-map.json must be a FIXED POINT of the generator; every biomarker
@@ -63,5 +67,68 @@ describe("nutrient-food-map.json dataset", () => {
       expect(e.foods.length, e.key).toBeGreaterThan(0);
       expect(e.direction, e.key).toBe("low");
     }
+  });
+
+  it("every reduce entry carries an evidence note, a source, at least one food, and direction high (#775)", () => {
+    const reduce = buildNutrientFoodMap().reduceEntries;
+    expect(reduce.length).toBeGreaterThan(0);
+    for (const e of reduce) {
+      expect(e.evidence.trim().length, e.key).toBeGreaterThan(0);
+      expect(e.source.trim().length, e.key).toBeGreaterThan(0);
+      expect(e.foods.length, e.key).toBeGreaterThan(0);
+      expect(e.biomarkers.length, e.key).toBeGreaterThan(0);
+      expect(e.direction, e.key).toBe("high");
+    }
+  });
+});
+
+// ── #774 coverage reflection guard ────────────────────────────────────────────
+// The flaggability ledger (DRI_NUTRIENT_BIOMARKERS) must stay in lockstep with
+// dri.json, and every FLAGGABLE DRI nutrient (a canonical biomarker measures it) must
+// resolve to ≥1 food-map entry — so a future flaggable DRI nutrient can't silently ship
+// without a food answer, and the RDA-adequacy "Food sources:" line (#578) can't go dark.
+describe("DRI ↔ food-map coverage (#774)", () => {
+  const DRI_KEYS = new Set(
+    (dri as { nutrients: { key: string }[] }).nutrients.map((n) => n.key)
+  );
+
+  it("the flaggability ledger's keys align exactly with dri.json's nutrient keys", () => {
+    const ledgerKeys = new Set(Object.keys(DRI_NUTRIENT_BIOMARKERS));
+    const missingFromLedger = [...DRI_KEYS].filter((k) => !ledgerKeys.has(k));
+    const extraInLedger = [...ledgerKeys].filter((k) => !DRI_KEYS.has(k));
+    expect(
+      missingFromLedger,
+      `dri.json nutrients absent from DRI_NUTRIENT_BIOMARKERS: ${missingFromLedger}`
+    ).toEqual([]);
+    expect(
+      extraInLedger,
+      `DRI_NUTRIENT_BIOMARKERS keys not in dri.json: ${extraInLedger}`
+    ).toEqual([]);
+  });
+
+  it("every biomarker the ledger names resolves to a canonical biomarker", () => {
+    const missing = Object.values(DRI_NUTRIENT_BIOMARKERS)
+      .flat()
+      .filter((n) => !CANONICAL_NAMES.has(n.toLowerCase()));
+    expect(
+      missing,
+      `ledger biomarker names with no canonical-biomarkers.json entry: ${missing}`
+    ).toEqual([]);
+  });
+
+  it("every FLAGGABLE DRI nutrient resolves to ≥1 food-map entry (no silent coverage gap)", () => {
+    const uncovered = flaggableDriNutrients().filter(
+      (k) => foodSourcesForDriNutrient(k).length === 0
+    );
+    expect(
+      uncovered,
+      `flaggable DRI nutrients with no food-map entry: ${uncovered}`
+    ).toEqual([]);
+  });
+
+  it("covers selenium → brazil nuts specifically (the motivating gap)", () => {
+    expect(flaggableDriNutrients()).toContain("selenium");
+    const foods = foodSourcesForDriNutrient("selenium").join(" ").toLowerCase();
+    expect(foods).toContain("brazil");
   });
 });

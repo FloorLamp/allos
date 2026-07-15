@@ -56,6 +56,22 @@ export interface FoodSource {
   foodDrugKeys?: string[];
 }
 
+// A biomarker-driven excess caution attached to a low-side (ADD) entry (issue #775).
+// GENERALIZES the omega-3 entry's STATIC pregnancy caution into one that ALSO fires on
+// an out-of-range TOXIN/marker reading: an elevated mercury tempers the app's own fatty-
+// fish encouragement ("prefer low-mercury species; avoid tuna/swordfish"). It rides the
+// SAME suggestion (and dedupeKey) as the food it qualifies — it never stands alone — so
+// it only matters when that food is actually being recommended. Mercury is a heavy metal
+// with no RDA (not in dri.json), so it is handled here as a canonical-biomarker qualifier
+// rather than through the nutrient-family/RDA path.
+export interface ExcessCaution {
+  // Canonical biomarker names whose HIGH/abnormal reading attaches this caution to the
+  // suggestion (matched case-insensitively, via isHighFlag).
+  biomarkers: string[];
+  // The caution text surfaced as a biomarker safety note on the suggestion.
+  note: string;
+}
+
 // One biomarker-family → nutrient → foods mapping.
 export interface NutrientFoodEntry {
   // Stable key for this nutrient concept — the food-suggestion dedupeKey family
@@ -88,6 +104,43 @@ export interface NutrientFoodEntry {
   allergyAlternative: FoodSource | null;
   // Honest caveat surfaced in the suggestion detail — e.g. "Food is a minor lever for
   // vitamin D; sunlight and supplements dominate." Null when none applies.
+  caveat: string | null;
+  // Biomarker-driven excess caution(s) that TEMPER this add suggestion when a related
+  // toxin/marker reads high (issue #775) — e.g. omega-3 fatty-fish tempered by an
+  // elevated mercury. Absent when none applies. Never a standalone suggestion.
+  excessCaution?: ExcessCaution | null;
+}
+
+// One high-side (REDUCE) mapping (issue #775): a biomarker family whose CURRENT reading
+// is flagged HIGH → the "limit"-tier foods to eat LESS of. The excess-direction twin of
+// NutrientFoodEntry, consumed by the SAME pure engine (suggestFoods) and rendered by the
+// SAME surfaces, so there is ONE engine with two directions — never a forked second
+// engine. Coaching-tier, informational ("consider reducing X"), never prescriptive; it
+// does NOT touch the care-tier UL (#148) / food–drug (#154) machinery. Its dedupeKey
+// lives in its OWN namespace (`food-reduce:<key>`) so a reduce-note dismissal can never
+// collide with an add-note one.
+export interface ReduceFoodEntry {
+  // Stable key for this reduce concept — the dedupeKey family (`food-reduce:<key>`), so
+  // multiple flagged members (LDL-C + ApoB, Glucose + HbA1c) collapse to ONE suggestion
+  // and a dismissal covers the family regardless of which member is newest (#482).
+  key: string;
+  // Display label ("LDL cholesterol / ApoB").
+  label: string;
+  // Canonical biomarker names whose CURRENT reading being flagged HIGH triggers this
+  // reduce suggestion. Matched case-insensitively.
+  biomarkers: string[];
+  // Which flag direction triggers the suggestion — always "high" (this is the excess
+  // direction; the low-side sibling is NutrientFoodEntry.direction === "low").
+  direction: "high";
+  // Ranked "limit"-tier foods to reduce (biggest lever first). `foodGroup` points at a
+  // limit-tier slug in lib/food-groups.json where one exists, or null for a specific-
+  // substance note (organ meats, deli meat) with no loggable group.
+  foods: FoodSource[];
+  // Plain-language reason ("LDL/ApoB respond to dietary saturated and trans fat").
+  evidence: string;
+  // Public, citable basis (NIH/NHLBI/NIDDK/NIAMS guidance, Dietary Guidelines).
+  source: string;
+  // Honest caveat (e.g. "blood sodium is regulated by fluid balance, not salt intake").
   caveat: string | null;
 }
 
@@ -149,6 +202,10 @@ const ENTRIES: NutrientFoodEntry[] = [
     },
     caveat:
       "Plant ALA (flax, walnuts) converts to EPA/DHA only weakly — algae oil is the fish-free way to get EPA/DHA directly.",
+    excessCaution: {
+      biomarkers: ["Mercury"],
+      note: "Your mercury is elevated — prefer low-mercury fish (salmon, sardines, trout) and avoid high-mercury species (tuna, swordfish, king mackerel, shark) until it comes down.",
+    },
   },
   {
     key: "iron",
@@ -329,11 +386,447 @@ const ENTRIES: NutrientFoodEntry[] = [
     caveat:
       "Food is a MINOR lever for vitamin D — sunlight and supplements dominate. A flagged-low 25-OH-D usually needs sun exposure or a supplement, not just diet.",
   },
+  {
+    key: "selenium",
+    label: "Selenium",
+    biomarkers: ["Selenium"],
+    direction: "low",
+    foods: [
+      {
+        food: "Brazil nuts",
+        foodGroup: "nuts_seeds",
+        serving:
+          "Just 1–2 Brazil nuts a day cover the requirement — they are extraordinarily selenium-dense, so do NOT eat them by the handful.",
+      },
+      {
+        food: "Sardines, tuna, and other seafood; eggs",
+        foodGroup: "lean_fish",
+        serving:
+          "Seafood and eggs are steady, more moderate everyday selenium sources.",
+      },
+    ],
+    evidence:
+      "Brazil nuts are the most selenium-dense food (a single nut can exceed the daily requirement); seafood and eggs are reliable moderate sources.",
+    source: "NIH ODS Selenium fact sheet",
+    contraindications: [],
+    allergyAlternative: {
+      food: "Sardines, tuna, eggs, poultry, and whole grains",
+      foodGroup: "lean_fish",
+      serving: "Covers selenium without Brazil nuts for a nut allergy.",
+    },
+    caveat:
+      "Selenium has a narrow safe range — a couple of Brazil nuts daily is plenty; routinely eating many can push intake toward toxic levels.",
+  },
+  {
+    key: "zinc",
+    label: "Zinc",
+    biomarkers: ["Zinc"],
+    direction: "low",
+    foods: [
+      {
+        food: "Oysters, shellfish, red meat, and poultry",
+        foodGroup: "shellfish",
+        serving:
+          "Oysters are by far the densest zinc source; red meat and poultry are reliable everyday sources.",
+      },
+      {
+        food: "Legumes, nuts, seeds, and whole grains",
+        foodGroup: "legumes",
+        serving:
+          "Plant zinc is less well absorbed; soaking or sprouting legumes and grains improves uptake.",
+      },
+    ],
+    evidence:
+      "Zinc is highest in oysters and other shellfish, red meat, and poultry; legumes, nuts, seeds, and whole grains contribute but are less bioavailable.",
+    source: "NIH ODS Zinc fact sheet",
+    contraindications: [],
+    allergyAlternative: {
+      food: "Legumes, nuts, seeds, and whole grains",
+      foodGroup: "legumes",
+      serving:
+        "Covers zinc without shellfish for a shellfish allergy — soaking/sprouting improves absorption.",
+    },
+    caveat:
+      "Very high zinc (usually from supplements, not food) blocks copper absorption — keep supplemental zinc modest.",
+  },
+  {
+    key: "iodine",
+    label: "Iodine",
+    biomarkers: ["Iodine"],
+    direction: "low",
+    foods: [
+      {
+        food: "Iodized salt, dairy, and eggs",
+        foodGroup: "dairy",
+        serving:
+          "Using iodized salt and including dairy and eggs covers iodine for most people.",
+      },
+      {
+        food: "Seafood and (in moderation) seaweed",
+        foodGroup: "lean_fish",
+        serving:
+          "Fish and shellfish are rich in iodine; seaweed is very concentrated, so use it sparingly.",
+      },
+    ],
+    evidence:
+      "Iodine comes mainly from iodized salt, dairy, eggs, seafood, and seaweed; plant content depends on soil iodine.",
+    source: "NIH ODS Iodine fact sheet",
+    contraindications: [
+      {
+        match: "hyperthyroid",
+        caution:
+          "With an overactive thyroid, extra iodine (especially seaweed/kelp) can worsen thyroid function — check with your clinician before increasing intake.",
+      },
+      {
+        match: "hashimoto",
+        caution:
+          "With Hashimoto's thyroiditis, a sudden jump in iodine (kelp/seaweed supplements) can aggravate the condition — increase cautiously and with clinician guidance.",
+      },
+    ],
+    allergyAlternative: {
+      food: "Iodized salt, dairy, and eggs",
+      foodGroup: "dairy",
+      serving: "Covers iodine without seafood for a fish/shellfish allergy.",
+    },
+    caveat:
+      "Both too little AND too much iodine harm the thyroid — seaweed can massively overshoot, so favor iodized salt and everyday foods over kelp supplements.",
+  },
+  {
+    key: "calcium",
+    label: "Calcium",
+    biomarkers: ["Calcium"],
+    direction: "low",
+    foods: [
+      {
+        food: "Dairy — milk, yogurt, cheese",
+        foodGroup: "dairy",
+        serving:
+          "Dairy is the densest, best-absorbed calcium source; a couple of servings a day covers most of the requirement.",
+      },
+      {
+        food: "Fortified plant milks, calcium-set tofu, canned sardines with bones, and low-oxalate greens",
+        foodGroup: "leafy_greens",
+        serving:
+          "Non-dairy calcium comes from fortified milks, calcium-set tofu, canned fish with bones, and greens like kale and bok choy.",
+        foodDrugKeys: ["vitamin-k-warfarin"],
+      },
+    ],
+    evidence:
+      "Calcium is highest in dairy, with fortified plant milks, calcium-set tofu, canned fish with edible bones, and low-oxalate greens as effective non-dairy sources.",
+    source: "NIH ODS Calcium fact sheet",
+    contraindications: [
+      {
+        match: "hypercalcemia",
+        caution:
+          "With high blood calcium, do not increase calcium intake — this is a clinician-guided restriction.",
+        severity: "drop",
+      },
+    ],
+    allergyAlternative: {
+      food: "Fortified plant milks, calcium-set tofu, canned sardines with bones, and leafy greens",
+      foodGroup: "legumes",
+      serving: "Covers calcium without dairy for a milk allergy.",
+    },
+    caveat:
+      "Blood calcium is tightly regulated, so a low reading often reflects low albumin or vitamin D rather than diet — interpret it with your clinician.",
+  },
+  {
+    key: "copper",
+    label: "Copper",
+    biomarkers: ["Copper"],
+    direction: "low",
+    foods: [
+      {
+        food: "Shellfish (oysters, crab), organ meats, nuts, and seeds",
+        foodGroup: "shellfish",
+        serving:
+          "Shellfish and organ meats are the densest copper sources; nuts and seeds add steady amounts.",
+      },
+      {
+        food: "Legumes, whole grains, and dark chocolate",
+        foodGroup: "legumes",
+        serving:
+          "Beans, whole grains, and cocoa are good plant copper sources.",
+      },
+    ],
+    evidence:
+      "Copper is highest in shellfish, organ meats, nuts, seeds, legumes, whole grains, and cocoa.",
+    source: "NIH ODS Copper fact sheet",
+    contraindications: [
+      {
+        match: "wilson",
+        caution:
+          "With Wilson disease the body cannot clear copper — do NOT increase copper-rich foods; this is a clinician-guided restriction.",
+        severity: "drop",
+      },
+    ],
+    allergyAlternative: {
+      food: "Legumes, whole grains, nuts, seeds, and dark chocolate",
+      foodGroup: "legumes",
+      serving: "Covers copper without shellfish for a shellfish allergy.",
+    },
+    caveat:
+      "A low copper reading can be driven by high zinc intake (the two compete for absorption) — mention any zinc supplements to your clinician.",
+  },
+  {
+    key: "vitamin-a",
+    label: "Vitamin A",
+    biomarkers: ["Vitamin A (Retinol)"],
+    direction: "low",
+    foods: [
+      {
+        food: "Eggs, dairy, and liver (preformed retinol)",
+        foodGroup: "eggs",
+        serving:
+          "Eggs and dairy supply ready-to-use retinol; liver is extremely concentrated, so keep it occasional.",
+      },
+      {
+        food: "Orange and dark-green vegetables — sweet potato, carrots, spinach (beta-carotene)",
+        foodGroup: "other_vegetables",
+        serving:
+          "The body converts beta-carotene from colorful vegetables into vitamin A as needed.",
+      },
+    ],
+    evidence:
+      "Vitamin A comes as preformed retinol (eggs, dairy, liver) and as provitamin-A carotenoids (orange and dark-green vegetables) the body converts as needed.",
+    source: "NIH ODS Vitamin A fact sheet",
+    contraindications: [
+      {
+        match: "pregnan",
+        caution:
+          "In pregnancy, get vitamin A from beta-carotene vegetables rather than high-dose preformed retinol (liver or retinol supplements), which can harm the fetus in excess.",
+      },
+    ],
+    allergyAlternative: null,
+    caveat:
+      "Beta-carotene from plants converts to vitamin A only as the body needs it and is not toxic; preformed retinol (liver, supplements) is the form to keep moderate.",
+  },
+  {
+    key: "vitamin-e",
+    label: "Vitamin E",
+    biomarkers: [
+      "Vitamin E (Alpha-Tocopherol)",
+      "Vitamin E (Beta/Gamma-Tocopherol)",
+    ],
+    direction: "low",
+    foods: [
+      {
+        food: "Nuts and seeds — almonds, sunflower seeds, hazelnuts",
+        foodGroup: "nuts_seeds",
+        serving:
+          "A daily small handful of almonds or sunflower seeds is among the richest vitamin-E sources.",
+      },
+      {
+        food: "Vegetable oils and leafy greens",
+        foodGroup: "leafy_greens",
+        serving:
+          "Sunflower and safflower oils and dark greens add alpha-tocopherol.",
+        foodDrugKeys: ["vitamin-k-warfarin"],
+      },
+    ],
+    evidence:
+      "Vitamin E (alpha-tocopherol) is concentrated in nuts, seeds, and vegetable oils, with smaller amounts in leafy greens.",
+    source: "NIH ODS Vitamin E fact sheet",
+    contraindications: [],
+    allergyAlternative: {
+      food: "Vegetable oils, leafy greens, avocado, and fortified cereals",
+      foodGroup: "leafy_greens",
+      serving: "Covers vitamin E without nuts or seeds for a nut/seed allergy.",
+    },
+    caveat:
+      "High-dose vitamin E SUPPLEMENTS can raise bleeding risk with anticoagulants — food-level vitamin E does not, but tell your clinician before supplementing.",
+  },
+  {
+    key: "vitamin-c",
+    label: "Vitamin C",
+    biomarkers: [],
+    direction: "low",
+    foods: [
+      {
+        food: "Citrus, peppers, kiwi, strawberries, and broccoli",
+        foodGroup: "fruit",
+        serving:
+          "A daily serving of fruit or vegetables easily covers vitamin C; peppers and citrus are especially dense.",
+      },
+      {
+        food: "Cruciferous and other vegetables",
+        foodGroup: "cruciferous",
+        serving: "Broccoli, Brussels sprouts, and tomatoes add vitamin C.",
+      },
+    ],
+    evidence:
+      "Vitamin C is widespread in fruits and vegetables — citrus, peppers, kiwi, berries, broccoli — and a produce-forward pattern covers it easily.",
+    source: "NIH ODS Vitamin C fact sheet",
+    contraindications: [
+      {
+        match: "hemochromatosis",
+        caution:
+          "Vitamin C boosts iron absorption — with iron-overload conditions (hemochromatosis), avoid large vitamin-C doses alongside iron-rich meals; discuss with your clinician.",
+      },
+    ],
+    allergyAlternative: null,
+    caveat:
+      "Vitamin C has no routine blood biomarker in this app, so this entry surfaces on the supplement RDA-adequacy view rather than from a flagged lab — food easily covers the requirement.",
+  },
+  {
+    key: "molybdenum",
+    label: "Molybdenum",
+    biomarkers: ["Molybdenum"],
+    direction: "low",
+    foods: [
+      {
+        food: "Legumes — beans, lentils, and peas",
+        foodGroup: "legumes",
+        serving:
+          "Legumes are by far the richest molybdenum source; a serving most days more than covers the small requirement.",
+      },
+      {
+        food: "Whole grains, nuts, and leafy greens",
+        foodGroup: "whole_grains",
+        serving: "Grains and nuts add steady molybdenum.",
+      },
+    ],
+    evidence:
+      "Molybdenum is highest in legumes, with whole grains, nuts, and leafy greens as secondary sources; dietary deficiency is very rare.",
+    source: "NIH ODS Molybdenum fact sheet",
+    contraindications: [],
+    allergyAlternative: null,
+    caveat:
+      "Molybdenum deficiency is essentially unknown in people eating a normal diet — a low reading rarely calls for a dietary change.",
+  },
+];
+
+// ── Curated high-side REDUCE table (issue #775) ───────────────────────────────
+// The excess-direction twin of ENTRIES: a biomarker family flagged HIGH → the
+// "limit"-tier foods to eat LESS of. Curated Mercury + core-panel trigger set (NOT a
+// full symmetric inversion of every high biomarker) — a new trigger is a deliberate
+// dataset addition later. Mercury is NOT here: as a heavy metal with no RDA it is
+// handled as an ExcessCaution that TEMPERS the omega-3 fish suggestion, not as a
+// standalone reduce entry. Public dietary facts from NIH institute guidance and the
+// Dietary Guidelines for Americans. INFORMATIONAL, coaching-tier — human-review before
+// trusting.
+const REDUCE_ENTRIES: ReduceFoodEntry[] = [
+  {
+    key: "ldl-apob",
+    label: "LDL cholesterol / ApoB",
+    biomarkers: ["LDL Cholesterol", "ApoB"],
+    direction: "high",
+    foods: [
+      {
+        food: "Fried and deep-fried foods",
+        foodGroup: "fried_food",
+        serving:
+          "Cutting back on fried food lowers the saturated and trans fat that raises LDL and ApoB.",
+      },
+      {
+        food: "Processed and fatty red meats",
+        foodGroup: "processed_meat",
+        serving:
+          "Swapping processed and fatty red meat for fish, poultry, or legumes reduces the saturated fat driving LDL up.",
+      },
+    ],
+    evidence:
+      "LDL cholesterol and ApoB respond to dietary saturated and trans fat; reducing fried foods and processed/fatty red meat is a well-established lever.",
+    source:
+      "NIH/NHLBI dietary guidance; Dietary Guidelines for Americans (limit saturated fat)",
+    caveat:
+      "Replacing saturated fat with unsaturated fats (olive oil, nuts, fish) lowers LDL more than simply cutting total fat.",
+  },
+  {
+    key: "glucose",
+    label: "Glucose / HbA1c",
+    biomarkers: ["Glucose", "Hemoglobin A1c"],
+    direction: "high",
+    foods: [
+      {
+        food: "Added sugar and sweets",
+        foodGroup: "added_sugar",
+        serving:
+          "Reducing added sugar lowers the post-meal glucose load that raises A1c.",
+      },
+      {
+        food: "Sugary drinks — soda, juice, sweetened coffee",
+        foodGroup: "sugary_drinks",
+        serving:
+          "Sugary drinks spike glucose fastest; swapping to water or unsweetened is a high-yield change.",
+      },
+      {
+        food: "Refined grains — white bread, white rice, pastries",
+        foodGroup: "refined_grains",
+        serving:
+          "Swapping refined grains for whole grains blunts glucose spikes.",
+      },
+    ],
+    evidence:
+      "Fasting glucose and HbA1c respond to dietary sugar and refined carbohydrate; reducing added sugar, sugary drinks, and refined grains lowers the glycemic load.",
+    source:
+      "NIH/NIDDK dietary guidance; Dietary Guidelines for Americans (limit added sugars)",
+    caveat:
+      "Fiber-rich whole foods, protein, and spreading carbohydrate across the day flatten glucose more than sugar avoidance alone.",
+  },
+  {
+    key: "urate",
+    label: "Uric acid",
+    biomarkers: ["Uric Acid"],
+    direction: "high",
+    foods: [
+      {
+        food: "Alcohol, especially beer",
+        foodGroup: "alcohol",
+        serving:
+          "Alcohol (beer most of all) raises uric acid and triggers gout flares — cutting back is a primary lever.",
+      },
+      {
+        food: "High-purine foods — organ meats, red/game meat, and shellfish",
+        foodGroup: null,
+        serving:
+          "Reducing organ meats, red and game meat, and shellfish lowers the purine load the body converts to uric acid.",
+      },
+      {
+        food: "Sugary, high-fructose drinks",
+        foodGroup: "sugary_drinks",
+        serving:
+          "Fructose raises uric acid, so cutting sugary drinks helps beyond the purine story.",
+      },
+    ],
+    evidence:
+      "High uric acid (and gout risk) responds to reducing alcohol, high-purine foods (organ meats, red meat, shellfish), and fructose-sweetened drinks.",
+    source: "NIH/NIAMS gout dietary guidance",
+    caveat:
+      "Staying well hydrated and reaching a healthy weight lower uric acid alongside these changes; dairy and coffee are associated with lower levels.",
+  },
+  {
+    key: "sodium",
+    label: "Sodium",
+    biomarkers: ["Sodium"],
+    direction: "high",
+    foods: [
+      {
+        food: "Processed and packaged salty foods",
+        foodGroup: "processed_meat",
+        serving:
+          "Most dietary sodium comes from processed, packaged, and restaurant foods — choosing fresh or home-cooked is the biggest lever.",
+      },
+      {
+        food: "Deli meats, canned soups, and salty snacks",
+        foodGroup: null,
+        serving:
+          "Cutting back on deli meat, canned soup, chips, and salty sauces lowers sodium substantially.",
+      },
+    ],
+    evidence:
+      "Reducing processed and packaged foods — the source of most dietary sodium — is the primary lever, especially relevant with hypertension or reduced kidney function.",
+    source:
+      "NIH/NHLBI DASH guidance; Dietary Guidelines for Americans (limit sodium)",
+    caveat:
+      "A blood sodium reading is regulated mostly by fluid balance rather than salt intake — but reducing dietary sodium matters for blood pressure and kidney health.",
+  },
 ];
 
 export interface NutrientFoodMap {
   $comment: string;
   entries: NutrientFoodEntry[];
+  reduceEntries: ReduceFoodEntry[];
 }
 
 // Pure builder: assemble the map from the curated table. The committed
@@ -345,12 +838,15 @@ export function buildNutrientFoodMap(): NutrientFoodMap {
     $comment:
       "Baked biomarker→nutrient→food map for the DETERMINISTIC food-recommendation " +
       "engine (issue #577): when a diet-responsive biomarker family reads low, the " +
-      "curated food sources that address it, each with an evidence note + source, " +
-      "contraindication tags, and an allergy alternative. Committed + HUMAN-REVIEWABLE. " +
-      "Regenerate with `npm run gen:nutrient-food-map`. INFORMATIONAL food-first " +
-      "guidance, NOT medical advice — every suggestion is safety-screened before it " +
-      "renders and cites the flagged biomarker as its reason.",
+      "curated food sources that address it (`entries`); and when a core-panel/toxin " +
+      "biomarker reads high, the limit-tier foods to reduce (`reduceEntries`, issue " +
+      "#775). Each carries an evidence note + source; low entries add contraindication " +
+      "tags + an allergy alternative. Committed + HUMAN-REVIEWABLE. Regenerate with " +
+      "`npm run gen:nutrient-food-map`. INFORMATIONAL food-first guidance, NOT medical " +
+      "advice — every suggestion is safety-screened before it renders and cites the " +
+      "flagged biomarker as its reason.",
     entries: ENTRIES,
+    reduceEntries: REDUCE_ENTRIES,
   };
 }
 

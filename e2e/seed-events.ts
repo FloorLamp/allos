@@ -1772,6 +1772,8 @@ console.log(
 for (const bm of [
   { name: "Omega-3 Total (OmegaCheck)", value: 3.0, unit: "% by wt" },
   { name: "Folate", value: 2.0, unit: "ng/mL" },
+  // #774: an expanded-coverage low nutrient (selenium → brazil nuts).
+  { name: "Selenium", value: 45, unit: "ug/L" },
 ]) {
   db.prepare(
     `DELETE FROM medical_records WHERE profile_id = ? AND canonical_name = ?`
@@ -1790,6 +1792,20 @@ for (const bm of [
     bm.name
   );
 }
+// #775: a flagged-HIGH core-panel reading so the REDUCE direction renders (high LDL →
+// cut-back on fried food / processed meat). Kept off omega-3 so it can't disturb the
+// existing omega-3-alternative assertions. Idempotent by canonical_name.
+{
+  const name = "LDL Cholesterol";
+  db.prepare(
+    `DELETE FROM medical_records WHERE profile_id = ? AND canonical_name = ?`
+  ).run(PROFILE_ID, name);
+  db.prepare(
+    `INSERT INTO medical_records
+       (profile_id, date, category, name, value_num, value, unit, canonical_name, flag)
+     VALUES (?, ?, 'lab', ?, 190, '190', 'mg/dL', ?, 'high')`
+  ).run(PROFILE_ID, shiftDateStr(today(PROFILE_ID), -7), name, name);
+}
 if (
   !db
     .prepare(
@@ -1803,7 +1819,7 @@ if (
   ).run(PROFILE_ID);
 }
 console.log(
-  `e2e: seeded low omega-3 + folate readings and a fish allergy on profile ${PROFILE_ID} for food suggestions (#577)`
+  `e2e: seeded low omega-3/folate/selenium (#577/#774) + high LDL (#775 reduce) readings and a fish allergy on profile ${PROFILE_ID} for food suggestions`
 );
 
 // A hand-edited imported body-metric row (the user-edit lock, #133) on the default
