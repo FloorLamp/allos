@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireWriteAccess } from "@/lib/auth";
 import { dismissFinding } from "@/lib/queries";
 import { TRAINING_OBS_PREFIX } from "@/lib/training-observations";
+import { MUSCLE_VOLUME_PREFIX } from "@/lib/muscle-volume-bands";
 import {
   adoptTemplate,
   activateRoutine,
@@ -14,16 +15,21 @@ import {
   validateRoutineInput,
 } from "@/lib/routines";
 
-// Dismiss a training-balance observation (issue #45, domain 4): a push/pull volume
-// imbalance, a stale exercise, or a plateaued lift. Hides it through the shared
-// findings-bus suppression store, keyed by its `training-obs:<kind>:…` dedupeKey.
-// Guarded to the training-observation namespace (like dismissTrajectory) so this
-// action can only ever silence a training-observation key; profile-scoped via
+// Dismiss a Training-watch observation: a training-balance finding (issue #45, domain
+// 4 — a push/pull volume imbalance, a stale exercise, or a plateaued lift) OR a
+// per-muscle volume-band shortfall (#742). Hides it through the shared findings-bus
+// suppression store, keyed by its `training-obs:…` / `muscle-volume:…` dedupeKey.
+// Guarded to exactly those two Training-watch namespaces (like dismissTrajectory) so
+// this action can only ever silence a Training-watch key; profile-scoped via
 // dismissFinding.
 export async function dismissTrainingObservation(formData: FormData) {
   const { profile } = await requireWriteAccess();
   const dedupeKey = String(formData.get("dedupe_key") ?? "").trim();
-  if (!dedupeKey.startsWith(TRAINING_OBS_PREFIX)) return;
+  if (
+    !dedupeKey.startsWith(TRAINING_OBS_PREFIX) &&
+    !dedupeKey.startsWith(MUSCLE_VOLUME_PREFIX)
+  )
+    return;
   dismissFinding(profile.id, dedupeKey);
   revalidatePath("/training");
 }

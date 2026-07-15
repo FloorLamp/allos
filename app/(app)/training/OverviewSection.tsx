@@ -23,6 +23,7 @@ import {
   coverageList,
   SECONDARY_CREDIT,
 } from "@/lib/muscle-coverage";
+import { bandVerdict, bandPresentation } from "@/lib/muscle-volume-bands";
 import {
   nextSetText,
   recentCardioPRs,
@@ -294,7 +295,8 @@ export default async function OverviewSection() {
         </h3>
         <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500">
           Sets per muscle over the last {coverageDays} days. Primary movers
-          count 1, assisting muscles count {SECONDARY_CREDIT}.
+          count 1, assisting muscles count {SECONDARY_CREDIT}. The chip shows
+          each muscle against its weekly volume band.
         </p>
         {coverage.length === 0 ? (
           <p className="mt-4 text-sm text-slate-400 dark:text-slate-500">
@@ -302,27 +304,40 @@ export default async function OverviewSection() {
           </p>
         ) : (
           <ul className="mt-4 space-y-2">
-            {coverage.map((row) => (
-              <li
-                key={row.muscle}
-                data-testid="muscle-coverage-row"
-                className="flex items-center gap-3 text-sm"
-              >
-                <span className="w-28 shrink-0 text-slate-600 dark:text-slate-300">
-                  {row.label}
-                </span>
-                <span
-                  className="h-2.5 min-w-[0.375rem] rounded-full bg-emerald-500/80"
-                  style={{
-                    width: `${coverageMax > 0 ? (row.sets / coverageMax) * 100 : 0}%`,
-                  }}
-                  aria-hidden="true"
-                />
-                <span className="ml-auto shrink-0 tabular-nums text-slate-500 dark:text-slate-400">
-                  {fmtSets(row.sets)} {row.sets === 1 ? "set" : "sets"}
-                </span>
-              </li>
-            ))}
+            {coverage.map((row) => {
+              // ONE verdict (#221): the shared bandVerdict + palette the finding
+              // engine and the future SVG figure (#737) also read — no second
+              // computation, so chip, tint, and observation cannot drift.
+              const pres = bandPresentation(bandVerdict(row.muscle, row.sets));
+              return (
+                <li
+                  key={row.muscle}
+                  data-testid="muscle-coverage-row"
+                  className="flex items-center gap-3 text-sm"
+                >
+                  <span className="w-28 shrink-0 text-slate-600 dark:text-slate-300">
+                    {row.label}
+                  </span>
+                  <span
+                    className="h-2.5 min-w-[0.375rem] rounded-full bg-emerald-500/80"
+                    style={{
+                      width: `${coverageMax > 0 ? (row.sets / coverageMax) * 100 : 0}%`,
+                    }}
+                    aria-hidden="true"
+                  />
+                  <span
+                    data-testid="muscle-coverage-verdict"
+                    data-verdict={pres.verdict}
+                    className={`ml-auto shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${pres.badgeClass}`}
+                  >
+                    {pres.label}
+                  </span>
+                  <span className="shrink-0 tabular-nums text-slate-500 dark:text-slate-400">
+                    {fmtSets(row.sets)} {row.sets === 1 ? "set" : "sets"}
+                  </span>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>

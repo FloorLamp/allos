@@ -26,8 +26,13 @@ import {
   buildFoodSuggestionFindings,
   buildFoodHabitFindings,
   buildOralHealthFindings,
+  buildMuscleVolumeFindings,
   collectCoachingFindings,
 } from "@/lib/rule-findings";
+import {
+  muscleVolumeSignalKey,
+  MIN_BAND_HISTORY_WEEKS,
+} from "@/lib/muscle-volume-bands";
 import { periodontalObservationKey } from "@/lib/oral-health-observation";
 import { foodSuggestSignalKey } from "@/lib/food-suggest";
 import { foodHabitSignalKey } from "@/lib/food-habit";
@@ -187,6 +192,75 @@ describe("buildTrainingObservationFindings — merged plateau series (#432)", ()
       plateaus[0].dedupeKey.startsWith(`${TRAINING_OBS_PREFIX}plateau:`)
     ).toBe(true);
     expect(plateaus[0].title.toLowerCase()).toContain("curl");
+  });
+});
+
+// ---- #742: per-muscle weekly volume-band shortfall builder ------------------
+
+// Log `n` sets of a catalog lift on `day` (relative to anchor). "Lateral Raise"
+// credits ONLY side-delts (1.0 primary, no secondary), so n sets → n side-delt sets.
+function logStrengthSets(
+  profileId: number,
+  anchorDay: string,
+  day: number,
+  exercise: string,
+  n: number
+): void {
+  const actId = Number(
+    db
+      .prepare(
+        `INSERT INTO activities (profile_id, date, type, title, duration_min)
+         VALUES (?, ?, 'strength', 'Session', 30)`
+      )
+      .run(profileId, shiftDateStr(anchorDay, day)).lastInsertRowid
+  );
+  const insSet = db.prepare(
+    `INSERT INTO exercise_sets (activity_id, exercise, set_number, weight_kg, reps)
+     VALUES (?, ?, ?, 10, 12)`
+  );
+  for (let s = 1; s <= n; s++) insSet.run(actId, exercise, s);
+}
+
+describe("buildMuscleVolumeFindings — below-band shortfall (#742)", () => {
+  it("flags a trained-but-under-floor muscle once cold start is cleared", () => {
+    const { profileId, anchor } = makeProfile("volume-742-below");
+
+    // This week: only 2 Lateral Raise sets → side-delts = 2, below its floor of 8.
+    logStrengthSets(profileId, anchor, 0, "Lateral Raise", 2);
+    // A session TWO weeks ago clears the 2-distinct-week cold-start gate but sits
+    // OUTSIDE the trailing 7-day coverage window, so it doesn't lift side-delts.
+    logStrengthSets(profileId, anchor, -14, "Lateral Raise", 3);
+
+    const findings = buildMuscleVolumeFindings(profileId, anchor);
+    expect(findings).toHaveLength(1);
+    const f = findings[0];
+    expect(f.domain).toBe("muscle-volume");
+    expect(f.dedupeKey).toBe(
+      muscleVolumeSignalKey("side-delts", anchor.slice(0, 7))
+    );
+    expect(f.tone).toBe("info"); // calm coaching tier (#449)
+    expect(f.detail).toContain("Side delts");
+    expect(f.detail).toContain("8"); // the band floor is named
+
+    // Coaching tier: it flows through the unified rollup, never a push/hero.
+    const rolled = collectCoachingFindings(profileId, anchor, "kg").map(
+      (r) => r.dedupeKey
+    );
+    expect(rolled).toContain(f.dedupeKey);
+  });
+
+  it("COLD START: emits nothing with fewer than the min distinct training weeks", () => {
+    const { profileId, anchor } = makeProfile("volume-742-coldstart");
+
+    // Two same-week sessions of the same under-floor lift: side-delts is clearly
+    // below its band, but the profile has only ONE distinct training week — an
+    // unanswered question, not "everything below target" (#719).
+    logStrengthSets(profileId, anchor, 0, "Lateral Raise", 2);
+    logStrengthSets(profileId, anchor, -1, "Lateral Raise", 1);
+    // Sanity: this fixture is one week of history, below the gate.
+    expect(MIN_BAND_HISTORY_WEEKS).toBeGreaterThan(1);
+
+    expect(buildMuscleVolumeFindings(profileId, anchor)).toEqual([]);
   });
 });
 
@@ -720,6 +794,7 @@ describe("rule-findings builders — dedupeKey prefix registry (#448)", () => {
     const keys = [
       ...buildAdherencePatternFindings(profileId, anchor),
       ...buildTrainingObservationFindings(profileId, anchor),
+      ...buildMuscleVolumeFindings(profileId, anchor),
       ...buildGoalPacingFindings(profileId, anchor),
       ...buildBodyHygieneFindings(profileId, anchor, "kg"),
       ...buildFoodSuggestionFindings(profileId),
@@ -775,6 +850,7 @@ describe("collectCoachingFindings — the #449 unified rollup", () => {
 
     const union = [
       ...buildTrainingObservationFindings(profileId, anchor),
+      ...buildMuscleVolumeFindings(profileId, anchor),
       ...buildBodyHygieneFindings(profileId, anchor, "kg"),
       ...buildGoalPacingFindings(profileId, anchor),
       ...buildAdherencePatternFindings(profileId, anchor),
