@@ -10,6 +10,21 @@ import { getIntakeSafetyContext } from "./intake";
 import { weekWindowStart, recentWindowStart } from "./training/common";
 import { suggestFoods, type FoodSuggestion } from "../food-suggest";
 import {
+  getMetricDailyTotals,
+  getWeights,
+  getLatestMetricValue,
+} from "./metrics";
+import { getProfileSetting } from "../settings";
+import { bodyweightAsOf } from "../bodyweight";
+import {
+  proteinIntake,
+  proteinTarget,
+  assessProteinAdequacy,
+  estimatedProteinGrams,
+  resolveProteinGoalLevel,
+  type ProteinAdequacy,
+} from "../protein";
+import {
   rollupServings,
   type FoodLogEntry,
   type GroupServingTotal,
@@ -189,4 +204,57 @@ export function getFoodGroupLogOrder(profileId: number): FoodGroup[] {
     for (const g of FOOD_GROUPS) if (!seen.has(g.slug)) out.push(g);
   }
   return out;
+}
+
+// ---- Protein adequacy (issue #767) ----
+
+// The ONE gather behind the /nutrition protein-adequacy card AND the coaching-tier
+// adequacy finding (buildProteinAdequacyFindings). It assembles the pure engine's typed
+// inputs from PROFILE-SCOPED reads and returns the pure verdict, so the card and the
+// finding are formatters over the same result ("one question, one computation"). Adds no
+// owned SQL (reads through getFoodLogEntries / getMetricDailyTotals / getWeights /
+// getLatestMetricValue, all already profile-scoped), so the profile-scoping guard is
+// unaffected. Returns null when there's no intake signal or no bodyweight to scale by.
+//
+// Windowing: intake is a PER-DAY average over this week — the estimated floor averages the
+// week's summed food-group protein over the distinct days actually logged (so a partial
+// week isn't diluted by unlogged days), and the tracked basis averages the integration's
+// daily protein_g totals over the days that carry a reading. Same week the servings
+// rollup uses (weekWindowStart), so the card's "this week" numbers line up.
+export function getProteinAdequacy(profileId: number): ProteinAdequacy | null {
+  const weekStart = weekWindowStart(profileId);
+
+  // Estimated floor: this week's food-group servings → protein grams / distinct logged days.
+  const entries = getFoodLogEntries(profileId, weekStart);
+  const rollup = rollupServings(entries);
+  const loggedDays = new Set(entries.map((e) => e.date)).size;
+  const estWeekGrams = estimatedProteinGrams(rollup);
+  const dailyEstimated = loggedDays > 0 ? estWeekGrams / loggedDays : 0;
+
+  // Tracked: integration protein_g daily totals this week, averaged over days with data.
+  const trackedRows = getMetricDailyTotals(profileId, "protein_g").filter(
+    (r) => r.date >= weekStart
+  );
+  const dailyTracked =
+    trackedRows.length > 0
+      ? trackedRows.reduce((s, r) => s + r.value, 0) / trackedRows.length
+      : null;
+
+  // Bodyweight (ascending for bodyweightAsOf) + latest lean mass (preferred when present).
+  const t = today(profileId);
+  const weightsAsc = getWeights(profileId)
+    .map((w) => ({ date: w.date, weight_kg: w.weight_kg }))
+    .sort((a, b) => (a.date < b.date ? -1 : 1));
+  const bodyweightKg = bodyweightAsOf(weightsAsc, t);
+  const leanMassKg = getLatestMetricValue(profileId, "lean_mass_kg");
+
+  // Goal level — the profile's training goal when set (#719 onboarding hook), else the
+  // "active" default; the pure resolver maps whatever string lands.
+  const goal = resolveProteinGoalLevel(
+    getProfileSetting(profileId, "training_goal")
+  );
+
+  const intake = proteinIntake({ dailyTracked, dailyEstimated });
+  const target = proteinTarget({ goal, bodyweightKg, leanMassKg });
+  return assessProteinAdequacy(intake, target);
 }

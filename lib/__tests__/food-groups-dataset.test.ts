@@ -43,6 +43,39 @@ describe("food-groups.json dataset", () => {
     expect(FOOD_GROUPS.length).toBeLessThanOrEqual(30);
   });
 
+  // ── #767 protein grams: every protein-bearing slug resolves a positive number ──
+  it("every protein-bearing group carries a positive protein_g, and non-bearing groups omit it", () => {
+    // The catalog's protein-source groups — the estimate (#767) sums these as a floor.
+    const BEARING = new Set([
+      "fatty_fish",
+      "lean_fish",
+      "shellfish",
+      "leafy_greens",
+      "cruciferous",
+      "other_vegetables",
+      "legumes",
+      "nuts_seeds",
+      "whole_grains",
+      "fermented",
+      "poultry",
+      "eggs",
+      "dairy",
+      "red_meat",
+      "tubers",
+      "processed_meat",
+      "refined_grains",
+    ]);
+    for (const g of FOOD_GROUPS) {
+      if (BEARING.has(g.slug)) {
+        expect(typeof g.protein_g, g.slug).toBe("number");
+        expect(g.protein_g, g.slug).toBeGreaterThan(0);
+      } else {
+        // Non-protein groups (fruit, water, sweets, alcohol) deliberately omit it.
+        expect(g.protein_g, g.slug).toBeUndefined();
+      }
+    }
+  });
+
   // ── #591 icon coverage (reflection guard) ──
   it("every catalog slug resolves to a real (non-generic) food-group icon key", () => {
     // The generic fallback is only for retired/unknown slugs — every CURRENT
