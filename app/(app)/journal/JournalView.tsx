@@ -10,6 +10,7 @@ import {
   IconSearch,
 } from "@tabler/icons-react";
 import type { ActivityType, Goal, Sex } from "@/lib/types";
+import type { FrequencyPace } from "@/lib/goals";
 import type {
   CardioStat,
   ExerciseStat,
@@ -44,6 +45,9 @@ export interface TargetChip {
   count: number;
   perWeek: number;
   met: boolean;
+  // Paced status (#748/#760/#780) so the journal week-summary chips colour by pace
+  // like every other chip surface, not the legacy Monday-rose met/count fallback.
+  pace?: FrequencyPace;
 }
 export interface WeekSummary {
   sessions: number;

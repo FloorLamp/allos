@@ -5,7 +5,12 @@ import {
   dashboardGoalsHabitsLayout,
   summarizeDashboardHabits,
 } from "@/lib/dashboard-widgets";
-import { frequencyScopeLabel, goalBarClass, goalPct } from "@/lib/goals";
+import {
+  frequencyScopeLabel,
+  goalBarClass,
+  goalPaceTone,
+  goalPct,
+} from "@/lib/goals";
 import type { GoalProgress } from "@/lib/goal-progress";
 import type { FrequencyTargetProgress } from "@/lib/queries";
 import type { Goal } from "@/lib/types";
@@ -18,10 +23,13 @@ export default function GoalsHabitsWidget({
   goals,
   goalProgress,
   freqTargets,
+  today,
 }: {
   goals: Goal[];
   goalProgress: Map<number, GoalProgress>;
   freqTargets: FrequencyTargetProgress[];
+  // The active profile's today (YYYY-MM-DD) — the pace clock for goal bars (#780).
+  today: string;
 }) {
   const {
     open: allOpenTargets,
@@ -90,6 +98,11 @@ export default function GoalsHabitsWidget({
               <ul className="space-y-3">
                 {goals.map((goal) => {
                   const pct = goalPct(goal, goalProgress.get(goal.id));
+                  const paceOpts = {
+                    createdAt: goal.created_at,
+                    targetDate: goal.target_date,
+                    today,
+                  };
                   return (
                     <li key={goal.id}>
                       <div className="flex items-center justify-between gap-3 text-sm">
@@ -105,7 +118,9 @@ export default function GoalsHabitsWidget({
                       {pct != null && (
                         <div className="mt-1 h-2 w-full rounded-full bg-slate-100 dark:bg-ink-800">
                           <div
-                            className={`h-2 rounded-full transition-colors ${goalBarClass(pct)}`}
+                            data-testid="goal-bar"
+                            data-tone={goalPaceTone(pct, paceOpts)}
+                            className={`h-2 rounded-full transition-colors ${goalBarClass(pct, paceOpts)}`}
                             style={{ width: `${pct}%` }}
                           />
                         </div>

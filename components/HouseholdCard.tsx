@@ -14,7 +14,6 @@ import {
   openProfileAction,
   confirmDoseAction,
 } from "@/app/(app)/household/actions";
-import { goalBarClass } from "@/lib/goals";
 import { fmtWeight } from "@/lib/units";
 import { upcomingDueText } from "@/lib/upcoming";
 import type { HouseholdRollup } from "@/lib/queries";
@@ -321,7 +320,7 @@ export default function HouseholdCard({ data }: { data: HouseholdCardData }) {
               {g.pct != null && (
                 <div className="mt-1 h-1.5 w-full rounded-full bg-slate-100 dark:bg-ink-800">
                   <div
-                    className={`h-1.5 rounded-full ${goalBarClass(g.pct)}`}
+                    className={`h-1.5 rounded-full ${g.barClass}`}
                     style={{ width: `${g.pct}%` }}
                   />
                 </div>

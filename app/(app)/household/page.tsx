@@ -123,7 +123,7 @@ export default async function HouseholdPage() {
       trend,
       weightUnit,
       oorBiomarkers,
-      goals: goalHighlights(goals, goalProgress, 2),
+      goals: goalHighlights(goals, goalProgress, day, 2),
     };
   });
 

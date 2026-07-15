@@ -5,7 +5,7 @@
 // any new cross-profile SQL and the logic stays unit-testable.
 
 import { isDueOn } from "./supplement-schedule";
-import { goalPct, isGoalLive } from "./goals";
+import { goalBarClass, goalPct, isGoalLive } from "./goals";
 import type { Goal, Supplement } from "./types";
 import type { GoalProgress } from "./goal-progress";
 
@@ -70,23 +70,40 @@ export interface GoalHighlight {
   id: number;
   title: string;
   pct: number | null;
+  // Pre-resolved pace-verdict bar tint (#780), so the client card formats over the
+  // SAME shared tone→class map as every other goal bar without threading dates.
+  // Empty when pct is null (no bar rendered).
+  barClass: string;
 }
 
 // The active, non-archived goals to surface on a profile's household card, in
 // the order getGoals already returns them (active first), capped at `limit`.
+// `today` (YYYY-MM-DD) is the pace clock for each goal's deadline window (#780).
 export function goalHighlights(
   goals: Goal[],
   progress: Map<number, GoalProgress>,
+  today: string,
   limit = 2
 ): GoalHighlight[] {
   return goals
     .filter((g) => isGoalLive(g))
     .slice(0, limit)
-    .map((g) => ({
-      id: g.id,
-      title: g.title,
-      pct: goalPct(g, progress.get(g.id)),
-    }));
+    .map((g) => {
+      const pct = goalPct(g, progress.get(g.id));
+      return {
+        id: g.id,
+        title: g.title,
+        pct,
+        barClass:
+          pct == null
+            ? ""
+            : goalBarClass(pct, {
+                createdAt: g.created_at,
+                targetDate: g.target_date,
+                today,
+              }),
+      };
+    });
 }
 
 // ---- Household rollup (issue #31) ----

@@ -6,6 +6,7 @@ import { foodGroupName } from "./food-groups";
 import { fmtWeight, round } from "./units";
 import type { WeightUnit } from "./settings";
 import { formatSeconds } from "./duration";
+import { daysBetweenDateStr } from "./date";
 
 // Runtime guard for a goal lifecycle status, single-sourced from GOAL_STATUSES (and
 // thus from the goals.status CHECK — see the enum-parity test). Used by the write
@@ -88,13 +89,79 @@ export function goalBodyTargetText(goal: Goal, wu: WeightUnit): string | null {
   )}`;
 }
 
-// Progress-bar tint for a goal's completion percentage: far from done reads red,
-// then amber, then green as it nears the target, and emerald once complete.
-export function goalBarClass(pct: number): string {
-  if (pct >= 100) return "bg-emerald-500";
-  if (pct >= 67) return "bg-brand-500";
-  if (pct >= 34) return "bg-amber-500";
-  return "bg-rose-500";
+// The unified pace-verdict tone shared by the goal progress bar and the weekly-habit
+// chip (#780). Four states, a SUPERSET of FrequencyPace (below): "failed" is reachable
+// ONLY by a dated goal past its deadline short of target — a recurring week never
+// "fails" (it resets), so FrequencyPace stays 3-state and its values are a structural
+// subset of these. Names are semantic, not hues, so a hue swap (retiring #760's
+// one-off "sky" for the app's established "brand" progress color) lives in ONE place.
+export type PaceTone = "met" | "on-pace" | "behind" | "failed";
+
+// The ONE tone→class mapping both surfaces format over, so the goal bar and the habit
+// chip can never drift into two color languages (#780). `FILL` tints the goal bar AND
+// the chip's filled squares (bg-*); `BORDER` frames the chip; `BADGE` styles the
+// /nutrition text pill — all keyed by the SAME PaceTone. Edit a hue here, both move.
+export const PACE_FILL_CLASS: Record<PaceTone, string> = {
+  met: "bg-emerald-500",
+  "on-pace": "bg-brand-500",
+  behind: "bg-amber-500",
+  failed: "bg-rose-500",
+};
+
+export const PACE_BORDER_CLASS: Record<PaceTone, string> = {
+  met: "border-emerald-400 dark:border-emerald-700",
+  "on-pace": "border-brand-400 dark:border-brand-700",
+  behind: "border-amber-400 dark:border-amber-600",
+  failed: "border-rose-400 dark:border-rose-800",
+};
+
+export const PACE_BADGE_CLASS: Record<PaceTone, string> = {
+  met: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300",
+  "on-pace":
+    "bg-brand-100 text-brand-700 dark:bg-brand-950 dark:text-brand-300",
+  behind: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300",
+  failed: "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300",
+};
+
+// The pace verdict for an OUTCOME goal's progress bar (#780). Geometry (bar length)
+// already shows "how far"; color shows a PACE verdict so a day-one goal never reads
+// as a rose "failing" bar:
+//   - progress at/over target (pct ≥ 100) → "met".
+//   - no target date → "on-pace": a goal with no deadline can't be paced, and the
+//     bar's length already conveys progress, so never invent a behind/failed verdict.
+//   - a DATED goal whose deadline has passed short of target → "failed" (the only
+//     genuine failure — rose).
+//   - otherwise linear pace over the goal's [created_at, target_date] window: on pace
+//     iff progress ≥ the share the elapsed fraction owes, else "behind".
+// Pure calendar math (daysBetweenDateStr), client-safe — no DB.
+export function goalPaceTone(
+  pct: number,
+  opts: { createdAt: string; targetDate: string | null; today: string }
+): PaceTone {
+  if (pct >= 100) return "met";
+  const { createdAt, targetDate, today } = opts;
+  if (!targetDate) return "on-pace"; // no deadline → can't pace
+  const remaining = daysBetweenDateStr(today, targetDate);
+  if (remaining != null && remaining < 0) return "failed"; // deadline passed short
+  const total = daysBetweenDateStr(createdAt, targetDate);
+  const elapsed = daysBetweenDateStr(createdAt, today);
+  if (total == null || elapsed == null || total <= 0) return "on-pace";
+  const frac = Math.min(1, Math.max(0, elapsed / total));
+  return pct >= 100 * frac ? "on-pace" : "behind";
+}
+
+// Progress-bar tint for a goal — a formatter over the shared tone→class map (#780).
+// Colors by the PACE verdict (goalPaceTone), NOT raw completion, so a fresh goal reads
+// on-pace (brand) instead of the old rose "failing" bar. Callers with goal dates pass
+// them; the dateless overload (e.g. StatBox's generic stat bars, which aren't dated
+// goals) gets the no-deadline verdict → brand until complete.
+export function goalBarClass(
+  pct: number,
+  opts?: { createdAt: string; targetDate: string | null; today: string }
+): string {
+  return PACE_FILL_CLASS[
+    goalPaceTone(pct, opts ?? { createdAt: "", targetDate: null, today: "" })
+  ];
 }
 
 // Whether a logged set's exercise satisfies an exercise-linked goal. A goal that
