@@ -400,3 +400,63 @@ export function classifyPolarization(
   if (split.hardPct > POLARIZATION_HARD_PCT_LIMIT) return "hard-heavy";
   return "balanced";
 }
+
+// ---- Per-day training-load classification (issue #754) ----
+//
+// The overtraining/load rest triggers must count only LOADING days (a hard/intense
+// session that accumulates fatigue), not every logged activity — otherwise a synced
+// easy Zone 2 spin extends a "training streak" and re-fires the "rest or light day"
+// nudge on the light day the advice just blessed. This one pure classifier answers
+// "was this day a loading day?" (one question, one computation) so the gather can
+// build a loadingDates set the engine consumes in place of the all-activity set.
+
+// A day counts as LOADING when its hard HR share is at or above this — i.e. more than
+// a trivial slice of time above the aerobic threshold. Below it (an almost-entirely
+// easy day) is a recovery day.
+export const DAY_LOADING_HARD_PCT_MIN = 15;
+// Minimum window-scoped HR minutes on the day before its easy/hard split is trusted;
+// below this we fall through to the duration floor rather than judge intensity off a
+// few stray minutes.
+export const DAY_LOADING_MIN_HR_MINUTES = 10;
+// When intensity is unknown (no HR), a session at or above this many minutes defaults
+// to LOADING; a shorter one is treated as easy (a brief walk/spin isn't fatigue).
+export const DAY_LOADING_DURATION_FLOOR_MIN = 30;
+
+// The observed + planned inputs for classifying ONE calendar day.
+export interface DayLoadInput {
+  date: string; // YYYY-MM-DD (profile-local)
+  // The day's easy/hard HR split (from window-scoped buckets), or null/absent when no
+  // HR data covers the day.
+  split?: PolarizedSplit | null;
+  // Total bounded session minutes on the day — the fallback signal when the HR split
+  // is absent or too thin to trust.
+  durationMin?: number | null;
+  // Optional DECLARED intent (routine day type / deload). When present it WINS over
+  // the observed signals: a planned easy/deload day is non-loading even with no HR
+  // data; a planned hard day is loading. Unused until #740/#741 supply it (issue #754
+  // ships observed-only, with the seam shaped for planned intent).
+  plannedIntent?: "easy" | "hard" | null;
+}
+
+// Whether a single day is a LOADING day. Planned intent wins; else the HR split (when
+// it carries enough minutes); else the duration floor; else — genuinely unknown —
+// LOADING, so the trigger fails toward its prior all-activity behavior rather than
+// under-warning.
+export function isLoadingDay(day: DayLoadInput): boolean {
+  if (day.plannedIntent === "easy") return false;
+  if (day.plannedIntent === "hard") return true;
+  const split = day.split;
+  if (split && split.totalMin >= DAY_LOADING_MIN_HR_MINUTES) {
+    return split.hardPct >= DAY_LOADING_HARD_PCT_MIN;
+  }
+  if (day.durationMin != null && day.durationMin > 0) {
+    return day.durationMin >= DAY_LOADING_DURATION_FLOOR_MIN;
+  }
+  return true;
+}
+
+// The subset of days that are LOADING (fatigue-accumulating), as a date list — the
+// input the overtraining/load rest triggers consume in place of the all-activity set.
+export function loadingDates(days: DayLoadInput[]): string[] {
+  return days.filter(isLoadingDay).map((d) => d.date);
+}

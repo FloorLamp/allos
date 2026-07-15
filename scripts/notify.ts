@@ -398,8 +398,9 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
   }
 
   // Coaching rest-episode continuity (#44 item 3b): advance/clear the persisted
-  // rest-nudge marker each hour so a multi-day easy stretch reads as "second easy
-  // day" on the dashboard/Training surfaces instead of a fresh alert. No send —
+  // rest-nudge marker each hour so a multi-day easy stretch reads as a persisting
+  // recommendation ("Rest or take it easy — Nth day", #752) on the
+  // dashboard/Training surfaces instead of a fresh alert. No send —
   // it only maintains the marker (mirrors the refill nudge's episode dedup) so the
   // condition is tracked daily even when the user doesn't open a coaching surface.
   try {

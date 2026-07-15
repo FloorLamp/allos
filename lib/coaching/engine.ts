@@ -137,7 +137,9 @@ export const DEFAULT_COACHING_THRESHOLDS: CoachingThresholds = {
 
 // A run of consecutive days a rest/take-it-easy nudge has fired — the persisted
 // marker that gives the recommendation continuity across days (#44 item 3b), so
-// day 2 reads "second easy day" instead of a fresh alert. Stored per-profile
+// day 2 reads as a persisting recommendation ("… — 2nd day") instead of a fresh
+// alert. It counts days the NUDGE fired, not days the user actually rested, so the
+// phrasing describes signal persistence, never assumed rest behavior (#752). Stored per-profile
 // (JSON in profile_settings), maintained the way the refill nudge dedups an
 // episode: opened when a rest rec first fires, carried forward while it keeps
 // firing on consecutive days, cleared the moment no rest rec fires.
@@ -152,9 +154,18 @@ export interface CoachingInput {
   routine: RoutineTargetProgress[];
   strength: StrengthRecent[];
   cardio: CardioRecent[];
-  // Distinct dates (YYYY-MM-DD) the profile logged any activity — powers the
-  // consecutive-day / weekly-load overtraining checks.
+  // Distinct dates (YYYY-MM-DD) the profile logged any activity. Still the base
+  // "did I move" set (empty-state gate, weekly-recap movement streak); the load
+  // triggers no longer key on it directly (see loadingDates).
   trainingDates: string[];
+  // Distinct dates (YYYY-MM-DD) that count as LOADING — a hard/intense session that
+  // accumulates fatigue, as opposed to an easy recovery activity (issue #754). The
+  // consecutive-day / weekly-load overtraining triggers consume THIS instead of every
+  // logged activity day, so a light Zone 2 spin doesn't extend a "training streak"
+  // the way a max session does. Built by the gather from the pure isLoadingDay
+  // classifier (HR-zone split → duration floor → unknown ⇒ loading). Absent ⇒ the
+  // triggers fall back to trainingDates (the prior intensity-blind behavior).
+  loadingDates?: string[];
   // Bounded-window (date, exercise) rows feeding the unified next-workout core's
   // recovery-exclusion + weekday-habit + frequency-ranked exercise list (#221).
   // Optional — absent ⇒ the core falls back to aggregate least-recent picks, so
@@ -227,6 +238,11 @@ export function restRecommendation(
   th: CoachingThresholds
 ): Recommendation | null {
   const { sleep, restingHr, trainingDates, today } = input;
+  // The two schedule-derived triggers (overtraining streak, weekly load) key on
+  // LOADING days — hard sessions that accumulate fatigue — not every logged
+  // activity, so a light recovery day breaks the streak instead of extending it
+  // (#754). Falls back to all activity dates when the load-aware set isn't supplied.
+  const loadDates = input.loadingDates ?? trainingDates;
 
   // Poor sleep — only when sleep data exists. When a personal night-to-night
   // spread is known, the deficit that counts as "poor" widens to at least
@@ -291,10 +307,13 @@ export function restRecommendation(
     };
   }
 
-  // Overtraining — consecutive days, or a heavy trailing window. Uses the SAME
-  // currentStreak the dashboard StreakWidget shows, so the rest nudge can't drift
-  // from the streak the user sees (issue #222).
-  const streak = currentStreak(today, trainingDates);
+  // Overtraining — consecutive LOADING days, or a heavy trailing window of them.
+  // currentStreak counts the consecutive-day run; both triggers key on loadDates
+  // (hard sessions) so a logged easy recovery day breaks the streak instead of
+  // extending it (#754), making the nudge's "a rest or light day" advice actually
+  // satisfiable. (The dashboard StreakWidget that #222 pinned this against has since
+  // been removed; the weekly recap's movement-based streak is a separate signal.)
+  const streak = currentStreak(today, loadDates);
   if (streak >= th.overtrainingConsecutiveDays) {
     return {
       id: "rest-overtraining",
@@ -305,7 +324,7 @@ export function restRecommendation(
     };
   }
   const active = activeDaysInWindow(
-    trainingDates,
+    loadDates,
     today,
     th.overtrainingWindowDays
   );
@@ -323,12 +342,13 @@ export function restRecommendation(
 
 // ---- Rest-episode continuity (#44 item 3b) ----
 //
-// A rest nudge that fires several days running should read as one continuing
-// easy stretch ("second easy day"), not a fresh alarm each morning. That needs a
-// tiny bit of memory — the persisted RestEpisode — reconciled the same way the
-// refill nudge dedups a low-supply episode: a rest rec (re)marks it, a day with
-// no rest rec clears it. These pure functions own the state machine and the
-// phrasing; the DB read/write lives in lib/queries/coaching.ts + the notify tick.
+// A rest nudge that fires several days running should read as one persisting
+// recommendation ("Rest or take it easy — 2nd day"), not a fresh alarm each
+// morning. That needs a tiny bit of memory — the persisted RestEpisode —
+// reconciled the same way the refill nudge dedups a low-supply episode: a rest rec
+// (re)marks it, a day with no rest rec clears it. These pure functions own the
+// state machine and the phrasing; the DB read/write lives in
+// lib/queries/coaching.ts + the notify tick.
 
 // The episode to persist given the prior one and today's rest recommendation (or
 // null). An episode CONTINUES when a rest rec fires today and the prior episode
@@ -357,41 +377,38 @@ export function restEpisodeDay(ep: RestEpisode, today: string): number {
   return Math.max(1, daysSince(ep.startDate, today) + 1);
 }
 
-// Small ordinal words for the continuity phrasing; falls back to "Nth" past the
-// table, which realistically never shows (an easy stretch this long is rare).
-const ORDINAL_WORDS = [
-  "zeroth",
-  "first",
-  "second",
-  "third",
-  "fourth",
-  "fifth",
-  "sixth",
-  "seventh",
-  "eighth",
-  "ninth",
-  "tenth",
-];
-
-function ordinalWord(n: number): string {
-  return ORDINAL_WORDS[n] ?? `${n}th`;
+// An ordinal numeral ("2nd", "3rd", "11th", "21st") for the continuity phrasing.
+function ordinalNumeral(n: number): string {
+  const rem100 = n % 100;
+  const suffix =
+    rem100 >= 11 && rem100 <= 13
+      ? "th"
+      : n % 10 === 1
+        ? "st"
+        : n % 10 === 2
+          ? "nd"
+          : n % 10 === 3
+            ? "rd"
+            : "th";
+  return `${n}${suffix}`;
 }
 
-// Re-phrase a rest recommendation as day N (N ≥ 2) of a continuing easy stretch:
-// the title names the day ("Second easy day") instead of a fresh "Rest or take it
-// easy today", and the underlying reason is kept but tagged as ongoing so it no
-// longer reads as a new alert. id/kind/tone are preserved, so snooze dedup and
-// the caution styling are unchanged.
+// Re-phrase a rest recommendation as day N (N ≥ 2) of a persisting recommendation.
+// The title STAYS an imperative recommendation and carries the day count ("Rest or
+// take it easy — 2nd day") rather than flipping to a status headline, and the
+// detail describes what is actually known — that the recovery SIGNALS have
+// persisted — never that the user rested (the episode counts days the nudge fired,
+// not days the user complied, and the common day-2 case is a user who trained
+// through yesterday's nudge and is still under-recovered) (#752). id/kind/tone are
+// preserved, so snooze dedup and the caution styling are unchanged.
 export function withRestContinuity(
   rec: Recommendation,
   day: number
 ): Recommendation {
-  const word = ordinalWord(day);
-  const Word = word.charAt(0).toUpperCase() + word.slice(1);
   return {
     ...rec,
-    title: `${Word} easy day`,
-    detail: `${rec.detail} This is your ${word} easy day in a row — keep it light and let recovery catch up.`,
+    title: `Rest or take it easy — ${ordinalNumeral(day)} day`,
+    detail: `${rec.detail} Recovery signals have persisted for ${day} days — keep it light and let recovery catch up.`,
   };
 }
 

@@ -3,6 +3,7 @@ import {
   getCardioByActivity,
   getCardioIntensityMix,
   getCardioVolumeByWeek,
+  getDayLoadInputs,
   getFrequencyTargetProgress,
   getJournalWeekSummary,
   getRecentDatedExercises,
@@ -33,6 +34,7 @@ import {
   suggestNextSet,
   type CardioPR,
 } from "@/lib/coaching";
+import { loadingDates } from "@/lib/training-zones";
 import { recommendNextWorkout } from "@/lib/workout-recommendation";
 import { getActiveRoutine, getRoutineCycleStatus } from "@/lib/routines";
 import { availableEquipmentKinds } from "@/lib/equipment";
@@ -116,6 +118,10 @@ export default async function OverviewSection() {
     strength,
     cardio,
     trainingDates: getActivityDates(profile.id),
+    // Load-aware date set (#754): only hard sessions extend the overtraining/load
+    // rest triggers, so a synced easy recovery day doesn't fire "rest or light day"
+    // on the light day itself.
+    loadingDates: loadingDates(getDayLoadInputs(profile.id)),
     datedExercises,
     availableEquipment: availableEquipmentKinds(profile.id),
     activeRoutine: getActiveRoutine(profile.id),

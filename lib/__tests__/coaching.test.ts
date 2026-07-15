@@ -1016,6 +1016,59 @@ describe("restRecommendation", () => {
       restRecommendation(input({ trainingDates: ["2026-07-08"] }), th)
     ).toBeNull();
   });
+
+  // Issue #754: the overtraining/load triggers key on LOADING days, not every
+  // logged activity. A trained-through-easy day breaks the streak; the raw activity
+  // set alone must no longer fire the fatigue nudge.
+  it("does not fire overtraining when an easy day breaks the loading streak", () => {
+    // Four consecutive activity days, but the most recent is an easy recovery day
+    // (absent from loadingDates), so the loading streak is only 3 — below threshold.
+    const activity = consecutiveDates(TODAY, 4);
+    const loading = consecutiveDates(TODAY, 4).slice(1); // drop today (easy day)
+    expect(
+      restRecommendation(
+        input({ trainingDates: activity, loadingDates: loading }),
+        th
+      )
+    ).toBeNull();
+  });
+
+  it("fires overtraining on four consecutive LOADING days", () => {
+    const loading = consecutiveDates(TODAY, 4);
+    const rest = restRecommendation(
+      input({ trainingDates: loading, loadingDates: loading }),
+      th
+    );
+    expect(rest?.id).toBe("rest-overtraining");
+    expect(rest?.detail).toContain("4 days in a row");
+  });
+
+  it("counts weekly load off loading days, not all activity", () => {
+    // 6 of 7 activity days, but only 3 are loading → below the load threshold.
+    const activity = [
+      "2026-07-08",
+      "2026-07-06",
+      "2026-07-05",
+      "2026-07-04",
+      "2026-07-03",
+      "2026-07-02",
+    ];
+    const loading = ["2026-07-08", "2026-07-05", "2026-07-02"];
+    expect(
+      restRecommendation(
+        input({ trainingDates: activity, loadingDates: loading }),
+        th
+      )
+    ).toBeNull();
+  });
+
+  it("falls back to all activity dates when loadingDates is absent (prior behavior)", () => {
+    const rest = restRecommendation(
+      input({ trainingDates: consecutiveDates(TODAY, 4) }),
+      th
+    );
+    expect(rest?.id).toBe("rest-overtraining");
+  });
 });
 
 describe("recommendCoaching", () => {
@@ -1364,22 +1417,40 @@ describe("restEpisodeDay", () => {
 });
 
 describe("withRestContinuity", () => {
-  it("re-titles as the ordinal easy day and keeps id/kind/tone", () => {
+  it("stays an imperative recommendation with the day count and keeps id/kind/tone", () => {
     const cont = withRestContinuity(restRec(), 2);
-    expect(cont.title).toBe("Second easy day");
+    // Title remains a recommendation (imperative), not a status headline (#752).
+    expect(cont.title).toBe("Rest or take it easy — 2nd day");
     expect(cont.id).toBe("rest-sleep"); // snooze dedup unchanged
     expect(cont.kind).toBe("rest");
     expect(cont.tone).toBe("caution");
-    expect(cont.detail).toContain("second easy day in a row");
+    // The detail describes signal PERSISTENCE, never that the user rested (#752).
+    expect(cont.detail).toContain("Recovery signals have persisted for 2 days");
+    expect(cont.detail).not.toMatch(/easy day in a row/);
     // The underlying reason is preserved, not discarded.
     expect(cont.detail).toContain("slept 5.0h");
   });
-  it("phrases day 3+ with the matching ordinal", () => {
-    expect(withRestContinuity(restRec(), 3).title).toBe("Third easy day");
-    expect(withRestContinuity(restRec(), 4).title).toBe("Fourth easy day");
+  it("phrases day 3+ with the matching ordinal numeral", () => {
+    expect(withRestContinuity(restRec(), 3).title).toBe(
+      "Rest or take it easy — 3rd day"
+    );
+    expect(withRestContinuity(restRec(), 4).title).toBe(
+      "Rest or take it easy — 4th day"
+    );
+    expect(withRestContinuity(restRec(), 3).detail).toContain(
+      "persisted for 3 days"
+    );
   });
-  it("falls back to Nth past the word table", () => {
-    expect(withRestContinuity(restRec(), 12).title).toBe("12th easy day");
+  it("handles the teens and larger ordinals", () => {
+    expect(withRestContinuity(restRec(), 11).title).toBe(
+      "Rest or take it easy — 11th day"
+    );
+    expect(withRestContinuity(restRec(), 12).title).toBe(
+      "Rest or take it easy — 12th day"
+    );
+    expect(withRestContinuity(restRec(), 21).title).toBe(
+      "Rest or take it easy — 21st day"
+    );
   });
 });
 
@@ -1405,8 +1476,8 @@ describe("recommendCoaching rest continuity", () => {
       })
     );
     expect(top.kind).toBe("rest");
-    expect(top.title).toBe("Second easy day");
-    expect(top.detail).toContain("second easy day in a row");
+    expect(top.title).toBe("Rest or take it easy — 2nd day");
+    expect(top.detail).toContain("Recovery signals have persisted for 2 days");
   });
 
   it("does not apply continuity to a stale (gapped) episode", () => {
