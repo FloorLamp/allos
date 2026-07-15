@@ -10,6 +10,7 @@ import {
   priorityClass,
   spreadDoseTimes,
   timeBucket,
+  workoutDaySubtitleLabel,
   WORKOUT_CONDITIONS,
 } from "@/lib/supplement-schedule";
 
@@ -352,5 +353,30 @@ describe("spreadDoseTimes", () => {
       "Anytime",
       "Anytime",
     ]);
+  });
+});
+
+describe("workoutDaySubtitleLabel (#747)", () => {
+  it("labels a predicted training day 'Workout day'", () => {
+    expect(workoutDaySubtitleLabel(true, false)).toBe("Workout day");
+    expect(workoutDaySubtitleLabel(true, true)).toBe("Workout day");
+  });
+
+  it("labels a predicted rest day with no logged workout 'Rest day'", () => {
+    expect(workoutDaySubtitleLabel(false, false)).toBe("Rest day");
+  });
+
+  it("names the mismatch when a rest day has an unplanned logged workout", () => {
+    // The bug this fixes: a due post-workout supplement sat under a bare
+    // "Rest day". Cadence says rest, but a session WAS logged.
+    expect(workoutDaySubtitleLabel(false, true)).toBe(
+      "Rest day — unplanned workout logged"
+    );
+  });
+
+  it("falls back to the logged session when no cadence is inferred (null)", () => {
+    // Preserves the pre-#747 `predictedWorkoutDay ?? isWorkoutDay` behavior.
+    expect(workoutDaySubtitleLabel(null, true)).toBe("Workout day");
+    expect(workoutDaySubtitleLabel(null, false)).toBe("Rest day");
   });
 });

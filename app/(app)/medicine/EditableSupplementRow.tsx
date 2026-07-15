@@ -1,22 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { IconFlame } from "@tabler/icons-react";
 import type { Supplement, SupplementDose, SupplementPair } from "@/lib/types";
 import type { InteractionItem } from "@/lib/drug-interactions";
 import type { PgxVariantInput } from "@/lib/pgx";
 import { CONDITION_LABELS, FOOD_TIMING_HINTS } from "@/lib/supplement-schedule";
 import { medicationMetaLine } from "@/lib/medication-history";
-import {
-  adherenceSummary,
-  type AdherenceDot,
-} from "@/lib/supplement-adherence";
-import {
-  daysOfSupplyForItem,
-  isLowSupply,
-  refillBasisLabel,
-  type DoseRate,
-} from "@/lib/refill";
+import type { AdherenceDot } from "@/lib/supplement-adherence";
+import type { DoseRate } from "@/lib/refill";
+import { RefillBadge, AdherenceSummaryLine } from "./AdherenceRefill";
 import SupplementForm from "./SupplementForm";
 import FoodGuidance from "./FoodGuidance";
 import DoseStatusControl from "@/components/DoseStatusControl";
@@ -91,24 +83,9 @@ export default function EditableSupplementRow({
   const foodHint = FOOD_TIMING_HINTS[dose.food_timing];
   const multi = doses.length > 1;
 
-  // Recent adherence (last 14 days) as a streak + percentage, shown once at the
-  // bottom of the card. The streak only surfaces once it's worth celebrating.
-  const adherence = adherenceSummary(strip);
-
-  // Refill tracking: "≈N days left" from on-hand quantity. The
-  // doses/day rate comes from the shared refill estimate (#38) — the ACTUAL
-  // taken-log rate when the item has enough history, else the scheduled-dose-count
-  // estimate — with the basis surfaced in the badge's tooltip. Only shown when the
-  // item opts into quantity tracking (quantity_on_hand set). daysOfSupplyForItem
-  // is the one computation the dashboard Low-supply widget also formats over (#301).
-  const daysLeft = daysOfSupplyForItem(
-    s.quantity_on_hand,
-    s.qty_per_dose,
-    refillRate,
-    doses.length
-  );
-  const lowSupply = isLowSupply(daysLeft);
-  const refillBasis = refillBasisLabel(refillRate?.basis ?? "schedule");
+  // Recent adherence (last 14 days) and the refill "≈N days left" badge are the
+  // shared AdherenceSummaryLine / RefillBadge formatters (#313/#38/#301), rendered
+  // identically here and on the medication card (#747 parity).
 
   // Medication identity: the stricter affordances (Rx/PRN/escalate
   // badges above, prescriber/pharmacy/Rx line below).
@@ -185,23 +162,12 @@ export default function EditableSupplementRow({
                 {s.stack}
               </span>
             )}
-            {daysLeft !== null && (
-              <span
-                data-testid="refill-days-left"
-                className={`badge ${
-                  lowSupply
-                    ? "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
-                    : "bg-slate-100 text-slate-500 dark:bg-ink-800 dark:text-slate-400"
-                }`}
-                title={`Estimated days of supply remaining — ${refillBasis}`}
-              >
-                {lowSupply ? "Low · " : ""}≈{daysLeft} day
-                {daysLeft === 1 ? "" : "s"} left
-                <span className="ml-1 font-normal opacity-70">
-                  · {refillBasis}
-                </span>
-              </span>
-            )}
+            <RefillBadge
+              quantityOnHand={s.quantity_on_hand}
+              qtyPerDose={s.qty_per_dose}
+              refillRate={refillRate}
+              doseCount={doses.length}
+            />
             {isMed && (
               <span className="badge bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300">
                 Rx
@@ -242,50 +208,7 @@ export default function EditableSupplementRow({
             rxcuiIngredients={s.rxcui_ingredients}
             suppressedFoodKeys={suppressedFoodKeys}
           />
-          {(adherence.pct !== null || adherence.skippedDays > 0) && (
-            <div
-              className="mt-1.5 flex items-center gap-1.5 text-xs"
-              title="Adherence over the last 14 days"
-            >
-              {adherence.streak >= 2 && (
-                <>
-                  <span className="flex items-center gap-1 font-medium text-slate-600 dark:text-slate-300">
-                    <IconFlame
-                      className="h-3.5 w-3.5 text-brand-500 dark:text-brand-400"
-                      aria-hidden="true"
-                    />
-                    {adherence.streak}-day streak
-                  </span>
-                  <span
-                    aria-hidden="true"
-                    className="text-slate-300 dark:text-slate-600"
-                  >
-                    ·
-                  </span>
-                </>
-              )}
-              {adherence.pct !== null && (
-                <span className="text-slate-500 dark:text-slate-400">
-                  {adherence.pct}% adherence
-                </span>
-              )}
-              {adherence.skippedDays > 0 && (
-                <>
-                  {adherence.pct !== null && (
-                    <span
-                      aria-hidden="true"
-                      className="text-slate-300 dark:text-slate-600"
-                    >
-                      ·
-                    </span>
-                  )}
-                  <span className="text-amber-600 dark:text-amber-400">
-                    {adherence.skippedDays} skipped
-                  </span>
-                </>
-              )}
-            </div>
-          )}
+          <AdherenceSummaryLine strip={strip} />
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-3 text-xs">

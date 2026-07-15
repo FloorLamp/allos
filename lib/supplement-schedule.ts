@@ -163,6 +163,37 @@ export function isPostWorkoutReady(
   return nowMinutes >= Math.min(...ends);
 }
 
+// The /medicine header's workout/rest-day label (#747). Three distinct states,
+// keyed on the inferred-cadence prediction (`boolean | null`) and whether a
+// session was actually logged today:
+//   - a predicted training day             → "Workout day"
+//   - a predicted REST day with a workout   → "Rest day — unplanned workout logged"
+//     logged anyway (cadence says rest, but the user trained): the plain "Rest
+//     day" contradicted a due post-workout supplement sitting right below it, so
+//     the label names the mismatch. DUENESS is unchanged — the engine stays
+//     conservative (post_workout still gates on a logged session); only the
+//     header wording distinguishes this case.
+//   - otherwise                             → "Rest day" (or, with no cadence yet,
+//     the logged-session fallback the old `predictedWorkoutDay ?? isWorkoutDay`
+//     used: a logged workout on a cadence-less day still reads "Workout day").
+// Pure so the label has one definition and the three states are unit-pinned.
+export type WorkoutDayLabel =
+  "Workout day" | "Rest day" | "Rest day — unplanned workout logged";
+
+export function workoutDaySubtitleLabel(
+  predictedWorkoutDay: boolean | null,
+  isWorkoutDay: boolean
+): WorkoutDayLabel {
+  if (predictedWorkoutDay === true) return "Workout day";
+  if (predictedWorkoutDay === false && isWorkoutDay) {
+    return "Rest day — unplanned workout logged";
+  }
+  // No cadence inferred yet: fall back to whether a session was logged today,
+  // preserving the pre-#747 `predictedWorkoutDay ?? isWorkoutDay` behavior.
+  if (predictedWorkoutDay === null && isWorkoutDay) return "Workout day";
+  return "Rest day";
+}
+
 // Suggested situation labels for the form; free text is still allowed.
 export const SUGGESTED_SITUATIONS = [
   "Illness",
