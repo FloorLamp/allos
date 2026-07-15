@@ -1691,12 +1691,16 @@ console.log(
 // profile so the Trends → Body edit-lock badge + "Resume sync updates" affordance
 // (#659) has a row to render. Synthetic value; source is an integration so the row
 // is genuinely sync-owned (only those carry the lock). Idempotent by (date, source).
+// Date 2026-06-05 is deliberately a GAP in the weekly manual-weight cadence (rows
+// land on 06-02 and 06-09): a Withings weight sharing a day with a manual weight
+// would register as a same-day body-metric conflict (getBodyMetricConflicts) and
+// silently inflate the Data → Review badge, which import-dedup.spec asserts exactly.
 db.prepare(
-  `DELETE FROM body_metrics WHERE profile_id = ? AND date = '2026-06-02' AND source = 'withings'`
+  `DELETE FROM body_metrics WHERE profile_id = ? AND date = '2026-06-05' AND source = 'withings'`
 ).run(PROFILE_ID);
 db.prepare(
   `INSERT INTO body_metrics (profile_id, date, weight_kg, source, edited)
-   VALUES (?, '2026-06-02', 77.7, 'withings', 1)`
+   VALUES (?, '2026-06-05', 77.7, 'withings', 1)`
 ).run(PROFILE_ID);
 console.log(
   `e2e: seeded an edit-locked (hand-edited) Withings body-metric row on profile ${PROFILE_ID} for the edit-lock badge (#659)`
