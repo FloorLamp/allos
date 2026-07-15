@@ -4,7 +4,7 @@ import { useState } from "react";
 import { IconPlus, IconX, IconTrash } from "@tabler/icons-react";
 import type { MuscleRegion } from "@/lib/lifts";
 import { REGION_SCOPES } from "@/lib/lifts";
-import { deriveFocusFromCandidates } from "@/lib/routines";
+import { deriveFocusFromCandidates } from "@/lib/routine-derive";
 import type { RoutineWithDays } from "@/lib/types";
 import Combobox from "@/components/Combobox";
 import SubmitButton from "@/components/SubmitButton";
