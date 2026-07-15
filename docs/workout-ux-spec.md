@@ -180,6 +180,14 @@ Three rendering modes, each fed by one computation:
 
 ## Pillar 3 — Routines (templates + custom)
 
+Status: **partial (schema + write cores + templates)** — migration 039 (the three
+routine tables), the auth-blind write cores (`lib/routines.ts`: adopt / activate /
+deactivate / edit / delete, with activation replacing training-scope frequency
+targets), the gated actions (`app/(app)/training/actions.ts`), and the template
+catalog (`lib/routine-templates.ts`) shipped in #738. The builder UI (#739), the
+routine-aware recommendation path (#740), and mesocycle/deload (#741,
+`cycle_weeks`) are not built yet.
+
 ### Constraint
 
 There is NO dynamic priority engine (#559): routines are declarative,

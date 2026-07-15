@@ -99,6 +99,10 @@ const EXPORT_ALLOWLIST: { table: string; why: string }[] = [
     table: "replayed_keys",
     why: "offline-replay idempotency ledger; operational, purged on a timer",
   },
+  {
+    table: "routines",
+    why: "adopted/authored training programs (#738); the routine's meaningful training signal is the frequency_targets it derives on activation (already a flat dataset), and template routines re-adopt from lib/routine-templates.ts. Full round-trip export of custom routines (with their routine_days/routine_slots children) lands with the builder UI that can author them (#739).",
+  },
 ];
 
 describe("full export covers every owned domain (issue #465)", () => {

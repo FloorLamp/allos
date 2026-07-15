@@ -35,8 +35,10 @@
 //
 // NOT here (by design):
 //   • CHILD tables (exercise_sets, intake_item_doses/_logs/_pairs,
-//     medication_courses, intake_item_side_effects) — they carry no profile_id and
-//     are scoped/deleted THROUGH their parent's profile_id via a JOIN/subquery.
+//     medication_courses, intake_item_side_effects, and the routine children
+//     routine_days/routine_slots — #738) — they carry no profile_id and are
+//     scoped/deleted THROUGH their parent's profile_id via a JOIN/subquery
+//     (routine_days → routines, routine_slots → routine_days → routines).
 //   • GLOBAL tables (logins, profiles, login_profiles, sessions, login_attempts,
 //     settings, canonical_biomarkers, providers) — shared across the instance and
 //     intentionally not profile-scoped.
@@ -90,6 +92,10 @@ export const OWNED_TABLES = [
   "coverage_gaps",
   "situations",
   "food_log",
+  // Adopted/authored training routines (#738). Directly owned; its children
+  // routine_days/routine_slots reach profile_id via JOIN (see the NOT-here note
+  // above) and are cleared through this parent in deleteProfile.
+  "routines",
 ] as const;
 
 export type OwnedTable = (typeof OWNED_TABLES)[number];
