@@ -100,11 +100,18 @@ function BrandedCheckbox({
   );
 }
 
-// A compact, optional per-set RPE selector (issue #743) matching the #337 stepper
-// ergonomics: −/value/+ in half-point steps over the 5–10 scale, BLANK by default
-// (logging RPE is never required). Stepping down off the floor clears it back to
-// blank; stepping up from blank seeds a working rating. The rating rides onto the
-// set's declared intent — it never replaces target reps / to-failure.
+// A compact, optional per-set RPE selector (issue #743): −/value/+ in half-point
+// steps over the 5–10 scale, BLANK by default (logging RPE is never required).
+// Stepping down off the floor clears it back to blank; stepping up from blank
+// seeds a working rating. The rating rides onto the set's declared intent — it
+// never replaces target reps / to-failure.
+//
+// SIZED TO THE OPTIONS COLUMN: the whole control fits the row's w-16 (64px)
+// options column (w-4 + w-7 + w-4 + borders = 62px), stacked above the warmup/
+// remove buttons — it must never widen that column, because the weight/reps
+// inputs' tap-target width is a pinned ergonomics contract (#337; the
+// entry-ergonomics spec asserts the weight input keeps ≥64px). An optional,
+// blank-by-default control shrinks first; the load/reps inputs never do.
 function RpeStepper({
   value,
   onChange,
@@ -125,14 +132,14 @@ function RpeStepper({
         tabIndex={-1}
         onClick={() => onChange(stepRpe(value, -1))}
         aria-label="Decrease RPE"
-        className="flex h-6 w-5 shrink-0 items-center justify-center font-semibold text-slate-400 hover:bg-slate-100 hover:text-brand-600 dark:text-slate-500 dark:hover:bg-ink-800 dark:hover:text-brand-400"
+        className="flex h-7 w-4 shrink-0 items-center justify-center font-semibold text-slate-400 hover:bg-slate-100 hover:text-brand-600 dark:text-slate-500 dark:hover:bg-ink-800 dark:hover:text-brand-400"
       >
         −
       </button>
       <span
         data-testid={testId ? `${testId}-value` : undefined}
         aria-label={value == null ? "RPE not set" : `RPE ${fmtRpe(value)}`}
-        className={`w-8 text-center tabular-nums ${
+        className={`w-7 text-center tabular-nums ${
           value == null
             ? "text-[10px] font-medium uppercase tracking-wide text-slate-300 dark:text-slate-600"
             : "font-semibold text-slate-700 dark:text-slate-200"
@@ -145,7 +152,7 @@ function RpeStepper({
         tabIndex={-1}
         onClick={() => onChange(stepRpe(value, 1))}
         aria-label="Increase RPE"
-        className="flex h-6 w-5 shrink-0 items-center justify-center font-semibold text-slate-400 hover:bg-slate-100 hover:text-brand-600 dark:text-slate-500 dark:hover:bg-ink-800 dark:hover:text-brand-400"
+        className="flex h-7 w-4 shrink-0 items-center justify-center font-semibold text-slate-400 hover:bg-slate-100 hover:text-brand-600 dark:text-slate-500 dark:hover:bg-ink-800 dark:hover:text-brand-400"
       >
         +
       </button>
@@ -819,7 +826,7 @@ export default function StrengthSets({
             {timed ? "Hold time" : "Reps"}
           </span>
         )}
-        <span className="w-24 shrink-0 text-right">Options</span>
+        <span className="w-16 shrink-0 text-right">Options</span>
       </div>
       <div className="mt-2 space-y-2">
         {p.sets.map((s, si) => (
@@ -1119,10 +1126,13 @@ export default function StrengthSets({
                 )}
               </div>
             )}
-            <div className="flex w-24 shrink-0 flex-col items-end gap-1">
+            <div className="flex w-16 shrink-0 flex-col items-end gap-1">
               {/* Optional per-set RPE selector (#743) — shown for rep-based sets
                 (a timed hold's effort is its duration). Blank by default; the
-                rating rides onto the set without replacing target reps. */}
+                rating rides onto the set without replacing target reps. Stacked
+                INSIDE the same w-16 options column the row always had — widening
+                this column shrinks the weight/reps inputs below their pinned
+                #337 tap-target width (see RpeStepper's sizing note). */}
               {!timed && (
                 <RpeStepper
                   value={s.rpe}
