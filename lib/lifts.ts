@@ -1,14 +1,97 @@
 export type MuscleRegion =
   "Chest" | "Back" | "Shoulders" | "Arms" | "Legs" | "Glutes" | "Core";
 
+/**
+ * The fine-grained muscle identity (the identity layer, #482 applied to muscles).
+ * Every muscle-keyed surface downstream — per-exercise/session/weekly coverage,
+ * the SVG anatomy figure, any future finding `dedupeKey` — keys on `MuscleId`,
+ * NEVER on the free-string `LiftDef.muscle` display label. This is the ONE
+ * grouping; a hand-rolled second one is the identity-layer disease (#432/#482).
+ *
+ * The coarse 7-value `MuscleRegion` (used by frequency targets, recommendation
+ * focus, and goal scopes) is a pure ROLLUP of this enum via `muscleRegion()`, so
+ * everything keyed on regions keeps working unchanged.
+ */
+export type MuscleId =
+  | "chest-upper" // clavicular (upper) pec head, split out from the main pecs
+  | "chest" // pecs (sternal/lower head)
+  | "lats"
+  | "traps"
+  | "mid-back" // rhomboids / mid-trap / teres
+  | "lower-back" // erector spinae
+  | "front-delts"
+  | "side-delts"
+  | "rear-delts"
+  | "biceps"
+  | "triceps"
+  | "forearms" // incl. brachioradialis / grip
+  | "abs"
+  | "obliques"
+  | "glutes"
+  | "quads"
+  | "hamstrings"
+  | "hip-adductors"
+  | "hip-abductors" // glute med/min — abduct the hip; roll up to the Glutes region
+  | "calves"
+  | "tibialis"
+  | "neck";
+
+/**
+ * The coarse region each `MuscleId` rolls up into. A `Record` so TypeScript
+ * enforces totality over the enum at compile time (every id has a region).
+ * `hip-adductors` (inner thigh) → Legs while `hip-abductors` (glute med/min) →
+ * Glutes, matching the existing catalog placement of "Hip Adduction" (Legs) vs
+ * "Hip Abduction" (Glutes). `neck` has no dedicated region; it rolls into Back
+ * (its posterior placement) — no catalog lift tags it, so this only exists to
+ * keep the rollup total.
+ */
+const MUSCLE_REGION: Record<MuscleId, MuscleRegion> = {
+  "chest-upper": "Chest",
+  chest: "Chest",
+  lats: "Back",
+  traps: "Back",
+  "mid-back": "Back",
+  "lower-back": "Back",
+  neck: "Back",
+  "front-delts": "Shoulders",
+  "side-delts": "Shoulders",
+  "rear-delts": "Shoulders",
+  biceps: "Arms",
+  triceps: "Arms",
+  forearms: "Arms",
+  abs: "Core",
+  obliques: "Core",
+  glutes: "Glutes",
+  quads: "Legs",
+  hamstrings: "Legs",
+  "hip-adductors": "Legs",
+  "hip-abductors": "Glutes",
+  calves: "Legs",
+  tibialis: "Legs",
+};
+
+/** Every `MuscleId`, for exhaustive iteration (e.g. the rollup totality test). */
+export const MUSCLE_IDS = Object.keys(MUSCLE_REGION) as MuscleId[];
+
+/** The coarse `MuscleRegion` a fine-grained `MuscleId` rolls up into (total). */
+export function muscleRegion(m: MuscleId): MuscleRegion {
+  return MUSCLE_REGION[m];
+}
+
 // Movement pattern, used to suggest "Push day" / "Pull day" / "Leg day".
 export type MovementPattern = "push" | "pull" | "legs" | "core";
 
 export interface LiftDef {
   name: string;
-  muscle: string; // specific muscle worked, e.g. "Side delts"
+  muscle: string; // human display label, e.g. "Side delts" (NOT an identity key)
   region: MuscleRegion;
   pattern: MovementPattern;
+  // Fine-grained muscle identity (#482). `primaryMuscles` are the prime movers
+  // (≥1, and every one rolls up via muscleRegion into `region`); secondary are
+  // meaningful assistors. Downstream coverage/anatomy key on these MuscleIds,
+  // never on the `muscle` display string.
+  primaryMuscles: MuscleId[];
+  secondaryMuscles: MuscleId[];
   // Trained one side at a time, so left/right can carry different load/reps.
   // Enables the "Track sides separately" toggle in the activity form.
   unilateral?: boolean;
@@ -34,6 +117,10 @@ export interface VariantGroup {
   muscle: string;
   region: MuscleRegion;
   pattern: MovementPattern;
+  // Shared by the base lift and every composed equipment variant (see
+  // VARIANT_DEFS). Same identity semantics as LiftDef's fields.
+  primaryMuscles: MuscleId[];
+  secondaryMuscles: MuscleId[];
   equipment: Equipment[];
   // Equipment for which the variant is trained one side at a time.
   unilateralEquipment?: Equipment[];
@@ -45,6 +132,8 @@ const VARIANT_GROUPS: VariantGroup[] = [
     muscle: "Biceps",
     region: "Arms",
     pattern: "pull",
+    primaryMuscles: ["biceps"],
+    secondaryMuscles: ["forearms"],
     equipment: ["Barbell", "Dumbbell", "Cable", "Machine"],
     unilateralEquipment: ["Dumbbell", "Cable"],
   },
@@ -53,6 +142,8 @@ const VARIANT_GROUPS: VariantGroup[] = [
     muscle: "Mid back",
     region: "Back",
     pattern: "pull",
+    primaryMuscles: ["mid-back"],
+    secondaryMuscles: ["lats", "biceps", "rear-delts"],
     equipment: ["Barbell", "Dumbbell", "Cable", "Machine"],
     unilateralEquipment: ["Dumbbell", "Cable"],
   },
@@ -62,6 +153,8 @@ const VARIANT_GROUPS: VariantGroup[] = [
     muscle: "Chest",
     region: "Chest",
     pattern: "push",
+    primaryMuscles: ["chest"],
+    secondaryMuscles: ["front-delts", "triceps"],
     equipment: ["Barbell", "Dumbbell"],
   },
   {
@@ -69,6 +162,8 @@ const VARIANT_GROUPS: VariantGroup[] = [
     muscle: "Front delts",
     region: "Shoulders",
     pattern: "push",
+    primaryMuscles: ["front-delts"],
+    secondaryMuscles: ["side-delts", "triceps"],
     equipment: ["Barbell", "Dumbbell"],
     unilateralEquipment: ["Dumbbell"],
   },
@@ -79,6 +174,8 @@ const VARIANT_GROUPS: VariantGroup[] = [
     muscle: "Side delts",
     region: "Shoulders",
     pattern: "push",
+    primaryMuscles: ["side-delts"],
+    secondaryMuscles: [],
     equipment: ["Dumbbell", "Cable", "Machine"],
     unilateralEquipment: ["Dumbbell", "Cable"],
   },
@@ -87,6 +184,8 @@ const VARIANT_GROUPS: VariantGroup[] = [
     muscle: "Rear delts",
     region: "Shoulders",
     pattern: "pull",
+    primaryMuscles: ["rear-delts"],
+    secondaryMuscles: ["traps", "mid-back"],
     // Bent-over with dumbbells, or one arm at a time on a cable.
     equipment: ["Dumbbell", "Cable"],
     unilateralEquipment: ["Dumbbell", "Cable"],
@@ -97,45 +196,80 @@ const VARIANT_GROUPS: VariantGroup[] = [
 // cable/machine curls and rows — are generated from VARIANT_GROUPS below, so
 // "Barbell Row"/"Dumbbell Row" etc. are not listed here.
 const PLAIN_DEFS: LiftDef[] = [
-  { name: "Back Squat", muscle: "Quads", region: "Legs", pattern: "legs" },
-  { name: "Front Squat", muscle: "Quads", region: "Legs", pattern: "legs" },
+  {
+    name: "Back Squat",
+    muscle: "Quads",
+    region: "Legs",
+    pattern: "legs",
+    primaryMuscles: ["quads"],
+    secondaryMuscles: ["glutes", "hamstrings", "lower-back"],
+  },
+  {
+    name: "Front Squat",
+    muscle: "Quads",
+    region: "Legs",
+    pattern: "legs",
+    primaryMuscles: ["quads"],
+    secondaryMuscles: ["glutes", "abs"],
+  },
   {
     name: "Incline Bench Press",
     muscle: "Upper chest",
     region: "Chest",
     pattern: "push",
+    primaryMuscles: ["chest-upper"],
+    secondaryMuscles: ["front-delts", "triceps"],
   },
   {
     name: "Push Press",
     muscle: "Front delts",
     region: "Shoulders",
     pattern: "push",
+    primaryMuscles: ["front-delts"],
+    secondaryMuscles: ["side-delts", "triceps"],
   },
   {
+    // Filed under Back region; the erectors (lower-back) are the region-consistent
+    // prime mover, glutes/hamstrings/quads assist (they roll to other regions).
     name: "Deadlift",
     muscle: "Posterior chain",
     region: "Back",
     pattern: "pull",
+    primaryMuscles: ["lower-back"],
+    secondaryMuscles: ["glutes", "hamstrings", "traps", "quads", "forearms"],
   },
   {
     name: "Romanian Deadlift",
     muscle: "Hamstrings",
     region: "Legs",
     pattern: "pull",
+    primaryMuscles: ["hamstrings"],
+    secondaryMuscles: ["glutes", "lower-back"],
   },
   {
     name: "Sumo Deadlift",
     muscle: "Posterior chain",
     region: "Back",
     pattern: "pull",
+    primaryMuscles: ["lower-back"],
+    secondaryMuscles: ["glutes", "quads", "hamstrings", "traps", "forearms"],
   },
-  { name: "Pendlay Row", muscle: "Mid back", region: "Back", pattern: "pull" },
+  {
+    name: "Pendlay Row",
+    muscle: "Mid back",
+    region: "Back",
+    pattern: "pull",
+    primaryMuscles: ["mid-back"],
+    secondaryMuscles: ["lats", "biceps", "rear-delts"],
+  },
   {
     name: "Pull Up",
     muscle: "Lats",
     region: "Back",
     pattern: "pull",
     bodyweight: true,
+    primaryMuscles: ["lats"],
+    secondaryMuscles: ["biceps", "mid-back", "forearms"],
   },
   {
     name: "Chin Up",
@@ -143,6 +277,8 @@ const PLAIN_DEFS: LiftDef[] = [
     region: "Back",
     pattern: "pull",
     bodyweight: true,
+    primaryMuscles: ["lats"],
+    secondaryMuscles: ["biceps", "forearms"],
   },
   {
     name: "Lat Pulldown",
@@ -150,6 +286,8 @@ const PLAIN_DEFS: LiftDef[] = [
     region: "Back",
     pattern: "pull",
     unilateral: true,
+    primaryMuscles: ["lats"],
+    secondaryMuscles: ["biceps", "mid-back"],
   },
   {
     name: "Hammer Curl",
@@ -157,30 +295,73 @@ const PLAIN_DEFS: LiftDef[] = [
     region: "Arms",
     pattern: "pull",
     unilateral: true,
+    primaryMuscles: ["biceps", "forearms"],
+    secondaryMuscles: [],
   },
   {
     name: "Tricep Extension",
     muscle: "Triceps",
     region: "Arms",
     pattern: "push",
+    primaryMuscles: ["triceps"],
+    secondaryMuscles: [],
   },
   {
     name: "Tricep Pushdown",
     muscle: "Triceps",
     region: "Arms",
     pattern: "push",
+    primaryMuscles: ["triceps"],
+    secondaryMuscles: [],
   },
-  { name: "Leg Press", muscle: "Quads", region: "Legs", pattern: "legs" },
-  { name: "Leg Curl", muscle: "Hamstrings", region: "Legs", pattern: "legs" },
-  { name: "Leg Extension", muscle: "Quads", region: "Legs", pattern: "legs" },
-  { name: "Calf Raise", muscle: "Calves", region: "Legs", pattern: "legs" },
-  { name: "Hip Thrust", muscle: "Glutes", region: "Glutes", pattern: "legs" },
+  {
+    name: "Leg Press",
+    muscle: "Quads",
+    region: "Legs",
+    pattern: "legs",
+    primaryMuscles: ["quads"],
+    secondaryMuscles: ["glutes", "hamstrings"],
+  },
+  {
+    name: "Leg Curl",
+    muscle: "Hamstrings",
+    region: "Legs",
+    pattern: "legs",
+    primaryMuscles: ["hamstrings"],
+    secondaryMuscles: [],
+  },
+  {
+    name: "Leg Extension",
+    muscle: "Quads",
+    region: "Legs",
+    pattern: "legs",
+    primaryMuscles: ["quads"],
+    secondaryMuscles: [],
+  },
+  {
+    name: "Calf Raise",
+    muscle: "Calves",
+    region: "Legs",
+    pattern: "legs",
+    primaryMuscles: ["calves"],
+    secondaryMuscles: [],
+  },
+  {
+    name: "Hip Thrust",
+    muscle: "Glutes",
+    region: "Glutes",
+    pattern: "legs",
+    primaryMuscles: ["glutes"],
+    secondaryMuscles: ["hamstrings"],
+  },
   {
     name: "Lunge",
     muscle: "Quads & glutes",
     region: "Legs",
     pattern: "legs",
     unilateral: true,
+    primaryMuscles: ["quads"],
+    secondaryMuscles: ["glutes", "hamstrings"],
   },
   {
     name: "Bulgarian Split Squat",
@@ -188,6 +369,8 @@ const PLAIN_DEFS: LiftDef[] = [
     region: "Legs",
     pattern: "legs",
     unilateral: true,
+    primaryMuscles: ["quads"],
+    secondaryMuscles: ["glutes", "hamstrings"],
   },
   {
     name: "Dip",
@@ -195,55 +378,101 @@ const PLAIN_DEFS: LiftDef[] = [
     region: "Chest",
     pattern: "push",
     bodyweight: true,
+    primaryMuscles: ["chest"],
+    secondaryMuscles: ["triceps", "front-delts"],
   },
   {
     name: "Face Pull",
     muscle: "Rear delts",
     region: "Shoulders",
     pattern: "pull",
+    primaryMuscles: ["rear-delts"],
+    secondaryMuscles: ["traps", "mid-back"],
   },
-  { name: "Cable Fly", muscle: "Chest", region: "Chest", pattern: "push" },
-  { name: "Shrug", muscle: "Traps", region: "Back", pattern: "pull" },
+  {
+    name: "Cable Fly",
+    muscle: "Chest",
+    region: "Chest",
+    pattern: "push",
+    primaryMuscles: ["chest"],
+    secondaryMuscles: ["front-delts"],
+  },
+  {
+    name: "Shrug",
+    muscle: "Traps",
+    region: "Back",
+    pattern: "pull",
+    primaryMuscles: ["traps"],
+    secondaryMuscles: ["forearms"],
+  },
   // Chest
   {
     name: "Decline Bench Press",
     muscle: "Lower chest",
     region: "Chest",
     pattern: "push",
+    primaryMuscles: ["chest"],
+    secondaryMuscles: ["triceps", "front-delts"],
   },
   {
+    // Filed under Chest region; keeps its "Triceps" display label, but the
+    // region-consistent prime mover is the chest (triceps assist).
     name: "Close-Grip Bench Press",
     muscle: "Triceps",
     region: "Chest",
     pattern: "push",
+    primaryMuscles: ["chest"],
+    secondaryMuscles: ["triceps", "front-delts"],
   },
-  { name: "Pec Deck", muscle: "Chest", region: "Chest", pattern: "push" },
+  {
+    name: "Pec Deck",
+    muscle: "Chest",
+    region: "Chest",
+    pattern: "push",
+    primaryMuscles: ["chest"],
+    secondaryMuscles: ["front-delts"],
+  },
   // Shoulders
   {
     name: "Arnold Press",
     muscle: "Front delts",
     region: "Shoulders",
     pattern: "push",
+    primaryMuscles: ["front-delts"],
+    secondaryMuscles: ["side-delts", "triceps"],
   },
   {
     name: "Upright Row",
     muscle: "Side delts",
     region: "Shoulders",
     pattern: "pull",
+    primaryMuscles: ["side-delts"],
+    secondaryMuscles: ["traps", "front-delts"],
   },
   // Back
-  { name: "T-Bar Row", muscle: "Mid back", region: "Back", pattern: "pull" },
+  {
+    name: "T-Bar Row",
+    muscle: "Mid back",
+    region: "Back",
+    pattern: "pull",
+    primaryMuscles: ["mid-back"],
+    secondaryMuscles: ["lats", "biceps", "rear-delts"],
+  },
   {
     name: "Straight-Arm Pulldown",
     muscle: "Lats",
     region: "Back",
     pattern: "pull",
+    primaryMuscles: ["lats"],
+    secondaryMuscles: [],
   },
   {
     name: "Trap Bar Deadlift",
     muscle: "Posterior chain",
     region: "Back",
     pattern: "pull",
+    primaryMuscles: ["lower-back"],
+    secondaryMuscles: ["quads", "glutes", "hamstrings", "traps", "forearms"],
   },
   {
     name: "Back Extension",
@@ -251,12 +480,18 @@ const PLAIN_DEFS: LiftDef[] = [
     region: "Back",
     pattern: "pull",
     bodyweight: true,
+    primaryMuscles: ["lower-back"],
+    secondaryMuscles: ["glutes", "hamstrings"],
   },
   {
+    // Filed under Back region; grip (forearms) is a secondary since it rolls to
+    // the Arms region — the traps hold the load and are region-consistent.
     name: "Farmers Carry",
     muscle: "Grip & traps",
     region: "Back",
     pattern: "pull",
+    primaryMuscles: ["traps"],
+    secondaryMuscles: ["forearms"],
   },
   // Arms
   {
@@ -265,6 +500,8 @@ const PLAIN_DEFS: LiftDef[] = [
     region: "Arms",
     pattern: "pull",
     unilateral: true,
+    primaryMuscles: ["biceps"],
+    secondaryMuscles: ["forearms"],
   },
   {
     name: "Concentration Curl",
@@ -272,24 +509,58 @@ const PLAIN_DEFS: LiftDef[] = [
     region: "Arms",
     pattern: "pull",
     unilateral: true,
+    primaryMuscles: ["biceps"],
+    secondaryMuscles: [],
   },
-  { name: "Skullcrusher", muscle: "Triceps", region: "Arms", pattern: "push" },
+  {
+    name: "Skullcrusher",
+    muscle: "Triceps",
+    region: "Arms",
+    pattern: "push",
+    primaryMuscles: ["triceps"],
+    secondaryMuscles: [],
+  },
   {
     name: "Reverse Curl",
     muscle: "Forearms",
     region: "Arms",
     pattern: "pull",
     unilateral: true,
+    primaryMuscles: ["forearms"],
+    secondaryMuscles: ["biceps"],
   },
-  { name: "Wrist Curl", muscle: "Forearms", region: "Arms", pattern: "pull" },
+  {
+    name: "Wrist Curl",
+    muscle: "Forearms",
+    region: "Arms",
+    pattern: "pull",
+    primaryMuscles: ["forearms"],
+    secondaryMuscles: [],
+  },
   // Legs
-  { name: "Goblet Squat", muscle: "Quads", region: "Legs", pattern: "legs" },
-  { name: "Hack Squat", muscle: "Quads", region: "Legs", pattern: "legs" },
+  {
+    name: "Goblet Squat",
+    muscle: "Quads",
+    region: "Legs",
+    pattern: "legs",
+    primaryMuscles: ["quads"],
+    secondaryMuscles: ["glutes"],
+  },
+  {
+    name: "Hack Squat",
+    muscle: "Quads",
+    region: "Legs",
+    pattern: "legs",
+    primaryMuscles: ["quads"],
+    secondaryMuscles: ["glutes"],
+  },
   {
     name: "Good Morning",
     muscle: "Hamstrings",
     region: "Legs",
     pattern: "pull",
+    primaryMuscles: ["hamstrings"],
+    secondaryMuscles: ["glutes", "lower-back"],
   },
   {
     name: "Nordic Curl",
@@ -297,6 +568,8 @@ const PLAIN_DEFS: LiftDef[] = [
     region: "Legs",
     pattern: "legs",
     bodyweight: true,
+    primaryMuscles: ["hamstrings"],
+    secondaryMuscles: ["glutes"],
   },
   {
     name: "Glute Ham Raise",
@@ -304,6 +577,8 @@ const PLAIN_DEFS: LiftDef[] = [
     region: "Legs",
     pattern: "legs",
     bodyweight: true,
+    primaryMuscles: ["hamstrings"],
+    secondaryMuscles: ["glutes"],
   },
   {
     name: "Step Up",
@@ -311,18 +586,24 @@ const PLAIN_DEFS: LiftDef[] = [
     region: "Legs",
     pattern: "legs",
     unilateral: true,
+    primaryMuscles: ["quads"],
+    secondaryMuscles: ["glutes", "hamstrings"],
   },
   {
     name: "Seated Calf Raise",
     muscle: "Calves",
     region: "Legs",
     pattern: "legs",
+    primaryMuscles: ["calves"],
+    secondaryMuscles: [],
   },
   {
     name: "Hip Adduction",
     muscle: "Adductors",
     region: "Legs",
     pattern: "legs",
+    primaryMuscles: ["hip-adductors"],
+    secondaryMuscles: [],
   },
   // Glutes
   {
@@ -330,6 +611,8 @@ const PLAIN_DEFS: LiftDef[] = [
     muscle: "Abductors",
     region: "Glutes",
     pattern: "legs",
+    primaryMuscles: ["hip-abductors"],
+    secondaryMuscles: ["glutes"],
   },
   {
     name: "Glute Bridge",
@@ -337,6 +620,8 @@ const PLAIN_DEFS: LiftDef[] = [
     region: "Glutes",
     pattern: "legs",
     bodyweight: true,
+    primaryMuscles: ["glutes"],
+    secondaryMuscles: ["hamstrings"],
   },
   {
     name: "Cable Kickback",
@@ -344,6 +629,8 @@ const PLAIN_DEFS: LiftDef[] = [
     region: "Glutes",
     pattern: "legs",
     unilateral: true,
+    primaryMuscles: ["glutes"],
+    secondaryMuscles: ["hamstrings"],
   },
   // Core
   {
@@ -352,14 +639,25 @@ const PLAIN_DEFS: LiftDef[] = [
     region: "Core",
     pattern: "core",
     bodyweight: true,
+    primaryMuscles: ["abs"],
+    secondaryMuscles: ["obliques"],
   },
-  { name: "Cable Crunch", muscle: "Core", region: "Core", pattern: "core" },
+  {
+    name: "Cable Crunch",
+    muscle: "Core",
+    region: "Core",
+    pattern: "core",
+    primaryMuscles: ["abs"],
+    secondaryMuscles: [],
+  },
   {
     name: "Crunch",
     muscle: "Core",
     region: "Core",
     pattern: "core",
     bodyweight: true,
+    primaryMuscles: ["abs"],
+    secondaryMuscles: [],
   },
   {
     name: "Russian Twist",
@@ -367,6 +665,8 @@ const PLAIN_DEFS: LiftDef[] = [
     region: "Core",
     pattern: "core",
     bodyweight: true,
+    primaryMuscles: ["obliques"],
+    secondaryMuscles: ["abs"],
   },
   {
     name: "Ab Wheel Rollout",
@@ -374,6 +674,8 @@ const PLAIN_DEFS: LiftDef[] = [
     region: "Core",
     pattern: "core",
     bodyweight: true,
+    primaryMuscles: ["abs"],
+    secondaryMuscles: ["obliques"],
   },
   {
     name: "Side Plank",
@@ -382,17 +684,63 @@ const PLAIN_DEFS: LiftDef[] = [
     pattern: "core",
     unilateral: true,
     timed: true,
+    primaryMuscles: ["obliques"],
+    secondaryMuscles: ["abs"],
   },
   // Olympic
-  { name: "Power Clean", muscle: "Full body", region: "Back", pattern: "pull" },
-  { name: "Hang Clean", muscle: "Full body", region: "Back", pattern: "pull" },
-  { name: "Snatch", muscle: "Full body", region: "Back", pattern: "pull" },
+  {
+    // "Full body" explosive pull, filed under Back; the traps (shrug/upper-back
+    // pull) are the region-consistent prime mover, the rest assist.
+    name: "Power Clean",
+    muscle: "Full body",
+    region: "Back",
+    pattern: "pull",
+    primaryMuscles: ["traps"],
+    secondaryMuscles: [
+      "lower-back",
+      "glutes",
+      "hamstrings",
+      "quads",
+      "front-delts",
+    ],
+  },
+  {
+    name: "Hang Clean",
+    muscle: "Full body",
+    region: "Back",
+    pattern: "pull",
+    primaryMuscles: ["traps"],
+    secondaryMuscles: [
+      "lower-back",
+      "glutes",
+      "hamstrings",
+      "quads",
+      "front-delts",
+    ],
+  },
+  {
+    name: "Snatch",
+    muscle: "Full body",
+    region: "Back",
+    pattern: "pull",
+    primaryMuscles: ["traps"],
+    secondaryMuscles: [
+      "lower-back",
+      "glutes",
+      "hamstrings",
+      "quads",
+      "side-delts",
+      "front-delts",
+    ],
+  },
   {
     name: "Plank",
     muscle: "Core",
     region: "Core",
     pattern: "core",
     timed: true,
+    primaryMuscles: ["abs"],
+    secondaryMuscles: ["obliques"],
   },
   {
     name: "Hollow Hold",
@@ -400,6 +748,8 @@ const PLAIN_DEFS: LiftDef[] = [
     region: "Core",
     pattern: "core",
     timed: true,
+    primaryMuscles: ["abs"],
+    secondaryMuscles: [],
   },
   {
     name: "L-Sit",
@@ -407,6 +757,8 @@ const PLAIN_DEFS: LiftDef[] = [
     region: "Core",
     pattern: "core",
     timed: true,
+    primaryMuscles: ["abs"],
+    secondaryMuscles: [],
   },
   {
     name: "Wall Sit",
@@ -414,13 +766,19 @@ const PLAIN_DEFS: LiftDef[] = [
     region: "Legs",
     pattern: "legs",
     timed: true,
+    primaryMuscles: ["quads"],
+    secondaryMuscles: ["glutes"],
   },
   {
+    // Isometric hang, filed under Back; grip (forearms) rolls to Arms so it's a
+    // secondary — the lats/scapular retractors are the region-consistent primary.
     name: "Dead Hang",
     muscle: "Grip & forearms",
     region: "Back",
     pattern: "pull",
     timed: true,
+    primaryMuscles: ["lats"],
+    secondaryMuscles: ["forearms", "traps"],
   },
 ];
 
@@ -435,12 +793,21 @@ export function composeVariant(
 // Expand each variant group into a bare base lift plus one concrete lift per
 // equipment, so muscle/region/unilateral resolve for every stored variant name.
 const VARIANT_DEFS: LiftDef[] = VARIANT_GROUPS.flatMap((g) => [
-  { name: g.name, muscle: g.muscle, region: g.region, pattern: g.pattern },
+  {
+    name: g.name,
+    muscle: g.muscle,
+    region: g.region,
+    pattern: g.pattern,
+    primaryMuscles: g.primaryMuscles,
+    secondaryMuscles: g.secondaryMuscles,
+  },
   ...g.equipment.map((eq) => ({
     name: composeVariant(g, eq),
     muscle: g.muscle,
     region: g.region,
     pattern: g.pattern,
+    primaryMuscles: g.primaryMuscles,
+    secondaryMuscles: g.secondaryMuscles,
     unilateral: g.unilateralEquipment?.includes(eq) || undefined,
   })),
 ]);
