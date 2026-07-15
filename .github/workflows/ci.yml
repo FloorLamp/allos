@@ -78,11 +78,17 @@ jobs:
       - name: Test + coverage
         run: npm run test:coverage
 
-      # DB integration tier: exercises migrate() on both a fresh and an existing
-      # ("upgrade") database. Separate from the pure unit suite above; catches
-      # boot-crash-on-upgrade regressions that fresh-only tests miss.
-      - name: Test (DB)
-        run: npm run test:db
+      # DB integration + action tier, under its OWN coverage floor. This tier
+      # exercises the query/action write paths that need a live schema — the
+      # modules the pure gate above never imports (so they report ~0% there).
+      # Running it under v8 coverage (thresholds in vitest.db.config.ts, a
+      # tripwire a few points under the measured baseline) makes those modules'
+      # real coverage visible and catches a regression the pure gate can't see;
+      # it also still exercises migrate() on both a fresh and an existing
+      # ("upgrade") database, catching boot-crash-on-upgrade regressions. The
+      # instrumentation adds only ~15s over the plain run.
+      - name: Test (DB) + coverage
+        run: npm run test:db:coverage
 
   # Browser end-to-end tier: boots the real Next app against an isolated seeded
   # SQLite DB and drives it in Chromium (Playwright). Separate job so it runs in

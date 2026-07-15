@@ -21,11 +21,15 @@ export default defineConfig({
       "lib/__action_tests__/**",
       "node_modules/**",
     ],
-    // Coverage is only measured for `npm run test:coverage` (the pure suite),
-    // never for the default `npm test`. Scope the denominator to the logic layer
-    // (`lib/**`): the pure suite never imports app/** or components/**, so
-    // including them would drown the signal at ~0%. That app/component surface is
-    // a separate effort and is intentionally NOT gated here.
+    // Coverage here is only measured for `npm run test:coverage` (the pure
+    // suite), never for the default `npm test`. This is the FIRST of two coverage
+    // gates: the DB+action tier has its own floor in vitest.db.config.ts
+    // (`npm run test:db:coverage`), which exercises the query/action write paths
+    // this pure suite never imports (they'd report ~0% here). Scope the
+    // denominator to the logic layer (`lib/**`): the pure suite never imports
+    // app/** or components/**, so including them would drown the signal at ~0%.
+    // That app/component surface is a separate effort and is intentionally NOT
+    // gated here.
     coverage: {
       provider: "v8",
       include: ["lib/**"],
