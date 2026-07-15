@@ -107,6 +107,60 @@ export interface NextWorkoutInput {
   // Absent / empty registry ⇒ no gating (gym-goers own no rows), so every existing
   // caller/test keeps its prior ordering.
   availableEquipment?: EquipmentAvailability;
+  // The profile's ACTIVE routine (#740), when one exists. Present ⇒ the core
+  // resolves TODAY'S routine day into a filled session (the authoritative
+  // recommendation every surface renders). Absent / null ⇒ the routine path is
+  // never entered and the result is byte-for-byte the prior no-routine behavior.
+  // RoutineWithDays (lib/routines) structurally satisfies this minimal shape.
+  activeRoutine?: ActiveRoutineInput | null;
+}
+
+// The slice of the active routine the core reads to resolve today's session — a
+// structural subset of RoutineWithDays so `getActiveRoutine(profileId)` passes
+// straight through, while the pure core stays decoupled from the DB row type.
+export interface ActiveRoutineInput {
+  id: number;
+  // Rotation cursor into `days`; advanced by session crediting (#740). Resolved
+  // modulo the day count, so it never runs off the end of the sequence.
+  position: number;
+  days: {
+    id: number;
+    label: string;
+    focus: MuscleRegion[];
+    slots: {
+      candidates: string[];
+      sets: number;
+      rep_min: number;
+      rep_max: number;
+    }[];
+  }[];
+}
+
+// One filled slot of today's resolved routine session: the candidate the user can
+// actually do (equipment-de-ranked first choice), its prescription, and the
+// next-set seed for a concrete load target (null ⇒ cold start / never trained,
+// so the surface shows sets × rep range with NO load).
+export interface RoutineSessionSlot {
+  exercise: string;
+  candidates: string[];
+  sets: number;
+  repMin: number;
+  repMax: number;
+  seed: StrengthRecent | null;
+}
+
+// Today's resolved routine day as a complete, fillable session (#740). Produced
+// only when an active routine exists; every surface (dashboard, Training
+// overview, Telegram nudge, "Log this session" prefill) renders THIS one result.
+export interface RoutineSession {
+  routineId: number;
+  dayId: number;
+  label: string; // the day's label, e.g. "Push"
+  focus: MuscleRegion[];
+  // A cardio-focus day (empty `focus`) vs a strength day — the crediting rule and
+  // the surface copy both key on this.
+  kind: "strength" | "cardio";
+  slots: RoutineSessionSlot[];
 }
 
 // How a workout item was arrived at, so a formatter can phrase it precisely:
@@ -114,9 +168,15 @@ export interface NextWorkoutInput {
 //   routine-met   — every weekly target is satisfied
 //   trained-today — already logged training today (no routine)
 //   habit         — no routine; least-recently-done activity
+//   routine-day   — an active routine resolved TODAY'S day into a filled session
 //   empty         — no usable history at all
 export type NextWorkoutReason =
-  "routine-gap" | "routine-met" | "trained-today" | "habit" | "empty";
+  | "routine-gap"
+  | "routine-met"
+  | "trained-today"
+  | "habit"
+  | "routine-day"
+  | "empty";
 
 export type NextWorkoutKind = "strength" | "cardio" | "ontrack" | "setup";
 
@@ -147,6 +207,10 @@ export interface NextWorkout {
   primary: StrengthRecent | null;
   // Every behind weekly target, for surfaces that list "behind this week" context.
   behind: BehindTarget[];
+  // Today's resolved routine session (#740) when an active routine exists; null
+  // otherwise. When set, `focus`/`exercises`/`primary` above are DERIVED from this
+  // session, so every surface renders the routine day by construction.
+  session: RoutineSession | null;
 }
 
 // ---- Target helpers ----
@@ -443,6 +507,78 @@ function rankExercises(
   return exercises;
 }
 
+// ---- Routine-aware path (#740) ----
+
+// Resolve TODAY'S routine day from the rotation cursor, filling each slot with the
+// first candidate the user can actually do (equipment de-rank — a no-op when the
+// registry is empty, so a gym user / cold start gets the first listed candidate)
+// and attaching that lift's next-set seed (null ⇒ cold start / never trained).
+// The cursor is read modulo the day count — a routine is a SEQUENCE, not a
+// calendar, so it never runs off the end. Null when the routine has no days.
+export function resolveRoutineSession(
+  routine: ActiveRoutineInput,
+  input: NextWorkoutInput
+): RoutineSession | null {
+  const n = routine.days.length;
+  if (n === 0) return null;
+  // Normalize a possibly-negative or overflowed cursor into [0, n).
+  const idx = ((routine.position % n) + n) % n;
+  const day = routine.days[idx];
+  const isCardioDay = day.focus.length === 0;
+
+  const slots: RoutineSessionSlot[] = day.slots.map((s) => {
+    const ranked = deRankUnavailableLifts(
+      s.candidates,
+      input.availableEquipment
+    );
+    const exercise = ranked[0] ?? s.candidates[0] ?? "";
+    const key = exercise ? exerciseHistoryKey(exercise) : null;
+    const seed =
+      key != null
+        ? (input.strength.find(
+            (st) => exerciseHistoryKey(st.exercise) === key
+          ) ?? null)
+        : null;
+    return {
+      exercise,
+      candidates: s.candidates,
+      sets: s.sets,
+      repMin: s.rep_min,
+      repMax: s.rep_max,
+      seed,
+    };
+  });
+
+  return {
+    routineId: routine.id,
+    dayId: day.id,
+    label: day.label,
+    focus: day.focus,
+    kind: isCardioDay ? "cardio" : "strength",
+    slots,
+  };
+}
+
+// Whether a logged session CREDITS a routine day — the load-bearing crediting
+// rule (#740), derived ENTIRELY from the logged data (no hidden `routine_day_id`
+// link column). The day is a cardio-focus day iff its `focus` is empty.
+//   • a strength day is credited iff the session's strength regions (via
+//     exerciseHistoryKey → LiftDef.region, gathered by the caller) overlap the
+//     day's focus at all — so a pre-filled slate credits by construction and an
+//     improvised session that genuinely worked the focus counts too;
+//   • a cardio day is credited by any cardio activity;
+//   • a strength day is NEVER credited by cardio, and a cardio day is NEVER
+//     credited by strength (the kind gate — regions alone can't express it, so
+//     the session carries both its regions AND whether it had cardio).
+export function sessionCreditsDay(
+  session: { regions: MuscleRegion[]; hasCardio: boolean },
+  dayFocus: MuscleRegion[]
+): boolean {
+  const isCardioDay = dayFocus.length === 0;
+  if (isCardioDay) return session.hasCardio;
+  return session.regions.some((r) => dayFocus.includes(r));
+}
+
 // ---- The unified core ----
 
 // Rank the day's workout items and compute the shared focus/exercise suggestion.
@@ -460,12 +596,59 @@ export function recommendNextWorkout(input: NextWorkoutInput): NextWorkout {
   const behindStrength = behind
     .filter((t) => !isCardioTarget(t))
     .sort(byFractionComplete)[0];
+  // Routine-aware path (#740): an active routine resolves TODAY'S day into a
+  // filled session — the authoritative recommendation. Guarded so that with NO
+  // active routine the function is byte-for-byte its prior behavior (the whole
+  // block below never runs, and `session` stays null everywhere).
+  if (input.activeRoutine) {
+    const session = resolveRoutineSession(input.activeRoutine, input);
+    if (session) {
+      const exercises = session.slots.map((s) => s.exercise).filter(Boolean);
+      // Lead lift == the day's first slot; its seed drives the next-set target
+      // (null on cold start → no load shown). Keeps `primary` aligned with
+      // `exercises[0]`, the same contract withEquipmentPreference upholds.
+      const lead = session.slots[0]?.seed ?? null;
+      const item: NextWorkoutItem =
+        session.kind === "cardio"
+          ? {
+              kind: "cardio",
+              reason: "routine-day",
+              exercise: null,
+              activity: pickOldestCardio(cardio, today),
+              target: null,
+            }
+          : {
+              kind: "strength",
+              reason: "routine-day",
+              exercise: lead,
+              activity: null,
+              target: null,
+            };
+      return {
+        items: [item],
+        focus: session.focus,
+        exercises,
+        primary: lead,
+        behind: behindTargets,
+        session,
+      };
+    }
+    // An active routine with no days can't resolve a session — fall through to the
+    // prior weekly-target / habit composition below.
+  }
+
   const { focus, exercises, primary } = computeStrengthWorkout(
     input,
     behindStrength ?? null
   );
 
-  const base = { focus, exercises, primary, behind: behindTargets };
+  const base = {
+    focus,
+    exercises,
+    primary,
+    behind: behindTargets,
+    session: null,
+  };
   const items: NextWorkoutItem[] = [];
 
   if (routine.length > 0) {

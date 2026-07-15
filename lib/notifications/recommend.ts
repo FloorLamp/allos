@@ -66,5 +66,14 @@ export function recommendWorkout(
   if (!nw.focus.length && !nw.exercises.length && !rest && !onTrack)
     return null;
 
-  return { focus: nw.focus, exercises: nw.exercises, behind, rest, onTrack };
+  return {
+    focus: nw.focus,
+    exercises: nw.exercises,
+    behind,
+    rest,
+    onTrack,
+    // Carry the resolved routine day label (#740) so the nudge names the actual
+    // sequence day. Null when no active routine resolved a session.
+    sessionLabel: nw.session?.label ?? null,
+  };
 }

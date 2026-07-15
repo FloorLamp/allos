@@ -30,6 +30,8 @@ import {
 import { minutesBetween, compositeRollup } from "@/lib/activity-meta";
 import { isRealIsoDate } from "@/lib/date";
 import { isTrainingRestricted, isActivityTypeAllowed } from "@/lib/age-gate";
+import { regionForExercise, type MuscleRegion } from "@/lib/lifts";
+import { creditRoutineSession } from "@/lib/routines";
 
 interface SetInput {
   exercise: string;
@@ -358,6 +360,36 @@ export async function saveActivity(
   // ownership check bailed, so nothing was written. Report it instead of a silent
   // no-op the form would confirm as "Saved ✓".
   if (activityId == null) return { ok: false, reason: "not-owned" };
+
+  // Advance the active routine's position when this session credits today's
+  // routine day (#740). Derived ENTIRELY from the logged data — the strength
+  // regions of the persisted sets (via regionForExercise → LiftDef.region) and
+  // whether the activity included cardio — never a stored link column. The write
+  // core is once-per-profile-local-day and credited-only; keyed on the activity's
+  // date (the profile-local day the session belongs to). Best-effort: a routine
+  // hiccup must never fail an otherwise-successful save.
+  try {
+    const regions: MuscleRegion[] = [];
+    if (hasStrength) {
+      const seen = new Set<MuscleRegion>();
+      for (const row of db
+        .prepare(
+          "SELECT DISTINCT exercise FROM exercise_sets WHERE activity_id = ?"
+        )
+        .all(activityId) as { exercise: string }[]) {
+        const r = regionForExercise(row.exercise);
+        if (r && !seen.has(r)) {
+          seen.add(r);
+          regions.push(r);
+        }
+      }
+    }
+    const hasCardio =
+      type === "cardio" || components.some((c) => c.type === "cardio");
+    creditRoutineSession(profile.id, date, { regions, hasCardio });
+  } catch {
+    // Crediting is advisory; swallow so the save still confirms.
+  }
 
   revalidateActivitySurfaces();
   // Return the row id so the auto-saving form can switch from create to update.

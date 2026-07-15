@@ -7,6 +7,7 @@ import { currentStreak } from "../streak";
 import { classifyPolarization, type PolarizedSplit } from "../training-zones";
 import {
   recommendNextWorkout,
+  type ActiveRoutineInput,
   type DatedExercise,
   type NextWorkout,
   type NextWorkoutItem,
@@ -159,6 +160,10 @@ export interface CoachingInput {
   // nudge prefer gear-satisfiable "train today" content by construction. Optional —
   // absent ⇒ no equipment gating (the prior behavior).
   availableEquipment?: EquipmentAvailability;
+  // The profile's active routine (#740), threaded through the ONE gather so the
+  // dashboard/overview cards and the Telegram nudge all render today's resolved
+  // routine session by construction. Absent / null ⇒ the prior no-routine behavior.
+  activeRoutine?: ActiveRoutineInput | null;
   sleep: SleepSignal | null;
   restingHr: RestingHrSignal | null;
   // The persisted rest episode as of the last reconcile (null when none is open).
@@ -523,6 +528,26 @@ function formatWorkoutItem(
   wu: WeightUnit
 ): Recommendation {
   if (item.kind === "cardio") {
+    if (item.reason === "routine-day") {
+      // A cardio-focus routine day. Copy leads with the day label; the picked
+      // activity (if any) is a suggestion, never a hard requirement.
+      const label = nw.session?.label ?? "Cardio";
+      const a = item.activity;
+      return {
+        id: "routine-day-cardio",
+        kind: "cardio",
+        title: label,
+        detail: a
+          ? `Today's session — ${a.activity} (last done ${formatRelativeDate(
+              a.lastDate,
+              today
+            )}).`
+          : "Today's session — log a cardio activity.",
+        tone: "action",
+        actionHref: "/training",
+        actionLabel: "Log this session",
+      };
+    }
     if (item.reason === "routine-gap") {
       const t = item.target!;
       const remaining = Math.max(0, t.perWeek - t.count);
@@ -566,6 +591,28 @@ function formatWorkoutItem(
   }
 
   if (item.kind === "strength") {
+    if (item.reason === "routine-day") {
+      // A strength routine day. Title is the day label ("Push"); the body lists
+      // the filled slate; the target line seeds off the lead lift when it has
+      // history (absent ⇒ cold start, shown with reps only). The dedicated
+      // Training-overview "Today's session" card renders the per-slot detail;
+      // this card is the compact dashboard/rollup form of the same result.
+      const label = nw.session?.label ?? "Today's session";
+      const nextSet = item.exercise ? suggestNextSet(item.exercise, wu) : null;
+      const list = nw.exercises.join(", ");
+      return {
+        id: "routine-day-strength",
+        kind: "strength",
+        title: label,
+        detail: list ? `Today's session — ${list}.` : "Today's session.",
+        tone: "action",
+        actionHref: "/training",
+        actionLabel: "Log this session",
+        ...(nextSet ? { target: nextSetText(nextSet, wu) } : {}),
+        ...(nw.focus.length ? { focus: nw.focus } : {}),
+        ...(nw.exercises.length ? { exercises: nw.exercises } : {}),
+      };
+    }
     if (item.reason === "routine-gap") {
       const t = item.target!;
       const label = frequencyScopeLabel(t.scopeKind, t.scopeValue);
