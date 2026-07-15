@@ -139,12 +139,12 @@ export default async function AuditLogPage(props: {
             <table className="w-full text-sm" data-testid="audit-table">
               <thead>
                 <tr className="border-b border-black/5 text-left text-xs uppercase tracking-wide text-slate-500 dark:border-white/10 dark:text-slate-400">
-                  <th className="td whitespace-nowrap">Time (UTC)</th>
-                  <th className="td">Login</th>
-                  <th className="td">Action</th>
-                  <th className="td">Profile</th>
-                  <th className="td">Target</th>
-                  <th className="td">Detail</th>
+                  <th className="th whitespace-nowrap">Time (UTC)</th>
+                  <th className="th">Login</th>
+                  <th className="th">Action</th>
+                  <th className="th">Profile</th>
+                  <th className="th">Target</th>
+                  <th className="th">Detail</th>
                 </tr>
               </thead>
               <tbody>

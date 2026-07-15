@@ -59,12 +59,12 @@ export default function UsageRollup({
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-black/5 text-left text-xs uppercase tracking-wide text-slate-500 dark:border-white/10 dark:text-slate-400">
-                  <th className="td">Feature</th>
-                  <th className="td">Profile</th>
-                  <th className="td text-right">Today calls</th>
-                  <th className="td text-right">Today tokens (in / out)</th>
-                  <th className="td text-right">7-day calls</th>
-                  <th className="td text-right">7-day tokens (in / out)</th>
+                  <th className="th">Feature</th>
+                  <th className="th">Profile</th>
+                  <th className="th text-right">Today calls</th>
+                  <th className="th text-right">Today tokens (in / out)</th>
+                  <th className="th text-right">7-day calls</th>
+                  <th className="th text-right">7-day tokens (in / out)</th>
                 </tr>
               </thead>
               <tbody>
