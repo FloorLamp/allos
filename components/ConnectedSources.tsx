@@ -36,7 +36,7 @@ function StateLine({ ev }: { ev: IntegrationSyncEvent }) {
         className={
           ev.ok
             ? muted
-              ? "text-slate-400 dark:text-slate-500"
+              ? "text-slate-500 dark:text-slate-400"
               : "text-slate-700 dark:text-slate-200"
             : "font-medium text-rose-700 dark:text-rose-300"
         }
@@ -92,7 +92,7 @@ function SourceCard({
         {latest && (
           <RelativeTime
             value={latest.at}
-            className="text-xs text-slate-400 dark:text-slate-500"
+            className="text-xs text-slate-500 dark:text-slate-400"
           />
         )}
       </div>
@@ -101,13 +101,13 @@ function SourceCard({
         {latest ? (
           <StateLine ev={latest} />
         ) : (
-          <span className="inline-flex items-center gap-1.5 text-sm text-slate-400 dark:text-slate-500">
+          <span className="inline-flex items-center gap-1.5 text-sm text-slate-500 dark:text-slate-400">
             <IconCircle className="h-4 w-4 shrink-0" stroke={1.75} />
             No syncs yet
           </span>
         )}
         {latest?.window_start && (
-          <span className="text-xs text-slate-400 dark:text-slate-500">
+          <span className="text-xs text-slate-500 dark:text-slate-400">
             {formatWindow(latest.window_start, latest.window_end)}
           </span>
         )}
@@ -165,11 +165,11 @@ function SourceCard({
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
                   <RelativeTime
                     value={ev.at}
-                    className="text-slate-400 dark:text-slate-500"
+                    className="text-slate-500 dark:text-slate-400"
                   />
                   <StateLine ev={ev} />
                   {ev.window_start && (
-                    <span className="text-slate-400 dark:text-slate-500">
+                    <span className="text-slate-500 dark:text-slate-400">
                       {formatWindow(ev.window_start, ev.window_end)}
                     </span>
                   )}

@@ -33,7 +33,7 @@ export default function ActiveSessions({
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Active sessions
         </h2>
-        <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           Devices currently signed in to your login ({sessions.length}). Revoke
           any you don&apos;t recognize.
         </p>
@@ -56,7 +56,7 @@ export default function ActiveSessions({
                   </span>
                 )}
               </div>
-              <p className="text-xs text-slate-400 dark:text-slate-500">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
                 Signed in {fmt(s.createdAt)} · Last seen {fmt(s.lastSeenAt)}
               </p>
             </div>

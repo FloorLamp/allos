@@ -93,12 +93,12 @@ export default async function OuraPage(props: {
                 <IconCheck className="h-3.5 w-3.5" /> Connected
               </span>
               {linkedEmail && (
-                <span className="text-xs text-slate-400 dark:text-slate-500">
+                <span className="text-xs text-slate-500 dark:text-slate-400">
                   {linkedEmail}
                 </span>
               )}
               {conn?.last_sync_at && (
-                <span className="text-xs text-slate-400 dark:text-slate-500">
+                <span className="text-xs text-slate-500 dark:text-slate-400">
                   Last sync: {conn.last_sync_at} UTC
                 </span>
               )}

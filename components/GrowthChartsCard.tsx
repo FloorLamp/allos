@@ -97,7 +97,7 @@ export default function GrowthChartsCard({
         valueRound={view.valueRound}
       />
 
-      <p className="mt-3 text-xs text-slate-400 dark:text-slate-500">
+      <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
         Reference curves (WHO 0–2 y, CDC 2–20 y) — not medical advice.
       </p>
     </div>

@@ -53,7 +53,7 @@ export default async function TrendingDigest({ range }: { range: DateRange }) {
     <div className="card">
       <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
         What&rsquo;s trending{" "}
-        <span className="font-normal text-slate-400 dark:text-slate-500">
+        <span className="font-normal text-slate-500 dark:text-slate-400">
           over this window
         </span>
       </h2>
@@ -98,7 +98,7 @@ export default async function TrendingDigest({ range }: { range: DateRange }) {
                   data-testid="digest-dismiss"
                   aria-label={`Dismiss ${item.label} trend`}
                   title="Dismiss"
-                  className="flex h-5 w-5 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-ink-750 dark:hover:text-slate-300"
+                  className="flex h-5 w-5 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-600 dark:text-slate-400 dark:hover:bg-ink-750 dark:hover:text-slate-300"
                 >
                   <IconX className="h-3.5 w-3.5" stroke={2} />
                 </button>

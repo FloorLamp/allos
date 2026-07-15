@@ -133,7 +133,7 @@ export default function ReprocessDiffPanel({
             <EntitySection key={e.entity} diff={e} />
           ))}
 
-          <p className="text-xs text-slate-400 dark:text-slate-500">
+          <p className="text-xs text-slate-500 dark:text-slate-400">
             Confirming re-runs extraction and replaces this document’s imported
             rows (any manual edits to them are discarded). A fresh AI
             re-extraction may differ slightly from this preview; deterministic
@@ -223,7 +223,7 @@ function EntitySection({ diff }: { diff: EntityDiff }) {
             <span className="font-mono text-xs">+</span>
             <span>{r.label}</span>
             {r.detail && (
-              <span className="text-xs text-slate-400 dark:text-slate-500">
+              <span className="text-xs text-slate-500 dark:text-slate-400">
                 {r.detail}
               </span>
             )}
@@ -237,7 +237,7 @@ function EntitySection({ diff }: { diff: EntityDiff }) {
             <span className="font-mono text-xs">−</span>
             <span>{r.label}</span>
             {r.detail && (
-              <span className="text-xs text-slate-400 dark:text-slate-500">
+              <span className="text-xs text-slate-500 dark:text-slate-400">
                 {r.detail}
               </span>
             )}

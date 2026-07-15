@@ -171,7 +171,7 @@ export default async function AnalyzeSection({
         <div className="card relative z-20 focus-within:z-50">
           <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
             <label className="block min-w-0">
-              <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+              <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
                 Exercise or activity
               </span>
               <AnalyzePicker
@@ -231,7 +231,7 @@ export default async function AnalyzeSection({
                 {view.chartLabel} across logged sessions
               </p>
             </div>
-            <span className="text-sm text-slate-400 dark:text-slate-500">
+            <span className="text-sm text-slate-500 dark:text-slate-400">
               {view.sessions.length}{" "}
               {view.sessions.length === 1 ? "session" : "sessions"}
             </span>
@@ -507,7 +507,7 @@ function BenchmarkCard({
           <h3 className="font-semibold text-slate-800 dark:text-slate-100">
             Benchmarks
           </h3>
-          <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
             {exercise} estimated 1RM progression · for your bodyweight & sex
           </p>
         </div>
@@ -515,7 +515,7 @@ function BenchmarkCard({
           <div className={`text-sm font-semibold ${currentLevel.color}`}>
             {currentLevel.label}
           </div>
-          <div className="text-xs text-slate-400 dark:text-slate-500">
+          <div className="text-xs text-slate-500 dark:text-slate-400">
             {currentRatio.toFixed(2)}× BW
           </div>
         </div>
@@ -574,7 +574,7 @@ function BenchmarkCard({
                     <span className={row.color}>{row.label}</span>
                   )}
                 </div>
-                <div className="mt-0.5 text-xs font-medium text-slate-400 dark:text-slate-500">
+                <div className="mt-0.5 text-xs font-medium text-slate-500 dark:text-slate-400">
                   <span>{fmtWeight(row.valueKg, weightUnit)}</span>
                   <span> · </span>
                   <span>{formatRatio(row.valueKg / bodyweightKg)}× BW</span>

@@ -76,7 +76,7 @@ export default async function CardioSection() {
                   <h3 className="mb-1 font-semibold text-slate-800 dark:text-slate-100">
                     Weekly volume
                   </h3>
-                  <p className="mb-2 text-xs text-slate-400 dark:text-slate-500">
+                  <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
                     Minutes per week, by activity
                   </p>
                   <StackedBarCard

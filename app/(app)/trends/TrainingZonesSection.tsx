@@ -30,7 +30,7 @@ export default async function TrainingZonesSection() {
         <h3 className="mb-1 font-semibold text-slate-800 dark:text-slate-100">
           Training intensity (HR zones)
         </h3>
-        <p className="mb-4 text-xs text-slate-400 dark:text-slate-500">
+        <p className="mb-4 text-xs text-slate-500 dark:text-slate-400">
           Weekly minutes per heart-rate zone, from per-minute HR during your
           logged workouts. Longevity training tracks weekly Zone 2 volume and
           the easy/hard (80/20) split.
@@ -106,7 +106,7 @@ export default async function TrainingZonesSection() {
                     title={`Hard (Z3–Z5): ${data.split.hardMin} min`}
                   />
                 </div>
-                <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                   Easy = at/below the aerobic threshold (Zones 1–2); hard =
                   above it (Zones 3–5). A polarized base keeps ~80% easy.
                 </p>
@@ -127,7 +127,7 @@ export default async function TrainingZonesSection() {
                         <span className="font-medium text-slate-700 dark:text-slate-200">
                           {z.name}
                         </span>{" "}
-                        <span className="text-slate-400 dark:text-slate-500">
+                        <span className="text-slate-500 dark:text-slate-400">
                           {z.label}
                         </span>
                       </td>
@@ -138,7 +138,7 @@ export default async function TrainingZonesSection() {
                   ))}
                 </tbody>
               </table>
-              <p className="mt-3 text-xs text-slate-400 dark:text-slate-500">
+              <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
                 {model.formula} A lab-tested lactate/ventilatory threshold beats
                 any formula — set a max-HR override in{" "}
                 <Link

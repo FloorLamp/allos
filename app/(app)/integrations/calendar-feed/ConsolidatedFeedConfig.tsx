@@ -147,7 +147,7 @@ export default function ConsolidatedFeedConfig({
         data-testid="family-feed-config"
       >
         <div className="flex items-center gap-2">
-          <IconUsersGroup className="h-5 w-5 text-slate-400 dark:text-slate-500" />
+          <IconUsersGroup className="h-5 w-5 text-slate-500 dark:text-slate-400" />
           <h2 className="font-semibold text-slate-800 dark:text-slate-100">
             Family calendar — one feed for everyone
           </h2>
@@ -180,7 +180,7 @@ export default function ConsolidatedFeedConfig({
   return (
     <div className="card max-w-3xl space-y-4" data-testid="family-feed-config">
       <div className="flex items-center gap-2">
-        <IconUsersGroup className="h-5 w-5 text-slate-400 dark:text-slate-500" />
+        <IconUsersGroup className="h-5 w-5 text-slate-500 dark:text-slate-400" />
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Family calendar
         </h2>

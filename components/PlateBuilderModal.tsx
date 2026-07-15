@@ -376,7 +376,7 @@ export default function PlateBuilderModal({
           <button
             type="button"
             onClick={onClose}
-            className="shrink-0 text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300"
+            className="shrink-0 text-slate-500 hover:text-slate-600 dark:text-slate-400 dark:hover:text-slate-300"
             aria-label="Close"
           >
             <IconX className="h-5 w-5" />
@@ -480,7 +480,7 @@ export default function PlateBuilderModal({
             ))}
           </div>
           {atPlateLimit && (
-            <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
               Max {MAX_PLATES_PER_SIDE} plates per side.
             </p>
           )}
@@ -501,7 +501,7 @@ export default function PlateBuilderModal({
             )}
           </div>
           {plates.length === 0 ? (
-            <p className="mt-1 text-sm text-slate-400 dark:text-slate-500">
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
               No plates yet — tap a plate above.
             </p>
           ) : (
@@ -534,13 +534,13 @@ export default function PlateBuilderModal({
         {/* Total + actions */}
         <div className="mt-5 flex items-center justify-between border-t border-slate-100 pt-4 dark:border-slate-800">
           <div>
-            <div className="text-xs uppercase tracking-wide text-slate-400 dark:text-slate-500">
+            <div className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
               Total
             </div>
             <div className="text-2xl font-bold tabular-nums text-slate-900 dark:text-slate-100">
               {total} {unit}
             </div>
-            <div className="text-xs text-slate-400 dark:text-slate-500">
+            <div className="text-xs text-slate-500 dark:text-slate-400">
               {effBarWeight} {unit} bar + {round(perSide * 2, 2)} {unit} plates
             </div>
           </div>

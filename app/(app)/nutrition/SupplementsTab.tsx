@@ -400,7 +400,7 @@ export default async function SupplementsTab() {
         className="mb-4 flex flex-wrap items-center gap-2"
         data-testid="situations-bar"
       >
-        <span className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+        <span className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
           Situations
         </span>
         {situationChips.map((sit) => {
@@ -436,7 +436,7 @@ export default async function SupplementsTab() {
           className="mb-4 flex flex-wrap items-center gap-2"
           data-testid="situation-bridge"
         >
-          <span className="text-xs text-slate-400 dark:text-slate-500">
+          <span className="text-xs text-slate-500 dark:text-slate-400">
             Suggested from your conditions:
           </span>
           {bridgeSuggestions.map((sit) => (
@@ -556,7 +556,7 @@ export default async function SupplementsTab() {
 
           {notScheduled.length > 0 && (
             <details>
-              <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+              <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                 Not scheduled today ({notScheduled.length})
               </summary>
               <div className="mt-2 space-y-3">
@@ -567,7 +567,7 @@ export default async function SupplementsTab() {
 
           {paused.length > 0 && (
             <details>
-              <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+              <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                 Paused ({paused.length})
               </summary>
               <div className="mt-2 space-y-3">
@@ -585,7 +585,7 @@ export default async function SupplementsTab() {
         </summary>
         <SuggestionsForm />
         {suggestions.length === 0 ? (
-          <p className="mt-3 text-sm text-slate-400 dark:text-slate-500">
+          <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">
             No pending suggestions. Generate some from your recent labs or a
             note above. Requires AI to be configured (ANTHROPIC_API_KEY or
             AI_BASE_URL).
@@ -607,7 +607,7 @@ export default async function SupplementsTab() {
                       {sug.name}
                     </span>
                     {sug.dosage && (
-                      <span className="text-sm text-slate-400 dark:text-slate-500">
+                      <span className="text-sm text-slate-500 dark:text-slate-400">
                         · {sug.dosage}
                       </span>
                     )}
@@ -624,7 +624,7 @@ export default async function SupplementsTab() {
                     {sug.rationale}
                   </p>
                   {sug.source_detail && (
-                    <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                       {sug.source_detail}
                     </p>
                   )}

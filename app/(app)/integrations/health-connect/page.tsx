@@ -116,7 +116,7 @@ export default async function HealthConnectPage() {
                 </span>
               )}
               {conn?.last_sync_at && (
-                <span className="text-xs text-slate-400 dark:text-slate-500">
+                <span className="text-xs text-slate-500 dark:text-slate-400">
                   Last sync: {conn.last_sync_at} UTC
                 </span>
               )}
@@ -236,7 +236,7 @@ export default async function HealthConnectPage() {
                 .
               </li>
             </ol>
-            <p className="text-xs text-slate-400 dark:text-slate-500">
+            <p className="text-xs text-slate-500 dark:text-slate-400">
               Steps, distance, calories, and heart-rate detail sync into Body
               Metrics charts. Nutrition works the same way: enable Health
               Connect sync in a food tracker (MyFitnessPal, Cronometer, Lose

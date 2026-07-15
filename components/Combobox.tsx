@@ -144,7 +144,7 @@ export default function Combobox({
           className="absolute z-50 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-black/10 bg-white py-1 shadow-lg dark:border-white/10 dark:bg-ink-900"
         >
           {filtered.length === 0 && !allowFreeText ? (
-            <li className="px-3 py-2 text-sm text-slate-400 dark:text-slate-500">
+            <li className="px-3 py-2 text-sm text-slate-500 dark:text-slate-400">
               {emptyLabel}
             </li>
           ) : (

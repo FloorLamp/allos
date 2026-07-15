@@ -31,7 +31,7 @@ export default async function GenomicsPage() {
 
         <div className="min-w-0 space-y-4">
           <GenomicVariantForm action={addGenomicVariant} />
-          <p className="px-1 text-xs text-slate-400 dark:text-slate-500">
+          <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
             Informational only, not medical advice or genetic counseling.
             Variant data is stored on this server and is never sent to any
             external service except when you upload a report for extraction.

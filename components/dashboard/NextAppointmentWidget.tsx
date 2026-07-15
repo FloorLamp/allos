@@ -24,7 +24,7 @@ export default function NextAppointmentWidget({
         linkLabel="All"
       />
       {!appointment ? (
-        <p className="text-sm text-slate-400 dark:text-slate-500">
+        <p className="text-sm text-slate-500 dark:text-slate-400">
           No upcoming appointments.
         </p>
       ) : (
@@ -40,7 +40,7 @@ export default function NextAppointmentWidget({
             </div>
             <div className="text-sm text-slate-600 dark:text-slate-300">
               {appointment.whenLabel}
-              <span className="text-slate-400 dark:text-slate-500">
+              <span className="text-slate-500 dark:text-slate-400">
                 {" "}
                 · {appointment.dueText}
               </span>

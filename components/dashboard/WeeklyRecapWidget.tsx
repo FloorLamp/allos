@@ -15,7 +15,7 @@ export default function WeeklyRecapWidget({ recap }: { recap: WeeklyRecap }) {
         linkLabel="Timeline"
       />
       {recap.isEmpty || recap.lines.length === 0 ? (
-        <p className="text-sm text-slate-400 dark:text-slate-500">
+        <p className="text-sm text-slate-500 dark:text-slate-400">
           Nothing logged in the last seven days — log a workout or a weigh-in to
           start your recap.
         </p>
@@ -41,7 +41,7 @@ export default function WeeklyRecapWidget({ recap }: { recap: WeeklyRecap }) {
                     {l.value}
                   </span>
                   {l.delta && (
-                    <span className="ml-2 text-xs text-slate-400 dark:text-slate-500">
+                    <span className="ml-2 text-xs text-slate-500 dark:text-slate-400">
                       {l.delta}
                     </span>
                   )}

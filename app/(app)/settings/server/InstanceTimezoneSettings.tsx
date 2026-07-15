@@ -44,7 +44,7 @@ export default function InstanceTimezoneSettings({
         <SaveStatus pending={pending} savedAt={savedAt} error={error} />
       </div>
 
-      <p className="text-xs text-slate-400 dark:text-slate-500">
+      <p className="text-xs text-slate-500 dark:text-slate-400">
         The timezone a newly created profile starts with, and the fallback for
         any profile that hasn’t set its own. Changing it does not alter existing
         profiles — each has its own timezone on Settings → Profile.

@@ -169,7 +169,7 @@ function EventCard({
             </span>
             {canExpand && (
               <span
-                className="inline-flex h-5 w-5 items-center justify-center rounded-full text-slate-400 transition group-open:rotate-180 group-hover:bg-white/70 group-hover:text-slate-700 dark:text-slate-500 dark:group-hover:bg-black/10 dark:group-hover:text-slate-200"
+                className="inline-flex h-5 w-5 items-center justify-center rounded-full text-slate-500 transition group-open:rotate-180 group-hover:bg-white/70 group-hover:text-slate-700 dark:text-slate-400 dark:group-hover:bg-black/10 dark:group-hover:text-slate-200"
                 aria-hidden
               >
                 <IconChevronDown className="h-3.5 w-3.5" stroke={2} />
@@ -435,7 +435,7 @@ export default async function TimelinePage(props: {
                     />
                     {formatLongDate(day.date)}
                   </div>
-                  <div className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+                  <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                     {day.events.length} event
                     {day.events.length === 1 ? "" : "s"}
                   </div>
@@ -473,7 +473,7 @@ export default async function TimelinePage(props: {
                 </TimelineFilterLink>
               </div>
             ) : (
-              <p className="pb-2 pt-4 text-center text-sm text-slate-400 dark:text-slate-500">
+              <p className="pb-2 pt-4 text-center text-sm text-slate-500 dark:text-slate-400">
                 Showing the latest {MAX_SHOW} events — narrow the date range to
                 see more.
               </p>

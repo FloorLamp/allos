@@ -306,7 +306,7 @@ export default function EquipmentManager({
         <div className="space-y-4">
           {activeGroups.map((g) => (
             <div key={g.label}>
-              <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+              <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                 {g.label}
               </h3>
               <ul className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -316,7 +316,7 @@ export default function EquipmentManager({
           ))}
           {retired.length > 0 && (
             <div>
-              <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+              <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                 Retired
               </h3>
               <ul className="divide-y divide-slate-100 dark:divide-slate-800">

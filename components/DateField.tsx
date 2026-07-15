@@ -229,7 +229,7 @@ export default function DateField({
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-label="Open calendar"
-        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 transition hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300"
+        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 transition hover:text-slate-600 dark:text-slate-400 dark:hover:text-slate-300"
       >
         <svg
           viewBox="0 0 24 24"
@@ -244,7 +244,7 @@ export default function DateField({
       </button>
 
       {showCountdown && validISO(val) && (
-        <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           {daysRemainingLabel(val, todayStr)}
         </p>
       )}
@@ -298,7 +298,7 @@ export default function DateField({
                   type="button"
                   onClick={() => shift(-1)}
                   aria-label="Previous month"
-                  className="flex h-8 w-8 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-500 dark:hover:bg-ink-800 dark:hover:text-slate-200"
+                  className="flex h-8 w-8 items-center justify-center rounded text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-200"
                 >
                   <IconChevronLeft className="h-4 w-4" />
                 </button>
@@ -306,14 +306,14 @@ export default function DateField({
                   type="button"
                   onClick={() => shift(1)}
                   aria-label="Next month"
-                  className="flex h-8 w-8 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-500 dark:hover:bg-ink-800 dark:hover:text-slate-200"
+                  className="flex h-8 w-8 items-center justify-center rounded text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-200"
                 >
                   <IconChevronRight className="h-4 w-4" />
                 </button>
               </div>
             </div>
 
-            <div className="grid grid-cols-7 text-center text-xs font-medium text-slate-400 dark:text-slate-500">
+            <div className="grid grid-cols-7 text-center text-xs font-medium text-slate-500 dark:text-slate-400">
               {dowOrder.map((wd, i) => (
                 <div key={i}>{DOW[wd]}</div>
               ))}

@@ -89,7 +89,7 @@ export default async function BiomarkersSection({
             <h3 className="font-semibold text-slate-800 dark:text-slate-100">
               ✦ Lab-trend interpretation
             </h3>
-            <p className="max-w-lg text-xs text-slate-400 dark:text-slate-500">
+            <p className="max-w-lg text-xs text-slate-500 dark:text-slate-400">
               An AI read of your recent lab movements in the context of your
               medications and conditions. Observations, not diagnoses — raise
               anything concerning with a clinician.
@@ -104,7 +104,7 @@ export default async function BiomarkersSection({
         {labTrend && (
           <div className="border-t border-black/5 pt-3 dark:border-white/10">
             <div className="mb-1 flex items-center justify-between gap-2">
-              <span className="text-xs text-slate-400 dark:text-slate-500">
+              <span className="text-xs text-slate-500 dark:text-slate-400">
                 As of {formatLongDate(labTrend.period_end)}
               </span>
               <span className="badge bg-slate-100 text-slate-500 dark:bg-ink-800 dark:text-slate-400">
@@ -259,7 +259,7 @@ export default async function BiomarkersSection({
                       <td className="td whitespace-nowrap">
                         {r.date}
                         {r.is_latest ? (
-                          <span className="ml-1 text-xs text-slate-400 dark:text-slate-500">
+                          <span className="ml-1 text-xs text-slate-500 dark:text-slate-400">
                             · {relative}
                           </span>
                         ) : null}

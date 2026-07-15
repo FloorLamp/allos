@@ -65,7 +65,7 @@ export default async function ConditionsPage(props: {
 
         <div className="min-w-0 space-y-4">
           <ConditionForm action={addCondition} />
-          <p className="px-1 text-xs text-slate-400 dark:text-slate-500">
+          <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
             Informational only, not medical advice. Imported problems come from
             uploaded health records (CCD Active Problems section).
           </p>

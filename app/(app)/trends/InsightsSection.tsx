@@ -51,7 +51,7 @@ export default async function InsightsSection({ range }: { range: DateRange }) {
         >
           <div className="mr-1">
             <div className="label">Period recap</div>
-            <p className="max-w-md text-xs text-slate-400 dark:text-slate-500">
+            <p className="max-w-md text-xs text-slate-500 dark:text-slate-400">
               An AI narrative of your training, adherence, and body-metric
               trends over the last week or month, grounded in your recap data.
               Uses Claude when <code>ANTHROPIC_API_KEY</code> is set; otherwise
@@ -110,7 +110,7 @@ export default async function InsightsSection({ range }: { range: DateRange }) {
           <SubmitButton pendingLabel="Generating…">
             ✦ Generate analysis
           </SubmitButton>
-          <p className="text-xs text-slate-400 dark:text-slate-500">
+          <p className="text-xs text-slate-500 dark:text-slate-400">
             AI-generated daily analysis of your activity, metrics, and goals.
             Uses Claude when <code>ANTHROPIC_API_KEY</code> is set; otherwise a
             built-in summary is generated.

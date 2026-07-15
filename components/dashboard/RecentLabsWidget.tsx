@@ -42,7 +42,7 @@ export default function RecentLabsWidget({
         linkLabel="All labs"
       />
       {rows.length === 0 ? (
-        <p className="text-sm text-slate-400 dark:text-slate-500">
+        <p className="text-sm text-slate-500 dark:text-slate-400">
           No recent lab results.
         </p>
       ) : (
@@ -70,7 +70,7 @@ export default function RecentLabsWidget({
                 </span>
                 <span
                   data-testid="recent-lab-date"
-                  className="hidden w-24 shrink-0 whitespace-nowrap text-right text-xs text-slate-400 dark:text-slate-500 sm:block"
+                  className="hidden w-24 shrink-0 whitespace-nowrap text-right text-xs text-slate-500 dark:text-slate-400 sm:block"
                 >
                   {formatRelativeDate(r.date, today)}
                 </span>

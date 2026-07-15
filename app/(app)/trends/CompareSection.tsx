@@ -114,7 +114,7 @@ export default async function CompareSection({
                 {corr.label} · r = {r!.toFixed(2)} ({paired} shared)
               </span>
             ) : (
-              <span className="text-xs text-slate-400 dark:text-slate-500">
+              <span className="text-xs text-slate-500 dark:text-slate-400">
                 {paired < 2
                   ? "Not enough shared dates to correlate"
                   : "No correlation (a series is flat)"}
@@ -134,7 +134,7 @@ export default async function CompareSection({
             annotations={annotations}
           />
 
-          <p className="text-xs text-slate-400 dark:text-slate-500">
+          <p className="text-xs text-slate-500 dark:text-slate-400">
             Correlation is not causation — an overlay only shows whether two
             series moved together over the dates they share.
           </p>

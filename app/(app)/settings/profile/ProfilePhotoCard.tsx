@@ -38,7 +38,7 @@ export default function ProfilePhotoCard({
           onDone={() => router.refresh()}
         />
       </div>
-      <p className="text-xs text-slate-400 dark:text-slate-500">
+      <p className="text-xs text-slate-500 dark:text-slate-400">
         {disabled
           ? "Photo changes are disabled in demo."
           : "PNG, JPEG, or WebP, up to 5 MB. Shown as your avatar in the profile switcher."}

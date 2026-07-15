@@ -33,7 +33,7 @@ export default function EquipmentTrend({
 
   return (
     <div>
-      <div className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+      <div className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
         {label}
       </div>
       <svg

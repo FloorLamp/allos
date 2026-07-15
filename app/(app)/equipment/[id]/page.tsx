@@ -35,14 +35,14 @@ function Stat({
       data-testid={testId}
       className="rounded-lg border border-black/5 bg-white/60 px-4 py-3 dark:border-white/10 dark:bg-black/10"
     >
-      <div className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+      <div className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
         {label}
       </div>
       <div className="mt-1 text-lg font-semibold tabular-nums text-slate-800 dark:text-slate-100">
         {value}
       </div>
       {sub ? (
-        <div className="text-xs text-slate-400 dark:text-slate-500">{sub}</div>
+        <div className="text-xs text-slate-500 dark:text-slate-400">{sub}</div>
       ) : null}
     </div>
   );
@@ -161,7 +161,7 @@ export default async function EquipmentDetailPage(props: {
         </div>
       ) : (
         <p
-          className="mt-6 rounded-lg border border-dashed border-black/10 px-4 py-6 text-center text-sm text-slate-400 dark:border-white/10 dark:text-slate-500"
+          className="mt-6 rounded-lg border border-dashed border-black/10 px-4 py-6 text-center text-sm text-slate-500 dark:border-white/10 dark:text-slate-400"
           data-testid="equipment-no-usage"
         >
           No sessions have used this equipment yet. Tag a workout with it to
@@ -186,7 +186,7 @@ export default async function EquipmentDetailPage(props: {
                   <span className="min-w-0 truncate text-slate-800 dark:text-slate-100">
                     {s.title}
                   </span>
-                  <span className="flex shrink-0 items-center gap-3 tabular-nums text-xs text-slate-400 dark:text-slate-500">
+                  <span className="flex shrink-0 items-center gap-3 tabular-nums text-xs text-slate-500 dark:text-slate-400">
                     {showsDistance && s.distanceKm > 0 ? (
                       <span>
                         {round(kmTo(s.distanceKm, units.distanceUnit), 2)}{" "}

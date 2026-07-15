@@ -123,7 +123,7 @@ export default function ProfileNotificationSettings({
         <SaveStatus pending={pending} savedAt={savedAt} error={error} />
       </div>
 
-      <p className="text-xs text-slate-400 dark:text-slate-500">
+      <p className="text-xs text-slate-500 dark:text-slate-400">
         Get supplement reminders in Telegram with one-tap “taken” buttons. Find
         your chat id at{" "}
         <code>api.telegram.org/bot&lt;token&gt;/getUpdates</code>.
@@ -173,7 +173,7 @@ export default function ProfileNotificationSettings({
                 />
                 Log food from Telegram
               </label>
-              <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                 A quick nudge at your supplement times with one-tap buttons for
                 your most-eaten foods. Tap to log a serving — your full food log
                 stays on the Nutrition page.
@@ -184,7 +184,7 @@ export default function ProfileNotificationSettings({
           {/* Schedule — an hourly cron (npm run notify) sends each slot at its hour. */}
           <div className="border-t border-slate-100 pt-5 dark:border-slate-800">
             <label className="label">Schedule</label>
-            <p className="mb-2 text-xs text-slate-400 dark:text-slate-500">
+            <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
               Run <code>npm run notify</code> hourly (cron); each slot sends at
               its hour (this profile’s timezone).
             </p>
@@ -227,7 +227,7 @@ export default function ProfileNotificationSettings({
               />
               Workout reminder
             </label>
-            <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
               Sent on the usual training schedule — {workoutSummary} — when
               behind on the weekly routine.
             </p>
@@ -237,7 +237,7 @@ export default function ProfileNotificationSettings({
               yesterday's activities/adherence/weight, anything new to look at). */}
           <div className="border-t border-slate-100 pt-5 dark:border-slate-800">
             <label className="label">Morning digest</label>
-            <p className="mb-2 text-xs text-slate-400 dark:text-slate-500">
+            <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
               A once-a-day summary at the hour below (this profile’s timezone).
               Skips sections with nothing to report.
             </p>
@@ -264,7 +264,7 @@ export default function ProfileNotificationSettings({
               (workouts, volume, PRs, adherence, weight, streak). */}
           <div className="border-t border-slate-100 pt-5 dark:border-slate-800">
             <label className="label">Weekly recap</label>
-            <p className="mb-2 text-xs text-slate-400 dark:text-slate-500">
+            <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
               A once-a-week summary of your last seven days, on the day and hour
               below (this profile’s timezone). Skips weeks with nothing to
               report.
@@ -325,7 +325,7 @@ export default function ProfileNotificationSettings({
               />
               Milestone alerts
             </label>
-            <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
               A quiet note when you hit a milestone. Milestones always appear on
               your Timeline either way.
             </p>
@@ -345,7 +345,7 @@ export default function ProfileNotificationSettings({
               />
               Preventive-care reminders
             </label>
-            <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
               A nudge (and digest lines) when a recommended checkup or screening
               is due or overdue. Due items still appear on your Upcoming page
               either way. Informational only — not medical advice.
@@ -364,7 +364,7 @@ export default function ProfileNotificationSettings({
         data-testid="quiet-hours"
       >
         <label className="label">Quiet hours</label>
-        <p className="mb-2 text-xs text-slate-400 dark:text-slate-500">
+        <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
           Non-urgent nudges (refill, preventive, milestone) are only sent
           between these hours (this profile’s timezone). Set an overnight span
           like 20:00 → 08:00 for a night-shift rhythm. Urgent medication
@@ -384,7 +384,7 @@ export default function ProfileNotificationSettings({
               </option>
             ))}
           </select>
-          <span className="text-sm text-slate-400 dark:text-slate-500">to</span>
+          <span className="text-sm text-slate-500 dark:text-slate-400">to</span>
           <select
             value={String(wakingEnd)}
             onChange={(e) => setWakingEnd(Number(e.target.value))}

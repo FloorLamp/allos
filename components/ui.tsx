@@ -50,7 +50,7 @@ export function StatCard({
         {value}
       </div>
       {sub && (
-        <div className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+        <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           {sub}
         </div>
       )}
@@ -61,7 +61,7 @@ export function StatCard({
 
 export function EmptyState({ message }: { message: string }) {
   return (
-    <div className="rounded-xl border border-dashed border-black/10 bg-white p-10 text-center text-sm text-slate-400 dark:border-white/10 dark:bg-ink-900 dark:text-slate-500">
+    <div className="rounded-xl border border-dashed border-black/10 bg-white p-10 text-center text-sm text-slate-500 dark:border-white/10 dark:bg-ink-900 dark:text-slate-400">
       {message}
     </div>
   );

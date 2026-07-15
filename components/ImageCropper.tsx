@@ -370,7 +370,7 @@ export default function ImageCropper({
         </div>
 
         <div className="mt-4 flex items-center gap-3">
-          <span className="text-xs text-slate-400 dark:text-slate-500">−</span>
+          <span className="text-xs text-slate-500 dark:text-slate-400">−</span>
           <input
             type="range"
             min={1}
@@ -385,7 +385,7 @@ export default function ImageCropper({
             className="h-1 flex-1 cursor-pointer accent-brand-600"
             aria-label="Zoom"
           />
-          <span className="text-xs text-slate-400 dark:text-slate-500">+</span>
+          <span className="text-xs text-slate-500 dark:text-slate-400">+</span>
         </div>
 
         <div className="mt-5 flex justify-end gap-2">

@@ -132,7 +132,7 @@ function RpeStepper({
         tabIndex={-1}
         onClick={() => onChange(stepRpe(value, -1))}
         aria-label="Decrease RPE"
-        className="flex h-7 w-4 shrink-0 items-center justify-center font-semibold text-slate-400 hover:bg-slate-100 hover:text-brand-600 dark:text-slate-500 dark:hover:bg-ink-800 dark:hover:text-brand-400"
+        className="flex h-7 w-4 shrink-0 items-center justify-center font-semibold text-slate-500 hover:bg-slate-100 hover:text-brand-600 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-brand-400"
       >
         −
       </button>
@@ -152,7 +152,7 @@ function RpeStepper({
         tabIndex={-1}
         onClick={() => onChange(stepRpe(value, 1))}
         aria-label="Increase RPE"
-        className="flex h-7 w-4 shrink-0 items-center justify-center font-semibold text-slate-400 hover:bg-slate-100 hover:text-brand-600 dark:text-slate-500 dark:hover:bg-ink-800 dark:hover:text-brand-400"
+        className="flex h-7 w-4 shrink-0 items-center justify-center font-semibold text-slate-500 hover:bg-slate-100 hover:text-brand-600 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-brand-400"
       >
         +
       </button>
@@ -380,7 +380,7 @@ export default function StrengthSets({
       onClick={() => onPlateTarget(si, field)}
       title="Plate builder"
       aria-label="Open plate builder"
-      className="flex h-9 w-7 shrink-0 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-brand-600 dark:text-slate-500 dark:hover:bg-ink-800 dark:hover:text-brand-400"
+      className="flex h-9 w-7 shrink-0 items-center justify-center rounded text-slate-500 hover:bg-slate-100 hover:text-brand-600 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-brand-400"
     >
       <IconBarbell className="h-4 w-4" />
     </button>
@@ -491,7 +491,7 @@ export default function StrengthSets({
             type="button"
             onClick={() => setGuideOpen(true)}
             data-testid="exercise-guide-open"
-            className="inline-flex items-center gap-1 text-xs font-medium text-slate-400 transition hover:text-brand-600 dark:text-slate-500 dark:hover:text-brand-400"
+            className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 transition hover:text-brand-600 dark:text-slate-400 dark:hover:text-brand-400"
           >
             <IconInfoCircle className="h-4 w-4" />
             How to
@@ -627,7 +627,7 @@ export default function StrengthSets({
           data-testid="recent-sessions"
           className="mt-2 rounded-md border border-black/10 bg-white px-2.5 py-1.5 text-xs dark:border-white/10 dark:bg-ink-900"
         >
-          <div className="font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+          <div className="font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
             Recent
           </div>
           <ul className="mt-0.5 space-y-0.5">
@@ -636,7 +636,7 @@ export default function StrengthSets({
                 key={i}
                 className="flex justify-between gap-3 text-slate-600 dark:text-slate-300"
               >
-                <span className="shrink-0 text-slate-400 dark:text-slate-500">
+                <span className="shrink-0 text-slate-500 dark:text-slate-400">
                   {formatLongDate(sess.date)}
                 </span>
                 <span className="flex items-center gap-1 tabular-nums">
@@ -798,7 +798,7 @@ export default function StrengthSets({
           editor context visible, so the row returns to normal flow there. */}
       <div
         data-testid="set-column-headings"
-        className="sticky top-11 z-[9] -mx-1 mt-2 flex items-center gap-2 bg-white/95 px-1 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400 backdrop-blur md:static md:mx-0 md:bg-transparent md:px-0 md:backdrop-blur-none dark:bg-ink-900/95 dark:text-slate-500 dark:md:bg-transparent"
+        className="sticky top-11 z-[9] -mx-1 mt-2 flex items-center gap-2 bg-white/95 px-1 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500 backdrop-blur md:static md:mx-0 md:bg-transparent md:px-0 md:backdrop-blur-none dark:bg-ink-900/95 dark:text-slate-400 dark:md:bg-transparent"
       >
         <span className="w-12 shrink-0">Set</span>
         {!timed && !isBodyweight(p.name) ? (
@@ -831,7 +831,7 @@ export default function StrengthSets({
       <div className="mt-2 space-y-2">
         {p.sets.map((s, si) => (
           <div key={si} className="flex items-start gap-2">
-            <span className="w-12 shrink-0 pt-2 text-xs font-medium text-slate-400 dark:text-slate-500">
+            <span className="w-12 shrink-0 pt-2 text-xs font-medium text-slate-500 dark:text-slate-400">
               Set {si + 1}
             </span>
             {p.perSide ? (
@@ -844,7 +844,7 @@ export default function StrengthSets({
                   const flags = sideFlags(sideW, sideR, sideD);
                   return (
                     <div key={sideIdx} className="flex items-center gap-2">
-                      <span className="w-4 shrink-0 text-xs font-semibold text-slate-400 dark:text-slate-500">
+                      <span className="w-4 shrink-0 text-xs font-semibold text-slate-500 dark:text-slate-400">
                         {isRight ? "R" : "L"}
                       </span>
                       {!timed && !isBodyweight(p.name) ? (
@@ -867,7 +867,7 @@ export default function StrengthSets({
                               )
                             }
                             aria-label="Decrease weight"
-                            className="flex h-9 w-7 shrink-0 items-center justify-center text-sm font-semibold text-slate-400 hover:bg-slate-100 hover:text-brand-600 dark:text-slate-500 dark:hover:bg-ink-800 dark:hover:text-brand-400"
+                            className="flex h-9 w-7 shrink-0 items-center justify-center text-sm font-semibold text-slate-500 hover:bg-slate-100 hover:text-brand-600 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-brand-400"
                           >
                             −
                           </button>
@@ -903,7 +903,7 @@ export default function StrengthSets({
                               )
                             }
                             aria-label="Increase weight"
-                            className="flex h-9 w-7 shrink-0 items-center justify-center text-sm font-semibold text-slate-400 hover:bg-slate-100 hover:text-brand-600 dark:text-slate-500 dark:hover:bg-ink-800 dark:hover:text-brand-400"
+                            className="flex h-9 w-7 shrink-0 items-center justify-center text-sm font-semibold text-slate-500 hover:bg-slate-100 hover:text-brand-600 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-brand-400"
                           >
                             +
                           </button>
@@ -931,7 +931,7 @@ export default function StrengthSets({
                       )}
                       {showPlate &&
                         plateButton(si, isRight ? "weightRight" : "weight")}
-                      <span className="w-2 shrink-0 text-center text-slate-400 dark:text-slate-500">
+                      <span className="w-2 shrink-0 text-center text-slate-500 dark:text-slate-400">
                         ×
                       </span>
                       {!timed ? (
@@ -963,7 +963,7 @@ export default function StrengthSets({
                               stepReps(si, isRight ? "repsRight" : "reps", 1)
                             }
                             aria-label="Add a rep"
-                            className="flex h-9 w-7 shrink-0 items-center justify-center text-sm font-semibold text-slate-400 hover:bg-slate-100 hover:text-brand-600 dark:text-slate-500 dark:hover:bg-ink-800 dark:hover:text-brand-400"
+                            className="flex h-9 w-7 shrink-0 items-center justify-center text-sm font-semibold text-slate-500 hover:bg-slate-100 hover:text-brand-600 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-brand-400"
                           >
                             +
                           </button>
@@ -1004,7 +1004,7 @@ export default function StrengthSets({
                       tabIndex={-1}
                       onClick={() => stepWeight(si, "weight", -weightStep)}
                       aria-label="Decrease weight"
-                      className="flex h-9 w-7 shrink-0 items-center justify-center text-sm font-semibold text-slate-400 hover:bg-slate-100 hover:text-brand-600 dark:text-slate-500 dark:hover:bg-ink-800 dark:hover:text-brand-400"
+                      className="flex h-9 w-7 shrink-0 items-center justify-center text-sm font-semibold text-slate-500 hover:bg-slate-100 hover:text-brand-600 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-brand-400"
                     >
                       −
                     </button>
@@ -1039,7 +1039,7 @@ export default function StrengthSets({
                       tabIndex={-1}
                       onClick={() => stepWeight(si, "weight", weightStep)}
                       aria-label="Increase weight"
-                      className="flex h-9 w-7 shrink-0 items-center justify-center text-sm font-semibold text-slate-400 hover:bg-slate-100 hover:text-brand-600 dark:text-slate-500 dark:hover:bg-ink-800 dark:hover:text-brand-400"
+                      className="flex h-9 w-7 shrink-0 items-center justify-center text-sm font-semibold text-slate-500 hover:bg-slate-100 hover:text-brand-600 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-brand-400"
                     >
                       +
                     </button>
@@ -1077,7 +1077,7 @@ export default function StrengthSets({
                   />
                 )}
                 {showPlate && plateButton(si, "weight")}
-                <span className="w-2 shrink-0 text-center text-slate-400 dark:text-slate-500">
+                <span className="w-2 shrink-0 text-center text-slate-500 dark:text-slate-400">
                   ×
                 </span>
                 {!timed ? (
@@ -1107,7 +1107,7 @@ export default function StrengthSets({
                       tabIndex={-1}
                       onClick={() => stepReps(si, "reps", 1)}
                       aria-label="Add a rep"
-                      className="flex h-9 w-7 shrink-0 items-center justify-center text-sm font-semibold text-slate-400 hover:bg-slate-100 hover:text-brand-600 dark:text-slate-500 dark:hover:bg-ink-800 dark:hover:text-brand-400"
+                      className="flex h-9 w-7 shrink-0 items-center justify-center text-sm font-semibold text-slate-500 hover:bg-slate-100 hover:text-brand-600 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-brand-400"
                     >
                       +
                     </button>

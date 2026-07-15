@@ -30,7 +30,7 @@ export default function ActiveDaysStrip({
       className="lg:ml-auto lg:flex lg:shrink-0 lg:items-center lg:gap-3"
     >
       <div className="mb-1.5 flex items-baseline lg:mb-0">
-        <h2 className="text-xs font-semibold tracking-wide whitespace-nowrap text-slate-400 uppercase dark:text-slate-500">
+        <h2 className="text-xs font-semibold tracking-wide whitespace-nowrap text-slate-500 uppercase dark:text-slate-400">
           <span data-testid="active-days-label-compact" className="xl:hidden">
             {compactActiveDays}/14 days active
           </span>

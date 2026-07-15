@@ -50,7 +50,7 @@ export default function UnitPrefsForm({ prefs }: { prefs: UnitPrefs }) {
           <option value="kg">Kilograms (kg)</option>
           <option value="lb">Pounds (lb)</option>
         </select>
-        <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           Used for body weight, lifted weight, and benchmarks.
         </p>
       </div>
@@ -69,7 +69,7 @@ export default function UnitPrefsForm({ prefs }: { prefs: UnitPrefs }) {
           <option value="km">Kilometers (km)</option>
           <option value="mi">Miles (mi)</option>
         </select>
-        <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           Used for cardio and sport distances.
         </p>
       </div>

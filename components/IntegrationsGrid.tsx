@@ -60,7 +60,7 @@ export default function IntegrationsGrid({ profileId }: { profileId: number }) {
             </div>
 
             {lastEvent && (
-              <div className="mt-3 flex items-center gap-1.5 text-xs text-slate-400 dark:text-slate-500">
+              <div className="mt-3 flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
                 {!lastEvent.ok && (
                   <span
                     className="inline-block h-2 w-2 rounded-full bg-rose-500"

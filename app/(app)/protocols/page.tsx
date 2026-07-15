@@ -91,7 +91,7 @@ export default async function ProtocolsPage({
             equipment={equipment}
             template={template}
           />
-          <p className="px-1 text-xs text-slate-400 dark:text-slate-500">
+          <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
             Informational only, not medical advice. Comparisons are descriptive
             (mean/median shift with n per window), not statistical inference.
           </p>

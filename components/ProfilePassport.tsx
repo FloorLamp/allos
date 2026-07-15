@@ -65,14 +65,14 @@ function Fact({
 }) {
   return (
     <div>
-      <div className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+      <div className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
         {label}
       </div>
       <div className="mt-0.5 text-lg font-semibold text-slate-900 dark:text-slate-100">
         {value}
       </div>
       {sub != null && (
-        <div className="mt-0.5 text-xs text-slate-400 dark:text-slate-500">
+        <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
           {sub}
         </div>
       )}
@@ -82,7 +82,7 @@ function Fact({
 
 function Empty({ children }: { children: React.ReactNode }) {
   return (
-    <p className="text-sm text-slate-400 dark:text-slate-500">{children}</p>
+    <p className="text-sm text-slate-500 dark:text-slate-400">{children}</p>
   );
 }
 
@@ -243,7 +243,7 @@ export default function ProfilePassport({
                           </span>
                         )}
                         {a.evidence && (
-                          <span className="text-xs text-slate-400 dark:text-slate-500">
+                          <span className="text-xs text-slate-500 dark:text-slate-400">
                             {a.evidence}
                           </span>
                         )}
@@ -274,7 +274,7 @@ export default function ProfilePassport({
                         {c.triggers.join(", ")}
                       </span>{" "}
                       commonly cross-reacts with {c.related.join(", ")}.{" "}
-                      <span className="text-slate-400 dark:text-slate-500">
+                      <span className="text-slate-500 dark:text-slate-400">
                         ({c.label})
                       </span>
                     </li>
@@ -298,13 +298,13 @@ export default function ProfilePassport({
                     <span className="min-w-0 text-slate-800 dark:text-slate-200">
                       {c.name}
                       {c.code && (
-                        <span className="ml-1.5 text-xs text-slate-400 dark:text-slate-500">
+                        <span className="ml-1.5 text-xs text-slate-500 dark:text-slate-400">
                           {c.code}
                         </span>
                       )}
                     </span>
                     {c.onsetDate && (
-                      <span className="shrink-0 text-xs text-slate-400 dark:text-slate-500">
+                      <span className="shrink-0 text-xs text-slate-500 dark:text-slate-400">
                         since {fmtDate(c.onsetDate)}
                       </span>
                     )}
@@ -340,13 +340,13 @@ export default function ProfilePassport({
                         </span>
                       )}
                       {f.deceased && (
-                        <span className="ml-1.5 text-xs text-slate-400 dark:text-slate-500">
+                        <span className="ml-1.5 text-xs text-slate-500 dark:text-slate-400">
                           (deceased)
                         </span>
                       )}
                     </span>
                     {f.onsetAge != null && (
-                      <span className="shrink-0 text-xs text-slate-400 dark:text-slate-500">
+                      <span className="shrink-0 text-xs text-slate-500 dark:text-slate-400">
                         onset age {f.onsetAge}
                       </span>
                     )}
@@ -425,7 +425,7 @@ export default function ProfilePassport({
                     />
                   )}
                 </div>
-                <p className="text-xs text-slate-400 dark:text-slate-500">
+                <p className="text-xs text-slate-500 dark:text-slate-400">
                   Growth percentile for age &amp; sex (WHO/CDC) — not medical
                   advice.
                 </p>
@@ -455,7 +455,7 @@ export default function ProfilePassport({
                         flag={v.flag}
                       />
                       {v.date && (
-                        <span className="ml-2 text-xs text-slate-400 dark:text-slate-500">
+                        <span className="ml-2 text-xs text-slate-500 dark:text-slate-400">
                           {fmtDate(v.date)}
                         </span>
                       )}
@@ -493,7 +493,7 @@ export default function ProfilePassport({
                           )}
                         </span>
                         {m.date && (
-                          <span className="shrink-0 text-xs text-slate-400 dark:text-slate-500">
+                          <span className="shrink-0 text-xs text-slate-500 dark:text-slate-400">
                             since {fmtDate(m.date)}
                           </span>
                         )}
@@ -524,7 +524,7 @@ export default function ProfilePassport({
                           )}
                         </span>
                         {s.date && (
-                          <span className="shrink-0 text-xs text-slate-400 dark:text-slate-500">
+                          <span className="shrink-0 text-xs text-slate-500 dark:text-slate-400">
                             since {fmtDate(s.date)}
                           </span>
                         )}
@@ -563,7 +563,7 @@ export default function ProfilePassport({
                                   {badge.text}
                                 </span>
                               </td>
-                              <td className="py-1.5 text-right text-xs text-slate-400 dark:text-slate-500">
+                              <td className="py-1.5 text-right text-xs text-slate-500 dark:text-slate-400">
                                 {v.doses.length > 0 ? (
                                   <div className="flex flex-col gap-0.5">
                                     {v.doses.map((d, di) => (
@@ -638,7 +638,7 @@ export default function ProfilePassport({
                             flag={h.flag}
                           />
                         </td>
-                        <td className="py-1.5 text-right text-xs text-slate-400 dark:text-slate-500">
+                        <td className="py-1.5 text-right text-xs text-slate-500 dark:text-slate-400">
                           {fmtDate(h.date)}
                         </td>
                       </tr>
@@ -654,7 +654,7 @@ export default function ProfilePassport({
       </div>
 
       {/* Footer: generated date + disclaimer (screen + print). */}
-      <footer className="px-1 pb-4 text-xs text-slate-400 dark:text-slate-500">
+      <footer className="px-1 pb-4 text-xs text-slate-500 dark:text-slate-400">
         Generated {fmtDate(generatedAt)}. This summary is for informational
         purposes only and is not medical advice or a complete medical record.
       </footer>

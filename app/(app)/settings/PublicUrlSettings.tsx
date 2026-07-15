@@ -48,7 +48,7 @@ export default function PublicUrlSettings({
         <SaveStatus pending={pending} savedAt={savedAt} error={error} />
       </div>
 
-      <p className="text-xs text-slate-400 dark:text-slate-500">
+      <p className="text-xs text-slate-500 dark:text-slate-400">
         Where this app is reachable from the internet (e.g. via a reverse proxy
         or tunnel). Used by integrations that call back in — the Telegram
         webhook, the Strava OAuth callback, and the Health Connect ingest

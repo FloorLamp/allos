@@ -64,7 +64,7 @@ export default function ProvidersIndex({
       </div>
 
       {filtered.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-black/10 p-10 text-center text-sm text-slate-400 dark:border-white/10 dark:text-slate-500">
+        <p className="rounded-xl border border-dashed border-black/10 p-10 text-center text-sm text-slate-500 dark:border-white/10 dark:text-slate-400">
           No providers match. They’re added automatically when you import a
           health record’s care team.
         </p>
@@ -92,13 +92,13 @@ export default function ProvidersIndex({
                         {p.name}
                       </span>
                       {p.npi ? (
-                        <span className="block truncate text-xs tabular-nums text-slate-400 dark:text-slate-500">
+                        <span className="block truncate text-xs tabular-nums text-slate-500 dark:text-slate-400">
                           NPI {p.npi}
                         </span>
                       ) : null}
                     </span>
                   </span>
-                  <span className="shrink-0 text-xs text-slate-400 dark:text-slate-500">
+                  <span className="shrink-0 text-xs text-slate-500 dark:text-slate-400">
                     {p.activity > 0
                       ? `${p.activity} ${p.activity === 1 ? "record" : "records"}`
                       : "—"}
@@ -110,7 +110,7 @@ export default function ProvidersIndex({
         </ul>
       )}
 
-      <p className="mt-4 px-1 text-xs text-slate-400 dark:text-slate-500">
+      <p className="mt-4 px-1 text-xs text-slate-500 dark:text-slate-400">
         Record counts are {profileName}’s. Providers are shared across everyone
         on this instance.
       </p>

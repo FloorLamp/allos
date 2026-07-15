@@ -79,7 +79,7 @@ export default function ServerTelegramSettings({
         <SaveStatus pending={pending} savedAt={savedAt} error={error} />
       </div>
 
-      <p className="text-xs text-slate-400 dark:text-slate-500">
+      <p className="text-xs text-slate-500 dark:text-slate-400">
         The shared bot that delivers every profile’s reminders. Create one with
         @BotFather for the token. Each profile sets its own chat id and schedule
         on Settings → Profile.
@@ -144,7 +144,7 @@ export default function ServerTelegramSettings({
           </label>
         </div>
         {mode === "webhook" && (
-          <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
             Telegram POSTs button taps to{" "}
             <code className="break-all">
               {publicUrl || "<public URL>"}

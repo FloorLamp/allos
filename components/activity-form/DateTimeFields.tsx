@@ -118,7 +118,7 @@ export default function DateTimeFields({
                   durationDerived ? "text-slate-500 dark:text-slate-400" : ""
                 } ${durationError ? "border-rose-300 dark:border-rose-800" : ""}`}
               />
-              <span className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 text-xs text-slate-400 dark:text-slate-500">
+              <span className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 text-xs text-slate-500 dark:text-slate-400">
                 min
               </span>
             </div>

@@ -104,7 +104,7 @@ export default function RiskFactorsForm({
               <span className="block text-sm font-medium text-slate-700 dark:text-slate-200">
                 {label}
               </span>
-              <span className="block text-xs text-slate-400 dark:text-slate-500">
+              <span className="block text-xs text-slate-500 dark:text-slate-400">
                 {hint}
               </span>
             </span>
@@ -112,7 +112,7 @@ export default function RiskFactorsForm({
         ))}
       </div>
 
-      <p className="border-t border-black/5 pt-4 text-xs text-slate-400 dark:border-white/10 dark:text-slate-500">
+      <p className="border-t border-black/5 pt-4 text-xs text-slate-500 dark:border-white/10 dark:text-slate-400">
         Privacy: like the rest of this profile&rsquo;s medical passport, anyone
         granted access to this profile (and any admin) can see these.
       </p>

@@ -66,12 +66,12 @@ function ActivitySection({
                   {it.label}
                 </span>
                 {it.sublabel ? (
-                  <span className="block truncate text-xs text-slate-400 dark:text-slate-500">
+                  <span className="block truncate text-xs text-slate-500 dark:text-slate-400">
                     {it.sublabel}
                   </span>
                 ) : null}
               </span>
-              <span className="shrink-0 whitespace-nowrap text-xs text-slate-400 dark:text-slate-500">
+              <span className="shrink-0 whitespace-nowrap text-xs text-slate-500 dark:text-slate-400">
                 {it.date ? formatRecordDate(it.date, "") : ""}
               </span>
             </Link>
@@ -91,7 +91,7 @@ function RelationshipStat({
 }) {
   return (
     <div className="rounded-lg border border-black/5 bg-white/60 px-4 py-3 dark:border-white/10 dark:bg-black/10">
-      <div className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+      <div className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
         {label}
       </div>
       <div className="mt-1 text-sm font-semibold text-slate-800 dark:text-slate-100">
@@ -198,7 +198,7 @@ export default async function ProviderDetailPage(props: {
         </p>
         {totalActivity === 0 ? (
           <p
-            className="rounded-lg border border-dashed border-black/10 px-4 py-6 text-center text-sm text-slate-400 dark:border-white/10 dark:text-slate-500"
+            className="rounded-lg border border-dashed border-black/10 px-4 py-6 text-center text-sm text-slate-500 dark:border-white/10 dark:text-slate-400"
             data-testid="provider-no-activity"
           >
             {profile.name} has no records linked to this provider yet.
@@ -224,7 +224,7 @@ export default async function ProviderDetailPage(props: {
         />
       ) : null}
 
-      <p className="mt-6 px-1 text-xs text-slate-400 dark:text-slate-500">
+      <p className="mt-6 px-1 text-xs text-slate-500 dark:text-slate-400">
         Providers are a shared registry across everyone on this instance. The
         identity above is global; the activity is only {profile.name}’s.
       </p>

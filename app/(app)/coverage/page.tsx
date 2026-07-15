@@ -43,7 +43,7 @@ export default async function CoveragePage() {
         />
       )}
 
-      <p className="mt-8 text-xs leading-relaxed text-slate-400 dark:text-slate-500">
+      <p className="mt-8 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
         AI-generated context is descriptive only and{" "}
         <span className="font-medium">unverified</span> — it never sets a
         reference range, flag, or interaction. Curated data drives all clinical

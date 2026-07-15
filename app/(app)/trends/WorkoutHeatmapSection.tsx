@@ -19,7 +19,7 @@ export default async function WorkoutHeatmapSection() {
         <h3 className="mb-1 font-semibold text-slate-800 dark:text-slate-100">
           Workout density
         </h3>
-        <p className="mb-4 text-xs text-slate-400 dark:text-slate-500">
+        <p className="mb-4 text-xs text-slate-500 dark:text-slate-400">
           Every workout day over the last 12 months, shaded by how many sessions
           you logged. Hover a day for detail; click it to open that day on the
           Timeline.

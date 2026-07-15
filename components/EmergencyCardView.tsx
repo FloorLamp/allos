@@ -245,7 +245,7 @@ export default function EmergencyCardView({ card }: { card: EmergencyCard }) {
 
       <p
         data-testid="emergency-asof"
-        className="pt-1 text-center text-xs text-slate-400 dark:text-slate-500 print:text-black"
+        className="pt-1 text-center text-xs text-slate-500 dark:text-slate-400 print:text-black"
       >
         As of {formatAsOf(card.generatedAt)}. This is a self-reported summary,
         not a complete medical record — verify against the patient when

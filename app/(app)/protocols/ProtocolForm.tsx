@@ -204,7 +204,7 @@ export default function ProtocolForm({
               </option>
             ))}
           </select>
-          <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
             Link the device this experiment is about — e.g. which sauna.
           </p>
         </div>
@@ -266,7 +266,7 @@ export default function ProtocolForm({
             </span>
           </div>
         </div>
-        <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           Track how often you actually do the practice — reuses your weekly
           routine targets (e.g. sauna 4×/week).
         </p>

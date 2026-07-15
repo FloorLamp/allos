@@ -65,7 +65,7 @@ export default function TrainingZonesForm({
           onBlur={() => save({ maxHr, target })}
           className="input"
         />
-        <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           A lab or field-tested max HR beats the age formula (208 − 0.7 × age).
           Leave blank to use the age estimate
           {estimatedMaxHr != null ? ` (${estimatedMaxHr} bpm)` : ""}. A resting
@@ -91,7 +91,7 @@ export default function TrainingZonesForm({
           onBlur={() => save({ maxHr, target })}
           className="input"
         />
-        <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           The weekly aerobic-base goal the Trends → Fitness zone chart draws its
           target line against. 150 min/week is a common starting point; set 0 to
           hide the target.

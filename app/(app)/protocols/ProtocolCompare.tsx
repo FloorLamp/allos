@@ -98,7 +98,7 @@ export default function ProtocolCompare({
   }
   return (
     <div className="space-y-4" data-testid="protocol-compare">
-      <p className="text-xs text-slate-400 dark:text-slate-500">
+      <p className="text-xs text-slate-500 dark:text-slate-400">
         Baseline window {comparison.baselineWindow.start} –{" "}
         {comparison.baselineWindow.end} vs. intervention{" "}
         {comparison.interventionWindow.start} –{" "}

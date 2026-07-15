@@ -119,7 +119,7 @@ export default function BackupSettings({
         <SaveStatus pending={pending} savedAt={savedAt} error={error} />
       </div>
 
-      <p className="text-xs text-slate-400 dark:text-slate-500">
+      <p className="text-xs text-slate-500 dark:text-slate-400">
         A nightly compact snapshot of the database (
         <code>data/backups/allos-*.db</code>) is taken by the hourly notify tick
         at the hour below (instance timezone), then old snapshots are pruned to

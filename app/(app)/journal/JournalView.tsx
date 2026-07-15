@@ -316,7 +316,7 @@ export default function JournalView({
   // Honest search scope (issue #451): filters/search run over LOADED activities only,
   // so when older windows remain unfetched we say so rather than silently capping.
   const searchScopeNote = filtersActive && canFetchMore && (
-    <p className="text-center text-xs text-slate-400 dark:text-slate-500">
+    <p className="text-center text-xs text-slate-500 dark:text-slate-400">
       Only loaded activities are searched — load older days to widen the search.
     </p>
   );
@@ -510,7 +510,7 @@ export default function JournalView({
       type="button"
       onClick={dismissPanel}
       aria-label="Close details"
-      className="hidden text-slate-400 hover:text-slate-600 xl:block dark:text-slate-500 dark:hover:text-slate-300"
+      className="hidden text-slate-500 hover:text-slate-600 xl:block dark:text-slate-400 dark:hover:text-slate-300"
     >
       <IconX className="h-4 w-4" />
     </button>
@@ -595,7 +595,7 @@ export default function JournalView({
         >
           {weekSummary.targets.length > 0 && (
             <div className="lg:flex lg:min-w-0 lg:items-center lg:gap-3">
-              <h2 className="mb-1.5 shrink-0 text-xs font-semibold tracking-wide text-slate-400 uppercase lg:mb-0 dark:text-slate-500">
+              <h2 className="mb-1.5 shrink-0 text-xs font-semibold tracking-wide text-slate-500 uppercase lg:mb-0 dark:text-slate-400">
                 Weekly routine
               </h2>
               <WeeklyTargets targets={weekSummary.targets} />
@@ -613,7 +613,7 @@ export default function JournalView({
         <div className="relative min-w-48 lg:col-start-1 lg:row-start-1">
           <IconSearch
             aria-hidden
-            className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500"
+            className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-500 dark:text-slate-400"
             stroke={2}
           />
           <input
@@ -628,7 +628,7 @@ export default function JournalView({
               type="button"
               onClick={() => setQuery("")}
               aria-label="Clear search"
-              className="absolute top-1/2 right-1 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-ink-800 dark:hover:text-slate-300"
+              className="absolute top-1/2 right-1 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-300"
             >
               <IconX className="h-4 w-4" />
             </button>
@@ -851,7 +851,7 @@ export default function JournalView({
                 <div className="card">{detailPanel}</div>
               ) : (
                 <div className="card">
-                  <p className="text-sm text-slate-400 dark:text-slate-500">
+                  <p className="text-sm text-slate-500 dark:text-slate-400">
                     Tap an exercise, cardio, or sport activity to see its
                     details.
                   </p>

@@ -101,7 +101,7 @@ export default async function VisitsPage(props: {
               <h3 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                 Scheduled
                 {scheduled.length > 0 && (
-                  <span className="text-slate-400 dark:text-slate-500">
+                  <span className="text-slate-500 dark:text-slate-400">
                     ({upcomingCount} upcoming)
                   </span>
                 )}
@@ -162,7 +162,7 @@ export default async function VisitsPage(props: {
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
           Past
         </h2>
-        <p className="mb-3 text-xs text-slate-400 dark:text-slate-500">
+        <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
           To log a visit that already happened, use{" "}
           <span className="font-medium text-slate-500 dark:text-slate-400">
             Add visit

@@ -48,7 +48,7 @@ export default async function GoalsSection() {
         <h3 className="font-semibold text-slate-800 dark:text-slate-100">
           Weekly routine
         </h3>
-        <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500">
+        <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
           “Hit X at least N times per week.” Counts distinct training days{" "}
           {weekMode === "rolling"
             ? "over the last 7 days"

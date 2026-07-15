@@ -370,7 +370,7 @@ export default async function ImportDetailPage(props: {
             </p>
             {coverage.consumed.length > 0 && (
               <div className="mb-3">
-                <div className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                <div className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
                   Sections read
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -390,7 +390,7 @@ export default async function ImportDetailPage(props: {
                 separately so they never read as a missing-importer gap. */}
             {coverage.ignored.length > 0 && (
               <div className="mb-3" data-testid="coverage-ignored">
-                <div className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                <div className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
                   Recognized, not imported
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -403,7 +403,7 @@ export default async function ImportDetailPage(props: {
                     </span>
                   ))}
                 </div>
-                <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">
+                <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
                   These sections are recognized but intentionally out of scope
                   (billing / coverage details, not health readings).
                 </p>
@@ -411,7 +411,7 @@ export default async function ImportDetailPage(props: {
             )}
             {coverage.notConsumed.length > 0 && (
               <div data-testid="coverage-not-consumed">
-                <div className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                <div className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
                   Present but not consumed
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -424,7 +424,7 @@ export default async function ImportDetailPage(props: {
                     </span>
                   ))}
                 </div>
-                <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">
+                <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
                   These sections were in the document but the app has no
                   importer for them yet.
                 </p>
@@ -440,7 +440,7 @@ export default async function ImportDetailPage(props: {
             <h2 className="mb-1 font-semibold text-slate-800 dark:text-slate-100">
               Unmapped lab codes ({unmappedLoincs.length})
             </h2>
-            <p className="mb-3 text-xs text-slate-400 dark:text-slate-500">
+            <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
               These labs <strong>are imported</strong> under their printed name
               — nothing was lost — but their LOINC has no entry in the canonical
               map, so they don’t trend with the matching biomarker or pick up
@@ -464,12 +464,12 @@ export default async function ImportDetailPage(props: {
                   </code>
                   <span>{u.name}</span>
                   {u.unit && (
-                    <span className="text-xs text-slate-400 dark:text-slate-500">
+                    <span className="text-xs text-slate-500 dark:text-slate-400">
                       {u.unit}
                     </span>
                   )}
                   {u.count > 1 && (
-                    <span className="text-xs text-slate-400 dark:text-slate-500">
+                    <span className="text-xs text-slate-500 dark:text-slate-400">
                       ×{u.count}
                     </span>
                   )}
@@ -495,7 +495,7 @@ export default async function ImportDetailPage(props: {
             <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
               Dropped ({droppedRows})
             </h2>
-            <p className="mb-3 text-xs text-slate-400 dark:text-slate-500">
+            <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
               Itemized drops cover labs, vitals, immunizations, medications,
               allergies and problems (plus duplicates). Encounters, social
               history and some retracted resources aren’t itemized yet, and
@@ -529,14 +529,14 @@ export default async function ImportDetailPage(props: {
                       >
                         <span className="font-medium">{d.label}</span>
                         {d.section && (
-                          <span className="text-xs text-slate-400 dark:text-slate-500">
+                          <span className="text-xs text-slate-500 dark:text-slate-400">
                             {d.section}
                           </span>
                         )}
                         {d.count > 1 && (
                           <span
                             data-testid="drop-row-count"
-                            className="tabular-nums text-xs text-slate-400 dark:text-slate-500"
+                            className="tabular-nums text-xs text-slate-500 dark:text-slate-400"
                           >
                             ×{d.count}
                           </span>
@@ -631,7 +631,7 @@ export default async function ImportDetailPage(props: {
               </pre>
             </details>
           ) : (
-            <p className="text-sm text-slate-400 dark:text-slate-500">
+            <p className="text-sm text-slate-500 dark:text-slate-400">
               No raw extraction stored for this document.
             </p>
           )}
@@ -643,7 +643,7 @@ export default async function ImportDetailPage(props: {
             Actions
           </h2>
           <ImportDetailActions id={doc.id} filename={doc.filename} />
-          <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">
+          <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
             Reprocessing previews the diff before re-running extraction and
             replacing this document’s imported records. Deleting removes the
             document and everything it imported.
@@ -653,7 +653,7 @@ export default async function ImportDetailPage(props: {
               <h3 className="mb-1 text-sm font-semibold text-slate-700 dark:text-slate-200">
                 Wrong person?
               </h3>
-              <p className="mb-3 text-xs text-slate-400 dark:text-slate-500">
+              <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
                 Move this document — and every row it imported — to another
                 profile you can access.
               </p>
@@ -661,7 +661,7 @@ export default async function ImportDetailPage(props: {
                 // A move mid-extraction would strand the in-flight import under the
                 // wrong profile (the reassignDocument action refuses it too — this
                 // just hides the control until it settles).
-                <p className="text-sm text-slate-400 dark:text-slate-500">
+                <p className="text-sm text-slate-500 dark:text-slate-400">
                   This document is still processing — you can move it once
                   extraction finishes.
                 </p>

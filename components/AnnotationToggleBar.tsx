@@ -23,7 +23,7 @@ export default function AnnotationToggleBar({
   if (kinds.length === 0) return null;
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <span className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+      <span className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
         Events
       </span>
       {kinds.map((kind) => {
@@ -38,7 +38,7 @@ export default function AnnotationToggleBar({
             className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition ${
               on
                 ? "border-slate-300 bg-white text-slate-700 dark:border-white/15 dark:bg-ink-800 dark:text-slate-200"
-                : "border-slate-200 bg-transparent text-slate-400 dark:border-white/10 dark:text-slate-500"
+                : "border-slate-200 bg-transparent text-slate-500 dark:border-white/10 dark:text-slate-400"
             }`}
           >
             <span

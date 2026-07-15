@@ -111,7 +111,7 @@ export default function ActivityCardMenu({
         {() =>
           picking ? (
             <div data-testid="merge-picker">
-              <div className="px-3 py-1.5 text-xs font-medium text-slate-400 dark:text-slate-500">
+              <div className="px-3 py-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">
                 Merge into this — pick one to absorb
               </div>
               <div className="max-h-56 overflow-y-auto">

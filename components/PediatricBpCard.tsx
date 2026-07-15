@@ -37,7 +37,7 @@ export function PediatricBpCard({ ctx }: { ctx: PediatricBpContext | null }) {
           </span>
         </div>
       </div>
-      <p className="mt-3 text-xs text-slate-400 dark:text-slate-500">
+      <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
         Pediatric interpretation from {ctx.source}
         {ctx.adultRegime
           ? " — at age 13+ the AAP uses the static adolescent/adult thresholds."

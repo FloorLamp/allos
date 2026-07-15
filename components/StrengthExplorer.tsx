@@ -76,7 +76,7 @@ export default function StrengthExplorer({
         <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
           Exercises
         </h2>
-        <p className="mb-2 text-xs text-slate-400 dark:text-slate-500">
+        <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
           Select an exercise to see its details and progress.
         </p>
         <ScrollFade>

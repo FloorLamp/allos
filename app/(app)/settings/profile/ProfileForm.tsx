@@ -158,7 +158,7 @@ export default function ProfileForm({
           }}
           className="input"
         />
-        <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           The tracked person&rsquo;s full name, separate from the short profile
           label. Filled in from an uploaded health record when not already set.
         </p>
@@ -191,7 +191,7 @@ export default function ProfileForm({
           <option value="male">Male</option>
           <option value="female">Female</option>
         </select>
-        <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           Used to pick sex-specific optimal biomarker ranges (e.g. uric acid).
           Other biomarkers use their general optimal range until a sex-specific
           one is added.
@@ -221,7 +221,7 @@ export default function ProfileForm({
               <option value="premenopausal">Premenopausal</option>
               <option value="postmenopausal">Postmenopausal</option>
             </select>
-            <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
               Refines the reference ranges for the reproductive hormones
               (estradiol, FSH, LH). When set, it takes precedence over the
               age-based estimate — so a post-menopausal high estradiol is
@@ -290,7 +290,7 @@ export default function ProfileForm({
             />
           </div>
         </div>
-        <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           {birthdate
             ? "Age is derived from the birthdate."
             : "Set a birthdate for an exact age, or enter an age directly."}{" "}
@@ -344,7 +344,7 @@ export default function ProfileForm({
             </option>
           ))}
         </select>
-        <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           Decides when each day rolls over — today/yesterday labels, streaks,
           the weekly summary, and notification timing.
         </p>
@@ -442,7 +442,7 @@ export default function ProfileForm({
             {geoError}
           </p>
         ) : null}
-        <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           Optional. Stored coarse (~11 km) and used only for sunrise/sunset and
           daylight features — never sent anywhere. Clear both fields to remove
           it.
@@ -473,7 +473,7 @@ export default function ProfileForm({
             </option>
           ))}
         </select>
-        <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           The first day of the week for calendars and the weekly cardio chart —
           and, on a calendar week (below), where the weekly routine resets.
         </p>
@@ -500,7 +500,7 @@ export default function ProfileForm({
           <option value="calendar">The current calendar week</option>
           <option value="rolling">A rolling 7-day window</option>
         </select>
-        <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           {weekMode === "rolling"
             ? "Your weekly routine and week summary count the last 7 days, so they never reset to empty — the window always ends today."
             : "Your weekly routine and week summary reset on your week-start day, so a fresh week begins with empty counters."}

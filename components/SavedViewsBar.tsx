@@ -57,7 +57,7 @@ export default function SavedViewsBar({ views }: { views: TrendView[] }) {
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <span className="flex items-center gap-1 text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+      <span className="flex items-center gap-1 text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
         <IconBookmark className="h-3.5 w-3.5" stroke={2} />
         Views
       </span>

@@ -40,7 +40,7 @@ export default function IntensityPicker({
       {/* Explain the selected level and that it drives the calorie estimate — the
           control used to silently feed the MET tier with no descriptor (#336). */}
       <p
-        className={`${compact ? "mt-0.5" : "mt-1"} text-xs text-slate-400 dark:text-slate-500`}
+        className={`${compact ? "mt-0.5" : "mt-1"} text-xs text-slate-500 dark:text-slate-400`}
       >
         {selected
           ? `${selected.hint} · affects the calorie estimate`

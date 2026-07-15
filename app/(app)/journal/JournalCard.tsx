@@ -177,7 +177,7 @@ export default function JournalCard({
                     {i > 0 && (
                       <span
                         aria-hidden
-                        className="mx-1.5 text-slate-400 dark:text-slate-500"
+                        className="mx-1.5 text-slate-500 dark:text-slate-400"
                       >
                         ·
                       </span>
@@ -253,14 +253,14 @@ export default function JournalCard({
                 <ul
                   data-testid="activity-metrics"
                   aria-label="Activity details"
-                  className="flex flex-wrap text-xs tabular-nums text-slate-400 dark:text-slate-500"
+                  className="flex flex-wrap text-xs tabular-nums text-slate-500 dark:text-slate-400"
                 >
                   {metrics.map((metric, i) => (
                     <li key={metric} className="whitespace-nowrap">
                       {i > 0 && (
                         <span
                           aria-hidden
-                          className="mx-2 text-slate-400 dark:text-slate-500"
+                          className="mx-2 text-slate-500 dark:text-slate-400"
                         >
                           ·
                         </span>
@@ -273,7 +273,7 @@ export default function JournalCard({
                       {metrics.length > 0 && (
                         <span
                           aria-hidden
-                          className="mx-2 text-slate-400 dark:text-slate-500"
+                          className="mx-2 text-slate-500 dark:text-slate-400"
                         >
                           ·
                         </span>
@@ -282,7 +282,7 @@ export default function JournalCard({
                         <Link
                           href={`/equipment/${activity.equipment_id}`}
                           data-testid="activity-gear"
-                          className="text-slate-400 hover:text-slate-600 hover:underline dark:text-slate-500 dark:hover:text-slate-300"
+                          className="text-slate-500 hover:text-slate-600 hover:underline dark:text-slate-400 dark:hover:text-slate-300"
                           title={`Equipment: ${gear}`}
                         >
                           {gear}
@@ -389,7 +389,7 @@ export default function JournalCard({
                         {(p.muscle || p.equipment) && (
                           <span
                             aria-hidden
-                            className="text-slate-400 dark:text-slate-500"
+                            className="text-slate-500 dark:text-slate-400"
                           >
                             ·
                           </span>
@@ -400,25 +400,25 @@ export default function JournalCard({
                               type="button"
                               onClick={() => onFilterTag("muscle", p.muscle!)}
                               title={`Show ${p.muscle} activities`}
-                              className="text-xs text-slate-400 hover:text-brand-600 hover:underline dark:text-slate-500 dark:hover:text-brand-400"
+                              className="text-xs text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400"
                             >
                               {p.muscle}
                             </button>
                           ) : (
-                            <span className="text-xs text-slate-400 dark:text-slate-500">
+                            <span className="text-xs text-slate-500 dark:text-slate-400">
                               {p.muscle}
                             </span>
                           ))}
                         {p.muscle && p.equipment && (
                           <span
                             aria-hidden
-                            className="text-xs text-slate-400 dark:text-slate-500"
+                            className="text-xs text-slate-500 dark:text-slate-400"
                           >
                             ·
                           </span>
                         )}
                         {p.equipment && (
-                          <span className="text-xs text-slate-400 dark:text-slate-500">
+                          <span className="text-xs text-slate-500 dark:text-slate-400">
                             {p.equipment}
                           </span>
                         )}

@@ -33,7 +33,7 @@ export default function PrCard({
               <span className="tabular-nums font-semibold text-slate-800 dark:text-slate-100">
                 {it.value}
               </span>
-              <span className="text-xs text-slate-400 dark:text-slate-500">
+              <span className="text-xs text-slate-500 dark:text-slate-400">
                 {it.meta}
               </span>
             </span>

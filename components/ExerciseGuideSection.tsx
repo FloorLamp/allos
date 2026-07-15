@@ -56,13 +56,13 @@ export default function ExerciseGuideSection({
       <h3 className="mb-1 text-sm font-semibold text-slate-700 dark:text-slate-200">
         How to
       </h3>
-      <p className="mb-3 text-xs italic text-slate-400 dark:text-slate-500">
+      <p className="mb-3 text-xs italic text-slate-500 dark:text-slate-400">
         Form reference, not medical advice.
       </p>
 
       {muscles && (
         <div className="mt-3" data-testid="guide-muscles">
-          <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
             Muscles
           </h4>
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
@@ -104,7 +104,7 @@ export default function ExerciseGuideSection({
 
       {guide.breathing && (
         <div className="mt-3">
-          <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
             Breathing
           </h4>
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
@@ -129,7 +129,7 @@ export default function ExerciseGuideSection({
 
       {notes.length > 0 && (
         <div className="mt-3" data-testid="guide-equipment-notes">
-          <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
             Equipment notes
           </h4>
           <ul className="mt-1 space-y-1 text-sm text-slate-600 dark:text-slate-300">
@@ -166,7 +166,7 @@ function GuideList({
     " pl-5";
   return (
     <div className="mt-3" data-testid={testid}>
-      <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+      <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
         {title}
       </h4>
       {ordered ? (

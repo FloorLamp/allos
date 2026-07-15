@@ -106,7 +106,7 @@ export default function ReprocessButton() {
         data-testid="reprocess-all"
         title="Re-extract all documents"
         aria-label="Re-extract all documents"
-        className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-400 hover:text-brand-600 disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-500 dark:hover:text-brand-400"
+        className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-brand-600 disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-400 dark:hover:text-brand-400"
       >
         {pending ? (
           <span>{transitionPending ? "Re-extracting…" : "Checking…"}</span>

@@ -151,13 +151,13 @@ export default function BiomarkerScale({
         />
       </div>
 
-      <div className="mt-1 flex justify-between text-[10px] text-slate-400 dark:text-slate-500">
+      <div className="mt-1 flex justify-between text-[10px] text-slate-500 dark:text-slate-400">
         <span>{rb.low != null ? fmt(rb.low) : ""}</span>
         <span>{rb.high != null ? fmt(rb.high) : ""}</span>
       </div>
 
       {bandLabel && (
-        <div className="mt-0.5 text-[10px] text-slate-400 dark:text-slate-500">
+        <div className="mt-0.5 text-[10px] text-slate-500 dark:text-slate-400">
           range for {bandLabel}
         </div>
       )}

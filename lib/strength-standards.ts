@@ -88,7 +88,7 @@ export function strengthLevelLabel(level: StrengthLevel): string {
 // then cool: untrained/beginner muted → novice amber → intermediate brand → sky →
 // elite violet.
 const LEVEL_COLORS: Record<StrengthLevel, string> = {
-  untrained: "text-slate-400 dark:text-slate-500",
+  untrained: "text-slate-500 dark:text-slate-400",
   beginner: "text-slate-500 dark:text-slate-400",
   novice: "text-amber-600 dark:text-amber-400",
   intermediate: "text-brand-600 dark:text-brand-400",

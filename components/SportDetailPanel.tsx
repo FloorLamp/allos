@@ -73,7 +73,7 @@ export default function SportDetailPanel({
           <h3 className="mb-1 text-sm font-semibold text-slate-700 dark:text-slate-200">
             Duration over time
           </h3>
-          <p className="mb-2 text-xs text-slate-400 dark:text-slate-500">
+          <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
             Minutes per session
           </p>
           <LineChartCard
@@ -101,7 +101,7 @@ export default function SportDetailPanel({
               >
                 <a
                   href={r.href}
-                  className="shrink-0 text-slate-400 hover:text-brand-600 hover:underline dark:text-slate-500 dark:hover:text-brand-400"
+                  className="shrink-0 text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400"
                 >
                   {r.date}
                 </a>

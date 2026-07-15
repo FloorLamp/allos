@@ -50,7 +50,7 @@ export default function WorkoutHeatmapView({
       <div className="overflow-x-auto">
         <div className="inline-block min-w-full">
           {/* Month labels, aligned to their columns. */}
-          <div className="flex pl-6 text-[10px] text-slate-400 dark:text-slate-500">
+          <div className="flex pl-6 text-[10px] text-slate-500 dark:text-slate-400">
             <div className="flex gap-[3px]">
               {data.columns.map((_, col) => {
                 const label = data.monthLabels.find((m) => m.col === col);
@@ -65,7 +65,7 @@ export default function WorkoutHeatmapView({
 
           <div className="flex">
             {/* Weekday rail: label alternating rows to save space. */}
-            <div className="mr-1 flex flex-col gap-[3px] pt-[1px] text-[10px] text-slate-400 dark:text-slate-500">
+            <div className="mr-1 flex flex-col gap-[3px] pt-[1px] text-[10px] text-slate-500 dark:text-slate-400">
               {data.weekdayOrder.map((wd, row) => (
                 <div
                   key={row}
@@ -140,7 +140,7 @@ export default function WorkoutHeatmapView({
         >
           {detail}
         </p>
-        <div className="flex items-center gap-1 text-[10px] text-slate-400 dark:text-slate-500">
+        <div className="flex items-center gap-1 text-[10px] text-slate-500 dark:text-slate-400">
           <span>Less</span>
           {LEVEL_CLASS.map((c, i) => (
             <span key={i} className={`h-[11px] w-[11px] rounded-[2px] ${c}`} />

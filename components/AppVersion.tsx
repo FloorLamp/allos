@@ -18,7 +18,7 @@ export default function AppVersion({
   const cell = variant === "cell";
   const base = cell
     ? "font-mono text-xs text-slate-500 dark:text-slate-400"
-    : "font-mono text-xs text-slate-400 dark:text-slate-500";
+    : "font-mono text-xs text-slate-500 dark:text-slate-400";
   const linkHover = cell
     ? "underline-offset-2 transition hover:text-slate-700 hover:underline dark:hover:text-slate-200"
     : "underline decoration-dotted underline-offset-2 hover:text-slate-600 dark:hover:text-slate-300";

@@ -35,7 +35,7 @@ export default async function NutritionSection({
         </Link>
       </div>
       <FoodWeeklyRollup rollup={rollup} testid="nutrition-trends-rollup" />
-      <p className="mt-3 text-xs text-slate-400 dark:text-slate-500">
+      <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
         Servings logged per food group over the selected range. Informational —
         the habit tier, not calorie tracking.
       </p>

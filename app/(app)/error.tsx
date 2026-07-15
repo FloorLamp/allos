@@ -22,7 +22,7 @@ export default function AppError({
           the dashboard.
         </p>
         {error.digest && (
-          <p className="mt-2 font-mono text-xs text-slate-400 dark:text-slate-500">
+          <p className="mt-2 font-mono text-xs text-slate-500 dark:text-slate-400">
             Reference: {error.digest}
           </p>
         )}

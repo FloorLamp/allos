@@ -237,7 +237,7 @@ function TrackedRow({
       {gap.aiDescription ? (
         <div className="mt-3 rounded-md border-l-4 border-l-brand-300 bg-slate-50 px-3 py-2 text-sm text-slate-600 dark:border-l-brand-700 dark:bg-slate-800/50 dark:text-slate-300">
           <p className="leading-relaxed">{gap.aiDescription}</p>
-          <p className="mt-1.5 text-[11px] text-slate-400 dark:text-slate-500">
+          <p className="mt-1.5 text-[11px] text-slate-500 dark:text-slate-400">
             AI-generated, unverified — not curated
             {gap.aiSource ? ` · ${gap.aiSource}` : ""}
           </p>

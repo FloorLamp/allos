@@ -175,7 +175,7 @@ export default function DataTableManager({
       <div className="mb-3 flex items-center justify-between gap-3">
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           {dataset.label}{" "}
-          <span className="text-sm font-normal text-slate-400 dark:text-slate-500">
+          <span className="text-sm font-normal text-slate-500 dark:text-slate-400">
             ({total})
           </span>
         </h2>
@@ -251,14 +251,14 @@ export default function DataTableManager({
       )}
 
       {total === 0 ? (
-        <p className="text-sm text-slate-400 dark:text-slate-500">
+        <p className="text-sm text-slate-500 dark:text-slate-400">
           No data yet.
         </p>
       ) : (
         <>
           <ScrollFade>
             <table className="w-full text-left text-sm">
-              <thead className="text-xs uppercase tracking-wide text-slate-400 dark:text-slate-500">
+              <thead className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
                 <tr>
                   {editing && (
                     <th className="w-8 py-1 pr-3">
@@ -314,7 +314,7 @@ export default function DataTableManager({
               </tbody>
             </table>
           </ScrollFade>
-          <div className="mt-3 flex items-center justify-between gap-3 text-xs text-slate-400 dark:text-slate-500">
+          <div className="mt-3 flex items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400">
             <span>
               Showing {start + 1}–{start + pageRows.length} of {total}
             </span>

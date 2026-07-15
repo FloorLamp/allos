@@ -116,7 +116,7 @@ export default function TwoFactorSettings({
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Two-factor authentication
         </h2>
-        <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           Add a time-based one-time code (TOTP) from an authenticator app as a
           second step at sign-in. Strongly recommended, especially for admins.
         </p>
@@ -208,7 +208,7 @@ export default function TwoFactorSettings({
             code it shows to finish.
           </p>
           <div className="space-y-1">
-            <p className="text-xs text-slate-400 dark:text-slate-500">
+            <p className="text-xs text-slate-500 dark:text-slate-400">
               Manual key (base32)
             </p>
             <code
@@ -220,7 +220,7 @@ export default function TwoFactorSettings({
           </div>
           {otpauthUrl && (
             <div className="space-y-1">
-              <p className="text-xs text-slate-400 dark:text-slate-500">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
                 otpauth:// URI (paste into your app if it supports it)
               </p>
               <code className="block break-all rounded bg-black/5 p-2 font-mono text-xs dark:bg-white/5">

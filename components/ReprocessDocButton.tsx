@@ -19,7 +19,7 @@ export default function ReprocessDocButton({
       type="button"
       onClick={reprocess}
       disabled={pending}
-      className="text-slate-400 hover:text-brand-600 disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-500 dark:hover:text-brand-400"
+      className="text-slate-500 hover:text-brand-600 disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-400 dark:hover:text-brand-400"
       title="Reprocess document"
       aria-label="Reprocess document"
     >

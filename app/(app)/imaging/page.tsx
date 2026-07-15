@@ -32,7 +32,7 @@ export default async function ImagingPage() {
 
         <div className="min-w-0 space-y-4">
           <ImagingStudyForm action={addImagingStudy} />
-          <p className="px-1 text-xs text-slate-400 dark:text-slate-500">
+          <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
             Informational only, not medical advice. Allos stores the imaging
             report, not the images themselves (DICOM is out of scope).
           </p>
