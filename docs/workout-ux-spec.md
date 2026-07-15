@@ -1,6 +1,6 @@
 # Spec: Workout UX — exercise guides, muscle anatomy, routines
 
-Status: **partial** (Pillar 1: content layer + accessor + gen + completeness test shipped, #733; "How to" section in `ExerciseDetailPanel` + entry points — set-editor ⓘ overlay, panel hosts, Telegram deep link — shipped, #734; Pillar 2: `MuscleId` vocabulary + `muscleRegion` rollup + catalog muscle tagging shipped, #735, plus the `muscle-coverage` computation (`coverageFromSets`, 1.0 primary / 0.5 secondary credit) + list-first weekly coverage on Training → Overview shipped, #736 — the SVG figure #737 still draft; Pillar 3: routines schema + write cores + template catalog + activation shipped, #738, and the routine-aware "Today's session" recommendation — `resolveRoutineSession`/`sessionCreditsDay` in the ONE `workout-recommendation` core, position advance on credited sessions, the Training-overview session card + "Log this session" live hand-off, and routine-day Telegram copy — shipped, #740; the rest still draft) · Owner: TBD
+Status: **partial** (Pillar 1: content layer + accessor + gen + completeness test shipped, #733; "How to" section in `ExerciseDetailPanel` + entry points — set-editor ⓘ overlay, panel hosts, Telegram deep link — shipped, #734; Pillar 2: `MuscleId` vocabulary + `muscleRegion` rollup + catalog muscle tagging shipped, #735, plus the `muscle-coverage` computation (`coverageFromSets`, 1.0 primary / 0.5 secondary credit) + list-first weekly coverage on Training → Overview shipped, #736 — the SVG figure #737 still draft; Pillar 3: routines schema + write cores + template catalog + activation shipped, #738, the routine-aware "Today's session" recommendation — `resolveRoutineSession`/`sessionCreditsDay` in the ONE `workout-recommendation` core, position advance on credited sessions, the Training-overview session card + "Log this session" live hand-off, and routine-day Telegram copy — shipped, #740, and the routine builder UI — Routines tab on `/training` with the adopt-a-template picker, the custom builder, and activate/deactivate with the training-scope target-replacement confirm — shipped, #739; mesocycle/deload #741 still draft; the rest still draft) · Owner: TBD
 
 ## Problem
 
@@ -180,13 +180,23 @@ Three rendering modes, each fed by one computation:
 
 ## Pillar 3 — Routines (templates + custom)
 
-Status: **partial (schema + write cores + templates)** — migration 039 (the three
-routine tables), the auth-blind write cores (`lib/routines.ts`: adopt / activate /
-deactivate / edit / delete, with activation replacing training-scope frequency
-targets), the gated actions (`app/(app)/training/actions.ts`), and the template
-catalog (`lib/routine-templates.ts`) shipped in #738. The builder UI (#739), the
-routine-aware recommendation path (#740), and mesocycle/deload (#741,
-`cycle_weeks`) are not built yet.
+Status: **partial (schema + write cores + templates + recommendation + builder UI)**
+— migration 039 (the three routine tables), the auth-blind write cores
+(`lib/routines.ts`: adopt / activate / deactivate / edit / delete, with activation
+replacing training-scope frequency targets), the gated actions
+(`app/(app)/training/actions.ts`), and the template catalog
+(`lib/routine-templates.ts`) shipped in #738. The routine-aware "Today's session"
+recommendation path (`resolveRoutineSession`/`sessionCreditsDay` in the ONE
+`workout-recommendation` core, position advance on credited sessions, the
+Training-overview session card + "Log this session" hand-off, routine-day Telegram
+copy) shipped in #740. The builder UI shipped in #739: a Routines tab on `/training`
+(`RoutinesSection`/`RoutinesManager`/`RoutineBuilder`) listing existing routines, the
+adopt-a-template picker (beginner first), the custom builder (name → days → slots of
+ordered candidates + sets/reps, per-day focus derived from the slots' candidate
+regions via `deriveFocusFromCandidates` and editable), and the activate flow whose
+confirm lists exactly the training-scope targets to be replaced and appears ONLY when
+such targets exist. Mesocycle/deload (#741, `cycle_weeks` + Restart cycle) is not
+built yet — the builder leaves layout room for it.
 
 ### Constraint
 

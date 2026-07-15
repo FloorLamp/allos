@@ -28,11 +28,13 @@ import {
   E2E_LOGIN_HC,
   E2E_LOGIN_NOGEAR,
   E2E_LOGIN_ROUTINE,
+  E2E_LOGIN_ROUTINE_BUILDER,
   E2E_LOGIN_STRAVA,
   E2E_MEMBER_PASSWORD,
   DUP_REVIEW_PROFILE,
   HEALTH_CONNECT_PROFILE,
   NO_GEAR_PROFILE,
+  ROUTINE_BUILDER_PROFILE,
   ROUTINE_PROFILE,
   SOURCE_COMPARE_PROFILE,
   STRAVA_REAUTH_PROFILE,
@@ -1411,6 +1413,42 @@ insDupWeighIn.run(dupReviewId, 80.2);
 insDupWeighIn.run(dupReviewId, 81.4);
 console.log(
   `e2e: seeded a same-source (two manual weigh-ins) duplicate on profile ${dupReviewId} (A/B disambiguation, #531)`
+);
+
+// A dedicated ADULT profile for the routine-BUILDER specs (#739), SEPARATE from the
+// routine-recommendation fixture below: that spec needs its profile's routine to stay
+// ACTIVE (the Today's-session card), while the builder spec activates/deactivates
+// routines — sharing a profile would let one spec break the other. Activating a
+// routine also REPLACES the profile's training-scope frequency_targets, which is why
+// neither fixture is profile 1 (whose seeded PPL targets other specs rely on). Seed a
+// clean slate — no routines — plus two training-scope frequency targets so the
+// activate-confirm dialog (which only appears when there ARE targets to replace) is
+// exercised. Idempotent.
+const routineBuilderProfileId = fixtureProfileId(ROUTINE_BUILDER_PROFILE);
+seedMemberLogin(E2E_LOGIN_ROUTINE_BUILDER, routineBuilderProfileId);
+db.prepare(
+  `DELETE FROM routine_slots WHERE routine_day_id IN (
+     SELECT rd.id FROM routine_days rd
+       JOIN routines r ON r.id = rd.routine_id WHERE r.profile_id = ?)`
+).run(routineBuilderProfileId);
+db.prepare(
+  `DELETE FROM routine_days WHERE routine_id IN (
+     SELECT id FROM routines WHERE profile_id = ?)`
+).run(routineBuilderProfileId);
+db.prepare(`DELETE FROM routines WHERE profile_id = ?`).run(
+  routineBuilderProfileId
+);
+db.prepare(
+  `DELETE FROM frequency_targets WHERE profile_id = ? AND scope_kind IN ('region','group','type')`
+).run(routineBuilderProfileId);
+const insRoutineTarget = db.prepare(
+  `INSERT INTO frequency_targets (scope_kind, scope_value, per_week, profile_id)
+     VALUES (?, ?, ?, ?)`
+);
+insRoutineTarget.run("group", "Upper", 2, routineBuilderProfileId);
+insRoutineTarget.run("group", "Lower", 2, routineBuilderProfileId);
+console.log(
+  `e2e: seeded routine-builder fixture profile ${routineBuilderProfileId} (${ROUTINE_BUILDER_PROFILE}) with two training-scope frequency targets (#739)`
 );
 
 console.log(

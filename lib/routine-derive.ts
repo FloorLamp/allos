@@ -6,7 +6,7 @@
 // fork — the "one question, one computation" rule at the target layer).
 
 import type { MuscleRegion } from "./lifts";
-import { REGION_SCOPES } from "./lifts";
+import { REGION_SCOPES, liftInfo } from "./lifts";
 import type { DerivedFrequencyTarget } from "./routine-templates";
 import { getRoutineTemplate } from "./routine-templates";
 import type { RoutineSource } from "./types";
@@ -55,6 +55,26 @@ export function deriveRoutineTargets(routine: {
     scopeValue: r,
     perWeek: counts.get(r)!,
   }));
+}
+
+// Derive a routine day's `focus` from its slots' candidate exercises — the union of
+// each RESOLVED candidate's `LiftDef.region`, ordered by REGION_SCOPES for a stable
+// result. The builder UI (#739) seeds an editable per-day focus with this so the day's
+// regions track the exercises the user picked. Free-text / custom lift names that don't
+// resolve against the catalog contribute nothing (they degrade gracefully, matching
+// custom-lift behavior everywhere else — #739). This is the ONE focus derivation, kept
+// pure so the builder and any future surface can't fork it.
+export function deriveFocusFromCandidates(
+  candidateLists: string[][]
+): MuscleRegion[] {
+  const present = new Set<MuscleRegion>();
+  for (const list of candidateLists) {
+    for (const name of list) {
+      const region = liftInfo(name)?.region;
+      if (region) present.add(region);
+    }
+  }
+  return REGION_SCOPES.filter((r) => present.has(r));
 }
 
 // ── Validate/normalize untrusted builder input ──────────────────────────────────

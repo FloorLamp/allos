@@ -7,6 +7,7 @@ import OverviewSection from "./OverviewSection";
 import HistorySection from "./HistorySection";
 import AnalyzeSection from "./AnalyzeSection";
 import GoalsSection from "./GoalsSection";
+import RoutinesSection from "./RoutinesSection";
 import RestrictedActivityView from "./RestrictedActivityView";
 
 export const dynamic = "force-dynamic";
@@ -70,6 +71,12 @@ export default async function TrainingPage(props: {
                 range={one(searchParams?.range)}
               />
             ),
+            keepMounted: false,
+          },
+          {
+            id: "routines",
+            label: "Routines",
+            content: <RoutinesSection />,
             keepMounted: false,
           },
           {

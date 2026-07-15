@@ -11,6 +11,7 @@ import {
 // Import the PURE helpers from the db-free module (not @/lib/routines, which imports
 // lib/db) so this stays a pure-tier test.
 import {
+  deriveFocusFromCandidates,
   deriveRoutineTargets,
   validateRoutineInput,
 } from "@/lib/routine-derive";
@@ -167,6 +168,36 @@ describe("deriveRoutineTargets (#738)", () => {
     expect(derived).toEqual([
       { scopeKind: "region", scopeValue: "Core", perWeek: 1 },
     ]);
+  });
+});
+
+describe("deriveFocusFromCandidates (#739)", () => {
+  it("unions each candidate's region, ordered by REGION_SCOPES", () => {
+    // Back Squat → Legs, Barbell Bench Press → Chest, Barbell Row → Back.
+    const focus = deriveFocusFromCandidates([
+      ["Barbell Bench Press", "Dumbbell Bench Press"],
+      ["Barbell Row"],
+      ["Back Squat"],
+    ]);
+    // REGION_SCOPES order is Chest, Back, Shoulders, Arms, Legs, Glutes, Core.
+    expect(focus).toEqual(["Chest", "Back", "Legs"]);
+  });
+
+  it("ignores free-text / custom lift names that don't resolve", () => {
+    const focus = deriveFocusFromCandidates([
+      ["My Secret Lift", "Totally Made Up"],
+    ]);
+    expect(focus).toEqual([]);
+  });
+
+  it("still credits a resolvable candidate alongside a custom one", () => {
+    const focus = deriveFocusFromCandidates([["Back Squat", "Custom Zercher"]]);
+    expect(focus).toEqual(["Legs"]);
+  });
+
+  it("dedupes a region shared by multiple slots", () => {
+    const focus = deriveFocusFromCandidates([["Back Squat"], ["Leg Press"]]);
+    expect(focus).toEqual(["Legs"]);
   });
 });
 
