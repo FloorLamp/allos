@@ -5,13 +5,18 @@ import { redirect } from "next/navigation";
 import { db } from "./db";
 import { recordAudit } from "./audit";
 import { AUDIT_ACTIONS } from "./audit-actions";
-import { SESSION_COOKIE, SESSION_COOKIE_SECURE } from "./session-cookie";
+import {
+  SESSION_COOKIE,
+  SESSION_TTL_SEC,
+  sessionCookieOptions,
+} from "./session-cookie";
 import { isDemoMode, isDemoRestricted } from "./demo";
 
 // Re-exported so existing importers (the login action, etc.) keep resolving the
-// cookie name from lib/auth. The single source of truth is lib/session-cookie.ts,
-// which is dependency-free so the Edge middleware can import it too (issue #21).
-export { SESSION_COOKIE };
+// cookie name + options from lib/auth. The single source of truth is
+// lib/session-cookie.ts, which is dependency-free so the Edge middleware can
+// import it too (issues #21, #676).
+export { SESSION_COOKIE, sessionCookieOptions };
 
 // Session/auth layer for the single-tenant → multi-user conversion.
 // The cookie holds a random 256-bit token; the DB stores only its
@@ -23,9 +28,6 @@ export { SESSION_COOKIE };
 // token-authenticated API handlers (Health Connect ingest, Telegram webhook);
 // the only cookie-authenticated handlers are GET-only downloads/streams, which a
 // cross-site form can't meaningfully forge. The cookie is httpOnly + SameSite=Lax.
-
-const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
-const SESSION_TTL_SEC = SESSION_TTL_MS / 1000;
 
 // Absolute session ceiling (issue #23). The 30-day expiry is SLIDING — every use
 // re-extends expires_at — so an active session otherwise never dies. This is the
@@ -67,22 +69,6 @@ export interface CurrentSession {
 
 function hashToken(token: string): string {
   return crypto.createHash("sha256").update(token).digest("hex");
-}
-
-// Cookie attributes shared by the login action and the middleware refresh, so
-// the sliding re-set can't drift from the original. `secure` only in prod so the
-// cookie still works over plain HTTP in local dev — and it's the SAME flag that
-// picks the `__Host-` cookie name (SESSION_COOKIE_SECURE in lib/session-cookie),
-// so the name never disagrees with the Secure attribute the prefix requires. The
-// `__Host-` prefix additionally mandates Path=/ and no Domain, both satisfied here.
-export function sessionCookieOptions(maxAgeSec: number = SESSION_TTL_SEC) {
-  return {
-    httpOnly: true,
-    sameSite: "lax" as const,
-    secure: SESSION_COOKIE_SECURE,
-    path: "/",
-    maxAge: maxAgeSec,
-  };
 }
 
 // Prepared statements hoisted to module scope — these run on effectively every
@@ -201,10 +187,52 @@ const SESSION_TOUCH_STMT = db.prepare(
     WHERE token_hash = ? AND last_used_at < datetime('now', '-1 hour')`
 );
 
-// Resolve the caller's session from the cookie, or null. Validates expiry,
-// re-derives the active profile against current grants (so a revoked grant can't
-// keep a login on a profile it lost), and throttles the last_used_at write to
-// once an hour. Sync DB reads are fine under better-sqlite3.
+// DB-callable core of getCurrentSession: resolve a RAW session token to the
+// current session, or null. Applies the expiry + absolute-ceiling gate (via
+// SESSION_LOOKUP_STMT), re-derives the active profile against current grants (so a
+// revoked grant can't keep a login on a profile it lost), and throttles the
+// sliding last_used_at/expires_at write to once an hour. This is the whole
+// decision; getCurrentSession() only adds the cookie read (issue #676), so the
+// session lifecycle + ceiling + grant re-derivation are testable without a request.
+export function resolveSessionToken(token: string): CurrentSession | null {
+  const tokenHash = hashToken(token);
+
+  const row = SESSION_LOOKUP_STMT.get(tokenHash) as
+    | {
+        loginId: number;
+        activeProfileId: number | null;
+        username: string;
+        role: Role;
+      }
+    | undefined;
+  if (!row) return null;
+
+  const profiles = accessibleProfiles(row.loginId, row.role);
+  if (profiles.length === 0) return null; // login with no usable profile
+
+  let profile = profiles.find((p) => p.id === row.activeProfileId);
+  if (!profile) {
+    // Stored active profile is missing or no longer granted — snap to the first
+    // accessible one and persist the correction.
+    profile = profiles[0];
+    SESSION_FIX_PROFILE_STMT.run(profile.id, tokenHash);
+  }
+
+  // Sliding refresh, throttled: the WHERE only matches when >1h stale, so a
+  // busy session isn't written on every request. Extending expires_at here (not
+  // just the cookie's max-age in middleware) is what makes the 30-day expiry
+  // truly sliding — otherwise an active user is hard-logged-out 30 days after
+  // login no matter how recently they used the app.
+  SESSION_TOUCH_STMT.run(tokenHash);
+
+  return {
+    login: { id: row.loginId, username: row.username, role: row.role },
+    profile,
+    access: accessForProfile(row.loginId, row.role, profile.id),
+  };
+}
+
+// Resolve the caller's session from the cookie, or null.
 //
 // Wrapped in React `cache()` so it runs at most ONCE per server request even
 // though requireSession/requireAdmin/getAccessibleProfiles/etc. each call it —
@@ -218,41 +246,7 @@ export const getCurrentSession = cache(
   async function getCurrentSession(): Promise<CurrentSession | null> {
     const token = (await cookies()).get(SESSION_COOKIE)?.value;
     if (!token) return null;
-    const tokenHash = hashToken(token);
-
-    const row = SESSION_LOOKUP_STMT.get(tokenHash) as
-      | {
-          loginId: number;
-          activeProfileId: number | null;
-          username: string;
-          role: Role;
-        }
-      | undefined;
-    if (!row) return null;
-
-    const profiles = accessibleProfiles(row.loginId, row.role);
-    if (profiles.length === 0) return null; // login with no usable profile
-
-    let profile = profiles.find((p) => p.id === row.activeProfileId);
-    if (!profile) {
-      // Stored active profile is missing or no longer granted — snap to the first
-      // accessible one and persist the correction.
-      profile = profiles[0];
-      SESSION_FIX_PROFILE_STMT.run(profile.id, tokenHash);
-    }
-
-    // Sliding refresh, throttled: the WHERE only matches when >1h stale, so a
-    // busy session isn't written on every request. Extending expires_at here (not
-    // just the cookie's max-age in middleware) is what makes the 30-day expiry
-    // truly sliding — otherwise an active user is hard-logged-out 30 days after
-    // login no matter how recently they used the app.
-    SESSION_TOUCH_STMT.run(tokenHash);
-
-    return {
-      login: { id: row.loginId, username: row.username, role: row.role },
-      profile,
-      access: accessForProfile(row.loginId, row.role, profile.id),
-    };
+    return resolveSessionToken(token);
   }
 );
 
@@ -472,18 +466,20 @@ export function adminLoginCount(): number {
   ).c;
 }
 
-// Switch the active profile on the current session row, after verifying the
-// login may act as it (granted, or admin). No-op-safe: an inaccessible target
-// is rejected.
-export async function setActiveProfile(profileId: number): Promise<void> {
-  const token = (await cookies()).get(SESSION_COOKIE)?.value;
-  if (!token) return;
-  const session = await getCurrentSession();
-  if (!session) return;
+// DB-callable core of setActiveProfile: switch the active profile on the session
+// identified by `token`, after verifying the login may act as the target
+// (granted, or admin). Returns true if switched, false if the target is
+// inaccessible (no-op). The shell only adds the cookie + current-session reads,
+// so the accessibility gate is testable without a request (issue #676).
+export function switchActiveProfile(
+  session: CurrentSession,
+  token: string,
+  profileId: number
+): boolean {
   const allowed = accessibleProfiles(session.login.id, session.login.role).some(
     (p) => p.id === profileId
   );
-  if (!allowed) return;
+  if (!allowed) return false;
   db.prepare(
     "UPDATE sessions SET active_profile_id = ? WHERE token_hash = ?"
   ).run(profileId, hashToken(token));
@@ -494,4 +490,16 @@ export async function setActiveProfile(profileId: number): Promise<void> {
     action: AUDIT_ACTIONS.profileSwitch,
     target: String(profileId),
   });
+  return true;
+}
+
+// Switch the active profile on the current session row, after verifying the
+// login may act as it (granted, or admin). No-op-safe: an inaccessible target
+// is rejected.
+export async function setActiveProfile(profileId: number): Promise<void> {
+  const token = (await cookies()).get(SESSION_COOKIE)?.value;
+  if (!token) return;
+  const session = await getCurrentSession();
+  if (!session) return;
+  switchActiveProfile(session, token, profileId);
 }
