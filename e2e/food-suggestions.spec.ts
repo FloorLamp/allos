@@ -39,3 +39,30 @@ test("folate detail page suggests leafy greens with the warfarin vitamin-K note 
   // Medication screen (food–drug inverse): the warfarin stack pins the vitamin-K note.
   await expect(suggestion).toContainText(/vitamin k/i);
 });
+
+test("selenium detail page suggests brazil nuts — expanded low-nutrient coverage (#774)", async ({
+  page,
+}) => {
+  await page.goto(`/biomarkers/view?name=${encodeURIComponent("Selenium")}`);
+
+  const suggestion = page.getByTestId("food-suggestion-selenium");
+  await expect(suggestion).toBeVisible();
+  await expect(suggestion).toContainText(/brazil/i);
+  await expect(suggestion).toContainText("Food for Selenium");
+});
+
+test("high LDL detail page shows a REDUCE suggestion (cut back on limit-tier foods) (#775)", async ({
+  page,
+}) => {
+  await page.goto(
+    `/biomarkers/view?name=${encodeURIComponent("LDL Cholesterol")}`
+  );
+
+  const suggestion = page.getByTestId("food-suggestion-ldl-apob");
+  await expect(suggestion).toBeVisible();
+  // Reduce framing (the other direction of the ONE engine): "Cut back for …", high.
+  await expect(suggestion).toHaveAttribute("data-direction", "reduce");
+  await expect(suggestion).toContainText(/cut back/i);
+  await expect(suggestion).toContainText(/fried|processed/i);
+  await expect(suggestion).toContainText("Informational, not medical advice");
+});

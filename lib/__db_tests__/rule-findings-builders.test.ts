@@ -34,7 +34,7 @@ import {
   MIN_BAND_HISTORY_WEEKS,
 } from "@/lib/muscle-volume-bands";
 import { periodontalObservationKey } from "@/lib/oral-health-observation";
-import { foodSuggestSignalKey } from "@/lib/food-suggest";
+import { foodSuggestSignalKey, foodReduceSignalKey } from "@/lib/food-suggest";
 import { foodHabitSignalKey } from "@/lib/food-habit";
 import { matchFoodInteractions } from "@/lib/food-drug-interactions";
 import {
@@ -633,6 +633,62 @@ describe("buildFoodSuggestionFindings (#577)", () => {
     expect(findings).toHaveLength(1);
     expect(findings[0].detail?.toLowerCase()).toMatch(/walnut|flax|algae/);
     expect(findings[0].detail?.toLowerCase()).not.toContain("salmon");
+  });
+
+  // #774: a flagged-low selenium yields a "try brazil nuts" suggestion end-to-end.
+  it("low selenium → a food-suggest:selenium finding (brazil nuts) — #774", () => {
+    const { profileId, anchor } = makeProfile("food-selenium");
+    insertReading(profileId, "Selenium", "low", anchor);
+
+    const findings = buildFoodSuggestionFindings(profileId);
+    expect(findings).toHaveLength(1);
+    expect(findings[0].dedupeKey).toBe(foodSuggestSignalKey("selenium"));
+    expect(findings[0].detail?.toLowerCase()).toContain("brazil");
+  });
+
+  // #775: a flagged-HIGH biomarker yields a reduce (food-reduce:*) finding.
+  it("high HbA1c → a food-reduce:glucose finding (reduce added sugar) — #775", () => {
+    const { profileId, anchor } = makeProfile("food-reduce-a1c");
+    insertReading(profileId, "Hemoglobin A1c", "high", anchor);
+
+    const findings = buildFoodSuggestionFindings(profileId);
+    expect(findings).toHaveLength(1);
+    const f = findings[0];
+    expect(f.dedupeKey).toBe(foodReduceSignalKey("glucose"));
+    expect(f.title?.toLowerCase()).toContain("cut back");
+    expect(f.detail?.toLowerCase()).toContain("high");
+    expect(f.detail?.toLowerCase()).toMatch(/added sugar|sugary/);
+    // Coaching-tier only (#449): informational, never a red attention flag.
+    expect(f.tone).toBe("info");
+  });
+
+  // #775: an elevated mercury tempers the app's own fish encouragement — the note
+  // rides the low-omega-3 ADD finding, not a standalone reduce card.
+  it("high mercury + low omega-3 → the fish finding carries the low-mercury-species note — #775", () => {
+    const { profileId, anchor } = makeProfile("food-mercury");
+    insertReading(profileId, "Omega-3 EPA", "low", anchor);
+    insertReading(profileId, "Mercury", "high", anchor);
+
+    const findings = buildFoodSuggestionFindings(profileId);
+    // One finding (the omega-3 add card), qualified by the mercury note.
+    expect(findings).toHaveLength(1);
+    expect(findings[0].dedupeKey).toBe(foodSuggestSignalKey("omega-3"));
+    expect(findings[0].detail?.toLowerCase()).toContain("mercury");
+    expect(findings[0].detail?.toLowerCase()).toMatch(/tuna|swordfish/);
+  });
+
+  // #775 true-negative: an in-range core-panel reading yields no reduce finding, and
+  // low-side suggestions still work alongside a reduce one.
+  it("in-range LDL yields no reduce finding; a low + a high coexist", () => {
+    const { profileId, anchor } = makeProfile("food-mixed");
+    insertReading(profileId, "LDL Cholesterol", "normal", anchor);
+    expect(buildFoodSuggestionFindings(profileId)).toEqual([]);
+
+    insertReading(profileId, "Ferritin", "low", anchor);
+    insertReading(profileId, "Uric Acid", "high", anchor);
+    const keys = buildFoodSuggestionFindings(profileId).map((f) => f.dedupeKey);
+    expect(keys).toContain(foodSuggestSignalKey("iron"));
+    expect(keys).toContain(foodReduceSignalKey("urate"));
   });
 });
 
