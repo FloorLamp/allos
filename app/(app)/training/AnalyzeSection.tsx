@@ -172,7 +172,7 @@ export default async function AnalyzeSection({
         <div className="card relative z-20 focus-within:z-50">
           <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
             <label className="block min-w-0">
-              <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              <span className="mb-1 block section-label">
                 Exercise or activity
               </span>
               <AnalyzePicker

@@ -235,7 +235,7 @@ export default async function MedicationsPage() {
         <div className="space-y-6">
           {currentMeds.length > 0 && (
             <section>
-              <h2 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-rose-600 dark:text-rose-400">
+              <h2 className="mb-2 flex items-center gap-1.5 section-label text-rose-600 dark:text-rose-400">
                 Current
               </h2>
               <div className="space-y-3">
@@ -266,7 +266,7 @@ export default async function MedicationsPage() {
 
           {pastMeds.length > 0 && (
             <details>
-              <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              <summary className="cursor-pointer section-label">
                 Past / discontinued ({pastMeds.length})
               </summary>
               <div className="mt-2 space-y-3">
@@ -300,7 +300,7 @@ export default async function MedicationsPage() {
       {/* Add medication — always expanded, like the other "Add entry" forms.
           Supplements are added on the Nutrition → Supplements tab. */}
       <div className="card mt-6">
-        <h2 className="mb-4 font-semibold text-slate-800 dark:text-slate-100">
+        <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
           Add medication
         </h2>
         <MedicationForm

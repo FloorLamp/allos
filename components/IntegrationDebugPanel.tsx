@@ -48,7 +48,7 @@ export default function IntegrationDebugPanel({
         <div className="-mx-1 overflow-x-auto">
           <table className="w-full min-w-[34rem] text-left text-sm">
             <thead>
-              <tr className="border-b border-black/5 text-xs uppercase tracking-wide text-slate-500 dark:border-white/10 dark:text-slate-400">
+              <tr className="border-b border-black/5 section-label dark:border-white/10">
                 <th className="px-1 py-2 font-medium">When</th>
                 <th className="px-1 py-2 font-medium">Status</th>
                 <th className="px-1 py-2 font-medium">Data window</th>

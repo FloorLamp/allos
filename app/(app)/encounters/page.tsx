@@ -92,13 +92,11 @@ export default async function VisitsPage(props: {
 
       {/* Upcoming — the appointments surface. */}
       <section data-testid="visits-upcoming">
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-          Upcoming
-        </h2>
+        <h2 className="mb-3 section-label">Upcoming</h2>
         <div className="grid gap-6 lg:grid-cols-3">
           <div className="min-w-0 space-y-6 lg:col-span-2">
             <section>
-              <h3 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              <h3 className="mb-2 flex items-center gap-2 section-label">
                 Scheduled
                 {scheduled.length > 0 && (
                   <span className="text-slate-500 dark:text-slate-400">
@@ -159,9 +157,7 @@ export default async function VisitsPage(props: {
           single "Add visit" entry above (toggle to "Already happened"), so this
           section is history-only. */}
       <section data-testid="visits-past">
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-          Past
-        </h2>
+        <h2 className="mb-3 section-label">Past</h2>
         <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
           To log a visit that already happened, use{" "}
           <span className="font-medium text-slate-500 dark:text-slate-400">

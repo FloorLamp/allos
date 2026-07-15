@@ -138,7 +138,7 @@ export default async function AuditLogPage(props: {
           <div className="overflow-x-auto">
             <table className="w-full text-sm" data-testid="audit-table">
               <thead>
-                <tr className="border-b border-black/5 text-left text-xs uppercase tracking-wide text-slate-500 dark:border-white/10 dark:text-slate-400">
+                <tr className="border-b border-black/5 dark:border-white/10">
                   <th className="th whitespace-nowrap">Time (UTC)</th>
                   <th className="th">Login</th>
                   <th className="th">Action</th>

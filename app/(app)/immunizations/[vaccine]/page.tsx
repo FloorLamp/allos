@@ -188,7 +188,7 @@ export default async function VaccineDetailPage(props: {
           {/* Relevant titers. */}
           {entry.antibodyMarkers.length > 0 && (
             <div className="card">
-              <h2 className="mb-2 font-semibold text-slate-800 dark:text-slate-100">
+              <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
                 Immunity titers
               </h2>
               {relevantTiters.length === 0 ? (

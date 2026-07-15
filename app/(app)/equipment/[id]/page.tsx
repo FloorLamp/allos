@@ -35,9 +35,7 @@ function Stat({
       data-testid={testId}
       className="rounded-lg border border-black/5 bg-white/60 px-4 py-3 dark:border-white/10 dark:bg-black/10"
     >
-      <div className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
-        {label}
-      </div>
+      <div className="section-label">{label}</div>
       <div className="mt-1 text-lg font-semibold tabular-nums text-slate-800 dark:text-slate-100">
         {value}
       </div>
@@ -171,7 +169,7 @@ export default async function EquipmentDetailPage(props: {
 
       {sessions.length > 0 ? (
         <div className="mt-6">
-          <h2 className="mb-2 font-semibold text-slate-800 dark:text-slate-100">
+          <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
             Recent sessions
           </h2>
           <ul className="divide-y divide-black/5 rounded-xl border border-black/5 dark:divide-white/10 dark:border-white/10">

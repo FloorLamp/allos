@@ -147,7 +147,7 @@ export default async function UpcomingPage() {
             // "+N more" overflow links target (e.g. /upcoming#overdue) — issue #538.
             <section key={group.kind} id={group.kind}>
               <h2
-                className={`mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide ${GROUP_TONE[group.kind]}`}
+                className={`mb-2 flex items-center gap-2 section-label ${GROUP_TONE[group.kind]}`}
               >
                 {group.label}
                 <span className="text-slate-500 dark:text-slate-400">
@@ -228,7 +228,7 @@ function SuppressedSection({
 }) {
   return (
     <details className="mt-8">
-      <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+      <summary className="cursor-pointer section-label">
         Snoozed &amp; dismissed{" "}
         <span className="text-slate-500 dark:text-slate-400">
           ({items.length})

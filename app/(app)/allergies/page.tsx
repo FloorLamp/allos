@@ -116,7 +116,7 @@ export default async function AllergiesPage() {
           )}
 
           <div>
-            <h2 className="mb-2 font-semibold text-slate-800 dark:text-slate-100">
+            <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
               Recorded allergies{" "}
               <span className="text-sm font-normal text-slate-400">
                 ({stored.length})

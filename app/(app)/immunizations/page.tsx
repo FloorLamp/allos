@@ -307,7 +307,7 @@ export default async function ImmunizationsPage(props: {
       )}
 
       <div className="mb-6">
-        <h2 className="mb-2 font-semibold text-slate-800 dark:text-slate-100">
+        <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
           CDC recommended schedule
         </h2>
         <ScheduleGrid
@@ -327,7 +327,7 @@ export default async function ImmunizationsPage(props: {
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="min-w-0 space-y-6 lg:col-span-2">
           <div className="card">
-            <h3 className="mb-2 font-semibold text-slate-800 dark:text-slate-100">
+            <h3 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
               Immunity titers
             </h3>
             {titers.length === 0 ? (

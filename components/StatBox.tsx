@@ -31,7 +31,7 @@ export function StatBox({
     <div
       className={`rounded-lg bg-slate-50 px-3 py-2 dark:bg-ink-900 ${className ?? ""}`}
     >
-      <dt className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+      <dt className="flex items-center gap-1.5 section-label">
         {label}
         {badge}
       </dt>

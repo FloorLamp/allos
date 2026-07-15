@@ -270,7 +270,7 @@ export default async function ImportDetailPage(props: {
       <div className="space-y-6">
         {/* Provenance */}
         <div className="card">
-          <h2 className="mb-1 font-semibold text-slate-800 dark:text-slate-100">
+          <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
             Provenance
           </h2>
           <ProvenanceRow label="File" value={doc.filename} />
@@ -370,9 +370,7 @@ export default async function ImportDetailPage(props: {
             </p>
             {coverage.consumed.length > 0 && (
               <div className="mb-3">
-                <div className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                  Sections read
-                </div>
+                <div className="mb-1 section-label">Sections read</div>
                 <div className="flex flex-wrap gap-2">
                   {coverage.consumed.map((c) => (
                     <span
@@ -390,7 +388,7 @@ export default async function ImportDetailPage(props: {
                 separately so they never read as a missing-importer gap. */}
             {coverage.ignored.length > 0 && (
               <div className="mb-3" data-testid="coverage-ignored">
-                <div className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                <div className="mb-1 section-label">
                   Recognized, not imported
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -411,7 +409,7 @@ export default async function ImportDetailPage(props: {
             )}
             {coverage.notConsumed.length > 0 && (
               <div data-testid="coverage-not-consumed">
-                <div className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                <div className="mb-1 section-label">
                   Present but not consumed
                 </div>
                 <div className="flex flex-wrap gap-2">

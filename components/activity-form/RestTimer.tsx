@@ -159,7 +159,7 @@ export default function RestTimer({
     >
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-baseline gap-2">
-          <span className="text-xs font-semibold uppercase tracking-wide text-brand-600 dark:text-brand-400">
+          <span className="section-label text-brand-600 dark:text-brand-400">
             Rest
           </span>
           <span

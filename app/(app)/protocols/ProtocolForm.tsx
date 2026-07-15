@@ -146,9 +146,7 @@ export default function ProtocolForm({
           )}
           {groups.map((group) => (
             <fieldset key={group}>
-              <legend className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
-                {group}
-              </legend>
+              <legend className="mb-1 section-label">{group}</legend>
               <div className="space-y-1">
                 {options
                   .filter((o) => o.group === group)

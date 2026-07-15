@@ -765,7 +765,7 @@ export default function JournalView({
                   className="scroll-mt-[calc(6rem+env(safe-area-inset-top))]"
                 >
                   <h2
-                    className={`mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400${
+                    className={`mb-2 section-label${
                       gi === 0 ? " flex h-9 items-center" : ""
                     }`}
                   >

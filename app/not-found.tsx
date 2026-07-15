@@ -7,9 +7,7 @@ import Link from "next/link";
 export default function NotFound() {
   return (
     <main className="mx-auto flex min-h-screen max-w-lg flex-col items-center justify-center px-6 py-16 text-center">
-      <p className="text-sm font-semibold uppercase tracking-wide text-brand-600 dark:text-brand-400">
-        404
-      </p>
+      <p className="section-label text-brand-600 dark:text-brand-400">404</p>
       <h1 className="mt-2 text-2xl font-semibold text-slate-900 dark:text-slate-50">
         Page not found
       </h1>

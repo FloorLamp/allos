@@ -81,7 +81,7 @@ export default function ErrorLogTable({
           <ScrollFade>
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-black/5 text-left text-xs uppercase tracking-wide text-slate-500 dark:border-white/10 dark:text-slate-400">
+                <tr className="border-b border-black/5 dark:border-white/10">
                   <th className="th">Time</th>
                   <th className="th">Level</th>
                   <th className="th">Scope</th>

@@ -32,7 +32,7 @@ export default function HouseholdStrip({
       aria-label="Household"
       className="mb-6"
     >
-      <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+      <div className="mb-2 flex items-center gap-1.5 section-label">
         <IconUsers className="h-4 w-4" stroke={1.75} aria-hidden="true" />
         Household
       </div>

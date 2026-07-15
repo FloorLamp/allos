@@ -33,9 +33,7 @@ export default function EquipmentTrend({
 
   return (
     <div>
-      <div className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
-        {label}
-      </div>
+      <div className="mb-1 section-label">{label}</div>
       <svg
         viewBox={`0 0 ${w} ${h}`}
         className="h-14 w-full"

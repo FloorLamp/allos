@@ -43,9 +43,7 @@ export function StatCard({
 }) {
   const inner = (
     <div className="card transition hover:shadow-md">
-      <div className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
-        {label}
-      </div>
+      <div className="section-label">{label}</div>
       <div className="mt-2 text-3xl font-bold text-slate-900 dark:text-slate-100">
         {value}
       </div>

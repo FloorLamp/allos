@@ -57,9 +57,7 @@ export default function HealthspanPillarsWidget({
             className="flex flex-col rounded-lg border border-slate-200 p-2.5 transition hover:border-brand-300 dark:border-ink-700 dark:hover:border-brand-700"
             data-testid={`pillar-${p.key}`}
           >
-            <span className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
-              {p.label}
-            </span>
+            <span className="section-label">{p.label}</span>
             <span
               className={`mt-1 text-lg font-bold tabular-nums ${TONE_VALUE[p.tone]}`}
               data-testid={`pillar-${p.key}-value`}

@@ -186,9 +186,7 @@ export default function FoodLogBar({
           if (tierGroups.length === 0) return null;
           return (
             <div key={tier}>
-              <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                {TIER_LABEL[tier]}
-              </h3>
+              <h3 className="mb-2 section-label">{TIER_LABEL[tier]}</h3>
               <ul className="space-y-1.5">
                 {tierGroups.map((g) => {
                   const count = counts[g.slug] ?? 0;

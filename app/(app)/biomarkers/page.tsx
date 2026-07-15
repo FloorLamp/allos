@@ -144,7 +144,7 @@ export default async function BiomarkersPage(props: {
       )}
 
       <div className="card mb-6">
-        <h2 className="mb-4 font-semibold text-slate-800 dark:text-slate-100">
+        <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
           Add medical record
         </h2>
         <RecordForm

@@ -240,9 +240,7 @@ export default function NeedsAttentionHero({
       <div className="space-y-4">
         {groups.map((group) => (
           <div key={group.band}>
-            <div
-              className={`mb-1 text-xs font-semibold uppercase tracking-wide ${BAND_TONE[group.band]}`}
-            >
+            <div className={`mb-1 section-label ${BAND_TONE[group.band]}`}>
               {group.label}
               <span className="ml-1 text-slate-500 dark:text-slate-400">
                 ({attentionCountLabel(group.items.length, group.overflow)})

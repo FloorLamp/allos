@@ -99,9 +99,7 @@ export default async function ProtocolDetailPage(props: {
 
               {gear && (
                 <div>
-                  <div className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                    Gear
-                  </div>
+                  <div className="section-label">Gear</div>
                   <Link
                     href={`/equipment/${gear.id}`}
                     className="mt-0.5 inline-flex items-center gap-1.5 font-medium text-brand-700 hover:underline dark:text-brand-300"
@@ -124,9 +122,7 @@ export default async function ProtocolDetailPage(props: {
 
               {practice && (
                 <div>
-                  <div className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                    Adherence this week
-                  </div>
+                  <div className="section-label">Adherence this week</div>
                   <div
                     className="mt-0.5 text-sm text-slate-700 dark:text-slate-200"
                     data-testid="protocol-adherence"
@@ -151,9 +147,7 @@ export default async function ProtocolDetailPage(props: {
               )}
 
               <div>
-                <div className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                  During this protocol
-                </div>
+                <div className="section-label">During this protocol</div>
                 <div
                   className="mt-0.5 text-sm text-slate-700 dark:text-slate-200"
                   data-testid="protocol-usage"

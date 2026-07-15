@@ -627,9 +627,7 @@ export default function StrengthSets({
           data-testid="recent-sessions"
           className="mt-2 rounded-md border border-black/10 bg-white px-2.5 py-1.5 text-xs dark:border-white/10 dark:bg-ink-900"
         >
-          <div className="font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
-            Recent
-          </div>
+          <div className="section-label">Recent</div>
           <ul className="mt-0.5 space-y-0.5">
             {recent.map((sess, i) => (
               <li
@@ -798,7 +796,7 @@ export default function StrengthSets({
           editor context visible, so the row returns to normal flow there. */}
       <div
         data-testid="set-column-headings"
-        className="sticky top-11 z-[9] -mx-1 mt-2 flex items-center gap-2 bg-white/95 px-1 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500 backdrop-blur md:static md:mx-0 md:bg-transparent md:px-0 md:backdrop-blur-none dark:bg-ink-900/95 dark:text-slate-400 dark:md:bg-transparent"
+        className="sticky top-11 z-[9] -mx-1 mt-2 flex items-center gap-2 bg-white/95 px-1 py-1 section-label text-[10px] backdrop-blur md:static md:mx-0 md:bg-transparent md:px-0 md:backdrop-blur-none dark:bg-ink-900/95 dark:md:bg-transparent"
       >
         <span className="w-12 shrink-0">Set</span>
         {!timed && !isBodyweight(p.name) ? (
