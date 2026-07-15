@@ -100,14 +100,14 @@ function Row({
       <div className="min-w-0 flex-1">
         <Link
           href={item.href}
-          className="block break-words font-medium text-slate-800 hover:text-brand-700 hover:underline sm:truncate dark:text-slate-100 dark:hover:text-brand-400"
+          className="block break-words font-medium text-slate-800 hover:text-brand-700 hover:underline lg:truncate dark:text-slate-100 dark:hover:text-brand-400"
         >
           {item.title}
         </Link>
         {item.detail && (
           <div
             data-testid="attention-item-detail"
-            className="break-words text-xs whitespace-normal text-slate-500 sm:truncate dark:text-slate-400"
+            className="break-words text-xs whitespace-normal text-slate-500 lg:truncate dark:text-slate-400"
           >
             {item.detail}
           </div>

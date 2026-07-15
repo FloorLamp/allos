@@ -157,6 +157,24 @@ test("attention rows move status and actions below content on mobile", async ({
   expect(titleBox).not.toBeNull();
   expect(actionsBox).not.toBeNull();
   expect(actionsBox!.y).toBeGreaterThan(titleBox!.y);
+
+  // Tablet widths still have limited horizontal room; truncation starts only at
+  // the desktop breakpoint.
+  await page.setViewportSize({ width: 768, height: 1024 });
+  expect(
+    await title.evaluate((element) => getComputedStyle(element).whiteSpace)
+  ).toBe("normal");
+  expect(
+    await detail.evaluate((element) => getComputedStyle(element).whiteSpace)
+  ).toBe("normal");
+
+  await page.setViewportSize({ width: 1280, height: 800 });
+  expect(
+    await title.evaluate((element) => getComputedStyle(element).whiteSpace)
+  ).toBe("nowrap");
+  expect(
+    await detail.evaluate((element) => getComputedStyle(element).whiteSpace)
+  ).toBe("nowrap");
 });
 
 test("the card is a strict act-now subset: this-week + later scheduled items live only on Upcoming (issue #524)", async ({
