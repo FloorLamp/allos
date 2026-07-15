@@ -1,5 +1,25 @@
 import { test, expect } from "@playwright/test";
+import Database from "better-sqlite3";
 import { followLink } from "./nav";
+
+const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
+const AVAILABILITY_APPOINTMENT = "E2E dashboard availability visit";
+
+function cleanupAvailabilityFixture() {
+  const handle = new Database(DB_PATH);
+  try {
+    handle
+      .prepare("DELETE FROM appointments WHERE title = ? AND profile_id = 2")
+      .run(AVAILABILITY_APPOINTMENT);
+    handle
+      .prepare(
+        "DELETE FROM profile_settings WHERE profile_id = 2 AND key = 'dashboard_layout'"
+      )
+      .run();
+  } finally {
+    handle.close();
+  }
+}
 
 // Dashboard redesign (issue #171): the Tier-1 "Needs attention" hero, the Tier-2
 // household strip, and the data-aware onboarding empty state. Runs against the
@@ -63,6 +83,11 @@ test("recent labs uses a balanced span and directional result carets", async ({
       '[aria-label="above target"], [aria-label="below target"]'
     )
   ).not.toHaveCount(0);
+  const firstDate = recentLabs.getByTestId("recent-lab-date").first();
+  await expect(firstDate).toBeVisible();
+  expect(
+    await firstDate.evaluate((element) => getComputedStyle(element).whiteSpace)
+  ).toBe("nowrap");
   await expect(
     page.getByRole("main").getByTestId("dashboard-widget-healthspan-pillars")
   ).toHaveClass(/lg:col-span-3/);
@@ -177,7 +202,7 @@ test("the household strip shows the caregiver's other profiles", async ({
   await expect(strip.getByTestId("household-chip-2")).toBeVisible();
 });
 
-test("a profile without a scheduled visit hides Next appointment", async ({
+test("temporary appointment absence never becomes a saved hidden preference", async ({
   browser,
 }) => {
   // Fresh, cookie-less context + its own admin session, so switching the active
@@ -186,6 +211,7 @@ test("a profile without a scheduled visit hides Next appointment", async ({
     storageState: { cookies: [], origins: [] },
   });
   const page = await ctx.newPage();
+  cleanupAvailabilityFixture();
   try {
     await page.goto("/login");
     await page.fill('input[name="username"]', "admin");
@@ -211,7 +237,35 @@ test("a profile without a scheduled visit hides Next appointment", async ({
     await expect(
       page.getByRole("main").getByTestId("dashboard-widget-next-appointment")
     ).toHaveCount(0);
+
+    // Customize still knows about the temporarily-unavailable widget, but labels
+    // it as empty instead of folding that state into the user's hidden choices.
+    const main = page.getByRole("main");
+    await main.getByRole("button", { name: "Edit dashboard" }).click();
+    const unavailable = main.getByTestId("dashboard-widget-next-appointment");
+    await expect(unavailable).toBeVisible();
+    await expect(unavailable).toContainText("Nothing to show right now");
+    await main.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(
+      main.getByRole("button", { name: "Edit dashboard" })
+    ).toBeVisible();
+
+    // Once data exists, the same preference makes the widget reappear. This is
+    // the regression: the old save path persisted an absent appointment as hidden.
+    await page.goto("/encounters");
+    const upcoming = page.getByTestId("visits-upcoming");
+    await upcoming.getByLabel("Reason / title").fill(AVAILABILITY_APPOINTMENT);
+    await upcoming.getByRole("button", { name: "Add", exact: true }).click();
+    await expect(page.getByText("Appointment saved")).toBeVisible();
+
+    await page.goto("/");
+    const appointmentWidget = page
+      .getByRole("main")
+      .getByTestId("dashboard-widget-next-appointment");
+    await expect(appointmentWidget).toBeVisible();
+    await expect(appointmentWidget).toContainText(AVAILABILITY_APPOINTMENT);
   } finally {
     await ctx.close();
+    cleanupAvailabilityFixture();
   }
 });

@@ -4,6 +4,7 @@ import {
   resolveWidgets,
   resolveWidgetList,
   pinnedWidgets,
+  summarizeDashboardHabits,
   type DashboardLayout,
 } from "../dashboard-widgets";
 
@@ -202,5 +203,36 @@ describe("data-aware empty resolution", () => {
     const coaching = list.find((w) => w.def.id === "coaching")!;
     expect(coaching.def.dataAware).toBeFalsy();
     expect(coaching.empty).toBe(false);
+  });
+});
+
+describe("summarizeDashboardHabits", () => {
+  it("ranks the full open set before applying the compact dashboard limit", () => {
+    const targets = [
+      { id: "almost", count: 3, per_week: 4, met: false },
+      { id: "half", count: 2, per_week: 4, met: false },
+      { id: "done", count: 4, per_week: 4, met: true },
+      { id: "quarter", count: 1, per_week: 4, met: false },
+      { id: "none-a", count: 0, per_week: 3, met: false },
+      { id: "none-b", count: 0, per_week: 2, met: false },
+    ];
+
+    const summary = summarizeDashboardHabits(targets, 4);
+
+    expect(summary.shown.map((target) => target.id)).toEqual([
+      "none-a",
+      "none-b",
+      "quarter",
+      "half",
+    ]);
+    expect(summary.open.map((target) => target.id)).toEqual([
+      "none-a",
+      "none-b",
+      "quarter",
+      "half",
+      "almost",
+    ]);
+    expect(summary.completedCount).toBe(1);
+    expect(summary.hiddenOpenCount).toBe(1);
   });
 });

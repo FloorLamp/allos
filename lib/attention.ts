@@ -41,13 +41,20 @@ import {
   compareWithinBand,
 } from "./upcoming";
 import { biomarkerFlagDismissalKey } from "./dismissal-keys";
-import { biomarkerViewHref, dataSectionHref, type AppRoute } from "./hrefs";
+import {
+  biomarkerViewHref,
+  dataSectionHref,
+  integrationDetailHref,
+  type AppRoute,
+} from "./hrefs";
 import { biomarkerFlagTitle, biomarkerFlagDetail } from "./biomarker-flag-copy";
 import { flagLabel, isOutOfRange } from "./reference-range";
 import type { DigestFlaggedBiomarker } from "./notifications/digest";
+import type { IntegrationId } from "./types";
 
 // A failing/needs-reauth integration provider, reduced to what the model renders.
 export interface AttentionIntegration {
+  id: IntegrationId | null;
   provider: string;
   detail: string | null;
 }
@@ -98,13 +105,16 @@ export function buildFlaggedItem(b: DigestFlaggedBiomarker): UpcomingItem {
 // reconnect it, you don't snooze it), so it's non-suppressible and files under the
 // "For review" grouping alongside the import-review count.
 function integrationToItem(i: AttentionIntegration): UpcomingItem {
+  const reconnectHref = i.id ? integrationDetailHref(i.id) : null;
   return {
-    key: `integration:${i.provider}`,
+    key: `integration:${i.id ?? i.provider}`,
     domain: "integration",
     signalGroup: "review",
     title: `${i.provider} sync needs attention`,
     detail: i.detail ?? "Reconnect to resume syncing.",
-    href: dataSectionHref("review"),
+    // Match the CTA's promise: known, connectable providers go straight to their
+    // setup page. Unknown/planned providers safely fall back to Review.
+    href: reconnectHref ?? dataSectionHref("review"),
     dueDate: null,
     dueText: "Reconnect",
     actionLabel: "Reconnect",

@@ -32,19 +32,17 @@ import {
 } from "./upcoming";
 import { getImportIssues, getReviewPairCount } from "./integrations";
 
-// A friendly provider label for a failing-integration event, falling back to the
-// raw provider id when it isn't in the registry.
-function providerLabel(provider: string): string {
-  return getIntegration(provider as IntegrationId)?.name ?? provider;
-}
-
 // The failing/needs-reauth providers reduced to what the model renders (one entry
 // per currently-broken provider).
 function integrationAttention(profileId: number): AttentionIntegration[] {
-  return getImportIssues(profileId).map((ev) => ({
-    provider: providerLabel(ev.provider),
-    detail: ev.error ?? "Reconnect to resume syncing.",
-  }));
+  return getImportIssues(profileId).map((ev) => {
+    const integration = getIntegration(ev.provider as IntegrationId);
+    return {
+      id: integration?.id ?? null,
+      provider: integration?.name ?? ev.provider,
+      detail: ev.error ?? "Reconnect to resume syncing.",
+    };
+  });
 }
 
 // The stable flagged-biomarker window (issue #283): a result flagged in the last N

@@ -1,8 +1,4 @@
-import {
-  IconUsers,
-  IconChevronRight,
-  IconCircleCheck,
-} from "@tabler/icons-react";
+import { IconUsers, IconChevronRight } from "@tabler/icons-react";
 import Avatar, { type AvatarProfile } from "@/components/Avatar";
 import { disambiguateProfileNames } from "@/lib/profile-disambiguation";
 import { openProfileAction } from "@/app/(app)/household/actions";
@@ -53,20 +49,12 @@ export default function HouseholdStrip({
               <span className="font-medium text-slate-700 dark:text-slate-200">
                 {displayNames.get(profile.id) ?? profile.name}
               </span>
-              {count > 0 ? (
-                <span
-                  data-testid={`household-chip-count-${profile.id}`}
-                  className="rounded-full bg-rose-100 px-1.5 py-0.5 text-xs font-semibold text-rose-700 dark:bg-rose-500/20 dark:text-rose-300"
-                >
-                  {count}
-                </span>
-              ) : (
-                <IconCircleCheck
-                  className="h-4 w-4 text-emerald-500 dark:text-emerald-400"
-                  stroke={1.75}
-                  aria-label="All clear"
-                />
-              )}
+              <span
+                data-testid={`household-chip-count-${profile.id}`}
+                className="rounded-full bg-rose-100 px-1.5 py-0.5 text-xs font-semibold text-rose-700 dark:bg-rose-500/20 dark:text-rose-300"
+              >
+                {count}
+              </span>
               <IconChevronRight
                 className="h-4 w-4 text-slate-300 dark:text-slate-600"
                 stroke={1.75}

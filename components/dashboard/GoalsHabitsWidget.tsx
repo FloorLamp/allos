@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { WeeklyTargets } from "@/components/WeeklyTargets";
 import LogActivityButton from "@/components/LogActivityButton";
+import { summarizeDashboardHabits } from "@/lib/dashboard-widgets";
 import { frequencyScopeLabel, goalBarClass, goalPct } from "@/lib/goals";
 import type { GoalProgress } from "@/lib/goal-progress";
 import type { FrequencyTargetProgress } from "@/lib/queries";
@@ -19,12 +20,16 @@ export default function GoalsHabitsWidget({
   goalProgress: Map<number, GoalProgress>;
   freqTargets: FrequencyTargetProgress[];
 }) {
-  const openTargets = freqTargets.filter((target) => !target.met).slice(0, 4);
-  const completedTargets = freqTargets.filter((target) => target.met).length;
-  const hasOpenTrainingTarget = openTargets.some(
+  const {
+    open: allOpenTargets,
+    shown: openTargets,
+    completedCount: completedTargets,
+    hiddenOpenCount,
+  } = summarizeDashboardHabits(freqTargets);
+  const hasOpenTrainingTarget = allOpenTargets.some(
     (target) => target.target.scope_kind !== "food_group"
   );
-  const hasOpenFoodTarget = openTargets.some(
+  const hasOpenFoodTarget = allOpenTargets.some(
     (target) => target.target.scope_kind === "food_group"
   );
 
@@ -113,6 +118,14 @@ export default function GoalsHabitsWidget({
                 <p className="text-sm text-emerald-600 dark:text-emerald-400">
                   All weekly habits complete.
                 </p>
+              )}
+              {hiddenOpenCount > 0 && (
+                <Link
+                  href="/training"
+                  className="mt-2 inline-block text-xs font-medium text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400"
+                >
+                  +{hiddenOpenCount} more to do →
+                </Link>
               )}
               {openTargets.length > 0 && (
                 <div className="mt-3 flex flex-wrap items-center gap-3">

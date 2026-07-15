@@ -309,7 +309,13 @@ export default async function Dashboard() {
     id: def.id,
     label: def.label,
     span: def.span,
-    visible: visible && !(def.id === "next-appointment" && !hasScheduledAppt),
+    // `visible` is only the saved user preference. Availability is transient and
+    // must not leak into DashboardGrid's persisted hidden-id set.
+    visible,
+    available:
+      (def.id !== "next-appointment" || hasScheduledAppt) &&
+      (def.id !== "coaching-observations" || coachingObservations.length > 0) &&
+      (def.id !== "weekly-recap" || weeklyRecap !== null),
     node:
       def.dataAware && emptyIds.has(def.id)
         ? emptyNode(def.id)

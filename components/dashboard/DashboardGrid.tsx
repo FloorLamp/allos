@@ -33,7 +33,13 @@ export interface GridWidget {
   id: string;
   label: string;
   span: WidgetSpan;
+  // The user's persisted show/hide preference. Keep this separate from
+  // `available`: temporary data absence must never become a saved hidden id.
   visible: boolean;
+  // Whether this widget has something useful to render right now. Unavailable
+  // widgets stay in Customize so their preference/order survives, but leave no
+  // empty slot in the normal dashboard grid.
+  available: boolean;
   node: ReactNode;
 }
 
@@ -72,6 +78,7 @@ function SortableWidget({
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
+      data-testid={`dashboard-widget-${widget.id}`}
       className={`${SPAN_CLASS[widget.span]} relative ${
         isDragging ? "z-20 opacity-80" : ""
       }`}
@@ -112,16 +119,27 @@ function SortableWidget({
             : "ring-1 ring-brand-300 dark:ring-brand-700"
         }`}
       >
-        {widget.node}
+        {widget.available ? (
+          widget.node
+        ) : (
+          <div className="card min-h-28">
+            <p className="font-semibold text-slate-700 dark:text-slate-200">
+              {widget.label}
+            </p>
+            <p className="mt-1 text-sm text-slate-400 dark:text-slate-500">
+              Nothing to show right now.
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
 // The dashboard grid. Normal mode renders the visible widgets in order. Customize
-// mode reveals every eligible widget (visible + hidden) with a drag handle and a
-// show/hide toggle; Save persists order + hidden ids and refreshes, Cancel
-// restores the pre-edit state.
+// mode reveals every eligible widget (visible + hidden, available or temporarily
+// unavailable) with a drag handle and a show/hide toggle; Save persists order +
+// user-hidden ids only and refreshes, Cancel restores the pre-edit state.
 export default function DashboardGrid({
   widgets,
   saveAction,
@@ -206,7 +224,7 @@ export default function DashboardGrid({
     const visible = order
       .filter((id) => !hidden.has(id))
       .map((id) => byId.get(id))
-      .filter((w): w is GridWidget => !!w);
+      .filter((w): w is GridWidget => !!w && w.available);
     return (
       <div>
         <div className="mb-3 flex justify-end">

@@ -32,8 +32,8 @@ function revalidateMedical() {
   revalidatePath("/biomarkers");
   revalidatePath("/biomarkers/view", "page");
   revalidatePath("/immunizations");
-  // Biomarkers and Trends render StarredBiomarkers, so a record mutation must refresh
-  // it too (a new/edited/deleted reading changes a pinned biomarker's tile).
+  // The dashboard derives Recent labs and Needs attention from these records, so
+  // a new/edited/deleted reading must refresh its summaries too.
   revalidatePath("/");
 }
 

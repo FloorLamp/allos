@@ -44,7 +44,10 @@ export default function RecentLabsWidget({
                 <span className="shrink-0 whitespace-nowrap text-sm text-slate-600 dark:text-slate-300">
                   <MedicalValue value={r.value} unit={r.unit} flag={r.flag} />
                 </span>
-                <span className="hidden w-16 shrink-0 text-right text-xs text-slate-400 dark:text-slate-500 sm:block">
+                <span
+                  data-testid="recent-lab-date"
+                  className="hidden w-24 shrink-0 whitespace-nowrap text-right text-xs text-slate-400 dark:text-slate-500 sm:block"
+                >
                   {formatRelativeDate(r.date, today)}
                 </span>
               </li>

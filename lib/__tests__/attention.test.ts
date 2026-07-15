@@ -57,7 +57,7 @@ describe("buildAttentionModel — the one item builder (issue #524)", () => {
             flag: "high",
           },
         ],
-        integrations: [{ provider: "Strava", detail: "401" }],
+        integrations: [{ id: "strava", provider: "Strava", detail: "401" }],
         reviewCount: 2,
       })
     );
@@ -65,7 +65,7 @@ describe("buildAttentionModel — the one item builder (issue #524)", () => {
       new Set([
         "dose:1",
         "biomarker-flag:ldl cholesterol",
-        "integration:Strava",
+        "integration:strava",
         "review",
       ])
     );
@@ -142,7 +142,13 @@ describe("buildAttentionModel — the one item builder (issue #524)", () => {
   it("integration + review are structural (non-suppressible); no review item at count 0", () => {
     const model = buildAttentionModel(
       input({
-        integrations: [{ provider: "Strava", detail: "401 Unauthorized" }],
+        integrations: [
+          {
+            id: "strava",
+            provider: "Strava",
+            detail: "401 Unauthorized",
+          },
+        ],
         reviewCount: 3,
       })
     );
@@ -150,6 +156,7 @@ describe("buildAttentionModel — the one item builder (issue #524)", () => {
     const review = model.find((i) => i.domain === "review")!;
     expect(integ.suppressible).toBe(false);
     expect(integ.signalGroup).toBe("review");
+    expect(integ.href).toBe("/integrations/strava");
     expect(review.suppressible).toBe(false);
     expect(review.title).toContain("3 import items");
     expect(
@@ -157,6 +164,18 @@ describe("buildAttentionModel — the one item builder (issue #524)", () => {
         (i) => i.domain === "review"
       )
     ).toBeUndefined();
+  });
+
+  it("falls back to Review when an integration has no setup page", () => {
+    const [item] = buildAttentionModel(
+      input({
+        integrations: [
+          { id: null, provider: "Legacy source", detail: "Sync failed" },
+        ],
+      })
+    );
+    expect(item.key).toBe("integration:Legacy source");
+    expect(item.href).toBe("/data?section=review");
   });
 });
 
@@ -423,7 +442,7 @@ describe("the strict subset invariant", () => {
       flaggedBiomarkers: [
         { name: "LDL", canonicalName: "LDL", value: "160", flag: "high" },
       ],
-      integrations: [{ provider: "Strava", detail: "401" }],
+      integrations: [{ id: "strava", provider: "Strava", detail: "401" }],
       reviewCount: 4,
     })
   );
@@ -440,7 +459,7 @@ describe("the strict subset invariant", () => {
       model.find((item) => item.key === "biomarker-flag:ldl")?.actionLabel
     ).toBe("Review result");
     expect(
-      model.find((item) => item.key === "integration:Strava")?.actionLabel
+      model.find((item) => item.key === "integration:strava")?.actionLabel
     ).toBe("Reconnect");
     expect(model.find((item) => item.key === "review")?.actionLabel).toBe(
       "Review"

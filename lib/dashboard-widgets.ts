@@ -48,6 +48,42 @@ export interface DashboardLayout {
   hidden: string[];
 }
 
+// The dashboard shows only a compact weekly-habit subset. Rank the WHOLE open
+// set before applying the limit so creation order cannot hide a less-complete
+// habit behind one that is nearly done. Kept pure for direct regression coverage.
+export interface DashboardHabitProgress {
+  count: number;
+  per_week: number;
+  met: boolean;
+}
+
+export function summarizeDashboardHabits<T extends DashboardHabitProgress>(
+  targets: readonly T[],
+  limit = 4
+): {
+  open: T[];
+  shown: T[];
+  completedCount: number;
+  hiddenOpenCount: number;
+} {
+  const open = targets
+    .map((target, index) => ({ target, index }))
+    .filter(({ target }) => !target.met)
+    .sort(
+      (a, b) =>
+        a.target.count / Math.max(1, a.target.per_week) -
+          b.target.count / Math.max(1, b.target.per_week) || a.index - b.index
+    )
+    .map(({ target }) => target);
+  const shown = open.slice(0, Math.max(0, Math.trunc(limit)));
+  return {
+    open,
+    shown,
+    completedCount: targets.length - open.length,
+    hiddenOpenCount: open.length - shown.length,
+  };
+}
+
 // The catalog. Array order is the default display order; new widgets appended to
 // the end appear automatically for existing profiles (see resolveWidgetList).
 //
