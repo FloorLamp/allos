@@ -14,6 +14,7 @@ import {
   getProtocolUsage,
   getProtocolComparison,
 } from "@/lib/queries";
+import { setWeekMode } from "@/lib/settings";
 
 function makeProfile(name: string): { profileId: number; anchor: string } {
   const profileId = Number(
@@ -108,5 +109,67 @@ describe("food-habit → protocol loop (#580)", () => {
     const comparison = getProtocolComparison(profileId, protocol, anchor, "kg");
     expect(comparison.outcomes.length).toBeGreaterThan(0);
     expect(comparison.outcomes[0].label).toContain("Omega-3");
+  });
+
+  it("getFrequencyTargetProgress carries the paced state (#748 item 3)", () => {
+    const { profileId, anchor } = makeProfile("food-pace");
+    // Rolling mode makes the week window a mature, deterministic 7 days regardless of
+    // the calendar day the test runs, so a shortfall is unambiguously "behind".
+    setWeekMode(profileId, "rolling");
+
+    const met = Number(
+      db
+        .prepare(
+          `INSERT INTO frequency_targets (profile_id, scope_kind, scope_value, per_week)
+           VALUES (?, 'food_group', 'fatty_fish', 2)`
+        )
+        .run(profileId).lastInsertRowid
+    );
+    const behind = Number(
+      db
+        .prepare(
+          `INSERT INTO frequency_targets (profile_id, scope_kind, scope_value, per_week)
+           VALUES (?, 'food_group', 'berries', 3)`
+        )
+        .run(profileId).lastInsertRowid
+    );
+
+    // Two fatty-fish servings this week → met; berries untouched → behind (full week).
+    logServing(profileId, "fatty_fish", anchor);
+    logServing(profileId, "fatty_fish", shiftDateStr(anchor, -1));
+
+    const rows = getFrequencyTargetProgress(profileId);
+    const metRow = rows.find((p) => p.target.id === met)!;
+    const behindRow = rows.find((p) => p.target.id === behind)!;
+    expect(metRow.pace).toBe("met");
+    expect(metRow.met).toBe(true);
+    expect(behindRow.pace).toBe("behind");
+    expect(behindRow.met).toBe(false);
+  });
+
+  it("the partial unique index forbids two food-habit targets for one group (#748 item 4)", () => {
+    const { profileId } = makeProfile("food-unique");
+    const insert = () =>
+      db
+        .prepare(
+          `INSERT INTO frequency_targets (profile_id, scope_kind, scope_value, per_week)
+           VALUES (?, 'food_group', 'legumes', 2)`
+        )
+        .run(profileId);
+    insert();
+    // A second raw insert for the same (profile, food_group) violates migration 038's
+    // partial unique index — the app path upserts instead of hitting this.
+    expect(insert).toThrow(/UNIQUE/i);
+
+    // The index is PARTIAL: training scopes (region/group/type) still admit duplicates.
+    const insertRegion = () =>
+      db
+        .prepare(
+          `INSERT INTO frequency_targets (profile_id, scope_kind, scope_value, per_week)
+           VALUES (?, 'region', 'chest', 2)`
+        )
+        .run(profileId);
+    insertRegion();
+    expect(insertRegion).not.toThrow();
   });
 });

@@ -89,6 +89,28 @@ export function getProtocols(profileId: number): Protocol[] {
   return rows.map(toProtocol);
 }
 
+// Map of frequency_target_id → the name of the protocol that adopted it as its
+// intervention (#580's link). Used by the Weekly-habits card to warn before untracking
+// a habit that a protocol still measures (#748 item 6) — untracking nulls the link, so a
+// protocol would silently lose its measurement in one tap. Only referenced targets
+// appear; if several protocols share a target (unusual), the first by id wins the label.
+export function getFrequencyTargetProtocolNames(
+  profileId: number
+): Map<number, string> {
+  const rows = db
+    .prepare(
+      `SELECT frequency_target_id, name FROM protocols
+        WHERE profile_id = ? AND frequency_target_id IS NOT NULL
+        ORDER BY id`
+    )
+    .all(profileId) as { frequency_target_id: number; name: string }[];
+  const out = new Map<number, string>();
+  for (const r of rows) {
+    if (!out.has(r.frequency_target_id)) out.set(r.frequency_target_id, r.name);
+  }
+  return out;
+}
+
 // A single protocol by id, scoped to the profile so a guessed id from another
 // profile 404s. Null when absent.
 export function getProtocol(profileId: number, id: number): Protocol | null {

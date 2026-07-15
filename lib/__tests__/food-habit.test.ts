@@ -31,6 +31,7 @@ function progress(
     count,
     per_week: perWeek,
     met: count >= perWeek,
+    pace: count >= perWeek ? "met" : "behind",
   };
 }
 

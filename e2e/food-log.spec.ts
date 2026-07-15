@@ -30,6 +30,39 @@ test("logging a serving shows in the day count and the weekly rollup, undo decre
   await expect(count).toHaveText(String(before));
 });
 
+test("the today/yesterday toggle backfills yesterday, not today (#748 item 1)", async ({
+  page,
+}) => {
+  await page.goto("/nutrition");
+  await expect(page.getByTestId("food-log-bar")).toBeVisible();
+
+  // A group untouched by the other specs, so parallel runs don't collide.
+  const slug = "lean_fish";
+  const todayCount = page.getByTestId(`count-${slug}`);
+  const todayBefore = Number((await todayCount.textContent())?.trim() || "0");
+
+  // Switch the log target to yesterday.
+  await page.getByTestId("food-day-yesterday").click();
+  await expect(page.getByTestId("food-day-total")).toContainText("yesterday");
+  const yCount = page.getByTestId(`count-${slug}`);
+  const yBefore = Number((await yCount.textContent())?.trim() || "0");
+
+  // Log a serving on yesterday — the count reconciles to the server total.
+  await page.getByTestId(`log-${slug}`).click();
+  await expect(yCount).toHaveText(String(yBefore + 1));
+
+  // Toggling back to today shows today's count UNCHANGED: the write hit yesterday.
+  await page.getByTestId("food-day-today").click();
+  await expect(page.getByTestId("food-day-total")).toContainText("today");
+  await expect(todayCount).toHaveText(String(todayBefore));
+
+  // Restore the fixture — undo the yesterday serving.
+  await page.getByTestId("food-day-yesterday").click();
+  await expect(yCount).toHaveText(String(yBefore + 1));
+  await page.getByTestId(`undo-${slug}`).click();
+  await expect(yCount).toHaveText(String(yBefore));
+});
+
 test("the labs food-suggestions card is collapsed by default and expands on click (#591)", async ({
   page,
 }) => {

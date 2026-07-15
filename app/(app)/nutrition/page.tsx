@@ -1,5 +1,6 @@
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
+import { shiftDateStr } from "@/lib/date";
 import {
   getFoodServingsOnDate,
   getWeeklyFoodRollup,
@@ -42,9 +43,17 @@ export default async function NutritionPage() {
   }
 
   const date = today(profile.id);
-  const servings = getFoodServingsOnDate(profile.id, date);
+  // Yesterday is loggable too (#748 item 1) — the honest "forgot to log at dinner"
+  // backfill. Deliberately today/yesterday only: a full date picker invites
+  // retro-fabricating streaks. Both days' current servings are loaded so the toggle
+  // shows the right counts without a round-trip.
+  const yesterday = shiftDateStr(date, -1);
   const initial: Record<string, number> = {};
-  for (const [slug, n] of servings) initial[slug] = n;
+  for (const [slug, n] of getFoodServingsOnDate(profile.id, date))
+    initial[slug] = n;
+  const initialYesterday: Record<string, number> = {};
+  for (const [slug, n] of getFoodServingsOnDate(profile.id, yesterday))
+    initialYesterday[slug] = n;
   const rollup = getWeeklyFoodRollup(profile.id);
   const suggestions = getFoodSuggestions(profile.id);
   // Catalog pre-ordered so the profile's staples lead within each tier (#591).
@@ -100,7 +109,13 @@ export default async function NutritionPage() {
           truncate/flex handling takes over. */}
       <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
         <div className="card min-w-0">
-          <FoodLogBar date={date} initial={initial} groups={groups} />
+          <FoodLogBar
+            today={date}
+            yesterday={yesterday}
+            initial={initial}
+            initialYesterday={initialYesterday}
+            groups={groups}
+          />
         </div>
 
         <div className="min-w-0 space-y-6 self-start">

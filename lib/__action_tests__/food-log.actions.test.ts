@@ -67,6 +67,21 @@ describe("logFoodServing", () => {
     expect(res.ok).toBe(false);
     expect(rows(profile.id)).toEqual([]);
   });
+
+  it("returns the authoritative daily total so the bar can reconcile (#748 item 2)", async () => {
+    const login = createLogin();
+    const profile = createProfile("reconciler", login.id);
+    actAs(login, profile);
+
+    const first = await logFoodServing(
+      fd({ group_key: "berries", date: DATE })
+    );
+    expect(first).toEqual({ ok: true, servings: 1 });
+    const second = await logFoodServing(
+      fd({ group_key: "berries", date: DATE })
+    );
+    expect(second).toEqual({ ok: true, servings: 2 });
+  });
 });
 
 describe("undoFoodServing", () => {
@@ -77,10 +92,16 @@ describe("undoFoodServing", () => {
 
     await logFoodServing(fd({ group_key: "legumes", date: DATE }));
     await logFoodServing(fd({ group_key: "legumes", date: DATE }));
-    await undoFoodServing(fd({ group_key: "legumes", date: DATE }));
+    const afterUndo = await undoFoodServing(
+      fd({ group_key: "legumes", date: DATE })
+    );
+    expect(afterUndo).toEqual({ ok: true, servings: 1 }); // remaining total
     expect(rows(profile.id)[0].servings).toBe(1);
 
-    await undoFoodServing(fd({ group_key: "legumes", date: DATE }));
+    const atZero = await undoFoodServing(
+      fd({ group_key: "legumes", date: DATE })
+    );
+    expect(atZero).toEqual({ ok: true, servings: 0 }); // row dropped → 0
     expect(rows(profile.id)).toEqual([]); // dropped at zero
   });
 });
@@ -105,6 +126,23 @@ describe("trackFoodHabit / untrackFoodHabit (#580)", () => {
     targets = getFrequencyTargets(profile.id);
     expect(targets).toHaveLength(1);
     expect(targets[0].per_week).toBe(3);
+  });
+
+  it("a double-tap can't create two targets for one group (#748 item 4)", async () => {
+    const login = createLogin();
+    const profile = createProfile("double-tapper", login.id);
+    actAs(login, profile);
+
+    // Two near-simultaneous "Track" posts (the FoodSuggestions button + the card form,
+    // or a fat-fingered double tap). The partial unique index + upsert collapse them.
+    await Promise.all([
+      trackFoodHabit(fd({ group_key: "berries", per_week: 2 })),
+      trackFoodHabit(fd({ group_key: "berries", per_week: 2 })),
+    ]);
+    const targets = getFrequencyTargets(profile.id).filter(
+      (t) => t.scope_value === "berries"
+    );
+    expect(targets).toHaveLength(1);
   });
 
   it("untrack nulls a referencing protocol's link, then removes the target", async () => {

@@ -4,7 +4,9 @@ import {
   computeBodyGoalProgress,
   computeGoalProgress,
 } from "../../goal-progress";
-import { goalMatchesExercise } from "../../goals";
+import { goalMatchesExercise, frequencyPace } from "../../goals";
+import type { FrequencyPace } from "../../goals";
+import { daysBetweenDateStr } from "../../date";
 import type { BodyGroup, MuscleRegion } from "../../lifts";
 import { regionForExercise, regionsForGroup } from "../../lifts";
 import type { BodyMetricKind, FrequencyTarget, Goal } from "../../types";
@@ -132,6 +134,9 @@ export interface FrequencyTargetProgress {
   count: number;
   per_week: number;
   met: boolean;
+  // Paced status (#748 item 3): "met" once complete, "on-pace" while keeping up with the
+  // share of the week elapsed, else "behind". Computed once here so every surface agrees.
+  pace: FrequencyPace;
 }
 
 // Distinct training days in the profile's weekly window that satisfy each target.
@@ -146,6 +151,10 @@ export function getFrequencyTargetProgress(
   if (targets.length === 0) return [];
 
   const since = weekWindowStart(profileId);
+  // Days elapsed in this week's window through today, inclusive (1..7) — the pacing
+  // denominator (#748 item 3). Rolling mode's window is always the trailing 7 days, so
+  // this is 7 there; calendar mode grows it from 1 on the week-start day.
+  const elapsedDays = (daysBetweenDateStr(since, today(profileId)) ?? 6) + 1;
   const setRows = db
     .prepare(
       `SELECT DISTINCT a.date AS date, s.exercise AS exercise
@@ -211,7 +220,13 @@ export function getFrequencyTargetProgress(
     } else {
       count = typeDates.get(t.scope_value)?.size ?? 0;
     }
-    return { target: t, count, per_week: t.per_week, met: count >= t.per_week };
+    return {
+      target: t,
+      count,
+      per_week: t.per_week,
+      met: count >= t.per_week,
+      pace: frequencyPace(count, t.per_week, elapsedDays),
+    };
   });
 }
 

@@ -126,6 +126,42 @@ const GROUP_LABELS: Record<string, string> = {
   Full: "Full body",
 };
 
+// Paced status of a weekly frequency target (issue #748 item 3). A target used to be
+// only "met" (count >= per_week) or, by omission, "Behind" — so on the first day of the
+// week EVERY unmet habit read amber "Behind", punishing a fresh week. This adds a middle
+// "on-pace" state: you're on pace while your count keeps up with the share of the week
+// already elapsed. The floor gives a neutral early-week grace — a 2×/week habit needs
+// floor(2×1/7)=0 servings to be on pace on day 1, so it isn't flagged Behind until the
+// week has matured enough that a serving is actually owed.
+//
+// Pure (no DB), so both surfaces that show a paced target — the /nutrition Weekly habits
+// card and the dashboard Goals-and-habits widget — key on the SAME state (one question,
+// one computation). `elapsedDays` is the number of days in the profile's week window
+// through today, inclusive (1..7); a rolling 7-day window is always fully elapsed, so a
+// rolling-mode target is "on-pace" only once complete, which matches its always-mature
+// window.
+export type FrequencyPace = "met" | "on-pace" | "behind";
+
+export function frequencyPace(
+  count: number,
+  perWeek: number,
+  elapsedDays: number
+): FrequencyPace {
+  if (perWeek <= 0 || count >= perWeek) return "met";
+  const elapsed = Math.min(7, Math.max(1, Math.trunc(elapsedDays)));
+  const owedSoFar = Math.floor((perWeek * elapsed) / 7);
+  return count >= owedSoFar ? "on-pace" : "behind";
+}
+
+// The badge/label text for a paced target — one place both surfaces format over.
+export function frequencyPaceLabel(pace: FrequencyPace): string {
+  return pace === "met"
+    ? "On track"
+    : pace === "on-pace"
+      ? "On pace"
+      : "Behind";
+}
+
 // Display label for a frequency target's scope ("Lower body", "Cardio", "Chest").
 export function frequencyScopeLabel(kind: string, value: string): string {
   if (!value) return value;

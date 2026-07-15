@@ -2,10 +2,17 @@
 
 import { requireWriteAccess } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
-import { db, today } from "@/lib/db";
+import { db, today, writeTx } from "@/lib/db";
 import { isValidFoodGroup } from "@/lib/food-groups";
-import { logFoodServingCore } from "@/lib/food-log-write";
+import { logFoodServingCore, undoFoodServingCore } from "@/lib/food-log-write";
 import { formError, formOk, type FormResult } from "@/lib/types";
+
+// Log/undo answer with the group's AUTHORITATIVE post-write daily total (issue #748
+// item 2) so the one-tap bar reconciles its optimistic count with the server instead of
+// trusting a local increment — a failed write (expired session, revoked grant) rolls the
+// count back rather than leaving a phantom serving.
+export type FoodLogResult =
+  { ok: true; servings: number } | { ok: false; error: string };
 
 // The largest sane weekly serving target — mirrors the protocol practice clamp so a
 // fat-fingered "70" can't create a permanently-behind habit.
@@ -34,7 +41,9 @@ function parseFields(
 // incrementing its servings — so tapping twice records two servings in one row. The
 // write itself is the auth-blind lib core (shared with the Telegram button handler,
 // #682); this action owns the auth gate + validation + revalidation.
-export async function logFoodServing(formData: FormData): Promise<FormResult> {
+export async function logFoodServing(
+  formData: FormData
+): Promise<FoodLogResult> {
   const { profile } = await requireWriteAccess();
   const fields = parseFields(formData, profile.id);
   if (!fields) return formError("Unknown food group.");
@@ -43,27 +52,26 @@ export async function logFoodServing(formData: FormData): Promise<FormResult> {
   revalidatePath("/nutrition");
   revalidatePath("/trends");
   revalidatePath("/");
-  return formOk();
+  return { ok: true, servings: outcome.servings };
 }
 
 // Undo one serving (decrement); removes the row when it would hit zero, so a fully
 // undone group leaves no stray row. A no-op if nothing is logged for that group/day.
-export async function undoFoodServing(formData: FormData): Promise<FormResult> {
+// The UPDATE+DELETE sequence lives in the auth-blind lib core (undoFoodServingCore),
+// wrapped in one IMMEDIATE transaction (#468, #748 item 5); this action owns the auth
+// gate + validation + revalidation and returns the group's remaining daily total.
+export async function undoFoodServing(
+  formData: FormData
+): Promise<FoodLogResult> {
   const { profile } = await requireWriteAccess();
   const fields = parseFields(formData, profile.id);
   if (!fields) return formError("Unknown food group.");
-  db.prepare(
-    `UPDATE food_log SET servings = servings - 1
-      WHERE profile_id = ? AND date = ? AND group_key = ?`
-  ).run(profile.id, fields.date, fields.group);
-  db.prepare(
-    `DELETE FROM food_log
-      WHERE profile_id = ? AND date = ? AND group_key = ? AND servings <= 0`
-  ).run(profile.id, fields.date, fields.group);
+  const outcome = undoFoodServingCore(profile.id, fields.group, fields.date);
+  if (outcome.kind === "unknown-group") return formError("Unknown food group.");
   revalidatePath("/nutrition");
   revalidatePath("/trends");
   revalidatePath("/");
-  return formOk();
+  return { ok: true, servings: outcome.servings };
 }
 
 // ---- Food-habit targets (issue #580) ----
@@ -83,22 +91,20 @@ export async function trackFoodHabit(formData: FormData): Promise<FormResult> {
     MAX_PER_WEEK,
     Math.max(1, Math.round(Number(formData.get("per_week") ?? 2) || 2))
   );
-  const existing = db
-    .prepare(
-      `SELECT id FROM frequency_targets
-        WHERE profile_id = ? AND scope_kind = 'food_group' AND scope_value = ?`
-    )
-    .get(profile.id, group) as { id: number } | undefined;
-  if (existing) {
-    db.prepare(
-      `UPDATE frequency_targets SET per_week = ? WHERE id = ? AND profile_id = ?`
-    ).run(perWeek, existing.id, profile.id);
-  } else {
+  // Upsert on the partial unique index (profile_id, scope_value) WHERE
+  // scope_kind = 'food_group' (migration 038, issue #748 item 4). The old
+  // SELECT-then-INSERT raced — a double-tap (or the FoodSuggestions "Track" plus the
+  // card form) could interleave two INSERTs and land two targets for one group, both
+  // counting independently. The atomic ON CONFLICT can't, and writeTx takes the write
+  // lock up front (#468). Re-tracking still just updates the cadence.
+  writeTx(() => {
     db.prepare(
       `INSERT INTO frequency_targets (scope_kind, scope_value, per_week, profile_id)
-       VALUES ('food_group', ?, ?, ?)`
+       VALUES ('food_group', ?, ?, ?)
+       ON CONFLICT (profile_id, scope_value) WHERE scope_kind = 'food_group'
+       DO UPDATE SET per_week = excluded.per_week`
     ).run(group, perWeek, profile.id);
-  }
+  });
   revalidatePath("/nutrition");
   revalidatePath("/");
   return formOk();
@@ -121,13 +127,19 @@ export async function untrackFoodHabit(
     )
     .get(id, profile.id) as { id: number } | undefined;
   if (!target) return formError("Couldn't find that habit.");
-  db.prepare(
-    `UPDATE protocols SET frequency_target_id = NULL, owns_frequency_target = 0
-      WHERE profile_id = ? AND frequency_target_id = ?`
-  ).run(profile.id, id);
-  db.prepare(
-    `DELETE FROM frequency_targets WHERE id = ? AND profile_id = ?`
-  ).run(id, profile.id);
+  // Null any referencing protocol's link FIRST (the row-ops side-state rule — a live
+  // protocols.frequency_target_id FK would block the delete), THEN remove the target.
+  // One IMMEDIATE transaction (#468, #748 item 5) so the two statements can't half-apply
+  // and strand a protocol pointing at a deleted target.
+  writeTx(() => {
+    db.prepare(
+      `UPDATE protocols SET frequency_target_id = NULL, owns_frequency_target = 0
+        WHERE profile_id = ? AND frequency_target_id = ?`
+    ).run(profile.id, id);
+    db.prepare(
+      `DELETE FROM frequency_targets WHERE id = ? AND profile_id = ?`
+    ).run(id, profile.id);
+  });
   revalidatePath("/nutrition");
   revalidatePath("/");
   return formOk();

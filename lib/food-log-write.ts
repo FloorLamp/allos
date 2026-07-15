@@ -19,6 +19,13 @@ import { isValidFoodGroup } from "./food-groups";
 export type FoodLogOutcome =
   { kind: "logged"; servings: number } | { kind: "unknown-group" };
 
+// The typed result of an undo (issue #748 item 5): a serving was removed and
+// `servings` is the group's REMAINING daily total (0 once the row is dropped), or the
+// slug isn't in the catalog. Undo is idempotent — undoing a group with nothing logged
+// is a no-op that reports 0.
+export type FoodUndoOutcome =
+  { kind: "undone"; servings: number } | { kind: "unknown-group" };
+
 // Log one serving of a food group on a day. Upserts the day's row, incrementing its
 // servings, and returns the group's resulting daily total. Single IMMEDIATE
 // transaction (#468) so the insert + the count read see one consistent state even
@@ -43,5 +50,36 @@ export function logFoodServingCore(
       )
       .get(profileId, date, group) as { servings: number } | undefined;
     return { kind: "logged", servings: row?.servings ?? 1 };
+  });
+}
+
+// Undo one serving of a food group on a day (issue #748 item 5): decrement the day's
+// row and drop it when it would hit zero, so a fully-undone group leaves no stray row.
+// Single IMMEDIATE transaction (#468) — the decrement, the zero-cleanup DELETE, and the
+// remaining-count read see one consistent state under a concurrent web/Telegram tap. An
+// auth-blind core next to logFoodServingCore so a future Telegram "undo" button reuses
+// the same computation rather than duplicating the two-statement sequence.
+export function undoFoodServingCore(
+  profileId: number,
+  group: string,
+  date: string
+): FoodUndoOutcome {
+  if (!isValidFoodGroup(group)) return { kind: "unknown-group" };
+  return writeTx(() => {
+    db.prepare(
+      `UPDATE food_log SET servings = servings - 1
+        WHERE profile_id = ? AND date = ? AND group_key = ?`
+    ).run(profileId, date, group);
+    db.prepare(
+      `DELETE FROM food_log
+        WHERE profile_id = ? AND date = ? AND group_key = ? AND servings <= 0`
+    ).run(profileId, date, group);
+    const row = db
+      .prepare(
+        `SELECT servings FROM food_log
+          WHERE profile_id = ? AND date = ? AND group_key = ?`
+      )
+      .get(profileId, date, group) as { servings: number } | undefined;
+    return { kind: "undone", servings: row?.servings ?? 0 };
   });
 }
