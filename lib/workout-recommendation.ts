@@ -113,6 +113,12 @@ export interface NextWorkoutInput {
   // never entered and the result is byte-for-byte the prior no-routine behavior.
   // RoutineWithDays (lib/routines) structurally satisfies this minimal shape.
   activeRoutine?: ActiveRoutineInput | null;
+  // Whether the active routine's mesocycle says TODAY is a deload week (#741),
+  // resolved once by the DB gather getRoutineCycleStatus and passed in — the flag
+  // every surface reads (one gather, not per surface). Carried onto the resolved
+  // RoutineSession so the recommendation formatters phrase the deload and apply
+  // deloadAdjust. Absent / false ⇒ byte-for-byte the non-deload behavior.
+  deloadWeek?: boolean;
 }
 
 // The slice of the active routine the core reads to resolve today's session — a
@@ -161,6 +167,11 @@ export interface RoutineSession {
   // the surface copy both key on this.
   kind: "strength" | "cardio";
   slots: RoutineSessionSlot[];
+  // TODAY is the routine's deload week (#741) — the last week of its mesocycle.
+  // Set from NextWorkoutInput.deloadWeek (the one gather). When true the surfaces
+  // phrase "Deload week" and run the slates through deloadAdjust; false ⇒ the
+  // ordinary session, unchanged.
+  deloadWeek: boolean;
 }
 
 // How a workout item was arrived at, so a formatter can phrase it precisely:
@@ -556,6 +567,7 @@ export function resolveRoutineSession(
     focus: day.focus,
     kind: isCardioDay ? "cardio" : "strength",
     slots,
+    deloadWeek: input.deloadWeek ?? false,
   };
 }
 

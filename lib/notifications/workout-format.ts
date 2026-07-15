@@ -19,6 +19,10 @@ export interface WorkoutRecommendation {
   // ("Push", "Pull", …). Titles the nudge ("🏋️ Push day: …") so the reminder names
   // the actual sequence day. Null / absent ⇒ the prior habit-derived title.
   sessionLabel?: string | null;
+  // The routine's mesocycle says today is a deload week (#741). The nudge KEEPS
+  // firing (it isn't suppressed) but SOFTENS: it names the deload so a lighter
+  // session reads as on-plan, not as falling behind. Absent / false ⇒ no note.
+  deloadWeek?: boolean;
 }
 
 // Render a WorkoutRecommendation as the Telegram message. Split out from the
@@ -59,10 +63,17 @@ export function formatWorkoutReminder(
         ]
       : [];
 
+  // Deload-week softening (#741): the nudge still fires, but names the deload so a
+  // lighter week reads as on-plan rather than as falling behind.
+  const deloadNote = rec.deloadWeek
+    ? "Deload week — keep it light and let fatigue clear."
+    : null;
+
   // Recovery override: a rest day reframes the nudge; the workout suggestion, if
   // any, becomes a "when you're ready" footnote rather than the headline.
   if (rec.rest) {
     const lines: string[] = [rec.rest.detail];
+    if (deloadNote) lines.push(deloadNote);
     if (rec.exercises.length)
       lines.push(`When you're ready: ${rec.exercises.join(", ")}`);
     else if (rec.focus.length)
@@ -76,6 +87,7 @@ export function formatWorkoutReminder(
   }
 
   const lines: string[] = [];
+  if (deloadNote) lines.push(deloadNote);
   if (rec.exercises.length)
     lines.push(`Suggested: ${rec.exercises.join(", ")}`);
   else if (rec.focus.length) lines.push(`Focus: ${rec.focus.join(", ")}`);

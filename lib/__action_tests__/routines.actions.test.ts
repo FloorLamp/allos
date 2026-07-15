@@ -16,7 +16,9 @@ import {
   activateRoutineAction,
   deactivateRoutineAction,
   deleteRoutineAction,
+  restartRoutineCycleAction,
 } from "@/app/(app)/training/actions";
+import { today } from "@/lib/db";
 import { getRoutines, getRoutineWithDays } from "@/lib/routines";
 import { getRoutineTemplate } from "@/lib/routine-templates";
 import { createLogin, createProfile, actAs, seedActor, fd } from "./harness";
@@ -242,6 +244,109 @@ describe("deactivate / delete actions", () => {
     actAs(login, profile, "read");
     await expect(
       adoptRoutineTemplateAction(fd({ template_id: "full-body-3x" }))
+    ).rejects.toThrow();
+  });
+});
+
+// ── Mesocycle: cycle_weeks editing + Restart cycle (#741) ─────────────────────
+
+const cyclePayload = (name: string, cycleWeeks: number | null) =>
+  JSON.stringify({
+    name,
+    cycleWeeks,
+    days: [
+      {
+        label: "Full",
+        focus: ["Legs"],
+        slots: [{ candidates: ["Back Squat"], sets: 3, repMin: 5, repMax: 8 }],
+      },
+    ],
+  });
+
+function routineRow(id: number) {
+  return db
+    .prepare(`SELECT cycle_weeks, started_date FROM routines WHERE id = ?`)
+    .get(id) as { cycle_weeks: number | null; started_date: string | null };
+}
+
+describe("cycle_weeks editing (#741)", () => {
+  it("persists cycle_weeks on create and clears it on edit", async () => {
+    seedActor();
+    const created = await createRoutineAction(
+      fd({ routine: cyclePayload("Cycled", 6) })
+    );
+    const rid = created.ok ? created.routineId! : 0;
+    expect(routineRow(rid).cycle_weeks).toBe(6);
+
+    const edited = await updateRoutineAction(
+      fd({ routine_id: rid, routine: cyclePayload("Cycled", null) })
+    );
+    expect(edited.ok).toBe(true);
+    expect(routineRow(rid).cycle_weeks).toBeNull();
+  });
+
+  it("clamps an out-of-range cycle length to 1–52", async () => {
+    seedActor();
+    const created = await createRoutineAction(
+      fd({ routine: cyclePayload("Clamped", 999) })
+    );
+    const rid = created.ok ? created.routineId! : 0;
+    expect(routineRow(rid).cycle_weeks).toBe(52);
+  });
+});
+
+describe("restartRoutineCycleAction (#741)", () => {
+  it("resets started_date to today for a cycled routine", async () => {
+    const { profile } = seedActor();
+    const created = await createRoutineAction(
+      fd({ routine: cyclePayload("C", 6) })
+    );
+    const rid = created.ok ? created.routineId! : 0;
+    await activateRoutineAction(fd({ routine_id: rid }));
+    // Backdate the started_date so a real change is observable.
+    db.prepare(
+      `UPDATE routines SET started_date = '2020-01-01' WHERE id = ?`
+    ).run(rid);
+
+    const res = await restartRoutineCycleAction(fd({ routine_id: rid }));
+    expect(res.ok).toBe(true);
+    expect(routineRow(rid).started_date).toBe(today(profile.id));
+  });
+
+  it("is a no-op (not found) for a routine with no cycle", async () => {
+    seedActor();
+    const created = await createRoutineAction(
+      fd({ routine: cyclePayload("NoCycle", null) })
+    );
+    const rid = created.ok ? created.routineId! : 0;
+    expect(await restartRoutineCycleAction(fd({ routine_id: rid }))).toEqual({
+      ok: false,
+      error: "not found",
+    });
+  });
+
+  it("returns not-found for another profile's routine (scoping)", async () => {
+    const admin = createLogin({ role: "admin" });
+    const pA = createProfile("A", admin.id);
+    actAs(admin, pA);
+    const a = await createRoutineAction(fd({ routine: cyclePayload("A", 6) }));
+    const rid = a.ok ? a.routineId! : 0;
+
+    const member = createLogin({ role: "member" });
+    const pB = createProfile("B", member.id);
+    actAs(member, pB);
+    expect(await restartRoutineCycleAction(fd({ routine_id: rid }))).toEqual({
+      ok: false,
+      error: "not found",
+    });
+  });
+
+  it("refuses a read-only acting session", async () => {
+    const login = createLogin({ role: "member" });
+    const profile = createProfile("RO2", login.id);
+    actAs(login, profile, "read");
+    await expect(
+      restartRoutineCycleAction(fd({ routine_id: 1 }))
     ).rejects.toThrow();
   });
 });

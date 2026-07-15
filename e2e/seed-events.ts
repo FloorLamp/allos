@@ -29,12 +29,14 @@ import {
   E2E_LOGIN_NOGEAR,
   E2E_LOGIN_ROUTINE,
   E2E_LOGIN_ROUTINE_BUILDER,
+  E2E_LOGIN_ROUTINE_DELOAD,
   E2E_LOGIN_STRAVA,
   E2E_MEMBER_PASSWORD,
   DUP_REVIEW_PROFILE,
   HEALTH_CONNECT_PROFILE,
   NO_GEAR_PROFILE,
   ROUTINE_BUILDER_PROFILE,
+  ROUTINE_DELOAD_PROFILE,
   ROUTINE_PROFILE,
   SOURCE_COMPARE_PROFILE,
   STRAVA_REAUTH_PROFILE,
@@ -1479,6 +1481,35 @@ activateRoutine(routineProfileId, routineId);
 seedMemberLogin(E2E_LOGIN_ROUTINE, routineProfileId);
 console.log(
   `e2e: seeded an active PPL routine on profile ${routineProfileId} (Today's session card, #740)`
+);
+
+// A dedicated ADULT profile with an ACTIVE PPL routine whose mesocycle places TODAY
+// in the DELOAD week (#741): a 2-week cycle whose started_date is backdated 7 days
+// (weekInCycle = floor(7/7) % 2 = 1 = the last, deload week). No credited sessions in
+// that 7-day span, so the pause re-anchor never trips (gap 7 < 21). SEPARATE from
+// ROUTINE_PROFILE so the #740 recommendation spec's non-deload copy stays intact.
+const deloadProfileId = fixtureProfileId(ROUTINE_DELOAD_PROFILE);
+db.prepare(
+  `DELETE FROM routine_slots WHERE routine_day_id IN (
+     SELECT rd.id FROM routine_days rd
+       JOIN routines r ON r.id = rd.routine_id
+      WHERE r.profile_id = ?
+   )`
+).run(deloadProfileId);
+db.prepare(
+  `DELETE FROM routine_days WHERE routine_id IN (
+     SELECT id FROM routines WHERE profile_id = ?
+   )`
+).run(deloadProfileId);
+db.prepare(`DELETE FROM routines WHERE profile_id = ?`).run(deloadProfileId);
+const deloadRoutineId = adoptTemplate(deloadProfileId, "push-pull-legs-6x");
+activateRoutine(deloadProfileId, deloadRoutineId);
+db.prepare(
+  `UPDATE routines SET cycle_weeks = 2, started_date = ? WHERE id = ?`
+).run(shiftDateStr(today(deloadProfileId), -7), deloadRoutineId);
+seedMemberLogin(E2E_LOGIN_ROUTINE_DELOAD, deloadProfileId);
+console.log(
+  `e2e: seeded an active PPL routine in its deload week on profile ${deloadProfileId} (#741)`
 );
 
 // A profile-1 equipment row REFERENCED by a logged strength set, so the equipment

@@ -25,7 +25,7 @@ import {
   type WeightUnit,
 } from "../settings";
 import { availableEquipmentKinds } from "../equipment";
-import { getActiveRoutine } from "../routines";
+import { getActiveRoutine, getRoutineCycleStatus } from "../routines";
 
 // How many recent nights / days to average for a recovery baseline. Long enough
 // to be a stable personal norm, short enough to reflect the current block.
@@ -103,8 +103,9 @@ export function gatherCoachingInput(
   weightUnit: WeightUnit,
   distanceUnit: DistanceUnit
 ): CoachingInput {
+  const todayStr = today(profileId);
   return {
-    today: today(profileId),
+    today: todayStr,
     routine: getFrequencyTargetProgress(profileId),
     strength: getStrengthByExercise(profileId),
     cardio: getCardioByActivity(profileId, distanceUnit),
@@ -112,6 +113,8 @@ export function gatherCoachingInput(
     datedExercises: getRecentDatedExercises(profileId),
     availableEquipment: availableEquipmentKinds(profileId),
     activeRoutine: getActiveRoutine(profileId),
+    deloadWeek:
+      getRoutineCycleStatus(profileId, todayStr)?.isDeloadWeek ?? false,
     sleep: getSleepSignal(profileId),
     restingHr: getRestingHrSignal(profileId),
     restEpisode: getRestEpisode(profileId),

@@ -48,6 +48,7 @@ import {
   EMPTY_RISK_ATTRIBUTES,
 } from "./risk-stratification";
 import { isGoalLive, frequencyScopeLabel } from "./goals";
+import { getRoutineCycleStatus } from "./routines";
 import {
   foodHabitSignalKey,
   isFoodHabitBehind,
@@ -306,23 +307,28 @@ export function buildTrainingObservationFindings(
       today
     )
   );
-  observations.push(...detectPlateaus(e1rmSeries, today));
+  // Cross-reference the routine's mesocycle (#741): when its deload week is ≤2 weeks
+  // away, the plateau finding points at that built-in light week instead of advising
+  // an ad-hoc deload. Same ONE gather every deload surface reads.
+  const cycle = getRoutineCycleStatus(profileId, today);
+  const upcomingDeload =
+    cycle && cycle.weeksUntilDeload <= 2
+      ? { weeksUntilDeload: cycle.weeksUntilDeload }
+      : null;
+  observations.push(...detectPlateaus(e1rmSeries, today, upcomingDeload));
 
   return observations.map(trainingObservationToFinding);
 }
 
 // ---- Domain 4b: per-muscle weekly volume bands (Training → Overview, #742) --
 
-// GUARDED deload hook (#741). During an active routine's DELOAD week the `below`
-// volume observation is held — the week is supposed to be light — via the SAME
-// week-in-cycle flag the nudge softening will read (decided in the ONE gather, not
-// per surface). #741 has not shipped: there is no routine cycle to consult yet, so
-// this is inert and always returns false, making the deload branch a no-op today. When
-// #741 lands, its body resolves the active routine's cycle_weeks / week-in-cycle and
-// returns true on the deload week — no call site changes, the finding simply starts
-// holding on those weeks.
-function isRoutineDeloadWeek(_profileId: number, _today: string): boolean {
-  return false; // guarded — activates when #741 provides the week-in-cycle flag
+// Deload hook (#741, activating the #742 guard). During an active routine's DELOAD
+// week the `below` volume observation is held — the week is supposed to be light —
+// via the SAME week-in-cycle flag every deload surface reads (the ONE gather
+// getRoutineCycleStatus, not per surface). No call-site change from the #742 guard:
+// it now returns true on the routine's deload week instead of always false.
+function isRoutineDeloadWeek(profileId: number, today: string): boolean {
+  return getRoutineCycleStatus(profileId, today)?.isDeloadWeek ?? false;
 }
 
 function volumeObservationToFinding(o: VolumeBandObservation): Finding {

@@ -309,12 +309,31 @@ export function repsProgressing(points: readonly E1rmPoint[]): boolean {
   return slope * PLATEAU_WINDOW_DAYS >= PLATEAU_REP_PROGRESSION_MIN;
 }
 
+// A deload week the active routine's mesocycle already schedules soon (#741) — the
+// plateau finding cross-references it so it points at that built-in light week
+// instead of recommending an ad-hoc deload. `weeksUntilDeload` is 0 when this IS the
+// deload week. Null ⇒ no cycle / not soon, so the finding keeps its ad-hoc phrasing.
+export interface UpcomingDeload {
+  weeksUntilDeload: number;
+}
+
+// Phrase how soon the routine's deload week arrives, for the plateau cross-reference.
+function deloadWhen(weeksUntilDeload: number): string {
+  if (weeksUntilDeload <= 0) return "is this week";
+  if (weeksUntilDeload === 1) return "is next week";
+  return `is ${weeksUntilDeload} weeks away`;
+}
+
 // Plateaued lifts: established series whose windowed e1RM is flat. `today` windows
 // each series to the trailing PLATEAU_WINDOW_DAYS. Alphabetical for deterministic
-// ordering across surfaces.
+// ordering across surfaces. `upcomingDeload` (#741), when the routine's deload week
+// is ≤2 weeks out, swaps the ad-hoc "drop the load ~10%" advice for a pointer at
+// that scheduled light week — SAME finding identity (key/legacyKey/title), only the
+// detail copy changes, so a dismissal carries across the phrasing.
 export function detectPlateaus(
   series: readonly E1rmSeries[],
-  today: string
+  today: string,
+  upcomingDeload: UpcomingDeload | null = null
 ): TrainingObservation[] {
   const cutoffAgo = PLATEAU_WINDOW_DAYS;
   const out: TrainingObservation[] = [];
@@ -332,15 +351,22 @@ export function detectPlateaus(
     const levelAnchor = plateauLevelAnchor(
       median(windowed.map((p) => p.value))
     );
+    const detail =
+      upcomingDeload && upcomingDeload.weeksUntilDeload <= 2
+        ? `Your estimated 1RM for ${s.exercise} has been flat for about 6 weeks. ` +
+          `Your routine's deload week ${deloadWhen(
+            upcomingDeload.weeksUntilDeload
+          )} — that built-in light week is a good chance to let this lift ` +
+          `recover; swapping in a variation can also restart progression.`
+        : `Your estimated 1RM for ${s.exercise} has been flat for about 6 weeks. ` +
+          `A short deload — drop the load ~10% and rebuild — or swapping in a ` +
+          `variation can restart progression.`;
     out.push({
       kind: "plateau",
       key: plateauSignalKey(s.exercise, levelAnchor),
       legacyKey: plateauLegacyKey(s.exercise),
       title: `${s.exercise} has plateaued`,
-      detail:
-        `Your estimated 1RM for ${s.exercise} has been flat for about 6 weeks. ` +
-        `A short deload — drop the load ~10% and rebuild — or swapping in a ` +
-        `variation can restart progression.`,
+      detail,
       exercise: s.exercise,
     });
   }

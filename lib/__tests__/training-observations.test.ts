@@ -162,6 +162,49 @@ describe("isPlateau / detectPlateaus", () => {
     expect(out[0].detail).toContain("deload");
   });
 
+  it("cross-references an upcoming routine deload (#741) without re-keying", () => {
+    const base = detectPlateaus(
+      [{ exercise: "Bench Press", points: flat }],
+      today
+    )[0];
+    const soon = detectPlateaus(
+      [{ exercise: "Bench Press", points: flat }],
+      today,
+      {
+        weeksUntilDeload: 1,
+      }
+    )[0];
+    // Same finding identity — only the detail copy changes.
+    expect(soon.key).toBe(base.key);
+    expect(soon.legacyKey).toBe(base.legacyKey);
+    expect(soon.title).toBe(base.title);
+    expect(soon.detail).toContain("deload week");
+    expect(soon.detail).toContain("next week");
+    expect(soon.detail).not.toContain("drop the load");
+  });
+
+  it("keeps ad-hoc deload phrasing when the routine deload is >2 weeks out", () => {
+    const out = detectPlateaus(
+      [{ exercise: "Bench Press", points: flat }],
+      today,
+      {
+        weeksUntilDeload: 3,
+      }
+    )[0];
+    expect(out.detail).toContain("drop the load");
+  });
+
+  it("phrases 'this week' during the routine deload week", () => {
+    const out = detectPlateaus(
+      [{ exercise: "Bench Press", points: flat }],
+      today,
+      {
+        weeksUntilDeload: 0,
+      }
+    )[0];
+    expect(out.detail).toContain("this week");
+  });
+
   it("all observation keys share the training-obs namespace", () => {
     for (const k of [
       trainingBalanceSignalKey("push"),

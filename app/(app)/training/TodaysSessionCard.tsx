@@ -21,11 +21,15 @@ export default function TodaysSessionCard({
   focus,
   slots,
   prefill,
+  deloadWeek = false,
 }: {
   label: string;
   focus: string[];
   slots: SessionCardSlot[];
   prefill: ActivityEditData;
+  // The routine's mesocycle says this is the deload week (#741): the slates below
+  // are already deload-adjusted (lighter load, fewer sets); the badge names it.
+  deloadWeek?: boolean;
 }) {
   const { openSession, canStartWorkout } = useActivityEditor();
 
@@ -42,6 +46,14 @@ export default function TodaysSessionCard({
           >
             {label}
           </p>
+          {deloadWeek && (
+            <p
+              className="mt-1 inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-500/15 dark:text-amber-300"
+              data-testid="deload-badge"
+            >
+              Deload week — lighter to recover
+            </p>
+          )}
           {focus.length > 0 && (
             <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500">
               {focus.join(" · ")}

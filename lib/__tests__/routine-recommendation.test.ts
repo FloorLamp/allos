@@ -210,6 +210,15 @@ describe("recommendNextWorkout — routine-aware path (#740)", () => {
     expect(nw.primary).toBeNull();
   });
 
+  it("carries the deload flag onto the session (#741)", () => {
+    const off = recommendNextWorkout(input({ activeRoutine: ppl(0) }));
+    expect(off.session!.deloadWeek).toBe(false); // default when absent
+    const on = recommendNextWorkout(
+      input({ activeRoutine: ppl(0), deloadWeek: true })
+    );
+    expect(on.session!.deloadWeek).toBe(true);
+  });
+
   it("a cardio-focus day yields a cardio routine-day item", () => {
     const routine: ActiveRoutineInput = {
       id: 9,

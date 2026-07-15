@@ -25,6 +25,7 @@ import {
 } from "@/lib/muscle-coverage";
 import { bandVerdict, bandPresentation } from "@/lib/muscle-volume-bands";
 import {
+  deloadAdjust,
   nextSetText,
   recentCardioPRs,
   recentPRs,
@@ -33,7 +34,7 @@ import {
   type CardioPR,
 } from "@/lib/coaching";
 import { recommendNextWorkout } from "@/lib/workout-recommendation";
-import { getActiveRoutine } from "@/lib/routines";
+import { getActiveRoutine, getRoutineCycleStatus } from "@/lib/routines";
 import { availableEquipmentKinds } from "@/lib/equipment";
 import { buildRoutineSessionPrefill } from "@/lib/activity-form-model";
 import TodaysSessionCard from "./TodaysSessionCard";
@@ -118,6 +119,11 @@ export default async function OverviewSection() {
     datedExercises,
     availableEquipment: availableEquipmentKinds(profile.id),
     activeRoutine: getActiveRoutine(profile.id),
+    // The mesocycle deload flag (#741), resolved once by the ONE gather and threaded
+    // through so this card, the recovery-aware next-workout engine, and (elsewhere)
+    // the Telegram nudge all read the same "is it a deload week."
+    deloadWeek:
+      getRoutineCycleStatus(profile.id, todayStr)?.isDeloadWeek ?? false,
     sleep: getSleepSignal(profile.id),
     restingHr: getRestingHrSignal(profile.id),
     restEpisode: getRestEpisode(profile.id),
@@ -136,16 +142,27 @@ export default async function OverviewSection() {
           session.kind === "cardio" ? session.label : `${session.label} day`,
         focus: session.focus as string[],
         prefill: buildRoutineSessionPrefill(session, todayStr),
+        deloadWeek: session.deloadWeek,
         slots: session.slots
           .filter((s) => s.exercise)
           .map((s) => {
-            const ns = s.seed ? suggestNextSet(s.seed, wu) : null;
+            const base = s.seed ? suggestNextSet(s.seed, wu) : null;
+            // On a deload week run the slot's sets + load target through the ONE
+            // shared deloadAdjust (#741) so this card and the recommendation copy
+            // can't disagree; otherwise the ordinary prescription.
+            const { sets, nextSet } = session.deloadWeek
+              ? deloadAdjust({
+                  exercise: s.exercise,
+                  sets: s.sets,
+                  nextSet: base,
+                })
+              : { sets: s.sets, nextSet: base };
             const reps =
               s.repMin === s.repMax ? `${s.repMax}` : `${s.repMin}–${s.repMax}`;
             return {
               exercise: s.exercise,
-              prescription: `${s.sets} × ${reps}`,
-              target: ns ? nextSetText(ns, wu) : null,
+              prescription: `${sets} × ${reps}`,
+              target: nextSet ? nextSetText(nextSet, wu) : null,
             };
           }),
       }
@@ -174,6 +191,7 @@ export default async function OverviewSection() {
           focus={sessionCard.focus}
           slots={sessionCard.slots}
           prefill={sessionCard.prefill}
+          deloadWeek={sessionCard.deloadWeek}
         />
       )}
 

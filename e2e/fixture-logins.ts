@@ -82,3 +82,10 @@ export const ROUTINE_PROFILE = "Routine (e2e)";
 // the full hub with the Routines tab.
 export const E2E_LOGIN_ROUTINE_BUILDER = "e2e_routine_builder";
 export const ROUTINE_BUILDER_PROFILE = "Routine Builder (e2e)";
+
+// A dedicated ADULT profile with an ACTIVE routine whose mesocycle places TODAY in
+// its DELOAD week (#741), SEPARATE from ROUTINE_PROFILE so the recommendation spec's
+// non-deload expectations stay intact. Its Today's-session card shows the deload
+// badge + deload-adjusted slate.
+export const E2E_LOGIN_ROUTINE_DELOAD = "e2e_routine_deload";
+export const ROUTINE_DELOAD_PROFILE = "Routine Deload (e2e)";
