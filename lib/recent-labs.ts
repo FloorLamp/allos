@@ -1,4 +1,10 @@
-import { isNonOptimal, isOutOfRange } from "./reference-range";
+import {
+  flagLabel,
+  flagTone,
+  isNonOptimal,
+  isOutOfRange,
+  type FlagTone,
+} from "./reference-range";
 import type { MedicalCategory, MedicalFlag, MedicalRecord } from "./types";
 import { biomarkerViewHref, type AppRoute } from "./hrefs";
 
@@ -15,6 +21,17 @@ export interface RecentLabRow {
   flag: MedicalFlag | null;
   date: string;
   href: AppRoute;
+}
+
+// High/low variants carry a directional caret in MedicalValue. These legacy or
+// qualitative statuses have no direction, so compact surfaces need an explicit
+// text label instead of relying on value color alone.
+export function recentLabDirectionlessStatus(
+  flag: MedicalFlag | null
+): { label: string; tone: FlagTone } | null {
+  return flag === "abnormal" || flag === "non-optimal" || flag === "immune"
+    ? { label: flagLabel(flag), tone: flagTone(flag) }
+    : null;
 }
 
 // The subset of a medical record the highlight selection reads. `getMedicalRecords`

@@ -41,13 +41,20 @@ import {
   compareWithinBand,
 } from "./upcoming";
 import { biomarkerFlagDismissalKey } from "./dismissal-keys";
-import { biomarkerViewHref, dataSectionHref, type AppRoute } from "./hrefs";
+import {
+  biomarkerViewHref,
+  dataSectionHref,
+  integrationDetailHref,
+  type AppRoute,
+} from "./hrefs";
 import { biomarkerFlagTitle, biomarkerFlagDetail } from "./biomarker-flag-copy";
 import { flagLabel, isOutOfRange } from "./reference-range";
 import type { DigestFlaggedBiomarker } from "./notifications/digest";
+import type { IntegrationId } from "./types";
 
 // A failing/needs-reauth integration provider, reduced to what the model renders.
 export interface AttentionIntegration {
+  id: IntegrationId | null;
   provider: string;
   detail: string | null;
 }
@@ -88,6 +95,7 @@ export function buildFlaggedItem(b: DigestFlaggedBiomarker): UpcomingItem {
     href: biomarkerViewHref(b.canonicalName, b.name),
     dueDate: null,
     dueText: flagLabel(b.flag),
+    actionLabel: "Review result",
     suppressible: true,
     priority: isOutOfRange(b.flag) ? 1 : 0,
   };
@@ -97,15 +105,19 @@ export function buildFlaggedItem(b: DigestFlaggedBiomarker): UpcomingItem {
 // reconnect it, you don't snooze it), so it's non-suppressible and files under the
 // "For review" grouping alongside the import-review count.
 function integrationToItem(i: AttentionIntegration): UpcomingItem {
+  const reconnectHref = i.id ? integrationDetailHref(i.id) : null;
   return {
-    key: `integration:${i.provider}`,
+    key: `integration:${i.id ?? i.provider}`,
     domain: "integration",
     signalGroup: "review",
     title: `${i.provider} sync needs attention`,
     detail: i.detail ?? "Reconnect to resume syncing.",
-    href: dataSectionHref("review"),
+    // Match the CTA's promise: known, connectable providers go straight to their
+    // setup page. Unknown/planned providers safely fall back to Review.
+    href: reconnectHref ?? dataSectionHref("review"),
     dueDate: null,
     dueText: "Reconnect",
+    actionLabel: "Reconnect",
     suppressible: false,
   };
 }
@@ -123,6 +135,7 @@ function reviewToItem(count: number): UpcomingItem | null {
     href: dataSectionHref("review"),
     dueDate: null,
     dueText: "Review",
+    actionLabel: "Review",
     suppressible: false,
   };
 }
@@ -209,11 +222,12 @@ export type CardBand = "urgent" | "today" | "review";
 
 export const CARD_BAND_ORDER: CardBand[] = ["urgent", "today", "review"];
 
-// Deliberately DIFFERENT band words from the page (issue #524): the page frames a
-// calendar ("Overdue"), the card frames urgency ("Urgent") — sharing the word is
-// what made the old mismatch read as a bug.
+// The page and card do different jobs, but the card must not overstate what the
+// model knows: a past date establishes lateness, not clinical urgency.
 export const CARD_BAND_LABELS: Record<CardBand, string> = {
-  urgent: "Urgent",
+  // Date lateness alone does not establish clinical urgency. Keep the strong
+  // visual treatment, but describe the fact the model actually knows.
+  urgent: "Past due",
   today: "Today",
   review: "Needs review",
 };
@@ -267,17 +281,18 @@ export interface AttentionCardGroup {
   overflow: number;
 }
 
-// Defensive per-band row cap for the card (issue #283). High enough that a normal
-// day never trips it; low enough that a flood collapses to a link.
-export const ATTENTION_GROUP_CAP = 8;
+// Total row budget for the hero. The old cap applied independently to all three
+// bands and could still render 24 rows — no longer a glanceable dashboard.
+export const ATTENTION_CARD_CAP = 5;
 
-// Group the card's subset by band in fixed Urgent → Today → Needs review order,
-// dropping empty bands. Each band keeps at most `cap` rows (most urgent first) and
-// reports the rest as `overflow`.
+// Group the card's subset by band in fixed Past due → Today → Needs review order,
+// dropping empty bands. The total card is capped, while every populated band gets
+// one representative before remaining slots are allocated in band order. This
+// keeps a large overdue backlog from hiding a failing integration or new lab flag.
 export function groupAttentionForCard(
   items: UpcomingItem[],
   today: string,
-  cap: number = ATTENTION_GROUP_CAP
+  cap: number = ATTENTION_CARD_CAP
 ): AttentionCardGroup[] {
   const subset = attentionCardItems(items, today);
   const byBand = new Map<CardBand, UpcomingItem[]>();
@@ -287,17 +302,38 @@ export function groupAttentionForCard(
     if (arr) arr.push(item);
     else byBand.set(band, [item]);
   }
-  const groups: AttentionCardGroup[] = [];
-  for (const band of CARD_BAND_ORDER) {
-    const arr = byBand.get(band);
-    if (!arr || arr.length === 0) continue;
-    groups.push({
-      band,
-      label: CARD_BAND_LABELS[band],
-      items: arr.slice(0, cap),
-      overflow: Math.max(0, arr.length - cap),
-    });
+  const populated = CARD_BAND_ORDER.filter((band) => byBand.get(band)?.length);
+  const selected = new Map<CardBand, number>();
+  let remaining = Math.max(0, cap);
+
+  // Preserve representation across bands when the budget permits it.
+  for (const band of populated) {
+    if (remaining === 0) break;
+    selected.set(band, 1);
+    remaining -= 1;
   }
+  // Spend the rest in urgency order, keeping each band's internal ordering.
+  for (const band of populated) {
+    if (remaining === 0) break;
+    const available = byBand.get(band)!.length - (selected.get(band) ?? 0);
+    const add = Math.min(available, remaining);
+    selected.set(band, (selected.get(band) ?? 0) + add);
+    remaining -= add;
+  }
+
+  const groups: AttentionCardGroup[] = populated.flatMap((band) => {
+    const arr = byBand.get(band)!;
+    const shown = selected.get(band) ?? 0;
+    if (shown === 0) return [];
+    return [
+      {
+        band,
+        label: CARD_BAND_LABELS[band],
+        items: arr.slice(0, shown),
+        overflow: arr.length - shown,
+      },
+    ];
+  });
   return groups;
 }
 

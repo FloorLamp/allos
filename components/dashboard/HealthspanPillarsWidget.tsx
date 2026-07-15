@@ -49,19 +49,19 @@ export default function HealthspanPillarsWidget({
         href="/trends"
         linkLabel="Trends"
       />
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-2 sm:grid-cols-2">
         {pillars.map((p) => (
           <Link
             key={p.key}
             href={p.href}
-            className="flex flex-col rounded-lg border border-slate-200 p-3 transition hover:border-brand-300 dark:border-ink-700 dark:hover:border-brand-700"
+            className="flex flex-col rounded-lg border border-slate-200 p-2.5 transition hover:border-brand-300 dark:border-ink-700 dark:hover:border-brand-700"
             data-testid={`pillar-${p.key}`}
           >
             <span className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
               {p.label}
             </span>
             <span
-              className={`mt-1 text-xl font-bold tabular-nums ${TONE_VALUE[p.tone]}`}
+              className={`mt-1 text-lg font-bold tabular-nums ${TONE_VALUE[p.tone]}`}
               data-testid={`pillar-${p.key}-value`}
             >
               {p.value}
@@ -75,10 +75,6 @@ export default function HealthspanPillarsWidget({
           </Link>
         ))}
       </div>
-      <p className="mt-3 text-xs text-slate-400 dark:text-slate-500">
-        Evidence-backed longevity signals — informational, not a single score or
-        medical advice. Pillars appear only where you have data.
-      </p>
     </div>
   );
 }

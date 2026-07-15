@@ -129,9 +129,15 @@ export function MedicalValue({
     <span className={medicalValueClass(flag)}>
       {value ?? "—"} {unit ?? ""}
       {up ? (
-        <IconCaretUpFilled className="ml-0.5 inline-block h-[0.85em] w-[0.85em] align-[-0.1em]" />
+        <IconCaretUpFilled
+          aria-label="above target"
+          className="ml-0.5 inline-block h-[0.85em] w-[0.85em] align-[-0.1em]"
+        />
       ) : down ? (
-        <IconCaretDownFilled className="ml-0.5 inline-block h-[0.85em] w-[0.85em] align-[-0.1em]" />
+        <IconCaretDownFilled
+          aria-label="below target"
+          className="ml-0.5 inline-block h-[0.85em] w-[0.85em] align-[-0.1em]"
+        />
       ) : null}
     </span>
   );

@@ -1,5 +1,25 @@
 import { test, expect } from "@playwright/test";
+import Database from "better-sqlite3";
 import { followLink } from "./nav";
+
+const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
+const AVAILABILITY_APPOINTMENT = "E2E dashboard availability visit";
+
+function cleanupAvailabilityFixture() {
+  const handle = new Database(DB_PATH);
+  try {
+    handle
+      .prepare("DELETE FROM appointments WHERE title = ? AND profile_id = 2")
+      .run(AVAILABILITY_APPOINTMENT);
+    handle
+      .prepare(
+        "DELETE FROM profile_settings WHERE profile_id = 2 AND key = 'dashboard_layout'"
+      )
+      .run();
+  } finally {
+    handle.close();
+  }
+}
 
 // Dashboard redesign (issue #171): the Tier-1 "Needs attention" hero, the Tier-2
 // household strip, and the data-aware onboarding empty state. Runs against the
@@ -28,6 +48,133 @@ test("the Needs attention hero renders with the seeded profile's items", async (
   await expect(
     hero.locator('[data-testid^="attention-item-"]').first()
   ).toBeVisible();
+});
+
+test("the streamlined grid combines goals and habits and caps observations", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const main = page.getByRole("main");
+
+  const goalsHabits = main.getByTestId("goals-habits");
+  await expect(goalsHabits).toBeVisible();
+  await expect(goalsHabits.getByText("Active goals")).toBeVisible();
+  await expect(goalsHabits.getByText("Still to do this week")).toBeVisible();
+  await expect(
+    goalsHabits.getByTestId("goals-habits-sections")
+  ).toHaveAttribute("data-layout", "split");
+  await expect(
+    goalsHabits.getByRole("link", { name: /Training goals/ })
+  ).toHaveAttribute("href", "/training?tab=goals");
+  await expect(
+    goalsHabits.getByRole("link", { name: "Manage food habits →" })
+  ).toHaveAttribute("href", "/nutrition");
+
+  const observations = main.getByTestId("coaching-observations");
+  if (await observations.isVisible()) {
+    expect(
+      await observations.getByTestId("coaching-observations-item").count()
+    ).toBeLessThanOrEqual(2);
+  }
+});
+
+test("recent labs keeps dates intact and makes every result direction explicit", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const recentLabs = page
+    .getByRole("main")
+    .getByTestId("dashboard-widget-recent-labs");
+
+  await expect(recentLabs).toHaveClass(/lg:col-span-3/);
+  await expect(
+    recentLabs.locator(
+      '[aria-label="above target"], [aria-label="below target"]'
+    )
+  ).not.toHaveCount(0);
+  await expect(
+    recentLabs.getByTestId("recent-lab-status").filter({ hasText: "Abnormal" })
+  ).toHaveCount(1);
+  const firstDate = recentLabs.getByTestId("recent-lab-date").first();
+  await expect(firstDate).toBeVisible();
+  expect(
+    await firstDate.evaluate((element) => getComputedStyle(element).whiteSpace)
+  ).toBe("nowrap");
+  await expect(
+    page.getByRole("main").getByTestId("dashboard-widget-healthspan-pillars")
+  ).toHaveClass(/lg:col-span-3/);
+  await expect(
+    page.getByRole("main").getByTestId("dashboard-widget-weight-trend")
+  ).toHaveClass(/lg:col-span-3/);
+});
+
+test("attention review signals expose an explicit primary action", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const hero = page.getByRole("main").getByTestId("needs-attention");
+
+  // The seeded newly-flagged result is the review-band representative under the
+  // total cap. Its next step is explicit rather than inferred from the title.
+  await expect(
+    hero.getByRole("link", { name: "Review result", exact: true })
+  ).toBeVisible();
+});
+
+test("attention rows move status and actions below content on mobile", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  const row = page
+    .getByRole("main")
+    .getByTestId("needs-attention")
+    .locator('[data-testid^="attention-item-"]')
+    .first();
+  const title = row.getByRole("link").first();
+  const detail = row.getByTestId("attention-item-detail");
+  const actions = row.getByTestId("attention-item-actions");
+  await expect(detail).toBeVisible();
+  await expect(actions).toBeVisible();
+
+  expect(
+    await title.evaluate((element) => getComputedStyle(element).whiteSpace)
+  ).toBe("normal");
+  expect(
+    await title.evaluate((element) => getComputedStyle(element).textOverflow)
+  ).not.toBe("ellipsis");
+  expect(
+    await detail.evaluate((element) => getComputedStyle(element).whiteSpace)
+  ).toBe("normal");
+  expect(
+    await detail.evaluate((element) => getComputedStyle(element).textOverflow)
+  ).not.toBe("ellipsis");
+
+  const [titleBox, actionsBox] = await Promise.all([
+    title.boundingBox(),
+    actions.boundingBox(),
+  ]);
+  expect(titleBox).not.toBeNull();
+  expect(actionsBox).not.toBeNull();
+  expect(actionsBox!.y).toBeGreaterThan(titleBox!.y);
+
+  // Tablet widths still have limited horizontal room; truncation starts only at
+  // the desktop breakpoint.
+  await page.setViewportSize({ width: 768, height: 1024 });
+  expect(
+    await title.evaluate((element) => getComputedStyle(element).whiteSpace)
+  ).toBe("normal");
+  expect(
+    await detail.evaluate((element) => getComputedStyle(element).whiteSpace)
+  ).toBe("normal");
+
+  await page.setViewportSize({ width: 1280, height: 800 });
+  expect(
+    await title.evaluate((element) => getComputedStyle(element).whiteSpace)
+  ).toBe("nowrap");
+  expect(
+    await detail.evaluate((element) => getComputedStyle(element).whiteSpace)
+  ).toBe("nowrap");
 });
 
 test("the card is a strict act-now subset: this-week + later scheduled items live only on Upcoming (issue #524)", async ({
@@ -100,7 +247,7 @@ test("the household strip shows the caregiver's other profiles", async ({
   await expect(strip.getByTestId("household-chip-2")).toBeVisible();
 });
 
-test("a data-less profile shows an onboarding empty-state CTA", async ({
+test("temporary appointment absence never becomes a saved hidden preference", async ({
   browser,
 }) => {
   // Fresh, cookie-less context + its own admin session, so switching the active
@@ -109,6 +256,7 @@ test("a data-less profile shows an onboarding empty-state CTA", async ({
     storageState: { cookies: [], origins: [] },
   });
   const page = await ctx.newPage();
+  cleanupAvailabilityFixture();
   try {
     await page.goto("/login");
     await page.fill('input[name="username"]', "admin");
@@ -121,8 +269,8 @@ test("a data-less profile shows an onboarding empty-state CTA", async ({
     // Switch to profile 2 — "Riley (child)" (growth data only, no labs or
     // appointments; the seed-events "Sam Rivers" insert is a no-op because
     // scripts/seed.ts's Riley already owns id 2) — via its household chip. The
-    // data-aware Recent-labs / Next-appointment widgets then render their
-    // onboarding CTA instead of a blank card. Wait on the user-menu trigger
+    // Next appointment widget then stays out of the grid instead of rendering a
+    // blank card. Wait on the user-menu trigger
     // naming the new profile — the definitive switch signal (we're already on
     // "/", so a URL wait could resolve before the action round-trips).
     await page.goto("/");
@@ -132,9 +280,37 @@ test("a data-less profile shows an onboarding empty-state CTA", async ({
     );
 
     await expect(
-      page.getByRole("main").getByTestId("widget-empty").first()
+      page.getByRole("main").getByTestId("dashboard-widget-next-appointment")
+    ).toHaveCount(0);
+
+    // Customize still knows about the temporarily-unavailable widget, but labels
+    // it as empty instead of folding that state into the user's hidden choices.
+    const main = page.getByRole("main");
+    await main.getByRole("button", { name: "Edit dashboard" }).click();
+    const unavailable = main.getByTestId("dashboard-widget-next-appointment");
+    await expect(unavailable).toBeVisible();
+    await expect(unavailable).toContainText("Nothing to show right now");
+    await main.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(
+      main.getByRole("button", { name: "Edit dashboard" })
     ).toBeVisible();
+
+    // Once data exists, the same preference makes the widget reappear. This is
+    // the regression: the old save path persisted an absent appointment as hidden.
+    await page.goto("/encounters");
+    const upcoming = page.getByTestId("visits-upcoming");
+    await upcoming.getByLabel("Reason / title").fill(AVAILABILITY_APPOINTMENT);
+    await upcoming.getByRole("button", { name: "Add", exact: true }).click();
+    await expect(page.getByText("Appointment saved")).toBeVisible();
+
+    await page.goto("/");
+    const appointmentWidget = page
+      .getByRole("main")
+      .getByTestId("dashboard-widget-next-appointment");
+    await expect(appointmentWidget).toBeVisible();
+    await expect(appointmentWidget).toContainText(AVAILABILITY_APPOINTMENT);
   } finally {
     await ctx.close();
+    cleanupAvailabilityFixture();
   }
 });

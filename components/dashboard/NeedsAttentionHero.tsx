@@ -90,7 +90,7 @@ function Row({
   return (
     <div
       data-testid={`attention-item-${item.key}`}
-      className="flex items-center gap-3 rounded-lg px-2 py-2 transition hover:bg-slate-50 dark:hover:bg-ink-850"
+      className="flex flex-wrap items-start gap-x-3 gap-y-2 rounded-lg px-2 py-2 transition hover:bg-slate-50 sm:flex-nowrap sm:items-center dark:hover:bg-ink-850"
     >
       <Icon
         className={`h-5 w-5 shrink-0 ${tone}`}
@@ -100,41 +100,59 @@ function Row({
       <div className="min-w-0 flex-1">
         <Link
           href={item.href}
-          className="block truncate font-medium text-slate-800 hover:text-brand-700 hover:underline dark:text-slate-100 dark:hover:text-brand-400"
+          className="block break-words font-medium text-slate-800 hover:text-brand-700 hover:underline lg:truncate dark:text-slate-100 dark:hover:text-brand-400"
         >
           {item.title}
         </Link>
         {item.detail && (
-          <div className="truncate text-xs text-slate-500 dark:text-slate-400">
+          <div
+            data-testid="attention-item-detail"
+            className="break-words text-xs whitespace-normal text-slate-500 lg:truncate dark:text-slate-400"
+          >
             {item.detail}
           </div>
         )}
       </div>
-      <div className={`shrink-0 whitespace-nowrap text-xs font-medium ${tone}`}>
-        {upcomingDueText(item, now)}
-      </div>
-      {item.doseId != null && (
-        <form action={markAttentionDose} className="shrink-0">
-          <input type="hidden" name="dose_id" value={item.doseId} />
-          <SubmitButton
-            pendingLabel="…"
-            className="rounded-lg border border-black/10 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 disabled:opacity-60 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"
+      <div
+        data-testid="attention-item-actions"
+        className="ml-8 flex w-[calc(100%-2rem)] items-center justify-between gap-2 sm:ml-0 sm:w-auto sm:justify-end"
+      >
+        <div
+          className={`shrink-0 whitespace-nowrap text-xs font-medium ${tone}`}
+        >
+          {upcomingDueText(item, now)}
+        </div>
+        {item.doseId != null && (
+          <form action={markAttentionDose} className="shrink-0">
+            <input type="hidden" name="dose_id" value={item.doseId} />
+            <SubmitButton
+              pendingLabel="…"
+              className="rounded-lg border border-black/10 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 disabled:opacity-60 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"
+            >
+              Mark taken
+            </SubmitButton>
+          </form>
+        )}
+        {item.doseId == null && item.actionLabel && (
+          <Link
+            href={item.href}
+            className="shrink-0 rounded-lg border border-black/10 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"
           >
-            Mark taken
-          </SubmitButton>
-        </form>
-      )}
-      {/* Per-item snooze/dismiss popover — the shared OverflowMenu-based menu
-      (issue #281), so it matches every other popover in the app. Only rendered
-      for suppressible items (Upcoming-derived + biomarker flags); structural
-      signals (review/integration) are resolved, not snoozed. */}
-      {isItemSuppressibleFlag(item) && (
-        <SnoozeDismissMenu
-          signalKey={item.key}
-          snoozeAction={snoozeAttention}
-          dismissAction={dismissAttention}
-        />
-      )}
+            {item.actionLabel}
+          </Link>
+        )}
+        {/* Per-item snooze/dismiss popover — the shared OverflowMenu-based menu
+        (issue #281), so it matches every other popover in the app. Only rendered
+        for suppressible items (Upcoming-derived + biomarker flags); structural
+        signals (review/integration) are resolved, not snoozed. */}
+        {isItemSuppressibleFlag(item) && (
+          <SnoozeDismissMenu
+            signalKey={item.key}
+            snoozeAction={snoozeAttention}
+            dismissAction={dismissAttention}
+          />
+        )}
+      </div>
     </div>
   );
 }
@@ -155,6 +173,38 @@ export default function NeedsAttentionHero({
   // "+N more" link copy that names each link's referent and merges the last-band
   // overflow with the card remainder when they'd otherwise stack (issue #538).
   const moreLinks = planAttentionMoreLinks(groups, more);
+
+  if (count === 0) {
+    return (
+      <section
+        data-testid="needs-attention"
+        aria-label="Needs attention"
+        className="card flex flex-wrap items-center justify-between gap-2 border-l-4 border-l-emerald-500 py-3 dark:border-l-emerald-400"
+      >
+        <div
+          data-testid="attention-all-clear"
+          className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300"
+        >
+          <IconCircleCheck
+            className="h-5 w-5 text-emerald-500 dark:text-emerald-400"
+            stroke={1.75}
+            aria-hidden="true"
+          />
+          <span className="font-medium">All clear</span>
+          <span className="hidden text-slate-400 sm:inline dark:text-slate-500">
+            Nothing needs your attention right now.
+          </span>
+        </div>
+        <Link
+          href="/upcoming"
+          data-testid={more > 0 ? "attention-more-upcoming" : undefined}
+          className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
+        >
+          {more > 0 ? `${more} scheduled later` : "View upcoming"}
+        </Link>
+      </section>
+    );
+  }
 
   return (
     <section
@@ -187,82 +237,59 @@ export default function NeedsAttentionHero({
         </Link>
       </div>
 
-      {count === 0 ? (
-        <div
-          data-testid="attention-all-clear"
-          className="flex items-center gap-2 py-2 text-sm text-slate-500 dark:text-slate-400"
-        >
-          <IconCircleCheck
-            className="h-5 w-5 text-emerald-500 dark:text-emerald-400"
-            stroke={1.75}
-            aria-hidden="true"
-          />
-          All clear — nothing needs your attention right now.
-          {more > 0 && (
-            <Link
-              href="/upcoming"
-              data-testid="attention-more-upcoming"
-              className="font-medium text-brand-600 hover:underline dark:text-brand-400"
+      <div className="space-y-4">
+        {groups.map((group) => (
+          <div key={group.band}>
+            <div
+              className={`mb-1 text-xs font-semibold uppercase tracking-wide ${BAND_TONE[group.band]}`}
             >
-              {more} upcoming
-            </Link>
-          )}
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {groups.map((group) => (
-            <div key={group.band}>
-              <div
-                className={`mb-1 text-xs font-semibold uppercase tracking-wide ${BAND_TONE[group.band]}`}
-              >
-                {group.label}
-                <span className="ml-1 text-slate-400 dark:text-slate-500">
-                  ({attentionCountLabel(group.items.length, group.overflow)})
-                </span>
-              </div>
-              <div className="space-y-0.5">
-                {group.items.map((item) => (
-                  <Row
-                    key={item.key}
-                    item={item}
-                    now={today}
-                    tone={BAND_TONE[group.band]}
-                  />
-                ))}
-                {/* Defensive per-band cap (issue #283): a pathological day (a giant
-                flagged import, an overdue backlog) collapses to a link instead of
-                blowing the layout. The copy names THIS band's items so it can't be
+              {group.label}
+              <span className="ml-1 text-slate-400 dark:text-slate-500">
+                ({attentionCountLabel(group.items.length, group.overflow)})
+              </span>
+            </div>
+            <div className="space-y-0.5">
+              {group.items.map((item) => (
+                <Row
+                  key={item.key}
+                  item={item}
+                  now={today}
+                  tone={BAND_TONE[group.band]}
+                />
+              ))}
+              {/* Defensive global cap (issue #283): a pathological day (a giant
+                flagged import, an overdue backlog) collapses each band's remainder
+                to a link instead of blowing the layout. The copy names THIS band's items so it can't be
                 mistaken for the card-level remainder below (issue #538); when this
                 is the last band and a remainder follows, the link is merged into the
                 trailing line instead (planAttentionMoreLinks), so two never stack. */}
-                {moreLinks.perBand[group.band] && (
-                  <Link
-                    href={moreLinks.perBand[group.band]!.href}
-                    data-testid={`attention-overflow-${group.band}`}
-                    className="block rounded-lg px-2 py-1.5 text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
-                  >
-                    {moreLinks.perBand[group.band]!.text}
-                  </Link>
-                )}
-              </div>
+              {moreLinks.perBand[group.band] && (
+                <Link
+                  href={moreLinks.perBand[group.band]!.href}
+                  data-testid={`attention-overflow-${group.band}`}
+                  className="block rounded-lg px-2 py-1.5 text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
+                >
+                  {moreLinks.perBand[group.band]!.text}
+                </Link>
+              )}
             </div>
-          ))}
-          {/* The card is a strict subset of the Upcoming page; the far-future
+          </div>
+        ))}
+        {/* The card is a strict subset of the Upcoming page; the far-future
           scheduled work it hides is one click away, with an exact count so the two
           surfaces reconcile (issue #524). Names what it hides ("scheduled later") so
           it reads distinctly from a band cap-overflow link; when the last band also
           overflowed, this line absorbs it into one merged link (issue #538). */}
-          {moreLinks.trailing && (
-            <Link
-              href={moreLinks.trailing.href}
-              data-testid="attention-more-upcoming"
-              className="block text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
-            >
-              {moreLinks.trailing.text}
-            </Link>
-          )}
-        </div>
-      )}
+        {moreLinks.trailing && (
+          <Link
+            href={moreLinks.trailing.href}
+            data-testid="attention-more-upcoming"
+            className="block text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
+          >
+            {moreLinks.trailing.text}
+          </Link>
+        )}
+      </div>
     </section>
   );
 }
