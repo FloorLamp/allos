@@ -64,10 +64,16 @@ test.describe("Genomic variants — add → view → edit → delete (#709)", ()
       "Pathogenic"
     );
 
-    // Delete it and confirm it's gone.
+    // Delete it and confirm it's gone. The confirm click MUST be scoped to the
+    // dialog: the page also carries one per-row aria-label="Delete" button for
+    // every variant (incl. the seeded CYP2C19/BRCA1/APOE rows), so an unscoped
+    // getByRole("button", { name: "Delete" }) is a strict-mode collision.
     const survivor = list.getByRole("row").filter({ hasText: GENE });
     await survivor.getByRole("button", { name: "Delete" }).click();
-    await page.getByRole("button", { name: "Delete", exact: true }).click();
+    await page
+      .getByRole("dialog")
+      .getByRole("button", { name: "Delete", exact: true })
+      .click();
     await expect(list.getByRole("row").filter({ hasText: GENE })).toHaveCount(
       0
     );
