@@ -3,6 +3,8 @@ import type {
   AppointmentKind,
   AppointmentStatus,
   ConditionStatus,
+  ImagingLaterality,
+  ImagingModality,
   MedicalCategory,
   MedStopReason,
   ProviderType,
@@ -191,6 +193,26 @@ export interface ImportedCareGoal {
   external_id: string; // stable dedup key ("ccda:caregoal:…")
 }
 
+// A structured imaging study pulled from a FHIR ImagingStudy resource, an imaging
+// DiagnosticReport (its conclusion/presentedForm narrative), or an imaging
+// DocumentReference (an inline-text rendered report) — the deterministic structured
+// feed for the imaging_studies record type (#702), added by #708. Provider-neutral
+// and DB-shaped: modality/laterality are already normalized onto the imaging CHECK
+// sets (lib/imaging-study.ts) and `contrast` is a bool, so the persist layer maps it
+// straight to a PersistImagingStudy. FHIR-only today — no CDA imaging section exists.
+export interface ImportedImagingStudy {
+  modality: ImagingModality; // normalized ('other' when unclassifiable)
+  body_region: string | null;
+  laterality: ImagingLaterality | null;
+  contrast: boolean;
+  contrast_agent: string | null;
+  study_date: string | null; // YYYY-MM-DD
+  impression: string | null; // the radiologist's impression / rendered report narrative
+  indication: string | null; // reason the study was ordered
+  status: string | null; // free-text passthrough (no enum)
+  external_id: string; // stable dedup key ("fhir:imaging:…")
+}
+
 // A scheduled visit / appointment pulled from a FHIR Appointment resource (issue
 // #416). No CDA appointment section exists, so this is FHIR-only today.
 // Provider-neutral: the attending clinician is captured as an ImportedProvider and
@@ -247,6 +269,11 @@ export interface ImportResult {
   // Scheduled visits / appointments. Optional (default []): only the FHIR Appointment
   // resource populates it (issue #416); the CDA path and other parsers omit it.
   appointments?: ImportedAppointment[];
+  // Structured imaging studies (#708 → #702). Optional (default []): the FHIR
+  // ImagingStudy / imaging DiagnosticReport / imaging DocumentReference mappers
+  // populate it; the CDA path and other parsers omit it (FHIR is dental/imaging-poor
+  // structurally elsewhere — imaging arrives structured in Epic/Apple bundles).
+  imagingStudies?: ImportedImagingStudy[];
   demographics: ImportDemographics | null;
   // Providers/organizations captured from the record that aren't tied to a single
   // reading — the CCD Care Teams section. Registered into the shared

@@ -15,6 +15,7 @@ import type {
   ImportedCondition,
   ImportedEncounter,
   ImportedFamilyHistory,
+  ImportedImagingStudy,
   ImportedImmunization,
   ImportedProcedure,
   ImportedRecord,
@@ -46,13 +47,15 @@ import {
   mapConditionResource,
   mapEncounterResource,
   mapFamilyMemberHistoryResource,
+  mapDiagnosticReport,
+  mapDocumentReferenceImaging,
   mapGoalResource,
+  mapImagingStudyResource,
   mapImmunizationResource,
   mapMedicationResource,
   mapPatientDemographics,
   mapProcedureResource,
   observationRecords,
-  recordsFromDiagnosticReport,
 } from "./resources";
 
 interface MapperOutput {
@@ -70,11 +73,18 @@ interface MapperOutput {
   carePlanItems?: ImportedCarePlanItem[];
   careGoal?: ImportedCareGoal | null;
   appointment?: ImportedAppointment | null;
+  // Imaging studies — a container shape (like records): an ImagingStudy yields one,
+  // an imaging DiagnosticReport yields one alongside its records, a DocumentReference
+  // yields zero-or-one. An empty array is a dropped row ONLY for a resource whose
+  // whole output is imaging (ImagingStudy); on a DiagnosticReport it just means the
+  // report wasn't imaging (its records/narrative-record channel carried the value).
+  imagingStudies?: ImportedImagingStudy[];
 }
 
 // FHIR resourceType → mapper. Each maps into a provider-neutral ImportedX shape and
-// nothing else changes; DocumentReference is deliberately not here (see
-// entriesToImportResult note).
+// nothing else changes. DocumentReference now has a mapper (#708) but ONLY consumes
+// an inline-text imaging/radiology rendered report — a binary/remote document is
+// never fetched and yields no row (the AI-extraction tail is deferred).
 const RESOURCE_MAPPERS: Record<
   string,
   (r: any, ctx: FhirBundleCtx) => MapperOutput
@@ -101,9 +111,18 @@ const RESOURCE_MAPPERS: Record<
   CarePlan: (r) => ({ carePlanItems: mapCarePlanResource(r) }),
   Goal: (r) => ({ careGoal: mapGoalResource(r) }),
   Appointment: (r, ctx) => ({ appointment: mapAppointmentResource(r, ctx) }),
-  DiagnosticReport: (r, ctx) => ({
-    records: recordsFromDiagnosticReport(r, ctx.idPrefix, ctx),
-  }),
+  DiagnosticReport: (r, ctx) => mapDiagnosticReport(r, ctx.idPrefix, ctx),
+  // Structured imaging (#708 → #702). ImagingStudy is imaging-only (an empty result
+  // is a dropped row); DocumentReference maps ONLY an inline-text imaging/radiology
+  // rendered report (binary/remote/non-imaging → no row, no drop, never fetched).
+  ImagingStudy: (r, ctx) => {
+    const study = mapImagingStudyResource(r, ctx.idPrefix);
+    return { imagingStudies: study ? [study] : [] };
+  },
+  DocumentReference: (r, ctx) => {
+    const study = mapDocumentReferenceImaging(r, ctx.idPrefix);
+    return { imagingStudies: study ? [study] : [] };
+  },
 };
 
 // The FHIR resourceTypes this importer consumes via a top-level mapper, PLUS the
@@ -169,6 +188,8 @@ function fhirDropKind(resourceType: string): DropKind {
       return "care_goal";
     case "Appointment":
       return "appointment";
+    case "ImagingStudy":
+      return "imaging_study";
     default:
       return "resource";
   }
@@ -223,6 +244,18 @@ function fhirDropLabel(resourceType: string, r: any): string {
           Array.isArray(r?.serviceType) ? r.serviceType[0] : r?.serviceType
         ) ??
         "Appointment"
+      );
+    case "ImagingStudy":
+      return (
+        conceptName(
+          Array.isArray(r?.procedureCode)
+            ? r.procedureCode[0]
+            : r?.procedureCode
+        ) ??
+        (typeof r?.description === "string" && r.description.trim()
+          ? r.description.trim()
+          : null) ??
+        "Imaging study"
       );
     default:
       return resourceType;
@@ -298,10 +331,11 @@ function fhirDropReason(resourceType: string, r: any): DropReason {
 // providers registry as performers / participants / locations (via
 // providerFromResource). Real Epic/Apple bundles carry these as top-level entries,
 // so without this they'd wrongly read "present but not consumed" (and emit spurious
-// unrecognized_section drops). Genuinely-unconsumed support types —
-// DocumentReference, Device, Location — are deliberately NOT here and stay
-// not-consumed. (Procedure + FamilyMemberHistory now have top-level mappers, so
-// they're consumed via RESOURCE_MAPPERS rather than here.)
+// unrecognized_section drops). Genuinely-unconsumed support types — Device, Location
+// — are deliberately NOT here and stay not-consumed. (Procedure + FamilyMemberHistory
+// + DocumentReference now have top-level mappers, so they're consumed via
+// RESOURCE_MAPPERS rather than here — DocumentReference's mapper is conditional
+// [inline-text imaging only], but the type counts as consumed either way.)
 const REFERENCE_CONSUMED = new Set([
   "Medication",
   "Practitioner",
@@ -331,12 +365,13 @@ function fhirCoverage(entries: FhirEntry[]): CoverageEntry[] {
 // Patient/Observation/Immunization it now maps Condition → ImportedCondition,
 // AllergyIntolerance → ImportedAllergy, MedicationRequest/MedicationStatement →
 // medication ImportedRecord, Encounter → ImportedEncounter, Procedure →
-// ImportedProcedure, FamilyMemberHistory → ImportedFamilyHistory rows, and
-// DiagnosticReport → its contained/referenced lab Observations. DocumentReference (a
-// pointer to an external document, no structured reading) is intentionally left
-// unmapped — forcing it into an existing sink would fabricate mis-categorized rows.
-// Provider provenance rides on each shape and is resolved into the shared registry
-// by the persist layer.
+// ImportedProcedure, FamilyMemberHistory → ImportedFamilyHistory rows,
+// DiagnosticReport → its contained/referenced lab Observations PLUS its narrative
+// (an imaging report → an ImportedImagingStudy impression; any other report's
+// conclusion → a value-less lab record), ImagingStudy → an ImportedImagingStudy, and
+// DocumentReference → an ImportedImagingStudy ONLY for an inline-text imaging report
+// (a binary/remote document is never fetched; #708). Provider provenance rides on
+// each shape and is resolved into the shared registry by the persist layer.
 export function entriesToImportResult(
   entries: FhirEntry[],
   idPrefix: string
@@ -354,6 +389,7 @@ export function entriesToImportResult(
   const carePlanItems: ImportedCarePlanItem[] = [];
   const careGoals: ImportedCareGoal[] = [];
   const appointments: ImportedAppointment[] = [];
+  const imagingStudies: ImportedImagingStudy[] = [];
   let demographics: ImportDemographics | null = null;
 
   const seenImm = new Set<string>();
@@ -366,6 +402,7 @@ export function entriesToImportResult(
   const seenCarePlan = new Set<string>();
   const seenCareGoal = new Set<string>();
   const seenAppt = new Set<string>();
+  const seenImg = new Set<string>();
 
   // Import DEBUGGER accumulators.
   const drops: ImportDrop[] = [];
@@ -535,6 +572,31 @@ export function entriesToImportResult(
         appointments.push(out.appointment);
       }
     } else if (out.appointment === null) drops.push(dropFor(r));
+    // Imaging studies (#708) — a container shape. An empty array is a dropped row
+    // ONLY for a resource whose whole output is imaging (ImagingStudy — no records
+    // channel); on a DiagnosticReport the empty array just means "not imaging" and
+    // its value went to the records channel, so it never drops here. A
+    // DocumentReference that isn't an inline-text imaging report yields empty too and
+    // is deliberately NOT dropped (it's out of scope, not a lost reading).
+    if (out.imagingStudies !== undefined) {
+      if (out.imagingStudies.length === 0 && r.resourceType === "ImagingStudy")
+        drops.push(dropFor(r));
+      for (const s of out.imagingStudies) {
+        if (seenImg.has(s.external_id))
+          drops.push({
+            kind: "imaging_study",
+            label: s.body_region
+              ? `${s.modality} ${s.body_region}`
+              : s.modality,
+            reason: "deduped",
+            section: r.resourceType,
+          });
+        else {
+          seenImg.add(s.external_id);
+          imagingStudies.push(s);
+        }
+      }
+    }
   }
 
   // Resource types the bundle carried but no mapper consumed (DocumentReference, …)
@@ -564,6 +626,9 @@ export function entriesToImportResult(
     (a.target_date ?? "").localeCompare(b.target_date ?? "")
   );
   appointments.sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at));
+  imagingStudies.sort((a, b) =>
+    (a.study_date ?? "").localeCompare(b.study_date ?? "")
+  );
 
   const imported =
     records.length +
@@ -575,7 +640,8 @@ export function entriesToImportResult(
     familyHistory.length +
     carePlanItems.length +
     careGoals.length +
-    appointments.length;
+    appointments.length +
+    imagingStudies.length;
   const rowDrops = drops.filter(
     (d) => d.reason !== "unrecognized_section"
   ).length;
@@ -607,6 +673,7 @@ export function entriesToImportResult(
     carePlanItems,
     careGoals,
     appointments,
+    imagingStudies,
     demographics,
     report,
   };

@@ -150,6 +150,18 @@ describe("FHIR export/import symmetry (issue #465)", () => {
     "DiagnosticReport",
   ]);
 
+  // Import-only STRUCTURED FEEDS (#708): resource types the importer consumes into a
+  // record type that has no FHIR export builder YET. ImagingStudy / an imaging
+  // DiagnosticReport / an imaging DocumentReference feed the imaging_studies table,
+  // which is not part of the FHIR passport export today (a dedicated imaging exporter
+  // is a documented follow-up). DocumentReference is inherently a pointer type the
+  // exporter would never emit. Excluded from the "must be exported" direction only —
+  // NOT from "everything exported is consumable" (that direction still binds).
+  const IMPORT_ONLY_STRUCTURED_FEEDS = new Set([
+    "ImagingStudy",
+    "DocumentReference",
+  ]);
+
   it("everything the exporter emits, the importer can consume", () => {
     const unconsumable = [...exported].filter((t) => !imported.has(t));
     expect(unconsumable).toEqual([]);
@@ -157,7 +169,10 @@ describe("FHIR export/import symmetry (issue #465)", () => {
 
   it("every clinical domain the importer accepts, the exporter emits", () => {
     const notExported = [...imported].filter(
-      (t) => !exported.has(t) && !READ_ONLY_ALIASES.has(t)
+      (t) =>
+        !exported.has(t) &&
+        !READ_ONLY_ALIASES.has(t) &&
+        !IMPORT_ONLY_STRUCTURED_FEEDS.has(t)
     );
     expect(
       notExported,

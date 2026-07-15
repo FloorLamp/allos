@@ -26,11 +26,17 @@ import type {
   ImportedCondition,
   ImportedEncounter,
   ImportedFamilyHistory,
+  ImportedImagingStudy,
   ImportedImmunization,
   ImportedProcedure,
   ImportedRecord,
 } from "../health-import";
-import type { AppointmentKind, AppointmentStatus } from "../types";
+import type {
+  AppointmentKind,
+  AppointmentStatus,
+  ImagingModality,
+} from "../types";
+import { normalizeLaterality, normalizeModality } from "../imaging-study";
 import type { ImportMedPeriod } from "../medication-course-import";
 import {
   coursesFromImportedMedication,
@@ -45,6 +51,7 @@ import {
   firstCodingCode,
   humanName,
   isoDate,
+  loincFromFhirCode,
   pickCoding,
   providerFromRefs,
   readFhirObservationValue,
@@ -880,6 +887,416 @@ export function recordsFromDiagnosticReport(
     }
   }
   return out;
+}
+
+// ---- Imaging (#708 → #702): ImagingStudy / imaging DiagnosticReport / imaging
+// DocumentReference → a structured imaging_studies row ----
+//
+// Deterministic study metadata + the radiologist's impression, recovered from the
+// FHIR resources Epic/Apple Health already export. Normalization is delegated to the
+// ONE shared coercion (lib/imaging-study.ts normalizeModality/normalizeLaterality) —
+// no second modality/laterality parser is rolled here (the "one question, one
+// computation" rule); the only FHIR-specific bridge is a DICOM-modality-code lookup
+// (a code vocabulary normalizeModality doesn't speak), which still falls through to
+// normalizeModality on the coding's display text.
+
+// The rendered-report narrative cap: a decoded inline attachment / conclusion is
+// stored as the impression, capped so a runaway document can't bloat the row.
+const IMAGING_NARRATIVE_MAX = 8000;
+
+// DICOM acquisition-modality codes (ImagingStudy.modality / .series.modality,
+// DiagnosticReport imaging categories) → our modality enum. A code vocabulary
+// normalizeModality (which reads report PHRASINGS) can't resolve, so this small
+// bridge maps the standard codes; anything not listed falls back to
+// normalizeModality on the coding display. Mammography (MG) is an x-ray study.
+const DICOM_MODALITY: Record<string, ImagingModality> = {
+  CT: "ct",
+  CTA: "ct",
+  MR: "mri",
+  MRI: "mri",
+  MRA: "mri",
+  NMR: "mri",
+  US: "ultrasound",
+  BDUS: "ultrasound",
+  ECHO: "ultrasound",
+  EC: "ultrasound",
+  CR: "x-ray",
+  DX: "x-ray",
+  DR: "x-ray",
+  XR: "x-ray",
+  RF: "x-ray",
+  XA: "x-ray",
+  MG: "x-ray",
+  BMD: "dexa",
+  DXA: "dexa",
+  BONE: "dexa",
+};
+
+// SNOMED CT body-laterality codes (ImagingStudy.series.laterality) → our enum, for
+// the code-only case where normalizeLaterality's text path finds no display.
+const SNOMED_LATERALITY: Record<string, "left" | "right" | "bilateral"> = {
+  "7771000": "left",
+  "24028007": "right",
+  "51440002": "bilateral",
+};
+
+// v2-0074 diagnostic-service section codes that denote an imaging service, so a
+// DiagnosticReport's category classifies it as imaging vs a lab/path report.
+const IMAGING_SERVICE_CODES = new Set([
+  "RAD",
+  "IMG",
+  "US",
+  "CT",
+  "MR",
+  "NMR",
+  "XR",
+  "MRI",
+  "CTH",
+  "CUS",
+  "ECHO",
+  "NMS",
+  "OUS",
+  "RUS",
+  "VUS",
+  "MG",
+  "BMD",
+  "NM",
+  "XA",
+  "RF",
+  "CR",
+  "DX",
+]);
+
+// A free-text signal that a report/document is imaging/radiology (belt to the coded
+// classifier — a DiagnosticReport/DocumentReference whose category codes are absent
+// but whose title says "CT CHEST" still classifies).
+const IMAGING_TEXT_RE =
+  /radiolog|imaging|x-?ray|ultrasound|sonogr|\bct\b|\bmri\b|\bmr\b|mammogr|tomograph|angiogram|densitometr|\bdexa\b|nuclear med/i;
+
+function ccCodings(cc: any): any[] {
+  return Array.isArray(cc?.coding) ? cc.coding : [];
+}
+
+function codingDisplay(coding: any): string | null {
+  const d = coding?.display;
+  return typeof d === "string" && d.trim() ? d.trim() : null;
+}
+
+// A CodeableConcept[] (e.g. DiagnosticReport.conclusionCode) → its joined display
+// terms, or null.
+function conceptListText(list: any): string | null {
+  const out = (Array.isArray(list) ? list : list != null ? [list] : [])
+    .map((cc) => conceptName(cc))
+    .filter((s): s is string => !!s);
+  return out.length ? out.join("; ") : null;
+}
+
+// Coerce a modality onto the enum from a set of Codings (DICOM code first, then the
+// coding display via the shared normalizer), with a free-text fallback. Returns the
+// safe 'other' default when nothing resolves (an unclassified study is still stored).
+function modalityFromCodings(
+  codings: any[],
+  fallbackText: string | null
+): ImagingModality {
+  for (const c of codings) {
+    const code = c?.code != null ? String(c.code).toUpperCase() : null;
+    if (code && DICOM_MODALITY[code]) return DICOM_MODALITY[code];
+    const m = normalizeModality(codingDisplay(c));
+    if (m !== "other") return m;
+  }
+  return normalizeModality(fallbackText);
+}
+
+function lateralityFromCoding(
+  coding: any
+): "left" | "right" | "bilateral" | "na" | null {
+  const byText = normalizeLaterality(codingDisplay(coding));
+  if (byText) return byText;
+  const code = coding?.code != null ? String(coding.code) : null;
+  return code && SNOMED_LATERALITY[code] ? SNOMED_LATERALITY[code] : null;
+}
+
+// Collapse HTML → plain text (presentedForm / DocumentReference rendered reports are
+// often text/html). Strip script/style bodies + tags, decode the handful of entities
+// that survive, and normalize whitespace.
+function stripHtml(s: string): string {
+  return s
+    .replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#3?9;|&apos;/gi, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function capNarrative(s: string): string {
+  const t = s.trim();
+  return t.length > IMAGING_NARRATIVE_MAX
+    ? t.slice(0, IMAGING_NARRATIVE_MAX).trimEnd() + "…"
+    : t;
+}
+
+// Decode ONE inline FHIR Attachment to plain text — ONLY when it carries inline
+// base64 `data` with a text-ish contentType. A binary attachment (application/pdf,
+// image/*) or a remote `url`-only reference returns null: we DELIBERATELY never fetch
+// an external URL (no auto-egress) and never blind-decode binary (that's the deferred
+// AI-extraction path). #708 item 4, inline-text boundary.
+function decodeInlineAttachmentText(att: any): string | null {
+  if (!att || typeof att.data !== "string" || !att.data.trim()) return null;
+  const ct = typeof att.contentType === "string" ? att.contentType : "";
+  const isHtml = /html|xml/i.test(ct);
+  const isText = /text\/|rtf/i.test(ct) || isHtml;
+  if (!isText) return null; // binary / unknown type → not decoded
+  let decoded: string;
+  try {
+    decoded = Buffer.from(att.data, "base64").toString("utf8");
+  } catch {
+    return null;
+  }
+  const text = isHtml
+    ? stripHtml(decoded)
+    : decoded.replace(/\s+/g, " ").trim();
+  return text || null;
+}
+
+// The joined inline-text of an Attachment[] (presentedForm / DocumentReference
+// content), or null when none is inline-decodable.
+function attachmentsText(atts: any): string | null {
+  const list = Array.isArray(atts) ? atts : atts != null ? [atts] : [];
+  const parts = list
+    .map((a) => decodeInlineAttachmentText(a))
+    .filter((s): s is string => !!s);
+  return parts.length ? parts.join("\n\n") : null;
+}
+
+// A stable external_id for a mapped imaging row. Prefers the resource id (idempotent
+// re-import); falls back to a composite of the discriminating parts when a bundle
+// omits `id`.
+function imagingExternalId(
+  idPrefix: string,
+  kind: string,
+  r: any,
+  fallbackParts: (string | null)[]
+): string {
+  const id =
+    r?.id != null && String(r.id).trim()
+      ? String(r.id).trim()
+      : fallbackParts.filter(Boolean).join("-") || "study";
+  return `${idPrefix}:imaging:${kind}:${id}`;
+}
+
+// Does a DiagnosticReport / DocumentReference classify as imaging/radiology? Coded
+// (v2-0074 service codes on category) or by free-text title (code/type/category
+// display). Non-imaging reports (pathology, labs) return false so their narrative is
+// routed to the fallback record instead of fabricating an imaging study.
+function looksLikeImagingReport(r: any): boolean {
+  const categories = Array.isArray(r?.category)
+    ? r.category
+    : r?.category != null
+      ? [r.category]
+      : [];
+  for (const cat of categories) {
+    for (const c of ccCodings(cat)) {
+      const code = c?.code != null ? String(c.code).toUpperCase() : null;
+      if (code && IMAGING_SERVICE_CODES.has(code)) return true;
+    }
+  }
+  const texts = [
+    conceptName(r?.code),
+    conceptName(r?.type),
+    ...categories.map((cat: any) => conceptName(cat)),
+  ].filter((s): s is string => !!s);
+  return texts.some((t) => IMAGING_TEXT_RE.test(t));
+}
+
+// A FHIR ImagingStudy → a structured imaging study. modality from the top-level /
+// per-series DICOM codes; body region + laterality from the first series carrying
+// them; the study's description/notes as the impression; reasonCode as the
+// indication; `started` as the date. entered-in-error / cancelled → dropped.
+export function mapImagingStudyResource(
+  r: any,
+  idPrefix: string
+): ImportedImagingStudy | null {
+  if (r?.status === "entered-in-error" || r?.status === "cancelled")
+    return null;
+  const series = Array.isArray(r?.series) ? r.series : [];
+  const modalityCodings = [
+    ...(Array.isArray(r?.modality)
+      ? r.modality
+      : r?.modality
+        ? [r.modality]
+        : []),
+    ...series.map((s: any) => s?.modality).filter(Boolean),
+  ];
+  const modality = modalityFromCodings(
+    modalityCodings,
+    typeof r?.description === "string" ? r.description : null
+  );
+  const bodyCoding = series.map((s: any) => s?.bodySite).find(Boolean);
+  const body_region = bodyCoding ? codingDisplay(bodyCoding) : null;
+  const latCoding = series.map((s: any) => s?.laterality).find(Boolean);
+  const laterality = latCoding ? lateralityFromCoding(latCoding) : null;
+  const noteText = (Array.isArray(r?.note) ? r.note : [])
+    .map((n: any) => (typeof n?.text === "string" ? n.text.trim() : null))
+    .filter((s: string | null): s is string => !!s)
+    .join("\n");
+  const impressionRaw =
+    [typeof r?.description === "string" ? r.description.trim() : "", noteText]
+      .filter(Boolean)
+      .join("\n") || null;
+  const study_date = isoDate(r?.started);
+  // Drop a study that carries no distinguishing signal at all (no specific
+  // modality, no region, no date, no narrative) — nothing worth a row.
+  if (modality === "other" && !body_region && !study_date && !impressionRaw)
+    return null;
+  return {
+    modality,
+    body_region,
+    laterality,
+    contrast: false,
+    contrast_agent: null,
+    study_date,
+    impression: impressionRaw ? capNarrative(impressionRaw) : null,
+    indication: conceptListText(r?.reasonCode),
+    status: typeof r?.status === "string" ? r.status : null,
+    external_id: imagingExternalId(idPrefix, "study", r, [
+      modality,
+      study_date,
+    ]),
+  };
+}
+
+// A FHIR DiagnosticReport → its inner Observation records PLUS its narrative:
+//  - an IMAGING report → a structured imaging study whose impression is the
+//    conclusion (+ conclusionCode terms + any inline-decodable presentedForm text);
+//  - any OTHER report (pathology, cardiology, …) with a conclusion → a value-less
+//    `lab` medical_records row carrying the narrative in `value` (the least-surprising
+//    existing home — a qualitative/narrative lab reading; imaging has no dedicated
+//    non-radiology record type yet). Both destinations are import-footprint-covered
+//    (imaging_studies / medical_records key on document_id).
+// presentedForm attachments are captured ONLY when inline-decodable text; binary/
+// remote rendered reports are NOT fetched (no auto-egress) — the deferred item-4 tail.
+export function mapDiagnosticReport(
+  r: any,
+  idPrefix: string,
+  ctx: FhirBundleCtx
+): { records: ImportedRecord[]; imagingStudies: ImportedImagingStudy[] } {
+  const records = recordsFromDiagnosticReport(r, idPrefix, ctx);
+  if (r?.status === "entered-in-error" || r?.status === "cancelled")
+    return { records, imagingStudies: [] };
+  const conclusion =
+    typeof r?.conclusion === "string" && r.conclusion.trim()
+      ? r.conclusion.trim()
+      : null;
+  const conclusionCodeText = conceptListText(r?.conclusionCode);
+  const formText = attachmentsText(r?.presentedForm);
+  const narrative =
+    [conclusion, conclusionCodeText, formText].filter(Boolean).join("\n\n") ||
+    null;
+  if (!narrative) return { records, imagingStudies: [] };
+  const date = isoDate(
+    r?.effectiveDateTime ?? r?.issued ?? r?.effectivePeriod?.start
+  );
+  if (looksLikeImagingReport(r)) {
+    const categoryCodings = (
+      Array.isArray(r?.category) ? r.category : r?.category ? [r.category] : []
+    ).flatMap((cat: any) => ccCodings(cat));
+    const modality = modalityFromCodings(
+      [...ccCodings(r?.code), ...categoryCodings],
+      conceptName(r?.code)
+    );
+    return {
+      records,
+      imagingStudies: [
+        {
+          modality,
+          body_region: null,
+          laterality: null,
+          contrast: false,
+          contrast_agent: null,
+          study_date: date,
+          impression: capNarrative(narrative),
+          indication: null,
+          status: typeof r?.status === "string" ? r.status : null,
+          external_id: imagingExternalId(idPrefix, "report", r, [
+            modality,
+            date,
+          ]),
+        },
+      ],
+    };
+  }
+  // Non-imaging report narrative → a value-less lab record. A record needs a date to
+  // place it on the timeline/series; a dateless report narrative is dropped.
+  if (!date) return { records, imagingStudies: [] };
+  const name = conceptName(r?.code) ?? "Diagnostic Report";
+  const loinc = loincFromFhirCode(r?.code);
+  const drId =
+    r?.id != null && String(r.id).trim()
+      ? String(r.id).trim()
+      : `${name}-${date}`;
+  const narrativeRecord: ImportedRecord = {
+    category: "lab",
+    name,
+    canonical: name,
+    value: capNarrative(narrative),
+    value_num: null,
+    unit: null,
+    date,
+    external_id: `${idPrefix}:dr-conclusion:${drId}`,
+    loinc: loinc ?? null,
+    provider: null,
+  };
+  return { records: [...records, narrativeRecord], imagingStudies: [] };
+}
+
+// A FHIR DocumentReference → a structured imaging study, ONLY when it is an
+// imaging/radiology document carrying an inline-decodable text rendered report (#708
+// item 4, inline-text boundary). A non-imaging document, a binary attachment
+// (application/pdf, image/*), or a remote `url`-only reference returns null — we
+// never auto-fetch an external URL and never blind-decode binary here (that rendered
+// report → medical_documents → AI-extraction path is the deferred item-4 tail).
+export function mapDocumentReferenceImaging(
+  r: any,
+  idPrefix: string
+): ImportedImagingStudy | null {
+  if (r?.status === "entered-in-error" || r?.docStatus === "entered-in-error")
+    return null;
+  if (!looksLikeImagingReport(r)) return null;
+  const atts = (Array.isArray(r?.content) ? r.content : [])
+    .map((c: any) => c?.attachment)
+    .filter(Boolean);
+  const text = attachmentsText(atts);
+  if (!text) return null; // binary / remote / no inline text — not ingested
+  const modality = modalityFromCodings(
+    ccCodings(r?.type),
+    conceptName(r?.type)
+  );
+  const attCreation = atts
+    .map((a: any) => isoDate(a?.creation))
+    .find((d: string | null) => !!d);
+  const study_date = isoDate(r?.date) ?? attCreation ?? null;
+  return {
+    modality,
+    body_region: null,
+    laterality: null,
+    contrast: false,
+    contrast_agent: null,
+    study_date,
+    impression: capNarrative(text),
+    indication: null,
+    status:
+      typeof r?.docStatus === "string"
+        ? r.docStatus
+        : typeof r?.status === "string"
+          ? r.status
+          : null,
+    external_id: imagingExternalId(idPrefix, "docref", r, [study_date]),
+  };
 }
 
 // A FHIR Patient carries the subject's birthDate (YYYY-MM-DD), gender

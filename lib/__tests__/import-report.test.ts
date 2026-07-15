@@ -432,9 +432,9 @@ const BUNDLE = JSON.stringify({
     },
     {
       // No mapper → unrecognized resource type in coverage + a resource drop.
-      // (Procedure + FamilyMemberHistory now HAVE mappers, so DocumentReference
-      // stands in as the genuinely-unconsumed support type.)
-      resource: { resourceType: "DocumentReference", status: "current" },
+      // (Procedure + FamilyMemberHistory + DocumentReference now HAVE mappers, so
+      // Device stands in as the genuinely-unconsumed support type.)
+      resource: { resourceType: "Device", status: "active" },
     },
   ],
 });
@@ -455,7 +455,7 @@ describe("parseFhirBundle → import report", () => {
   it("marks an unmapped support type as present-but-not-consumed", () => {
     const { consumed, notConsumed } = summarizeCoverage(report.coverage);
     expect(consumed.map((c) => c.title)).toContain("Observation");
-    expect(notConsumed.map((c) => c.title)).toContain("DocumentReference");
+    expect(notConsumed.map((c) => c.title)).toContain("Device");
   });
 
   // Fidelity invariant (b): no candidate is both imported AND reported as a genuine
@@ -512,7 +512,7 @@ const REFERENCE_BUNDLE = JSON.stringify({
       },
     },
     // A genuinely-unconsumed support type — stays not-consumed.
-    { resource: { resourceType: "DocumentReference", status: "current" } },
+    { resource: { resourceType: "Device", status: "active" } },
   ],
 });
 
@@ -540,9 +540,9 @@ describe("parseFhirBundle → reference-consumed coverage (F1)", () => {
     expect(unrecognized).not.toContain("Medication");
     expect(unrecognized).not.toContain("Practitioner");
     expect(unrecognized).not.toContain("Organization");
-    // But the genuinely-unconsumed DocumentReference IS still flagged.
-    expect(notConsumed.map((c) => c.title)).toContain("DocumentReference");
-    expect(unrecognized).toContain("DocumentReference");
+    // But the genuinely-unconsumed Device IS still flagged.
+    expect(notConsumed.map((c) => c.title)).toContain("Device");
+    expect(unrecognized).toContain("Device");
   });
 });
 

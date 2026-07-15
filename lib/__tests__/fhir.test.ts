@@ -192,6 +192,216 @@ describe("parseFhirBundle", () => {
     expect(pct?.reason).toBe("derived_percentile");
   });
 
+  // ---- Structured imaging mappers (#708 → #702) ----
+
+  const b64 = (s: string) => Buffer.from(s, "utf8").toString("base64");
+
+  it("maps an ImagingStudy → a study row with modality/body region/laterality (#708)", () => {
+    const r = parseFhirBundle(
+      bundle([
+        {
+          resourceType: "ImagingStudy",
+          id: "study-1",
+          status: "available",
+          started: "2024-05-02T10:00:00Z",
+          modality: [
+            {
+              system: "http://dicom.nema.org/resources/ontology/DCM",
+              code: "MR",
+              display: "Magnetic Resonance",
+            },
+          ],
+          description: "MRI Left Knee",
+          numberOfSeries: 3,
+          reasonCode: [{ text: "Knee pain" }],
+          series: [
+            {
+              modality: { code: "MR" },
+              bodySite: { display: "Knee" },
+              laterality: { code: "7771000", display: "Left" },
+            },
+          ],
+        },
+      ])
+    );
+    expect(r.imagingStudies).toHaveLength(1);
+    expect(r.imagingStudies![0]).toMatchObject({
+      modality: "mri",
+      body_region: "Knee",
+      laterality: "left",
+      study_date: "2024-05-02",
+      indication: "Knee pain",
+      impression: "MRI Left Knee",
+      external_id: "fhir:imaging:study:study-1",
+    });
+  });
+
+  it("drops an entered-in-error ImagingStudy, records the drop", () => {
+    const r = parseFhirBundle(
+      bundle([
+        {
+          resourceType: "ImagingStudy",
+          id: "study-bad",
+          status: "entered-in-error",
+          started: "2024-05-02",
+          modality: [{ code: "CT" }],
+        },
+      ])
+    );
+    expect(r.imagingStudies ?? []).toHaveLength(0);
+    expect(
+      r.report!.drops.some(
+        (d) => d.kind === "imaging_study" && d.reason === "negated"
+      )
+    ).toBe(true);
+  });
+
+  it("captures an imaging DiagnosticReport's conclusion + conclusionCode + inline presentedForm as the impression (#708)", () => {
+    const r = parseFhirBundle(
+      bundle([
+        {
+          resourceType: "DiagnosticReport",
+          id: "dr-img",
+          status: "final",
+          category: [
+            {
+              coding: [
+                {
+                  system: "http://terminology.hl7.org/CodeSystem/v2-0074",
+                  code: "RAD",
+                },
+              ],
+            },
+          ],
+          code: { text: "CT Chest without contrast" },
+          effectiveDateTime: "2024-03-15",
+          conclusion: "No acute cardiopulmonary process.",
+          conclusionCode: [{ text: "Normal chest CT" }],
+          presentedForm: [
+            {
+              contentType: "text/plain",
+              data: b64("FINDINGS: Clear lungs. No effusion."),
+            },
+          ],
+        },
+      ])
+    );
+    expect(r.imagingStudies).toHaveLength(1);
+    const study = r.imagingStudies![0];
+    expect(study.modality).toBe("ct");
+    expect(study.study_date).toBe("2024-03-15");
+    expect(study.impression).toContain("No acute cardiopulmonary process.");
+    expect(study.impression).toContain("Normal chest CT");
+    expect(study.impression).toContain("Clear lungs");
+    // The report's discrete Observations still flow to records — no imaging row here.
+    expect(r.records).toHaveLength(0);
+  });
+
+  it("routes a NON-imaging DiagnosticReport conclusion to a value-less lab record (#708)", () => {
+    const r = parseFhirBundle(
+      bundle([
+        {
+          resourceType: "DiagnosticReport",
+          id: "dr-path",
+          status: "final",
+          category: [
+            {
+              coding: [
+                {
+                  system: "http://terminology.hl7.org/CodeSystem/v2-0074",
+                  code: "LAB",
+                },
+              ],
+            },
+          ],
+          code: { text: "Surgical Pathology Report" },
+          effectiveDateTime: "2024-04-01",
+          conclusion: "Benign. No malignancy identified.",
+        },
+      ])
+    );
+    expect(r.imagingStudies ?? []).toHaveLength(0);
+    const rec = r.records.find((x) => x.name === "Surgical Pathology Report");
+    expect(rec).toBeTruthy();
+    expect(rec!.category).toBe("lab");
+    expect(rec!.value).toContain("Benign");
+    expect(rec!.value_num).toBeNull();
+    expect(rec!.external_id).toBe("fhir:dr-conclusion:dr-path");
+  });
+
+  it("ingests an inline-text imaging DocumentReference but NOT a binary/remote one (#708 item 4)", () => {
+    const r = parseFhirBundle(
+      bundle([
+        {
+          resourceType: "DocumentReference",
+          id: "docref-inline",
+          status: "current",
+          type: {
+            text: "Radiology Report",
+            coding: [
+              {
+                system: "http://loinc.org",
+                code: "18748-4",
+                display: "Diagnostic imaging study",
+              },
+            ],
+          },
+          date: "2024-06-10",
+          content: [
+            {
+              attachment: {
+                contentType: "text/html",
+                data: b64(
+                  "<html><body><b>IMPRESSION:</b> Normal study.</body></html>"
+                ),
+              },
+            },
+          ],
+        },
+        // Binary + remote imaging document — must NOT be fetched or ingested.
+        {
+          resourceType: "DocumentReference",
+          id: "docref-binary",
+          status: "current",
+          type: { text: "CT Report" },
+          content: [
+            {
+              attachment: {
+                contentType: "application/pdf",
+                url: "https://example.org/report.pdf",
+              },
+            },
+          ],
+        },
+      ])
+    );
+    expect(r.imagingStudies).toHaveLength(1);
+    const study = r.imagingStudies![0];
+    expect(study.external_id).toBe("fhir:imaging:docref:docref-inline");
+    expect(study.study_date).toBe("2024-06-10");
+    // HTML stripped to plain text.
+    expect(study.impression).toBe("IMPRESSION: Normal study.");
+  });
+
+  it("is idempotent — a duplicate ImagingStudy dedupes on external_id", () => {
+    const study = {
+      resourceType: "ImagingStudy",
+      id: "study-dup",
+      status: "available",
+      started: "2024-01-01",
+      modality: [{ code: "US" }],
+      series: [{ modality: { code: "US" }, bodySite: { display: "Abdomen" } }],
+    };
+    const r = parseFhirBundle(bundle([study, { ...study }]));
+    expect(r.imagingStudies).toHaveLength(1);
+    expect(r.imagingStudies![0].modality).toBe("ultrasound");
+    expect(
+      r.report!.drops.some(
+        (d) => d.kind === "imaging_study" && d.reason === "deduped"
+      )
+    ).toBe(true);
+  });
+
   it("returns null demographics when no Patient / no birthDate+gender", () => {
     expect(
       parseFhirBundle(bundle([immunization("08", "2010-06-15")])).demographics
