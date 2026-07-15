@@ -2,6 +2,10 @@
 // body metrics, goals, frequency targets). Split out of lib/types.ts (#319); the
 // `@/lib/types` barrel re-exports everything here, so import paths are unchanged.
 
+// Type-only import (erased at compile) from the lift catalog, which imports nothing
+// — no runtime cycle. Routine day `focus` is a MuscleRegion[].
+import type { MuscleRegion } from "../lifts";
+
 export type ActivityType = "strength" | "cardio" | "sport";
 
 export interface Activity {
@@ -266,6 +270,64 @@ export interface FrequencyTarget {
   scope_value: string;
   per_week: number;
   created_at: string;
+}
+
+// ── Routines (#738, migration 039) ─────────────────────────────────────────────
+// A routine is a declarative, user-owned program the user ADOPTS (from the
+// lib/routine-templates.ts catalog) or AUTHORS. Templates and custom routines share
+// ONE runtime representation: adopting a template copies it into these tables, after
+// which it is indistinguishable from a hand-authored routine (#559: the engine
+// resolves and fills it, it never invents one).
+export type RoutineSource = "template" | "custom";
+
+// A routine row. `focus`/`candidates` on the children are JSON-decoded into arrays
+// by the query layer (their DB columns are JSON TEXT).
+export interface Routine {
+  id: number;
+  name: string;
+  source: RoutineSource;
+  // The catalog id when source='template' (else null); purely provenance — after
+  // adoption the copied rows are the source of truth.
+  template_id: string | null;
+  // At most ONE routine per profile is active (enforced in the write core).
+  active: number;
+  // Set on activation (profile-local date); null before first activation.
+  started_date: string | null;
+  // Rotation cursor into routine_days; advanced by session crediting (#740), reset
+  // to 0 on activation.
+  position: number;
+  // Mesocycle length in weeks; NULL = no cycle. Inert until #741.
+  cycle_weeks: number | null;
+  created_at: string;
+}
+
+// A day within a routine (e.g. "Push day"). `focus` is the muscle regions the day
+// targets, used for session crediting and coverage.
+export interface RoutineDay {
+  id: number;
+  routine_id: number;
+  ordinal: number;
+  label: string;
+  focus: MuscleRegion[];
+}
+
+// One exercise slot within a day. `candidates` is an ordered list of exercise names
+// (catalog or custom); the recommendation engine (#740) fills the slot with the
+// first candidate the user can actually do.
+export interface RoutineSlot {
+  id: number;
+  routine_day_id: number;
+  ordinal: number;
+  candidates: string[];
+  sets: number;
+  rep_min: number;
+  rep_max: number;
+}
+
+// A routine with its days and each day's slots — the shape the builder (#739) and
+// recommendation (#740) read.
+export interface RoutineWithDays extends Routine {
+  days: (RoutineDay & { slots: RoutineSlot[] })[];
 }
 
 // Outcome of saveActivity (issue #332). The activity form auto-saves, so it must

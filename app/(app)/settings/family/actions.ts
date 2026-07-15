@@ -198,6 +198,19 @@ export async function deleteProfile(formData: FormData): Promise<FamilyResult> {
         WHERE a_id IN (SELECT id FROM intake_items WHERE profile_id = ?)
            OR b_id IN (SELECT id FROM intake_items WHERE profile_id = ?)`
       ).run(id, id);
+      // Routine children (#738), reached through routines (parent, OWNED). Slots
+      // first (they FK routine_days), then days; the routines rows themselves are
+      // cleared by the OWNED_TABLES loop below.
+      db.prepare(
+        `DELETE FROM routine_slots WHERE routine_day_id IN (
+           SELECT rd.id FROM routine_days rd
+             JOIN routines r ON r.id = rd.routine_id
+            WHERE r.profile_id = ?)`
+      ).run(id);
+      db.prepare(
+        `DELETE FROM routine_days WHERE routine_id IN (
+           SELECT id FROM routines WHERE profile_id = ?)`
+      ).run(id);
 
       // Every directly profile-owned table, deleted by profile_id. (No FK cascade —
       // upgraded DBs got profile_id via addColumnIfMissing, which can't attach an ON

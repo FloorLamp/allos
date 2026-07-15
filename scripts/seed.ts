@@ -16,6 +16,7 @@ import {
   serializeSituationEvents,
 } from "../lib/trend-annotations";
 import { getTimezone } from "../lib/settings";
+import { adoptTemplate } from "../lib/routines";
 
 // The seed populates the bootstrap profile. Owned-table
 // rows are born NOT NULL on a fresh DB, so every insert carries profile_id = 1.
@@ -452,6 +453,17 @@ freq.run("group", "Upper", 2); // push + pull days → met
 freq.run("group", "Lower", 1); // leg day → met
 freq.run("region", "Chest", 2); // one push day → partial
 freq.run("type", "cardio", 2); // one recent run → partial
+
+// A sample ACTIVE routine (#738) so the routine-aware surfaces (#740/#742) render on
+// a fresh seed. Adopt the PPL template (copies it into the routine tables), then mark
+// it active directly here — we deliberately do NOT run the activate core, so the
+// hand-tuned frequency targets above are preserved for the other seeded surfaces
+// (the target-replacement invariant is exercised by the action/db tests instead).
+const seededRoutineId = adoptTemplate(SEED_PROFILE_ID, "push-pull-legs-6x");
+db.prepare(
+  `UPDATE routines SET active = 1, started_date = ?, position = 0
+     WHERE id = ? AND profile_id = ?`
+).run(daysAgo(6), seededRoutineId, SEED_PROFILE_ID);
 
 // Profile demographics: a ~40-year-old male. Sex is set
 // BEFORE the medical records below so reconcileFlags picks the sex-specific
