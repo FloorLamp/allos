@@ -68,6 +68,7 @@ const set = (
   duration: "",
   durationRight: "",
   warmup: false,
+  rpe: null,
   ...o,
 });
 const strengthPart = (name: string, o: Partial<PartEntry> = {}) =>
@@ -259,6 +260,7 @@ describe("buildActivityPayload", () => {
         targetReps: null,
         toFailure: false,
         warmup: false,
+        rpe: null,
       },
     ]);
   });

@@ -32,6 +32,7 @@ import { isRealIsoDate } from "@/lib/date";
 import { isTrainingRestricted, isActivityTypeAllowed } from "@/lib/age-gate";
 import { regionForExercise, type MuscleRegion } from "@/lib/lifts";
 import { creditRoutineSession } from "@/lib/routines";
+import { canonicalRpe } from "@/lib/rpe";
 
 interface SetInput {
   exercise: string;
@@ -54,6 +55,9 @@ interface SetInput {
   // Warmup flag (#338): a ramp-up set, excluded from working-set math. Optional
   // (older clients/imports don't send it — such sets stay working sets).
   warmup?: boolean;
+  // Optional logged RPE (5–10) for the set (#743). Canonicalized to a half-point
+  // value at the write boundary (lib/rpe.ts); absent/off-scale ⇒ stored NULL.
+  rpe?: number | null;
 }
 
 // The stored canonical (kg) loads of the activity's existing sets before an edit
@@ -84,8 +88,8 @@ function writeSets(
   const setStmt = db.prepare(
     `INSERT INTO exercise_sets
        (activity_id, exercise, set_number, weight_kg, reps, weight_kg_right, reps_right,
-        duration_sec, duration_sec_right, equipment_id, target_reps, to_failure, warmup)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
+        duration_sec, duration_sec_right, equipment_id, target_reps, to_failure, warmup, rpe)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
   );
   const counters: Record<string, number> = {};
   for (const s of sets) {
@@ -117,7 +121,10 @@ function writeSets(
       s.toFailure ? 1 : null,
       // Warmup flag (#338): canonicalize to 0/1 at the write boundary (the
       // column is NOT NULL DEFAULT 0).
-      s.warmup ? 1 : 0
+      s.warmup ? 1 : 0,
+      // RPE (#743): snap to a half point / reject off-scale at the boundary; the
+      // CHECK (5–10) only ever sees a valid value or NULL.
+      canonicalRpe(s.rpe)
     );
   }
 }

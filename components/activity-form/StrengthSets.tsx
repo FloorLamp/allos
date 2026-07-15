@@ -33,6 +33,7 @@ import {
   type NextSet,
 } from "@/lib/coaching";
 import { pickSeedSessions } from "@/lib/exercise-window";
+import { stepRpe, fmtRpe, rpeSummaryText } from "@/lib/rpe";
 import {
   dispWeight,
   round,
@@ -96,6 +97,59 @@ function BrandedCheckbox({
         <IconCheck className="h-3 w-3" stroke={3} />
       </span>
     </span>
+  );
+}
+
+// A compact, optional per-set RPE selector (issue #743) matching the #337 stepper
+// ergonomics: −/value/+ in half-point steps over the 5–10 scale, BLANK by default
+// (logging RPE is never required). Stepping down off the floor clears it back to
+// blank; stepping up from blank seeds a working rating. The rating rides onto the
+// set's declared intent — it never replaces target reps / to-failure.
+function RpeStepper({
+  value,
+  onChange,
+  testId,
+}: {
+  value: number | null;
+  onChange: (v: number | null) => void;
+  testId?: string;
+}) {
+  return (
+    <div
+      data-testid={testId}
+      title="RPE — rate of perceived exertion (5–10, optional)"
+      className="flex items-center overflow-hidden rounded-md border border-black/10 text-xs dark:border-white/10"
+    >
+      <button
+        type="button"
+        tabIndex={-1}
+        onClick={() => onChange(stepRpe(value, -1))}
+        aria-label="Decrease RPE"
+        className="flex h-6 w-5 shrink-0 items-center justify-center font-semibold text-slate-400 hover:bg-slate-100 hover:text-brand-600 dark:text-slate-500 dark:hover:bg-ink-800 dark:hover:text-brand-400"
+      >
+        −
+      </button>
+      <span
+        data-testid={testId ? `${testId}-value` : undefined}
+        aria-label={value == null ? "RPE not set" : `RPE ${fmtRpe(value)}`}
+        className={`w-8 text-center tabular-nums ${
+          value == null
+            ? "text-[10px] font-medium uppercase tracking-wide text-slate-300 dark:text-slate-600"
+            : "font-semibold text-slate-700 dark:text-slate-200"
+        }`}
+      >
+        {value == null ? "RPE" : fmtRpe(value)}
+      </span>
+      <button
+        type="button"
+        tabIndex={-1}
+        onClick={() => onChange(stepRpe(value, 1))}
+        aria-label="Increase RPE"
+        className="flex h-6 w-5 shrink-0 items-center justify-center font-semibold text-slate-400 hover:bg-slate-100 hover:text-brand-600 dark:text-slate-500 dark:hover:bg-ink-800 dark:hover:text-brand-400"
+      >
+        +
+      </button>
+    </div>
   );
 }
 
@@ -580,6 +634,12 @@ export default function StrengthSets({
                 </span>
                 <span className="flex items-center gap-1 tabular-nums">
                   {summarizeExercise(sess.sets, units.weightUnit).text}
+                  {/* Logged RPE for the session, shown when present (#743). */}
+                  {rpeSummaryText(sess.sets) && (
+                    <span className="rounded bg-slate-100 px-1 text-[10px] font-medium text-slate-500 dark:bg-ink-800 dark:text-slate-400">
+                      {rpeSummaryText(sess.sets)}
+                    </span>
+                  )}
                   {/* Same missed-target marker as the journal card; the
                       session status is judged server-side. */}
                   {sess.status === "missed" && (
@@ -759,7 +819,7 @@ export default function StrengthSets({
             {timed ? "Hold time" : "Reps"}
           </span>
         )}
-        <span className="w-16 shrink-0 text-right">Options</span>
+        <span className="w-24 shrink-0 text-right">Options</span>
       </div>
       <div className="mt-2 space-y-2">
         {p.sets.map((s, si) => (
@@ -1059,40 +1119,54 @@ export default function StrengthSets({
                 )}
               </div>
             )}
-            <div className="flex w-16 shrink-0 items-start justify-end gap-1">
-              {/* Warmup toggle (#338): a light per-set "W" — a warmup is excluded
+            <div className="flex w-24 shrink-0 flex-col items-end gap-1">
+              {/* Optional per-set RPE selector (#743) — shown for rep-based sets
+                (a timed hold's effort is its duration). Blank by default; the
+                rating rides onto the set without replacing target reps. */}
+              {!timed && (
+                <RpeStepper
+                  value={s.rpe}
+                  onChange={(v) => onUpdateSet(si, { rpe: v })}
+                  testId={si === 0 ? "set1-rpe" : undefined}
+                />
+              )}
+              <div className="flex items-start justify-end gap-1">
+                {/* Warmup toggle (#338): a light per-set "W" — a warmup is excluded
                 from the part's volume total and target markers. One toggle per
                 set (both sides of a per-side set share it). */}
-              <button
-                type="button"
-                tabIndex={-1}
-                onClick={() => onUpdateSet(si, { warmup: !s.warmup })}
-                aria-pressed={s.warmup}
-                data-testid={si === 0 ? "set1-warmup" : undefined}
-                title={
-                  s.warmup
-                    ? "Warmup set — excluded from volume & target markers"
-                    : "Mark as a warmup set"
-                }
-                aria-label={s.warmup ? "Unmark warmup set" : "Mark warmup set"}
-                className={`mt-1 flex h-8 w-7 shrink-0 items-center justify-center rounded text-xs font-bold ${
-                  s.warmup
-                    ? "bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400"
-                    : "text-slate-300 hover:bg-slate-100 hover:text-slate-500 dark:text-slate-600 dark:hover:bg-ink-800"
-                }`}
-              >
-                W
-              </button>
-              {p.sets.length > 1 && (
                 <button
                   type="button"
-                  onClick={() => onRemoveSet(si)}
-                  className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded text-rose-400 hover:bg-rose-50 hover:text-rose-600 dark:text-rose-500/80 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
-                  aria-label="Remove set"
+                  tabIndex={-1}
+                  onClick={() => onUpdateSet(si, { warmup: !s.warmup })}
+                  aria-pressed={s.warmup}
+                  data-testid={si === 0 ? "set1-warmup" : undefined}
+                  title={
+                    s.warmup
+                      ? "Warmup set — excluded from volume & target markers"
+                      : "Mark as a warmup set"
+                  }
+                  aria-label={
+                    s.warmup ? "Unmark warmup set" : "Mark warmup set"
+                  }
+                  className={`mt-1 flex h-8 w-7 shrink-0 items-center justify-center rounded text-xs font-bold ${
+                    s.warmup
+                      ? "bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400"
+                      : "text-slate-300 hover:bg-slate-100 hover:text-slate-500 dark:text-slate-600 dark:hover:bg-ink-800"
+                  }`}
                 >
-                  <IconX className="h-4 w-4" />
+                  W
                 </button>
-              )}
+                {p.sets.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => onRemoveSet(si)}
+                    className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded text-rose-400 hover:bg-rose-50 hover:text-rose-600 dark:text-rose-500/80 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
+                    aria-label="Remove set"
+                  >
+                    <IconX className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         ))}

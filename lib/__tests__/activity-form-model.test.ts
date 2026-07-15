@@ -27,6 +27,7 @@ const storedSet = (
   target_reps: null,
   to_failure: null,
   warmup: null,
+  rpe: null,
   ...o,
 });
 

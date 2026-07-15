@@ -68,6 +68,9 @@ export interface ActivityEditData {
     to_failure: number | null;
     // Warmup flag (#338, 1 = warmup); populated back into the set row on edit.
     warmup: number | null;
+    // Optional logged RPE (5–10) for the set (#743), or null; preloads the set
+    // row's RPE selector on edit so the rating round-trips.
+    rpe: number | null;
   }[];
 }
 
@@ -158,6 +161,7 @@ export function buildRoutineSessionPrefill(
         target_reps: slot.repMax,
         to_failure: null,
         warmup: null,
+        rpe: null,
       });
     }
   }
@@ -177,6 +181,10 @@ export interface SetEntry {
   durationRight: string;
   // Warmup flag (#338): a ramp-up set, excluded from volume/judgment/progression.
   warmup: boolean;
+  // Optional per-set RPE (5–10 half-point) or null when unlogged (#743). Held as
+  // a number (not a text field) — the set row edits it through a stepper, and the
+  // save boundary canonicalizes it (lib/rpe.ts).
+  rpe: number | null;
 }
 export interface PartEntry {
   name: string;
@@ -223,6 +231,7 @@ export const blankSet = (): SetEntry => ({
   duration: "",
   durationRight: "",
   warmup: false,
+  rpe: null,
 });
 export const blankPart = (): PartEntry => ({
   name: "",
@@ -305,6 +314,7 @@ export function groupEditSets(
       durationRight:
         s.duration_sec_right != null ? formatSeconds(s.duration_sec_right) : "",
       warmup: !!s.warmup,
+      rpe: s.rpe ?? null,
     });
   }
   return byName;

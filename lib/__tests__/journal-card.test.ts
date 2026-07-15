@@ -72,6 +72,7 @@ function set(
     to_failure: null,
     equipment_id: null,
     warmup: 0,
+    rpe: null,
     ...over,
   };
 }

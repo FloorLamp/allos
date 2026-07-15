@@ -5,6 +5,7 @@ import { judgeTargets } from "../journal-format";
 import { estimate1RM } from "../strength";
 import { dispWeight, kgTo, toKg, round } from "../units";
 import type { WeightUnit } from "../settings";
+import { fmtRpe } from "../rpe";
 import { within, byDateDesc } from "./common";
 
 // ---- Strength ----
@@ -32,6 +33,10 @@ export interface ExerciseSummary {
     reps: number;
     targetReps?: number | null;
     toFailure?: boolean;
+    // The anchor set's logged RPE (5–10) when one was recorded, else null. The
+    // double-progression MODIFIER reads only the anchor's rating (#743); a null
+    // leaves every verdict byte-for-byte the pre-RPE behavior.
+    rpe?: number | null;
   } | null;
   // Every rep-bearing set of the most recent session (each side of a per-side
   // set is its own entry, bodyweight folded into the load), so progression can
@@ -80,6 +85,22 @@ export function weightIncrementLb(exercise: string): number {
   return weightIncrementKg(exercise) === 5 ? 10 : 5;
 }
 
+// ---- RPE progression modifier (#743) ----
+// When the ANCHOR set of the seed session carried an RPE, the double-progression
+// verdict is nudged by how hard that set felt. These bounds are the only tuning
+// knobs, and they're boundary-tested. A seed with NO RPE leaves every branch
+// byte-for-byte the pre-RPE behavior (the nullable-signal invariant).
+//
+// At/below this, a set that hit the top of its range felt easy — bank a bigger
+// jump instead of the standard single increment.
+export const RPE_EASY_MAX = 7;
+// At/above this, the anchor was at or near true failure. Reaching it while still
+// short of the range floor means the load is too heavy to build reps under — hold
+// (repeat) rather than chasing the floor, and phrase toward deload/variation.
+export const RPE_HARD_MIN = 9.5;
+// "A larger load increment" = two standard steps rather than one.
+export const RPE_EASY_INCREMENTS = 2;
+
 export interface NextSet {
   weightKg: number; // 0 for a bodyweight movement
   reps: number;
@@ -112,6 +133,9 @@ interface SessionSet {
   // #330 load-based working-set heuristic remains the fallback for import-only
   // histories that carry no flag.
   warmup?: number | null;
+  // Logged RPE (5–10) for the set, when recorded. Carried onto the anchor by
+  // sessionBestSet so the progression modifier can read it (#743).
+  rpe?: number | null;
 }
 
 // The seeding set of one session: highest estimated 1RM, then most reps —
@@ -127,6 +151,9 @@ export function sessionBestSet(
   reps: number;
   targetReps: number | null;
   toFailure: boolean;
+  // The anchor set's RPE (5–10), or null. Rides onto the seed so the
+  // progression modifier reads the rating of the SAME set it progresses (#743).
+  rpe: number | null;
 } | null {
   let best: ReturnType<typeof sessionBestSet> = null;
   let bestE1rm = -1;
@@ -149,6 +176,7 @@ export function sessionBestSet(
           reps: side.reps,
           targetReps: s.target_reps ?? null,
           toFailure: s.to_failure === 1,
+          rpe: s.rpe ?? null,
         };
       }
     }
@@ -204,6 +232,7 @@ export function sideSets(
     target_reps: s.target_reps,
     to_failure: s.to_failure,
     warmup: s.warmup,
+    rpe: s.rpe,
   }));
 }
 
@@ -212,20 +241,24 @@ export function sideSets(
 // snapped to the nearest multiple of 5 lb (a plate-loadable number, not a
 // converted-kg fraction like 181.9 lb). weightKg stays canonical; incDisp is
 // the jump in `wu` for the rationale text.
+// `steps` scales the jump: 1 is the normal double-progression increment, 2 is the
+// "easy set" bump the RPE modifier banks when the anchor was logged at RPE ≤ 7
+// (#743). incDisp reflects the TOTAL jump so the rationale text names it directly.
 function addIncrement(
   exercise: string,
   lastKg: number,
-  wu: WeightUnit
+  wu: WeightUnit,
+  steps = 1
 ): { weightKg: number; incDisp: number } {
   if (wu === "lb") {
-    const incLb = weightIncrementLb(exercise);
+    const incLb = weightIncrementLb(exercise) * steps;
     // When the last weight is already a multiple of 5 lb (the norm for an lb
     // lifter) this is exactly lastLb + incLb; a kg-entered oddball still lands
     // on a loadable number nearby.
     const nextLb = Math.round((kgTo(lastKg, "lb") + incLb) / 5) * 5;
     return { weightKg: toKg(nextLb, "lb"), incDisp: incLb };
   }
-  const inc = weightIncrementKg(exercise);
+  const inc = weightIncrementKg(exercise) * steps;
   return { weightKg: lastKg + inc, incDisp: round(inc, 1) };
 }
 
@@ -292,6 +325,12 @@ function allWorkingSetsMetTarget(working: SessionWorkSet[]): boolean {
 //   best set still below the bottom   → hold weight, build back to the bottom
 //   best at the top but a set lagged  → hold weight, get all sets to the top
 //   otherwise                         → hold weight, chase one more rep
+// The anchor set's RPE (#743), when logged, MODIFIES this heuristic branch:
+//   top of range at RPE ≤ 7  → add TWO increments, not one (it felt easy)
+//   below the floor at RPE ≥ 9.5 → hold the load and repeat (near-failure and still
+//                                  short means the weight is too heavy to build under)
+// The target-driven and bodyweight branches are unchanged, and a seed with no RPE
+// leaves the heuristic branch byte-for-byte its pre-RPE behavior.
 // Bodyweight movements progress by reps; timed holds (planks) get no suggestion.
 //
 // Takes just the slice of ExerciseSummary it reads, so callers without full
@@ -353,18 +392,44 @@ export function suggestNextSet(
   }
 
   const { low, high } = repRangeFor(s.exercise);
+  // The anchor set's RPE (null when unlogged) gates the two modifiers below. A
+  // null rpe leaves easy/hard both false, so every branch is byte-for-byte the
+  // pre-RPE behavior (#743).
+  const rpe = last.rpe ?? null;
+  const easy = rpe != null && rpe <= RPE_EASY_MAX;
+  const hard = rpe != null && rpe >= RPE_HARD_MIN;
 
   if (working.every((w) => w.reps >= high)) {
-    const { weightKg, incDisp } = addIncrement(s.exercise, last.weightKg, wu);
+    const steps = easy ? RPE_EASY_INCREMENTS : 1;
+    const { weightKg, incDisp } = addIncrement(
+      s.exercise,
+      last.weightKg,
+      wu,
+      steps
+    );
     return {
       weightKg,
       reps: low,
       bodyweight: false,
       targetReps: null,
-      rationale: `Hit ${high}+ reps on every set — add ${incDisp} ${wu} and reset to ${low}`,
+      rationale: easy
+        ? `Hit ${high}+ reps at RPE ${fmtRpe(rpe!)} — add ${incDisp} ${wu} and reset to ${low}`
+        : `Hit ${high}+ reps on every set — add ${incDisp} ${wu} and reset to ${low}`,
     };
   }
   if (last.reps < low) {
+    if (hard) {
+      // Near-failure and still under the floor: the load is too heavy to build
+      // reps under. Hold it and repeat the same effort; if it keeps stalling,
+      // the plateau vocabulary points at a deload or a variation swap.
+      return {
+        weightKg: last.weightKg,
+        reps: last.reps,
+        bodyweight: false,
+        targetReps: null,
+        rationale: `RPE ${fmtRpe(rpe!)} and still under ${low} reps — hold this load and repeat; if it keeps stalling, deload or change the variation`,
+      };
+    }
     return {
       weightKg: last.weightKg,
       reps: low,

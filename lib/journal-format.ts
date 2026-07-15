@@ -41,6 +41,9 @@ export interface SetRow {
   // Warmup flag (#338, 1 = warmup): a warmup set is shown but excluded from the
   // target judgment and the volume total below.
   warmup?: number | null;
+  // Optional logged RPE (5–10) for the set (#743); shown on history rows when
+  // present, inert to the summary text/status/volume below.
+  rpe?: number | null;
 }
 
 // "met" = every targeted set hit its declared rep target; "missed" = at least
