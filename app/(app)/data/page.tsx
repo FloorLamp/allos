@@ -18,6 +18,7 @@ import {
   getImportIssues,
   getActivityDuplicates,
   getBodyMetricConflicts,
+  getUnitMislabelReviews,
 } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
@@ -58,8 +59,13 @@ export default async function DataPage(
   const importIssues = getImportIssues(profile.id);
   const activityPairs = getActivityDuplicates(profile.id);
   const bodyMetricPairs = getBodyMetricConflicts(profile.id);
+  // Probable power-of-ten unit mislabels (issue #761) — each a one-click Review card.
+  const unitMislabels = getUnitMislabelReviews(profile.id);
   const reviewCount =
-    importIssues.length + activityPairs.length + bodyMetricPairs.length;
+    importIssues.length +
+    activityPairs.length +
+    bodyMetricPairs.length +
+    unitMislabels.length;
 
   // Build ONLY the active section server-side (issue #113, mirroring the #109
   // /trends fix): passing every section as a prop rendered — and ran the queries
@@ -81,6 +87,7 @@ export default async function DataPage(
         knownNames={[getUserFullName(profile.id), profile.name]}
         activityPairs={activityPairs}
         bodyMetricPairs={bodyMetricPairs}
+        unitMislabels={unitMislabels}
         units={units}
         isAdmin={login.role === "admin"}
       />

@@ -13,6 +13,11 @@ export interface FlagReconcileRow {
   unit: string | null;
   canonical_name: string;
   flag: string | null;
+  // The record's stored free-text reference range, for the unit-mislabel cross-check
+  // (issue #761): reconciledFlag consults it to decline deriving a false out-of-range
+  // flag from a mislabeled unit. Optional — a caller without it (or a test) just
+  // gets the pre-#761 behavior (no mislabel suppression).
+  reference?: string | null;
   // The record's collection date (YYYY-MM-DD). Used with the profile's birthdate
   // to pick the age-banded reference range for the age the subject was ON THAT
   // DATE (not today), so childhood labs never re-flag as the person ages. Optional
@@ -87,7 +92,8 @@ export function computeFlagReconciliation<T>(
       cb as CanonicalLike,
       context.sex ?? null,
       ageForRecord(context, r.date),
-      context.reproductiveStatus ?? null
+      context.reproductiveStatus ?? null,
+      r.reference ?? null
     );
     if (next === undefined) continue;
     out.push({ id: r.id, flag: next });

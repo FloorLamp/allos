@@ -44,7 +44,7 @@ The short tour — [docs/features.md](docs/features.md) is the full guide, with 
 - **AI activity log** — every AI call and failure recorded to a file and streamed live in **Settings → AI logs** (admin-only)
 - **Server error log** — unexpected server errors (an unhandled action exception, a route 500, a crashed background task) persisted to a size-capped file and shown under **Settings → Errors** (admin-only); clients only ever see a generic error
 - **Audit log** — a durable record of who accessed or modified which profile's data, identifiers only, with configurable retention (**Settings → Audit**, admin-only)
-- **Data hub** — bring data in (uploads, pasted logs, devices) under **Data → Import**, review every sync and resolve duplicates under **Data → Review**, and take everything with you via the **Export all my data** ZIP (JSON/CSV + FHIR passport + your files)
+- **Data hub** — bring data in (uploads, pasted logs, devices) under **Data → Import**, review every sync, resolve duplicates, and one-click-correct probable unit mislabels (a lab whose printed reference range gives away a 10× wrong unit) under **Data → Review**, and take everything with you via the **Export all my data** ZIP (JSON/CSV + FHIR passport + your files)
 
 ## Deploy with Docker
 

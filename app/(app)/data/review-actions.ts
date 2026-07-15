@@ -14,6 +14,13 @@ import { parseOverrideFields } from "@/lib/import-review/conflicts";
 import { mergeBodyMetric } from "@/lib/body-metric-extract";
 import type { PairDecision } from "@/lib/import-review/detect";
 import { formError, formOk, type FormResult } from "@/lib/types";
+import {
+  applyUnitMislabelCorrection as applyUnitMislabelCore,
+  undoUnitMislabelCorrection as undoUnitMislabelCore,
+  dismissUnitMislabel as dismissUnitMislabelCore,
+  type ApplyUnitMislabelResult,
+  type UnitMislabelUndo,
+} from "@/lib/unit-mislabel-correction";
 
 // The imported tables that carry a user-edit lock (`edited`, #133): the sync upserts
 // leave a locked row untouched. Maps each to the surfaces that render the row, for
@@ -212,4 +219,71 @@ export async function resolvePair(formData: FormData) {
   );
   revalidatePath("/data");
   revalidatePath("/");
+}
+
+// --- Unit-mislabel correction (issue #761) -----------------------------------
+//
+// A numeric lab reading whose stored unit is a probable power-of-ten mislabel of
+// the canonical unit (MCHC "33 g/L" whose printed range 31–37 matches g/dL). The
+// detector (lib/reference-range detectUnitMislabel) already suppresses the false
+// flag pre-approval; these actions are the one-click remediation on Data → Review.
+// All three are write-gated + profile-scoped; the write cores are auth-blind
+// (lib/unit-mislabel-correction).
+
+// The surfaces a unit correction changes: the Review inbox + every biomarker/trend
+// surface that renders the reading's flag.
+const MISLABEL_REVALIDATE = [
+  "/data",
+  "/biomarkers",
+  "/biomarkers/view",
+  "/trends",
+  "/",
+];
+
+// APPLY: correct the stored unit to the canonical unit, set the `edited` lock, and
+// re-derive the flag. Re-detects server-side (never trusts a client unit). Returns
+// the captured prior state so the client can offer an Undo toast.
+export async function applyUnitMislabel(
+  formData: FormData
+): Promise<ApplyUnitMislabelResult> {
+  const { profile } = await requireWriteAccess();
+  const id = Number(formData.get("id"));
+  if (!Number.isInteger(id) || id <= 0)
+    return { ok: false, error: "Invalid record." };
+  const res = applyUnitMislabelCore(profile.id, id);
+  if (res.ok) for (const p of MISLABEL_REVALIDATE) revalidatePath(p);
+  return res;
+}
+
+// UNDO: restore the prior unit, flag, and edit-lock captured by applyUnitMislabel
+// (row-ops side-state — a correction is a row op, so its undo inverts every field
+// it touched). Profile-scoped, so a token can't be replayed across profiles.
+export async function undoUnitMislabel(
+  undo: UnitMislabelUndo
+): Promise<{ ok: boolean }> {
+  const { profile } = await requireWriteAccess();
+  if (!undo || !Number.isInteger(undo.id) || undo.id <= 0)
+    return { ok: false };
+  const ok = undoUnitMislabelCore(profile.id, {
+    id: undo.id,
+    unit: undo.unit ?? null,
+    flag: undo.flag ?? null,
+    edited: undo.edited ? 1 : 0,
+  });
+  if (ok) for (const p of MISLABEL_REVALIDATE) revalidatePath(p);
+  return { ok };
+}
+
+// DISMISS: record the detection as a false positive (the stated range genuinely came
+// from a different cohort and the unit was right) so it doesn't re-surface.
+export async function dismissUnitMislabel(
+  formData: FormData
+): Promise<FormResult> {
+  const { profile } = await requireWriteAccess();
+  const id = Number(formData.get("id"));
+  if (!Number.isInteger(id) || id <= 0) return formError("Invalid record.");
+  dismissUnitMislabelCore(profile.id, id);
+  revalidatePath("/data");
+  revalidatePath("/");
+  return formOk();
 }
