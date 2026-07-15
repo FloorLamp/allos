@@ -35,6 +35,7 @@ export function getIntakeSafetyContext(profileId: number): IntakeSafetyContext {
   const medications: SafetyMedication[] = getSupplements(profileId)
     .filter((s) => s.active && s.kind === "medication")
     .map((s) => ({
+      id: s.id,
       name: s.name,
       rxcui: s.rxcui,
       rxcuiIngredients: parseRxcuiIngredients(s.rxcui_ingredients),

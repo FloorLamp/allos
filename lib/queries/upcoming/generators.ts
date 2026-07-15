@@ -69,6 +69,7 @@ import {
   getRefillRates,
   getDietaryLimitWarnings,
   getInteractionWarnings,
+  getPgxWarnings,
 } from "../intake";
 import {
   dietaryLimitSignalKey,
@@ -76,6 +77,7 @@ import {
   ulWarningDetail,
 } from "../../dri";
 import { interactionTitle, interactionDetail } from "../../drug-interactions";
+import { pgxTitle, pgxDetail } from "../../pgx";
 import { getScheduledAppointments, kindedScheduled } from "../appointments";
 import {
   getActivitiesByDate,
@@ -220,6 +222,30 @@ function interactionItems(profileId: number): UpcomingItem[] {
     domain: "interaction" as const,
     title: interactionTitle(hit),
     detail: interactionDetail(hit),
+    href: "/medicine",
+    dueDate: null,
+    band: "today" as const,
+    dueText: "Review",
+  }));
+}
+
+// Pharmacogenomics cross-check (issue #710): a stored PGx result (a genomic_variants
+// row, result_type='pharmacogenomic') affecting a medication in the active stack.
+// Reuses the shared getPgxWarnings gather (same pure crossCheckPgx the /medicine row
+// notice + the create/edit notice format over), so each affected med surfaces as a
+// dismissible finding keyed by `pgx:<medId>:<gene>:<status>` — it goes through
+// getFindingSuppressions like every other finding, so a dismiss/snooze on Upcoming
+// silences it ("dismiss once, silence everywhere"). SAFETY / care-tier (per #449 —
+// like the drug-interaction findings, and HLA-B*57:01 × abacavir leans care-tier):
+// banded to Today so it surfaces on the dashboard "Needs attention" hero. Standing
+// informational finding (no due date), framed "discuss with your prescriber", never
+// prescriptive — the app never auto-changes a medication.
+function pgxItems(profileId: number): UpcomingItem[] {
+  return getPgxWarnings(profileId).map((hit) => ({
+    key: hit.dedupeKey,
+    domain: "pgx" as const,
+    title: pgxTitle(hit),
+    detail: pgxDetail(hit),
     href: "/medicine",
     dueDate: null,
     band: "today" as const,
@@ -548,6 +574,7 @@ const rawUpcoming = cache(function rawUpcoming(
     ...refillItems(profileId, today),
     ...dietaryLimitItems(profileId, today),
     ...interactionItems(profileId),
+    ...pgxItems(profileId),
     ...appointmentItems(profileId),
     ...carePlanItems(profileId),
     ...preventiveItems(profileId, today),

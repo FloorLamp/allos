@@ -1013,8 +1013,9 @@ export async function dismissAdherencePattern(
 }
 
 // The finding namespaces the /medicine page renders as dismissible OBSERVATIONS
-// (issue #435): drug–drug interactions, stack-total dietary limits, per-item
-// food–drug guidance, and keep-apart pair warnings. Each also surfaces on Upcoming
+// (issue #435): drug–drug interactions, pharmacogenomics cross-checks (#710),
+// stack-total dietary limits, per-item food–drug guidance, and keep-apart pair
+// warnings. Each also surfaces on Upcoming
 // through the SAME shared findings-suppression bus keyed by the identical dedupeKey,
 // so a dismiss here silences the Upcoming twin and vice versa ("dismiss once, silence
 // everywhere", #227's page↔push principle applied page↔page). The scheduled
@@ -1022,6 +1023,7 @@ export async function dismissAdherencePattern(
 // safety-tier machinery — these are calm observations, not safety reminders.
 const MEDICINE_FINDING_PREFIXES = [
   "interaction:",
+  "pgx:",
   "dietary-limit:",
   "rda-adequacy:",
   FOOD_TIMING_PREFIX,

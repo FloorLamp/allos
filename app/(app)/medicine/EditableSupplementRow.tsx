@@ -4,6 +4,7 @@ import { useState } from "react";
 import { IconFlame } from "@tabler/icons-react";
 import type { Supplement, SupplementDose, SupplementPair } from "@/lib/types";
 import type { InteractionItem } from "@/lib/drug-interactions";
+import type { PgxVariantInput } from "@/lib/pgx";
 import { CONDITION_LABELS, FOOD_TIMING_HINTS } from "@/lib/supplement-schedule";
 import { medicationMetaLine } from "@/lib/medication-history";
 import {
@@ -36,6 +37,7 @@ export default function EditableSupplementRow({
   doses,
   allSupplements,
   stackItems,
+  pgxVariants,
   pairs,
   isTaken,
   isSkipped,
@@ -50,6 +52,7 @@ export default function EditableSupplementRow({
   doses: SupplementDose[];
   allSupplements: { id: number; name: string }[];
   stackItems: InteractionItem[];
+  pgxVariants: PgxVariantInput[];
   pairs: SupplementPair[];
   isTaken: boolean;
   isSkipped: boolean;
@@ -75,6 +78,7 @@ export default function EditableSupplementRow({
           doses={doses}
           allSupplements={allSupplements}
           stackItems={stackItems}
+          pgxVariants={pgxVariants}
           pairs={pairs}
           onDone={() => setEditing(false)}
           trainingRestricted={trainingRestricted}

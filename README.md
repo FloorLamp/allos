@@ -37,7 +37,7 @@ The short tour — [docs/features.md](docs/features.md) is the full guide, with 
 - **Allergies** — documented allergies merged with IgE sensitizations detected from labs, plus curated cross-reactivity notes
 - **Immunizations** — doses tracked against the CDC schedule, with titer-aware immunity status
 - **Health-record import** — MyChart CCD/XDM "Download Summary", SMART Health Cards, and Epic / Apple Health FHIR bundles (scheduled appointments included)
-- **Supplements & medications** — schedules with tri-state dose confirms (taken / skipped / clear), adherence & refill tracking, NIH UL/RDA stack checks, drug–drug / supplement–drug / food–drug interaction warnings, adherence-pattern observations, and context-aware scheduling (pre/post-workout, rest-day, situational)
+- **Supplements & medications** — schedules with tri-state dose confirms (taken / skipped / clear), adherence & refill tracking, NIH UL/RDA stack checks, drug–drug / supplement–drug / food–drug interaction warnings, a **pharmacogenomics (PGx) cross-check** (a stored PGx result flags affected meds with CPIC-cited, informational guidance — never prescriptive), adherence-pattern observations, and context-aware scheduling (pre/post-workout, rest-day, situational)
 - **Emergency card** — a terse, printable first-responder summary that can be kept offline per device (strictly opt-in) and stays readable with no login and no network
 - **Offline quick-log queue** — dose confirms, weigh-ins, and vitals queue on-device when you're offline and replay exactly once on reconnect; anything that can't be applied lands in a review panel, never silently dropped
 - **Undo delete** — deleting an activity, body-metric entry, biomarker record, or supplement/medication offers a one-tap 24-hour Undo

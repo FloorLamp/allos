@@ -25,7 +25,11 @@ import data from "./drug-interactions.json";
 
 export type Severity = "major" | "moderate" | "minor";
 
-interface Concept {
+// A matchable drug/drug-class concept: an ingredient (or class) with the RxNorm
+// ingredient CUIs and lay/brand synonyms an active stack item resolves to. Exported
+// so the PGx cross-check (lib/pgx.ts, issue #710) can REUSE the same RxCUI/name
+// matcher (matchConceptKeysIn below) instead of hand-rolling a second one.
+export interface Concept {
   key: string;
   label: string;
   rxcuis: string[];
@@ -126,19 +130,24 @@ export function itemRxcuis(item: {
   return cuis;
 }
 
-// The set of concept keys an item resolves to. RxCUI is authoritative (an exact
-// match of ANY of the item's CUIs — product-level or cached ingredient — against a
-// concept's ingredient CUIs), and a name match is the fallback; both are collected
-// so a mislabeled row still matches on whichever signal fits.
-export function matchConceptKeys(item: {
-  name: string;
-  rxcui: string | null;
-  rxcuiIngredients?: string[] | null;
-}): string[] {
+// The set of concept keys an item resolves to WITHIN a given concept vocabulary.
+// RxCUI is authoritative (an exact match of ANY of the item's CUIs — product-level or
+// cached ingredient — against a concept's ingredient CUIs), and a name/synonym match
+// is the fallback; both are collected so a mislabeled row still matches on whichever
+// signal fits. The one matcher, shared by the drug-interaction detector and the PGx
+// cross-check (lib/pgx.ts, #710) so the two can never disagree on how a med resolves.
+export function matchConceptKeysIn(
+  item: {
+    name: string;
+    rxcui: string | null;
+    rxcuiIngredients?: string[] | null;
+  },
+  concepts: readonly Concept[]
+): string[] {
   const keys = new Set<string>();
   const cuis = itemRxcuis(item);
   const itemNorm = normalize(item.name);
-  for (const c of CONCEPTS) {
+  for (const c of concepts) {
     if (c.rxcuis.some((cui) => cuis.has(cui))) {
       keys.add(c.key);
       continue;
@@ -148,6 +157,15 @@ export function matchConceptKeys(item: {
     }
   }
   return [...keys];
+}
+
+// The concept keys an item resolves to within the drug-INTERACTION vocabulary.
+export function matchConceptKeys(item: {
+  name: string;
+  rxcui: string | null;
+  rxcuiIngredients?: string[] | null;
+}): string[] {
+  return matchConceptKeysIn(item, CONCEPTS);
 }
 
 // The label of a concept key (for any surface that wants the class name).
