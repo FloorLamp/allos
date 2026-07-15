@@ -200,6 +200,23 @@ function drivesHereditaryCadence(v: GenomicRiskInput): boolean {
 // Derive the active risk factors from the gathered inputs. Pure and total — an
 // empty input yields an empty set. Family and personal conditions are keyword-
 // matched; the occupational/immune attributes map straight through.
+// The risk factors a set of ACTIVE CONDITION labels imply (via the CONDITION_KEYWORDS
+// stem table). Factored out of deriveRiskFactors so a caller with only condition names
+// in hand — the contrast-safety cross-check's CKD gate (#701) — reuses the SAME
+// recognizer rather than a bespoke parse (AGENTS.md), and the two can't drift.
+export function conditionsToRiskFactors(
+  activeConditions: string[]
+): Set<RiskFactor> {
+  const factors = new Set<RiskFactor>();
+  for (const raw of activeConditions) {
+    const n = norm(raw);
+    for (const { factor, stems } of CONDITION_KEYWORDS) {
+      if (stems.some((s) => n.includes(s))) factors.add(factor);
+    }
+  }
+  return factors;
+}
+
 export function deriveRiskFactors(inputs: RiskInputs): Set<RiskFactor> {
   const factors = new Set<RiskFactor>();
 
@@ -209,11 +226,8 @@ export function deriveRiskFactors(inputs: RiskInputs): Set<RiskFactor> {
       if (stems.some((s) => n.includes(s))) factors.add(factor);
     }
   }
-  for (const raw of inputs.activeConditions) {
-    const n = norm(raw);
-    for (const { factor, stems } of CONDITION_KEYWORDS) {
-      if (stems.some((s) => n.includes(s))) factors.add(factor);
-    }
+  for (const f of conditionsToRiskFactors(inputs.activeConditions)) {
+    factors.add(f);
   }
 
   // Current smoking is a major periodontal-risk factor (#706). Only a CONFIRMED

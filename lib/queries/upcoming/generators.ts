@@ -70,6 +70,7 @@ import {
   getDietaryLimitWarnings,
   getInteractionWarnings,
   getPgxWarnings,
+  getContrastSafetyWarnings,
 } from "../intake";
 import {
   dietaryLimitSignalKey,
@@ -78,6 +79,12 @@ import {
 } from "../../dri";
 import { interactionTitle, interactionDetail } from "../../drug-interactions";
 import { pgxTitle, pgxDetail } from "../../pgx";
+import {
+  contrastTitle,
+  contrastDetail,
+  type ContrastStudySource,
+} from "../../contrast-safety";
+import type { AppRoute } from "../../hrefs";
 import { getScheduledAppointments, kindedScheduled } from "../appointments";
 import {
   getActivitiesByDate,
@@ -247,6 +254,38 @@ function pgxItems(profileId: number): UpcomingItem[] {
     title: pgxTitle(hit),
     detail: pgxDetail(hit),
     href: "/medicine",
+    dueDate: null,
+    band: "today" as const,
+    dueText: "Review",
+  }));
+}
+
+// Where a contrast-safety note links, by the planned study's source row.
+const CONTRAST_SOURCE_HREF: Record<ContrastStudySource, AppRoute> = {
+  careplan: "/care-plan",
+  appointment: "/encounters",
+  imaging: "/imaging",
+};
+
+// Contrast-safety cross-check (issue #701): a PLANNED contrast imaging study (an
+// ordered care-plan item, a scheduled appointment, or a future structured imaging
+// study — #702) meeting a contrast/iodine/gadolinium ALLERGY or a renal (CKD)
+// contraindication on file. Reuses the shared getContrastSafetyWarnings gather (same
+// pure crossCheckContrast the care-plan inline notice formats over), so each note
+// surfaces as a dismissible finding keyed by
+// `contrast:<source>:<id>:<gate>:<class>` — it goes through getFindingSuppressions
+// like every other finding, so a dismiss/snooze on Upcoming silences it ("dismiss
+// once, silence everywhere"). SAFETY / care-tier (per #449 — a pre-procedure safety
+// note, like the drug-interaction/PGx items): banded to Today so it surfaces on the
+// dashboard "Needs attention" hero. Standing informational finding (no due date),
+// never prescriptive — the app never blocks or advises for/against the study.
+function contrastItems(profileId: number, today: string): UpcomingItem[] {
+  return getContrastSafetyWarnings(profileId, today).map((hit) => ({
+    key: hit.dedupeKey,
+    domain: "contrast" as const,
+    title: contrastTitle(hit),
+    detail: contrastDetail(hit),
+    href: CONTRAST_SOURCE_HREF[hit.source],
     dueDate: null,
     band: "today" as const,
     dueText: "Review",
@@ -600,6 +639,7 @@ const rawUpcoming = cache(function rawUpcoming(
     ...dietaryLimitItems(profileId, today),
     ...interactionItems(profileId),
     ...pgxItems(profileId),
+    ...contrastItems(profileId, today),
     ...appointmentItems(profileId),
     ...carePlanItems(profileId),
     ...preventiveItems(profileId, today),
