@@ -78,6 +78,43 @@ export function muscleRegion(m: MuscleId): MuscleRegion {
   return MUSCLE_REGION[m];
 }
 
+/**
+ * The human display label for a `MuscleId`. A `Record` so TypeScript enforces
+ * totality over the enum (every id has a label). This is a pure display formatter
+ * over the identity key — every muscle-keyed surface (the coverage list, the
+ * future SVG hover/text list) renders through here, never inventing its own
+ * label, so a rename lands in one place.
+ */
+const MUSCLE_LABEL: Record<MuscleId, string> = {
+  "chest-upper": "Upper chest",
+  chest: "Chest",
+  lats: "Lats",
+  traps: "Traps",
+  "mid-back": "Mid back",
+  "lower-back": "Lower back",
+  "front-delts": "Front delts",
+  "side-delts": "Side delts",
+  "rear-delts": "Rear delts",
+  biceps: "Biceps",
+  triceps: "Triceps",
+  forearms: "Forearms",
+  abs: "Abs",
+  obliques: "Obliques",
+  glutes: "Glutes",
+  quads: "Quads",
+  hamstrings: "Hamstrings",
+  "hip-adductors": "Adductors",
+  "hip-abductors": "Abductors",
+  calves: "Calves",
+  tibialis: "Tibialis",
+  neck: "Neck",
+};
+
+/** The human display label for a `MuscleId` (total over the enum). */
+export function muscleLabel(m: MuscleId): string {
+  return MUSCLE_LABEL[m];
+}
+
 // Movement pattern, used to suggest "Push day" / "Pull day" / "Leg day".
 export type MovementPattern = "push" | "pull" | "legs" | "core";
 
