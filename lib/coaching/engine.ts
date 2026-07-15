@@ -16,7 +16,12 @@ import type { EquipmentAvailability } from "../equipment-availability";
 import type { WeightUnit } from "../settings";
 import type { AppRoute } from "../hrefs";
 import type { MuscleRegion } from "../lifts";
-import { suggestNextSet, nextSetText, type NextSetSeed } from "./strength";
+import {
+  deloadAdjust,
+  suggestNextSet,
+  nextSetText,
+  type NextSetSeed,
+} from "./strength";
 
 // ---- Rule-based coaching engine ----
 //
@@ -164,6 +169,10 @@ export interface CoachingInput {
   // dashboard/overview cards and the Telegram nudge all render today's resolved
   // routine session by construction. Absent / null ⇒ the prior no-routine behavior.
   activeRoutine?: ActiveRoutineInput | null;
+  // Whether the active routine's mesocycle says TODAY is a deload week (#741),
+  // resolved once by getRoutineCycleStatus and threaded through this ONE gather so
+  // every surface phrases the deload identically. Absent / false ⇒ non-deload.
+  deloadWeek?: boolean;
   sleep: SleepSignal | null;
   restingHr: RestingHrSignal | null;
   // The persisted rest episode as of the last reconcile (null when none is open).
@@ -598,13 +607,28 @@ function formatWorkoutItem(
       // Training-overview "Today's session" card renders the per-slot detail;
       // this card is the compact dashboard/rollup form of the same result.
       const label = nw.session?.label ?? "Today's session";
-      const nextSet = item.exercise ? suggestNextSet(item.exercise, wu) : null;
+      const deload = nw.session?.deloadWeek ?? false;
+      const baseNext = item.exercise ? suggestNextSet(item.exercise, wu) : null;
+      // Deload week (#741): shave the lead lift's load through the ONE shared
+      // deloadAdjust and phrase it, so this compact card agrees with the
+      // Training-overview session card and the Telegram nudge.
+      const nextSet =
+        deload && item.exercise
+          ? deloadAdjust({
+              exercise: item.exercise.exercise,
+              sets: 0,
+              nextSet: baseNext,
+            }).nextSet
+          : baseNext;
       const list = nw.exercises.join(", ");
+      const prefix = deload ? "Deload week — " : "";
       return {
         id: "routine-day-strength",
         kind: "strength",
         title: label,
-        detail: list ? `Today's session — ${list}.` : "Today's session.",
+        detail: list
+          ? `${prefix}today's session — ${list}.`
+          : `${prefix}today's session.`,
         tone: "action",
         actionHref: "/training",
         actionLabel: "Log this session",

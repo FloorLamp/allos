@@ -275,6 +275,39 @@ describe("cross-surface consistency (#221)", () => {
   });
 });
 
+describe("formatWorkoutReminder — deload softening (#741)", () => {
+  const base: WorkoutRecommendation = {
+    focus: ["Chest"],
+    exercises: ["Barbell Bench Press"],
+    behind: [],
+    rest: null,
+    onTrack: null,
+  };
+
+  it("adds a deload note when it's the deload week (nudge still fires)", () => {
+    const msg = formatWorkoutReminder({ ...base, deloadWeek: true });
+    expect(msg).not.toBeNull();
+    expect(msg!.body).toContain("Deload week");
+    expect(msg!.body).toContain("Suggested: Barbell Bench Press"); // still suggests
+  });
+
+  it("adds no deload note off a deload week (byte-for-byte prior copy)", () => {
+    const on = formatWorkoutReminder({ ...base, deloadWeek: true });
+    const off = formatWorkoutReminder(base);
+    expect(off!.body).not.toContain("Deload week");
+    expect(on!.body).not.toBe(off!.body);
+  });
+
+  it("notes the deload on a rest-day reframe too", () => {
+    const msg = formatWorkoutReminder({
+      ...base,
+      deloadWeek: true,
+      rest: { title: "Rest day", detail: "You trained hard yesterday." },
+    });
+    expect(msg!.body).toContain("Deload week");
+  });
+});
+
 describe("formatWorkoutReminder — how-to deep link (#734)", () => {
   const rec: WorkoutRecommendation = {
     focus: ["Chest"],

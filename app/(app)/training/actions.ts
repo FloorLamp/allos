@@ -11,6 +11,7 @@ import {
   createCustomRoutine,
   deactivateRoutine,
   deleteRoutine,
+  restartRoutineCycle,
   updateRoutine,
   validateRoutineInput,
 } from "@/lib/routines";
@@ -121,6 +122,21 @@ export async function deactivateRoutineAction(
   const routineId = routineIdFrom(formData);
   if (routineId === null) return { ok: false, error: "missing routine" };
   const ok = deactivateRoutine(profile.id, routineId);
+  if (!ok) return { ok: false, error: "not found" };
+  revalidatePath("/training");
+  revalidatePath("/");
+  return { ok: true, routineId };
+}
+
+// Restart the mesocycle (#741): reset the routine's started_date to today so the
+// deload clock counts fresh. Only meaningful for a routine that declares a cycle.
+export async function restartRoutineCycleAction(
+  formData: FormData
+): Promise<RoutineActionResult> {
+  const { profile } = await requireWriteAccess();
+  const routineId = routineIdFrom(formData);
+  if (routineId === null) return { ok: false, error: "missing routine" };
+  const ok = restartRoutineCycle(profile.id, routineId);
   if (!ok) return { ok: false, error: "not found" };
   revalidatePath("/training");
   revalidatePath("/");

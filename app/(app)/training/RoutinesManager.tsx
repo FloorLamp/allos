@@ -13,6 +13,7 @@ import {
   activateRoutineAction,
   deactivateRoutineAction,
   deleteRoutineAction,
+  restartRoutineCycleAction,
 } from "./actions";
 
 // A catalog template summarized for the adopt picker (client-safe subset of
@@ -206,6 +207,9 @@ export default function RoutinesManager({
                     <div className="mt-0.5 text-xs text-slate-400 dark:text-slate-500">
                       {r.source === "template" ? "From template" : "Custom"} ·{" "}
                       {dayCountLabel(r.days.length)}
+                      {r.cycle_weeks != null && (
+                        <span> · {r.cycle_weeks}-week cycle</span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -254,6 +258,23 @@ export default function RoutinesManager({
                       className="btn py-1"
                     >
                       Activate
+                    </button>
+                  )}
+                  {active && r.cycle_weeks != null && (
+                    <button
+                      type="button"
+                      data-testid="routine-restart-cycle"
+                      disabled={isBusy}
+                      onClick={() =>
+                        callWithId(
+                          restartRoutineCycleAction,
+                          r.id,
+                          "Cycle restarted"
+                        )
+                      }
+                      className="btn-ghost py-1"
+                    >
+                      Restart cycle
                     </button>
                   )}
                   <button

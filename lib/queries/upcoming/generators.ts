@@ -7,7 +7,8 @@
 // lib/__tests__/profile-scoping.test.ts), and the dynamic no-bleed guard lives
 // in lib/__db_tests__/upcoming.scoping.test.ts.
 
-import { db } from "../../db";
+import { db, today } from "../../db";
+import { getRoutineCycleStatus } from "../../routines";
 import { cache } from "../../request-cache";
 import { shiftDateStr } from "../../date";
 import { isTrainingRestricted } from "../../age-gate";
@@ -584,8 +585,21 @@ function goalItems(profileId: number): UpcomingItem[] {
 // each unmet target sits in This week with a progress due-text.
 function trainingItems(profileId: number): UpcomingItem[] {
   if (isTrainingRestricted(profileId)) return [];
+  // Deload-week softening (#741): the mesocycle's deload week is SUPPOSED to be
+  // lighter, so a region/group frequency target being "behind" isn't a real gap —
+  // suppress those findings that week (decided in the ONE gather; type targets like
+  // cardio still surface). Same flag every deload surface reads.
+  const deload =
+    getRoutineCycleStatus(profileId, today(profileId))?.isDeloadWeek ?? false;
   return getFrequencyTargetProgress(profileId)
     .filter((p) => !p.met)
+    .filter(
+      (p) =>
+        !(
+          deload &&
+          (p.target.scope_kind === "region" || p.target.scope_kind === "group")
+        )
+    )
     .map((p) => ({
       key: trainingSignalKey(p.target.id),
       domain: "training" as const,

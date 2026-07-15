@@ -75,5 +75,8 @@ export function recommendWorkout(
     // Carry the resolved routine day label (#740) so the nudge names the actual
     // sequence day. Null when no active routine resolved a session.
     sessionLabel: nw.session?.label ?? null,
+    // Deload-week softening (#741): the same flag every surface reads, carried from
+    // the resolved session so the nudge phrases the deload instead of pushing hard.
+    deloadWeek: nw.session?.deloadWeek ?? false,
   };
 }

@@ -393,6 +393,47 @@ export function suggestNextSet(
   };
 }
 
+// ---- Deload adjustment (#741) ----
+
+// A deload week keeps the movement but pulls the stress back so accumulated fatigue
+// can clear before the next cycle turns over. Two conservative, FIXED levers — the
+// cycle is a user-set counter, not a readiness model (#559), so these are constants,
+// not fatigue-driven:
+//   • load: ~10% lighter (rounded to a loadable jump), and
+//   • volume: one fewer working set per slot (never below one).
+export const DELOAD_LOAD_FACTOR = 0.9; // −10% load
+export const DELOAD_SET_REDUCTION = 1; // −1 working set per slot
+export const DELOAD_MIN_SETS = 1; // never drop below a single working set
+
+// The deload-adjusted prescription for one routine slot: fewer working sets and a
+// lighter top-set target. ONE pure function so every surface that renders a deload
+// week (the Training-overview session card, the dashboard/Telegram recommendation)
+// shares the same math and can't drift (#221). A bodyweight / loadless next-set keeps
+// its reps unchanged (there's no load to shave); a null next-set (cold start) stays
+// null. Load is rounded to the exercise's own increment so the result stays
+// plate-loadable (reusing weightIncrementKg, the engine's loading step).
+export function deloadAdjust(slot: {
+  exercise: string;
+  sets: number;
+  nextSet: NextSet | null;
+}): { sets: number; nextSet: NextSet | null } {
+  const sets = Math.max(DELOAD_MIN_SETS, slot.sets - DELOAD_SET_REDUCTION);
+  return { sets, nextSet: deloadNextSet(slot.exercise, slot.nextSet) };
+}
+
+function deloadNextSet(exercise: string, ns: NextSet | null): NextSet | null {
+  if (!ns || ns.bodyweight || ns.weightKg <= 0) return ns;
+  const inc = weightIncrementKg(exercise);
+  const raw = ns.weightKg * DELOAD_LOAD_FACTOR;
+  // Round the reduced load to the nearest loadable increment, never below one step.
+  const weightKg = Math.max(inc, Math.round(raw / inc) * inc);
+  return {
+    ...ns,
+    weightKg,
+    rationale: "Deload week — ~10% lighter to recover",
+  };
+}
+
 // Whether the most recent session set a new all-time record. Gated on more than
 // one session so a brand-new exercise's first log isn't flagged as a "record".
 // Weight PRs are meaningless for bodyweight lifts (their "top weight" tracks

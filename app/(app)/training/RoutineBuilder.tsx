@@ -73,6 +73,11 @@ export default function RoutineBuilder({
   onDone?: () => void;
 }) {
   const [name, setName] = useState(editRoutine?.name ?? "");
+  // Optional mesocycle length in weeks (#741) — blank = no cycle. The last week of
+  // the cycle is the deload week.
+  const [cycleWeeks, setCycleWeeks] = useState(
+    editRoutine?.cycle_weeks != null ? String(editRoutine.cycle_weeks) : ""
+  );
   const [days, setDays] = useState<DayDraft[]>(
     editRoutine ? daysFromRoutine(editRoutine) : [emptyDay(1)]
   );
@@ -155,8 +160,13 @@ export default function RoutineBuilder({
       }
     }
 
+    // Blank or non-positive ⇒ null (no cycle). validateRoutineInput clamps 1–52.
+    const cw = Math.round(Number(cycleWeeks));
+    const parsedCycle = cycleWeeks.trim() && cw >= 1 ? cw : null;
+
     const payload = {
       name: name.trim(),
+      cycleWeeks: parsedCycle,
       days: days.map((d) => ({
         label: d.label.trim(),
         focus: d.focus,
@@ -216,6 +226,30 @@ export default function RoutineBuilder({
           placeholder="e.g. My Upper/Lower Split"
           required
         />
+      </div>
+
+      <div>
+        <label className="label" htmlFor="routine-cycle-weeks">
+          Cycle length (weeks){" "}
+          <span className="font-normal text-slate-400 dark:text-slate-500">
+            — optional
+          </span>
+        </label>
+        <input
+          id="routine-cycle-weeks"
+          data-testid="routine-cycle-weeks"
+          type="number"
+          min={1}
+          max={52}
+          value={cycleWeeks}
+          onChange={(e) => setCycleWeeks(e.target.value)}
+          className="input w-32"
+          placeholder="e.g. 5"
+        />
+        <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+          Leave blank for no cycle. The last week is treated as a deload week —
+          lighter loads and fewer sets to recover.
+        </p>
       </div>
 
       <div className="space-y-4">

@@ -15,9 +15,16 @@
 // declared targets and a custom routine's day-derived targets can't fork.
 
 import { db, writeTx, today } from "./db";
-import type { MuscleRegion } from "./lifts";
+import { regionForExercise, type MuscleRegion } from "./lifts";
 import { getProfileSetting, setProfileSetting } from "./settings";
 import { sessionCreditsDay } from "./workout-recommendation";
+import { parseComponents } from "./types/training";
+import {
+  effectiveCycleStart,
+  weekInCycle as weekInCycleOf,
+  isDeloadWeek as isDeloadWeekOf,
+  weeksUntilDeload as weeksUntilDeloadOf,
+} from "./mesocycle";
 import type { RoutineTemplate } from "./routine-templates";
 import { getRoutineTemplate } from "./routine-templates";
 import {
@@ -369,6 +376,30 @@ export function activateRoutine(profileId: number, routineId: number): boolean {
   });
 }
 
+// Manually restart the mesocycle (#741): set the routine's `started_date` to today,
+// so week-in-cycle counts fresh from now (a deliberate reset, distinct from the
+// automatic pause re-anchoring). Only affects a routine that HAS a cycle; a no-op
+// (returns false) for a routine without `cycle_weeks`, or one that isn't the
+// profile's. The rotation `position` is intentionally left alone — restarting the
+// deload clock doesn't skip the user forward in the day sequence.
+export function restartRoutineCycle(
+  profileId: number,
+  routineId: number
+): boolean {
+  return writeTx(() => {
+    const owned = db
+      .prepare(
+        `SELECT cycle_weeks FROM routines WHERE id = ? AND profile_id = ?`
+      )
+      .get(routineId, profileId) as { cycle_weeks: number | null } | undefined;
+    if (!owned || owned.cycle_weeks == null) return false;
+    db.prepare(
+      `UPDATE routines SET started_date = ? WHERE id = ? AND profile_id = ?`
+    ).run(today(profileId), routineId, profileId);
+    return true;
+  });
+}
+
 // ── Session crediting → position advance (#740) ─────────────────────────────────
 
 // The per-profile marker holding the last profile-local DATE the active routine's
@@ -415,6 +446,132 @@ export function creditRoutineSession(
     setProfileSetting(profileId, markerKey, onDate);
     return true;
   });
+}
+
+// ── Mesocycle & deload awareness (#741) ─────────────────────────────────────────
+
+// The credited-session DATES for a routine, since `since` (inclusive) — reusing the
+// SAME crediting rule as the #740 position advance (sessionCreditsDay), so the cycle's
+// pause detection and the rotation cursor can't disagree about what counts as
+// "training the routine" (one computation). A date credits when its aggregated session
+// (that day's strength regions + whether it included cardio) credits ANY of the
+// routine's days. Derived entirely from logged data — no stored link column.
+//
+// Profile-scoped: exercise_sets reaches profile_id via the JOIN to activities;
+// activities carries it directly.
+export function getRoutineCreditedDates(
+  profileId: number,
+  routine: RoutineWithDays,
+  since: string
+): string[] {
+  const dayFocuses = routine.days.map((d) => d.focus);
+  if (dayFocuses.length === 0) return [];
+
+  const byDate = new Map<
+    string,
+    { regions: Set<MuscleRegion>; hasCardio: boolean }
+  >();
+  const ensure = (d: string) => {
+    let e = byDate.get(d);
+    if (!e) {
+      e = { regions: new Set(), hasCardio: false };
+      byDate.set(d, e);
+    }
+    return e;
+  };
+
+  // Strength regions per date (via exerciseHistoryKey → LiftDef.region), matching the
+  // saveActivity crediting gather.
+  const strengthRows = db
+    .prepare(
+      `SELECT a.date AS date, s.exercise AS exercise
+         FROM exercise_sets s JOIN activities a ON a.id = s.activity_id
+        WHERE a.profile_id = ? AND a.date >= ?`
+    )
+    .all(profileId, since) as { date: string; exercise: string }[];
+  for (const r of strengthRows) {
+    const reg = regionForExercise(r.exercise);
+    if (reg) ensure(r.date).regions.add(reg);
+  }
+
+  // Cardio-bearing dates: a cardio activity or a component of type cardio — the same
+  // hasCardio test the write path uses.
+  const activityRows = db
+    .prepare(
+      `SELECT date, type, components FROM activities
+        WHERE profile_id = ? AND date >= ?`
+    )
+    .all(profileId, since) as {
+    date: string;
+    type: string;
+    components: string | null;
+  }[];
+  for (const r of activityRows) {
+    const hasCardio =
+      r.type === "cardio" ||
+      parseComponents(r.components).some((c) => c.type === "cardio");
+    if (hasCardio) ensure(r.date).hasCardio = true;
+  }
+
+  const credited: string[] = [];
+  for (const [date, sig] of byDate) {
+    const session = { regions: [...sig.regions], hasCardio: sig.hasCardio };
+    if (dayFocuses.some((f) => sessionCreditsDay(session, f)))
+      credited.push(date);
+  }
+  return credited.sort();
+}
+
+// The resolved deload/cycle state of the profile's ACTIVE routine, or null when
+// there is none / it declares no usable cycle (`cycle_weeks` NULL, < 2, or no
+// started_date) — the null case is what makes an un-cycled routine byte-for-byte the
+// prior behavior everywhere. This is the ONE gather (#221/#741) every surface reads:
+// the recommendation core's deload phrasing, the workout-nudge softening, the
+// behind-target suppression, the #742 volume-band hook, and the plateau
+// cross-reference all key on THIS result, so they can never disagree about "is it a
+// deload week."
+export interface RoutineCycleStatus {
+  routineId: number;
+  cycleWeeks: number;
+  effectiveStart: string; // pause-re-anchored cycle start
+  weekInCycle: number; // 0-based
+  isDeloadWeek: boolean;
+  weeksUntilDeload: number; // 0 when this IS the deload week
+}
+
+export function getRoutineCycleStatus(
+  profileId: number,
+  today: string
+): RoutineCycleStatus | null {
+  const routine = getActiveRoutine(profileId);
+  if (
+    !routine ||
+    routine.cycle_weeks == null ||
+    routine.cycle_weeks < 2 ||
+    !routine.started_date
+  )
+    return null;
+
+  const cycleWeeks = routine.cycle_weeks;
+  const credited = getRoutineCreditedDates(
+    profileId,
+    routine,
+    routine.started_date
+  );
+  const effectiveStart = effectiveCycleStart(
+    routine.started_date,
+    credited,
+    today
+  );
+  const week = weekInCycleOf(effectiveStart, today, cycleWeeks);
+  return {
+    routineId: routine.id,
+    cycleWeeks,
+    effectiveStart,
+    weekInCycle: week,
+    isDeloadWeek: isDeloadWeekOf(week, cycleWeeks),
+    weeksUntilDeload: weeksUntilDeloadOf(week, cycleWeeks),
+  };
 }
 
 // Deactivate a routine. KEEPS the derived frequency targets (they're now ordinary
