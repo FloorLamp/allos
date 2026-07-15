@@ -153,6 +153,8 @@ Connect devices and services under **Data → Import**:
 - **Calendar feed** — an outbound `.ics` subscription per profile (choose which categories it carries and how much PHI each event shows), plus a consolidated per-login **family calendar**
 - **Garmin** — planned
 
+**Food tracking rides on Health Connect.** MyFitnessPal, Cronometer, Lose It!, and Yazio have no usable direct API, but they can all write your logged meals to Health Connect — so that's the supported way to get nutrition into Allos. Turn on Health Connect sync in your food app, connect **Google Health Connect** here, and your daily calories and protein/carbs/fat land on **Trends → Body → Macros**. Logged protein also becomes the tracked basis for the protein-adequacy card on **Nutrition** — an exact figure in place of the floor estimated from your logged food-group servings.
+
 Every sync is **incremental and idempotent**: rows dedup on natural keys so re-fetches never double-count, incoming values are sanity-checked against a physiological envelope, **manually entered rows are never overwritten**, and a row you've hand-edited survives the next sync. When two sources report the same metric, additive metrics are never summed across sources, and a **Compare sources** section (**Trends → Body**) appears with a per-metric **primary source** picker.
 
 Per-provider setup guides and import-mapping tables: [docs/integrations.md](docs/integrations.md).
