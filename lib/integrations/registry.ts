@@ -14,7 +14,10 @@ export const INTEGRATIONS: IntegrationDef[] = [
     blurb:
       "Sync weight, body fat, resting heart rate, steps, heart rate, and workouts " +
       "from your Android phone. An exporter app on the phone pushes Health Connect " +
-      "data to this app on a schedule.",
+      "data to this app on a schedule. It's also the supported way to bring in " +
+      "nutrition: food trackers like MyFitnessPal, Cronometer, Lose It!, and Yazio " +
+      "write your logged macros to Health Connect, so calories and protein/carbs/fat " +
+      "flow through here and chart on Trends → Body → Macros.",
     dataTypes: [
       "Weight",
       "Body fat",

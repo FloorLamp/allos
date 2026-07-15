@@ -238,8 +238,18 @@ export default async function HealthConnectPage() {
             </ol>
             <p className="text-xs text-slate-400 dark:text-slate-500">
               Steps, distance, calories, and heart-rate detail sync into Body
-              Metrics charts. Keep your token secret — anyone with it can post
-              data here.
+              Metrics charts. Nutrition works the same way: enable Health
+              Connect sync in a food tracker (MyFitnessPal, Cronometer, Lose
+              It!, Yazio, …) and your logged macros land on{" "}
+              <Link
+                href="/trends?tab=body"
+                className="text-brand-700 underline dark:text-brand-400"
+              >
+                Trends → Body → Macros
+              </Link>{" "}
+              — the supported path for food-log data, since those apps have no
+              usable direct API. Keep your token secret — anyone with it can
+              post data here.
             </p>
           </div>
 
