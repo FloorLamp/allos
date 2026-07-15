@@ -845,6 +845,22 @@ export function healthRecordToPersistInput(
       provider: a.provider,
       external_id: a.external_id,
     })),
+    // Structured imaging studies from a FHIR ImagingStudy / imaging DiagnosticReport /
+    // imaging DocumentReference (#708). Already normalized onto the imaging CHECK sets
+    // by the FHIR mapper (lib/imaging-study.ts), so this maps straight through —
+    // unlike the AI path, which normalizes here.
+    imagingStudies: (parsed.imagingStudies ?? []).map((s) => ({
+      modality: s.modality,
+      body_region: s.body_region,
+      laterality: s.laterality,
+      contrast: s.contrast,
+      contrast_agent: s.contrast_agent,
+      study_date: s.study_date,
+      impression: s.impression,
+      indication: s.indication,
+      status: s.status,
+      external_id: s.external_id,
+    })),
     bodyMetrics,
     heights,
     headCircs,
