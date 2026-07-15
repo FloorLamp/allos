@@ -15,6 +15,10 @@ export interface WorkoutRecommendation {
   // pushing a workout. Null when the top-line recommendation isn't rest/on-track.
   rest: { title: string; detail: string } | null;
   onTrack: { title: string; detail: string } | null;
+  // Today's routine day label (#740), when an active routine resolved a session
+  // ("Push", "Pull", …). Titles the nudge ("🏋️ Push day: …") so the reminder names
+  // the actual sequence day. Null / absent ⇒ the prior habit-derived title.
+  sessionLabel?: string | null;
 }
 
 // Render a WorkoutRecommendation as the Telegram message. Split out from the
@@ -31,9 +35,13 @@ export function formatWorkoutReminder(
 ): NotificationMessage | null {
   if (!rec) return null;
 
-  const focusLabel = rec.exercises.length
-    ? suggestTitle(rec.exercises) // "Push day" / "Chest workout" / "Full body workout"
-    : rec.focus.join(" / ");
+  // An active routine names the day explicitly ("Push"); otherwise fall back to the
+  // habit-derived title from the exercise list.
+  const focusLabel = rec.sessionLabel
+    ? `${rec.sessionLabel} day`
+    : rec.exercises.length
+      ? suggestTitle(rec.exercises) // "Push day" / "Chest workout" / "Full body workout"
+      : rec.focus.join(" / ");
 
   // The lead exercise's how-to guide, as a deep-link button to the Analyze panel
   // (#734). Only when a public URL is configured and a lead lift exists.

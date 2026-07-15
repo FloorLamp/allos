@@ -59,3 +59,12 @@ export const SOURCE_COMPARE_PROFILE = "Source Compare (e2e)";
 // birthdate → adult → never training-restricted, so /training renders the full log.
 export const E2E_LOGIN_NOGEAR = "e2e_nogear";
 export const NO_GEAR_PROFILE = "No Gear (e2e)";
+
+// A member granted a dedicated ADULT profile with an ACTIVE Push/Pull/Legs routine
+// (#740) and NO recovery data, so the Training overview resolves today's routine
+// session and renders the "Today's session" card WITHOUT a rest override (profile 1
+// is deliberately forced to rest for the coaching-episode spec, which would hide the
+// card). Dedicated on purpose — the routine-recommendation spec asserts the resolved
+// slate and the "Log this session" prefill in isolation.
+export const E2E_LOGIN_ROUTINE = "e2e_routine";
+export const ROUTINE_PROFILE = "Routine (e2e)";

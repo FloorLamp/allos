@@ -27,6 +27,11 @@ interface ActivityEditorApi {
   openLive: () => void;
   // Whether live workout mode is available (false for age-restricted profiles).
   canStartWorkout: boolean;
+  // "Log this session" (#740): open a CREATE form pre-filled with a resolved
+  // routine session (the day's slots as exercises + prescribed sets) IN live mode,
+  // so a routine day goes straight into the in-gym flow. A no-op for an
+  // age-restricted profile (strength is gated, #489) — gate on `canStartWorkout`.
+  openSession: (prefill: ActivityEditData) => void;
   openEdit: (data: ActivityEditData) => void;
   // "Log again" / "Repeat last": open a CREATE form pre-filled from a stored
   // activity (title, exercises, sets) with the date reset to today (issue #29).
@@ -141,6 +146,17 @@ export default function ActivityEditorProvider({
         setOpen(true);
       },
       canStartWorkout: !restricted,
+      openSession: (prefillData) => {
+        // Age-restricted profiles have no strength surface (#489) — no-op.
+        if (restricted) return;
+        setEditData(null);
+        setPrefill(prefillData);
+        setLive(true);
+        setRepeatNonce((n) => n + 1);
+        // Live mode is its own focused screen — never dock it into a page column.
+        setDocked(false);
+        setOpen(true);
+      },
       openEdit: (data) => {
         setEditData(data);
         setPrefill(null);

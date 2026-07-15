@@ -16,6 +16,8 @@
 
 import { db, writeTx, today } from "./db";
 import type { MuscleRegion } from "./lifts";
+import { getProfileSetting, setProfileSetting } from "./settings";
+import { sessionCreditsDay } from "./workout-recommendation";
 import type { RoutineTemplate } from "./routine-templates";
 import { getRoutineTemplate } from "./routine-templates";
 import {
@@ -353,6 +355,54 @@ export function activateRoutine(profileId: number, routineId: number): boolean {
       `UPDATE routines SET active = 1, started_date = ?, position = 0
          WHERE id = ? AND profile_id = ?`
     ).run(today(profileId), routineId, profileId);
+    return true;
+  });
+}
+
+// ── Session crediting → position advance (#740) ─────────────────────────────────
+
+// The per-profile marker holding the last profile-local DATE the active routine's
+// position advanced, keyed by routine id. Enforces "advance at most once per
+// profile-local day". Id-keyed, so a deleted routine leaves a harmless dead row
+// (integer ids never recycle — the #203 convention), no cleanup obligation.
+function advanceMarkerKey(routineId: number): string {
+  return `routine_position_advanced_${routineId}`;
+}
+
+// Advance the active routine's rotation cursor when a logged session CREDITS
+// today's routine day — the write half of the crediting rule (#740). Called from
+// the activity write path (saveActivity) with the session's strength regions and
+// whether it included cardio, plus the profile-local date the session belongs to.
+//
+// It advances `position` by one AT MOST ONCE per profile-local day (the marker
+// guards re-advance within a day, re-read under the write lock so two concurrent
+// writers can't both advance), and ONLY on a credited session — a skipped/rest day
+// or an off-focus session never advances it, so a missed day stays next up. A no-op
+// (returns false) when there's no active routine, the routine has no days, the
+// session doesn't credit the current day, or the day already advanced.
+export function creditRoutineSession(
+  profileId: number,
+  onDate: string,
+  session: { regions: MuscleRegion[]; hasCardio: boolean }
+): boolean {
+  const routine = getActiveRoutine(profileId);
+  if (!routine || routine.days.length === 0) return false;
+
+  const n = routine.days.length;
+  const idx = ((routine.position % n) + n) % n;
+  const day = routine.days[idx];
+  if (!sessionCreditsDay(session, day.focus)) return false;
+
+  const markerKey = advanceMarkerKey(routine.id);
+  return writeTx(() => {
+    // Re-read the marker inside the write lock: another writer (a second save this
+    // tick) may have advanced already, and the guard must see its committed marker.
+    if (getProfileSetting(profileId, markerKey) === onDate) return false;
+    db.prepare(
+      `UPDATE routines SET position = position + 1
+         WHERE id = ? AND profile_id = ? AND active = 1`
+    ).run(routine.id, profileId);
+    setProfileSetting(profileId, markerKey, onDate);
     return true;
   });
 }

@@ -12,6 +12,7 @@ import { sideCompleteBy, sidePartialBy } from "@/lib/activity-validate";
 import { cachedDateTimeFormat, dateStrInTz } from "@/lib/date";
 import type { ImportedActivityMetrics } from "@/lib/activity-import-details";
 import type { ZoneId } from "@/lib/training-zones";
+import type { RoutineSession } from "@/lib/workout-recommendation";
 
 export interface ActivityEditData {
   id: number;
@@ -101,6 +102,69 @@ export function buildRepeatPrefill(
     // Deep-copy the sets so the prefill can't alias (and later mutate) the
     // source row's array.
     sets: source.sets.map((s) => ({ ...s })),
+  };
+}
+
+// Build an ActivityEditData PREFILL from a resolved routine session (#740). The
+// day's slots become the activity's exercises, each with its prescribed number of
+// blank sets carrying the rep target (top of the slot's range), so "Log this
+// session" opens the form pre-filled with the slate and the user fills loads/reps
+// live (the #340 live mode). Loads are LEFT BLANK — entered at the gym, and the
+// same cold-start behavior whether or not a next-set seed exists. A cardio-focus
+// day yields a plain cardio log (no strength slate). Pure, so it's unit-tested.
+export function buildRoutineSessionPrefill(
+  session: RoutineSession,
+  todayDate: string
+): ActivityEditData {
+  const base: ActivityEditData = {
+    id: 0, // fresh row — the form ignores this in prefill mode
+    type: session.kind === "cardio" ? "cardio" : "strength",
+    title: session.label,
+    date: todayDate,
+    duration_min: null,
+    distance_km: null,
+    intensity: null,
+    start_time: null,
+    end_time: null,
+    components: null,
+    notes: null,
+    sets: [],
+  };
+  if (session.kind === "cardio") return base;
+
+  const filled = session.slots.filter((s) => s.exercise);
+  const components = filled.map((s) => ({
+    name: s.exercise,
+    type: "strength" as ActivityType,
+    distance_km: null,
+    duration_min: null,
+  }));
+  const sets: ActivityEditData["sets"] = [];
+  for (const slot of filled) {
+    const count = Math.max(1, slot.sets);
+    for (let i = 0; i < count; i++) {
+      sets.push({
+        exercise: slot.exercise,
+        set_number: i + 1,
+        weight_kg: null,
+        reps: null,
+        weight_kg_right: null,
+        reps_right: null,
+        duration_sec: null,
+        duration_sec_right: null,
+        equipment_id: null,
+        // Plan the top of the slot's rep range; the missed-target signal compares
+        // logged reps against it.
+        target_reps: slot.repMax,
+        to_failure: null,
+        warmup: null,
+      });
+    }
+  }
+  return {
+    ...base,
+    components: components.length ? JSON.stringify(components) : null,
+    sets,
   };
 }
 

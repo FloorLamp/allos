@@ -27,14 +27,17 @@ import {
   E2E_LOGIN_DUP,
   E2E_LOGIN_HC,
   E2E_LOGIN_NOGEAR,
+  E2E_LOGIN_ROUTINE,
   E2E_LOGIN_STRAVA,
   E2E_MEMBER_PASSWORD,
   DUP_REVIEW_PROFILE,
   HEALTH_CONNECT_PROFILE,
   NO_GEAR_PROFILE,
+  ROUTINE_PROFILE,
   SOURCE_COMPARE_PROFILE,
   STRAVA_REAUTH_PROFILE,
 } from "./fixture-logins";
+import { adoptTemplate, activateRoutine } from "../lib/routines";
 
 // A persisted notification-delivery failure (#131) so Settings → Server surfaces
 // the "Last notification delivery failed" marker for the e2e to assert. Synthetic
@@ -1412,6 +1415,32 @@ console.log(
 
 console.log(
   `e2e: enabled age gate (13) + seeded member logins for the child (${rileyId}), Strava-reauth (${stravaReauthId}), and Health-Connect (${healthConnectId}) fixture profiles (#391)`
+);
+
+// A dedicated ADULT profile with an ACTIVE Push/Pull/Legs routine (#740) at
+// position 0 (Push day) and NO recovery data, so the Training overview resolves
+// today's routine session and renders the "Today's session" card without a rest
+// override. Idempotent: reset the routine tables for this profile, then adopt +
+// activate the PPL template fresh (activate resets position to 0 → Push day).
+const routineProfileId = fixtureProfileId(ROUTINE_PROFILE);
+db.prepare(
+  `DELETE FROM routine_slots WHERE routine_day_id IN (
+     SELECT rd.id FROM routine_days rd
+       JOIN routines r ON r.id = rd.routine_id
+      WHERE r.profile_id = ?
+   )`
+).run(routineProfileId);
+db.prepare(
+  `DELETE FROM routine_days WHERE routine_id IN (
+     SELECT id FROM routines WHERE profile_id = ?
+   )`
+).run(routineProfileId);
+db.prepare(`DELETE FROM routines WHERE profile_id = ?`).run(routineProfileId);
+const routineId = adoptTemplate(routineProfileId, "push-pull-legs-6x");
+activateRoutine(routineProfileId, routineId);
+seedMemberLogin(E2E_LOGIN_ROUTINE, routineProfileId);
+console.log(
+  `e2e: seeded an active PPL routine on profile ${routineProfileId} (Today's session card, #740)`
 );
 
 // A profile-1 equipment row REFERENCED by a logged strength set, so the equipment

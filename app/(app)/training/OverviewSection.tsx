@@ -24,11 +24,18 @@ import {
   SECONDARY_CREDIT,
 } from "@/lib/muscle-coverage";
 import {
+  nextSetText,
   recentCardioPRs,
   recentPRs,
   recommendCoaching,
+  suggestNextSet,
   type CardioPR,
 } from "@/lib/coaching";
+import { recommendNextWorkout } from "@/lib/workout-recommendation";
+import { getActiveRoutine } from "@/lib/routines";
+import { availableEquipmentKinds } from "@/lib/equipment";
+import { buildRoutineSessionPrefill } from "@/lib/activity-form-model";
+import TodaysSessionCard from "./TodaysSessionCard";
 import { dispWeight, fmtDistance, fmtKmh, fmtWeight } from "@/lib/units";
 import LineChartCard from "@/components/LineChartCard";
 import LogActivityButton from "@/components/LogActivityButton";
@@ -95,27 +102,63 @@ export default async function OverviewSection() {
   );
   const coverageMax = coverage.reduce((m, r) => Math.max(m, r.sets), 0);
 
-  // One recovery-aware recommendation for the next-workout card, from the shared
-  // rule-based engine. A strong recovery signal (poor sleep / elevated resting
-  // HR / overtraining) downgrades a "train X" nudge to a rest suggestion.
-  const [nextWorkout] = recommendCoaching({
+  // ONE coaching input, shared by the recovery-aware next-workout card engine and
+  // the routine-session resolver, so both read the same computation (#221). A
+  // strong recovery signal (poor sleep / elevated resting HR / overtraining)
+  // downgrades a "train X" nudge to a rest suggestion; threading the active routine
+  // + equipment availability lets today's routine day resolve.
+  const coachingInput = {
     today: todayStr,
     routine: targets,
     strength,
     cardio,
     trainingDates: getActivityDates(profile.id),
     datedExercises,
+    availableEquipment: availableEquipmentKinds(profile.id),
+    activeRoutine: getActiveRoutine(profile.id),
     sleep: getSleepSignal(profile.id),
     restingHr: getRestingHrSignal(profile.id),
     restEpisode: getRestEpisode(profile.id),
     weightUnit: wu,
-  });
+  };
+  const [nextWorkout] = recommendCoaching(coachingInput);
+  // Today's resolved routine session (#740), when an active routine exists — the
+  // authoritative recommendation. Rendered as its own card in place of the generic
+  // next-workout card, with a per-slot prescription + load target and a "Log this
+  // session" hand-off to live mode.
+  const nw = recommendNextWorkout(coachingInput);
+  const session = nw.session;
+  const sessionCard = session
+    ? {
+        label:
+          session.kind === "cardio" ? session.label : `${session.label} day`,
+        focus: session.focus as string[],
+        prefill: buildRoutineSessionPrefill(session, todayStr),
+        slots: session.slots
+          .filter((s) => s.exercise)
+          .map((s) => {
+            const ns = s.seed ? suggestNextSet(s.seed, wu) : null;
+            const reps =
+              s.repMin === s.repMax ? `${s.repMax}` : `${s.repMin}–${s.repMax}`;
+            return {
+              exercise: s.exercise,
+              prescription: `${s.sets} × ${reps}`,
+              target: ns ? nextSetText(ns, wu) : null,
+            };
+          }),
+      }
+    : null;
   // The card offers "log/view" actions for actionable nudges; rest/on-track are
   // informational.
   const nextActionable =
     nextWorkout.kind === "strength" ||
     nextWorkout.kind === "cardio" ||
     nextWorkout.kind === "setup";
+  // Show the routine "Today's session" card as the primary recommendation — EXCEPT
+  // when a recovery signal has overridden the top rec to rest (rest still wraps the
+  // result, per the spec). The generic "Next workout" card then carries the rest /
+  // on-track / no-routine states, so the two never duplicate.
+  const showSessionCard = sessionCard != null && nextWorkout.kind !== "rest";
 
   return (
     <section className="space-y-6">
@@ -123,53 +166,64 @@ export default async function OverviewSection() {
           from the next-workout recommendation below. */}
       <TrainingFindings />
 
-      <div className="card">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h3 className="font-semibold text-slate-800 dark:text-slate-100">
-              Next workout
-            </h3>
-            <p
-              className="mt-1 text-lg font-semibold text-slate-900 dark:text-slate-100"
-              data-testid="next-workout-title"
-            >
-              {nextWorkout.title}
-            </p>
-            <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
-              {nextWorkout.target && (
+      {showSessionCard && sessionCard && (
+        <TodaysSessionCard
+          label={sessionCard.label}
+          focus={sessionCard.focus}
+          slots={sessionCard.slots}
+          prefill={sessionCard.prefill}
+        />
+      )}
+
+      {!showSessionCard && (
+        <div className="card">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h3 className="font-semibold text-slate-800 dark:text-slate-100">
+                Next workout
+              </h3>
+              <p
+                className="mt-1 text-lg font-semibold text-slate-900 dark:text-slate-100"
+                data-testid="next-workout-title"
+              >
+                {nextWorkout.title}
+              </p>
+              <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+                {nextWorkout.target && (
+                  <div>
+                    <dt className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                      Target
+                    </dt>
+                    <dd className="mt-0.5 font-semibold text-slate-700 dark:text-slate-200">
+                      {nextWorkout.target}
+                    </dd>
+                  </div>
+                )}
                 <div>
                   <dt className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
-                    Target
+                    Reason
                   </dt>
-                  <dd className="mt-0.5 font-semibold text-slate-700 dark:text-slate-200">
-                    {nextWorkout.target}
+                  <dd className="mt-0.5 text-slate-500 dark:text-slate-400">
+                    {nextWorkout.detail}
                   </dd>
                 </div>
-              )}
-              <div>
-                <dt className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
-                  Reason
-                </dt>
-                <dd className="mt-0.5 text-slate-500 dark:text-slate-400">
-                  {nextWorkout.detail}
-                </dd>
-              </div>
-            </dl>
-          </div>
-          {nextActionable && (
-            <div className="flex flex-wrap gap-2">
-              {nextWorkout.actionHref && (
-                <a href={nextWorkout.actionHref} className="btn-ghost">
-                  View details
-                </a>
-              )}
-              <LogActivityButton className="btn">
-                Log activity
-              </LogActivityButton>
+              </dl>
             </div>
-          )}
+            {nextActionable && (
+              <div className="flex flex-wrap gap-2">
+                {nextWorkout.actionHref && (
+                  <a href={nextWorkout.actionHref} className="btn-ghost">
+                    View details
+                  </a>
+                )}
+                <LogActivityButton className="btn">
+                  Log activity
+                </LogActivityButton>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="card">
