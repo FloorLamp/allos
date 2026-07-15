@@ -32,7 +32,11 @@ const PREFIX: Record<string, number> = {
   f: 1e-15,
 };
 
-type Dim = "mass" | "activity" | "amount" | "eq";
+// "activity" is the INTERNATIONAL-unit standard (IU — a biological-activity
+// reference preparation); "enzyme" is the bare catalytic unit U (µmol/min). They
+// are physically UNRELATED and must never be equated or cross-converted (issue
+// #759), so enzyme U carries its own dimension rather than sharing "activity".
+type Dim = "mass" | "activity" | "enzyme" | "amount" | "eq";
 
 const SUPERSCRIPTS = "⁰¹²³⁴⁵⁶⁷⁸⁹";
 
@@ -48,6 +52,7 @@ function normalizeUnitText(u: string): string {
     .replace(/\^(\d)/g, "$1")
     .replace(/\s+/g, "")
     .toLowerCase();
+  s = aliasUnitTokens(s);
   // eGFR is always normalized per 1.73 m² body-surface-area, so "mL/min" is just
   // shorthand for "mL/min/1.73m²" — drop the suffix to collapse the spellings.
   s = s.replace(/\/1\.73m2$/, "");
@@ -92,11 +97,13 @@ function countExp(numerator: string): number | null {
 // cells/uL) — so convertToCanonical declines to judge those rather than guess.
 export function isBareCountPerVolume(unit: string | null | undefined): boolean {
   if (!unit) return false;
-  const s = unit
-    .replace(/µ|μ/g, "u")
-    .replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹]/g, (d) => `^${SUPERSCRIPTS.indexOf(d)}`)
-    .replace(/\s+/g, "")
-    .toLowerCase();
+  const s = aliasUnitTokens(
+    unit
+      .replace(/µ|μ/g, "u")
+      .replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹]/g, (d) => `^${SUPERSCRIPTS.indexOf(d)}`)
+      .replace(/\s+/g, "")
+      .toLowerCase()
+  );
   const parts = s.split("/");
   if (parts.length !== 2) return false;
   if (!BARE_COUNT_NUMERATORS.has(parts[0].replace(/^x/, ""))) return false;
@@ -110,11 +117,13 @@ export function isBareCountPerVolume(unit: string | null | undefined): boolean {
 // into a single number (10^exp / volumeScale) means those spellings compare equal
 // and convert by their scale ratio. Returns null for non-count units.
 function parseCountConc(unit: string): number | null {
-  const s = unit
-    .replace(/µ|μ/g, "u")
-    .replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹]/g, (d) => `^${SUPERSCRIPTS.indexOf(d)}`)
-    .replace(/\s+/g, "")
-    .toLowerCase();
+  const s = aliasUnitTokens(
+    unit
+      .replace(/µ|μ/g, "u")
+      .replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹]/g, (d) => `^${SUPERSCRIPTS.indexOf(d)}`)
+      .replace(/\s+/g, "")
+      .toLowerCase()
+  );
   const parts = s.split("/");
   if (parts.length !== 2) return null;
   const exp = countExp(parts[0]);
@@ -124,12 +133,40 @@ function parseCountConc(unit: string): number | null {
   return Math.pow(10, exp) / den.scale;
 }
 
+// Real-world lab spellings the dimensional parser doesn't recognize on its own,
+// folded to a form it does (issue #759). Applied INSIDE each parse path AFTER the
+// whitespace/micro normalization but BEFORE the "/"-split, so the alias reaches
+// both the concentration and count-concentration parsers. Each alias is scoped so
+// it can't misfire on a legitimate unit:
+//   - grams spelled out — "gm"/"gms" → "g" (common on LabCorp/Quest). WHOLE-TOKEN
+//     (word-boundary), so the SI-prefixed grams "mg"/"mcg"/"ng"/"ug"/"kg" (which
+//     merely CONTAIN a g, not the token "gm") are untouched.
+//   - cubic millimeter → microliter — "cumm"/"cmm"/"cu mm" (== µL; pervasive on
+//     Indian and older CBC reports) as a volume denominator. Whole-token, so plain
+//     "mm"/"cm" don't match (both require the "mm" pair with a leading c).
+//   - archaic mass-percent — a trailing "%" on a MASS numerator ("mg%", "g%") means
+//     "per dL". Rewritten to "/dL" ONLY when the numerator parses as a mass token,
+//     so a legitimate "%" reading (hematocrit, O₂ saturation, a bare "42%") is left
+//     as "%" and never misclassified as a concentration.
+function aliasUnitTokens(s: string): string {
+  s = s.replace(/\bgms?\b/gi, "g");
+  s = s.replace(/\bcu?mm\b/gi, "uL");
+  s = s.replace(/^([^/%]+)%$/, (m, num) => {
+    const t = parseToken(num);
+    return t && t.dim === "mass" ? `${num}/dL` : m;
+  });
+  return s;
+}
+
 // Parse one factor token (e.g. "mg", "dL", "uIU", "mmol", "U") into its base
 // dimension and scale (prefix factor). Base matching is case-insensitive. The
 // enzyme-activity "U" is matched case-insensitively too, but only as the trailing
 // base after the mass/volume/amount bases have been tried — so a micro prefix "u"
 // followed by a real base (ug, umol, uL) still parses as micro, while a bare "u"
-// (nothing after it, so it can't be a prefix) is enzyme U.
+// (nothing after it, so it can't be a prefix) is enzyme U. Enzyme U resolves to its
+// OWN "enzyme" dimension, distinct from IU's "activity" (issue #759) — a "uIU"
+// still matches the IU branch first and stays activity, only a bare "u"/"U" is
+// enzyme, so IU/mL and U/mL never compare equal or cross-convert.
 function parseToken(tok: string): { dim: Dim | "vol"; scale: number } | null {
   let base: Dim | "vol" | null = null;
   let prefix = "";
@@ -149,7 +186,7 @@ function parseToken(tok: string): { dim: Dim | "vol"; scale: number } | null {
     base = "vol";
     prefix = tok.slice(0, -1);
   } else if (/u$/i.test(tok)) {
-    base = "activity";
+    base = "enzyme";
     prefix = tok.slice(0, -1);
   }
   if (base == null) return null;
@@ -163,7 +200,9 @@ function parseToken(tok: string): { dim: Dim | "vol"; scale: number } | null {
 function parseConc(unit: string): { dim: Dim; scale: number } | null {
   // Strip whitespace + normalize the micro sign, but preserve case so the
   // enzyme base "U" stays distinct from the micro prefix "u" (and m vs M).
-  const s = unit.trim().replace(/µ|μ/g, "u").replace(/\s+/g, "");
+  const s = aliasUnitTokens(
+    unit.trim().replace(/µ|μ/g, "u").replace(/\s+/g, "")
+  );
   const parts = s.split("/");
   if (parts.length !== 2) return null;
   const num = parseToken(parts[0]);

@@ -93,6 +93,111 @@ describe("convertToCanonical", () => {
   });
 });
 
+// Real-world lab unit spellings the parser must fold to the canonical form, plus
+// the IU/U dimension split (issue #759). Ingestion stores the unit VERBATIM, so
+// the raw report spelling hits the parser on every read — a mis-parse silently
+// drops the out-of-range flag and splits the trend series.
+describe("real-world unit spellings (#759)", () => {
+  describe("gm/gms grams spelling → g", () => {
+    it("treats gm/dL and gms/dL as identical to g/dL", () => {
+      expect(sameUnit("gm/dL", "g/dL")).toBe(true);
+      expect(sameUnit("gms/dL", "g/dL")).toBe(true);
+      // Identity convert against a g/dL canonical.
+      expect(
+        convertToCanonical(19, "gm/dL", { name: "Hemoglobin", unit: "g/dL" })
+      ).toBe(19);
+      // Same-dimension SI rescale still works through the alias: 10 g/dL = 100 g/L.
+      expect(convertToCanonical(10, "gm/dL", { unit: "g/L" })).toBeCloseTo(
+        100,
+        6
+      );
+    });
+
+    it("does NOT corrupt the SI-prefixed grams (mg, mcg, ug, ng) — controls", () => {
+      // The alias is whole-token, so a g merely CONTAINED in a prefixed unit is
+      // untouched; these must stay distinct from bare grams.
+      expect(sameUnit("mg/dL", "mg/dL")).toBe(true);
+      expect(sameUnit("mcg/dL", "ug/dL")).toBe(true);
+      expect(sameUnit("mg/dL", "g/dL")).toBe(false);
+      expect(sameUnit("mcg/dL", "g/dL")).toBe(false);
+      expect(sameUnit("gm/dL", "mg/dL")).toBe(false);
+    });
+  });
+
+  describe("cubic-millimeter denominator (cumm/cmm/cu mm) = µL", () => {
+    it("parses as a bare count-per-volume on the count path", () => {
+      // cells/cumm ≡ cells/uL (both exponent 0 over a µL volume).
+      expect(sameUnit("cells/cumm", "cells/uL")).toBe(true);
+      for (const u of ["cells/cumm", "/cmm", "cell/cu mm", "#/cumm"])
+        expect(isBareCountPerVolume(u)).toBe(true);
+    });
+
+    it("10^3/cumm converts against 10^3/uL (scaled count path)", () => {
+      expect(sameUnit("10^3/cumm", "10^3/uL")).toBe(true);
+      expect(convertToCanonical(5.5, "10^3/cumm", { unit: "10^3/uL" })).toBe(
+        5.5
+      );
+      // A bare cells/cumm rescales against a 10^3/uL canonical like cells/uL does.
+      expect(
+        convertToCanonical(600, "cells/cumm", { unit: "10^3/uL" })
+      ).toBeCloseTo(0.6, 6);
+    });
+  });
+
+  describe("archaic mass-percent (mg%, g%) = per dL", () => {
+    it("parses mg% / g% as mass-per-dL", () => {
+      expect(sameUnit("mg%", "mg/dL")).toBe(true);
+      expect(sameUnit("g%", "g/dL")).toBe(true);
+      expect(
+        convertToCanonical(90, "mg%", { name: "Glucose", unit: "mg/dL" })
+      ).toBe(90);
+    });
+
+    it("does NOT misclassify a true % reading (hematocrit, O₂ sat) — both directions", () => {
+      // A bare "%" carries no mass numerator, so it stays "%" and never becomes a
+      // concentration. Pin BOTH directions: mg% is per-dL, "%" is not.
+      expect(sameUnit("%", "mg/dL")).toBe(false);
+      expect(sameUnit("mg%", "%")).toBe(false);
+      expect(sameUnit("%", "%")).toBe(true);
+      // A hematocrit/saturation "42 %" does not convert to a mass canonical.
+      expect(convertToCanonical(42, "%", { unit: "mg/dL" })).toBeNull();
+      expect(convertToCanonical(98, "%", { name: "O2 Sat", unit: "%" })).toBe(
+        98
+      );
+    });
+  });
+
+  describe("IU vs enzyme U are NOT equivalent (dimension split)", () => {
+    it("IU/mL and U/mL no longer compare equal or cross-convert", () => {
+      expect(sameUnit("IU/mL", "U/mL")).toBe(false);
+      // Neither direction converts — physically unrelated dimensions.
+      expect(
+        convertToCanonical(5, "U/mL", { name: "X", unit: "IU/mL" })
+      ).toBeNull();
+      expect(
+        convertToCanonical(5, "IU/mL", { name: "X", unit: "U/mL" })
+      ).toBeNull();
+    });
+
+    it("keeps existing IU and enzyme-U conversions intact", () => {
+      // IU family still collapses (activity dimension).
+      expect(sameUnit("uIU/mL", "mIU/L")).toBe(true);
+      expect(sameUnit("IU/mL", "IU/mL")).toBe(true);
+      // Enzyme-U family still collapses (enzyme dimension) — kU/L ↔ U/L.
+      expect(sameUnit("u/l", "U/L")).toBe(true);
+      expect(
+        convertToCanonical(0.35, "kU/L", {
+          name: "Cat Dander IgE",
+          unit: "kU/L",
+        })
+      ).toBe(0.35);
+      expect(convertToCanonical(30, "U/L", { name: "ALT", unit: "U/L" })).toBe(
+        30
+      );
+    });
+  });
+});
+
 describe("isConvertible", () => {
   it("agrees with convertToCanonical", () => {
     const glucose = { name: "Glucose", unit: "mg/dL" };
