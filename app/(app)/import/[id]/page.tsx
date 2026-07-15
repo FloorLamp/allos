@@ -20,6 +20,7 @@ import {
   getDocumentCarePlanItems,
   getDocumentCareGoals,
   getDocumentGenomicVariants,
+  getDocumentImagingStudies,
   getDocumentAppointments,
   getDocumentMedications,
   getDocumentBodyRows,
@@ -52,6 +53,7 @@ import {
   carePlanItemRow,
   careGoalItem,
   genomicVariantItem,
+  imagingStudyItem,
   appointmentItem,
   medicationItem,
   bodyItems,
@@ -108,6 +110,8 @@ function listingItems(
       return getDocumentGenomicVariants(profileId, docId).map(
         genomicVariantItem
       );
+    case "imaging-studies":
+      return getDocumentImagingStudies(profileId, docId).map(imagingStudyItem);
     case "appointments":
       return getDocumentAppointments(profileId, docId).map(appointmentItem);
     case "medications":

@@ -218,10 +218,13 @@ function migrationSources(): string {
     .join("\n");
 }
 
-// Every (table, column) where a CREATE TABLE body declares a provider_id or
-// location_provider_id COLUMN (matched as `<name> INTEGER`, which catches both the
-// bare-INTEGER and the `INTEGER REFERENCES providers(id)` forms). `_new` rebuild
-// scratch tables are ignored; the pair set is deduped across migrations.
+// Every (table, column) where a CREATE TABLE body declares a provider-link COLUMN
+// (matched as `<name> INTEGER`, which catches both the bare-INTEGER and the `INTEGER
+// REFERENCES providers(id)` forms). A provider-link column is one whose name ends in
+// `provider_id` — so `provider_id`, `location_provider_id`, and the imaging study's
+// `ordering_provider_id` / `reading_provider_id` (#702) all match. `_new` rebuild
+// scratch tables are ignored; the pair set is deduped across migrations. This is the
+// name-based twin of the FK-target reflection in provider-link-reflection.test.ts.
 function schemaProviderLinks(dbSrc: string): Set<string> {
   const out = new Set<string>();
   const re = /CREATE TABLE (?:IF NOT EXISTS )?(\w+)\s*\(/g;
@@ -243,7 +246,7 @@ function schemaProviderLinks(dbSrc: string): Set<string> {
     }
     re.lastIndex = i;
     if (name.endsWith("_new")) continue;
-    const colRe = /\b(provider_id|location_provider_id)\s+INTEGER\b/g;
+    const colRe = /\b(\w*provider_id)\s+INTEGER\b/g;
     let c: RegExpExecArray | null;
     while ((c = colRe.exec(body))) out.add(`${name}.${c[1]}`);
   }

@@ -34,5 +34,6 @@
   "033-sync-event-edited-count.ts": "890aab7eb6cd54291455d58e33ee4e266133908fdeda5fb083f9fe2c0dc8bf07",
   "034-medical-record-loinc.ts": "3f08672462d5b7f3a985017a7e53e770be1335a8d08172fd6b728148efdbf6c2",
   "035-metric-sample-activity-link.ts": "c25c8586b9bb9a8c4d2220bf371fa7cecf740859bb43ae1f4ee871878ff3c720",
-  "036-genomic-variants.ts": "654d7ae5d8776192c5292e7d381b613a52187baf7ebbd9ad76ffb58a128221cd"
+  "036-genomic-variants.ts": "654d7ae5d8776192c5292e7d381b613a52187baf7ebbd9ad76ffb58a128221cd",
+  "037-imaging-studies.ts": "7cb3965887e868445d68048afc589f7ff72b3bda17d3b90437ea25ff364d35b7"
 }

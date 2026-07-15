@@ -23,6 +23,7 @@ import type {
   CarePlanItem,
   CareGoal,
   GenomicVariant,
+  ImagingStudy,
 } from "../types";
 
 // Read layer for the CCD clinical-list domains — allergies and the problem
@@ -248,6 +249,28 @@ export function getGenomicVariants(profileId: number): GenomicVariant[] {
         ORDER BY COALESCE(report_date, '') DESC, gene COLLATE NOCASE ASC, id DESC`
     )
     .all(profileId) as GenomicVariant[];
+}
+
+// Structured imaging studies (#702), newest study first. Read straight from the
+// table — a study is a durable narrative fact (it never nags for retest or flags
+// abnormal), so there is no representative-id dedup here. `contrast` is stored 0/1
+// and surfaced as a boolean. The impression is the radiologist's report body; the
+// indication is captured but not gated on (screening-vs-diagnostic is deferred).
+export function getImagingStudies(profileId: number): ImagingStudy[] {
+  const rows = db
+    .prepare(
+      `SELECT id, modality, body_region, laterality, contrast, contrast_agent,
+              study_date, impression, indication, status,
+              ordering_provider_id, reading_provider_id, notes,
+              source, document_id, external_id, created_at
+         FROM imaging_studies
+        WHERE profile_id = ?
+        ORDER BY COALESCE(study_date, '') DESC, id DESC`
+    )
+    .all(profileId) as (Omit<ImagingStudy, "contrast"> & {
+    contrast: number;
+  })[];
+  return rows.map((r) => ({ ...r, contrast: r.contrast === 1 }));
 }
 
 // Family history, grouped by relative (relation) then condition. Rows with an

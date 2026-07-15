@@ -183,7 +183,8 @@ export async function extractMedicalDocument(
       clinical.familyHistory.length +
       clinical.carePlanItems.length +
       clinical.careGoals.length +
-      clinical.genomicVariants.length;
+      clinical.genomicVariants.length +
+      clinical.imagingStudies.length;
 
     log.info("extraction done", {
       filename,
@@ -221,6 +222,7 @@ export async function extractMedicalDocument(
       carePlanItems: clinical.carePlanItems,
       careGoals: clinical.careGoals,
       genomicVariants: clinical.genomicVariants,
+      imagingStudies: clinical.imagingStudies,
       drops: clinical.drops,
       model: MODEL,
       raw: JSON.stringify(input),

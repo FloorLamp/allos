@@ -1567,6 +1567,54 @@ gvIns.run(
   "Stored factually; no risk interpretation"
 );
 
+// ── Imaging studies (#702) ───────────────────────────────────────────────────
+// Synthetic radiology studies — obviously-fictional, from a fictional facility.
+// The NARRATIVE + METADATA home for imaging (the impression is captured); numeric
+// imaging metrics (DEXA T-scores, etc.) still live as `scan` biomarkers. `contrast`
+// is stored 0/1. Covers a contrast study, a non-contrast plain film, and a DEXA.
+const imgIns = db.prepare(
+  `INSERT INTO imaging_studies
+     (profile_id, modality, body_region, laterality, contrast, contrast_agent,
+      study_date, impression, indication, status, notes, source)
+   VALUES (1,?,?,?,?,?,?,?,?,?,?,NULL)`
+);
+imgIns.run(
+  "mri",
+  "Left Knee",
+  "left",
+  1,
+  "gadolinium",
+  daysAgo(120),
+  "Small joint effusion. No meniscal or ligamentous tear. Impression: mild degenerative change.",
+  "Knee pain after activity",
+  "final",
+  null
+);
+imgIns.run(
+  "x-ray",
+  "Chest",
+  "na",
+  0,
+  null,
+  daysAgo(200),
+  "Lungs clear. Heart size normal. No acute cardiopulmonary process.",
+  "Annual screening",
+  "final",
+  null
+);
+imgIns.run(
+  "dexa",
+  "Hip/Spine",
+  "na",
+  0,
+  null,
+  daysAgo(400),
+  "Bone mineral density within normal limits for age. See T-scores in results.",
+  "Osteoporosis screening",
+  "final",
+  "Numeric T-scores trend as scan biomarkers"
+);
+
 // ── Care plan / plan of treatment ────────────────────────────────────────────
 // Planned / ordered future care (a health record's Plan of Treatment section).
 // daysAgo(negative) yields a FUTURE date.
