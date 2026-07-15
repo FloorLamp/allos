@@ -250,9 +250,11 @@ Activating a routine (template-sourced or custom), inside one `writeTx`:
    that already exists;
 3. sets `active`, `started_date`, resets `position`.
 
-The confirm dialog lists exactly which targets will be replaced. Deactivating
-a routine keeps the derived targets (they're now just ordinary targets the
-user can edit or delete); this is stated in the confirm copy.
+The confirm dialog lists exactly which targets will be replaced, and only
+appears when there ARE training-scope targets to replace (a fresh profile —
+the #719 onboarding case — activates in one tap). Deactivating a routine
+keeps the derived targets (they're now just ordinary targets the user can
+edit or delete); this is stated in the confirm copy.
 
 ### Today's session stays in the ONE recommendation core
 
@@ -284,6 +286,41 @@ Needs-attention hero. The only push-tier touch is the existing workout nudge,
 which gains richer copy ("Push day: Bench, Overhead Press, Dips") through its
 existing dedupe/dismissal key — no new notification.
 
+### Onboarding integration (#719)
+
+The goal-based onboarding issue's Training path offers "starting with a
+simple routine" — that IS template adoption, not a parallel feature:
+
+- **One write core.** Onboarding calls the SAME `lib/` adopt/activate core as
+  the Training page (`profileId`-first, auth at the calling action) — no
+  onboarding-special adoption path. The onboarding step is a thin picker over
+  `lib/routine-templates.ts`, `audience: "beginner"` templates first, each
+  showing days/week and the equipment it assumes (a no-equipment profile gets
+  the bodyweight template up front).
+- **Replace-with-confirm collapses on a fresh profile.** The activation
+  transaction only raises the confirm dialog when existing training-scope
+  `frequency_targets` rows would be deleted; a fresh profile has none, so
+  onboarding adoption is one tap — same core, conditional confirm, not a
+  second flow.
+- **Cold start is a designed state, not an error.** With zero history the
+  routine path still produces a complete first session: slot filling needs no
+  history, and absent next-set seeds the slate shows sets × rep range with no
+  load ("3×8, pick a weight you could do for ~11") — the seed is the same
+  nullable signal it is everywhere. Each exercise opens its guide, which is
+  exactly what a day-one user needs. This answers #719's requirement to
+  "state what history is required before personalized trends or
+  recommendations become meaningful": the session prescription works from
+  day one; load targets appear after the first logged session of each lift;
+  trends/observations state their own windows.
+- **Tier placement per #719's state rules:** the adopted routine and derived
+  targets are per-profile data (already the case); nothing about onboarding
+  writes global state.
+
+The onboarding flow itself (welcome, outcome selection, Today-screen preview)
+is #719's scope, not this spec's — Pillar 3 just guarantees the training
+branch has a real, reusable primitive to call, and Phase 3 therefore
+unblocks #719's "start with a simple routine" option.
+
 ## Pillar 4 — Coaching depth
 
 Three additions that close the biggest remaining gaps in the coaching engine
@@ -309,15 +346,22 @@ Builds directly on Pillar 2's coverage math.
 - **Surfaces (formatters over the one computation):** the coverage anatomy
   figure tints by verdict (with the text list carrying exact numbers — never
   color-only). Follow the HR-zone precedent from #721 (`lib/training-zones.ts`):
-  the verdict is precomputed ONCE and every surface consumes the same verdict
-  - one shared palette module, so tints and labels cannot drift between the
-    figure, the text list, and the observation. Also a coaching-tier
-    observation per sustained shortfall ("side
-    delts: 2 sets this week, band floor is 6"), emitted alongside the existing
-    training observations with an episodic `dedupeKey` in a new registered
-    prefix (`muscle-volume:`), so a dismissal is per-episode (#436) and the
-    #448 reflection guard covers it. Calm tier only — never a push
-    notification, never the hero.
+  the verdict is precomputed ONCE and every surface consumes that same
+  verdict through one shared palette module, so tints and labels cannot
+  drift between the figure, the text list, and the observation. Also a
+  coaching-tier observation per sustained shortfall ("side
+  delts: 2 sets this week, band floor is 6"), emitted alongside the existing
+  training observations with an episodic `dedupeKey` in a new registered
+  prefix (`muscle-volume:`), so a dismissal is per-episode (#436) and the
+  #448 reflection guard covers it. Calm tier only — never a push
+  notification, never the hero.
+- **Cold start (#719):** band observations require history before they may
+  fire — no `below`/`untrained` finding until the profile has logged strength
+  sessions in at least `MIN_BAND_HISTORY_WEEKS` (proposed: 2) distinct weeks
+  of the trailing window. A brand-new profile is "not enough data yet", never
+  "everything is below target" — an unanswered question is not a negative
+  answer. The coverage figure may always render (untrained muscles in a
+  neutral empty tint); only the finding is gated.
 - **Not a priority engine (#559):** bands inform the coverage display and one
   dismissible observation. They do NOT reorder the recommendation core's
   exercise ranking in v1; at most the routine builder shows a band summary of
@@ -395,7 +439,9 @@ else about them.
   boundaries), template-day resolution + slot filling at boundaries,
   target-derivation (incl. the food_group non-replacement), `weekInCycle` /
   `deloadAdjust` at cycle boundaries, RPE-modified progression at its named
-  thresholds and the no-RPE identity case; action tier —
+  thresholds and the no-RPE identity case, cold-start cases (zero-history
+  session slate renders without load targets; `MIN_BAND_HISTORY_WEEKS`
+  gating; confirm-free activation when no training-scope targets exist); action tier —
   adopt/activate/deactivate/edit-routine actions incl. the
   targets-replacement transaction, set-save with/without `rpe`; DB tier — if
   routine state feeds a findings builder, it ships a realistic fixture test
