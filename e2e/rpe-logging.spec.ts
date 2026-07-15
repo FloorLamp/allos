@@ -36,8 +36,17 @@ test("RPE selector round-trips through the activity form (#743)", async ({
   await pickActivity(page, "Bench Press");
 
   // Fill one complete working set (weight + reps) so the session auto-saves.
-  await page.getByTestId("set1-weight").fill("100");
-  await page.getByTestId("set1-reps-stepper").locator("input").fill("5");
+  // Retry the fills to ride out the hydration window: a value typed before the
+  // form hydrates is silently dropped, which would leave the set incomplete and
+  // the session unsaved (the full CI suite is slow enough to hit this).
+  const weight = page.getByTestId("set1-weight");
+  const reps = page.getByTestId("set1-reps-stepper").locator("input");
+  await expect(async () => {
+    await weight.fill("100");
+    await reps.fill("5");
+    await expect(weight).toHaveValue("100");
+    await expect(reps).toHaveValue("5");
+  }).toPass();
 
   // The RPE selector is BLANK by default (logging RPE is never required).
   const rpe = page.getByTestId("set1-rpe");
@@ -51,8 +60,13 @@ test("RPE selector round-trips through the activity form (#743)", async ({
   await rpe.getByRole("button", { name: "Increase RPE" }).click();
   await expect(rpeValue).toHaveText("8.5");
 
-  // The complete set auto-saves.
-  await expect(page.getByLabel("Saved").first()).toBeVisible();
+  // The complete set auto-saves. Assert on the Delete button appearing — a stable
+  // signal that the draft persisted (it stays once the row exists) — rather than
+  // the transient "Saved" check, which fades after a few seconds and races the
+  // assertion on a loaded CI runner.
+  await expect(
+    page.getByRole("button", { name: "Delete", exact: true })
+  ).toBeVisible();
 
   // Close the editor and RELOAD — the persisted rating must survive a fresh load.
   await page.keyboard.press("Escape");
