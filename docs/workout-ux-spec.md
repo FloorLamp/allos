@@ -155,6 +155,15 @@ color-only: hover/tap names the muscle, and a text list of primary/secondary
 muscles always accompanies the figure. Authoring the SVG is the main real
 cost of this pillar.
 
+**The figure is an enhancement, never a blocker.** Every coverage surface is
+built list-first: the sorted per-muscle text/bar list (same
+`muscle-coverage` result, boring formatter) ships WITH the computation and
+remains the accessible rendering permanently. The SVG figure layers on top
+when the asset is ready — so if authoring stalls or the first draft isn't
+good enough, Phase 2 still ships whole, and the figure follows in its own
+PR. Per-exercise mode degrades the same way (the primary/secondary text list
+already required above).
+
 Three rendering modes, each fed by one computation:
 
 1. **Per-exercise** (in the `ExerciseDetailPanel` guide section): primary
@@ -272,6 +281,25 @@ calendar; a missed Push day is still the next day up. (The mesocycle
 week-in-cycle counter in Pillar 4b is deliberately the opposite —
 calendar-derived — because a deload schedules recovery in real time, not
 after N sessions.)
+
+**What "credits the day" means** is ONE pure, boundary-tested function,
+`sessionCreditsDay(sessionRegions, day.focus)` — derived entirely from the
+logged data, no hidden link column:
+
+- a strength session credits today's routine day iff the regions of its
+  logged sets (via `exerciseHistoryKey` → `LiftDef.region`) overlap the
+  day's `focus` at all — so the pre-filled slate credits by construction,
+  and an improvised session that genuinely worked the day's focus counts
+  too;
+- a cardio-focus day is credited by any cardio activity; a strength day is
+  never credited by cardio (or vice versa);
+- `position` advances at most once per profile-local day, however many
+  sessions are logged.
+
+(Rejected: a `routine_day_id` link column on `activities`. It would make
+crediting exact for the pre-filled path but wrong for the equally valid
+improvised path, and adds a row-ops obligation — re-parenting on merge,
+nulling on routine delete — for a question the logged sets already answer.)
 
 A "log this session" action pre-fills the activity form with the resolved
 slate — and since the form already has a live mode (#340:
@@ -393,6 +421,18 @@ else about them.
   - The plateau observation cross-references the cycle: if a deload week is
     ≤2 weeks away, its suggestion says so instead of recommending an ad-hoc
     deload.
+- **Pauses re-anchor the cycle.** Naive `started_date` arithmetic puts a
+  returning user in an arbitrary cycle week — a three-week break must not
+  resume into "deload week." Two mechanisms:
+  - _Auto:_ week-in-cycle is computed by a pure
+    `effectiveCycleStart(startedDate, creditedDates, today)` — a gap of
+    `CYCLE_PAUSE_GAP_DAYS` (proposed: 21) or more with no credited sessions
+    re-anchors the cycle to the first credited session after the gap (or to
+    `today` while none exists yet), so a returner is always in week 1.
+    Deterministic from logged data, no hidden write on a read path,
+    boundary-tested like `weekInCycle` itself.
+  - _Manual:_ the routine editor gets a "Restart cycle" action (an ordinary
+    gated write setting `started_date = today`) for deliberate resets.
 - **Explicitly NOT in scope:** auto-inserted deloads from fatigue signals, or
   multi-block periodization (volume→intensity phases). The cycle is a counter
   the user set, not a model of readiness — rest/recovery overrides in
@@ -437,8 +477,10 @@ else about them.
 - **Tests per tier:** pure — guide-key resolution, `MuscleId` rollup
   invariants, `muscle-coverage` (incl. secondary-credit and band-verdict
   boundaries), template-day resolution + slot filling at boundaries,
-  target-derivation (incl. the food_group non-replacement), `weekInCycle` /
-  `deloadAdjust` at cycle boundaries, RPE-modified progression at its named
+  target-derivation (incl. the food_group non-replacement),
+  `sessionCreditsDay` at its overlap/kind/once-per-day boundaries,
+  `weekInCycle` / `deloadAdjust` / `effectiveCycleStart` at cycle and
+  pause-gap boundaries, RPE-modified progression at its named
   thresholds and the no-RPE identity case, cold-start cases (zero-history
   session slate renders without load targets; `MIN_BAND_HISTORY_WEEKS`
   gating; confirm-free activation when no training-scope targets exist); action tier —
