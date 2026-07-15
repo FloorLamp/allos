@@ -132,8 +132,23 @@ test("attention rows move status and actions below content on mobile", async ({
     .locator('[data-testid^="attention-item-"]')
     .first();
   const title = row.getByRole("link").first();
+  const detail = row.getByTestId("attention-item-detail");
   const actions = row.getByTestId("attention-item-actions");
+  await expect(detail).toBeVisible();
   await expect(actions).toBeVisible();
+
+  expect(
+    await title.evaluate((element) => getComputedStyle(element).whiteSpace)
+  ).toBe("normal");
+  expect(
+    await title.evaluate((element) => getComputedStyle(element).textOverflow)
+  ).not.toBe("ellipsis");
+  expect(
+    await detail.evaluate((element) => getComputedStyle(element).whiteSpace)
+  ).toBe("normal");
+  expect(
+    await detail.evaluate((element) => getComputedStyle(element).textOverflow)
+  ).not.toBe("ellipsis");
 
   const [titleBox, actionsBox] = await Promise.all([
     title.boundingBox(),
