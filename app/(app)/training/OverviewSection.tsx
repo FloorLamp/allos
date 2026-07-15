@@ -19,6 +19,11 @@ import { formatMinutes } from "@/lib/duration";
 import { frequencyScopeLabel } from "@/lib/goals";
 import { getUnitPrefs } from "@/lib/settings";
 import {
+  coverageFromSets,
+  coverageList,
+  SECONDARY_CREDIT,
+} from "@/lib/muscle-coverage";
+import {
   recentCardioPRs,
   recentPRs,
   recommendCoaching,
@@ -44,6 +49,12 @@ const INTENSITY_COLOR: Record<string, string> = {
   Hard: "bg-rose-500",
   Unspecified: "bg-slate-400",
 };
+
+// Set credit is fractional (secondary muscles count 0.5), so render whole
+// numbers plainly and half-credit with one decimal.
+function fmtSets(n: number): string {
+  return Number.isInteger(n) ? String(n) : n.toFixed(1);
+}
 
 function prValue(p: CardioPR, du: "km" | "mi"): string {
   if (p.kind === "distance") return fmtDistance(p.distanceKm, du);
@@ -73,6 +84,17 @@ export default async function OverviewSection() {
   const mix = getCardioIntensityMix(profile.id);
   const mixTotal = mix.reduce((s, b) => s + b.minutes, 0);
 
+  // (date, exercise) rows over the recent window — one scan reused for the
+  // recovery-aware recommendation below AND the weekly muscle-coverage list.
+  const datedExercises = getRecentDatedExercises(profile.id);
+  // Weekly per-muscle coverage: the SAME attribution (coverageFromSets, #482)
+  // that feeds any future SVG heat / volume-band verdict, rendered list-first.
+  const coverageDays = 7;
+  const coverage = coverageList(
+    coverageFromSets(datedExercises, todayStr, coverageDays)
+  );
+  const coverageMax = coverage.reduce((m, r) => Math.max(m, r.sets), 0);
+
   // One recovery-aware recommendation for the next-workout card, from the shared
   // rule-based engine. A strong recovery signal (poor sleep / elevated resting
   // HR / overtraining) downgrades a "train X" nudge to a rest suggestion.
@@ -82,7 +104,7 @@ export default async function OverviewSection() {
     strength,
     cardio,
     trainingDates: getActivityDates(profile.id),
-    datedExercises: getRecentDatedExercises(profile.id),
+    datedExercises,
     sleep: getSleepSignal(profile.id),
     restingHr: getRestingHrSignal(profile.id),
     restEpisode: getRestEpisode(profile.id),
@@ -210,6 +232,45 @@ export default async function OverviewSection() {
             </div>
           )}
         </div>
+      </div>
+
+      <div className="card" data-testid="muscle-coverage">
+        <h3 className="font-semibold text-slate-800 dark:text-slate-100">
+          Muscle coverage
+        </h3>
+        <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500">
+          Sets per muscle over the last {coverageDays} days. Primary movers
+          count 1, assisting muscles count {SECONDARY_CREDIT}.
+        </p>
+        {coverage.length === 0 ? (
+          <p className="mt-4 text-sm text-slate-400 dark:text-slate-500">
+            No strength sets logged in the last {coverageDays} days.
+          </p>
+        ) : (
+          <ul className="mt-4 space-y-2">
+            {coverage.map((row) => (
+              <li
+                key={row.muscle}
+                data-testid="muscle-coverage-row"
+                className="flex items-center gap-3 text-sm"
+              >
+                <span className="w-28 shrink-0 text-slate-600 dark:text-slate-300">
+                  {row.label}
+                </span>
+                <span
+                  className="h-2.5 min-w-[0.375rem] rounded-full bg-emerald-500/80"
+                  style={{
+                    width: `${coverageMax > 0 ? (row.sets / coverageMax) * 100 : 0}%`,
+                  }}
+                  aria-hidden="true"
+                />
+                <span className="ml-auto shrink-0 tabular-nums text-slate-500 dark:text-slate-400">
+                  {fmtSets(row.sets)} {row.sets === 1 ? "set" : "sets"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       <div className="space-y-6 opacity-85">

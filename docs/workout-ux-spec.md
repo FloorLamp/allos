@@ -1,6 +1,6 @@
 # Spec: Workout UX — exercise guides, muscle anatomy, routines
 
-Status: **partial** (Pillar 1: content layer + accessor + gen + completeness test shipped, #733; "How to" section in `ExerciseDetailPanel` + entry points — set-editor ⓘ overlay, panel hosts, Telegram deep link — shipped, #734; Pillar 2: `MuscleId` vocabulary + `muscleRegion` rollup + catalog muscle tagging shipped, #735; the rest still draft) · Owner: TBD
+Status: **partial** (Pillar 1: content layer + accessor + gen + completeness test shipped, #733; "How to" section in `ExerciseDetailPanel` + entry points — set-editor ⓘ overlay, panel hosts, Telegram deep link — shipped, #734; Pillar 2: `MuscleId` vocabulary + `muscleRegion` rollup + catalog muscle tagging shipped, #735, plus the `muscle-coverage` computation (`coverageFromSets`, 1.0 primary / 0.5 secondary credit) + list-first weekly coverage on Training → Overview shipped, #736 — the SVG figure #737 still draft; the rest still draft) · Owner: TBD
 
 ## Problem
 
