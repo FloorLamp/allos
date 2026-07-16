@@ -1019,6 +1019,28 @@ export const RETEST_DAYS: Record<string, number> = {
   PSA: 365,
 };
 
+// Liver/pancreatic enzyme analytes that labs report interchangeably in "U/L" and
+// "IU/L" for the IDENTICAL µmol/min catalytic assay (issue #828). All six store the
+// canonical unit "U/L", so a reading printed as "IU/L" would otherwise fail to
+// convert — the unit parser keeps bare catalytic U ("enzyme" dimension) and the
+// international-unit IU ("activity" dimension) physically separate (issue #759) — and
+// its out-of-range flag would silently never derive (reintroducing #759 for this pair)
+// while its trend series split by unit spelling. Attaching a factor-1 `conversions`
+// entry ({ "IU/L": 1 }) to exactly these analytes lets an IU/L reading flag and share
+// the U/L series. This is DELIBERATELY per-analyte and explicit — it does NOT make IU
+// equal U globally; the #759 dimension split stands for every other analyte (a true
+// international-unit U analyte still refuses a bare-U reading, and vice versa). Keyed
+// by exact canonical name; applied in curateBiomarkers below (idempotent, so the
+// committed JSON stays a fixed point of the --curated-only transform).
+export const ENZYME_IU_INTERCHANGEABLE: string[] = [
+  "ALT",
+  "AST",
+  "Alkaline Phosphatase",
+  "GGT",
+  "Amylase",
+  "Lipase",
+];
+
 // Curated per-analyte velocity thresholds, in canonical UNITS PER YEAR, keyed by
 // exact canonical name (issue #41). A sustained change in the analyte's "bad"
 // direction (falling for a higher_better marker, rising for a lower_better one)
@@ -1147,6 +1169,14 @@ export function curateBiomarkers(biomarkers: Biomarker[]): Biomarker[] {
   for (const [name, vel] of Object.entries(VELOCITY_PER_YEAR)) {
     const row = byName.get(name.toLowerCase());
     if (row) row.velocity_per_year = vel;
+  }
+  // Enzyme analytes measured interchangeably in U/L and IU/L (#828): attach a
+  // factor-1 IU/L conversion so an IU/L reading flags against the U/L canonical and
+  // joins its trend series. Merge (don't clobber) any existing conversions, and stay
+  // idempotent so the committed JSON remains a fixed point of curateBiomarkers.
+  for (const name of ENZYME_IU_INTERCHANGEABLE) {
+    const row = byName.get(name.toLowerCase());
+    if (row) row.conversions = { ...(row.conversions ?? {}), "IU/L": 1 };
   }
   return out;
 }

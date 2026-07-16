@@ -196,6 +196,55 @@ describe("real-world unit spellings (#759)", () => {
       );
     });
   });
+
+  describe("enzyme analytes report U/L and IU/L interchangeably (#828)", () => {
+    // ALT/AST/ALP/GGT/amylase/lipase store canonical "U/L" but labs print "IU/L"
+    // for the identical µmol/min assay. A curated factor-1 conversion lets an IU/L
+    // reading convert (and therefore flag + share the trend series) — WITHOUT
+    // globally equating IU and U (the #759 dimension split still stands elsewhere).
+    const AST = { name: "AST", unit: "U/L" };
+
+    it("sameUnit(IU/L, U/L) stays false — the dimensions remain physically distinct", () => {
+      // The fix is per-analyte (a conversion factor), not a global dimension merge:
+      // IU (activity) and bare U (enzyme) never become the same unit.
+      expect(sameUnit("IU/L", "U/L")).toBe(false);
+    });
+
+    it("converts an IU/L reading to the U/L canonical for an affected analyte (factor 1)", () => {
+      // Value is preserved (the two spellings mean the same number for these assays).
+      expect(convertToCanonical(40, "IU/L", AST)).toBe(40);
+      expect(convertToCanonical(120, "IU/L", AST)).toBe(120);
+      // A prefixed IU rescales through the same activity dimension: mIU/L is IU/L/1000.
+      expect(convertToCanonical(40000, "mIU/L", AST)).toBeCloseTo(40);
+      // isConvertible agrees.
+      expect(isConvertible("IU/L", AST)).toBe(true);
+    });
+
+    it("all six affected analytes accept an IU/L reading at factor 1", () => {
+      const six = [
+        { name: "ALT", unit: "U/L" },
+        { name: "AST", unit: "U/L" },
+        { name: "Alkaline Phosphatase", unit: "U/L" },
+        { name: "GGT", unit: "U/L" },
+        { name: "Amylase", unit: "U/L" },
+        { name: "Lipase", unit: "U/L" },
+      ];
+      for (const cb of six) expect(convertToCanonical(50, "IU/L", cb)).toBe(50);
+    });
+
+    it("does NOT equate IU/L and U/L for an analyte without the curated conversion (exclusion discipline)", () => {
+      // The guard against a global IU==U regression: an analyte with a U/L canonical
+      // but no curated IU/L conversion still refuses an IU/L reading (unrelated
+      // dimensions), exactly as #759 requires.
+      expect(
+        convertToCanonical(40, "IU/L", { name: "NotAnEnzyme", unit: "U/L" })
+      ).toBeNull();
+      // And the reverse — a bare U/L reading against an activity (IU/L) canonical.
+      expect(
+        convertToCanonical(40, "U/L", { name: "NotAnEnzyme", unit: "IU/L" })
+      ).toBeNull();
+    });
+  });
 });
 
 describe("isConvertible", () => {
