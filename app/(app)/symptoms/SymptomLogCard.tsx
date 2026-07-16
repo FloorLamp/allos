@@ -30,6 +30,7 @@ export default function SymptomLogCard({ profileId }: { profileId: number }) {
         symptoms={SYMPTOMS}
         customNames={getCustomSymptomNames(profileId)}
         suggestActivateIllness={false}
+        showTemperature
       />
     </div>
   );

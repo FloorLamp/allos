@@ -120,6 +120,32 @@ export function mmolToMgdl(v: number): number {
   return Math.round(v * 18.0156 * 10) / 10;
 }
 
+// Canonical (°F) bounds a body-temperature reading must fall within. Shared by the
+// Trends vitals form, the illness symptom-card quick entry (issue #800), and their
+// tests so all three agree on what a plausible reading is (a superset-narrow of the
+// ingest window 77–113 in lib/ingest-bounds.ts — 86 °F / 30 °C is the manual floor).
+export const TEMP_MIN_F = 86;
+export const TEMP_MAX_F = 113;
+
+// Convert an entered temperature to the canonical °F scale (issue #800). °C goes
+// through celsiusToF (the exact Health Connect factor, 0.1 rounding) so a manual °C
+// reading and a synced one land on the same scale; °F is already canonical. Anything
+// but an explicit "C" is treated as °F (the default/canonical unit).
+export function toCanonicalTempF(
+  value: number,
+  unit: TempUnit | string | null | undefined
+): number {
+  return unit === "C" ? celsiusToF(value) : value;
+}
+
+// Range-check a canonical (°F) temperature. Returns the user-facing error or null —
+// the one bounds check the vitals form, the quick entry, and the write core share.
+export function temperatureRangeError(degF: number): string | null {
+  return degF < TEMP_MIN_F || degF > TEMP_MAX_F
+    ? "Body temperature is out of range."
+    : null;
+}
+
 function blank(v: string | null | undefined): boolean {
   return v == null || String(v).trim() === "";
 }
@@ -189,10 +215,8 @@ export function validateVitalsInput(input: VitalsRawInput): string | null {
   if (!blank(input.temperature)) {
     const raw = numOrNull(input.temperature);
     if (raw == null) return "Enter a valid temperature.";
-    const degF = input.tempUnit === "C" ? celsiusToF(raw) : raw;
-    if (degF < 86 || degF > 113) {
-      return "Body temperature is out of range.";
-    }
+    const err = temperatureRangeError(toCanonicalTempF(raw, input.tempUnit));
+    if (err) return err;
   }
 
   if (!blank(input.sleepHours)) {
@@ -272,8 +296,10 @@ export function normalizeVitalsInput(
 
   const tempRaw = numOrNull(input.temperature);
   if (tempRaw != null) {
-    const value = input.tempUnit === "C" ? celsiusToF(tempRaw) : tempRaw;
-    medical.push({ ...VITAL_CANONICAL.temperature, value_num: value });
+    medical.push({
+      ...VITAL_CANONICAL.temperature,
+      value_num: toCanonicalTempF(tempRaw, input.tempUnit),
+    });
   }
 
   const sleepHours = numOrNull(input.sleepHours);

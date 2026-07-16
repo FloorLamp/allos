@@ -3,6 +3,9 @@
 import { requireWriteAccess } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { today } from "@/lib/db";
+import { zonedDateParts } from "@/lib/date";
+import { getTimezone } from "@/lib/settings";
+import { logTemperatureCore } from "@/lib/temperature-log";
 import {
   logSymptomCore,
   setSymptomSeverityCore,
@@ -126,6 +129,46 @@ export async function deleteCustomSymptom(
     return formError("Only your own custom symptoms can be deleted.");
   revalidateSymptoms();
   return formOk();
+}
+
+// Quick body-temperature log from the illness symptom card (issue #800). The bar posts
+// a thermometer reading (°F/°C) that joins the EXISTING vitals series (canonical "Body
+// Temperature", degF) via the auth-blind logTemperatureCore — the same table/identity as
+// a Health Connect push, so it charts + flags like any other reading. The reading is
+// timestamped: the entry is "now", so its profile-local clock time rides `notes` for the
+// fever curve (multiple readings/day), and the caller may override with an explicit
+// "HH:MM" for a backfilled reading. Temperature surfaces on the dashboard, Timeline,
+// Trends, and the biomarkers browser, so all are revalidated.
+export type TemperatureLogResult =
+  | { ok: true; degF: number; flag: string | null }
+  | { ok: false; error: string };
+
+export async function logTemperature(
+  formData: FormData
+): Promise<TemperatureLogResult> {
+  const { profile } = await requireWriteAccess();
+  const rawValue = Number(formData.get("temperature"));
+  const unit = String(formData.get("temp_unit") ?? "F");
+  const date = parseDate(formData, profile.id);
+  // Prefer an explicit "HH:MM" (a backfilled reading); otherwise stamp the reading with
+  // the profile-local clock time of "now" (thermometer-to-phone in one step).
+  const providedTime = String(formData.get("time") ?? "").trim();
+  const time = /^\d{2}:\d{2}$/.test(providedTime)
+    ? providedTime
+    : zonedDateParts(getTimezone(profile.id), new Date()).hhmm;
+  const outcome = logTemperatureCore(
+    profile.id,
+    Number.isFinite(rawValue) ? rawValue : null,
+    unit,
+    date,
+    time
+  );
+  if (outcome.kind === "invalid") return { ok: false, error: outcome.error };
+  revalidatePath("/");
+  revalidatePath("/timeline");
+  revalidatePath("/trends");
+  revalidatePath("/biomarkers");
+  return { ok: true, degF: outcome.degF, flag: outcome.flag };
 }
 
 // Symptom→situation bridge (issue #799, direction A): activate the built-in "Illness"
