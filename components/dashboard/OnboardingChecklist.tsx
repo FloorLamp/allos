@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { IconArrowRight, IconChecklist } from "@tabler/icons-react";
 import { dismissOnboardingChecklist } from "@/app/(app)/onboarding/actions";
-import type { AppRoute } from "@/lib/hrefs";
+import { MEDICATIONS_HREF, type AppRoute } from "@/lib/hrefs";
 import {
   remainingOnboardingChecklistSuggestions,
   type OnboardingChecklistCompletion,
@@ -25,7 +25,7 @@ const CHECKLIST_TASKS: Record<OnboardingChecklistSuggestion, ChecklistItem> = {
   medications: {
     label: "Check your medications",
     benefit: "Confirm what you take before choosing which reminders you want.",
-    href: "/medicine",
+    href: MEDICATIONS_HREF,
   },
   fitness: {
     label: "Connect an app or device",
@@ -70,10 +70,13 @@ export default function OnboardingChecklist({
   focuses: readonly OnboardingFocus[];
   completion: OnboardingChecklistCompletion;
 }) {
-  const tasks = remainingOnboardingChecklistSuggestions(
-    focuses,
-    completion
-  ).map((suggestion) => CHECKLIST_TASKS[suggestion]);
+  const tasks = remainingOnboardingChecklistSuggestions(focuses, completion)
+    .map((suggestion) => CHECKLIST_TASKS[suggestion])
+    // Keep mobile-only suggestions last so a hidden desktop row cannot leave
+    // the first visible row with divider/padding intended for a later item.
+    .sort(
+      (a, b) => Number(Boolean(a.mobileOnly)) - Number(Boolean(b.mobileOnly))
+    );
 
   if (tasks.length === 0) return null;
   const mobileOnly = tasks.every((task) => task.mobileOnly);

@@ -12,7 +12,8 @@ export function getOnboardingDataPresence(profileId: number): StoredPresence {
       `SELECT
          (EXISTS(SELECT 1 FROM medical_records WHERE profile_id = @profileId) OR
           EXISTS(SELECT 1 FROM medical_documents WHERE profile_id = @profileId)) AS medicalRecords,
-         EXISTS(SELECT 1 FROM intake_items WHERE profile_id = @profileId) AS medications,
+         EXISTS(SELECT 1 FROM intake_items
+                 WHERE profile_id = @profileId AND kind = 'medication') AS medications,
          (EXISTS(SELECT 1 FROM activities WHERE profile_id = @profileId) OR
           EXISTS(SELECT 1 FROM goals WHERE profile_id = @profileId) OR
           EXISTS(SELECT 1 FROM frequency_targets WHERE profile_id = @profileId)) AS fitness,

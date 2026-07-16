@@ -29,6 +29,7 @@ describe("onboarding DB boundary", () => {
   it("detects first value by profile and domain", () => {
     const a = profile("Onboarding A");
     const b = profile("Onboarding B");
+    const supplementsOnly = profile("Onboarding Supplements Only");
     db.prepare(
       `INSERT INTO activities (profile_id, date, type, title)
        VALUES (?, '2026-07-15', 'cardio', 'First walk')`
@@ -37,6 +38,10 @@ describe("onboarding DB boundary", () => {
       `INSERT INTO intake_items (profile_id, name, kind)
        VALUES (?, 'Example medication', 'medication')`
     ).run(b);
+    db.prepare(
+      `INSERT INTO intake_items (profile_id, name, kind)
+       VALUES (?, 'Example supplement', 'supplement')`
+    ).run(supplementsOnly);
 
     expect(getOnboardingDataPresence(a)).toEqual({
       medicalRecords: false,
@@ -52,6 +57,7 @@ describe("onboarding DB boundary", () => {
       metricsLabs: false,
       preventiveCare: false,
     });
+    expect(getOnboardingDataPresence(supplementsOnly).medications).toBe(false);
   });
 
   it("distinguishes a connected source from manual fitness data", () => {

@@ -134,14 +134,13 @@ Admins manage everyone under **Settings → Family**: add or rename profiles, cr
 
 A newly created profile starts with a short, page-by-page setup that can be left
 and resumed at any time. It is built around one or two outcomes: medical records,
-medications, fitness, metrics and labs,
-preventive care, or caregiving. The choices seed that profile's initial Dashboard
-and prioritize connecting a supported app or device before offering import and
-manual-entry fallbacks. The Fitness path can also adopt and activate a beginner
-routine immediately (bodyweight first when no equipment is registered), using the
-same editable routine templates and weekly targets as Training. These choices do
-not disable any other feature, and the full Dashboard customizer remains available
-afterward.
+medications, fitness, metrics and labs, preventive care, or caregiving. The choices
+seed that profile's initial Dashboard and prioritize connecting a supported app or
+device before offering import and manual-entry fallbacks. The Fitness path can also
+adopt and activate a beginner routine immediately (bodyweight first when no
+equipment is registered), using the same editable routine templates and weekly
+targets as Training. These choices do not disable any other feature, and the full
+Dashboard customizer remains available afterward.
 
 Only facts that immediately change behavior are requested up front: the profile's
 display name, known birthdate or approximate age, sex used for applicable

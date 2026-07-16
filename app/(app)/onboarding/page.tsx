@@ -54,8 +54,11 @@ const ONBOARDING_WIDGET_DESCRIPTIONS: Record<string, string> = {
   "coaching-observations": "Health patterns worth noticing.",
   "healthspan-pillars": "Key long-term health signals.",
   "weight-trend": "Recent weight changes.",
+  "quick-log-prn": "Log an as-needed medication in one tap.",
   "goals-habits": "Goals and weekly habits.",
+  "symptom-log": "Quick symptom logging when someone is unwell.",
   "weekly-recap": "A seven-day progress summary.",
+  "sick-household": "Open illness episodes across accessible profiles.",
 };
 
 const ONBOARDING_STEP_LABELS = [

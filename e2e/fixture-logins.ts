@@ -109,6 +109,6 @@ export const E2E_LOGIN_ONBOARDING = "e2e_onboarding";
 export const ONBOARDING_PROFILE = "Onboarding Person (e2e)";
 
 // A populated profile with no new-profile onboarding marker. Its member receives
-// the distinct, dismissible existing-profile orientation on Today.
+// the distinct, dismissible existing-profile orientation on the Dashboard.
 export const E2E_LOGIN_ORIENTATION = "e2e_orientation";
 export const ORIENTATION_PROFILE = "Existing Profile (e2e)";

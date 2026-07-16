@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { customizableWidgetDefs } from "@/lib/dashboard-widgets";
 import {
   completeOnboardingState,
   focusHasFirstValue,
@@ -244,6 +245,24 @@ describe("onboarding notification schedule", () => {
       preventiveEnabled: false,
     });
   });
+
+  it("restores intake reminder defaults when changing away from no notifications", () => {
+    const disabled = onboardingNotificationSchedule("none", schedule);
+
+    expect(
+      onboardingNotificationSchedule("safety-only", disabled, "none")
+        .supplementHours
+    ).toEqual({ Morning: 8, Midday: 13, Evening: 20, Bedtime: 22 });
+
+    const manuallyAdjusted = {
+      ...disabled,
+      supplementHours: { ...disabled.supplementHours, Evening: 19 },
+    };
+    expect(
+      onboardingNotificationSchedule("safety-only", manuallyAdjusted, "none")
+        .supplementHours
+    ).toEqual({ Morning: null, Midday: null, Evening: 19, Bedtime: null });
+  });
 });
 
 describe("onboarding first value", () => {
@@ -273,6 +292,9 @@ describe("onboarding dashboard layout", () => {
     ]);
     expect(layout.hidden).toContain("recent-labs");
     expect(layout.hidden).not.toContain("coaching");
+    expect(layout.hidden).not.toContain("symptom-log");
+    expect(layout.hidden).not.toContain("sick-household");
+    expect(layout.hidden).toContain("quick-log-prn");
     expect(layout.order).toContain("recent-labs");
   });
 
@@ -287,5 +309,18 @@ describe("onboarding dashboard layout", () => {
 
     const explore = onboardingDashboardLayout(["explore"]);
     expect(explore.hidden).toEqual(["weekly-recap"]);
+    expect(explore.order).toEqual(
+      expect.arrayContaining(["quick-log-prn", "symptom-log", "sick-household"])
+    );
+  });
+
+  it("keeps the onboarding catalog synchronized with dashboard widgets", () => {
+    const layout = onboardingDashboardLayout(["metrics-labs"]);
+    const customizableIds = customizableWidgetDefs(false).map(
+      (widget) => widget.id
+    );
+
+    expect(layout.order).toEqual(expect.arrayContaining(customizableIds));
+    expect(layout.order).toHaveLength(customizableIds.length);
   });
 });

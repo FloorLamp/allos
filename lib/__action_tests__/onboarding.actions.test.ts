@@ -266,6 +266,26 @@ describe("onboarding actions", () => {
       digestHour: null,
       preventiveEnabled: false,
     });
+
+    await redirected(
+      saveOnboardingNotifications(fd({ notification_intent: "none" }))
+    );
+    expect(getNotifySchedule(profile.id).supplementHours).toEqual({
+      Morning: null,
+      Midday: null,
+      Evening: null,
+      Bedtime: null,
+    });
+
+    await redirected(
+      saveOnboardingNotifications(fd({ notification_intent: "safety-only" }))
+    );
+    expect(getNotifySchedule(profile.id).supplementHours).toEqual({
+      Morning: 8,
+      Midday: 13,
+      Evening: 20,
+      Bedtime: 22,
+    });
   });
 
   it("does not persist fitness widgets hidden by the dashboard age gate", async () => {

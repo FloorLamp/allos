@@ -94,9 +94,7 @@ test("a new profile reaches a useful dashboard through the metrics path", async 
     await expect(outcomes.getByTestId("onboarding-focus-icon")).toHaveCount(7);
     const medicalFocus = outcomes.getByLabel("Organize medical records");
     const fitnessFocus = outcomes.getByLabel("Track fitness and training");
-    const medicationsFocus = outcomes.getByLabel(
-      "Manage medications and supplements"
-    );
+    const medicationsFocus = outcomes.getByLabel("Manage medications");
     const exploreFocus = outcomes.getByLabel("Explore everything");
     await expect(medicalFocus).toHaveClass(/rounded-md/);
     await medicalFocus.check();
@@ -190,11 +188,7 @@ test("a new profile reaches a useful dashboard through the metrics path", async 
         /Import a health record/,
         "/data?section=import",
       ],
-      [
-        "Manage medications and supplements",
-        /Add a medication or supplement/,
-        "/medicine",
-      ],
+      ["Manage medications", /Add a medication/, "/medications"],
       [
         "Track fitness and training",
         /Log a recent workout/,

@@ -96,10 +96,13 @@ export async function startOnboardingRoutine(
     };
   }
 
-  const routineId = adoptTemplate(profile.id, template.id);
-  if (!activateRoutine(profile.id, routineId)) {
-    return { ok: false, error: "The routine could not be activated." };
-  }
+  const routineId = writeTx(() => {
+    const adoptedId = adoptTemplate(profile.id, template.id);
+    if (!activateRoutine(profile.id, adoptedId)) {
+      throw new Error("The adopted routine could not be activated.");
+    }
+    return adoptedId;
+  });
 
   revalidatePath("/");
   revalidatePath("/onboarding");
@@ -248,7 +251,11 @@ export async function saveOnboardingNotifications(formData: FormData) {
   writeTx(() => {
     setNotifySchedule(
       profile.id,
-      onboardingNotificationSchedule(intent, getNotifySchedule(profile.id))
+      onboardingNotificationSchedule(
+        intent,
+        getNotifySchedule(profile.id),
+        state.notificationIntent
+      )
     );
     setOnboardingState(
       profile.id,

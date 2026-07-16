@@ -1,5 +1,9 @@
-import type { DashboardLayout } from "./dashboard-widgets";
-import type { AppRoute } from "./hrefs";
+import {
+  customizableWidgetDefs,
+  type DashboardLayout,
+} from "./dashboard-widgets";
+import { MEDICATIONS_HREF, type AppRoute } from "./hrefs";
+import { DEFAULT_INTAKE_REMINDER_HOURS } from "./notifications/schedule";
 import type { NotifySchedule } from "./settings/notifications";
 
 // Versioned per-profile onboarding state (#719). Only profiles explicitly born
@@ -115,10 +119,11 @@ export const ONBOARDING_FOCUS_DEFS: readonly OnboardingFocusDef[] = [
   },
   {
     id: "medications",
-    label: "Manage medications and supplements",
-    description: "Add one current item and see its schedule on the dashboard.",
-    actionLabel: "Add a medication or supplement",
-    actionHref: "/medicine",
+    label: "Manage medications",
+    description:
+      "Add one current medication and see its schedule on the dashboard.",
+    actionLabel: "Add a medication",
+    actionHref: MEDICATIONS_HREF,
   },
   {
     id: "fitness",
@@ -363,9 +368,20 @@ export function isOnboardingNotificationIntent(
 // this schedule; choosing "Decide later" preserves whatever is already set.
 export function onboardingNotificationSchedule(
   intent: OnboardingNotificationIntent,
-  current: NotifySchedule
+  current: NotifySchedule,
+  previousIntent: OnboardingNotificationIntent | null = null
 ): NotifySchedule {
   if (intent === "later") return current;
+
+  // "No notifications" explicitly clears every intake window. If the user
+  // revisits this step and chooses an active intent, restore the shared defaults
+  // only when those windows are still all off; preserve any intervening manual
+  // schedule edits.
+  const supplementHours =
+    previousIntent === "none" &&
+    Object.values(current.supplementHours).every((hour) => hour === null)
+      ? { ...DEFAULT_INTAKE_REMINDER_HOURS }
+      : current.supplementHours;
 
   const noSummary = {
     digestHour: null,
@@ -390,6 +406,7 @@ export function onboardingNotificationSchedule(
   if (intent === "safety-only") {
     return {
       ...current,
+      supplementHours,
       workoutEnabled: false,
       ...noSummary,
       milestonesEnabled: false,
@@ -399,6 +416,7 @@ export function onboardingNotificationSchedule(
 
   return {
     ...current,
+    supplementHours,
     workoutEnabled: true,
     digestHour: current.digestHour ?? 8,
     milestonesEnabled: true,
@@ -509,46 +527,42 @@ export function hasOnboardingFirstValue(
 // Outcome selection seeds the dashboard without permanently disabling anything:
 // Customize can restore every hidden widget later. Needs attention is pinned and
 // therefore absent from this saved layout by design.
+const ONBOARDING_WIDGETS = customizableWidgetDefs(false);
+const ONBOARDING_WIDGET_ORDER = ONBOARDING_WIDGETS.map((widget) => widget.id);
+const ONBOARDING_DEFAULT_WIDGETS = ONBOARDING_WIDGETS.filter(
+  (widget) => widget.defaultOn
+).map((widget) => widget.id);
+
+// These cards self-hide until their context exists, so leaving them enabled does
+// not clutter a new dashboard and ensures a later illness becomes discoverable.
+const CONTEXTUAL_ONBOARDING_WIDGETS = ["symptom-log", "sick-household"];
+
 const FOCUS_WIDGETS: Record<OnboardingFocus, readonly string[]> = {
   "medical-records": ["recent-labs", "next-appointment", "healthspan-pillars"],
-  medications: ["recent-labs", "coaching-observations"],
+  medications: ["recent-labs", "coaching-observations", "quick-log-prn"],
   fitness: ["coaching", "goals-habits", "weight-trend", "weekly-recap"],
   "metrics-labs": ["weight-trend", "recent-labs", "healthspan-pillars"],
   "preventive-care": ["next-appointment", "recent-labs"],
   caregiving: ["next-appointment", "recent-labs"],
-  explore: [
-    "recent-labs",
-    "next-appointment",
-    "coaching",
-    "coaching-observations",
-    "healthspan-pillars",
-    "weight-trend",
-    "goals-habits",
-  ],
+  explore: ONBOARDING_DEFAULT_WIDGETS,
 };
-
-const ONBOARDING_WIDGET_ORDER = [
-  "recent-labs",
-  "next-appointment",
-  "coaching",
-  "coaching-observations",
-  "healthspan-pillars",
-  "weight-trend",
-  "goals-habits",
-  "weekly-recap",
-];
 
 export function onboardingDashboardLayout(
   focuses: readonly OnboardingFocus[]
 ): DashboardLayout {
   const normalized = normalizeOnboardingFocuses(focuses);
-  const visible = new Set(
+  const focused = new Set(
     normalized.flatMap((focus) => [...FOCUS_WIDGETS[focus]])
   );
+  const visible = new Set([...focused, ...CONTEXTUAL_ONBOARDING_WIDGETS]);
+  const focusedOrder = ONBOARDING_WIDGET_ORDER.filter((id) => focused.has(id));
+  const contextualOrder = ONBOARDING_WIDGET_ORDER.filter(
+    (id) => visible.has(id) && !focused.has(id)
+  );
   return {
-    order: ONBOARDING_WIDGET_ORDER.filter((id) => visible.has(id)).concat(
-      ONBOARDING_WIDGET_ORDER.filter((id) => !visible.has(id))
-    ),
+    order: focusedOrder
+      .concat(contextualOrder)
+      .concat(ONBOARDING_WIDGET_ORDER.filter((id) => !visible.has(id))),
     hidden: ONBOARDING_WIDGET_ORDER.filter((id) => !visible.has(id)),
   };
 }
