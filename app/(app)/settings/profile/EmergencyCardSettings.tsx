@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import SaveStatus from "@/components/SaveStatus";
-import { useSaveStatus } from "@/components/useSaveStatus";
+import { useSaveStatus, useFlushOnHide } from "@/components/useSaveStatus";
 import { clearEmergencyPayload } from "@/components/emergency-offline";
 import { BLOOD_TYPES } from "@/lib/emergency-card";
 import type { EmergencyContactSetting } from "@/lib/settings";
@@ -30,6 +30,8 @@ export default function EmergencyCardSettings({
   const [contact, setContact] =
     useState<EmergencyContactSetting>(initialContact);
   const { pending, savedAt, error, save: runSave } = useSaveStatus();
+  const formRef = useRef<HTMLDivElement>(null);
+  useFlushOnHide(formRef);
 
   function save(next: {
     enabled: boolean;
@@ -51,7 +53,7 @@ export default function EmergencyCardSettings({
   }
 
   return (
-    <div className="card mt-6 max-w-lg space-y-5">
+    <div ref={formRef} className="card mt-6 max-w-lg space-y-5">
       <div className="flex items-center justify-between">
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Emergency card

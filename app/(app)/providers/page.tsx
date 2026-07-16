@@ -1,6 +1,7 @@
 import { requireSession } from "@/lib/auth";
 import { getProvidersForIndex } from "@/lib/queries";
 import { PageHeader } from "@/components/ui";
+import PageContainer from "@/components/PageContainer";
 import ProvidersIndex from "./ProvidersIndex";
 
 export const dynamic = "force-dynamic";
@@ -14,12 +15,12 @@ export default async function ProvidersPage() {
   const providers = getProvidersForIndex(profile.id);
 
   return (
-    <div className="max-w-3xl">
+    <PageContainer width="reading">
       <PageHeader
         title="Providers"
         subtitle="Your shared registry of clinicians and organizations. Record counts are for the active profile."
       />
       <ProvidersIndex providers={providers} profileName={profile.name} />
-    </div>
+    </PageContainer>
   );
 }

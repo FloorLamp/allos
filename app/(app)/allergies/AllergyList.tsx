@@ -5,6 +5,7 @@ import { updateAllergy, deleteAllergy } from "./actions";
 import RecordTable, { type RecordColumn } from "@/components/RecordTable";
 import RecordProvenance from "@/components/RecordProvenance";
 import StatusBadge from "@/components/StatusBadge";
+import NotesText from "@/components/NotesText";
 import type { Allergy } from "@/lib/types";
 
 const COLUMNS: RecordColumn<Allergy>[] = [
@@ -14,11 +15,10 @@ const COLUMNS: RecordColumn<Allergy>[] = [
     cell: (a) => (
       <>
         {a.substance}
-        {a.notes ? (
-          <span className="ml-2 text-xs font-normal text-slate-400">
-            {a.notes}
-          </span>
-        ) : null}
+        <NotesText
+          notes={a.notes}
+          className="ml-2 text-xs font-normal text-slate-400"
+        />
       </>
     ),
   },

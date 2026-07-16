@@ -56,7 +56,7 @@ export default function Wordmark({
         />
       </svg>
       <span
-        className={`${outfit.className} whitespace-nowrap text-2xl font-semibold tracking-tight text-slate-800 dark:text-slate-100`}
+        className={`${outfit.className} whitespace-nowrap text-2xl font-semibold text-slate-800 dark:text-slate-100`}
       >
         Allos
       </span>

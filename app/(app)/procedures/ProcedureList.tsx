@@ -5,6 +5,7 @@ import { updateProcedure, deleteProcedure } from "./actions";
 import RecordTable, { type RecordColumn } from "@/components/RecordTable";
 import RecordProvenance from "@/components/RecordProvenance";
 import ProviderName from "@/components/ProviderName";
+import NotesText from "@/components/NotesText";
 import { formatRecordDate } from "@/lib/record-format";
 import type { Procedure } from "@/lib/types";
 
@@ -15,11 +16,10 @@ const COLUMNS: RecordColumn<Procedure>[] = [
     cell: (p) => (
       <>
         {p.name}
-        {p.notes ? (
-          <span className="ml-2 text-xs font-normal text-slate-400">
-            {p.notes}
-          </span>
-        ) : null}
+        <NotesText
+          notes={p.notes}
+          className="ml-2 text-xs font-normal text-slate-400"
+        />
       </>
     ),
   },

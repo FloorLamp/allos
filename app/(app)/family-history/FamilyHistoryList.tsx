@@ -4,6 +4,7 @@ import FamilyHistoryForm from "./FamilyHistoryForm";
 import { updateFamilyHistory, deleteFamilyHistory } from "./actions";
 import RecordTable, { type RecordColumn } from "@/components/RecordTable";
 import RecordProvenance from "@/components/RecordProvenance";
+import NotesText from "@/components/NotesText";
 import type { FamilyHistory } from "@/lib/types";
 
 const COLUMNS: RecordColumn<FamilyHistory>[] = [
@@ -27,11 +28,10 @@ const COLUMNS: RecordColumn<FamilyHistory>[] = [
             Deceased
           </span>
         ) : null}
-        {f.notes ? (
-          <span className="ml-2 text-xs font-normal text-slate-400">
-            {f.notes}
-          </span>
-        ) : null}
+        <NotesText
+          notes={f.notes}
+          className="ml-2 text-xs font-normal text-slate-400"
+        />
       </>
     ),
   },

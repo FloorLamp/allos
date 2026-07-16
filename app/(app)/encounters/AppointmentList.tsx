@@ -26,6 +26,7 @@ import {
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useToast } from "@/components/Toast";
 import OpenInMaps from "@/components/OpenInMaps";
+import NotesText from "@/components/NotesText";
 import { satisfiedRuleForCompletedKind } from "@/lib/preventive-appointment";
 import {
   matchCarePlanItemsForAppointment,
@@ -307,11 +308,11 @@ export default function AppointmentList({
                     </>
                   ) : null}
                 </div>
-                {a.notes ? (
-                  <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                    {a.notes}
-                  </div>
-                ) : null}
+                <NotesText
+                  as="div"
+                  notes={a.notes}
+                  className="mt-0.5 text-xs text-slate-500 dark:text-slate-400"
+                />
               </div>
               <div className="flex shrink-0 items-center gap-1">
                 {a.status === "scheduled" ? (

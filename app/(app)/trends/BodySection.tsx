@@ -44,6 +44,7 @@ import type { BodyMetricKind, Goal } from "@/lib/types";
 import type { DateRange } from "@/lib/timeline-format";
 import { EmptyState } from "@/components/ui";
 import LineChartCard from "@/components/LineChartCard";
+import NotesText from "@/components/NotesText";
 import StackedBarCard from "@/components/StackedBarCard";
 import ScrollFade from "@/components/ScrollFade";
 import BodyTrendCharts, {
@@ -757,7 +758,7 @@ export default async function BodySection({ range }: { range: DateRange }) {
                         )}
                     </td>
                     <td className="td text-slate-500 dark:text-slate-400">
-                      {w.notes ?? ""}
+                      <NotesText notes={w.notes} />
                     </td>
                     <td className="td text-right">
                       <DeleteBodyMetricButton

@@ -9,6 +9,8 @@ import { requireSession } from "@/lib/auth";
 import { getEncounter } from "@/lib/queries";
 import { formatRecordDate, sourceLabel } from "@/lib/record-format";
 import { PageHeader } from "@/components/ui";
+import PageContainer from "@/components/PageContainer";
+import NotesText from "@/components/NotesText";
 import ProviderName from "@/components/ProviderName";
 import OpenInMaps from "@/components/OpenInMaps";
 import type { Encounter } from "@/lib/types";
@@ -71,7 +73,7 @@ export default async function EncounterDetailPage(props: {
   const diagnoses = diagnosisList(encounter.diagnoses);
 
   return (
-    <div className="max-w-3xl" data-testid="encounter-detail">
+    <PageContainer width="reading" data-testid="encounter-detail">
       <Link
         href="/encounters"
         className="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 transition hover:text-brand-700 dark:text-slate-400 dark:hover:text-brand-300"
@@ -170,12 +172,12 @@ export default async function EncounterDetailPage(props: {
 
           <DetailRow label="Notes">
             {encounter.notes ? (
-              <p
-                className="whitespace-pre-line leading-relaxed"
+              <NotesText
+                as="p"
+                notes={encounter.notes}
+                className="leading-relaxed"
                 data-testid="encounter-notes"
-              >
-                {encounter.notes}
-              </p>
+              />
             ) : (
               <span className="text-slate-400">—</span>
             )}
@@ -207,6 +209,6 @@ export default async function EncounterDetailPage(props: {
         Informational only, not medical advice. Imported visits come from
         uploaded health records (CCD Encounters section).
       </p>
-    </div>
+    </PageContainer>
   );
 }

@@ -5,6 +5,7 @@ import { IconPencil, IconTrash } from "@tabler/icons-react";
 import ImmunizationForm from "./ImmunizationForm";
 import { updateImmunization, deleteImmunization } from "./actions";
 import { useConfirm } from "@/components/ConfirmDialog";
+import NotesText from "@/components/NotesText";
 import { vaccineDisplayName } from "@/lib/immunization-catalog";
 import {
   resolveDoseLabels,
@@ -107,11 +108,10 @@ export default function VaccineDoseHistory({
                 </td>
                 <td className="td text-slate-600 dark:text-slate-300">
                   {labels.get(im.id) ?? "—"}
-                  {im.notes ? (
-                    <span className="ml-2 text-xs text-slate-400">
-                      {im.notes}
-                    </span>
-                  ) : null}
+                  <NotesText
+                    notes={im.notes}
+                    className="ml-2 text-xs text-slate-400"
+                  />
                 </td>
                 <td className="td text-slate-500 dark:text-slate-400">
                   {im.vaccine === code

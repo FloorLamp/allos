@@ -6,6 +6,7 @@ import { IconCheck, IconAlertTriangle } from "@tabler/icons-react";
 import { useActivityEditor } from "@/components/ActivityEditorProvider";
 import { ActivityTypeIcon } from "@/components/ui";
 import ActivityProvenance from "@/components/ActivityProvenance";
+import NotesText from "@/components/NotesText";
 import RouteMap from "@/components/RouteMap";
 import type { ActivityEditData } from "@/components/ActivityForm";
 import type { UnitPrefs } from "@/lib/settings";
@@ -445,14 +446,14 @@ export default function JournalCard({
 
       {activity.notes && (
         <div className="mt-3">
-          <p
+          <NotesText
+            as="p"
             data-testid="activity-notes"
+            notes={activity.notes}
             className={`text-sm leading-relaxed text-slate-600 dark:text-slate-300 ${
               notesCanExpand && !notesExpanded ? "line-clamp-2" : ""
             }`}
-          >
-            {activity.notes}
-          </p>
+          />
           {notesCanExpand && (
             <button
               type="button"

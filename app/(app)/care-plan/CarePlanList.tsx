@@ -6,6 +6,7 @@ import RecordTable, { type RecordColumn } from "@/components/RecordTable";
 import RecordProvenance from "@/components/RecordProvenance";
 import StatusBadge from "@/components/StatusBadge";
 import ProviderName from "@/components/ProviderName";
+import NotesText from "@/components/NotesText";
 import { formatRecordDate, titleCase } from "@/lib/record-format";
 import type { CarePlanItem } from "@/lib/types";
 
@@ -24,11 +25,10 @@ const COLUMNS: RecordColumn<CarePlanItem>[] = [
             className="ml-2 text-xs font-normal text-slate-400"
           />
         ) : null}
-        {c.notes ? (
-          <span className="ml-2 text-xs font-normal text-slate-400">
-            {c.notes}
-          </span>
-        ) : null}
+        <NotesText
+          notes={c.notes}
+          className="ml-2 text-xs font-normal text-slate-400"
+        />
       </>
     ),
   },

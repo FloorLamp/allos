@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { IconPencil, IconTrash, IconPlayerStop } from "@tabler/icons-react";
 import SubmitButton from "@/components/SubmitButton";
+import NotesText from "@/components/NotesText";
 import { formatLongDate } from "@/lib/format-date";
 import type { Protocol, FormResult, Equipment } from "@/lib/types";
 import type { OutcomeOption, ProtocolPractice } from "@/lib/queries/protocols";
@@ -71,11 +72,11 @@ export default function ProtocolControls({
           Situation: <span className="font-medium">{protocol.situation}</span>
         </p>
       )}
-      {protocol.notes && (
-        <p className="whitespace-pre-wrap text-sm text-slate-600 dark:text-slate-300">
-          {protocol.notes}
-        </p>
-      )}
+      <NotesText
+        as="p"
+        notes={protocol.notes}
+        className="text-sm text-slate-600 dark:text-slate-300"
+      />
       <div className="flex flex-wrap gap-2">
         <button
           type="button"

@@ -1,5 +1,6 @@
 import { requireSession } from "@/lib/auth";
 import { PageHeader, EmptyState } from "@/components/ui";
+import PageContainer from "@/components/PageContainer";
 import { getCoverageGaps, getCoverageGapCandidates } from "@/lib/queries";
 import { aiEndpointInfo } from "@/lib/ai-client";
 import { buildCatalogRequest } from "@/lib/coverage-gaps";
@@ -25,7 +26,7 @@ export default async function CoveragePage() {
   );
 
   return (
-    <div className="mx-auto max-w-3xl">
+    <PageContainer width="reading" className="mx-auto">
       <PageHeader
         title="Coverage gaps"
         subtitle="Biomarkers, medications, and conditions the curated catalogs don't cover yet — track one to add context or request it be catalogued."
@@ -49,6 +50,6 @@ export default async function CoveragePage() {
         reference range, flag, or interaction. Curated data drives all clinical
         logic. Informational, not medical advice.
       </p>
-    </div>
+    </PageContainer>
   );
 }
