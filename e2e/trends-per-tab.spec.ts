@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { followLink } from "./helpers";
 
 // Issue #105: the Trends hub must render ONLY the active tab's section
 // server-side (previously all six sections rendered — and ran their queries —
@@ -107,17 +108,17 @@ test("the Fitness nested strip is URL-driven and deep-linkable (#105)", async ({
     "true"
   );
 
-  // Clicking a nested tab navigates, preserving the outer tab. The nested strip
-  // is the same NavTabs component (real <a href>), so the pre-hydration click is
-  // native and can't be swallowed (#830) — no re-click retry needed. But settle
-  // the heavy Fitness section (charts + deeply-nested strip) before clicking:
-  // once hydrated, the tab's post-hydration soft nav is reliable, whereas a
-  // machine-speed click landing mid-hydration can still have its router.push
-  // dropped. networkidle is a deterministic readiness gate (what a real user
-  // waits for), NOT a retry — the click fires exactly once.
-  await page.waitForLoadState("networkidle");
-  await page.getByRole("tab", { name: "Sport" }).click();
-  await expect(page).toHaveURL(/ftab=sport/);
+  // Clicking a nested tab navigates, preserving the outer tab. The nested strip is
+  // the same NavTabs component (real <a href>); a machine-speed click landing
+  // mid-hydration on the heavy Fitness section (charts + deeply-nested strip) can
+  // still have its router.push dropped (#830). followLink retries the tab click
+  // until the nested URL commits — the blessed replacement for the old networkidle
+  // readiness gate (#868). Re-clicking the same tab is idempotent (same href).
+  await followLink(
+    page,
+    page.getByRole("tab", { name: "Sport" }),
+    /ftab=sport/
+  );
   await expect(page).toHaveURL(/tab=fitness/);
   await expect(page.getByRole("tab", { name: "Sport" })).toHaveAttribute(
     "aria-selected",

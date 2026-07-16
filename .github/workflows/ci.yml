@@ -179,6 +179,34 @@ jobs:
         if: steps.changes.outputs.code == 'true'
         run: npm run build
 
+      # Changed-spec lane (#868, fix c): run ONLY the specs this PR changed at
+      # --repeat-each=3 --retries=0, BEFORE the full (retry-tolerant) suite. The
+      # full suite's `retries: 1` proves "passes within N attempts", not "works" —
+      # a ≤50%-flaky spec can ship green. Zero retries × three repeats fails a spec
+      # that isn't reliably green, so retry-masking can't land a flaky/changed spec.
+      #   • base ref: under pull_request the checkout is the MERGE commit, so HEAD^1
+      #     is the PR base parent (fetch-depth:2 above guarantees it's present). We
+      #     prefer the event's base.sha when it happens to be in history, else fall
+      #     back to HEAD^1 — robust for both PR and push (HEAD^1 is the prior commit).
+      #   • no changed specs → cheap no-op (the full suite still covers everything).
+      #   • auth.setup.ts is passed alongside so the login dependency runs even
+      #     though the file filter wouldn't otherwise match it.
+      - name: E2E changed specs (repeat-each=3, retries=0)
+        if: steps.changes.outputs.code == 'true'
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          if [ -z "$BASE" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            BASE="HEAD^1"
+          fi
+          CHANGED=$(git diff --name-only "$BASE" HEAD | grep -E '^e2e/.*\.spec\.ts$' || true)
+          if [ -z "$CHANGED" ]; then
+            echo "No changed e2e specs - skipping the retries=0 lane."
+            exit 0
+          fi
+          echo "Changed e2e specs (running at --repeat-each=3 --retries=0):"
+          echo "$CHANGED"
+          npx playwright test e2e/auth.setup.ts $CHANGED --repeat-each=3 --retries=0
+
       - name: E2E (Playwright)
         if: steps.changes.outputs.code == 'true'
         run: npm run test:e2e
