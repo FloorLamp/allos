@@ -570,7 +570,7 @@ export default async function OnboardingPage({
                 {ONBOARDING_NOTIFICATION_INTENT_DEFS.map((intent) => (
                   <label
                     key={intent.id}
-                    className="relative flex cursor-pointer items-start rounded-xl border border-black/10 p-3 pr-10 transition hover:border-brand-300 has-[:checked]:border-brand-400 has-[:checked]:bg-brand-50/60 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand-400/50 dark:border-white/10 dark:hover:border-brand-500/50 dark:has-[:checked]:border-brand-500/60 dark:has-[:checked]:bg-brand-500/10"
+                    className="relative block cursor-pointer rounded-xl border border-black/10 p-3 pr-10 transition hover:border-brand-300 has-[:checked]:border-brand-400 has-[:checked]:bg-brand-50/60 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand-400/50 dark:border-white/10 dark:hover:border-brand-500/50 dark:has-[:checked]:border-brand-500/60 dark:has-[:checked]:bg-brand-500/10"
                   >
                     <input
                       type="radio"
@@ -587,13 +587,21 @@ export default async function OnboardingPage({
                         aria-hidden="true"
                       />
                     </span>
-                    <span>
+                    <span className="block">
                       <span className="block text-sm font-medium text-slate-800 dark:text-slate-100">
                         {intent.label}
                       </span>
                       <span className="mt-0.5 block text-xs text-slate-500 dark:text-slate-400">
                         {intent.description}
                       </span>
+                    </span>
+                    <span
+                      data-testid={`notification-preview-${intent.id}`}
+                      aria-live="polite"
+                      className="mt-3 hidden rounded-lg border border-brand-200 bg-white/70 px-3 py-2 text-xs leading-relaxed text-brand-800 peer-checked:block dark:border-brand-500/25 dark:bg-ink-900/50 dark:text-brand-200"
+                    >
+                      <span className="mr-1 font-semibold">Preview:</span>
+                      {intent.preview}
                     </span>
                   </label>
                 ))}

@@ -294,7 +294,25 @@ test("a new profile reaches a useful dashboard through the metrics path", async 
       name: "Next",
     });
     await expect(notificationsNext).toBeDisabled();
+    const dailyPreview = notifications.getByTestId(
+      "notification-preview-daily-essentials"
+    );
+    const nonePreview = notifications.getByTestId("notification-preview-none");
+    await expect(dailyPreview).toBeHidden();
+    await notifications
+      .getByRole("radio", { name: /^Daily guidance Medication/ })
+      .check();
+    await expect(dailyPreview).toBeVisible();
+    await expect(dailyPreview).toContainText(
+      "Good morning — 2 scheduled doses and today's workout need attention."
+    );
+    await expect(nonePreview).toBeHidden();
     await notifications.getByLabel("No notifications").check();
+    await expect(dailyPreview).toBeHidden();
+    await expect(nonePreview).toBeVisible();
+    await expect(nonePreview).toContainText(
+      "Nothing will be proposed for delivery."
+    );
     await expect(notificationsNext).toBeEnabled();
     await notificationsNext.click();
 
