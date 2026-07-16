@@ -35,14 +35,17 @@ test("a medication row links to its clinical-record detail page", async ({
 }) => {
   await page.goto("/medications");
 
-  await page
+  const link = page
     .getByTestId("medication-row")
     .filter({ hasText: "Adherence Refill Med (e2e)" })
-    .getByTestId("medication-row-link")
-    .click();
-
+    .getByTestId("medication-row-link");
+  await expect(link).toBeVisible();
   const detail = page.getByTestId("medication-detail");
-  await expect(detail).toBeVisible();
+  // Ride out the hydration window (#730): retry the navigation until detail shows.
+  await expect(async () => {
+    await link.click();
+    await expect(detail).toBeVisible({ timeout: 2000 });
+  }).toPass();
   await expect(detail).toContainText("Adherence Refill Med (e2e)");
   // The detail page is the clinical-record home: its History disclosure (courses +
   // side effects) is open by default.
@@ -61,20 +64,23 @@ test("records bridge tracks an imported prescription that has no tracked med", a
     .filter({ hasText: "E2E Bridge Track Med" });
   await expect(item).toBeVisible();
 
-  await item.getByTestId("records-bridge-track").click();
+  // "Track this" is a client onClick — retry the tap to ride out the hydration
+  // window (#730), asserting the suggestion clears once it lands.
+  await expect(async () => {
+    await item.getByTestId("records-bridge-track").click();
+    await expect(
+      page
+        .getByTestId("records-bridge-item")
+        .filter({ hasText: "E2E Bridge Track Med" })
+    ).toHaveCount(0, { timeout: 3000 });
+  }).toPass();
 
-  // The tracked med now appears as a current medication row, and its bridge
-  // suggestion is gone (it's tracked, so no longer "untracked").
+  // The tracked med now appears as a current medication row.
   await expect(
     page
       .getByTestId("medication-row")
       .filter({ hasText: "E2E Bridge Track Med" })
   ).toBeVisible();
-  await expect(
-    page
-      .getByTestId("records-bridge-item")
-      .filter({ hasText: "E2E Bridge Track Med" })
-  ).toHaveCount(0);
 });
 
 test("records bridge dismisses a suggestion via the findings bus", async ({
@@ -87,10 +93,14 @@ test("records bridge dismisses a suggestion via the findings bus", async ({
     .filter({ hasText: "E2E Bridge Dismiss Med" });
   await expect(item).toBeVisible();
 
-  await item.getByTestId("records-bridge-dismiss").click();
+  // Dismiss is a client onClick — retry the tap to ride out the hydration window
+  // (#730), asserting the suggestion clears once it lands.
+  await expect(async () => {
+    await item.getByTestId("records-bridge-dismiss").click();
+    await expect(item).toHaveCount(0, { timeout: 3000 });
+  }).toPass();
 
-  // The dismissed suggestion disappears and stays gone across a reload.
-  await expect(item).toHaveCount(0);
+  // The dismissal stays gone across a reload (persisted on the findings bus).
   await page.reload();
   await expect(
     page

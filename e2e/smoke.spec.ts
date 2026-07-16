@@ -211,20 +211,34 @@ test("supplements page shows a refill days-left estimate with its basis (#38)", 
 // #272: a medication whose name carries a PERCENT strength ("Hydrocortisone
 // 2.5% Cream", seeded in e2e/seed-events.ts) must still resolve its educational
 // "What is this?" explainer — the dead `%\b` regex never stripped percent
-// strengths, so every topical/cream/drop silently lost its description.
+// strengths, so every topical/cream/drop silently lost its description. In the
+// #817 redesign the explainer lives on the /medications/[id] detail page (the med's
+// clinical-record home), reached from its list row.
 test("percent-strength medication resolves its 'What is this?' explainer (#272)", async ({
   page,
 }) => {
   await page.goto("/medications");
-  const card = page
-    .locator(".card", { hasText: "Hydrocortisone 2.5% Cream" })
-    .first();
-  await expect(card).toBeVisible();
-  await card.getByText("What is this?").click();
-  // Generic + drug class from lib/medication-descriptions.json — only rendered
-  // when the normalized lookup lands on the hydrocortisone entry.
-  await expect(card).toContainText("Corticosteroid");
-  await expect(card).toContainText(
+  const link = page
+    .getByTestId("medication-row")
+    .filter({ hasText: "Hydrocortisone 2.5% Cream" })
+    .first()
+    .getByTestId("medication-row-link");
+  await expect(link).toBeVisible();
+  const detail = page.getByTestId("medication-detail");
+  // Ride out the hydration window (#730): retry the navigation until detail shows.
+  await expect(async () => {
+    await link.click();
+    await expect(detail).toBeVisible({ timeout: 2000 });
+  }).toPass();
+  // The explainer disclosure is a client toggle — retry the expand to ride out the
+  // hydration window (#730), then assert the description landed.
+  await expect(async () => {
+    await detail.getByText("What is this?").click();
+    // Generic + drug class from lib/medication-descriptions.json — only rendered
+    // when the normalized lookup lands on the hydrocortisone entry.
+    await expect(detail).toContainText("Corticosteroid");
+  }).toPass();
+  await expect(detail).toContainText(
     /corticosteroid used to reduce inflammation/i
   );
 });

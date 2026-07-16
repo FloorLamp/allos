@@ -54,9 +54,15 @@ test("dashboard quick-log widget logs an administration and updates the count (#
   await expect(item.getByTestId("prn-day-label")).toContainText("2 today");
 
   // One-tap "Log" records a fresh administration NOW → the count becomes three
-  // (the two seeded ones are well outside the double-tap dedup window).
-  await item.getByTestId("prn-log-now").click();
-  await expect(item.getByTestId("prn-day-label")).toContainText("3 today");
+  // (the two seeded ones are well outside the double-tap dedup window). Retry the
+  // tap to ride out the hydration window (#730); the #797 short-window dedup
+  // collapses rapid re-taps into ONE administration, so the retry stays at three.
+  await expect(async () => {
+    await item.getByTestId("prn-log-now").click();
+    await expect(item.getByTestId("prn-day-label")).toContainText("3 today", {
+      timeout: 3000,
+    });
+  }).toPass();
 
   // The retro-time affordance reveals the offset / custom-time options.
   await item.getByTestId("prn-log-more").click();

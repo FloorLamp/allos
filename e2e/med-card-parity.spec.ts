@@ -31,9 +31,12 @@ test("medication row shows the adherence summary and refill badge (#747)", async
 
   // The same parity widgets render on the clinical-record detail page the row links
   // to (#817) — the row is the scannable index, the detail is the home.
-  await row.getByTestId("medication-row-link").click();
   const detail = page.getByTestId("medication-detail");
-  await expect(detail).toBeVisible();
+  // Ride out the hydration window (#730): retry the navigation until detail shows.
+  await expect(async () => {
+    await row.getByTestId("medication-row-link").click();
+    await expect(detail).toBeVisible({ timeout: 2000 });
+  }).toPass();
   await expect(detail.getByTestId("refill-days-left")).toBeVisible();
   await expect(detail).toContainText(/% adherence/);
 });
