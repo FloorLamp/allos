@@ -14,6 +14,26 @@
 
 import { cleanMedicationName } from "./prescription-parse";
 import medsJson from "./medication-descriptions.json";
+import type { FoodTiming } from "./types";
+import type { TimeBucket } from "./supplement-schedule";
+
+// Curated, CITED "typical use" conventions for a medication (issue #846) — the
+// label-standard defaults the selection-prefill resolver suggests when this med is
+// picked on the form (asNeeded/foodTiming/timeOfDay). ONLY encode label-standard,
+// citable conventions here (NSAIDs → with food; statins → evening; levothyroxine →
+// empty stomach, morning); absent fields mean NO suggestion, never a guess. Every
+// entry carries a `source` (the cited-dataset discipline, mirroring prn-defaults).
+// INFORMATIONAL — a suggestion the user confirms/edits, never applied silently.
+export interface MedicationTypical {
+  // Commonly taken "as needed" (PRN) rather than on a fixed schedule.
+  asNeeded?: boolean;
+  // The label's standard food relationship (e.g. NSAIDs with food).
+  foodTiming?: FoodTiming;
+  // The label's standard time of day (e.g. statins in the evening).
+  timeOfDay?: TimeBucket;
+  // Citation for the convention (a public label / prescribing-information figure).
+  source: string;
+}
 
 export interface MedicationInfo {
   // Canonical generic display name (e.g. "Ibuprofen").
@@ -24,6 +44,9 @@ export interface MedicationInfo {
   drug_class?: string;
   // Neutral 1-3 sentence explanation: what it is and what it's commonly used for.
   description: string;
+  // Label-standard "typical use" conventions for selection prefill (#846). Absent
+  // for entries with no strong, citable convention.
+  typical?: MedicationTypical;
 }
 
 const MEDICATIONS: Record<string, MedicationInfo> =
@@ -91,6 +114,21 @@ export function medicationCatalogNames(): string[] {
     }
   }
   return [...names].sort((a, b) => a.localeCompare(b));
+}
+
+// The sorted, de-duplicated list of catalog BRAND names — the medication form's brand
+// combobox source (#846), so a med's brand field suggests "Advil"/"Motrin" rather than
+// the supplement brands ("Thorne"). After a specific med is picked, the form narrows
+// this to that entry's own brand_names (via the prefill resolver). Pure over the
+// bundled asset.
+export function medicationBrandNames(): string[] {
+  const brands = new Set<string>();
+  for (const info of Object.values(MEDICATIONS)) {
+    for (const brand of info.brand_names ?? []) {
+      if (brand) brands.add(brand);
+    }
+  }
+  return [...brands].sort((a, b) => a.localeCompare(b));
 }
 
 // Split a picked catalog name into { name (generic), brand } for the med form (#817).
