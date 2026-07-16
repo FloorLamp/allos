@@ -1183,8 +1183,31 @@ const ibuprofenId = Number(
 db.prepare("UPDATE intake_items SET as_needed = 1 WHERE id = ?").run(
   ibuprofenId
 );
-medDose.run(ibuprofenId, "200 mg", "Anytime", "with_food", 0);
+const ibuprofenDoseId = Number(
+  medDose.run(ibuprofenId, "200 mg", "Anytime", "with_food", 0).lastInsertRowid
+);
 courseIns.run(ibuprofenId, daysAgo(30), null, null, "PRN for pain");
+// Two PRN administrations earlier today (#797), so the Medications card / dashboard
+// quick-log widget show "2 today · last …". given_at is the real intake time (a few
+// hours ago), stored UTC to match datetime('now'); date is pinned to today.
+{
+  const prnDay = today(SEED_PROFILE_ID);
+  const admIns = db.prepare(
+    `INSERT INTO intake_item_logs (dose_id, item_id, date, given_at, amount, status)
+     VALUES (?, ?, ?, ?, '200 mg', 'taken')`
+  );
+  for (const minutesAgo of [300, 90]) {
+    admIns.run(
+      ibuprofenDoseId,
+      ibuprofenId,
+      prnDay,
+      new Date(Date.now() - minutesAgo * 60 * 1000)
+        .toISOString()
+        .slice(0, 19)
+        .replace("T", " ")
+    );
+  }
+}
 
 // A FOOD–DRUG demo (issue #154): Simvastatin (a CYP3A4 statin) — active, scheduled
 // in the evening, carrying its RxNorm ingredient CUI (36567). It needs no second

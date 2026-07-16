@@ -151,6 +151,29 @@ export type DoseTakenOutcome =
   | "stale-dose" // dose deleted/retired (or not this profile's): nothing logged
   | "inactive"; // parent item is paused/stopped: nothing logged
 
+// Outcome of logging one PRN (as-needed) ADMINISTRATION (logAdministration, issue
+// #797). Unlike markDoseTaken — which enforces one-per-day for a SCHEDULED dose —
+// a PRN med can be given several times a day, so each successful log is a NEW row.
+// The typed result lets the dashboard widget and the Telegram tap answer honestly
+// (the markDoseTaken contract) instead of unconditionally confirming a non-
+// idempotent write:
+//   logged     — a fresh administration row was written; `count` is the item's
+//                running total for `date` and `lastGivenAt` its latest intake time.
+//   duplicate  — a same-dose administration already exists within the short double-
+//                tap window (a re-tapped button / retried callback); nothing written,
+//                supply untouched, and the standing count/last-time reported.
+//   invalid-time — the supplied given_at failed the window guard (#614: a forged or
+//                far-off time); nothing written.
+//   stale-item — the item isn't this profile's, has no loggable (non-retired) dose,
+//                or was deleted; nothing written.
+//   inactive   — the item is paused/stopped; nothing written.
+export type AdministrationOutcome =
+  | { kind: "logged"; count: number; lastGivenAt: string; date: string }
+  | { kind: "duplicate"; count: number; lastGivenAt: string; date: string }
+  | { kind: "invalid-time" }
+  | { kind: "stale-item" }
+  | { kind: "inactive" };
+
 // Outcome of a caregiver's "👍 I'm on it" acknowledgement on a missed-dose
 // escalation (issue #233). Unlike "✅ Confirmed taken" (which routes through
 // markDoseTaken and logs the dose), an ack NEVER claims the dose was taken — it

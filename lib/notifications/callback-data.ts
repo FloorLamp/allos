@@ -440,6 +440,34 @@ export function escalationAckCloseText(outcome: EscalationAckOutcome): string {
 // The window allowlist is FOOD_NUDGE_WINDOWS, imported from the renderer so the parser
 // and the send path can't drift on which windows are valid.
 
+// ---- PRN administration logging over Telegram (/dose command, #797) ----
+// A "prn:<profileId>:<itemId>:<token>" button logs one PRN (as-needed)
+// administration NOW. Like a dose tap, the profile id is a cross-check (the handler
+// re-resolves the acting profile from the chat and logAdministration re-verifies the
+// item is that profile's), and the handler answers from the typed
+// AdministrationOutcome — never unconditionally, because a PRN log is NOT idempotent
+// (multiple/day is the point). `token` is a per-render nonce (the "dedup token"): a
+// redelivered identical callback carries the same token, and the actual double-log
+// guard is logAdministration's short-window dedup, so a re-tap doesn't invent a
+// phantom dose. The button is NOT consumed on tap (you can log again later).
+
+export interface PrnLogCallback {
+  profileId: number;
+  itemId: number;
+  token: string;
+}
+
+// Parse a "prn:<profileId>:<itemId>:<token>" token. The token is the greedy tail (a
+// nonce with no colons). Malformed (wrong prefix, bad ids, missing token) → null.
+export function parsePrnLogCallback(data: unknown): PrnLogCallback | null {
+  if (typeof data !== "string" || !data.startsWith("prn:")) return null;
+  const [, profStr, itemStr, token] = data.split(":");
+  const profileId = Number(profStr);
+  const itemId = Number(itemStr);
+  if (!profileId || !itemId || !token) return null;
+  return { profileId, itemId, token };
+}
+
 export interface FoodLogCallback {
   profileId: number;
   window: FoodNudgeWindow;

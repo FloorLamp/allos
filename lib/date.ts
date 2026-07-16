@@ -106,6 +106,67 @@ export function zonedMinuteStr(tz: string, d: Date): string {
   return `${date}T${hhmm}`;
 }
 
+// The offset (ms) of `tz` from UTC at instant `at` — i.e. (tz-local wall clock,
+// read as if it were UTC) − at. Positive east of UTC. DST-correct because it reads
+// the zone's actual wall clock at that specific instant. Pure (Intl only).
+export function tzOffsetMs(tz: string, at: Date): number {
+  const parts = cachedDateTimeFormat("en-CA", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(at);
+  const g = (t: string) => Number(parts.find((p) => p.type === t)?.value);
+  let hour = g("hour");
+  if (hour === 24) hour = 0; // some ICU builds emit "24" for midnight
+  const asUtc = Date.UTC(
+    g("year"),
+    g("month") - 1,
+    g("day"),
+    hour,
+    g("minute"),
+    g("second")
+  );
+  return asUtc - at.getTime();
+}
+
+// The UTC instant whose wall-clock time in `tz` is `dateStr` (YYYY-MM-DD) at
+// `hhmm` (HH:MM). The inverse of zonedDateParts: turns a user-entered local time
+// ("gave it at 4:02pm today") into the absolute instant to store. Two-pass so a
+// wall time near a DST transition settles on the correct offset. Pure (Intl only).
+export function zonedWallTimeToUtc(
+  tz: string,
+  dateStr: string,
+  hhmm: string
+): Date {
+  const [h, m] = hhmm.split(":").map(Number);
+  const [y, mo, d] = dateStr.split("-").map(Number);
+  const naiveUtc = Date.UTC(y, mo - 1, d, h || 0, m || 0, 0);
+  let inst = new Date(naiveUtc - tzOffsetMs(tz, new Date(naiveUtc)));
+  inst = new Date(naiveUtc - tzOffsetMs(tz, inst));
+  return inst;
+}
+
+// Serialize an instant to SQLite's `datetime('now')` shape — "YYYY-MM-DD HH:MM:SS"
+// in UTC, no zone suffix — so a value written from JS sorts and compares (strftime)
+// identically to one written by SQLite. Pure.
+export function utcSqlString(d: Date = new Date()): string {
+  return d.toISOString().slice(0, 19).replace("T", " ");
+}
+
+// Parse a stored UTC datetime ("YYYY-MM-DD HH:MM:SS" or ISO with a T) back to a
+// Date. SQLite datetimes carry no zone, so the value is UTC by construction; append
+// "Z" so JS doesn't reinterpret it in the process-local zone. Null on garbage. Pure.
+export function parseUtcSql(s: string | null | undefined): Date | null {
+  if (!s) return null;
+  const d = new Date(s.replace(" ", "T") + (/[zZ]$/.test(s) ? "" : "Z"));
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
 // Whole days from calendar date `a` to `b` (both YYYY-MM-DD), i.e. b − a.
 // UTC-anchored so it's timezone-independent and never crosses a DST boundary.
 // Returns null if either date is unparseable.

@@ -48,9 +48,19 @@ export interface TelegramCallbackQuery {
   };
 }
 
+// An inbound text message (a slash command like `/dose`, #797). We read only the
+// chat id and text; commands carry no callback token, so the acting profile is
+// resolved from the chat (getProfilesByTelegramChatId) like a callback tap.
+export interface TelegramMessage {
+  message_id?: number;
+  chat?: { id?: number | string };
+  text?: string;
+}
+
 export interface TelegramUpdate {
   update_id: number;
   callback_query?: TelegramCallbackQuery;
+  message?: TelegramMessage;
 }
 
 const apiBase = (token: string) => `https://api.telegram.org/bot${token}`;
@@ -187,7 +197,10 @@ export async function setWebhook(url: string, secret: string): Promise<void> {
   await call("setWebhook", {
     url,
     secret_token: secret,
-    allowed_updates: ["callback_query"],
+    // "message" delivers the /dose slash command (#797) alongside button taps. A
+    // webhook picks it up on the next register (Settings → Server → Register
+    // webhook); polling picks it up immediately.
+    allowed_updates: ["callback_query", "message"],
   });
 }
 
@@ -208,7 +221,10 @@ export async function getUpdates(
     {
       ...(offset ? { offset } : {}),
       timeout: timeoutSec,
-      allowed_updates: ["callback_query"],
+      // "message" delivers the /dose slash command (#797) alongside button taps. A
+      // webhook picks it up on the next register (Settings → Server → Register
+      // webhook); polling picks it up immediately.
+      allowed_updates: ["callback_query", "message"],
     },
     (timeoutSec + 15) * 1000
   );

@@ -43,7 +43,10 @@ import {
   getAuditRetentionMonths,
 } from "../lib/settings";
 import { getUpdates, telegramChannel } from "../lib/notifications/telegram";
-import { handleCallbackQuery } from "../lib/notifications/telegram-callbacks";
+import {
+  handleCallbackQuery,
+  handleDoseCommand,
+} from "../lib/notifications/telegram-callbacks";
 import { runEscalations } from "../lib/notifications/escalate";
 import { runRefills } from "../lib/notifications/refill";
 import { runPreventive } from "../lib/notifications/preventive";
@@ -164,6 +167,7 @@ async function poll(): Promise<never> {
       for (const u of updates) {
         try {
           if (u.callback_query) await handleCallbackQuery(u.callback_query);
+          else if (u.message) await handleDoseCommand(u.message);
         } catch (e) {
           // One bad tap must not wedge the queue — log, ack via offset, move on.
           log.error("poll: handling update failed", {

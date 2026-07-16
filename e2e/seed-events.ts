@@ -9,7 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { db, today } from "../lib/db";
-import { shiftDateStr } from "../lib/date";
+import { shiftDateStr, utcSqlString } from "../lib/date";
 import { writeRawPayload } from "../lib/integrations/raw-log";
 import { upsertConnection } from "../lib/integrations/connections";
 import {
@@ -1045,6 +1045,68 @@ for (let i = 1; i <= 14; i++) {
 
 console.log(
   `e2e: seeded med-card adherence+refill parity fixture "${PARITY_MED_NAME}" (#747)`
+);
+
+// ── PRN administration ledger fixture (issue #797) ───────────────────────────
+// A CURRENT, active PRN (as_needed) medication with refill tracking and TWO
+// administrations already logged TODAY (real given_at times), so BOTH the
+// Medications-page card ("2 today · last …") and the dashboard "Log a PRN dose"
+// widget render a populated PRN med, and the widget's "Log" button can add a
+// third. Fully synthetic name with no rxcui → matches no interaction/PGx/food-drug
+// dataset, so other specs are undisturbed; supply stays HIGH (60 units) so it never
+// joins the low-supply widget/Upcoming fixtures. Idempotent: recreated each boot so
+// the administrations stay today-relative. given_at is stored UTC ("YYYY-MM-DD
+// HH:MM:SS"); the profile tz labels the displayed clock.
+const PRN_MED_NAME = "PRN Quicklog Med (e2e)";
+db.prepare(`DELETE FROM intake_items WHERE profile_id = ? AND name = ?`).run(
+  PROFILE_ID,
+  PRN_MED_NAME
+);
+const prnMedId = Number(
+  db
+    .prepare(
+      `INSERT INTO intake_items
+         (profile_id, name, notes, condition, priority, kind, prescriber,
+          active, as_needed, quantity_on_hand, qty_per_dose)
+       VALUES (?, ?, 'As-needed med — e2e PRN quick-log fixture', 'daily',
+               'low', 'medication', 'Dr. Test Provider', 1, 1, 60, 1)`
+    )
+    .run(PROFILE_ID, PRN_MED_NAME).lastInsertRowid
+);
+const prnDoseId = Number(
+  db
+    .prepare(
+      `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+       VALUES (?, '400 mg', 'Anytime', 'any', 0)`
+    )
+    .run(prnMedId).lastInsertRowid
+);
+db.prepare(
+  `INSERT INTO medication_courses (item_id, started_on, stopped_on, stop_reason, notes)
+   VALUES (?, ?, NULL, NULL, 'PRN — e2e fixture')`
+).run(prnMedId, shiftDateStr(today(PROFILE_ID), -30));
+// Two administrations earlier today, so the card shows "2 today". given_at is
+// computed from seed-time minus a fixed offset (45m / 90m ago) — always well outside
+// the widget's ~2-minute double-tap dedup window from the later test-run "now", so a
+// subsequent widget "Log" click deterministically becomes the third. `date` is pinned
+// to today() (not derived from given_at) so the count stays "today" even if an offset
+// crosses UTC midnight at boot.
+const prnToday = today(PROFILE_ID);
+const insAdmin = db.prepare(
+  `INSERT INTO intake_item_logs (dose_id, item_id, date, given_at, amount, status)
+   VALUES (?, ?, ?, ?, '400 mg', 'taken')`
+);
+for (const minutesAgo of [90, 45]) {
+  insAdmin.run(
+    prnDoseId,
+    prnMedId,
+    prnToday,
+    utcSqlString(new Date(Date.now() - minutesAgo * 60 * 1000))
+  );
+}
+
+console.log(
+  `e2e: seeded PRN administration ledger fixture "${PRN_MED_NAME}" (#797)`
 );
 
 // ── Import-detail tabbed records-browser fixture (issue #271) ─────────────────

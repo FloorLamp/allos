@@ -180,6 +180,19 @@ export const DASHBOARD_WIDGETS: WidgetDef[] = [
     dataAware: true,
   },
   {
+    id: "quick-log-prn",
+    label: "Log a PRN dose",
+    description:
+      "One-tap logging for your as-needed medications — now, or a retro time (30m/1h ago, or a specific time). Records each real administration, not just one per day.",
+    // On by default so the retro-entry home is discoverable. Data-aware: a profile
+    // with no active PRN medications gets an onboarding CTA instead of a blank card.
+    // Not fitness-gated — PRN meds matter for a restricted/child profile too.
+    defaultOn: true,
+    fitness: false,
+    span: "half",
+    dataAware: true,
+  },
+  {
     id: "goals-habits",
     label: "Goals and habits",
     description:
