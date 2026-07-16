@@ -86,6 +86,10 @@ export default function SymptomLogBar({
   // of a false "logged".
   const [tempValue, setTempValue] = useState("");
   const [tempUnit, setTempUnit] = useState<"F" | "C">("F");
+  // Optional reading time (#800/#843): defaults to "now" (blank) so the common case is
+  // one tap, but a backfilled reading ("102 at 7am") can carry its own clock time for
+  // the fever curve.
+  const [tempTime, setTempTime] = useState("");
   const [tempError, setTempError] = useState<string | null>(null);
   const [tempPending, setTempPending] = useState(false);
 
@@ -109,10 +113,14 @@ export default function SymptomLogBar({
     fd.set("temp_unit", tempUnit);
     // The reading is "now" for today (the card's primary date), never the alt day.
     fd.set("date", date);
+    // An explicit reading time (backfill, e.g. a 7am fever) overrides "now"; the action
+    // stamps the profile-local clock time when this is blank.
+    if (tempTime.trim() !== "") fd.set("time", tempTime);
     const res = await logTemperature(fd);
     setTempPending(false);
     if (res.ok) {
       setTempValue("");
+      setTempTime("");
       toast(
         `Temperature logged: ${res.degF} °F${res.flag === "high" ? " — fever" : ""}`,
         { tone: res.flag === "high" ? "error" : undefined }
@@ -302,6 +310,14 @@ export default function SymptomLogBar({
               <option value="F">°F</option>
               <option value="C">°C</option>
             </select>
+            <input
+              data-testid="temp-quick-time"
+              type="time"
+              aria-label="Reading time (optional)"
+              value={tempTime}
+              onChange={(e) => setTempTime(e.target.value)}
+              className="input w-auto"
+            />
             <button
               type="button"
               data-testid="temp-quick-save"

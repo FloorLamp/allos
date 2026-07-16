@@ -27,6 +27,7 @@ import {
   VITAL_CANONICAL,
   toCanonicalTempF,
   temperatureRangeError,
+  normalizeClockTime,
   type TempUnit,
 } from "./vitals-input";
 import type { MedicalFlag } from "./types";
@@ -40,13 +41,6 @@ import type { MedicalFlag } from "./types";
 export type TemperatureLogOutcome =
   | { kind: "logged"; id: number; degF: number; flag: MedicalFlag | null }
   | { kind: "invalid"; error: string };
-
-// Normalize a caller-supplied time note to a bare "HH:MM" (24h) string, or null. Kept
-// display-only text in `notes`; never parsed for day attribution (that's `date`).
-function normalizeTimeNote(time: string | null | undefined): string | null {
-  const v = (time ?? "").trim();
-  return /^\d{2}:\d{2}$/.test(v) ? v : null;
-}
 
 const TEMP = VITAL_CANONICAL.temperature;
 
@@ -70,7 +64,7 @@ export function logTemperatureCore(
   const degF = round(toCanonicalTempF(rawValue, unit), 1);
   const rangeErr = temperatureRangeError(degF);
   if (rangeErr) return { kind: "invalid", error: rangeErr };
-  const note = normalizeTimeNote(time);
+  const note = normalizeClockTime(time);
 
   return writeTx(() => {
     const info = db

@@ -4,10 +4,31 @@
 // intake_items JOIN.
 // Medication history / lifecycle: courses (episodes), active-flag sync, side
 // effects and their promotion to an allergy row.
-import { db, writeTx } from "../../db";
+import { db, today, writeTx } from "../../db";
 import { normalizeSeverity, SEVERITY_LABELS } from "../../medication-history";
 import { parsePrescription } from "../../prescription-parse";
+import { profileAgeMonths } from "../../settings";
+import { getLatestBodyMetricDated } from "../metrics";
+import type { PediatricFormContext } from "../../prn-dosing";
 import type { MedicationCourse, MedicationSideEffect } from "../../types";
+
+// The pediatric label-dosing context (#798) for a medication form: the profile's age
+// in months + its latest recorded weight, so a PRN med form (full or the #843 quick-
+// add) can reproduce the OTC weight-band suggestion and the resolver can source a
+// child's dose amount from the band. ONE computation shared by the Medications loader
+// and the symptom-card quick-add, so both surfaces read the same context.
+export function getPediatricFormContext(
+  profileId: number
+): PediatricFormContext {
+  const todayStr = today(profileId);
+  const latestWeight = getLatestBodyMetricDated(profileId, "weight");
+  return {
+    ageMonths: profileAgeMonths(profileId, todayStr),
+    weightKg: latestWeight?.value ?? null,
+    weightDate: latestWeight?.date ?? null,
+    today: todayStr,
+  };
+}
 
 // ---- Medication history / lifecycle ----
 

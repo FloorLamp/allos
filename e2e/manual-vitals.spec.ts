@@ -50,3 +50,30 @@ test("logging vitals persists and renders alongside synced readings (#16)", asyn
   await expect(pager).toBeVisible();
   await expect(pager).toContainText("Showing");
 });
+
+// #843 (door B): the vitals quick-add now carries an optional temperature reading time
+// (#800 specced timed readings; it previously had none), so a manual temperature can
+// build the same fever curve a synced thermometer does. Drive a timed reading and
+// confirm it persisted without error.
+test("vitals quick-add logs a temperature with an optional reading time (#843)", async ({
+  page,
+}) => {
+  await page.goto("/trends?tab=body");
+
+  const form = page.getByTestId("vitals-quick-add");
+  await expect(form).toBeVisible();
+
+  await form.getByLabel("Temperature", { exact: true }).fill("101.2");
+  const timeField = form.getByTestId("vitals-temp-time");
+  await expect(timeField).toBeVisible();
+  await timeField.fill("07:00");
+
+  await form.getByRole("button", { name: "Save vitals" }).click();
+  await expect(page.getByText("Vitals saved")).toBeVisible();
+
+  // The reading joins the Body Temperature series in the biomarker browser.
+  await page.goto("/trends?tab=biomarkers&from=2000-01-01&to=2100-01-01");
+  await expect(
+    page.getByRole("link", { name: "Body Temperature" })
+  ).toBeVisible();
+});

@@ -5,6 +5,7 @@ import MedicationsTodayPanel from "./MedicationsTodayPanel";
 import MedicationRow from "./MedicationRow";
 import RecordsBridge from "./RecordsBridge";
 import MedicationForm from "@/components/MedicationForm";
+import QuickAddMedication from "@/components/QuickAddMedication";
 import IntakeWarnings from "@/components/IntakeWarnings";
 import ProviderDatalist from "@/components/ProviderDatalist";
 import { addSupplement } from "@/app/(app)/nutrition/supplement-actions";
@@ -24,7 +25,8 @@ export const dynamic = "force-dynamic";
 //   4. From your records — suggest-only bridge for imported prescriptions with no
 //      tracked med (#560).
 //   5. Past / discontinued — collapsed rows linking to detail.
-//   6. Add medication — the med-specific form with a medication-aware name combobox.
+//   6. Add medication — an OTC quick-add (#843: name → label-default prefill → confirm)
+//      then the full med-specific form with a medication-aware name combobox.
 // One intake_items table; supplements live on Nutrition → Supplements.
 export default async function MedicationsPage() {
   const { profile } = await requireSession();
@@ -115,7 +117,22 @@ export default async function MedicationsPage() {
         <RecordsBridge suggestions={data.bridge} />
       </div>
 
-      {/* 6. Add medication — always expanded, med-specific form (med-aware combobox).
+      {/* 6a. OTC quick-add (#843) — the common case (an OTC PRN med) in ~three fields:
+          name → label-default prefill → confirm. Creates the SAME intake_items row the
+          full form does. The full form below stays the long-tail path. */}
+      <div className="card mt-6">
+        <h2 className="mb-1 font-semibold text-slate-800 dark:text-slate-100">
+          Quick add (OTC)
+        </h2>
+        <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">
+          For an over-the-counter med like ibuprofen — pick the name and
+          confirm. Use the full form below for prescriptions, schedules, and
+          prescriber details.
+        </p>
+        <QuickAddMedication action={addSupplement} pediatric={data.pediatric} />
+      </div>
+
+      {/* 6b. Add medication — the med-specific form (med-aware combobox).
           Supplements are added on the Nutrition → Supplements tab. */}
       <div className="card mt-6">
         <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">

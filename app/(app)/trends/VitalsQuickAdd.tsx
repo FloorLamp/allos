@@ -44,6 +44,7 @@ export default function VitalsQuickAdd({
       spo2: s("spo2"),
       temperature: s("temperature"),
       tempUnit: s("temp_unit"),
+      temperatureTime: s("temp_time"),
       sleepHours: s("sleep_hours"),
       hrv: s("hrv"),
       gripStrength: s("grip_strength"),
@@ -203,6 +204,21 @@ export default function VitalsQuickAdd({
               <option value="C">°C</option>
             </select>
           </div>
+        </div>
+
+        <div>
+          {/* Optional reading time (#800/#843): a timestamped temperature builds the
+              fever curve. Rides the row's note as "HH:MM"; blank = the day only. */}
+          <label className="label" htmlFor="v-temp-time">
+            Temp. time (optional)
+          </label>
+          <input
+            id="v-temp-time"
+            data-testid="vitals-temp-time"
+            type="time"
+            name="temp_time"
+            className="input"
+          />
         </div>
 
         <div>

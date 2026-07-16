@@ -188,11 +188,13 @@ export function insertVitals(
 
   const insertMedical = db.prepare(
     `INSERT INTO medical_records
-       (profile_id, date, category, name, value, value_num, unit, canonical_name, source, external_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'manual', NULL)`
+       (profile_id, date, category, name, value, value_num, unit, canonical_name, source, external_id, notes)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'manual', NULL, ?)`
   );
   const ids: number[] = [];
   for (const m of medical) {
+    // Only a timed temperature carries a `note` (its "HH:MM" clock time, #800/#843);
+    // every other vital passes null, so the row is exactly as before.
     const info = insertMedical.run(
       profileId,
       date,
@@ -201,7 +203,8 @@ export function insertVitals(
       String(m.value_num),
       m.value_num,
       m.unit,
-      m.canonical
+      m.canonical,
+      m.note ?? null
     );
     ids.push(Number(info.lastInsertRowid));
   }
