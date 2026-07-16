@@ -38,8 +38,15 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { DATASET_SCHEMA, type DatasetEnvelope } from "../lib/datasets/types";
 
-const OUT = path.join(process.cwd(), "lib", "icd10-common.json");
+const OUT = path.join(
+  process.cwd(),
+  "lib",
+  "datasets",
+  "data",
+  "icd10-common.json"
+);
 
 // The code system every entry belongs to. Stored verbatim into conditions.code_system
 // so lib/fhir-export.ts emits the canonical http://hl7.org/fhir/sid/icd-10-cm URI.
@@ -774,16 +781,21 @@ const CURATED_CONDITIONS: Icd10CuratedEntry[] = [
   },
 ];
 
-export interface Icd10Dataset {
-  $comment: string;
+// Dataset-level metadata (issue #860 Track B): the code system every entry belongs
+// to — dataset-level config, not a per-entry field.
+export interface Icd10Meta {
   system: string;
-  conditions: Icd10CuratedEntry[];
 }
 
+// The framework envelope shape: the ICD-10-CM common-conditions map now ships as a
+// curated-dataset envelope under lib/datasets/data/, identity-keyed by `code`.
+export type Icd10Dataset = DatasetEnvelope<Icd10CuratedEntry, Icd10Meta>;
+
 // Pure builder: normalize + sort the curated table into the committed dataset. The
-// committed lib/icd10-common.json is a FIXED POINT of this (guarded by the dataset
-// test). Entries are emitted sorted by code for a stable, chapter-grouped, reviewable
-// diff; duplicate codes throw (a curated typo must not ship two rows for one code).
+// committed lib/datasets/data/icd10-common.json is a FIXED POINT of this (guarded by
+// the dataset test). Entries are emitted sorted by code for a stable, chapter-grouped,
+// reviewable diff; duplicate codes throw (a curated typo must not ship two rows for
+// one code).
 export function buildIcd10Dataset(): Icd10Dataset {
   const seen = new Set<string>();
   for (const e of CURATED_CONDITIONS) {
@@ -808,23 +820,36 @@ export function buildIcd10Dataset(): Icd10Dataset {
     }))
     .sort((a, b) => a.code.localeCompare(b.code));
   return {
-    $comment:
+    $schema: DATASET_SCHEMA,
+    id: "icd10-common",
+    title: "ICD-10-CM common-conditions map",
+    description:
       "Baked ICD-10-CM common-conditions map for SUGGESTING a diagnosis code on a " +
       "manually entered / code-less extracted condition and strengthening the " +
-      "cross-document condition de-dup key (issue #155). Public-domain ICD-10-CM " +
-      "codes + descriptions (CMS/NCHS); SNOMED deliberately avoided (affiliate " +
-      "license). Curated COMMON subset, NOT the full tabular list. Committed + " +
-      "HUMAN-REVIEWABLE; regenerate with `npm run gen:icd10`. INFORMATIONAL entry " +
-      "suggestions, confirmed by the user — NOT billing-grade coding advice.",
-    system: ICD10_SYSTEM,
-    conditions,
+      "cross-document condition de-dup key (issue #155). Curated COMMON subset, NOT " +
+      "the full tabular list. Committed + HUMAN-REVIEWABLE; regenerate with " +
+      "`npm run gen:icd10`. INFORMATIONAL entry suggestions, confirmed by the user — " +
+      "NOT billing-grade coding advice.",
+    citation: [
+      {
+        source:
+          "ICD-10-CM — U.S. Centers for Medicare & Medicaid Services (CMS) / " +
+          "CDC National Center for Health Statistics (NCHS)",
+        url: "https://www.cms.gov/medicare/coding-billing/icd-10-codes",
+        note: "Public-domain U.S. Government code set + official descriptions; curated common subset with lay synonyms. SNOMED deliberately avoided (affiliate license).",
+      },
+    ],
+    identity: { keys: ["code"] },
+    meta: { system: ICD10_SYSTEM },
+    entries: conditions,
   };
 }
 
 function writeDataset(): void {
   const dataset = buildIcd10Dataset();
+  fs.mkdirSync(path.dirname(OUT), { recursive: true });
   fs.writeFileSync(OUT, JSON.stringify(dataset, null, 2) + "\n");
-  console.log(`Wrote ${dataset.conditions.length} ICD-10-CM entries to ${OUT}`);
+  console.log(`Wrote ${dataset.entries.length} ICD-10-CM entries to ${OUT}`);
   console.log("Review the codes for plausibility before committing.");
 }
 
