@@ -8,7 +8,12 @@
 import type { ActivityType } from "./types";
 import { variantOf, isTimed, suggestTitle } from "./lifts";
 import { isCuratedActivity } from "./activities-catalog";
-import { showsDistanceField, timeOfDay, titleCase } from "./activity-meta";
+import {
+  showsDistanceField,
+  soleComponentDuration,
+  timeOfDay,
+  titleCase,
+} from "./activity-meta";
 import { isValidDuration, parseSeconds } from "./duration";
 import { isRealIsoDate } from "./date";
 import {
@@ -330,9 +335,15 @@ export interface ActivityPayload {
 // derived from the named parts. Numbers are left in the user's display unit
 // (the server action converts to canonical kg/km). Callers gate on canSave
 // first, so namedParts is non-empty and every part has a resolved type.
+//
+// `clockDuration` (the Start/End-derived span, in minutes) auto-fills a LONE
+// cardio/sport component whose own Duration was left empty (#791) — the same
+// rule the form applies to the visible field (soleComponentDuration). Multi-part
+// composites keep their manual per-leg durations, so the span isn't double-counted.
 export function buildActivityPayload(
   classifier: NameClassifier,
-  namedParts: PartEntry[]
+  namedParts: PartEntry[],
+  clockDuration: number | null = null
 ): ActivityPayload {
   const { partType, partNeedsDistance } = classifier;
   const comps: ActivityComponentPayload[] = namedParts.map((p) => {
@@ -345,6 +356,17 @@ export function buildActivityPayload(
         t !== "strength" && p.durationMin ? Number(p.durationMin) : null,
     };
   });
+  const isSoleComponent = comps.length === 1;
+  const sessionDurationMin =
+    clockDuration != null ? Math.round(clockDuration) : null;
+  for (const c of comps) {
+    c.duration_min = soleComponentDuration({
+      componentDurationMin: c.duration_min,
+      isSoleComponent,
+      isStrength: c.type === "strength",
+      sessionDurationMin,
+    });
+  }
   const flat: ActivitySetPayload[] = [];
   for (const p of namedParts) {
     if (partType(p) !== "strength") continue;

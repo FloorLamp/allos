@@ -442,6 +442,28 @@ export default function ActivityForm({
     if (overallDuration != null)
       setSessionDuration(String(Math.round(overallDuration)));
   }, [overallDuration]);
+  // A lone cardio/sport part (no strength, no other leg) auto-SETS its Duration
+  // from the clock span (#791) — mirroring the strength session-total precedent
+  // above, so the value LANDS on the component (editable) instead of only teasing
+  // a placeholder that never saves. Sports are duration-only, so an unfilled leg
+  // aggregated as a 0-minute session and showed nothing. Only fires when the
+  // field is still empty (never stomps a typed per-leg value) and only for a
+  // sole non-strength part: a multi-part composite keeps manual per-leg durations
+  // (the same guard buildActivityPayload's save-time fill uses).
+  const soleNonStrengthPart =
+    namedParts.length === 1 && partType(namedParts[0]) !== "strength"
+      ? namedParts[0]
+      : null;
+  useEffect(() => {
+    if (!soleNonStrengthPart || overallDuration == null) return;
+    if (soleNonStrengthPart.durationMin.trim()) return;
+    const filled = String(Math.round(overallDuration));
+    setParts((prev) =>
+      prev.map((p) =>
+        p === soleNonStrengthPart ? { ...p, durationMin: filled } : p
+      )
+    );
+  }, [soleNonStrengthPart, overallDuration]);
   // A cardio/sport part's own Duration (min), used to derive End from Start (or
   // Start from End) when the clock span is missing (#336). First such part wins.
   const componentDurationMin = (() => {
@@ -481,7 +503,11 @@ export default function ActivityForm({
   // field then stays empty rather than showing a fabricated number.
   const autoEstimateKcal = useMemo(() => {
     if (bodyweightKg == null || namedParts.length === 0) return null;
-    const { comps, primaryType } = buildActivityPayload(classifier, namedParts);
+    const { comps, primaryType } = buildActivityPayload(
+      classifier,
+      namedParts,
+      overallDuration
+    );
     return estimateActivityKcal(
       {
         type: primaryType,
@@ -500,6 +526,7 @@ export default function ActivityForm({
     effectiveTitle,
     intensity,
     effectiveSessionDuration,
+    overallDuration,
   ]);
   // Keep the field tracking the auto-estimate until the user types their own.
   useEffect(() => {
@@ -841,7 +868,8 @@ export default function ActivityForm({
   function buildFormData(): FormData {
     const { comps, flat, primaryType } = buildActivityPayload(
       classifier,
-      namedParts
+      namedParts,
+      overallDuration
     );
 
     const fd = new FormData();

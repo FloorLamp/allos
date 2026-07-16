@@ -1,3 +1,4 @@
+import { soleComponentDuration } from "../../activity-meta";
 import { shiftDateStr } from "../../date";
 import { db, today } from "../../db";
 import { decayedWeight } from "../../decay";
@@ -109,13 +110,26 @@ export const effortEntries = cache(function effortEntries(
         c?.type === targetType && typeof c.name === "string" && c.name.trim()
     );
     if (matching.length) {
+      // Heal clock-only sessions (#791): a sole cardio/sport component logged
+      // with Start/End times but no typed Duration stored null on the component,
+      // even though the parent row carries the clock-derived minutes. When it's
+      // the activity's ONLY component, fall back to that parent duration_min; the
+      // sole-component guard (comps.length === 1) keeps a mixed strength+sport
+      // session from attributing the strength minutes to its sport leg.
+      const isSoleComponent = comps.length === 1;
       for (const c of matching) {
         out.push({
           activityId: r.id,
           date: r.date,
           name: c.name.trim(),
           distanceKm: c.distance_km ?? 0,
-          durationMin: c.duration_min ?? 0,
+          durationMin:
+            soleComponentDuration({
+              componentDurationMin: c.duration_min ?? null,
+              isSoleComponent,
+              isStrength: false,
+              sessionDurationMin: r.duration_min ?? null,
+            }) ?? 0,
           intensity: r.intensity,
         });
       }

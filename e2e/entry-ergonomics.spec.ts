@@ -683,6 +683,69 @@ test("a cardio part derives avg speed AND pace from distance + duration (#336)",
     .click();
 });
 
+test("a lone sport logged with Start/End auto-fills its Duration and shows real minutes (#791)", async ({
+  page,
+}) => {
+  await page.goto("/training"); // default "Log" tab renders the Journal feed
+
+  // Open a fresh create form (fields addressed by testid/role — see the
+  // est-calories spec's note on why the editor isn't main-scoped).
+  await page
+    .getByRole("main")
+    .getByRole("button", { name: "New activity" })
+    .click();
+
+  // Pick a curated SPORT. Sports are duration-only (no distance field), which is
+  // exactly why a clock-only save that never reached the component aggregated as a
+  // 0-minute session and showed nothing (#791).
+  await pickActivity(page, "Tennis");
+
+  // Give it a Start/End clock span but leave Duration untouched — a 55-minute span.
+  await page.locator("#activity-start-time").fill("08:00");
+  await page.locator("#activity-end-time").fill("08:55");
+
+  // The clock minutes LAND on the component's Duration field as an editable VALUE
+  // (not a grey placeholder that never saves) — the crux of the fix.
+  const duration = page.getByTestId("cardio-duration");
+  await expect(duration).toHaveValue("55");
+  await expect(duration).toBeEditable();
+
+  // A duration makes the activity savable, so it auto-saves — the Delete button
+  // appears only once the row persisted (confirming the 55 landed on the DB
+  // component, through the real saveActivity path).
+  await expect(
+    page.getByRole("button", { name: "Delete", exact: true })
+  ).toBeVisible();
+
+  // It surfaces on the Sport analysis view with its real minutes — the seed's own
+  // Tennis session is 90 min ("1h 30m"), so a "55 min" session cell is proof of
+  // THIS log, not the fixture.
+  await page.goto("/training?tab=analyze&kind=sport&item=Tennis");
+  await expect(
+    page.getByRole("cell", { name: "55 min", exact: true }).first()
+  ).toBeVisible();
+
+  // Clean up the row this test created so the shared seed DB is left untouched:
+  // reopen it from the feed (its generated title carries "Tennis") and delete it.
+  await page.goto("/training?tab=log");
+  const newCard = page
+    .locator('[id^="activity-"]')
+    .filter({ hasText: "Tennis" })
+    .filter({ hasText: "55 min" })
+    .first();
+  await expect(newCard).toBeVisible();
+  await newCard
+    .getByRole("button", { name: /Tennis/ })
+    .first()
+    .click();
+  await page.getByRole("button", { name: "Delete", exact: true }).click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Delete", exact: true })
+    .click();
+  await expect(newCard).toHaveCount(0);
+});
+
 test("the command palette offers 'Repeat last activity' when history exists (#337)", async ({
   page,
 }) => {

@@ -250,6 +250,36 @@ export function compositeRollup(
   return { distanceKm, durationMin, hasStrength };
 }
 
+/**
+ * A lone cardio/sport component with no duration of its own inherits the
+ * session-level duration — the wall-clock span at SAVE time, the activity row's
+ * stored `duration_min` at READ time (#791). The sole-component guard is what
+ * keeps a MIXED strength+sport session from attributing the whole session's
+ * minutes to its sport/cardio leg: the fallback only fires when the component
+ * is the activity's ONLY one (a mixed session's per-leg stats stay manual; the
+ * parent rollup is already correct via `compositeRollup`'s clock-wins).
+ *
+ * Returns the component's own duration when it has one, the session duration
+ * for a lone non-strength leg that doesn't, else null. Shared by the form's
+ * auto-fill (buildActivityPayload) and the stats reader (effortEntries) so both
+ * agree on the one rule.
+ */
+export function soleComponentDuration({
+  componentDurationMin,
+  isSoleComponent,
+  isStrength,
+  sessionDurationMin,
+}: {
+  componentDurationMin: number | null;
+  isSoleComponent: boolean;
+  isStrength: boolean;
+  sessionDurationMin: number | null;
+}): number | null {
+  if (componentDurationMin != null) return componentDurationMin;
+  if (!isSoleComponent || isStrength) return null;
+  return sessionDurationMin;
+}
+
 /** Title-case lowercase words, leaving words with existing caps (e.g. HIIT). */
 export function titleCase(s: string): string {
   return s.replace(/\b[\w']+/g, (w) =>
