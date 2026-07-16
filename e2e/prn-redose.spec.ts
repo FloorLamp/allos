@@ -7,18 +7,20 @@ import { test, expect } from "@playwright/test";
 // test drives the confirm flow: pre-fill the label defaults, opt in, save.
 const REDOSE_MED = "PRN Redose Med (e2e)";
 
-test("medications card surfaces the redose window status line (#798)", async ({
+test("Today panel PRN row surfaces the redose window status line (#798/#817)", async ({
   page,
 }) => {
   await page.goto("/medications");
 
-  const card = page.locator("div.card").filter({ hasText: REDOSE_MED });
-  await expect(card).toBeVisible();
-
-  const admin = card.getByTestId("prn-administrations");
-  await expect(admin).toBeVisible();
+  // The redose status line rides the Today panel's PRN administration row in the
+  // #817 redesign (same QuickLogPrnControl the dashboard renders, one computation).
+  const prnRow = page
+    .getByTestId("medications-today")
+    .getByTestId("quick-log-prn-item")
+    .filter({ hasText: REDOSE_MED });
+  await expect(prnRow).toBeVisible();
   // The window is open (last dose ~7h ago > 6h interval), 1 of 4 today.
-  const line = card.getByTestId("prn-redose-line");
+  const line = prnRow.getByTestId("prn-redose-line");
   await expect(line).toBeVisible();
   await expect(line).toContainText("Redose OK");
   await expect(line).toContainText("1 of 4 today");
@@ -65,8 +67,8 @@ test("med form: confirm flow pre-fills OTC label defaults and opts in (#798)", a
   await addCard.getByTestId("redose-optin").check();
   await addCard.getByRole("button", { name: "Add", exact: true }).click();
 
-  // The new PRN med appears among the current medications.
+  // The new PRN med appears as a current medication row (#817).
   await expect(
-    page.locator("div.card").filter({ hasText: name })
+    page.getByTestId("medication-row").filter({ hasText: name })
   ).toBeVisible();
 });

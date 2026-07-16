@@ -13,7 +13,10 @@ import {
   deleteMedicationSideEffect,
   promoteMedicationSideEffect,
   logAdministration,
+  createMedicationFromRecord,
+  dismissFinding,
 } from "@/lib/queries";
+import { MED_BRIDGE_PREFIX } from "@/lib/medication-record-match";
 import { getTimezone } from "@/lib/settings";
 import { zonedWallTimeToUtc } from "@/lib/date";
 import {
@@ -218,6 +221,43 @@ export async function logMedicationAdministration(
     default:
       return formError("Couldn't log that — it may have been removed.");
   }
+}
+
+// "Track this" from the records bridge (#560/#817): materialize an imported
+// prescription record into a tracked kind='medication' intake_item. Suggest-only —
+// only ever runs on the user's explicit tap. The auth-blind write core
+// (createMedicationFromRecord) links the new med to the source document
+// (source='extracted' + document_id) so a later reassign/delete stays whole (#199-#203).
+export async function trackMedicationFromRecord(
+  formData: FormData
+): Promise<FormResult> {
+  const { profile } = await requireWriteAccess();
+  const recordId = Number(formData.get("record_id"));
+  if (!recordId) return formError("Couldn't find that prescription record.");
+  const created = createMedicationFromRecord(profile.id, recordId);
+  if (!created) {
+    return formError("Couldn't track that — it may have been removed.");
+  }
+  revalidatePath("/medications");
+  revalidatePath("/nutrition");
+  revalidatePath("/");
+  return formOk();
+}
+
+// Dismiss a records-bridge suggestion (#203 name-keyed hygiene): silence a single
+// untracked-prescription suggestion through the shared findings-suppression bus.
+// Guarded to the med-bridge namespace so it can only ever silence one of those keys.
+export async function dismissMedicationRecord(
+  formData: FormData
+): Promise<FormResult> {
+  const { profile } = await requireWriteAccess();
+  const dedupeKey = String(formData.get("dedupe_key") ?? "").trim();
+  if (!dedupeKey.startsWith(MED_BRIDGE_PREFIX)) {
+    return formError("Couldn't dismiss that suggestion.");
+  }
+  dismissFinding(profile.id, dedupeKey);
+  revalidatePath("/medications");
+  return formOk();
 }
 
 // Promote a medication side effect into a manual allergies/intolerance row.
