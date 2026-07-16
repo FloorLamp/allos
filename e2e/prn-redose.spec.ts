@@ -63,7 +63,7 @@ test("med form: confirm flow pre-fills OTC label defaults and opts in (#798)", a
 
   // The user explicitly opts in (the liability confirm) and saves.
   await addCard.getByTestId("redose-optin").check();
-  await addCard.getByRole("button", { name: "Add" }).click();
+  await addCard.getByRole("button", { name: "Add", exact: true }).click();
 
   // The new PRN med appears among the current medications.
   await expect(

@@ -139,7 +139,7 @@ export type PediatricDoseResult =
 
 // Reproduce the OTC label's pediatric suggestion for one child from the curated
 // entry. Order of decisions is deliberate: no-table → age gate → no weight →
-// stale weight → below-smallest-band refusal → the band dose. `formulationKey` is the
+// stale weight → below-smallest-band refusal → the band dose. `formulationSlug` is the
 // user's picked product concentration (mL only surfaces when it's set and known).
 export function pediatricDoseSuggestion(input: {
   entry: PrnDefaultEntry;
@@ -147,7 +147,7 @@ export function pediatricDoseSuggestion(input: {
   weightKg: number | null;
   weightDate: string | null;
   today: string;
-  formulationKey?: string | null;
+  formulationSlug?: string | null;
 }): PediatricDoseResult {
   const ped = input.entry.pediatric;
   if (!ped) return { kind: "no-pediatric" };
@@ -175,8 +175,8 @@ export function pediatricDoseSuggestion(input: {
   }
 
   const formulation =
-    input.formulationKey != null
-      ? (ped.formulations.find((f) => f.key === input.formulationKey) ?? null)
+    input.formulationSlug != null
+      ? (ped.formulations.find((f) => f.slug === input.formulationSlug) ?? null)
       : null;
   return {
     kind: "dose",

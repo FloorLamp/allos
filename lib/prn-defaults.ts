@@ -31,9 +31,10 @@ export interface PediatricBand {
 
 // A common product formulation carrying its concentration (mg per mL), so a mL
 // suggestion can be derived from a band's mg — but ONLY after the user picks THEIR
-// product's concentration (issue #798). mg is canonical; mL is opt-in.
+// product's concentration (issue #798). mg is canonical; mL is opt-in. `slug` is the
+// formulation's stable machine identifier (the form's picker value).
 export interface PrnFormulation {
-  key: string;
+  slug: string;
   label: string;
   mgPerMl: number;
 }
@@ -57,7 +58,8 @@ export interface PrnPediatricDefaults {
 }
 
 export interface PrnDefaultEntry {
-  key: string;
+  // Stable machine identifier for the ingredient ("ibuprofen", "acetaminophen", …).
+  slug: string;
   label: string;
   rxcuis: string[];
   synonyms: string[];

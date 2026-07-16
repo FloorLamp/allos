@@ -248,7 +248,7 @@ export default function IntakeItemForm({
   );
   const [redoseNotice, setRedoseNotice] = useState(s?.redose_notice === 1);
   // The picked pediatric formulation (concentration) — mL only surfaces once set.
-  const [formulationKey, setFormulationKey] = useState("");
+  const [formulationSlug, setFormulationSlug] = useState("");
   // Missed-dose escalation — critical meds get a follow-up nudge.
   const [critical, setCritical] = useState(s?.critical === 1);
   const [error, setError] = useState<string | null>(null);
@@ -301,9 +301,9 @@ export default function IntakeItemForm({
       weightKg: pediatric.weightKg,
       weightDate: pediatric.weightDate,
       today: pediatric.today,
-      formulationKey: formulationKey || null,
+      formulationSlug: formulationSlug || null,
     });
-  }, [prnDefaults, pediatric, formulationKey]);
+  }, [prnDefaults, pediatric, formulationSlug]);
 
   function applyPrnDefaults() {
     if (!prnDefaults) return;
@@ -373,7 +373,7 @@ export default function IntakeItemForm({
       setMinIntervalHours("");
       setMaxDailyCount("");
       setRedoseNotice(false);
-      setFormulationKey("");
+      setFormulationSlug("");
       // The critical checkbox sits outside the medication-only block, so a stale
       // `checked` state silently saved the next item critical (issue #627).
       setCritical(false);
@@ -905,15 +905,15 @@ export default function IntakeItemForm({
                         <select
                           id={`pediatric-form-${fid}`}
                           data-testid="pediatric-formulation"
-                          value={formulationKey}
-                          onChange={(e) => setFormulationKey(e.target.value)}
+                          value={formulationSlug}
+                          onChange={(e) => setFormulationSlug(e.target.value)}
                           className="input h-8 w-auto py-0 text-xs"
                         >
                           <option value="">
                             mg only (measure per package)
                           </option>
                           {prnDefaults.pediatric.formulations.map((f) => (
-                            <option key={f.key} value={f.key}>
+                            <option key={f.slug} value={f.slug}>
                               {f.label}
                             </option>
                           ))}

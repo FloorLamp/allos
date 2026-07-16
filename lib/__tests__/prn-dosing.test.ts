@@ -75,12 +75,12 @@ describe("mlForBand — formulation-gated volume", () => {
   it("mL = mg / concentration once a formulation is picked", () => {
     // Children's suspension 100 mg / 5 mL = 20 mg/mL → 200 mg = 10 mL.
     const susp = IBUPROFEN.pediatric!.formulations.find(
-      (f) => f.key === "childrens_susp_100_5"
+      (f) => f.slug === "childrens_susp_100_5"
     )!;
     expect(mlForBand(susp, 200)).toBe(10);
     // Infants' drops 50 mg / 1.25 mL = 40 mg/mL → 100 mg = 2.5 mL.
     const drops = IBUPROFEN.pediatric!.formulations.find(
-      (f) => f.key === "infant_drops_50_1_25"
+      (f) => f.slug === "infant_drops_50_1_25"
     )!;
     expect(mlForBand(drops, 100)).toBe(2.5);
   });
@@ -116,7 +116,7 @@ describe("pediatricDoseSuggestion — orchestrated lookup", () => {
   it("mL only appears once a formulation is picked", () => {
     const r = pediatricDoseSuggestion({
       ...base,
-      formulationKey: "childrens_susp_100_5",
+      formulationSlug: "childrens_susp_100_5",
     });
     expect(r.kind).toBe("dose");
     if (r.kind === "dose") expect(r.ml).toBe(5); // 100 mg / 20 mg/mL

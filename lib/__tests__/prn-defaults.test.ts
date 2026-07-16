@@ -12,7 +12,7 @@ describe("prn-defaults dataset", () => {
   it("every entry carries a citation and valid adult label numbers", () => {
     expect(entries.length).toBeGreaterThan(0);
     for (const e of entries) {
-      expect(e.source, `${e.key} must cite a source`).toBeTruthy();
+      expect(e.source, `${e.slug} must cite a source`).toBeTruthy();
       expect(e.rxcuis.length).toBeGreaterThan(0);
       expect(e.adult.minIntervalHours).toBeGreaterThan(0);
       expect(e.adult.maxDailyCount).toBeGreaterThan(0);
@@ -21,10 +21,10 @@ describe("prn-defaults dataset", () => {
   });
 
   it("ibuprofen and acetaminophen carry a pediatric weight-band table", () => {
-    for (const key of ["ibuprofen", "acetaminophen"]) {
-      const e = entries.find((x) => x.key === key);
-      expect(e, `${key} present`).toBeTruthy();
-      expect(e!.pediatric, `${key} has a pediatric table`).toBeTruthy();
+    for (const slug of ["ibuprofen", "acetaminophen"]) {
+      const e = entries.find((x) => x.slug === slug);
+      expect(e, `${slug} present`).toBeTruthy();
+      expect(e!.pediatric, `${slug} has a pediatric table`).toBeTruthy();
       expect(e!.pediatric!.bands.length).toBeGreaterThan(0);
       expect(e!.pediatric!.minAgeMonths).toBeGreaterThan(0);
       // Bands ascend by minLbs (the lookup relies on picking the highest ≤ weight).
@@ -34,13 +34,13 @@ describe("prn-defaults dataset", () => {
   });
 
   it("ASPIRIN is structurally excluded from pediatric dosing (Reye's)", () => {
-    const aspirin = entries.find((e) => e.key === "aspirin");
+    const aspirin = entries.find((e) => e.slug === "aspirin");
     expect(aspirin, "aspirin is in the dataset (adult only)").toBeTruthy();
     expect(aspirin!.pediatric).toBeUndefined();
     // And NO entry that looks like aspirin may ever carry a pediatric table.
     for (const e of entries) {
       const looksAspirin =
-        e.key === "aspirin" ||
+        e.slug === "aspirin" ||
         e.synonyms.some((s) => /aspirin|acetylsalicylic/i.test(s));
       if (looksAspirin) expect(e.pediatric).toBeUndefined();
     }
@@ -48,7 +48,7 @@ describe("prn-defaults dataset", () => {
 
   it("matches by RxNorm ingredient CUI (authoritative)", () => {
     const hit = prnDefaultsFor({ name: "Some Brand", rxcui: "5640" });
-    expect(hit?.key).toBe("ibuprofen");
+    expect(hit?.slug).toBe("ibuprofen");
   });
 
   it("matches by ingredient CUI in the cached ingredient list (#279)", () => {
@@ -57,14 +57,14 @@ describe("prn-defaults dataset", () => {
       rxcui: "99999",
       rxcuiIngredients: ["161"],
     });
-    expect(hit?.key).toBe("acetaminophen");
+    expect(hit?.slug).toBe("acetaminophen");
   });
 
   it("falls back to a name/synonym match when no CUI", () => {
-    expect(prnDefaultsFor({ name: "Advil 200mg", rxcui: null })?.key).toBe(
+    expect(prnDefaultsFor({ name: "Advil 200mg", rxcui: null })?.slug).toBe(
       "ibuprofen"
     );
-    expect(prnDefaultsFor({ name: "Tylenol", rxcui: null })?.key).toBe(
+    expect(prnDefaultsFor({ name: "Tylenol", rxcui: null })?.slug).toBe(
       "acetaminophen"
     );
   });
