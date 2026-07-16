@@ -25,9 +25,9 @@
 // Everything here is INFORMATIONAL, never prescriptive: the copy is "discuss with
 // your clinician", never "stop taking X".
 
-import driData from "./dri.json";
 import type { Sex } from "./types";
 import { conditionsContraindicatingNutrient } from "./condition-nutrient";
+import { DRI_NUTRIENTS } from "./datasets/dri";
 
 export interface DriBand {
   min_age: number;
@@ -47,7 +47,7 @@ export interface DriNutrient {
   bands: DriBand[];
 }
 
-const NUTRIENTS = (driData as { nutrients: DriNutrient[] }).nutrients;
+const NUTRIENTS = DRI_NUTRIENTS;
 const BY_KEY = new Map(NUTRIENTS.map((n) => [n.key, n]));
 
 // When the profile's age is unknown, score against a default ADULT age: adult ULs

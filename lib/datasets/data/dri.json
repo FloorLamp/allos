@@ -1,6 +1,26 @@
 {
-  "$comment": "Baked NIH DRI dataset for supplement stack-total UL warnings (issue #148): per-nutrient Tolerable Upper Intake Levels (ULs) + RDAs by age band and sex. Public-domain values from the NIH Office of Dietary Supplements + National Academies DRI tables. `basis` distinguishes supplemental-only ULs (magnesium, niacin, folic acid, supplemental vitamin E) from total-intake ULs. Committed + HUMAN-REVIEWABLE. Regenerate with `npm run gen:dri`. INFORMATIONAL reference values, NOT medical advice or dosing guidance.",
-  "nutrients": [
+  "$schema": "allos-dataset/v1",
+  "id": "dri",
+  "title": "NIH Dietary Reference Intakes (UL / RDA) by age and sex",
+  "description": "Baked NIH DRI dataset for supplement stack-total UL warnings (issue #148): per-nutrient Tolerable Upper Intake Levels (ULs) + RDAs by age band and sex. `basis` distinguishes supplemental-only ULs (magnesium, niacin, folic acid, supplemental vitamin E) from total-intake ULs. Committed + HUMAN-REVIEWABLE. Regenerate with `npm run gen:dri`. INFORMATIONAL reference values, NOT medical advice or dosing guidance.",
+  "citation": [
+    {
+      "source": "National Academies of Sciences, Engineering, and Medicine — Dietary Reference Intakes (DRI) tables",
+      "url": "https://nap.nationalacademies.org/catalog/11537/dietary-reference-intakes-the-essential-guide-to-nutrient-requirements",
+      "note": "Public-domain UL/RDA values by life stage and sex."
+    },
+    {
+      "source": "NIH Office of Dietary Supplements (ODS) nutrient fact sheets",
+      "url": "https://ods.od.nih.gov/factsheets/list-all/",
+      "note": "Cross-reference for supplemental-vs-total UL basis and IU conversion factors."
+    }
+  ],
+  "identity": {
+    "keys": [
+      "key"
+    ]
+  },
+  "entries": [
     {
       "key": "vitamin_a",
       "label": "Vitamin A",

@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildDriDataset } from "@/scripts/gen-dri";
-import driJson from "@/lib/dri.json";
+import driJson from "@/lib/datasets/data/dri.json";
 import { MATCHER_KEYS, nutrientByKey } from "@/lib/dri";
 
 // Anti-drift pins for the baked NIH DRI dataset (issue #148): the committed
@@ -13,7 +13,7 @@ import { MATCHER_KEYS, nutrientByKey } from "@/lib/dri";
 // no DB/network.
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const OUT = path.join(REPO, "lib/dri.json");
+const OUT = path.join(REPO, "lib/datasets/data/dri.json");
 
 describe("dri.json dataset", () => {
   it("is a fixed point of buildDriDataset() (regenerate with `npm run gen:dri`)", () => {
@@ -31,7 +31,7 @@ describe("dri.json dataset", () => {
   });
 
   it("gives every nutrient a canonical unit, basis, and at least one band", () => {
-    for (const n of driJson.nutrients) {
+    for (const n of driJson.entries) {
       expect(["mg", "mcg"], n.key).toContain(n.unit);
       expect(["supplemental", "total"], n.key).toContain(n.basis);
       expect(n.bands.length, n.key).toBeGreaterThan(0);
@@ -39,7 +39,7 @@ describe("dri.json dataset", () => {
   });
 
   it("bands are ordered, half-open, and carry a positive UL where present", () => {
-    for (const n of driJson.nutrients) {
+    for (const n of driJson.entries) {
       for (const b of n.bands) {
         expect(b.min_age, n.key).toBeGreaterThanOrEqual(0);
         if (b.max_age != null)
@@ -56,7 +56,7 @@ describe("dri.json dataset", () => {
   });
 
   it("only nutrients that carry a UL are included (the warning has something to check)", () => {
-    for (const n of driJson.nutrients) {
+    for (const n of driJson.entries) {
       expect(
         n.bands.some((b) => b.ul != null),
         `${n.key} has no UL in any band`

@@ -12,7 +12,7 @@ import {
 } from "@/lib/food-suggest";
 import canonicalSeed from "@/lib/canonical-biomarkers.json";
 import foodDrug from "@/lib/food-drug-interactions.json";
-import dri from "@/lib/dri.json";
+import dri from "@/lib/datasets/data/dri.json";
 
 // Anti-drift pins for the baked biomarker→food map (issue #577): the committed
 // lib/nutrient-food-map.json must be a FIXED POINT of the generator; every biomarker
@@ -89,7 +89,7 @@ describe("nutrient-food-map.json dataset", () => {
 // without a food answer, and the RDA-adequacy "Food sources:" line (#578) can't go dark.
 describe("DRI ↔ food-map coverage (#774)", () => {
   const DRI_KEYS = new Set(
-    (dri as { nutrients: { key: string }[] }).nutrients.map((n) => n.key)
+    (dri as { entries: { key: string }[] }).entries.map((n) => n.key)
   );
 
   it("the flaggability ledger's keys align exactly with dri.json's nutrient keys", () => {

@@ -35,8 +35,9 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { DATASET_SCHEMA, type DatasetEnvelope } from "../lib/datasets/types";
 
-const OUT = path.join(process.cwd(), "lib", "dri.json");
+const OUT = path.join(process.cwd(), "lib", "datasets", "data", "dri.json");
 
 // One age/sex band of reference values. Ages are WHOLE YEARS and the band is
 // half-open [min_age, max_age); max_age null is open-ended (adults). `sex` narrows
@@ -349,35 +350,51 @@ const NUTRIENTS: DriNutrient[] = [
   },
 ];
 
-export interface DriDataset {
-  $comment: string;
-  nutrients: DriNutrient[];
-}
+// The framework envelope shape: the NIH DRI table now ships as a curated-dataset
+// envelope under lib/datasets/data/, identity-keyed by nutrient `key`. Age/sex bands
+// live on the entries (each DriNutrient carries its own `bands`).
+export type DriDataset = DatasetEnvelope<DriNutrient>;
 
 // Pure builder: assemble the dataset from the curated table. The committed
-// lib/dri.json is a FIXED POINT of this (guarded by the dataset test), so the
-// generator and committed file can't silently diverge. Nutrients are emitted in
+// lib/datasets/data/dri.json is a FIXED POINT of this (guarded by the dataset test),
+// so the generator and committed file can't silently diverge. Nutrients are emitted in
 // curated order for a stable, reviewable diff.
 export function buildDriDataset(): DriDataset {
   return {
-    $comment:
+    $schema: DATASET_SCHEMA,
+    id: "dri",
+    title: "NIH Dietary Reference Intakes (UL / RDA) by age and sex",
+    description:
       "Baked NIH DRI dataset for supplement stack-total UL warnings (issue #148): " +
       "per-nutrient Tolerable Upper Intake Levels (ULs) + RDAs by age band and sex. " +
-      "Public-domain values from the NIH Office of Dietary Supplements + National " +
-      "Academies DRI tables. `basis` distinguishes supplemental-only ULs (magnesium, " +
-      "niacin, folic acid, supplemental vitamin E) from total-intake ULs. Committed " +
-      "+ HUMAN-REVIEWABLE. Regenerate with `npm run gen:dri`. INFORMATIONAL reference " +
-      "values, NOT medical advice or dosing guidance.",
-    nutrients: NUTRIENTS,
+      "`basis` distinguishes supplemental-only ULs (magnesium, niacin, folic acid, " +
+      "supplemental vitamin E) from total-intake ULs. Committed + HUMAN-REVIEWABLE. " +
+      "Regenerate with `npm run gen:dri`. INFORMATIONAL reference values, NOT medical " +
+      "advice or dosing guidance.",
+    citation: [
+      {
+        source:
+          "National Academies of Sciences, Engineering, and Medicine — Dietary " +
+          "Reference Intakes (DRI) tables",
+        url: "https://nap.nationalacademies.org/catalog/11537/dietary-reference-intakes-the-essential-guide-to-nutrient-requirements",
+        note: "Public-domain UL/RDA values by life stage and sex.",
+      },
+      {
+        source: "NIH Office of Dietary Supplements (ODS) nutrient fact sheets",
+        url: "https://ods.od.nih.gov/factsheets/list-all/",
+        note: "Cross-reference for supplemental-vs-total UL basis and IU conversion factors.",
+      },
+    ],
+    identity: { keys: ["key"] },
+    entries: NUTRIENTS,
   };
 }
 
 function writeDataset(): void {
   const dataset = buildDriDataset();
+  fs.mkdirSync(path.dirname(OUT), { recursive: true });
   fs.writeFileSync(OUT, JSON.stringify(dataset, null, 2) + "\n");
-  console.log(
-    `Wrote ${dataset.nutrients.length} nutrient DRI entries to ${OUT}`
-  );
+  console.log(`Wrote ${dataset.entries.length} nutrient DRI entries to ${OUT}`);
   console.log("Review the UL/RDA values for plausibility before committing.");
 }
 
