@@ -5,6 +5,7 @@ import { updateCareGoal, deleteCareGoal } from "./actions";
 import RecordTable, { type RecordColumn } from "@/components/RecordTable";
 import RecordProvenance from "@/components/RecordProvenance";
 import StatusBadge from "@/components/StatusBadge";
+import NotesText from "@/components/NotesText";
 import { formatRecordDate } from "@/lib/record-format";
 import type { CareGoal } from "@/lib/types";
 
@@ -15,11 +16,10 @@ const COLUMNS: RecordColumn<CareGoal>[] = [
     cell: (g) => (
       <>
         {g.description}
-        {g.notes ? (
-          <span className="ml-2 text-xs font-normal text-slate-400">
-            {g.notes}
-          </span>
-        ) : null}
+        <NotesText
+          notes={g.notes}
+          className="ml-2 text-xs font-normal text-slate-400"
+        />
       </>
     ),
   },

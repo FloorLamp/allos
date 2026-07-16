@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { MedicalRecord } from "@/lib/types";
 import { Tag, MedicalValue } from "./ui";
 import SortableHeader from "./SortableHeader";
+import NotesText from "./NotesText";
 import RecordForm from "./RecordForm";
 import OverflowMenu, { MENU_ITEM, MENU_ITEM_DANGER } from "./OverflowMenu";
 import { useConfirm } from "./ConfirmDialog";
@@ -259,7 +260,7 @@ function BiomarkerRow({
         {r.reference_range ?? "—"}
       </td>
       <td className="td hidden text-slate-500 md:table-cell dark:text-slate-400">
-        {r.notes ?? ""}
+        <NotesText notes={r.notes} />
       </td>
       <td className="td hidden md:table-cell">
         <Link

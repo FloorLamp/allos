@@ -14,6 +14,7 @@ import {
 } from "@/components/AdherenceRefill";
 import SupplementForm from "@/components/SupplementForm";
 import FoodGuidance from "@/components/FoodGuidance";
+import NotesText from "@/components/NotesText";
 import DoseStatusControl from "@/components/DoseStatusControl";
 import OverflowMenu, {
   MENU_ITEM,
@@ -201,11 +202,11 @@ export default function EditableSupplementRow({
               {medMeta}
             </div>
           )}
-          {s.notes && (
-            <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-              {s.notes}
-            </div>
-          )}
+          <NotesText
+            as="div"
+            notes={s.notes}
+            className="mt-0.5 text-xs text-slate-500 dark:text-slate-400"
+          />
           {/* Food–drug guidance (issue #154): per-item food note for a matching
               item (e.g. dairy/minerals × iron-binding drugs). */}
           <FoodGuidance

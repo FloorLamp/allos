@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { saveTrainingZones } from "./actions";
 import SaveStatus from "@/components/SaveStatus";
-import { useSaveStatus } from "@/components/useSaveStatus";
+import { useSaveStatus, useFlushOnHide } from "@/components/useSaveStatus";
 
 // Training HR-zone settings (issue #159) — PROFILE-scoped, following the active
 // profile. A manual max-HR override for people who've tested theirs (it beats the
@@ -25,6 +25,8 @@ export default function TrainingZonesForm({
   );
   const [target, setTarget] = useState(String(zone2Target));
   const { pending, savedAt, error, save: runSave } = useSaveStatus();
+  const formRef = useRef<HTMLDivElement>(null);
+  useFlushOnHide(formRef);
 
   function save(next: { maxHr: string; target: string }) {
     const fd = new FormData();
@@ -37,7 +39,11 @@ export default function TrainingZonesForm({
   }
 
   return (
-    <div className="card max-w-lg space-y-5" data-testid="training-zones-form">
+    <div
+      ref={formRef}
+      className="card max-w-lg space-y-5"
+      data-testid="training-zones-form"
+    >
       <div className="flex items-center justify-between">
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Training heart-rate zones

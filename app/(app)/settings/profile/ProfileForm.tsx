@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { saveProfileSettings } from "./actions";
 import { ageFromBirthdate, dateStrInTz, isRealIsoDate } from "@/lib/date";
 import DateField from "@/components/DateField";
 import SaveStatus from "@/components/SaveStatus";
-import { useSaveStatus } from "@/components/useSaveStatus";
+import { useSaveStatus, useFlushOnHide } from "@/components/useSaveStatus";
 import type { ReproductiveStatus, Sex } from "@/lib/types";
 
 // Biological sex, birthdate/age, and timezone — all PROFILE-scoped (properties of
@@ -77,6 +77,8 @@ export default function ProfileForm({
     ? ageFromBirthdate(birthdate, dateStrInTz(timezone))
     : null;
   const { pending, savedAt, error, save: runSave } = useSaveStatus();
+  const formRef = useRef<HTMLDivElement>(null);
+  useFlushOnHide(formRef);
 
   // Populate the IANA zone list on the client only. The list from
   // Intl.supportedValuesOf can differ between the server's ICU and the browser's,
@@ -129,7 +131,7 @@ export default function ProfileForm({
   }
 
   return (
-    <div className="card max-w-lg space-y-5">
+    <div ref={formRef} className="card max-w-lg space-y-5">
       <div className="flex items-center justify-between">
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Personal

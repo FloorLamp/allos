@@ -4,6 +4,7 @@ import ImmunizationForm from "./ImmunizationForm";
 import { updateImmunization, deleteImmunization } from "./actions";
 import RecordTable, { type RecordColumn } from "@/components/RecordTable";
 import RecordProvenance from "@/components/RecordProvenance";
+import NotesText from "@/components/NotesText";
 import { vaccineDisplayName } from "@/lib/immunization-catalog";
 import {
   resolveDoseLabelsByVaccine,
@@ -35,11 +36,10 @@ export default function ImmunizationHistory({
       cell: (im) => (
         <>
           {vaccineDisplayName(im.vaccine)}
-          {im.notes ? (
-            <span className="ml-2 text-xs font-normal text-slate-400">
-              {im.notes}
-            </span>
-          ) : null}
+          <NotesText
+            notes={im.notes}
+            className="ml-2 text-xs font-normal text-slate-400"
+          />
         </>
       ),
     },

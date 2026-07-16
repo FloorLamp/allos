@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useState, useTransition } from "react";
+import { useCallback, useEffect, useState, useTransition } from "react";
+import type { RefObject } from "react";
 
 // Shared autosave state for the settings cards (issue #477). Every settings form
 // used to do `startTransition(async () => { await saveX(fd); setSavedAt(...) })`
@@ -41,4 +42,28 @@ export function useSaveStatus(): SaveStatusApi {
   }, []);
 
   return { pending, savedAt, error, save };
+}
+
+// The save-on-blur tier rule (issue #794 cluster 10b). Autosave-on-blur is the
+// SETTINGS convention only: the settings cards persist each field on blur/change
+// (via useSaveStatus above); records everywhere else use an explicit submit button.
+// The one gap in blur-saving is a value still FOCUSED when the tab is backgrounded
+// — on mobile especially the app can be suspended before any blur fires, dropping
+// the edit. useFlushOnHide closes it by blurring the focused field inside `ref` on
+// visibilitychange→hidden, so that field's existing onBlur handler runs and saves —
+// the same "flush the pending edit on the way out" that ActivityForm's unmount
+// flush does, minus any second save engine. Fields that save on change (selects,
+// checkboxes) have nothing pending, so this is a no-op for them.
+export function useFlushOnHide(ref: RefObject<HTMLElement | null>) {
+  useEffect(() => {
+    const handler = () => {
+      if (document.visibilityState !== "hidden") return;
+      const active = document.activeElement;
+      if (active instanceof HTMLElement && ref.current?.contains(active)) {
+        active.blur();
+      }
+    };
+    document.addEventListener("visibilitychange", handler);
+    return () => document.removeEventListener("visibilitychange", handler);
+  }, [ref]);
 }

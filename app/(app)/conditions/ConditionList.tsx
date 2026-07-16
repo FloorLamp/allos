@@ -5,6 +5,7 @@ import { updateCondition, deleteCondition } from "./actions";
 import RecordTable, { type RecordColumn } from "@/components/RecordTable";
 import RecordProvenance from "@/components/RecordProvenance";
 import StatusBadge from "@/components/StatusBadge";
+import NotesText from "@/components/NotesText";
 import { formatRecordDate } from "@/lib/record-format";
 import type { Condition } from "@/lib/types";
 
@@ -15,11 +16,10 @@ const COLUMNS: RecordColumn<Condition>[] = [
     cell: (c) => (
       <>
         {c.name}
-        {c.notes ? (
-          <span className="ml-2 text-xs font-normal text-slate-400">
-            {c.notes}
-          </span>
-        ) : null}
+        <NotesText
+          notes={c.notes}
+          className="ml-2 text-xs font-normal text-slate-400"
+        />
       </>
     ),
   },

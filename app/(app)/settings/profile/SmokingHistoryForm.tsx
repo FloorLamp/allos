@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { saveSmokingHistory } from "./actions";
 import SaveStatus from "@/components/SaveStatus";
-import { useSaveStatus } from "@/components/useSaveStatus";
+import { useSaveStatus, useFlushOnHide } from "@/components/useSaveStatus";
 import type { SmokingHistory, SmokingStatusValue } from "@/lib/smoking";
 
 // Structured smoking history (issue #83) — a PROFILE-scoped property of the tracked
@@ -28,6 +28,8 @@ export default function SmokingHistoryForm({
     history.quitYear == null ? "" : String(history.quitYear)
   );
   const { pending, savedAt, error, save: runSave } = useSaveStatus();
+  const formRef = useRef<HTMLDivElement>(null);
+  useFlushOnHide(formRef);
 
   const everSmoker = status === "former" || status === "current";
   const isFormer = status === "former";
@@ -55,7 +57,11 @@ export default function SmokingHistoryForm({
   }
 
   return (
-    <div className="card max-w-lg space-y-5" data-testid="smoking-history">
+    <div
+      ref={formRef}
+      className="card max-w-lg space-y-5"
+      data-testid="smoking-history"
+    >
       <div className="flex items-center justify-between">
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Smoking history

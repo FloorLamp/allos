@@ -32,6 +32,7 @@ import {
 } from "@/components/AdherenceRefill";
 import MedicationForm from "@/components/MedicationForm";
 import FoodGuidance from "@/components/FoodGuidance";
+import NotesText from "@/components/NotesText";
 import DoseStatusControl from "@/components/DoseStatusControl";
 import SubmitButton from "@/components/SubmitButton";
 import OverflowMenu, {
@@ -194,11 +195,11 @@ export default function MedicationCard({
               {medMeta}
             </div>
           )}
-          {s.notes && (
-            <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-              {s.notes}
-            </div>
-          )}
+          <NotesText
+            as="div"
+            notes={s.notes}
+            className="mt-0.5 text-xs text-slate-500 dark:text-slate-400"
+          />
           {/* Food–drug guidance (issue #154): a per-item food note (grapefruit,
               vitamin K, dairy/minerals, alcohol) — no second med needed. */}
           <FoodGuidance
@@ -409,11 +410,10 @@ export default function MedicationCard({
                       Open
                     </span>
                   )}
-                  {c.notes && (
-                    <span className="text-xs text-slate-500 dark:text-slate-400">
-                      {c.notes}
-                    </span>
-                  )}
+                  <NotesText
+                    notes={c.notes}
+                    className="text-xs text-slate-500 dark:text-slate-400"
+                  />
                 </li>
               ))}
             </ul>

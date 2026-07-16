@@ -1,12 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { AiPrefs } from "@/lib/settings";
 import type { AiEndpointInfo } from "@/lib/ai-client";
 import { saveAiSettings } from "./server/actions";
 import SaveStatus from "@/components/SaveStatus";
-import { useSaveStatus } from "@/components/useSaveStatus";
+import { useSaveStatus, useFlushOnHide } from "@/components/useSaveStatus";
 
 export default function AiSettings({
   prefs,
@@ -21,6 +21,8 @@ export default function AiSettings({
   );
   const [maxRuns, setMaxRuns] = useState(prefs.recommendationMaxRunsPerDay);
   const { pending, savedAt, error, save: runSave } = useSaveStatus();
+  const formRef = useRef<HTMLDivElement>(null);
+  useFlushOnHide(formRef);
 
   function save(next: { autoSuggest: boolean; maxRuns: number }) {
     const fd = new FormData();
@@ -33,7 +35,7 @@ export default function AiSettings({
   }
 
   return (
-    <div className="card mt-6 max-w-lg space-y-5">
+    <div ref={formRef} className="card mt-6 max-w-lg space-y-5">
       <div className="flex items-center justify-between">
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">AI</h2>
         <SaveStatus pending={pending} savedAt={savedAt} error={error} />

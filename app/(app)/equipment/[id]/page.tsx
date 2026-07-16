@@ -12,6 +12,7 @@ import { kgTo, kmTo, round } from "@/lib/units";
 import { formatLastUsed } from "@/lib/usage-format";
 import { formatRecordDate } from "@/lib/record-format";
 import { PageHeader } from "@/components/ui";
+import PageContainer from "@/components/PageContainer";
 import EquipmentTrend from "@/components/EquipmentTrend";
 import EquipmentDetailActions from "@/components/EquipmentDetailActions";
 
@@ -80,7 +81,7 @@ export default async function EquipmentDetailPage(props: {
     : sessions.map((s) => kgTo(s.volumeKg, units.weightUnit));
 
   return (
-    <div className="max-w-3xl" data-testid="equipment-detail">
+    <PageContainer width="reading" data-testid="equipment-detail">
       <Link
         href="/equipment"
         className="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 transition hover:text-brand-700 dark:text-slate-400 dark:hover:text-brand-300"
@@ -211,6 +212,6 @@ export default async function EquipmentDetailPage(props: {
           retired={!!equipment.retired}
         />
       </div>
-    </div>
+    </PageContainer>
   );
 }

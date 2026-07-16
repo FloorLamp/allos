@@ -24,6 +24,7 @@ import {
 import { formatMergeImpact, providerDisambigLabel } from "@/lib/provider-merge";
 import { formatRecordDate } from "@/lib/record-format";
 import { PageHeader } from "@/components/ui";
+import PageContainer from "@/components/PageContainer";
 import ProviderIdentityCard from "../ProviderIdentityCard";
 import ProviderMergePanel from "../ProviderMergePanel";
 
@@ -151,7 +152,7 @@ export default async function ProviderDetailPage(props: {
     provider.type === "individual" ? IconStethoscope : IconBuildingHospital;
 
   return (
-    <div className="max-w-3xl" data-testid="provider-detail">
+    <PageContainer width="reading" data-testid="provider-detail">
       <Link
         href="/providers"
         className="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 transition hover:text-brand-700 dark:text-slate-400 dark:hover:text-brand-300"
@@ -226,6 +227,6 @@ export default async function ProviderDetailPage(props: {
         Providers are a shared registry across everyone on this instance. The
         identity above is global; the activity is only {profile.name}’s.
       </p>
-    </div>
+    </PageContainer>
   );
 }

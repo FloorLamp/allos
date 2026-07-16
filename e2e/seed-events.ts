@@ -1145,6 +1145,21 @@ console.log(
   `e2e: seeded import document ${BROWSER_DOC_ID} with labs + prescription + visit + condition + immunization for the records browser (#271)`
 );
 
+// An imported visit whose notes carry a real line break (issue #794 cluster 11a),
+// so the encounter-detail notes test can pin that multi-line notes render with
+// their breaks preserved (whitespace-pre-wrap) instead of flattening to one run-on
+// line. Fixed id so the browser test deep-links deterministically; char(10) is the
+// embedded newline. All content synthetic — no real PHI.
+const MULTILINE_ENCOUNTER_ID = 9071;
+db.prepare(`DELETE FROM encounters WHERE id = ?`).run(MULTILINE_ENCOUNTER_ID);
+db.prepare(
+  `INSERT INTO encounters
+     (id, profile_id, date, type, class_code, reason, notes, source)
+   VALUES (?, ?, '2026-06-18', 'E2E Imported Visit', 'AMB', 'E2E follow-up',
+           'E2E imported note line one.' || char(10) || 'E2E imported note line two.',
+           'ccda')`
+).run(MULTILINE_ENCOUNTER_ID, PROFILE_ID);
+
 // Two due-today doses on the primary profile whose bucket order is the REVERSE of
 // their alphabetical order (issue #297): a MORNING dose named with a leading "Z"
 // and a BEDTIME dose named with a leading "A". Before the fix the Upcoming Today

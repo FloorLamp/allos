@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { MedicalRecord } from "@/lib/types";
 import { recordNameLink } from "@/lib/import-browser";
 import { Tag, MedicalValue } from "./ui";
+import NotesText from "./NotesText";
 import RecordForm from "./RecordForm";
 import OverflowMenu, { MENU_ITEM, MENU_ITEM_DANGER } from "./OverflowMenu";
 import { useConfirm } from "./ConfirmDialog";
@@ -79,7 +80,7 @@ export default function EditableRecordRow({
           {r.reference_range ?? "—"}
         </td>
         <td className="td text-slate-500 dark:text-slate-400">
-          {r.notes ?? ""}
+          <NotesText notes={r.notes} />
         </td>
         <td className="td">
           <Tag value={r.category} />

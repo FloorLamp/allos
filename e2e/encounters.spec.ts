@@ -103,6 +103,32 @@ test.describe("Visits — single Add visit entry logs a past visit (#566)", () =
   });
 });
 
+// Issue #794 (cluster 11a): imported/user notes are multi-line free text, but the
+// encounter-detail Notes block used to render them bare — flattening line breaks to
+// one run-on paragraph. They now render through <NotesText> with whitespace-pre-wrap
+// + break-words. seed-events plants a fixed-id imported visit (9071) whose notes
+// carry a real newline; this pins that the break survives in the DOM AND that the
+// element is styled to display it (white-space: pre-wrap), not collapse it.
+test.describe("Visit detail — multi-line notes render with line breaks (#794)", () => {
+  test("imported notes preserve their line breaks", async ({ page }) => {
+    await page.goto("/encounters/9071");
+
+    const notes = page.getByRole("main").getByTestId("encounter-notes");
+    await expect(notes).toBeVisible();
+    await expect(notes).toContainText("E2E imported note line one.");
+    await expect(notes).toContainText("E2E imported note line two.");
+
+    // The newline is preserved in the text node…
+    const text = await notes.textContent();
+    expect(text).toContain("\n");
+    // …and the element is styled to show it as a real break, not collapse it.
+    const whiteSpace = await notes.evaluate(
+      (el) => getComputedStyle(el).whiteSpace
+    );
+    expect(whiteSpace).toBe("pre-wrap");
+  });
+});
+
 // Issue #211: on the detail page the "View source document" link (only shown when the
 // encounter carries a document_id) was placed INLINE beside the Source label value, so
 // it read as a stray button jammed against the source name. It should sit on its own
