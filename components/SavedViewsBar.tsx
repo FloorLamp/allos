@@ -65,7 +65,7 @@ export default function SavedViewsBar({ views }: { views: TrendView[] }) {
       {views.map((v) => (
         <span
           key={v.name}
-          className="inline-flex items-center overflow-hidden rounded-full border border-slate-200 bg-white/70 text-xs dark:border-white/10 dark:bg-ink-900/60"
+          className="inline-flex items-center overflow-hidden rounded-full border border-black/10 bg-white/70 text-xs dark:border-white/10 dark:bg-ink-900/60"
         >
           <form action={applyTrendView}>
             <input type="hidden" name="name" value={v.name} />
@@ -87,7 +87,7 @@ export default function SavedViewsBar({ views }: { views: TrendView[] }) {
               type="submit"
               aria-label={`Delete view ${v.name}`}
               title="Delete view"
-              className="flex items-center border-l border-slate-200 px-1.5 py-1 text-slate-400 transition hover:text-rose-600 dark:border-white/10 dark:hover:text-rose-400"
+              className="flex items-center border-l border-black/10 px-1.5 py-1 text-slate-400 transition hover:text-rose-600 dark:border-white/10 dark:hover:text-rose-400"
             >
               <IconX className="h-3.5 w-3.5" stroke={2} />
             </button>

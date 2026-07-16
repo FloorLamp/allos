@@ -280,7 +280,7 @@ export default function ScheduleGrid({
                 <tr>
                   <td
                     colSpan={BANDS.length + 1}
-                    className="sticky left-0 bg-slate-50 px-3 py-1.5 section-label text-[0.7rem] dark:bg-ink-850"
+                    className="sticky left-0 bg-slate-50 px-3 py-1.5 section-label dark:bg-ink-850"
                   >
                     {GROUP_LABELS[group]}
                   </td>
@@ -355,7 +355,7 @@ export default function ScheduleGrid({
                             }
                           >
                             {isGot ? (
-                              <span className="inline-block rounded bg-emerald-500 px-1 text-[0.7rem] font-bold text-white">
+                              <span className="inline-block rounded bg-emerald-500 px-1 text-xs font-bold text-white">
                                 ✓
                               </span>
                             ) : isRec ? (
@@ -410,7 +410,7 @@ function Legend() {
         Recommended
       </span>
       <span className="flex items-center gap-1.5">
-        <span className="inline-block rounded bg-emerald-500 px-1 text-[0.7rem] font-bold text-white">
+        <span className="inline-block rounded bg-emerald-500 px-1 text-xs font-bold text-white">
           ✓
         </span>
         Recorded

@@ -54,7 +54,7 @@ export default function HealthspanPillarsWidget({
           <Link
             key={p.key}
             href={p.href}
-            className="flex flex-col rounded-lg border border-slate-200 p-2.5 transition hover:border-brand-300 dark:border-ink-700 dark:hover:border-brand-700"
+            className="flex flex-col rounded-lg border border-black/10 p-2.5 transition hover:border-brand-300 dark:border-white/10 dark:hover:border-brand-700"
             data-testid={`pillar-${p.key}`}
           >
             <span className="section-label">{p.label}</span>

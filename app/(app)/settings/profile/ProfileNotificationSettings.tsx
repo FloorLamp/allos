@@ -162,7 +162,7 @@ export default function ProfileNotificationSettings({
               buttons for your most-eaten foods, on the same schedule as supplement
               reminders. Hidden for a profile too young for food-group logging. */}
           {foodLoggingRelevant && (
-            <div className="border-t border-slate-100 pt-5 dark:border-slate-800">
+            <div className="border-t border-black/5 pt-5 dark:border-white/5">
               <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
                 <input
                   type="checkbox"
@@ -182,7 +182,7 @@ export default function ProfileNotificationSettings({
           )}
 
           {/* Schedule — an hourly cron (npm run notify) sends each slot at its hour. */}
-          <div className="border-t border-slate-100 pt-5 dark:border-slate-800">
+          <div className="border-t border-black/5 pt-5 dark:border-white/5">
             <label className="label">Schedule</label>
             <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
               Run <code>npm run notify</code> hourly (cron); each slot sends at
@@ -235,7 +235,7 @@ export default function ProfileNotificationSettings({
 
           {/* Morning digest — one daily summary (today's doses + goals due,
               yesterday's activities/adherence/weight, anything new to look at). */}
-          <div className="border-t border-slate-100 pt-5 dark:border-slate-800">
+          <div className="border-t border-black/5 pt-5 dark:border-white/5">
             <label className="label">Morning digest</label>
             <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
               A once-a-day summary at the hour below (this profile’s timezone).
@@ -262,7 +262,7 @@ export default function ProfileNotificationSettings({
 
           {/* Weekly recap — a once-a-week summary of the last seven days
               (workouts, volume, PRs, adherence, weight, streak). */}
-          <div className="border-t border-slate-100 pt-5 dark:border-slate-800">
+          <div className="border-t border-black/5 pt-5 dark:border-white/5">
             <label className="label">Weekly recap</label>
             <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
               A once-a-week summary of your last seven days, on the day and hour
@@ -315,7 +315,7 @@ export default function ProfileNotificationSettings({
           {/* Milestone alerts — a quiet notification when a milestone fires
               (Nth workout, streak length, goal reached, adherence run). They
               are always recorded to the Timeline regardless of this toggle. */}
-          <div className="border-t border-slate-100 pt-5 dark:border-slate-800">
+          <div className="border-t border-black/5 pt-5 dark:border-white/5">
             <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
               <input
                 type="checkbox"
@@ -334,7 +334,7 @@ export default function ProfileNotificationSettings({
           {/* Preventive-care reminders (#87) — a proactive nudge when a
               preventive visit or screening comes due, plus its lines in the
               "what's due" digest. Due items always stay on the Upcoming page. */}
-          <div className="border-t border-slate-100 pt-5 dark:border-slate-800">
+          <div className="border-t border-black/5 pt-5 dark:border-white/5">
             <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
               <input
                 type="checkbox"
@@ -360,7 +360,7 @@ export default function ProfileNotificationSettings({
           too). Urgent medication reminders (dose reminders, missed-dose escalation)
           are NEVER held by this — they follow the medication schedule. */}
       <div
-        className="border-t border-slate-100 pt-5 dark:border-slate-800"
+        className="border-t border-black/5 pt-5 dark:border-white/5"
         data-testid="quiet-hours"
       >
         <label className="label">Quiet hours</label>

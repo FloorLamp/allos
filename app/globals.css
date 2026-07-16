@@ -70,6 +70,18 @@ body::before {
 }
 
 @layer components {
+  /* Border/fill color language (issue #794 clusters 9a + 10a). Two properties,
+     two vocabularies — keep them apart:
+       - grey STRUCTURAL BORDERS use the alpha pair: `border-black/10` (or /5 for
+         a subtle divider) + `dark:border-white/10` (or /5). These match the .card
+         / .input / .btn-ghost primitives above. Literal `border-slate-100/200`
+         grey dividers were swept to this pair.
+       - hover FILLS use LITERAL slate/ink: `hover:bg-slate-100` in light,
+         `dark:hover:bg-ink-750`/`ink-800` in dark — NOT `hover:bg-black/5` /
+         `hover:bg-white/10`.
+     (Tinted borders — amber/rose/emerald, the Notice family — and focus/selected
+     `border-brand-*` borders are their own token set and stay literal.) Guarded by
+     border-alpha-language.test.ts and hover-fill-language.test.ts. */
   /* Frosted glass: translucent surface + backdrop blur lets the page glow
      diffuse through; soft shadow for elevation, hairline border for the edge. */
   .card {

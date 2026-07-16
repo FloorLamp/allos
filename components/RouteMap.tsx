@@ -46,7 +46,7 @@ export default function RouteMap({
       data-testid="route-map"
       className={
         className ??
-        "rounded-md border border-slate-200 bg-slate-50 text-brand-600 dark:border-ink-700 dark:bg-ink-900 dark:text-brand-400"
+        "rounded-md border border-black/10 bg-slate-50 text-brand-600 dark:border-white/10 dark:bg-ink-900 dark:text-brand-400"
       }
     >
       <title>{title}</title>

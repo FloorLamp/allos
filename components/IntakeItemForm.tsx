@@ -400,7 +400,7 @@ export default function IntakeItemForm({
         {rxCandidates && rxCandidates.length > 0 && !rxcui && (
           <div
             data-testid="rxcui-candidates"
-            className="mt-1.5 space-y-1 rounded-lg border border-slate-200 p-2 dark:border-slate-700"
+            className="mt-1.5 space-y-1 rounded-lg border border-black/10 p-2 dark:border-white/10"
           >
             {rxCandidates.map((c) => (
               <div
@@ -621,7 +621,7 @@ export default function IntakeItemForm({
 
       {/* Medication-only identity + as-needed */}
       {kind === "medication" && (
-        <div className="sm:col-span-2 grid grid-cols-1 gap-3 border-t border-slate-100 pt-4 sm:grid-cols-2 dark:border-slate-800">
+        <div className="sm:col-span-2 grid grid-cols-1 gap-3 border-t border-black/5 pt-4 sm:grid-cols-2 dark:border-white/5">
           <div>
             <label className="label" htmlFor={`supp-prescriber-${fid}`}>
               Prescriber
@@ -705,7 +705,7 @@ export default function IntakeItemForm({
       )}
 
       {/* Missed-dose escalation (critical medications) */}
-      <div className="sm:col-span-2 border-t border-slate-100 pt-4 dark:border-slate-800">
+      <div className="sm:col-span-2 border-t border-black/5 pt-4 dark:border-white/5">
         <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
           <input
             type="checkbox"
@@ -755,7 +755,7 @@ export default function IntakeItemForm({
       </div>
 
       {/* Refill tracking */}
-      <div className="sm:col-span-2 border-t border-slate-100 pt-4 dark:border-slate-800">
+      <div className="sm:col-span-2 border-t border-black/5 pt-4 dark:border-white/5">
         <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
           Refill tracking (optional)
         </label>

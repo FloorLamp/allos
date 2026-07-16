@@ -347,7 +347,7 @@ function EquipmentForm({
   // instance-unique ids (getByLabel in the e2e spec, screen readers generally).
   const uid = useId();
   return (
-    <div className="space-y-3 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+    <div className="space-y-3 rounded-lg border border-black/10 p-3 dark:border-white/10">
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
           <label className="label" htmlFor={`${uid}-name`}>

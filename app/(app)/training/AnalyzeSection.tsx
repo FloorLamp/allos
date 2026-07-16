@@ -189,7 +189,7 @@ export default async function AnalyzeSection({
           </div>
 
           <div className="mt-4 flex flex-wrap items-center gap-2">
-            <div className="flex rounded-md border border-slate-200 p-0.5 dark:border-white/10">
+            <div className="flex rounded-md border border-black/10 p-0.5 dark:border-white/10">
               {view.metrics.map((m) => (
                 <Link
                   key={m.id}
@@ -197,14 +197,14 @@ export default async function AnalyzeSection({
                   className={`rounded px-3 py-1.5 text-sm font-medium transition ${
                     m.id === view.metric
                       ? "bg-brand-600 text-white"
-                      : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-white/10"
+                      : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-ink-800"
                   }`}
                 >
                   {m.label}
                 </Link>
               ))}
             </div>
-            <div className="flex rounded-md border border-slate-200 p-0.5 dark:border-white/10">
+            <div className="flex rounded-md border border-black/10 p-0.5 dark:border-white/10">
               {RANGES.map((r) => (
                 <Link
                   key={r.id}
@@ -212,7 +212,7 @@ export default async function AnalyzeSection({
                   className={`rounded px-3 py-1.5 text-sm font-medium transition ${
                     r.id === activeRange
                       ? "bg-slate-800 text-white dark:bg-slate-100 dark:text-ink-950"
-                      : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-white/10"
+                      : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-ink-800"
                   }`}
                 >
                   {r.label}

@@ -108,7 +108,7 @@ export default async function CompareSection({
             </div>
             {corr ? (
               <span
-                className="rounded-full border border-slate-200 bg-white/60 px-3 py-1 text-xs text-slate-600 dark:border-white/10 dark:bg-ink-900/60 dark:text-slate-300"
+                className="rounded-full border border-black/10 bg-white/60 px-3 py-1 text-xs text-slate-600 dark:border-white/10 dark:bg-ink-900/60 dark:text-slate-300"
                 title={`Pearson r over ${paired} shared date${paired === 1 ? "" : "s"}`}
               >
                 {corr.label} · r = {r!.toFixed(2)} ({paired} shared)

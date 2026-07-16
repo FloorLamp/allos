@@ -141,7 +141,7 @@ export default function BiomarkerScale({
         )}
         {hasOpt && (
           <div
-            className="absolute inset-y-0 rounded-full bg-emerald-300"
+            className="absolute inset-y-0 rounded-full bg-emerald-300 dark:bg-emerald-800/70"
             style={{ left: `${optStart}%`, width: `${optEnd - optStart}%` }}
           />
         )}

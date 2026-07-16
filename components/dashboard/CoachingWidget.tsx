@@ -73,7 +73,7 @@ export default function CoachingWidget({ recs }: { recs: Recommendation[] }) {
             </form>
           </div>
           {secondary && (
-            <p className="mt-3 border-t border-slate-100 pt-3 text-xs text-slate-500 dark:border-ink-800 dark:text-slate-400">
+            <p className="mt-3 border-t border-black/5 pt-3 text-xs text-slate-500 dark:border-white/5 dark:text-slate-400">
               <span className="font-medium">Next:</span> {secondary.title} —{" "}
               {secondary.detail}
             </p>

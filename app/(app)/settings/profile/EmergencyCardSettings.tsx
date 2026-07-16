@@ -94,7 +94,7 @@ export default function EmergencyCardSettings({
         </span>
       </label>
 
-      <div className="border-t border-slate-100 pt-5 dark:border-slate-800">
+      <div className="border-t border-black/5 pt-5 dark:border-white/5">
         <label className="label">Blood type</label>
         <select
           value={bloodType}
@@ -117,7 +117,7 @@ export default function EmergencyCardSettings({
         </p>
       </div>
 
-      <div className="border-t border-slate-100 pt-5 dark:border-slate-800">
+      <div className="border-t border-black/5 pt-5 dark:border-white/5">
         <label className="label">Emergency contact</label>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <input

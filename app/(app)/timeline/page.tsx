@@ -66,7 +66,7 @@ const CATEGORY_ICONS: Record<TimelineCategory, TablerIcon> = {
 };
 
 const CARD_CLASS =
-  "border-slate-200 bg-white text-slate-700 dark:border-white/10 dark:bg-ink-900 dark:text-slate-200";
+  "border-black/10 bg-white text-slate-700 dark:border-white/10 dark:bg-ink-900 dark:text-slate-200";
 
 const BADGE_CLASS: Record<TimelineCategory, string> = {
   activity:
@@ -345,7 +345,7 @@ export default async function TimelinePage(props: {
           idPrefix="timeline"
           rightSlot={
             <>
-              <span className="whitespace-nowrap rounded-full border border-slate-200 bg-white/60 px-3 py-1 text-slate-500 dark:border-white/10 dark:bg-ink-900/60 dark:text-slate-400">
+              <span className="whitespace-nowrap rounded-full border border-black/10 bg-white/60 px-3 py-1 text-slate-500 dark:border-white/10 dark:bg-ink-900/60 dark:text-slate-400">
                 {throughLabel}
               </span>
               {latestDay && oldestDay && latestDay !== oldestDay && (
@@ -467,7 +467,7 @@ export default async function TimelinePage(props: {
               <div className="flex justify-center pb-2 pt-4">
                 <TimelineFilterLink
                   href={filterHref(category, range, show + SHOW_STEP)}
-                  className="rounded-full border border-slate-200 bg-white/70 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-white dark:border-white/10 dark:bg-ink-900/70 dark:text-slate-200 dark:hover:bg-ink-850"
+                  className="rounded-full border border-black/10 bg-white/70 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-white dark:border-white/10 dark:bg-ink-900/70 dark:text-slate-200 dark:hover:bg-ink-850"
                 >
                   Load more
                 </TimelineFilterLink>

@@ -27,7 +27,7 @@ export function DismissFindingButton({
         data-testid="medicine-finding-dismiss"
         aria-label={label}
         title="Dismiss"
-        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-black/5 hover:text-slate-600 dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-slate-300"
+        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-600 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-300"
       >
         <IconX className="h-4 w-4" stroke={2} />
       </button>
