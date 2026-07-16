@@ -66,6 +66,15 @@ const CLASS_LABEL: Record<ContrastClass, string> = Object.fromEntries(
   CLASSES.map((c) => [c.class, c.label])
 ) as Record<ContrastClass, string>;
 
+// The brand/generic AGENT names per class (omnipaque, optiray, gadavist, omniscan, …).
+// These already detect contrast INTENT in study text; issue #829 (Finding 1) also folds
+// them into the ALLERGY match so a brand-specific record ("Allergic to Omnipaque")
+// screens too. Derived from the CLASSES table in code — not hand-copied into the gate
+// JSON — so the intent list and the allergy list can never drift apart.
+const CLASS_AGENTS: Record<ContrastClass, string[]> = Object.fromEntries(
+  CLASSES.map((c) => [c.class, c.agents])
+) as Record<ContrastClass, string[]>;
+
 // The informational guardrail appended to every note (issue #701's required framing:
 // never prescriptive; the absence of a flag is not clearance).
 const GUARDRAIL =
@@ -243,6 +252,25 @@ export function contrastSignalKey(
   return `contrast:${source}:${sourceId}:${gate}:${contrastClass}`;
 }
 
+// Whether a recorded allergen (already normalized) satisfies a gate keyword.
+// SINGLE-word keywords keep the robust substring test — unchanged — so a stored agent
+// name ("omnipaque") hits "allergic to omnipaque" and "iodine" hits "iodine allergy".
+// MULTI-word keywords (issue #829, Finding 2) use an order/adjacency-insensitive
+// token-set test: EVERY word of the keyword must appear as a whole token of the
+// allergen, in any order — so "iv contrast" also matches "Contrast, IV" / "Contrast —
+// IV", and "contrast dye" matches "Dye (Contrast)". Requiring EVERY word (not any one)
+// preserves precision: an unrelated "Yellow dye 5" never satisfies "contrast dye"
+// (no "contrast" token) and "IV antibiotics" never satisfies "iv contrast"/"iv dye".
+function allergenMatchesKeyword(
+  allergenNorm: string,
+  keyword: string
+): boolean {
+  const kwTokens = keyword.split(" ").filter(Boolean);
+  if (kwTokens.length <= 1) return allergenNorm.includes(keyword);
+  const allergenTokens = new Set(allergenNorm.split(" ").filter(Boolean));
+  return kwTokens.every((t) => allergenTokens.has(t));
+}
+
 // Detect every contrast-safety note between the profile's planned contrast studies and
 // its recorded allergens + active conditions. Each (study, gate) yields at most one
 // hit. Result is deterministically ordered (source, id, gate, class).
@@ -262,8 +290,16 @@ export function crossCheckContrast(
       (g) => g.class === study.contrastClass
     );
     if (allergyGate) {
+      // Match against the gate's generic keywords UNION the class's brand/generic agent
+      // names (#829 Finding 1), using the order-insensitive keyword matcher (#829
+      // Finding 2). The agents are all single-token, so they match by substring exactly
+      // as they do for study-intent detection.
+      const keywords = [
+        ...allergyGate.allergens,
+        ...CLASS_AGENTS[study.contrastClass],
+      ];
       const matched = allergensNorm.find((a) =>
-        allergyGate.allergens.some((kw) => a.norm.includes(kw))
+        keywords.some((kw) => allergenMatchesKeyword(a.norm, kw))
       );
       if (matched) {
         hits.push({

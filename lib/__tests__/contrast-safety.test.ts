@@ -175,6 +175,77 @@ describe("crossCheckContrast — allergy gates", () => {
       })
     ).toEqual([]);
   });
+
+  // Issue #829, Finding 1: a brand/generic AGENT name recorded as the allergy must
+  // match — the agent list only detected study INTENT before, not the allergy record.
+  it.each([["Omnipaque"], ["Optiray"], ["Allergic to Isovue"], ["Ultravist"]])(
+    "flags an iodinated brand-name allergy (%s) vs a planned iodinated study",
+    (substance) => {
+      const hits = crossCheckContrast([iodinatedCT()], {
+        allergens: [substance],
+        conditions: [],
+      });
+      expect(hits).toHaveLength(1);
+      expect(hits[0].gate).toBe("allergy");
+      expect(hits[0].contrastClass).toBe("iodinated");
+    }
+  );
+
+  it.each([["Gadavist"], ["Omniscan"], ["Reaction to Dotarem"]])(
+    "flags a gadolinium brand-name allergy (%s) vs a planned gadolinium study",
+    (substance) => {
+      const study = iodinatedCT({
+        contrastClass: "gadolinium",
+        label: "MRI with gadolinium",
+      });
+      const hits = crossCheckContrast([study], {
+        allergens: [substance],
+        conditions: [],
+      });
+      expect(hits).toHaveLength(1);
+      expect(hits[0].note).toContain("gadolinium-contrast allergy");
+    }
+  );
+
+  it("does NOT cross an iodinated brand allergy onto a gadolinium study", () => {
+    const study = iodinatedCT({ contrastClass: "gadolinium" });
+    const hits = crossCheckContrast([study], {
+      allergens: ["Omnipaque"],
+      conditions: [],
+    });
+    expect(hits).toEqual([]);
+  });
+
+  // Issue #829, Finding 2: multi-word keywords match order/adjacency-insensitively —
+  // "Contrast, IV" / "Dye (Contrast)" / "IV Dye" all hit the iodinated gate.
+  it.each([
+    ["Contrast, IV"],
+    ["Dye (Contrast)"],
+    ["Contrast — CT"],
+    ["IV Dye"],
+  ])(
+    "flags a reordered/alternate iodinated allergen phrasing (%s)",
+    (substance) => {
+      const hits = crossCheckContrast([iodinatedCT()], {
+        allergens: [substance],
+        conditions: [],
+      });
+      expect(hits).toHaveLength(1);
+      expect(hits[0].gate).toBe("allergy");
+    }
+  );
+
+  // Precision guard (#829): the order-insensitive match still requires EVERY word of a
+  // multi-word keyword, so an unrelated allergy sharing ONE stray token must NOT hit.
+  it("does NOT fire on an unrelated allergy that shares a stray token", () => {
+    // "Yellow dye 5" shares "dye" with "contrast dye"/"iv dye" but lacks the second
+    // required word; "IV antibiotics" shares "iv" with "iv contrast"/"iv dye".
+    const hits = crossCheckContrast([iodinatedCT()], {
+      allergens: ["Yellow dye 5", "IV antibiotics", "Shellfish"],
+      conditions: [],
+    });
+    expect(hits).toEqual([]);
+  });
 });
 
 describe("crossCheckContrast — renal gates", () => {
