@@ -1,4 +1,4 @@
-import type { DistanceUnit, WeightUnit } from "./settings";
+import type { DistanceUnit, TemperatureUnit, WeightUnit } from "./settings";
 
 // Canonical storage units are kilograms and kilometers.
 export const LB_PER_KG = 2.2046226218;
@@ -104,6 +104,33 @@ export function fmtDistance(
 ): string {
   if (km == null) return "—";
   return `${round(kmTo(km, unit), 2)} ${unit}`;
+}
+
+// ---- Body temperature (canonical storage is always °F) ----
+// A reading is stored in the canonical Fahrenheit scale (lib/vitals-input.ts); the
+// login's `temperatureUnit` preference only chooses how it's DISPLAYED. This is the
+// single display-conversion boundary (the `kgTo`/`kmTo` precedent) so no surface
+// forks the °F→°C math. The write boundary is `toCanonicalTempF` in lib/vitals-input.
+
+// Canonical °F → the display unit, rounded to 0.1° (temperatures are read to a tenth).
+export function degFTo(degF: number, unit: TemperatureUnit): number {
+  return unit === "C" ? round((degF - 32) * (5 / 9), 1) : round(degF, 1);
+}
+
+// The degree suffix for a display unit ("°F" / "°C").
+export function tempUnitLabel(unit: TemperatureUnit): string {
+  return unit === "C" ? "°C" : "°F";
+}
+
+// A canonical (°F) temperature formatted in the login's preferred unit, e.g.
+// "101.3 °F" or "38.5 °C". The ONE formatter every temperature display reads through
+// so a °C login sees °C everywhere and the conversion can't drift (issue #857).
+export function fmtTemp(
+  degF: number | null | undefined,
+  unit: TemperatureUnit
+): string {
+  if (degF == null) return "—";
+  return `${degFTo(degF, unit)} ${tempUnitLabel(unit)}`;
 }
 
 // A speed given in km/h, rendered in the user's distance unit ("12.4 km/h").

@@ -25,13 +25,21 @@ import {
 
 export type WeightUnit = "kg" | "lb";
 export type DistanceUnit = "km" | "mi";
+// Body temperature is stored canonically in °F (see lib/vitals-input.ts). The unit
+// here is a DISPLAY preference only — no reading is ever stored in °C.
+export type TemperatureUnit = "F" | "C";
 
 export interface UnitPrefs {
   weightUnit: WeightUnit;
   distanceUnit: DistanceUnit;
+  temperatureUnit: TemperatureUnit;
 }
 
-const DEFAULTS: UnitPrefs = { weightUnit: "kg", distanceUnit: "km" };
+const DEFAULTS: UnitPrefs = {
+  weightUnit: "kg",
+  distanceUnit: "km",
+  temperatureUnit: "F",
+};
 
 // ---- Unit display preferences (per login) ----
 // Wrapped in React `cache()` — a single render calls this many times (~4×/Training
@@ -44,9 +52,11 @@ export const getUnitPrefs = cache(function getUnitPrefs(
 ): UnitPrefs {
   const weight = getLoginSetting(loginId, "weight_unit");
   const distance = getLoginSetting(loginId, "distance_unit");
+  const temperature = getLoginSetting(loginId, "temperature_unit");
   return {
     weightUnit: weight === "lb" ? "lb" : DEFAULTS.weightUnit,
     distanceUnit: distance === "mi" ? "mi" : DEFAULTS.distanceUnit,
+    temperatureUnit: temperature === "C" ? "C" : DEFAULTS.temperatureUnit,
   };
 });
 
@@ -54,6 +64,7 @@ export function setUnitPrefs(loginId: number, prefs: UnitPrefs) {
   writeTx(() => {
     setLoginSetting(loginId, "weight_unit", prefs.weightUnit);
     setLoginSetting(loginId, "distance_unit", prefs.distanceUnit);
+    setLoginSetting(loginId, "temperature_unit", prefs.temperatureUnit);
   });
 }
 

@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import SymptomLogBar from "@/app/(app)/symptoms/SymptomLogBar";
 import type { Symptom } from "@/lib/symptoms";
+import type { TemperatureUnit } from "@/lib/settings";
 
 // In-place symptom + temperature logging on the episode page (issue #856 item 11). This
 // mounts the SAME SymptomLogBar the dashboard card uses — ZERO forked logging logic (the
@@ -23,8 +24,12 @@ export default function EpisodeLogPanel({
   altDateLabel,
   initial,
   initialAlt,
+  initialNotes,
+  initialAltNotes,
   symptoms,
   customNames,
+  rankedKeys,
+  temperatureUnit,
   rangeStart,
   rangeEnd,
 }: {
@@ -35,8 +40,12 @@ export default function EpisodeLogPanel({
   altDateLabel?: string;
   initial: Record<string, number>;
   initialAlt?: Record<string, number>;
+  initialNotes?: Record<string, string>;
+  initialAltNotes?: Record<string, string>;
   symptoms: Symptom[];
   customNames: string[];
+  rankedKeys?: string[];
+  temperatureUnit?: TemperatureUnit;
   rangeStart: string | null;
   rangeEnd: string | null;
 }) {
@@ -71,10 +80,14 @@ export default function EpisodeLogPanel({
         altDateLabel={altDateLabel}
         initial={initial}
         initialAlt={initialAlt}
+        initialNotes={initialNotes}
+        initialAltNotes={initialAltNotes}
         symptoms={symptoms}
         customNames={customNames}
+        rankedKeys={rankedKeys}
         suggestActivateIllness={false}
         showTemperature
+        temperatureUnit={temperatureUnit}
       />
     </div>
   );

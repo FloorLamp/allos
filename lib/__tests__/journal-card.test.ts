@@ -18,7 +18,11 @@ import type { UnitPrefs } from "@/lib/settings";
 import type { DatedWeight } from "@/lib/calorie-estimate";
 import { buildZoneModel, type ZoneModel } from "@/lib/training-zones";
 
-const KG: UnitPrefs = { weightUnit: "kg", distanceUnit: "km" };
+const KG: UnitPrefs = {
+  weightUnit: "kg",
+  distanceUnit: "km",
+  temperatureUnit: "F",
+};
 
 function activity(over: Partial<Activity> & { id: number }): Activity {
   return {

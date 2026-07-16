@@ -24,7 +24,7 @@ import {
   timeFromCreatedAt,
   type TimelineEvent,
 } from "./timeline-format";
-import { fmtDistance, fmtWeight } from "./units";
+import { fmtDistance, fmtTemp, fmtWeight } from "./units";
 import {
   studyDisplayLabel,
   modalityLabel,
@@ -175,7 +175,11 @@ function collectEvents(
   options: TimelineOptions,
   perTableLimit: number
 ): TimelineEvent[] {
-  const units = options.units ?? { weightUnit: "kg", distanceUnit: "km" };
+  const units = options.units ?? {
+    weightUnit: "kg",
+    distanceUnit: "km",
+    temperatureUnit: "F",
+  };
   const includeTrainingEvents = options.includeTrainingEvents ?? true;
   const restricted = options.restricted ?? false;
   const tz = getTimezone(profileId);
@@ -931,7 +935,7 @@ function collectEvents(
     if (assembled.maxTempF != null)
       detailItems.push({
         label: "Peak temp",
-        value: `${assembled.maxTempF.toFixed(1)}°F`,
+        value: fmtTemp(assembled.maxTempF, units.temperatureUnit),
       });
     for (const m of assembled.medications.slice(0, 4))
       detailItems.push({ label: m.name, value: `${m.count}×` });

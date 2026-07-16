@@ -1,5 +1,11 @@
 import { test, expect } from "@playwright/test";
 import { followLink } from "./nav";
+import {
+  ensureUnlogged,
+  addFromPicker,
+  raiseSeverity,
+  openTempEntry,
+} from "./symptom-helpers";
 
 // Illness-episode follow-ups (#856). The seed makes profile 1 currently sick with an
 // OPEN "Illness" episode (a stored row) plus a PAST closed one. These specs drive the
@@ -29,14 +35,19 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     // The "Feeling better" end action is offered on an open episode (item 2 UI).
     await expect(page.getByTestId("episode-end-form")).toBeVisible();
 
-    // Log a symptom at a severity from the episode page.
-    const sore3 = page.getByTestId("symptom-sore_throat-sev-3");
-    await sore3.click();
-    await expect(sore3).toHaveAttribute("aria-pressed", "true");
+    // Log a symptom at a severity from the episode page — the SHARED SymptomLogBar now
+    // uses the #857 active-first layout, so add via the picker then raise (the same
+    // helpers the dashboard spec drives — one flow, no per-mount drift).
+    const bar = page.getByTestId("symptom-log-bar").first();
+    await ensureUnlogged(bar, "sore_throat");
+    await addFromPicker(bar, "sore_throat");
+    await raiseSeverity(bar, "sore_throat", 3);
 
-    // Log a temperature from the episode page.
-    await page.getByTestId("temp-quick-input").fill("101.2");
-    await page.getByTestId("temp-quick-save").click();
+    // Log a temperature from the episode page (the entry is collapsed by default #857).
+    await openTempEntry(bar);
+    await bar.getByTestId("temp-quick-unit").selectOption("F");
+    await bar.getByTestId("temp-quick-input").fill("101.2");
+    await bar.getByTestId("temp-quick-save").click();
     await expect(page.getByText(/Temperature logged/i)).toBeVisible();
   });
 
@@ -64,10 +75,12 @@ test.describe("Illness-episode follow-ups (#856)", () => {
   }) => {
     test.slow();
     await page.goto("/medical/episodes");
-    // The PAST (resolved) episode — pick a row that isn't the ongoing one.
+    // The PAST (resolved) episode — the seed labels its outcome "Self-resolved". This
+    // test EDITS that outcome, so under repeat-each a later run finds the edited value
+    // instead; match either so it's repeat-safe.
     const resolvedRow = page
       .getByTestId("episode-index-row")
-      .filter({ hasText: "Self-resolved" })
+      .filter({ hasText: /Self-resolved|Recovered without a visit/ })
       .first();
     await followLink(page, resolvedRow, /\/medical\/episodes\/\d+/);
 
@@ -80,8 +93,17 @@ test.describe("Illness-episode follow-ups (#856)", () => {
       .fill("Rested; plenty of fluids");
     await page.getByRole("button", { name: "Save" }).click();
 
-    // The outcome + note persist on the summary.
-    await expect(page.getByText("Recovered without a visit")).toBeVisible();
-    await expect(page.getByText("Rested; plenty of fluids")).toBeVisible();
+    // The outcome + note persist on the summary. Scope the note to its rendered
+    // paragraph — the edit form's <textarea> also holds the text, so an unscoped
+    // getByText matches two elements.
+    await expect(
+      page.getByText("Recovered without a visit").first()
+    ).toBeVisible();
+    await expect(
+      page
+        .getByRole("paragraph")
+        .filter({ hasText: "Rested; plenty of fluids" })
+        .first()
+    ).toBeVisible();
   });
 });

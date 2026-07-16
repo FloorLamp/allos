@@ -321,7 +321,7 @@ describe("currentEpisodeForProfile + household access", () => {
     expect(ep).not.toBeNull();
     expect(ep!.ongoing).toBe(true);
     expect(householdSickLine("Mia", ep!)).toMatch(
-      /^Mia · sick day \d+ · 101\.3°F$/
+      /^Mia · sick day \d+ · 101\.3 °F$/
     );
 
     const well = newProfile("well-now");

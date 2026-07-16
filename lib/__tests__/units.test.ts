@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   avgSpeed,
+  degFTo,
   fmtDistance,
+  fmtTemp,
   fmtWeight,
   kgTo,
   kmTo,
@@ -11,9 +13,11 @@ import {
   stripNonPositive,
   submittedDistanceUnit,
   submittedWeightUnit,
+  tempUnitLabel,
   toKg,
   toKm,
 } from "@/lib/units";
+import { celsiusToF, toCanonicalTempF } from "@/lib/vitals-input";
 
 describe("weight conversions", () => {
   it("are identity for kg", () => {
@@ -35,6 +39,40 @@ describe("distance conversions", () => {
   it("are identity for km and round-trip via miles", () => {
     expect(kmTo(5, "km")).toBe(5);
     expect(toKm(kmTo(5, "mi"), "mi")).toBeCloseTo(5, 9);
+  });
+});
+
+describe("temperature display (canonical storage is °F, #857)", () => {
+  it("is identity for °F", () => {
+    expect(degFTo(98.6, "F")).toBe(98.6);
+    expect(fmtTemp(101.3, "F")).toBe("101.3 °F");
+  });
+
+  it("converts canonical °F to °C, rounded to a tenth", () => {
+    expect(degFTo(32, "C")).toBe(0);
+    expect(degFTo(212, "C")).toBe(100);
+    expect(degFTo(98.6, "C")).toBe(37);
+    expect(fmtTemp(101.3, "C")).toBe("38.5 °C");
+  });
+
+  it("renders an em dash for a null reading", () => {
+    expect(fmtTemp(null, "F")).toBe("—");
+    expect(fmtTemp(undefined, "C")).toBe("—");
+  });
+
+  it("labels the display unit", () => {
+    expect(tempUnitLabel("F")).toBe("°F");
+    expect(tempUnitLabel("C")).toBe("°C");
+  });
+
+  it("round-trips at the write/display boundary: entered °C → canonical °F → °C", () => {
+    for (const c of [36.6, 37, 38.5, 39.4, 40]) {
+      // The write boundary (toCanonicalTempF, matching celsiusToF) then the display
+      // boundary (degFTo) return the original reading within the 0.1° rounding quantum.
+      const canonical = toCanonicalTempF(c, "C");
+      expect(canonical).toBe(celsiusToF(c));
+      expect(degFTo(canonical, "C")).toBeCloseTo(c, 1);
+    }
   });
 });
 

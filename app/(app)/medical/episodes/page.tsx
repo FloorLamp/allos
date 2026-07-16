@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { requireSession } from "@/lib/auth";
+import { getUnitPrefs } from "@/lib/settings";
+import { fmtTemp } from "@/lib/units";
 import { summarizeEpisodesForProfile } from "@/lib/illness-episode-summary";
 import { episodeHref } from "@/lib/hrefs";
 import PageContainer from "@/components/PageContainer";
@@ -27,7 +29,8 @@ function fmtDate(d: string | null): string {
 }
 
 export default async function EpisodesIndexPage() {
-  const { profile } = await requireSession();
+  const { login, profile } = await requireSession();
+  const temperatureUnit = getUnitPrefs(login.id).temperatureUnit;
   const episodes = summarizeEpisodesForProfile(profile.id);
 
   return (
@@ -69,7 +72,7 @@ export default async function EpisodesIndexPage() {
                   <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
                     {e.dayCount != null && <span>{e.dayCount}-day</span>}
                     {e.maxTempF != null && (
-                      <span>peak {e.maxTempF.toFixed(1)}°F</span>
+                      <span>peak {fmtTemp(e.maxTempF, temperatureUnit)}</span>
                     )}
                     {e.distinctSymptomCount > 0 && (
                       <span>

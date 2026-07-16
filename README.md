@@ -160,7 +160,7 @@ empty-profile flow. Server readiness and infrastructure configuration remain an
 admin-only concern under **Settings → Server**. Seeded sample data opens directly
 on the populated Dashboard.
 
-Any login can change its own password (minimum 10 characters, mixed character classes) and enroll **TOTP two-factor authentication** under **Settings → Preferences** — strongly recommended for admins; 8 one-time recovery codes are shown once at enrollment. If an admin loses both the authenticator and the recovery codes, the `ALLOS_DISABLE_2FA` env var (see **Configuration**) is the loudly-logged, audited escape hatch.
+Each login also picks its own **display units** under **Settings → Preferences** — weight (kg/lb), distance (km/mi), and temperature (°F/°C) — a per-login choice that follows you across every profile; storage stays canonical (kg/km/°F) and only the display converts. Any login can change its own password (minimum 10 characters, mixed character classes) and enroll **TOTP two-factor authentication** under **Settings → Preferences** — strongly recommended for admins; 8 one-time recovery codes are shown once at enrollment. If an admin loses both the authenticator and the recovery codes, the `ALLOS_DISABLE_2FA` env var (see **Configuration**) is the loudly-logged, audited escape hatch.
 
 ## AI
 

@@ -9,6 +9,8 @@ import { logTemperatureCore } from "@/lib/temperature-log";
 import {
   logSymptomCore,
   setSymptomSeverityCore,
+  lowerSymptomSeverityCore,
+  setSymptomNoteCore,
   removeSymptomCore,
   renameCustomSymptomCore,
   deleteCustomSymptomCore,
@@ -80,6 +82,45 @@ export async function editSymptom(
   );
   if (outcome.kind === "invalid")
     return { ok: false, error: "Couldn't update that symptom." };
+  revalidateSymptoms();
+  return { ok: true, symptom: outcome.symptom, severity: outcome.severity };
+}
+
+// Explicit LOWER (#857): drop a symptom-day's worst severity to a strictly lower value,
+// preserving its note. Backs the bar's inline "Lower to mild?" confirm — a narrow action
+// so a plain tap can never lower (it raises) and this can never raise.
+export async function lowerSymptom(
+  formData: FormData
+): Promise<SymptomLogResult> {
+  const { profile } = await requireWriteAccess();
+  const symptom = String(formData.get("symptom") ?? "");
+  const outcome = lowerSymptomSeverityCore(
+    profile.id,
+    symptom,
+    parseSeverity(formData),
+    parseDate(formData, profile.id)
+  );
+  if (outcome.kind === "invalid")
+    return { ok: false, error: "Couldn't lower that symptom." };
+  revalidateSymptoms();
+  return { ok: true, symptom: outcome.symptom, severity: outcome.severity };
+}
+
+// Set (or clear) a logged symptom-day's note without touching its severity (#857). The
+// note affordance on a logged row posts here; a blank note clears it.
+export async function setSymptomNote(
+  formData: FormData
+): Promise<SymptomLogResult> {
+  const { profile } = await requireWriteAccess();
+  const symptom = String(formData.get("symptom") ?? "");
+  const outcome = setSymptomNoteCore(
+    profile.id,
+    symptom,
+    parseDate(formData, profile.id),
+    String(formData.get("note") ?? "")
+  );
+  if (outcome.kind === "invalid")
+    return { ok: false, error: "Couldn't save that note." };
   revalidateSymptoms();
   return { ok: true, symptom: outcome.symptom, severity: outcome.severity };
 }

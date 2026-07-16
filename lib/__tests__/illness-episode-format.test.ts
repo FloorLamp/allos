@@ -137,7 +137,7 @@ describe("episodeHeadline", () => {
 describe("householdSickLine", () => {
   it("prefixes the name and appends the latest temp", () => {
     const e = ep({ latestTemp: temp(101.3, "high") });
-    expect(householdSickLine("Mia", e)).toBe("Mia · sick day 4 · 101.3°F");
+    expect(householdSickLine("Mia", e)).toBe("Mia · sick day 4 · 101.3 °F");
   });
   it("drops the day clause when the start is unknown", () => {
     const e = ep({ start: null, latestTemp: null });

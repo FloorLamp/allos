@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { rankByFrequency } from "../rank-by-frequency";
+import { rankByFrequency, rankByRecentFrequency } from "../rank-by-frequency";
 
 describe("rankByFrequency", () => {
   it("keeps curated order when nothing has been logged", () => {
@@ -56,5 +56,72 @@ describe("rankByFrequency", () => {
       ]
     );
     expect(ranked).toEqual(["A", "B", "C"]);
+  });
+});
+
+describe("rankByRecentFrequency (#857 symptom/food picker order)", () => {
+  const TODAY = "2026-07-16";
+
+  it("keeps curated order when nothing has been logged", () => {
+    expect(
+      rankByRecentFrequency(["fever", "cough", "nausea"], [], TODAY)
+    ).toEqual(["fever", "cough", "nausea"]);
+  });
+
+  it("ranks the profile's recurring symptoms ahead of the rest", () => {
+    // Cough logged on three recent days, nausea once — cough leads, fever (never
+    // logged) sinks to catalog order.
+    const ranked = rankByRecentFrequency(
+      ["fever", "cough", "nausea"],
+      [
+        { name: "cough", date: "2026-07-15" },
+        { name: "cough", date: "2026-07-14" },
+        { name: "cough", date: "2026-07-13" },
+        { name: "nausea", date: "2026-07-15" },
+      ],
+      TODAY
+    );
+    expect(ranked).toEqual(["cough", "nausea", "fever"]);
+  });
+
+  it("weights recent occurrences above stale ones (recency decay)", () => {
+    // Fever has more TOTAL logs but they're a year stale; cough's two are recent, so
+    // the recency half-life floats cough above fever.
+    const ranked = rankByRecentFrequency(
+      ["fever", "cough"],
+      [
+        { name: "fever", date: "2025-07-16" },
+        { name: "fever", date: "2025-07-16" },
+        { name: "fever", date: "2025-07-16" },
+        { name: "cough", date: "2026-07-15" },
+        { name: "cough", date: "2026-07-14" },
+      ],
+      TODAY
+    );
+    expect(ranked).toEqual(["cough", "fever"]);
+  });
+
+  it("appends previously-used custom names, ranked by their own recent weight", () => {
+    const ranked = rankByRecentFrequency(
+      ["fever"],
+      [
+        { name: "ear ache", date: "2026-07-15" },
+        { name: "ear ache", date: "2026-07-14" },
+      ],
+      TODAY
+    );
+    expect(ranked).toEqual(["ear ache", "fever"]);
+  });
+
+  it("honors an explicit per-occurrence weight (food servings)", () => {
+    const ranked = rankByRecentFrequency(
+      ["veg", "sweets"],
+      [
+        { name: "sweets", date: "2026-07-15", weight: 5 },
+        { name: "veg", date: "2026-07-15", weight: 1 },
+      ],
+      TODAY
+    );
+    expect(ranked).toEqual(["sweets", "veg"]);
   });
 });

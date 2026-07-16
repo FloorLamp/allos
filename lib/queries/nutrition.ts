@@ -35,8 +35,7 @@ import {
   foodGroupSlugs,
   type FoodGroup,
 } from "../food-groups";
-import { decayedWeight } from "../decay";
-import { rankByFrequency } from "../rank-by-frequency";
+import { rankByRecentFrequency } from "../rank-by-frequency";
 
 // Safety-screened food suggestions for the profile's currently-flagged, diet-responsive
 // biomarker families. Deterministic; the AI narration tier (deferred, #576 Phase 3)
@@ -184,14 +183,13 @@ export function getFoodGroupLogOrder(profileId: number): FoodGroup[] {
     date: string;
     servings: number;
   }[];
-  // Aggregate a recency-decayed serving weight per group.
-  const weights = new Map<string, number>();
-  for (const r of rows) {
-    const w = r.servings * decayedWeight(r.date, t);
-    weights.set(r.name, (weights.get(r.name) ?? 0) + w);
-  }
-  const rankRows = [...weights].map(([name, c]) => ({ name, c }));
-  const ranked = rankByFrequency(foodGroupSlugs(), rankRows);
+  // Rank the catalog by recency-decayed serving weight (each serving decays with
+  // age) — the shared #857 computation, food weighting each occurrence by its servings.
+  const ranked = rankByRecentFrequency(
+    foodGroupSlugs(),
+    rows.map((r) => ({ name: r.name, date: r.date, weight: r.servings })),
+    t
+  );
   const out: FoodGroup[] = [];
   for (const slug of ranked) {
     const g = foodGroupBySlug(slug);

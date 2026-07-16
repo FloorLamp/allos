@@ -83,7 +83,7 @@ beforeAll(() => {
 describe("getTimelineEvents", () => {
   it("formats activity distance and body weight with supplied unit prefs", () => {
     const events = getTimelineEvents(imperial.profileId, {
-      units: { distanceUnit: "mi", weightUnit: "lb" },
+      units: { distanceUnit: "mi", weightUnit: "lb", temperatureUnit: "F" },
     });
 
     const run = events.find(
@@ -99,7 +99,7 @@ describe("getTimelineEvents", () => {
 
   it("includes expandable strength exercise summaries on activity events", () => {
     const events = getTimelineEvents(imperial.profileId, {
-      units: { distanceUnit: "km", weightUnit: "lb" },
+      units: { distanceUnit: "km", weightUnit: "lb", temperatureUnit: "F" },
     });
 
     const strength = events.find(

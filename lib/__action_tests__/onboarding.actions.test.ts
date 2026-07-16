@@ -142,6 +142,8 @@ describe("onboarding actions", () => {
     expect(getUnitPrefs(login.id)).toEqual({
       weightUnit: "lb",
       distanceUnit: "mi",
+      // Onboarding doesn't collect temperature; it preserves the login default (#857).
+      temperatureUnit: "F",
     });
     expect(getOnboardingState(profile.id)?.basicsComplete).toBe(true);
 

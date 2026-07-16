@@ -112,8 +112,9 @@ test.describe("Illness front door (#843)", () => {
     await page.getByTestId("feeling-sick-activate").click();
     await expect(page.getByTestId("symptom-log-bar")).toBeVisible();
     await expect(page.getByTestId("feeling-sick-card")).toHaveCount(0);
-    // Temperature quick entry is right there (door B reachability).
-    await expect(page.getByTestId("temp-quick-entry")).toBeVisible();
+    // Temperature quick entry is right there (door B reachability) — collapsed by
+    // default (#857) to one tap.
+    await expect(page.getByTestId("temp-quick-toggle")).toBeVisible();
   });
 
   test("door B: temperature + reading time logs within two taps of a fresh dashboard", async ({
@@ -125,9 +126,12 @@ test.describe("Illness front door (#843)", () => {
 
     // Tap 1 — open the door.
     await page.getByTestId("feeling-sick-activate").click();
+    // Temperature entry is collapsed by default (#857) — expand it.
+    await page.getByTestId("temp-quick-toggle").click();
     await expect(page.getByTestId("temp-quick-entry")).toBeVisible();
 
     // A 7am fever: 102 °F at 07:00. Enter the value + time and log it.
+    await page.getByTestId("temp-quick-unit").selectOption("F");
     await page.getByTestId("temp-quick-input").fill("102");
     await page.getByTestId("temp-quick-time").fill("07:00");
     await page.getByTestId("temp-quick-save").click();
@@ -184,19 +188,26 @@ test.describe("Illness front door (#843)", () => {
     await page.getByTestId("feeling-sick-activate").click();
     await expect(page.getByTestId("symptom-log-bar")).toBeVisible();
 
-    // 2) Two symptoms at severities.
-    await page.getByTestId("symptom-headache-sev-3").click();
-    await expect(page.getByTestId("symptom-headache-sev-3")).toHaveAttribute(
+    // 2) Two symptoms at severities. Active-first layout (#857): add from the picker
+    // (logs at severity 1), then raise.
+    const bar = page.getByTestId("symptom-log-bar");
+    await bar.getByTestId("symptom-add-picker-toggle").click();
+    await bar.getByTestId("symptom-pick-headache").click();
+    await bar.getByTestId("symptom-headache-sev-3").click();
+    await expect(bar.getByTestId("symptom-headache-sev-3")).toHaveAttribute(
       "aria-pressed",
       "true"
     );
-    await page.getByTestId("symptom-fever-sev-2").click();
-    await expect(page.getByTestId("symptom-fever-sev-2")).toHaveAttribute(
+    await bar.getByTestId("symptom-pick-fever").click();
+    await bar.getByTestId("symptom-fever-sev-2").click();
+    await expect(bar.getByTestId("symptom-fever-sev-2")).toHaveAttribute(
       "aria-pressed",
       "true"
     );
 
     // 3) 102 °F at 07:00 (the fever curve's first reading).
+    await page.getByTestId("temp-quick-toggle").click();
+    await page.getByTestId("temp-quick-unit").selectOption("F");
     await page.getByTestId("temp-quick-input").fill("102");
     await page.getByTestId("temp-quick-time").fill("07:00");
     await page.getByTestId("temp-quick-save").click();

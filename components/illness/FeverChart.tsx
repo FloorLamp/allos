@@ -1,13 +1,16 @@
 import { chartSeries, chartBand } from "@/lib/chart-colors";
 import type { TemperaturePoint } from "@/lib/illness-episode-format";
+import type { TemperatureUnit } from "@/lib/settings";
+import { fmtTemp } from "@/lib/units";
 
 // The fever curve (issue #856 item 4): a small, self-contained SVG line chart of the
 // episode's timed temperature readings (#800), with a shaded normal-range band so a
 // reading above it reads as fever at a glance. The peak-temp STAT stays in the summary
 // header; this adds the shape. Inline SVG (not recharts) so it renders in the server
 // component and survives print. Colors come from the #794 palette (chart-colors), never
-// hand-picked hex. Axis labels stay plain °F for now — they adopt fmtTemp when #857's
-// temperature-preference work lands (whoever rebases second integrates).
+// hand-picked hex. The SVG geometry is unit-agnostic (a shape over canonical °F); the
+// only temperature TEXT is the aria-label, which renders in the viewer's unit via fmtTemp
+// (#857) — canonical storage stays °F, `temperatureUnit` defaults to °F.
 //
 // Pure/presentational: no DB, no client state. A single reading renders as one dot.
 
@@ -22,8 +25,10 @@ const NORMAL_HIGH = 99.0;
 
 export default function FeverChart({
   temperatures,
+  temperatureUnit = "F",
 }: {
   temperatures: TemperaturePoint[];
+  temperatureUnit?: TemperatureUnit;
 }) {
   const pts = temperatures.filter((t) => Number.isFinite(t.degF));
   if (pts.length === 0) return null;
@@ -49,7 +54,7 @@ export default function FeverChart({
       viewBox={`0 0 ${W} ${H}`}
       width="100%"
       role="img"
-      aria-label={`Fever curve, peak ${Math.max(...values).toFixed(1)} degrees Fahrenheit`}
+      aria-label={`Fever curve, peak ${fmtTemp(Math.max(...values), temperatureUnit)}`}
       data-testid="episode-fever-chart"
       className="max-w-md"
     >
