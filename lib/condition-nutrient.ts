@@ -11,10 +11,9 @@
 // only well-established, citable condition→nutrient rules — the map is the sourcing
 // standard, not a second hand-rolled list.
 
-import mapData from "./nutrient-food-map.json";
-import type { NutrientFoodMap } from "@/scripts/gen-nutrient-food-map";
+import { NUTRIENT_FOOD_ENTRIES } from "./datasets/nutrient-food-map";
 
-const ENTRIES = (mapData as NutrientFoodMap).entries;
+const ENTRIES = NUTRIENT_FOOD_ENTRIES;
 
 // A DROP-severity condition→nutrient contraindication.
 export interface ConditionNutrientRule {

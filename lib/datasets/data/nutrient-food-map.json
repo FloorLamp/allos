@@ -1,5 +1,133 @@
 {
-  "$comment": "Baked biomarker→nutrient→food map for the DETERMINISTIC food-recommendation engine (issue #577): when a diet-responsive biomarker family reads low, the curated food sources that address it (`entries`); and when a core-panel/toxin biomarker reads high, the limit-tier foods to reduce (`reduceEntries`, issue #775). Each carries an evidence note + source; low entries add contraindication tags + an allergy alternative. Committed + HUMAN-REVIEWABLE. Regenerate with `npm run gen:nutrient-food-map`. INFORMATIONAL food-first guidance, NOT medical advice — every suggestion is safety-screened before it renders and cites the flagged biomarker as its reason.",
+  "$schema": "allos-dataset/v1",
+  "id": "nutrient-food-map",
+  "title": "Biomarker→nutrient→food recommendation map",
+  "description": "Baked biomarker→nutrient→food map for the DETERMINISTIC food-recommendation engine (issue #577): when a diet-responsive biomarker family reads low, the curated food sources that address it (`entries`); and when a core-panel/toxin biomarker reads high, the limit-tier foods to reduce (`meta.reduceEntries`, issue #775). Each carries an evidence note + source; low entries add contraindication tags + an allergy alternative. Committed + HUMAN-REVIEWABLE. Regenerate with `npm run gen:nutrient-food-map`. INFORMATIONAL food-first guidance, NOT medical advice — every suggestion is safety-screened before it renders and cites the flagged biomarker as its reason.",
+  "citation": [
+    {
+      "source": "NIH Office of Dietary Supplements (ODS) nutrient fact sheets",
+      "url": "https://ods.od.nih.gov/factsheets/list-all/",
+      "note": "Food-source guidance for diet-responsive nutrients; each entry's own `source` field carries that mapping's specific provenance."
+    },
+    {
+      "source": "Dietary Guidelines for Americans, 2020–2025 (USDA / HHS)",
+      "url": "https://www.dietaryguidelines.gov",
+      "note": "Reduce-tier (limit) dietary guidance for high-side biomarkers (meta.reduceEntries)."
+    }
+  ],
+  "identity": {
+    "keys": [
+      "key"
+    ]
+  },
+  "meta": {
+    "reduceEntries": [
+      {
+        "key": "ldl-apob",
+        "label": "LDL cholesterol / ApoB",
+        "biomarkers": [
+          "LDL Cholesterol",
+          "ApoB"
+        ],
+        "direction": "high",
+        "foods": [
+          {
+            "food": "Fried and deep-fried foods",
+            "foodGroup": "fried_food",
+            "serving": "Cutting back on fried food lowers the saturated and trans fat that raises LDL and ApoB."
+          },
+          {
+            "food": "Processed and fatty red meats",
+            "foodGroup": "processed_meat",
+            "serving": "Swapping processed and fatty red meat for fish, poultry, or legumes reduces the saturated fat driving LDL up."
+          }
+        ],
+        "evidence": "LDL cholesterol and ApoB respond to dietary saturated and trans fat; reducing fried foods and processed/fatty red meat is a well-established lever.",
+        "source": "NIH/NHLBI dietary guidance; Dietary Guidelines for Americans (limit saturated fat)",
+        "caveat": "Replacing saturated fat with unsaturated fats (olive oil, nuts, fish) lowers LDL more than simply cutting total fat."
+      },
+      {
+        "key": "glucose",
+        "label": "Glucose / HbA1c",
+        "biomarkers": [
+          "Glucose",
+          "Hemoglobin A1c"
+        ],
+        "direction": "high",
+        "foods": [
+          {
+            "food": "Added sugar and sweets",
+            "foodGroup": "added_sugar",
+            "serving": "Reducing added sugar lowers the post-meal glucose load that raises A1c."
+          },
+          {
+            "food": "Sugary drinks — soda, juice, sweetened coffee",
+            "foodGroup": "sugary_drinks",
+            "serving": "Sugary drinks spike glucose fastest; swapping to water or unsweetened is a high-yield change."
+          },
+          {
+            "food": "Refined grains — white bread, white rice, pastries",
+            "foodGroup": "refined_grains",
+            "serving": "Swapping refined grains for whole grains blunts glucose spikes."
+          }
+        ],
+        "evidence": "Fasting glucose and HbA1c respond to dietary sugar and refined carbohydrate; reducing added sugar, sugary drinks, and refined grains lowers the glycemic load.",
+        "source": "NIH/NIDDK dietary guidance; Dietary Guidelines for Americans (limit added sugars)",
+        "caveat": "Fiber-rich whole foods, protein, and spreading carbohydrate across the day flatten glucose more than sugar avoidance alone."
+      },
+      {
+        "key": "urate",
+        "label": "Uric acid",
+        "biomarkers": [
+          "Uric Acid"
+        ],
+        "direction": "high",
+        "foods": [
+          {
+            "food": "Alcohol, especially beer",
+            "foodGroup": "alcohol",
+            "serving": "Alcohol (beer most of all) raises uric acid and triggers gout flares — cutting back is a primary lever."
+          },
+          {
+            "food": "High-purine foods — organ meats, red/game meat, and shellfish",
+            "foodGroup": null,
+            "serving": "Reducing organ meats, red and game meat, and shellfish lowers the purine load the body converts to uric acid."
+          },
+          {
+            "food": "Sugary, high-fructose drinks",
+            "foodGroup": "sugary_drinks",
+            "serving": "Fructose raises uric acid, so cutting sugary drinks helps beyond the purine story."
+          }
+        ],
+        "evidence": "High uric acid (and gout risk) responds to reducing alcohol, high-purine foods (organ meats, red meat, shellfish), and fructose-sweetened drinks.",
+        "source": "NIH/NIAMS gout dietary guidance",
+        "caveat": "Staying well hydrated and reaching a healthy weight lower uric acid alongside these changes; dairy and coffee are associated with lower levels."
+      },
+      {
+        "key": "sodium",
+        "label": "Sodium",
+        "biomarkers": [
+          "Sodium"
+        ],
+        "direction": "high",
+        "foods": [
+          {
+            "food": "Processed and packaged salty foods",
+            "foodGroup": "processed_meat",
+            "serving": "Most dietary sodium comes from processed, packaged, and restaurant foods — choosing fresh or home-cooked is the biggest lever."
+          },
+          {
+            "food": "Deli meats, canned soups, and salty snacks",
+            "foodGroup": null,
+            "serving": "Cutting back on deli meat, canned soup, chips, and salty sauces lowers sodium substantially."
+          }
+        ],
+        "evidence": "Reducing processed and packaged foods — the source of most dietary sodium — is the primary lever, especially relevant with hypertension or reduced kidney function.",
+        "source": "NIH/NHLBI DASH guidance; Dietary Guidelines for Americans (limit sodium)",
+        "caveat": "A blood sodium reading is regulated mostly by fluid balance rather than salt intake — but reducing dietary sodium matters for blood pressure and kidney health."
+      }
+    ]
+  },
   "entries": [
     {
       "key": "omega-3",
@@ -504,112 +632,6 @@
       "contraindications": [],
       "allergyAlternative": null,
       "caveat": "Molybdenum deficiency is essentially unknown in people eating a normal diet — a low reading rarely calls for a dietary change."
-    }
-  ],
-  "reduceEntries": [
-    {
-      "key": "ldl-apob",
-      "label": "LDL cholesterol / ApoB",
-      "biomarkers": [
-        "LDL Cholesterol",
-        "ApoB"
-      ],
-      "direction": "high",
-      "foods": [
-        {
-          "food": "Fried and deep-fried foods",
-          "foodGroup": "fried_food",
-          "serving": "Cutting back on fried food lowers the saturated and trans fat that raises LDL and ApoB."
-        },
-        {
-          "food": "Processed and fatty red meats",
-          "foodGroup": "processed_meat",
-          "serving": "Swapping processed and fatty red meat for fish, poultry, or legumes reduces the saturated fat driving LDL up."
-        }
-      ],
-      "evidence": "LDL cholesterol and ApoB respond to dietary saturated and trans fat; reducing fried foods and processed/fatty red meat is a well-established lever.",
-      "source": "NIH/NHLBI dietary guidance; Dietary Guidelines for Americans (limit saturated fat)",
-      "caveat": "Replacing saturated fat with unsaturated fats (olive oil, nuts, fish) lowers LDL more than simply cutting total fat."
-    },
-    {
-      "key": "glucose",
-      "label": "Glucose / HbA1c",
-      "biomarkers": [
-        "Glucose",
-        "Hemoglobin A1c"
-      ],
-      "direction": "high",
-      "foods": [
-        {
-          "food": "Added sugar and sweets",
-          "foodGroup": "added_sugar",
-          "serving": "Reducing added sugar lowers the post-meal glucose load that raises A1c."
-        },
-        {
-          "food": "Sugary drinks — soda, juice, sweetened coffee",
-          "foodGroup": "sugary_drinks",
-          "serving": "Sugary drinks spike glucose fastest; swapping to water or unsweetened is a high-yield change."
-        },
-        {
-          "food": "Refined grains — white bread, white rice, pastries",
-          "foodGroup": "refined_grains",
-          "serving": "Swapping refined grains for whole grains blunts glucose spikes."
-        }
-      ],
-      "evidence": "Fasting glucose and HbA1c respond to dietary sugar and refined carbohydrate; reducing added sugar, sugary drinks, and refined grains lowers the glycemic load.",
-      "source": "NIH/NIDDK dietary guidance; Dietary Guidelines for Americans (limit added sugars)",
-      "caveat": "Fiber-rich whole foods, protein, and spreading carbohydrate across the day flatten glucose more than sugar avoidance alone."
-    },
-    {
-      "key": "urate",
-      "label": "Uric acid",
-      "biomarkers": [
-        "Uric Acid"
-      ],
-      "direction": "high",
-      "foods": [
-        {
-          "food": "Alcohol, especially beer",
-          "foodGroup": "alcohol",
-          "serving": "Alcohol (beer most of all) raises uric acid and triggers gout flares — cutting back is a primary lever."
-        },
-        {
-          "food": "High-purine foods — organ meats, red/game meat, and shellfish",
-          "foodGroup": null,
-          "serving": "Reducing organ meats, red and game meat, and shellfish lowers the purine load the body converts to uric acid."
-        },
-        {
-          "food": "Sugary, high-fructose drinks",
-          "foodGroup": "sugary_drinks",
-          "serving": "Fructose raises uric acid, so cutting sugary drinks helps beyond the purine story."
-        }
-      ],
-      "evidence": "High uric acid (and gout risk) responds to reducing alcohol, high-purine foods (organ meats, red meat, shellfish), and fructose-sweetened drinks.",
-      "source": "NIH/NIAMS gout dietary guidance",
-      "caveat": "Staying well hydrated and reaching a healthy weight lower uric acid alongside these changes; dairy and coffee are associated with lower levels."
-    },
-    {
-      "key": "sodium",
-      "label": "Sodium",
-      "biomarkers": [
-        "Sodium"
-      ],
-      "direction": "high",
-      "foods": [
-        {
-          "food": "Processed and packaged salty foods",
-          "foodGroup": "processed_meat",
-          "serving": "Most dietary sodium comes from processed, packaged, and restaurant foods — choosing fresh or home-cooked is the biggest lever."
-        },
-        {
-          "food": "Deli meats, canned soups, and salty snacks",
-          "foodGroup": null,
-          "serving": "Cutting back on deli meat, canned soup, chips, and salty sauces lowers sodium substantially."
-        }
-      ],
-      "evidence": "Reducing processed and packaged foods — the source of most dietary sodium — is the primary lever, especially relevant with hypertension or reduced kidney function.",
-      "source": "NIH/NHLBI DASH guidance; Dietary Guidelines for Americans (limit sodium)",
-      "caveat": "A blood sodium reading is regulated mostly by fluid balance rather than salt intake — but reducing dietary sodium matters for blood pressure and kidney health."
     }
   ]
 }

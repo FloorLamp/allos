@@ -33,19 +33,20 @@
 // regardless of which member is newest (#482). The prefix is registered in
 // lib/rule-finding-prefixes.ts.
 
-import mapData from "./nutrient-food-map.json";
 import type {
-  NutrientFoodMap,
   NutrientFoodEntry,
   ReduceFoodEntry,
   FoodSource,
 } from "@/scripts/gen-nutrient-food-map";
+import {
+  NUTRIENT_FOOD_ENTRIES,
+  REDUCE_FOOD_ENTRIES,
+} from "./datasets/nutrient-food-map";
 import { allergenConflict, type SafetyMedication } from "./supplement-safety";
 import { matchFoodInteractions } from "./food-drug-interactions";
 
-const ENTRIES: NutrientFoodEntry[] = (mapData as NutrientFoodMap).entries;
-const REDUCE_ENTRIES: ReduceFoodEntry[] = (mapData as NutrientFoodMap)
-  .reduceEntries;
+const ENTRIES: NutrientFoodEntry[] = NUTRIENT_FOOD_ENTRIES;
+const REDUCE_ENTRIES: ReduceFoodEntry[] = REDUCE_FOOD_ENTRIES;
 
 // The findings-bus namespace for low-side (ADD) food suggestions (issue #435/#482).
 // Keyed on the nutrient, so a dismiss follows the nutrient family, not a single reading.
@@ -484,6 +485,6 @@ export function nutrientFoodMapDrugKeys(): string[] {
 }
 
 export {
-  ENTRIES as NUTRIENT_FOOD_ENTRIES,
-  REDUCE_ENTRIES as REDUCE_FOOD_ENTRIES,
-};
+  NUTRIENT_FOOD_ENTRIES,
+  REDUCE_FOOD_ENTRIES,
+} from "./datasets/nutrient-food-map";
