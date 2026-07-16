@@ -17,7 +17,7 @@ import {
 // a group links resolves to a map entry. Pure — no DB/network.
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const OUT = path.join(REPO, "lib/food-groups.json");
+const OUT = path.join(REPO, "lib/datasets/data/food-groups.json");
 
 const MAP_KEYS = new Set(NUTRIENT_FOOD_ENTRIES.map((e) => e.key));
 
