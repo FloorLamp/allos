@@ -1591,6 +1591,98 @@
       ],
       "primaryMuscles": ["forearms"],
       "secondaryMuscles": []
+    },
+    {
+      "key": "smith bench press",
+      "setup": [
+        "Lie back on the bench so the bar's fixed path lines up over your lower chest.",
+        "Set your feet flat, brace, and unrack by rotating the bar off the safety hooks."
+      ],
+      "execution": [
+        "Lower the bar under control to your lower chest along the fixed track.",
+        "Keep the elbows tracking back at roughly 45 degrees, wrists stacked over them.",
+        "Press back up to arms straight, then re-hook the bar with a small wrist turn."
+      ],
+      "breathing": "Inhale as you lower, exhale as you press up.",
+      "commonMistakes": [
+        "Positioning the bench so the fixed path is over the throat or upper chest.",
+        "Bouncing the bar off the chest instead of a controlled touch.",
+        "Flaring the elbows straight out to the sides."
+      ],
+      "safetyNotes": [
+        "Set the safety stops just below your chest so a missed rep can be racked; the fixed path means the stops are your only spotter."
+      ],
+      "primaryMuscles": ["chest"],
+      "secondaryMuscles": ["front-delts", "triceps"]
+    },
+    {
+      "key": "smith squat",
+      "setup": [
+        "Set the bar across your upper traps and position your feet slightly forward of the bar's path.",
+        "Brace your core and unrack by rotating the bar off the hooks."
+      ],
+      "execution": [
+        "Sit down and back, letting the knees track over the toes, to at least parallel.",
+        "Keep the whole foot planted and the brace tight through the bottom.",
+        "Drive up through mid-foot to standing, then re-hook the bar at the top."
+      ],
+      "breathing": "Inhale and brace before descending, exhale as you drive up.",
+      "commonMistakes": [
+        "Placing the feet directly under the bar so the fixed path pitches you forward.",
+        "Cutting depth short instead of reaching at least parallel.",
+        "Letting the heels rise or the knees cave in."
+      ],
+      "safetyNotes": [
+        "Set the safety stops at your bottom depth; the fixed path locks you in, so plan the bail-out before you start."
+      ],
+      "primaryMuscles": ["quads"],
+      "secondaryMuscles": ["glutes", "hamstrings", "lower-back"]
+    },
+    {
+      "key": "kettlebell swing",
+      "setup": [
+        "Stand with the bell a foot in front of you, feet a little wider than the hips.",
+        "Hinge at the hips, grip the handle with both hands, and set a flat back with the lats tight."
+      ],
+      "execution": [
+        "Hike the bell back between the thighs, then snap the hips forward to float it up.",
+        "Let the hip drive — not the arms — swing the bell to about chest height.",
+        "Absorb the bell back into the next hinge, keeping the spine neutral throughout."
+      ],
+      "breathing": "Exhale sharply as the hips snap, inhale as the bell descends.",
+      "commonMistakes": [
+        "Squatting the swing instead of hinging at the hips.",
+        "Lifting the bell with the shoulders rather than the hip drive.",
+        "Rounding the lower back at the bottom of the hinge."
+      ],
+      "safetyNotes": [
+        "Groove the hip hinge with a lighter bell first; a rounded-back swing loads the lower back."
+      ],
+      "primaryMuscles": ["glutes"],
+      "secondaryMuscles": ["hamstrings", "lower-back", "forearms"]
+    },
+    {
+      "key": "turkish get-up",
+      "setup": [
+        "Lie on your back and press the bell straight up in one hand, that same knee bent, foot flat.",
+        "Extend the other arm and leg out at roughly 45 degrees, eyes on the bell."
+      ],
+      "execution": [
+        "Roll up onto the free forearm, then to the free hand, keeping the loaded arm vertical.",
+        "Bridge the hips, sweep the straight leg back to a half-kneel, then stand up.",
+        "Reverse each step in order to return to the floor under control."
+      ],
+      "breathing": "Breathe steadily through each stage; never hold your breath under the load.",
+      "commonMistakes": [
+        "Letting the loaded arm drift off vertical so the shoulder loses support.",
+        "Rushing the transitions instead of owning each position.",
+        "Taking the eyes off the bell during the early rolls."
+      ],
+      "safetyNotes": [
+        "Learn the sequence with a light bell (or a shoe balanced on the fist) before loading; done one side at a time."
+      ],
+      "primaryMuscles": ["abs"],
+      "secondaryMuscles": ["obliques", "front-delts", "glutes", "quads"]
     }
   ]
 }

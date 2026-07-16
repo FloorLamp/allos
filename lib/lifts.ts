@@ -141,9 +141,44 @@ export interface LiftDef {
   bodyweight?: boolean;
 }
 
-// Equipment a variant lift can be done with. Stored variant names are
-// "<Equipment> <Base>", e.g. "Dumbbell Curl".
-export type Equipment = "Barbell" | "Dumbbell" | "Cable" | "Machine";
+// The canonical implement vocabulary for the lift catalog. It serves two roles:
+//
+//  1. VariantGroup composition (below) — a base lift (Curl/Row/Bench Press) opts
+//     INTO the subset of implements it can be loaded with, composing
+//     "<Equipment> <Base>" names ("Dumbbell Curl"). Composed variants SHARE the
+//     base's progression history: exerciseHistoryKey collapses them to the base
+//     (the deliberate #331 merge — one progression track per base lift).
+//
+//  2. Standalone-implement labelling — a lift that must keep a SEPARATE history
+//     from a same-movement barbell lift (#482: distinct equipment = distinct
+//     history) is NOT a merged variant. It ships as its OWN catalog entry named
+//     for the implement ("Trap Bar Deadlift", "Smith Bench Press", the
+//     kettlebell-native moves), so its e1RM/progression never blends into the
+//     barbell base.
+//
+// That distinction is why "Kettlebell" / "Trap Bar" / "Smith" (added in #836) are
+// in the vocabulary but are NOT assigned to any VariantGroup below: as merged
+// variants they would collapse into the barbell base history (blending a trap-bar
+// deadlift into "Deadlift", a Smith bench into "Bench Press"), violating #482 and
+// "existing Deadlift histories untouched". They are standalone entries in
+// PLAIN_DEFS instead — the same treatment T-Bar Row / Hack Squat / Trap Bar
+// Deadlift already get. The union member is used as the standalone name's prefix
+// and as the defaultEquipment display label.
+//
+// Deliberately EXCLUDED (tracked as a merged 1RM history they would add noise, not
+// signal — the #482 exclusion discipline applied to equipment):
+//  - Bands: load varies through the range of motion, so a banded lift has no
+//    comparable session-to-session load — noise as a tracked 1RM history.
+//  - EZ-bar: a grip variant of a barbell curl/extension; folds into "Barbell".
+//  - Rings: an unstable bodyweight surface; folds into the bodyweight movements.
+export type Equipment =
+  | "Barbell"
+  | "Dumbbell"
+  | "Cable"
+  | "Machine"
+  | "Kettlebell"
+  | "Trap Bar"
+  | "Smith";
 
 // A base lift that can be performed with different equipment. Each (equipment,
 // base) pair expands into a concrete lift named "<Equipment> <Base>" so it is
@@ -829,6 +864,61 @@ const PLAIN_DEFS: LiftDef[] = [
     primaryMuscles: ["lats"],
     secondaryMuscles: ["forearms", "traps"],
   },
+  // #836 — Smith-machine + kettlebell-native additions. These are STANDALONE
+  // catalog entries (not VariantGroup variants) precisely so each keeps a history
+  // SEPARATE from its barbell twin (#482), the same as the pre-existing standalone
+  // "Trap Bar Deadlift" / "T-Bar Row" / "Hack Squat". Tagged like every other
+  // catalog lift so muscle coverage, volume bands, and day-type suggestions see
+  // them. (Trap Bar Deadlift and Goblet Squat already exist above.)
+  //
+  // Smith machine: the fixed bar path and different stabilizer demand make these
+  // genuinely different lifts from the free-barbell base (issue point 3). Only the
+  // two most-common Smith lifts are added — Smith overhead press / row are niche
+  // and would add picker entries with little use (the #482 over-expansion caution),
+  // so they are deliberately left to be logged as custom names if wanted.
+  {
+    name: "Smith Bench Press",
+    muscle: "Chest",
+    region: "Chest",
+    pattern: "push",
+    primaryMuscles: ["chest"],
+    secondaryMuscles: ["front-delts", "triceps"],
+  },
+  {
+    name: "Smith Squat",
+    muscle: "Quads",
+    region: "Legs",
+    pattern: "legs",
+    primaryMuscles: ["quads"],
+    secondaryMuscles: ["glutes", "hamstrings", "lower-back"],
+  },
+  // Kettlebell-native movements — no barbell "base", so they are standalone (not
+  // variants). Kettlebell's value is these native moves, not KB-flavored barbell
+  // lifts (KB row / KB press), which are deliberately omitted (#482 over-expansion
+  // + they'd be low-signal duplicates of the barbell row/press histories).
+  {
+    // Ballistic hip hinge — the archetypal glute/posterior-chain power move. Filed
+    // under Glutes (its prime mover); the hinge is a "pull" pattern like the
+    // deadlift family. Loaded (a kettlebell), so NOT bodyweight.
+    name: "Kettlebell Swing",
+    muscle: "Glutes & hamstrings",
+    region: "Glutes",
+    pattern: "pull",
+    primaryMuscles: ["glutes"],
+    secondaryMuscles: ["hamstrings", "lower-back", "forearms"],
+  },
+  {
+    // A full-body ground-to-standing sequence under a loaded overhead hold; the
+    // defining demand is core/anti-rotation, so it's filed under Core with `abs`
+    // primary. Performed one side at a time (unilateral). Loaded, not bodyweight.
+    name: "Turkish Get-Up",
+    muscle: "Core & shoulders",
+    region: "Core",
+    pattern: "core",
+    unilateral: true,
+    primaryMuscles: ["abs"],
+    secondaryMuscles: ["obliques", "front-delts", "glutes", "quads"],
+  },
 ];
 
 /** Compose the stored exercise name for a variant, e.g. ("Curl","Dumbbell") -> "Dumbbell Curl". */
@@ -1141,6 +1231,15 @@ const BODYWEIGHT_LIFTS = set(
   "Dead Hang",
   "Side Plank"
 );
+// Standalone implement labels for the #836 additions, so their display implement
+// reads accurately instead of "Barbell"/null. Trap Bar Deadlift stays a barbell
+// lift for PLATE math (isBarbellLift, above — a trap bar is plate-loaded) but
+// DISPLAYS as "Trap Bar", so this set is consulted BEFORE the isBarbellLift branch
+// in defaultEquipment. Smith lifts are not plate-modelled (their bar counterweight
+// is machine-specific), so they only need the display label.
+const TRAP_BAR_LIFTS = set("Trap Bar Deadlift");
+const SMITH_LIFTS = set("Smith Bench Press", "Smith Squat");
+const KETTLEBELL_LIFTS = set("Kettlebell Swing", "Turkish Get-Up");
 
 /**
  * The implement a lift is normally performed with ("Barbell"/"Dumbbell"/"Cable"/
@@ -1149,6 +1248,15 @@ const BODYWEIGHT_LIFTS = set(
  */
 export function defaultEquipment(name: string): string | null {
   if (isBodyweight(name)) return "Bodyweight";
+  // Standalone-implement labels first — Trap Bar Deadlift is ALSO a barbell lift
+  // (plate math) but should display "Trap Bar", so this precedes the barbell branch.
+  const named = liftInfo(name);
+  if (named) {
+    const nk = named.name.toLowerCase();
+    if (TRAP_BAR_LIFTS.has(nk)) return "Trap Bar";
+    if (SMITH_LIFTS.has(nk)) return "Smith";
+    if (KETTLEBELL_LIFTS.has(nk)) return "Kettlebell";
+  }
   if (isBarbellLift(name)) return "Barbell";
   const info = liftInfo(name);
   if (!info) return null;

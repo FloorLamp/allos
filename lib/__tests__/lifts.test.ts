@@ -5,6 +5,7 @@ import {
   baseLiftName,
   composeVariant,
   defaultEquipment,
+  exerciseHistoryKey,
   isBarbellLift,
   isBodyweight,
   isTimed,
@@ -13,6 +14,7 @@ import {
   muscleFor,
   regionForExercise,
   regionsForGroup,
+  resolveBodyweightKind,
   suggestTitle,
   variantOf,
 } from "@/lib/lifts";
@@ -163,6 +165,77 @@ describe("catalog exports", () => {
   it("ALL_LIFT_NAMES includes the composed variants", () => {
     expect(ALL_LIFT_NAMES).toContain("Dumbbell Curl");
     expect(ALL_LIFT_NAMES).toContain("Deadlift");
+  });
+});
+
+describe("#836 — Smith / trap-bar / kettlebell catalog additions", () => {
+  it("tags each new standalone lift (region/pattern) via liftInfo", () => {
+    expect(liftInfo("Smith Bench Press")?.region).toBe("Chest");
+    expect(liftInfo("Smith Squat")?.region).toBe("Legs");
+    expect(liftInfo("Kettlebell Swing")?.region).toBe("Glutes");
+    expect(liftInfo("Turkish Get-Up")?.region).toBe("Core");
+    // Turkish Get-Up is done one side at a time.
+    expect(isUnilateral("Turkish Get-Up")).toBe(true);
+  });
+
+  it("SEPARATE history keys from the barbell base (#482 — the whole point)", () => {
+    // The distinct-equipment lifts ship as STANDALONE entries, not merged variant
+    // group members, so exerciseHistoryKey does NOT collapse them onto the barbell
+    // base. A trap-bar deadlift never blends into "Deadlift"; a Smith bench never
+    // blends into "Bench Press" — each keeps its own e1RM/progression track.
+    expect(exerciseHistoryKey("Trap Bar Deadlift")).not.toBe(
+      exerciseHistoryKey("Deadlift")
+    );
+    expect(exerciseHistoryKey("Smith Bench Press")).not.toBe(
+      exerciseHistoryKey("Bench Press")
+    );
+    expect(exerciseHistoryKey("Smith Squat")).not.toBe(
+      exerciseHistoryKey("Back Squat")
+    );
+    // They resolve to their own literal key (no base-collapse).
+    expect(exerciseHistoryKey("Smith Bench Press")).toBe("smith bench press");
+    expect(exerciseHistoryKey("Trap Bar Deadlift")).toBe("trap bar deadlift");
+    // And they are NOT variant-group members, so nothing can fold them later.
+    expect(variantOf("Smith Bench Press")).toBeNull();
+    expect(variantOf("Trap Bar Deadlift")).toBeNull();
+    expect(variantOf("Kettlebell Swing")).toBeNull();
+  });
+
+  it("kettlebell-native moves are LOADED, not bodyweight, and fold accordingly", () => {
+    // Swing / Turkish Get-Up are loaded by a kettlebell — not bodyweight lifts.
+    // So a logged external weight IS the load: resolveBodyweightKind returns the
+    // loaded kind when external weight is seen, exactly like any other loaded lift.
+    for (const kb of ["Kettlebell Swing", "Turkish Get-Up"]) {
+      expect(isBodyweight(kb), kb).toBe(false);
+      expect(resolveBodyweightKind(kb, true), kb).toBe(false); // external weight → loaded
+      expect(resolveBodyweightKind(kb, false), kb).toBe(true); // never loaded → bodyweight-kind
+    }
+    // Smith lifts are likewise loaded, not bodyweight.
+    expect(isBodyweight("Smith Squat")).toBe(false);
+  });
+
+  it("labels the implement via defaultEquipment using the widened vocabulary", () => {
+    expect(defaultEquipment("Trap Bar Deadlift")).toBe("Trap Bar");
+    expect(defaultEquipment("Smith Bench Press")).toBe("Smith");
+    expect(defaultEquipment("Smith Squat")).toBe("Smith");
+    expect(defaultEquipment("Kettlebell Swing")).toBe("Kettlebell");
+    expect(defaultEquipment("Turkish Get-Up")).toBe("Kettlebell");
+    // Trap Bar Deadlift is still a plate-loaded barbell lift for plate math,
+    // even though it DISPLAYS as "Trap Bar".
+    expect(isBarbellLift("Trap Bar Deadlift")).toBe(true);
+  });
+
+  it("lists the new standalone lifts as their own picker options", () => {
+    // Standalone catalog entries appear directly in the picker (like Trap Bar
+    // Deadlift / T-Bar Row already do), not hidden behind a base's equipment chip.
+    for (const n of [
+      "Smith Bench Press",
+      "Smith Squat",
+      "Kettlebell Swing",
+      "Turkish Get-Up",
+    ]) {
+      expect(LIFT_OPTIONS, n).toContain(n);
+    }
   });
 });
 
