@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import { IconChevronDown, IconLogout, IconInbox } from "@tabler/icons-react";
 import type { SessionProfile } from "@/lib/auth";
+import { dataSectionHref } from "@/lib/hrefs";
 import { disambiguateProfileNames } from "@/lib/profile-disambiguation";
 import Avatar from "@/components/Avatar";
 import { clearEmergencyPayload } from "@/components/emergency-offline";
@@ -38,11 +38,22 @@ export default function UserMenu({
   onNavigate?: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  // Gate the trigger until hydration: pre-hydration a click on this button is
+  // swallowed by the not-yet-hydrated tree, so the popover never opens and the
+  // (already-safe) links inside are unreachable (#830). Unlike the tab strip,
+  // a light-dismissing popover with Server-Action forms genuinely needs JS —
+  // it can't be a bare anchor — so we render it inert until mounted instead.
+  // Server renders mounted=false → disabled; the client's first render matches
+  // (no hydration mismatch); the effect then enables it. Same idiom as
+  // ThemeToggle's mount gate.
+  const [mounted, setMounted] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   // Two accessible profiles can share a name (no uniqueness constraint) — append a
   // "(2)" ordinal so the switcher pill + rows name a specific profile (#534).
   const displayNames = disambiguateProfileNames(profiles);
   const activeLabel = displayNames.get(active.id) ?? active.name;
+
+  useEffect(() => setMounted(true), []);
 
   useEffect(() => {
     if (!open) return;
@@ -66,8 +77,12 @@ export default function UserMenu({
         type="button"
         data-testid="user-menu-trigger"
         aria-expanded={open}
+        disabled={!mounted}
+        aria-busy={!mounted}
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-2 rounded-lg border border-black/10 bg-white/70 px-2 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-white dark:border-white/10 dark:bg-ink-850 dark:text-slate-200 dark:hover:bg-ink-800"
+        className={`flex w-full items-center gap-2 rounded-lg border border-black/10 bg-white/70 px-2 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-white dark:border-white/10 dark:bg-ink-850 dark:text-slate-200 dark:hover:bg-ink-800 ${
+          mounted ? "" : "cursor-progress"
+        }`}
       >
         <Avatar profile={active} size="sm" />
         <span className="min-w-0 flex-1 truncate text-left">{activeLabel}</span>
@@ -149,8 +164,20 @@ export default function UserMenu({
               </form>
             );
           })}
-        <Link
-          href="/data?section=review"
+        {/* A plain <a>, NOT a Next <Link>, on purpose (#830). Reached only after
+        the menu is opened, this link's App-Router SOFT navigation (router.push,
+        run inside a low-priority transition) is dropped ~half the time when
+        clicked in the still-settling window right after the open re-render — a
+        real user-facing lost click, only masked in e2e by a retry (#730). A
+        native full-page navigation can't be preempted by React's scheduler, so
+        it lands every time (pre- and post-hydration) — the same progressive-
+        enhancement guarantee the tab strip gets from its <a href>, at the small
+        cost of a full reload for this one low-frequency menu link. The href
+        stays typed via dataSectionHref so a dead route is still a build error
+        (#285). setOpen(false)/onNavigate here is safe: a native nav (unlike a
+        transition) isn't preempted by the state update. */}
+        <a
+          href={dataSectionHref("review")}
           onClick={() => {
             setOpen(false);
             onNavigate?.();
@@ -164,7 +191,7 @@ export default function UserMenu({
               {reviewCount}
             </span>
           )}
-        </Link>
+        </a>
         <form action={logoutAction}>
           <button
             type="submit"
