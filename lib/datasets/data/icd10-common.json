@@ -1,7 +1,24 @@
 {
-  "$comment": "Baked ICD-10-CM common-conditions map for SUGGESTING a diagnosis code on a manually entered / code-less extracted condition and strengthening the cross-document condition de-dup key (issue #155). Public-domain ICD-10-CM codes + descriptions (CMS/NCHS); SNOMED deliberately avoided (affiliate license). Curated COMMON subset, NOT the full tabular list. Committed + HUMAN-REVIEWABLE; regenerate with `npm run gen:icd10`. INFORMATIONAL entry suggestions, confirmed by the user — NOT billing-grade coding advice.",
-  "system": "ICD-10-CM",
-  "conditions": [
+  "$schema": "allos-dataset/v1",
+  "id": "icd10-common",
+  "title": "ICD-10-CM common-conditions map",
+  "description": "Baked ICD-10-CM common-conditions map for SUGGESTING a diagnosis code on a manually entered / code-less extracted condition and strengthening the cross-document condition de-dup key (issue #155). Curated COMMON subset, NOT the full tabular list. Committed + HUMAN-REVIEWABLE; regenerate with `npm run gen:icd10`. INFORMATIONAL entry suggestions, confirmed by the user — NOT billing-grade coding advice.",
+  "citation": [
+    {
+      "source": "ICD-10-CM — U.S. Centers for Medicare & Medicaid Services (CMS) / CDC National Center for Health Statistics (NCHS)",
+      "url": "https://www.cms.gov/medicare/coding-billing/icd-10-codes",
+      "note": "Public-domain U.S. Government code set + official descriptions; curated common subset with lay synonyms. SNOMED deliberately avoided (affiliate license)."
+    }
+  ],
+  "identity": {
+    "keys": [
+      "code"
+    ]
+  },
+  "meta": {
+    "system": "ICD-10-CM"
+  },
+  "entries": [
     {
       "code": "A09",
       "name": "Infectious gastroenteritis and colitis, unspecified",

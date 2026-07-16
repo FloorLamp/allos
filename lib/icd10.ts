@@ -6,7 +6,7 @@
 // user CONFIRMS at entry (the condition form). Imported conditions already carrying a
 // coded identity keep it — this only fills a code-less row.
 
-import icd10 from "./icd10-common.json";
+import { ICD10_CONDITIONS } from "./datasets/icd10-common";
 import { fuzzyScore } from "./fuzzy";
 
 // The stored code_system for every suggestion. Matches lib/fhir/common.ts's
@@ -34,7 +34,7 @@ export interface Icd10Suggestion {
   score: number;
 }
 
-const ENTRIES = icd10.conditions as Icd10Entry[];
+const ENTRIES = ICD10_CONDITIONS as Icd10Entry[];
 
 // Rank the curated ICD-10-CM entries against a free-text condition name and return
 // the best few, highest score first. Each entry is scored by the BEST fuzzy match

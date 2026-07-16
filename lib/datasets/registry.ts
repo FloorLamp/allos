@@ -12,6 +12,7 @@
 // Each migrates in its own small PR.
 
 import { foodGroupsDataset } from "./food-groups";
+import { icd10Dataset, icd10CodeStrategy } from "./icd10-common";
 import { metsDataset } from "./mets";
 import {
   nutrientFoodMapDataset,
@@ -37,6 +38,13 @@ export const DATASETS: RegisteredDataset[] = [
       unknown
     >,
     strategy: slugStrategy,
+  },
+  {
+    dataset: icd10Dataset as unknown as LoadedDataset<
+      Record<string, unknown>,
+      unknown
+    >,
+    strategy: icd10CodeStrategy,
   },
   {
     dataset: metsDataset as unknown as LoadedDataset<
