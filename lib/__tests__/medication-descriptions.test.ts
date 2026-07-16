@@ -1,6 +1,11 @@
 import { describe, it, expect } from "vitest";
 import medsJson from "@/lib/medication-descriptions.json";
-import { getMedicationInfo, normalizeMedName } from "@/lib/medication-info";
+import {
+  getMedicationInfo,
+  normalizeMedName,
+  medicationCatalogNames,
+  splitMedicationName,
+} from "@/lib/medication-info";
 
 const meds = medsJson as {
   medications: Record<
@@ -101,5 +106,62 @@ describe("getMedicationInfo", () => {
     expect(getMedicationInfo("")).toBeNull();
     expect(getMedicationInfo(null)).toBeNull();
     expect(getMedicationInfo(undefined)).toBeNull();
+  });
+});
+
+describe("medicationCatalogNames (#817)", () => {
+  const names = medicationCatalogNames();
+
+  it("includes generics and brand names", () => {
+    expect(names).toContain("Ibuprofen");
+    expect(names).toContain("Advil");
+    expect(names).toContain("Acetaminophen");
+    expect(names).toContain("Tylenol");
+  });
+
+  it("is sorted and de-duplicated", () => {
+    const sorted = [...names].sort((a, b) => a.localeCompare(b));
+    expect(names).toEqual(sorted);
+    expect(new Set(names).size).toBe(names.length);
+  });
+
+  it("covers every generic plus its brands (>= the medication count)", () => {
+    const genericCount = Object.keys(meds.medications).length;
+    expect(names.length).toBeGreaterThanOrEqual(genericCount);
+  });
+});
+
+describe("splitMedicationName (#817)", () => {
+  it("splits a brand into its generic name + brand", () => {
+    expect(splitMedicationName("Tylenol")).toEqual({
+      name: "Acetaminophen",
+      brand: "Tylenol",
+    });
+    expect(splitMedicationName("Advil")).toEqual({
+      name: "Ibuprofen",
+      brand: "Advil",
+    });
+  });
+
+  it("keeps a generic pick as the name with no brand", () => {
+    expect(splitMedicationName("Ibuprofen")).toEqual({
+      name: "Ibuprofen",
+      brand: null,
+    });
+  });
+
+  it("treats a generic synonym alias as the generic, not a brand", () => {
+    expect(splitMedicationName("Paracetamol")).toEqual({
+      name: "Acetaminophen",
+      brand: null,
+    });
+  });
+
+  it("passes an unmatched free-text pick through unchanged", () => {
+    expect(splitMedicationName("Compounded Mystery Cream")).toEqual({
+      name: "Compounded Mystery Cream",
+      brand: null,
+    });
+    expect(splitMedicationName("")).toEqual({ name: "", brand: null });
   });
 });

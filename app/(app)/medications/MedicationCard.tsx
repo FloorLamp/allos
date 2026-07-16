@@ -81,6 +81,7 @@ export default function MedicationCard({
   prnTimes = [],
   prnRedoseLine = null,
   pediatric,
+  detailView = false,
 }: {
   supplement: Supplement;
   doses: SupplementDose[];
@@ -113,6 +114,10 @@ export default function MedicationCard({
   prnRedoseLine?: string | null;
   // Pediatric label-dosing context (#798) for the edit form's weight-band suggestion.
   pediatric?: PediatricFormContext;
+  // Rendered as the /medications/[id] detail body (#817) rather than a list card:
+  // the course/side-effect History disclosure starts OPEN (it's the med's clinical
+  // home, not a scannable list row where it should stay tucked away).
+  detailView?: boolean;
 }) {
   const s = supplement;
   const [editing, setEditing] = useState(false);
@@ -338,8 +343,9 @@ export default function MedicationCard({
         </div>
       )}
 
-      {/* Detail: course history, side effects, lifecycle actions. */}
-      <details className="mt-2">
+      {/* Detail: course history, side effects, lifecycle actions. Open by default
+          on the /medications/[id] detail page (#817), collapsed on a list card. */}
+      <details className="mt-2" open={detailView}>
         <summary className="cursor-pointer section-label">
           History &amp; side effects
         </summary>

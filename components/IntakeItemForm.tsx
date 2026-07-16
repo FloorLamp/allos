@@ -37,6 +37,10 @@ import {
 import { SUPPLEMENT_CATALOG } from "@/lib/supplement-catalog";
 import { SUPPLEMENT_BRANDS } from "@/lib/supplement-brands";
 import {
+  medicationCatalogNames,
+  splitMedicationName,
+} from "@/lib/medication-info";
+import {
   availableConditions,
   CONDITION_LABELS,
   PRIORITIES,
@@ -61,6 +65,11 @@ const CATALOG_NAMES = SUPPLEMENT_CATALOG.map((c) => c.name);
 const CATALOG_BY_NAME = new Map(
   SUPPLEMENT_CATALOG.map((c) => [c.name.toLowerCase(), c])
 );
+// The medication form's name combobox source (#817): generics + brand names from the
+// curated medication-descriptions set (208 meds), so adding a med suggests
+// "Ibuprofen"/"Advil" — not the supplement catalog. The RxNorm lookup stays the long
+// tail for anything unlisted.
+const MED_CATALOG_NAMES = medicationCatalogNames();
 
 interface DoseState {
   id?: number;
@@ -320,6 +329,18 @@ export default function IntakeItemForm({
   }
 
   function onPickName(picked: string) {
+    // Medication combobox (#817): a picked BRAND splits into its generic name +
+    // brand ("Tylenol" → name "Acetaminophen", brand "Tylenol"), which seeds the
+    // RxNorm lookup on the clean generic, guarantees the explainer matches, and keys
+    // the #798 OTC redose prefill without name-fuzz. onChange already set the name to
+    // the raw pick, so correcting it here to the generic wins. Meds don't auto-fill a
+    // supplement dosage.
+    if (kind === "medication") {
+      const split = splitMedicationName(picked);
+      if (split.name) setName(split.name);
+      if (split.brand) setBrand(split.brand);
+      return;
+    }
     const e = CATALOG_BY_NAME.get(picked.toLowerCase());
     const food = defaultFoodTiming(picked, e?.defaultFoodTiming);
     setDoses((ds) =>
@@ -409,8 +430,10 @@ export default function IntakeItemForm({
             setRxError(null);
           }}
           onPick={onPickName}
-          options={CATALOG_NAMES}
-          placeholder="e.g. Vitamin D3"
+          options={kind === "medication" ? MED_CATALOG_NAMES : CATALOG_NAMES}
+          placeholder={
+            kind === "medication" ? "e.g. Ibuprofen" : "e.g. Vitamin D3"
+          }
         />
         {/* RxNorm normalization (issue #144): confirm an RxCUI so interactions match
             on a stable code, not just the name. The lookup is the only network call

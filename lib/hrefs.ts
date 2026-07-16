@@ -162,6 +162,15 @@ export function encounterHref(id: number): AppRoute {
   return href as AppRoute;
 }
 
+// A medication's clinical-record detail page (issue #817). The list page
+// (MEDICATIONS_HREF) stays the kind-level target for every deep-linker via
+// intakeHref — Upcoming/Timeline/dose reminders point at the daily list where the
+// Today panel lives; this per-med detail is linked only from a list row.
+export function medicationHref(id: number): AppRoute {
+  const href: Route<`/medications/${number}`> = `/medications/${id}`;
+  return href as AppRoute;
+}
+
 // A protocol (training/care protocol) detail page.
 export function protocolHref(id: number): AppRoute {
   const href: Route<`/protocols/${number}`> = `/protocols/${id}`;

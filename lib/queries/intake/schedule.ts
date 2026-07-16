@@ -44,6 +44,32 @@ export function getSupplements(profileId: number): Supplement[] {
     .all(profileId) as Supplement[];
 }
 
+// One medication this profile owns, or null — the scoped single-item read behind
+// the /medications/[id] detail page (issue #817). Filters by id AND profile_id AND
+// kind='medication', so guessing another profile's id (or a supplement's id) yields
+// null and the page 404s (the encounters/[id] precedent). Same COALESCE(situation)/
+// provider_name shape as getSupplements so the detail row matches a list row.
+export function getMedication(
+  profileId: number,
+  id: number
+): Supplement | null {
+  const row = db
+    .prepare(
+      `SELECT intake_items.*,
+              COALESCE(situations.name, intake_items.situation) AS situation,
+              (SELECT p.name FROM providers p WHERE p.id = intake_items.provider_id)
+                AS provider_name
+         FROM intake_items
+         LEFT JOIN situations
+                ON situations.id = intake_items.situation_id
+               AND situations.profile_id = intake_items.profile_id
+        WHERE intake_items.id = ? AND intake_items.profile_id = ?
+          AND intake_items.kind = 'medication'`
+    )
+    .get(id, profileId) as Supplement | undefined;
+  return row ?? null;
+}
+
 // All CURRENTLY SCHEDULED doses, ordered for stable rendering. Doses are a
 // child of supplements, so they're scoped through the parent's profile_id.
 // Retired doses (removed from the schedule by an edit but kept for their

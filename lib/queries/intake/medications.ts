@@ -6,6 +6,7 @@
 // effects and their promotion to an allergy row.
 import { db, writeTx } from "../../db";
 import { normalizeSeverity, SEVERITY_LABELS } from "../../medication-history";
+import { parsePrescription } from "../../prescription-parse";
 import type { MedicationCourse, MedicationSideEffect } from "../../types";
 
 // ---- Medication history / lifecycle ----
@@ -364,6 +365,85 @@ export function deleteMedicationSideEffect(
 // row — no matter that the row is manual (NULL document_id, so the import
 // delete-set never touches it). The UI also hides Promote once the effect is
 // resolved.
+// "Track this" from the records bridge (issue #817): materialize an imported
+// prescription record (medical_records category='prescription') into a structured
+// kind='medication' intake_items row — the same projection the import does
+// automatically (persistExtractedMedications), applied to ONE user-chosen record.
+//
+// The created row carries `source='extracted'` + the record's `document_id`, so it
+// JOINS the document's import footprint (IMPORT_FOOTPRINT_TABLES keys extracted meds
+// by document_id AND source='extracted'): a later reassign moves it and a delete
+// removes it with the source document, keeping row side-state whole (#199-#203). A
+// record with no document_id yields a durable unlinked med (still source='extracted',
+// null document_id). Scheduling is conservative via parsePrescription — a clear sig
+// becomes scheduled doses, an unparseable one an as-needed med, never a fabricated
+// reminder. Ownership + category are verified (id AND profile_id AND
+// category='prescription'); a forged/foreign/non-prescription id is a no-op (null).
+// Returns the new med's id + name, or null.
+export function createMedicationFromRecord(
+  profileId: number,
+  recordId: number
+): { id: number; name: string } | null {
+  const rec = db
+    .prepare(
+      `SELECT name, value, unit, notes, document_id
+         FROM medical_records
+        WHERE id = ? AND profile_id = ? AND category = 'prescription'`
+    )
+    .get(recordId, profileId) as
+    | {
+        name: string;
+        value: string | null;
+        unit: string | null;
+        notes: string | null;
+        document_id: number | null;
+      }
+    | undefined;
+  if (!rec || !rec.name?.trim()) return null;
+
+  const med = parsePrescription({
+    name: rec.name,
+    value: rec.value,
+    unit: rec.unit,
+    notes: rec.notes,
+  });
+
+  return writeTx(() => {
+    const info = db
+      .prepare(
+        `INSERT INTO intake_items
+           (name, notes, active, condition, priority, kind,
+            prescriber, pharmacy, rx_number, as_needed,
+            document_id, source, profile_id)
+         VALUES (?,?,1,'daily','high','medication',?,?,?,?,?,'extracted',?)`
+      )
+      .run(
+        med.name,
+        med.sig,
+        med.prescriber,
+        med.pharmacy,
+        med.rxNumber,
+        med.asNeeded ? 1 : 0,
+        rec.document_id,
+        profileId
+      );
+    const medId = Number(info.lastInsertRowid);
+    ensureMedicationCourse(profileId, medId, null);
+    const insDose = db.prepare(
+      `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+       VALUES (?,?,?, 'any', ?)`
+    );
+    if (!med.asNeeded && med.timeBuckets.length > 0) {
+      med.timeBuckets.forEach((bucket, i) =>
+        insDose.run(medId, med.strength, bucket, i)
+      );
+    } else if (med.strength) {
+      insDose.run(medId, med.strength, null, 0);
+    }
+    return { id: medId, name: med.name };
+  });
+}
+
 export function promoteMedicationSideEffect(
   profileId: number,
   id: number,

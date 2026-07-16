@@ -73,3 +73,53 @@ export function getMedicationInfo(
   if (aliasTarget && MEDICATIONS[aliasTarget]) return MEDICATIONS[aliasTarget];
   return null;
 }
+
+// ---- Medication name combobox source (issue #817) ----
+
+// The sorted, de-duplicated list of catalog medication names for the med form's name
+// combobox: every curated entry's generic DISPLAY name plus each of its brand names
+// (208 generics + their brands). So adding a medication suggests "Ibuprofen"/"Advil"
+// rather than the supplement catalog; the RxNorm lookup stays the long tail for any
+// drug not in this set. Pure over the bundled asset — the derived list is pinned by
+// lib/__tests__/medication-descriptions.test.ts.
+export function medicationCatalogNames(): string[] {
+  const names = new Set<string>();
+  for (const info of Object.values(MEDICATIONS)) {
+    if (info.generic) names.add(info.generic);
+    for (const brand of info.brand_names ?? []) {
+      if (brand) names.add(brand);
+    }
+  }
+  return [...names].sort((a, b) => a.localeCompare(b));
+}
+
+// Split a picked catalog name into { name (generic), brand } for the med form (#817).
+// Picking a BRAND ("Tylenol") resolves to its generic ("Acetaminophen") with the
+// brand preserved for the `brand` column (the split the alias index already knows);
+// picking a generic keeps it as the name with no brand. An explicit alias that is a
+// generic SYNONYM ("Paracetamol"), not a brand, resolves to the generic with no
+// brand. An unmatched free-text pick passes through unchanged. Pure; pinned by the
+// descriptions test.
+export function splitMedicationName(picked: string | null | undefined): {
+  name: string;
+  brand: string | null;
+} {
+  const raw = (picked ?? "").trim();
+  if (!raw) return { name: "", brand: null };
+  const key = normalizeMedName(raw);
+  // A generic key hit → it's already the generic; no brand.
+  const direct = MEDICATIONS[key];
+  if (direct) return { name: direct.generic, brand: null };
+  // A brand/alias hit → the generic display name, keeping the brand ONLY when the
+  // picked token is truly one of that entry's brand names (an alias/salt-form
+  // synonym is not a brand — it becomes the generic name with no brand).
+  const target = ALIAS_INDEX.get(key);
+  const info = target ? MEDICATIONS[target] : undefined;
+  if (info) {
+    const isBrand = (info.brand_names ?? []).some(
+      (b) => normalizeMedName(b) === key
+    );
+    return { name: info.generic, brand: isBrand ? raw : null };
+  }
+  return { name: raw, brand: null };
+}

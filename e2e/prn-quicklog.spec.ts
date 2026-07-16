@@ -8,21 +8,35 @@ import { test, expect } from "@playwright/test";
 // widget offers one-tap logging that makes it three.
 const MED = "PRN Quicklog Med (e2e)";
 
-test("medications card shows the day's PRN administrations instead of a binary pill (#797)", async ({
+test("Today panel shows the PRN med's administrations, detail shows the ledger (#797/#817)", async ({
   page,
 }) => {
   await page.goto("/medications");
 
-  const card = page.locator("div.card").filter({ hasText: MED });
-  await expect(card).toBeVisible();
+  // In the #817 redesign the daily-use surface is the Today panel: a PRN med is a
+  // one-tap administration row (QuickLogPrnControl), NOT a scheduled dose pill.
+  const todayPanel = page.getByTestId("medications-today");
+  await expect(todayPanel).toBeVisible();
+  const prnRow = todayPanel
+    .getByTestId("quick-log-prn-item")
+    .filter({ hasText: MED });
+  await expect(prnRow).toBeVisible();
+  await expect(prnRow.getByTestId("prn-day-label")).toContainText("2 today");
 
-  // The PRN administrations block ("2 today · last …"), NOT the tri-state dose pill.
-  const admin = card.getByTestId("prn-administrations");
+  // The med's clinical-record detail page keeps the day's administration ledger
+  // ("2 today · last …") and never a scheduled take/skip control for a PRN med.
+  await page
+    .getByTestId("medication-row")
+    .filter({ hasText: MED })
+    .getByTestId("medication-row-link")
+    .click();
+  const detail = page.getByTestId("medication-detail");
+  await expect(detail).toBeVisible();
+  const admin = detail.getByTestId("prn-administrations");
   await expect(admin).toBeVisible();
   await expect(admin).toContainText("2 today");
   await expect(admin).toContainText(/last \d{1,2}:\d{2}(am|pm)/);
-  // A PRN med must not render the scheduled take/skip check-off control.
-  await expect(card.getByTestId("dose-status")).toHaveCount(0);
+  await expect(detail.getByTestId("dose-status")).toHaveCount(0);
 });
 
 test("dashboard quick-log widget logs an administration and updates the count (#797)", async ({

@@ -1255,6 +1255,37 @@ console.log(
   `e2e: seeded import document ${BROWSER_DOC_ID} with labs + prescription + visit + condition + immunization for the records browser (#271)`
 );
 
+// ── Records bridge fixture (#817) ────────────────────────────────────────────
+// Two imported prescription records (documentless) with NO matched tracked med, so
+// the /medications "From your records" bridge has deterministic suggest-only rows:
+// one to TRACK (→ becomes a medication) and one to DISMISS (→ disappears via the
+// findings bus). Fully synthetic names with no trailing strength, so cleanMedicationName
+// is the identity — the tracked med and the dismissal key are predictable. Idempotent:
+// the records, any med tracked from a prior run, and the dismissal are all reset each
+// boot so both rows show again on a fresh run.
+const BRIDGE_TRACK_MED = "E2E Bridge Track Med";
+const BRIDGE_DISMISS_MED = "E2E Bridge Dismiss Med";
+db.prepare(
+  `DELETE FROM medical_records WHERE profile_id = ? AND category = 'prescription' AND name IN (?, ?)`
+).run(PROFILE_ID, BRIDGE_TRACK_MED, BRIDGE_DISMISS_MED);
+db.prepare(`DELETE FROM intake_items WHERE profile_id = ? AND name = ?`).run(
+  PROFILE_ID,
+  BRIDGE_TRACK_MED
+);
+db.prepare(
+  `DELETE FROM upcoming_dismissals WHERE profile_id = ? AND signal_key = ?`
+).run(PROFILE_ID, `med-bridge:${BRIDGE_DISMISS_MED.toLowerCase()}`);
+const insBridgeRx = db.prepare(
+  `INSERT INTO medical_records
+     (profile_id, date, category, name, canonical_name, source)
+   VALUES (?, '2026-06-10', 'prescription', ?, ?, 'ccda')`
+);
+insBridgeRx.run(PROFILE_ID, BRIDGE_TRACK_MED, BRIDGE_TRACK_MED);
+insBridgeRx.run(PROFILE_ID, BRIDGE_DISMISS_MED, BRIDGE_DISMISS_MED);
+console.log(
+  `e2e: seeded records-bridge fixture (untracked prescriptions "${BRIDGE_TRACK_MED}" + "${BRIDGE_DISMISS_MED}") (#817)`
+);
+
 // An imported visit whose notes carry a real line break (issue #794 cluster 11a),
 // so the encounter-detail notes test can pin that multi-line notes render with
 // their breaks preserved (whitespace-pre-wrap) instead of flattening to one run-on
