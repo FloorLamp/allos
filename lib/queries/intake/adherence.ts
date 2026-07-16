@@ -6,10 +6,21 @@
 // mark-taken/skipped log writers (the notification-webhook counterparts), the
 // escalation-authorization helpers, and the adherence-strip range read.
 import { db, today, writeTx } from "../../db";
-import { shiftDateStr, daysBetweenDateStr } from "../../date";
-import { isUniqueConstraintError } from "../../sqlite-error";
+import {
+  shiftDateStr,
+  daysBetweenDateStr,
+  dateStrInTz,
+  utcSqlString,
+  parseUtcSql,
+} from "../../date";
+import { getTimezone } from "../../settings";
+import {
+  DOSE_LOG_DATE_WINDOW_DAYS,
+  isGivenAtAccepted,
+} from "../../dose-log-window";
 import { decrementSupply } from "./refill";
 import type {
+  AdministrationOutcome,
   DoseStatus,
   DoseTakenOutcome,
   EscalationAckOutcome,
@@ -17,11 +28,9 @@ import type {
 
 // A Telegram dose token carries the day the reminder was sent so a late tap still
 // logs to the right calendar date — but the token is client-supplied, so an
-// arbitrary past/future date must not be honored (the web path pins today()). Bound
-// the accepted date to a small window around the profile's today so a legitimate
-// late/after-midnight tap still lands while a forged far-off date is refused.
-const DOSE_LOG_DATE_WINDOW_DAYS = 2;
-
+// arbitrary past/future date must not be honored (the web path pins today()). The
+// accepted-window decision lives in lib/dose-log-window (pure, unit-tested); this
+// binds it to the profile's today.
 function isDoseDateAccepted(profileId: number, date: string): boolean {
   const diff = daysBetweenDateStr(today(profileId), date);
   return diff != null && Math.abs(diff) <= DOSE_LOG_DATE_WINDOW_DAYS;
@@ -96,9 +105,12 @@ export function markDoseTaken(
   // late tap within the window still logs to the reminder's own day.
   if (!isDoseDateAccepted(profileId, date)) return "stale-dose";
   // The check + insert + supply decrement run as one IMMEDIATE transaction (issue
-  // #616 / #468): three processes write this DB, so a bare SELECT-then-INSERT both
-  // races the UNIQUE(dose_id, date) constraint (throwing, aborting handleAllTaken's
-  // remaining doses) and can strand supply on a crash between the two statements.
+  // #616 / #468). This is now what enforces one-taken-row-per-(dose,date) for a
+  // SCHEDULED dose: since #797 dropped UNIQUE(dose_id, date) to allow PRN multiples,
+  // the exists-check below IS the idempotency guard. BEGIN IMMEDIATE serializes all
+  // writers up front (three processes write this DB), so the SELECT-then-INSERT is
+  // atomic against a concurrent web replica / notify sidecar — a double-tap or
+  // Telegram retry reads the committed row and no-ops instead of inserting a second.
   return writeTx((): DoseTakenOutcome => {
     // The dose id arrives from a Telegram callback, so verify it belongs to this
     // profile (via its parent supplement) before logging anything against it. Read
@@ -141,26 +153,17 @@ export function markDoseTaken(
     }
     // Snapshot the dose amount at confirm time: history must keep showing what
     // was actually taken even after a later dosage edit rewrites the dose row.
-    // Always write the dose's OWN item id — never the callback token's.
-    try {
-      db.prepare(
-        "INSERT INTO intake_item_logs (dose_id, item_id, date, amount) VALUES (?,?,?,?)"
-      ).run(doseId, owned.item_id, date, owned.amount);
-    } catch (err) {
-      // UNIQUE(dose_id, date) lost race (issue #616): a concurrent writer (a web
-      // replica or the sibling notify process) already logged this dose today and
-      // owns the row AND its supply move. Re-read and report the standing status
-      // instead of throwing (which would abort handleAllTaken's remaining doses).
-      if (!isUniqueConstraintError(err)) throw err;
-      const raced = db
-        .prepare(
-          "SELECT status FROM intake_item_logs WHERE dose_id = ? AND date = ?"
-        )
-        .get(doseId, date) as { status: DoseStatus } | undefined;
-      return raced?.status === "skipped" ? "already-skipped" : "already-taken";
-    }
-    // Guarded by the dedup + the lost-race no-op above: only the writer that
-    // actually inserted the taken row decrements on-hand supply, once.
+    // Always write the dose's OWN item id — never the callback token's. given_at is
+    // set to now (the tap moment) for a scheduled confirm: the schedule dictates
+    // WHEN, so a precise intake time isn't captured here (the PRN path is what makes
+    // given_at user-suppliable). The exists-check above already guaranteed no row
+    // stands for (dose,date), so this insert can't duplicate.
+    db.prepare(
+      `INSERT INTO intake_item_logs (dose_id, item_id, date, amount, given_at)
+       VALUES (?,?,?,?, datetime('now'))`
+    ).run(doseId, owned.item_id, date, owned.amount);
+    // Only the taken insert above (reached once, under the write lock) decrements
+    // on-hand supply, once.
     decrementSupply(profileId, owned.item_id);
     return "logged";
   });
@@ -218,24 +221,180 @@ export function markDoseSkipped(
         ? "already-skipped"
         : "already-taken";
     }
-    // Write the dose's OWN item id (never the callback token's).
-    try {
-      db.prepare(
-        "INSERT INTO intake_item_logs (dose_id, item_id, date, amount, status) VALUES (?,?,?,NULL,'skipped')"
-      ).run(doseId, owned.item_id, date);
-    } catch (err) {
-      // UNIQUE(dose_id, date) lost race (issue #616): report the standing status.
-      if (!isUniqueConstraintError(err)) throw err;
-      const raced = db
-        .prepare(
-          "SELECT status FROM intake_item_logs WHERE dose_id = ? AND date = ?"
-        )
-        .get(doseId, date) as { status: DoseStatus } | undefined;
-      return raced?.status === "taken" ? "already-taken" : "already-skipped";
-    }
+    // Write the dose's OWN item id (never the callback token's). The exists-check
+    // above (under the IMMEDIATE write lock, #797's replacement for the dropped
+    // UNIQUE) guaranteed no row stands for (dose,date), so this can't duplicate.
+    db.prepare(
+      "INSERT INTO intake_item_logs (dose_id, item_id, date, amount, status) VALUES (?,?,?,NULL,'skipped')"
+    ).run(doseId, owned.item_id, date);
     // Deliberately no decrementSupply: a skipped dose consumes nothing.
     return "skipped";
   });
+}
+
+// ---- PRN (as-needed) administrations ledger (#797) ----
+
+// Short window within which a second administration of the SAME dose is treated as
+// a double-tap (a re-tapped widget button, a retried Telegram callback, a double
+// click) rather than a second real intake. PRN logging is deliberately NOT
+// idempotent — multiple/day is the whole point (#797) — so this replaces the
+// dropped UNIQUE(dose_id,date) as the accidental-repeat guard, keeping a stray tap
+// from inventing a phantom dose (and burning supply). Keyed on given_at PROXIMITY,
+// so two retro entries at genuinely different times (4:00 and 4:30) both land while
+// two taps within ~2 min collapse to one.
+export const ADMIN_DEDUP_WINDOW_SEC = 120;
+
+// Log one PRN administration of an intake item — auth-blind, profileId-first (the
+// lib-write-core convention, mirroring logFoodServingCore): both the
+// logMedicationAdministration Server Action (dashboard quick-log) and the Telegram
+// /dose tap call this, so the ingestion path is one computation regardless of
+// surface, and the auth gate stays entirely in the action. `givenAt` is the real
+// intake time (undefined = now), bounded by isGivenAtAccepted (#614). Each accepted,
+// non-duplicate administration is a NEW intake_item_logs row (the per-administration
+// ledger) that decrements on-hand supply once. One IMMEDIATE transaction (#468) so
+// the dedup read + insert + supply move see one consistent state under a concurrent
+// web/Telegram tap. Returns a typed outcome so the caller answers from what actually
+// happened rather than unconditionally confirming.
+export function logAdministration(
+  profileId: number,
+  itemId: number,
+  givenAt?: Date
+): AdministrationOutcome {
+  const tz = getTimezone(profileId);
+  const when = givenAt ?? new Date();
+  const todayStr = today(profileId);
+  if (givenAt && !isGivenAtAccepted(tz, todayStr, when)) {
+    return { kind: "invalid-time" };
+  }
+  const date = dateStrInTz(tz, when);
+  const givenAtStr = utcSqlString(when);
+  return writeTx((): AdministrationOutcome => {
+    // Resolve the item's primary loggable (non-retired) dose + live state, scoped to
+    // the profile through the parent item. A PRN med always has at least one dose row
+    // (the item form guarantees it); its amount rides onto the log so history
+    // survives a later dosage edit. Never trust the caller's itemId beyond this scope
+    // check — the write uses the resolved dose's own ids.
+    const dose = db
+      .prepare(
+        `SELECT d.id AS dose_id, d.amount AS amount, s.active AS active
+           FROM intake_item_doses d
+           JOIN intake_items s ON s.id = d.item_id
+          WHERE s.id = ? AND s.profile_id = ? AND d.retired = 0
+          ORDER BY d.sort, d.id
+          LIMIT 1`
+      )
+      .get(itemId, profileId) as
+      { dose_id: number; amount: string | null; active: number } | undefined;
+    if (!dose) return { kind: "stale-item" };
+    if (!dose.active) return { kind: "inactive" };
+
+    // Double-tap guard: an existing taken administration of this dose within the
+    // dedup window of the new given time is the same intent — no new row, no supply
+    // move. strftime('%s') compares the stored UTC datetimes numerically.
+    const dup = db
+      .prepare(
+        `SELECT id FROM intake_item_logs
+          WHERE dose_id = ? AND status = 'taken' AND given_at IS NOT NULL
+            AND ABS(strftime('%s', given_at) - strftime('%s', ?)) <= ?
+          LIMIT 1`
+      )
+      .get(dose.dose_id, givenAtStr, ADMIN_DEDUP_WINDOW_SEC) as
+      { id: number } | undefined;
+    if (!dup) {
+      db.prepare(
+        `INSERT INTO intake_item_logs (dose_id, item_id, date, amount, given_at)
+         VALUES (?,?,?,?,?)`
+      ).run(dose.dose_id, itemId, date, dose.amount, givenAtStr);
+      decrementSupply(profileId, itemId);
+    }
+    // The item's running total + latest intake time for the day it landed on.
+    const summary = db
+      .prepare(
+        `SELECT COUNT(*) AS count, MAX(given_at) AS last
+           FROM intake_item_logs
+          WHERE item_id = ? AND date = ? AND status = 'taken'`
+      )
+      .get(itemId, date) as { count: number; last: string | null };
+    return {
+      kind: dup ? "duplicate" : "logged",
+      count: summary.count,
+      lastGivenAt: summary.last ?? givenAtStr,
+      date,
+    };
+  });
+}
+
+// The day's PRN administrations for one item, most-recent first — for the med
+// card's "2 today · last 4:02pm" line. given_at is the real intake time; taken_at
+// is when it was recorded. Profile-scoped via the parent item (the denormalized
+// item_id, kept consistent by migration 011).
+export function getAdministrationsForItemOnDate(
+  profileId: number,
+  itemId: number,
+  date: string
+): { given_at: string | null; taken_at: string; amount: string | null }[] {
+  return db
+    .prepare(
+      `SELECT l.given_at, l.taken_at, l.amount
+         FROM intake_item_logs l
+         JOIN intake_items s ON s.id = l.item_id
+        WHERE s.profile_id = ? AND l.item_id = ? AND l.date = ?
+          AND l.status = 'taken'
+        ORDER BY COALESCE(l.given_at, l.taken_at) DESC, l.id DESC`
+    )
+    .all(profileId, itemId, date) as {
+    given_at: string | null;
+    taken_at: string;
+    amount: string | null;
+  }[];
+}
+
+// One PRN med surfaced for one-tap logging (dashboard widget + med card): its id,
+// name, and today's administration count + latest intake time.
+export interface PrnMedForQuickLog {
+  id: number;
+  name: string;
+  count: number;
+  lastGivenAt: string | null;
+}
+
+// Active PRN (as-needed) medications for the quick-log widget, each with today's
+// administration count + latest intake time. Recently-used float to the top (most
+// recent last-administration first — the widget's "recently-used" ordering), then
+// alphabetical. One profile-scoped read so the widget and any other surface agree.
+export function getPrnMedicationsForQuickLog(
+  profileId: number
+): PrnMedForQuickLog[] {
+  const date = today(profileId);
+  return db
+    .prepare(
+      `SELECT s.id AS id, s.name AS name,
+              (SELECT COUNT(*) FROM intake_item_logs l
+                WHERE l.item_id = s.id AND l.date = ? AND l.status = 'taken')
+                AS count,
+              (SELECT MAX(COALESCE(l.given_at, l.taken_at)) FROM intake_item_logs l
+                WHERE l.item_id = s.id AND l.status = 'taken')
+                AS lastGivenAt
+         FROM intake_items s
+        WHERE s.profile_id = ? AND s.active = 1
+          AND s.as_needed = 1 AND s.kind = 'medication'
+        ORDER BY (lastGivenAt IS NULL), lastGivenAt DESC, s.name`
+    )
+    .all(date, profileId) as PrnMedForQuickLog[];
+}
+
+// The name of an intake item this profile owns, or null — for the Telegram /dose
+// tap toast ("Logged ✅ Ibuprofen"), derived from the id the callback names.
+// Profile-scoped (WHERE id AND profile_id) so a forged id can't leak another
+// profile's med name.
+export function getIntakeItemName(
+  profileId: number,
+  itemId: number
+): string | null {
+  const row = db
+    .prepare("SELECT name FROM intake_items WHERE id = ? AND profile_id = ?")
+    .get(itemId, profileId) as { name: string } | undefined;
+  return row?.name ?? null;
 }
 
 // Whether an intake item (supplement/med) exists for this profile — a scoped

@@ -16,7 +16,12 @@ import {
   getGenomicVariants,
   getFindingSuppressions,
   getProviderNames,
+  getAdministrationsForItemOnDate,
 } from "@/lib/queries";
+import {
+  administrationDayLabel,
+  formatGivenAtClock,
+} from "@/lib/administration-format";
 import { activeByKey } from "@/lib/findings";
 import { isSuppressed } from "@/lib/upcoming-suppress";
 import { FOOD_TIMING_PREFIX } from "@/lib/food-drug-interactions";
@@ -156,6 +161,30 @@ export default async function MedicationsPage() {
     partitionMedications(medsWithHistory);
 
   const refillRates = getRefillRates(profile.id);
+
+  // Per-PRN-med day summary (#797): the "2 today · last 4:02pm" line + each
+  // administration's clock time, computed here (server, with the profile tz) so the
+  // MedicationCard stays a thin display. Same taken-administration read the dashboard
+  // widget counts, so the card and widget agree.
+  const tz = getTimezone(profile.id);
+  const prnInfoFor = (
+    s: Supplement
+  ): { label: string | null; times: string[] } => {
+    if (s.as_needed !== 1) return { label: null, times: [] };
+    const admins = getAdministrationsForItemOnDate(profile.id, s.id, todayStr);
+    const times = admins.map((a) =>
+      formatGivenAtClock(tz, a.given_at ?? a.taken_at)
+    );
+    const last = admins[0] ? (admins[0].given_at ?? admins[0].taken_at) : null;
+    return {
+      label: administrationDayLabel(
+        admins.length,
+        formatGivenAtClock(tz, last)
+      ),
+      times,
+    };
+  };
+
   const pairs = getSupplementPairs(profile.id);
   const pairsFor = (suppId: number) =>
     pairs.filter((p) => p.a_id === suppId || p.b_id === suppId);
@@ -258,6 +287,8 @@ export default async function MedicationsPage() {
                     todayStr={todayStr}
                     trainingRestricted={trainingRestricted}
                     suppressedFoodKeys={suppressedFoodKeys}
+                    prnDayLabel={prnInfoFor(m.med).label}
+                    prnTimes={prnInfoFor(m.med).times}
                   />
                 ))}
               </div>
@@ -289,6 +320,8 @@ export default async function MedicationsPage() {
                     todayStr={todayStr}
                     trainingRestricted={trainingRestricted}
                     suppressedFoodKeys={suppressedFoodKeys}
+                    prnDayLabel={prnInfoFor(m.med).label}
+                    prnTimes={prnInfoFor(m.med).times}
                   />
                 ))}
               </div>

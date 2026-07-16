@@ -2,6 +2,7 @@
 // the webhook route and the getUpdates poller both delegate here, so both paths
 // get identical profile-scoping and verification.
 
+import crypto from "node:crypto";
 import {
   markDoseTaken,
   markDoseSkipped,
@@ -11,6 +12,9 @@ import {
   supplementExists,
   getDoseEscalateChatId,
   escalationAckState,
+  logAdministration,
+  getPrnMedicationsForQuickLog,
+  getIntakeItemName,
 } from "../queries";
 import { today } from "../db";
 import { shiftDateStr } from "../date";
@@ -21,6 +25,8 @@ import {
   setProfileFoodTelegram,
   setFoodTelegramPrompted,
 } from "../settings";
+import { getProfileNameById } from "../profile-summary-load";
+import { administrationOutcomeText } from "../administration-format";
 import { logFoodServingCore } from "../food-log-write";
 import { preventiveRuleByKey } from "../preventive-catalog";
 import { preventiveSignalKey } from "../preventive-upcoming";
@@ -48,9 +54,11 @@ import {
   parseFoodLogCallback,
   parseFoodOptInCallback,
   parsePreventiveCallback,
+  parsePrnLogCallback,
   parseRefillCallback,
   parseSkipCallback,
   parseTakeCallback,
+  type PrnLogCallback,
   preventiveAnswerText,
   preventiveCloseText,
   refillAnswerText,
@@ -70,9 +78,12 @@ import {
   answerCallbackQuery,
   closeMessage,
   rebuildMessage,
+  sendTelegramMessage,
   updateMessageKeyboard,
   type TelegramCallbackQuery,
 } from "./telegram";
+import type { TelegramMessage } from "./telegram-api";
+import type { NotificationAction } from "./types";
 
 // "⏰ Remind later" on a preventive nudge snoozes the finding a week out — the item
 // isn't urgent, so a short reprieve without losing it. Refill "📦 Ordered" snoozes
@@ -139,8 +150,97 @@ export async function handleCallbackQuery(
     return;
   }
 
+  // PRN administration logging (#797): a "💊 <med>" button from the /dose command
+  // logs one as-needed administration NOW.
+  const prn = parsePrnLogCallback(cq.data);
+  if (prn) {
+    await handlePrnLogTap(cq, prn);
+    return;
+  }
+
   // Unknown/malformed token: ack so the client stops the spinner, do nothing.
   await answerCallbackQuery(cq.id);
+}
+
+// A per-render nonce carried in a PRN log button's callback_data — the "dedup
+// token". It doesn't itself enforce dedup (logAdministration's short-window guard
+// does that, since a PRN log is not idempotent); it keeps a redelivered identical
+// callback distinguishable and each rendered button unique.
+function prnLogToken(): string {
+  return crypto.randomBytes(4).toString("hex");
+}
+
+// `/dose` command (#797): list the chat's active PRN (as-needed) medications, each
+// as a one-tap "💊 <med>" button that logs an administration now. A chat can map to
+// several profiles (a family chat), so buttons for a multi-profile chat are prefixed
+// with the profile name; the callback token carries the profile id (re-checked
+// against the chat on tap). Sends through the chokepoint (sendTelegramMessage).
+export async function handleDoseCommand(
+  message: TelegramMessage
+): Promise<void> {
+  const text = (message.text ?? "").trim();
+  // Match "/dose" or "/dose@botname" (any trailing args are ignored in v1).
+  if (!/^\/dose(@\w+)?(\s|$)/i.test(text)) return;
+  const chatId = message.chat?.id;
+  if (chatId == null) return;
+
+  const profileIds = getProfilesByTelegramChatId(String(chatId));
+  if (profileIds.length === 0) {
+    await sendTelegramMessage(chatId, {
+      title: "Log a PRN dose",
+      body: "This chat isn't linked to a profile yet — enable Telegram in Settings → Profile.",
+    });
+    return;
+  }
+
+  const multi = profileIds.length > 1;
+  const actions: NotificationAction[] = [];
+  for (const pid of profileIds) {
+    const prefix = multi ? `${getProfileNameById(pid) ?? "Profile"}: ` : "";
+    for (const m of getPrnMedicationsForQuickLog(pid)) {
+      actions.push({
+        label: `💊 ${prefix}${m.name}${m.count > 0 ? ` (${m.count} today)` : ""}`,
+        data: `prn:${pid}:${m.id}:${prnLogToken()}`,
+      });
+    }
+  }
+
+  if (actions.length === 0) {
+    await sendTelegramMessage(chatId, {
+      title: "Log a PRN dose",
+      body: "No as-needed medications are set up. Add one under Medications in the app.",
+    });
+    return;
+  }
+
+  await sendTelegramMessage(chatId, {
+    title: "Log a PRN dose",
+    body: "Tap a medication to record a dose now:",
+    actions,
+  });
+}
+
+// A PRN log button tap: log one administration NOW for the named item, scoped to the
+// profile resolved from the chat (never the token's profile id on its own). Answers
+// from the typed AdministrationOutcome — never an unconditional "Logged" (the
+// markDoseTaken contract) — and deliberately leaves the /dose message + buttons in
+// place so the user can log again later (a PRN med is given multiple times a day).
+async function handlePrnLogTap(
+  cq: TelegramCallbackQuery,
+  token: PrnLogCallback
+): Promise<void> {
+  const chatId = cq.message?.chat?.id;
+  const profileId =
+    chatId != null
+      ? resolveTapProfile(token, getProfilesByTelegramChatId(String(chatId)))
+      : null;
+  if (profileId == null) {
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
+    return;
+  }
+  const outcome = logAdministration(profileId, token.itemId);
+  const name = getIntakeItemName(profileId, token.itemId) ?? "medication";
+  await answerCallbackQuery(cq.id, administrationOutcomeText(outcome, name));
 }
 
 // Drop the tapped button's WHOLE row and, when it was the last row, replace the

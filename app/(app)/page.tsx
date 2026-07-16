@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { IconFlask, IconScale } from "@tabler/icons-react";
+import { IconFlask, IconScale, IconPill } from "@tabler/icons-react";
 import { today } from "@/lib/db";
 import {
   getGoals,
@@ -13,6 +13,7 @@ import {
   collectAttentionModel,
   attentionCountForProfile,
   getHealthspanPillars,
+  getPrnMedicationsForQuickLog,
 } from "@/lib/queries";
 import { recommendCoaching } from "@/lib/coaching";
 import { collectCoachingFindings } from "@/lib/rule-findings";
@@ -23,7 +24,7 @@ import { requireSession, getAccessibleProfiles } from "@/lib/auth";
 import { withAiLogContext } from "@/lib/ai-log";
 import { runRecommendation } from "@/lib/recommendation-engine";
 import { isTrainingRestricted } from "@/lib/age-gate";
-import { getDashboardLayout, getUnitPrefs } from "@/lib/settings";
+import { getDashboardLayout, getUnitPrefs, getTimezone } from "@/lib/settings";
 import { dispWeight } from "@/lib/units";
 import { shiftDateStr } from "@/lib/date";
 import { ALL_ROWS } from "@/lib/trends";
@@ -52,6 +53,7 @@ import NextAppointmentWidget, {
   type NextAppointment,
 } from "@/components/dashboard/NextAppointmentWidget";
 import HealthspanPillarsWidget from "@/components/dashboard/HealthspanPillarsWidget";
+import QuickLogPrnWidget from "@/components/dashboard/QuickLogPrnWidget";
 import { saveDashboardLayout } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -219,6 +221,12 @@ export default async function Dashboard() {
     ? getWeeklyRecap(profile.id, units.weightUnit)
     : null;
 
+  // quick-log-prn — active PRN (as-needed) meds for one-tap administration logging
+  // (#797), each with today's count + last intake time.
+  const prnMeds = has("quick-log-prn")
+    ? getPrnMedicationsForQuickLog(profile.id)
+    : [];
+
   // Data-aware empty set (issue #171): a data-aware widget whose domain has no data
   // yet renders an onboarding CTA instead of a blank card. Computed from the same
   // reads the widget consumes, so the CTA shows exactly when the widget would be
@@ -229,6 +237,8 @@ export default async function Dashboard() {
     emptyIds.add("weight-trend");
   if (has("healthspan-pillars") && pillars.length === 0)
     emptyIds.add("healthspan-pillars");
+  if (has("quick-log-prn") && prnMeds.length === 0)
+    emptyIds.add("quick-log-prn");
 
   // The onboarding CTA for a data-aware widget whose domain is empty — the
   // dashboard doubling as the setup checklist, each empty widget pointing at the
@@ -263,6 +273,16 @@ export default async function Dashboard() {
             message="No pillar data yet. Import labs, log sleep, or record a VO₂ Max to light up your longevity signals."
             ctaLabel="Import health data"
             ctaHref="/data"
+          />
+        );
+      case "quick-log-prn":
+        return (
+          <WidgetEmpty
+            title="Log a PRN dose"
+            icon={IconPill}
+            message="No as-needed medications yet. Add a PRN medication to log doses like ibuprofen or an inhaler right from here."
+            ctaLabel="Add a medication"
+            ctaHref="/medications"
           />
         );
       default:
@@ -301,6 +321,10 @@ export default async function Dashboard() {
         ) : null;
       case "weekly-recap":
         return weeklyRecap ? <WeeklyRecapWidget recap={weeklyRecap} /> : null;
+      case "quick-log-prn":
+        return (
+          <QuickLogPrnWidget meds={prnMeds} tz={getTimezone(profile.id)} />
+        );
       default:
         return null;
     }

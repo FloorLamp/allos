@@ -12,7 +12,10 @@ import {
   toggleMedicationSideEffectResolved,
   deleteMedicationSideEffect,
   promoteMedicationSideEffect,
+  logAdministration,
 } from "@/lib/queries";
+import { getTimezone } from "@/lib/settings";
+import { zonedWallTimeToUtc } from "@/lib/date";
 import {
   normalizeStopReason,
   normalizeSeverity,
@@ -154,6 +157,67 @@ export async function deleteSideEffect(
   revalidatePath("/medications");
   revalidatePath("/");
   return formOk();
+}
+
+// Resolve the quick-log offset the widget submits into the real intake time to
+// store: "now" → undefined (the core stamps now); "30m"/"1h" → that many minutes
+// ago; "custom" → an HH:MM wall time TODAY in the profile's timezone, converted to
+// the absolute instant. "invalid" signals a malformed custom time. The far-off/
+// future guard itself lives in the auth-blind core (isGivenAtAccepted, #614) so it
+// covers the Telegram path too; this only shapes the offset into a Date.
+function resolveGivenAt(
+  profileId: number,
+  offset: string,
+  time: string | null
+): Date | undefined | "invalid" {
+  switch (offset) {
+    case "30m":
+      return new Date(Date.now() - 30 * 60 * 1000);
+    case "1h":
+      return new Date(Date.now() - 60 * 60 * 1000);
+    case "custom": {
+      if (!time || !/^\d{1,2}:\d{2}$/.test(time)) return "invalid";
+      return zonedWallTimeToUtc(getTimezone(profileId), today(profileId), time);
+    }
+    case "now":
+    default:
+      return undefined;
+  }
+}
+
+// Log one PRN (as-needed) administration from the dashboard quick-log widget (#797).
+// The auth gate + offset parsing live here; the write core (logAdministration) is
+// auth-blind and shared with the Telegram /dose path, so "gave it now / 30m ago /
+// 1h ago / at 4:02pm" is one computation. The updated count/last-time surfaces via
+// revalidation rather than the FormResult (which carries no success payload).
+export async function logMedicationAdministration(
+  formData: FormData
+): Promise<FormResult> {
+  const { profile } = await requireWriteAccess();
+  const id = Number(formData.get("id"));
+  if (!id) return formError("Couldn't find that medication.");
+  const given = resolveGivenAt(
+    profile.id,
+    String(formData.get("offset") ?? "now"),
+    strOrNull(formData.get("time"))
+  );
+  if (given === "invalid") return formError("Enter a valid time.");
+  const outcome = logAdministration(profile.id, id, given);
+  revalidatePath("/medications");
+  revalidatePath("/nutrition");
+  revalidatePath("/");
+  switch (outcome.kind) {
+    case "logged":
+    case "duplicate":
+      return formOk();
+    case "invalid-time":
+      return formError("That time is out of range — pick a time today.");
+    case "inactive":
+      return formError("This medication is paused — resume it to log a dose.");
+    case "stale-item":
+    default:
+      return formError("Couldn't log that — it may have been removed.");
+  }
 }
 
 // Promote a medication side effect into a manual allergies/intolerance row.

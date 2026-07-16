@@ -3,7 +3,6 @@ import { requireWriteAccess } from "@/lib/auth";
 
 import { revalidatePath } from "next/cache";
 import { db, today, writeTx } from "@/lib/db";
-import { isUniqueConstraintError } from "@/lib/sqlite-error";
 import { captureDelete } from "@/lib/undo-delete-db";
 import {
   getActiveSituations,
@@ -511,80 +510,67 @@ function applyDoseStatus(
   date: string,
   target: DoseStatusTarget
 ): void {
-  const dose = db
-    .prepare(
-      `SELECT item_id, amount FROM intake_item_doses
+  // One IMMEDIATE transaction (#468). Since #797 dropped UNIQUE(dose_id, date) — the
+  // constraint that used to make a concurrent second INSERT a caught no-op — this
+  // SELECT-then-write must be atomic itself, or two concurrent web replicas (or the
+  // notify sidecar) could each insert a taken row for one scheduled (dose,date) and
+  // double-decrement supply. BEGIN IMMEDIATE serializes writers, so the exists-check
+  // is accurate and one-taken-row-per-(dose,date) holds for a scheduled dose. (The
+  // PRN multiples path is logAdministration, a different core.)
+  writeTx(() => {
+    const dose = db
+      .prepare(
+        `SELECT item_id, amount FROM intake_item_doses
        WHERE id = ? AND retired = 0
          AND item_id IN (SELECT id FROM intake_items WHERE profile_id = ?)`
-    )
-    .get(doseId, profileId) as
-    { item_id: number; amount: string | null } | undefined;
-  if (!dose) return;
-  const existing = db
-    .prepare(
-      "SELECT status FROM intake_item_logs WHERE dose_id = ? AND date = ?"
-    )
-    .get(doseId, date) as { status: DoseStatusTarget } | undefined;
-  const current: DoseStatusTarget = existing ? existing.status : "clear";
-  if (current === target) return;
+      )
+      .get(doseId, profileId) as
+      { item_id: number; amount: string | null } | undefined;
+    if (!dose) return;
+    const existing = db
+      .prepare(
+        "SELECT status FROM intake_item_logs WHERE dose_id = ? AND date = ?"
+      )
+      .get(doseId, date) as { status: DoseStatusTarget } | undefined;
+    const current: DoseStatusTarget = existing ? existing.status : "clear";
+    if (current === target) return;
 
-  // INVARIANT (issue #473): a supply move follows the ROW that actually changed, not
-  // the pre-read state. Each branch keys its increment/decrement on the write's
-  // rows-affected (or, for the INSERT, on whether we actually inserted) so a
-  // concurrent writer that already landed the row can't drive a phantom
-  // double-decrement the day the web app runs more than one replica.
-  if (target === "clear") {
-    const info = db
-      .prepare("DELETE FROM intake_item_logs WHERE dose_id = ? AND date = ?")
-      .run(doseId, date);
-    // Re-increment only if THIS delete removed the taken row (a concurrent clear may
-    // have removed it first, and already re-incremented).
-    if (info.changes > 0 && current === "taken") {
-      incrementSupply(profileId, dose.item_id);
-    }
-    return;
-  }
-
-  if (!existing) {
-    let inserted = false;
-    try {
+    if (target === "clear") {
       db.prepare(
-        "INSERT INTO intake_item_logs (dose_id, item_id, date, amount, status) VALUES (?,?,?,?,?)"
+        "DELETE FROM intake_item_logs WHERE dose_id = ? AND date = ?"
+      ).run(doseId, date);
+      if (current === "taken") incrementSupply(profileId, dose.item_id);
+      return;
+    }
+
+    if (!existing) {
+      // A taken check-off stamps given_at = now (the tap moment ≈ intake time), so
+      // the med card's "last …" line has a time; a skip records no intake.
+      db.prepare(
+        `INSERT INTO intake_item_logs (dose_id, item_id, date, amount, status, given_at)
+         VALUES (?,?,?,?,?, CASE WHEN ? = 'taken' THEN datetime('now') ELSE NULL END)`
       ).run(
         doseId,
         dose.item_id,
         date,
         target === "taken" ? dose.amount : null,
+        target,
         target
       );
-      inserted = true;
-    } catch (err) {
-      // UNIQUE(dose_id, date) lost race: a concurrent writer (a second web replica,
-      // or the notify sidecar) already logged this dose today. The winner owns the
-      // row AND its supply move, so we no-op — the same "already logged" outcome the
-      // Telegram markDoseTaken path reports — instead of surfacing a Server-Action 500.
-      if (!isUniqueConstraintError(err)) throw err;
+      if (target === "taken") decrementSupply(profileId, dose.item_id);
+      return;
     }
-    // Only the writer that actually inserted the taken row decrements supply.
-    if (inserted && target === "taken") {
-      decrementSupply(profileId, dose.item_id);
-    }
-    return;
-  }
 
-  const info = db
-    .prepare(
+    db.prepare(
       "UPDATE intake_item_logs SET status = ?, amount = ? WHERE dose_id = ? AND date = ?"
-    )
-    .run(target, target === "taken" ? dose.amount : null, doseId, date);
-  // Cross the taken boundary in supply only when THIS update actually changed a row.
-  if (info.changes > 0) {
+    ).run(target, target === "taken" ? dose.amount : null, doseId, date);
+    // Cross the taken boundary in supply.
     if (current !== "taken" && target === "taken") {
       decrementSupply(profileId, dose.item_id);
     } else if (current === "taken" && target !== "taken") {
       incrementSupply(profileId, dose.item_id);
     }
-  }
+  });
 }
 
 // Set a single dose's status for today to an explicit target — the web

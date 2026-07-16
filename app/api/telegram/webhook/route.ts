@@ -6,7 +6,10 @@
 
 import crypto from "node:crypto";
 import { getTelegramBotConfig } from "@/lib/settings";
-import { handleCallbackQuery } from "@/lib/notifications/telegram-callbacks";
+import {
+  handleCallbackQuery,
+  handleDoseCommand,
+} from "@/lib/notifications/telegram-callbacks";
 import { createLogger } from "@/lib/log";
 import { checkRateLimit, forwardedClientIdentity } from "@/lib/rate-limit";
 
@@ -76,6 +79,10 @@ export async function POST(req: Request) {
     const update = await req.json();
     if (update?.callback_query) {
       await handleCallbackQuery(update.callback_query);
+    } else if (update?.message) {
+      // Inbound text — the /dose slash command (#797); handleDoseCommand ignores
+      // anything that isn't /dose.
+      await handleDoseCommand(update.message);
     }
   } catch (e) {
     // Never 5xx — that would make Telegram retry. Log and ack.

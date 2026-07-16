@@ -76,6 +76,8 @@ export default function MedicationCard({
   todayStr,
   trainingRestricted,
   suppressedFoodKeys = [],
+  prnDayLabel = null,
+  prnTimes = [],
 }: {
   supplement: Supplement;
   doses: SupplementDose[];
@@ -96,6 +98,12 @@ export default function MedicationCard({
   trainingRestricted: boolean;
   // Active food-timing dismissals for this profile (#435), threaded to FoodGuidance.
   suppressedFoodKeys?: string[];
+  // PRN (as-needed) administrations for today (#797): the "2 today · last 4:02pm"
+  // summary + each administration's profile-local clock time (most recent first),
+  // both pre-formatted server-side. Shown INSTEAD of the binary dose pill for a PRN
+  // med, since a PRN med can be given several times a day.
+  prnDayLabel?: string | null;
+  prnTimes?: string[];
 }) {
   const s = supplement;
   const [editing, setEditing] = useState(false);
@@ -272,8 +280,32 @@ export default function MedicationCard({
         </div>
       </div>
 
-      {/* Today's dose check-offs — only when the med is current and due. */}
-      {current && due && doses.length > 0 && (
+      {/* A PRN (as-needed) med shows the day's ADMINISTRATIONS (multiple/day, real
+          times) instead of a single binary pill (#797). Logging happens from the
+          dashboard quick-log widget / Telegram; this is the day's record. */}
+      {current && s.as_needed === 1 && (
+        <div className="mt-2" data-testid="prn-administrations">
+          <div className="text-sm text-slate-600 dark:text-slate-300">
+            {prnDayLabel}
+          </div>
+          {prnTimes.length > 0 && (
+            <div className="mt-1 flex flex-wrap gap-1">
+              {prnTimes.map((t, i) => (
+                <span
+                  key={i}
+                  className="rounded-full border border-black/10 px-2 py-0.5 text-xs text-slate-500 dark:border-white/10 dark:text-slate-400"
+                >
+                  {t}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Today's dose check-offs — a SCHEDULED med only (PRN uses the block above),
+          when it's current and due. */}
+      {current && due && s.as_needed !== 1 && doses.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-2">
           {doses.map((dose) => (
             <DoseStatusControl
