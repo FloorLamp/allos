@@ -11,9 +11,12 @@ import {
   SYMPTOM_SEVERITY_LEVELS,
 } from "@/lib/symptoms";
 import { useToast } from "@/components/Toast";
+import { round } from "@/lib/units";
+import { toCanonicalTempF, temperatureRangeError } from "@/lib/vitals-input";
 import {
   logSymptom,
   removeSymptom,
+  logTemperature,
   activateIllnessForSymptoms,
 } from "./actions";
 
@@ -37,6 +40,7 @@ export default function SymptomLogBar({
   symptoms,
   customNames,
   suggestActivateIllness,
+  showTemperature = false,
 }: {
   // Primary date (YYYY-MM-DD). On the dashboard this is today; on the Timeline it's the
   // selected day.
@@ -54,6 +58,9 @@ export default function SymptomLogBar({
   customNames: string[];
   // Whether to offer the "Mark as illness" bridge (no illness-type situation active).
   suggestActivateIllness: boolean;
+  // Whether to render the body-temperature quick entry (issue #800). On the illness-
+  // gated dashboard card, where a fever log belongs; off on the plain Timeline day view.
+  showTemperature?: boolean;
 }) {
   const hasToggle = !!altDate;
   const [mode, setMode] = useState<"primary" | "alt">("primary");
@@ -72,6 +79,50 @@ export default function SymptomLogBar({
   const [, startTransition] = useTransition();
   const router = useRouter();
   const toast = useToast();
+
+  // Body-temperature quick entry (issue #800) — a thermometer reading logged "now" into
+  // the shared vitals series. Local state + a Server Action per submit, validated with
+  // the SAME pure guard the write core uses so the form surfaces an inline error instead
+  // of a false "logged".
+  const [tempValue, setTempValue] = useState("");
+  const [tempUnit, setTempUnit] = useState<"F" | "C">("F");
+  const [tempError, setTempError] = useState<string | null>(null);
+  const [tempPending, setTempPending] = useState(false);
+
+  async function logTemp() {
+    const raw = Number(tempValue);
+    if (tempValue.trim() === "" || !Number.isFinite(raw)) {
+      setTempError("Enter a temperature.");
+      return;
+    }
+    const rangeErr = temperatureRangeError(
+      round(toCanonicalTempF(raw, tempUnit), 1)
+    );
+    if (rangeErr) {
+      setTempError(rangeErr);
+      return;
+    }
+    setTempError(null);
+    setTempPending(true);
+    const fd = new FormData();
+    fd.set("temperature", tempValue);
+    fd.set("temp_unit", tempUnit);
+    // The reading is "now" for today (the card's primary date), never the alt day.
+    fd.set("date", date);
+    const res = await logTemperature(fd);
+    setTempPending(false);
+    if (res.ok) {
+      setTempValue("");
+      toast(
+        `Temperature logged: ${res.degF} °F${res.flag === "high" ? " — fever" : ""}`,
+        { tone: res.flag === "high" ? "error" : undefined }
+      );
+      startTransition(() => router.refresh());
+    } else {
+      setTempError(res.error);
+      toast(res.error, { tone: "error" });
+    }
+  }
 
   const severities = severitiesByDate[activeDate] ?? {};
 
@@ -209,6 +260,67 @@ export default function SymptomLogBar({
           >
             + Mark as illness
           </button>
+        </div>
+      )}
+
+      {showTemperature && (
+        <div
+          data-testid="temp-quick-entry"
+          className="mb-3 rounded-md border border-black/10 p-2.5 dark:border-white/15"
+        >
+          <label className="label mb-1 block" htmlFor="temp-quick-input">
+            Temperature
+          </label>
+          <div className="flex items-center gap-2">
+            <input
+              id="temp-quick-input"
+              data-testid="temp-quick-input"
+              type="number"
+              step="0.1"
+              inputMode="decimal"
+              value={tempValue}
+              onChange={(e) => {
+                setTempValue(e.target.value);
+                if (tempError) setTempError(null);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  void logTemp();
+                }
+              }}
+              placeholder="Thermometer reading"
+              className="input flex-1"
+            />
+            <select
+              data-testid="temp-quick-unit"
+              aria-label="Temperature unit"
+              value={tempUnit}
+              onChange={(e) => setTempUnit(e.target.value === "C" ? "C" : "F")}
+              className="input w-auto"
+            >
+              <option value="F">°F</option>
+              <option value="C">°C</option>
+            </select>
+            <button
+              type="button"
+              data-testid="temp-quick-save"
+              disabled={tempPending}
+              onClick={() => void logTemp()}
+              className="badge cursor-pointer bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50"
+            >
+              {tempPending ? "Logging…" : "Log temp"}
+            </button>
+          </div>
+          {tempError && (
+            <p
+              role="alert"
+              data-testid="temp-quick-error"
+              className="mt-1 text-xs text-rose-600 dark:text-rose-400"
+            >
+              {tempError}
+            </p>
+          )}
         </div>
       )}
 
