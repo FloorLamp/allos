@@ -44,5 +44,7 @@
   "043-prn-redose.ts": "c648da63c45afed3255d9d4f9bbcc75f1997870adc7945fabf8c584d8880906e",
   "044-episode-share-links.ts": "57ec2abe606acdd10b0cc78bb9fd5d9708f6b379476dfbb5f4aba2dd6862e2e5",
   "045-medication-rx-flag.ts": "b802576bd9054ca0f26c45c531f13ab8a27fc12130584147c35c19df55c4e2f8",
-  "046-illness-episodes.ts": "7d4727a1bf04200e8ded330cafc299eff0e42bafc85ee0d692f2273df9d9aba4"
+  "046-illness-episodes.ts": "7d4727a1bf04200e8ded330cafc299eff0e42bafc85ee0d692f2273df9d9aba4",
+  "047-medication-last-fill.ts": "b992547a488e601c35751f390a3b1d7c02bf94c03a9da77f63b6735a6dbe2e84",
+  "048-medications-share-kind.ts": "dfedd3de7693144a554115084cc0a36b000219f75d4d46a440f2fc7d2fee4951"
 }

@@ -1275,16 +1275,23 @@ console.log(
 // boot so both rows show again on a fresh run.
 const BRIDGE_TRACK_MED = "E2E Bridge Track Med";
 const BRIDGE_DISMISS_MED = "E2E Bridge Dismiss Med";
+// A THIRD untracked prescription dedicated to the #852 item 6 dismiss→restore round-trip
+// (kept separate from the Track/Dismiss rows so that spec never collides with theirs).
+const BRIDGE_RESTORE_MED = "E2E Bridge Restore Med";
 db.prepare(
-  `DELETE FROM medical_records WHERE profile_id = ? AND category = 'prescription' AND name IN (?, ?)`
-).run(PROFILE_ID, BRIDGE_TRACK_MED, BRIDGE_DISMISS_MED);
+  `DELETE FROM medical_records WHERE profile_id = ? AND category = 'prescription' AND name IN (?, ?, ?)`
+).run(PROFILE_ID, BRIDGE_TRACK_MED, BRIDGE_DISMISS_MED, BRIDGE_RESTORE_MED);
 db.prepare(`DELETE FROM intake_items WHERE profile_id = ? AND name = ?`).run(
   PROFILE_ID,
   BRIDGE_TRACK_MED
 );
 db.prepare(
-  `DELETE FROM upcoming_dismissals WHERE profile_id = ? AND signal_key = ?`
-).run(PROFILE_ID, `med-bridge:${BRIDGE_DISMISS_MED.toLowerCase()}`);
+  `DELETE FROM upcoming_dismissals WHERE profile_id = ? AND signal_key IN (?, ?)`
+).run(
+  PROFILE_ID,
+  `med-bridge:${BRIDGE_DISMISS_MED.toLowerCase()}`,
+  `med-bridge:${BRIDGE_RESTORE_MED.toLowerCase()}`
+);
 const insBridgeRx = db.prepare(
   `INSERT INTO medical_records
      (profile_id, date, category, name, canonical_name, source)
@@ -1292,8 +1299,9 @@ const insBridgeRx = db.prepare(
 );
 insBridgeRx.run(PROFILE_ID, BRIDGE_TRACK_MED, BRIDGE_TRACK_MED);
 insBridgeRx.run(PROFILE_ID, BRIDGE_DISMISS_MED, BRIDGE_DISMISS_MED);
+insBridgeRx.run(PROFILE_ID, BRIDGE_RESTORE_MED, BRIDGE_RESTORE_MED);
 console.log(
-  `e2e: seeded records-bridge fixture (untracked prescriptions "${BRIDGE_TRACK_MED}" + "${BRIDGE_DISMISS_MED}") (#817)`
+  `e2e: seeded records-bridge fixture (untracked prescriptions "${BRIDGE_TRACK_MED}" + "${BRIDGE_DISMISS_MED}" + "${BRIDGE_RESTORE_MED}") (#817/#852)`
 );
 
 // An imported visit whose notes carry a real line break (issue #794 cluster 11a),
@@ -1344,6 +1352,80 @@ for (const [name, timeOfDay, amount] of [
 
 console.log(
   `e2e: seeded morning + bedtime due doses on profile ${PROFILE_ID} for the dose-order spec (#297)`
+);
+
+// ── Time-aware Today panel fixtures (issue #852 item 1) ──────────────────────
+// Two SCHEDULED, active medications whose alphabetical order REVERSES their bucket
+// order: "Zeta Morning Med" is a MORNING dose, "Alpha Evening Med" an EVENING dose.
+// Data/alphabetical order would put Alpha first; the shared doseSortKey ordering must
+// put Zeta (Morning) first — the same order Upcoming derives. Both daily + active with
+// no taken-log today, so they surface as due on the Medications Today panel AND in
+// Upcoming. Fully synthetic, no rxcui (no interaction/food dataset hit). Idempotent.
+for (const [name, timeOfDay] of [
+  ["Zeta Morning Med (e2e)", "morning"],
+  ["Alpha Evening Med (e2e)", "evening"],
+] as const) {
+  db.prepare(`DELETE FROM intake_items WHERE profile_id = ? AND name = ?`).run(
+    PROFILE_ID,
+    name
+  );
+  const medId = Number(
+    db
+      .prepare(
+        `INSERT INTO intake_items
+           (profile_id, name, condition, priority, kind, active, as_needed)
+         VALUES (?, ?, 'daily', 'low', 'medication', 1, 0)`
+      )
+      .run(PROFILE_ID, name).lastInsertRowid
+  );
+  db.prepare(
+    `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+     VALUES (?, '1 tablet', ?, 'any', 0)`
+  ).run(medId, timeOfDay);
+  db.prepare(
+    `INSERT INTO medication_courses (item_id, started_on, stopped_on, stop_reason, notes)
+     VALUES (?, ?, NULL, NULL, 'e2e Today-order fixture')`
+  ).run(medId, shiftDateStr(today(PROFILE_ID), -30));
+}
+console.log(
+  `e2e: seeded morning + evening scheduled meds on profile ${PROFILE_ID} for the Today-order spec (#852)`
+);
+
+// ── Low-supply medication fixture (issue #852 item 3) ────────────────────────
+// A CURRENT, active, SCHEDULED daily medication sitting BELOW the low-supply threshold —
+// the state the one-tap "Refilled" action + run-out date render on. qty_per_dose is 10
+// (units/day ≈ 10), so 3 units ≈ 0 days left; a +30 refill only reaches ~3 days, keeping
+// it low across the browser test's repeated runs (the shared seed isn't reset between
+// them, so the affordance must persist). A fill size (30) is REMEMBERED so the browser
+// test exercises the genuine one-tap path repeatably (the first-use "ask for a size"
+// path is covered by the action tier). Distinctly named so filter-based specs are
+// undisturbed.
+const LOW_SUPPLY_MED_NAME = "Low Supply Med (e2e)";
+db.prepare(`DELETE FROM intake_items WHERE profile_id = ? AND name = ?`).run(
+  PROFILE_ID,
+  LOW_SUPPLY_MED_NAME
+);
+const lowSupplyMedId = Number(
+  db
+    .prepare(
+      `INSERT INTO intake_items
+         (profile_id, name, notes, condition, priority, kind, prescriber,
+          active, as_needed, quantity_on_hand, qty_per_dose, last_fill_size)
+       VALUES (?, ?, 'e2e low-supply refill fixture', 'daily', 'low',
+               'medication', 'Dr. Test Provider', 1, 0, 3, 10, 30)`
+    )
+    .run(PROFILE_ID, LOW_SUPPLY_MED_NAME).lastInsertRowid
+);
+db.prepare(
+  `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+   VALUES (?, '1 tablet', 'morning', 'any', 0)`
+).run(lowSupplyMedId);
+db.prepare(
+  `INSERT INTO medication_courses (item_id, started_on, stopped_on, stop_reason, notes)
+   VALUES (?, ?, NULL, NULL, 'e2e low-supply fixture')`
+).run(lowSupplyMedId, shiftDateStr(today(PROFILE_ID), -30));
+console.log(
+  `e2e: seeded low-supply medication "${LOW_SUPPLY_MED_NAME}" on profile ${PROFILE_ID} (#852)`
 );
 
 // ---- Medical/passport UI-audit fixtures (#381, #383, #384) ----

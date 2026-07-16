@@ -5,6 +5,8 @@
 // (on a confirmed dose) and the low-supply notification live in the query/notify
 // layers; the arithmetic is here so it can be tested without a database.
 
+import { shiftDateStr } from "./date";
+
 // Default low-supply threshold: nudge when roughly a week and a half of supply
 // remains, leaving time to reorder a prescription before running out.
 export const DEFAULT_LOW_SUPPLY_DAYS = 10;
@@ -151,6 +153,40 @@ export function resolveOnHandWrite(
   current: number | null
 ): number | null {
   return submitted === loaded ? current : submitted;
+}
+
+// The one-tap "Refilled" write (issue #852 item 3). A refill ADDS `fillSize` units to
+// whatever supply is on hand RIGHT NOW — `current`, the value re-read under the
+// IMMEDIATE write lock, NOT the stale value the row was loaded with — so a dose confirm
+// that decremented supply between page-load and the tap is preserved, not clobbered.
+// That's the #467 CAS discipline applied to an increment rather than an absolute edit:
+// the new value is computed RELATIVE to the lock-read current, and it routes through
+// resolveOnHandWrite (current + fillSize submitted against `current` as both loaded and
+// current) so the same compare-and-set gate governs it. Returns null when the item
+// isn't tracking supply (quantity_on_hand NULL — nothing to add to) or the fill size is
+// non-positive (no-op). `fillSize` is floored at 0.
+export function resolveRefillWrite(
+  current: number | null,
+  fillSize: number
+): number | null {
+  if (current == null) return null;
+  const fill = Math.max(0, fillSize);
+  if (!(fill > 0)) return current;
+  // submitted = current + fill, compared against `current` as loaded — a deliberate,
+  // relative-to-current write that the CAS gate passes through unchanged.
+  return resolveOnHandWrite(current + fill, current, current);
+}
+
+// The projected run-out DATE (issue #852 item 3): today shifted forward by the whole
+// days of supply left, so a pharmacy hears "runs out ~Aug 3" rather than "≈19 days".
+// Pure calendar arithmetic (shiftDateStr is UTC-anchored). Null when days-left can't be
+// estimated (untracked / unestimable supply).
+export function runOutDateStr(
+  todayStr: string,
+  daysLeft: number | null
+): string | null {
+  if (daysLeft == null) return null;
+  return shiftDateStr(todayStr, Math.max(0, daysLeft));
 }
 
 // Minimal shape the low-supply selection needs off an intake item.

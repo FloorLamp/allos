@@ -62,6 +62,10 @@ export interface Supplement {
   // (defaults to 1). Decremented on the "taken" path; drives "≈N days left".
   quantity_on_hand: number | null;
   qty_per_dose: number;
+  // The number of units the item was LAST refilled by (issue #852 item 3), NULL until
+  // the first "Refilled" one-tap records it. Remembered so subsequent refills reuse the
+  // size without re-asking; NOT the on-hand counter.
+  last_fill_size: number | null;
   // Medication identity. kind splits medications from
   // supplements (shared table/machinery); prescriber/pharmacy/rx_number are
   // medication-only free text; as_needed (0/1) marks a PRN med that generates no

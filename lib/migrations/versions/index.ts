@@ -45,6 +45,8 @@ import { migration as m043 } from "./043-prn-redose";
 import { migration as m044 } from "./044-episode-share-links";
 import { migration as m045 } from "./045-medication-rx-flag";
 import { migration as m046 } from "./046-illness-episodes";
+import { migration as m047 } from "./047-medication-last-fill";
+import { migration as m048 } from "./048-medications-share-kind";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
 // CONTRACT: a migration's position (1-based) must equal its `id`, and the runner
@@ -99,4 +101,6 @@ export const MIGRATIONS: Migration[] = [
   m044,
   m045,
   m046,
+  m047,
+  m048,
 ];

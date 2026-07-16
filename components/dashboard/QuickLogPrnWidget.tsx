@@ -63,6 +63,7 @@ export default function QuickLogPrnWidget({
               formatGivenAtClock(tz, m.lastGivenAt)
             )}
             redoseLine={redoseLineFor(m)}
+            linkToDetail
           />
         ))}
       </div>

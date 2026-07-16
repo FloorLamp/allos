@@ -34,6 +34,21 @@ export function timeBucket(timeOfDay: string | null): TimeBucket {
   return "Anytime";
 }
 
+// The time bucket the given wall clock (HH:MM) currently falls into (issue #852
+// item 1), so the Today panel can tell a PAST-bucket dose (the 8am dose seen at 6pm)
+// from an upcoming one. The clock ranges approximate the free-text buckets timeBucket()
+// maps WORDS to: Morning < 11:00, Midday < 15:00, Evening < 21:00, else Before sleep.
+// It never returns "Anytime" — a clock always has a position — so a timeless "Anytime"
+// dose (bucket rank 4, above every clock bucket) is never judged past-due.
+export function currentTimeBucket(hhmm: string): TimeBucket {
+  const [h, m] = hhmm.split(":");
+  const mins = (Number(h) || 0) * 60 + (Number(m) || 0);
+  if (mins < 11 * 60) return "Morning";
+  if (mins < 15 * 60) return "Midday";
+  if (mins < 21 * 60) return "Evening";
+  return "Before sleep";
+}
+
 export const CONDITION_LABELS: Record<SupplementCondition, string> = {
   daily: "Daily",
   pre_workout: "Pre-workout",

@@ -53,6 +53,7 @@ function supp(overrides: Partial<Supplement> = {}): Supplement {
     escalate_chat_id: null,
     quantity_on_hand: null,
     qty_per_dose: 1,
+    last_fill_size: null,
     kind: "supplement",
     prescriber: null,
     pharmacy: null,

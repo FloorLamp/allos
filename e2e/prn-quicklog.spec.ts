@@ -25,13 +25,17 @@ test("Today panel shows the PRN med's administrations, detail shows the ledger (
 
   // The med's clinical-record detail page keeps the day's administration ledger
   // ("2 today · last …") and never a scheduled take/skip control for a PRN med.
-  await page
+  const rowLink = page
     .getByTestId("medication-row")
     .filter({ hasText: MED })
-    .getByTestId("medication-row-link")
-    .click();
+    .getByTestId("medication-row-link");
   const detail = page.getByTestId("medication-detail");
-  await expect(detail).toBeVisible();
+  // Ride out the hydration window (#730): retry the navigation until detail shows —
+  // the same guard the sibling medications-page spec uses for this click.
+  await expect(async () => {
+    await rowLink.click();
+    await expect(detail).toBeVisible({ timeout: 2000 });
+  }).toPass();
   const admin = detail.getByTestId("prn-administrations");
   await expect(admin).toBeVisible();
   await expect(admin).toContainText("2 today");

@@ -10,7 +10,7 @@ import type {
   SupplementDose,
 } from "@/lib/types";
 import type { AdherenceDot } from "@/lib/supplement-adherence";
-import type { DoseRate } from "@/lib/refill";
+import { daysOfSupplyForItem, isLowSupply, type DoseRate } from "@/lib/refill";
 import {
   sortCourses,
   isMedicationCurrent,
@@ -23,6 +23,7 @@ import {
   RefillBadge,
   AdherenceSummaryLine,
 } from "@/components/AdherenceRefill";
+import RefillButton from "@/components/medications/RefillButton";
 import RxOtcBadge from "@/components/RxOtcBadge";
 import OverflowMenu, {
   MENU_ITEM,
@@ -45,6 +46,7 @@ export default function MedicationRow({
   strip,
   refillRate,
   prnRedoseLine = null,
+  todayStr,
 }: {
   med: Supplement;
   doses: SupplementDose[];
@@ -53,6 +55,9 @@ export default function MedicationRow({
   strip: AdherenceDot[];
   refillRate: DoseRate | null;
   prnRedoseLine?: string | null;
+  // The app's configured today, so the refill badge can project the run-out DATE
+  // and the one-tap "Refilled" action shows on the low-supply state (#852 item 3).
+  todayStr: string;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const confirm = useConfirm();
@@ -63,6 +68,14 @@ export default function MedicationRow({
   const unresolved = unresolvedCount(sideEffects);
   const subline = [med.brand, med.product].filter(Boolean).join(" · ");
   const medMeta = medicationMetaLine(med);
+  const lowSupply = isLowSupply(
+    daysOfSupplyForItem(
+      med.quantity_on_hand,
+      med.qty_per_dose,
+      refillRate,
+      doses.length
+    )
+  );
 
   return (
     <div
@@ -120,6 +133,7 @@ export default function MedicationRow({
               qtyPerDose={med.qty_per_dose}
               refillRate={refillRate}
               doseCount={doses.length}
+              todayStr={todayStr}
             />
           </div>
           {medMeta && (
@@ -138,6 +152,13 @@ export default function MedicationRow({
           <AdherenceSummaryLine strip={strip} />
         </Link>
         <div className="flex shrink-0 items-center gap-1 text-xs">
+          {lowSupply && (
+            <RefillButton
+              itemId={med.id}
+              hasLastFill={med.last_fill_size != null}
+              lastFillSize={med.last_fill_size}
+            />
+          )}
           <OverflowMenu
             label="Medication actions"
             open={menuOpen}

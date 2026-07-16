@@ -8,8 +8,12 @@ import { formatGivenAtClock } from "@/lib/administration-format";
 import { MEDICATIONS_HREF } from "@/lib/hrefs";
 import { PageHeader } from "@/components/ui";
 import ProviderDatalist from "@/components/ProviderDatalist";
-import { loadMedicationsData } from "../med-data";
+import {
+  loadMedicationsData,
+  getMedicationAdherenceCalendar,
+} from "../med-data";
 import MedicationCard from "../MedicationCard";
+import AdherenceCalendar from "@/components/medications/AdherenceCalendar";
 
 export const dynamic = "force-dynamic";
 
@@ -44,6 +48,13 @@ export default async function MedicationDetailPage(props: {
     }
     for (const [date, times] of byDate) prnHistory.push({ date, times });
   }
+
+  // Month adherence calendar (#852 item 5) — only for a SCHEDULED med; a PRN med is
+  // never scheduled-due, so its grid would read entirely "not due".
+  const calendar =
+    m.med.as_needed === 1
+      ? null
+      : getMedicationAdherenceCalendar(profile.id, m.med.id);
 
   return (
     <div data-testid="medication-detail">
@@ -84,6 +95,12 @@ export default async function MedicationDetailPage(props: {
         age={data.age}
         detailView
       />
+      {calendar && calendar.weeks.length > 0 && (
+        <div className="card mt-4" data-testid="medication-adherence-month">
+          <h2 className="mb-3 section-label">Adherence · last month</h2>
+          <AdherenceCalendar model={calendar} />
+        </div>
+      )}
       <p className="mt-4 text-xs text-slate-500 dark:text-slate-400">
         Informational only, not medical advice.
       </p>

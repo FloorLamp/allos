@@ -4,9 +4,14 @@
 // intake_items JOIN.
 // Refill tracking: effective consumption-rate math and the on-hand supply
 // increment/decrement kept in lock-step with the dose logs.
-import { db, today } from "../../db";
+import { db, today, writeTx } from "../../db";
 import { shiftDateStr } from "../../date";
-import { consumptionRate, RATE_WINDOW_DAYS, type DoseRate } from "../../refill";
+import {
+  consumptionRate,
+  resolveRefillWrite,
+  RATE_WINDOW_DAYS,
+  type DoseRate,
+} from "../../refill";
 import { getSupplementDoses } from "./schedule";
 
 // Effective consumption rate (doses/day) + its basis for every item that has
@@ -105,4 +110,61 @@ export function incrementSupply(profileId: number, supplementId: number): void {
         SET quantity_on_hand = quantity_on_hand + qty_per_dose
       WHERE id = ? AND profile_id = ? AND quantity_on_hand IS NOT NULL`
   ).run(supplementId, profileId);
+}
+
+// The typed outcome of a one-tap "Refilled" (issue #852 item 3) — handlers answer from
+// it, never unconditionally confirm.
+export type RefillOutcome =
+  | { kind: "refilled"; newQuantity: number; fillSize: number }
+  // No fill size available (first use, nothing remembered) — the UI must ask for one.
+  | { kind: "needs-size" }
+  // The item doesn't track supply (quantity_on_hand NULL) — nothing to refill into.
+  | { kind: "untracked" }
+  // Not owned by the profile / removed.
+  | { kind: "stale-item" };
+
+// Record a refill: add `fillSize` units to the item's on-hand supply and REMEMBER that
+// size (last_fill_size) for next time. When `fillSize` is null, reuse the remembered
+// size; if none is remembered, return "needs-size" so the caller asks. The whole read-
+// modify-write runs in ONE writeTx (BEGIN IMMEDIATE): the on-hand value is re-read
+// under the write lock and the fill is added RELATIVE to it via resolveRefillWrite, so a
+// dose confirm that decremented supply between page-load and the tap is preserved, not
+// clobbered (the #467 CAS discipline applied to an increment). Profile-scoped: a forged
+// id can't touch another profile's row.
+export function refillSupply(
+  profileId: number,
+  itemId: number,
+  fillSize: number | null
+): RefillOutcome {
+  return writeTx(() => {
+    const row = db
+      .prepare(
+        `SELECT quantity_on_hand, qty_per_dose, last_fill_size
+           FROM intake_items WHERE id = ? AND profile_id = ?`
+      )
+      .get(itemId, profileId) as
+      | {
+          quantity_on_hand: number | null;
+          qty_per_dose: number;
+          last_fill_size: number | null;
+        }
+      | undefined;
+    if (!row) return { kind: "stale-item" };
+    if (row.quantity_on_hand == null) return { kind: "untracked" };
+    const remembered =
+      row.last_fill_size != null && row.last_fill_size > 0
+        ? row.last_fill_size
+        : null;
+    const fill = fillSize != null && fillSize > 0 ? fillSize : remembered;
+    if (fill == null) return { kind: "needs-size" };
+    // Increment relative to the lock-read current value (no clobber of a concurrent
+    // decrement); resolveRefillWrite is non-null here (current not null, fill > 0).
+    const next = resolveRefillWrite(row.quantity_on_hand, fill) as number;
+    db.prepare(
+      `UPDATE intake_items
+          SET quantity_on_hand = ?, last_fill_size = ?
+        WHERE id = ? AND profile_id = ?`
+    ).run(next, fill, itemId, profileId);
+    return { kind: "refilled", newQuantity: next, fillSize: fill };
+  });
 }

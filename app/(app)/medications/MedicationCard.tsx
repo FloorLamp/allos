@@ -23,7 +23,7 @@ import {
   medicationMetaLine,
 } from "@/lib/medication-history";
 import type { AdherenceDot } from "@/lib/supplement-adherence";
-import type { DoseRate } from "@/lib/refill";
+import { daysOfSupplyForItem, isLowSupply, type DoseRate } from "@/lib/refill";
 import type { PediatricFormContext } from "@/lib/prn-dosing";
 import { formatLongDate } from "@/lib/format-date";
 import { getMedicationInfo } from "@/lib/medication-info";
@@ -31,6 +31,7 @@ import {
   RefillBadge,
   AdherenceSummaryLine,
 } from "@/components/AdherenceRefill";
+import RefillButton from "@/components/medications/RefillButton";
 import MedicationForm from "@/components/MedicationForm";
 import RxOtcBadge from "@/components/RxOtcBadge";
 import FoodGuidance from "@/components/FoodGuidance";
@@ -176,6 +177,14 @@ export default function MedicationCard({
 
   const subline = [s.brand, s.product].filter(Boolean).join(" · ");
   const medMeta = medicationMetaLine(s);
+  const lowSupply = isLowSupply(
+    daysOfSupplyForItem(
+      s.quantity_on_hand,
+      s.qty_per_dose,
+      refillRate,
+      doses.length
+    )
+  );
 
   const fmt = (d: string | null) => (d ? formatLongDate(d) : "unknown");
 
@@ -225,6 +234,7 @@ export default function MedicationCard({
               qtyPerDose={s.qty_per_dose}
               refillRate={refillRate}
               doseCount={doses.length}
+              todayStr={todayStr}
             />
           </div>
           {medMeta && (
@@ -264,6 +274,13 @@ export default function MedicationCard({
           <AdherenceSummaryLine strip={strip} />
         </div>
         <div className="flex shrink-0 items-center gap-2 text-xs">
+          {current && lowSupply && (
+            <RefillButton
+              itemId={s.id}
+              hasLastFill={s.last_fill_size != null}
+              lastFillSize={s.last_fill_size}
+            />
+          )}
           <OverflowMenu
             label="Medication actions"
             open={menuOpen}
