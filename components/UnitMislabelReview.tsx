@@ -119,7 +119,7 @@ export default function UnitMislabelReview({
                 type="button"
                 data-testid="unit-mislabel-apply"
                 onClick={() => void onApply(item)}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-brand-700"
+                className="btn btn-sm"
               >
                 <IconWand className="h-4 w-4" stroke={1.75} />
                 Correct to {item.correctedUnit}

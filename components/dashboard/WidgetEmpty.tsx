@@ -35,10 +35,7 @@ export default function WidgetEmpty({
       <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">
         {message}
       </p>
-      <Link
-        href={ctaHref}
-        className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-brand-700"
-      >
+      <Link href={ctaHref} className="btn btn-sm">
         {ctaLabel}
         <IconArrowRight className="h-4 w-4" stroke={1.75} />
       </Link>

@@ -241,7 +241,7 @@ export default function DataTableManager({
                 type="button"
                 disabled={busy}
                 onClick={() => setConfirm("all")}
-                className="inline-flex items-center gap-1 rounded-lg bg-rose-600 px-2.5 py-1 font-medium text-white hover:bg-rose-700 disabled:opacity-40"
+                className="btn-danger btn-sm"
               >
                 <IconTrash className="h-4 w-4" /> Delete all
               </button>
@@ -368,7 +368,7 @@ function ConfirmInline({
         type="button"
         disabled={busy}
         onClick={onConfirm}
-        className="rounded-lg bg-rose-600 px-2.5 py-1 font-medium text-white hover:bg-rose-700 disabled:opacity-50"
+        className="btn-danger btn-sm"
       >
         {busy ? "Deleting…" : confirmLabel}
       </button>

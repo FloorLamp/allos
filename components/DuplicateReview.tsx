@@ -150,7 +150,7 @@ function PairActions({
         <button
           type="submit"
           data-testid="dup-merge-primary"
-          className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-brand-700"
+          className="btn btn-sm"
         >
           <IconGitMerge className="h-4 w-4" stroke={1.75} />
           Merge, keep {keepLabelA}

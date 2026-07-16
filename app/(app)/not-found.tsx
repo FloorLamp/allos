@@ -18,10 +18,7 @@ export default function AppNotFound() {
         This record doesn&apos;t exist, or you don&apos;t have access to it. It
         may have been deleted or moved to another profile.
       </p>
-      <Link
-        href="/"
-        className="mt-6 inline-flex items-center rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-700"
-      >
+      <Link href="/" className="btn mt-6">
         Back to dashboard
       </Link>
     </div>

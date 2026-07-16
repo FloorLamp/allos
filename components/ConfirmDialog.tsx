@@ -83,18 +83,44 @@ function ConfirmModal({
   onSettle: (ok: boolean) => void;
 }) {
   const confirmRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
 
   // Esc cancels; focus the confirm button on open so Enter confirms and the
   // dialog is reachable by keyboard. The listener runs in the capture phase and
   // stops propagation, so while the dialog is open Escape is consumed here and
   // doesn't also reach a background handler (e.g. the activity editor's own
-  // Escape-to-close, which would otherwise re-open a confirm).
+  // Escape-to-close, which would otherwise re-open a confirm). Tab is trapped at
+  // the dialog edges so keyboard focus can't wander back to the (inert)
+  // background — a real modal focus trap.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.stopPropagation();
         onSettle(false);
+        return;
+      }
+      if (e.key === "Tab") {
+        const root = dialogRef.current;
+        if (!root) return;
+        const focusables = Array.from(
+          root.querySelectorAll<HTMLElement>(
+            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+          )
+        ).filter((el) => !el.hasAttribute("disabled"));
+        if (focusables.length === 0) return;
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        const active = document.activeElement as HTMLElement | null;
+        if (e.shiftKey) {
+          if (active === first || !root.contains(active)) {
+            e.preventDefault();
+            last.focus();
+          }
+        } else if (active === last || !root.contains(active)) {
+          e.preventDefault();
+          first.focus();
+        }
       }
     };
     window.addEventListener("keydown", onKey, true);
@@ -116,6 +142,7 @@ function ConfirmModal({
       onClick={() => onSettle(false)}
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}

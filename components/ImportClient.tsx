@@ -260,7 +260,7 @@ function ImportJobCard({ job, unit }: { job: ImportJob; unit: WeightUnit }) {
           </span>
           {job.status === "processing" && (
             <span className="inline-flex items-center gap-1.5 text-slate-500 dark:text-slate-400">
-              <IconLoader2 className="h-4 w-4 animate-spin" />
+              <IconLoader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
               Extracting…
             </span>
           )}

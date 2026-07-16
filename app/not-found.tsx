@@ -14,10 +14,7 @@ export default function NotFound() {
       <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">
         The page you&apos;re looking for doesn&apos;t exist or may have moved.
       </p>
-      <Link
-        href="/"
-        className="mt-6 inline-flex items-center rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-700"
-      >
+      <Link href="/" className="btn mt-6">
         Go to dashboard
       </Link>
     </main>

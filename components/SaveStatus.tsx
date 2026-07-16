@@ -34,7 +34,7 @@ export default function SaveStatus({
     <span className="flex items-center" aria-live="polite">
       {pending ? (
         <IconLoader2
-          className="h-4 w-4 animate-spin text-slate-500 dark:text-slate-400"
+          className="h-4 w-4 animate-spin text-slate-500 motion-reduce:animate-none dark:text-slate-400"
           aria-label="Saving"
         />
       ) : error ? (
