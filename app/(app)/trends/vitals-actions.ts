@@ -29,6 +29,7 @@ export async function addVitals(formData: FormData) {
       spo2: formData.get("spo2") as string | null,
       temperature: formData.get("temperature") as string | null,
       tempUnit: formData.get("temp_unit") as string | null,
+      temperatureTime: formData.get("temp_time") as string | null,
       sleepHours: formData.get("sleep_hours") as string | null,
       hrv: formData.get("hrv") as string | null,
       gripStrength: formData.get("grip_strength") as string | null,

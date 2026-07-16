@@ -24,7 +24,7 @@ import {
   getGenomicVariants,
   getFindingSuppressions,
   getAdministrationsForItemOnDate,
-  getLatestBodyMetricDated,
+  getPediatricFormContext,
   getPrnMedicationsForQuickLog,
   getMedicalRecords,
 } from "@/lib/queries";
@@ -51,7 +51,6 @@ import {
   getActiveSituations,
   getSituationEvents,
   getTimezone,
-  profileAgeMonths,
 } from "@/lib/settings";
 import { situationHistoryResolver } from "@/lib/trend-annotations";
 import { isDueOn, isPostWorkoutReady } from "@/lib/supplement-schedule";
@@ -314,13 +313,7 @@ export function loadMedicationsData(profileId: number): MedicationsData {
       notes: v.notes,
     }));
 
-  const latestWeight = getLatestBodyMetricDated(profileId, "weight");
-  const pediatric: PediatricFormContext = {
-    ageMonths: profileAgeMonths(profileId, todayStr),
-    weightKg: latestWeight?.value ?? null,
-    weightDate: latestWeight?.date ?? null,
-    today: todayStr,
-  };
+  const pediatric: PediatricFormContext = getPediatricFormContext(profileId);
 
   // Today panel PRN rows — the recently-used ordering the dashboard quick-log uses,
   // with the same pre-formatted labels (one computation).

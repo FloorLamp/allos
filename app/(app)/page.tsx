@@ -61,6 +61,7 @@ import NextAppointmentWidget, {
 import HealthspanPillarsWidget from "@/components/dashboard/HealthspanPillarsWidget";
 import QuickLogPrnWidget from "@/components/dashboard/QuickLogPrnWidget";
 import SymptomLogCard from "./symptoms/SymptomLogCard";
+import FeelingSickCard from "@/components/dashboard/FeelingSickCard";
 import { hasActiveIllnessSituation } from "@/lib/settings/profile-attrs";
 import { saveDashboardLayout } from "./actions";
 
@@ -252,9 +253,10 @@ export default async function Dashboard() {
     ? getPrnMedicationsForQuickLog(profile.id)
     : [];
 
-  // symptom-log (#799): the one-tap symptom card, surfaced ONLY while an illness-type
-  // situation is active — the same has-data availability gate as next-appointment, so it
-  // never clutters a well day.
+  // symptom-log (#799/#843): the Symptoms widget is ALWAYS available (door A) — while an
+  // illness-type situation is active it renders the full one-tap symptom card; otherwise
+  // it renders the calm "Feeling sick?" front door whose single tap activates Illness and
+  // reveals the card on the next render. Hideable from Customize like any other widget.
   const illnessActive =
     has("symptom-log") && hasActiveIllnessSituation(profile.id);
 
@@ -357,7 +359,11 @@ export default async function Dashboard() {
           <QuickLogPrnWidget meds={prnMeds} tz={getTimezone(profile.id)} />
         );
       case "symptom-log":
-        return illnessActive ? <SymptomLogCard profileId={profile.id} /> : null;
+        return illnessActive ? (
+          <SymptomLogCard profileId={profile.id} />
+        ) : (
+          <FeelingSickCard />
+        );
       case "sick-household":
         return <SickHouseholdWidget entries={sickHousehold} />;
       default:
@@ -376,7 +382,6 @@ export default async function Dashboard() {
       (def.id !== "next-appointment" || hasScheduledAppt) &&
       (def.id !== "coaching-observations" || coachingObservations.length > 0) &&
       (def.id !== "weekly-recap" || weeklyRecap !== null) &&
-      (def.id !== "symptom-log" || illnessActive) &&
       (def.id !== "sick-household" || sickHousehold.length > 0),
     node:
       def.dataAware && emptyIds.has(def.id)

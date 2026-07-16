@@ -205,10 +205,11 @@ export const DASHBOARD_WIDGETS: WidgetDef[] = [
     id: "symptom-log",
     label: "Symptoms",
     description:
-      "One-tap symptom logging while you're unwell — severity per symptom, today or yesterday. Appears only when an illness-type situation is active.",
-    // On by default, but the page's `available` gate keeps it hidden unless an
-    // illness-type situation is active (like next-appointment's has-data gate) — so it
-    // never clutters a well day. Not fitness-gated: symptoms matter for every profile.
+      "The illness front door — a calm \"Feeling sick?\" line when you're well, and one-tap symptom logging (severity per symptom, temperature, today or yesterday) while you're unwell. Hide it from Customize if you never want it.",
+    // On by default. Always available (issue #843, door A): its inactive state is the
+    // calm "Feeling sick?" affordance whose single tap activates Illness and expands the
+    // full card, so the page never gates it out. Not fitness-gated: symptoms matter for
+    // every profile. Hideable like any other widget.
     defaultOn: true,
     fitness: false,
     span: "half",

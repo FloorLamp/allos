@@ -5,11 +5,13 @@ import { SYMPTOMS } from "@/lib/symptoms";
 import {
   getSymptomSeveritiesOnDate,
   getCustomSymptomNames,
+  getPediatricFormContext,
 } from "@/lib/queries";
 import { currentEpisodeForProfile } from "@/lib/illness-episode";
 import { episodeHeadline } from "@/lib/illness-episode-format";
 import { episodeHref } from "@/lib/hrefs";
 import SymptomLogBar from "./SymptomLogBar";
+import SymptomMedQuickAdd from "./SymptomMedQuickAdd";
 
 // Dashboard symptom card (issue #799) — rendered ONLY while an illness-type situation is
 // active (the page gates its `available`), so it appears exactly when it's useful. Gathers
@@ -53,6 +55,8 @@ export default function SymptomLogCard({ profileId }: { profileId: number }) {
         suggestActivateIllness={false}
         showTemperature
       />
+      {/* Door C (#843): reach for an OTC med right where you're logging symptoms. */}
+      <SymptomMedQuickAdd pediatric={getPediatricFormContext(profileId)} />
     </div>
   );
 }

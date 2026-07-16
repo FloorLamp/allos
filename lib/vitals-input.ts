@@ -28,12 +28,16 @@ export type TempUnit = "C" | "F";
 export type GlucoseUnit = "mg/dL" | "mmol/L";
 
 // A vital destined for medical_records (reference-range flagged). `canonical`/
-// `unit`/`category` are the exact canonical shape the HC parser writes.
+// `unit`/`category` are the exact canonical shape the HC parser writes. `note` rides
+// the row's `notes` column — for a temperature reading it's the profile-local "HH:MM"
+// clock time (#800/#843), so repeat same-day readings build a fever curve. Absent for
+// every other vital (and untimed temperatures), so it never widens the persisted row.
 export interface VitalMedicalRow {
   canonical: string;
   category: "vitals" | "biomarker";
   unit: string;
   value_num: number; // canonical unit
+  note?: string;
 }
 
 // A vital destined for metric_samples, keyed by `metric`. `value` is canonical.
@@ -50,6 +54,7 @@ export interface VitalsRawInput {
   spo2?: string | null;
   temperature?: string | null;
   tempUnit?: string | null; // 'C' | 'F' (defaults F — the canonical/display unit)
+  temperatureTime?: string | null; // optional "HH:MM" reading time (#800/#843 fever curve)
   sleepHours?: string | null;
   hrv?: string | null;
   gripStrength?: string | null; // kg
@@ -144,6 +149,22 @@ export function temperatureRangeError(degF: number): string | null {
   return degF < TEMP_MIN_F || degF > TEMP_MAX_F
     ? "Body temperature is out of range."
     : null;
+}
+
+// Normalize a caller-supplied clock time to a canonical "HH:MM" (24h, zero-padded)
+// string, or null when it isn't a plausible time. The ONE clock-time parser shared by
+// the vitals temperature note and the temperature-log write core (#800/#843), so a
+// native <input type="time"> value ("07:00") and a hand-typed "7:00" both land as the
+// same day-agnostic display note. Never parsed for day attribution — that's `date`.
+export function normalizeClockTime(
+  time: string | null | undefined
+): string | null {
+  const m = /^(\d{1,2}):(\d{2})$/.exec((time ?? "").trim());
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (h < 0 || h > 23 || min < 0 || min > 59) return null;
+  return `${String(h).padStart(2, "0")}:${m[2]}`;
 }
 
 function blank(v: string | null | undefined): boolean {
@@ -296,9 +317,14 @@ export function normalizeVitalsInput(
 
   const tempRaw = numOrNull(input.temperature);
   if (tempRaw != null) {
+    // A timed reading rides its "HH:MM" clock time on the row's note for the fever
+    // curve (#800/#843); an untimed one leaves `note` absent so the persisted row is
+    // unchanged. Only temperature carries a time (the only vital with a fever curve).
+    const note = normalizeClockTime(input.temperatureTime);
     medical.push({
       ...VITAL_CANONICAL.temperature,
       value_num: toCanonicalTempF(tempRaw, input.tempUnit),
+      ...(note ? { note } : {}),
     });
   }
 
