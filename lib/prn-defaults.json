@@ -1,0 +1,121 @@
+{
+  "_comment": "Curated OTC PRN (as-needed) dosing DEFAULTS (issue #798). The medication-info / food-drug-interactions pattern: a committed, human-reviewable, CITED dataset keyed by RxNorm INGREDIENT CUI with a name/synonym fallback (#279). Every value is a public OTC Drug Facts label figure — NOT medical advice. The app only PRE-FILLS these onto the med form as a suggestion the user explicitly confirms/edits; nothing here is applied silently. `adult.minIntervalHours`/`adult.maxDailyCount` pre-fill the redose-notice fields; `pediatric.bands` reproduce the label's weight-band chart (mg per weight band) for informational lookup — NEVER a mg/kg computation. `pediatric.minAgeMonths` is a hard age GATE rendered as the label's own 'ask a doctor' refusal, not a dose. ASPIRIN has NO pediatric entry (Reye's syndrome) — the dataset structurally omits it, pinned by a dataset test. Bands carry an inclusive lower bound (minLbs) only; the lookup picks the highest band whose minLbs <= the child's weight, so a weight between two label bands lands conservatively on the LOWER (lower-dose) band, and a weight below the smallest band is a refusal.",
+  "ingredients": [
+    {
+      "slug": "ibuprofen",
+      "label": "Ibuprofen",
+      "rxcuis": ["5640"],
+      "synonyms": ["ibuprofen", "advil", "motrin"],
+      "adult": {
+        "minIntervalHours": 6,
+        "maxDailyCount": 4,
+        "maxDailyMg": 1200,
+        "doseMgLow": 200,
+        "doseMgHigh": 400
+      },
+      "pediatric": {
+        "minAgeMonths": 6,
+        "ageGateText": "For children under 6 months, ask a doctor before use (per the product label).",
+        "bands": [
+          { "minLbs": 24, "mg": 100 },
+          { "minLbs": 36, "mg": 150 },
+          { "minLbs": 48, "mg": 200 },
+          { "minLbs": 60, "mg": 250 },
+          { "minLbs": 72, "mg": 300 }
+        ],
+        "formulations": [
+          {
+            "slug": "infant_drops_50_1_25",
+            "label": "Infants' oral suspension drops (50 mg / 1.25 mL)",
+            "mgPerMl": 40
+          },
+          {
+            "slug": "childrens_susp_100_5",
+            "label": "Children's oral suspension (100 mg / 5 mL)",
+            "mgPerMl": 20
+          }
+        ]
+      },
+      "source": "OTC Drug Facts label — ibuprofen oral suspension (children's), U.S. FDA."
+    },
+    {
+      "slug": "acetaminophen",
+      "label": "Acetaminophen",
+      "rxcuis": ["161"],
+      "synonyms": ["acetaminophen", "tylenol", "paracetamol"],
+      "adult": {
+        "minIntervalHours": 4,
+        "maxDailyCount": 6,
+        "maxDailyMg": 3000,
+        "doseMgLow": 500,
+        "doseMgHigh": 1000
+      },
+      "pediatric": {
+        "minAgeMonths": 3,
+        "ageGateText": "For children under 12 weeks (about 3 months), ask a doctor before use (per the product label).",
+        "bands": [
+          { "minLbs": 24, "mg": 160 },
+          { "minLbs": 36, "mg": 240 },
+          { "minLbs": 48, "mg": 320 },
+          { "minLbs": 60, "mg": 400 },
+          { "minLbs": 72, "mg": 480 }
+        ],
+        "formulations": [
+          {
+            "slug": "infant_susp_160_5",
+            "label": "Infants' oral suspension (160 mg / 5 mL)",
+            "mgPerMl": 32
+          },
+          {
+            "slug": "childrens_susp_160_5",
+            "label": "Children's oral suspension (160 mg / 5 mL)",
+            "mgPerMl": 32
+          }
+        ]
+      },
+      "source": "OTC Drug Facts label — acetaminophen oral suspension (children's), U.S. FDA."
+    },
+    {
+      "slug": "aspirin",
+      "label": "Aspirin",
+      "rxcuis": ["1191"],
+      "synonyms": ["aspirin", "acetylsalicylic acid", "asa", "bayer"],
+      "adult": {
+        "minIntervalHours": 4,
+        "maxDailyCount": 6,
+        "maxDailyMg": 4000,
+        "doseMgLow": 325,
+        "doseMgHigh": 650
+      },
+      "source": "OTC Drug Facts label — aspirin tablets, U.S. FDA. NO pediatric entry: aspirin is not given to children/teens (Reye's syndrome) — omitted by design."
+    },
+    {
+      "slug": "naproxen",
+      "label": "Naproxen sodium",
+      "rxcuis": ["7258"],
+      "synonyms": ["naproxen", "naproxen sodium", "aleve"],
+      "adult": {
+        "minIntervalHours": 8,
+        "maxDailyCount": 3,
+        "maxDailyMg": 660,
+        "doseMgLow": 220,
+        "doseMgHigh": 440
+      },
+      "source": "OTC Drug Facts label — naproxen sodium tablets, U.S. FDA. Not for children under 12 without a doctor — no pediatric weight-band entry."
+    },
+    {
+      "slug": "diphenhydramine",
+      "label": "Diphenhydramine",
+      "rxcuis": ["3498"],
+      "synonyms": ["diphenhydramine", "benadryl", "diphenhydramine hcl"],
+      "adult": {
+        "minIntervalHours": 4,
+        "maxDailyCount": 6,
+        "maxDailyMg": 300,
+        "doseMgLow": 25,
+        "doseMgHigh": 50
+      },
+      "source": "OTC Drug Facts label — diphenhydramine HCl (antihistamine), U.S. FDA. The children's label doses by AGE, not weight — no weight-band table here (weight bands would misrepresent an age-based label)."
+    }
+  ]
+}

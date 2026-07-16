@@ -5,6 +5,9 @@ import {
   administrationDayLabel,
   formatGivenAtClock,
 } from "@/lib/administration-format";
+import { redoseWindowStatus } from "@/lib/prn-redose";
+import { redoseCardLabel } from "@/lib/redose-format";
+import { parseUtcSql } from "@/lib/date";
 
 // Dashboard quick-log widget for PRN (as-needed) medications (#797). The one-tap
 // retro-entry home: each active PRN med gets a "Log" button (now) plus retro offsets
@@ -19,6 +22,29 @@ export default function QuickLogPrnWidget({
   meds: PrnMedForQuickLog[];
   tz: string;
 }) {
+  const now = new Date();
+  // The redose status line (#798), when the med has confirmed interval/max and
+  // something's been logged. Same redoseCardLabel the medications card uses (one
+  // computation, so the widget and card never disagree). Marker-agnostic — the card
+  // always shows current window state regardless of the one-shot notification marker.
+  const redoseLineFor = (m: PrnMedForQuickLog): string | null => {
+    if (
+      m.minIntervalHours == null ||
+      m.maxDailyCount == null ||
+      !m.lastGivenAt
+    ) {
+      return null;
+    }
+    return redoseCardLabel(
+      redoseWindowStatus({
+        minIntervalHours: m.minIntervalHours,
+        maxDailyCount: m.maxDailyCount,
+        latestGivenAt: parseUtcSql(m.lastGivenAt),
+        countToday: m.count,
+        now,
+      })
+    );
+  };
   return (
     <div className="card" data-testid="quick-log-prn">
       <WidgetHeader
@@ -36,6 +62,7 @@ export default function QuickLogPrnWidget({
               m.count,
               formatGivenAtClock(tz, m.lastGivenAt)
             )}
+            redoseLine={redoseLineFor(m)}
           />
         ))}
       </div>

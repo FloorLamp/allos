@@ -1109,6 +1109,54 @@ console.log(
   `e2e: seeded PRN administration ledger fixture "${PRN_MED_NAME}" (#797)`
 );
 
+// A second PRN med with a CONFIRMED redose notice (#798): min interval 6h, max 4/day,
+// opt-in on, and ONE administration ~7h ago — so the redose window is OPEN and the
+// card/widget render the "Redose OK — min interval passed · 1 of 4 today" status line.
+// Synthetic name → matches no interaction dataset; high supply so it never joins the
+// low-supply fixtures. Idempotent (recreated each boot, administration stays
+// today-relative).
+const REDOSE_MED_NAME = "PRN Redose Med (e2e)";
+db.prepare(`DELETE FROM intake_items WHERE profile_id = ? AND name = ?`).run(
+  PROFILE_ID,
+  REDOSE_MED_NAME
+);
+const redoseMedId = Number(
+  db
+    .prepare(
+      `INSERT INTO intake_items
+         (profile_id, name, notes, condition, priority, kind, prescriber,
+          active, as_needed, quantity_on_hand, qty_per_dose,
+          min_interval_hours, max_daily_count, redose_notice)
+       VALUES (?, ?, 'As-needed med — e2e redose fixture', 'daily',
+               'low', 'medication', 'Dr. Test Provider', 1, 1, 60, 1, 6, 4, 1)`
+    )
+    .run(PROFILE_ID, REDOSE_MED_NAME).lastInsertRowid
+);
+const redoseDoseId = Number(
+  db
+    .prepare(
+      `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+       VALUES (?, '200 mg', 'Anytime', 'any', 0)`
+    )
+    .run(redoseMedId).lastInsertRowid
+);
+db.prepare(
+  `INSERT INTO medication_courses (item_id, started_on, stopped_on, stop_reason, notes)
+   VALUES (?, ?, NULL, NULL, 'PRN redose — e2e fixture')`
+).run(redoseMedId, shiftDateStr(today(PROFILE_ID), -30));
+db.prepare(
+  `INSERT INTO intake_item_logs (dose_id, item_id, date, given_at, amount, status)
+   VALUES (?, ?, ?, ?, '200 mg', 'taken')`
+).run(
+  redoseDoseId,
+  redoseMedId,
+  today(PROFILE_ID),
+  utcSqlString(new Date(Date.now() - 7 * 60 * 60 * 1000))
+);
+console.log(
+  `e2e: seeded PRN redose-notice fixture "${REDOSE_MED_NAME}" (#798)`
+);
+
 // ── Import-detail tabbed records-browser fixture (issue #271) ─────────────────
 // A 'done' document that produced rows across several kinds — labs + a
 // prescription (medical_records), a visit, a condition, an immunization, and a
