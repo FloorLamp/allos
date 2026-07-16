@@ -43,7 +43,7 @@ export default function SyncNowButton({ provider }: { provider: string }) {
       className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1 text-sm font-medium text-slate-600 hover:border-brand-300 hover:text-brand-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-ink-700 dark:text-slate-300 dark:hover:border-brand-800 dark:hover:text-brand-400"
     >
       <IconRefresh
-        className={`h-4 w-4 ${pending ? "animate-spin" : ""}`}
+        className={`h-4 w-4 ${pending ? "animate-spin motion-reduce:animate-none" : ""}`}
         stroke={1.75}
       />
       {pending ? "Syncing…" : "Sync now"}

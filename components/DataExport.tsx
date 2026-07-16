@@ -49,7 +49,7 @@ export default async function DataExport({
             href="/api/export/full"
             download
             data-testid="export-all-link"
-            className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-700"
+            className="btn"
           >
             <IconDownload className="h-4 w-4" />
             Export all my data (.zip)

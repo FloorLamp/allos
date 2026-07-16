@@ -222,7 +222,7 @@ export default function MergeConflictDialog({
             onClick={confirm}
             disabled={busy}
             data-testid="merge-conflict-confirm"
-            className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-brand-700 disabled:opacity-50"
+            className="btn btn-sm"
           >
             <IconGitMerge className="h-4 w-4" stroke={1.75} />
             Merge

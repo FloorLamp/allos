@@ -74,7 +74,7 @@ export default function ExtractedRecords({
         <RangeFilterSelect value={range} />
         {processing ? (
           <IconLoader2
-            className="ml-auto h-4 w-4 animate-spin text-slate-500 dark:text-slate-400"
+            className="ml-auto h-4 w-4 animate-spin text-slate-500 motion-reduce:animate-none dark:text-slate-400"
             aria-label="Processing"
           />
         ) : (

@@ -347,7 +347,7 @@ export default function MedicationCard({
                   <div className="flex items-center gap-3">
                     <SubmitButton
                       pendingLabel="Stopping…"
-                      className="rounded-md bg-rose-600 px-3 py-1 text-sm font-medium text-white disabled:opacity-60"
+                      className="btn-danger btn-sm"
                     >
                       Stop
                     </SubmitButton>
@@ -477,10 +477,7 @@ export default function MedicationCard({
                   placeholder="Notes (optional)"
                   className="input text-sm"
                 />
-                <SubmitButton
-                  pendingLabel="Saving…"
-                  className="rounded-md bg-brand-600 px-3 py-1 text-sm font-medium text-white disabled:opacity-60"
-                >
+                <SubmitButton pendingLabel="Saving…" className="btn btn-sm">
                   Add side effect
                 </SubmitButton>
               </form>

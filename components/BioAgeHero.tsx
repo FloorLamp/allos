@@ -120,10 +120,7 @@ export default async function BioAgeHero() {
         </ul>
 
         <div className="mt-4">
-          <Link
-            href="/data"
-            className="inline-flex items-center rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-brand-700"
-          >
+          <Link href="/data" className="btn btn-sm">
             Import labs
           </Link>
         </div>

@@ -45,7 +45,7 @@ function ToneIcon({ tone }: { tone: FeedTone }) {
     case "pending":
       return (
         <IconLoader2
-          className="h-4 w-4 shrink-0 animate-spin text-slate-500 dark:text-slate-400"
+          className="h-4 w-4 shrink-0 animate-spin text-slate-500 motion-reduce:animate-none dark:text-slate-400"
           stroke={1.75}
         />
       );

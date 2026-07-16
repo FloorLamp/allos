@@ -346,7 +346,7 @@ export default function CalendarFeedConfig({
                   >
                     <input
                       type="checkbox"
-                      className="h-4 w-4 rounded border-black/20 dark:border-white/20"
+                      className="h-4 w-4 accent-brand-600"
                       checked={cats.has(c)}
                       disabled={busy}
                       onChange={() => toggleCat(c)}
@@ -365,7 +365,7 @@ export default function CalendarFeedConfig({
                   >
                     <input
                       type="checkbox"
-                      className="h-4 w-4 rounded border-black/20 dark:border-white/20"
+                      className="h-4 w-4 accent-brand-600"
                       checked={cats.has(c)}
                       disabled={busy}
                       onChange={() => toggleCat(c)}
@@ -381,7 +381,7 @@ export default function CalendarFeedConfig({
           <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
             <input
               type="checkbox"
-              className="h-4 w-4 rounded border-black/20 dark:border-white/20"
+              className="h-4 w-4 accent-brand-600"
               checked={remind}
               disabled={busy}
               onChange={(e) => {

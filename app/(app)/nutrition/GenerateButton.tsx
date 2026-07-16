@@ -16,7 +16,7 @@ export default function GenerateButton() {
       {pending ? (
         <span className="flex items-center gap-2">
           <svg
-            className="h-4 w-4 animate-spin"
+            className="h-4 w-4 animate-spin motion-reduce:animate-none"
             viewBox="0 0 24 24"
             fill="none"
             aria-hidden="true"

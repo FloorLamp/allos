@@ -32,7 +32,7 @@ export default function SubmitButton({
       {pending ? (
         <span className="inline-flex items-center gap-2">
           <svg
-            className="h-4 w-4 animate-spin"
+            className="h-4 w-4 animate-spin motion-reduce:animate-none"
             viewBox="0 0 24 24"
             fill="none"
             aria-hidden="true"

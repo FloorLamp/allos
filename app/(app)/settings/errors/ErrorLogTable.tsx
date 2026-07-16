@@ -43,7 +43,7 @@ export default function ErrorLogTable({
                     setConfirming(false);
                   })
                 }
-                className="rounded-md bg-rose-600 px-2 py-1 font-medium text-white hover:bg-rose-700 disabled:opacity-50"
+                className="btn-danger btn-sm"
                 data-testid="error-log-clear-confirm"
               >
                 {pending ? "Clearing…" : "Confirm"}
