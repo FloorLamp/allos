@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import { IconChevronDown, IconLogout, IconInbox } from "@tabler/icons-react";
 import type { SessionProfile } from "@/lib/auth";
+import { dataSectionHref } from "@/lib/hrefs";
 import { disambiguateProfileNames } from "@/lib/profile-disambiguation";
 import Avatar from "@/components/Avatar";
 import { clearEmergencyPayload } from "@/components/emergency-offline";
@@ -164,8 +164,20 @@ export default function UserMenu({
               </form>
             );
           })}
-        <Link
-          href="/data?section=review"
+        {/* A plain <a>, NOT a Next <Link>, on purpose (#830). Reached only after
+        the menu is opened, this link's App-Router SOFT navigation (router.push,
+        run inside a low-priority transition) is dropped ~half the time when
+        clicked in the still-settling window right after the open re-render — a
+        real user-facing lost click, only masked in e2e by a retry (#730). A
+        native full-page navigation can't be preempted by React's scheduler, so
+        it lands every time (pre- and post-hydration) — the same progressive-
+        enhancement guarantee the tab strip gets from its <a href>, at the small
+        cost of a full reload for this one low-frequency menu link. The href
+        stays typed via dataSectionHref so a dead route is still a build error
+        (#285). setOpen(false)/onNavigate here is safe: a native nav (unlike a
+        transition) isn't preempted by the state update. */}
+        <a
+          href={dataSectionHref("review")}
           onClick={() => {
             setOpen(false);
             onNavigate?.();
@@ -179,7 +191,7 @@ export default function UserMenu({
               {reviewCount}
             </span>
           )}
-        </Link>
+        </a>
         <form action={logoutAction}>
           <button
             type="submit"

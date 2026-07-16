@@ -108,7 +108,14 @@ test("the Fitness nested strip is URL-driven and deep-linkable (#105)", async ({
   );
 
   // Clicking a nested tab navigates, preserving the outer tab. The nested strip
-  // is the same NavTabs component (real <a href>), so no pre-hydration retry (#830).
+  // is the same NavTabs component (real <a href>), so the pre-hydration click is
+  // native and can't be swallowed (#830) — no re-click retry needed. But settle
+  // the heavy Fitness section (charts + deeply-nested strip) before clicking:
+  // once hydrated, the tab's post-hydration soft nav is reliable, whereas a
+  // machine-speed click landing mid-hydration can still have its router.push
+  // dropped. networkidle is a deterministic readiness gate (what a real user
+  // waits for), NOT a retry — the click fires exactly once.
+  await page.waitForLoadState("networkidle");
   await page.getByRole("tab", { name: "Sport" }).click();
   await expect(page).toHaveURL(/ftab=sport/);
   await expect(page).toHaveURL(/tab=fitness/);
