@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 import { loginAs } from "./nav";
 import {
   E2E_LOGIN_ONBOARDING,
+  E2E_LOGIN_ONBOARDING_CAREGIVER,
   E2E_LOGIN_ORIENTATION,
   E2E_MEMBER_PASSWORD,
 } from "./fixture-logins";
@@ -352,6 +353,82 @@ test("a new profile reaches a useful dashboard through the metrics path", async 
     await expect(
       page.getByTestId("dashboard-widget-next-appointment")
     ).toHaveCount(0);
+  } finally {
+    await page.context().close();
+  }
+});
+
+test("a caregiver profile path ends with household-oriented next steps", async ({
+  browser,
+}) => {
+  const page = await loginAs(browser, {
+    username: E2E_LOGIN_ONBOARDING_CAREGIVER,
+    password: E2E_MEMBER_PASSWORD,
+  });
+
+  try {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(page).toHaveURL(/\/onboarding/);
+
+    await page
+      .getByTestId("onboarding-profile-path")
+      .getByLabel("Set up someone I care for")
+      .check();
+    await expect(page).toHaveURL(/\/onboarding\?step=2/);
+
+    const outcomes = page.getByTestId("onboarding-outcomes");
+    await outcomes.getByLabel("Help care for a family member").check();
+    await outcomes.getByRole("button", { name: "Next" }).click();
+
+    const basics = page.getByTestId("onboarding-basics");
+    await expect(page).toHaveURL(/\/onboarding\?step=3/);
+    await expect(basics).toContainText(
+      "A profile does not need its own login."
+    );
+    await basics.getByRole("button", { name: "Next" }).click();
+
+    const firstValue = page.getByTestId("onboarding-first-value");
+    await expect(page).toHaveURL(/\/onboarding\?step=4/);
+    await expect(
+      firstValue.getByRole("link", { name: /View the household/ })
+    ).toHaveAttribute("href", "/household");
+    await expect(
+      firstValue.getByRole("link", { name: /Add a profile or login/ })
+    ).toHaveCount(0);
+    await firstValue.getByRole("button", { name: "Next" }).click();
+
+    const dashboard = page.getByTestId("onboarding-dashboard");
+    await expect(page).toHaveURL(/\/onboarding\?step=5/);
+    await expect(dashboard.getByLabel("Next appointment")).toBeChecked();
+    await expect(dashboard.getByLabel("Recent labs")).toBeChecked();
+    await expect(dashboard.getByLabel("Sick in the household")).toBeChecked();
+    await expect(
+      dashboard.getByTestId("onboarding-dashboard-preview")
+    ).toContainText("Next appointment");
+    await dashboard.getByRole("button", { name: "Next" }).click();
+
+    const notifications = page.getByTestId("onboarding-notifications");
+    await expect(page).toHaveURL(/\/onboarding\?step=6/);
+    await notifications.getByLabel("Decide later").check();
+    await expect(
+      notifications.getByTestId("notification-preview-later")
+    ).toContainText("No delivery changes are made.");
+    await notifications.getByRole("button", { name: "Next" }).click();
+
+    const finish = page.getByTestId("onboarding-finish");
+    await expect(page).toHaveURL(/\/onboarding\?step=7/);
+    await expect(finish).toContainText("Help care for a family member");
+    await expect(finish).toContainText("Ready when you are");
+    await expect(finish).toContainText("Decide later");
+    await finish.getByRole("button", { name: "View dashboard" }).click();
+
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.getByTestId("onboarding-resume-card")).toHaveCount(0);
+    const checklist = page.getByTestId("onboarding-checklist");
+    await expect(checklist).toBeVisible();
+    await expect(
+      checklist.getByRole("link", { name: /Review profiles and access/ })
+    ).toHaveAttribute("href", "/household");
   } finally {
     await page.context().close();
   }

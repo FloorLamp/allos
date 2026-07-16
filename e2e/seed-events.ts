@@ -34,6 +34,7 @@ import {
   E2E_LOGIN_ROUTINE_BUILDER,
   E2E_LOGIN_ROUTINE_DELOAD,
   E2E_LOGIN_ONBOARDING,
+  E2E_LOGIN_ONBOARDING_CAREGIVER,
   E2E_LOGIN_ORIENTATION,
   E2E_LOGIN_STRAVA,
   E2E_MEMBER_PASSWORD,
@@ -44,6 +45,7 @@ import {
   ROUTINE_BUILDER_PROFILE,
   ROUTINE_DELOAD_PROFILE,
   ROUTINE_PROFILE,
+  ONBOARDING_CAREGIVER_PROFILE,
   ONBOARDING_PROFILE,
   ORIENTATION_PROFILE,
   SOURCE_COMPARE_PROFILE,
@@ -1619,47 +1621,52 @@ const noGearId = fixtureProfileId(NO_GEAR_PROFILE);
 db.prepare(`DELETE FROM equipment WHERE profile_id = ?`).run(noGearId);
 seedMemberLogin(E2E_LOGIN_NOGEAR, noGearId);
 
-// A truly empty, isolated profile for the goal-based onboarding flow (#719).
-// Explicit state opts it into onboarding; every other fixture profile without the
-// marker behaves as an existing profile and is never forced through setup.
-const onboardingId = fixtureProfileId(ONBOARDING_PROFILE);
-db.prepare(`DELETE FROM body_metrics WHERE profile_id = ?`).run(onboardingId);
-db.prepare(`DELETE FROM activities WHERE profile_id = ?`).run(onboardingId);
-db.prepare(`DELETE FROM medical_records WHERE profile_id = ?`).run(
-  onboardingId
-);
-db.prepare(`DELETE FROM medical_documents WHERE profile_id = ?`).run(
-  onboardingId
-);
-db.prepare(`DELETE FROM intake_items WHERE profile_id = ?`).run(onboardingId);
-db.prepare(`DELETE FROM appointments WHERE profile_id = ?`).run(onboardingId);
-db.prepare(`DELETE FROM immunizations WHERE profile_id = ?`).run(onboardingId);
-db.prepare(`DELETE FROM care_plan_items WHERE profile_id = ?`).run(
-  onboardingId
-);
-db.prepare(`DELETE FROM goals WHERE profile_id = ?`).run(onboardingId);
-db.prepare(`DELETE FROM frequency_targets WHERE profile_id = ?`).run(
-  onboardingId
-);
-db.prepare(`DELETE FROM equipment WHERE profile_id = ?`).run(onboardingId);
-db.prepare(
-  `DELETE FROM routine_slots
+function resetOnboardingProfile(profileId: number) {
+  db.prepare(`DELETE FROM body_metrics WHERE profile_id = ?`).run(profileId);
+  db.prepare(`DELETE FROM activities WHERE profile_id = ?`).run(profileId);
+  db.prepare(`DELETE FROM medical_records WHERE profile_id = ?`).run(profileId);
+  db.prepare(`DELETE FROM medical_documents WHERE profile_id = ?`).run(
+    profileId
+  );
+  db.prepare(`DELETE FROM intake_items WHERE profile_id = ?`).run(profileId);
+  db.prepare(`DELETE FROM appointments WHERE profile_id = ?`).run(profileId);
+  db.prepare(`DELETE FROM immunizations WHERE profile_id = ?`).run(profileId);
+  db.prepare(`DELETE FROM care_plan_items WHERE profile_id = ?`).run(profileId);
+  db.prepare(`DELETE FROM goals WHERE profile_id = ?`).run(profileId);
+  db.prepare(`DELETE FROM frequency_targets WHERE profile_id = ?`).run(
+    profileId
+  );
+  db.prepare(`DELETE FROM equipment WHERE profile_id = ?`).run(profileId);
+  db.prepare(
+    `DELETE FROM routine_slots
     WHERE routine_day_id IN (
       SELECT rd.id FROM routine_days rd
       JOIN routines r ON r.id = rd.routine_id
       WHERE r.profile_id = ?
     )`
-).run(onboardingId);
-db.prepare(
-  `DELETE FROM routine_days
+  ).run(profileId);
+  db.prepare(
+    `DELETE FROM routine_days
     WHERE routine_id IN (SELECT id FROM routines WHERE profile_id = ?)`
-).run(onboardingId);
-db.prepare(`DELETE FROM routines WHERE profile_id = ?`).run(onboardingId);
-db.prepare(
-  `DELETE FROM profile_settings WHERE profile_id = ? AND key = 'dashboard_layout'`
-).run(onboardingId);
+  ).run(profileId);
+  db.prepare(`DELETE FROM routines WHERE profile_id = ?`).run(profileId);
+  db.prepare(
+    `DELETE FROM profile_settings WHERE profile_id = ? AND key = 'dashboard_layout'`
+  ).run(profileId);
+}
+
+// Truly empty, isolated profiles for the goal-based onboarding paths (#719).
+// Explicit state opts them into onboarding; every other fixture profile without
+// the marker behaves as an existing profile and is never forced through setup.
+const onboardingId = fixtureProfileId(ONBOARDING_PROFILE);
+resetOnboardingProfile(onboardingId);
 setOnboardingState(onboardingId, initialOnboardingState());
 seedMemberLogin(E2E_LOGIN_ONBOARDING, onboardingId);
+
+const caregiverOnboardingId = fixtureProfileId(ONBOARDING_CAREGIVER_PROFILE);
+resetOnboardingProfile(caregiverOnboardingId);
+setOnboardingState(caregiverOnboardingId, initialOnboardingState());
+seedMemberLogin(E2E_LOGIN_ONBOARDING_CAREGIVER, caregiverOnboardingId);
 
 // A populated legacy/existing profile gets orientation, never the empty-profile
 // wizard. Clear the per-login dismissal so repeated e2e runs remain deterministic.
