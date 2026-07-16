@@ -33,7 +33,7 @@ export default function AgeInputs({
           }}
           className="input"
         />
-        <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           Helps tailor age-based screenings, immunization schedules, and
           reference ranges.
         </p>
@@ -58,7 +58,7 @@ export default function AgeInputs({
           }}
           className="input"
         />
-        <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           Use an estimate only when the birthdate is not known. Leave both blank
           if age is unknown.
         </p>

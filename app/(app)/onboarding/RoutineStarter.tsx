@@ -131,7 +131,7 @@ export default function RoutineStarter({
               <div className="text-sm font-medium text-slate-800 dark:text-slate-100">
                 {template.name}
               </div>
-              <div className="mt-0.5 text-xs text-slate-400 dark:text-slate-500">
+              <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
                 {template.dayCount} days in the rotation
               </div>
               <p className="mt-2 flex-1 text-xs text-slate-500 dark:text-slate-400">

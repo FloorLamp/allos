@@ -356,7 +356,7 @@ export default async function OnboardingPage({
                   disabled={readOnly}
                   className="input"
                 />
-                <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                   The name used throughout Allos. A profile does not need its
                   own login.
                 </p>
@@ -383,7 +383,7 @@ export default async function OnboardingPage({
                   <option value="male">Male</option>
                   <option value="female">Female</option>
                 </select>
-                <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                   Used only when a clinical reference range differs by sex.
                   Leave this unset if it is unknown.
                 </p>
@@ -395,7 +395,7 @@ export default async function OnboardingPage({
                   value={getTimezone(profile.id)}
                   disabled={readOnly}
                 />
-                <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                   Keeps the dashboard, schedules, and reminders aligned with
                   this profile’s local time.
                 </p>
@@ -431,7 +431,7 @@ export default async function OnboardingPage({
                   <option value="km">Kilometers</option>
                   <option value="mi">Miles</option>
                 </select>
-                <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                   Unit preferences follow your login across every profile you
                   can access.
                 </p>
@@ -477,7 +477,7 @@ export default async function OnboardingPage({
               />
             )}
 
-            <p className="mb-3 text-xs font-medium tracking-wide text-slate-400 uppercase dark:text-slate-500">
+            <p className="mb-3 text-xs font-medium tracking-wide text-slate-500 uppercase dark:text-slate-400">
               Or import or add something yourself
             </p>
             <div className="grid gap-3 sm:grid-cols-2">
@@ -517,7 +517,7 @@ export default async function OnboardingPage({
                 )}
             </div>
 
-            <p className="mt-4 text-xs text-slate-400 dark:text-slate-500">
+            <p className="mt-4 text-xs text-slate-500 dark:text-slate-400">
               Imported medications and other reminder-sensitive details stay
               inactive until you review them. A setup banner will bring you back
               after you add or connect something. You can also continue while a
@@ -626,7 +626,7 @@ export default async function OnboardingPage({
             <div className="space-y-4">
               <div className="grid gap-3 sm:grid-cols-3">
                 <div className="rounded-xl bg-slate-50 p-3 dark:bg-ink-850">
-                  <p className="text-xs font-medium text-slate-400 uppercase dark:text-slate-500">
+                  <p className="text-xs font-medium text-slate-500 uppercase dark:text-slate-400">
                     Priorities
                   </p>
                   <p className="mt-1 text-sm font-medium text-slate-700 dark:text-slate-200">
@@ -634,7 +634,7 @@ export default async function OnboardingPage({
                   </p>
                 </div>
                 <div className="rounded-xl bg-slate-50 p-3 dark:bg-ink-850">
-                  <p className="text-xs font-medium text-slate-400 uppercase dark:text-slate-500">
+                  <p className="text-xs font-medium text-slate-500 uppercase dark:text-slate-400">
                     Data
                   </p>
                   <p className="mt-1 text-sm font-medium text-slate-700 dark:text-slate-200">
@@ -644,7 +644,7 @@ export default async function OnboardingPage({
                   </p>
                 </div>
                 <div className="rounded-xl bg-slate-50 p-3 dark:bg-ink-850">
-                  <p className="text-xs font-medium text-slate-400 uppercase dark:text-slate-500">
+                  <p className="text-xs font-medium text-slate-500 uppercase dark:text-slate-400">
                     Updates
                   </p>
                   <p className="mt-1 text-sm font-medium text-slate-700 dark:text-slate-200">

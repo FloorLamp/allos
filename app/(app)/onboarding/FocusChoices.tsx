@@ -106,7 +106,7 @@ export default function FocusChoices({
         })}
       </div>
       <p
-        className="text-xs text-slate-400 dark:text-slate-500"
+        className="text-xs text-slate-500 dark:text-slate-400"
         aria-live="polite"
       >
         {choices.has("explore")

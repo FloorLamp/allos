@@ -87,7 +87,7 @@ export default function ProfilePathChoices({
               </SubmitButton>
             </div>
           ) : (
-            <p className="text-xs text-slate-400 dark:text-slate-500">
+            <p className="text-xs text-slate-500 dark:text-slate-400">
               {advancing ? "Continuing…" : "Select an option to continue."}
             </p>
           ))}
