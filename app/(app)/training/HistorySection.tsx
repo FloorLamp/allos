@@ -14,7 +14,6 @@ import { frequencyScopeLabel } from "@/lib/goals";
 import { getUnitPrefs, getUserSex } from "@/lib/settings";
 import { requireSession } from "@/lib/auth";
 import { buildJournalFeedPage } from "@/lib/journal-feed";
-import { EmptyState } from "@/components/ui";
 import JournalView from "../journal/JournalView";
 
 export default async function HistorySection() {
@@ -25,13 +24,14 @@ export default async function HistorySection() {
   // First page ONLY (issue #451): the newest window of day-grouped cards, not the whole
   // history. Older windows are fetched on demand by the "Load more" server action
   // (journal/actions.ts), which calls the SAME buildJournalFeedPage assembler.
+  // Render JournalView unconditionally, even for a brand-new/post-onboarding
+  // profile with no activities (issue #809). The early return that short-circuited
+  // to a bare EmptyState kept JournalView — which owns the Log-activity action row
+  // and the activity-editor wiring — from ever mounting, leaving first-run users
+  // with no way to log their first activity. JournalView now renders a dedicated
+  // first-run empty variant (action row prominent, filters/search hidden); the
+  // stats/goals queries below are cheap and empty for a fresh profile.
   const { groups, nextBefore } = buildJournalFeedPage(profile.id, null, units);
-
-  if (groups.length === 0) {
-    return (
-      <EmptyState message="No activities logged yet. Use “Log activity” to start." />
-    );
-  }
 
   // Per-exercise recent sessions (last 10) for the exercise detail pane.
   const recentByExercise = getRecentByExercise(profile.id, wu);
