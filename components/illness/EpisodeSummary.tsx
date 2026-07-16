@@ -190,7 +190,10 @@ export default function EpisodeSummary({
           </h2>
           {/* Item 4: the fever curve as a small line chart with a normal-range band;
               the timed readings stay listed below as the exact detail. */}
-          <FeverChart temperatures={episode.temperatures} />
+          <FeverChart
+            temperatures={episode.temperatures}
+            temperatureUnit={temperatureUnit}
+          />
           <ul className="mt-2 flex flex-col gap-1 text-sm">
             {episode.temperatures.map((t, i) => (
               <li

@@ -50,6 +50,7 @@ import {
   setNotifySchedule,
   setStoredAge,
   setTimezone,
+  getUnitPrefs,
   setUnitPrefs,
   setUserBirthdate,
   setUserSex,
@@ -320,7 +321,13 @@ export async function saveOnboardingBasics(formData: FormData) {
     setUserBirthdate(profile.id, birthdate);
     setStoredAge(profile.id, birthdate ? null : age);
     setTimezone(profile.id, timezone);
-    setUnitPrefs(login.id, { weightUnit, distanceUnit });
+    // Onboarding collects weight + distance; preserve the login's temperature unit
+    // (default °F, changeable under Settings → Preferences — #857).
+    setUnitPrefs(login.id, {
+      weightUnit,
+      distanceUnit,
+      temperatureUnit: getUnitPrefs(login.id).temperatureUnit,
+    });
     setOnboardingState(profile.id, nextState);
   });
 

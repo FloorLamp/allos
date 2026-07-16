@@ -7,10 +7,12 @@ import {
 import { getEpisodeRow } from "@/lib/illness-episode-store";
 import {
   getSymptomSeveritiesOnDate,
+  getSymptomNotesOnDate,
+  getSymptomLogOrder,
   getCustomSymptomNames,
   getPrnMedicationsForQuickLog,
 } from "@/lib/queries";
-import { getTimezone } from "@/lib/settings";
+import { getTimezone, getUnitPrefs } from "@/lib/settings";
 import QuickLogPrnWidget from "@/components/dashboard/QuickLogPrnWidget";
 import { SYMPTOMS } from "@/lib/symptoms";
 import { shiftDateStr } from "@/lib/date";
@@ -40,7 +42,8 @@ export default async function EpisodePage(props: {
   const { logDay } = await props.searchParams;
   const episodeId = Number(id);
   if (!Number.isInteger(episodeId) || episodeId <= 0) notFound();
-  const { profile, access } = await requireSession();
+  const { login, profile, access } = await requireSession();
+  const temperatureUnit = getUnitPrefs(login.id).temperatureUnit;
 
   const episode = episodeForProfileId(profile.id, episodeId);
   const row = getEpisodeRow(profile.id, episodeId);
@@ -94,6 +97,7 @@ export default async function EpisodePage(props: {
         note={row.note}
         outcome={row.outcome}
         generatedAt={new Date().toISOString()}
+        temperatureUnit={temperatureUnit}
       />
       {comparison && <EpisodeComparison comparison={comparison} />}
       <EpisodeInRangeEvents events={inRangeEvents} />
@@ -105,8 +109,12 @@ export default async function EpisodePage(props: {
           altDate={yesterday}
           initial={getSymptomSeveritiesOnDate(profile.id, logDate)}
           initialAlt={getSymptomSeveritiesOnDate(profile.id, yesterday)}
+          initialNotes={getSymptomNotesOnDate(profile.id, logDate)}
+          initialAltNotes={getSymptomNotesOnDate(profile.id, yesterday)}
           symptoms={SYMPTOMS}
           customNames={getCustomSymptomNames(profile.id)}
+          rankedKeys={getSymptomLogOrder(profile.id)}
+          temperatureUnit={temperatureUnit}
           rangeStart={rangeStart}
           rangeEnd={rangeEnd}
         />
