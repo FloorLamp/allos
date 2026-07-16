@@ -16,6 +16,7 @@ import {
   IconScan,
   IconPill,
   IconVaccine,
+  IconVirus,
   IconCalendarEvent,
   IconAlertTriangle,
   IconStethoscope,
@@ -95,6 +96,7 @@ const RECORDS: Group = {
     // to the Supplements tab.
     { href: "/medications", label: "Medications", icon: IconPill },
     { href: "/immunizations", label: "Immunizations", icon: IconVaccine },
+    { href: "/medical/episodes", label: "Illness episodes", icon: IconVirus },
     { href: "/encounters", label: "Visits", icon: IconCalendarEvent },
     { href: "/providers", label: "Providers", icon: IconStethoscope },
     { href: "/coverage", label: "Coverage gaps", icon: IconPuzzle },

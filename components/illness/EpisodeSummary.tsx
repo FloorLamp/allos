@@ -7,6 +7,7 @@ import {
 } from "@/lib/illness-episode-format";
 import { severityLabel } from "@/lib/symptoms";
 import NotesText from "@/components/NotesText";
+import FeverChart from "@/components/illness/FeverChart";
 
 // The printable / shareable illness-episode summary (issue #801). A pure
 // presentational server component over the ONE assembled model — reused by the
@@ -180,7 +181,10 @@ export default function EpisodeSummary({
           <h2 className="section-label mb-2">
             Temperature{fever ? ` — ${fever}` : ""}
           </h2>
-          <ul className="flex flex-col gap-1 text-sm">
+          {/* Item 4: the fever curve as a small line chart with a normal-range band;
+              the timed readings stay listed below as the exact detail. */}
+          <FeverChart temperatures={episode.temperatures} />
+          <ul className="mt-2 flex flex-col gap-1 text-sm">
             {episode.temperatures.map((t, i) => (
               <li
                 key={`${t.date}-${t.time ?? i}`}

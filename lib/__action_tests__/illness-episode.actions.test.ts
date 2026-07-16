@@ -12,11 +12,18 @@ import {
   unpromoteEpisodeConditionAction,
   createEpisodeShareLinkAction,
   endEpisodeAction,
+  editEpisodeAction,
+  createEpisodeAction,
+  mergeEpisodesAction,
 } from "@/app/(app)/medical/episodes/actions";
 import { getShareLinkByToken } from "@/lib/share-links-db";
 import { logSymptomCore } from "@/lib/symptom-log-write";
 import { resolveSituationId } from "@/lib/settings";
-import { getOpenEpisodeRow } from "@/lib/illness-episode-store";
+import {
+  getEpisodeRow,
+  getOpenEpisodeRow,
+  listEpisodeRows,
+} from "@/lib/illness-episode-store";
 import { today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { createLogin, createProfile, actAs, fd } from "./harness";
@@ -34,6 +41,22 @@ function makeSick(profileId: number): number {
   ).run(profileId, start);
   logSymptomCore(profileId, "cough", 2, today(profileId));
   return getOpenEpisodeRow(profileId, "Illness")!.id;
+}
+
+// Insert a CLOSED episode row directly; return its id.
+function createEpisodeRowFor(
+  profileId: number,
+  start: string,
+  end: string
+): number {
+  return Number(
+    db
+      .prepare(
+        `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
+         VALUES (?, 'Illness', ?, ?)`
+      )
+      .run(profileId, start, end).lastInsertRowid
+  );
 }
 
 describe("promoteEpisodeToConditionAction", () => {
@@ -127,6 +150,88 @@ describe("endEpisodeAction", () => {
     expect(row.ended_at).not.toBeNull();
     // The situation is deactivated (no open row remains).
     expect(getOpenEpisodeRow(profile.id, "Illness")).toBeNull();
+  });
+});
+
+describe("editEpisodeAction (boundaries + annotations, item 1)", () => {
+  it("edits a closed episode's dates, note, and outcome as a plain row edit", async () => {
+    const login = createLogin({ role: "admin" });
+    const profile = createProfile("Edit Actor", login.id);
+    actAs(login, profile);
+    const newId = createEpisodeRowFor(profile.id, "2026-05-01", "2026-05-06");
+
+    const res = await editEpisodeAction(
+      fd({
+        episodeId: newId,
+        startedAt: "2026-04-30",
+        endedAt: "2026-05-05",
+        note: "pediatrician said rest",
+        outcome: "self-resolved",
+      })
+    );
+    expect(res.ok).toBe(true);
+    const row = getEpisodeRow(profile.id, newId)!;
+    expect(row.started_at).toBe("2026-04-30");
+    expect(row.ended_at).toBe("2026-05-05");
+    expect(row.note).toBe("pediatrician said rest");
+    expect(row.outcome).toBe("self-resolved");
+  });
+
+  it("rejects an end on-or-before the start", async () => {
+    const login = createLogin({ role: "admin" });
+    const profile = createProfile("Bad Range", login.id);
+    actAs(login, profile);
+    const newId = createEpisodeRowFor(profile.id, "2026-05-01", "2026-05-06");
+    const res = await editEpisodeAction(
+      fd({ episodeId: newId, startedAt: "2026-05-05", endedAt: "2026-05-05" })
+    );
+    expect(res.ok).toBe(false);
+  });
+
+  it("keeps an OPEN episode's end null (the toggle owns closing it)", async () => {
+    const login = createLogin({ role: "admin" });
+    const profile = createProfile("Open Edit", login.id);
+    actAs(login, profile);
+    const episodeId = makeSick(profile.id);
+    await editEpisodeAction(
+      fd({ episodeId, startedAt: "2026-05-01", endedAt: "2026-05-04" })
+    );
+    expect(getEpisodeRow(profile.id, episodeId)!.ended_at).toBeNull();
+  });
+});
+
+describe("createEpisodeAction + mergeEpisodesAction (retro + flap-merge, item 1)", () => {
+  it("retro-creates a closed episode", async () => {
+    const login = createLogin({ role: "admin" });
+    const profile = createProfile("Retro", login.id);
+    actAs(login, profile);
+    const res = await createEpisodeAction(
+      fd({
+        situation: "Illness",
+        startedAt: "2026-03-01",
+        endedAt: "2026-03-05",
+      })
+    );
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    const row = getEpisodeRow(profile.id, res.id)!;
+    expect(row.started_at).toBe("2026-03-01");
+    expect(row.ended_at).toBe("2026-03-05");
+  });
+
+  it("merges a flap-split pair into the union range, deleting the loser", async () => {
+    const login = createLogin({ role: "admin" });
+    const profile = createProfile("Merge", login.id);
+    actAs(login, profile);
+    const a = createEpisodeRowFor(profile.id, "2026-02-01", "2026-02-02");
+    const b = createEpisodeRowFor(profile.id, "2026-02-02", "2026-02-06");
+    const res = await mergeEpisodesAction(fd({ keepId: a, dropId: b }));
+    expect(res.ok).toBe(true);
+    const keeper = getEpisodeRow(profile.id, a)!;
+    expect(keeper.started_at).toBe("2026-02-01");
+    expect(keeper.ended_at).toBe("2026-02-06");
+    expect(getEpisodeRow(profile.id, b)).toBeNull();
+    expect(listEpisodeRows(profile.id).length).toBe(1);
   });
 });
 
