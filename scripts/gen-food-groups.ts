@@ -34,8 +34,15 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { DATASET_SCHEMA, type DatasetEnvelope } from "../lib/datasets/types";
 
-const OUT = path.join(process.cwd(), "lib", "food-groups.json");
+const OUT = path.join(
+  process.cwd(),
+  "lib",
+  "datasets",
+  "data",
+  "food-groups.json"
+);
 
 export type FoodGroupTier = "encourage" | "limit" | "neutral";
 
@@ -252,30 +259,47 @@ const GROUPS: FoodGroup[] = [
   },
 ];
 
-export interface FoodGroupsDataset {
-  $comment: string;
-  groups: FoodGroup[];
-}
+// The framework envelope shape (issue #860 Track B): the food-group catalog now
+// ships as a curated-dataset envelope under lib/datasets/data/, identity-keyed by
+// slug. `$comment` provenance is promoted to a structured dataset-level citation.
+export type FoodGroupsDataset = DatasetEnvelope<FoodGroup>;
 
-// Pure builder: the committed lib/food-groups.json is a FIXED POINT of this.
+// Pure builder: the committed lib/datasets/data/food-groups.json is a FIXED POINT of
+// this (guarded by lib/__tests__/food-groups-dataset.test.ts).
 export function buildFoodGroups(): FoodGroupsDataset {
   return {
-    $comment:
-      "Curated food-group catalog for the serving log (issue #579): ~24 groups at the " +
-      "habit tier (one serving = one tap), each with a stable slug (food_log.group_key), " +
-      "a serving description, a tier (encourage/limit/neutral), the #577 nutrient-food-" +
-      "map keys it's a source of, and an optional protein_g (USDA FoodData Central, whole " +
-      "grams per serving) the #767 protein-adequacy estimate sums as a FLOOR. Committed + " +
-      "HUMAN-REVIEWABLE. Regenerate with `npm run gen:food-groups`. INFORMATIONAL dietary " +
-      "guidance, NOT medical advice.",
-    groups: GROUPS,
+    $schema: DATASET_SCHEMA,
+    id: "food-groups",
+    title: "Curated food-group catalog for the serving log",
+    description:
+      "~24 food groups at the HABIT tier (one serving = one tap) for the serving log " +
+      "(issue #579), each with a stable slug (food_log.group_key), a serving " +
+      "description, a tier (encourage/limit/neutral), the #577 nutrient-food-map keys " +
+      "it's a source of, and an optional protein_g the #767 protein-adequacy estimate " +
+      "sums as a FLOOR. Committed + HUMAN-REVIEWABLE. Regenerate with " +
+      "`npm run gen:food-groups`. INFORMATIONAL dietary guidance, NOT medical advice.",
+    citation: [
+      {
+        source: "USDA FoodData Central (SR Legacy / Foundation Foods)",
+        url: "https://fdc.nal.usda.gov",
+        note: "Representative per-serving protein grams (protein_g), rounded to whole grams for the described serving.",
+      },
+      {
+        source: "Dietary Guidelines for Americans, 2020–2025 (USDA / HHS)",
+        url: "https://www.dietaryguidelines.gov",
+        note: "Encourage/limit/neutral group tiers reflect general dietary-pattern guidance; groupings are curated and human-reviewable.",
+      },
+    ],
+    identity: { keys: ["slug"] },
+    entries: GROUPS,
   };
 }
 
 function writeDataset(): void {
   const dataset = buildFoodGroups();
+  fs.mkdirSync(path.dirname(OUT), { recursive: true });
   fs.writeFileSync(OUT, JSON.stringify(dataset, null, 2) + "\n");
-  console.log(`Wrote ${dataset.groups.length} food groups to ${OUT}`);
+  console.log(`Wrote ${dataset.entries.length} food groups to ${OUT}`);
   console.log("Review the group list + serving sizes before committing.");
 }
 
