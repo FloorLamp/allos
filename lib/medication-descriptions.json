@@ -1,29 +1,47 @@
 {
-  "$comment": "Educational descriptions for common medications, keyed by NORMALIZED generic name (lowercase; matches lib/prescription-parse.cleanMedicationName + lowercase). Each entry: { generic, brand_names, drug_class, description }. brand_names double as lookup aliases (the accessor auto-indexes them); `aliases` adds alternate spellings, abbreviations, and common salt forms → generic key. Neutral, educational \"what it is / class / commonly used for\" content — INFORMATIONAL, NOT MEDICAL ADVICE: no dosing guidance, no personal recommendations, no diagnosis. This set is intentionally broad but not exhaustive; unmatched medications simply show no description.",
+  "$comment": "Educational descriptions for common medications, keyed by NORMALIZED generic name (lowercase; matches lib/prescription-parse.cleanMedicationName + lowercase). Each entry: { generic, brand_names, drug_class, description }. brand_names double as lookup aliases (the accessor auto-indexes them); `aliases` adds alternate spellings, abbreviations, and common salt forms → generic key. Neutral, educational \"what it is / class / commonly used for\" content — INFORMATIONAL, NOT MEDICAL ADVICE: no dosing guidance, no personal recommendations, no diagnosis. Some entries also carry a CITED `typical` block { asNeeded?, foodTiming?, timeOfDay?, source } — label-standard \"typical use\" conventions the med form's selection-prefill suggests (#846); ONLY label-standard, citable conventions belong there, and an absent field means no suggestion (never a guess). This set is intentionally broad but not exhaustive; unmatched medications simply show no description.",
   "medications": {
     "acetaminophen": {
       "generic": "Acetaminophen",
       "brand_names": ["Tylenol"],
       "drug_class": "Analgesic / antipyretic",
-      "description": "Acetaminophen is a widely used pain reliever and fever reducer. It is commonly used for mild to moderate pain and to lower fever, and unlike NSAIDs it has little anti-inflammatory effect."
+      "description": "Acetaminophen is a widely used pain reliever and fever reducer. It is commonly used for mild to moderate pain and to lower fever, and unlike NSAIDs it has little anti-inflammatory effect.",
+      "typical": {
+        "asNeeded": true,
+        "source": "OTC Drug Facts label — acetaminophen; for temporary relief of minor aches, pains, and fever, taken as needed, U.S. FDA."
+      }
     },
     "ibuprofen": {
       "generic": "Ibuprofen",
       "brand_names": ["Advil", "Motrin"],
       "drug_class": "NSAID (nonsteroidal anti-inflammatory drug)",
-      "description": "Ibuprofen is a nonsteroidal anti-inflammatory drug (NSAID) used to relieve pain, reduce fever, and calm inflammation. It is commonly taken for headaches, muscle aches, menstrual cramps, and arthritis."
+      "description": "Ibuprofen is a nonsteroidal anti-inflammatory drug (NSAID) used to relieve pain, reduce fever, and calm inflammation. It is commonly taken for headaches, muscle aches, menstrual cramps, and arthritis.",
+      "typical": {
+        "asNeeded": true,
+        "foodTiming": "with_food",
+        "source": "OTC Drug Facts label — ibuprofen (NSAID); take with food or milk if stomach upset; for temporary relief of minor aches, pains, and fever, taken as needed, U.S. FDA."
+      }
     },
     "naproxen": {
       "generic": "Naproxen",
       "brand_names": ["Aleve", "Naprosyn"],
       "drug_class": "NSAID",
-      "description": "Naproxen is a nonsteroidal anti-inflammatory drug (NSAID) that reduces pain, inflammation, and fever. It is often used for arthritis, muscle and joint pain, and menstrual cramps, and tends to be longer-acting than some other NSAIDs."
+      "description": "Naproxen is a nonsteroidal anti-inflammatory drug (NSAID) that reduces pain, inflammation, and fever. It is often used for arthritis, muscle and joint pain, and menstrual cramps, and tends to be longer-acting than some other NSAIDs.",
+      "typical": {
+        "asNeeded": true,
+        "foodTiming": "with_food",
+        "source": "OTC Drug Facts label — naproxen sodium (Aleve, NSAID); take with food or milk if stomach upset, U.S. FDA."
+      }
     },
     "aspirin": {
       "generic": "Aspirin",
       "brand_names": ["Bayer", "Ecotrin"],
       "drug_class": "NSAID / antiplatelet",
-      "description": "Aspirin is a nonsteroidal anti-inflammatory drug that relieves pain and fever and, at low doses, reduces the tendency of blood to clot. Low-dose aspirin is commonly used to lower the risk of heart attack and stroke in certain people."
+      "description": "Aspirin is a nonsteroidal anti-inflammatory drug that relieves pain and fever and, at low doses, reduces the tendency of blood to clot. Low-dose aspirin is commonly used to lower the risk of heart attack and stroke in certain people.",
+      "typical": {
+        "foodTiming": "with_food",
+        "source": "OTC Drug Facts label — aspirin; take with a full glass of water, with food if stomach upset, U.S. FDA."
+      }
     },
     "diclofenac": {
       "generic": "Diclofenac",
@@ -509,19 +527,32 @@
       "generic": "Simvastatin",
       "brand_names": ["Zocor"],
       "drug_class": "Statin (cholesterol-lowering)",
-      "description": "Simvastatin is a statin used to lower cholesterol and reduce the risk of heart attack and stroke. It works by decreasing cholesterol production in the liver."
+      "description": "Simvastatin is a statin used to lower cholesterol and reduce the risk of heart attack and stroke. It works by decreasing cholesterol production in the liver.",
+      "typical": {
+        "timeOfDay": "Evening",
+        "source": "FDA prescribing information — simvastatin; administer in the evening."
+      }
     },
     "pravastatin": {
       "generic": "Pravastatin",
       "brand_names": ["Pravachol"],
       "drug_class": "Statin (cholesterol-lowering)",
-      "description": "Pravastatin is a statin used to lower LDL cholesterol and reduce cardiovascular risk. It reduces the liver's cholesterol output."
+      "description": "Pravastatin is a statin used to lower LDL cholesterol and reduce cardiovascular risk. It reduces the liver's cholesterol output.",
+      "typical": {
+        "timeOfDay": "Evening",
+        "source": "FDA prescribing information — pravastatin; administered once daily in the evening."
+      }
     },
     "lovastatin": {
       "generic": "Lovastatin",
       "brand_names": ["Mevacor"],
       "drug_class": "Statin (cholesterol-lowering)",
-      "description": "Lovastatin is a statin used to lower cholesterol levels. It works by reducing how much cholesterol the liver produces."
+      "description": "Lovastatin is a statin used to lower cholesterol levels. It works by reducing how much cholesterol the liver produces.",
+      "typical": {
+        "timeOfDay": "Evening",
+        "foodTiming": "with_food",
+        "source": "FDA prescribing information — lovastatin; take with the evening meal."
+      }
     },
     "pitavastatin": {
       "generic": "Pitavastatin",
@@ -557,7 +588,11 @@
       "generic": "Metformin",
       "brand_names": ["Glucophage"],
       "drug_class": "Biguanide (antidiabetic)",
-      "description": "Metformin is a first-line medication for type 2 diabetes that lowers blood sugar mainly by reducing the amount of glucose the liver releases and improving the body's response to insulin. It does not usually cause low blood sugar on its own."
+      "description": "Metformin is a first-line medication for type 2 diabetes that lowers blood sugar mainly by reducing the amount of glucose the liver releases and improving the body's response to insulin. It does not usually cause low blood sugar on its own.",
+      "typical": {
+        "foodTiming": "with_food",
+        "source": "FDA prescribing information — metformin; take with meals to reduce gastrointestinal side effects."
+      }
     },
     "glipizide": {
       "generic": "Glipizide",
@@ -647,7 +682,12 @@
       "generic": "Levothyroxine",
       "brand_names": ["Synthroid", "Levoxyl", "Unithroid"],
       "drug_class": "Thyroid hormone",
-      "description": "Levothyroxine is a synthetic thyroid hormone used to replace or supplement low thyroid hormone in hypothyroidism. It restores normal levels of the hormone the thyroid would otherwise produce."
+      "description": "Levothyroxine is a synthetic thyroid hormone used to replace or supplement low thyroid hormone in hypothyroidism. It restores normal levels of the hormone the thyroid would otherwise produce.",
+      "typical": {
+        "timeOfDay": "Morning",
+        "foodTiming": "empty_stomach",
+        "source": "FDA prescribing information — levothyroxine; take on an empty stomach 30–60 minutes before breakfast."
+      }
     },
     "liothyronine": {
       "generic": "Liothyronine",
@@ -875,31 +915,54 @@
       "generic": "Omeprazole",
       "brand_names": ["Prilosec"],
       "drug_class": "Proton pump inhibitor (PPI)",
-      "description": "Omeprazole is a proton pump inhibitor that reduces stomach acid. It is used for heartburn, acid reflux (GERD), and ulcers."
+      "description": "Omeprazole is a proton pump inhibitor that reduces stomach acid. It is used for heartburn, acid reflux (GERD), and ulcers.",
+      "typical": {
+        "timeOfDay": "Morning",
+        "foodTiming": "before_meal",
+        "source": "FDA/OTC label — omeprazole (proton pump inhibitor); take before a meal in the morning, U.S. FDA."
+      }
     },
     "esomeprazole": {
       "generic": "Esomeprazole",
       "brand_names": ["Nexium"],
       "drug_class": "Proton pump inhibitor (PPI)",
-      "description": "Esomeprazole is a proton pump inhibitor that lowers stomach acid production. It is used for acid reflux, ulcers, and related conditions."
+      "description": "Esomeprazole is a proton pump inhibitor that lowers stomach acid production. It is used for acid reflux, ulcers, and related conditions.",
+      "typical": {
+        "timeOfDay": "Morning",
+        "foodTiming": "before_meal",
+        "source": "FDA label — esomeprazole (Nexium); take at least 1 hour before a meal."
+      }
     },
     "pantoprazole": {
       "generic": "Pantoprazole",
       "brand_names": ["Protonix"],
       "drug_class": "Proton pump inhibitor (PPI)",
-      "description": "Pantoprazole is a proton pump inhibitor used to reduce stomach acid in reflux disease and other acid-related conditions. It works by blocking the stomach's acid-producing pumps."
+      "description": "Pantoprazole is a proton pump inhibitor used to reduce stomach acid in reflux disease and other acid-related conditions. It works by blocking the stomach's acid-producing pumps.",
+      "typical": {
+        "timeOfDay": "Morning",
+        "source": "FDA prescribing information — pantoprazole (Protonix); once daily, may be taken with or without food."
+      }
     },
     "lansoprazole": {
       "generic": "Lansoprazole",
       "brand_names": ["Prevacid"],
       "drug_class": "Proton pump inhibitor (PPI)",
-      "description": "Lansoprazole is a proton pump inhibitor that decreases stomach acid. It is used for heartburn, reflux, and ulcers."
+      "description": "Lansoprazole is a proton pump inhibitor that decreases stomach acid. It is used for heartburn, reflux, and ulcers.",
+      "typical": {
+        "timeOfDay": "Morning",
+        "foodTiming": "before_meal",
+        "source": "FDA/OTC label — lansoprazole (Prevacid); take before eating in the morning."
+      }
     },
     "famotidine": {
       "generic": "Famotidine",
       "brand_names": ["Pepcid"],
       "drug_class": "H2 blocker (acid reducer)",
-      "description": "Famotidine is an H2 blocker that reduces stomach acid. It is used for heartburn, acid reflux, and ulcers, and acts faster but often less strongly than a proton pump inhibitor."
+      "description": "Famotidine is an H2 blocker that reduces stomach acid. It is used for heartburn, acid reflux, and ulcers, and acts faster but often less strongly than a proton pump inhibitor.",
+      "typical": {
+        "asNeeded": true,
+        "source": "OTC Drug Facts label — famotidine (H2 blocker, e.g. Pepcid AC); relief and prevention of heartburn, taken as needed, U.S. FDA."
+      }
     },
     "ondansetron": {
       "generic": "Ondansetron",
@@ -1031,7 +1094,12 @@
       "generic": "Diphenhydramine",
       "brand_names": ["Benadryl"],
       "drug_class": "Antihistamine (sedating)",
-      "description": "Diphenhydramine is a sedating antihistamine used for allergies, allergic reactions, and as a sleep aid. It commonly causes drowsiness."
+      "description": "Diphenhydramine is a sedating antihistamine used for allergies, allergic reactions, and as a sleep aid. It commonly causes drowsiness.",
+      "typical": {
+        "asNeeded": true,
+        "timeOfDay": "Before sleep",
+        "source": "OTC Drug Facts label — diphenhydramine HCl (antihistamine / nighttime sleep-aid); marked drowsiness, U.S. FDA."
+      }
     },
     "montelukast": {
       "generic": "Montelukast",
