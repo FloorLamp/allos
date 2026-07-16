@@ -25,6 +25,7 @@ import {
   E2E_LOGIN_CHILD,
   E2E_LOGIN_COMPARE,
   E2E_LOGIN_DUP,
+  E2E_LOGIN_EMPTY_TRAINING,
   E2E_LOGIN_HC,
   E2E_LOGIN_NOGEAR,
   E2E_LOGIN_ROUTINE,
@@ -33,6 +34,7 @@ import {
   E2E_LOGIN_STRAVA,
   E2E_MEMBER_PASSWORD,
   DUP_REVIEW_PROFILE,
+  EMPTY_TRAINING_PROFILE,
   HEALTH_CONNECT_PROFILE,
   NO_GEAR_PROFILE,
   ROUTINE_BUILDER_PROFILE,
@@ -1666,6 +1668,23 @@ insRoutineTarget.run("group", "Upper", 2, routineBuilderProfileId);
 insRoutineTarget.run("group", "Lower", 2, routineBuilderProfileId);
 console.log(
   `e2e: seeded routine-builder fixture profile ${routineBuilderProfileId} (${ROUTINE_BUILDER_PROFILE}) with two training-scope frequency targets (#739)`
+);
+
+// A dedicated ADULT profile with NOTHING logged (#809): the brand-new/post-onboarding
+// first-run state that every other fixture profile lacks. Kept activity-free so the
+// training-first-run spec can assert the Journal's first-run empty variant renders the
+// action row (Start workout + New activity, no Repeat last). Idempotent: hard-clear any
+// activities (and their sets) on a reused server so the profile can never drift out of
+// its empty contract.
+const emptyTrainingId = fixtureProfileId(EMPTY_TRAINING_PROFILE);
+db.prepare(
+  `DELETE FROM exercise_sets WHERE activity_id IN (
+     SELECT id FROM activities WHERE profile_id = ?)`
+).run(emptyTrainingId);
+db.prepare(`DELETE FROM activities WHERE profile_id = ?`).run(emptyTrainingId);
+seedMemberLogin(E2E_LOGIN_EMPTY_TRAINING, emptyTrainingId);
+console.log(
+  `e2e: seeded activity-free first-run fixture profile ${emptyTrainingId} (${EMPTY_TRAINING_PROFILE}) for the Training Log empty state (#809)`
 );
 
 console.log(

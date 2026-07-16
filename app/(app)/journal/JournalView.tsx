@@ -197,6 +197,13 @@ export default function JournalView({
   // #29). null when nothing's been logged yet, which hides the button.
   const lastActivity = groups[0]?.cards[0]?.activity ?? null;
 
+  // First-run: a brand-new/post-onboarding profile with nothing logged yet
+  // (issue #809). Distinct from "no activities match your filters" below — over an
+  // empty history the search/filter controls are meaningless, so the empty state
+  // hides them and leads with the action row (New activity / Start workout) so the
+  // user can actually log their first activity. Keyed on the UNFILTERED groups.
+  const hasActivities = groups.length > 0;
+
   // The dock is a desktop concept: it exists so the editor can live beside the
   // feed in the two-column layout. Below xl there is no second column — the
   // provider falls back to ActivityOverlay, so the editor looks and behaves the
@@ -550,6 +557,43 @@ export default function JournalView({
     </p>
   ) : null;
 
+  // The Log-activity affordances (desktop). Extracted so the full controls grid
+  // and the first-run empty variant share ONE definition rather than duplicating
+  // the button row (issue #809). "Repeat last" self-hides on first-run because
+  // `lastActivity` is null. This row is `hidden md:flex` in both places — the
+  // mobile entry point is MobileNav's always-mounted quick-log chrome.
+  const actionButtons = (
+    <>
+      {lastActivity && (
+        <button
+          type="button"
+          onClick={() => openRepeat(lastActivity)}
+          data-testid="repeat-last"
+          title={`Log again: ${lastActivity.title}`}
+          className="btn-ghost"
+        >
+          <IconRepeat className="h-4 w-4" stroke={2} />
+          Repeat last
+        </button>
+      )}
+      {canStartWorkout && (
+        <button
+          type="button"
+          onClick={openLive}
+          data-testid="start-workout"
+          className="btn-ghost"
+        >
+          <IconBolt className="h-4 w-4" stroke={2} />
+          Start workout
+        </button>
+      )}
+      <button type="button" onClick={openCreate} className="btn">
+        <IconPlus className="h-4 w-4" stroke={2.5} />
+        New activity
+      </button>
+    </>
+  );
+
   return (
     <div>
       {showHeader && (
@@ -587,8 +631,10 @@ export default function JournalView({
         />
       )}
 
-      {/* Routine progress and a compact, literal trailing-14-day cadence strip. */}
-      {showWeeklyTargets && (
+      {/* Routine progress and a compact, literal trailing-14-day cadence strip.
+          Hidden on first-run (issue #809): an empty cadence strip + no targets is
+          noise above the "log your first activity" prompt. */}
+      {showWeeklyTargets && hasActivities && (
         <div
           data-testid="journal-routine-row"
           className="mb-5 space-y-3 xl:flex xl:items-center xl:gap-5 xl:space-y-0"
@@ -605,146 +651,137 @@ export default function JournalView({
         </div>
       )}
 
-      {/* Controls */}
-      <div
-        data-testid="journal-controls"
-        className="mb-4 grid gap-2 lg:grid-cols-[minmax(12rem,1fr)_auto]"
-      >
-        <div className="relative min-w-48 lg:col-start-1 lg:row-start-1">
-          <IconSearch
-            aria-hidden
-            className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-500 dark:text-slate-400"
-            stroke={2}
-          />
-          <input
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search activities or exercises…"
-            className="input appearance-none bg-white pr-10 pl-9 [&::-webkit-search-cancel-button]:appearance-none dark:bg-ink-900"
-          />
-          {query && (
-            <button
-              type="button"
-              onClick={() => setQuery("")}
-              aria-label="Clear search"
-              className="absolute top-1/2 right-1 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-300"
-            >
-              <IconX className="h-4 w-4" />
-            </button>
-          )}
-        </div>
-        <div className="flex flex-wrap items-center gap-2 lg:col-span-2 lg:row-start-2">
-          <div
-            role="group"
-            aria-label="Activity type"
-            className="inline-flex overflow-hidden rounded-lg border border-black/10 bg-white divide-x divide-black/10 dark:border-white/10 dark:bg-ink-900 dark:divide-white/10"
-          >
-            {TYPE_FILTERS.map((f) => {
-              const active = typeFilter === f.value;
-              return (
-                <button
-                  key={f.value}
-                  type="button"
-                  onClick={() => setTypeFilter(f.value)}
-                  aria-pressed={active}
-                  className={`px-3 py-1.5 text-sm font-medium transition ${
-                    active
-                      ? "bg-brand-500 text-white"
-                      : "text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-ink-800"
-                  }`}
-                >
-                  {f.label}
-                </button>
-              );
-            })}
-          </div>
-          {/* Only shown while some row can't be saved as-is; disappears once the
-              last one is fixed (faultCount → 0, which also clears the toggle). */}
-          {faultCount > 0 && (
-            <button
-              type="button"
-              onClick={() => setFaultOnly((v) => !v)}
-              aria-pressed={faultOnly}
-              title="Show only rows that can't be saved as-is"
-              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-medium transition ${
-                faultOnly
-                  ? "border-rose-500 bg-rose-500 text-white"
-                  : "border-rose-300 bg-white text-rose-600 hover:bg-rose-50 dark:border-rose-500/40 dark:bg-ink-900 dark:text-rose-400 dark:hover:bg-rose-950/40"
-              }`}
-            >
-              <IconAlertTriangle className="h-4 w-4" stroke={2} />
-              Can’t be saved
-              <span
-                className={`rounded-full px-1.5 text-xs tabular-nums ${
-                  faultOnly
-                    ? "bg-white/25"
-                    : "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300"
-                }`}
-              >
-                {faultCount}
-              </span>
-            </button>
-          )}
-          {tagFilter && (
-            <span className="inline-flex items-center rounded-full border border-brand-300 bg-brand-50 px-3 py-1 text-sm font-medium text-brand-700 dark:border-brand-800 dark:bg-brand-950 dark:text-brand-300">
-              {tagFilter.value}
-            </span>
-          )}
-          {filtersActive && (
-            <button
-              type="button"
-              onClick={() => {
-                setQuery("");
-                setTypeFilter("all");
-                setFaultOnly(false);
-                setTagFilter(null);
-              }}
-              className="inline-flex items-center gap-1 px-1 py-1 text-sm font-medium text-slate-500 hover:text-brand-600 dark:text-slate-400 dark:hover:text-brand-400"
-            >
-              <IconX className="h-3.5 w-3.5" />
-              Clear filters
-            </button>
-          )}
-        </div>
+      {/* Controls. On first-run (issue #809) the search/filter controls are
+          meaningless over an empty history, so only the action row renders — the
+          bare wrapper drops the grid placement the full controls need. */}
+      {!hasActivities ? (
         <div
           data-testid="journal-actions"
-          className="hidden flex-wrap items-center gap-2 md:ml-auto md:flex lg:col-start-2 lg:row-start-1 lg:ml-0"
+          className="mb-4 hidden flex-wrap items-center gap-2 md:flex"
         >
-          {lastActivity && (
-            <button
-              type="button"
-              onClick={() => openRepeat(lastActivity)}
-              data-testid="repeat-last"
-              title={`Log again: ${lastActivity.title}`}
-              className="btn-ghost"
-            >
-              <IconRepeat className="h-4 w-4" stroke={2} />
-              Repeat last
-            </button>
-          )}
-          {canStartWorkout && (
-            <button
-              type="button"
-              onClick={openLive}
-              data-testid="start-workout"
-              className="btn-ghost"
-            >
-              <IconBolt className="h-4 w-4" stroke={2} />
-              Start workout
-            </button>
-          )}
-          <button type="button" onClick={openCreate} className="btn">
-            <IconPlus className="h-4 w-4" stroke={2.5} />
-            New activity
-          </button>
+          {actionButtons}
         </div>
-      </div>
+      ) : (
+        <div
+          data-testid="journal-controls"
+          className="mb-4 grid gap-2 lg:grid-cols-[minmax(12rem,1fr)_auto]"
+        >
+          <div className="relative min-w-48 lg:col-start-1 lg:row-start-1">
+            <IconSearch
+              aria-hidden
+              className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-500 dark:text-slate-400"
+              stroke={2}
+            />
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search activities or exercises…"
+              className="input appearance-none bg-white pr-10 pl-9 [&::-webkit-search-cancel-button]:appearance-none dark:bg-ink-900"
+            />
+            {query && (
+              <button
+                type="button"
+                onClick={() => setQuery("")}
+                aria-label="Clear search"
+                className="absolute top-1/2 right-1 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-300"
+              >
+                <IconX className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-2 lg:col-span-2 lg:row-start-2">
+            <div
+              role="group"
+              aria-label="Activity type"
+              className="inline-flex overflow-hidden rounded-lg border border-black/10 bg-white divide-x divide-black/10 dark:border-white/10 dark:bg-ink-900 dark:divide-white/10"
+            >
+              {TYPE_FILTERS.map((f) => {
+                const active = typeFilter === f.value;
+                return (
+                  <button
+                    key={f.value}
+                    type="button"
+                    onClick={() => setTypeFilter(f.value)}
+                    aria-pressed={active}
+                    className={`px-3 py-1.5 text-sm font-medium transition ${
+                      active
+                        ? "bg-brand-500 text-white"
+                        : "text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-ink-800"
+                    }`}
+                  >
+                    {f.label}
+                  </button>
+                );
+              })}
+            </div>
+            {/* Only shown while some row can't be saved as-is; disappears once the
+              last one is fixed (faultCount → 0, which also clears the toggle). */}
+            {faultCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setFaultOnly((v) => !v)}
+                aria-pressed={faultOnly}
+                title="Show only rows that can't be saved as-is"
+                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-medium transition ${
+                  faultOnly
+                    ? "border-rose-500 bg-rose-500 text-white"
+                    : "border-rose-300 bg-white text-rose-600 hover:bg-rose-50 dark:border-rose-500/40 dark:bg-ink-900 dark:text-rose-400 dark:hover:bg-rose-950/40"
+                }`}
+              >
+                <IconAlertTriangle className="h-4 w-4" stroke={2} />
+                Can’t be saved
+                <span
+                  className={`rounded-full px-1.5 text-xs tabular-nums ${
+                    faultOnly
+                      ? "bg-white/25"
+                      : "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300"
+                  }`}
+                >
+                  {faultCount}
+                </span>
+              </button>
+            )}
+            {tagFilter && (
+              <span className="inline-flex items-center rounded-full border border-brand-300 bg-brand-50 px-3 py-1 text-sm font-medium text-brand-700 dark:border-brand-800 dark:bg-brand-950 dark:text-brand-300">
+                {tagFilter.value}
+              </span>
+            )}
+            {filtersActive && (
+              <button
+                type="button"
+                onClick={() => {
+                  setQuery("");
+                  setTypeFilter("all");
+                  setFaultOnly(false);
+                  setTagFilter(null);
+                }}
+                className="inline-flex items-center gap-1 px-1 py-1 text-sm font-medium text-slate-500 hover:text-brand-600 dark:text-slate-400 dark:hover:text-brand-400"
+              >
+                <IconX className="h-3.5 w-3.5" />
+                Clear filters
+              </button>
+            )}
+          </div>
+          <div
+            data-testid="journal-actions"
+            className="hidden flex-wrap items-center gap-2 md:ml-auto md:flex lg:col-start-2 lg:row-start-1 lg:ml-0"
+          >
+            {actionButtons}
+          </div>
+        </div>
+      )}
 
       <div className="grid gap-6 xl:grid-cols-2">
         {/* Day-grouped feed */}
         <div>
-          {shown.length === 0 ? (
+          {!hasActivities ? (
+            // First-run (issue #809): nothing logged yet. Distinct copy from the
+            // filter-empty case below — there is nothing to filter, so this leads
+            // the user to the (prominent) action row above rather than talking about
+            // filters or an unloaded older window.
+            <EmptyState message="No activities logged yet. Log your first workout to start building your training history." />
+          ) : shown.length === 0 ? (
             <div className="space-y-3">
               <EmptyState message="No activities match your filters." />
               {/* The match may still be in an unloaded older window — offer to widen
