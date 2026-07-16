@@ -97,15 +97,23 @@ test.describe("Illness-episode view (#801)", () => {
     ]);
     const member = await loginAs(browser, creds);
 
-    // Act as profile 2 (Sam Rivers) — NOT the sick one — so the cross-profile card
+    // Act as profile 2 ("Riley (child)" — scripts/seed.ts owns id 2; seed-events'
+    // "Sam Rivers" insert is a documented no-op) — NOT the sick one — so the card
     // is the only place the sick profile surfaces.
-    await member.getByTestId("user-menu-trigger").click();
-    await member
+    // Retry-click through the hydration window (#730): loginAs returns as soon as
+    // the URL leaves /login, so an immediate click on the client-state menu trigger
+    // can be a dead pre-hydration click — the popover never opens and the profile
+    // button never appears. Re-click until the popover actually shows the target.
+    const rileyButton = member
       .getByTestId("user-menu-popover")
-      .getByRole("button", { name: "Sam Rivers" })
-      .click();
+      .getByRole("button", { name: "Riley (child)" });
+    await expect(async () => {
+      await member.getByTestId("user-menu-trigger").click();
+      await expect(rileyButton).toBeVisible({ timeout: 2_000 });
+    }).toPass();
+    await rileyButton.click();
     await expect(member.getByTestId("user-menu-trigger")).toContainText(
-      "Sam Rivers"
+      "Riley (child)"
     );
 
     await member.goto("/");
