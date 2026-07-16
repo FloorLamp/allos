@@ -46,6 +46,12 @@ import {
   timelineDayHref,
 } from "./hrefs";
 import { symptomLabel, severityLabel } from "./symptoms";
+import {
+  allEpisodesForProfile,
+  assembleIllnessEpisode,
+} from "./illness-episode";
+import { episodeHeadline } from "./illness-episode-format";
+import { episodeHref } from "./hrefs";
 
 export interface TimelineOptions {
   category?: TimelineEvent["category"];
@@ -899,6 +905,48 @@ function collectEvents(
           label: symptomLabel(p.key),
           value: Number.isFinite(p.sev) ? severityLabel(p.sev) : "",
         })),
+      },
+      options
+    );
+  }
+
+  // Illness episodes (#801): one STORY card per derived episode, spanning the range and
+  // anchored at its last active day (today for an ongoing one). The headline + details
+  // format over the SAME assembly the detail + share pages use — no second engine (#221).
+  // The per-day symptom events above stay as the granular detail beneath the card.
+  for (const ep of allEpisodesForProfile(profileId)) {
+    const assembled = assembleIllnessEpisode(profileId, ep);
+    if (
+      assembled.distinctSymptomCount === 0 &&
+      assembled.temperatures.length === 0 &&
+      assembled.totalAdministrations === 0
+    )
+      continue; // an empty episode has no story to tell
+    const anchor = assembled.lastActiveDay;
+    if (!anchor) continue;
+    const detailItems: NonNullable<TimelineEvent["detailItems"]> = [];
+    for (const s of assembled.symptoms.slice(0, 6))
+      detailItems.push({ label: s.label, value: severityLabel(s.maxSeverity) });
+    if (assembled.maxTempF != null)
+      detailItems.push({
+        label: "Peak temp",
+        value: `${assembled.maxTempF.toFixed(1)}°F`,
+      });
+    for (const m of assembled.medications.slice(0, 4))
+      detailItems.push({ label: m.name, value: `${m.count}×` });
+    pushLimited(
+      events,
+      {
+        id: `illness:${ep.situation}:${ep.start ?? "open"}`,
+        date: anchor,
+        category: "illness",
+        title: episodeHeadline(assembled),
+        subtitle: assembled.ongoing
+          ? "Ongoing illness episode"
+          : "Illness episode",
+        href: episodeHref(anchor),
+        tone: assembled.ongoing ? "warn" : "default",
+        detailItems,
       },
       options
     );

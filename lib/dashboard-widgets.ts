@@ -223,6 +223,18 @@ export const DASHBOARD_WIDGETS: WidgetDef[] = [
     fitness: true,
     span: "half",
   },
+  {
+    id: "sick-household",
+    label: "Sick in the household",
+    description:
+      "Anyone you can reach who has an open illness episode — shown regardless of which profile you're acting as. Appears only when someone is sick.",
+    // On by default; the page's `available` gate hides it unless an accessible profile
+    // has an OPEN episode (like next-appointment / symptom-log's has-data gate), so a
+    // healthy household never sees it. Not fitness-gated: illness matters for everyone.
+    defaultOn: true,
+    fitness: false,
+    span: "half",
+  },
 ];
 
 const WIDGETS_BY_ID = new Map(DASHBOARD_WIDGETS.map((w) => [w.id, w]));

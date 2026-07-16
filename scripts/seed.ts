@@ -1207,6 +1207,17 @@ courseIns.run(ibuprofenId, daysAgo(30), null, null, "PRN for pain");
         .replace("T", " ")
     );
   }
+  // A couple more earlier in the illness episode (daysAgo 2 and 1), so the episode
+  // view's "ibuprofen N×" story + per-day medication ledger span the whole run (#801),
+  // not just today. given_at is that day's afternoon (UTC SQL).
+  for (const ago of [2, 1]) {
+    admIns.run(
+      ibuprofenDoseId,
+      ibuprofenId,
+      daysAgo(ago),
+      `${daysAgo(ago)} 15:30:00`
+    );
+  }
 }
 
 // A FOOD–DRUG demo (issue #154): Simvastatin (a CYP3A4 statin) — active, scheduled
@@ -1849,6 +1860,35 @@ const seededSymptoms: [number, string, number, string | null][] = [
 for (const [ago, symptom, severity, note] of seededSymptoms) {
   seedSymptom.run(daysAgo(ago), symptom, severity, note);
 }
+
+// ── Body temperature over the current episode (#800/#801) ────────────────────
+// A fever curve that peaks on daysAgo(2) (matching the "fever" symptom + "Peaked in
+// the evening" note) then trends down, so the illness-episode view's temperature curve
+// and its "fever trending down" headline have real data. Timed readings ride "HH:MM" in
+// notes (the #800 day-granular convention). Canonical "Body Temperature" (degF) so a
+// manual and a Health Connect reading would form ONE series (#482). Fevers (>99°F, the
+// canonical ref-high) flag "high" via reconcileFlags, exactly like an imported reading.
+const insTemp = db.prepare(
+  `INSERT INTO medical_records
+     (profile_id, date, category, name, value, value_num, unit, canonical_name, source, notes)
+   VALUES (1, ?, 'vitals', 'Body Temperature', ?, ?, 'degF', 'Body Temperature', 'manual', ?)`
+);
+const tempReadings: [number, string, number][] = [
+  [3, "09:00", 99.6],
+  [3, "20:00", 100.8],
+  [2, "08:00", 101.9],
+  [2, "21:00", 102.4], // peak
+  [1, "09:00", 100.6],
+  [1, "20:00", 99.8],
+  [0, "08:00", 99.2],
+];
+const tempIds: number[] = [];
+for (const [ago, time, degF] of tempReadings) {
+  tempIds.push(
+    Number(insTemp.run(daysAgo(ago), String(degF), degF, time).lastInsertRowid)
+  );
+}
+reconcileFlags(SEED_PROFILE_ID, tempIds);
 
 // ── Trends pins + saved views (Trends Ph2/Ph3) ───────────────────────────────
 upsertProfileSetting.run(

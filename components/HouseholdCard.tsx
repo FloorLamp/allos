@@ -7,6 +7,7 @@ import {
   IconAlarm,
   IconCalendarEvent,
   IconCheck,
+  IconVirus,
 } from "@tabler/icons-react";
 import Avatar from "@/components/Avatar";
 import type { AvatarProfile } from "@/components/Avatar";
@@ -49,6 +50,9 @@ export interface HouseholdCardData {
   weightUnit: WeightUnit;
   oorBiomarkers: number;
   goals: GoalHighlight[];
+  // A one-line "sick day N · 101.3°F" chip when this profile has an OPEN illness
+  // episode (issue #801), else null — the household mirror of the dashboard card.
+  sick: string | null;
 }
 
 function TrendArrow({ trend, unit }: { trend: WeightTrend; unit: WeightUnit }) {
@@ -211,6 +215,7 @@ export default function HouseholdCard({ data }: { data: HouseholdCardData }) {
     weightUnit,
     oorBiomarkers,
     goals,
+    sick,
   } = data;
 
   return (
@@ -240,6 +245,16 @@ export default function HouseholdCard({ data }: { data: HouseholdCardData }) {
           />
         </button>
       </form>
+
+      {sick && (
+        <div
+          data-testid="household-sick-chip"
+          className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-800 dark:bg-amber-950 dark:text-amber-300"
+        >
+          <IconVirus className="h-3.5 w-3.5" stroke={1.75} aria-hidden="true" />
+          {sick}
+        </div>
+      )}
 
       <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3">
         <Stat label="Supplements">

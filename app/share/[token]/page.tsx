@@ -10,6 +10,12 @@ import type { AvatarProfile } from "@/components/Avatar";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { recordAudit } from "@/lib/audit";
 import { AUDIT_ACTIONS } from "@/lib/audit-actions";
+import {
+  assembleIllnessEpisode,
+  episodeForProfileSituationDate,
+} from "@/lib/illness-episode";
+import EpisodeSummary from "@/components/illness/EpisodeSummary";
+import PrintButton from "@/components/illness/PrintButton";
 
 // A human opening a shared passport hits this a handful of times; 30 requests/min
 // per token is far above that while capping a client scraping this PHI-bearing,
@@ -62,6 +68,33 @@ export default async function SharePage(props: {
     action: AUDIT_ACTIONS.shareLinkView,
     target: String(link.id),
   });
+
+  // Episode share (issue #801): a tokenized illness summary. The range re-derives from
+  // the stored situation + anchor date, so a shared ongoing episode keeps growing.
+  if (
+    link.kind === "episode" &&
+    link.episode_situation &&
+    link.episode_anchor
+  ) {
+    const episode = episodeForProfileSituationDate(
+      link.profile_id,
+      link.episode_situation,
+      link.episode_anchor
+    );
+    if (!episode) notFound();
+    const assembled = assembleIllnessEpisode(link.profile_id, episode);
+    return (
+      <div className="mx-auto min-h-screen max-w-3xl px-4 py-6 sm:py-10">
+        <div className="mb-4 flex items-center justify-end">
+          <PrintButton />
+        </div>
+        <EpisodeSummary
+          episode={assembled}
+          generatedAt={new Date().toISOString()}
+        />
+      </div>
+    );
+  }
 
   const fields = parseShareFields(link.fields);
   const name = getProfileNameById(link.profile_id) ?? "Profile";

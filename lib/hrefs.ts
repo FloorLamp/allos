@@ -173,3 +173,10 @@ export function immunizationHref(vaccine: string): AppRoute {
   const href: Route<`/immunizations/${string}`> = `/immunizations/${vaccine}`;
   return href as AppRoute;
 }
+
+// The illness-episode detail page (issue #801). The slug is any date INSIDE the
+// episode; the page derives the containing episode from it.
+export function episodeHref(date: string): AppRoute {
+  const href: Route<`/medical/episodes/${string}`> = `/medical/episodes/${date}`;
+  return href as AppRoute;
+}

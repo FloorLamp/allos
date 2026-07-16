@@ -18,6 +18,7 @@ import {
   IconTemperature,
   IconTrophy,
   IconVaccine,
+  IconVirus,
   type TablerIcon,
 } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
@@ -72,6 +73,7 @@ const CATEGORY_ICONS: Record<TimelineCategory, TablerIcon> = {
   milestone: IconTrophy,
   protocol: IconFlask2,
   symptom: IconTemperature,
+  illness: IconVirus,
 };
 
 const CARD_CLASS =
@@ -100,6 +102,7 @@ const BADGE_CLASS: Record<TimelineCategory, string> = {
     "bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300",
   symptom:
     "bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300",
+  illness: "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300",
 };
 
 // The default page size and the increment each "Load more" reveals. The feed is

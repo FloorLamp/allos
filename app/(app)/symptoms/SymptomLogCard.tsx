@@ -6,6 +6,9 @@ import {
   getSymptomSeveritiesOnDate,
   getCustomSymptomNames,
 } from "@/lib/queries";
+import { currentEpisodeForProfile } from "@/lib/illness-episode";
+import { episodeHeadline } from "@/lib/illness-episode-format";
+import { episodeHref } from "@/lib/hrefs";
 import SymptomLogBar from "./SymptomLogBar";
 
 // Dashboard symptom card (issue #799) — rendered ONLY while an illness-type situation is
@@ -16,12 +19,30 @@ import SymptomLogBar from "./SymptomLogBar";
 export default function SymptomLogCard({ profileId }: { profileId: number }) {
   const date = today(profileId);
   const yesterday = shiftDateStr(date, -1);
+  // While an episode is open, the card doubles as its summary header (#801): the
+  // headline ("Illness · day 4 · fever trending down · …") and a link to the full
+  // story, both over the SAME assembly the timeline/share surfaces use.
+  const episode = currentEpisodeForProfile(profileId);
+  const anchor = episode?.lastActiveDay ?? date;
   return (
     <div className="card">
-      <WidgetHeader title="Symptoms" href="/timeline" linkLabel="Timeline" />
-      <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
-        Tap a severity to log how you feel today.
-      </p>
+      <WidgetHeader
+        title="Symptoms"
+        href={episode ? episodeHref(anchor) : "/timeline"}
+        linkLabel={episode ? "Episode" : "Timeline"}
+      />
+      {episode ? (
+        <p
+          className="mb-3 text-xs font-medium text-slate-600 dark:text-slate-300"
+          data-testid="symptom-episode-header"
+        >
+          {episodeHeadline(episode)}
+        </p>
+      ) : (
+        <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
+          Tap a severity to log how you feel today.
+        </p>
+      )}
       <SymptomLogBar
         date={date}
         altDate={yesterday}

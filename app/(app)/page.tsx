@@ -40,6 +40,12 @@ import NeedsAttentionHero from "@/components/dashboard/NeedsAttentionHero";
 import HouseholdStrip, {
   type HouseholdStripEntry,
 } from "@/components/dashboard/HouseholdStrip";
+import SickHouseholdWidget, {
+  type SickHouseholdEntry,
+} from "@/components/dashboard/SickHouseholdWidget";
+import { currentEpisodeForProfile } from "@/lib/illness-episode";
+import { householdSickLine } from "@/lib/illness-episode-format";
+import { disambiguateProfileNames } from "@/lib/profile-disambiguation";
 import WidgetEmpty from "@/components/dashboard/WidgetEmpty";
 import WeightTrendWidget from "@/components/dashboard/WeightTrendWidget";
 import GoalsHabitsWidget from "@/components/dashboard/GoalsHabitsWidget";
@@ -114,6 +120,23 @@ export default async function Dashboard() {
   const list = resolveWidgetList(getDashboardLayout(profile.id), restricted);
   const eligible = new Set(list.map((w) => w.def.id));
   const has = (id: string) => eligible.has(id);
+
+  // sick-household (#801): every OTHER accessible profile with an OPEN illness episode,
+  // over the SAME assembly the timeline/detail/share surfaces use. Grants-scoped upstream
+  // (accessible = getAccessibleProfiles), and shown regardless of the viewer's active
+  // profile — the active profile's own episode is already the symptom card. The page's
+  // `available` gate hides the widget when this list is empty.
+  const sickAssembled = has("sick-household")
+    ? accessible
+        .filter((p) => p.id !== profile.id)
+        .map((p) => ({ p, ep: currentEpisodeForProfile(p.id) }))
+        .filter((x) => x.ep !== null)
+    : [];
+  const sickNames = disambiguateProfileNames(sickAssembled.map((x) => x.p));
+  const sickHousehold: SickHouseholdEntry[] = sickAssembled.map((x) => ({
+    profile: x.p,
+    line: householdSickLine(sickNames.get(x.p.id) ?? x.p.name, x.ep!),
+  }));
 
   // weight-trend: the deduped one-source-per-day series (getBodyMetricDailySeries,
   // #14/#395) — NOT raw all-source rows, which double back the line on a two-device
@@ -335,6 +358,8 @@ export default async function Dashboard() {
         );
       case "symptom-log":
         return illnessActive ? <SymptomLogCard profileId={profile.id} /> : null;
+      case "sick-household":
+        return <SickHouseholdWidget entries={sickHousehold} />;
       default:
         return null;
     }
@@ -351,7 +376,8 @@ export default async function Dashboard() {
       (def.id !== "next-appointment" || hasScheduledAppt) &&
       (def.id !== "coaching-observations" || coachingObservations.length > 0) &&
       (def.id !== "weekly-recap" || weeklyRecap !== null) &&
-      (def.id !== "symptom-log" || illnessActive),
+      (def.id !== "symptom-log" || illnessActive) &&
+      (def.id !== "sick-household" || sickHousehold.length > 0),
     node:
       def.dataAware && emptyIds.has(def.id)
         ? emptyNode(def.id)
