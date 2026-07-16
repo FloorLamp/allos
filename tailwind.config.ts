@@ -1,7 +1,17 @@
 import type { Config } from "tailwindcss";
 
 const config: Config = {
-  darkMode: "class",
+  // Class-based dark theme (the theme-boot script toggles `.dark` on <html>),
+  // but SCOPED OUT of print (issue #794 cluster 7c). Instead of the plain
+  // `"class"` (which emits `.dark .util`), every `dark:` utility compiles to
+  // `@media not print { .dark .util }` — same selector/specificity on screen, so
+  // screen behavior is byte-for-byte identical, but under print media the dark
+  // variants simply don't match. A user printing the Emergency Card / passport
+  // from dark mode then falls back to the light utilities (dark text on the
+  // forced-white page) instead of near-white `dark:text-slate-100` on white.
+  // The `.dark &` shape (not `&:where(.dark, .dark *)`) preserves class-mode
+  // specificity exactly; only the enclosing media query is added.
+  darkMode: ["variant", "@media not print { .dark & }"],
   content: [
     "./app/**/*.{js,ts,jsx,tsx,mdx}",
     "./components/**/*.{js,ts,jsx,tsx,mdx}",
