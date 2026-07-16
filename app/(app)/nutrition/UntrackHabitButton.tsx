@@ -56,7 +56,7 @@ export default function UntrackHabitButton({
       onClick={onClick}
       disabled={pending}
       aria-label="Stop tracking this habit"
-      className="flex h-6 w-6 items-center justify-center rounded-full text-slate-400 hover:bg-black/5 hover:text-slate-600 disabled:opacity-40 dark:hover:bg-white/10"
+      className="flex h-6 w-6 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 disabled:opacity-40 dark:hover:bg-ink-800"
     >
       <IconX className="h-4 w-4" stroke={2} />
     </button>

@@ -161,7 +161,7 @@ export default function HomeAssistantNotificationSettings({
             </p>
           </div>
 
-          <div className="border-t border-slate-100 pt-5 dark:border-slate-800">
+          <div className="border-t border-black/5 pt-5 dark:border-white/5">
             <label className="label">Announce which reminders</label>
             <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
               Turn off any kind you’d rather not send to Home Assistant (they

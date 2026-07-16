@@ -412,7 +412,7 @@ export default function PlateBuilderModal({
               <option value={NEW_BAR}>+ Create custom barbell…</option>
             </select>
           ) : (
-            <div className="space-y-2 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+            <div className="space-y-2 rounded-lg border border-black/10 p-3 dark:border-white/10">
               <div className="grid grid-cols-2 gap-2">
                 <input
                   value={newName}
@@ -459,7 +459,7 @@ export default function PlateBuilderModal({
         </div>
 
         {/* Visualization */}
-        <div className="mt-4 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-ink-950">
+        <div className="mt-4 rounded-lg border border-black/5 bg-slate-50 px-3 py-2 dark:border-white/5 dark:bg-ink-950">
           <BarbellSvg platesPerSide={plates} unit={unit} />
         </div>
 
@@ -473,7 +473,7 @@ export default function PlateBuilderModal({
                 type="button"
                 onClick={() => addPlate(p)}
                 disabled={atPlateLimit}
-                className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:border-brand-400 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:bg-ink-900 dark:text-slate-200 dark:hover:bg-brand-950"
+                className="rounded-full border border-black/10 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:border-brand-400 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:bg-ink-900 dark:text-slate-200 dark:hover:bg-brand-950"
               >
                 +{p}
               </button>
@@ -532,7 +532,7 @@ export default function PlateBuilderModal({
         )}
 
         {/* Total + actions */}
-        <div className="mt-5 flex items-center justify-between border-t border-slate-100 pt-4 dark:border-slate-800">
+        <div className="mt-5 flex items-center justify-between border-t border-black/5 pt-4 dark:border-white/5">
           <div>
             <div className="section-label">Total</div>
             <div className="text-2xl font-bold tabular-nums text-slate-900 dark:text-slate-100">

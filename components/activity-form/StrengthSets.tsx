@@ -141,7 +141,7 @@ function RpeStepper({
         aria-label={value == null ? "RPE not set" : `RPE ${fmtRpe(value)}`}
         className={`w-7 text-center tabular-nums ${
           value == null
-            ? "text-[10px] font-medium uppercase tracking-wide text-slate-300 dark:text-slate-600"
+            ? "text-xs font-medium uppercase tracking-wide text-slate-300 dark:text-slate-600"
             : "font-semibold text-slate-700 dark:text-slate-200"
         }`}
       >
@@ -641,7 +641,7 @@ export default function StrengthSets({
                   {summarizeExercise(sess.sets, units.weightUnit).text}
                   {/* Logged RPE for the session, shown when present (#743). */}
                   {rpeSummaryText(sess.sets) && (
-                    <span className="rounded bg-slate-100 px-1 text-[10px] font-medium text-slate-500 dark:bg-ink-800 dark:text-slate-400">
+                    <span className="rounded bg-slate-100 px-1 text-xs font-medium text-slate-500 dark:bg-ink-800 dark:text-slate-400">
                       {rpeSummaryText(sess.sets)}
                     </span>
                   )}
@@ -796,7 +796,7 @@ export default function StrengthSets({
           editor context visible, so the row returns to normal flow there. */}
       <div
         data-testid="set-column-headings"
-        className="sticky top-11 z-[9] -mx-1 mt-2 flex items-center gap-2 bg-white/95 px-1 py-1 section-label text-[10px] backdrop-blur md:static md:mx-0 md:bg-transparent md:px-0 md:backdrop-blur-none dark:bg-ink-900/95 dark:md:bg-transparent"
+        className="sticky top-11 z-[9] -mx-1 mt-2 flex items-center gap-2 bg-white/95 px-1 py-1 section-label backdrop-blur md:static md:mx-0 md:bg-transparent md:px-0 md:backdrop-blur-none dark:bg-ink-900/95 dark:md:bg-transparent"
       >
         <span className="w-12 shrink-0">Set</span>
         {!timed && !isBodyweight(p.name) ? (

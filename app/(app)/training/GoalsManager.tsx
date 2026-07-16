@@ -301,7 +301,7 @@ export default function GoalsManager({
                     {isExercise &&
                       prog &&
                       (prog.lifetimeBest ?? 0) > prog.current && (
-                        <div className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
+                        <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
                           PR {goalValueText(g, prog.lifetimeBest!, wu)}
                         </div>
                       )}

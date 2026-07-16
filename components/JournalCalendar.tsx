@@ -135,7 +135,7 @@ export default function JournalCalendar({
         </button>
       </div>
 
-      <div className="grid grid-cols-7 text-center text-[10px] font-medium text-slate-500 dark:text-slate-400">
+      <div className="grid grid-cols-7 text-center text-xs font-medium text-slate-500 dark:text-slate-400">
         {dowOrder.map((wd, i) => (
           <div key={i}>{DOW[wd]}</div>
         ))}

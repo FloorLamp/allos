@@ -88,7 +88,7 @@ function SortableWidget({
           type="button"
           onClick={() => onToggle(widget.id)}
           aria-label={hidden ? `Show ${widget.label}` : `Hide ${widget.label}`}
-          className="rounded-md border border-slate-200 bg-white/90 p-1 text-slate-500 shadow-sm hover:text-slate-800 dark:border-ink-700 dark:bg-ink-900/90 dark:text-slate-400 dark:hover:text-slate-100"
+          className="rounded-md border border-black/10 bg-white/90 p-1 text-slate-500 shadow-sm hover:text-slate-800 dark:border-white/10 dark:bg-ink-900/90 dark:text-slate-400 dark:hover:text-slate-100"
         >
           {hidden ? (
             <IconEyeOff className="h-4 w-4" />
@@ -102,7 +102,7 @@ function SortableWidget({
           {...attributes}
           {...listeners}
           aria-label={`Drag ${widget.label}`}
-          className="cursor-grab touch-none rounded-md border border-slate-200 bg-white/90 p-1 text-slate-500 shadow-sm hover:text-slate-800 active:cursor-grabbing dark:border-ink-700 dark:bg-ink-900/90 dark:text-slate-400 dark:hover:text-slate-100"
+          className="cursor-grab touch-none rounded-md border border-black/10 bg-white/90 p-1 text-slate-500 shadow-sm hover:text-slate-800 active:cursor-grabbing dark:border-white/10 dark:bg-ink-900/90 dark:text-slate-400 dark:hover:text-slate-100"
         >
           <IconGripVertical className="h-4 w-4" />
         </button>
@@ -281,7 +281,7 @@ export default function DashboardGrid({
       </DndContext>
 
       {/* Sticky Save / Cancel bar. */}
-      <div className="sticky bottom-4 z-30 mt-6 flex items-center justify-end gap-3 rounded-xl border border-slate-200 bg-white/95 px-4 py-3 shadow-lg backdrop-blur dark:border-ink-700 dark:bg-ink-900/95">
+      <div className="sticky bottom-4 z-30 mt-6 flex items-center justify-end gap-3 rounded-xl border border-black/10 bg-white/95 px-4 py-3 shadow-lg backdrop-blur dark:border-white/10 dark:bg-ink-900/95">
         <SaveStatus pending={pending} savedAt={savedAt} error={error} />
         <button
           type="button"

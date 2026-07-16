@@ -102,7 +102,7 @@ export default function SidebarContent({
       >
         <IconSearch className="h-4 w-4 shrink-0" stroke={1.75} />
         <span className="flex-1 text-left">Search…</span>
-        <kbd className="hidden rounded border border-black/10 px-1.5 py-0.5 font-mono text-[10px] text-slate-500 md:inline dark:border-white/10 dark:text-slate-400">
+        <kbd className="hidden rounded border border-black/10 px-1.5 py-0.5 font-mono text-xs text-slate-500 md:inline dark:border-white/10 dark:text-slate-400">
           ⌘K
         </kbd>
       </button>

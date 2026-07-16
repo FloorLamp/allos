@@ -138,7 +138,7 @@ export default function ProtocolForm({
       </div>
       <div>
         <span className="label">Outcome metrics to compare</span>
-        <div className="mt-1 max-h-56 space-y-3 overflow-y-auto rounded-lg border border-slate-200 p-3 dark:border-ink-700">
+        <div className="mt-1 max-h-56 space-y-3 overflow-y-auto rounded-lg border border-black/10 p-3 dark:border-white/10">
           {options.length === 0 && (
             <p className="text-sm text-slate-500 dark:text-slate-400">
               No trackable metrics yet — add body metrics or import labs first.

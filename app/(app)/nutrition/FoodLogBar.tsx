@@ -152,7 +152,7 @@ export default function FoodLogBar({
             data-testid="food-day-toggle"
             role="group"
             aria-label="Day to log"
-            className="inline-flex rounded-lg border border-slate-200 p-0.5 text-xs font-medium dark:border-slate-700"
+            className="inline-flex rounded-lg border border-black/10 p-0.5 text-xs font-medium dark:border-white/10"
           >
             {(["today", "yesterday"] as const).map((m) => (
               <button
@@ -164,7 +164,7 @@ export default function FoodLogBar({
                 className={`rounded-md px-2.5 py-1 capitalize transition ${
                   mode === m
                     ? "bg-brand-600 text-white"
-                    : "text-slate-500 hover:bg-black/5 dark:text-slate-400 dark:hover:bg-white/10"
+                    : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-ink-800"
                 }`}
               >
                 {m}
@@ -195,7 +195,7 @@ export default function FoodLogBar({
                     <li
                       key={g.slug}
                       data-testid={`food-group-${g.slug}`}
-                      className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2 dark:border-slate-800 dark:bg-ink-900"
+                      className="flex items-center gap-3 rounded-lg border border-black/10 bg-white px-3 py-2 dark:border-white/10 dark:bg-ink-900"
                     >
                       <FoodGroupIcon
                         slug={g.slug}
@@ -238,7 +238,7 @@ export default function FoodLogBar({
                         aria-label={`Remove a ${g.name} serving`}
                         disabled={count <= 0}
                         onClick={() => bump(g.slug, -1)}
-                        className="tap-target flex h-7 w-7 items-center justify-center rounded-full text-slate-400 transition hover:bg-black/5 disabled:opacity-30 dark:hover:bg-white/10"
+                        className="tap-target flex h-7 w-7 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 disabled:opacity-30 dark:hover:bg-ink-800"
                       >
                         <IconMinus className="h-4 w-4" stroke={2} />
                       </button>

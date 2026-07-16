@@ -89,7 +89,7 @@ export default function FoodSuggestions({
                     >
                       <span className="font-medium">{f.food}</span>
                       {f.isAlternative && (
-                        <span className="ml-1 rounded bg-emerald-100 px-1 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300">
+                        <span className="ml-1 rounded bg-emerald-100 px-1 py-0.5 text-xs font-medium uppercase tracking-wide text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300">
                           alternative
                         </span>
                       )}
@@ -140,7 +140,7 @@ export default function FoodSuggestions({
                     {s.caveat}
                   </p>
                 )}
-                <p className="mt-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+                <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
                   {s.evidence} Source: {s.source}. Informational, not medical
                   advice.
                 </p>

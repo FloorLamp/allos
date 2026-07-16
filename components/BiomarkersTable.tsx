@@ -53,7 +53,7 @@ function nameKey(r: { name: string; canonical_name: string | null }): string {
 function staleBadge() {
   return (
     <span
-      className="ml-2 rounded-full bg-amber-50 px-1.5 py-0.5 align-middle text-[10px] font-medium uppercase tracking-wide text-amber-700 dark:bg-amber-400/10 dark:text-amber-400"
+      className="ml-2 rounded-full bg-amber-50 px-1.5 py-0.5 align-middle text-xs font-medium uppercase tracking-wide text-amber-700 dark:bg-amber-400/10 dark:text-amber-400"
       title="Latest reading over a year old — consider retesting"
     >
       Stale
@@ -68,7 +68,7 @@ function derivedBadge(formula?: string) {
   return (
     <span
       data-testid="derived-badge"
-      className="ml-2 rounded-full bg-slate-100 px-1.5 py-0.5 align-middle text-[10px] font-medium uppercase tracking-wide text-slate-600 dark:bg-slate-700 dark:text-slate-300"
+      className="ml-2 rounded-full bg-slate-100 px-1.5 py-0.5 align-middle text-xs font-medium uppercase tracking-wide text-slate-600 dark:bg-slate-700 dark:text-slate-300"
       title={formula ? `Derived: ${formula}` : "Computed from other readings"}
     >
       Derived

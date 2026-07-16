@@ -75,7 +75,7 @@ export default function UserMenu({
           <span
             data-testid="read-only-badge"
             aria-label={`Viewing ${active.name} — read-only`}
-            className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:bg-amber-950 dark:text-amber-300"
+            className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-amber-700 dark:bg-amber-950 dark:text-amber-300"
           >
             Read-only
           </span>

@@ -134,7 +134,7 @@ function Attention({ data }: { data: HouseholdCardData }) {
     dueDoses.length === 0 && lowRefills.length === 0 && !nextAppointment;
 
   return (
-    <div className="mt-4 space-y-2 border-t border-slate-100 pt-3 dark:border-slate-800">
+    <div className="mt-4 space-y-2 border-t border-black/5 pt-3 dark:border-white/5">
       <div className="section-label">Attention today</div>
       {nothing ? (
         <div
@@ -300,7 +300,7 @@ export default function HouseholdCard({ data }: { data: HouseholdCardData }) {
       </div>
 
       {goals.length > 0 && (
-        <div className="mt-4 space-y-2 border-t border-slate-100 pt-3 dark:border-slate-800">
+        <div className="mt-4 space-y-2 border-t border-black/5 pt-3 dark:border-white/5">
           {goals.map((g) => (
             <div key={g.id}>
               <div className="flex items-center justify-between gap-2 text-xs">

@@ -330,7 +330,7 @@ export default function RoutineBuilder({
                             className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2 py-0.5 text-xs font-medium text-brand-700 dark:bg-brand-950 dark:text-brand-300"
                           >
                             {ci === 0 && (
-                              <span className="text-[10px] uppercase opacity-60">
+                              <span className="text-xs uppercase opacity-60">
                                 1st
                               </span>
                             )}

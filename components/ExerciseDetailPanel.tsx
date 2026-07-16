@@ -232,7 +232,7 @@ export default function ExerciseDetailPanel({
       {standingMsg && (
         <div
           data-testid="strength-standard"
-          className="mt-4 rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2 dark:border-white/10 dark:bg-white/5"
+          className="mt-4 rounded-lg border border-black/10 bg-slate-50/70 px-3 py-2 dark:border-white/10 dark:bg-white/5"
         >
           <div className="text-sm font-medium text-slate-600 dark:text-slate-300">
             Strength standard

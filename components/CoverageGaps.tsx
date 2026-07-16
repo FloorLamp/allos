@@ -30,7 +30,7 @@ const KIND_LABEL: Record<CoverageGapKind, string> = {
 
 function KindBadge({ kind }: { kind: CoverageGapKind }) {
   return (
-    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
       {KIND_LABEL[kind]}
     </span>
   );
@@ -129,7 +129,7 @@ function CandidateRow({ candidate }: { candidate: CoverageGapCandidate }) {
     <li
       data-testid="coverage-candidate"
       data-kind={candidate.kind}
-      className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-700"
+      className="flex items-center justify-between gap-3 rounded-lg border border-black/10 px-3 py-2 dark:border-white/10"
     >
       <span className="flex min-w-0 items-center gap-2">
         <KindBadge kind={candidate.kind} />
@@ -237,7 +237,7 @@ function TrackedRow({
       {gap.aiDescription ? (
         <div className="mt-3 rounded-md border-l-4 border-l-brand-300 bg-slate-50 px-3 py-2 text-sm text-slate-600 dark:border-l-brand-700 dark:bg-slate-800/50 dark:text-slate-300">
           <p className="leading-relaxed">{gap.aiDescription}</p>
-          <p className="mt-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+          <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
             AI-generated, unverified — not curated
             {gap.aiSource ? ` · ${gap.aiSource}` : ""}
           </p>
