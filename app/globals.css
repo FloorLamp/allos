@@ -222,10 +222,24 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
 /* Print: produce a clean one/two-page "medical passport" (issue #105). Chrome
    (nav, buttons) opts out with Tailwind's `print:hidden`; here we set page
    margins, flatten the frosted-glass surfaces to plain bordered cards, and force
-   backgrounds/flag colors to actually render (browsers drop them by default). */
+   backgrounds/flag colors to actually render (browsers drop them by default).
+
+   Dark-mode printing (issue #794 cluster 7c): the theme is class-based (`.dark`
+   on <html>), and `darkMode` is scoped to `@media not print` in tailwind.config,
+   so under print media EVERY `dark:` utility stops matching and the light
+   utilities render instead — dark text on the forced-white page rather than
+   near-white `dark:text-slate-100`. The `.dark` class stays on <html>; only the
+   utilities are neutralized. The hand-written `:root.dark` rules below cover the
+   non-Tailwind bits: the dark body background is already beaten by the white
+   `html, body` rule here, and `color-scheme` is forced to light so form controls,
+   scrollbars, and any UA-drawn chrome render in the light palette too. */
 @media print {
   @page {
     margin: 14mm;
+  }
+  :root,
+  :root.dark {
+    color-scheme: light;
   }
   html,
   body {
