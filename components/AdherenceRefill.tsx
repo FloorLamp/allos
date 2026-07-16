@@ -58,15 +58,15 @@ export function RefillBadge({
           : `Estimated days of supply remaining — ${refillBasis}`
       }
     >
-      {lowSupply ? "Low · " : ""}
-      {runOut ? (
+      {lowSupply ? "Low · " : ""}≈{daysLeft} day{daysLeft === 1 ? "" : "s"} left
+      {/* The projected run-out DATE alongside the days-left duration (#852 item 3) —
+          a date is what you tell the pharmacy. Shown only where todayStr is threaded
+          (the medication row + card); the supplement row keeps the compact form. */}
+      {runOut && (
         <span data-testid="refill-run-out">
-          runs out ~{formatMonthDay(runOut)}
+          {" "}
+          · runs out ~{formatMonthDay(runOut)}
         </span>
-      ) : (
-        <>
-          ≈{daysLeft} day{daysLeft === 1 ? "" : "s"} left
-        </>
       )}
       <span className="ml-1 font-normal opacity-70">· {refillBasis}</span>
     </span>

@@ -128,12 +128,14 @@ test("item 5: the detail page shows a month adherence calendar over the existing
     .getByTestId("medication-row")
     .filter({ hasText: "Adherence Refill Med (e2e)" })
     .getByTestId("medication-row-link");
+  await expect(rowLink).toBeVisible();
+  // Direct goto to the row's href (not a Link click): a client-side transition to the
+  // detail can be interrupted/reverted under a heavy list page (the #852 settle-race fix).
+  const href = await rowLink.getAttribute("href");
+  expect(href).toMatch(/\/medications\/\d+/);
+  await page.goto(href!);
   const detail = page.getByTestId("medication-detail");
-  // Ride out the hydration window (#730): retry the navigation until detail shows.
-  await expect(async () => {
-    await rowLink.click();
-    await expect(detail).toBeVisible({ timeout: 2000 });
-  }).toPass();
+  await expect(detail).toBeVisible();
   const month = detail.getByTestId("medication-adherence-month");
   await expect(month).toBeVisible();
   await expect(month.getByTestId("adherence-calendar")).toBeVisible();
