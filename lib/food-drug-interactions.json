@@ -80,7 +80,8 @@
       "severity": "moderate",
       "advice": "Limit alcohol — it can unpredictably raise or lower warfarin's effect and add to bleeding risk.",
       "mechanism": "Alcohol alters warfarin metabolism (acutely inhibiting, chronically inducing) and independently impairs clotting, destabilizing the INR.",
-      "source": "NIH MedlinePlus — Warfarin"
+      "source": "NIH MedlinePlus — Warfarin",
+      "minLifeStage": "adult"
     },
     {
       "key": "dairy-levothyroxine",
@@ -146,7 +147,8 @@
       "severity": "major",
       "advice": "Avoid all alcohol during treatment and for 3 days after — the combination causes flushing, nausea, vomiting, and a racing heartbeat.",
       "mechanism": "Metronidazole inhibits acetaldehyde dehydrogenase, producing a disulfiram-like reaction when alcohol is consumed.",
-      "source": "FDA metronidazole prescribing information (DailyMed)"
+      "source": "FDA metronidazole prescribing information (DailyMed)",
+      "minLifeStage": "adult"
     },
     {
       "key": "tyramine-maoi",
@@ -227,7 +229,8 @@
       "severity": "moderate",
       "advice": "Avoid regular or heavy alcohol — combined with acetaminophen it raises the risk of liver damage. Stay within the daily acetaminophen limit.",
       "mechanism": "Chronic alcohol induces CYP2E1, increasing the toxic acetaminophen metabolite (NAPQI) and the risk of liver injury.",
-      "source": "FDA acetaminophen labeling (DailyMed)"
+      "source": "FDA acetaminophen labeling (DailyMed)",
+      "minLifeStage": "adult"
     },
     {
       "key": "food-bisphosphonate",

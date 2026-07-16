@@ -89,7 +89,11 @@ function adherenceNotes(a: AdherenceSummary): string[] {
 // priority marker (🔴 mandatory, • everything else), then the amount and a
 // "·"-separated tail of the take-with condition (pending only — it's guidance for
 // taking) and streak/adherence.
-function doseLine(e: WindowDose, showFood: boolean): string {
+function doseLine(
+  e: WindowDose,
+  showFood: boolean,
+  age: number | null
+): string {
   const amt = e.dose.amount ? ` — ${e.dose.amount}` : "";
   const mark = e.taken
     ? "✅ "
@@ -115,11 +119,14 @@ function doseLine(e: WindowDose, showFood: boolean): string {
     // through the findings bus), the reminder tail intentionally ignores those
     // dismissals and always appends the note when the dose is being reminded.
     const foodDrug = foodGuidanceReminderNote(
-      matchFoodInteractions({
-        name: e.supp.name,
-        rxcui: e.supp.rxcui,
-        rxcuiIngredients: parseRxcuiIngredients(e.supp.rxcui_ingredients),
-      })
+      matchFoodInteractions(
+        {
+          name: e.supp.name,
+          rxcui: e.supp.rxcui,
+          rxcuiIngredients: parseRxcuiIngredients(e.supp.rxcui_ingredients),
+        },
+        age
+      )
     );
     if (foodDrug) tail.push(foodDrug);
   }
@@ -138,7 +145,10 @@ export function renderWindowMessage(
   profileId: number,
   window: ReminderWindow,
   date: string,
-  entries: WindowDose[]
+  entries: WindowDose[],
+  // The profile's age in whole years (issue #851 item 4), so an age-gated food note
+  // (alcohol → adult) is dropped from a child's reminder tail. Null = unknown = shown.
+  age: number | null = null
 ): NotificationMessage {
   const pending = entries
     .filter((e) => !e.taken && !e.skipped)
@@ -154,7 +164,7 @@ export function renderWindowMessage(
   if (pending.length === 0) {
     const takenN = resolved.filter((e) => e.taken).length;
     const skippedN = resolved.length - takenN;
-    const body = resolved.map((e) => doseLine(e, false)).join("\n");
+    const body = resolved.map((e) => doseLine(e, false, age)).join("\n");
     // Title reflects the whole session: "all N taken" when nothing was skipped,
     // else a taken/skipped breakdown so a skip isn't misread as a take.
     const title =
@@ -165,8 +175,8 @@ export function renderWindowMessage(
   }
 
   const body = [
-    ...pending.map((e) => doseLine(e, true)),
-    ...resolved.map((e) => doseLine(e, false)),
+    ...pending.map((e) => doseLine(e, true, age)),
+    ...resolved.map((e) => doseLine(e, false, age)),
   ].join("\n");
   // Each pending dose gets a ✅ take and a ⏭ skip button, side by side (same
   // `row` group). The dose + supplement id and date are baked into each token so

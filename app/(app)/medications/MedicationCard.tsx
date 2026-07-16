@@ -32,6 +32,7 @@ import {
   AdherenceSummaryLine,
 } from "@/components/AdherenceRefill";
 import MedicationForm from "@/components/MedicationForm";
+import RxOtcBadge from "@/components/RxOtcBadge";
 import FoodGuidance from "@/components/FoodGuidance";
 import NotesText from "@/components/NotesText";
 import DoseStatusControl from "@/components/DoseStatusControl";
@@ -53,7 +54,9 @@ import {
   toggleSideEffectResolved,
   deleteSideEffect,
   promoteSideEffectToIntolerance,
+  deleteAdministration,
 } from "./actions";
+import { IconX } from "@tabler/icons-react";
 
 // One medication, rendered as a card carrying its whole lifecycle: the
 // current dose check-offs, its course history (start/stop dates + reasons), the
@@ -78,9 +81,11 @@ export default function MedicationCard({
   trainingRestricted,
   suppressedFoodKeys = [],
   prnDayLabel = null,
-  prnTimes = [],
+  prnAdministrations = [],
+  prnHistory = [],
   prnRedoseLine = null,
   pediatric,
+  age = null,
   detailView = false,
 }: {
   supplement: Supplement;
@@ -107,13 +112,23 @@ export default function MedicationCard({
   // both pre-formatted server-side. Shown INSTEAD of the binary dose pill for a PRN
   // med, since a PRN med can be given several times a day.
   prnDayLabel?: string | null;
-  prnTimes?: string[];
+  // Today's PRN administrations with ledger ids (#851 item 11) — each chip offers
+  // remove-with-undo, since a mis-tapped Log otherwise permanently skews supply + the
+  // redose window + the daily count.
+  prnAdministrations?: { id: number; label: string }[];
+  // Past PRN administration history grouped by day (#851 item 13), most recent first —
+  // rendered in the detail-page History disclosure so the med's own page answers "how
+  // often last month", not just today. Empty for scheduled meds / the list card.
+  prnHistory?: { date: string; times: string[] }[];
   // The redose-window status line (#798): "Redose OK — min interval passed · 2 of 4
   // today" / "Next dose in ~2h · …" / "Max reached · …", or null when not configured.
   // Pre-formatted server-side via the shared redoseCardLabel.
   prnRedoseLine?: string | null;
   // Pediatric label-dosing context (#798) for the edit form's weight-band suggestion.
   pediatric?: PediatricFormContext;
+  // The profile's age in whole years (issue #851 item 4), threaded to FoodGuidance so
+  // an age-gated food note (alcohol → adult) is hidden for a child.
+  age?: number | null;
   // Rendered as the /medications/[id] detail body (#817) rather than a list card:
   // the course/side-effect History disclosure starts OPEN (it's the med's clinical
   // home, not a scannable list row where it should stay tucked away).
@@ -149,6 +164,7 @@ export default function MedicationCard({
           onDone={() => setEditing(false)}
           trainingRestricted={trainingRestricted}
           pediatric={pediatric}
+          age={age}
         />
       </div>
     );
@@ -184,9 +200,7 @@ export default function MedicationCard({
                 {subline}
               </span>
             )}
-            <span className="badge bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300">
-              Rx
-            </span>
+            <RxOtcBadge rx={s.rx} />
             {s.as_needed === 1 && (
               <span className="badge bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300">
                 PRN
@@ -231,6 +245,7 @@ export default function MedicationCard({
             rxcui={s.rxcui}
             rxcuiIngredients={s.rxcui_ingredients}
             suppressedFoodKeys={suppressedFoodKeys}
+            age={age}
           />
           {medInfo && (
             <details className="group mt-1">
@@ -311,14 +326,35 @@ export default function MedicationCard({
               {prnRedoseLine}
             </div>
           )}
-          {prnTimes.length > 0 && (
-            <div className="mt-1 flex flex-wrap gap-1">
-              {prnTimes.map((t, i) => (
+          {prnAdministrations.length > 0 && (
+            <div
+              className="mt-1 flex flex-wrap gap-1"
+              data-testid="prn-administration-list"
+            >
+              {prnAdministrations.map((a) => (
                 <span
-                  key={i}
-                  className="rounded-full border border-black/10 px-2 py-0.5 text-xs text-slate-500 dark:border-white/10 dark:text-slate-400"
+                  key={a.id}
+                  data-testid="prn-administration-chip"
+                  className="inline-flex items-center gap-1 rounded-full border border-black/10 py-0.5 pl-2 pr-1 text-xs text-slate-500 dark:border-white/10 dark:text-slate-400"
                 >
-                  {t}
+                  {a.label}
+                  {/* Remove a mis-tapped administration with undo (#851 item 11). */}
+                  <button
+                    type="button"
+                    data-testid="prn-administration-remove"
+                    aria-label={`Remove ${a.label} dose`}
+                    title="Remove this dose"
+                    className="flex h-4 w-4 items-center justify-center rounded-full text-slate-500 transition hover:bg-rose-100 hover:text-rose-600 dark:text-slate-400 dark:hover:bg-rose-900/40"
+                    onClick={async () => {
+                      const fd = new FormData();
+                      fd.set("log_id", String(a.id));
+                      await undoable(deleteAdministration, fd, {
+                        deletedMessage: "Dose removed.",
+                      });
+                    }}
+                  >
+                    <IconX className="h-3 w-3" stroke={2} />
+                  </button>
                 </span>
               ))}
             </div>
@@ -351,6 +387,28 @@ export default function MedicationCard({
         </summary>
 
         <div className="mt-3 space-y-4">
+          {/* Recent PRN doses (#851 item 13): a dated roll-up so the med's own page
+              answers "how often last month", not just today. PRN meds with history. */}
+          {prnHistory.length > 0 && (
+            <div data-testid="prn-history">
+              <div className="mb-1 section-label">Recent doses</div>
+              <ul className="space-y-1">
+                {prnHistory.map((day) => (
+                  <li
+                    key={day.date}
+                    className="flex flex-wrap items-baseline gap-x-2 text-sm text-slate-600 dark:text-slate-300"
+                  >
+                    <span className="font-medium">{fmt(day.date)}</span>
+                    <span className="text-xs text-slate-500 dark:text-slate-400">
+                      {day.times.length} dose{day.times.length === 1 ? "" : "s"}
+                      {day.times.length > 0 ? ` · ${day.times.join(", ")}` : ""}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           {/* Stop / restart controls. */}
           <div>
             {current ? (

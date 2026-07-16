@@ -19,6 +19,7 @@ import {
   getActiveSituations,
   getSituationEvents,
   getTimezone,
+  getUserAge,
 } from "../settings";
 import { situationHistoryResolver } from "../trend-annotations";
 import {
@@ -180,7 +181,13 @@ export function buildSupplementReminder(
   // Every dose resolved — taken OR deliberately skipped (#232) — means nothing
   // is pending, so no reminder goes out (a skip stops re-nudging like a take).
   if (entries.every((e) => e.taken || e.skipped)) return null;
-  return renderWindowMessage(profileId, window, date, entries);
+  return renderWindowMessage(
+    profileId,
+    window,
+    date,
+    entries,
+    getUserAge(profileId)
+  );
 }
 
 // Resolve a tapped dose's window and collect that window's session in one dose

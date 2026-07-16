@@ -14,7 +14,7 @@
 // Nothing pharmacological is invented here.
 
 import type { MedicationInfo } from "./medication-info";
-import type { PrnDefaultEntry } from "./prn-defaults";
+import { redoseLabelDefaults, type PrnDefaultEntry } from "./prn-defaults";
 import {
   pediatricDoseSuggestion,
   type PediatricFormContext,
@@ -128,9 +128,17 @@ export function resolveIntakePrefill(input: IntakePrefillInput): IntakePrefill {
 
   // Dose figures from the cited OTC label defaults (#798).
   suggest("doseAmount", resolveDoseAmount(input.prn, input.pediatric));
+  // Redose interval / daily-max, AGE-AWARE (issue #851 item 12): the pediatric label
+  // figures for a child when they differ, the adult figures for an adult/unknown age,
+  // and — critically — NO prefill for a child when the ingredient carries no pediatric
+  // label figure (never guess below the label's floor; the adult max would over-dose a
+  // child, e.g. acetaminophen 6 vs 5). redoseLabelDefaults encodes the refusal.
   if (input.prn) {
-    suggest("minIntervalHours", input.prn.adult.minIntervalHours);
-    suggest("maxDailyCount", input.prn.adult.maxDailyCount);
+    const redose = redoseLabelDefaults(input.prn, isChild(input.pediatric));
+    if (redose) {
+      suggest("minIntervalHours", redose.minIntervalHours);
+      suggest("maxDailyCount", redose.maxDailyCount);
+    }
   }
 
   return out;

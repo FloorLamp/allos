@@ -22,6 +22,7 @@
 
 import data from "./food-drug-interactions.json";
 import { type Severity, SEVERITY_RANK, itemRxcuis } from "./drug-interactions";
+import { meetsMinLifeStage, meetsMinAge, type LifeStage } from "./life-stage";
 
 export type { Severity };
 export { SEVERITY_RANK, SEVERITY_LABEL } from "./drug-interactions";
@@ -36,6 +37,12 @@ interface RawFoodInteraction {
   advice: string;
   mechanism: string;
   source: string;
+  // Optional age gate (issue #851 item 4): the minimum life stage / age for which the
+  // guidance applies. The alcohol rules gate to "adult" so a child's medication card
+  // never carries "limit alcohol". Absent ⇒ applies to every age. The gate follows the
+  // lib/life-stage null-age policy (hide ONLY on a positive under-age match).
+  minLifeStage?: LifeStage;
+  minAge?: number;
 }
 
 const ENTRIES = data.interactions as RawFoodInteraction[];
@@ -78,15 +85,29 @@ function nameContains(itemNorm: string, synNorm: string): boolean {
 // fallback — both collected so a row with only a name still matches. Severity-ranked
 // (major first), then by food, then key, for a deterministic order. Each entry
 // contributes at most one hit (an item can't match the same guidance twice).
-export function matchFoodInteractions(item: {
-  name: string;
-  rxcui: string | null;
-  rxcuiIngredients?: string[] | null;
-}): FoodInteractionHit[] {
+// `age` is the profile's age in whole years (issue #851 item 4) — used to gate
+// age-restricted guidance (the alcohol rules → adult). Undefined/null = unknown age,
+// which shows every rule (hide only on a positive under-age match, the life-stage
+// policy). Callers that know the profile (rows, form notice, dose-reminder tail) pass
+// it; a call with no age keeps the pre-#851 behavior.
+export function matchFoodInteractions(
+  item: {
+    name: string;
+    rxcui: string | null;
+    rxcuiIngredients?: string[] | null;
+  },
+  age?: number | null
+): FoodInteractionHit[] {
   const cuis = itemRxcuis(item);
   const itemNorm = normalize(item.name);
   const hits: FoodInteractionHit[] = [];
   for (const e of ENTRIES) {
+    // Age gate first (issue #851 item 4): a rule below the profile's known age is
+    // dropped entirely (e.g. an alcohol note for a child).
+    if (e.minLifeStage != null && !meetsMinLifeStage(age, e.minLifeStage)) {
+      continue;
+    }
+    if (e.minAge != null && !meetsMinAge(age, e.minAge)) continue;
     const byRxcui = e.rxcuis.some((cui) => cuis.has(cui));
     const byName =
       !byRxcui &&

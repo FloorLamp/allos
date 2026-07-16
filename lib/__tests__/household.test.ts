@@ -57,6 +57,7 @@ function supp(overrides: Partial<Supplement> = {}): Supplement {
     prescriber: null,
     pharmacy: null,
     rx_number: null,
+    rx: 0,
     as_needed: 0,
     min_interval_hours: null,
     max_daily_count: null,

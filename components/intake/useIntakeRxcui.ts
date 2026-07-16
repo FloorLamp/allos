@@ -5,7 +5,7 @@ import {
   lookupRxcui,
   lookupRxcuiIngredients,
 } from "@/app/(app)/nutrition/supplement-actions";
-import { parseRxcuiIngredients } from "@/lib/rxnorm";
+import { parseRxcuiIngredients, dominantRxNormCandidate } from "@/lib/rxnorm";
 
 // Shared RxNorm confirm state for BOTH intake forms (#846, extracted from the former
 // IntakeItemForm). Owns the cached concept id (#144) + its resolved active-ingredient
@@ -20,6 +20,10 @@ export interface RxcuiState {
   error: string | null;
   find: (name: string) => Promise<void>;
   confirm: (code: string) => Promise<void>;
+  // Auto-confirm the RxNorm code for a catalog pick (#851 item 7): look up candidates
+  // and adopt an UNAMBIGUOUS top match; surface an ambiguous list for a manual pick;
+  // degrade silently offline / on no match. Never auto-confirms an ambiguous candidate.
+  autoConfirm: (name: string) => Promise<void>;
   clear: () => void;
   // A name edit invalidates a previously-confirmed code (and its ingredients).
   onNameChange: () => void;
@@ -88,6 +92,28 @@ export function useIntakeRxcui(initial?: {
     }
   }
 
+  // Auto-confirm on a catalog pick (#851 item 7). Runs the same lookup as `find`, but
+  // instead of always surfacing candidates it silently CONFIRMS an unambiguous top
+  // match (single candidate / dominant score) and only surfaces the list when it's
+  // ambiguous. Any timeout/offline/no-match degrades silently — the manual "Find
+  // RxNorm code" affordance stays available. Never confirms an ambiguous candidate.
+  async function autoConfirm(name: string) {
+    const term = name.trim();
+    if (!term) return;
+    try {
+      const found = await lookupRxcui(term);
+      if (found.length === 0) return; // silent degrade (offline / no match)
+      const dominant = dominantRxNormCandidate(found);
+      if (dominant) {
+        await confirm(dominant);
+      } else {
+        setCandidates(found); // ambiguous → manual pick
+      }
+    } catch {
+      // Silent degrade — keep name-only matching; the manual affordance remains.
+    }
+  }
+
   function clear() {
     apply(null, null);
     setCandidates(null);
@@ -113,6 +139,7 @@ export function useIntakeRxcui(initial?: {
     error,
     find,
     confirm,
+    autoConfirm,
     clear,
     onNameChange,
     reset,

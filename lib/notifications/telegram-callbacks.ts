@@ -24,6 +24,7 @@ import {
   setProfileSetting,
   setProfileFoodTelegram,
   setFoodTelegramPrompted,
+  getUserAge,
 } from "../settings";
 import { getProfileNameById } from "../profile-summary-load";
 import { administrationOutcomeText } from "../administration-format";
@@ -497,7 +498,13 @@ async function handleDoseTap(
       profileId,
       chatId,
       messageId,
-      renderWindowMessage(profileId, session.window, tap.date, session.entries)
+      renderWindowMessage(
+        profileId,
+        session.window,
+        tap.date,
+        session.entries,
+        getUserAge(profileId)
+      )
     );
     return;
   }
@@ -594,7 +601,13 @@ async function handleAllTaken(
     profileId,
     chatId,
     messageId,
-    renderWindowMessage(profileId, all.window, all.date, refreshed)
+    renderWindowMessage(
+      profileId,
+      all.window,
+      all.date,
+      refreshed,
+      getUserAge(profileId)
+    )
   );
 }
 

@@ -43,6 +43,7 @@ import {
   FOOD_TIMINGS,
   parseDosage,
   spreadDoseTimes,
+  collapsePrnDoses,
 } from "@/lib/supplement-schedule";
 import { formError, formOk, type FormResult } from "@/lib/types";
 import type {
@@ -111,6 +112,20 @@ function fields(formData: FormData) {
   const prescriber = isMed ? str("prescriber") : null;
   const pharmacy = isMed ? str("pharmacy") : null;
   const rxNumber = isMed ? str("rx_number") : null;
+  // Rx / OTC flag (issue #851). A medication carries it; a supplement is always 0.
+  // The form submits an explicit 0/1 ("rx" hidden field it keeps in sync); when the
+  // field is ABSENT (a lean caller like the quick-add), derive it the same way the
+  // migration backfill does — a recorded prescriber or Rx number ⇒ Rx, else OTC.
+  const rxRaw = formData.get("rx");
+  const rx = !isMed
+    ? 0
+    : rxRaw === "1" || rxRaw === "on"
+      ? 1
+      : rxRaw === "0"
+        ? 0
+        : prescriber || rxNumber
+          ? 1
+          : 0;
   const asNeeded =
     isMed &&
     (formData.get("as_needed") === "1" || formData.get("as_needed") === "on")
@@ -166,6 +181,7 @@ function fields(formData: FormData) {
     prescriber,
     pharmacy,
     rxNumber,
+    rx,
     asNeeded,
     minIntervalHours,
     maxDailyCount,
@@ -284,7 +300,7 @@ export async function addSupplement(formData: FormData): Promise<FormResult> {
   const name = String(formData.get("name") ?? "").trim();
   if (!name) return formError("Enter a name.");
   const f = fields(formData);
-  const doses = parseDoses(formData);
+  const doses = collapsePrnDoses(parseDoses(formData), f.asNeeded === 1);
   const pairs = parsePairs(formData);
   // Prescribing provider: medications only, resolved into the shared
   // GLOBAL registry (create-on-type); NULL for supplements.
@@ -305,10 +321,10 @@ export async function addSupplement(formData: FormData): Promise<FormResult> {
            (name, notes, condition, priority, brand, product, situation, situation_id, stack,
             critical, escalate_after_min, escalate_chat_id,
             quantity_on_hand, qty_per_dose,
-            kind, prescriber, pharmacy, rx_number, as_needed,
+            kind, prescriber, pharmacy, rx_number, rx, as_needed,
             min_interval_hours, max_daily_count, redose_notice,
             rxcui, rxcui_ingredients, provider_id, source, profile_id)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'manual',?)`
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'manual',?)`
       )
       .run(
         name,
@@ -329,6 +345,7 @@ export async function addSupplement(formData: FormData): Promise<FormResult> {
         f.prescriber,
         f.pharmacy,
         f.rxNumber,
+        f.rx,
         f.asNeeded,
         f.minIntervalHours,
         f.maxDailyCount,
@@ -360,7 +377,7 @@ export async function updateSupplement(
   const name = String(formData.get("name") ?? "").trim();
   if (!name) return formError("Enter a name.");
   const f = fields(formData);
-  const doses = parseDoses(formData);
+  const doses = collapsePrnDoses(parseDoses(formData), f.asNeeded === 1);
   const pairs = parsePairs(formData);
   // The on-hand value the form was LOADED with (issue #467): quantity_on_hand is a
   // concurrently-decremented counter, so we compare-and-set against this instead of
@@ -414,7 +431,7 @@ export async function updateSupplement(
              product = ?, situation = ?, situation_id = ?, stack = ?,
              critical = ?, escalate_after_min = ?, escalate_chat_id = ?,
              quantity_on_hand = ?, qty_per_dose = ?,
-             kind = ?, prescriber = ?, pharmacy = ?, rx_number = ?, as_needed = ?,
+             kind = ?, prescriber = ?, pharmacy = ?, rx_number = ?, rx = ?, as_needed = ?,
              min_interval_hours = ?, max_daily_count = ?, redose_notice = ?,
              rxcui = ?, rxcui_ingredients = ?, provider_id = ?
        WHERE id = ? AND profile_id = ?`
@@ -437,6 +454,7 @@ export async function updateSupplement(
       f.prescriber,
       f.pharmacy,
       f.rxNumber,
+      f.rx,
       f.asNeeded,
       f.minIntervalHours,
       f.maxDailyCount,

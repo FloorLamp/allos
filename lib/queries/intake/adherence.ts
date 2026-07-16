@@ -18,7 +18,7 @@ import {
   DOSE_LOG_DATE_WINDOW_DAYS,
   isGivenAtAccepted,
 } from "../../dose-log-window";
-import { decrementSupply } from "./refill";
+import { decrementSupply, incrementSupply } from "./refill";
 import type {
   AdministrationOutcome,
   DoseStatus,
@@ -332,10 +332,15 @@ export function getAdministrationsForItemOnDate(
   profileId: number,
   itemId: number,
   date: string
-): { given_at: string | null; taken_at: string; amount: string | null }[] {
+): {
+  id: number;
+  given_at: string | null;
+  taken_at: string;
+  amount: string | null;
+}[] {
   return db
     .prepare(
-      `SELECT l.given_at, l.taken_at, l.amount
+      `SELECT l.id, l.given_at, l.taken_at, l.amount
          FROM intake_item_logs l
          JOIN intake_items s ON s.id = l.item_id
         WHERE s.profile_id = ? AND l.item_id = ? AND l.date = ?
@@ -343,10 +348,177 @@ export function getAdministrationsForItemOnDate(
         ORDER BY COALESCE(l.given_at, l.taken_at) DESC, l.id DESC`
     )
     .all(profileId, itemId, date) as {
+    id: number;
     given_at: string | null;
     taken_at: string;
     amount: string | null;
   }[];
+}
+
+// PRN administration history for the med's OWN detail page (#851 item 13): every
+// administration on/after `sinceDate`, most recent first, so the page can answer "how
+// often last month" — the card alone shows only TODAY. Profile-scoped via the parent
+// item. Returns the intake time (given_at ?? taken_at) + amount for grouping/formatting
+// in the profile's timezone at the call site.
+export function getPrnAdministrationHistory(
+  profileId: number,
+  itemId: number,
+  sinceDate: string
+): {
+  date: string;
+  given_at: string | null;
+  taken_at: string;
+  amount: string | null;
+}[] {
+  return db
+    .prepare(
+      `SELECT l.date, l.given_at, l.taken_at, l.amount
+         FROM intake_item_logs l
+         JOIN intake_items s ON s.id = l.item_id
+        WHERE s.profile_id = ? AND l.item_id = ? AND l.status = 'taken'
+          AND l.date >= ?
+        ORDER BY l.date DESC, COALESCE(l.given_at, l.taken_at) DESC, l.id DESC`
+    )
+    .all(profileId, itemId, sinceDate) as {
+    date: string;
+    given_at: string | null;
+    taken_at: string;
+    amount: string | null;
+  }[];
+}
+
+// ---- Undoable PRN administration delete (issue #851 item 11) ----
+//
+// A fat-fingered PRN Log tap is otherwise PERMANENT and NOT cosmetic: the phantom
+// administration decremented on-hand supply, ADVANCED the redose window (the next real
+// dose shows "wait 6h" off a dose never given — a safety-relevant inversion), and
+// counted toward the daily max. Removing it must invert EVERY side effect (the row-ops
+// discipline). Because the window/count are DERIVED from the ledger rows (see
+// prn-redose.ts / med-data.ts), deleting the row auto-recomputes them — the only stored
+// side effect to invert is supply. The notify one-shot marker (notify_last_redose_*) is
+// id-keyed and never recycles, so a stale marker after a delete is a harmless dead ref.
+//
+// Kind 'administration' in deleted_rows (the shared 24h-purged holding table); restore
+// re-inserts the ledger row (NEW id) and RE-decrements supply. The undo toast +
+// undoDelete action route restore back here via restoreDeletedRow's kind branch.
+
+// The captured shape of one administration row (the deleted_rows payload for kind
+// 'administration'). item_id + the log's own columns, enough to re-insert it verbatim.
+interface CapturedAdministration {
+  dose_id: number;
+  item_id: number;
+  date: string;
+  taken_at: string;
+  given_at: string | null;
+  amount: string | null;
+  status: string;
+}
+
+// Delete one PRN administration (an intake_item_logs row) with capture-for-undo, and
+// invert its supply decrement. Auth-blind, profileId-first. Ownership is verified via
+// the parent item's profile_id (the ledger has no profile_id column). Returns the undo
+// token (deleted_rows id) or null when the row isn't the profile's / is gone. One
+// IMMEDIATE transaction so the capture + delete + supply re-credit commit together.
+export function deleteAdministrationLog(
+  profileId: number,
+  logId: number
+): number | null {
+  return writeTx((): number | null => {
+    const row = db
+      .prepare(
+        `SELECT l.id, l.dose_id, l.item_id, l.date, l.taken_at, l.given_at,
+                l.amount, l.status
+           FROM intake_item_logs l
+           JOIN intake_items s ON s.id = l.item_id
+          WHERE l.id = ? AND s.profile_id = ?`
+      )
+      .get(logId, profileId) as
+      (CapturedAdministration & { id: number }) | undefined;
+    if (!row) return null;
+
+    const captured: CapturedAdministration = {
+      dose_id: row.dose_id,
+      item_id: row.item_id,
+      date: row.date,
+      taken_at: row.taken_at,
+      given_at: row.given_at,
+      amount: row.amount,
+      status: row.status,
+    };
+    const info = db
+      .prepare(
+        `INSERT INTO deleted_rows (profile_id, kind, label, payload)
+         VALUES (?, 'administration', 'administration', ?)`
+      )
+      .run(profileId, JSON.stringify({ administration: captured }));
+
+    db.prepare(`DELETE FROM intake_item_logs WHERE id = ?`).run(logId);
+    // Invert the supply decrement the administration applied (a 'taken' row consumed
+    // supply). incrementSupply is a no-op when quantity_on_hand IS NULL (untracked).
+    if (row.status === "taken") incrementSupply(profileId, row.item_id);
+    return Number(info.lastInsertRowid);
+  });
+}
+
+// Restore a captured PRN administration from its undo token (routed here by
+// restoreDeletedRow's kind branch). Re-inserts the ledger row (NEW id) and RE-applies
+// the supply decrement (the inverse of the delete's re-credit), then drops the holding
+// row — all in one IMMEDIATE transaction. Returns false when the token is gone (already
+// restored / swept / another profile's) or the parent dose no longer exists (the med
+// was deleted since), so a stale undo can't resurrect a dangling ledger row.
+export function restoreAdministrationLog(
+  profileId: number,
+  undoId: number
+): boolean {
+  return writeTx((): boolean => {
+    const holding = db
+      .prepare(
+        `SELECT payload FROM deleted_rows
+          WHERE id = ? AND profile_id = ? AND kind = 'administration'`
+      )
+      .get(undoId, profileId) as { payload: string } | undefined;
+    if (!holding) return false;
+
+    let captured: CapturedAdministration;
+    try {
+      captured = (JSON.parse(holding.payload) as { administration: unknown })
+        .administration as CapturedAdministration;
+    } catch {
+      return false;
+    }
+    // The parent dose must still exist and belong to this profile (the med may have
+    // been deleted since the capture — its ledger rows would have cascaded away).
+    const dose = db
+      .prepare(
+        `SELECT 1 FROM intake_item_doses d
+           JOIN intake_items s ON s.id = d.item_id
+          WHERE d.id = ? AND d.item_id = ? AND s.profile_id = ?`
+      )
+      .get(captured.dose_id, captured.item_id, profileId);
+    if (!dose) return false;
+
+    db.prepare(
+      `INSERT INTO intake_item_logs
+         (dose_id, item_id, date, taken_at, given_at, amount, status)
+       VALUES (?,?,?,?,?,?,?)`
+    ).run(
+      captured.dose_id,
+      captured.item_id,
+      captured.date,
+      captured.taken_at,
+      captured.given_at,
+      captured.amount,
+      captured.status
+    );
+    if (captured.status === "taken") {
+      decrementSupply(profileId, captured.item_id);
+    }
+    db.prepare(`DELETE FROM deleted_rows WHERE id = ? AND profile_id = ?`).run(
+      undoId,
+      profileId
+    );
+    return true;
+  });
 }
 
 // ---- PRN redose notice (#798) ----

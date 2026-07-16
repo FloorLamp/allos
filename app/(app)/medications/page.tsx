@@ -145,6 +145,7 @@ export default async function MedicationsPage() {
           pgxVariants={data.pgxVariants}
           trainingRestricted={data.trainingRestricted}
           pediatric={data.pediatric}
+          age={data.age}
         />
       </div>
     </div>

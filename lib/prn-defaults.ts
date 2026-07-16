@@ -55,6 +55,14 @@ export interface PrnPediatricDefaults {
   ageGateText: string;
   bands: PediatricBand[];
   formulations: PrnFormulation[];
+  // The CHILD label's redose interval / daily-max, when the pediatric label DIFFERS
+  // from the adult figure (issue #851 item 12) — e.g. children's acetaminophen is max
+  // 5 doses/24h vs the adult 6. CITED via the entry's `source` (label-sourced only,
+  // never a guess). Absent ⇒ no pediatric redose prefill: for a child profile the form
+  // then REFUSES to prefill the adult numbers (never guess below the label's floor,
+  // the #798 posture), rather than silently applying adult interval/max.
+  minIntervalHours?: number;
+  maxDailyCount?: number;
 }
 
 export interface PrnDefaultEntry {
@@ -99,6 +107,43 @@ function nameContains(itemNorm: string, synNorm: string): boolean {
 // the dataset. RxCUI is authoritative (exact match of ANY of the item's CUIs against
 // an entry's ingredient CUIs); a normalized name/synonym match is the fallback. First
 // match wins (an item resolves to at most one ingredient's defaults).
+// The redose interval / daily-max to PRE-FILL for a profile from a matched entry
+// (issue #851 item 12). For an adult (or unknown age), the adult label figures. For a
+// CHILD, the pediatric label figures WHEN the entry carries them (the label differs) —
+// otherwise null, a deliberate REFUSAL to prefill the adult numbers for a child (the
+// #798 "never guess below the label's floor" posture). `tier` labels the button/badge
+// so a prefilled value is always attributed to the right label. Pure.
+export interface RedoseLabelDefaults {
+  minIntervalHours: number;
+  maxDailyCount: number;
+  tier: "adult" | "pediatric";
+  source: string;
+}
+
+export function redoseLabelDefaults(
+  entry: PrnDefaultEntry,
+  isChild: boolean
+): RedoseLabelDefaults | null {
+  if (isChild) {
+    const ped = entry.pediatric;
+    if (ped?.minIntervalHours != null && ped?.maxDailyCount != null) {
+      return {
+        minIntervalHours: ped.minIntervalHours,
+        maxDailyCount: ped.maxDailyCount,
+        tier: "pediatric",
+        source: entry.source,
+      };
+    }
+    return null;
+  }
+  return {
+    minIntervalHours: entry.adult.minIntervalHours,
+    maxDailyCount: entry.adult.maxDailyCount,
+    tier: "adult",
+    source: entry.source,
+  };
+}
+
 export function prnDefaultsFor(item: {
   name: string;
   rxcui: string | null;

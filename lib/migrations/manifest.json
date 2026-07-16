@@ -42,5 +42,6 @@
   "041-administration-ledger.ts": "5de42c52660db76f2cbdee5ac90cfb51752d5a4beb12b790d16ddc257e8d8abf",
   "042-symptom-logs.ts": "959937b36298d12b358f2aaa2310e761e37553326e239483629aece6587ac0ca",
   "043-prn-redose.ts": "c648da63c45afed3255d9d4f9bbcc75f1997870adc7945fabf8c584d8880906e",
-  "044-episode-share-links.ts": "57ec2abe606acdd10b0cc78bb9fd5d9708f6b379476dfbb5f4aba2dd6862e2e5"
+  "044-episode-share-links.ts": "57ec2abe606acdd10b0cc78bb9fd5d9708f6b379476dfbb5f4aba2dd6862e2e5",
+  "045-medication-rx-flag.ts": "b802576bd9054ca0f26c45c531f13ab8a27fc12130584147c35c19df55c4e2f8"
 }

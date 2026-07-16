@@ -1,6 +1,6 @@
-import Link from "next/link";
 import DoseStatusControl from "@/components/DoseStatusControl";
 import QuickLogPrnControl from "@/components/dashboard/QuickLogPrnControl";
+import TodayMedRow from "@/components/medications/TodayMedRow";
 import { medicationHref } from "@/lib/hrefs";
 import type { MedCardData } from "./med-data";
 
@@ -40,30 +40,23 @@ export default function MedicationsTodayPanel({
       </h2>
       <div className="space-y-3">
         {dueScheduled.map((d) => (
-          <div
+          <TodayMedRow
             key={d.med.id}
-            data-testid="today-scheduled-med"
-            className="flex flex-wrap items-center justify-between gap-2"
-          >
-            <Link
-              href={medicationHref(d.med.id)}
-              className="font-medium text-slate-800 hover:underline dark:text-slate-100"
-            >
-              {d.med.name}
-            </Link>
-            <div className="flex flex-wrap gap-2">
-              {d.doses.map((dose) => (
-                <DoseStatusControl
-                  key={dose.id}
-                  doseId={dose.id}
-                  taken={taken.has(dose.id)}
-                  skipped={skipped.has(dose.id)}
-                  variant="pill"
-                  label={dose.amount || dose.time_of_day || "Dose"}
-                />
-              ))}
-            </div>
-          </div>
+            testId="today-scheduled-med"
+            itemId={d.med.id}
+            name={d.med.name}
+            href={medicationHref(d.med.id)}
+            control={d.doses.map((dose) => (
+              <DoseStatusControl
+                key={dose.id}
+                doseId={dose.id}
+                taken={taken.has(dose.id)}
+                skipped={skipped.has(dose.id)}
+                variant="pill"
+                label={dose.amount || dose.time_of_day || "Dose"}
+              />
+            ))}
+          />
         ))}
 
         {prnToday.map((m) => (
@@ -73,6 +66,7 @@ export default function MedicationsTodayPanel({
             name={m.name}
             dayLabel={m.dayLabel}
             redoseLine={m.redoseLine}
+            linkToDetail
           />
         ))}
       </div>

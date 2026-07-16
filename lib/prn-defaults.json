@@ -17,11 +17,26 @@
         "minAgeMonths": 6,
         "ageGateText": "For children under 6 months, ask a doctor before use (per the product label).",
         "bands": [
-          { "minLbs": 24, "mg": 100 },
-          { "minLbs": 36, "mg": 150 },
-          { "minLbs": 48, "mg": 200 },
-          { "minLbs": 60, "mg": 250 },
-          { "minLbs": 72, "mg": 300 }
+          {
+            "minLbs": 24,
+            "mg": 100
+          },
+          {
+            "minLbs": 36,
+            "mg": 150
+          },
+          {
+            "minLbs": 48,
+            "mg": 200
+          },
+          {
+            "minLbs": 60,
+            "mg": 250
+          },
+          {
+            "minLbs": 72,
+            "mg": 300
+          }
         ],
         "formulations": [
           {
@@ -34,7 +49,9 @@
             "label": "Children's oral suspension (100 mg / 5 mL)",
             "mgPerMl": 20
           }
-        ]
+        ],
+        "minIntervalHours": 6,
+        "maxDailyCount": 4
       },
       "source": "OTC Drug Facts label — ibuprofen oral suspension (children's), U.S. FDA."
     },
@@ -54,11 +71,26 @@
         "minAgeMonths": 3,
         "ageGateText": "For children under 12 weeks (about 3 months), ask a doctor before use (per the product label).",
         "bands": [
-          { "minLbs": 24, "mg": 160 },
-          { "minLbs": 36, "mg": 240 },
-          { "minLbs": 48, "mg": 320 },
-          { "minLbs": 60, "mg": 400 },
-          { "minLbs": 72, "mg": 480 }
+          {
+            "minLbs": 24,
+            "mg": 160
+          },
+          {
+            "minLbs": 36,
+            "mg": 240
+          },
+          {
+            "minLbs": 48,
+            "mg": 320
+          },
+          {
+            "minLbs": 60,
+            "mg": 400
+          },
+          {
+            "minLbs": 72,
+            "mg": 480
+          }
         ],
         "formulations": [
           {
@@ -71,7 +103,9 @@
             "label": "Children's oral suspension (160 mg / 5 mL)",
             "mgPerMl": 32
           }
-        ]
+        ],
+        "minIntervalHours": 4,
+        "maxDailyCount": 5
       },
       "source": "OTC Drug Facts label — acetaminophen oral suspension (children's), U.S. FDA."
     },

@@ -383,3 +383,34 @@ export function spreadDoseTimes(
   };
   return presets[n] ?? Array(n).fill(fallback ?? "Anytime");
 }
+
+// PRN ⇒ amount-only dose shape (issue #851 item 9). A PRN (as-needed) medication and
+// the scheduled time-slot / split-dose path are conceptually mutually exclusive: the
+// redose interval owns "when", so a PRN med carries exactly ONE amount-only dose row
+// (no time_of_day slot, no split). This enforces that invariant at the save boundary
+// regardless of surface — a legacy hybrid row (a PRN med with time slots) is collapsed
+// to its first dose's amount on the next save, keeping that dose's id so its
+// administration history survives. `food_timing` is preserved (an NSAID stays "with
+// food"); only the schedule slot is dropped. A no-op for a non-PRN item. Pure.
+export interface CollapsibleDose {
+  id?: number;
+  amount: string | null;
+  time_of_day: string | null;
+  food_timing: FoodTiming;
+}
+
+export function collapsePrnDoses<T extends CollapsibleDose>(
+  doses: T[],
+  asNeeded: boolean
+): CollapsibleDose[] {
+  if (!asNeeded) return doses;
+  const first = doses[0];
+  return [
+    {
+      id: first?.id,
+      amount: first?.amount ?? null,
+      time_of_day: null,
+      food_timing: first?.food_timing ?? "any",
+    },
+  ];
+}

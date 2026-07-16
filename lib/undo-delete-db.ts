@@ -19,6 +19,7 @@ import {
   type Row,
 } from "./undo-delete";
 import { revertActivityMerge } from "./merge-activity";
+import { restoreAdministrationLog } from "./queries/intake/adherence";
 import {
   writeImportTombstoneForRow,
   removeImportTombstoneForRow,
@@ -32,6 +33,12 @@ const KIND_LABELS: Record<string, string> = {
   "body-metric": "body metric",
   "biomarker-record": "biomarker record",
   "intake-item": "intake item",
+  // PRN administration (#851 item 11) — captured/restored by its own bespoke path
+  // (deleteAdministrationLog / restoreAdministrationLog in lib/queries/intake/
+  // adherence.ts), because its restore must invert a SUPPLY side effect and the ledger
+  // row (intake_item_logs) has no profile_id column, so the generic entity-registry
+  // capture/restore (which assumes a profile_id root) doesn't apply.
+  administration: "administration",
 };
 
 // Does the referenced row still exist? Used at restore to reconcile captured external
@@ -122,6 +129,13 @@ export function restoreDeletedRow(profileId: number, undoId: number): boolean {
     )
     .get(undoId, profileId) as { kind: string; payload: string } | undefined;
   if (!spec0) return false;
+
+  // PRN administration (#851 item 11): a bespoke restore that re-inserts the ledger row
+  // and RE-applies the supply decrement (the generic entity-registry path re-inserts
+  // verbatim and inverts no data side effect, and the ledger has no profile_id root).
+  if (spec0.kind === "administration") {
+    return restoreAdministrationLog(profileId, undoId);
+  }
 
   const payload = parsePayload(spec0.payload);
   const spec = getKindSpec(payload.kind);
