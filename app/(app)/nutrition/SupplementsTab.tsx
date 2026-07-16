@@ -35,6 +35,7 @@ import { FOOD_TIMING_PREFIX } from "@/lib/food-drug-interactions";
 import { type InteractionItem } from "@/lib/drug-interactions";
 import { type PgxVariantInput } from "@/lib/pgx";
 import { FindingCard, DismissFindingButton } from "@/components/FindingCard";
+import { Notice } from "@/components/Notice";
 import IntakeWarnings from "@/components/IntakeWarnings";
 import { today } from "@/lib/db";
 import { parseRxcuiIngredients } from "@/lib/rxnorm";
@@ -65,7 +66,6 @@ import {
 import { compareDoseDay, type DoseDayEntry } from "@/lib/dose-order";
 import type { Supplement, SupplementDose } from "@/lib/types";
 import { EmptyState } from "@/components/ui";
-import { IconAlertTriangle } from "@tabler/icons-react";
 import SubmitButton from "@/components/SubmitButton";
 import EditableSupplementRow from "./EditableSupplementRow";
 import DismissSuggestionButton from "./DismissSuggestionButton";
@@ -529,19 +529,20 @@ export default async function SupplementsTab() {
               <section key={bucket}>
                 <h2 className="mb-2 section-label">{bucket}</h2>
                 {warnings.map((w) => (
-                  <div
+                  <Notice
                     key={w.key}
-                    className="mb-2 flex items-center justify-between gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300"
+                    tone="amber"
+                    icon
+                    className="mb-2"
+                    action={
+                      <DismissFindingButton
+                        dedupeKey={w.key}
+                        label={`Dismiss: ${w.text}`}
+                      />
+                    }
                   >
-                    <span className="flex items-center gap-1.5">
-                      <IconAlertTriangle className="h-4 w-4 shrink-0" />{" "}
-                      {w.text}
-                    </span>
-                    <DismissFindingButton
-                      dedupeKey={w.key}
-                      label={`Dismiss: ${w.text}`}
-                    />
-                  </div>
+                    {w.text}
+                  </Notice>
                 ))}
                 <div className="space-y-3">
                   {items.map((it) => renderRow(it, true))}

@@ -20,6 +20,7 @@ import {
   type ImmunizationFilter,
 } from "@/lib/immunization-status";
 import { PageHeader, EmptyState } from "@/components/ui";
+import { Notice } from "@/components/Notice";
 import { parseSortColumn, parseSortDir, sortRows } from "@/lib/table-sort";
 import SortableHeader from "@/components/SortableHeader";
 import { STATUS_TEXT, statusBadge } from "./status-ui";
@@ -179,7 +180,7 @@ export default async function ImmunizationsPage(props: {
       />
 
       {!hasAge && (
-        <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/50 dark:text-amber-200">
+        <Notice tone="amber" className="mb-5">
           No date of birth or age is set for this profile, so age-based
           recommendations (due / overdue / next dose) cannot be computed. You
           can still record and review doses below.{" "}
@@ -187,17 +188,17 @@ export default async function ImmunizationsPage(props: {
             Set date of birth
           </Link>
           .
-        </div>
+        </Notice>
       )}
       {hasAge && !birthdate && (
-        <div className="mb-5 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:border-ink-700 dark:bg-ink-850 dark:text-slate-300">
+        <Notice tone="slate" className="mb-5">
           Recommendations use the stored age for this profile. Add a date of
           birth to place recorded doses on the schedule grid by age-at-dose.{" "}
           <Link href="/settings/profile" className="font-medium underline">
             Set date of birth
           </Link>
           .
-        </div>
+        </Notice>
       )}
 
       {/* Master table: one row per tracked vaccine, sortable + status-filterable,

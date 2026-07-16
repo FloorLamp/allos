@@ -1,5 +1,6 @@
 import Avatar, { type AvatarProfile } from "@/components/Avatar";
 import { MedicalValue } from "@/components/ui";
+import { NOTICE_TONE } from "@/components/Notice";
 import { fmtWeight } from "@/lib/units";
 import type { WeightUnit } from "@/lib/settings";
 import { isFieldInScope, type ShareField } from "@/lib/share-links";
@@ -130,7 +131,9 @@ export default function ProfilePassport({
   return (
     <div className="flex flex-col gap-4">
       {mode === "share" && (
-        <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-950/40 dark:text-amber-200">
+        <div
+          className={`rounded-xl border px-4 py-3 text-sm ${NOTICE_TONE.amber}`}
+        >
           <div className="font-semibold uppercase tracking-wide">
             Shared read-only copy — not an official medical record
           </div>

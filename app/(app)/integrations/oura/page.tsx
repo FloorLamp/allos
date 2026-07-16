@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { IconArrowLeft, IconCheck } from "@tabler/icons-react";
 import { PageHeader } from "@/components/ui";
+import { Notice } from "@/components/Notice";
 import { getIntegration } from "@/lib/integrations/registry";
 import { getConnection, getOuraConfig } from "@/lib/integrations/connections";
 import {
@@ -63,23 +64,21 @@ export default async function OuraPage(props: {
       <PageHeader title={def.name} subtitle={def.blurb} />
 
       {error && (
-        <div
-          className="mb-4 max-w-3xl rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-300"
-          data-testid="oura-error"
-        >
+        <Notice tone="rose" testid="oura-error" className="mb-4 max-w-3xl">
           {error}
-        </div>
+        </Notice>
       )}
 
       {needsReauth && !connected && (
-        <div
-          className="mb-4 max-w-3xl rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-300"
-          data-testid="oura-needs-reauth"
+        <Notice
+          tone="rose"
+          testid="oura-needs-reauth"
+          className="mb-4 max-w-3xl"
         >
           Your Oura connection expired — the saved personal access token was
           revoked or is no longer valid, so automatic syncing has stopped. Paste
           a fresh token below to resume.
-        </div>
+        </Notice>
       )}
 
       {connected ? (

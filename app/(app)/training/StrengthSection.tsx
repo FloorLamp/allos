@@ -17,6 +17,7 @@ import LineChartCard from "@/components/LineChartCard";
 import StrengthExplorer from "@/components/StrengthExplorer";
 import PrCard from "@/components/PrCard";
 import { EmptyState } from "@/components/ui";
+import { Notice } from "@/components/Notice";
 
 // Strength analytics + coaching. Extracted from the former /workouts page, with
 // a "Recent PRs" card added on top.
@@ -78,10 +79,10 @@ export default async function StrengthSection() {
       </div>
 
       {!bodyweightKg && exercises.length > 0 && (
-        <div className="mb-6 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+        <Notice tone="amber" className="mb-6">
           Add a body weight entry on the Body Metrics page to see strength
           standards relative to your bodyweight.
-        </div>
+        </Notice>
       )}
 
       <StrengthExplorer
