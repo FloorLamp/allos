@@ -16,6 +16,7 @@ export type NotificationKind =
   | "escalation" // missed-dose escalation (safety)
   | "refill" // low-supply refill nudge
   | "preventive" // preventive-care nudge
+  | "illness-care" // logged-symptom duration/trajectory care finding (#805)
   | "workout" // training/workout reminder
   | "food" // food-log nudge / first-connection opt-in prompt (#682)
   | "digest" // morning digest

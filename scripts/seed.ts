@@ -1844,15 +1844,20 @@ const seedSymptom = db.prepare(
    DO UPDATE SET severity = MAX(symptom_logs.severity, excluded.severity)`
 );
 const seededSymptoms: [number, string, number, string | null][] = [
-  // Current episode.
+  // Current episode. Fever is logged on ALL FOUR consecutive days (daysAgo 3→0),
+  // so it crosses the cited "more than 3 days" line and the illness-care care
+  // finding (#805) surfaces on Upcoming + the Needs-attention hero.
   [3, "sore_throat", 2, null],
   [3, "fatigue", 2, null],
+  [3, "fever", 2, null],
   [2, "fever", 3, "Peaked in the evening"],
   [2, "cough", 3, null],
   [2, "Sinus headache", 2, null],
   [1, "cough", 2, null],
   [1, "congestion", 2, null],
+  [1, "fever", 3, null],
   [0, "cough", 1, null],
+  [0, "fever", 2, null],
   // Past episode.
   [58, "headache", 2, null],
   [57, "nausea", 3, null],

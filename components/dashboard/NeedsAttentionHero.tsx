@@ -13,6 +13,7 @@ import {
   IconPlugConnectedX,
   IconInbox,
   IconAlertTriangle,
+  IconTemperature,
   IconCircleCheck,
   type TablerIcon,
 } from "@tabler/icons-react";
@@ -57,6 +58,7 @@ const DOMAIN_ICON: Record<string, TablerIcon> = {
   "prn-max": IconPill,
   refill: IconRefresh,
   "dietary-limit": IconAlertTriangle,
+  "illness-care": IconTemperature,
   interaction: IconAlertTriangle,
   appointment: IconStethoscope,
   visit: IconStethoscope,

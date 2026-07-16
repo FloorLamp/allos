@@ -175,14 +175,41 @@ export function episodeHeadline(ep: AssembledEpisode): string {
   return parts.join(" · ");
 }
 
-// The cross-profile chip line: "Mia · sick day 3 · 101.3°F this morning". `name` is the
-// profile's (disambiguated) name; temp/day clauses drop out when absent.
+// Whether an OPEN episode is trending WORSE right now — a pure VISIBILITY signal over
+// the same #801 assembly (no second engine, no medical claim, issue #805): the fever
+// curve is rising, OR some symptom's most-recent severity rose vs the prior
+// consecutive day. This is only a caregiver-facing "the trend is up" arrow on the
+// household chip — it is NOT the cited illness-care care finding (that lives in
+// lib/illness-care.ts, dataset-gated per symptom) and asserts nothing clinical.
+export function episodeIsWorsening(ep: AssembledEpisode): boolean {
+  if (feverTrend(ep.temperatures) === "rising") return true;
+  for (const s of ep.symptoms) {
+    const pts = s.points;
+    if (pts.length < 2) continue;
+    const last = pts[pts.length - 1];
+    const prev = pts[pts.length - 2];
+    if (
+      daysBetweenDateStr(prev.date, last.date) === 1 &&
+      last.severity > prev.severity
+    )
+      return true;
+  }
+  return false;
+}
+
+// The cross-profile chip line: "Mia · sick day 3 · 101.3°F · worsening ↑". `name` is
+// the profile's (disambiguated) name; temp/day/worsening clauses drop out when absent.
+// The "worsening ↑" marker is a visibility-only trend arrow (episodeIsWorsening) — no
+// medical claim (issue #805).
 export function householdSickLine(name: string, ep: AssembledEpisode): string {
   const parts: string[] = [name];
   const day = episodeDayNumber(ep.start, ep.lastActiveDay ?? ep.asOf);
   parts.push(day != null ? `sick day ${day}` : "sick");
   if (ep.latestTemp) {
     parts.push(`${ep.latestTemp.degF.toFixed(1)}°F`);
+  }
+  if (episodeIsWorsening(ep)) {
+    parts.push("worsening ↑");
   }
   return parts.join(" · ");
 }
