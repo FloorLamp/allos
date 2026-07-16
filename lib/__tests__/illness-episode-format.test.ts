@@ -14,6 +14,7 @@ import {
 // A minimal assembled episode with sensible defaults, overridable per test.
 function ep(over: Partial<AssembledEpisode> = {}): AssembledEpisode {
   return {
+    id: null,
     situation: "Illness",
     start: "2026-06-01",
     end: null,

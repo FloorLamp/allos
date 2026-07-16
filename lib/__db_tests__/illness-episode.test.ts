@@ -303,6 +303,12 @@ function makeCurrentlySick(p: number) {
     "situation_events",
     serializeSituationEvents([], events)
   );
+  // #856: the open episode is now a ROW (identity + annotations); membership stays
+  // derived. Open one starting `start` so currentEpisodeForProfile resolves it.
+  db.prepare(
+    `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
+     VALUES (?, 'Illness', ?, NULL)`
+  ).run(p, start);
   logSymptomCore(p, "cough", 2, today(p));
   logTemp(p, today(p), "08:00", 101.3);
 }

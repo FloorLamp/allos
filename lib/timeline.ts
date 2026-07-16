@@ -924,6 +924,7 @@ function collectEvents(
       continue; // an empty episode has no story to tell
     const anchor = assembled.lastActiveDay;
     if (!anchor) continue;
+    if (assembled.id == null) continue; // no stable row → no detail route to link
     const detailItems: NonNullable<TimelineEvent["detailItems"]> = [];
     for (const s of assembled.symptoms.slice(0, 6))
       detailItems.push({ label: s.label, value: severityLabel(s.maxSeverity) });
@@ -944,7 +945,7 @@ function collectEvents(
         subtitle: assembled.ongoing
           ? "Ongoing illness episode"
           : "Illness episode",
-        href: episodeHref(anchor),
+        href: episodeHref(assembled.id),
         tone: assembled.ongoing ? "warn" : "default",
         detailItems,
       },

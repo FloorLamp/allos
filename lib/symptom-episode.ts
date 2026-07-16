@@ -14,6 +14,10 @@
 import type { SituationEvent } from "./trend-annotations";
 
 export interface IllnessEpisode {
+  // The stored episode row id (#856), when this episode came from illness_episodes —
+  // used to link to /medical/episodes/[id]. Undefined for the pure change-log
+  // derivations below (they predate the row), which stay id-less.
+  id?: number;
   // The illness-type situation this episode belongs to (its name).
   situation: string;
   // Inclusive first active day (YYYY-MM-DD), or null = active before the log began.

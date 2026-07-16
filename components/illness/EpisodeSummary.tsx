@@ -6,6 +6,8 @@ import {
   type AssembledEpisode,
 } from "@/lib/illness-episode-format";
 import { severityLabel } from "@/lib/symptoms";
+import NotesText from "@/components/NotesText";
+import FeverChart from "@/components/illness/FeverChart";
 
 // The printable / shareable illness-episode summary (issue #801). A pure
 // presentational server component over the ONE assembled model — reused by the
@@ -51,9 +53,15 @@ function SeverityDots({ severity }: { severity: number }) {
 
 export default function EpisodeSummary({
   episode,
+  note,
+  outcome,
   generatedAt,
 }: {
   episode: AssembledEpisode;
+  // The episode-level free-text note + outcome annotation (#856 item 8/9). Optional so
+  // the public /share render (which has no row) simply omits them.
+  note?: string | null;
+  outcome?: string | null;
   generatedAt?: string;
 }) {
   const day = episodeDayNumber(
@@ -113,6 +121,22 @@ export default function EpisodeSummary({
             </dd>
           </div>
         </dl>
+        {outcome ? (
+          <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">
+            <span className="section-label mr-2">Outcome</span>
+            {outcome}
+          </p>
+        ) : null}
+        {note ? (
+          <div className="mt-3">
+            <div className="section-label mb-1">Episode note</div>
+            <NotesText
+              as="p"
+              className="text-sm text-slate-600 dark:text-slate-300"
+              notes={note}
+            />
+          </div>
+        ) : null}
       </header>
 
       {/* Symptoms */}
@@ -157,7 +181,10 @@ export default function EpisodeSummary({
           <h2 className="section-label mb-2">
             Temperature{fever ? ` — ${fever}` : ""}
           </h2>
-          <ul className="flex flex-col gap-1 text-sm">
+          {/* Item 4: the fever curve as a small line chart with a normal-range band;
+              the timed readings stay listed below as the exact detail. */}
+          <FeverChart temperatures={episode.temperatures} />
+          <ul className="mt-2 flex flex-col gap-1 text-sm">
             {episode.temperatures.map((t, i) => (
               <li
                 key={`${t.date}-${t.time ?? i}`}

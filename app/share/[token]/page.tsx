@@ -12,6 +12,7 @@ import { recordAudit } from "@/lib/audit";
 import { AUDIT_ACTIONS } from "@/lib/audit-actions";
 import {
   assembleIllnessEpisode,
+  episodeForProfileId,
   episodeForProfileSituationDate,
 } from "@/lib/illness-episode";
 import EpisodeSummary from "@/components/illness/EpisodeSummary";
@@ -69,18 +70,21 @@ export default async function SharePage(props: {
     target: String(link.id),
   });
 
-  // Episode share (issue #801): a tokenized illness summary. The range re-derives from
-  // the stored situation + anchor date, so a shared ongoing episode keeps growing.
-  if (
-    link.kind === "episode" &&
-    link.episode_situation &&
-    link.episode_anchor
-  ) {
-    const episode = episodeForProfileSituationDate(
-      link.profile_id,
-      link.episode_situation,
-      link.episode_anchor
-    );
+  // Episode share (issues #801/#856): a tokenized illness summary. A #856 link re-anchors
+  // to the STABLE episode id (surviving boundary edits); pre-#856 links carry only the
+  // situation + anchor date and resolve via the derived fallback. A stale anchor-only link
+  // whose day no longer falls in any episode 404s (the documented graceful fallback).
+  if (link.kind === "episode") {
+    const episode =
+      link.episode_id != null
+        ? episodeForProfileId(link.profile_id, link.episode_id)
+        : link.episode_situation && link.episode_anchor
+          ? episodeForProfileSituationDate(
+              link.profile_id,
+              link.episode_situation,
+              link.episode_anchor
+            )
+          : null;
     if (!episode) notFound();
     const assembled = assembleIllnessEpisode(link.profile_id, episode);
     return (

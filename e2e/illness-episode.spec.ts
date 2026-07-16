@@ -39,8 +39,10 @@ test.describe("Illness-episode view (#801)", () => {
 
     // Open the episode detail via the dashboard symptom card's "Episode" link.
     await page.goto("/");
-    const episodeLink = page.getByRole("link", { name: "Episode" }).first();
-    await followLink(page, episodeLink, /\/medical\/episodes\//);
+    const episodeLink = page
+      .getByRole("link", { name: "Episode", exact: true })
+      .first();
+    await followLink(page, episodeLink, /\/medical\/episodes\/\d+/);
 
     // Mint a share link from the Share modal.
     await page.getByRole("button", { name: "Share" }).click();

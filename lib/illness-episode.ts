@@ -28,12 +28,13 @@ import {
   getIllnessSituations,
   getSituationEvents,
 } from "./settings/profile-attrs";
+import { episodeContainingDate, type IllnessEpisode } from "./symptom-episode";
 import {
-  episodeContainingDate,
-  episodeForDate,
-  episodesForSituation,
-  type IllnessEpisode,
-} from "./symptom-episode";
+  episodeRowToDerived,
+  getEpisodeRow,
+  getEpisodeRowForDate,
+  listEpisodeRows,
+} from "./illness-episode-store";
 import type {
   AssembledEpisode,
   SymptomSeries,
@@ -209,6 +210,7 @@ export function assembleIllnessEpisode(
       : null;
 
   return {
+    id: episode.id ?? null,
     situation: episode.situation,
     start: episode.start,
     end: episode.end,
@@ -229,18 +231,25 @@ export function assembleIllnessEpisode(
   };
 }
 
-// The illness episode that CONTAINS `date` for a profile, or null. Reuses the shared
-// derivation (getIllnessSituations + getSituationEvents → episodeForDate) — never a
-// second range engine.
+// The illness episode that CONTAINS `date` for a profile, or null. Reads the stored
+// episode rows (#856): the tightest (most-recently-started) row whose [start, end)
+// covers `date`. The row's id rides along so callers can link to the [id] route.
 export function episodeForProfileDate(
   profileId: number,
   date: string
 ): IllnessEpisode | null {
-  return episodeForDate(
-    date,
-    getIllnessSituations(profileId),
-    getSituationEvents(profileId)
-  );
+  const row = getEpisodeRowForDate(profileId, date);
+  return row ? episodeRowToDerived(row) : null;
+}
+
+// One stored episode by id (the /medical/episodes/[id] route + the id-anchored share
+// resolver), or null. The assembled model's range comes straight from the row.
+export function episodeForProfileId(
+  profileId: number,
+  id: number
+): IllnessEpisode | null {
+  const row = getEpisodeRow(profileId, id);
+  return row ? episodeRowToDerived(row) : null;
 }
 
 // The episode of a NAMED situation containing `date` for a profile, or null — the
@@ -274,17 +283,10 @@ export function currentEpisodeForProfile(
   return isOpenEpisode(assembled) ? assembled : null;
 }
 
-// All of a profile's illness episodes (across every flagged situation), most-recent
-// first — what the timeline lists a card per. Each carries its derived [start, end).
+// All of a profile's illness episodes, most-recent first — what the timeline lists a
+// card per and the episodes index (#856 item 9) rows over. Each carries its stored row
+// id + [start, end). The DB (idx_illness_episodes_profile) provides the ordering, so
+// consumers no longer parse the situation-events JSON blob per profile per request.
 export function allEpisodesForProfile(profileId: number): IllnessEpisode[] {
-  const events = getSituationEvents(profileId);
-  const episodes = getIllnessSituations(profileId).flatMap((s) =>
-    episodesForSituation(s.name, events, s.active)
-  );
-  // Most-recent first: order by (lastActiveDay) descending. A null start sorts oldest.
-  return episodes.sort((a, b) => {
-    const aKey = a.start ?? "";
-    const bKey = b.start ?? "";
-    return bKey.localeCompare(aKey);
-  });
+  return listEpisodeRows(profileId).map(episodeRowToDerived);
 }
