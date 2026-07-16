@@ -1,9 +1,12 @@
 import WidgetHeader from "@/components/dashboard/WidgetHeader";
 import { today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
+import { getUnitPrefs } from "@/lib/settings";
 import { SYMPTOMS } from "@/lib/symptoms";
 import {
   getSymptomSeveritiesOnDate,
+  getSymptomNotesOnDate,
+  getSymptomLogOrder,
   getCustomSymptomNames,
   getPediatricFormContext,
 } from "@/lib/queries";
@@ -18,9 +21,16 @@ import SymptomMedQuickAdd from "./SymptomMedQuickAdd";
 // today + yesterday severities server-side and hands them to the one-tap bar (with the
 // today/yesterday toggle for the #748 backfill lesson). Because the card is illness-gated,
 // the bar's "mark as illness" bridge is off here — that direction lives on the Timeline.
-export default function SymptomLogCard({ profileId }: { profileId: number }) {
+export default function SymptomLogCard({
+  profileId,
+  loginId,
+}: {
+  profileId: number;
+  loginId: number;
+}) {
   const date = today(profileId);
   const yesterday = shiftDateStr(date, -1);
+  const temperatureUnit = getUnitPrefs(loginId).temperatureUnit;
   // While an episode is open, the card doubles as its summary header (#801): the
   // headline ("Illness · day 4 · fever trending down · …") and a link to the full
   // story, both over the SAME assembly the timeline/share surfaces use.
@@ -51,10 +61,14 @@ export default function SymptomLogCard({ profileId }: { profileId: number }) {
         altDate={yesterday}
         initial={getSymptomSeveritiesOnDate(profileId, date)}
         initialAlt={getSymptomSeveritiesOnDate(profileId, yesterday)}
+        initialNotes={getSymptomNotesOnDate(profileId, date)}
+        initialAltNotes={getSymptomNotesOnDate(profileId, yesterday)}
         symptoms={SYMPTOMS}
         customNames={getCustomSymptomNames(profileId)}
+        rankedKeys={getSymptomLogOrder(profileId)}
         suggestActivateIllness={false}
         showTemperature
+        temperatureUnit={temperatureUnit}
       />
       {/* Door C (#843): reach for an OTC med right where you're logging symptoms. */}
       <SymptomMedQuickAdd pediatric={getPediatricFormContext(profileId)} />

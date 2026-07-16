@@ -195,7 +195,11 @@ export default async function Dashboard() {
   const sickNames = disambiguateProfileNames(sickAssembled.map((x) => x.p));
   const sickHousehold: SickHouseholdEntry[] = sickAssembled.map((x) => ({
     profile: x.p,
-    line: householdSickLine(sickNames.get(x.p.id) ?? x.p.name, x.ep!),
+    line: householdSickLine(
+      sickNames.get(x.p.id) ?? x.p.name,
+      x.ep!,
+      units.temperatureUnit
+    ),
   }));
 
   // weight-trend: the deduped one-source-per-day series (getBodyMetricDailySeries,
@@ -419,7 +423,7 @@ export default async function Dashboard() {
         );
       case "symptom-log":
         return illnessActive ? (
-          <SymptomLogCard profileId={profile.id} />
+          <SymptomLogCard profileId={profile.id} loginId={login.id} />
         ) : (
           <FeelingSickCard />
         );

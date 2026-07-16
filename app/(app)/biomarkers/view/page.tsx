@@ -28,11 +28,13 @@ import {
 import { convertToCanonical, sameUnit } from "@/lib/unit-conversions";
 import { getBiomarkerInfo } from "@/lib/biomarker-info";
 import {
+  getUnitPrefs,
   getUserAgeOn,
   getUserBirthdate,
   getUserReproductiveStatus,
   getUserSex,
 } from "@/lib/settings";
+import { degFTo, tempUnitLabel } from "@/lib/units";
 import { getLatestMetricSample } from "@/lib/queries";
 import { ageInMonthsFromBirthdate } from "@/lib/date";
 import { measurementPercentile } from "@/lib/growth";
@@ -95,7 +97,8 @@ export default async function BiomarkerDetailPage(props: {
   searchParams: Promise<{ name?: string }>;
 }) {
   const searchParams = await props.searchParams;
-  const { profile } = await requireSession();
+  const { login, profile } = await requireSession();
+  const temperatureUnit = getUnitPrefs(login.id).temperatureUnit;
   const canonical = searchParams.name?.trim();
   const series = canonical
     ? getBiomarkerSeriesWithDerived(profile.id, canonical)
@@ -277,6 +280,25 @@ export default async function BiomarkerDetailPage(props: {
     const parsed = parseReferenceRange(latest.reference_range);
     if (parsed)
       bands = { refLow: parsed.low ?? null, refHigh: parsed.high ?? null };
+  }
+  // Body Temperature series-view axis (#857): canonical storage is °F, but a °C login
+  // sees the axis, plotted points, and reference bands in Celsius. Contained to the
+  // chart — the reference-range CARDS below stay in the canonical unit. Only the chart
+  // axis/data is transformed; the raw readings table shows each reading's stored unit.
+  if (chartUnit === "degF" && temperatureUnit === "C") {
+    chartUnit = tempUnitLabel("C");
+    chartPoints = chartPoints.map((p) => ({
+      ...p,
+      value: degFTo(p.value, "C"),
+    }));
+    const bandC = (v: number | null | undefined) =>
+      v == null ? v : degFTo(v, "C");
+    bands = {
+      refLow: bandC(bands.refLow),
+      refHigh: bandC(bands.refHigh),
+      optimalLow: bandC(bands.optimalLow),
+      optimalHigh: bandC(bands.optimalHigh),
+    };
   }
   const unchartedCount = plottable.length - chartPoints.length;
   const hasBounded = chartPoints.some((p) => p.bound);

@@ -32,6 +32,7 @@ import {
   setUnitPrefs,
   type DistanceUnit,
   type WeightUnit,
+  type TemperatureUnit,
 } from "@/lib/settings";
 import {
   ensureVapidKeys,
@@ -58,7 +59,10 @@ export async function saveUnitPrefs(formData: FormData) {
   const distanceUnit = (
     formData.get("distance_unit") === "mi" ? "mi" : "km"
   ) as DistanceUnit;
-  setUnitPrefs(login.id, { weightUnit, distanceUnit });
+  const temperatureUnit = (
+    formData.get("temperature_unit") === "C" ? "C" : "F"
+  ) as TemperatureUnit;
+  setUnitPrefs(login.id, { weightUnit, distanceUnit, temperatureUnit });
   // Units affect display across the whole app.
   revalidatePath("/", "layout");
 }

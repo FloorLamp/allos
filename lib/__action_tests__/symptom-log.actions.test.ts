@@ -12,6 +12,8 @@ import { db } from "@/lib/db";
 import {
   logSymptom,
   editSymptom,
+  lowerSymptom,
+  setSymptomNote,
   removeSymptom,
   renameCustomSymptom,
   deleteCustomSymptom,
@@ -202,6 +204,92 @@ describe("situations illness_type flag (#799)", () => {
     expect(
       getSituations(profile.id).find((s) => s.name === "Migraine")?.illness_type
     ).toBe(0);
+  });
+});
+
+describe("lowerSymptom — explicit lower (#857)", () => {
+  it("lowers an existing symptom-day's worst severity", async () => {
+    const login = createLogin();
+    const profile = createProfile("lower", login.id);
+    actAs(login, profile);
+
+    await logSymptom(fd({ symptom: "cough", severity: 4, date: DATE }));
+    const res = await lowerSymptom(
+      fd({ symptom: "cough", severity: 1, date: DATE })
+    );
+    expect(res).toMatchObject({ ok: true, symptom: "cough", severity: 1 });
+    expect(getSymptomSeveritiesOnDate(profile.id, DATE)).toEqual({ cough: 1 });
+  });
+
+  it("refuses to RAISE — only the tap path raises", async () => {
+    const login = createLogin();
+    const profile = createProfile("lower-guard", login.id);
+    actAs(login, profile);
+
+    await logSymptom(fd({ symptom: "cough", severity: 2, date: DATE }));
+    const res = await lowerSymptom(
+      fd({ symptom: "cough", severity: 4, date: DATE })
+    );
+    expect(res).toMatchObject({ ok: false });
+    // Unchanged at the logged worst.
+    expect(getSymptomSeveritiesOnDate(profile.id, DATE)).toEqual({ cough: 2 });
+  });
+
+  it("preserves the day's note when lowering", async () => {
+    const login = createLogin();
+    const profile = createProfile("lower-note", login.id);
+    actAs(login, profile);
+
+    await logSymptom(
+      fd({ symptom: "cough", severity: 4, date: DATE, note: "worse at night" })
+    );
+    await lowerSymptom(fd({ symptom: "cough", severity: 2, date: DATE }));
+    const [row] = getSymptomsOnDate(profile.id, DATE);
+    expect(row).toMatchObject({ severity: 2, note: "worse at night" });
+  });
+
+  it("a plain re-tap still only RAISES (worst-severity), never lowers", async () => {
+    const login = createLogin();
+    const profile = createProfile("tap-raise", login.id);
+    actAs(login, profile);
+
+    await logSymptom(fd({ symptom: "cough", severity: 3, date: DATE }));
+    await logSymptom(fd({ symptom: "cough", severity: 1, date: DATE }));
+    expect(getSymptomSeveritiesOnDate(profile.id, DATE)).toEqual({ cough: 3 });
+  });
+});
+
+describe("setSymptomNote — per-symptom note affordance (#857)", () => {
+  it("sets and clears a note without touching severity", async () => {
+    const login = createLogin();
+    const profile = createProfile("note", login.id);
+    actAs(login, profile);
+
+    await logSymptom(fd({ symptom: "cough", severity: 3, date: DATE }));
+    let res = await setSymptomNote(
+      fd({ symptom: "cough", date: DATE, note: "dry, worse at night" })
+    );
+    expect(res).toMatchObject({ ok: true, severity: 3 });
+    let [row] = getSymptomsOnDate(profile.id, DATE);
+    expect(row).toMatchObject({ severity: 3, note: "dry, worse at night" });
+
+    // A blank note clears it, leaving severity intact.
+    res = await setSymptomNote(fd({ symptom: "cough", date: DATE, note: "" }));
+    expect(res).toMatchObject({ ok: true });
+    [row] = getSymptomsOnDate(profile.id, DATE);
+    expect(row).toMatchObject({ severity: 3, note: null });
+  });
+
+  it("refuses to annotate a symptom with no logged row", async () => {
+    const login = createLogin();
+    const profile = createProfile("note-empty", login.id);
+    actAs(login, profile);
+
+    const res = await setSymptomNote(
+      fd({ symptom: "cough", date: DATE, note: "hi" })
+    );
+    expect(res).toMatchObject({ ok: false });
+    expect(getSymptomsOnDate(profile.id, DATE)).toEqual([]);
   });
 });
 

@@ -2,8 +2,10 @@
 // symptom_logs table (every statement names profile_id — the scoping rule). Pure display
 // mapping (labels, custom-vs-curated) lives in lib/symptoms; this module only fetches.
 
-import { db } from "../db";
-import { isCustomSymptomKey } from "../symptoms";
+import { db, today } from "../db";
+import { isCustomSymptomKey, symptomSlugs } from "../symptoms";
+import { rankByRecentFrequency } from "../rank-by-frequency";
+import { recentWindowStart } from "./training/common";
 
 export interface SymptomDayEntry {
   symptom: string; // stored key (curated slug or custom name)
@@ -51,6 +53,39 @@ export function getCustomSymptomNames(profileId: number): string[] {
     )
     .all(profileId) as { symptom: string; last_date: string }[];
   return rows.map((r) => r.symptom).filter((s) => isCustomSymptomKey(s));
+}
+
+// The notes logged on a specific day as a keyed record (symptom key → note) — the shape
+// the one-tap bar seeds its per-symptom note affordance from (#857). Only symptom-days
+// that actually carry a note appear.
+export function getSymptomNotesOnDate(
+  profileId: number,
+  date: string
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const r of getSymptomsOnDate(profileId, date))
+    if (r.note) out[r.symptom] = r.note;
+  return out;
+}
+
+// The picker order for the symptom-log bar (#857): the curated catalog + any custom
+// names this profile has logged, ranked so the family's recurring symptoms lead —
+// recency-decayed frequency over the recent window, the SAME `rankByRecentFrequency`
+// computation the food-log bar uses (#591). Each symptom-day counts once (severity does
+// not weight the picker — a mild recurring symptom is still a usual suspect). Returns
+// stored keys (curated slugs + custom names); catalog order breaks ties and is the whole
+// order for a fresh profile. Profile-scoped via the symptom_logs filter.
+export function getSymptomLogOrder(profileId: number): string[] {
+  const rows = db
+    .prepare(
+      `SELECT symptom AS name, date FROM symptom_logs
+        WHERE profile_id = ? AND date >= ?`
+    )
+    .all(profileId, recentWindowStart(profileId)) as {
+    name: string;
+    date: string;
+  }[];
+  return rankByRecentFrequency(symptomSlugs(), rows, today(profileId));
 }
 
 export interface SymptomDayRollup {

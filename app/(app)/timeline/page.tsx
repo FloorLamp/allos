@@ -36,6 +36,8 @@ import {
 import {
   getDaylightOutdoorMinutesByDay,
   getSymptomSeveritiesOnDate,
+  getSymptomNotesOnDate,
+  getSymptomLogOrder,
   getCustomSymptomNames,
 } from "@/lib/queries";
 import { hasActiveIllnessSituation } from "@/lib/settings/profile-attrs";
@@ -424,9 +426,12 @@ export default async function TimelinePage(props: {
           <SymptomLogBar
             date={range.from}
             initial={getSymptomSeveritiesOnDate(profile.id, range.from)}
+            initialNotes={getSymptomNotesOnDate(profile.id, range.from)}
             symptoms={SYMPTOMS}
             customNames={getCustomSymptomNames(profile.id)}
+            rankedKeys={getSymptomLogOrder(profile.id)}
             suggestActivateIllness={!hasActiveIllnessSituation(profile.id)}
+            temperatureUnit={units.temperatureUnit}
           />
         </div>
       )}

@@ -45,6 +45,7 @@ export default async function HouseholdPage() {
   const profiles = await getAccessibleProfiles();
   if (profiles.length < 2) redirect("/");
   const weightUnit = getUnitPrefs(login.id).weightUnit;
+  const temperatureUnit = getUnitPrefs(login.id).temperatureUnit;
 
   // One loop over the accessible profiles, each built from the EXISTING per-profile
   // query functions — no new cross-profile SQL, so the profile-scoping test and the
@@ -130,7 +131,7 @@ export default async function HouseholdPage() {
       // same assembly the dashboard "Sick in the household" card formats over.
       sick: (() => {
         const ep = currentEpisodeForProfile(pid);
-        return ep ? householdSickLine(profile.name, ep) : null;
+        return ep ? householdSickLine(profile.name, ep, temperatureUnit) : null;
       })(),
     };
   });

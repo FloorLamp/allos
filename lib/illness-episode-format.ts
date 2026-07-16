@@ -10,6 +10,8 @@
 // active day is `end` minus one; an ongoing episode (`end` null) runs through today.
 
 import { daysBetweenDateStr } from "./date";
+import type { TemperatureUnit } from "./settings";
+import { fmtTemp } from "./units";
 
 // A single severity reading of one symptom on one day.
 export interface SymptomSeriesPoint {
@@ -200,16 +202,22 @@ export function episodeIsWorsening(ep: AssembledEpisode): boolean {
   return false;
 }
 
-// The cross-profile chip line: "Mia · sick day 3 · 101.3°F · worsening ↑". `name` is
+// The cross-profile chip line: "Mia · sick day 3 · 101.3 °F · worsening ↑". `name` is
 // the profile's (disambiguated) name; temp/day/worsening clauses drop out when absent.
-// The "worsening ↑" marker is a visibility-only trend arrow (episodeIsWorsening) — no
+// The temperature renders in the VIEWER's login unit preference (#857) via fmtTemp —
+// storage is canonical °F; `tempUnit` defaults to °F for callers without a pref. The
+// "worsening ↑" marker is a visibility-only trend arrow (episodeIsWorsening) — no
 // medical claim (issue #805).
-export function householdSickLine(name: string, ep: AssembledEpisode): string {
+export function householdSickLine(
+  name: string,
+  ep: AssembledEpisode,
+  tempUnit: TemperatureUnit = "F"
+): string {
   const parts: string[] = [name];
   const day = episodeDayNumber(ep.start, ep.lastActiveDay ?? ep.asOf);
   parts.push(day != null ? `sick day ${day}` : "sick");
   if (ep.latestTemp) {
-    parts.push(`${ep.latestTemp.degF.toFixed(1)}°F`);
+    parts.push(fmtTemp(ep.latestTemp.degF, tempUnit));
   }
   if (episodeIsWorsening(ep)) {
     parts.push("worsening ↑");

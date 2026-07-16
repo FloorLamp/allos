@@ -8,6 +8,8 @@ import {
 import { severityLabel } from "@/lib/symptoms";
 import NotesText from "@/components/NotesText";
 import FeverChart from "@/components/illness/FeverChart";
+import type { TemperatureUnit } from "@/lib/settings";
+import { fmtTemp } from "@/lib/units";
 
 // The printable / shareable illness-episode summary (issue #801). A pure
 // presentational server component over the ONE assembled model — reused by the
@@ -56,6 +58,7 @@ export default function EpisodeSummary({
   note,
   outcome,
   generatedAt,
+  temperatureUnit = "F",
 }: {
   episode: AssembledEpisode;
   // The episode-level free-text note + outcome annotation (#856 item 8/9). Optional so
@@ -63,6 +66,10 @@ export default function EpisodeSummary({
   note?: string | null;
   outcome?: string | null;
   generatedAt?: string;
+  // The viewer's login temperature-unit preference (#857). Storage is canonical °F;
+  // this only changes display. Defaults to °F so the public /share render and any
+  // caller without a login pref stay in Fahrenheit.
+  temperatureUnit?: TemperatureUnit;
 }) {
   const day = episodeDayNumber(
     episode.start,
@@ -116,7 +123,7 @@ export default function EpisodeSummary({
             <dt className="section-label">Peak temp</dt>
             <dd className="text-slate-700 dark:text-slate-200">
               {episode.maxTempF != null
-                ? `${episode.maxTempF.toFixed(1)}°F`
+                ? fmtTemp(episode.maxTempF, temperatureUnit)
                 : "—"}
             </dd>
           </div>
@@ -201,7 +208,7 @@ export default function EpisodeSummary({
                       : "text-slate-700 dark:text-slate-200"
                   }
                 >
-                  {t.degF.toFixed(1)}°F
+                  {fmtTemp(t.degF, temperatureUnit)}
                 </span>
               </li>
             ))}

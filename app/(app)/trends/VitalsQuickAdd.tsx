@@ -7,6 +7,7 @@ import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
 import { useOfflineQueue } from "@/components/OfflineQueueProvider";
 import { validateVitalsInput } from "@/lib/vitals-input";
+import type { TemperatureUnit } from "@/lib/settings";
 import { shouldQueueOffline } from "@/lib/offline/queue";
 import { addVitals } from "./vitals-actions";
 
@@ -21,8 +22,12 @@ import { addVitals } from "./vitals-actions";
 // action's bounds so the form surfaces an inline error instead of a false "saved".
 export default function VitalsQuickAdd({
   defaultDate,
+  temperatureUnit = "F",
 }: {
   defaultDate: string;
+  // The viewer's login temperature-unit preference (#857) — seeds the temp entry unit.
+  // Storage stays canonical °F. Defaults to °F.
+  temperatureUnit?: TemperatureUnit;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -197,7 +202,7 @@ export default function VitalsQuickAdd({
             <select
               name="temp_unit"
               aria-label="Temperature unit"
-              defaultValue="F"
+              defaultValue={temperatureUnit}
               className="input w-auto"
             >
               <option value="F">°F</option>

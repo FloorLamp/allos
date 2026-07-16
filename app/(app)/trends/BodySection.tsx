@@ -435,7 +435,10 @@ export default async function BodySection({ range }: { range: DateRange }) {
         />
       )}
 
-      <VitalsQuickAdd defaultDate={today(profile.id)} />
+      <VitalsQuickAdd
+        defaultDate={today(profile.id)}
+        temperatureUnit={units.temperatureUnit}
+      />
 
       <p className="text-sm text-slate-500 dark:text-slate-400">
         Body-composition trends over the selected window.

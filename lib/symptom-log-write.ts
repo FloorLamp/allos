@@ -100,6 +100,61 @@ export function setSymptomSeverityCore(
   });
 }
 
+// Explicit LOWER (#857): drop an existing symptom-day's severity to a strictly lower
+// value, PRESERVING its note (unlike setSymptomSeverityCore, which rewrites the note).
+// This is the write behind the bar's inline "Lower to mild?" confirm — it exists as a
+// narrow, direction-checked action so a plain tap can never lower and this affordance can
+// never raise. Refuses when there's no row yet or the target isn't below the current
+// worst (the tap path owns raises). Single IMMEDIATE transaction (#468).
+export function lowerSymptomSeverityCore(
+  profileId: number,
+  symptomInput: string,
+  severity: number,
+  date: string
+): SymptomLogOutcome {
+  const symptom = resolveSymptomKey(symptomInput);
+  if (!symptom || !isValidSeverity(severity)) return { kind: "invalid" };
+  return writeTx(() => {
+    const current = severityOf(profileId, date, symptom);
+    // Only an existing row can be lowered, and only to a strictly lower value.
+    if (current == null || severity >= current) return { kind: "invalid" };
+    db.prepare(
+      `UPDATE symptom_logs SET severity = ?
+        WHERE profile_id = ? AND date = ? AND symptom = ?`
+    ).run(severity, profileId, date, symptom);
+    return { kind: "logged" as const, symptom, severity };
+  });
+}
+
+// Set (or clear) a logged symptom-day's NOTE without touching its severity (#857 per-
+// symptom note affordance). A blank note clears the row's note; a non-blank one replaces
+// it. Refuses when there's no logged row to annotate (the note rides an existing
+// symptom-day, never creates one). Single IMMEDIATE transaction (#468).
+export function setSymptomNoteCore(
+  profileId: number,
+  symptomInput: string,
+  date: string,
+  note: string | null | undefined
+): SymptomLogOutcome {
+  const symptom = resolveSymptomKey(symptomInput);
+  if (!symptom) return { kind: "invalid" };
+  const noteVal = normalizeNote(note);
+  return writeTx(() => {
+    const info = db
+      .prepare(
+        `UPDATE symptom_logs SET note = ?
+          WHERE profile_id = ? AND date = ? AND symptom = ?`
+      )
+      .run(noteVal, profileId, date, symptom);
+    if (info.changes === 0) return { kind: "invalid" };
+    return {
+      kind: "logged" as const,
+      symptom,
+      severity: severityOf(profileId, date, symptom) ?? 0,
+    };
+  });
+}
+
 // Remove a symptom-day row. Idempotent — removing a symptom with nothing logged is a
 // no-op. Returns whether a row existed.
 export type SymptomRemoveOutcome =
