@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildScreenings } from "@/scripts/gen-screenings";
-import screeningsJson from "@/lib/screenings.json";
+import screeningsJson from "@/lib/datasets/data/screenings.json";
 import {
   PREVENTIVE_CATALOG,
   SCREENINGS_REVIEWED,
@@ -17,7 +17,7 @@ import {
 // Pure — reads the generator + committed JSON + catalog, no DB.
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const OUT = path.join(REPO, "lib/screenings.json");
+const OUT = path.join(REPO, "lib/datasets/data/screenings.json");
 
 // Concrete row type so the JSON import's per-row union doesn't trip optional-field
 // access (sex/intervalMonths are present on only some rows).
@@ -32,7 +32,7 @@ interface Row {
   citation: { source: string; summary: string; grade?: string };
   schedule: { startMonths: number; endMonths: number; intervalMonths?: number };
 }
-const ROWS = screeningsJson.screenings as unknown as Row[];
+const ROWS = screeningsJson.entries as unknown as Row[];
 
 describe("screenings.json dataset", () => {
   it("is a fixed point of buildScreenings() (regenerate with `npm run gen:screenings`)", () => {
@@ -67,7 +67,7 @@ describe("screenings.json dataset", () => {
     const keys = ROWS.map((s) => s.key);
     expect(new Set(keys).size).toBe(keys.length);
     expect(SCREENINGS_REVIEWED).toMatch(/^\d{4}-\d{2}$/);
-    expect(screeningsJson.reviewed).toBe(SCREENINGS_REVIEWED);
+    expect(screeningsJson.meta.reviewed).toBe(SCREENINGS_REVIEWED);
     for (const s of ROWS) {
       expect(s.name, s.key).toBeTruthy();
       expect(s.description, s.key).toBeTruthy();
@@ -101,7 +101,7 @@ describe("screenings.json dataset", () => {
       const rule = preventiveRuleByKey(s.key);
       expect(rule, s.key).toBeTruthy();
       expect(rule!.kind).toBe("screening");
-      expect(rule!.citation.reviewed).toBe(screeningsJson.reviewed);
+      expect(rule!.citation.reviewed).toBe(screeningsJson.meta.reviewed);
       expect(rule!.citation.grade).toBe(s.citation.grade);
       if (rule!.schedule.type === "screening") {
         expect(rule!.schedule.startMonths).toBe(s.schedule.startMonths);
