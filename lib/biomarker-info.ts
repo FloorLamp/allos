@@ -5,7 +5,7 @@
 // so pages can surface an explainer next to a biomarker's chart without any
 // schema change. INFORMATIONAL, NOT MEDICAL ADVICE.
 
-import descriptionsJson from "./biomarker-descriptions.json";
+import { BIOMARKER_DESCRIPTION_ENTRIES } from "./datasets/biomarker-descriptions";
 
 export interface BiomarkerInfo {
   // Short abbreviation (e.g. "RDW"), when the marker has a well-known one.
@@ -16,9 +16,21 @@ export interface BiomarkerInfo {
   description: string;
 }
 
-const DESCRIPTIONS: Record<string, BiomarkerInfo> =
-  (descriptionsJson as { descriptions?: Record<string, BiomarkerInfo> })
-    .descriptions ?? {};
+// Rebuild the exact-name → info map from the framework dataset's entries (issue #860
+// Track B): the dataset moved from an object map to an identity-keyed entries array,
+// but the lookup semantics here are unchanged.
+const DESCRIPTIONS: Record<string, BiomarkerInfo> = Object.fromEntries(
+  BIOMARKER_DESCRIPTION_ENTRIES.map((e) => [
+    e.name,
+    e.abbreviation !== undefined
+      ? {
+          abbreviation: e.abbreviation,
+          full_name: e.full_name,
+          description: e.description,
+        }
+      : { full_name: e.full_name, description: e.description },
+  ])
+);
 
 // Case-insensitive index: lowercased canonical name → info. Built once at load.
 const BY_LOWER: Map<string, BiomarkerInfo> = (() => {

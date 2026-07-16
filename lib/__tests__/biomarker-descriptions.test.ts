@@ -1,16 +1,35 @@
 import { describe, it, expect } from "vitest";
 import canonical from "@/lib/canonical-biomarkers.json";
-import descriptionsJson from "@/lib/biomarker-descriptions.json";
+import descriptionsJson from "@/lib/datasets/data/biomarker-descriptions.json";
 import { getBiomarkerInfo } from "@/lib/biomarker-info";
 
-const descriptions = (
-  descriptionsJson as {
-    descriptions: Record<
-      string,
-      { abbreviation?: string; full_name: string; description: string }
-    >;
-  }
-).descriptions;
+// The dataset migrated onto the curated-dataset framework (#860 Track B): it moved
+// from an object map to an identity-keyed entries array. Rebuild the exact-name → info
+// map here so these coverage/integrity assertions are unchanged.
+const descriptions: Record<
+  string,
+  { abbreviation?: string; full_name: string; description: string }
+> = Object.fromEntries(
+  (
+    descriptionsJson as {
+      entries: {
+        name: string;
+        abbreviation?: string;
+        full_name: string;
+        description: string;
+      }[];
+    }
+  ).entries.map((e) => [
+    e.name,
+    e.abbreviation !== undefined
+      ? {
+          abbreviation: e.abbreviation,
+          full_name: e.full_name,
+          description: e.description,
+        }
+      : { full_name: e.full_name, description: e.description },
+  ])
+);
 
 const canonicalNames = (
   canonical as { biomarkers: { name: string }[] }
