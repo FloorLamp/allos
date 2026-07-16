@@ -102,3 +102,19 @@ export const ROUTINE_DELOAD_PROFILE = "Routine Deload (e2e)";
 // (JournalView), not the minor's RestrictedActivityView.
 export const E2E_LOGIN_EMPTY_TRAINING = "e2e_empty_training";
 export const EMPTY_TRAINING_PROFILE = "Empty Training (e2e)";
+
+// A brand-new, write-granted profile with explicit version-1 onboarding state and
+// no health data. The onboarding spec owns every mutation on it.
+export const E2E_LOGIN_ONBOARDING = "e2e_onboarding";
+export const ONBOARDING_PROFILE = "Onboarding Person (e2e)";
+
+// A second empty onboarding profile dedicated to the caregiver path. Keeping it
+// separate lets the self/metrics and caregiver browser tests run in parallel
+// without racing over onboarding state or dashboard layout.
+export const E2E_LOGIN_ONBOARDING_CAREGIVER = "e2e_onboarding_caregiver";
+export const ONBOARDING_CAREGIVER_PROFILE = "Caregiver Onboarding Person (e2e)";
+
+// A populated profile with no new-profile onboarding marker. Its member receives
+// the distinct, dismissible existing-profile orientation on the Dashboard.
+export const E2E_LOGIN_ORIENTATION = "e2e_orientation";
+export const ORIENTATION_PROFILE = "Existing Profile (e2e)";

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   DASHBOARD_WIDGETS,
+  customizableWidgetDefs,
   dashboardGoalsHabitsLayout,
   resolveWidgets,
   resolveWidgetList,
@@ -12,7 +13,7 @@ import {
 const ids = (ws: { id: string }[]) => ws.map((w) => w.id);
 // The customizable catalog excludes pinned widgets (the hero) — those are rendered
 // directly by the page and never appear in the resolve* outputs.
-const customizable = DASHBOARD_WIDGETS.filter((w) => !w.pinned);
+const customizable = customizableWidgetDefs(false);
 const defaultOnIds = customizable.filter((w) => w.defaultOn).map((w) => w.id);
 const fitnessIds = customizable.filter((w) => w.fitness).map((w) => w.id);
 

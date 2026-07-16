@@ -48,6 +48,17 @@ async function freshProfile(page: Page, label: string): Promise<string> {
   // popover, where the same name also renders.
   await expect(profilesCard.getByText(name)).toBeVisible();
   await switchToProfile(page, name);
+  // Goal-based onboarding (#719/#814): a profile created in-app starts with
+  // onboarding_state "not_started", so its first dashboard visit redirects to
+  // /onboarding. These specs exercise the dashboard itself — defer setup through
+  // the product's own affordance so the fresh profile lands on the dashboard.
+  await page.goto("/");
+  if (page.url().includes("/onboarding")) {
+    await page
+      .getByRole("button", { name: "Set up later, take me to my dashboard" })
+      .click();
+    await expect(page).toHaveURL(/\/$|\/\?/);
+  }
   return name;
 }
 

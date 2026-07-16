@@ -257,7 +257,7 @@ export interface ResolvedWidget {
 // The widgets a profile is eligible to customize, in registry order: everything
 // except pinned widgets (rendered separately) and fitness widgets on an
 // age-restricted profile.
-function eligibleWidgets(restricted: boolean): WidgetDef[] {
+export function customizableWidgetDefs(restricted: boolean): WidgetDef[] {
   return DASHBOARD_WIDGETS.filter(
     (w) => !w.pinned && !(restricted && w.fitness)
   );
@@ -278,7 +278,7 @@ export function resolveWidgetList(
   restricted: boolean,
   emptyIds: Set<string> = new Set()
 ): ResolvedWidget[] {
-  const eligible = eligibleWidgets(restricted);
+  const eligible = customizableWidgetDefs(restricted);
   const eligibleIds = new Set(eligible.map((w) => w.id));
 
   const ordered: string[] = [];

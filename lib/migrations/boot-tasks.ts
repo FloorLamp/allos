@@ -8,6 +8,10 @@ import {
 import { canonicalFlagsSignature } from "../canonical-flags-version";
 import { hashPasswordSync } from "../password";
 import { extractionLeaseMinutes } from "../extraction-lease";
+import {
+  initialOnboardingState,
+  serializeOnboardingState,
+} from "../onboarding";
 import { runBootTx } from "./schema-utils";
 
 // PER-BOOT TASKS (issue #119). These run on EVERY process start, AFTER the
@@ -218,6 +222,16 @@ export function bootstrapAuth(db: Database.Database) {
     db.prepare(
       "INSERT INTO login_profiles (login_id, profile_id) VALUES (?, ?)"
     ).run(acct.lastInsertRowid, prof.lastInsertRowid);
+    // Only profiles born after goal-based onboarding shipped carry this marker.
+    // Existing profiles have no row and therefore are never forced through a
+    // replay after upgrade.
+    db.prepare(
+      `INSERT INTO profile_settings (profile_id, key, value)
+       VALUES (?, 'onboarding_state', ?)`
+    ).run(
+      prof.lastInsertRowid,
+      serializeOnboardingState(initialOnboardingState())
+    );
   });
   try {
     runBootTx(create);

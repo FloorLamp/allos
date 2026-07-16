@@ -17,6 +17,11 @@ import {
 } from "../lib/trend-annotations";
 import { getTimezone } from "../lib/settings";
 import { adoptTemplate } from "../lib/routines";
+import {
+  completeOnboardingState,
+  initialOnboardingState,
+  serializeOnboardingState,
+} from "../lib/onboarding";
 
 // The seed populates the bootstrap profile. Owned-table
 // rows are born NOT NULL on a fresh DB, so every insert carries profile_id = 1.
@@ -2191,5 +2196,31 @@ if (isDemoMode()) {
     );
   }
 }
+
+// The sample profile is already richly populated; it should demonstrate the real
+// dashboard rather than first-run setup. A fresh unseeded bootstrap profile keeps
+// the pending marker written by bootstrapAuth.
+db.prepare(
+  `INSERT INTO profile_settings (profile_id, key, value)
+   VALUES (?, 'onboarding_state', ?)
+   ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
+).run(
+  SEED_PROFILE_ID,
+  serializeOnboardingState(
+    completeOnboardingState(
+      {
+        ...initialOnboardingState(),
+        profilePath: "self",
+        focuses: ["explore"],
+        basicsComplete: true,
+        layoutReviewed: true,
+        notificationIntent: "later",
+        notificationsReviewed: true,
+        checklistDismissed: true,
+      },
+      new Date().toISOString()
+    )
+  )
+);
 
 console.log("✅ Seeded sample health data.");

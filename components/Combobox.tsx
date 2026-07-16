@@ -25,6 +25,10 @@ export default function Combobox({
   emptyLabel = "No matches",
   freeTextLabel,
   onPick,
+  id,
+  disabled,
+  onInputBlur,
+  selectOnFocus = false,
   closeStopsPropagation = false,
   inputClassName = "",
 }: {
@@ -45,6 +49,10 @@ export default function Combobox({
   // `query` is what the user had typed before choosing the option (#851 item 14): a
   // caller can prefill a sibling field from the query (e.g. a brand token → brand).
   onPick?: (v: string, query?: string) => void;
+  id?: string;
+  disabled?: boolean;
+  onInputBlur?: () => void;
+  selectOnFocus?: boolean;
   closeStopsPropagation?: boolean;
   inputClassName?: string;
 }) {
@@ -87,8 +95,10 @@ export default function Combobox({
   return (
     <div ref={ref} className="relative">
       <input
+        id={id}
         value={value}
         name={name}
+        disabled={disabled}
         autoFocus={autoFocus}
         role="combobox"
         aria-expanded={open}
@@ -102,7 +112,11 @@ export default function Combobox({
           setOpen(true);
           setHighlight(0);
         }}
-        onFocus={() => setOpen(true)}
+        onFocus={(event) => {
+          setOpen(true);
+          if (selectOnFocus) event.currentTarget.select();
+        }}
+        onBlur={onInputBlur}
         onKeyDown={(e) => {
           if (!open) return;
           if (e.key === "ArrowDown") {

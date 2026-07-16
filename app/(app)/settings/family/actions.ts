@@ -30,6 +30,10 @@ import { PHOTO_ROOT } from "@/lib/profile-photo";
 import { recordAudit } from "@/lib/audit";
 import { AUDIT_ACTIONS } from "@/lib/audit-actions";
 import { createLogger } from "@/lib/log";
+import {
+  initialOnboardingState,
+  serializeOnboardingState,
+} from "@/lib/onboarding";
 
 const log = createLogger("family");
 
@@ -94,6 +98,11 @@ export async function createProfile(formData: FormData): Promise<FamilyResult> {
     // 'timezone') so its day boundaries are sensible before anyone opens Settings.
     const tz = getSetting("timezone");
     if (tz && isValidTimezone(tz)) setProfileSetting(id, "timezone", tz);
+    setProfileSetting(
+      id,
+      "onboarding_state",
+      serializeOnboardingState(initialOnboardingState())
+    );
     return id;
   });
   recordAudit({

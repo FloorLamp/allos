@@ -35,6 +35,15 @@ export function slotDue(slotHour: number, currentHour: number): boolean {
 export const WAKING_START_HOUR = 8;
 export const WAKING_END_HOUR = 21;
 
+// Default profile-local hours for scheduled intake reminders. Keep this in the
+// pure scheduling layer so settings and onboarding restore the same defaults.
+export const DEFAULT_INTAKE_REMINDER_HOURS = {
+  Morning: 8,
+  Midday: 13,
+  Evening: 20,
+  Bedtime: 22,
+} as const;
+
 // Whether the given profile-local hour (0-23) is inside the waking window (issue
 // #378, made per-profile in #450). Inclusive on both bounds. A window that WRAPS
 // past midnight (startHour > endHour, e.g. a night-shift 20→8 waking window) is

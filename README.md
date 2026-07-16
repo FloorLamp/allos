@@ -130,6 +130,36 @@ Two concepts:
 
 Admins manage everyone under **Settings → Family**: add or rename profiles, create logins, reset passwords, and grant each member login access to specific profiles. Each grant is **read & write** or **read-only** — enforced on the server (every mutating action is rejected for a read-only grant), not merely hidden in the UI.
 
+### First profile setup
+
+A newly created profile starts with a short, page-by-page setup that can be left
+and resumed at any time. It is built around one or two outcomes: medical records,
+medications, fitness, metrics and labs, preventive care, or caregiving. The choices
+seed that profile's initial Dashboard and prioritize connecting a supported app or
+device before offering import and manual-entry fallbacks. The Fitness path can also
+adopt and activate a beginner routine immediately (bodyweight first when no
+equipment is registered), using the same editable routine templates and weekly
+targets as Training. These choices do not disable any other feature, and the full
+Dashboard customizer remains available afterward.
+
+Only facts that immediately change behavior are requested up front: the profile's
+display name, known birthdate or approximate age, sex used for applicable
+clinical reference ranges, timezone, and the signed-in login's unit preferences.
+Unknown health facts may remain blank. A profile can leave setup at any time and
+resume it from the Dashboard. The data step prioritizes connected services and
+brings the user back with a setup banner, but a slow sync never blocks progress.
+Setup previews the proposed dashboard cards and notification preference before landing
+inside the real Dashboard with a dismissible next-steps checklist. Notification
+delivery is never enabled merely by choosing a preference; a channel must still be
+deliberately configured under **Settings → Profile**.
+
+Self and caregiver setup are explicit paths, and creating a profile still does
+not create a login. A login opening an already-populated profile receives a short,
+per-login orientation explaining its access and existing data instead of the
+empty-profile flow. Server readiness and infrastructure configuration remain an
+admin-only concern under **Settings → Server**. Seeded sample data opens directly
+on the populated Dashboard.
+
 Any login can change its own password (minimum 10 characters, mixed character classes) and enroll **TOTP two-factor authentication** under **Settings → Preferences** — strongly recommended for admins; 8 one-time recovery codes are shown once at enrollment. If an admin loses both the authenticator and the recovery codes, the `ALLOS_DISABLE_2FA` env var (see **Configuration**) is the loudly-logged, audited escape hatch.
 
 ## AI

@@ -8,10 +8,16 @@ import VersionWatcher from "@/components/VersionWatcher";
 import { ConfirmProvider } from "@/components/ConfirmDialog";
 import OfflineQueueProvider from "@/components/OfflineQueueProvider";
 import ProfileSwitchWatcher from "@/components/ProfileSwitchWatcher";
+import OnboardingReturnBanner from "@/components/OnboardingReturnBanner";
 import { getAppVersion } from "@/lib/version";
 import { TimezoneProvider } from "@/components/TimezoneProvider";
 import { WeekStartProvider } from "@/components/WeekStartProvider";
-import { getUnitPrefs, getTimezone, getWeekStart } from "@/lib/settings";
+import {
+  getOnboardingState,
+  getUnitPrefs,
+  getTimezone,
+  getWeekStart,
+} from "@/lib/settings";
 import { getUserAge } from "@/lib/settings/profile-attrs";
 import { getEquipment } from "@/lib/equipment";
 import { isTrainingRestricted } from "@/lib/age-gate";
@@ -109,6 +115,11 @@ export default async function AppLayout({
   // member with a read-only grant. Drives the "read-only" hint in the profile
   // menu; every mutating action is independently gated server-side.
   const readOnly = session.access === "read";
+  const onboarding = getOnboardingState(profile.id);
+  const showOnboardingReturn =
+    onboarding?.status === "in_progress" &&
+    onboarding.basicsComplete &&
+    !onboarding.layoutReviewed;
   return (
     <TimezoneProvider tz={timezone}>
       <WeekStartProvider weekStart={weekStart}>
@@ -166,6 +177,7 @@ export default async function AppLayout({
                     data-testid="app-content-container"
                     className="mx-auto pt-8 pb-[max(2rem,env(safe-area-inset-bottom))] pl-[max(1.25rem,env(safe-area-inset-left))] pr-[max(1.25rem,env(safe-area-inset-right))] 3xl:max-w-[110rem]"
                   >
+                    <OnboardingReturnBanner show={showOnboardingReturn} />
                     {children}
                   </div>
                 </main>

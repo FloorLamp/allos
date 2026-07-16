@@ -115,7 +115,7 @@ export default function ProfileNotificationSettings({
   }
 
   return (
-    <div className="card mt-6 max-w-lg space-y-5">
+    <div id="notifications" className="card mt-6 max-w-lg space-y-5">
       <div className="flex items-center justify-between">
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Notifications (Telegram)

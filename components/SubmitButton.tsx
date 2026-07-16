@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 
 // Shared pending-aware submit button. Drop it inside any <form> (server-action
@@ -13,18 +14,50 @@ export default function SubmitButton({
   className = "btn",
   pendingLabel,
   disabled = false,
+  requireSelection,
   ...rest
 }: {
   children: React.ReactNode;
   className?: string;
   pendingLabel?: React.ReactNode;
   disabled?: boolean;
+  requireSelection?: string;
 } & Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "children">) {
   const { pending } = useFormStatus();
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const [selectionMissing, setSelectionMissing] = useState(
+    requireSelection != null
+  );
+
+  useEffect(() => {
+    if (!requireSelection) {
+      setSelectionMissing(false);
+      return;
+    }
+    const form = buttonRef.current?.form;
+    if (!form) return;
+
+    function updateSelection() {
+      const selected = Array.from(form!.elements).some(
+        (field) =>
+          field instanceof HTMLInputElement &&
+          field.name === requireSelection &&
+          field.checked &&
+          !field.disabled
+      );
+      setSelectionMissing(!selected);
+    }
+
+    updateSelection();
+    form.addEventListener("change", updateSelection);
+    return () => form.removeEventListener("change", updateSelection);
+  }, [requireSelection]);
+
   return (
     <button
+      ref={buttonRef}
       type="submit"
-      disabled={pending || disabled}
+      disabled={pending || disabled || selectionMissing}
       aria-busy={pending}
       className={className}
       {...rest}

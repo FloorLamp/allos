@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { saveInstanceTimezone } from "./actions";
 import SaveStatus from "@/components/SaveStatus";
+import TimezoneSelect from "@/components/TimezoneSelect";
 import { useSaveStatus } from "@/components/useSaveStatus";
 
 // The GLOBAL instance-default timezone: seeds newly created profiles and backs
@@ -17,14 +18,6 @@ export default function InstanceTimezoneSettings({
   const router = useRouter();
   const [timezone, setTimezone] = useState(initialTimezone);
   const { pending, savedAt, error, save: runSave } = useSaveStatus();
-
-  const [tzList, setTzList] = useState<string[]>([]);
-  useEffect(() => {
-    if (typeof (Intl as any).supportedValuesOf === "function") {
-      setTzList((Intl as any).supportedValuesOf("timeZone"));
-    }
-  }, []);
-  const zones = tzList.includes(timezone) ? tzList : [timezone, ...tzList];
 
   function save(tz: string) {
     const fd = new FormData();
@@ -50,21 +43,14 @@ export default function InstanceTimezoneSettings({
         profiles — each has its own timezone on Settings → Profile.
       </p>
 
-      <select
+      <TimezoneSelect
+        id="instance-timezone"
         value={timezone}
-        onChange={(e) => {
-          const v = e.target.value;
-          setTimezone(v);
-          save(v);
+        onTimezoneChange={(nextTimezone) => {
+          setTimezone(nextTimezone);
+          save(nextTimezone);
         }}
-        className="input"
-      >
-        {zones.map((z) => (
-          <option key={z} value={z}>
-            {z}
-          </option>
-        ))}
-      </select>
+      />
     </div>
   );
 }

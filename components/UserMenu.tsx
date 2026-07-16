@@ -118,12 +118,14 @@ export default function UserMenu({
       Action, or the switch/logout is silently dropped. The testid scopes e2e
       profile-switch clicks to THIS popover — the dashboard's household-strip
       chips are also profile-named form buttons, so an unscoped page-wide
-      locator would be ambiguous. */}
+      locator would be ambiguous. Cap + scroll the panel because admins can see
+      every profile; an uncapped list can place the earliest rows above the
+      viewport and make them unreachable. */}
       <div
         data-testid="user-menu-popover"
         className={`absolute inset-x-0 bottom-full z-20 mb-2 ${
           open ? "flex" : "hidden"
-        } flex-col gap-1 rounded-lg border border-black/10 bg-white p-2 shadow-xl dark:border-white/10 dark:bg-ink-850`}
+        } max-h-[calc(100vh-5rem)] flex-col gap-1 overflow-y-auto overscroll-contain rounded-lg border border-black/10 bg-white p-2 shadow-xl dark:border-white/10 dark:bg-ink-850`}
       >
         {readOnly && (
           <p className="px-2 py-1 text-xs text-amber-700 dark:text-amber-300">

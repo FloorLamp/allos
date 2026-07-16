@@ -31,3 +31,4 @@ export * from "./settings/server";
 export * from "./settings/notifications";
 export * from "./settings/profile-attrs";
 export * from "./settings/calendar-feed";
+export * from "./settings/onboarding";

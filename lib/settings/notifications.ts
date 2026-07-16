@@ -11,7 +11,11 @@ import {
   getProfileSetting,
   setProfileSetting,
 } from "./kv";
-import { WAKING_START_HOUR, WAKING_END_HOUR } from "../notifications/schedule";
+import {
+  DEFAULT_INTAKE_REMINDER_HOURS,
+  WAKING_START_HOUR,
+  WAKING_END_HOUR,
+} from "../notifications/schedule";
 
 // How inbound Telegram button taps reach the app: "poll" long-polls getUpdates
 // (works without a public URL), "webhook" has Telegram POST to /api/telegram/webhook.
@@ -244,13 +248,6 @@ const SUPP_HOUR_KEYS = {
   Evening: "notify_supp_evening_hour",
   Bedtime: "notify_supp_bedtime_hour",
 } as const;
-const SUPP_HOUR_DEFAULTS = {
-  Morning: 8,
-  Midday: 13,
-  Evening: 20,
-  Bedtime: 22,
-} as const;
-
 function parseHour(
   raw: string | undefined,
   fallback: number | null
@@ -266,19 +263,19 @@ export function getNotifySchedule(profileId: number): NotifySchedule {
     supplementHours: {
       Morning: parseHour(
         getProfileSetting(profileId, SUPP_HOUR_KEYS.Morning),
-        SUPP_HOUR_DEFAULTS.Morning
+        DEFAULT_INTAKE_REMINDER_HOURS.Morning
       ),
       Midday: parseHour(
         getProfileSetting(profileId, SUPP_HOUR_KEYS.Midday),
-        SUPP_HOUR_DEFAULTS.Midday
+        DEFAULT_INTAKE_REMINDER_HOURS.Midday
       ),
       Evening: parseHour(
         getProfileSetting(profileId, SUPP_HOUR_KEYS.Evening),
-        SUPP_HOUR_DEFAULTS.Evening
+        DEFAULT_INTAKE_REMINDER_HOURS.Evening
       ),
       Bedtime: parseHour(
         getProfileSetting(profileId, SUPP_HOUR_KEYS.Bedtime),
-        SUPP_HOUR_DEFAULTS.Bedtime
+        DEFAULT_INTAKE_REMINDER_HOURS.Bedtime
       ),
     },
     workoutEnabled:

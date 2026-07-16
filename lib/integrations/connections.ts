@@ -29,6 +29,26 @@ export function getConnection(
     .get(profileId, provider) as IntegrationConnection | undefined;
 }
 
+// A recurring inbound health-data source, excluding the outbound calendar feed.
+// This checks connection state rather than imported rows: a manual workout or an
+// onboarding routine does not satisfy "Connect an app or device."
+export function hasConnectedDataSource(profileId: number): boolean {
+  return (
+    (
+      db
+        .prepare(
+          `SELECT EXISTS(
+             SELECT 1 FROM integration_connections
+              WHERE profile_id = ?
+                AND status = 'connected'
+                AND provider IN ('health-connect', 'strava', 'oura', 'withings')
+           ) AS connected`
+        )
+        .get(profileId) as { connected: number }
+    ).connected === 1
+  );
+}
+
 interface ConnectionPatch {
   status?: IntegrationConnectionStatus;
   config?: Record<string, unknown> | null;
