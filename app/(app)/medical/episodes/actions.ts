@@ -6,77 +6,77 @@ import { expiresAtFor } from "@/lib/share-links";
 import { createEpisodeShareLink } from "@/lib/share-links-db";
 import { recordAudit } from "@/lib/audit";
 import { AUDIT_ACTIONS } from "@/lib/audit-actions";
-import { isRealIsoDate } from "@/lib/date";
-import { episodeForProfileDate } from "@/lib/illness-episode";
+import { getEpisodeRow } from "@/lib/illness-episode-store";
 import {
   promoteEpisodeToConditionCore,
   unpromoteEpisodeConditionCore,
+  endEpisodeCore,
 } from "@/lib/illness-episode-write";
 
-// Illness-episode Server Actions (issue #801). Each is gated by requireWriteAccess()
-// and operates ONLY on the session's active profile — there is no profile_id input to
-// tamper with (the same posture as the passport share actions). The episode itself is
-// resolved from an anchor DATE inside it via the shared derivation, never re-derived here.
+// Illness-episode Server Actions (issues #801/#856). Each is gated by requireWriteAccess()
+// and operates ONLY on the session's active profile — the episode is addressed by its
+// STABLE ROW id (#856), scoped to the profile in getEpisodeRow, so there is no profile_id
+// input to tamper with (the same posture as the passport share actions).
 
 export type EpisodeShareResult =
   { ok: true; path: string } | { ok: false; error: string };
 
 export type EpisodeActionResult = { ok: true } | { ok: false; error: string };
 
-// Mint a revocable share link for the episode containing `anchor` (a date the detail
-// page passes). Stores the situation + anchor; the range re-derives at view time.
+function parseEpisodeId(formData: FormData): number | null {
+  const n = Number(formData.get("episodeId"));
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+// Mint a revocable share link for the episode, re-anchored to its stable id (#856). The
+// link also stores the situation + start anchor so a pre-#856 resolver path (and a
+// merged-away id) still resolves it; the range re-derives at view time.
 export async function createEpisodeShareLinkAction(
   formData: FormData
 ): Promise<EpisodeShareResult> {
   const { login, profile } = await requireWriteAccess();
-  const anchor = String(formData.get("anchor") ?? "");
-  if (!isRealIsoDate(anchor))
-    return { ok: false, error: "That episode is no longer available." };
-  const episode = episodeForProfileDate(profile.id, anchor);
-  if (!episode)
-    return { ok: false, error: "No illness episode covers that day." };
+  const id = parseEpisodeId(formData);
+  const row = id ? getEpisodeRow(profile.id, id) : null;
+  if (!row) return { ok: false, error: "That episode is no longer available." };
 
   const ttl = String(formData.get("ttl") ?? "");
   const expiresAt = expiresAtFor(ttl, new Date());
-  const { id, token } = createEpisodeShareLink(
+  const { id: linkId, token } = createEpisodeShareLink(
     profile.id,
     login.id,
-    episode.situation,
-    anchor,
-    expiresAt
+    row.situation,
+    row.started_at,
+    expiresAt,
+    row.id
   );
   recordAudit({
     loginId: login.id,
     profileId: profile.id,
     action: AUDIT_ACTIONS.shareLinkCreate,
-    target: String(id),
+    target: String(linkId),
   });
-  revalidatePath("/medical/episodes/[date]", "page");
+  revalidatePath("/medical/episodes/[id]", "page");
   return { ok: true, path: `/share/${token}` };
 }
 
-// Promote the episode containing `anchor` to a durable Condition (onset/resolved from
-// the range). Idempotent.
+// Promote the episode to a durable Condition (onset/resolved from the range). Idempotent.
 export async function promoteEpisodeToConditionAction(
   formData: FormData
 ): Promise<EpisodeActionResult> {
   const { profile } = await requireWriteAccess();
-  const anchor = String(formData.get("anchor") ?? "");
-  if (!isRealIsoDate(anchor))
-    return { ok: false, error: "That episode is no longer available." };
-  const episode = episodeForProfileDate(profile.id, anchor);
-  if (!episode)
-    return { ok: false, error: "No illness episode covers that day." };
+  const id = parseEpisodeId(formData);
+  const row = id ? getEpisodeRow(profile.id, id) : null;
+  if (!row) return { ok: false, error: "That episode is no longer available." };
 
   const outcome = promoteEpisodeToConditionCore(
     profile.id,
-    episode.situation,
-    episode.start,
-    episode.end
+    row.situation,
+    row.started_at,
+    row.ended_at
   );
   if (outcome.kind === "invalid")
     return { ok: false, error: "Could not create the condition." };
-  revalidatePath("/medical/episodes/[date]", "page");
+  revalidatePath("/medical/episodes/[id]", "page");
   revalidatePath("/conditions");
   return { ok: true };
 }
@@ -86,15 +86,29 @@ export async function unpromoteEpisodeConditionAction(
   formData: FormData
 ): Promise<EpisodeActionResult> {
   const { profile } = await requireWriteAccess();
-  const anchor = String(formData.get("anchor") ?? "");
-  if (!isRealIsoDate(anchor))
-    return { ok: false, error: "That episode is no longer available." };
-  const episode = episodeForProfileDate(profile.id, anchor);
-  if (!episode)
-    return { ok: false, error: "No illness episode covers that day." };
+  const id = parseEpisodeId(formData);
+  const row = id ? getEpisodeRow(profile.id, id) : null;
+  if (!row) return { ok: false, error: "That episode is no longer available." };
 
-  unpromoteEpisodeConditionCore(profile.id, episode.situation, episode.start);
-  revalidatePath("/medical/episodes/[date]", "page");
+  unpromoteEpisodeConditionCore(profile.id, row.situation, row.started_at);
+  revalidatePath("/medical/episodes/[id]", "page");
   revalidatePath("/conditions");
+  return { ok: true };
+}
+
+// End the open episode ("Feeling better", #856 item 2) — deactivates the situation and
+// stamps the end through the ONE toggle write core.
+export async function endEpisodeAction(
+  formData: FormData
+): Promise<EpisodeActionResult> {
+  const { profile } = await requireWriteAccess();
+  const id = parseEpisodeId(formData);
+  if (!id) return { ok: false, error: "That episode is no longer available." };
+  const outcome = endEpisodeCore(profile.id, id);
+  if (outcome.kind === "missing")
+    return { ok: false, error: "That episode is no longer available." };
+  revalidatePath("/medical/episodes/[id]", "page");
+  revalidatePath("/");
+  revalidatePath("/nutrition");
   return { ok: true };
 }

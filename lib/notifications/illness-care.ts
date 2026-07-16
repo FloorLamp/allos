@@ -24,6 +24,7 @@
 //     finding vanished entirely is still swept (the refill nudge's #325 self-heal).
 
 import { illnessCareFindingsFor } from "../illness-care-findings";
+import { episodeForProfileDate } from "../illness-episode";
 import {
   planIllnessCareNudges,
   illnessCareFullDetail,
@@ -59,14 +60,15 @@ const dedupeKeyFromMarker = (key: string) => key.slice(MARKER_PREFIX.length);
 export function renderIllnessCareMessage(
   profileName: string,
   finding: IllnessCareFinding,
-  episodeDay: string,
+  episodeId: number | null,
   deepLinkBase = ""
 ): NotificationMessage {
   const who = profileName ? `${profileName} — ` : "";
   const base = deepLinkBase.replace(/\/$/, "");
-  const actions: NotificationAction[] = base
-    ? [{ label: "View episode", url: `${base}${episodeHref(episodeDay)}` }]
-    : [];
+  const actions: NotificationAction[] =
+    base && episodeId != null
+      ? [{ label: "View episode", url: `${base}${episodeHref(episodeId)}` }]
+      : [];
   return {
     title: `🌡️ Illness check: ${who}${finding.title}`,
     body: illnessCareFullDetail(finding),
@@ -126,6 +128,8 @@ export async function runIllnessCare(
   if (toSend.length === 0) return { failed: false };
 
   const base = getPublicUrl();
+  // The current open episode's stable id anchors the deep link (#856).
+  const episodeId = episodeForProfileDate(profileId, date)?.id ?? null;
   let failed = false;
   // One message PER finding so the title + deep link attach to the named symptom.
   for (const dedupeKey of toSend) {
@@ -133,7 +137,7 @@ export async function runIllnessCare(
     if (!finding) continue;
     const results = await dispatch(
       profileId,
-      renderIllnessCareMessage(profileName, finding, date, base)
+      renderIllnessCareMessage(profileName, finding, episodeId, base)
     );
     if (results.length === 0) {
       // No channel configured — leave markers unset so it can send once configured.

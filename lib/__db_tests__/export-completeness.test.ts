@@ -103,6 +103,10 @@ const EXPORT_ALLOWLIST: { table: string; why: string }[] = [
     table: "routines",
     why: "adopted/authored training programs (#738); the routine's meaningful training signal is the frequency_targets it derives on activation (already a flat dataset), and template routines re-adopt from lib/routine-templates.ts. Full round-trip export of custom routines (with their routine_days/routine_slots children) lands with the builder UI that can author them (#739).",
   },
+  {
+    table: "illness_episodes",
+    why: "illness-episode IDENTITY + annotations (note/outcome) with DERIVED membership (#856). The illness STORY that carries clinical weight — symptoms (symptom_logs), fever readings (medical_records vitals), administrations (intake_item_logs) — is already exported through those datasets; the episode row is a thin date-range + free-text annotation with no independent clinical payload to round-trip.",
+  },
 ];
 
 describe("full export covers every owned domain (issue #465)", () => {

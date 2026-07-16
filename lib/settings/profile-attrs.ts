@@ -18,6 +18,7 @@ import {
   normalizeSituationName,
   isBuiltInIllnessSituation,
 } from "../situations";
+import { syncOpenIllnessEpisode } from "../illness-episode-store";
 import { zipToHome } from "../home-location";
 import { getHomeLocation, setHomeLocation } from "./location";
 import {
@@ -594,6 +595,23 @@ export function setSituationIllnessType(
     db.prepare(
       `UPDATE situations SET illness_type = ? WHERE id = ? AND profile_id = ?`
     ).run(illnessType ? 1 : 0, id, profileId);
+    // Keep the open-episode row coherent (#856): a situation is an episode container
+    // only while it is illness-type AND active. Flagging an active situation opens an
+    // episode; un-flagging one closes its open episode.
+    const active =
+      (
+        db
+          .prepare(
+            `SELECT active FROM situations WHERE id = ? AND profile_id = ?`
+          )
+          .get(id, profileId) as { active: number } | undefined
+      )?.active === 1;
+    syncOpenIllnessEpisode(
+      profileId,
+      normalizeSituationName(name),
+      illnessType && active,
+      today(profileId)
+    );
   });
 }
 
@@ -673,6 +691,19 @@ export function setActiveSituations(profileId: number, situations: string[]) {
       db.prepare(
         `UPDATE situations SET active = 1 WHERE id = ? AND profile_id = ?`
       ).run(id, profileId);
+    }
+    // Keep the open illness-episode rows coherent with the active set (#856), in the
+    // SAME writeTx — every illness-type situation opens a row while active, closes it
+    // when deactivated. Single write path; the row and the active flag never disagree.
+    const onDate = today(profileId);
+    const illness = db
+      .prepare(
+        `SELECT name, active FROM situations
+          WHERE profile_id = ? AND illness_type = 1`
+      )
+      .all(profileId) as { name: string; active: number }[];
+    for (const s of illness) {
+      syncOpenIllnessEpisode(profileId, s.name, !!s.active, onDate);
     }
     if (events.length > 0) {
       setProfileSetting(

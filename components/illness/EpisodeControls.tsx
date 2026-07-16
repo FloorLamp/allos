@@ -7,6 +7,7 @@ import {
   IconCopy,
   IconCheck,
   IconStethoscope,
+  IconMoodCheck,
 } from "@tabler/icons-react";
 import ModalShell from "@/components/ModalShell";
 import { NOTICE_TONE } from "@/components/Notice";
@@ -16,17 +17,21 @@ import {
   createEpisodeShareLinkAction,
   promoteEpisodeToConditionAction,
   unpromoteEpisodeConditionAction,
+  endEpisodeAction,
 } from "@/app/(app)/medical/episodes/actions";
 
-// Print + Share + Promote-to-condition controls for the episode detail page. Client-only
-// so it can drive window.print() and the share modal; the mutations are Server Actions
-// gated by requireWriteAccess(). `print:hidden` keeps the whole bar off the printed page.
+// Print + Share + End + Promote-to-condition controls for the episode detail page.
+// Client-only so it can drive window.print() and the share modal; the mutations are
+// Server Actions gated by requireWriteAccess(). `print:hidden` keeps the whole bar off
+// the printed page. Everything keys on the STABLE episode id (#856), not a date anchor.
 export default function EpisodeControls({
-  anchor,
+  episodeId,
+  ongoing,
   promoted,
   canWrite,
 }: {
-  anchor: string;
+  episodeId: number;
+  ongoing: boolean;
   promoted: boolean;
   canWrite: boolean;
 }) {
@@ -55,6 +60,9 @@ export default function EpisodeControls({
   }
   async function onUnpromote(fd: FormData) {
     await unpromoteEpisodeConditionAction(fd);
+  }
+  async function onEnd(fd: FormData) {
+    await endEpisodeAction(fd);
   }
 
   async function copy() {
@@ -86,17 +94,29 @@ export default function EpisodeControls({
         </button>
       )}
 
+      {/* Item 2: end the episode from the page ("Feeling better") — deactivates the
+          situation + stamps the end through the ONE toggle write core. */}
+      {canWrite && ongoing && (
+        <form action={onEnd} data-testid="episode-end-form">
+          <input type="hidden" name="episodeId" value={episodeId} />
+          <SubmitButton className="btn-ghost" pendingLabel="Ending…">
+            <IconMoodCheck className="h-4 w-4" stroke={1.75} />
+            Feeling better
+          </SubmitButton>
+        </form>
+      )}
+
       {canWrite &&
         (promoted ? (
           <form action={onUnpromote}>
-            <input type="hidden" name="anchor" value={anchor} />
+            <input type="hidden" name="episodeId" value={episodeId} />
             <SubmitButton className="btn-ghost" pendingLabel="Removing…">
               Remove condition
             </SubmitButton>
           </form>
         ) : (
           <form action={onPromote}>
-            <input type="hidden" name="anchor" value={anchor} />
+            <input type="hidden" name="episodeId" value={episodeId} />
             <SubmitButton className="btn-ghost" pendingLabel="Adding…">
               <IconStethoscope className="h-4 w-4" stroke={1.75} />
               Promote to condition
@@ -116,7 +136,7 @@ export default function EpisodeControls({
           </p>
 
           <form onSubmit={onCreate} className="mt-4 flex flex-col gap-4">
-            <input type="hidden" name="anchor" value={anchor} />
+            <input type="hidden" name="episodeId" value={episodeId} />
             <div>
               <label className="label" htmlFor="ttl">
                 Valid for

@@ -46,6 +46,7 @@ function makeEpisode(
 ): AssembledEpisode {
   const start = opts.start === undefined ? START : opts.start;
   return {
+    id: null,
     situation: opts.situation ?? "Flu",
     start,
     end: null,

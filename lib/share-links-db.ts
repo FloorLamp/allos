@@ -16,18 +16,20 @@ export interface ShareLinkRow {
   profile_id: number;
   // 'passport' (the pre-existing behavior) or 'episode' (issue #801). The row shape
   // is shared; only the resolver differs — passport reads `fields`, an episode link
-  // reads `episode_situation` + `episode_anchor` and re-derives the range at view time.
+  // reads `episode_id` (#856, the stable anchor) with `episode_situation` +
+  // `episode_anchor` as a graceful fallback, and re-derives the range at view time.
   kind: "passport" | "episode";
   fields: string; // JSON array (parse with parseShareFields) — '[]' for episode links
-  episode_situation: string | null; // set for kind='episode'
-  episode_anchor: string | null; // a date INSIDE the shared episode (kind='episode')
+  episode_id: number | null; // #856: the stable episode row id (kind='episode')
+  episode_situation: string | null; // set for kind='episode' (fallback resolver)
+  episode_anchor: string | null; // a date INSIDE the shared episode (fallback resolver)
   expires_at: string; // ISO 8601 UTC
   revoked_at: string | null; // ISO 8601 UTC, or null
   created_at: string;
 }
 
 const COLS =
-  "id, profile_id, kind, fields, episode_situation, episode_anchor, " +
+  "id, profile_id, kind, fields, episode_id, episode_situation, episode_anchor, " +
   "expires_at, revoked_at, created_at";
 
 // Create a share link for a profile and return the RAW token (shown to the
@@ -64,20 +66,22 @@ export function createEpisodeShareLink(
   profileId: number,
   createdBy: number | null,
   situation: string,
-  anchor: string,
-  expiresAtISO: string
+  anchor: string | null,
+  expiresAtISO: string,
+  episodeId: number | null
 ): { id: number; token: string } {
   const token = crypto.randomBytes(32).toString("hex");
   const info = db
     .prepare(
       `INSERT INTO profile_share_links
-         (profile_id, token_hash, kind, fields, episode_situation, episode_anchor,
-          expires_at, created_by)
-       VALUES (?, ?, 'episode', '[]', ?, ?, ?, ?)`
+         (profile_id, token_hash, kind, fields, episode_id, episode_situation,
+          episode_anchor, expires_at, created_by)
+       VALUES (?, ?, 'episode', '[]', ?, ?, ?, ?, ?)`
     )
     .run(
       profileId,
       hashShareToken(token),
+      episodeId,
       situation,
       anchor,
       expiresAtISO,

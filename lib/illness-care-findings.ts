@@ -31,7 +31,7 @@ import {
 } from "./illness-care";
 import type { Finding } from "./findings";
 import type { UpcomingItem } from "./upcoming";
-import { episodeHref } from "./hrefs";
+import { episodeHref, type AppRoute } from "./hrefs";
 
 // The current OPEN illness episode for a profile assembled as of `date` (the #801
 // gather — never a second episode engine), or null when the profile isn't currently
@@ -57,12 +57,13 @@ export function illnessCareFindingsFor(
   });
 }
 
-// The action link every surface shares: the #801 illness-episode detail page for the
-// current episode (any date inside it derives the containing episode).
-function actionHrefFor(profileId: number, date: string) {
+// The action link every surface shares: the illness-episode detail page for the
+// current open episode, keyed on its stable row id (#856). Falls back to the timeline
+// when there's no backing row (should not happen for a finding — a finding implies an
+// open assembled episode, which always carries an id).
+function actionHrefFor(profileId: number, date: string): AppRoute {
   const episode = openEpisodeAsOf(profileId, date);
-  const day = episode?.lastActiveDay ?? episode?.asOf ?? date;
-  return episodeHref(day);
+  return episode?.id != null ? episodeHref(episode.id) : "/timeline";
 }
 
 // One neutral finding → the shared care-tier Finding envelope. Caution tone (a

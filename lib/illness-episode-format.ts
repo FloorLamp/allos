@@ -62,6 +62,9 @@ export interface EpisodeCondition {
 
 // The one assembled model every surface formats over.
 export interface AssembledEpisode {
+  // The stored episode row id (#856), when assembled from a row — the [id] route +
+  // links key on it. Null for a synthetic/derived assembly with no backing row.
+  id: number | null;
   situation: string;
   start: string | null; // inclusive first active day, or null (active before the log)
   end: string | null; // EXCLUSIVE end (first inactive day), or null (ongoing)

@@ -99,6 +99,12 @@ export const OWNED_TABLES = [
   // routine_days/routine_slots reach profile_id via JOIN (see the NOT-here note
   // above) and are cleared through this parent in deleteProfile.
   "routines",
+  // Illness episodes (#856): STABLE IDENTITY + annotations (note, outcome) for an
+  // illness. Directly owned. Membership (symptoms/temps/meds/clinical events) stays
+  // DERIVED by date-range — nothing FKs to this table. profile_share_links.episode_id
+  // FKs INTO it, but deleteProfile runs with foreign_keys OFF so the OWNED_TABLES
+  // delete order is immaterial there.
+  "illness_episodes",
 ] as const;
 
 export type OwnedTable = (typeof OWNED_TABLES)[number];

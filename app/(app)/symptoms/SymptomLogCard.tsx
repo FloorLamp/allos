@@ -25,12 +25,13 @@ export default function SymptomLogCard({ profileId }: { profileId: number }) {
   // headline ("Illness · day 4 · fever trending down · …") and a link to the full
   // story, both over the SAME assembly the timeline/share surfaces use.
   const episode = currentEpisodeForProfile(profileId);
-  const anchor = episode?.lastActiveDay ?? date;
+  const episodeLink =
+    episode && episode.id != null ? episodeHref(episode.id) : "/timeline";
   return (
     <div className="card">
       <WidgetHeader
         title="Symptoms"
-        href={episode ? episodeHref(anchor) : "/timeline"}
+        href={episodeLink}
         linkLabel={episode ? "Episode" : "Timeline"}
       />
       {episode ? (
