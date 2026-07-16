@@ -51,6 +51,7 @@ import { runEscalations } from "../lib/notifications/escalate";
 import { runRedoseNotices } from "../lib/notifications/redose";
 import { runRefills } from "../lib/notifications/refill";
 import { runPreventive } from "../lib/notifications/preventive";
+import { runIllnessCare } from "../lib/notifications/illness-care";
 import { runDigest } from "../lib/notifications/digest-data";
 import { runUpcomingDigest } from "../lib/notifications/upcoming-digest-data";
 import { runWeeklyRecap } from "../lib/notifications/weekly-recap-data";
@@ -411,6 +412,31 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
       else setProfileSetting(profile.id, "notify_preventive_assessed", date);
     } catch (e) {
       log.error("preventive check failed", {
+        profile: profile.id,
+        err: e instanceof Error ? e : String(e),
+      });
+      anyFailed = true;
+    }
+  }
+
+  // Illness-care nudge (#805): a logged symptom in the current open illness episode
+  // that has crossed a CITED duration/trajectory care line. Care-tier + bus-gated
+  // (a page dismissal silences the push), its own per-finding "once per episode"
+  // dedup, and — like preventive — assessed once per profile-local DAY (the episode
+  // assembly answers "as of today", which only changes at the date rollover, and
+  // #378 already windows the sends to the waking hours). Mark assessed only after a
+  // clean run so a failed send retries next waking hour. The safety-tier senders
+  // (dose reminders, escalation, PRN redose) above stay ungated.
+  if (
+    waking &&
+    getProfileSetting(profile.id, "notify_illnesscare_assessed") !== date
+  ) {
+    try {
+      const ic = await runIllnessCare(profile.id, profile.name, date);
+      if (ic.failed) anyFailed = true;
+      else setProfileSetting(profile.id, "notify_illnesscare_assessed", date);
+    } catch (e) {
+      log.error("illness-care check failed", {
         profile: profile.id,
         err: e instanceof Error ? e : String(e),
       });

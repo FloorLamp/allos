@@ -1,0 +1,50 @@
+{
+  "$comment": "Curated, CITED per-symptom duration/trajectory care thresholds for the illness-care findings engine (issue #805). The #798 Drug-Facts pattern applied to symptom duration: a committed, human-reviewable, per-entry-cited dataset keyed by the #799 curated symptom SLUG (lib/symptoms.json). Each entry states a public label / guideline-grade line about how long a symptom should last (or that a worsening trend warrants care) — NOT medical advice, NOT diagnosis, and NEVER a symptom-combination triage rule (that non-goal is a hard line, see docs/internals/findings.md). The engine (lib/illness-care.ts) states the logged FACT + the cited LINE + the SOURCE; it never says 'you should' and never names a condition. SEMANTICS: `duration.days` is the SOURCE's stated day count and the engine fires when the symptom has been logged MORE THAN that many consecutive days (run > days), so the copy can quote the source number verbatim ('beyond N days'). `trajectory.days` is the number of consecutive rising-severity days that fires the worsening variant (>= days); labels say 'if symptoms get worse' without a day count, so `days` is a fixed SUSTAINED-rise floor (2 = not a one-day blip), documented per entry — it is a blip filter, not a clinical number we invented. `infantRule` is age-banded ONLY where the SOURCE publishes a stricter band: when the profile's age is at or below `maxAgeMonths`, the finding renders the source's 'contact a clinician' REFUSAL for ANY logged day (run >= 1) instead of a day count (the #798 below-the-floor 'ask a doctor' pattern). No entry ⇒ no finding for that symptom, EVER — pinned by lib/__tests__/illness-thresholds.test.ts. Age is applied only when known; an unknown age never triggers the infant band.",
+  "symptoms": [
+    {
+      "slug": "fever",
+      "label": "Fever",
+      "duration": {
+        "days": 3,
+        "line": "the standard label advice for a fever lasting more than 3 days is to contact a clinician"
+      },
+      "infantRule": {
+        "maxAgeMonths": 3,
+        "line": "the standard guidance for any fever in an infant under 3 months is to contact a clinician promptly — it is not a duration to wait out",
+        "source": "American Academy of Pediatrics (AAP) — fever in infants younger than 3 months (rectal temperature 100.4°F / 38°C or higher)."
+      },
+      "source": "OTC acetaminophen / ibuprofen Drug Facts label, U.S. FDA ('Stop use and ask a doctor if fever ... lasts more than 3 days')."
+    },
+    {
+      "slug": "cough",
+      "label": "Cough",
+      "duration": {
+        "days": 7,
+        "line": "the standard label advice for a cough lasting more than 7 days is to contact a clinician"
+      },
+      "source": "OTC cough suppressant Drug Facts label, U.S. FDA ('Ask a doctor if cough lasts more than 7 days')."
+    },
+    {
+      "slug": "sore_throat",
+      "label": "Sore throat",
+      "duration": {
+        "days": 2,
+        "line": "the standard label advice for a sore throat that persists more than 2 days is to contact a clinician"
+      },
+      "source": "OTC sore throat relief Drug Facts label, U.S. FDA (sore-throat warning: 'if sore throat is severe or persists for more than 2 days ... consult a doctor promptly')."
+    },
+    {
+      "slug": "diarrhea",
+      "label": "Diarrhea",
+      "duration": {
+        "days": 2,
+        "line": "the standard label advice for diarrhea lasting more than 2 days is to contact a clinician"
+      },
+      "trajectory": {
+        "days": 2,
+        "line": "the standard label advice when diarrhea keeps getting worse is to contact a clinician"
+      },
+      "source": "OTC anti-diarrheal (loperamide) Drug Facts label, U.S. FDA ('Ask a doctor if ... symptoms get worse or diarrhea lasts more than 2 days'). The 2-day rising floor is a sustained-worsening (non-blip) filter, not a source day count."
+    }
+  ]
+}

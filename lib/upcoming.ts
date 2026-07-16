@@ -29,6 +29,7 @@ export function snoozeUntil(today: string, days: number): string | null {
 // The forward-looking domains we aggregate. Each maps to one existing signal:
 //   dose        — a scheduled supplement/medication dose pending today
 //   refill      — a tracked med/supplement running low on supply
+//   illness-care— a logged symptom past a cited duration/trajectory line (issue #805)
 //   interaction — two active stack items with a known drug interaction (issue #144)
 //   pgx         — a stored PGx result affecting an active medication (issue #710)
 //   contrast    — a planned contrast imaging study meeting an allergy/CKD gate (#701)
@@ -54,6 +55,7 @@ export type UpcomingDomain =
   | "prn-max"
   | "refill"
   | "dietary-limit"
+  | "illness-care"
   | "interaction"
   | "pgx"
   | "contrast"
@@ -77,6 +79,9 @@ const DOMAIN_ORDER: Record<UpcomingDomain, number> = {
   "prn-max": 0.5,
   refill: 1,
   "dietary-limit": 2,
+  // A logged symptom crossing a cited duration/trajectory care line (#805) — a
+  // care-tier informational finding, grouped with the other "review" safety notes.
+  "illness-care": 2.5,
   interaction: 3,
   pgx: 4,
   contrast: 5,
