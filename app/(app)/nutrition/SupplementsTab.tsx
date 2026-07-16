@@ -85,6 +85,7 @@ import AdherenceFindings from "./AdherenceFindings";
 import {
   addSupplement,
   toggleSituation,
+  toggleSituationIllnessType,
   acceptSuggestion,
 } from "./supplement-actions";
 
@@ -262,7 +263,13 @@ export default async function SupplementsTab() {
   // The situations bar is driven by the id-keyed vocabulary (#560): every situation
   // ROW for this profile, plus the built-in suggestions (NOCASE-deduped against the
   // vocabulary so a stored "illness" doesn't double up with the suggested "Illness").
-  const vocabulary = getSituations(profile.id).map((s) => s.name);
+  const situationRows = getSituations(profile.id);
+  const vocabulary = situationRows.map((s) => s.name);
+  // Which situations are illness-type-flagged (#799) — a symptom-log container. Keyed
+  // NOCASE so a chip's label matches its row regardless of casing.
+  const illnessTypeByName = new Map(
+    situationRows.map((s) => [s.name.toLowerCase(), !!s.illness_type])
+  );
   const situationChips = [
     ...new Map(
       [...vocabulary, ...SUGGESTED_SITUATIONS].map((n) => [n.toLowerCase(), n])
@@ -403,26 +410,57 @@ export default async function SupplementsTab() {
         <span className="section-label">Situations</span>
         {situationChips.map((sit) => {
           const on = activeSituations.has(sit);
+          // A real vocabulary row can opt into being an illness-type symptom container
+          // (#799); a suggested-but-unsaved chip has no row yet, so no toggle.
+          const isRow = illnessTypeByName.has(sit.toLowerCase());
+          const illnessOn = illnessTypeByName.get(sit.toLowerCase()) ?? false;
           return (
-            <form
-              action={async (fd) => {
-                "use server";
-                await toggleSituation(fd);
-              }}
-              key={sit}
-            >
-              <input type="hidden" name="situation" value={sit} />
-              <SubmitButton
-                aria-pressed={on}
-                className={`badge cursor-pointer disabled:opacity-60 ${
-                  on
-                    ? "bg-brand-600 text-white"
-                    : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300 dark:hover:bg-ink-700"
-                }`}
+            <div key={sit} className="flex items-center gap-1">
+              <form
+                action={async (fd) => {
+                  "use server";
+                  await toggleSituation(fd);
+                }}
               >
-                {sit}
-              </SubmitButton>
-            </form>
+                <input type="hidden" name="situation" value={sit} />
+                <SubmitButton
+                  aria-pressed={on}
+                  className={`badge cursor-pointer disabled:opacity-60 ${
+                    on
+                      ? "bg-brand-600 text-white"
+                      : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300 dark:hover:bg-ink-700"
+                  }`}
+                >
+                  {sit}
+                </SubmitButton>
+              </form>
+              {isRow && (
+                <form
+                  action={async (fd) => {
+                    "use server";
+                    await toggleSituationIllnessType(fd);
+                  }}
+                >
+                  <input type="hidden" name="situation" value={sit} />
+                  <SubmitButton
+                    aria-pressed={illnessOn}
+                    title={
+                      illnessOn
+                        ? "Illness — symptom logging on"
+                        : "Mark as illness (enables symptom logging)"
+                    }
+                    data-testid={`situation-illness-${sit}`}
+                    className={`badge cursor-pointer px-1.5 disabled:opacity-60 ${
+                      illnessOn
+                        ? "bg-orange-500 text-white"
+                        : "bg-transparent text-slate-400 hover:text-orange-500"
+                    }`}
+                  >
+                    🤒
+                  </SubmitButton>
+                </form>
+              )}
+            </div>
           );
         })}
       </div>

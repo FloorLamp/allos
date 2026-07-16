@@ -92,6 +92,9 @@ export const OWNED_TABLES = [
   "coverage_gaps",
   "situations",
   "food_log",
+  // Day-by-day symptom log (#799). Directly owned; UNIQUE(profile_id, date, symptom)
+  // keeps one row per symptom-day (worst-severity semantics).
+  "symptom_logs",
   // Adopted/authored training routines (#738). Directly owned; its children
   // routine_days/routine_slots reach profile_id via JOIN (see the NOT-here note
   // above) and are cleared through this parent in deleteProfile.

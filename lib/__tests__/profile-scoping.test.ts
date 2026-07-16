@@ -140,6 +140,11 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
       "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'frequency_targets'",
     why: "migration 038 partial-handle guard: a sqlite_master metadata probe (does the table exist yet?) that reads schema, not rows — its de-dupe/UPDATE/DELETE statements below are all profile_id-scoped",
   },
+  {
+    file: "lib/migrations/versions/042-symptom-logs.ts",
+    includes: "UPDATE situations SET illness_type = 1 WHERE name = 'Illness'",
+    why: "migration 042 (#799) one-shot backfill: defaults the illness_type flag ON for the SHARED built-in 'Illness' situation across ALL profiles by canonical name — a vocabulary default, not a per-profile read; every runtime situations statement stays profile_id-scoped",
+  },
 ];
 
 // `.prepare(sql)` sites whose argument is a runtime expression (not a string

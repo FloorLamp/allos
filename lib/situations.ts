@@ -61,6 +61,31 @@ export const CLINICAL_SITUATIONS = {
 
 export type ClinicalSituation = keyof typeof CLINICAL_SITUATIONS;
 
+// The built-in "Illness" situation — the canonical symptom-log container (issue #799).
+// It is the situation whose `illness_type` flag DEFAULTS ON: the symptom card and the
+// episode derivation key ONLY on illness-type-flagged situations, and this one is
+// flagged out of the box. A user-created situation ("Migraine", "Kid sick") opts in via
+// the situations-bar toggle instead; Travel/High-stress never become symptom containers.
+export const BUILTIN_ILLNESS_SITUATION = "Illness";
+
+// Whether a situation name IS the built-in Illness (case/whitespace-folded), so the
+// migration backfill + the create path default its illness_type flag on. Pure.
+export function isBuiltInIllnessSituation(name: string): boolean {
+  return sameSituation(name, BUILTIN_ILLNESS_SITUATION);
+}
+
+// Symptom→situation bridge (issue #799) — the REVERSE of the condition bridge above and
+// the FoodLogBar/#560 "suggest, never auto" discipline: when a profile logs symptoms but
+// no illness-type situation is active, SUGGEST activating the built-in "Illness" so the
+// day's symptoms fall inside a derivable episode. Suggest-only; the user confirms.
+// Returns the situation name to offer, or null when an illness-type situation is already
+// active (the card is already surfaced — the other direction of the bridge).
+export function suggestIllnessActivation(
+  hasActiveIllnessSituation: boolean
+): string | null {
+  return hasActiveIllnessSituation ? null : BUILTIN_ILLNESS_SITUATION;
+}
+
 // Map one active condition NAME to a matching clinical situation, or null. Word-ish
 // substring match on the canonical keyword set (a condition "Influenza A" → Illness,
 // "Left ankle sprain" → Injury). Conservative: an unrecognized condition maps to

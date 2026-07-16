@@ -867,11 +867,23 @@ export const DATASETS: ExportDataset[] = [
     countSql: `SELECT COUNT(*) AS n FROM food_log WHERE profile_id = ?`,
   }),
   tableDataset({
+    // Day-by-day symptom log (#799): one row per (date, symptom) with a 1–4 severity.
+    // User-entered health data, so it's in the portable export; id-keyed + owned, so
+    // deletable like the other logged datasets.
+    key: "symptom_logs",
+    label: "Symptom log",
+    table: "symptom_logs",
+    columns: ["date", "symptom", "severity", "note"],
+    select: `SELECT id, date, symptom, severity, note
+       FROM symptom_logs WHERE profile_id = ? ORDER BY date DESC, symptom COLLATE NOCASE`,
+    countSql: `SELECT COUNT(*) AS n FROM symptom_logs WHERE profile_id = ?`,
+  }),
+  tableDataset({
     key: "situations",
     label: "Situations",
     table: "situations",
-    columns: ["name", "active"],
-    select: `SELECT id, name, active
+    columns: ["name", "active", "illness_type"],
+    select: `SELECT id, name, active, illness_type
        FROM situations WHERE profile_id = ? ORDER BY name COLLATE NOCASE`,
     countSql: `SELECT COUNT(*) AS n FROM situations WHERE profile_id = ?`,
     deletable: false,
@@ -990,6 +1002,7 @@ export const DELETE_POLICY: Record<string, DatasetDeletePolicy> = {
   equipment: { revalidate: ["/settings/equipment", "/training"] },
   frequency_targets: { revalidate: ["/training", "/"] },
   food_log: { revalidate: ["/nutrition", "/trends", "/"] },
+  symptom_logs: { revalidate: ["/", "/timeline"] },
 };
 
 export function getDataset(key: string): ExportDataset | undefined {

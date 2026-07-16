@@ -54,6 +54,8 @@ import NextAppointmentWidget, {
 } from "@/components/dashboard/NextAppointmentWidget";
 import HealthspanPillarsWidget from "@/components/dashboard/HealthspanPillarsWidget";
 import QuickLogPrnWidget from "@/components/dashboard/QuickLogPrnWidget";
+import SymptomLogCard from "./symptoms/SymptomLogCard";
+import { hasActiveIllnessSituation } from "@/lib/settings/profile-attrs";
 import { saveDashboardLayout } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -227,6 +229,12 @@ export default async function Dashboard() {
     ? getPrnMedicationsForQuickLog(profile.id)
     : [];
 
+  // symptom-log (#799): the one-tap symptom card, surfaced ONLY while an illness-type
+  // situation is active — the same has-data availability gate as next-appointment, so it
+  // never clutters a well day.
+  const illnessActive =
+    has("symptom-log") && hasActiveIllnessSituation(profile.id);
+
   // Data-aware empty set (issue #171): a data-aware widget whose domain has no data
   // yet renders an onboarding CTA instead of a blank card. Computed from the same
   // reads the widget consumes, so the CTA shows exactly when the widget would be
@@ -325,6 +333,8 @@ export default async function Dashboard() {
         return (
           <QuickLogPrnWidget meds={prnMeds} tz={getTimezone(profile.id)} />
         );
+      case "symptom-log":
+        return illnessActive ? <SymptomLogCard profileId={profile.id} /> : null;
       default:
         return null;
     }
@@ -340,7 +350,8 @@ export default async function Dashboard() {
     available:
       (def.id !== "next-appointment" || hasScheduledAppt) &&
       (def.id !== "coaching-observations" || coachingObservations.length > 0) &&
-      (def.id !== "weekly-recap" || weeklyRecap !== null),
+      (def.id !== "weekly-recap" || weeklyRecap !== null) &&
+      (def.id !== "symptom-log" || illnessActive),
     node:
       def.dataAware && emptyIds.has(def.id)
         ? emptyNode(def.id)

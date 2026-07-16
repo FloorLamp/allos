@@ -1808,10 +1808,47 @@ db.prepare("UPDATE intake_items SET situation_id = ? WHERE id = ?").run(
   illnessSituationId,
   zincId
 );
+// "Illness" is the built-in illness-type situation (#799) — a symptom-log container. Flag
+// it so the dashboard symptom card surfaces and the seeded symptoms below derive an
+// episode.
+db.prepare("UPDATE situations SET illness_type = 1 WHERE id = ?").run(
+  illnessSituationId
+);
 upsertProfileSetting.run(
   "situation_events",
   serializeSituationEvents([], situationEvents)
 );
+
+// ── Symptom log (issue #799) ─────────────────────────────────────────────────
+// A synthetic illness episode with day-by-day symptoms so the dashboard Symptoms card
+// (gated on the active "Illness" situation above), the Timeline day view, and the derived
+// episode association all have data. Two runs: the CURRENT episode (Illness active since
+// daysAgo(3)) worsening then easing, and the PAST episode (Illness daysAgo 60→52). A
+// custom free-text name ("Sinus headache") demos the custom vocabulary + #203 hygiene.
+// Worst-severity upsert mirrors the runtime write core; synthetic, no real PHI.
+const seedSymptom = db.prepare(
+  `INSERT INTO symptom_logs (profile_id, date, symptom, severity, note)
+   VALUES (1, ?, ?, ?, ?)
+   ON CONFLICT (profile_id, date, symptom)
+   DO UPDATE SET severity = MAX(symptom_logs.severity, excluded.severity)`
+);
+const seededSymptoms: [number, string, number, string | null][] = [
+  // Current episode.
+  [3, "sore_throat", 2, null],
+  [3, "fatigue", 2, null],
+  [2, "fever", 3, "Peaked in the evening"],
+  [2, "cough", 3, null],
+  [2, "Sinus headache", 2, null],
+  [1, "cough", 2, null],
+  [1, "congestion", 2, null],
+  [0, "cough", 1, null],
+  // Past episode.
+  [58, "headache", 2, null],
+  [57, "nausea", 3, null],
+];
+for (const [ago, symptom, severity, note] of seededSymptoms) {
+  seedSymptom.run(daysAgo(ago), symptom, severity, note);
+}
 
 // ── Trends pins + saved views (Trends Ph2/Ph3) ───────────────────────────────
 upsertProfileSetting.run(
