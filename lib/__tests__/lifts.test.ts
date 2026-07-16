@@ -116,6 +116,7 @@ describe("lift classification flags", () => {
   it("identifies bodyweight-loaded lifts", () => {
     expect(isBodyweight("Pull Up")).toBe(true);
     expect(isBodyweight("Dip")).toBe(true);
+    expect(isBodyweight("Push Up")).toBe(true); // #835
     expect(isBodyweight("Back Squat")).toBe(false);
   });
 

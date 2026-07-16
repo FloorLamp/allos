@@ -426,6 +426,29 @@
       "secondaryMuscles": ["triceps", "front-delts"]
     },
     {
+      "key": "push up",
+      "setup": [
+        "Set your hands slightly wider than shoulder-width, fingers spread.",
+        "Extend the legs behind you and brace the core so the body is one straight line."
+      ],
+      "execution": [
+        "Lower under control until your chest is just above the floor.",
+        "Keep the elbows tracking back at roughly 45 degrees, not flaring wide.",
+        "Press back up to arms straight without letting the hips sag or pike."
+      ],
+      "breathing": "Inhale as you lower, exhale as you press up.",
+      "commonMistakes": [
+        "Letting the hips sag or pike instead of holding a plank line.",
+        "Flaring the elbows straight out to the sides.",
+        "Cutting the range short instead of nearly touching the chest down."
+      ],
+      "safetyNotes": [
+        "Regress to an incline (hands elevated) if you can't hold the line; add a weight vest or plate once bodyweight is easy."
+      ],
+      "primaryMuscles": ["chest"],
+      "secondaryMuscles": ["triceps", "front-delts", "abs"]
+    },
+    {
       "key": "face pull",
       "setup": [
         "Set a rope at upper-chest to face height and grip it with thumbs back.",

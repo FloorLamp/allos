@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   classifyBodyweightByExercise,
+  isBodyweight,
   resolveBodyweightKind,
   type BodyweightClassifyRow,
 } from "../lifts";
@@ -18,6 +19,20 @@ describe("resolveBodyweightKind", () => {
     // Weighted dips are still a bodyweight lift — the body is the base load.
     expect(resolveBodyweightKind("Dip", true)).toBe(true);
     expect(resolveBodyweightKind("Pull Up", true)).toBe(true);
+  });
+
+  it("folds bodyweight into the Push Up KIND exactly like Dip / Pull Up (#835)", () => {
+    // Push Up joined the catalog as a `bodyweight: true` lift, so its own body is
+    // the base load: it classifies as bodyweight on every strength surface — folded
+    // into volume/e1RM like the Dip and Pull Up — even when a vest/plate is logged
+    // (a loaded row's external weight is ADDED to bodyweight, not a separate KIND).
+    expect(isBodyweight("Push Up")).toBe(true);
+    expect(resolveBodyweightKind("Push Up", false)).toBe(true);
+    expect(resolveBodyweightKind("Push Up", true)).toBe(true);
+    // And it agrees with the other catalog bodyweight pushes over the same inputs.
+    expect(resolveBodyweightKind("Push Up", true)).toBe(
+      resolveBodyweightKind("Dip", true)
+    );
   });
 
   it("is bodyweight for a non-catalog lift never loaded externally", () => {

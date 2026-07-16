@@ -419,6 +419,18 @@ const PLAIN_DEFS: LiftDef[] = [
     secondaryMuscles: ["triceps", "front-delts"],
   },
   {
+    // The most common bodyweight push. Bodyweight-loaded like the Dip (any logged
+    // weight — vest/plate — is ADDED to bodyweight). The core (abs) braces as an
+    // anti-extension stabilizer; the issue's "core" maps to the `abs` MuscleId.
+    name: "Push Up",
+    muscle: "Chest & triceps",
+    region: "Chest",
+    pattern: "push",
+    bodyweight: true,
+    primaryMuscles: ["chest"],
+    secondaryMuscles: ["triceps", "front-delts", "abs"],
+  },
+  {
     name: "Face Pull",
     muscle: "Rear delts",
     region: "Shoulders",
