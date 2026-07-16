@@ -7,6 +7,8 @@ import {
 } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
 import { getEncounter } from "@/lib/queries";
+import { episodeForProfileDate } from "@/lib/illness-episode";
+import { episodeHref } from "@/lib/hrefs";
 import { formatRecordDate, sourceLabel } from "@/lib/record-format";
 import { PageHeader } from "@/components/ui";
 import PageContainer from "@/components/PageContainer";
@@ -71,6 +73,9 @@ export default async function EncounterDetailPage(props: {
   if (!encounter) notFound();
 
   const diagnoses = diagnosisList(encounter.diagnoses);
+  // Reverse episode association (#856 items 7-8): if this visit's date falls inside an
+  // illness episode, chip a link back to it. Derived by date — no FK.
+  const episode = episodeForProfileDate(profile.id, encounter.date);
 
   return (
     <PageContainer width="reading" data-testid="encounter-detail">
@@ -86,6 +91,16 @@ export default async function EncounterDetailPage(props: {
         title={encounter.type || "Visit"}
         subtitle={dateLabel(encounter)}
       />
+
+      {episode && episode.id != null ? (
+        <Link
+          href={episodeHref(episode.id)}
+          className="mb-4 inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-700 transition hover:bg-amber-200 dark:bg-amber-950 dark:text-amber-300"
+          data-testid="encounter-episode-chip"
+        >
+          During {episode.situation} episode
+        </Link>
+      ) : null}
 
       <div className="rounded-xl border border-black/5 bg-white/60 p-4 shadow-sm sm:p-6 dark:border-white/10 dark:bg-black/10">
         <dl className="divide-y divide-black/5 dark:divide-white/10">

@@ -8,14 +8,21 @@ import { getEpisodeRow } from "@/lib/illness-episode-store";
 import {
   getSymptomSeveritiesOnDate,
   getCustomSymptomNames,
+  getPrnMedicationsForQuickLog,
 } from "@/lib/queries";
+import { getTimezone } from "@/lib/settings";
+import QuickLogPrnWidget from "@/components/dashboard/QuickLogPrnWidget";
 import { SYMPTOMS } from "@/lib/symptoms";
 import { shiftDateStr } from "@/lib/date";
 import { isRealIsoDate } from "@/lib/date";
+import { getEpisodeInRangeEvents } from "@/lib/illness-episode-events";
+import { episodeComparisonFor } from "@/lib/illness-episode-compare";
+import EpisodeComparison from "@/components/illness/EpisodeComparison";
 import EpisodeSummary from "@/components/illness/EpisodeSummary";
 import EpisodeControls from "@/components/illness/EpisodeControls";
 import EpisodeLogPanel from "@/components/illness/EpisodeLogPanel";
 import EpisodeEditor from "@/components/illness/EpisodeEditor";
+import EpisodeInRangeEvents from "@/components/illness/EpisodeInRangeEvents";
 
 export const dynamic = "force-dynamic";
 
@@ -41,6 +48,21 @@ export default async function EpisodePage(props: {
   const assembled = assembleIllnessEpisode(profile.id, episode);
   const promoted = assembled.conditions.some((c) => c.fromEpisode);
   const canWrite = access === "write";
+  const inRangeEvents = getEpisodeInRangeEvents(
+    profile.id,
+    assembled.firstDay,
+    assembled.lastActiveDay
+  );
+  const comparison = assembled.ongoing
+    ? episodeComparisonFor(profile.id, episodeId)
+    : null;
+  // Item 6: the redose window + Log button — most useful for an OPEN episode (the 9pm
+  // caregiver). Reuses the dashboard PRN widget over the SAME redoseWindowStatus (one
+  // computation), never a second redose engine.
+  const prnMeds =
+    assembled.ongoing && canWrite
+      ? getPrnMedicationsForQuickLog(profile.id)
+      : [];
 
   // The logging bar anchors to today for an open episode; for a closed one it anchors to
   // the last active day, or a ?logDay= inside the range (backfill mode — item 11).
@@ -73,6 +95,8 @@ export default async function EpisodePage(props: {
         outcome={row.outcome}
         generatedAt={new Date().toISOString()}
       />
+      {comparison && <EpisodeComparison comparison={comparison} />}
+      <EpisodeInRangeEvents events={inRangeEvents} />
       {canWrite && (
         <EpisodeLogPanel
           episodeId={episodeId}
@@ -86,6 +110,11 @@ export default async function EpisodePage(props: {
           rangeStart={rangeStart}
           rangeEnd={rangeEnd}
         />
+      )}
+      {prnMeds.length > 0 && (
+        <div className="mt-5">
+          <QuickLogPrnWidget meds={prnMeds} tz={getTimezone(profile.id)} />
+        </div>
       )}
       {canWrite && (
         <EpisodeEditor
