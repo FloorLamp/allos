@@ -293,4 +293,42 @@ describe("buildActivityPayload", () => {
     ]);
     expect(primaryType).toBe("strength");
   });
+
+  it("auto-fills a lone sport leg's empty Duration from the clock span (#791)", () => {
+    // A sport part with Start/End but no typed Duration: the clock minutes land
+    // ON the component, not just a placeholder — so its duration-only stats show
+    // real minutes instead of a 0-minute session.
+    const p = part({ name: "Tennis" });
+    const { comps } = buildActivityPayload(classifier, [p], 55);
+    expect(comps).toEqual([
+      { name: "Tennis", type: "sport", distance: null, duration_min: 55 },
+    ]);
+  });
+
+  it("auto-fills a lone cardio leg's empty Duration from the clock span (#791)", () => {
+    const p = part({ name: "Running", distance: "5" });
+    const { comps } = buildActivityPayload(classifier, [p], 30);
+    expect(comps[0].duration_min).toBe(30);
+  });
+
+  it("never overrides a typed component Duration with the clock span (#791)", () => {
+    const p = part({ name: "Tennis", durationMin: "40" });
+    const { comps } = buildActivityPayload(classifier, [p], 55);
+    expect(comps[0].duration_min).toBe(40);
+  });
+
+  it("leaves multi-part composite legs manual — no clock fill (#791)", () => {
+    // Attributing the whole span to every leg would double-count per-leg stats;
+    // the parent rollup already covers the session total via clock-wins.
+    const swim = part({ name: "Running", distance: "1" });
+    const bike = part({ name: "Tennis" });
+    const { comps } = buildActivityPayload(classifier, [swim, bike], 90);
+    expect(comps.map((c) => c.duration_min)).toEqual([null, null]);
+  });
+
+  it("does not fill a lone strength part from the clock span (#791)", () => {
+    const p = strengthPart("Dumbbell Curl");
+    const { comps } = buildActivityPayload(classifier, [p], 60);
+    expect(comps[0].duration_min).toBeNull();
+  });
 });

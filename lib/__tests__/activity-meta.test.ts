@@ -8,6 +8,7 @@ import {
   resolveActivityType,
   shiftHHMM,
   showsDistanceField,
+  soleComponentDuration,
   timeOfDay,
   titleCase,
 } from "@/lib/activity-meta";
@@ -267,5 +268,73 @@ describe("compositeRollup", () => {
       durationMin: null,
       hasStrength: false,
     });
+  });
+});
+
+describe("soleComponentDuration (#791)", () => {
+  it("keeps a component's own duration whenever it has one", () => {
+    // Even a mixed session's already-typed leg is untouched.
+    expect(
+      soleComponentDuration({
+        componentDurationMin: 25,
+        isSoleComponent: false,
+        isStrength: false,
+        sessionDurationMin: 90,
+      })
+    ).toBe(25);
+    expect(
+      soleComponentDuration({
+        componentDurationMin: 25,
+        isSoleComponent: true,
+        isStrength: false,
+        sessionDurationMin: 40,
+      })
+    ).toBe(25);
+  });
+
+  it("fills a lone non-strength leg's missing duration from the session span", () => {
+    expect(
+      soleComponentDuration({
+        componentDurationMin: null,
+        isSoleComponent: true,
+        isStrength: false,
+        sessionDurationMin: 40,
+      })
+    ).toBe(40);
+  });
+
+  it("does not fill when the lone component is strength", () => {
+    expect(
+      soleComponentDuration({
+        componentDurationMin: null,
+        isSoleComponent: true,
+        isStrength: true,
+        sessionDurationMin: 40,
+      })
+    ).toBeNull();
+  });
+
+  it("does not fill a leg of a multi-part composite (no double-counting)", () => {
+    // The sole-component guard: a mixed strength+sport session must not attribute
+    // the whole session's minutes to its sport/cardio leg.
+    expect(
+      soleComponentDuration({
+        componentDurationMin: null,
+        isSoleComponent: false,
+        isStrength: false,
+        sessionDurationMin: 90,
+      })
+    ).toBeNull();
+  });
+
+  it("returns null when there is no session duration to inherit", () => {
+    expect(
+      soleComponentDuration({
+        componentDurationMin: null,
+        isSoleComponent: true,
+        isStrength: false,
+        sessionDurationMin: null,
+      })
+    ).toBeNull();
   });
 });
