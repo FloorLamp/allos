@@ -1,5 +1,8 @@
 import type { Sex } from "./types";
-import screeningsData from "./screenings.json";
+import {
+  SCREENING_ROWS,
+  SCREENINGS_REVIEWED as SCREENINGS_DATASET_REVIEWED,
+} from "./datasets/screenings";
 
 // Curated preventive-care catalog: age/sex-banded well-visit milestones and a
 // small, USPSTF-derived screening subset. This is the single static source the
@@ -257,35 +260,15 @@ const RECURRING_VISITS: RecurringVisitRule[] = [
 // the standard interval. NOT clinical guidance.
 // ---------------------------------------------------------------------------
 
-// The on-disk shape of one baked screening row (mirrors ScreeningRow in the
-// generator): a ScreeningRule minus the constant `kind`/`schedule.type`
-// discriminants and the dataset-level `reviewed` date, all re-injected here.
-interface BakedScreeningRow {
-  key: string;
-  name: string;
-  description: string;
-  sex?: Sex;
-  graceMonths: number;
-  riskGated?: boolean;
-  bmiGated?: boolean;
-  citation: { source: string; summary: string; grade?: string };
-  schedule: { startMonths: number; endMonths: number; intervalMonths?: number };
-}
-
-const SCREENINGS_DATASET = screeningsData as unknown as {
-  reviewed: string;
-  screenings: BakedScreeningRow[];
-};
-
 // The month the screening dataset was last reviewed against USPSTF (from the
-// baked JSON). Exported for audit surfaces the way CATALOG_REVIEWED is.
-export const SCREENINGS_REVIEWED = SCREENINGS_DATASET.reviewed;
+// framework dataset's meta). Exported for audit surfaces the way CATALOG_REVIEWED is.
+export const SCREENINGS_REVIEWED = SCREENINGS_DATASET_REVIEWED;
 
 // Reconstruct the fully-typed screening rules from the baked rows, re-attaching
 // the constant `kind`/`schedule.type` discriminants and the dataset `reviewed`
 // date onto each citation. Optional flags are only set when truthy so the shape
 // matches the previous inline literals byte-for-byte for downstream consumers.
-const SCREENINGS: ScreeningRule[] = SCREENINGS_DATASET.screenings.map((r) => ({
+const SCREENINGS: ScreeningRule[] = SCREENING_ROWS.map((r) => ({
   key: r.key,
   name: r.name,
   kind: "screening",
@@ -297,7 +280,7 @@ const SCREENINGS: ScreeningRule[] = SCREENINGS_DATASET.screenings.map((r) => ({
   citation: {
     source: r.citation.source,
     summary: r.citation.summary,
-    reviewed: SCREENINGS_DATASET.reviewed,
+    reviewed: SCREENINGS_REVIEWED,
     ...(r.citation.grade ? { grade: r.citation.grade } : {}),
   },
   schedule: {

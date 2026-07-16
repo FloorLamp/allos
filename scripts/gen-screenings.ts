@@ -56,8 +56,15 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { DATASET_SCHEMA, type DatasetEnvelope } from "../lib/datasets/types";
 
-const OUT = path.join(process.cwd(), "lib", "screenings.json");
+const OUT = path.join(
+  process.cwd(),
+  "lib",
+  "datasets",
+  "data",
+  "screenings.json"
+);
 
 const Y = 12; // months per year, for readability in the tables below
 
@@ -94,11 +101,16 @@ export interface ScreeningRow {
   };
 }
 
-export interface ScreeningsDataset {
-  $comment: string;
+// Dataset-level metadata (issue #860 Track B): the `reviewed` date applies to the
+// whole dataset, not a single row — so it rides in `meta`.
+export interface ScreeningsMeta {
   reviewed: string;
-  screenings: ScreeningRow[];
 }
+
+// The framework envelope shape: the USPSTF screening subset now ships as a curated-
+// dataset envelope under lib/datasets/data/, identity-keyed by `key`. Age/sex bands
+// (and the per-row USPSTF `citation`) live on the entries.
+export type ScreeningsDataset = DatasetEnvelope<ScreeningRow, ScreeningsMeta>;
 
 // The curated USPSTF grade A/B screening subset. Order is display-friendly
 // (general adult → sex-specific → risk-gated last).
@@ -321,23 +333,36 @@ const SCREENINGS: ScreeningRow[] = [
 // lib/screenings.json is a FIXED POINT of this (guarded by the dataset test).
 export function buildScreenings(): ScreeningsDataset {
   return {
-    $comment:
+    $schema: DATASET_SCHEMA,
+    id: "screenings",
+    title: "USPSTF preventive-screening catalog",
+    description:
       "Baked USPSTF preventive-screening dataset (issue #149) read by " +
       "lib/preventive-catalog.ts. Curated PUBLIC USPSTF grade A/B recommendations — " +
       "see scripts/gen-screenings.ts for per-row sourcing. Committed + HUMAN-" +
       "REVIEWABLE; regenerate with `npm run gen:screenings`. SIMPLIFIED and " +
       "INFORMATIONAL for personal/household tracking, NOT clinical software or " +
-      "medical advice. `reviewed` dates the whole dataset; risk-gated rows stay " +
+      "medical advice. `meta.reviewed` dates the whole dataset; risk-gated rows stay " +
       "inert until the risk input exists.",
-    reviewed: REVIEWED,
-    screenings: SCREENINGS,
+    citation: [
+      {
+        source:
+          "U.S. Preventive Services Task Force (USPSTF) — A and B grade recommendations",
+        url: "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation-topics",
+        note: "Public recommendation statements; each row carries its own USPSTF `citation` (summary + grade). Simplified for personal tracking, not clinical guidance.",
+      },
+    ],
+    identity: { keys: ["key"] },
+    meta: { reviewed: REVIEWED },
+    entries: SCREENINGS,
   };
 }
 
 function writeDataset(): void {
   const dataset = buildScreenings();
+  fs.mkdirSync(path.dirname(OUT), { recursive: true });
   fs.writeFileSync(OUT, JSON.stringify(dataset, null, 2) + "\n");
-  console.log(`Wrote ${dataset.screenings.length} screenings to ${OUT}`);
+  console.log(`Wrote ${dataset.entries.length} screenings to ${OUT}`);
   console.log(
     "Review the age/sex bands + citations against USPSTF before committing."
   );
