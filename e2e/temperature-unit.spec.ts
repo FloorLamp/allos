@@ -16,8 +16,12 @@ test("a °C login: the Settings select persists and the dashboard temp entry + f
     const select = page.getByTestId("temperature-unit-select");
     await expect(select).toBeVisible();
     await select.selectOption("C");
+    // Wait for the autosave to LAND before reloading — the units card's SaveStatus
+    // shows a "Saved" check once the server action resolves (the write is committed).
+    // Reloading before this races the async save (that's what dropped the pref).
+    await expect(page.getByLabel("Saved")).toBeVisible();
 
-    // It persists across a reload.
+    // It persists across a full reload.
     await page.reload();
     await expect(page.getByTestId("temperature-unit-select")).toHaveValue("C");
 
@@ -31,11 +35,12 @@ test("a °C login: the Settings select persists and the dashboard temp entry + f
     // Logging a reading confirms it in °C via the fever toast (fmtTemp).
     await bar.getByTestId("temp-quick-input").fill("38");
     await bar.getByTestId("temp-quick-save").click();
-    await expect(page.getByText(/°C/).first()).toBeVisible();
+    await expect(page.getByText(/Temperature logged/i)).toContainText("°C");
   } finally {
     // Restore °F so the shared login preference doesn't bleed into other specs.
     await page.goto("/settings");
     await page.getByTestId("temperature-unit-select").selectOption("F");
+    await expect(page.getByLabel("Saved")).toBeVisible();
     await expect(page.getByTestId("temperature-unit-select")).toHaveValue("F");
   }
 });
