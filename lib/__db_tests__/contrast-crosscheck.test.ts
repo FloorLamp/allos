@@ -86,6 +86,19 @@ describe("getContrastSafetyWarnings — planned contrast × allergy/CKD (#701)",
     expect(item!.detail).toBe(contrastDetail(hit));
   });
 
+  it("flags a brand-name-only allergy record end-to-end (#829)", () => {
+    const { profileId, todayStr } = makeProfile("contrast-brand");
+    const cpId = addCarePlanItem(profileId, "CT abdomen with contrast");
+    // A real-world record naming the brand, not the generic class term.
+    addAllergy(profileId, "Reaction to Omnipaque");
+    const warnings = getContrastSafetyWarnings(profileId, todayStr);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].source).toBe("careplan");
+    expect(warnings[0].sourceId).toBe(cpId);
+    expect(warnings[0].gate).toBe("allergy");
+    expect(warnings[0].contrastClass).toBe("iodinated");
+  });
+
   it("flags CKD against a planned iodinated study (contrast nephropathy)", () => {
     const { profileId, todayStr } = makeProfile("contrast-ckd");
     addCarePlanItem(profileId, "CT chest with IV contrast");

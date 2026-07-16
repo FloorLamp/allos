@@ -147,6 +147,10 @@ const ALLERGY_GATES: AllergyGateDef[] = [
   {
     class: "iodinated",
     // The issue's explicit allergy gate: iodinated-contrast / iodine / contrast-dye.
+    // "iv dye" (#829) is the one multi-word phrasing with NO "contrast" word, so the
+    // order-insensitive token-set match can't reach it from another keyword; it needs
+    // its own entry (still two required tokens — {iv, dye} — so a bare food "dye" or
+    // "IV antibiotics" allergy never fires it).
     allergens: [
       "iodinated contrast",
       "iodinated",
@@ -157,6 +161,7 @@ const ALLERGY_GATES: AllergyGateDef[] = [
       "radiocontrast",
       "ct contrast",
       "iv contrast",
+      "iv dye",
     ],
     note: "You have an iodinated-contrast allergy on file — confirm premedication with your provider.",
     source: ACR,
