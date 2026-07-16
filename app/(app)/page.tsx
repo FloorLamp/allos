@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { redirect } from "next/navigation";
 import { IconFlask, IconScale, IconPill } from "@tabler/icons-react";
 import { today } from "@/lib/db";
 import {
@@ -24,7 +25,18 @@ import { requireSession, getAccessibleProfiles } from "@/lib/auth";
 import { withAiLogContext } from "@/lib/ai-log";
 import { runRecommendation } from "@/lib/recommendation-engine";
 import { isTrainingRestricted } from "@/lib/age-gate";
-import { getDashboardLayout, getUnitPrefs, getTimezone } from "@/lib/settings";
+import {
+  getDashboardLayout,
+  isProfileOrientationDismissed,
+  getOnboardingState,
+  getUnitPrefs,
+  getTimezone,
+  getEmergencyCardEnabled,
+  getProfileHomeAssistant,
+  getProfileTelegram,
+} from "@/lib/settings";
+import { countPushSubscriptionsForLogin } from "@/lib/notifications/push";
+import { hasConnectedDataSource } from "@/lib/integrations/connections";
 import { dispWeight } from "@/lib/units";
 import { shiftDateStr } from "@/lib/date";
 import { ALL_ROWS } from "@/lib/trends";
@@ -32,6 +44,8 @@ import { formatLongDate, daysRemainingLabel } from "@/lib/format-date";
 import { recentLabHighlights } from "@/lib/recent-labs";
 import { getWeeklyRecap } from "@/lib/notifications/weekly-recap-data";
 import { resolveWidgetList } from "@/lib/dashboard-widgets";
+import { onboardingNeedsSetup } from "@/lib/onboarding";
+import { getOnboardingDataPresence } from "@/lib/onboarding-data";
 import { PageHeader } from "@/components/ui";
 import DashboardGrid, {
   type GridWidget,
@@ -63,6 +77,9 @@ import QuickLogPrnWidget from "@/components/dashboard/QuickLogPrnWidget";
 import SymptomLogCard from "./symptoms/SymptomLogCard";
 import FeelingSickCard from "@/components/dashboard/FeelingSickCard";
 import { hasActiveIllnessSituation } from "@/lib/settings/profile-attrs";
+import OnboardingResumeCard from "@/components/dashboard/OnboardingResumeCard";
+import OnboardingChecklist from "@/components/dashboard/OnboardingChecklist";
+import ProfileOrientationCard from "@/components/dashboard/ProfileOrientationCard";
 import { saveDashboardLayout } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -73,7 +90,11 @@ export const dynamic = "force-dynamic";
 const WEIGHT_TREND_WINDOW_DAYS = 90;
 
 export default async function Dashboard() {
-  const { login, profile } = await requireSession();
+  const { login, profile, access } = await requireSession();
+  const storedOnboarding = getOnboardingState(profile.id);
+  if (access === "write" && storedOnboarding?.status === "not_started") {
+    redirect("/onboarding");
+  }
   // Age-restricted profiles don't see the fitness surfaces (Training, AI
   // Insights), so their fitness dashboard widgets are dropped by the registry
   // merge (see lib/dashboard-widgets.ts / lib/age-gate.ts).
@@ -103,6 +124,44 @@ export default async function Dashboard() {
   // few profile-scoped reads. Grants are respected — getAccessibleProfiles returns
   // only reachable profiles, and the switch action re-checks.
   const accessible = await getAccessibleProfiles();
+  const onboardingState =
+    access === "write" && onboardingNeedsSetup(storedOnboarding)
+      ? storedOnboarding
+      : null;
+  const onboardingChecklist =
+    storedOnboarding?.status === "complete" &&
+    !storedOnboarding.checklistDismissed
+      ? storedOnboarding
+      : null;
+  const onboardingPresence = onboardingState
+    ? {
+        ...getOnboardingDataPresence(profile.id),
+        caregiving: accessible.length > 1,
+      }
+    : null;
+  const onboardingChecklistCompletion = onboardingChecklist
+    ? {
+        ...getOnboardingDataPresence(profile.id),
+        caregiving: accessible.length > 1,
+        emergency: getEmergencyCardEnabled(profile.id),
+        connectedDataSource: hasConnectedDataSource(profile.id),
+        notifications:
+          onboardingChecklist.notificationIntent === "none" ||
+          getProfileTelegram(profile.id).telegramEnabled ||
+          getProfileHomeAssistant(profile.id).enabled ||
+          countPushSubscriptionsForLogin(login.id) > 0,
+      }
+    : null;
+  const showOrientation =
+    (storedOnboarding === null ||
+      (access === "read" && onboardingNeedsSetup(storedOnboarding))) &&
+    !isProfileOrientationDismissed(login.id, profile.id);
+  const orientationPresence = showOrientation
+    ? {
+        ...getOnboardingDataPresence(profile.id),
+        caregiving: accessible.length > 1,
+      }
+    : null;
   const householdEntries: HouseholdStripEntry[] =
     accessible.length > 1
       ? accessible
@@ -398,6 +457,26 @@ export default async function Dashboard() {
       <div className="mb-6">
         <NeedsAttentionHero items={attention} today={on} />
       </div>
+      {onboardingState && onboardingPresence && (
+        <OnboardingResumeCard
+          state={onboardingState}
+          presence={onboardingPresence}
+        />
+      )}
+      {onboardingChecklist && onboardingChecklistCompletion && (
+        <OnboardingChecklist
+          focuses={onboardingChecklist.focuses}
+          completion={onboardingChecklistCompletion}
+        />
+      )}
+      {showOrientation && orientationPresence && (
+        <ProfileOrientationCard
+          profileName={profile.name}
+          access={access}
+          attentionCount={attention.length}
+          presence={orientationPresence}
+        />
+      )}
       <HouseholdStrip entries={householdEntries} />
       <DashboardGrid
         key={profile.id}

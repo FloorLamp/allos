@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_TIMEZONE,
+  formatTimezoneOffset,
   isValidTimezone,
   resolveTimezone,
+  timezoneOffsetMinutes,
 } from "../timezone";
 
 describe("isValidTimezone", () => {
@@ -16,6 +18,19 @@ describe("isValidTimezone", () => {
     expect(isValidTimezone("")).toBe(false);
     expect(isValidTimezone("Not/AZone")).toBe(false);
     expect(isValidTimezone("Mars/Olympus")).toBe(false);
+  });
+});
+
+describe("timezone offsets", () => {
+  it("formats current offsets with DST and fractional-hour support", () => {
+    const winter = new Date("2026-01-15T12:00:00.000Z");
+    const summer = new Date("2026-07-15T12:00:00.000Z");
+
+    expect(timezoneOffsetMinutes("America/New_York", winter)).toBe(-300);
+    expect(timezoneOffsetMinutes("America/New_York", summer)).toBe(-240);
+    expect(formatTimezoneOffset("America/New_York", summer)).toBe("UTC−04:00");
+    expect(formatTimezoneOffset("Asia/Kolkata", summer)).toBe("UTC+05:30");
+    expect(formatTimezoneOffset("UTC", summer)).toBe("UTC+00:00");
   });
 });
 

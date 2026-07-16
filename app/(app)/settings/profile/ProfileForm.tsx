@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { saveProfileSettings } from "./actions";
 import { ageFromBirthdate, dateStrInTz, isRealIsoDate } from "@/lib/date";
 import DateField from "@/components/DateField";
 import SaveStatus from "@/components/SaveStatus";
+import TimezoneSelect from "@/components/TimezoneSelect";
 import { useSaveStatus, useFlushOnHide } from "@/components/useSaveStatus";
 import type { ReproductiveStatus, Sex } from "@/lib/types";
 
@@ -79,21 +80,6 @@ export default function ProfileForm({
   const { pending, savedAt, error, save: runSave } = useSaveStatus();
   const formRef = useRef<HTMLDivElement>(null);
   useFlushOnHide(formRef);
-
-  // Populate the IANA zone list on the client only. The list from
-  // Intl.supportedValuesOf can differ between the server's ICU and the browser's,
-  // so building it during SSR would cause a <select> hydration mismatch; instead
-  // SSR renders just the current value and the full list fills in after mount.
-  const [tzList, setTzList] = useState<string[]>([]);
-  useEffect(() => {
-    if (typeof (Intl as any).supportedValuesOf === "function") {
-      setTzList((Intl as any).supportedValuesOf("timeZone"));
-    }
-  }, []);
-
-  // Ensure the current value is always selectable (even before the list loads, or
-  // if it's an alias the list omits).
-  const zones = tzList.includes(timezone) ? tzList : [timezone, ...tzList];
 
   function save(next: {
     fullName?: string;
@@ -301,51 +287,21 @@ export default function ProfileForm({
       </div>
 
       <div className="border-t border-black/5 pt-5 dark:border-white/10">
-        <div className="flex items-center justify-between">
-          <label className="label mb-0">Timezone</label>
-          <button
-            type="button"
-            onClick={() => {
-              const detected = Intl.DateTimeFormat().resolvedOptions().timeZone;
-              if (detected) {
-                setTimezone(detected);
-                save({
-                  sex,
-                  birthdate,
-                  age: ageFallback,
-                  timezone: detected,
-                  weekStart,
-                  weekMode,
-                });
-              }
-            }}
-            className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
-          >
-            Detect from browser
-          </button>
-        </div>
-        <select
+        <TimezoneSelect
+          id="profile-timezone"
           value={timezone}
-          onChange={(e) => {
-            const v = e.target.value;
-            setTimezone(v);
+          onTimezoneChange={(nextTimezone) => {
+            setTimezone(nextTimezone);
             save({
               sex,
               birthdate,
               age: ageFallback,
-              timezone: v,
+              timezone: nextTimezone,
               weekStart,
               weekMode,
             });
           }}
-          className="input mt-1"
-        >
-          {zones.map((z) => (
-            <option key={z} value={z}>
-              {z}
-            </option>
-          ))}
-        </select>
+        />
         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           Decides when each day rolls over — today/yesterday labels, streaks,
           the weekly summary, and notification timing.

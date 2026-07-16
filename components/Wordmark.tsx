@@ -20,11 +20,7 @@ const outfit = Outfit({
 // plus the wordmark text. Shared by the desktop sidebar (app/layout.tsx), the
 // mobile drawer/top bar (components/MobileNav.tsx), and the login page, so the
 // logo, font, and type styling live in one place. `markClassName` sizes the mark.
-export default function Wordmark({
-  markClassName = "h-6 w-10",
-}: {
-  markClassName?: string;
-}) {
+export function LogoMark({ className = "h-6 w-10" }: { className?: string }) {
   // Unique per instance: the wordmark is rendered on multiple surfaces at once
   // (the desktop sidebar and the mobile top bar both mount it), and the desktop
   // sidebar — first in DOM order — is `display:none` on phones. A shared, static
@@ -34,27 +30,37 @@ export default function Wordmark({
   // points at a visible one.
   const gradientId = useId();
   return (
+    <svg
+      viewBox={LOGO_VIEWBOX}
+      className={`${className} shrink-0`}
+      fill="none"
+      aria-hidden
+    >
+      <defs>
+        <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stopColor={LOGO_GRADIENT_FROM} />
+          <stop offset="1" stopColor={LOGO_GRADIENT_TO} />
+        </linearGradient>
+      </defs>
+      <path
+        d={LOGO_PATH}
+        stroke={`url(#${gradientId})`}
+        strokeWidth={LOGO_STROKE_WIDTH}
+        strokeLinecap="round"
+        strokeMiterlimit={10}
+      />
+    </svg>
+  );
+}
+
+export default function Wordmark({
+  markClassName = "h-6 w-10",
+}: {
+  markClassName?: string;
+}) {
+  return (
     <>
-      <svg
-        viewBox={LOGO_VIEWBOX}
-        className={`${markClassName} shrink-0`}
-        fill="none"
-        aria-hidden
-      >
-        <defs>
-          <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0" stopColor={LOGO_GRADIENT_FROM} />
-            <stop offset="1" stopColor={LOGO_GRADIENT_TO} />
-          </linearGradient>
-        </defs>
-        <path
-          d={LOGO_PATH}
-          stroke={`url(#${gradientId})`}
-          strokeWidth={LOGO_STROKE_WIDTH}
-          strokeLinecap="round"
-          strokeMiterlimit={10}
-        />
-      </svg>
+      <LogoMark className={markClassName} />
       <span
         className={`${outfit.className} whitespace-nowrap text-2xl font-semibold text-slate-800 dark:text-slate-100`}
       >

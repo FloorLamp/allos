@@ -13,6 +13,7 @@ import { shiftDateStr, utcSqlString } from "../lib/date";
 import { writeRawPayload } from "../lib/integrations/raw-log";
 import { upsertConnection } from "../lib/integrations/connections";
 import {
+  setOnboardingState,
   setDashboardLayout,
   setProfileSetting,
   setSetting,
@@ -21,6 +22,7 @@ import {
 import { setMinTrainingAge } from "../lib/age-gate";
 import { reconcileFlags } from "../lib/queries";
 import { hashPasswordSync } from "../lib/password";
+import { initialOnboardingState } from "../lib/onboarding";
 import {
   E2E_LOGIN_CHILD,
   E2E_LOGIN_COMPARE,
@@ -31,6 +33,8 @@ import {
   E2E_LOGIN_ROUTINE,
   E2E_LOGIN_ROUTINE_BUILDER,
   E2E_LOGIN_ROUTINE_DELOAD,
+  E2E_LOGIN_ONBOARDING,
+  E2E_LOGIN_ORIENTATION,
   E2E_LOGIN_STRAVA,
   E2E_MEMBER_PASSWORD,
   DUP_REVIEW_PROFILE,
@@ -40,6 +44,8 @@ import {
   ROUTINE_BUILDER_PROFILE,
   ROUTINE_DELOAD_PROFILE,
   ROUTINE_PROFILE,
+  ONBOARDING_PROFILE,
+  ORIENTATION_PROFILE,
   SOURCE_COMPARE_PROFILE,
   STRAVA_REAUTH_PROFILE,
 } from "./fixture-logins";
@@ -1612,6 +1618,69 @@ seedMemberLogin(E2E_LOGIN_DUP, dupReviewId);
 const noGearId = fixtureProfileId(NO_GEAR_PROFILE);
 db.prepare(`DELETE FROM equipment WHERE profile_id = ?`).run(noGearId);
 seedMemberLogin(E2E_LOGIN_NOGEAR, noGearId);
+
+// A truly empty, isolated profile for the goal-based onboarding flow (#719).
+// Explicit state opts it into onboarding; every other fixture profile without the
+// marker behaves as an existing profile and is never forced through setup.
+const onboardingId = fixtureProfileId(ONBOARDING_PROFILE);
+db.prepare(`DELETE FROM body_metrics WHERE profile_id = ?`).run(onboardingId);
+db.prepare(`DELETE FROM activities WHERE profile_id = ?`).run(onboardingId);
+db.prepare(`DELETE FROM medical_records WHERE profile_id = ?`).run(
+  onboardingId
+);
+db.prepare(`DELETE FROM medical_documents WHERE profile_id = ?`).run(
+  onboardingId
+);
+db.prepare(`DELETE FROM intake_items WHERE profile_id = ?`).run(onboardingId);
+db.prepare(`DELETE FROM appointments WHERE profile_id = ?`).run(onboardingId);
+db.prepare(`DELETE FROM immunizations WHERE profile_id = ?`).run(onboardingId);
+db.prepare(`DELETE FROM care_plan_items WHERE profile_id = ?`).run(
+  onboardingId
+);
+db.prepare(`DELETE FROM goals WHERE profile_id = ?`).run(onboardingId);
+db.prepare(`DELETE FROM frequency_targets WHERE profile_id = ?`).run(
+  onboardingId
+);
+db.prepare(`DELETE FROM equipment WHERE profile_id = ?`).run(onboardingId);
+db.prepare(
+  `DELETE FROM routine_slots
+    WHERE routine_day_id IN (
+      SELECT rd.id FROM routine_days rd
+      JOIN routines r ON r.id = rd.routine_id
+      WHERE r.profile_id = ?
+    )`
+).run(onboardingId);
+db.prepare(
+  `DELETE FROM routine_days
+    WHERE routine_id IN (SELECT id FROM routines WHERE profile_id = ?)`
+).run(onboardingId);
+db.prepare(`DELETE FROM routines WHERE profile_id = ?`).run(onboardingId);
+db.prepare(
+  `DELETE FROM profile_settings WHERE profile_id = ? AND key = 'dashboard_layout'`
+).run(onboardingId);
+setOnboardingState(onboardingId, initialOnboardingState());
+seedMemberLogin(E2E_LOGIN_ONBOARDING, onboardingId);
+
+// A populated legacy/existing profile gets orientation, never the empty-profile
+// wizard. Clear the per-login dismissal so repeated e2e runs remain deterministic.
+const orientationId = fixtureProfileId(ORIENTATION_PROFILE);
+db.prepare(
+  `DELETE FROM profile_settings WHERE profile_id = ? AND key = 'onboarding_state'`
+).run(orientationId);
+db.prepare(`DELETE FROM body_metrics WHERE profile_id = ?`).run(orientationId);
+db.prepare(
+  `INSERT INTO body_metrics (profile_id, date, weight_kg, source)
+   VALUES (?, ?, 68.2, 'manual')`
+).run(orientationId, today(orientationId));
+const orientationLoginId = seedMemberLogin(
+  E2E_LOGIN_ORIENTATION,
+  orientationId,
+  "read"
+);
+db.prepare(
+  `DELETE FROM login_settings
+    WHERE login_id = ? AND key = ?`
+).run(orientationLoginId, `profile_orientation_v1:${orientationId}`);
 // One logged activity so the Training "Log" tab renders the Journal (with its "New
 // activity" button) instead of the empty state — the spec opens that add form to
 // reach the equipment picker's empty-state door. An activity creates no equipment,

@@ -134,6 +134,11 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     fn: "disableConsolidatedCalendarFeedAction",
     why: "login-scoped: revokes the caller's own family .ics token (login.id), not profile-owned data",
   },
+  {
+    file: "app/(app)/onboarding/actions.ts",
+    fn: "dismissProfileOrientation",
+    why: "login-scoped: dismisses orientation for this login/profile pairing; read-only members must be able to dismiss their own UI prompt",
+  },
   // --- Session / auth entry points (no profile-owned data mutation) ---
   {
     file: "app/(app)/user-actions.ts",

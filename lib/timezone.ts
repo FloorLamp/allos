@@ -18,6 +18,42 @@ export function isValidTimezone(tz: string): boolean {
   }
 }
 
+// UTC offset for an IANA timezone at a specific instant, in whole minutes and
+// DST-aware. Intl emits GMT/GMT-4/GMT+5:30; normalize that browser/ICU shape once
+// so timezone pickers and solar calculations cannot disagree.
+export function timezoneOffsetMinutes(
+  timezone: string,
+  at: Date
+): number | null {
+  try {
+    const part = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      timeZoneName: "shortOffset",
+      hour: "numeric",
+    })
+      .formatToParts(at)
+      .find((item) => item.type === "timeZoneName");
+    if (!part) return null;
+    if (part.value === "GMT") return 0;
+    const match = /^GMT([+-])(\d{1,2})(?::(\d{2}))?$/.exec(part.value);
+    if (!match) return null;
+    const minutes = Number(match[2]) * 60 + Number(match[3] ?? 0);
+    return match[1] === "-" ? -minutes : minutes;
+  } catch {
+    return null;
+  }
+}
+
+export function formatTimezoneOffset(timezone: string, at: Date): string {
+  const totalMinutes = timezoneOffsetMinutes(timezone, at);
+  if (totalMinutes === null) return "UTC";
+  const sign = totalMinutes < 0 ? "−" : "+";
+  const absolute = Math.abs(totalMinutes);
+  const hours = Math.floor(absolute / 60);
+  const minutes = absolute % 60;
+  return `UTC${sign}${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
+
 // Resolve the effective timezone from the two stored candidates: the per-profile
 // setting wins, then the instance default, then DEFAULT_TIMEZONE — and an invalid
 // stored value falls through to DEFAULT_TIMEZONE rather than throwing. Callers read

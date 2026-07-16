@@ -12,6 +12,8 @@
 // timezone database; solarDay() resolves the offset from an IANA timezone via Intl
 // (deterministic given the date, no clock/network — safe for the pure test tier).
 
+import { timezoneOffsetMinutes } from "./timezone";
+
 const DEG = Math.PI / 180;
 const RAD = 180 / Math.PI;
 
@@ -196,27 +198,10 @@ export function tzOffsetHours(
   m: number,
   d: number
 ): number | null {
-  try {
-    // Compute the offset at local noon so a DST-transition day resolves cleanly.
-    const at = Date.UTC(y, m - 1, d, 12, 0, 0);
-    const dtf = new Intl.DateTimeFormat("en-US", {
-      timeZone: timezone,
-      timeZoneName: "shortOffset",
-      hour: "numeric",
-    });
-    const part = dtf
-      .formatToParts(new Date(at))
-      .find((p) => p.type === "timeZoneName");
-    if (!part) return null;
-    // e.g. "GMT-7", "GMT+5:30", "GMT" (UTC).
-    const mch = /GMT([+-]\d{1,2})(?::(\d{2}))?/.exec(part.value);
-    if (!mch) return part.value === "GMT" ? 0 : null;
-    const hrs = Number(mch[1]);
-    const mins = mch[2] ? Number(mch[2]) : 0;
-    return hrs + (hrs < 0 ? -mins / 60 : mins / 60);
-  } catch {
-    return null;
-  }
+  // Compute the offset at local noon so a DST-transition day resolves cleanly.
+  const at = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+  const minutes = timezoneOffsetMinutes(timezone, at);
+  return minutes === null ? null : minutes / 60;
 }
 
 export interface SolarDay {

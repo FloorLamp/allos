@@ -133,7 +133,7 @@ export default async function DataPage(
         {/* Connect a device or service — the full integrations surface (the
             standalone /integrations page was folded in here; each card links to
             its per-provider setup page under /integrations/<id>). */}
-        <div className="card">
+        <div id="integrations" className="card scroll-mt-4">
           <div className="mb-3">
             <h2 className="font-semibold text-slate-800 dark:text-slate-100">
               Connect a device or service
