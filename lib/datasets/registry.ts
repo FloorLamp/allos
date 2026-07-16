@@ -13,6 +13,10 @@
 
 import { foodGroupsDataset } from "./food-groups";
 import { metsDataset } from "./mets";
+import {
+  nutrientFoodMapDataset,
+  nutrientKeyStrategy,
+} from "./nutrient-food-map";
 import { nameStrategy, slugStrategy } from "./matcher";
 import type { LoadedDataset, MatchStrategy } from "./types";
 
@@ -40,5 +44,12 @@ export const DATASETS: RegisteredDataset[] = [
       unknown
     >,
     strategy: nameStrategy,
+  },
+  {
+    dataset: nutrientFoodMapDataset as unknown as LoadedDataset<
+      Record<string, unknown>,
+      unknown
+    >,
+    strategy: nutrientKeyStrategy,
   },
 ];

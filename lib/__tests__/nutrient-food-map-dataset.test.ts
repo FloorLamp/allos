@@ -22,7 +22,7 @@ import dri from "@/lib/dri.json";
 // dataset test, once that file exists.)
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const OUT = path.join(REPO, "lib/nutrient-food-map.json");
+const OUT = path.join(REPO, "lib/datasets/data/nutrient-food-map.json");
 
 const CANONICAL_NAMES = new Set(
   ((canonicalSeed as { biomarkers?: { name: string }[] }).biomarkers ?? []).map(
@@ -70,7 +70,7 @@ describe("nutrient-food-map.json dataset", () => {
   });
 
   it("every reduce entry carries an evidence note, a source, at least one food, and direction high (#775)", () => {
-    const reduce = buildNutrientFoodMap().reduceEntries;
+    const reduce = buildNutrientFoodMap().meta!.reduceEntries;
     expect(reduce.length).toBeGreaterThan(0);
     for (const e of reduce) {
       expect(e.evidence.trim().length, e.key).toBeGreaterThan(0);

@@ -34,8 +34,15 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { DATASET_SCHEMA, type DatasetEnvelope } from "../lib/datasets/types";
 
-const OUT = path.join(process.cwd(), "lib", "nutrient-food-map.json");
+const OUT = path.join(
+  process.cwd(),
+  "lib",
+  "datasets",
+  "data",
+  "nutrient-food-map.json"
+);
 
 // One food source addressing a nutrient shortfall. `foodGroup` is the stable slug in
 // lib/food-groups.json (issue #579) so a logged serving and a suggestion speak the
@@ -823,35 +830,62 @@ const REDUCE_ENTRIES: ReduceFoodEntry[] = [
   },
 ];
 
-export interface NutrientFoodMap {
-  $comment: string;
-  entries: NutrientFoodEntry[];
+// Dataset-level metadata (issue #860 Track B): the high-side REDUCE entries (#775)
+// aren't the primary low-direction `entries`, so they ride in `meta` — dataset-level
+// config that conditions lookups but isn't the identity-keyed entry set.
+export interface NutrientFoodMapMeta {
   reduceEntries: ReduceFoodEntry[];
 }
 
+// The framework envelope shape: the biomarker→food map now ships as a curated-dataset
+// envelope under lib/datasets/data/, identity-keyed by nutrient `key`. The rich
+// per-entry `source` fields stay as ordinary entry fields; a dataset-level `citation`
+// is added for the framework minimum.
+export type NutrientFoodMap = DatasetEnvelope<
+  NutrientFoodEntry,
+  NutrientFoodMapMeta
+>;
+
 // Pure builder: assemble the map from the curated table. The committed
-// lib/nutrient-food-map.json is a FIXED POINT of this (guarded by the dataset test),
-// so the generator and committed file can't silently diverge. Entries are emitted in
-// curated order for a stable, reviewable diff.
+// lib/datasets/data/nutrient-food-map.json is a FIXED POINT of this (guarded by the
+// dataset test), so the generator and committed file can't silently diverge. Entries
+// are emitted in curated order for a stable, reviewable diff.
 export function buildNutrientFoodMap(): NutrientFoodMap {
   return {
-    $comment:
+    $schema: DATASET_SCHEMA,
+    id: "nutrient-food-map",
+    title: "Biomarker→nutrient→food recommendation map",
+    description:
       "Baked biomarker→nutrient→food map for the DETERMINISTIC food-recommendation " +
       "engine (issue #577): when a diet-responsive biomarker family reads low, the " +
       "curated food sources that address it (`entries`); and when a core-panel/toxin " +
-      "biomarker reads high, the limit-tier foods to reduce (`reduceEntries`, issue " +
-      "#775). Each carries an evidence note + source; low entries add contraindication " +
-      "tags + an allergy alternative. Committed + HUMAN-REVIEWABLE. Regenerate with " +
-      "`npm run gen:nutrient-food-map`. INFORMATIONAL food-first guidance, NOT medical " +
-      "advice — every suggestion is safety-screened before it renders and cites the " +
-      "flagged biomarker as its reason.",
+      "biomarker reads high, the limit-tier foods to reduce (`meta.reduceEntries`, " +
+      "issue #775). Each carries an evidence note + source; low entries add " +
+      "contraindication tags + an allergy alternative. Committed + HUMAN-REVIEWABLE. " +
+      "Regenerate with `npm run gen:nutrient-food-map`. INFORMATIONAL food-first " +
+      "guidance, NOT medical advice — every suggestion is safety-screened before it " +
+      "renders and cites the flagged biomarker as its reason.",
+    citation: [
+      {
+        source: "NIH Office of Dietary Supplements (ODS) nutrient fact sheets",
+        url: "https://ods.od.nih.gov/factsheets/list-all/",
+        note: "Food-source guidance for diet-responsive nutrients; each entry's own `source` field carries that mapping's specific provenance.",
+      },
+      {
+        source: "Dietary Guidelines for Americans, 2020–2025 (USDA / HHS)",
+        url: "https://www.dietaryguidelines.gov",
+        note: "Reduce-tier (limit) dietary guidance for high-side biomarkers (meta.reduceEntries).",
+      },
+    ],
+    identity: { keys: ["key"] },
+    meta: { reduceEntries: REDUCE_ENTRIES },
     entries: ENTRIES,
-    reduceEntries: REDUCE_ENTRIES,
   };
 }
 
 function writeDataset(): void {
   const dataset = buildNutrientFoodMap();
+  fs.mkdirSync(path.dirname(OUT), { recursive: true });
   fs.writeFileSync(OUT, JSON.stringify(dataset, null, 2) + "\n");
   console.log(
     `Wrote ${dataset.entries.length} nutrient→food entries to ${OUT}`
