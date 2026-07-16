@@ -17,11 +17,20 @@ export default function RefillTracking({
   const s = supplement;
   const loadedQty =
     s?.quantity_on_hand != null ? Math.max(0, s.quantity_on_hand) : "";
+  // Collapsed by default (#851 item 6): refill tracking is opt-in machinery (#38), so
+  // it stays tucked behind a disclosure unless this item is already tracked (a set
+  // quantity_on_hand). A <details> keeps its inputs in the DOM even when closed, so the
+  // quantity/per-dose fields still submit.
+  const tracked = s?.quantity_on_hand != null;
   return (
-    <div className="sm:col-span-2 border-t border-black/5 pt-4 dark:border-white/5">
-      <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
+    <details
+      open={tracked}
+      data-testid="refill-tracking"
+      className="sm:col-span-2 border-t border-black/5 pt-4 dark:border-white/5"
+    >
+      <summary className="cursor-pointer text-sm font-medium text-slate-700 dark:text-slate-200">
         Refill tracking (optional)
-      </label>
+      </summary>
       <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
         Track units on hand to see “≈N days left” and get a refill nudge when
         you’re running low. Leave the quantity blank to skip tracking.
@@ -65,6 +74,6 @@ export default function RefillTracking({
           />
         </div>
       </div>
-    </div>
+    </details>
   );
 }

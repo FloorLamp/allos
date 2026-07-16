@@ -65,6 +65,16 @@ function known(age: number | null | undefined): age is number {
   return age != null && Number.isFinite(age) && age >= 0;
 }
 
+// Ordinal rank of the life stages (infant < child < adolescent < adult < older-adult),
+// so a "minimum life stage" gate is a simple comparison. Only used by meetsMinLifeStage.
+const LIFE_STAGE_RANK: Record<LifeStage, number> = {
+  infant: 0,
+  child: 1,
+  adolescent: 2,
+  adult: 3,
+  "older-adult": 4,
+};
+
 // The profile's life stage from its age in whole years, or null when the age is
 // unknown. The single classifier the domain predicates below are defined against.
 export function lifeStage(age: number | null | undefined): LifeStage | null {
@@ -112,6 +122,31 @@ export function isAdultBpRegime(age: number | null | undefined): boolean {
 // children (per #591). (age ≥ 1, or unknown)
 export function isFoodLoggingRelevant(age: number | null | undefined): boolean {
   return lifeStage(age) !== "infant";
+}
+
+// Whether a profile meets a rule's MINIMUM life stage (issue #851 item 4). Used to
+// gate content that only applies at/above a life stage — e.g. an "avoid alcohol" food
+// note (minLifeStage "adult") that must NOT render on a child's medication card.
+// Follows this module's documented presentation policy: unknown age → true (eligible),
+// so a rule is hidden ONLY on a POSITIVE under-age match, never on missing data.
+export function meetsMinLifeStage(
+  age: number | null | undefined,
+  minStage: LifeStage
+): boolean {
+  const stage = lifeStage(age);
+  if (stage === null) return true; // unknown → eligible
+  return LIFE_STAGE_RANK[stage] >= LIFE_STAGE_RANK[minStage];
+}
+
+// Whether a profile meets a rule's MINIMUM age in whole years (issue #851 item 4) —
+// the numeric-threshold twin of meetsMinLifeStage for a rule that specifies a bare age.
+// Same unknown-age policy: unknown → true (eligible; hide only on a positive under-age
+// match).
+export function meetsMinAge(
+  age: number | null | undefined,
+  minAge: number
+): boolean {
+  return !known(age) || age >= minAge;
 }
 
 // The Body-tab growth-led presentation: height-first chart order, body-fat

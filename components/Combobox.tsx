@@ -42,7 +42,9 @@ export default function Combobox({
   emptyLabel?: string;
   // Renders the free-text row for the current query; default: Use "<query>".
   freeTextLabel?: (query: string) => React.ReactNode;
-  onPick?: (v: string) => void;
+  // `query` is what the user had typed before choosing the option (#851 item 14): a
+  // caller can prefill a sibling field from the query (e.g. a brand token → brand).
+  onPick?: (v: string, query?: string) => void;
   closeStopsPropagation?: boolean;
   inputClassName?: string;
 }) {
@@ -74,8 +76,11 @@ export default function Combobox({
   }, []);
 
   function pick(v: string) {
+    // Capture what the user typed BEFORE onChange overwrites the input with the chosen
+    // option — so onPick can prefill a sibling field from the query (#851 item 14).
+    const query = value;
     onChange(v);
-    onPick?.(v);
+    onPick?.(v, query);
     setOpen(false);
   }
 

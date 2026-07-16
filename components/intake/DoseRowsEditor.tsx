@@ -35,15 +35,76 @@ export default function DoseRowsEditor({
   dosageOptions,
   datalistId,
   amountPlaceholder = "amount",
+  singleAmountOnly = false,
 }: {
   doses: DoseState[];
   setDoses: Dispatch<SetStateAction<DoseState[]>>;
   dosageOptions: string[];
   datalistId: string;
   amountPlaceholder?: string;
+  // PRN ⇒ amount-only mode (#851 item 9): a PRN medication carries exactly ONE
+  // amount-only dose (plus its with-food relation) — no time-of-day slots, no split,
+  // no add/remove — because the redose interval owns "when". A no-op for the scheduled
+  // supplement/medication editor, which keeps the full slot + split affordances.
+  singleAmountOnly?: boolean;
 }) {
   function setDose(i: number, patch: Partial<DoseState>) {
     setDoses((ds) => ds.map((d, j) => (j === i ? { ...d, ...patch } : d)));
+  }
+
+  if (singleAmountOnly) {
+    const d = doses[0] ?? emptyDose();
+    return (
+      <div className="sm:col-span-2" data-testid="prn-dose-row">
+        <label className="label">Dose</label>
+        <datalist id={datalistId}>
+          {dosageOptions.map((o) => (
+            <option key={o} value={o} />
+          ))}
+        </datalist>
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
+          <input
+            list={datalistId}
+            value={d.amount}
+            onChange={(e) =>
+              setDoses((ds) => {
+                const first = ds[0] ?? emptyDose();
+                return [{ ...first, amount: e.target.value, time_of_day: "" }];
+              })
+            }
+            className="input sm:w-28"
+            placeholder={amountPlaceholder}
+            aria-label="Amount"
+          />
+          <select
+            value={d.food_timing}
+            onChange={(e) =>
+              setDoses((ds) => {
+                const first = ds[0] ?? emptyDose();
+                return [
+                  {
+                    ...first,
+                    food_timing: e.target.value as FoodTiming,
+                    time_of_day: "",
+                  },
+                ];
+              })
+            }
+            className="input col-span-2 sm:col-auto sm:w-40"
+            aria-label="Food timing"
+          >
+            {FOOD_TIMINGS.map((ft) => (
+              <option key={ft} value={ft}>
+                {FOOD_TIMING_LABELS[ft]}
+              </option>
+            ))}
+          </select>
+        </div>
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+          As-needed doses have no set time — the redose reminder covers “when”.
+        </p>
+      </div>
+    );
   }
 
   return (

@@ -23,6 +23,7 @@ import {
   RefillBadge,
   AdherenceSummaryLine,
 } from "@/components/AdherenceRefill";
+import RxOtcBadge from "@/components/RxOtcBadge";
 import OverflowMenu, {
   MENU_ITEM,
   MENU_ITEM_DANGER,
@@ -89,9 +90,7 @@ export default function MedicationRow({
                 {subline}
               </span>
             )}
-            <span className="badge bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300">
-              Rx
-            </span>
+            <RxOtcBadge rx={med.rx} />
             {med.as_needed === 1 && (
               <span className="badge bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300">
                 PRN

@@ -9,7 +9,7 @@ import Combobox from "@/components/Combobox";
 export default function SupplementCombobox(props: {
   value: string;
   onChange: (v: string) => void;
-  onPick?: (v: string) => void;
+  onPick?: (v: string, query?: string) => void;
   options: string[];
   placeholder?: string;
   name?: string;

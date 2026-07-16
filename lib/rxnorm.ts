@@ -44,6 +44,31 @@ export interface RxNormCandidate {
   score: number;
 }
 
+// The margin by which the top candidate's score must beat the runner-up to count as
+// UNAMBIGUOUS for auto-confirm (issue #851 item 7). RxNav approximateTerm scores run
+// 0–100; a clear catalog term ("Ibuprofen") returns one 100-score concept, so a lead
+// this wide means the top match is not in genuine contention with the next.
+const RXNORM_DOMINANCE_MARGIN = 20;
+
+// The single UNAMBIGUOUS RxCUI to auto-confirm from a candidate list, or null when the
+// list is empty or genuinely ambiguous (issue #851 item 7). Unambiguous means: exactly
+// one candidate, OR a top score of 100 while the runner-up is below 100, OR a lead of
+// at least RXNORM_DOMINANCE_MARGIN over the runner-up. An ambiguous list returns null so
+// the caller surfaces it for a MANUAL pick instead of guessing — never auto-confirm an
+// ambiguous match. Pure; pinned by lib/__tests__/rxnorm.test.ts.
+export function dominantRxNormCandidate(
+  candidates: { rxcui: string; score: number }[]
+): string | null {
+  if (candidates.length === 0) return null;
+  const sorted = [...candidates].sort((a, b) => b.score - a.score);
+  const top = sorted[0];
+  if (sorted.length === 1) return top.rxcui;
+  const second = sorted[1];
+  if (top.score >= 100 && second.score < 100) return top.rxcui;
+  if (top.score - second.score >= RXNORM_DOMINANCE_MARGIN) return top.rxcui;
+  return null;
+}
+
 // The subset of the approximateTerm JSON we read. RxNav returns
 // { approximateGroup: { candidate: [ { rxcui, score, name?, ... } ] } }.
 interface ApproximateTermResponse {

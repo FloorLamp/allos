@@ -34,6 +34,7 @@ export default function IntakeInteractionNotices({
   stackItems,
   pgxVariants,
   excludeId,
+  age = null,
 }: {
   name: string;
   rxcui: string | null;
@@ -41,6 +42,9 @@ export default function IntakeInteractionNotices({
   stackItems: InteractionItem[];
   pgxVariants: PgxVariantInput[];
   excludeId?: number;
+  // The profile's age in whole years (issue #851 item 4): an age-gated food note
+  // (alcohol → adult) is hidden for a child on the form notice too. Null = unknown.
+  age?: number | null;
 }) {
   const candidateInteractions = useMemo(() => {
     if (!name.trim()) return [];
@@ -55,8 +59,8 @@ export default function IntakeInteractionNotices({
 
   const candidateFoodInteractions = useMemo(() => {
     if (!name.trim()) return [];
-    return matchFoodInteractions({ name, rxcui, rxcuiIngredients });
-  }, [name, rxcui, rxcuiIngredients]);
+    return matchFoodInteractions({ name, rxcui, rxcuiIngredients }, age);
+  }, [name, rxcui, rxcuiIngredients, age]);
 
   return (
     <>

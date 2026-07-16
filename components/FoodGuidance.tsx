@@ -29,6 +29,7 @@ export default function FoodGuidance({
   rxcui,
   rxcuiIngredients = null,
   suppressedFoodKeys = [],
+  age = null,
 }: {
   // The parent intake item's id — the first segment of each line's dedupeKey.
   itemId: number;
@@ -41,13 +42,19 @@ export default function FoodGuidance({
   // This profile's currently-active food-timing dismissals (#435), resolved on the
   // server from the findings-suppression store; a hit whose key is here is hidden.
   suppressedFoodKeys?: string[];
+  // The profile's age in whole years (issue #851 item 4), so an age-gated food note
+  // (alcohol → adult) is hidden for a child. Null/unknown shows every rule.
+  age?: number | null;
 }) {
   const suppressed = new Set(suppressedFoodKeys);
-  const hits = matchFoodInteractions({
-    name,
-    rxcui,
-    rxcuiIngredients: parseRxcuiIngredients(rxcuiIngredients),
-  }).filter((hit) => !suppressed.has(foodTimingSignalKey(itemId, hit.key)));
+  const hits = matchFoodInteractions(
+    {
+      name,
+      rxcui,
+      rxcuiIngredients: parseRxcuiIngredients(rxcuiIngredients),
+    },
+    age
+  ).filter((hit) => !suppressed.has(foodTimingSignalKey(itemId, hit.key)));
   if (hits.length === 0) return null;
   return (
     <div data-testid="food-guidance" className="mt-1 space-y-0.5">

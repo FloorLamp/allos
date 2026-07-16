@@ -51,6 +51,7 @@ import {
   getActiveSituations,
   getSituationEvents,
   getTimezone,
+  getUserAge,
 } from "@/lib/settings";
 import { situationHistoryResolver } from "@/lib/trend-annotations";
 import { isDueOn, isPostWorkoutReady } from "@/lib/supplement-schedule";
@@ -98,7 +99,9 @@ export interface MedCardData {
   due: boolean;
   pairs: SupplementPair[];
   prnDayLabel: string | null;
-  prnTimes: string[];
+  // Today's PRN administrations with their ledger ids (#851 item 11), so each chip on
+  // the card can offer remove-with-undo. Most recent first.
+  prnAdministrations: { id: number; label: string }[];
   prnRedoseLine: string | null;
 }
 
@@ -106,6 +109,9 @@ export interface MedicationsData {
   todayStr: string;
   tz: string;
   trainingRestricted: boolean;
+  // The profile's age in whole years (issue #851 item 4), threaded to FoodGuidance so a
+  // child never sees an age-gated food note (alcohol → adult). Null when unknown.
+  age: number | null;
   taken: Set<number>;
   skipped: Set<number>;
   allSupplements: Supplement[];
@@ -199,12 +205,18 @@ export function loadMedicationsData(profileId: number): MedicationsData {
   const nowInstant = new Date();
   const prnInfoFor = (
     s: Supplement
-  ): { label: string | null; times: string[]; redoseLine: string | null } => {
-    if (s.as_needed !== 1) return { label: null, times: [], redoseLine: null };
+  ): {
+    label: string | null;
+    administrations: { id: number; label: string }[];
+    redoseLine: string | null;
+  } => {
+    if (s.as_needed !== 1)
+      return { label: null, administrations: [], redoseLine: null };
     const admins = getAdministrationsForItemOnDate(profileId, s.id, todayStr);
-    const times = admins.map((a) =>
-      formatGivenAtClock(tz, a.given_at ?? a.taken_at)
-    );
+    const administrations = admins.map((a) => ({
+      id: a.id,
+      label: formatGivenAtClock(tz, a.given_at ?? a.taken_at),
+    }));
     const last = admins[0] ? (admins[0].given_at ?? admins[0].taken_at) : null;
     let redoseLine: string | null = null;
     if (s.min_interval_hours != null && s.max_daily_count != null && last) {
@@ -223,7 +235,7 @@ export function loadMedicationsData(profileId: number): MedicationsData {
         admins.length,
         formatGivenAtClock(tz, last)
       ),
-      times,
+      administrations,
       redoseLine,
     };
   };
@@ -253,7 +265,7 @@ export function loadMedicationsData(profileId: number): MedicationsData {
       due: medDue(med),
       pairs: pairsFor(med.id),
       prnDayLabel: prn.label,
-      prnTimes: prn.times,
+      prnAdministrations: prn.administrations,
       prnRedoseLine: prn.redoseLine,
     };
   };
@@ -376,6 +388,7 @@ export function loadMedicationsData(profileId: number): MedicationsData {
     todayStr,
     tz,
     trainingRestricted,
+    age: getUserAge(profileId),
     taken,
     skipped,
     allSupplements: supplements,

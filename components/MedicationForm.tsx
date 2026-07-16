@@ -23,12 +23,12 @@ import { serializeRxcuiIngredients } from "@/lib/rxnorm";
 import type { InteractionItem } from "@/lib/drug-interactions";
 import type { PgxVariantInput } from "@/lib/pgx";
 import {
-  medicationCatalogNames,
-  medicationBrandNames,
-  splitMedicationName,
+  medicationCatalogOptions,
+  medicationBrandOptions,
+  resolveMedicationPick,
   getMedicationInfo,
 } from "@/lib/medication-info";
-import { prnDefaultsFor } from "@/lib/prn-defaults";
+import { prnDefaultsFor, redoseLabelDefaults } from "@/lib/prn-defaults";
 import {
   pediatricDoseSuggestion,
   type PediatricFormContext,
@@ -48,8 +48,12 @@ import type {
 // The medication name combobox source (#817): generics + brand names from the curated
 // medication-descriptions set, so adding a med suggests "Ibuprofen"/"Advil" — not the
 // supplement catalog. The RxNorm lookup stays the long tail for anything unlisted.
-const MED_CATALOG_NAMES = medicationCatalogNames();
-const MED_BRAND_NAMES = medicationBrandNames();
+// One combobox option per medication, "Generic (Brand, Brand)" (#851 item 14) — the
+// brands ride in the label so a typed brand token still filters to the entry.
+const MED_CATALOG_OPTIONS = medicationCatalogOptions();
+// Brand suggestions with "Generic" first (#851 item 3); narrowed to a picked med's own
+// brands by the prefill resolver.
+const MED_BRAND_OPTIONS = medicationBrandOptions();
 // A medication's condition is either scheduled (daily) or context-gated (situational);
 // the workout/rest-day scheduling is a SUPPLEMENT concept and lives only on the
 // supplement form. PRN is the separate `as_needed` toggle below.
@@ -87,6 +91,7 @@ export default function MedicationForm({
   pairs: initialPairs = [],
   onDone,
   pediatric,
+  age = null,
 }: {
   action: (formData: FormData) => Promise<FormResult>;
   supplement?: Supplement;
@@ -104,6 +109,9 @@ export default function MedicationForm({
   // dose-amount prefill can come from the band for a child. Absent for surfaces that
   // don't thread it (the pediatric block simply doesn't render).
   pediatric?: PediatricFormContext;
+  // The profile's age in whole years (issue #851 item 4), threaded to the form's food
+  // notice so an age-gated line (alcohol → adult) is hidden for a child. Null = unknown.
+  age?: number | null;
 }) {
   const s = supplement;
   const router = useRouter();
@@ -115,7 +123,12 @@ export default function MedicationForm({
   const rx = useIntakeRxcui(s);
   const [condition, setCondition] = useState(s?.condition ?? "daily");
   const [brand, setBrand] = useState(s?.brand ?? "");
-  const [brandOptions, setBrandOptions] = useState<string[]>(MED_BRAND_NAMES);
+  const [brandOptions, setBrandOptions] = useState<string[]>(MED_BRAND_OPTIONS);
+  // Rx / OTC (#851 items 1–2). A prescription (rxFlag=1) reveals the prescriber/
+  // pharmacy/Rx-number/provider fields; an OTC med hides them behind a small "this is
+  // a prescription" disclosure. Defaults from the stored flag, or OTC for a new med;
+  // the combobox pick and any recorded prescriber flip it on.
+  const [rxFlag, setRxFlag] = useState(s?.rx === 1);
   const [asNeeded, setAsNeeded] = useState(s?.as_needed === 1);
   const [minIntervalHours, setMinIntervalHours] = useState(
     s?.min_interval_hours != null ? String(s.min_interval_hours) : ""
@@ -202,21 +215,41 @@ export default function MedicationForm({
     });
   }, [prnDefaults, pediatric, formulationSlug]);
 
+  // Whether this profile is a child for whom the pediatric label figures — not the
+  // adult ones — are the redose defaults (#851 item 12). Matches the pediatric-band gate.
+  const isChildProfile =
+    pediatric?.ageMonths != null && pediatric.ageMonths < CHILD_MAX_AGE_MONTHS;
+
+  // The age-aware redose interval/max to offer as label defaults (#851 item 12): the
+  // pediatric label figures for a child (when the label differs), else the adult
+  // figures — and NULL for a child whose ingredient has no pediatric label figure, a
+  // deliberate refusal to prefill the adult numbers below a child's floor (#798).
+  const redoseDefaults = prnDefaults
+    ? redoseLabelDefaults(prnDefaults, isChildProfile)
+    : null;
+
   function applyPrnDefaults() {
-    if (!prnDefaults) return;
-    setMinIntervalHours(String(prnDefaults.adult.minIntervalHours));
-    setMaxDailyCount(String(prnDefaults.adult.maxDailyCount));
+    if (!redoseDefaults) return;
+    setMinIntervalHours(String(redoseDefaults.minIntervalHours));
+    setMaxDailyCount(String(redoseDefaults.maxDailyCount));
     markTouched("minIntervalHours", "maxDailyCount");
   }
 
-  // Picking a med (#846): split brand/generic (#817), then SELECTION PREFILL every
-  // knowable field from the datasets as an editable, marked suggestion that respects
-  // what the user already touched.
-  function onPickName(picked: string) {
-    const split = splitMedicationName(picked);
-    const generic = split.name || picked;
-    if (split.name) setName(split.name);
-    if (split.brand && !touched.has("asNeeded")) setBrand(split.brand);
+  // Picking a med (#846/#851): resolve generic + brand from the collapsed catalog
+  // label (#851 item 14 — a query-matched brand prefills `brand`), auto-confirm an
+  // unambiguous RxNorm code (#851 item 7), then SELECTION PREFILL every knowable field
+  // from the datasets as an editable, marked suggestion that respects what the user
+  // already touched. `query` is what the user typed before choosing the option.
+  function onPickName(picked: string, query?: string) {
+    const resolved = resolveMedicationPick(picked, query);
+    const generic = resolved.name || picked;
+    if (resolved.name) setName(generic);
+    if (resolved.brand && !touched.has("asNeeded")) setBrand(resolved.brand);
+
+    // Auto-confirm the RxNorm code for the picked med (#851 item 7): run the lookup and
+    // adopt an UNAMBIGUOUS top match; an ambiguous list surfaces for a manual pick, and
+    // an offline/no-match lookup degrades silently (the affordance stays available).
+    void rx.autoConfirm(generic);
 
     const info = getMedicationInfo(generic);
     const prn = prnDefaultsFor({
@@ -233,10 +266,9 @@ export default function MedicationForm({
       touched: touchedRec,
     });
 
-    // Brand suggestions narrow to this med's brands when known.
-    setBrandOptions(
-      pf.brandSuggestions.length ? pf.brandSuggestions : MED_BRAND_NAMES
-    );
+    // Brand suggestions narrow to this med's brands when known, always led by "Generic"
+    // (#851 item 3).
+    setBrandOptions(medicationBrandOptions(pf.brandSuggestions));
     if (pf.asNeeded !== undefined) setAsNeeded(pf.asNeeded);
     if (pf.minIntervalHours !== undefined)
       setMinIntervalHours(String(pf.minIntervalHours));
@@ -299,7 +331,8 @@ export default function MedicationForm({
       rx.reset();
       setCondition("daily");
       setBrand("");
-      setBrandOptions(MED_BRAND_NAMES);
+      setBrandOptions(MED_BRAND_OPTIONS);
+      setRxFlag(false);
       setAsNeeded(false);
       setMinIntervalHours("");
       setMaxDailyCount("");
@@ -336,7 +369,7 @@ export default function MedicationForm({
             rx.onNameChange();
           }}
           onPick={onPickName}
-          options={MED_CATALOG_NAMES}
+          options={MED_CATALOG_OPTIONS}
           placeholder="e.g. Ibuprofen"
         />
         <RxNormAffordance name={name} rx={rx} />
@@ -349,6 +382,7 @@ export default function MedicationForm({
         stackItems={stackItems}
         pgxVariants={pgxVariants}
         excludeId={s?.id}
+        age={age}
       />
 
       <div>
@@ -405,91 +439,113 @@ export default function MedicationForm({
         </div>
       )}
 
-      {/* Medication identity — prescriber / pharmacy / Rx + the PRN toggle. */}
-      <div className="sm:col-span-2 grid grid-cols-1 gap-3 border-t border-black/5 pt-4 sm:grid-cols-2 dark:border-white/5">
-        <div>
-          <label className="label" htmlFor={`med-prescriber-${fid}`}>
-            Prescriber
-          </label>
+      {/* Medication identity (#851 items 1–2). The Rx/OTC flag rides as a hidden field
+          the toggle keeps in sync. The PRN toggle is ALWAYS shown (an OTC ibuprofen is
+          commonly PRN); the prescriber/pharmacy/Rx-number/provider fields show only for
+          a prescription — a small disclosure flips an OTC med to Rx for the edge case,
+          so an OTC med isn't asked for a prescriber it doesn't have. */}
+      <input type="hidden" name="rx" value={rxFlag ? "1" : "0"} />
+      <div className="sm:col-span-2 border-t border-black/5 pt-4 dark:border-white/5">
+        <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
           <input
-            id={`med-prescriber-${fid}`}
-            name="prescriber"
-            defaultValue={s?.prescriber ?? ""}
-            className="input"
-            placeholder="e.g. Dr. Rivera"
+            type="checkbox"
+            name="as_needed"
+            value="1"
+            checked={asNeeded}
+            onChange={(e) => {
+              setAsNeeded(e.target.checked);
+              markTouched("asNeeded");
+            }}
+            className="h-4 w-4 rounded border-slate-300 text-brand-600 dark:border-slate-600"
           />
-        </div>
-        <div>
-          <label className="label" htmlFor={`med-pharmacy-${fid}`}>
-            Pharmacy
-          </label>
+          As needed (PRN) — no scheduled reminders
+          {suggested.has("asNeeded") && <PrefillBadge />}
+        </label>
+
+        <label className="mt-3 flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
           <input
-            id={`med-pharmacy-${fid}`}
-            name="pharmacy"
-            defaultValue={s?.pharmacy ?? ""}
-            className="input"
-            placeholder="e.g. Walgreens #1234"
+            type="checkbox"
+            data-testid="rx-toggle"
+            checked={rxFlag}
+            onChange={(e) => setRxFlag(e.target.checked)}
+            className="h-4 w-4 rounded border-slate-300 text-brand-600 dark:border-slate-600"
           />
-        </div>
-        <div>
-          <label className="label" htmlFor={`med-rx-${fid}`}>
-            Rx number
-          </label>
-          <input
-            id={`med-rx-${fid}`}
-            name="rx_number"
-            defaultValue={s?.rx_number ?? ""}
-            className="input"
-            placeholder="e.g. RX7654321"
-          />
-        </div>
-        <div>
-          <label className="label" htmlFor={`med-provider-${fid}`}>
-            Provider / pharmacy
-          </label>
-          {/* Provider picker: create-on-type from the shared registry via the page's
-              <datalist id="provider-names">. */}
-          <input
-            id={`med-provider-${fid}`}
-            name="provider"
-            list="provider-names"
-            defaultValue={s?.provider_name ?? ""}
-            className="input"
-            placeholder="e.g. Sample Care East"
-          />
-          {/* Round-trip the loaded link so an untouched field keeps its id (#601). */}
-          {s && (
-            <>
+          This is a prescription (Rx)
+        </label>
+
+        {rxFlag && (
+          <div
+            data-testid="prescription-fields"
+            className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2"
+          >
+            <div>
+              <label className="label" htmlFor={`med-prescriber-${fid}`}>
+                Prescriber
+              </label>
               <input
-                type="hidden"
-                name="provider_id"
-                value={s.provider_id ?? ""}
+                id={`med-prescriber-${fid}`}
+                name="prescriber"
+                defaultValue={s?.prescriber ?? ""}
+                className="input"
+                placeholder="e.g. Dr. Rivera"
               />
+            </div>
+            <div>
+              <label className="label" htmlFor={`med-pharmacy-${fid}`}>
+                Pharmacy
+              </label>
               <input
-                type="hidden"
-                name="provider_loaded"
-                value={s.provider_name ?? ""}
+                id={`med-pharmacy-${fid}`}
+                name="pharmacy"
+                defaultValue={s?.pharmacy ?? ""}
+                className="input"
+                placeholder="e.g. Walgreens #1234"
               />
-            </>
-          )}
-        </div>
-        <div className="flex items-end">
-          <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
-            <input
-              type="checkbox"
-              name="as_needed"
-              value="1"
-              checked={asNeeded}
-              onChange={(e) => {
-                setAsNeeded(e.target.checked);
-                markTouched("asNeeded");
-              }}
-              className="h-4 w-4 rounded border-slate-300 text-brand-600 dark:border-slate-600"
-            />
-            As needed (PRN) — no scheduled reminders
-            {suggested.has("asNeeded") && <PrefillBadge />}
-          </label>
-        </div>
+            </div>
+            <div>
+              <label className="label" htmlFor={`med-rx-${fid}`}>
+                Rx number
+              </label>
+              <input
+                id={`med-rx-${fid}`}
+                name="rx_number"
+                defaultValue={s?.rx_number ?? ""}
+                className="input"
+                placeholder="e.g. RX7654321"
+              />
+            </div>
+            <div>
+              <label className="label" htmlFor={`med-provider-${fid}`}>
+                Provider / pharmacy
+              </label>
+              {/* Provider picker: create-on-type from the shared registry via the
+                  page's <datalist id="provider-names">. */}
+              <input
+                id={`med-provider-${fid}`}
+                name="provider"
+                list="provider-names"
+                defaultValue={s?.provider_name ?? ""}
+                className="input"
+                placeholder="e.g. Sample Care East"
+              />
+              {/* Round-trip the loaded link so an untouched field keeps its id (#601). */}
+              {s && (
+                <>
+                  <input
+                    type="hidden"
+                    name="provider_id"
+                    value={s.provider_id ?? ""}
+                  />
+                  <input
+                    type="hidden"
+                    name="provider_loaded"
+                    value={s.provider_name ?? ""}
+                  />
+                </>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* PRN redose notice + pediatric label dosing (#798). Shown only for a PRN
@@ -502,34 +558,42 @@ export default function MedicationForm({
         >
           <div className="flex items-center justify-between gap-2">
             <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
-              Redose notice (optional)
+              Redose reminder (optional)
               {(suggested.has("minIntervalHours") ||
                 suggested.has("maxDailyCount")) && <PrefillBadge />}
             </label>
-            {prnDefaults && (
+            {redoseDefaults && (
               <button
                 type="button"
                 data-testid="redose-prefill"
                 className="btn-ghost px-2 py-0.5 text-xs"
                 onClick={applyPrnDefaults}
               >
-                Use label defaults ({prnDefaults.adult.minIntervalHours}h · max{" "}
-                {prnDefaults.adult.maxDailyCount}/day)
+                Use {redoseDefaults.tier} label defaults (
+                {redoseDefaults.minIntervalHours}h · max{" "}
+                {redoseDefaults.maxDailyCount}/day)
               </button>
             )}
           </div>
+          {/* One-line explainer (#851 item 5); the fuller confirm-discipline text
+              lives behind the disclosure. A <details> can't nest inside a <p>. */}
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-            After a dose is logged, get a one-time reminder when the minimum
-            interval passes ({`"`}6h since Ibuprofen — 2 of 4 today{`"`}). These
-            are YOUR confirmed numbers — pre-filled from the OTC label as a
-            suggestion, never applied on their own; leave them blank for no
-            reminder.
+            Reminds you when the minimum interval has passed — set from the
+            label.
           </p>
-          {prnDefaults && (
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              Label source: {prnDefaults.source}
+          <details className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            <summary className="cursor-pointer text-brand-700 hover:underline dark:text-brand-400">
+              How it works
+            </summary>
+            <p className="mt-1">
+              After a dose is logged you get a one-time reminder when the
+              minimum interval passes (e.g. {`"`}6h since Ibuprofen — 2 of 4
+              today{`"`}). These are YOUR confirmed numbers — pre-filled from
+              the label as a suggestion, never applied on their own; leave them
+              blank for no reminder.
+              {prnDefaults && ` Label source: ${prnDefaults.source}.`}
             </p>
-          )}
+          </details>
           <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <label className="label" htmlFor={`redose-interval-${fid}`}>
@@ -584,90 +648,6 @@ export default function MedicationForm({
             />
             Remind me when the redose window opens (needs both fields above)
           </label>
-
-          {/* Pediatric weight-band suggestion (#798): reproduces the OTC label chart
-              for a child, from the profile's latest recorded weight + age. Bands only
-              — never a mg/kg calculation. Informational; confirm against the package. */}
-          {pediatricResult && pediatricResult.kind !== "no-pediatric" && (
-            <div
-              data-testid="pediatric-suggestion"
-              className={`mt-3 rounded-lg border px-3 py-2.5 text-sm ${NOTICE_TONE.amber}`}
-            >
-              <p className="font-semibold">
-                Pediatric label dose — {prnDefaults?.label}
-              </p>
-              {pediatricResult.kind === "ask-doctor" && (
-                <p className="mt-0.5 text-amber-700 dark:text-amber-300">
-                  {pediatricResult.reason}
-                </p>
-              )}
-              {pediatricResult.kind === "need-weight" && (
-                <p className="mt-0.5 text-amber-700 dark:text-amber-300">
-                  Record this child’s weight first — the label doses by weight
-                  band.
-                </p>
-              )}
-              {pediatricResult.kind === "stale-weight" && (
-                <p className="mt-0.5 text-amber-700 dark:text-amber-300">
-                  The latest recorded weight is over{" "}
-                  {pediatricResult.thresholdDays} days old
-                  {pediatricResult.recordedDate
-                    ? ` (${pediatricResult.recordedDate})`
-                    : ""}
-                  . Update it before using a weight band — kids grow.
-                </p>
-              )}
-              {pediatricResult.kind === "dose" && (
-                <div className="mt-0.5 space-y-1 text-amber-700 dark:text-amber-300">
-                  <p>
-                    <span className="font-medium">
-                      {pediatricResult.bandLabel} → {pediatricResult.mg} mg
-                    </span>{" "}
-                    using {pediatricResult.weightLbs} lb
-                    {pediatricResult.recordedDate
-                      ? `, recorded ${pediatricResult.recordedDate}`
-                      : ""}
-                    .
-                  </p>
-                  {prnDefaults?.pediatric &&
-                    prnDefaults.pediatric.formulations.length > 0 && (
-                      <div className="flex flex-wrap items-center gap-2">
-                        <label
-                          className="text-xs"
-                          htmlFor={`pediatric-form-${fid}`}
-                        >
-                          Your product:
-                        </label>
-                        <select
-                          id={`pediatric-form-${fid}`}
-                          data-testid="pediatric-formulation"
-                          value={formulationSlug}
-                          onChange={(e) => setFormulationSlug(e.target.value)}
-                          className="input h-8 w-auto py-0 text-xs"
-                        >
-                          <option value="">
-                            mg only (measure per package)
-                          </option>
-                          {prnDefaults.pediatric.formulations.map((f) => (
-                            <option key={f.slug} value={f.slug}>
-                              {f.label}
-                            </option>
-                          ))}
-                        </select>
-                        {pediatricResult.ml != null && (
-                          <span className="text-xs font-medium">
-                            ≈ {pediatricResult.ml} mL
-                          </span>
-                        )}
-                      </div>
-                    )}
-                  <p className="text-xs text-amber-700 dark:text-amber-400">
-                    {pediatricResult.caveat}
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
         </div>
       )}
 
@@ -696,7 +676,91 @@ export default function MedicationForm({
           dosageOptions={medDosageOptions}
           datalistId={`dosage-options-${fid}`}
           amountPlaceholder="e.g. 200 mg"
+          singleAmountOnly={asNeeded}
         />
+
+        {/* Pediatric weight-band suggestion (#798), placed by the dose-amount editor it
+            informs (#851 item 8): it answers "how MUCH" a child gets, so it belongs
+            next to the amount, not in the redose ("how often") block. Bands only — never
+            a mg/kg calculation. Informational; confirm against the package. */}
+        {pediatricResult && pediatricResult.kind !== "no-pediatric" && (
+          <div
+            data-testid="pediatric-suggestion"
+            className={`mt-3 rounded-lg border px-3 py-2.5 text-sm ${NOTICE_TONE.amber}`}
+          >
+            <p className="font-semibold">
+              Pediatric label dose — {prnDefaults?.label}
+            </p>
+            {pediatricResult.kind === "ask-doctor" && (
+              <p className="mt-0.5 text-amber-700 dark:text-amber-300">
+                {pediatricResult.reason}
+              </p>
+            )}
+            {pediatricResult.kind === "need-weight" && (
+              <p className="mt-0.5 text-amber-700 dark:text-amber-300">
+                Record this child’s weight first — the label doses by weight
+                band.
+              </p>
+            )}
+            {pediatricResult.kind === "stale-weight" && (
+              <p className="mt-0.5 text-amber-700 dark:text-amber-300">
+                The latest recorded weight is over{" "}
+                {pediatricResult.thresholdDays} days old
+                {pediatricResult.recordedDate
+                  ? ` (${pediatricResult.recordedDate})`
+                  : ""}
+                . Update it before using a weight band — kids grow.
+              </p>
+            )}
+            {pediatricResult.kind === "dose" && (
+              <div className="mt-0.5 space-y-1 text-amber-700 dark:text-amber-300">
+                <p>
+                  <span className="font-medium">
+                    {pediatricResult.bandLabel} → {pediatricResult.mg} mg
+                  </span>{" "}
+                  using {pediatricResult.weightLbs} lb
+                  {pediatricResult.recordedDate
+                    ? `, recorded ${pediatricResult.recordedDate}`
+                    : ""}
+                  .
+                </p>
+                {prnDefaults?.pediatric &&
+                  prnDefaults.pediatric.formulations.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <label
+                        className="text-xs"
+                        htmlFor={`pediatric-form-${fid}`}
+                      >
+                        Your product:
+                      </label>
+                      <select
+                        id={`pediatric-form-${fid}`}
+                        data-testid="pediatric-formulation"
+                        value={formulationSlug}
+                        onChange={(e) => setFormulationSlug(e.target.value)}
+                        className="input h-8 w-auto py-0 text-xs"
+                      >
+                        <option value="">mg only (measure per package)</option>
+                        {prnDefaults.pediatric.formulations.map((f) => (
+                          <option key={f.slug} value={f.slug}>
+                            {f.label}
+                          </option>
+                        ))}
+                      </select>
+                      {pediatricResult.ml != null && (
+                        <span className="text-xs font-medium">
+                          ≈ {pediatricResult.ml} mL
+                        </span>
+                      )}
+                    </div>
+                  )}
+                <p className="text-xs text-amber-700 dark:text-amber-400">
+                  {pediatricResult.caveat}
+                </p>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <KeepApartPairsEditor

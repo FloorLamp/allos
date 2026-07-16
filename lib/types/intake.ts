@@ -71,6 +71,12 @@ export interface Supplement {
   prescriber: string | null;
   pharmacy: string | null;
   rx_number: string | null;
+  // Rx / OTC identity (issue #851, migration 045). 1 = prescription, 0 = over-the-
+  // counter. Derived on backfill (a prescriber or Rx number ⇒ Rx, else OTC) and kept
+  // in sync by the form + the combobox pick. Drives the "Rx"/"OTC" badge and gates the
+  // prescriber/pharmacy/Rx-number/provider fields (they show only for a prescription).
+  // Always 0 for a supplement (the flag is a medication concept).
+  rx: number;
   as_needed: number;
   // PRN redose notice (issue #798). A per-item, opt-in, administration-armed
   // reminder for the redose window opening ("6h since Ibuprofen — your minimum

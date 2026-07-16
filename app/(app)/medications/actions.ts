@@ -13,6 +13,7 @@ import {
   deleteMedicationSideEffect,
   promoteMedicationSideEffect,
   logAdministration,
+  deleteAdministrationLog,
   createMedicationFromRecord,
   dismissFinding,
 } from "@/lib/queries";
@@ -221,6 +222,25 @@ export async function logMedicationAdministration(
     default:
       return formError("Couldn't log that — it may have been removed.");
   }
+}
+
+// Remove one PRN administration with undo (#851 item 11). A mis-tapped Log otherwise
+// permanently decrements supply, advances the redose window, and counts toward the
+// daily max — so the removal (and its Undo) inverts all three (supply directly, the
+// window/count via the ledger row being gone). Returns the { undoId } the shared
+// useUndoableDelete toast wires to undoDelete → restoreAdministrationLog. The auth gate
+// lives here; the auth-blind core verifies ownership through the parent item.
+export async function deleteAdministration(
+  formData: FormData
+): Promise<{ undoId: number | null }> {
+  const { profile } = await requireWriteAccess();
+  const logId = Number(formData.get("log_id"));
+  if (!logId) return { undoId: null };
+  const undoId = deleteAdministrationLog(profile.id, logId);
+  revalidatePath("/medications");
+  revalidatePath("/nutrition");
+  revalidatePath("/");
+  return { undoId };
 }
 
 // "Track this" from the records bridge (#560/#817): materialize an imported

@@ -2,7 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { IconArrowLeft } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
-import { getProviderNames } from "@/lib/queries";
+import { getProviderNames, getPrnAdministrationHistory } from "@/lib/queries";
+import { shiftDateStr } from "@/lib/date";
+import { formatGivenAtClock } from "@/lib/administration-format";
 import { MEDICATIONS_HREF } from "@/lib/hrefs";
 import { PageHeader } from "@/components/ui";
 import ProviderDatalist from "@/components/ProviderDatalist";
@@ -27,6 +29,21 @@ export default async function MedicationDetailPage(props: {
   const data = loadMedicationsData(profile.id);
   const m = id ? data.byId.get(id) : undefined;
   if (!m) notFound();
+
+  // Past PRN administration history for the med's own page (#851 item 13), grouped by
+  // day and formatted in the profile's timezone — the "how often last month" roll-up
+  // the card alone (today-only) can't answer. Empty for a scheduled medication.
+  const prnHistory: { date: string; times: string[] }[] = [];
+  if (m.med.as_needed === 1) {
+    const since = shiftDateStr(data.todayStr, -30);
+    const byDate = new Map<string, string[]>();
+    for (const a of getPrnAdministrationHistory(profile.id, m.med.id, since)) {
+      const arr = byDate.get(a.date) ?? [];
+      arr.push(formatGivenAtClock(data.tz, a.given_at ?? a.taken_at));
+      byDate.set(a.date, arr);
+    }
+    for (const [date, times] of byDate) prnHistory.push({ date, times });
+  }
 
   return (
     <div data-testid="medication-detail">
@@ -60,9 +77,11 @@ export default async function MedicationDetailPage(props: {
         trainingRestricted={data.trainingRestricted}
         suppressedFoodKeys={data.suppressedFoodKeys}
         prnDayLabel={m.prnDayLabel}
-        prnTimes={m.prnTimes}
+        prnAdministrations={m.prnAdministrations}
+        prnHistory={prnHistory}
         prnRedoseLine={m.prnRedoseLine}
         pediatric={data.pediatric}
+        age={data.age}
         detailView
       />
       <p className="mt-4 text-xs text-slate-500 dark:text-slate-400">
