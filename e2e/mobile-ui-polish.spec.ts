@@ -31,15 +31,10 @@ test.describe("mobile tab strips scroll instead of clipping (#640)", () => {
     // The Insights tab — last in the strip — is clickable: Playwright scrolls the
     // strip to it, which was impossible when the strip was clipped, not scrollable.
     const insights = page.getByRole("tab", { name: "Insights" });
-    // Retry the click until selection sticks: under local `next dev` a click can
-    // land in the pre-hydration window and be swallowed (CI's `next start`
-    // hydrates fast enough that one click suffices).
-    await expect(async () => {
-      await insights.click();
-      await expect(insights).toHaveAttribute("aria-selected", "true", {
-        timeout: 1_000,
-      });
-    }).toPass();
+    // The tab is a real <a href> (#830), so the click navigates natively even in
+    // the pre-hydration window — no toPass() retry needed.
+    await insights.click();
+    await expect(insights).toHaveAttribute("aria-selected", "true");
     await expect(page.getByText("Date to analyze")).toBeVisible();
   });
 });

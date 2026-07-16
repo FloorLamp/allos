@@ -211,20 +211,15 @@ test.describe("Data → Review import inbox", () => {
   test("the tab is reachable from the profile menu link", async ({ page }) => {
     await page.goto("/");
     // The link lives in the profile menu, which is collapsed until the pill is
-    // clicked. Retry the open+click: a click landing in the pre-hydration window
-    // is swallowed on a not-yet-hydrated tree, so the navigation never fires (CI's
-    // `next start` exposes this more than local `next dev`). The link's onClick
-    // closes the menu (the popover stays mounted, toggled via display), so a
-    // swallowed click leaves it open — reopen it only when the link isn't showing.
+    // clicked. The trigger is disabled until hydration (#830), so Playwright
+    // auto-waits for it to enable before clicking — the open+click no longer
+    // lands in the pre-hydration window, so no toPass() retry is needed. The
+    // Import-review link inside is already a real Next <Link>.
     const trigger = page.getByTestId("user-menu-trigger");
     const reviewLink = page.getByRole("link", { name: "Import review" });
-    await expect(async () => {
-      if (!/\/data\?section=review/.test(page.url())) {
-        if (!(await reviewLink.isVisible())) await trigger.click();
-        await reviewLink.click();
-      }
-      await expect(page).toHaveURL(/\/data\?section=review/, { timeout: 2000 });
-    }).toPass();
+    await trigger.click();
+    await reviewLink.click();
+    await expect(page).toHaveURL(/\/data\?section=review/);
     await expect(
       page.getByTestId("review-inbox").getByRole("heading", {
         name: "Imports",

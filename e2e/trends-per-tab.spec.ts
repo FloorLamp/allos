@@ -71,22 +71,24 @@ test("clicking a tab switches which section is rendered (#105)", async ({
   await page.goto("/trends");
   await expect(page.getByText(INSIGHTS_MARKER)).toHaveCount(0);
 
-  // Click Insights → its form appears and the URL reflects the tab. Retry the
-  // click until the URL updates: a click landing in the pre-hydration window is
-  // swallowed on a not-yet-hydrated tree (CI's `next start` exposes this more
-  // than local `next dev`).
-  await expect(async () => {
-    await page.getByRole("tab", { name: "Insights" }).click();
-    await expect(page).toHaveURL(/tab=insights/, { timeout: 2000 });
-  }).toPass();
+  // Each tab is a real server-rendered anchor pointing at its ?tab= URL (#830) —
+  // this is what makes a pre-hydration click navigate natively instead of being
+  // swallowed. Assert the element is an <a> with the right href.
+  const insightsTab = page.getByRole("tab", { name: "Insights" });
+  await expect(insightsTab).toHaveJSProperty("tagName", "A");
+  await expect(insightsTab).toHaveAttribute("href", /tab=insights/);
+
+  // Click Insights → its form appears and the URL reflects the tab. Each tab is
+  // a real <a href> (#830), so the click navigates natively even pre-hydration —
+  // no toPass() retry needed.
+  await page.getByRole("tab", { name: "Insights" }).click();
+  await expect(page).toHaveURL(/tab=insights/);
   await expect(page.getByText(INSIGHTS_MARKER)).toBeVisible();
   await expect(page.getByText(FITNESS_MARKER)).toHaveCount(0);
 
   // Click Fitness → its content replaces the Insights form.
-  await expect(async () => {
-    await page.getByRole("tab", { name: "Fitness" }).click();
-    await expect(page).toHaveURL(/tab=fitness/, { timeout: 2000 });
-  }).toPass();
+  await page.getByRole("tab", { name: "Fitness" }).click();
+  await expect(page).toHaveURL(/tab=fitness/);
   await expect(page.getByText(FITNESS_MARKER)).toBeVisible();
   await expect(page.getByText(INSIGHTS_MARKER)).toHaveCount(0);
 });
@@ -105,14 +107,10 @@ test("the Fitness nested strip is URL-driven and deep-linkable (#105)", async ({
     "true"
   );
 
-  // Clicking a nested tab navigates, preserving the outer tab. Retry the click
-  // until the URL updates: a click landing in the pre-hydration window is
-  // swallowed on a not-yet-hydrated tree (CI's `next start` exposes this more
-  // than local `next dev`).
-  await expect(async () => {
-    await page.getByRole("tab", { name: "Sport" }).click();
-    await expect(page).toHaveURL(/ftab=sport/, { timeout: 2000 });
-  }).toPass();
+  // Clicking a nested tab navigates, preserving the outer tab. The nested strip
+  // is the same NavTabs component (real <a href>), so no pre-hydration retry (#830).
+  await page.getByRole("tab", { name: "Sport" }).click();
+  await expect(page).toHaveURL(/ftab=sport/);
   await expect(page).toHaveURL(/tab=fitness/);
   await expect(page.getByRole("tab", { name: "Sport" })).toHaveAttribute(
     "aria-selected",

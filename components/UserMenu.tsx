@@ -38,11 +38,22 @@ export default function UserMenu({
   onNavigate?: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  // Gate the trigger until hydration: pre-hydration a click on this button is
+  // swallowed by the not-yet-hydrated tree, so the popover never opens and the
+  // (already-safe) links inside are unreachable (#830). Unlike the tab strip,
+  // a light-dismissing popover with Server-Action forms genuinely needs JS —
+  // it can't be a bare anchor — so we render it inert until mounted instead.
+  // Server renders mounted=false → disabled; the client's first render matches
+  // (no hydration mismatch); the effect then enables it. Same idiom as
+  // ThemeToggle's mount gate.
+  const [mounted, setMounted] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   // Two accessible profiles can share a name (no uniqueness constraint) — append a
   // "(2)" ordinal so the switcher pill + rows name a specific profile (#534).
   const displayNames = disambiguateProfileNames(profiles);
   const activeLabel = displayNames.get(active.id) ?? active.name;
+
+  useEffect(() => setMounted(true), []);
 
   useEffect(() => {
     if (!open) return;
@@ -66,8 +77,12 @@ export default function UserMenu({
         type="button"
         data-testid="user-menu-trigger"
         aria-expanded={open}
+        disabled={!mounted}
+        aria-busy={!mounted}
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-2 rounded-lg border border-black/10 bg-white/70 px-2 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-white dark:border-white/10 dark:bg-ink-850 dark:text-slate-200 dark:hover:bg-ink-800"
+        className={`flex w-full items-center gap-2 rounded-lg border border-black/10 bg-white/70 px-2 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-white dark:border-white/10 dark:bg-ink-850 dark:text-slate-200 dark:hover:bg-ink-800 ${
+          mounted ? "" : "cursor-progress"
+        }`}
       >
         <Avatar profile={active} size="sm" />
         <span className="min-w-0 flex-1 truncate text-left">{activeLabel}</span>
