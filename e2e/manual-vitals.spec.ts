@@ -63,6 +63,9 @@ test("vitals quick-add logs a temperature with an optional reading time (#843)",
   const form = page.getByTestId("vitals-quick-add");
   await expect(form).toBeVisible();
 
+  // Pin °F explicitly — the entry unit now defaults to the login's temperature
+  // preference (#857); this reading is entered in Fahrenheit.
+  await form.getByLabel("Temperature unit").selectOption("F");
   await form.getByLabel("Temperature", { exact: true }).fill("101.2");
   const timeField = form.getByTestId("vitals-temp-time");
   await expect(timeField).toBeVisible();

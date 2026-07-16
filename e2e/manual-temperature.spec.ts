@@ -11,10 +11,13 @@ test("logging a fever from the symptom card surfaces it flagged on the day view 
 }) => {
   await page.goto("/");
 
+  // The temperature quick entry is collapsed by default (#857) — expand it.
+  await page.getByTestId("temp-quick-toggle").click();
   const temp = page.getByTestId("temp-quick-entry");
   await expect(temp).toBeVisible();
 
   // A clear fever in °F (the default unit) — 103 °F is well above the 97–99 °F range.
+  await page.getByTestId("temp-quick-unit").selectOption("F");
   await page.getByTestId("temp-quick-input").fill("103");
   await page.getByTestId("temp-quick-save").click();
 
