@@ -14,13 +14,21 @@ import { hashShareToken } from "./share-token";
 export interface ShareLinkRow {
   id: number;
   profile_id: number;
-  fields: string; // JSON array (parse with parseShareFields)
+  // 'passport' (the pre-existing behavior) or 'episode' (issue #801). The row shape
+  // is shared; only the resolver differs — passport reads `fields`, an episode link
+  // reads `episode_situation` + `episode_anchor` and re-derives the range at view time.
+  kind: "passport" | "episode";
+  fields: string; // JSON array (parse with parseShareFields) — '[]' for episode links
+  episode_situation: string | null; // set for kind='episode'
+  episode_anchor: string | null; // a date INSIDE the shared episode (kind='episode')
   expires_at: string; // ISO 8601 UTC
   revoked_at: string | null; // ISO 8601 UTC, or null
   created_at: string;
 }
 
-const COLS = "id, profile_id, fields, expires_at, revoked_at, created_at";
+const COLS =
+  "id, profile_id, kind, fields, episode_situation, episode_anchor, " +
+  "expires_at, revoked_at, created_at";
 
 // Create a share link for a profile and return the RAW token (shown to the
 // creator once; never stored). token_hash is a SHA-256 of a random 256-bit value.
@@ -41,6 +49,37 @@ export function createShareLink(
       profileId,
       hashShareToken(token),
       serializeShareFields(fields),
+      expiresAtISO,
+      createdBy
+    );
+  return { id: Number(info.lastInsertRowid), token };
+}
+
+// Create an ILLNESS-EPISODE share link (issue #801), returning the RAW token once.
+// The link pins the situation + an anchor date inside the episode; the range itself is
+// re-derived at view time (episodeContainingDate), so an ongoing episode keeps growing.
+// `fields` is stored empty ('[]') — an episode link scopes a single episode, not a set
+// of passport sections. Rides the same profile_share_links table / token machinery.
+export function createEpisodeShareLink(
+  profileId: number,
+  createdBy: number | null,
+  situation: string,
+  anchor: string,
+  expiresAtISO: string
+): { id: number; token: string } {
+  const token = crypto.randomBytes(32).toString("hex");
+  const info = db
+    .prepare(
+      `INSERT INTO profile_share_links
+         (profile_id, token_hash, kind, fields, episode_situation, episode_anchor,
+          expires_at, created_by)
+       VALUES (?, ?, 'episode', '[]', ?, ?, ?, ?)`
+    )
+    .run(
+      profileId,
+      hashShareToken(token),
+      situation,
+      anchor,
       expiresAtISO,
       createdBy
     );

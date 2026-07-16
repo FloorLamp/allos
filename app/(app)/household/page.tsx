@@ -19,6 +19,8 @@ import {
   collectHouseholdRollup,
 } from "@/lib/queries";
 import { getActiveSituations, getUnitPrefs } from "@/lib/settings";
+import { currentEpisodeForProfile } from "@/lib/illness-episode";
+import { householdSickLine } from "@/lib/illness-episode-format";
 import {
   goalHighlights,
   supplementAdherenceToday,
@@ -124,6 +126,12 @@ export default async function HouseholdPage() {
       weightUnit,
       oorBiomarkers,
       goals: goalHighlights(goals, goalProgress, day, 2),
+      // An open illness episode surfaces as a "sick day N" chip (issue #801) — the
+      // same assembly the dashboard "Sick in the household" card formats over.
+      sick: (() => {
+        const ep = currentEpisodeForProfile(pid);
+        return ep ? householdSickLine(profile.name, ep) : null;
+      })(),
     };
   });
 
