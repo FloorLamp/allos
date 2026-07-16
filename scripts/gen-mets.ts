@@ -1,18 +1,20 @@
-// Pre-generate the baked MET dataset (lib/mets.json) used to ESTIMATE calories for
-// manually-logged activities (issue #151).
+// Pre-generate the baked MET dataset (lib/datasets/data/mets.json) used to ESTIMATE
+// calories for manually-logged activities (issue #151).
 //
 // The Compendium of Physical Activities (Ainsworth et al.) is a PUBLIC dataset that
 // maps an activity type/intensity to a metabolic-equivalent (MET) value. With a
 // bodyweight and a duration, calories are pure arithmetic: kcal = METs × weight(kg)
 // × hours. This script writes the curated, PUBLIC MET values below — keyed to the
 // existing activities catalog (lib/activities-catalog.ts), with per-activity
-// easy/moderate/hard intensity tiers — to lib/mets.json.
+// easy/moderate/hard intensity tiers.
 //
-// Mirrors the gen-canonical-biomarkers.ts → lib/canonical-biomarkers.json pattern:
-// the JSON is COMMITTED and HUMAN-REVIEWABLE, and the values are INFORMATIONAL
-// (population-average estimates, not measurements). Unlike the biomarker generator
-// this needs NO API key — the MET values are well-established public constants
-// curated inline, so generation is fully deterministic:
+// As of issue #860 Track B this dataset is the FIRST migrated onto the curated-
+// dataset framework (lib/datasets/): the output is a framework ENVELOPE
+// (id/citation/identity/entries + dataset-level meta), not the old bespoke
+// `{ defaultTier, activities, typeDefaults }` map. The JSON is COMMITTED and
+// HUMAN-REVIEWABLE, and the values are INFORMATIONAL (population-average estimates,
+// not measurements). Generation needs NO API key — the MET values are well-
+// established public constants curated inline, so it is fully deterministic:
 //
 //   npm run gen:mets
 //
@@ -20,14 +22,15 @@
 // entry here (a catalog name with no MET tier falls back to the per-type default,
 // which is fine but is pinned by lib/__tests__/mets-dataset.test.ts so a new
 // catalog activity that deserves its own tiers isn't silently defaulted). The
-// committed lib/mets.json is a FIXED POINT of buildMetsDataset() — the same test
-// guards that the generator and the committed file can't desync.
+// committed mets.json is a FIXED POINT of buildMetsDataset() — the same test guards
+// that the generator and the committed file can't desync.
 
 import fs from "node:fs";
 import path from "node:path";
 import { CARDIO_ACTIVITIES, SPORTS } from "../lib/activities-catalog";
+import { DATASET_SCHEMA, type DatasetEnvelope } from "../lib/datasets/types";
 
-const OUT = path.join(process.cwd(), "lib", "mets.json");
+const OUT = path.join(process.cwd(), "lib", "datasets", "data", "mets.json");
 
 // The three intensity tiers, matching the activity form's INTENSITIES
 // (lib/activity-form-model.ts): easy / moderate / hard. An activity logged with no
@@ -132,46 +135,69 @@ const TYPE_DEFAULTS: Record<ActivityType, MetTiers> = {
   sport: { easy: 4.5, moderate: 6.5, hard: 8.0 },
 };
 
-export interface MetsDataset {
-  $comment: string;
-  // Default intensity tier for an activity logged without an intensity.
+// One framework entry: an activity display name (the identity key) plus its three
+// intensity-tier MET values, flattened onto the entry. The framework matcher keys on
+// `name`.
+export interface MetEntry extends MetTiers {
+  name: string;
+}
+
+// Dataset-level metadata that ISN'T per-entry: the default tier for a no-intensity
+// activity, and the per-activity-type fallback tiers (an unknown name / any strength
+// component resolves here). Carried in the envelope's `meta`.
+export interface MetsMeta {
   defaultTier: MetTier;
-  // Per-activity MET tiers, keyed by the exact catalog display name.
-  activities: Record<string, MetTiers>;
-  // Per-type fallback MET tiers (unknown name / any strength component).
   typeDefaults: Record<ActivityType, MetTiers>;
 }
 
-// Pure builder: assemble the dataset from the curated tables. The committed
-// lib/mets.json is a FIXED POINT of this (guarded by the dataset test), so the
-// generator and committed file can't silently diverge. Activity names are emitted
-// in catalog order (cardio then sport) for a stable, reviewable diff.
+export type MetsDataset = DatasetEnvelope<MetEntry, MetsMeta>;
+
+// Pure builder: assemble the framework envelope from the curated tables. The
+// committed lib/datasets/data/mets.json is a FIXED POINT of this (guarded by the
+// dataset test), so the generator and committed file can't silently diverge. Entries
+// are emitted in catalog order (cardio then sport) for a stable, reviewable diff.
 export function buildMetsDataset(): MetsDataset {
-  const activities: Record<string, MetTiers> = {};
+  const entries: MetEntry[] = [];
   for (const name of CARDIO_ACTIVITIES) {
-    if (CARDIO_METS[name]) activities[name] = CARDIO_METS[name];
+    if (CARDIO_METS[name]) entries.push({ name, ...CARDIO_METS[name] });
   }
   for (const name of SPORTS) {
-    if (SPORT_METS[name]) activities[name] = SPORT_METS[name];
+    if (SPORT_METS[name]) entries.push({ name, ...SPORT_METS[name] });
   }
   return {
-    $comment:
-      "Baked MET (metabolic-equivalent) dataset for ESTIMATING calories on " +
-      "manually-logged activities (kcal = METs × weight(kg) × hours). Public " +
-      "Compendium of Physical Activities values (Ainsworth et al.), keyed to " +
-      "lib/activities-catalog.ts. Committed + HUMAN-REVIEWABLE. Regenerate with " +
-      "`npm run gen:mets`. INFORMATIONAL population-average estimates, NOT " +
-      "measurements or medical advice.",
-    defaultTier: "moderate",
-    activities,
-    typeDefaults: TYPE_DEFAULTS,
+    $schema: DATASET_SCHEMA,
+    id: "mets",
+    title: "Activity MET values for calorie estimation",
+    description:
+      "Baked MET (metabolic-equivalent) values for ESTIMATING calories on " +
+      "manually-logged activities (kcal = METs × weight(kg) × hours), keyed to " +
+      "lib/activities-catalog.ts by display name. Committed + HUMAN-REVIEWABLE. " +
+      "Regenerate with `npm run gen:mets`. INFORMATIONAL population-average " +
+      "estimates, NOT measurements or medical advice.",
+    citation: [
+      {
+        source:
+          "Ainsworth BE, Haskell WL, Herrmann SD, et al. 2011 Compendium of " +
+          "Physical Activities: a second update of codes and MET values. Med Sci " +
+          "Sports Exerc. 2011;43(8):1575-1581.",
+        url: "https://pacompendium.com",
+        note: "Public MET reference; values rounded and bucketed into easy/moderate/hard tiers.",
+      },
+    ],
+    identity: { keys: ["name"] },
+    meta: {
+      defaultTier: "moderate",
+      typeDefaults: TYPE_DEFAULTS,
+    },
+    entries,
   };
 }
 
 function writeDataset(): void {
   const dataset = buildMetsDataset();
+  fs.mkdirSync(path.dirname(OUT), { recursive: true });
   fs.writeFileSync(OUT, JSON.stringify(dataset, null, 2) + "\n");
-  const named = Object.keys(dataset.activities).length;
+  const named = dataset.entries.length;
   console.log(`Wrote ${named} activity MET entries to ${OUT}`);
   console.log("Review the MET values for plausibility before committing.");
 }

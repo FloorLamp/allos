@@ -1,388 +1,478 @@
 {
-  "$comment": "Baked MET (metabolic-equivalent) dataset for ESTIMATING calories on manually-logged activities (kcal = METs × weight(kg) × hours). Public Compendium of Physical Activities values (Ainsworth et al.), keyed to lib/activities-catalog.ts. Committed + HUMAN-REVIEWABLE. Regenerate with `npm run gen:mets`. INFORMATIONAL population-average estimates, NOT measurements or medical advice.",
-  "defaultTier": "moderate",
-  "activities": {
-    "Running": {
+  "$schema": "allos-dataset/v1",
+  "id": "mets",
+  "title": "Activity MET values for calorie estimation",
+  "description": "Baked MET (metabolic-equivalent) values for ESTIMATING calories on manually-logged activities (kcal = METs × weight(kg) × hours), keyed to lib/activities-catalog.ts by display name. Committed + HUMAN-REVIEWABLE. Regenerate with `npm run gen:mets`. INFORMATIONAL population-average estimates, NOT measurements or medical advice.",
+  "citation": [
+    {
+      "source": "Ainsworth BE, Haskell WL, Herrmann SD, et al. 2011 Compendium of Physical Activities: a second update of codes and MET values. Med Sci Sports Exerc. 2011;43(8):1575-1581.",
+      "url": "https://pacompendium.com",
+      "note": "Public MET reference; values rounded and bucketed into easy/moderate/hard tiers."
+    }
+  ],
+  "identity": {
+    "keys": [
+      "name"
+    ]
+  },
+  "meta": {
+    "defaultTier": "moderate",
+    "typeDefaults": {
+      "strength": {
+        "easy": 3.5,
+        "moderate": 5,
+        "hard": 6
+      },
+      "cardio": {
+        "easy": 4,
+        "moderate": 6,
+        "hard": 8
+      },
+      "sport": {
+        "easy": 4.5,
+        "moderate": 6.5,
+        "hard": 8
+      }
+    }
+  },
+  "entries": [
+    {
+      "name": "Running",
       "easy": 6,
       "moderate": 9.8,
       "hard": 11.8
     },
-    "Walking": {
+    {
+      "name": "Walking",
       "easy": 2.8,
       "moderate": 3.5,
       "hard": 5
     },
-    "Cycling": {
+    {
+      "name": "Cycling",
       "easy": 4,
       "moderate": 8,
       "hard": 10
     },
-    "Swimming": {
+    {
+      "name": "Swimming",
       "easy": 6,
       "moderate": 8.3,
       "hard": 9.8
     },
-    "Rowing": {
+    {
+      "name": "Rowing",
       "easy": 4.8,
       "moderate": 7,
       "hard": 8.5
     },
-    "Elliptical": {
+    {
+      "name": "Elliptical",
       "easy": 4.6,
       "moderate": 5,
       "hard": 7
     },
-    "Stair Climber": {
+    {
+      "name": "Stair Climber",
       "easy": 4,
       "moderate": 8,
       "hard": 9
     },
-    "Jump Rope": {
+    {
+      "name": "Jump Rope",
       "easy": 8.8,
       "moderate": 11.8,
       "hard": 12.3
     },
-    "Hiking": {
+    {
+      "name": "Hiking",
       "easy": 5.3,
       "moderate": 6,
       "hard": 7.8
     },
-    "Rucking": {
+    {
+      "name": "Rucking",
       "easy": 6,
       "moderate": 7,
       "hard": 8.3
     },
-    "Treadmill": {
+    {
+      "name": "Treadmill",
       "easy": 4.5,
       "moderate": 6,
       "hard": 8.5
     },
-    "Spin Class": {
+    {
+      "name": "Spin Class",
       "easy": 6.8,
       "moderate": 8.5,
       "hard": 10
     },
-    "HIIT": {
+    {
+      "name": "HIIT",
       "easy": 6,
       "moderate": 8,
       "hard": 10
     },
-    "Incline Walk": {
+    {
+      "name": "Incline Walk",
       "easy": 4.5,
       "moderate": 6,
       "hard": 8
     },
-    "Trail Run": {
+    {
+      "name": "Trail Run",
       "easy": 6.5,
       "moderate": 9,
       "hard": 10.5
     },
-    "Kayaking": {
+    {
+      "name": "Kayaking",
       "easy": 3.5,
       "moderate": 5,
       "hard": 7
     },
-    "Canoeing": {
+    {
+      "name": "Canoeing",
       "easy": 3.5,
       "moderate": 5,
       "hard": 7
     },
-    "Paddleboarding": {
+    {
+      "name": "Paddleboarding",
       "easy": 4,
       "moderate": 6,
       "hard": 8
     },
-    "Skiing": {
+    {
+      "name": "Skiing",
       "easy": 4.3,
       "moderate": 5.3,
       "hard": 8
     },
-    "Cross-Country Skiing": {
+    {
+      "name": "Cross-Country Skiing",
       "easy": 6.8,
       "moderate": 9,
       "hard": 12.5
     },
-    "Snowshoeing": {
+    {
+      "name": "Snowshoeing",
       "easy": 5.3,
       "moderate": 7.5,
       "hard": 10
     },
-    "Ice Skating": {
+    {
+      "name": "Ice Skating",
       "easy": 5.5,
       "moderate": 7,
       "hard": 9
     },
-    "Skating": {
+    {
+      "name": "Skating",
       "easy": 5.5,
       "moderate": 7,
       "hard": 9
     },
-    "Rollerblading": {
+    {
+      "name": "Rollerblading",
       "easy": 7,
       "moderate": 9.8,
       "hard": 12.5
     },
-    "Mountain Biking": {
+    {
+      "name": "Mountain Biking",
       "easy": 6.8,
       "moderate": 8.5,
       "hard": 10
     },
-    "Stationary Bike": {
+    {
+      "name": "Stationary Bike",
       "easy": 4.8,
       "moderate": 7,
       "hard": 10.5
     },
-    "Air Bike": {
+    {
+      "name": "Air Bike",
       "easy": 5,
       "moderate": 7,
       "hard": 10
     },
-    "SkiErg": {
+    {
+      "name": "SkiErg",
       "easy": 6,
       "moderate": 8,
       "hard": 10
     },
-    "Mixed Cardio": {
+    {
+      "name": "Mixed Cardio",
       "easy": 4.5,
       "moderate": 6,
       "hard": 8
     },
-    "Cardio Class": {
+    {
+      "name": "Cardio Class",
       "easy": 4.5,
       "moderate": 6,
       "hard": 7.5
     },
-    "Aerobics": {
+    {
+      "name": "Aerobics",
       "easy": 5,
       "moderate": 6.5,
       "hard": 7.3
     },
-    "Water Aerobics": {
+    {
+      "name": "Water Aerobics",
       "easy": 3.5,
       "moderate": 4.5,
       "hard": 5.5
     },
-    "Zumba": {
+    {
+      "name": "Zumba",
       "easy": 5,
       "moderate": 6.5,
       "hard": 8
     },
-    "Bootcamp": {
+    {
+      "name": "Bootcamp",
       "easy": 6,
       "moderate": 8,
       "hard": 10
     },
-    "Circuit Training": {
+    {
+      "name": "Circuit Training",
       "easy": 5,
       "moderate": 7,
       "hard": 8
     },
-    "CrossFit": {
+    {
+      "name": "CrossFit",
       "easy": 6,
       "moderate": 8,
       "hard": 10
     },
-    "Calisthenics": {
+    {
+      "name": "Calisthenics",
       "easy": 3.8,
       "moderate": 5,
       "hard": 8
     },
-    "Tennis": {
+    {
+      "name": "Tennis",
       "easy": 5,
       "moderate": 7.3,
       "hard": 8
     },
-    "Basketball": {
+    {
+      "name": "Basketball",
       "easy": 4.5,
       "moderate": 6.5,
       "hard": 8
     },
-    "Soccer": {
+    {
+      "name": "Soccer",
       "easy": 7,
       "moderate": 8,
       "hard": 10
     },
-    "Football": {
+    {
+      "name": "Football",
       "easy": 5,
       "moderate": 8,
       "hard": 9
     },
-    "Baseball": {
+    {
+      "name": "Baseball",
       "easy": 4,
       "moderate": 5,
       "hard": 6
     },
-    "Softball": {
+    {
+      "name": "Softball",
       "easy": 4,
       "moderate": 5,
       "hard": 6
     },
-    "Volleyball": {
+    {
+      "name": "Volleyball",
       "easy": 3,
       "moderate": 4,
       "hard": 8
     },
-    "Badminton": {
+    {
+      "name": "Badminton",
       "easy": 4.5,
       "moderate": 5.5,
       "hard": 7
     },
-    "Table Tennis": {
+    {
+      "name": "Table Tennis",
       "easy": 3.5,
       "moderate": 4,
       "hard": 5
     },
-    "Squash": {
+    {
+      "name": "Squash",
       "easy": 7,
       "moderate": 9,
       "hard": 12
     },
-    "Pickleball": {
+    {
+      "name": "Pickleball",
       "easy": 4,
       "moderate": 5.5,
       "hard": 7
     },
-    "Racquetball": {
+    {
+      "name": "Racquetball",
       "easy": 6,
       "moderate": 7,
       "hard": 10
     },
-    "Golf": {
+    {
+      "name": "Golf",
       "easy": 3.5,
       "moderate": 4.8,
       "hard": 5.3
     },
-    "Hockey": {
+    {
+      "name": "Hockey",
       "easy": 6,
       "moderate": 8,
       "hard": 10
     },
-    "Lacrosse": {
+    {
+      "name": "Lacrosse",
       "easy": 5,
       "moderate": 7,
       "hard": 8
     },
-    "Rugby": {
+    {
+      "name": "Rugby",
       "easy": 6.3,
       "moderate": 8.3,
       "hard": 10
     },
-    "Cricket": {
+    {
+      "name": "Cricket",
       "easy": 3.8,
       "moderate": 5,
       "hard": 6
     },
-    "Handball": {
+    {
+      "name": "Handball",
       "easy": 6,
       "moderate": 8,
       "hard": 12
     },
-    "Water Polo": {
+    {
+      "name": "Water Polo",
       "easy": 7,
       "moderate": 10,
       "hard": 12
     },
-    "Boxing": {
+    {
+      "name": "Boxing",
       "easy": 6,
       "moderate": 9,
       "hard": 12.8
     },
-    "Kickboxing": {
+    {
+      "name": "Kickboxing",
       "easy": 6,
       "moderate": 8.5,
       "hard": 10.3
     },
-    "Martial Arts": {
+    {
+      "name": "Martial Arts",
       "easy": 5.3,
       "moderate": 8,
       "hard": 10.3
     },
-    "Wrestling": {
+    {
+      "name": "Wrestling",
       "easy": 5,
       "moderate": 6,
       "hard": 7
     },
-    "Rock Climbing": {
+    {
+      "name": "Rock Climbing",
       "easy": 5.8,
       "moderate": 8,
       "hard": 11
     },
-    "Bouldering": {
+    {
+      "name": "Bouldering",
       "easy": 5,
       "moderate": 7,
       "hard": 9
     },
-    "Gymnastics": {
+    {
+      "name": "Gymnastics",
       "easy": 3.8,
       "moderate": 5,
       "hard": 6
     },
-    "Surfing": {
+    {
+      "name": "Surfing",
       "easy": 3,
       "moderate": 5,
       "hard": 7
     },
-    "Snowboarding": {
+    {
+      "name": "Snowboarding",
       "easy": 4.3,
       "moderate": 5.3,
       "hard": 8
     },
-    "Skateboarding": {
+    {
+      "name": "Skateboarding",
       "easy": 5,
       "moderate": 6,
       "hard": 7
     },
-    "Ultimate Frisbee": {
+    {
+      "name": "Ultimate Frisbee",
       "easy": 5,
       "moderate": 8,
       "hard": 9
     },
-    "Yoga": {
+    {
+      "name": "Yoga",
       "easy": 2.5,
       "moderate": 3,
       "hard": 4
     },
-    "Pilates": {
+    {
+      "name": "Pilates",
       "easy": 2.8,
       "moderate": 3,
       "hard": 4
     },
-    "Barre": {
+    {
+      "name": "Barre",
       "easy": 2.8,
       "moderate": 3.5,
       "hard": 4.5
     },
-    "Tai Chi": {
+    {
+      "name": "Tai Chi",
       "easy": 2.5,
       "moderate": 3,
       "hard": 4
     },
-    "Stretching": {
+    {
+      "name": "Stretching",
       "easy": 2.3,
       "moderate": 2.5,
       "hard": 2.8
     },
-    "Dancing": {
+    {
+      "name": "Dancing",
       "easy": 3,
       "moderate": 5,
       "hard": 7.8
     }
-  },
-  "typeDefaults": {
-    "strength": {
-      "easy": 3.5,
-      "moderate": 5,
-      "hard": 6
-    },
-    "cardio": {
-      "easy": 4,
-      "moderate": 6,
-      "hard": 8
-    },
-    "sport": {
-      "easy": 4.5,
-      "moderate": 6.5,
-      "hard": 8
-    }
-  }
+  ]
 }
