@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import Database from "better-sqlite3";
+import { followLink, settledClick } from "./helpers";
 
 // The isolated e2e DB path (mirrors the default in playwright.config.ts). The test
 // process gets no ALLOS_DB_PATH override, so it resolves to the same file the
@@ -25,8 +26,10 @@ test.describe("Visit detail page", () => {
     await expect(visitLink).toBeVisible();
     expect(await visitLink.getAttribute("href")).toMatch(/^\/encounters\/\d+$/);
 
-    await visitLink.click();
-    await expect(page).toHaveURL(/\/encounters\/\d+$/);
+    // The Timeline entry is a Next <Link>; a click landing in the pre-hydration
+    // window is swallowed (the URL never advances — #500/#830). followLink retries
+    // until the detail route commits (#868).
+    await followLink(page, visitLink, /\/encounters\/\d+$/);
 
     // The detail page renders the visit's captured detail.
     const detail = page.getByTestId("encounter-detail");
@@ -46,15 +49,12 @@ test.describe("Visit detail page", () => {
   test("the Visits list row links to the detail page", async ({ page }) => {
     await page.goto("/encounters");
     // EncounterList is a client component; clicking a row's <Link> before it
-    // hydrates swallows the client navigation (the URL never changes). Wait for
-    // the network to settle so hydration has run, then assert the link resolved
-    // to its detail href before clicking — so the click always navigates.
-    await page.waitForLoadState("networkidle");
+    // hydrates swallows the client navigation (the URL never changes). followLink
+    // retries the click until the router commits the detail URL — no networkidle
+    // hydration gate needed (#868).
     const rowLink = page.getByRole("link", { name: "Office Visit" }).first();
-    await expect(rowLink).toBeVisible();
     await expect(rowLink).toHaveAttribute("href", /\/encounters\/\d+$/);
-    await rowLink.click();
-    await expect(page).toHaveURL(/\/encounters\/\d+$/);
+    await followLink(page, rowLink, /\/encounters\/\d+$/);
     await expect(page.getByTestId("encounter-detail")).toBeVisible();
   });
 });
@@ -94,7 +94,13 @@ test.describe("Visits — single Add visit entry logs a past visit (#566)", () =
     await add.getByLabel("Visit type").fill("Office Visit");
     await add.getByLabel("Date", { exact: true }).fill("2024-03-04");
     await add.getByLabel("Reason (chief complaint)").fill(MARKER);
-    await add.getByRole("button", { name: "Add", exact: true }).click();
+    // The Add button submits a Server Action that logs the encounter and
+    // revalidates; settledClick awaits that POST so the "Visit saved" assertion
+    // can't race the action (#868).
+    await settledClick(
+      page,
+      add.getByRole("button", { name: "Add", exact: true })
+    );
     await expect(page.getByText("Visit saved")).toBeVisible();
 
     // The logged visit appears in the Past (visit-history) section by its reason.
