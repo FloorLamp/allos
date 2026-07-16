@@ -15,6 +15,7 @@ import {
   IconScale,
   IconScan,
   IconStethoscope,
+  IconTemperature,
   IconTrophy,
   IconVaccine,
   type TablerIcon,
@@ -31,7 +32,14 @@ import {
   type TimelineCategory,
   type TimelineEvent,
 } from "@/lib/timeline";
-import { getDaylightOutdoorMinutesByDay } from "@/lib/queries";
+import {
+  getDaylightOutdoorMinutesByDay,
+  getSymptomSeveritiesOnDate,
+  getCustomSymptomNames,
+} from "@/lib/queries";
+import { hasActiveIllnessSituation } from "@/lib/settings/profile-attrs";
+import { SYMPTOMS } from "@/lib/symptoms";
+import SymptomLogBar from "../symptoms/SymptomLogBar";
 import {
   groupTimelineDays,
   normalizeTimelineRange,
@@ -63,6 +71,7 @@ const CATEGORY_ICONS: Record<TimelineCategory, TablerIcon> = {
   insight: IconBrain,
   milestone: IconTrophy,
   protocol: IconFlask2,
+  symptom: IconTemperature,
 };
 
 const CARD_CLASS =
@@ -89,6 +98,8 @@ const BADGE_CLASS: Record<TimelineCategory, string> = {
     "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300",
   protocol:
     "bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300",
+  symptom:
+    "bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300",
 };
 
 // The default page size and the increment each "Load more" reveals. The feed is
@@ -397,6 +408,25 @@ export default async function TimelinePage(props: {
           })}
         </div>
       </div>
+
+      {/* Retro symptom entry (#799): on a single selected day, offer the one-tap symptom
+          bar so a past sick day can be filled in — the Timeline day-view entry point. When
+          no illness-type situation is active it offers the suggest-only "Mark as illness"
+          bridge (direction A of the two-way bridge). */}
+      {singleDaySelected && range.from && (
+        <div className="card mb-5" data-testid="timeline-symptom-entry">
+          <h2 className="mb-1 text-sm font-semibold text-slate-800 dark:text-slate-100">
+            Log symptoms for {formatLongDate(range.from)}
+          </h2>
+          <SymptomLogBar
+            date={range.from}
+            initial={getSymptomSeveritiesOnDate(profile.id, range.from)}
+            symptoms={SYMPTOMS}
+            customNames={getCustomSymptomNames(profile.id)}
+            suggestActivateIllness={!hasActiveIllnessSituation(profile.id)}
+          />
+        </div>
+      )}
 
       {days.length === 0 ? (
         <EmptyState

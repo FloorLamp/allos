@@ -14,7 +14,10 @@ import {
   serializeSituationEvents,
   type SituationEvent,
 } from "../trend-annotations";
-import { normalizeSituationName } from "../situations";
+import {
+  normalizeSituationName,
+  isBuiltInIllnessSituation,
+} from "../situations";
 import { zipToHome } from "../home-location";
 import { getHomeLocation, setHomeLocation } from "./location";
 import {
@@ -532,16 +535,66 @@ export interface Situation {
   id: number;
   name: string;
   active: number;
+  // #799: an illness-type situation is a symptom-log container — the symptom card and
+  // the derived episode association key ONLY on flagged situations. 0/1.
+  illness_type: number;
 }
 
 // The profile's whole situation vocabulary (active + inactive), for the toggle bar.
 export function getSituations(profileId: number): Situation[] {
   return db
     .prepare(
-      `SELECT id, name, active FROM situations
+      `SELECT id, name, active, illness_type FROM situations
         WHERE profile_id = ? ORDER BY name COLLATE NOCASE`
     )
     .all(profileId) as Situation[];
+}
+
+// The illness-type situations (#799), each with its current active state — the input
+// the derived episode association (lib/symptom-episode.ts) keys on. Only flagged rows,
+// so Travel/High-stress can never form a symptom episode.
+export function getIllnessSituations(
+  profileId: number
+): { name: string; active: boolean }[] {
+  return (
+    db
+      .prepare(
+        `SELECT name, active FROM situations
+          WHERE profile_id = ? AND illness_type = 1 ORDER BY name COLLATE NOCASE`
+      )
+      .all(profileId) as { name: string; active: number }[]
+  ).map((r) => ({ name: r.name, active: !!r.active }));
+}
+
+// Whether an illness-type situation is CURRENTLY active — the dashboard symptom-card
+// gate (#799). Cheap boolean over the same flagged set.
+export function hasActiveIllnessSituation(profileId: number): boolean {
+  return (
+    (db
+      .prepare(
+        `SELECT 1 FROM situations
+            WHERE profile_id = ? AND active = 1 AND illness_type = 1 LIMIT 1`
+      )
+      .get(profileId) as unknown) != null
+  );
+}
+
+// Toggle a situation's illness_type flag (#799) — the situations-bar opt-in for a
+// user-created situation. Resolves (get-or-create) the id-keyed row first so a not-yet-
+// persisted suggested chip can be flagged; the built-in "Illness" is created flagged by
+// resolveSituationId regardless.
+export function setSituationIllnessType(
+  profileId: number,
+  name: string,
+  illnessType: boolean
+): void {
+  writeTx(() => {
+    const id = resolveSituationId(profileId, name);
+    if (id == null) return;
+    db.prepare(
+      `UPDATE situations SET illness_type = ? WHERE id = ? AND profile_id = ?`
+    ).run(illnessType ? 1 : 0, id, profileId);
+  });
 }
 
 // Get-or-create the situation ROW for a name, returning its id (or null for an
@@ -561,12 +614,15 @@ export function resolveSituationId(
     )
     .get(profileId, norm) as { id: number } | undefined;
   if (existing) return existing.id;
+  // The built-in "Illness" is born illness-type-flagged (#799) — the canonical symptom
+  // container. Every other situation starts unflagged and opts in via the bar.
+  const illnessType = isBuiltInIllnessSituation(norm) ? 1 : 0;
   return Number(
     db
       .prepare(
-        `INSERT INTO situations (profile_id, name, active) VALUES (?, ?, 0)`
+        `INSERT INTO situations (profile_id, name, active, illness_type) VALUES (?, ?, 0, ?)`
       )
-      .run(profileId, norm).lastInsertRowid
+      .run(profileId, norm, illnessType).lastInsertRowid
   );
 }
 

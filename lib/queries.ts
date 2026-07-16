@@ -12,6 +12,7 @@ export * from "./queries/training";
 export * from "./queries/zones";
 export * from "./queries/coaching";
 export * from "./queries/nutrition";
+export * from "./queries/symptoms";
 export * from "./queries/medical";
 export * from "./queries/derived";
 export * from "./queries/appointments";

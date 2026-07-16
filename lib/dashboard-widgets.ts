@@ -202,6 +202,18 @@ export const DASHBOARD_WIDGETS: WidgetDef[] = [
     span: "full",
   },
   {
+    id: "symptom-log",
+    label: "Symptoms",
+    description:
+      "One-tap symptom logging while you're unwell — severity per symptom, today or yesterday. Appears only when an illness-type situation is active.",
+    // On by default, but the page's `available` gate keeps it hidden unless an
+    // illness-type situation is active (like next-appointment's has-data gate) — so it
+    // never clutters a well day. Not fitness-gated: symptoms matter for every profile.
+    defaultOn: true,
+    fitness: false,
+    span: "half",
+  },
+  {
     id: "weekly-recap",
     label: "Weekly recap",
     description:

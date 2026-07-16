@@ -9,6 +9,8 @@ import {
   setActiveSituations,
   resolveSituationId,
   deleteProfileSetting,
+  getSituations,
+  setSituationIllnessType,
 } from "@/lib/settings";
 import { generateAndStoreSuggestions } from "@/lib/supplement-suggest";
 import {
@@ -685,6 +687,25 @@ export async function toggleSituation(formData: FormData): Promise<FormResult> {
   else active.add(situation);
   setActiveSituations(profile.id, [...active]);
   revalidateIntake();
+  return formOk();
+}
+
+// Toggle a situation's illness_type flag (issue #799) — the situations-bar opt-in that
+// makes a user situation ("Migraine", "Kid sick") a symptom-log container. Flips the
+// current stored value; the dashboard symptom card + episode derivation key on flagged
+// situations only. Also revalidates the dashboard where the card may (dis)appear.
+export async function toggleSituationIllnessType(
+  formData: FormData
+): Promise<FormResult> {
+  const { profile } = await requireWriteAccess();
+  const situation = String(formData.get("situation") ?? "").trim();
+  if (!situation) return formError("Couldn't find that situation.");
+  const current = getSituations(profile.id).find(
+    (s) => s.name.toLowerCase() === situation.toLowerCase()
+  );
+  setSituationIllnessType(profile.id, situation, !(current?.illness_type ?? 0));
+  revalidateIntake();
+  revalidatePath("/");
   return formOk();
 }
 

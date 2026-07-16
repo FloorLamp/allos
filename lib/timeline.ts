@@ -43,7 +43,9 @@ import {
   immunizationHref,
   importHref,
   intakeHref,
+  timelineDayHref,
 } from "./hrefs";
+import { symptomLabel, severityLabel } from "./symptoms";
 
 export interface TimelineOptions {
   category?: TimelineEvent["category"];
@@ -848,6 +850,60 @@ function collectEvents(
     );
   }
 
+  // Symptom log (#799): one event per symptom-DAY (the day's row set), so a run of
+  // sick days reads as a compact per-day entry rather than N rows. Worst severity drives
+  // the tone; each logged symptom is a detail item (label + severity word). Deep-links
+  // back to the day for retro edit.
+  const symptomBounds = exact("date");
+  const symptomDays = db
+    .prepare(
+      `SELECT date, COUNT(*) AS count, MAX(severity) AS max_severity,
+              GROUP_CONCAT(symptom || '::' || severity, '||') AS items
+         FROM symptom_logs
+        WHERE profile_id = ?${symptomBounds.clause}
+        GROUP BY date
+        ORDER BY date DESC
+        LIMIT ?`
+    )
+    .all(profileId, ...symptomBounds.params, perTableLimit) as {
+    date: string;
+    count: number;
+    max_severity: number;
+    items: string | null;
+  }[];
+  for (const s of symptomDays) {
+    const parsed = (s.items ?? "")
+      .split("||")
+      .filter(Boolean)
+      .map((pair) => {
+        const idx = pair.lastIndexOf("::");
+        const key = idx >= 0 ? pair.slice(0, idx) : pair;
+        const sev = idx >= 0 ? Number(pair.slice(idx + 2)) : NaN;
+        return { key, sev };
+      })
+      .sort((a, b) => b.sev - a.sev);
+    pushLimited(
+      events,
+      {
+        id: `symptom:${s.date}`,
+        date: s.date,
+        category: "symptom",
+        title: `${s.count} symptom${s.count === 1 ? "" : "s"} logged`,
+        subtitle: compactList(
+          parsed.map((p) => symptomLabel(p.key)),
+          5
+        ),
+        href: timelineDayHref(s.date),
+        tone: s.max_severity >= 3 ? "warn" : "default",
+        detailItems: parsed.map((p) => ({
+          label: symptomLabel(p.key),
+          value: Number.isFinite(p.sev) ? severityLabel(p.sev) : "",
+        })),
+      },
+      options
+    );
+  }
+
   return sortTimelineEvents(events);
 }
 
@@ -898,6 +954,7 @@ export function getTimelineDates(
     "SELECT date FROM encounters WHERE profile_id = @profileId",
     "SELECT date FROM insights WHERE profile_id = @profileId",
     "SELECT achieved_on AS date FROM milestones WHERE profile_id = @profileId",
+    "SELECT date FROM symptom_logs WHERE profile_id = @profileId",
     "SELECT start_date AS date FROM protocols WHERE profile_id = @profileId",
     `SELECT end_date AS date FROM protocols
       WHERE profile_id = @profileId AND end_date IS NOT NULL`,
