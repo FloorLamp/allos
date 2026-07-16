@@ -252,7 +252,10 @@
       "optimal_low": null,
       "optimal_high": 25,
       "direction": "lower_better",
-      "note": "Liver/oxidative-stress marker"
+      "note": "Liver/oxidative-stress marker",
+      "conversions": {
+        "IU/L": 1
+      }
     },
     {
       "name": "ALT",
@@ -271,7 +274,10 @@
           "ref_low": null,
           "ref_high": 55
         }
-      ]
+      ],
+      "conversions": {
+        "IU/L": 1
+      }
     },
     {
       "name": "AST",
@@ -302,7 +308,10 @@
           "ref_low": null,
           "ref_high": 50
         }
-      ]
+      ],
+      "conversions": {
+        "IU/L": 1
+      }
     },
     {
       "name": "Alkaline Phosphatase",
@@ -360,7 +369,10 @@
           "ref_low": 45,
           "ref_high": 150
         }
-      ]
+      ],
+      "conversions": {
+        "IU/L": 1
+      }
     },
     {
       "name": "Total Bilirubin",
@@ -2021,7 +2033,10 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Pancreatic/salivary"
+      "note": "Pancreatic/salivary",
+      "conversions": {
+        "IU/L": 1
+      }
     },
     {
       "name": "Lipase",
@@ -2032,7 +2047,10 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Pancreatic"
+      "note": "Pancreatic",
+      "conversions": {
+        "IU/L": 1
+      }
     },
     {
       "name": "Globulin",
