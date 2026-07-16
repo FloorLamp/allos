@@ -6,6 +6,7 @@ import type { TelegramBotConfig, TelegramMode } from "@/lib/settings";
 import type { NotifyErrorMarker } from "@/lib/notifications/delivery-status";
 import { saveTelegramBotConfig, registerTelegramWebhook } from "./actions";
 import SaveStatus from "@/components/SaveStatus";
+import { NOTICE_TONE } from "@/components/Notice";
 import { useSaveStatus } from "@/components/useSaveStatus";
 
 // The GLOBAL Telegram bot credentials (token + inbound transport mode). One bot
@@ -88,7 +89,7 @@ export default function ServerTelegramSettings({
       {lastError && (
         <div
           data-testid="notify-last-error"
-          className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300"
+          className={`rounded-lg border p-3 text-xs ${NOTICE_TONE.rose}`}
         >
           <div className="font-medium">
             Last notification delivery failed

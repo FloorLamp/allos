@@ -8,6 +8,7 @@ import {
   IconCheck,
 } from "@tabler/icons-react";
 import ModalShell from "@/components/ModalShell";
+import { NOTICE_TONE } from "@/components/Notice";
 import SubmitButton from "@/components/SubmitButton";
 import {
   SHARE_FIELDS,
@@ -169,7 +170,9 @@ export default function PassportControls({
           </form>
 
           {createdUrl && (
-            <div className="mt-4 rounded-lg border border-emerald-300 bg-emerald-50 p-3 dark:border-emerald-500/40 dark:bg-emerald-950/40">
+            <div
+              className={`mt-4 rounded-lg border p-3 ${NOTICE_TONE.emerald}`}
+            >
               <div className="text-xs font-medium text-emerald-800 dark:text-emerald-300">
                 Link created — copy it now (it won’t be shown again):
               </div>

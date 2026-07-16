@@ -1,4 +1,3 @@
-import { IconAlertTriangle } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
 import {
   getCarePlanItems,
@@ -11,6 +10,7 @@ import { contrastTitle, contrastDetail } from "@/lib/contrast-safety";
 import { today } from "@/lib/db";
 import ProviderDatalist from "@/components/ProviderDatalist";
 import { PageHeader } from "@/components/ui";
+import { Notice } from "@/components/Notice";
 import CarePlanForm from "./CarePlanForm";
 import CarePlanList from "./CarePlanList";
 import { addCarePlanItem } from "./actions";
@@ -53,24 +53,15 @@ export default async function CarePlanPage() {
           {contrastNotes.length > 0 && (
             <div className="space-y-2" data-testid="contrast-safety-notes">
               {contrastNotes.map((hit) => (
-                <div
+                <Notice
                   key={hit.dedupeKey}
-                  data-testid={`contrast-note-${hit.dedupeKey}`}
-                  className="flex items-start gap-2 rounded-lg border border-amber-300/60 bg-amber-50 px-3 py-2 text-sm dark:border-amber-500/30 dark:bg-amber-500/10"
+                  tone="amber"
+                  icon
+                  testid={`contrast-note-${hit.dedupeKey}`}
+                  title={contrastTitle(hit)}
                 >
-                  <IconAlertTriangle
-                    className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400"
-                    stroke={2}
-                  />
-                  <div className="min-w-0">
-                    <p className="font-medium text-amber-800 dark:text-amber-200">
-                      {contrastTitle(hit)}
-                    </p>
-                    <p className="text-amber-700 dark:text-amber-300/90">
-                      {contrastDetail(hit)}
-                    </p>
-                  </div>
-                </div>
+                  {contrastDetail(hit)}
+                </Notice>
               ))}
             </div>
           )}

@@ -45,6 +45,7 @@ import { PediatricBpCard } from "@/components/PediatricBpCard";
 import { today } from "@/lib/db";
 import { requireSession } from "@/lib/auth";
 import { PageHeader, EmptyState, MedicalValue } from "@/components/ui";
+import { Notice } from "@/components/Notice";
 import BiomarkerChart, {
   type BiomarkerBands,
 } from "@/components/BiomarkerChart";
@@ -429,20 +430,17 @@ export default async function BiomarkerDetailPage(props: {
       />
 
       {derivedReading && (
-        <div
-          data-testid="derived-note"
-          className="mb-6 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-300"
-        >
+        <Notice tone="slate" testid="derived-note" className="mb-6">
           <span className="font-semibold">Derived index.</span> These values are
           computed from your other lab readings on the same draw date, not
           measured directly.{" "}
           <span className="font-medium">{derivedReading.derived_formula}</span>.
           Informational, not a diagnosis.
-        </div>
+        </Notice>
       )}
 
       {stale && (
-        <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300">
+        <Notice tone="amber" className="mb-6">
           <span className="font-semibold">These results are stale.</span> The
           most recent reading is from {latest.date} ({humanizeAge(ageDays)}{" "}
           ago). Most biomarkers should be retested at least once a year —{" "}
@@ -450,7 +448,7 @@ export default async function BiomarkerDetailPage(props: {
             upload your latest records
           </Link>{" "}
           or get new tests to keep this trend current.
-        </div>
+        </Notice>
       )}
 
       {/* Educational explainer: what this biomarker is and why it generally

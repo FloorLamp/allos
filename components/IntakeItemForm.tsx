@@ -4,6 +4,7 @@ import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { IconX, IconAlertTriangle } from "@tabler/icons-react";
 import SupplementCombobox from "@/components/SupplementCombobox";
+import { NOTICE_TONE } from "@/components/Notice";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
 import {
@@ -429,7 +430,7 @@ export default function IntakeItemForm({
       {candidateInteractions.length > 0 && (
         <div
           data-testid="interaction-notice"
-          className="sm:col-span-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200"
+          className={`sm:col-span-2 rounded-lg border px-3 py-2.5 text-sm ${NOTICE_TONE.amber}`}
         >
           <div className="flex items-start gap-1.5">
             <IconAlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -450,7 +451,7 @@ export default function IntakeItemForm({
                   {interactionTitle(hit)} — {hit.mechanism}
                 </p>
               ))}
-              <p className="text-xs text-amber-600 dark:text-amber-400">
+              <p className="text-xs text-amber-700 dark:text-amber-400">
                 Informational only — discuss with your prescriber or pharmacist.
                 You can still save this item.
               </p>
@@ -462,7 +463,7 @@ export default function IntakeItemForm({
       {candidatePgx.length > 0 && (
         <div
           data-testid="pgx-notice"
-          className="sm:col-span-2 rounded-lg border border-violet-300 bg-violet-50 px-3 py-2.5 text-sm text-violet-800 dark:border-violet-900 dark:bg-violet-950 dark:text-violet-200"
+          className={`sm:col-span-2 rounded-lg border px-3 py-2.5 text-sm ${NOTICE_TONE.violet}`}
         >
           <div className="flex items-start gap-1.5">
             <IconAlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -482,7 +483,7 @@ export default function IntakeItemForm({
                   {hit.gene} {pgxStatusLabel(hit)} on file — {hit.guidance}
                 </p>
               ))}
-              <p className="text-xs text-violet-600 dark:text-violet-400">
+              <p className="text-xs text-violet-700 dark:text-violet-400">
                 Informational — discuss with your prescriber before any change;
                 do not stop or switch a medication based on this alone. You can
                 still save this item.
@@ -495,7 +496,7 @@ export default function IntakeItemForm({
       {candidateFoodInteractions.length > 0 && (
         <div
           data-testid="food-notice"
-          className="sm:col-span-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200"
+          className={`sm:col-span-2 rounded-lg border px-3 py-2.5 text-sm ${NOTICE_TONE.amber}`}
         >
           <div className="flex items-start gap-1.5">
             <IconAlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -510,7 +511,7 @@ export default function IntakeItemForm({
                     <span className="font-medium">{hit.food}:</span>{" "}
                     {foodGuidanceLine(hit)}
                   </p>
-                  <p className="text-xs text-amber-600 dark:text-amber-400">
+                  <p className="text-xs text-amber-700 dark:text-amber-400">
                     {foodGuidanceDetail(hit)}
                   </p>
                 </div>

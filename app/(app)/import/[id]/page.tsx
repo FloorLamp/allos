@@ -1,10 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import {
-  IconArrowLeft,
-  IconAlertTriangle,
-  IconExternalLink,
-} from "@tabler/icons-react";
+import { IconArrowLeft, IconExternalLink } from "@tabler/icons-react";
 import {
   getMedicalDocument,
   getDocumentProduced,
@@ -29,6 +25,7 @@ import { getUserFullName, getUnitPrefs } from "@/lib/settings";
 import { requireSession, getAccessibleProfiles } from "@/lib/auth";
 import { parseSortColumn, parseSortDir } from "@/lib/table-sort";
 import { PageHeader } from "@/components/ui";
+import { Notice } from "@/components/Notice";
 import ImportDetailActions from "@/components/ImportDetailActions";
 import ReassignDocument from "@/components/ReassignDocument";
 import ExtractedRecords from "@/components/ExtractedRecords";
@@ -288,14 +285,11 @@ export default async function ImportDetailPage(props: {
             value={doc.patient_name ?? "—"}
           />
           {mismatch && (
-            <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300">
-              <IconAlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>
-                This document names <strong>{doc.patient_name}</strong>, which
-                doesn’t match this profile ({profile.name}). Make sure it was
-                imported under the right person.
-              </span>
-            </div>
+            <Notice tone="amber" icon className="mt-3">
+              This document names <strong>{doc.patient_name}</strong>, which
+              doesn’t match this profile ({profile.name}). Make sure it was
+              imported under the right person.
+            </Notice>
           )}
         </div>
 

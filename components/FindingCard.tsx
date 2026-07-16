@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { IconAlertTriangle, IconX } from "@tabler/icons-react";
+import { NOTICE_TONE, type NoticeTone } from "@/components/Notice";
 import { dismissIntakeFinding } from "@/app/(app)/nutrition/supplement-actions";
 
 // Inline dismiss control for the page's finding cards (#435): posts the finding's
@@ -39,37 +40,39 @@ export function DismissFindingButton({
 // food-sources note), a small evidence/citation footnote, and the dismiss-via-bus
 // button. The blocks differ ONLY in tone (amber UL hazard, slate RDA calm, rose
 // drug-interaction, violet PGx) and the formatted title/detail/evidence each
-// caller passes; every one is the same card. Tone maps to the container +
-// detail + evidence text colors.
-type FindingTone = "amber" | "slate" | "rose" | "violet";
+// caller passes; every one is the same card. The container tint comes from the
+// shared NOTICE_TONE map (so FindingCard and Notice can't drift); tone also maps to
+// the detail + evidence text colors below.
+type FindingTone = NoticeTone;
 
-const TONE: Record<
-  FindingTone,
-  { container: string; detail: string; evidence: string }
-> = {
+// Detail (mid) and evidence (small footnote) text colors per tone. Both are -700 on
+// the -50 tint — cluster 8b: the evidence line used to be -600, which fails WCAG AA
+// at text-xs (amber-600 = 3.07:1, rose-600 = 4.28:1); -700 passes (4.84 / 5.72). The
+// calm slate block keeps its lighter -600/-500 (both pass on slate-50: 7.24 / 4.55).
+const TEXT: Record<FindingTone, { detail: string; evidence: string }> = {
   amber: {
-    container:
-      "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200",
     detail: "text-amber-700 dark:text-amber-300",
-    evidence: "text-amber-600 dark:text-amber-400",
+    evidence: "text-amber-700 dark:text-amber-400",
   },
   slate: {
-    container:
-      "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-800 dark:bg-slate-900/40 dark:text-slate-200",
     detail: "text-slate-600 dark:text-slate-300",
     evidence: "text-slate-500 dark:text-slate-400",
   },
   rose: {
-    container:
-      "border-rose-300 bg-rose-50 text-rose-800 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-200",
     detail: "text-rose-700 dark:text-rose-300",
-    evidence: "text-rose-600 dark:text-rose-400",
+    evidence: "text-rose-700 dark:text-rose-400",
   },
   violet: {
-    container:
-      "border-violet-300 bg-violet-50 text-violet-800 dark:border-violet-900 dark:bg-violet-950 dark:text-violet-200",
     detail: "text-violet-700 dark:text-violet-300",
-    evidence: "text-violet-600 dark:text-violet-400",
+    evidence: "text-violet-700 dark:text-violet-400",
+  },
+  emerald: {
+    detail: "text-emerald-700 dark:text-emerald-300",
+    evidence: "text-emerald-700 dark:text-emerald-400",
+  },
+  sky: {
+    detail: "text-sky-700 dark:text-sky-300",
+    evidence: "text-sky-700 dark:text-sky-400",
   },
 };
 
@@ -97,7 +100,7 @@ export function FindingCard({
   dismissKey: string;
   dismissLabel: string;
 }) {
-  const t = TONE[tone];
+  const t = TEXT[tone];
   const body = (
     <div>
       <p className="font-semibold">{title}</p>
@@ -109,7 +112,7 @@ export function FindingCard({
   return (
     <div
       data-testid={testid}
-      className={`rounded-lg border px-3 py-2.5 text-sm ${t.container}`}
+      className={`rounded-lg border px-3 py-2.5 text-sm ${NOTICE_TONE[tone]}`}
     >
       <div className="flex items-start justify-between gap-2">
         {icon ? (

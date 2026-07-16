@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Avatar from "@/components/Avatar";
 import PhotoPicker from "@/components/PhotoPicker";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { NOTICE_TONE } from "@/components/Notice";
 import { membersLosingAllAccess } from "@/lib/family-deletion";
 import type { Access } from "@/lib/grants";
 import {
@@ -291,7 +292,9 @@ function ProfileRow({
         </div>
 
         {confirmOpen && (
-          <div className="space-y-3 rounded-lg border border-rose-300 bg-rose-50 p-3 dark:border-rose-900/60 dark:bg-rose-950/30">
+          <div
+            className={`space-y-3 rounded-lg border p-3 ${NOTICE_TONE.rose}`}
+          >
             <p className="text-sm font-semibold text-rose-700 dark:text-rose-300">
               Permanently delete “{profile.name}” and all of their data?
             </p>

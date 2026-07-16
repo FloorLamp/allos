@@ -5,6 +5,7 @@ import {
   IconInfoCircle,
 } from "@tabler/icons-react";
 import FoodGroupIcon from "@/components/FoodGroupIcon";
+import { NOTICE_TONE } from "@/components/Notice";
 import type { FoodSuggestion, FoodSafetyNoteKind } from "@/lib/food-suggest";
 
 // Presentational renderer for the DETERMINISTIC food suggestions (issues #577/#775). A
@@ -47,11 +48,9 @@ export default function FoodSuggestions({
             key={s.dedupeKey}
             data-testid={`food-suggestion-${s.key}`}
             data-direction={s.direction}
-            className={
-              reduce
-                ? "rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm dark:border-amber-900 dark:bg-amber-950/40"
-                : "rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm dark:border-emerald-900 dark:bg-emerald-950/40"
-            }
+            className={`rounded-lg border px-3 py-2.5 text-sm ${
+              reduce ? NOTICE_TONE.amber : NOTICE_TONE.emerald
+            }`}
           >
             <div className="flex items-start gap-1.5">
               {reduce ? (
