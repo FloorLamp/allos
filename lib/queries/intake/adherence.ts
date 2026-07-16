@@ -349,13 +349,129 @@ export function getAdministrationsForItemOnDate(
   }[];
 }
 
+// ---- PRN redose notice (#798) ----
+
+// An opted-in PRN med with CONFIRMED redose fields, for the notify tick's one-shot
+// redose notice. Only items with redose_notice=1 AND both min_interval_hours and
+// max_daily_count set are returned — an unconfirmed/empty field means no notice, ever
+// (the liability gate lives HERE, in the gather, so the pure decision can assume
+// valid positives). Active PRN medications only.
+export interface RedoseNoticeItem {
+  id: number;
+  name: string;
+  minIntervalHours: number;
+  maxDailyCount: number;
+}
+
+export function getRedoseNoticeItems(profileId: number): RedoseNoticeItem[] {
+  return db
+    .prepare(
+      `SELECT id, name,
+              min_interval_hours AS minIntervalHours,
+              max_daily_count AS maxDailyCount
+         FROM intake_items
+        WHERE profile_id = ? AND active = 1 AND kind = 'medication'
+          AND as_needed = 1 AND redose_notice = 1
+          AND min_interval_hours IS NOT NULL AND min_interval_hours > 0
+          AND max_daily_count IS NOT NULL AND max_daily_count > 0
+        ORDER BY name`
+    )
+    .all(profileId) as RedoseNoticeItem[];
+}
+
+// The arming state for one PRN item's redose one-shot: the latest administration's id
+// + its intake time (arms/re-arms the timer, keyed by id per the notify_last_*
+// discipline) and today's administration count (drives the "N of M" + max
+// suppression). Profile-scoped via the parent item. `date` is the profile-local day.
+export interface RedoseArmingState {
+  latestId: number | null;
+  latestGivenAt: string | null;
+  countToday: number;
+}
+
+export function getRedoseArmingState(
+  profileId: number,
+  itemId: number,
+  date: string
+): RedoseArmingState {
+  // The most-recent administration (by intake time, id as tiebreak) that arms the
+  // one-shot. Scoped through the parent item so a forged itemId can't read across
+  // profiles.
+  const latest = db
+    .prepare(
+      `SELECT l.id AS id, l.given_at AS givenAt
+         FROM intake_item_logs l
+         JOIN intake_items s ON s.id = l.item_id
+        WHERE s.profile_id = ? AND l.item_id = ? AND l.status = 'taken'
+          AND l.given_at IS NOT NULL
+        ORDER BY l.given_at DESC, l.id DESC
+        LIMIT 1`
+    )
+    .get(profileId, itemId) as { id: number; givenAt: string } | undefined;
+  const count = db
+    .prepare(
+      `SELECT COUNT(*) AS n
+         FROM intake_item_logs l
+         JOIN intake_items s ON s.id = l.item_id
+        WHERE s.profile_id = ? AND l.item_id = ? AND l.date = ?
+          AND l.status = 'taken'`
+    )
+    .get(profileId, itemId, date) as { n: number };
+  return {
+    latestId: latest?.id ?? null,
+    latestGivenAt: latest?.givenAt ?? null,
+    countToday: count.n,
+  };
+}
+
+// A PRN med whose today's administration count has EXCEEDED its confirmed daily max
+// (#798) — the input to the over-max care finding (the #148 UL-warning shape applied
+// per-day). Only items with a confirmed max_daily_count are considered; "over" is
+// strictly greater than the max (you've logged MORE than the label allows today).
+// Amount-aware mg accounting (sum of administered mg vs a mg ceiling) is a noted
+// follow-up; the confirmed COUNT is the reliable signal and what the finding uses.
+export interface PrnOverMaxItem {
+  id: number;
+  name: string;
+  count: number;
+  maxDailyCount: number;
+}
+
+export function getPrnOverMaxItems(
+  profileId: number,
+  date: string
+): PrnOverMaxItem[] {
+  return db
+    .prepare(
+      `SELECT id, name, count, maxDailyCount FROM (
+         SELECT s.id AS id, s.name AS name,
+                (SELECT COUNT(*) FROM intake_item_logs l
+                  WHERE l.item_id = s.id AND l.date = ? AND l.status = 'taken')
+                  AS count,
+                s.max_daily_count AS maxDailyCount
+           FROM intake_items s
+          WHERE s.profile_id = ? AND s.active = 1
+            AND s.as_needed = 1 AND s.kind = 'medication'
+            AND s.max_daily_count IS NOT NULL AND s.max_daily_count > 0
+       )
+       WHERE count > maxDailyCount
+       ORDER BY name`
+    )
+    .all(date, profileId) as PrnOverMaxItem[];
+}
+
 // One PRN med surfaced for one-tap logging (dashboard widget + med card): its id,
-// name, and today's administration count + latest intake time.
+// name, and today's administration count + latest intake time. Since #798 it also
+// carries the confirmed redose interval/max (null when not configured) so the widget
+// can render a marker-agnostic "redose open / next in ~Xh" status line without a
+// second query (the same window math the notice uses, via redoseWindowStatus).
 export interface PrnMedForQuickLog {
   id: number;
   name: string;
   count: number;
   lastGivenAt: string | null;
+  minIntervalHours: number | null;
+  maxDailyCount: number | null;
 }
 
 // Active PRN (as-needed) medications for the quick-log widget, each with today's
@@ -374,7 +490,9 @@ export function getPrnMedicationsForQuickLog(
                 AS count,
               (SELECT MAX(COALESCE(l.given_at, l.taken_at)) FROM intake_item_logs l
                 WHERE l.item_id = s.id AND l.status = 'taken')
-                AS lastGivenAt
+                AS lastGivenAt,
+              s.min_interval_hours AS minIntervalHours,
+              s.max_daily_count AS maxDailyCount
          FROM intake_items s
         WHERE s.profile_id = ? AND s.active = 1
           AND s.as_needed = 1 AND s.kind = 'medication'

@@ -29,6 +29,11 @@ import {
   foodGuidanceLine,
   foodGuidanceDetail,
 } from "@/lib/food-drug-interactions";
+import { prnDefaultsFor } from "@/lib/prn-defaults";
+import {
+  pediatricDoseSuggestion,
+  type PediatricFormContext,
+} from "@/lib/prn-dosing";
 import { SUPPLEMENT_CATALOG } from "@/lib/supplement-catalog";
 import { SUPPLEMENT_BRANDS } from "@/lib/supplement-brands";
 import {
@@ -94,6 +99,7 @@ export default function IntakeItemForm({
   pairs: initialPairs = [],
   onDone,
   trainingRestricted = false,
+  pediatric,
 }: {
   // Fixed by the surface — supplement vs medication (#746).
   kind: SupplementKind;
@@ -113,6 +119,10 @@ export default function IntakeItemForm({
   pairs?: SupplementPair[];
   onDone?: () => void;
   trainingRestricted?: boolean;
+  // Pediatric label-dosing context (#798): the child's age + latest recorded weight,
+  // so a PRN medication form can reproduce the OTC weight-band suggestion. Absent for
+  // surfaces that don't thread it (the pediatric block simply doesn't render).
+  pediatric?: PediatricFormContext;
 }) {
   const s = supplement;
   // Hide the workout/rest-day schedule options when fitness tracking is
@@ -227,6 +237,18 @@ export default function IntakeItemForm({
   // prescriber/pharmacy/Rx + an "as needed" (PRN) toggle that suppresses scheduled
   // reminders.
   const [asNeeded, setAsNeeded] = useState(s?.as_needed === 1);
+  // PRN redose notice (#798) — a PRN med can carry a one-shot "redose window open"
+  // reminder. min/max are the user-CONFIRMED label numbers (pre-fillable from the
+  // curated dataset via applyPrnDefaults); redoseNotice is the opt-in.
+  const [minIntervalHours, setMinIntervalHours] = useState(
+    s?.min_interval_hours != null ? String(s.min_interval_hours) : ""
+  );
+  const [maxDailyCount, setMaxDailyCount] = useState(
+    s?.max_daily_count != null ? String(s.max_daily_count) : ""
+  );
+  const [redoseNotice, setRedoseNotice] = useState(s?.redose_notice === 1);
+  // The picked pediatric formulation (concentration) — mL only surfaces once set.
+  const [formulationKey, setFormulationKey] = useState("");
   // Missed-dose escalation — critical meds get a follow-up nudge.
   const [critical, setCritical] = useState(s?.critical === 1);
   const [error, setError] = useState<string | null>(null);
@@ -255,6 +277,39 @@ export default function IntakeItemForm({
   );
 
   const entry = CATALOG_BY_NAME.get(name.trim().toLowerCase());
+
+  // Curated OTC defaults for this ingredient (issue #798) — the adult interval/max to
+  // PRE-FILL and the pediatric weight-band chart. Pure client-side match over the
+  // bundled dataset; null when the ingredient isn't in it.
+  const prnDefaults = useMemo(
+    () =>
+      name.trim() ? prnDefaultsFor({ name, rxcui, rxcuiIngredients }) : null,
+    [name, rxcui, rxcuiIngredients]
+  );
+  // The pediatric label suggestion for THIS child (age + latest weight), when a
+  // pediatric context is threaded, the child is actually a child, and the ingredient
+  // has a pediatric table. Reproduces the label chart — informational, confirm-only.
+  const CHILD_MAX_AGE_MONTHS = 216; // 18 years — above this, no pediatric chart applies
+  const pediatricResult = useMemo(() => {
+    if (!prnDefaults?.pediatric || !pediatric || pediatric.ageMonths == null) {
+      return null;
+    }
+    if (pediatric.ageMonths >= CHILD_MAX_AGE_MONTHS) return null;
+    return pediatricDoseSuggestion({
+      entry: prnDefaults,
+      ageMonths: pediatric.ageMonths,
+      weightKg: pediatric.weightKg,
+      weightDate: pediatric.weightDate,
+      today: pediatric.today,
+      formulationKey: formulationKey || null,
+    });
+  }, [prnDefaults, pediatric, formulationKey]);
+
+  function applyPrnDefaults() {
+    if (!prnDefaults) return;
+    setMinIntervalHours(String(prnDefaults.adult.minIntervalHours));
+    setMaxDailyCount(String(prnDefaults.adult.maxDailyCount));
+  }
 
   function setPair(i: number, patch: Partial<PairState>) {
     setPairRows((ps) => ps.map((p, j) => (j === i ? { ...p, ...patch } : p)));
@@ -314,6 +369,11 @@ export default function IntakeItemForm({
       setCondition("daily");
       setBrand("");
       setAsNeeded(false);
+      // Redose-notice fields sit outside the reset form, so clear them by hand.
+      setMinIntervalHours("");
+      setMaxDailyCount("");
+      setRedoseNotice(false);
+      setFormulationKey("");
       // The critical checkbox sits outside the medication-only block, so a stale
       // `checked` state silently saved the next item critical (issue #627).
       setCritical(false);
@@ -701,6 +761,177 @@ export default function IntakeItemForm({
               As needed (PRN) — no scheduled reminders
             </label>
           </div>
+        </div>
+      )}
+
+      {/* PRN redose notice + pediatric label dosing (#798). Shown only for a PRN
+          medication. The interval/max PRE-FILL from the curated OTC dataset but the
+          user confirms them here; an empty field means NO notice, ever. */}
+      {kind === "medication" && asNeeded && (
+        <div
+          data-testid="redose-block"
+          className="sm:col-span-2 border-t border-black/5 pt-4 dark:border-white/5"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
+              Redose notice (optional)
+            </label>
+            {prnDefaults && (
+              <button
+                type="button"
+                data-testid="redose-prefill"
+                className="btn-ghost px-2 py-0.5 text-xs"
+                onClick={applyPrnDefaults}
+              >
+                Use label defaults ({prnDefaults.adult.minIntervalHours}h · max{" "}
+                {prnDefaults.adult.maxDailyCount}/day)
+              </button>
+            )}
+          </div>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            After a dose is logged, get a one-time reminder when the minimum
+            interval passes ({`"`}6h since Ibuprofen — 2 of 4 today{`"`}). These
+            are YOUR confirmed numbers — pre-filled from the OTC label as a
+            suggestion, never applied on their own; leave them blank for no
+            reminder.
+          </p>
+          {prnDefaults && (
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              Label source: {prnDefaults.source}
+            </p>
+          )}
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label className="label" htmlFor={`redose-interval-${fid}`}>
+                Minimum hours between doses
+              </label>
+              <input
+                id={`redose-interval-${fid}`}
+                data-testid="redose-interval"
+                name="min_interval_hours"
+                type="number"
+                min={0}
+                step="any"
+                value={minIntervalHours}
+                onChange={(e) => setMinIntervalHours(e.target.value)}
+                className="input"
+                placeholder="e.g. 6"
+              />
+            </div>
+            <div>
+              <label className="label" htmlFor={`redose-max-${fid}`}>
+                Maximum doses per day
+              </label>
+              <input
+                id={`redose-max-${fid}`}
+                data-testid="redose-max"
+                name="max_daily_count"
+                type="number"
+                min={1}
+                step={1}
+                value={maxDailyCount}
+                onChange={(e) => setMaxDailyCount(e.target.value)}
+                className="input"
+                placeholder="e.g. 4"
+              />
+            </div>
+          </div>
+          <label className="mt-3 flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
+            <input
+              type="checkbox"
+              name="redose_notice"
+              value="1"
+              data-testid="redose-optin"
+              checked={redoseNotice}
+              onChange={(e) => setRedoseNotice(e.target.checked)}
+              className="h-4 w-4 rounded border-slate-300 text-brand-600 dark:border-slate-600"
+            />
+            Remind me when the redose window opens (needs both fields above)
+          </label>
+
+          {/* Pediatric weight-band suggestion (#798): reproduces the OTC label chart
+              for a child, from the profile's latest recorded weight + age. Bands only
+              — never a mg/kg calculation. Informational; confirm against the package. */}
+          {pediatricResult && pediatricResult.kind !== "no-pediatric" && (
+            <div
+              data-testid="pediatric-suggestion"
+              className={`mt-3 rounded-lg border px-3 py-2.5 text-sm ${NOTICE_TONE.amber}`}
+            >
+              <p className="font-semibold">
+                Pediatric label dose — {prnDefaults?.label}
+              </p>
+              {pediatricResult.kind === "ask-doctor" && (
+                <p className="mt-0.5 text-amber-700 dark:text-amber-300">
+                  {pediatricResult.reason}
+                </p>
+              )}
+              {pediatricResult.kind === "need-weight" && (
+                <p className="mt-0.5 text-amber-700 dark:text-amber-300">
+                  Record this child’s weight first — the label doses by weight
+                  band.
+                </p>
+              )}
+              {pediatricResult.kind === "stale-weight" && (
+                <p className="mt-0.5 text-amber-700 dark:text-amber-300">
+                  The latest recorded weight is over{" "}
+                  {pediatricResult.thresholdDays} days old
+                  {pediatricResult.recordedDate
+                    ? ` (${pediatricResult.recordedDate})`
+                    : ""}
+                  . Update it before using a weight band — kids grow.
+                </p>
+              )}
+              {pediatricResult.kind === "dose" && (
+                <div className="mt-0.5 space-y-1 text-amber-700 dark:text-amber-300">
+                  <p>
+                    <span className="font-medium">
+                      {pediatricResult.bandLabel} → {pediatricResult.mg} mg
+                    </span>{" "}
+                    using {pediatricResult.weightLbs} lb
+                    {pediatricResult.recordedDate
+                      ? `, recorded ${pediatricResult.recordedDate}`
+                      : ""}
+                    .
+                  </p>
+                  {prnDefaults?.pediatric &&
+                    prnDefaults.pediatric.formulations.length > 0 && (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <label
+                          className="text-xs"
+                          htmlFor={`pediatric-form-${fid}`}
+                        >
+                          Your product:
+                        </label>
+                        <select
+                          id={`pediatric-form-${fid}`}
+                          data-testid="pediatric-formulation"
+                          value={formulationKey}
+                          onChange={(e) => setFormulationKey(e.target.value)}
+                          className="input h-8 w-auto py-0 text-xs"
+                        >
+                          <option value="">
+                            mg only (measure per package)
+                          </option>
+                          {prnDefaults.pediatric.formulations.map((f) => (
+                            <option key={f.key} value={f.key}>
+                              {f.label}
+                            </option>
+                          ))}
+                        </select>
+                        {pediatricResult.ml != null && (
+                          <span className="text-xs font-medium">
+                            ≈ {pediatricResult.ml} mL
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  <p className="text-xs text-amber-700 dark:text-amber-400">
+                    {pediatricResult.caveat}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 

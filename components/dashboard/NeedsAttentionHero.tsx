@@ -54,6 +54,7 @@ import {
 // signal biomarker-flag / integration / review domains).
 const DOMAIN_ICON: Record<string, TablerIcon> = {
   dose: IconPill,
+  "prn-max": IconPill,
   refill: IconRefresh,
   "dietary-limit": IconAlertTriangle,
   interaction: IconAlertTriangle,

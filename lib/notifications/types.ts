@@ -12,6 +12,7 @@ export type ChannelId = "telegram" | "push" | "home-assistant";
 // growing it is additive.
 export type NotificationKind =
   | "dose" // scheduled supplement/medication dose reminder
+  | "redose" // PRN redose-window notice (safety-adjacent, #798)
   | "escalation" // missed-dose escalation (safety)
   | "refill" // low-supply refill nudge
   | "preventive" // preventive-care nudge

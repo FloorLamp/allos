@@ -17,7 +17,10 @@ import {
   getFindingSuppressions,
   getProviderNames,
   getAdministrationsForItemOnDate,
+  getLatestBodyMetricDated,
 } from "@/lib/queries";
+import { redoseWindowStatus } from "@/lib/prn-redose";
+import { redoseCardLabel } from "@/lib/redose-format";
 import {
   administrationDayLabel,
   formatGivenAtClock,
@@ -39,11 +42,12 @@ import { today } from "@/lib/db";
 import { parseRxcuiIngredients } from "@/lib/rxnorm";
 import { requireSession } from "@/lib/auth";
 import { isTrainingRestricted } from "@/lib/age-gate";
-import { lastNDates, zonedDateParts } from "@/lib/date";
+import { lastNDates, zonedDateParts, parseUtcSql } from "@/lib/date";
 import {
   getActiveSituations,
   getSituationEvents,
   getTimezone,
+  profileAgeMonths,
 } from "@/lib/settings";
 import { situationHistoryResolver } from "@/lib/trend-annotations";
 import { isDueOn, isPostWorkoutReady } from "@/lib/supplement-schedule";
@@ -167,22 +171,52 @@ export default async function MedicationsPage() {
   // MedicationCard stays a thin display. Same taken-administration read the dashboard
   // widget counts, so the card and widget agree.
   const tz = getTimezone(profile.id);
+  const nowInstant = new Date();
   const prnInfoFor = (
     s: Supplement
-  ): { label: string | null; times: string[] } => {
-    if (s.as_needed !== 1) return { label: null, times: [] };
+  ): { label: string | null; times: string[]; redoseLine: string | null } => {
+    if (s.as_needed !== 1) return { label: null, times: [], redoseLine: null };
     const admins = getAdministrationsForItemOnDate(profile.id, s.id, todayStr);
     const times = admins.map((a) =>
       formatGivenAtClock(tz, a.given_at ?? a.taken_at)
     );
     const last = admins[0] ? (admins[0].given_at ?? admins[0].taken_at) : null;
+    // Redose status line (#798): the marker-agnostic window state for the card,
+    // formatted by the SAME redoseCardLabel the dashboard widget uses (one
+    // computation). Only when both interval + max are confirmed and something has
+    // been logged today.
+    let redoseLine: string | null = null;
+    if (s.min_interval_hours != null && s.max_daily_count != null && last) {
+      redoseLine = redoseCardLabel(
+        redoseWindowStatus({
+          minIntervalHours: s.min_interval_hours,
+          maxDailyCount: s.max_daily_count,
+          latestGivenAt: parseUtcSql(last),
+          countToday: admins.length,
+          now: nowInstant,
+        })
+      );
+    }
     return {
       label: administrationDayLabel(
         admins.length,
         formatGivenAtClock(tz, last)
       ),
       times,
+      redoseLine,
     };
+  };
+
+  // Pediatric label-dosing context (#798) threaded to the med form so it can show the
+  // OTC weight-band suggestion for a child. mg is canonical; the form derives mL only
+  // through a picked formulation. Age in months + the latest RECORDED weight (kg) and
+  // its date drive the freshness gate.
+  const latestWeight = getLatestBodyMetricDated(profile.id, "weight");
+  const pediatricCtx = {
+    ageMonths: profileAgeMonths(profile.id, todayStr),
+    weightKg: latestWeight?.value ?? null,
+    weightDate: latestWeight?.date ?? null,
+    today: todayStr,
   };
 
   const pairs = getSupplementPairs(profile.id);
@@ -289,6 +323,8 @@ export default async function MedicationsPage() {
                     suppressedFoodKeys={suppressedFoodKeys}
                     prnDayLabel={prnInfoFor(m.med).label}
                     prnTimes={prnInfoFor(m.med).times}
+                    prnRedoseLine={prnInfoFor(m.med).redoseLine}
+                    pediatric={pediatricCtx}
                   />
                 ))}
               </div>
@@ -322,6 +358,8 @@ export default async function MedicationsPage() {
                     suppressedFoodKeys={suppressedFoodKeys}
                     prnDayLabel={prnInfoFor(m.med).label}
                     prnTimes={prnInfoFor(m.med).times}
+                    prnRedoseLine={prnInfoFor(m.med).redoseLine}
+                    pediatric={pediatricCtx}
                   />
                 ))}
               </div>
@@ -342,6 +380,7 @@ export default async function MedicationsPage() {
           stackItems={stackItems}
           pgxVariants={pgxVariants}
           trainingRestricted={trainingRestricted}
+          pediatric={pediatricCtx}
         />
       </div>
     </div>

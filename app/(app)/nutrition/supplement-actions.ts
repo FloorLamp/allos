@@ -116,6 +116,29 @@ function fields(formData: FormData) {
     (formData.get("as_needed") === "1" || formData.get("as_needed") === "on")
       ? 1
       : 0;
+  // PRN redose notice (issue #798). Only a PRN medication carries these; a non-PRN
+  // item clears them so a kind/PRN flip can't leave a stale notice armed. The
+  // interval/max are the user-CONFIRMED label numbers (pre-filled from
+  // lib/prn-defaults but only ever the user's own number); a blank field stays NULL →
+  // NO notice, ever (the liability line). redose_notice is the per-item opt-in, forced
+  // OFF unless BOTH numbers are confirmed (an opt-in with nothing confirmed can never
+  // fire, so it isn't stored as "on").
+  const intervalRaw = Number(formData.get("min_interval_hours"));
+  const minIntervalHours =
+    asNeeded && Number.isFinite(intervalRaw) && intervalRaw > 0
+      ? intervalRaw
+      : null;
+  const maxRaw = Number(formData.get("max_daily_count"));
+  const maxDailyCount =
+    asNeeded && Number.isInteger(maxRaw) && maxRaw > 0 ? maxRaw : null;
+  const redoseNotice =
+    asNeeded &&
+    minIntervalHours != null &&
+    maxDailyCount != null &&
+    (formData.get("redose_notice") === "1" ||
+      formData.get("redose_notice") === "on")
+      ? 1
+      : 0;
   // Cached RxNorm concept id (issue #144) — user-confirmed on the form; kept for both
   // kinds since supplement-drug interactions are a first-class case here.
   const rxcui = str("rxcui");
@@ -144,6 +167,9 @@ function fields(formData: FormData) {
     pharmacy,
     rxNumber,
     asNeeded,
+    minIntervalHours,
+    maxDailyCount,
+    redoseNotice,
     rxcui,
     rxcuiIngredients,
   };
@@ -279,8 +305,10 @@ export async function addSupplement(formData: FormData): Promise<FormResult> {
            (name, notes, condition, priority, brand, product, situation, situation_id, stack,
             critical, escalate_after_min, escalate_chat_id,
             quantity_on_hand, qty_per_dose,
-            kind, prescriber, pharmacy, rx_number, as_needed, rxcui, rxcui_ingredients, provider_id, source, profile_id)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'manual',?)`
+            kind, prescriber, pharmacy, rx_number, as_needed,
+            min_interval_hours, max_daily_count, redose_notice,
+            rxcui, rxcui_ingredients, provider_id, source, profile_id)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'manual',?)`
       )
       .run(
         name,
@@ -302,6 +330,9 @@ export async function addSupplement(formData: FormData): Promise<FormResult> {
         f.pharmacy,
         f.rxNumber,
         f.asNeeded,
+        f.minIntervalHours,
+        f.maxDailyCount,
+        f.redoseNotice,
         f.rxcui,
         f.rxcuiIngredients,
         providerId,
@@ -384,6 +415,7 @@ export async function updateSupplement(
              critical = ?, escalate_after_min = ?, escalate_chat_id = ?,
              quantity_on_hand = ?, qty_per_dose = ?,
              kind = ?, prescriber = ?, pharmacy = ?, rx_number = ?, as_needed = ?,
+             min_interval_hours = ?, max_daily_count = ?, redose_notice = ?,
              rxcui = ?, rxcui_ingredients = ?, provider_id = ?
        WHERE id = ? AND profile_id = ?`
     ).run(
@@ -406,6 +438,9 @@ export async function updateSupplement(
       f.pharmacy,
       f.rxNumber,
       f.asNeeded,
+      f.minIntervalHours,
+      f.maxDailyCount,
+      f.redoseNotice,
       f.rxcui,
       f.rxcuiIngredients,
       providerId,
@@ -881,6 +916,7 @@ const INTAKE_FINDING_PREFIXES = [
   "pgx:",
   "dietary-limit:",
   "rda-adequacy:",
+  "prn-max:",
   FOOD_TIMING_PREFIX,
   KEEP_APART_PREFIX,
 ];

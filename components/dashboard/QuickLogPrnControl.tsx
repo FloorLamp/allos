@@ -16,10 +16,14 @@ export default function QuickLogPrnControl({
   itemId,
   name,
   dayLabel,
+  redoseLine = null,
 }: {
   itemId: number;
   name: string;
   dayLabel: string;
+  // The redose-window status line (#798), or null when the med has no confirmed
+  // interval/max. Informational — window state + running count, never permissive.
+  redoseLine?: string | null;
 }) {
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
@@ -66,6 +70,14 @@ export default function QuickLogPrnControl({
           >
             {dayLabel}
           </div>
+          {redoseLine && (
+            <div
+              className="text-xs font-medium text-brand-700 dark:text-brand-400"
+              data-testid="prn-redose-line"
+            >
+              {redoseLine}
+            </div>
+          )}
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
           <button

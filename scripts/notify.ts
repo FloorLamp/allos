@@ -48,6 +48,7 @@ import {
   handleDoseCommand,
 } from "../lib/notifications/telegram-callbacks";
 import { runEscalations } from "../lib/notifications/escalate";
+import { runRedoseNotices } from "../lib/notifications/redose";
 import { runRefills } from "../lib/notifications/refill";
 import { runPreventive } from "../lib/notifications/preventive";
 import { runDigest } from "../lib/notifications/digest-data";
@@ -336,6 +337,22 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
     if (esc.failed) anyFailed = true;
   } catch (e) {
     log.error("escalation check failed", {
+      profile: profile.id,
+      err: e instanceof Error ? e : String(e),
+    });
+    anyFailed = true;
+  }
+
+  // PRN redose notice (#798): safety-tier, armed by an actual administration, one-shot
+  // per administration. Like escalation it runs every hour regardless of slots AND —
+  // deliberately — regardless of the waking window (a redose due at 3am is the
+  // overnight fever case; the notice can only fire from a dose the user logged). Its
+  // own per-item/administration marker (notify_last_redose_<itemId>) dedups.
+  try {
+    const rd = await runRedoseNotices(profile.id, profile.name, date, now);
+    if (rd.failed) anyFailed = true;
+  } catch (e) {
+    log.error("redose notice check failed", {
       profile: profile.id,
       err: e instanceof Error ? e : String(e),
     });

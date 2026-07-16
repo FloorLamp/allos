@@ -77,7 +77,9 @@ import {
   getInteractionWarnings,
   getPgxWarnings,
   getContrastSafetyWarnings,
+  getPrnOverMaxItems,
 } from "../intake";
+import { prnMaxSignalKey } from "../../prn-redose";
 import {
   dietaryLimitSignalKey,
   ulWarningTitle,
@@ -215,6 +217,29 @@ function dietaryLimitItems(profileId: number, today: string): UpcomingItem[] {
     title: ulWarningTitle(w),
     detail: ulWarningDetail(w, w.conditionCaveat),
     href: nutritionTabHref("supplements"),
+    dueDate: null,
+    band: "today" as const,
+    dueText: "Review",
+  }));
+}
+
+// PRN medications logged OVER their confirmed daily max today (issue #798) — the
+// count-per-day analogue of the dietary-limit (UL) warning. When today's
+// administrations exceed the user's own confirmed max_daily_count, surface a care-tier
+// finding keyed `prn-max:<itemId>` (via prnMaxSignalKey) — dismissible through the
+// SAME getFindingSuppressions bus as every other finding. Banded to Today (a
+// standing, informational safety note framed "you've logged more than your confirmed
+// daily max" — never prescriptive), and it clears itself at the next date rollover.
+function prnMaxItems(profileId: number, today: string): UpcomingItem[] {
+  return getPrnOverMaxItems(profileId, today).map((m) => ({
+    key: prnMaxSignalKey(m.id),
+    domain: "prn-max" as const,
+    title: `${m.name} — over your daily max`,
+    detail:
+      `${m.count} logged today vs your confirmed max of ${m.maxDailyCount}. ` +
+      `Informational — if this looks wrong, adjust the log; if you're in pain, ` +
+      `contact your clinician.`,
+    href: MEDICATIONS_HREF,
     dueDate: null,
     band: "today" as const,
     dueText: "Review",
@@ -654,6 +679,7 @@ const rawUpcoming = cache(function rawUpcoming(
 ): UpcomingItem[] {
   return [
     ...doseItems(profileId, today),
+    ...prnMaxItems(profileId, today),
     ...refillItems(profileId, today),
     ...dietaryLimitItems(profileId, today),
     ...interactionItems(profileId),

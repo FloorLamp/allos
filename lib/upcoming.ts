@@ -51,6 +51,7 @@ export function snoozeUntil(today: string, days: number): string | null {
 // their own "Flagged" / "For review" groupings rather than in the date bands.
 export type UpcomingDomain =
   | "dose"
+  | "prn-max"
   | "refill"
   | "dietary-limit"
   | "interaction"
@@ -71,6 +72,9 @@ export type UpcomingDomain =
 // Stable within-band ordering when two items share an effective due date.
 const DOMAIN_ORDER: Record<UpcomingDomain, number> = {
   dose: 0,
+  // A PRN over-max is safety-adjacent — sort it just after scheduled doses, ahead of
+  // the calm informational findings (#798).
+  "prn-max": 0.5,
   refill: 1,
   "dietary-limit": 2,
   interaction: 3,

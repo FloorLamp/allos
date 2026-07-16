@@ -52,6 +52,7 @@ export const dynamic = "force-dynamic";
 // domains plus the unified model's "something's off" signals (issue #524).
 const DOMAIN_ICON: Record<UpcomingDomain, TablerIcon> = {
   dose: IconPill,
+  "prn-max": IconPill,
   refill: IconRefresh,
   "dietary-limit": IconAlertTriangle,
   interaction: IconAlertTriangle,

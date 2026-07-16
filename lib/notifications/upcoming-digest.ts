@@ -15,6 +15,7 @@ import type { NotificationMessage } from "./types";
 // "vaccine" mirror the page's language.
 const DOMAIN_NOUN: Record<UpcomingDomain, string> = {
   dose: "dose",
+  "prn-max": "over-max PRN",
   refill: "refill",
   "dietary-limit": "intake limit",
   interaction: "interaction",
@@ -41,6 +42,7 @@ const DOMAIN_NOUN: Record<UpcomingDomain, string> = {
 // order so the digest reads in the same sequence the user sees.
 const DOMAIN_SEQ: UpcomingDomain[] = [
   "dose",
+  "prn-max",
   "refill",
   "dietary-limit",
   "interaction",

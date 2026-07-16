@@ -39,6 +39,9 @@ const ALLOWLIST: Record<string, string> = {
     "via the existing dose/escalation lattice, not this layer",
   refillItems: "supply run-out math — not a risk-ranked due signal",
   dietaryLimitItems: "standing UL warning — informational, not risk-ranked",
+  prnMaxItems:
+    "PRN over-daily-max care finding (#798) — a per-day count vs the user's OWN " +
+    "confirmed max_daily_count; informational safety note, not a risk-ranked due signal",
   interactionItems:
     "standing interaction warning — informational, not risk-ranked",
   pgxItems:

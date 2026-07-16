@@ -24,6 +24,7 @@ import {
 } from "@/lib/medication-history";
 import type { AdherenceDot } from "@/lib/supplement-adherence";
 import type { DoseRate } from "@/lib/refill";
+import type { PediatricFormContext } from "@/lib/prn-dosing";
 import { formatLongDate } from "@/lib/format-date";
 import { getMedicationInfo } from "@/lib/medication-info";
 import {
@@ -78,6 +79,8 @@ export default function MedicationCard({
   suppressedFoodKeys = [],
   prnDayLabel = null,
   prnTimes = [],
+  prnRedoseLine = null,
+  pediatric,
 }: {
   supplement: Supplement;
   doses: SupplementDose[];
@@ -104,6 +107,12 @@ export default function MedicationCard({
   // med, since a PRN med can be given several times a day.
   prnDayLabel?: string | null;
   prnTimes?: string[];
+  // The redose-window status line (#798): "Redose OK — min interval passed · 2 of 4
+  // today" / "Next dose in ~2h · …" / "Max reached · …", or null when not configured.
+  // Pre-formatted server-side via the shared redoseCardLabel.
+  prnRedoseLine?: string | null;
+  // Pediatric label-dosing context (#798) for the edit form's weight-band suggestion.
+  pediatric?: PediatricFormContext;
 }) {
   const s = supplement;
   const [editing, setEditing] = useState(false);
@@ -134,6 +143,7 @@ export default function MedicationCard({
           pairs={pairs}
           onDone={() => setEditing(false)}
           trainingRestricted={trainingRestricted}
+          pediatric={pediatric}
         />
       </div>
     );
@@ -288,6 +298,14 @@ export default function MedicationCard({
           <div className="text-sm text-slate-600 dark:text-slate-300">
             {prnDayLabel}
           </div>
+          {prnRedoseLine && (
+            <div
+              data-testid="prn-redose-line"
+              className="mt-0.5 text-xs font-medium text-brand-700 dark:text-brand-400"
+            >
+              {prnRedoseLine}
+            </div>
+          )}
           {prnTimes.length > 0 && (
             <div className="mt-1 flex flex-wrap gap-1">
               {prnTimes.map((t, i) => (

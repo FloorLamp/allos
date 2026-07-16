@@ -72,6 +72,17 @@ export interface Supplement {
   pharmacy: string | null;
   rx_number: string | null;
   as_needed: number;
+  // PRN redose notice (issue #798). A per-item, opt-in, administration-armed
+  // reminder for the redose window opening ("6h since Ibuprofen — your minimum
+  // interval has passed · 2 of 4 today"). redose_notice is the opt-in flag;
+  // min_interval_hours / max_daily_count are the user-CONFIRMED label numbers
+  // (pre-filled from lib/prn-defaults, never applied silently). The notice fires only
+  // when redose_notice=1 AND both are set — an unconfirmed/empty field means NO
+  // notice, ever (the liability line). max_daily_count also drives the over-max care
+  // finding. All null/0 for non-PRN and legacy rows.
+  min_interval_hours: number | null;
+  max_daily_count: number | null;
+  redose_notice: number;
   // Cached RxNorm concept id (RxCUI) for this item's name (issue #144), resolved
   // via NLM's approximateTerm API and user-confirmed on the edit form; NULL when
   // never resolved (the interaction matcher then falls back to name matching).
