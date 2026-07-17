@@ -5,7 +5,10 @@ import { useRouter } from "next/navigation";
 import type { ProfileHomeAssistant } from "@/lib/settings";
 import type { NotificationKind } from "@/lib/notifications/types";
 import { TOGGLEABLE_HA_KINDS } from "@/lib/notifications/home-assistant-core";
-import { saveHomeAssistantPrefs, sendTestHomeAssistant } from "../profile/actions";
+import {
+  saveHomeAssistantPrefs,
+  sendTestHomeAssistant,
+} from "../profile/actions";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus } from "@/components/useSaveStatus";
 

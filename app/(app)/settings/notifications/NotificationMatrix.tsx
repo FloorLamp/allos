@@ -9,7 +9,10 @@ import {
   serializeDisabledKinds,
 } from "@/lib/notifications/home-assistant-core";
 import { isPushDeliverableKind } from "@/lib/notifications/push-core";
-import { saveTelegramNotifyKinds, saveHomeAssistantNotifyKinds } from "../profile/actions";
+import {
+  saveTelegramNotifyKinds,
+  saveHomeAssistantNotifyKinds,
+} from "../profile/actions";
 import { savePushNotifyKinds } from "../actions";
 
 // The kind × channel matrix (#928) — the Notifications tab's centerpiece. Rows are
@@ -52,13 +55,13 @@ export default function NotificationMatrix({
   haConfigured: boolean;
 }) {
   const router = useRouter();
-  const [disabled, setDisabled] = useState<Record<ChannelId, Set<NotificationKind>>>(
-    () => ({
-      telegram: new Set(telegramDisabled),
-      push: new Set(pushDisabled),
-      ha: new Set(haDisabled),
-    })
-  );
+  const [disabled, setDisabled] = useState<
+    Record<ChannelId, Set<NotificationKind>>
+  >(() => ({
+    telegram: new Set(telegramDisabled),
+    push: new Set(pushDisabled),
+    ha: new Set(haDisabled),
+  }));
   const [saving, setSaving] = useState(false);
 
   const columns: Column[] = [
@@ -137,9 +140,9 @@ export default function NotificationMatrix({
           Which messages reach me where
         </h3>
         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-          Turn a kind off for a channel and it stops reaching you there (it still
-          reaches your other channels). A gated skip is a deliberate non-send — it
-          never counts as a delivery failure.
+          Turn a kind off for a channel and it stops reaching you there (it
+          still reaches your other channels). A gated skip is a deliberate
+          non-send — it never counts as a delivery failure.
         </p>
       </div>
 
@@ -180,7 +183,8 @@ export default function NotificationMatrix({
                         className="mt-0.5 block text-xs text-rose-600 dark:text-rose-400"
                         data-testid={`matrix-safety-warning-${kind}`}
                       >
-                        No channel will deliver this — it&rsquo;s a safety reminder.
+                        No channel will deliver this — it&rsquo;s a safety
+                        reminder.
                       </span>
                     )}
                   </td>

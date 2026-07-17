@@ -58,7 +58,12 @@ describe("saveRiskFactors", () => {
     const profile = createProfile("risk", login.id);
     actAs(login, profile);
     await saveRiskFactors(
-      fd({ healthcare_worker: "1", immunocompromised: "0", dialysis: "0", pregnant: "0" })
+      fd({
+        healthcare_worker: "1",
+        immunocompromised: "0",
+        dialysis: "0",
+        pregnant: "0",
+      })
     );
     expect(getRiskAttributes(profile.id).healthcareWorker).toBe(true);
   });

@@ -198,11 +198,9 @@ export const TOGGLEABLE_HA_KINDS = TOGGLEABLE_NOTIFICATION_KINDS;
 // and the PRN redose notice. The matrix may disable them per channel, but WARNS —
 // never blocks — when one ends up off on EVERY configured channel, consistent with
 // the findings-bus principle that a safety signal is never silently suppressed.
-export const SAFETY_NOTIFICATION_KINDS: ReadonlySet<NotificationKind> = new Set([
-  "dose",
-  "escalation",
-  "redose",
-]);
+export const SAFETY_NOTIFICATION_KINDS: ReadonlySet<NotificationKind> = new Set(
+  ["dose", "escalation", "redose"]
+);
 
 export function isSafetyKind(kind: NotificationKind): boolean {
   return SAFETY_NOTIFICATION_KINDS.has(kind);

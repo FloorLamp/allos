@@ -21,7 +21,9 @@ import { createLogin, createProfile, actAs, fd } from "./harness";
 
 const revalidate = vi.mocked(revalidatePath);
 
-const disabled = (kinds: string[]) => ({ disabled_kinds: JSON.stringify(kinds) });
+const disabled = (kinds: string[]) => ({
+  disabled_kinds: JSON.stringify(kinds),
+});
 
 beforeEach(() => revalidate.mockClear());
 
@@ -32,7 +34,9 @@ describe("saveTelegramNotifyKinds (profile tier)", () => {
     const bystander = createProfile("bystander", login.id);
     actAs(login, profile);
 
-    const res = await saveTelegramNotifyKinds(fd(disabled(["refill", "digest"])));
+    const res = await saveTelegramNotifyKinds(
+      fd(disabled(["refill", "digest"]))
+    );
     expect(res).toEqual({ ok: true });
     expect(new Set(getProfileTelegramDisabledKinds(profile.id))).toEqual(
       new Set(["refill", "digest"])

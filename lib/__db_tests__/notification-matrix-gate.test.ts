@@ -13,7 +13,10 @@ import {
   setProfileTelegramDisabledKinds,
   setLoginPushDisabledKinds,
 } from "@/lib/settings";
-import { ensureVapidKeys, savePushSubscription } from "@/lib/notifications/push";
+import {
+  ensureVapidKeys,
+  savePushSubscription,
+} from "@/lib/notifications/push";
 import { dispatch, getNotifyError } from "@/lib/notifications";
 import type { NotificationMessage } from "@/lib/notifications/types";
 
@@ -26,7 +29,9 @@ function newProfile(name: string): number {
 function newLogin(role: "admin" | "member"): number {
   return Number(
     db
-      .prepare("INSERT INTO logins (username, password_hash, role) VALUES (?, 'x', ?)")
+      .prepare(
+        "INSERT INTO logins (username, password_hash, role) VALUES (?, 'x', ?)"
+      )
       .run(`u${Math.random().toString(36).slice(2)}`, role).lastInsertRowid
   );
 }
@@ -96,7 +101,8 @@ describe("Web Push column gate (per owning login)", () => {
     // filter ran.
     savePushSubscription(member, {
       endpoint: "https://push.example.com/sub-gate",
-      p256dh: "BObSAMPLEp256dhKEYvaluethatislongenoughxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      p256dh:
+        "BObSAMPLEp256dhKEYvaluethatislongenoughxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
       auth: "authsecretvalue",
     });
     setLoginPushDisabledKinds(member, ["refill"]);

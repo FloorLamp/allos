@@ -53,7 +53,13 @@ describe("safety kinds", () => {
     ]);
   });
   it("does not classify observational kinds as safety", () => {
-    for (const k of ["refill", "preventive", "workout", "digest", "milestone"] as const)
+    for (const k of [
+      "refill",
+      "preventive",
+      "workout",
+      "digest",
+      "milestone",
+    ] as const)
       expect(isSafetyKind(k)).toBe(false);
   });
 });
