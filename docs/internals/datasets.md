@@ -1,6 +1,6 @@
 # Curated-dataset framework
 
-Status: **partial** · framework + harness + linter shipped; **15 datasets migrated** onto the framework (#860 Track B, waves 1–3): `biomarker-descriptions`, `contrast-safety`, `dri`, `drug-interactions`, `food-drug-interactions`, `food-groups`, `icd10-common`, `illness-thresholds`, `medication-descriptions`, `mets`, `nutrient-food-map`, `pgx`, `prn-defaults`, `screenings`, `temperature-red-flags`. Remaining curated datasets migrate one thin PR each; `canonical-biomarkers` is deferred and `symptoms` is a documented non-candidate — issue #860 Track B
+Status: **partial** · framework + harness + linter shipped; **16 datasets migrated** onto the framework (#860 Track B, waves 1–3): `allergen-cross-reactivity`, `biomarker-descriptions`, `contrast-safety`, `dri`, `drug-interactions`, `food-drug-interactions`, `food-groups`, `icd10-common`, `illness-thresholds`, `medication-descriptions`, `mets`, `nutrient-food-map`, `pgx`, `prn-defaults`, `screenings`, `temperature-red-flags`. Remaining curated datasets migrate one thin PR each; `canonical-biomarkers` is deferred and `symptoms` is a documented non-candidate — issue #860 Track B
 
 Allos bakes ~two dozen curated, human-reviewable reference datasets — MET values, DRIs,
 drug interactions, biomarker reference ranges, screening schedules, growth charts, and
@@ -111,7 +111,7 @@ immediate-tx): the extraction lands **with** its enforcement test. It fails CI w
 - the `data/` files and the registry drift out of lockstep.
 
 **Honest scope:** the linter enforces the contract **only** for `lib/datasets/data/` and
-the registry — today that's the **15 migrated datasets** listed in the Status line above.
+the registry — today that's the **16 migrated datasets** listed in the Status line above.
 It does **not** retroactively scan the not-yet-migrated curated datasets that still live
 under `lib/*.json`; each of those keeps its bespoke shape until its own migration PR moves
 it under `lib/datasets/data/` and into the registry, at which point the linter starts

@@ -11,6 +11,10 @@
 // (and NOT under lib/datasets/data/), so the linter doesn't retroactively fail them.
 // Each migrates in its own small PR.
 
+import {
+  allergenCrossReactivityDataset,
+  allergenFamilyStrategy,
+} from "./allergen-cross-reactivity";
 import { biomarkerDescriptionsDataset } from "./biomarker-descriptions";
 import { contrastDataset, contrastClassStrategy } from "./contrast-safety";
 import { driDataset, driNutrientStrategy } from "./dri";
@@ -58,6 +62,13 @@ export interface RegisteredDataset {
 }
 
 export const DATASETS: RegisteredDataset[] = [
+  {
+    dataset: allergenCrossReactivityDataset as unknown as LoadedDataset<
+      Record<string, unknown>,
+      unknown
+    >,
+    strategy: allergenFamilyStrategy,
+  },
   {
     dataset: biomarkerDescriptionsDataset as unknown as LoadedDataset<
       Record<string, unknown>,
