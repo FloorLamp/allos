@@ -55,9 +55,12 @@ export default async function EmergencyCardPage() {
             (that&rsquo;s the point in an emergency, but also the trade-off if
             the phone is lost while unlocked).
           </p>
-          <Link href="/settings/profile" className="btn mt-4 inline-flex w-fit">
+          <Link
+            href="/medical/background#emergency-card"
+            className="btn mt-4 inline-flex w-fit"
+          >
             <IconSettings className="h-4 w-4" stroke={1.75} />
-            Enable in Settings → Profile
+            Enable in Medical → Background
           </Link>
         </div>
       )}

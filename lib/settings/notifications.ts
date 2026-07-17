@@ -10,6 +10,8 @@ import {
   setSetting,
   getProfileSetting,
   setProfileSetting,
+  getLoginSetting,
+  setLoginSetting,
 } from "./kv";
 import {
   DEFAULT_INTAKE_REMINDER_HOURS,
@@ -180,6 +182,57 @@ export function setProfileHomeAssistant(
     );
   });
   return getProfileHomeAssistant(profileId);
+}
+
+// ---- Per-channel per-kind delivery matrix (#928) ----
+// The notification matrix (Settings → Notifications) answers "which messages reach
+// me where" as one grid, rows = kinds × columns = channels. Each column persists in
+// ITS channel's tier store — so the matrix is one UI over three tier-correct
+// settings, saved through tier-correct actions (#319). HA already had
+// `ha_notify_disabled_kinds` (profile); #928 adds the Telegram (profile) and push
+// (login) columns. All three are plain KV JSON arrays of DISABLED kinds (absence =
+// every kind on), parsed/serialized by the shared pure core. No schema change.
+
+// Telegram column — per PROFILE (a chat id belongs to one tracked person), beside
+// the profile's telegram_enabled / chat id.
+export function getProfileTelegramDisabledKinds(
+  profileId: number
+): NotificationKind[] {
+  return parseDisabledKinds(
+    getProfileSetting(profileId, "telegram_notify_disabled_kinds")
+  );
+}
+
+export function setProfileTelegramDisabledKinds(
+  profileId: number,
+  kinds: readonly NotificationKind[]
+): void {
+  setProfileSetting(
+    profileId,
+    "telegram_notify_disabled_kinds",
+    serializeDisabledKinds(kinds)
+  );
+}
+
+// Push column — per LOGIN (a browser subscription belongs to a login, not a
+// profile — mirrors where the subscription itself lives). A push message for a
+// profile fans out to every entitled login's browsers; each login's disabled set
+// gates its own subscriptions at the send seam.
+export function getLoginPushDisabledKinds(loginId: number): NotificationKind[] {
+  return parseDisabledKinds(
+    getLoginSetting(loginId, "push_notify_disabled_kinds")
+  );
+}
+
+export function setLoginPushDisabledKinds(
+  loginId: number,
+  kinds: readonly NotificationKind[]
+): void {
+  setLoginSetting(
+    loginId,
+    "push_notify_disabled_kinds",
+    serializeDisabledKinds(kinds)
+  );
 }
 
 // Persist the global bot credentials (token + inbound transport mode). App-wide,

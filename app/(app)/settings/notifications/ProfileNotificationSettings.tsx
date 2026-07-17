@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { NotifySchedule, ProfileTelegram } from "@/lib/settings";
-import { saveNotificationPrefs, sendTestNotification } from "./actions";
+import { saveNotificationPrefs, sendTestNotification } from "../profile/actions";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus } from "@/components/useSaveStatus";
 

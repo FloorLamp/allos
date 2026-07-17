@@ -26,7 +26,9 @@ import {
   setFoodTelegramPrompted,
   setProfileFoodTelegram,
   setNotifySchedule,
+  getProfileHomeAssistant,
   setProfileHomeAssistant,
+  setProfileTelegramDisabledKinds,
   isValidTimezone,
   setTimezone,
   setHomeLocation,
@@ -34,22 +36,12 @@ import {
   setWeekStart,
   isValidWeekMode,
   setWeekMode,
-  setEmergencyCardEnabled,
-  setBloodType,
-  setEmergencyContact,
-  setSmokingHistory,
-  setRiskAttributes,
   setMaxHrOverride,
   setZone2WeeklyTargetMin,
   setRecommendationCadence,
 } from "@/lib/settings";
 import { parseCadence } from "@/lib/recommendation-run";
 import { parseHome } from "@/lib/home-location";
-import {
-  parsePackYears,
-  parseQuitYear,
-  parseSmokingStatus,
-} from "@/lib/smoking";
 import { reconcileFlags } from "@/lib/queries";
 import { sweepIngestWindowForTimezoneChange } from "@/lib/integrations/ingest-timezone-sweep";
 import { dispatch } from "@/lib/notifications";
@@ -62,6 +54,7 @@ import {
 import { sendHomeAssistantTest } from "@/lib/notifications/home-assistant";
 import {
   isValidWebhookUrl,
+  parseDisabledKinds,
   TOGGLEABLE_HA_KINDS,
 } from "@/lib/notifications/home-assistant-core";
 import type { NotificationKind } from "@/lib/notifications/types";
@@ -202,50 +195,10 @@ export async function saveProfileSettings(formData: FormData) {
   revalidatePath("/", "layout");
 }
 
-// ---- Smoking history (profile scope, issue #83) ----
-// The structured smoking record (status / pack-years / quit year) — a property of
-// the tracked person, so profile-scoped; any login with write access to the profile
-// may edit it. Marks the entry 'manual' so a later CCD re-import never clobbers it.
-// pack-years apply only to an ever-smoker and the quit year only to a former smoker
-// (the setter drops the rest); the assessor uses this to activate the risk-gated
-// lung LDCT / AAA screening reminders.
-export async function saveSmokingHistory(formData: FormData) {
-  const { profile } = await requireWriteAccess();
-  const status = parseSmokingStatus(
-    String(formData.get("smoking_status") ?? "")
-  );
-  const packYears = parsePackYears(String(formData.get("pack_years") ?? ""));
-  // Bound the quit year to a real, non-future year; parseQuitYear already rejects
-  // an out-of-range value, and a future year is meaningless for "quit N years ago".
-  const thisYear = new Date().getFullYear();
-  const quitYearRaw = parseQuitYear(String(formData.get("quit_year") ?? ""));
-  const quitYear =
-    quitYearRaw != null && quitYearRaw <= thisYear ? quitYearRaw : null;
-
-  setSmokingHistory(profile.id, { status, packYears, quitYear });
-  // The record drives the preventive reminders (Upcoming) and the profile page.
-  revalidatePath("/upcoming");
-  revalidatePath("/settings/profile");
-}
-
-// ---- Health risk factors (profile scope, issue #517) ----
-// The self-declared occupational/immune context (healthcare worker,
-// immunocompromised, on dialysis, pregnant) that the risk-stratification layer
-// reads to modulate retest cadence + ranking. Boolean flags in profile_settings;
-// any login with write access to the profile may edit them. Drives the Upcoming
-// retest/screening ranking — informational only.
-export async function saveRiskFactors(formData: FormData) {
-  const { profile } = await requireWriteAccess();
-  const on = (key: string) => formData.get(key) === "1";
-  setRiskAttributes(profile.id, {
-    healthcareWorker: on("healthcare_worker"),
-    immunocompromised: on("immunocompromised"),
-    dialysis: on("dialysis"),
-    pregnant: on("pregnant"),
-  });
-  revalidatePath("/upcoming");
-  revalidatePath("/settings/profile");
-}
+// Smoking history (#83) and health risk factors (#517) moved to the Medical
+// surface (/medical/background) with the emergency card (#928 — data about the
+// person, not configuration; the #343 equipment precedent). Their write cores live
+// in app/(app)/medical/background/actions.ts, still profile-scoped + requireWriteAccess.
 
 // ---- Training HR zones (profile scope, issue #159) ----
 
@@ -283,28 +236,9 @@ export async function saveTrainingZones(formData: FormData) {
   revalidatePath("/trends");
 }
 
-// ---- Emergency card (profile scope, issue #42) ----
-
-// The offline emergency card opt-in, manual blood type, and emergency contact —
-// all properties of the tracked person, so profile-scoped (any login acting as the
-// profile may edit them). setBloodType normalizes/validates the value; a blank or
-// unrecognized blood type clears it.
-export async function saveEmergencyCardSettings(formData: FormData) {
-  const { profile } = await requireWriteAccess();
-  const enabledRaw = formData.get("emergency_enabled");
-  setEmergencyCardEnabled(
-    profile.id,
-    enabledRaw === "1" || enabledRaw === "on"
-  );
-  setBloodType(profile.id, String(formData.get("blood_type") ?? ""));
-  setEmergencyContact(profile.id, {
-    name: String(formData.get("emergency_contact_name") ?? ""),
-    phone: String(formData.get("emergency_contact_phone") ?? ""),
-    relation: String(formData.get("emergency_contact_relation") ?? ""),
-  });
-  revalidatePath("/settings/profile");
-  revalidatePath("/emergency");
-}
+// Emergency card settings (#42) moved to the Medical surface (/medical/background)
+// with smoking history + risk factors (#928). Write core in
+// app/(app)/medical/background/actions.ts, still profile-scoped + requireWriteAccess.
 
 // ---- Notifications: profile delivery target (profile scope) ----
 
@@ -472,6 +406,40 @@ export async function saveHomeAssistantPrefs(
     disabledKinds,
   });
   revalidatePath("/settings/profile");
+  return { ok: true };
+}
+
+// ---- Notification matrix columns (profile scope, issue #928) ----
+// The kind × channel matrix on Settings → Notifications persists each column in its
+// channel's tier store. The Telegram and Home Assistant columns are profile-scoped,
+// so both gate on requireWriteAccess() like the rest of this module. The push column
+// is login-scoped and lives in ../actions (savePushNotifyKinds). Each action takes
+// the FULL disabled-kinds set for its column as a JSON `disabled_kinds` field,
+// validated by the shared pure core (unknown kinds dropped). The HA action preserves
+// the channel's enable/URL/secret and rewrites only the disabled set.
+
+export async function saveTelegramNotifyKinds(
+  formData: FormData
+): Promise<{ ok: true }> {
+  const { profile } = await requireWriteAccess();
+  const disabled = parseDisabledKinds(
+    String(formData.get("disabled_kinds") ?? "")
+  );
+  setProfileTelegramDisabledKinds(profile.id, disabled);
+  revalidatePath("/settings/notifications");
+  return { ok: true };
+}
+
+export async function saveHomeAssistantNotifyKinds(
+  formData: FormData
+): Promise<{ ok: true }> {
+  const { profile } = await requireWriteAccess();
+  const disabled = parseDisabledKinds(
+    String(formData.get("disabled_kinds") ?? "")
+  );
+  const cur = getProfileHomeAssistant(profile.id);
+  setProfileHomeAssistant(profile.id, { ...cur, disabledKinds: disabled });
+  revalidatePath("/settings/notifications");
   return { ok: true };
 }
 

@@ -104,6 +104,11 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
   },
   {
     file: "app/(app)/settings/actions.ts",
+    fn: "savePushNotifyKinds",
+    why: "login-scoped: persists the caller's OWN push per-kind matrix column (login_settings), not profile-owned data (#928)",
+  },
+  {
+    file: "app/(app)/settings/actions.ts",
     fn: "begin2fa",
     why: "login-scoped: starts 2FA enrollment for the caller's OWN login (mints a pending TOTP secret), not profile-owned data (demo-gated, #278)",
     gate: "requireLoginWriteAccess",

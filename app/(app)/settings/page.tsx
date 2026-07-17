@@ -9,7 +9,6 @@ import UnitPrefsForm from "./UnitPrefsForm";
 import ChangePasswordSettings from "./ChangePasswordSettings";
 import TwoFactorSettings from "./TwoFactorSettings";
 import ActiveSessions from "./ActiveSessions";
-import PushNotificationSettings from "./PushNotificationSettings";
 
 export const dynamic = "force-dynamic";
 
@@ -37,7 +36,6 @@ export default async function SettingsPage() {
       />
       <SettingsTabs isAdmin={isAdmin} />
       <UnitPrefsForm prefs={prefs} />
-      <PushNotificationSettings />
       {!demoRestricted && <ChangePasswordSettings username={login.username} />}
       {!demoRestricted && (
         <TwoFactorSettings

@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { TelegramBotConfig, TelegramMode } from "@/lib/settings";
 import type { NotifyErrorMarker } from "@/lib/notifications/delivery-status";
-import { saveTelegramBotConfig, registerTelegramWebhook } from "./actions";
+import { saveTelegramBotConfig, registerTelegramWebhook } from "../server/actions";
 import SaveStatus from "@/components/SaveStatus";
 import { NOTICE_TONE } from "@/components/Notice";
 import { useSaveStatus } from "@/components/useSaveStatus";
