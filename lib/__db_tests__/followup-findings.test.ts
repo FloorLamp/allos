@@ -22,7 +22,11 @@ import {
   resolveFollowUpCore,
 } from "@/lib/followup-write";
 import { collectUpcoming, dismissFinding } from "@/lib/queries";
-import { dedupeKeyHasKnownPrefix } from "@/lib/rule-finding-prefixes";
+import {
+  dedupeKeyHasKnownPrefix,
+  tierForDedupeKey,
+  declaredReasonCodesFor,
+} from "@/lib/rule-finding-prefixes";
 import { FOLLOWUP_PREFIX } from "@/lib/followup";
 
 function newProfile(name: string): number {
@@ -83,11 +87,16 @@ describe("followUpItems builder (#700)", () => {
       `${FOLLOWUP_PREFIX}${(res as { carePlanItemId: number }).carePlanItemId}`
     );
     expect(dedupeKeyHasKnownPrefix(it.key)).toBe(true);
+    // #860 Track A — follow-up is a CARE-tier builder (push/hero), registered as such.
+    expect(tierForDedupeKey(it.key)).toBe("care");
     expect(it.title).toBe("Follow-up CT chest");
     // The #656 reason carries the WHY, naming the source finding.
     const reason = (it.reasons ?? [])[0];
     expect(reason?.code).toBe("followup-source");
     expect(reason?.text).toContain("6 mm RLL nodule");
+    // Reason-source binding: the reason code the builder attaches is declared for its
+    // prefix in the registry (so it can't ship an undeclared reason source).
+    expect(declaredReasonCodesFor(it.key)).toContain("followup-source");
     // Not overdue yet ⇒ ordinary suppressibility.
     expect(it.carePersistent).toBeUndefined();
     expect(it.followUpResolve).toBeUndefined();

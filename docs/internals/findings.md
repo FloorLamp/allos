@@ -6,7 +6,26 @@ How far a rule-engine finding travels — page, dashboard hero, notification —
 
 ---
 
-**Findings reach is a two-tier policy — decide it on purpose (#449).** The #45 rule engines split into two reach tiers. The **care tier** (preventive findings, drug-interaction/dietary-limit items, and the illness-care duration/trajectory findings — #805) is _push_: it reaches Upcoming, the dashboard **Needs attention** hero, AND the Telegram nudge (one assessor). The **coaching tier** — the four observational builders (`buildTrainingObservationFindings`/`buildBodyHygieneFindings`/`buildGoalPacingFindings`/`buildAdherencePatternFindings`, aggregated by `collectCoachingFindings`) — is _calm/observational_: it reaches its own tab AND the hideable dashboard **Coaching observations** rollup, but **never a notification and never the non-hideable hero** (reach without noise). A new observational engine joins the coaching tier by adding its builder to `collectCoachingFindings` and its dedupeKey prefix to `RULE_FINDING_PREFIXES`; it does NOT get a push channel unless it's genuinely _care_. Every surface renders the SAME `Finding` (one computation) with the SAME dedupeKey, so a dismiss on any surface silences it on all of them through the shared bus.
+**Findings reach is a two-tier policy — decide it on purpose (#449).** The #45 rule engines split into two reach tiers. The **care tier** (preventive findings, drug-interaction/dietary-limit items, and the illness-care duration/trajectory findings — #805) is _push_: it reaches Upcoming, the dashboard **Needs attention** hero, AND the Telegram nudge (one assessor). The **coaching tier** — the four observational builders (`buildTrainingObservationFindings`/`buildBodyHygieneFindings`/`buildGoalPacingFindings`/`buildAdherencePatternFindings`, aggregated by `collectCoachingFindings`) — is _calm/observational_: it reaches its own tab AND the hideable dashboard **Coaching observations** rollup, but **never a notification and never the non-hideable hero** (reach without noise). A new observational engine joins the coaching tier by adding its builder to `collectCoachingFindings` and its dedupeKey prefix to the registry; it does NOT get a push channel unless it's genuinely _care_. Every surface renders the SAME `Finding` (one computation) with the SAME dedupeKey, so a dismiss on any surface silences it on all of them through the shared bus.
+
+---
+
+## The finding-producing builder registry (#860 Track A, extending #448)
+
+`lib/rule-finding-prefixes.ts` is the ONE registry that binds three facts per finding namespace — **prefix + tier + reason source** — so the tier decision above can't be made by accident and can't drift from the code. Each `RULE_FINDING_REGISTRY` entry is `{ prefix, tier, builder, reasons }`:
+
+- **prefix** — the dedupeKey namespace the builder keys under (the #448 guardability property: a page's prefix-guarded dismiss action must be able to match it). `RULE_FINDING_PREFIXES` and `dedupeKeyHasKnownPrefix()` are derived from the registry, unchanged for existing consumers (the dismiss actions in `app/(app)/actions.ts`).
+- **tier** — `"care"` or `"coaching"` (#449). `tierForDedupeKey(key)` resolves it. The **coaching** members are exactly the builders `collectCoachingFindings` aggregates; the **care** members are the push builders (`buildIllnessCareFindings`, `tempRedFlagItems`, `conditionReviewItems`, `followUpItems`) that reach Upcoming/hero and are deliberately NOT in `collectCoachingFindings`.
+- **reason source** — the closed set of #656 `ReasonCode`s a finding under this prefix may carry (empty for the common no-reason builder; `["followup-source"]` for the follow-up loop). `ReasonCode` is backed by the enumerable `REASON_CODES` array in `lib/reasons.ts`, so `declaredReasonCodesFor(key)` is checkable and a builder can't attach an undeclared code.
+
+**The teeth** (the source-scan / #448 precedent — registry is data, enforcement is a reflection test):
+
+- **Un-registered emission fails CI.** The #448 reflection guard (`rule-findings-builders.test.ts`) asserts every builder-emitted dedupeKey `dedupeKeyHasKnownPrefix`.
+- **A tier the code doesn't match fails CI.** Every key `collectCoachingFindings` emits must `tierForDedupeKey === "coaching"`; every care builder's key (asserted in each builder's own fixture DB test — `followup-findings` / `condition-suggestion-findings` / `illness-care-findings` / `temp-red-flag-findings`) must resolve `"care"`. So a coaching builder registered `care` (or vice versa), or an omitted registration, fails CI.
+- **An undeclared reason source fails CI.** A finding whose `reasons[].code` isn't declared for its prefix fails the reflection guard.
+- Pure structural invariants (unique, non-overlapping prefixes; both tiers populated; valid reason codes) are pinned in `lib/__tests__/rule-finding-registry.test.ts`.
+
+**Adding a new finding engine:** add one `RULE_FINDING_REGISTRY` entry (prefix + tier + declared reason codes) and its own fixture DB test (the #448 rule), which asserts its tier via `tierForDedupeKey`. You cannot ship a finding without declaring how far it reaches.
 
 ---
 

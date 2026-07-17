@@ -1,14 +1,26 @@
-// The known dedupeKey prefix registry for the lib/rule-findings builders (issue
-// #448). Every finding a builder emits rides the shared findings-suppression bus
-// keyed by its dedupeKey, and each page's dismiss action guards a WHOLE domain with
-// a single prefix check — so a builder that shipped a key outside these namespaces
-// would be un-guardable (its dismiss action would never match). This is the single
-// source of truth those guards and the DB-tier reflection test share: a new findings
-// engine must add its prefix here, and the test (rule-findings-builders.test.ts)
-// fails if any builder emits a key that doesn't parse against it.
+// The finding-producing builder registry (issue #448 → #860 Track A). Every finding a
+// rule builder emits rides the shared findings-suppression bus keyed by its dedupeKey,
+// each page's dismiss action guards a WHOLE domain with a single prefix check, and each
+// finding travels a deliberate REACH TIER (#449: care = push/hero, coaching = calm). This
+// module is the ONE registry binding those three facts together per namespace —
+// **prefix + tier + reason source** — so:
 //
-// Pure (just string constants re-exported from the four engine modules), so it's
-// client-safe and importable from any tier.
+//   • a builder that ships a dedupeKey outside these namespaces is un-guardable (its
+//     dismiss action would never match) — the #448 reflection guard fails CI;
+//   • a builder whose finding's tier the code doesn't match its registered tier — a new
+//     coaching builder added to collectCoachingFindings but registered `care`, or vice
+//     versa — fails CI (the tier reflection in rule-findings-builders.test.ts +
+//     finding-registry-tiers.test.ts);
+//   • a builder that attaches a #656 Reason whose `code` it didn't declare here fails CI
+//     (the reason-source binding).
+//
+// The teeth mirror the source-scan guard precedents (telegram-chokepoint / profile-
+// scoping / immediate-tx): the registry is data, the enforcement is a reflection test.
+// A new findings engine adds ONE entry here (prefix + tier + declared reason codes) and
+// its own fixture test — it cannot ship a finding without declaring how far it reaches.
+//
+// Pure (string constants + a type-only ReasonCode import), so it stays client-safe and
+// importable from any tier — the dismiss actions and the notify tick both read it.
 
 import { TRAINING_OBS_PREFIX } from "./training-observations";
 import { MUSCLE_VOLUME_PREFIX } from "./muscle-volume-bands";
@@ -24,38 +36,161 @@ import { ILLNESS_CARE_PREFIX } from "./illness-care";
 import { TEMP_RED_FLAG_PREFIX } from "./temp-red-flag";
 import { CONDITION_REVIEW_PREFIX } from "./condition-suggestions";
 import { FOLLOWUP_PREFIX } from "./followup";
+import type { ReasonCode } from "./reasons";
 
-// Every namespace the rule-findings builders (buildTrainingObservationFindings,
-// buildBodyHygieneFindings, buildGoalPacingFindings, buildAdherencePatternFindings,
-// buildFoodSuggestionFindings, buildFoodHabitFindings, buildSunExposureFindings,
-// buildOralHealthFindings, buildProteinAdequacyFindings, buildMuscleVolumeFindings) key
-// their dedupeKeys under, PLUS the care-tier builders (#805 buildIllnessCareFindings
-// and #685 conditionReviewItems — push/care members here, NOT coaching builders).
-// Order is irrelevant; membership is what's guarded.
-export const RULE_FINDING_PREFIXES: readonly string[] = [
-  TRAINING_OBS_PREFIX,
-  MUSCLE_VOLUME_PREFIX,
-  BODY_HYGIENE_PREFIX,
-  GOAL_PACE_PREFIX,
-  ADHERENCE_PREFIX,
-  FOOD_SUGGEST_PREFIX,
-  FOOD_REDUCE_PREFIX,
-  FOOD_HABIT_PREFIX,
-  SUN_EXPOSURE_PREFIX,
-  ORAL_HEALTH_PREFIX,
-  PROTEIN_ADEQUACY_PREFIX,
-  ILLNESS_CARE_PREFIX,
-  TEMP_RED_FLAG_PREFIX,
-  // Condition-suggestion review items (#685) — a care-tier, suggest-only builder
-  // (conditionReviewItems), like illness-care not part of collectCoachingFindings.
-  CONDITION_REVIEW_PREFIX,
-  // Finding follow-up chain items (#700) — a care-tier builder (followUpItems),
-  // like illness-care/condition-review a push/care member, NOT a coaching builder.
-  FOLLOWUP_PREFIX,
+// The two reach tiers (#449). CARE is push: Upcoming + the non-hideable Needs-attention
+// hero + (where wired) the Telegram nudge. COACHING is calm: its own tab + the hideable
+// dashboard rollup (collectCoachingFindings) — never a notification, never the hero.
+export type FindingTier = "care" | "coaching";
+
+// One registered finding namespace: the dedupeKey PREFIX its builder keys under, the
+// reach TIER it travels, the BUILDER that emits it (for docs + test messages), and the
+// closed set of #656 Reason CODES a finding under this prefix may carry (empty when the
+// builder attaches no structured reason today — the common case).
+export interface RuleFindingRegistryEntry {
+  prefix: string;
+  tier: FindingTier;
+  builder: string;
+  reasons: readonly ReasonCode[];
+}
+
+// The single source of truth. Every finding-producing builder in the codebase appears
+// exactly once. COACHING members are precisely the builders aggregated by
+// collectCoachingFindings (lib/rule-findings.ts); CARE members are the push builders that
+// reach Upcoming/hero (illness-care, temp-red-flag, condition-review, follow-up) and are
+// deliberately NOT in collectCoachingFindings. Order is irrelevant; membership + the
+// three columns are what the guards read.
+export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
+  // ---- Coaching tier (calm; aggregated by collectCoachingFindings) -----------
+  {
+    prefix: TRAINING_OBS_PREFIX,
+    tier: "coaching",
+    builder: "buildTrainingObservationFindings",
+    reasons: [],
+  },
+  {
+    prefix: MUSCLE_VOLUME_PREFIX,
+    tier: "coaching",
+    builder: "buildMuscleVolumeFindings",
+    reasons: [],
+  },
+  {
+    prefix: BODY_HYGIENE_PREFIX,
+    tier: "coaching",
+    builder: "buildBodyHygieneFindings",
+    reasons: [],
+  },
+  {
+    prefix: GOAL_PACE_PREFIX,
+    tier: "coaching",
+    builder: "buildGoalPacingFindings",
+    reasons: [],
+  },
+  {
+    prefix: ADHERENCE_PREFIX,
+    tier: "coaching",
+    builder: "buildAdherencePatternFindings",
+    reasons: [],
+  },
+  {
+    prefix: FOOD_SUGGEST_PREFIX,
+    tier: "coaching",
+    builder: "buildFoodSuggestionFindings",
+    reasons: [],
+  },
+  {
+    prefix: FOOD_REDUCE_PREFIX,
+    tier: "coaching",
+    builder: "buildFoodSuggestionFindings",
+    reasons: [],
+  },
+  {
+    prefix: FOOD_HABIT_PREFIX,
+    tier: "coaching",
+    builder: "buildFoodHabitFindings",
+    reasons: [],
+  },
+  {
+    prefix: PROTEIN_ADEQUACY_PREFIX,
+    tier: "coaching",
+    builder: "buildProteinAdequacyFindings",
+    reasons: [],
+  },
+  {
+    prefix: SUN_EXPOSURE_PREFIX,
+    tier: "coaching",
+    builder: "buildSunExposureFindings",
+    reasons: [],
+  },
+  {
+    prefix: ORAL_HEALTH_PREFIX,
+    tier: "coaching",
+    builder: "buildOralHealthFindings",
+    reasons: [],
+  },
+  // ---- Care tier (push; NOT in collectCoachingFindings) ----------------------
+  {
+    prefix: ILLNESS_CARE_PREFIX,
+    tier: "care",
+    builder: "buildIllnessCareFindings",
+    reasons: [],
+  },
+  {
+    prefix: TEMP_RED_FLAG_PREFIX,
+    tier: "care",
+    builder: "tempRedFlagItems",
+    reasons: [],
+  },
+  {
+    // Condition-suggestion review items (#685) — a care-tier, suggest-only builder.
+    prefix: CONDITION_REVIEW_PREFIX,
+    tier: "care",
+    builder: "conditionReviewItems",
+    reasons: [],
+  },
+  {
+    // Finding follow-up chain items (#700) — a care-tier builder that carries a
+    // `followup-source` legibility reason ("for the 6 mm RLL nodule").
+    prefix: FOLLOWUP_PREFIX,
+    tier: "care",
+    builder: "followUpItems",
+    reasons: ["followup-source"],
+  },
 ];
 
-// Whether a finding's dedupeKey belongs to a known builder namespace (so a page
-// dismiss action's prefix guard can match it).
+// Every namespace the finding builders key their dedupeKeys under (derived — the
+// backward-compatible flat list the page dismiss guards + reflection guard have always
+// read). Kept as a named export so existing consumers are unchanged.
+export const RULE_FINDING_PREFIXES: readonly string[] =
+  RULE_FINDING_REGISTRY.map((e) => e.prefix);
+
+// The registry entry whose prefix a dedupeKey belongs to, or null when the key is in no
+// known builder namespace. First match wins (prefixes are non-overlapping — pinned by
+// the registry invariants test).
+export function findingRegistryEntryFor(
+  key: string
+): RuleFindingRegistryEntry | null {
+  return RULE_FINDING_REGISTRY.find((e) => key.startsWith(e.prefix)) ?? null;
+}
+
+// Whether a finding's dedupeKey belongs to a known builder namespace (so a page dismiss
+// action's prefix guard can match it). Behavior unchanged from the #448 original.
 export function dedupeKeyHasKnownPrefix(key: string): boolean {
-  return RULE_FINDING_PREFIXES.some((p) => key.startsWith(p));
+  return RULE_FINDING_REGISTRY.some((e) => key.startsWith(e.prefix));
+}
+
+// The reach tier a finding travels (#449), by dedupeKey — or null when unregistered.
+// The reflection guards assert a coaching-tier builder's keys resolve "coaching" and a
+// care-tier builder's keys resolve "care", so a mis-declared tier fails CI.
+export function tierForDedupeKey(key: string): FindingTier | null {
+  return findingRegistryEntryFor(key)?.tier ?? null;
+}
+
+// The #656 Reason codes a finding under this dedupeKey is allowed to carry (empty when
+// its builder declares none). The reflection guard asserts every Reason a builder
+// attaches has a code in this set — a builder can't ship an undeclared reason source.
+export function declaredReasonCodesFor(
+  key: string
+): readonly ReasonCode[] | null {
+  return findingRegistryEntryFor(key)?.reasons ?? null;
 }

@@ -11,7 +11,10 @@ import {
   collectCoachingFindings,
 } from "@/lib/rule-findings";
 import { setHomeLocation } from "@/lib/settings";
-import { dedupeKeyHasKnownPrefix } from "@/lib/rule-finding-prefixes";
+import {
+  dedupeKeyHasKnownPrefix,
+  tierForDedupeKey,
+} from "@/lib/rule-finding-prefixes";
 import { SUN_EXPOSURE_PREFIX } from "@/lib/sun-exposure";
 
 function newProfile(name: string): number {
@@ -59,6 +62,8 @@ describe("buildSunExposureFindings (#571)", () => {
     const f = findings[0];
     expect(f.dedupeKey.startsWith(SUN_EXPOSURE_PREFIX)).toBe(true);
     expect(dedupeKeyHasKnownPrefix(f.dedupeKey)).toBe(true);
+    // #860 Track A — registered coaching tier (never a push/hero).
+    expect(tierForDedupeKey(f.dedupeKey)).toBe("coaching");
     // Coaching tier: a calm info tone, never a hero/alarm.
     expect(f.tone).toBe("info");
     expect(f.detail).toMatch(/vitamin D/i);

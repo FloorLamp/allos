@@ -22,27 +22,33 @@ import type { MedicalFlag } from "./types";
 
 // The closed set of reason kinds carried on the findings/upcoming spine today. A
 // new kind is added here deliberately (mirroring the #448 prefix-registry spirit at
-// a proportionate weight — a union, not a runtime registry).
-export type ReasonCode =
+// a proportionate weight). Backed by a runtime const array so the set is ENUMERABLE:
+// the finding-registry reason-source binding (lib/rule-finding-prefixes.ts) asserts
+// every declared reason code is one of these, and a builder can't attach an
+// undeclared code (#860 Track A).
+export const REASON_CODES = [
   // A curated risk-stratification rule applies to THIS profile (family history,
   // active condition, occupational/immune status, hereditary variant) — the
   // citation-backed "why this matters / why sooner" line. Carries a `source`.
-  | "risk-elevated"
+  "risk-elevated",
   // The reading is out of range / non-optimal (the flag itself).
-  | "biomarker-flagged"
+  "biomarker-flagged",
   // A situational (as-needed-by-context) item is due because its situation is
   // currently active ("due because Illness is active").
-  | "situation-active"
+  "situation-active",
   // A tracked follow-up exists BECAUSE of a source finding (issue #700): the "why"
   // that turns a bare "follow up in 12 months" into "for the 6 mm RLL nodule
   // (2026-03)". Self-evident from the linked record, so no citation source.
-  | "followup-source"
+  "followup-source",
   // A coaching nudge is intentionally HELD by context, not because there's nothing
   // to say (issue #837): an open flagged-illness episode pauses the routine-gap /
   // pace nags so a sick week isn't nagged to train. The "why it's quiet" line the
   // dashboard coaching card shows ("Held — illness episode open"). No source (it's a
   // fact about the app's own tracked situation, not a citation).
-  | "coaching-held";
+  "coaching-held",
+] as const;
+
+export type ReasonCode = (typeof REASON_CODES)[number];
 
 export interface Reason {
   // Stable machine key — the closed union above.
