@@ -135,6 +135,11 @@ export interface RecapInput {
   strictStreak: number;
   // Goals marked achieved with a target date inside the window (best-effort dating).
   goalsCompleted: string[];
+  // Distinct days within the window that fell inside a flagged-illness episode
+  // (issue #837). When > 0 the recap names the episode context ("sick N days")
+  // instead of reading like a failed training week — the same honesty the adherence
+  // system already applies (a sick day is excused). Omitted/0 ⇒ no recovery line.
+  illnessDays?: number;
   // Zone 2 (aerobic-base) training minutes over the window, from HR zones (#159),
   // with the weekly target for context. Both optional/null when no HR zone model
   // exists — the line is omitted then. minutes>0 is required for the line to show.
@@ -222,6 +227,18 @@ export function buildWeeklyRecap(input: RecapInput): WeeklyRecap {
   const noun = periodNounFor(days);
   const wu = input.weightUnit;
   const lines: RecapLine[] = [];
+  const illnessDays = input.illnessDays ?? 0;
+
+  // Recovery context (issue #837): a sick week reads as a sick week, not a failed
+  // one. Leads the lines so the low numbers below are read in context — the app's
+  // own tracked illness state, not a scold. No delta (it's a fact, not a trend).
+  if (illnessDays > 0) {
+    lines.push({
+      key: "recovery",
+      label: "Recovery",
+      value: `sick ${illnessDays} day${illnessDays === 1 ? "" : "s"} this ${noun}`,
+    });
+  }
 
   // Workouts + volume.
   const counts = countByType(input.workouts);
@@ -380,6 +397,7 @@ export function buildWeeklyRecap(input: RecapInput): WeeklyRecap {
   }
 
   const isEmpty =
+    illnessDays === 0 &&
     workoutCount === 0 &&
     (input.adherence == null || input.adherence.due === 0) &&
     input.weights.length === 0;
@@ -399,6 +417,12 @@ export function buildWeeklyRecap(input: RecapInput): WeeklyRecap {
       headParts.push(`${p}% adherence`);
     }
   }
+  // A week with nothing else to lead with but a logged illness leads with recovery,
+  // so the headline names the episode instead of reading as an empty/failed week.
+  if (headParts.length === 0 && illnessDays > 0)
+    headParts.push(
+      `recovering — sick ${illnessDays} day${illnessDays === 1 ? "" : "s"}`
+    );
   const headline = headParts.join(", ");
 
   return { start: win.start, end: win.end, headline, lines, isEmpty };

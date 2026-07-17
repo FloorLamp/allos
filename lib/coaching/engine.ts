@@ -22,6 +22,7 @@ import {
   nextSetText,
   type NextSetSeed,
 } from "./strength";
+import { coachingHeldReason, type Reason } from "../reasons";
 
 // ---- Rule-based coaching engine ----
 //
@@ -37,7 +38,15 @@ import {
 // Every rule is pure and tested at its thresholds in lib/__tests__/coaching.test.ts.
 
 export type CoachingKind =
-  "rest" | "cardio" | "strength" | "ontrack" | "setup" | "intensity";
+  | "rest"
+  | "cardio"
+  | "strength"
+  | "ontrack"
+  | "setup"
+  | "intensity"
+  // Situation-aware coaching (issue #837): the illness HOLD note (routine nudges
+  // paused while an episode is open) and the post-episode ease-back rec.
+  | "illness";
 // Visual/semantic tone the surface maps to a color: caution (ease off),
 // action (go do it), positive (you're doing well), neutral (informational).
 export type CoachingTone = "caution" | "action" | "positive" | "neutral";
@@ -58,6 +67,12 @@ export interface Recommendation {
   // recs; the Telegram reminder renders these, the dashboard cards ignore them.
   focus?: MuscleRegion[];
   exercises?: string[];
+  // Structured, first-class reasons (issue #656) carried ALONGSIDE `detail` — the
+  // "why" as DATA a compact surface can render without re-deriving. Set by the
+  // situation-aware recs (the illness hold note's "Held — illness episode open");
+  // carried across the findings bus by recommendationToFinding. Absent for the
+  // ordinary training/rest recs whose `detail` already stands alone.
+  reasons?: Reason[];
 }
 
 // The weekly frequency-target progress slice the engine reads.
@@ -195,8 +210,89 @@ export interface CoachingInput {
   // or null when there's no HR zone model / no windowed HR. Drives the hard-heavy
   // "add easy Zone 2" nudge — the classic self-coached polarization failure.
   intensity?: PolarizedSplit | null;
+  // Situation-aware coaching context (issue #837): the open flagged-illness episode
+  // state + the most-recently-closed episode, from the ONE illness_episodes
+  // derivation (#856) the illness surfaces use — never a second engine. During an
+  // open episode the go-train / gap / pace nags are HELD; on close a one-shot
+  // ease-back rec replaces them for a short ramp. Absent/null ⇒ normal coaching (the
+  // prior behavior). It alters what FIRES, never the recovery/safety advice itself.
+  illness?: IllnessCoachingContext | null;
   weightUnit?: WeightUnit; // for the next-set target text; default "kg"
   thresholds?: Partial<CoachingThresholds>;
+}
+
+// ---- Situation-aware coaching (issue #837) ----
+//
+// The transient member of the context taxonomy (#666): during an app-tracked
+// illness episode, holding a "you're behind on legs" nag is context, not medical
+// judgment — the recommendations themselves are unchanged, only whether they FIRE.
+// The state is read from the ONE illness_episodes derivation (#856); the pure
+// decision below is what every coaching surface (dashboard card, Telegram nudge)
+// keys on, so they can't drift (#221).
+
+// How many days after an episode closes the ease-back re-entry rec replaces the
+// immediately-resumed gap nags — a short ramp, then normal coaching resumes. Day 0
+// is the close day (first well day); the window is [0, EASE_BACK_RAMP_DAYS).
+export const EASE_BACK_RAMP_DAYS = 3;
+
+export interface IllnessCoachingContext {
+  // An open flagged-illness episode currently covers today → hold coaching nags.
+  openEpisode: boolean;
+  // The most-recently CLOSED flagged-illness episode (its stable row id + its
+  // exclusive end / first-well day, YYYY-MM-DD), for the ease-back ramp. Null when
+  // the profile has never had a closed episode. Ignored while openEpisode is true.
+  lastClosed?: { episodeId: number; endDate: string } | null;
+}
+
+// Whether coaching is normal, HELD (open episode), or in the post-close EASE-BACK
+// ramp — plus the closing episode's id (for the notify one-shot marker) when in the
+// ramp. Pure; the same decision the dashboard card and the tick both consume.
+export type IllnessCoachingMode = "normal" | "held" | "ease-back";
+
+export function illnessCoachingMode(
+  ctx: IllnessCoachingContext | null | undefined,
+  today: string
+): { mode: IllnessCoachingMode; easeBackEpisodeId: number | null } {
+  if (!ctx) return { mode: "normal", easeBackEpisodeId: null };
+  if (ctx.openEpisode) return { mode: "held", easeBackEpisodeId: null };
+  if (ctx.lastClosed) {
+    const ago = daysSince(ctx.lastClosed.endDate, today);
+    if (ago >= 0 && ago < EASE_BACK_RAMP_DAYS)
+      return { mode: "ease-back", easeBackEpisodeId: ctx.lastClosed.episodeId };
+  }
+  return { mode: "normal", easeBackEpisodeId: null };
+}
+
+// The calm "coaching is paused while you recover" note shown in place of the held
+// gap nags during an open episode (issue #837). Neutral tone (not an alert), and it
+// carries the structured #656 reason so a surface can render the "why it's quiet".
+export function illnessHeldNote(): Recommendation {
+  return {
+    id: "illness-hold",
+    kind: "illness",
+    title: "Recovery mode — coaching paused",
+    detail:
+      "You have an open illness episode, so routine training nudges are paused. Rest and recover first — normal coaching resumes once you're better.",
+    tone: "neutral",
+    reasons: [coachingHeldReason("Held — illness episode open")],
+  };
+}
+
+// The one-shot ease-back re-entry recommendation on episode close (issue #837).
+// Informational per house style — a light session or easy Zone 2 as a re-entry, not
+// a push to resume full volume. Shown on read surfaces through the ramp window; the
+// notify tick fires it once (marker per episode id).
+export function easeBackRecommendation(): Recommendation {
+  return {
+    id: "illness-ease-back",
+    kind: "illness",
+    title: "Ease back in after being sick",
+    detail:
+      "Back from being sick — a light session or an easy Zone 2 is a good re-entry; volume can wait a few days.",
+    tone: "positive",
+    actionHref: "/training",
+    actionLabel: "Plan a light session",
+  };
 }
 
 function pluralSessions(n: number): string {
@@ -499,6 +595,33 @@ export function recommendCoaching(input: CoachingInput): Recommendation[] {
   // A recovery signal (rest) presupposes a training context, so it's evaluated
   // only here — and it takes precedence over any "go train" nudge below.
   const rest = restRecommendation(input, th);
+
+  // Situation-aware hold (issue #837): during an open flagged-illness episode — or
+  // the short ease-back ramp right after it closes — the go-train / gap / pace nags
+  // are HELD. Rest + safety are untouched (rest still fires and leads, so its
+  // continuity marker keeps advancing), and this alters what FIRES, never what's
+  // advised. The dashboard card and the Telegram nudge both read this one decision.
+  const illness = illnessCoachingMode(input.illness, input.today);
+  if (illness.mode !== "normal") {
+    const ranked: Recommendation[] = [];
+    if (rest) {
+      const episode = nextRestEpisode(
+        input.restEpisode ?? null,
+        rest,
+        input.today
+      );
+      const day = episode ? restEpisodeDay(episode, input.today) : 1;
+      ranked.push(day >= 2 ? withRestContinuity(rest, day) : rest);
+    }
+    // Ease-back replaces the resumed gap nags for the ramp window; during the open
+    // episode a calm held note explains the quiet (carrying the #656 reason).
+    ranked.push(
+      illness.mode === "ease-back"
+        ? easeBackRecommendation()
+        : illnessHeldNote()
+    );
+    return ranked;
+  }
 
   // Build the training-side recommendations (cardio gap, strength gap, on-track,
   // or a habit-based/setup fallback).

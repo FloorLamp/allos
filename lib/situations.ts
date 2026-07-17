@@ -4,6 +4,16 @@
 // intake_items.situation_id) lives in lib/settings/profile-attrs.ts; this module is
 // the string discipline + the one-way condition bridge, kept pure/unit-testable.
 
+// The one-line situations-bar activation acknowledgment (issue #662 item 1):
+// "3 situational items now active" when a toggle changes the shape of the due dose
+// list, else null when nothing situational is currently due. Pure formatter over the
+// count from the shared dueness computation (countSituationalDue) — never a second
+// count — so the acknowledgment and the list it acknowledges always agree.
+export function situationActivationLine(count: number): string | null {
+  if (count <= 0) return null;
+  return `${count} situational ${count === 1 ? "item" : "items"} now active`;
+}
+
 // Canonicalize a situation name: trim + collapse internal whitespace. Paired with
 // the situations table's `UNIQUE(profile_id, name COLLATE NOCASE)`, this is what
 // removes the #203 casing/whitespace fragility — " Poor  Sleep " and "Poor Sleep"

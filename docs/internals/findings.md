@@ -89,7 +89,12 @@ interface Reason {
   text: string;
   source?: string | null;
 }
-type ReasonCode = "risk-elevated" | "biomarker-flagged" | "situation-active";
+type ReasonCode =
+  | "risk-elevated"
+  | "biomarker-flagged"
+  | "situation-active"
+  | "followup-source" // a tracked follow-up's source finding (#700)
+  | "coaching-held"; // coaching paused by context — an open illness episode (#837)
 ```
 
 This is **"one question, one computation" at the explanation layer**: the reason is computed ONCE by the deciding engine and carried as `UpcomingItem.reasons` / `Finding.reasons` (copied across the bus by `upcomingToFinding`); each surface is a formatter over it, never a second derivation. The **closed `ReasonCode` union** keeps the code set honest (a source-scan would be overkill — a union + the shared-fixture pin suffices, the issue's own call); **`source`** carries provenance where the reason is citation-backed (the risk rules' ACC/AHA-style informational citation, threaded through `risk-stratification.ts`'s new `SourcedReason`).
@@ -99,3 +104,13 @@ This is **"one question, one computation" at the explanation layer**: the reason
 **The digest surfaces the top reason (#656 item 2).** `buildUpcomingDigest` (`lib/notifications/upcoming-digest.ts`) adds `highlights` — the highest-priority reasoned items' `primaryReason()` — rendered after the per-band counts, so the push says WHY the important item matters. `primaryReason()` (the first carried reason; generators order the cited risk line first) is the ONE lead-reason computation the digest and the page share.
 
 **The pin (one computation, three surfaces).** `lib/__db_tests__/reason-model.test.ts` seeds one fixture (family-cardiac-history + a stale flagged LDL) and asserts the SAME `risk-elevated` reason string appears on the Upcoming item, the attention-model item, and the digest highlight — plus the flagged why-line and the situational-dose reason. Reasons are **explanation only**: they never change a finding's tier or reach (#449 unchanged).
+
+**`coaching-held` — the "why it's quiet" reason (#837).** Situation-aware coaching (below) pauses the routine-gap / pace nags during an open flagged-illness episode. That's not "nothing to say" — it's a deliberate context hold, so the dashboard coaching card renders a calm HELD note (`illnessHeldNote()`, `lib/coaching/engine.ts`) carrying a `coaching-held` reason ("Held — illness episode open"), threaded onto the coaching `Finding` by `recommendationToFinding` (`Recommendation.reasons` → `Finding.reasons`). It's a fact about the app's own tracked situation, so it carries no `source`.
+
+## Situation-aware coaching — hold nags during illness, ease back on close (#837)
+
+Status: **shipped**
+
+During an OPEN flagged-illness episode (the `illness_episodes` row covering today, #856 — the SAME derivation the illness hero/timeline use, never a second engine), the coaching engine HOLDS the go-train / routine-gap / cardio-gap / behind-pace nags: `illnessCoachingMode(input.illness, today)` (`lib/coaching/engine.ts`) returns `held`, `recommendCoaching` skips the training-side recommendations and emits only the rest recommendation (untouched — recovery/safety always fire) plus the calm held note. Because BOTH the dashboard coaching card and the Telegram workout slot read this ONE decision off the shared `gatherCoachingInput` (`recommendWorkout` returns null in `held`/`ease-back`, so the workout-reminder slot goes quiet), they can't drift (#221). **This alters what FIRES, never what's ADVISED** — the recommendations themselves are unchanged; suppressing a nag during the app's own tracked illness state is context, not medical judgment (#666's mechanism line).
+
+On episode close, a short **ease-back ramp** (`EASE_BACK_RAMP_DAYS = 3`, from the episode's exclusive end / first-well day) replaces the immediately-resumed gap nags with a one-shot, coaching-tier ease-back re-entry recommendation ("a light session or easy Zone 2 is a good re-entry"), then normal coaching resumes. The read surfaces show the ease-back rec through the ramp; the notify tick sends it **once per episode** (`runEaseBack`, `lib/notifications/ease-back.ts`, marker `notify_ease_back_<episodeId>` — an id-keyed one-shot, #203-safe). The ease-back push is a deliberate **one-time transition notice**, NOT part of the calm `collectCoachingFindings` stream the #449 "coaching tier never notifies" rule governs — it's a single close-of-episode courtesy, in the same family as the weekly-recap/milestone one-shots. The weekly recap stays honest too: `illnessDaysInWindow` feeds a "sick N days" recovery line so a sick week reads as a sick week, not a failed one. Pins: `lib/__tests__/coaching-illness.test.ts` (pure hold/ramp), `lib/__db_tests__/coaching-illness.test.ts` (gather → card AND workout slot agree end-to-end).

@@ -54,6 +54,8 @@ import {
   SICK_SELF_PROFILE,
   E2E_LOGIN_SICK_COLLAPSE,
   SICK_COLLAPSE_PROFILE,
+  E2E_LOGIN_SITCOACH,
+  SITCOACH_PROFILE,
   E2E_LOGIN_CARE,
   CARE_PARENT_PROFILE,
   SICK_KID_A_PROFILE,
@@ -2400,6 +2402,55 @@ seedSickEpisode(sickKidBId, {});
 seedMemberLogin(E2E_LOGIN_SICK_SELF, sickSelfId);
 // SICK_COLLAPSE: a separate sick-solo login for the collapse-persistence test.
 seedMemberLogin(E2E_LOGIN_SICK_COLLAPSE, sickCollapseId);
+
+// ── Situation-aware coaching fixture (#837 / #662 item 1) ─────────────────────
+// A dedicated sick profile WITH training history + one situational supplement, so the
+// dashboard coaching widget shows the illness HELD note (coaching has gap nags to hold,
+// not the empty state) and the Nutrition → Supplements situations bar shows the
+// "1 situational item now active" activation acknowledgment. Read-only in the specs, so
+// it stays repeat-safe and never perturbs the other sick fixtures' cockpit assertions.
+const sitCoachId = fixtureProfileId(SITCOACH_PROFILE);
+seedSickEpisode(sitCoachId, { activateSituation: true });
+{
+  const on = today(sitCoachId);
+  // Training history a few days back → coaching HAS content to hold, with no session
+  // logged today (so no "trained today" branch competes with the held note).
+  const sid = Number(
+    db
+      .prepare(
+        `INSERT INTO activities (profile_id, date, type, title, duration_min)
+         VALUES (?, ?, 'strength', 'Squat Day', 45)`
+      )
+      .run(sitCoachId, shiftDateStr(on, -3)).lastInsertRowid
+  );
+  db.prepare(
+    `INSERT INTO exercise_sets (activity_id, exercise, set_number, weight_kg, reps)
+     VALUES (?, 'Back Squat', 1, 100, 5)`
+  ).run(sid);
+  // A situational supplement tied to the active Illness situation (situation_id points
+  // at the profile's Illness row so isDueOn's situational branch counts it while active).
+  const illnessSitId = (
+    db
+      .prepare(
+        "SELECT id FROM situations WHERE profile_id = ? AND name = 'Illness'"
+      )
+      .get(sitCoachId) as { id: number }
+  ).id;
+  const suppId = Number(
+    db
+      .prepare(
+        `INSERT INTO intake_items
+           (profile_id, name, active, kind, condition, priority, situation, situation_id)
+         VALUES (?, 'Zinc', 1, 'supplement', 'situational', 'high', 'Illness', ?)`
+      )
+      .run(sitCoachId, illnessSitId).lastInsertRowid
+  );
+  db.prepare(
+    `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+     VALUES (?, '1 tab', 'morning', 'any', 0)`
+  ).run(suppId);
+}
+seedMemberLogin(E2E_LOGIN_SITCOACH, sitCoachId);
 
 // CARE: acts as the well Care Parent, granted both sick kids → two accordion cockpits.
 const careLoginId = seedMemberLogin(E2E_LOGIN_CARE, careParentId);

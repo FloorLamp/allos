@@ -40,6 +40,22 @@ describe("buildDigest", () => {
     ]);
   });
 
+  it("mentions active situational items in Today (#662 item 1)", () => {
+    const model = buildDigest({ ...empty, situationalActiveCount: 3 });
+    expect(model?.sections[0].heading).toBe("Today");
+    expect(model?.sections[0].lines).toContain(
+      "🧭 3 situational items now active"
+    );
+  });
+
+  it("omits the situational mention when none are active", () => {
+    expect(buildDigest({ ...empty, situationalActiveCount: 0 })).toBeNull();
+    const model = buildDigest({ ...empty, doseCount: 1 });
+    expect(
+      model?.sections[0].lines.some((l) => l.includes("situational"))
+    ).toBe(false);
+  });
+
   it("summarizes yesterday: activities, adherence, weight", () => {
     const model = buildDigest({
       ...empty,

@@ -133,6 +133,25 @@ export function isDueOn(
   }
 }
 
+// The count of situational intake items currently due BECAUSE their situation is
+// active (issue #662 item 1). It reuses the SAME dueness computation the dose list
+// and Upcoming use — isDueOn's `situational` branch — so the situations-bar
+// activation acknowledgment can never disagree with the list it's acknowledging (a
+// formatter over the shared count, never a second count). Counts active, non-PRN
+// situational items; a paused item (active 0) is excluded.
+export function countSituationalDue(
+  supps: readonly (Pick<Supplement, "condition" | "situation"> & {
+    active?: number | boolean;
+    as_needed?: number;
+  })[],
+  ctx: Parameters<typeof isDueOn>[1]
+): number {
+  return supps.filter(
+    (s) =>
+      (s.active ?? true) && s.condition === "situational" && isDueOn(s, ctx)
+  ).length;
+}
+
 // Whether an item's dose amounts count toward the DAILY Tolerable Upper Intake
 // Level (UL) / RDA sum (issue #635). The UL is a chronic *daily* threshold, so only
 // an item taken EVERY day contributes its full amount each day. A PRN (as_needed)

@@ -10,6 +10,7 @@ import type { NotificationMessage } from "./types";
 import type { SupplementKind } from "../types";
 import { fmtWeight } from "../units";
 import { intakeWindowNoun, intakeItemNoun } from "./supplement-format";
+import { situationActivationLine } from "../situations";
 
 // Capitalize the first letter of a noun for use at the start of a line
 // ("medications" → "Medications").
@@ -73,6 +74,10 @@ export interface DigestInput {
   // "supplements" (#380). Optional/empty ⇒ "supplements" (back-compat default).
   intakeKinds?: SupplementKind[];
   goalsDue: DigestGoalDue[]; // frequency targets not yet met this week
+  // Count of situational intake items due TODAY because their situation is active
+  // (issue #662 item 1) — the optional digest mention of the same "N situational
+  // items now active" the situations bar shows. Optional/0 ⇒ the line is omitted.
+  situationalActiveCount?: number;
   // Yesterday
   activities: DigestActivity[];
   // Supplement adherence yesterday, or null when nothing was due. `skipped`
@@ -136,6 +141,12 @@ export function buildDigest(input: DigestInput): DigestModel | null {
       `💊 ${input.doseCount} ${itemNoun} dose${input.doseCount === 1 ? "" : "s"} scheduled`
     );
   }
+  // Situation-activation mention (#662 item 1): the SAME "N situational items now
+  // active" line the situations bar renders, via the one shared formatter.
+  const situationLine = situationActivationLine(
+    input.situationalActiveCount ?? 0
+  );
+  if (situationLine) todayLines.push(`🧭 ${situationLine}`);
   for (const g of input.goalsDue) {
     todayLines.push(`🎯 ${g.label}: ${g.count}/${g.perWeek} this week`);
   }

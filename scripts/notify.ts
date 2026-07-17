@@ -52,6 +52,7 @@ import { runRedoseNotices } from "../lib/notifications/redose";
 import { runRefills } from "../lib/notifications/refill";
 import { runPreventive } from "../lib/notifications/preventive";
 import { runIllnessCare } from "../lib/notifications/illness-care";
+import { runEaseBack } from "../lib/notifications/ease-back";
 import { runTempRedFlag } from "../lib/notifications/temp-red-flag";
 import { runDigest } from "../lib/notifications/digest-data";
 import { runUpcomingDigest } from "../lib/notifications/upcoming-digest-data";
@@ -479,6 +480,29 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
       profile: profile.id,
       err: e instanceof Error ? e : String(e),
     });
+  }
+
+  // Post-illness ease-back (#837): the one-shot re-entry nudge the first waking tick
+  // after a flagged-illness episode closes. Reuses the shared coaching gather (its
+  // illness context knows the just-closed episode); one-shot per episode via a
+  // per-id marker, so it never re-fires. Waking-gated like the other coaching-adjacent
+  // sends. The workout slot itself stays quiet through the ramp (recommendWorkout).
+  if (waking) {
+    try {
+      const eb = await runEaseBack(
+        profile.id,
+        profile.name,
+        coachingInput(),
+        date
+      );
+      if (eb.failed) anyFailed = true;
+    } catch (e) {
+      log.error("ease-back nudge failed", {
+        profile: profile.id,
+        err: e instanceof Error ? e : String(e),
+      });
+      anyFailed = true;
+    }
   }
 
   // Morning digest: one summary per profile per day at digest_hour (this

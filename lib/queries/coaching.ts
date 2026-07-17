@@ -13,11 +13,16 @@ import {
   nextRestEpisode,
   recommendCoaching,
   type CoachingInput,
+  type IllnessCoachingContext,
   type Recommendation,
   type RestEpisode,
   type RestingHrSignal,
   type SleepSignal,
 } from "../coaching";
+import {
+  getEpisodeRowForDate,
+  mostRecentClosedEpisodeRow,
+} from "../illness-episode-store";
 import {
   deleteProfileSetting,
   getProfileSetting,
@@ -99,6 +104,26 @@ export function getRestingHrSignal(profileId: number): RestingHrSignal | null {
 // bundle inline from data it has already fetched (reusing the two signal
 // readers above). `distanceUnit` is only needed to satisfy getCardioByActivity's
 // signature — the engine reads activity name + last date, not formatted text.
+// The situation-aware coaching context (issue #837): the open flagged-illness
+// episode state + the most-recently-closed episode, read from the ONE
+// illness_episodes derivation (#856) — the SAME rows the illness hero/timeline use,
+// never a second engine. A row covering today = an open episode (held); the most
+// recent closed row anchors the ease-back ramp (the pure engine applies the window).
+export function getIllnessCoachingContext(
+  profileId: number,
+  todayStr: string
+): IllnessCoachingContext {
+  const openRow = getEpisodeRowForDate(profileId, todayStr);
+  const lastClosed = mostRecentClosedEpisodeRow(profileId);
+  return {
+    openEpisode: openRow != null,
+    lastClosed:
+      lastClosed && lastClosed.ended_at != null
+        ? { episodeId: lastClosed.id, endDate: lastClosed.ended_at }
+        : null,
+  };
+}
+
 export function gatherCoachingInput(
   profileId: number,
   weightUnit: WeightUnit,
@@ -107,6 +132,7 @@ export function gatherCoachingInput(
   const todayStr = today(profileId);
   return {
     today: todayStr,
+    illness: getIllnessCoachingContext(profileId, todayStr),
     routine: getFrequencyTargetProgress(profileId),
     strength: getStrengthByExercise(profileId),
     cardio: getCardioByActivity(profileId, distanceUnit),

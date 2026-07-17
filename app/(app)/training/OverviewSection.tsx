@@ -5,6 +5,7 @@ import {
   getCardioVolumeByWeek,
   getDayLoadInputs,
   getFrequencyTargetProgress,
+  getIllnessCoachingContext,
   getJournalWeekSummary,
   getRecentDatedExercises,
   getRestEpisode,
@@ -134,6 +135,10 @@ export default async function OverviewSection() {
     sleep: getSleepSignal(profile.id),
     restingHr: getRestingHrSignal(profile.id),
     restEpisode: getRestEpisode(profile.id),
+    // Situation-aware hold (#837): the SAME illness context gatherCoachingInput reads,
+    // so this overview card holds the gap nags during an open episode exactly like the
+    // dashboard coaching widget — never a second, drifting derivation (#221).
+    illness: getIllnessCoachingContext(profile.id, todayStr),
     weightUnit: wu,
   };
   const [nextWorkout] = recommendCoaching(coachingInput);
