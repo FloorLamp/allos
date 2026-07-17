@@ -5,6 +5,7 @@ import {
 } from "@/lib/import-shape";
 import type { ExtractionResult } from "@/lib/medical-extract";
 import type { ImportResult } from "@/lib/health-import";
+import { parseImportReport } from "@/lib/import-report";
 
 function doneExtraction(
   over: Partial<Extract<ExtractionResult, { status: "done" }>> = {}
@@ -837,6 +838,53 @@ function mkResult(over: Record<string, unknown>) {
     ...over,
   };
 }
+
+describe("extractionToPersistInput — unresolved analytes (#918 §4)", () => {
+  // Synthetic uncurated names (never in the dataset) so this stays green even after
+  // real gaps like urinalysis are curated.
+  const UNCURATED_LAB = "Nonexistent Test Analyte";
+
+  function reportOf(over: Parameters<typeof doneExtraction>[0]) {
+    const input = extractionToPersistInput(doneExtraction(over), "2099-12-31");
+    return parseImportReport(input.meta.importReport);
+  }
+
+  it("surfaces a lab whose canonical name matched no curated entry, with its unit", () => {
+    const report = reportOf({
+      results: [
+        mkResult({ name: "Sodium", canonical_name: "Sodium", unit: "mmol/L" }),
+        mkResult({
+          name: "URO",
+          canonical_name: UNCURATED_LAB,
+          unit: "mg/dL",
+        }),
+        mkResult({
+          name: "URO2",
+          canonical_name: UNCURATED_LAB,
+          unit: "mg/dL",
+        }),
+      ],
+    });
+    // Sodium resolves (seeded) and is NOT reported; the uncurated lab is, ×2.
+    expect(report?.unresolvedNames).toEqual([
+      { name: UNCURATED_LAB, count: 2, unit: "mg/dL" },
+    ]);
+  });
+
+  it("does NOT surface a non-lab (vitals/scan/anthropometric) uncurated name (§5)", () => {
+    const report = reportOf({
+      results: [
+        mkResult({
+          category: "vitals",
+          name: "Some Vital",
+          canonical_name: "Nonexistent Test Vital",
+          unit: "mmHg",
+        }),
+      ],
+    });
+    expect(report?.unresolvedNames).toEqual([]);
+  });
+});
 
 describe("extractionToPersistInput — structured prescription (#414)", () => {
   it("threads structured attribution + sig/strength/course onto a prescription record", () => {

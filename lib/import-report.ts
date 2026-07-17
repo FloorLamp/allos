@@ -68,6 +68,21 @@ export interface UnmappedLoinc {
   unit?: string | null;
 }
 
+// The AI path's analogue of UnmappedLoinc (#918 §4). It has no LOINC to fall back
+// on — identity comes from the model's name alone — so when a lab reading's
+// canonical name matches no curated dataset entry it imports under that raw name
+// with NO reference band and never flags, exactly like an unmapped LOINC, but
+// SILENTLY: the CCD path reports its equivalent gap, the AI path reported nothing.
+// This surfaces it so the miss is self-reporting (add an alias or curate the entry)
+// instead of needing an audit. `count` is how many readings carried the name.
+export interface UnresolvedName {
+  name: string; // the canonical name the reading imported under (matched no entry)
+  count: number;
+  // The unit the readings carried (catalog identity, NOT the measured value).
+  // Optional: unit-less readings leave it unset. Used by the "Report" prefill.
+  unit?: string | null;
+}
+
 // One section (CDA) or resource type (FHIR) the document contained, and whether
 // the app actually consumed it into a sink. `present` is how many entries /
 // resources it held.
@@ -97,6 +112,11 @@ export interface ImportReport {
   // debugger. Optional so reports stored before this field (and the AI path) stay
   // valid; parseImportReport defaults it to [].
   unmappedLoincs?: UnmappedLoinc[];
+  // Lab readings whose canonical NAME matched no curated entry (#918 §4) — the AI
+  // path's parallel to unmappedLoincs (it has no LOINC). Optional so reports stored
+  // before this field, and every CCD report, stay valid; parseImportReport defaults
+  // it to [].
+  unresolvedNames?: UnresolvedName[];
 }
 
 export function emptyReport(): ImportReport {
@@ -106,6 +126,7 @@ export function emptyReport(): ImportReport {
     imported: 0,
     considered: 0,
     unmappedLoincs: [],
+    unresolvedNames: [],
   };
 }
 
@@ -142,6 +163,33 @@ export function tallyUnmappedLoincs(
   );
 }
 
+// Tally unresolved canonical names into per-name counts, sorted most-frequent first
+// (then name, for a stable display). Keyed case-insensitively so "PROTEIN" and
+// "Protein" fold together; the first-seen display spelling is kept. Used by the AI
+// import-shape adapter (each reading counts once) and by mergeReports.
+export function tallyUnresolvedNames(
+  items: { name: string; count?: number; unit?: string | null }[]
+): UnresolvedName[] {
+  const byName = new Map<string, UnresolvedName>();
+  for (const it of items) {
+    const key = it.name.trim().toLowerCase();
+    if (!key) continue;
+    const prev = byName.get(key);
+    if (prev) {
+      prev.count += it.count ?? 1;
+      if (prev.unit == null && it.unit != null) prev.unit = it.unit;
+    } else
+      byName.set(key, {
+        name: it.name,
+        count: it.count ?? 1,
+        unit: it.unit ?? null,
+      });
+  }
+  return [...byName.values()].sort(
+    (a, b) => b.count - a.count || a.name.localeCompare(b.name)
+  );
+}
+
 // ---- "Report unmapped code" prefill (#270) ----
 
 // The public repo's new-issue endpoint the "Report unmapped code" action opens.
@@ -169,6 +217,30 @@ export function unmappedCodeIssueUrl(u: {
     `- Unit: ${u.unit ? `\`${u.unit}\`` : "(none carried)"}`,
     "",
     "Please consider adding this code to the canonical biomarker map (`scripts/gen-canonical-biomarkers.ts` / `lib/biomarker-loinc.ts`).",
+  ].join("\n");
+  return `${NEW_ISSUE_URL}?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
+}
+
+// Build the prefilled GitHub new-issue URL for one unresolved canonical name (the
+// AI path's analogue of unmappedCodeIssueUrl, #918 §4).
+//
+// PHI GUARD (hard requirement, same as #270): the prefill contains ONLY the analyte
+// display name and unit — catalog identity, no patient specifics. It must NEVER
+// include measured values, dates, reference ranges, or provider/patient strings:
+// the URL opens a PUBLIC GitHub issue. The parameter type is narrowed to exactly
+// those two fields, and import-report.test.ts pins the emitted field set.
+export function unresolvedNameIssueUrl(u: {
+  name: string;
+  unit?: string | null;
+}): string {
+  const title = `Unresolved analyte: ${u.name}`;
+  const body = [
+    "An AI-extracted health record surfaced a lab analyte whose name matched no canonical biomarker, so its readings don't group with a canonical biomarker or pick up its reference band. (The AI path has no LOINC to fall back on — identity is the name alone.)",
+    "",
+    `- Analyte name: ${u.name}`,
+    `- Unit: ${u.unit ? `\`${u.unit}\`` : "(none carried)"}`,
+    "",
+    "Please consider adding an alias (`lib/canonical-name.ts` `CANONICAL_ALIASES`) if this is a known analyte named differently, or curating a new entry (`lib/curated-biomarkers.ts`) if it isn't modeled yet.",
   ].join("\n");
   return `${NEW_ISSUE_URL}?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
 }
@@ -342,6 +414,9 @@ export function mergeReports(
     unmappedLoincs: tallyUnmappedLoincs(
       present.flatMap((r) => r.unmappedLoincs ?? [])
     ),
+    unresolvedNames: tallyUnresolvedNames(
+      present.flatMap((r) => r.unresolvedNames ?? [])
+    ),
   };
 }
 
@@ -377,7 +452,17 @@ export function parseImportReport(raw: string | null): ImportReport | null {
     const unmappedLoincs = Array.isArray(obj.unmappedLoincs)
       ? (obj.unmappedLoincs as UnmappedLoinc[])
       : [];
-    return { drops, coverage, imported, considered, unmappedLoincs };
+    const unresolvedNames = Array.isArray(obj.unresolvedNames)
+      ? (obj.unresolvedNames as UnresolvedName[])
+      : [];
+    return {
+      drops,
+      coverage,
+      imported,
+      considered,
+      unmappedLoincs,
+      unresolvedNames,
+    };
   } catch {
     return null;
   }

@@ -65,6 +65,7 @@ import {
   rowDropCount,
   isRowDrop,
   unmappedCodeIssueUrl,
+  unresolvedNameIssueUrl,
 } from "@/lib/import-report";
 
 export const dynamic = "force-dynamic";
@@ -180,6 +181,10 @@ export default async function ImportDetailPage(props: {
   // "add these to LOINC_TO_CANONICAL" to-do list for maintainers. These readings
   // still imported (under their raw printed name); this is not a drop.
   const unmappedLoincs = report?.unmappedLoincs ?? [];
+  // The AI path's parallel: labs whose canonical NAME matched no curated entry, so
+  // they imported under their raw name with no reference band (#918 §4). Kept, like
+  // unmapped LOINCs — not a drop.
+  const unresolvedNames = report?.unresolvedNames ?? [];
   const isTerminalIssue =
     doc.extraction_status === "failed" || doc.extraction_status === "skipped";
   // "Move to profile…" targets: the login's OTHER accessible profiles (admins see
@@ -473,6 +478,60 @@ export default async function ImportDetailPage(props: {
                     className="ml-auto inline-flex items-center gap-1 text-xs text-brand-700 hover:underline dark:text-brand-400"
                   >
                     Report unmapped code{" "}
+                    <IconExternalLink className="h-3.5 w-3.5" />
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* Unresolved analytes (import debugger, #918 §4): the AI path's parallel to
+            unmapped lab codes — imported, but under a name that matched no curated
+            entry (no LOINC to fall back on), so no reference band. */}
+        {report && unresolvedNames.length > 0 && (
+          <div className="card" data-testid="unresolved-names-card">
+            <h2 className="mb-1 font-semibold text-slate-800 dark:text-slate-100">
+              Unresolved analytes ({unresolvedNames.length})
+            </h2>
+            <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
+              These labs <strong>are imported</strong> under their extracted
+              name — nothing was lost — but the name matched no canonical
+              biomarker, so they don’t trend with a known analyte or pick up its
+              reference band. Add an alias in{" "}
+              <code className="rounded bg-slate-100 px-1 dark:bg-ink-800">
+                lib/canonical-name.ts
+              </code>{" "}
+              if it’s a known analyte named differently, or curate a new entry,
+              or report it below. <strong>Report unresolved analyte</strong>{" "}
+              opens a <em>public GitHub issue</em> prefilled with only the name
+              and unit — never your values, dates, or personal details.
+            </p>
+            <ul className="text-sm text-slate-600 dark:text-slate-300">
+              {unresolvedNames.map((u) => (
+                <li
+                  key={u.name}
+                  className="flex flex-wrap items-baseline gap-x-2 border-b border-black/5 py-1 last:border-0 dark:border-white/10"
+                >
+                  <span className="font-medium">{u.name}</span>
+                  {u.unit && (
+                    <span className="text-xs text-slate-500 dark:text-slate-400">
+                      {u.unit}
+                    </span>
+                  )}
+                  {u.count > 1 && (
+                    <span className="text-xs text-slate-500 dark:text-slate-400">
+                      ×{u.count}
+                    </span>
+                  )}
+                  <a
+                    href={unresolvedNameIssueUrl(u)}
+                    target="_blank"
+                    rel="noopener"
+                    data-testid="report-unresolved-name"
+                    className="ml-auto inline-flex items-center gap-1 text-xs text-brand-700 hover:underline dark:text-brand-400"
+                  >
+                    Report unresolved analyte{" "}
                     <IconExternalLink className="h-3.5 w-3.5" />
                   </a>
                 </li>
