@@ -69,6 +69,10 @@ export type UpcomingDomain =
   | "goal"
   | "training"
   | "careplan"
+  // A tracked finding→follow-up→resolution chain node (issue #700): a linked
+  // follow-up that is due/overdue, or that has a matching later record and OFFERS a
+  // resolution. Care-tier; an overdue one is care-persistent (see carePersistent).
+  | "followup"
   | "biomarker-flag"
   | "integration"
   | "review";
@@ -98,6 +102,10 @@ const DOMAIN_ORDER: Record<UpcomingDomain, number> = {
   biomarker: 11,
   goal: 12,
   training: 13,
+  // A finding follow-up (#700) is care-tier safety — sort it alongside the other
+  // care notes (just after the condition-review suggestion), ahead of the calm
+  // scheduling/coaching domains.
+  followup: 2.7,
   // The "something's off" signals (issue #524). They never share a date band with
   // the scheduled domains (they carry `signalGroup`, not a due date), so these
   // ranks only order them WITHIN the Flagged / For-review groupings: the clinical
@@ -192,6 +200,18 @@ export interface UpcomingItem {
   // treated as suppressible); the structural signals (review / failing integration)
   // are resolved, not snoozed, so they set this false and render no snooze menu.
   suppressible?: boolean;
+  // Care-tier persistence (issue #700 ask 5, #449): an OVERDUE safety follow-up
+  // resists the "dismiss once, silence everywhere" convenience path the way a
+  // medication-dose escalation does. When set, the shared suppression filter IGNORES
+  // an indefinite dismiss for this item (see isItemHiddenBySuppression) but still
+  // honors a live time-boxed snooze, and the surfaces render a snooze-only menu (no
+  // dismiss). Absent for every ordinary item (fully suppressible).
+  carePersistent?: boolean;
+  // Finding follow-up resolution offer (issue #700 ask 3): when a matching later
+  // record has landed, the row renders inline "mark resolved / stable / changed"
+  // controls (confirm-first, #560) that record the outcome against the resolving
+  // record. Only followup items in the resolvable state carry one; ids only.
+  followUpResolve?: { carePlanItemId: number; resolvingRecordId: number };
   // The "something's off" signals only (issue #524): which page grouping the item
   // surfaces under ("Flagged" for out-of-range labs, "For review" for the review
   // count + failing integrations). Set ⇒ the item is NOT a date-scheduled signal,

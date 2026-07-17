@@ -14,6 +14,7 @@ import {
 } from "@/lib/queries";
 import { snoozeUntil } from "@/lib/upcoming";
 import { preventiveRuleByKey } from "@/lib/preventive-catalog";
+import { resolveFollowUpCore } from "@/lib/followup-write";
 import { formError, formOk, type FormResult } from "@/lib/types";
 
 // Inline "mark taken" for a due dose surfaced on the Upcoming page. Reuses the
@@ -86,6 +87,37 @@ export async function overridePreventive(
     return formError("Choose an override option.");
   setPreventiveOverride(profile.id, ruleKey, kind);
   revalidatePath("/upcoming");
+  revalidatePath("/");
+  return formOk();
+}
+
+// Resolve a finding follow-up (#700), confirm-first (#560): record the outcome
+// (resolved / stable / changed) against the matched later record and close the
+// follow-up. The write core validates the outcome and re-checks both the follow-up
+// and the resolving study under profile_id, so a tampered id can't resolve another
+// profile's row. A resolving_study_id of 0/empty records the outcome without pinning
+// a study.
+export async function resolveFollowUp(
+  formData: FormData
+): Promise<FormResult> {
+  const { profile } = await requireWriteAccess();
+  const carePlanItemId = Number(formData.get("care_plan_item_id"));
+  const resolution = String(formData.get("resolution") ?? "");
+  const resolvingStudyId = Number(formData.get("resolving_study_id")) || null;
+  if (!carePlanItemId) return formError("Couldn't find that follow-up.");
+  const res = resolveFollowUpCore(
+    profile.id,
+    carePlanItemId,
+    resolution,
+    resolvingStudyId
+  );
+  if (res.kind === "invalid-resolution")
+    return formError("Choose resolved, stable, or changed.");
+  if (res.kind === "not-found")
+    return formError("Couldn't find that follow-up.");
+  revalidatePath("/upcoming");
+  revalidatePath("/imaging");
+  revalidatePath("/care-plan");
   revalidatePath("/");
   return formOk();
 }

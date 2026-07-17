@@ -32,7 +32,11 @@ export type ReasonCode =
   | "biomarker-flagged"
   // A situational (as-needed-by-context) item is due because its situation is
   // currently active ("due because Illness is active").
-  | "situation-active";
+  | "situation-active"
+  // A tracked follow-up exists BECAUSE of a source finding (issue #700): the "why"
+  // that turns a bare "follow up in 12 months" into "for the 6 mm RLL nodule
+  // (2026-03)". Self-evident from the linked record, so no citation source.
+  | "followup-source";
 
 export interface Reason {
   // Stable machine key — the closed union above.
@@ -90,6 +94,14 @@ export function situationReason(situation: string): Reason {
     code: "situation-active",
     text: `Due because ${situation} is active`,
   };
+}
+
+// A "this follow-up is for a source finding" reason (issue #700) — the legibility
+// line that names WHAT the follow-up is chasing ("for the 6 mm RLL nodule
+// (2026-03)"), carried structurally so the digest/reminder can render it, not only
+// the Upcoming row. No source (it's a fact about the linked record, not a citation).
+export function followUpSourceReason(sourceLabel: string): Reason {
+  return { code: "followup-source", text: `for the ${sourceLabel}` };
 }
 
 // Concatenate reason groups into one list, or `undefined` when empty — the shape

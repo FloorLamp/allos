@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import ImagingStudyForm from "./ImagingStudyForm";
+import TrackFollowUpControl from "./TrackFollowUpControl";
 import { updateImagingStudy, deleteImagingStudy } from "./actions";
 import RecordTable, { type RecordColumn } from "@/components/RecordTable";
 import RecordProvenance from "@/components/RecordProvenance";
@@ -11,9 +12,28 @@ import {
   modalityLabel,
   IMAGING_MODALITIES,
 } from "@/lib/imaging-study";
+import type { ImagingFollowUpSummary } from "@/lib/queries";
 import type { ImagingStudy, ImagingModality } from "@/lib/types";
 
-const COLUMNS: RecordColumn<ImagingStudy>[] = [
+// Columns as a factory so the Follow-up cell can read the per-study follow-up map
+// (issue #700) without a module-level global.
+function buildColumns(
+  followUps: Map<number, ImagingFollowUpSummary>
+): RecordColumn<ImagingStudy>[] {
+  return [
+    ...BASE_COLUMNS,
+    {
+      header: "Follow-up",
+      headerClassName: "hidden md:table-cell",
+      cellClassName: "hidden md:table-cell",
+      cell: (s) => (
+        <TrackFollowUpControl studyId={s.id} existing={followUps.get(s.id)} />
+      ),
+    },
+  ];
+}
+
+const BASE_COLUMNS: RecordColumn<ImagingStudy>[] = [
   {
     header: "Study",
     cellClassName: "font-medium text-slate-800 dark:text-slate-100",
@@ -55,9 +75,29 @@ const COLUMNS: RecordColumn<ImagingStudy>[] = [
 
 // Manage stored imaging-study rows: filter by modality / region, edit in place, or
 // delete, on the shared RecordTable. Filtering is client-side (family-scale data).
-export default function ImagingStudyList({ items }: { items: ImagingStudy[] }) {
+// `followUps` (issue #700) carries each study's tracked follow-up so the Follow-up
+// column shows its state (or offers to track one).
+export default function ImagingStudyList({
+  items,
+  followUps = [],
+}: {
+  items: ImagingStudy[];
+  followUps?: ImagingFollowUpSummary[];
+}) {
   const [modality, setModality] = useState<ImagingModality | "">("");
   const [region, setRegion] = useState("");
+
+  // First (newest — the query orders id DESC) follow-up per source study wins.
+  const followUpByStudy = useMemo(() => {
+    const m = new Map<number, ImagingFollowUpSummary>();
+    for (const f of followUps)
+      if (!m.has(f.sourceImagingStudyId)) m.set(f.sourceImagingStudyId, f);
+    return m;
+  }, [followUps]);
+  const columns = useMemo(
+    () => buildColumns(followUpByStudy),
+    [followUpByStudy]
+  );
 
   const filtered = useMemo(() => {
     const q = region.trim().toLowerCase();
@@ -94,7 +134,7 @@ export default function ImagingStudyList({ items }: { items: ImagingStudy[] }) {
       </div>
       <RecordTable
         items={filtered}
-        columns={COLUMNS}
+        columns={columns}
         emptyMessage="No imaging studies yet. Add one, or upload a radiology report to import it."
         renderEditForm={(s, done) => (
           <ImagingStudyForm

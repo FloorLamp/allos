@@ -20,6 +20,8 @@ import {
 } from "@tabler/icons-react";
 import SubmitButton from "@/components/SubmitButton";
 import SnoozeDismissMenu from "@/components/SnoozeDismissMenu";
+import FollowUpResolveControls from "@/components/FollowUpResolveControls";
+import { resolveFollowUp } from "@/app/(app)/upcoming/actions";
 import {
   groupAttentionForCard,
   attentionCardItems,
@@ -71,6 +73,7 @@ const DOMAIN_ICON: Record<string, TablerIcon> = {
   goal: IconTarget,
   training: IconBarbell,
   careplan: IconClipboardList,
+  followup: IconStethoscope,
   integration: IconPlugConnectedX,
   review: IconInbox,
 };
@@ -138,7 +141,7 @@ function Row({
             </SubmitButton>
           </form>
         )}
-        {item.doseId == null && item.actionLabel && (
+        {item.doseId == null && item.followUpResolve == null && item.actionLabel && (
           <Link
             href={item.href}
             className="shrink-0 rounded-lg border border-black/10 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"
@@ -146,13 +149,27 @@ function Row({
             {item.actionLabel}
           </Link>
         )}
+        {/* Finding follow-up resolution offer (issue #700): confirm-first outcome
+        buttons, identical to the Upcoming page's. */}
+        {item.followUpResolve != null && (
+          <FollowUpResolveControls
+            action={async (fd) => {
+              "use server";
+              await resolveFollowUp(fd);
+            }}
+            carePlanItemId={item.followUpResolve.carePlanItemId}
+            resolvingRecordId={item.followUpResolve.resolvingRecordId}
+          />
+        )}
         {/* Per-item snooze/dismiss popover — the shared OverflowMenu-based menu
         (issue #281), so it matches every other popover in the app. Only rendered
         for suppressible items (Upcoming-derived + biomarker flags); structural
-        signals (review/integration) are resolved, not snoozed. */}
+        signals (review/integration) are resolved, not snoozed. A care-persistent
+        overdue follow-up (#700) gets a snooze-ONLY menu (resists dismiss). */}
         {isItemSuppressibleFlag(item) && (
           <SnoozeDismissMenu
             signalKey={item.key}
+            snoozeOnly={item.carePersistent === true}
             snoozeAction={snoozeAttention}
             dismissAction={dismissAttention}
           />

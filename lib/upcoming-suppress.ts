@@ -35,6 +35,30 @@ export function findingKey(finding: Pick<Finding, "dedupeKey">): string {
   return finding.dedupeKey;
 }
 
+// Whether a suppression record hides a specific UpcomingItem right now, honoring the
+// item's care-tier PERSISTENCE policy (issue #700 ask 5). This is the ONE dispatcher
+// the Upcoming filter AND its "snoozed & dismissed" complement route every item
+// through, so the two never disagree about what's hidden:
+//   - A care-persistent item (an OVERDUE safety follow-up) RESISTS an indefinite
+//     dismiss — a dismissed_at row is ignored for it — but still HONORS a live
+//     time-boxed snooze, so a dismiss can never permanently silence a possibly-missed
+//     follow-up while a deliberate snooze can still defer it.
+//   - Every other item uses the standard isSuppressed rule.
+export function isItemHiddenBySuppression(
+  item: Pick<UpcomingItem, "carePersistent">,
+  record: SuppressionRecord | undefined,
+  today: string
+): boolean {
+  if (!record) return false;
+  if (item.carePersistent) {
+    // Resist the indefinite dismiss; honor only a live snooze.
+    if (record.snooze_until && !record.dismissed_at)
+      return today < record.snooze_until;
+    return false;
+  }
+  return isSuppressed(record, today);
+}
+
 // Whether a suppression record hides its item right now (`today` = the profile-
 // local YYYY-MM-DD). Semantics:
 //   - Dismissed → hidden indefinitely (until the user restores it, which removes

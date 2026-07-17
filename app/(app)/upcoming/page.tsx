@@ -39,6 +39,7 @@ import { PageHeader, EmptyState } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
 import SnoozeDismissMenu from "@/components/SnoozeDismissMenu";
 import PreventiveOverrideMenu from "./PreventiveOverrideMenu";
+import FollowUpResolveControls from "@/components/FollowUpResolveControls";
 import {
   markTaken,
   snoozeItem,
@@ -46,6 +47,7 @@ import {
   restoreItem,
   markPreventiveDone,
   markCarePlanDone,
+  resolveFollowUp,
 } from "./actions";
 import { confirmConditionSuggestion } from "@/app/(app)/conditions/actions";
 
@@ -71,6 +73,7 @@ const DOMAIN_ICON: Record<UpcomingDomain, TablerIcon> = {
   goal: IconTarget,
   training: IconBarbell,
   careplan: IconClipboardList,
+  followup: IconStethoscope,
   "biomarker-flag": IconFlask,
   integration: IconPlugConnectedX,
   review: IconInbox,
@@ -410,13 +413,27 @@ function Row({
           </SubmitButton>
         </form>
       )}
+      {/* Finding follow-up resolution offer (issue #700): a matching later record
+      landed, so offer the outcome (resolved / stable / changed) confirm-first. */}
+      {item.followUpResolve != null && (
+        <FollowUpResolveControls
+          action={async (fd) => {
+            "use server";
+            await resolveFollowUp(fd);
+          }}
+          carePlanItemId={item.followUpResolve.carePlanItemId}
+          resolvingRecordId={item.followUpResolve.resolvingRecordId}
+        />
+      )}
       {/* Per-item snooze/dismiss popover — the shared OverflowMenu-based menu
       (issue #281), identical to the dashboard hero's. Only suppressible items get
       one; the structural signals (failing sync / review count) are resolved, not
-      snoozed (issue #524). */}
+      snoozed (issue #524). A care-persistent overdue follow-up (#700) gets a
+      snooze-ONLY menu — it resists an indefinite dismiss. */}
       {isItemSuppressibleFlag(item) && (
         <SnoozeDismissMenu
           signalKey={item.key}
+          snoozeOnly={item.carePersistent === true}
           snoozeAction={async (fd) => {
             "use server";
             await snoozeItem(fd);

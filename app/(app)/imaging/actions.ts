@@ -9,6 +9,11 @@ import {
   normalizeLaterality,
   normalizeContrast,
 } from "@/lib/imaging-study";
+import { today } from "@/lib/db";
+import {
+  trackImagingFollowUpCore,
+  unlinkFollowUpsForImagingStudy,
+} from "@/lib/followup-write";
 
 // Imaging-study writes (#702). Session-scoped; every mutation is
 // `WHERE id = ? AND profile_id = ?` and the INSERT carries profile_id. Manual rows
@@ -103,10 +108,44 @@ export async function deleteImagingStudy(
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that study.");
+  // Row-ops side-state (#199-#203, #700): a follow-up may link this study as its
+  // SOURCE finding, or a resolution may cite it as the resolving record — both carry
+  // a REFERENCES FK with no ON DELETE. NULL those links FIRST (degrading a follow-up
+  // to a generic care-plan item, keeping a resolution's outcome text) so the delete
+  // can't trip the care_plan_items FK.
+  unlinkFollowUpsForImagingStudy(profile.id, id);
   db.prepare("DELETE FROM imaging_studies WHERE id = ? AND profile_id = ?").run(
     id,
     profile.id
   );
   revalidateImaging();
+  return formOk();
+}
+
+// Track a follow-up for an imaging study (#700): creates a linked, OPEN care-plan
+// item whose planned_date is the study date + the chosen interval, so an incidental
+// finding ("6 mm nodule, recommend follow-up CT in 12 months") becomes a tracked,
+// legible, resolvable follow-up on Upcoming instead of falling through the cracks.
+// The write core is idempotent per source study (a second click returns the existing
+// one). Interval is a whole number of days (the form offers 3/6/12-month presets).
+export async function trackImagingFollowUp(
+  formData: FormData
+): Promise<FormResult> {
+  const { profile } = await requireWriteAccess();
+  const studyId = Number(formData.get("study_id"));
+  const intervalDays = Number(formData.get("interval_days"));
+  if (!studyId) return formError("Couldn't find that study.");
+  if (!Number.isFinite(intervalDays) || intervalDays <= 0)
+    return formError("Choose a follow-up interval.");
+  const res = trackImagingFollowUpCore(
+    profile.id,
+    studyId,
+    intervalDays,
+    today(profile.id)
+  );
+  if (res.kind === "invalid") return formError("Couldn't find that study.");
+  revalidateImaging();
+  revalidatePath("/upcoming");
+  revalidatePath("/care-plan");
   return formOk();
 }

@@ -273,6 +273,34 @@ export function getImagingStudies(profileId: number): ImagingStudy[] {
   return rows.map((r) => ({ ...r, contrast: r.contrast === 1 }));
 }
 
+// The tracked follow-up (issue #700), if any, for each imaging study — so the Imaging
+// list can show a study's follow-up state (or offer to track one). Returns one row
+// per care_plan_items follow-up linked to an imaging source, newest follow-up first,
+// carrying only the fields the list renders. Profile-scoped.
+export interface ImagingFollowUpSummary {
+  carePlanItemId: number;
+  sourceImagingStudyId: number;
+  plannedDate: string | null;
+  status: string | null;
+  resolution: string | null;
+}
+
+export function getImagingStudyFollowUps(
+  profileId: number
+): ImagingFollowUpSummary[] {
+  return db
+    .prepare(
+      `SELECT id AS carePlanItemId,
+              source_imaging_study_id AS sourceImagingStudyId,
+              planned_date AS plannedDate, status, resolution
+         FROM care_plan_items
+        WHERE profile_id = ? AND source_kind = 'imaging'
+          AND source_imaging_study_id IS NOT NULL
+        ORDER BY id DESC`
+    )
+    .all(profileId) as ImagingFollowUpSummary[];
+}
+
 // Family history, grouped by relative (relation) then condition. Rows with an
 // unknown relation sort last. De-duplicated across documents via
 // FAMILY_HISTORY_REPRESENTATIVE_IDS (the subquery's profile_id bind comes after the
@@ -296,7 +324,10 @@ export function getCarePlanItems(profileId: number): CarePlanItem[] {
     .prepare(
       `SELECT cp.id, cp.description, cp.code, cp.code_system, cp.category,
               cp.planned_date, cp.status, cp.provider_id, p.name AS provider_name,
-              cp.notes, cp.source, cp.document_id, cp.external_id, cp.created_at
+              cp.notes, cp.source, cp.document_id, cp.external_id, cp.created_at,
+              cp.source_kind, cp.source_imaging_study_id,
+              cp.recommended_interval_days, cp.resolution,
+              cp.resolved_by_imaging_study_id, cp.resolved_at
          FROM care_plan_items cp
          LEFT JOIN providers p ON p.id = cp.provider_id
         WHERE cp.profile_id = ?
