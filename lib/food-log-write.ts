@@ -10,7 +10,7 @@
 // retired group) lands nothing and is answered honestly by the caller.
 
 import { db, writeTx } from "./db";
-import { isValidFoodGroup } from "./food-groups";
+import { canonicalFoodGroup } from "./food-groups";
 
 // The typed result of a serving write, so a Telegram tap answers from what ACTUALLY
 // happened rather than unconditionally confirming (the markDoseTaken contract, #232):
@@ -35,20 +35,23 @@ export function logFoodServingCore(
   group: string,
   date: string
 ): FoodLogOutcome {
-  if (!isValidFoodGroup(group)) return { kind: "unknown-group" };
+  // Persist the canonical slug, not the raw input (#883): the matcher accepts
+  // case/punctuation variants, but downstream readers compare group_key exactly.
+  const slug = canonicalFoodGroup(group);
+  if (slug === null) return { kind: "unknown-group" };
   return writeTx(() => {
     db.prepare(
       `INSERT INTO food_log (profile_id, date, group_key, servings)
        VALUES (?, ?, ?, 1)
        ON CONFLICT (profile_id, date, group_key)
        DO UPDATE SET servings = servings + 1`
-    ).run(profileId, date, group);
+    ).run(profileId, date, slug);
     const row = db
       .prepare(
         `SELECT servings FROM food_log
           WHERE profile_id = ? AND date = ? AND group_key = ?`
       )
-      .get(profileId, date, group) as { servings: number } | undefined;
+      .get(profileId, date, slug) as { servings: number } | undefined;
     return { kind: "logged", servings: row?.servings ?? 1 };
   });
 }
@@ -64,22 +67,24 @@ export function undoFoodServingCore(
   group: string,
   date: string
 ): FoodUndoOutcome {
-  if (!isValidFoodGroup(group)) return { kind: "unknown-group" };
+  // Canonicalize so undo targets the same row a canonical log wrote (#883).
+  const slug = canonicalFoodGroup(group);
+  if (slug === null) return { kind: "unknown-group" };
   return writeTx(() => {
     db.prepare(
       `UPDATE food_log SET servings = servings - 1
         WHERE profile_id = ? AND date = ? AND group_key = ?`
-    ).run(profileId, date, group);
+    ).run(profileId, date, slug);
     db.prepare(
       `DELETE FROM food_log
         WHERE profile_id = ? AND date = ? AND group_key = ? AND servings <= 0`
-    ).run(profileId, date, group);
+    ).run(profileId, date, slug);
     const row = db
       .prepare(
         `SELECT servings FROM food_log
           WHERE profile_id = ? AND date = ? AND group_key = ?`
       )
-      .get(profileId, date, group) as { servings: number } | undefined;
+      .get(profileId, date, slug) as { servings: number } | undefined;
     return { kind: "undone", servings: row?.servings ?? 0 };
   });
 }

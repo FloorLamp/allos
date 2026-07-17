@@ -114,6 +114,35 @@ describe("onboarding state", () => {
     expect(complete.status).toBe("complete");
     expect(complete.completedAt).toBe("2026-07-15T10:03:00.000Z");
     expect(onboardingNeedsSetup(complete)).toBe(false);
+
+    // #887: revisiting ANY step after completion applies the field edit but never
+    // downgrades status back to in_progress or clears completedAt (monotonic).
+    const revisitFocuses = onboardingWithFocuses(
+      complete,
+      ["fitness"],
+      "2026-07-16T08:00:00.000Z"
+    );
+    expect(revisitFocuses).toMatchObject({
+      status: "complete",
+      completedAt: "2026-07-15T10:03:00.000Z",
+      focuses: ["fitness"],
+    });
+    expect(onboardingNeedsSetup(revisitFocuses)).toBe(false);
+
+    // Same monotonic guard across the other reopening transitions.
+    for (const revisited of [
+      onboardingWithBasics(complete, "2026-07-16T08:00:00.000Z"),
+      onboardingWithDataReviewed(complete, "2026-07-16T08:00:00.000Z"),
+      onboardingWithLayout(complete, "2026-07-16T08:00:00.000Z"),
+      onboardingWithNotificationIntent(
+        complete,
+        "safety-only",
+        "2026-07-16T08:00:00.000Z"
+      ),
+    ]) {
+      expect(revisited.status).toBe("complete");
+      expect(revisited.completedAt).toBe("2026-07-15T10:03:00.000Z");
+    }
   });
 });
 

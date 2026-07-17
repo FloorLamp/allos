@@ -33,6 +33,17 @@ export function isValidFoodGroup(slug: string): boolean {
   return matcher.has(slug);
 }
 
+// The canonical catalog slug for a raw input, or null for a retired/unknown group.
+// PERSIST THIS, never the raw input (#883): the matcher's normalized/fuzzy match exists
+// to FIND an entry ("Leafy_Greens"/"leafy-greens" both resolve), but every downstream
+// reader compares the stored `group_key`/`scope_value` EXACTLY against the canonical
+// slug — so a write that lands the raw variant becomes silently invisible to daily
+// totals, habit progress, and interaction checks. Boundary write paths canonicalize
+// through here so only a catalog `.slug` is ever stored.
+export function canonicalFoodGroup(raw: string): string | null {
+  return matcher.match(raw)?.slug ?? null;
+}
+
 export function foodGroupSlugs(): string[] {
   return FOOD_GROUPS.map((g) => g.slug);
 }

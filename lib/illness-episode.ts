@@ -21,6 +21,7 @@ import { shiftDateStr, daysBetweenDateStr } from "./date";
 import { getTimezone } from "./settings";
 import { getSymptomDaysInRange } from "./queries/symptoms";
 import { getConditions } from "./queries/clinical";
+import type { Condition } from "./types";
 import { symptomLabel } from "./symptoms";
 import { VITAL_CANONICAL } from "./vitals-input";
 import { formatGivenAtClock } from "./administration-format";
@@ -53,10 +54,15 @@ const TEMP_CANONICAL = VITAL_CANONICAL.temperature.canonical;
 // The far-past floor used when an episode's start is unknown (before the change-log).
 const OPEN_START_FLOOR = "0001-01-01";
 
-// Assemble the full illness story for one derived episode.
+// Assemble the full illness story for one derived episode. `conditions` may be passed
+// pre-fetched so a caller assembling MANY episodes for one profile (the episodes-index
+// summary, #886) hoists the profile-invariant getConditions() out of its loop rather
+// than re-running its full-table window subquery once per episode; when omitted it's
+// fetched here (every single-episode caller is unchanged).
 export function assembleIllnessEpisode(
   profileId: number,
-  episode: IllnessEpisode
+  episode: IllnessEpisode,
+  presetConditions?: Condition[]
 ): AssembledEpisode {
   const asOf = today(profileId);
   const tz = getTimezone(profileId);
@@ -170,7 +176,9 @@ export function assembleIllnessEpisode(
     episode.situation,
     episode.start
   );
-  const conditions: EpisodeCondition[] = getConditions(profileId)
+  const conditions: EpisodeCondition[] = (
+    presetConditions ?? getConditions(profileId)
+  )
     .filter((c) => {
       const fromEp = c.external_id === promotedExternal;
       const onsetInRange =

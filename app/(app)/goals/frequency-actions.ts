@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import type { FrequencyScopeKind } from "@/lib/types";
 import { REGION_SCOPES, GROUP_SCOPES, TYPE_SCOPES } from "@/lib/lifts";
-import { isValidFoodGroup } from "@/lib/food-groups";
+import { canonicalFoodGroup, isValidFoodGroup } from "@/lib/food-groups";
 
 // Allowed scope_value strings per scope_kind, used to validate input.
 function isValidScope(kind: FrequencyScopeKind, value: string): boolean {
@@ -22,12 +22,19 @@ export async function createFrequencyTarget(formData: FormData) {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id")) || null;
   const kind = String(formData.get("scope_kind") ?? "") as FrequencyScopeKind;
-  const value = String(formData.get("scope_value") ?? "").trim();
+  let value = String(formData.get("scope_value") ?? "").trim();
   const perWeek = Math.max(
     1,
     Math.round(Number(formData.get("per_week") ?? 0))
   );
   if (!isValidScope(kind, value) || !Number.isFinite(perWeek)) return;
+  // Persist the canonical food-group slug, not the raw input (#883) — downstream habit
+  // progress compares scope_value exactly against the food_log group_key.
+  if (kind === "food_group") {
+    const slug = canonicalFoodGroup(value);
+    if (!slug) return;
+    value = slug;
+  }
 
   if (id) {
     // Editing an existing routine — update it in place, including a changed scope.

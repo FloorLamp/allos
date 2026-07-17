@@ -272,6 +272,31 @@ export function normalizeOnboardingFocuses(
   return focuses.slice(0, 2);
 }
 
+// Completion is MONOTONIC (#887): once a profile finishes onboarding, revisiting and
+// resubmitting a step (a bookmark, browser-back, or curiosity) must apply that step's
+// field edit WITHOUT downgrading `status` back to `in_progress` or clearing
+// `completedAt` — only completeOnboardingState sets completion, and only an explicit
+// reset (a fresh initialOnboardingState) clears it. Every reopening transition takes its
+// status/startedAt/completedAt from here: preserved when already complete, else marked
+// in_progress the way a mid-flow step always did.
+function onboardingProgressFields(
+  state: OnboardingState,
+  now: string
+): Pick<OnboardingState, "status" | "startedAt" | "completedAt"> {
+  if (state.status === "complete") {
+    return {
+      status: "complete",
+      startedAt: state.startedAt ?? now,
+      completedAt: state.completedAt,
+    };
+  }
+  return {
+    status: "in_progress",
+    startedAt: state.startedAt ?? now,
+    completedAt: null,
+  };
+}
+
 export function onboardingWithFocuses(
   state: OnboardingState,
   focuses: readonly unknown[],
@@ -279,12 +304,10 @@ export function onboardingWithFocuses(
 ): OnboardingState {
   return {
     ...state,
-    status: "in_progress",
     focuses: normalizeOnboardingFocuses(focuses),
     dataReviewed: false,
     layoutReviewed: false,
-    startedAt: state.startedAt ?? now,
-    completedAt: null,
+    ...onboardingProgressFields(state, now),
   };
 }
 
@@ -295,10 +318,8 @@ export function onboardingWithProfilePath(
 ): OnboardingState {
   return {
     ...state,
-    status: "in_progress",
     profilePath,
-    startedAt: state.startedAt ?? now,
-    completedAt: null,
+    ...onboardingProgressFields(state, now),
   };
 }
 
@@ -308,9 +329,7 @@ export function onboardingDeferred(
 ): OnboardingState {
   return {
     ...state,
-    status: "in_progress",
-    startedAt: state.startedAt ?? now,
-    completedAt: null,
+    ...onboardingProgressFields(state, now),
   };
 }
 
@@ -320,10 +339,8 @@ export function onboardingWithBasics(
 ): OnboardingState {
   return {
     ...state,
-    status: "in_progress",
     basicsComplete: true,
-    startedAt: state.startedAt ?? now,
-    completedAt: null,
+    ...onboardingProgressFields(state, now),
   };
 }
 
@@ -333,10 +350,8 @@ export function onboardingWithDataReviewed(
 ): OnboardingState {
   return {
     ...state,
-    status: "in_progress",
     dataReviewed: true,
-    startedAt: state.startedAt ?? now,
-    completedAt: null,
+    ...onboardingProgressFields(state, now),
   };
 }
 
@@ -346,10 +361,8 @@ export function onboardingWithLayout(
 ): OnboardingState {
   return {
     ...state,
-    status: "in_progress",
     layoutReviewed: true,
-    startedAt: state.startedAt ?? now,
-    completedAt: null,
+    ...onboardingProgressFields(state, now),
   };
 }
 
@@ -431,11 +444,9 @@ export function onboardingWithNotificationIntent(
 ): OnboardingState {
   return {
     ...state,
-    status: "in_progress",
     notificationIntent: intent,
     notificationsReviewed: true,
-    startedAt: state.startedAt ?? now,
-    completedAt: null,
+    ...onboardingProgressFields(state, now),
   };
 }
 

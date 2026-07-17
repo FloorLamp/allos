@@ -3,7 +3,7 @@
 import { requireWriteAccess } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { db, today, writeTx } from "@/lib/db";
-import { isValidFoodGroup } from "@/lib/food-groups";
+import { canonicalFoodGroup, isValidFoodGroup } from "@/lib/food-groups";
 import { logFoodServingCore, undoFoodServingCore } from "@/lib/food-log-write";
 import { formError, formOk, type FormResult } from "@/lib/types";
 
@@ -85,8 +85,10 @@ export async function undoFoodServing(
 export async function trackFoodHabit(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const group = String(formData.get("group_key") ?? "").trim();
-  if (!group || !isValidFoodGroup(group))
-    return formError("Unknown food group.");
+  // Persist the canonical slug (#883) so the target's scope_value matches the exact
+  // group_key the food log stores and habit progress can find it.
+  const slug = group ? canonicalFoodGroup(group) : null;
+  if (!slug) return formError("Unknown food group.");
   const perWeek = Math.min(
     MAX_PER_WEEK,
     Math.max(1, Math.round(Number(formData.get("per_week") ?? 2) || 2))
@@ -103,7 +105,7 @@ export async function trackFoodHabit(formData: FormData): Promise<FormResult> {
        VALUES ('food_group', ?, ?, ?)
        ON CONFLICT (profile_id, scope_value) WHERE scope_kind = 'food_group'
        DO UPDATE SET per_week = excluded.per_week`
-    ).run(group, perWeek, profile.id);
+    ).run(slug, perWeek, profile.id);
   });
   revalidatePath("/nutrition");
   revalidatePath("/");

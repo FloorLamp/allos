@@ -29,6 +29,7 @@ import {
   markDoseTaken,
   logAdministration,
   getAdministrationsForItemOnDate,
+  getAdministrationsForItemsOnDate,
   getPrnMedicationsForQuickLog,
 } from "@/lib/queries";
 import type { Supplement } from "@/lib/types";
@@ -344,5 +345,70 @@ describe("logAdministration — PRN multiples, per-dose supply, dedup, window gu
     const admins = getAdministrationsForItemOnDate(profileId, itemId, date);
     expect(admins).toHaveLength(1);
     expect(admins[0].given_at).toBeTruthy();
+  });
+});
+
+describe("getAdministrationsForItemsOnDate — batched, same output as per-item (#885)", () => {
+  it("returns each item's day administrations identical to the per-item query", () => {
+    // Two PRN meds under one profile, each with several administrations today.
+    const { profileId, itemId: itemA } = seedPrnMed(10);
+    const itemB = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items
+             (profile_id, name, active, kind, condition, priority, as_needed, quantity_on_hand, qty_per_dose)
+           VALUES (?, 'Acetaminophen', 1, 'medication', 'daily', 'high', 1, 10, 1)`
+        )
+        .run(profileId).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+       VALUES (?, '500 mg', 'any', 'any', 0)`
+    ).run(itemB);
+    // A third PRN med with NO administrations today (must be absent from the map).
+    const itemC = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items
+             (profile_id, name, active, kind, condition, priority, as_needed, quantity_on_hand, qty_per_dose)
+           VALUES (?, 'Loratadine', 1, 'medication', 'daily', 'high', 1, 10, 1)`
+        )
+        .run(profileId).lastInsertRowid
+    );
+
+    logAdministration(profileId, itemA, new Date(Date.now() - 30 * 60_000));
+    logAdministration(profileId, itemA, new Date(Date.now() - 6 * 60_000));
+    logAdministration(profileId, itemB, new Date(Date.now() - 12 * 60_000));
+
+    const date = today(profileId);
+    const batch = getAdministrationsForItemsOnDate(
+      profileId,
+      [itemA, itemB, itemC],
+      date
+    );
+    // Byte-identical to the pre-#885 per-item query for every item.
+    for (const id of [itemA, itemB, itemC]) {
+      expect(batch.get(id) ?? []).toEqual(
+        getAdministrationsForItemOnDate(profileId, id, date)
+      );
+    }
+    expect(batch.get(itemA)).toHaveLength(2);
+    expect(batch.get(itemB)).toHaveLength(1);
+    expect(batch.has(itemC)).toBe(false); // no admins today → absent
+
+    // Empty id set → empty map (no query).
+    expect(getAdministrationsForItemsOnDate(profileId, [], date).size).toBe(0);
+  });
+
+  it("scopes to the acting profile — another profile's item never appears", () => {
+    const { profileId: pA, itemId: itemA } = seedPrnMed(10);
+    const { profileId: pB, itemId: itemB } = seedPrnMed(10);
+    logAdministration(pA, itemA);
+    logAdministration(pB, itemB);
+    const date = today(pA);
+    // Ask profile A for BOTH ids: only its own item resolves (JOIN filters by profile).
+    const batch = getAdministrationsForItemsOnDate(pA, [itemA, itemB], date);
+    expect(batch.get(itemA)).toHaveLength(1);
+    expect(batch.has(itemB)).toBe(false);
   });
 });
