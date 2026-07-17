@@ -6,19 +6,14 @@
 // canonical_biomarkers table. Analytes without a curated threshold (the vast
 // majority) carry none and get no velocity rule.
 
-import canonicalSeed from "./canonical-biomarkers.json";
-
-interface VelocityRow {
-  name?: string;
-  velocity_per_year?: number | null;
-}
+import { CANONICAL_BIOMARKERS } from "./datasets/canonical-biomarkers";
 
 // Lowercased canonical name → curated velocity_per_year (canonical units/year).
-// Built once at module load.
+// Built once at module load over the framework read layer (the same committed rows
+// the boot task seeds).
 const VELOCITY_BY_NAME: Map<string, number> = (() => {
   const map = new Map<string, number>();
-  const rows =
-    (canonicalSeed as { biomarkers?: VelocityRow[] }).biomarkers ?? [];
+  const rows = CANONICAL_BIOMARKERS;
   for (const r of rows) {
     if (
       r?.name &&

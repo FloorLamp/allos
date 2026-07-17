@@ -1,6 +1,6 @@
 # Curated-dataset framework
 
-Status: **partial** · framework + harness + linter shipped; **20 datasets migrated** onto the framework (#860 Track B, waves 1–3): `allergen-cross-reactivity`, `biomarker-descriptions`, `bp-percentiles`, `contrast-safety`, `dri`, `drug-interactions`, `fitness-norms`, `food-drug-interactions`, `food-groups`, `growth-charts`, `icd10-common`, `illness-thresholds`, `medication-descriptions`, `mets`, `nutrient-food-map`, `pgx`, `prn-defaults`, `screenings`, `strength-standards`, `temperature-red-flags`. Remaining curated datasets migrate one thin PR each; `canonical-biomarkers` is deferred and `symptoms` is a documented non-candidate — issue #860 Track B
+Status: **partial** · framework + harness + linter shipped; **21 datasets migrated** onto the framework (#860 Track B, waves 1–3 + the deferred canonical-biomarkers): `allergen-cross-reactivity`, `biomarker-descriptions`, `bp-percentiles`, `canonical-biomarkers`, `contrast-safety`, `dri`, `drug-interactions`, `fitness-norms`, `food-drug-interactions`, `food-groups`, `growth-charts`, `icd10-common`, `illness-thresholds`, `medication-descriptions`, `mets`, `nutrient-food-map`, `pgx`, `prn-defaults`, `screenings`, `strength-standards`, `temperature-red-flags`. `canonical-biomarkers` is the one **external-source** dataset (below); `symptoms` and `exercise-guides` are documented non-candidates (no honest external provenance). Curated-dataset migration is effectively complete — issue #860 Track B
 
 Allos bakes ~two dozen curated, human-reviewable reference datasets — MET values, DRIs,
 drug interactions, biomarker reference ranges, screening schedules, growth charts, and
@@ -110,12 +110,45 @@ immediate-tx): the extraction lands **with** its enforcement test. It fails CI w
   OR
 - the `data/` files and the registry drift out of lockstep.
 
-**Honest scope:** the linter enforces the contract **only** for `lib/datasets/data/` and
-the registry — today that's the **20 migrated datasets** listed in the Status line above.
-It does **not** retroactively scan the not-yet-migrated curated datasets that still live
-under `lib/*.json`; each of those keeps its bespoke shape until its own migration PR moves
-it under `lib/datasets/data/` and into the registry, at which point the linter starts
-covering it.
+**Honest scope:** the linter enforces the contract **only** for the registry and its
+sources — the JSON files under `lib/datasets/data/` **plus** the one external-source entry
+(below). It does **not** retroactively scan the two documented non-candidates
+(`symptoms`, `exercise-guides`) that still live under `lib/*.json` with no honest external
+provenance.
+
+## External-source datasets (the canonical-biomarkers exception)
+
+The framework's default is one envelope JSON per dataset under `lib/datasets/data/`. One
+dataset — **`canonical-biomarkers`** — is registered but keeps its committed JSON at its
+historical path `lib/canonical-biomarkers.json`, because it is unlike the read-only
+datasets in two structural ways:
+
+- **Boot-seeded.** Its ranges are UPSERTed into the `canonical_biomarkers` SQLite table on
+  every boot (`seedCanonicalBiomarkers`) and drive a flag reconcile gated by
+  `canonicalFlagsSignature()` (`lib/canonical-flags-version.ts`). The committed file is the
+  shared source for both the boot seed and the framework read layer, so they can never
+  diverge.
+- **Generator-owned, human-curated order.** `scripts/gen-canonical-biomarkers.ts` writes it
+  (an Anthropic call per category) and it is then hand-curated into a reviewed grouping —
+  its order is **not** a deterministic name sort, so the "regenerate → byte-compare" fixed
+  point the other datasets use does not hold offline. Eight modules + the boot seed import
+  the file directly; moving/reshaping it would churn the boot path for no behavioral gain.
+
+So it adopts the framework as a pure **read layer**: `lib/datasets/canonical-biomarkers.ts`
+imports the byte-identical committed JSON, wraps it in the envelope **in memory** (adding
+the required citations + `identity.keys`, entries = the file's `biomarkers`), validates it
+with `loadDataset()`, and exposes the entries + a name matcher. It is listed in
+`EXTERNAL_SOURCE_DATASETS` in the linter, which scopes it OUT of the "every JSON under
+`data/` is an envelope" check (the file isn't an on-disk envelope) and INTO the registry
+harness + lockstep (so it still must carry a citation, resolve identity, and refuse absent
+queries). The behavior-preservation proof — a fresh boot seeds the SAME rows the read layer
+exposes, and the flag-version gate still recomputes on a range change — is the DB-tier
+`lib/__db_tests__/canonical-biomarkers-dataset.test.ts`, plus a flag-signature fixed-point
+in `lib/__tests__/datasets-canonical-biomarkers.test.ts`. **Identity (#482):** the dataset's
+framework identity is the exact canonical `name` (which curated row); that does not fight
+`biomarkerFamily()`, which collapses ACROSS names for dedup/series/dismissal — different
+layers. New datasets should still prefer a `data/` file; the external-source hatch is for a
+generator-owned, boot-seeded file only.
 
 ## Migrating the next dataset (a thin PR)
 
