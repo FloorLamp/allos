@@ -6,15 +6,23 @@ import {
   buildContrastDataset,
   normalizeKeyword,
 } from "@/scripts/gen-contrast-safety";
-import dataset from "@/lib/contrast-safety.json";
+import dataset from "@/lib/datasets/data/contrast-safety.json";
+import {
+  contrastDataset,
+  contrastClassStrategy,
+} from "@/lib/datasets/contrast-safety";
+import { runHarness } from "@/lib/datasets";
 
-// Anti-drift pins for the baked contrast-safety dataset (issue #701): the committed
-// lib/contrast-safety.json must be a FIXED POINT of the generator, both classes +
-// both gate kinds present, keyword lists normalized + distinct, and every note cited
-// to the ACR. Pure — reads the generator constants + the committed JSON.
+// Anti-drift + framework-contract pins for the baked contrast-safety dataset (issue
+// #701, migrated onto the curated-dataset framework in #860 wave 2): the committed
+// lib/datasets/data/contrast-safety.json must be a FIXED POINT of the generator, both
+// classes (entries) + both gate kinds (meta) present, keyword lists normalized +
+// distinct, every note cited to the ACR, and the envelope must pass the framework
+// harness (citation / class-enum identity / refusal / no-collisions). Pure — reads the
+// generator constants + the committed JSON.
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const OUT = path.join(REPO, "lib/contrast-safety.json");
+const OUT = path.join(REPO, "lib/datasets/data/contrast-safety.json");
 
 const CLASSES = new Set(["iodinated", "gadolinium"]);
 const LEVELS = new Set(["any", "advanced"]);
@@ -26,12 +34,25 @@ describe("contrast-safety.json dataset", () => {
     expect(committed).toBe(generated);
   });
 
-  it("covers both contrast classes with modalities + agents", () => {
-    expect(dataset.classes.map((c) => c.class).sort()).toEqual([
+  it("passes the framework harness (citation / class-enum identity / refusal / no collisions)", () => {
+    const r = runHarness(contrastDataset, contrastClassStrategy);
+    expect(r.ok, r.problems.join("; ")).toBe(true);
+  });
+
+  it("resolves each class by its enum token", () => {
+    expect(contrastClassStrategy.normalize("Iodinated")).toBe("iodinated");
+    expect(contrastDataset.entries.map((c) => c.class).sort()).toEqual([
       "gadolinium",
       "iodinated",
     ]);
-    for (const c of dataset.classes) {
+  });
+
+  it("covers both contrast classes (entries) with modalities + agents", () => {
+    expect(dataset.entries.map((c) => c.class).sort()).toEqual([
+      "gadolinium",
+      "iodinated",
+    ]);
+    for (const c of dataset.entries) {
       expect(CLASSES.has(c.class), c.class).toBe(true);
       expect(c.label.trim().length).toBeGreaterThan(0);
       expect(c.modalities.length).toBeGreaterThan(0);
@@ -40,7 +61,7 @@ describe("contrast-safety.json dataset", () => {
   });
 
   it("keeps every keyword normalized + distinct", () => {
-    for (const c of dataset.classes) {
+    for (const c of dataset.entries) {
       for (const kw of [...c.modalities, ...c.agents]) {
         expect(kw, kw).toBe(normalizeKeyword(kw));
       }
@@ -49,41 +70,45 @@ describe("contrast-safety.json dataset", () => {
     }
   });
 
-  it("has an allergy gate per class with the required framing", () => {
-    const byClass = new Map(dataset.allergyGates.map((g) => [g.class, g]));
+  it("has an allergy gate per class (meta) with the required framing", () => {
+    const byClass = new Map(dataset.meta.allergyGates.map((g) => [g.class, g]));
     expect(byClass.get("iodinated")!.note).toBe(
       "You have an iodinated-contrast allergy on file — confirm premedication with your provider."
     );
     expect(byClass.get("gadolinium")!.note).toContain(
       "gadolinium-contrast allergy"
     );
-    for (const g of dataset.allergyGates) {
+    for (const g of dataset.meta.allergyGates) {
       expect(CLASSES.has(g.class), g.class).toBe(true);
       expect(g.allergens.length).toBeGreaterThan(0);
       for (const a of g.allergens) expect(a).toBe(normalizeKeyword(a));
     }
   });
 
-  it("has an iodinated 'any-CKD' + a gadolinium 'advanced-CKD' renal gate", () => {
-    const iod = dataset.renalGates.find((g) => g.class === "iodinated")!;
-    const gad = dataset.renalGates.find((g) => g.class === "gadolinium")!;
+  it("has an iodinated 'any-CKD' + a gadolinium 'advanced-CKD' renal gate (meta)", () => {
+    const iod = dataset.meta.renalGates.find((g) => g.class === "iodinated")!;
+    const gad = dataset.meta.renalGates.find((g) => g.class === "gadolinium")!;
     expect(iod.level).toBe("any");
     expect(iod.note).toBe(
       "CKD on file — discuss contrast nephropathy risk / hydration with your provider."
     );
     expect(gad.level).toBe("advanced");
     expect(gad.note).toContain("NSF");
-    for (const g of dataset.renalGates) expect(LEVELS.has(g.level)).toBe(true);
+    for (const g of dataset.meta.renalGates)
+      expect(LEVELS.has(g.level)).toBe(true);
   });
 
   it("cites the ACR Manual on every gate (the source discipline)", () => {
-    for (const g of [...dataset.allergyGates, ...dataset.renalGates]) {
+    for (const g of [
+      ...dataset.meta.allergyGates,
+      ...dataset.meta.renalGates,
+    ]) {
       expect(/ACR/.test(g.source), g.source).toBe(true);
     }
   });
 
   it("is emitted sorted for a stable diff", () => {
-    const classKeys = dataset.classes.map((c) => c.class);
+    const classKeys = dataset.entries.map((c) => c.class);
     expect(classKeys).toEqual([...classKeys].sort());
   });
 });

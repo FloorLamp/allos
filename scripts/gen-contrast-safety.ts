@@ -1,5 +1,6 @@
-// Pre-generate the baked contrast-safety cross-check dataset (lib/contrast-safety
-// .json), used to flag when an ORDERED / PLANNED contrast imaging study (a
+// Pre-generate the baked contrast-safety cross-check dataset
+// (lib/datasets/data/contrast-safety.json), used to flag when an ORDERED / PLANNED
+// contrast imaging study (a
 // care_plan_items row, a scheduled appointment, or a future-dated imaging_studies
 // row, #702) meets a contrast/iodine/gadolinium ALLERGY or a renal contraindication
 // (CKD) on file — the imaging twin of the drug–drug (gen-drug-interactions.ts) and
@@ -39,18 +40,68 @@
 //
 //   npm run gen:contrast-safety
 //
-// The committed lib/contrast-safety.json is a FIXED POINT of buildContrastDataset()
+// As of issue #860 Track B (wave 2) this is a curated-dataset FRAMEWORK envelope
+// (id/citation/identity/entries + meta) consumed via lib/datasets/contrast-safety.ts:
+// entries are the two contrast CLASSES (identity = the class-enum token), and the
+// allergy + renal gate tables live in `meta`. The committed
+// lib/datasets/data/contrast-safety.json is a FIXED POINT of buildContrastDataset()
 // (guarded by lib/__tests__/contrast-safety-dataset.test.ts) so the generator and the
-// file can't silently diverge. lib/contrast-safety.json is in .prettierignore —
-// prettier reformatting would break the fixed-point string compare.
+// file can't silently diverge. It is emitted with `JSON.stringify(dataset, null, 2)`,
+// which matches Prettier's JSON formatting, so no .prettierignore entry is needed.
 
 import fs from "node:fs";
 import path from "node:path";
+import { DATASET_SCHEMA, type DatasetEnvelope } from "../lib/datasets/types";
 
-const OUT = path.join(process.cwd(), "lib", "contrast-safety.json");
+const OUT = path.join(
+  process.cwd(),
+  "lib",
+  "datasets",
+  "data",
+  "contrast-safety.json"
+);
 
 export type ContrastClass = "iodinated" | "gadolinium";
 export type RenalLevel = "any" | "advanced";
+
+// One framework entry: a contrast CLASS — the identity subject (class-enum token
+// matching, NOT RxCUI). `modalities`/`agents` are the tokens that RESOLVE a planned
+// study's free text/modality to this class; the allergy + renal gates for the class
+// live in the dataset `meta` (keyed by the same class token).
+export interface ContrastClassEntry {
+  class: ContrastClass;
+  label: string;
+  modalities: string[];
+  agents: string[];
+}
+
+// A per-class allergy gate: a recorded allergen matching one of `allergens` (union the
+// class's agent names, #829) against a planned study of this class warrants the note.
+export interface ContrastAllergyGate {
+  class: ContrastClass;
+  allergens: string[];
+  note: string;
+  source: string;
+}
+
+// A per-class renal gate: `any` = any recognized CKD (iodinated → CIN); `advanced` =
+// advanced/ESRD/dialysis/stage-4-5 CKD (gadolinium → NSF).
+export interface ContrastRenalGate {
+  class: ContrastClass;
+  level: RenalLevel;
+  note: string;
+  source: string;
+}
+
+// Dataset-level metadata that ISN'T a per-class entry: the schema version and the two
+// gate tables (keyed by class token; each fires against a study of its class).
+export interface ContrastMeta {
+  version: number;
+  allergyGates: ContrastAllergyGate[];
+  renalGates: ContrastRenalGate[];
+}
+
+export type ContrastDataset = DatasetEnvelope<ContrastClassEntry, ContrastMeta>;
 
 // Normalize a keyword / synonym for storage + matching: lowercased, non-alphanumerics
 // collapsed to single spaces, trimmed. The pure engine normalizes candidate text the
@@ -207,22 +258,22 @@ const RENAL_GATES: RenalGateDef[] = [
   },
 ];
 
-export function buildContrastDataset() {
-  const classes = CLASSES.map((c) => ({
+export function buildContrastDataset(): ContrastDataset {
+  const classes: ContrastClassEntry[] = CLASSES.map((c) => ({
     class: c.class,
     label: c.label,
     modalities: norm(c.modalities),
     agents: norm(c.agents),
   })).sort((a, b) => a.class.localeCompare(b.class));
 
-  const allergyGates = ALLERGY_GATES.map((g) => ({
+  const allergyGates: ContrastAllergyGate[] = ALLERGY_GATES.map((g) => ({
     class: g.class,
     allergens: norm(g.allergens),
     note: g.note,
     source: g.source,
   })).sort((a, b) => a.class.localeCompare(b.class));
 
-  const renalGates = RENAL_GATES.map((g) => ({
+  const renalGates: ContrastRenalGate[] = RENAL_GATES.map((g) => ({
     class: g.class,
     level: g.level,
     note: g.note,
@@ -232,7 +283,10 @@ export function buildContrastDataset() {
   );
 
   return {
-    $comment:
+    $schema: DATASET_SCHEMA,
+    id: "contrast-safety",
+    title: "Contrast-media safety cross-check",
+    description:
       "Baked contrast-safety cross-check dataset (issue #701) — flags when an " +
       "ORDERED/PLANNED contrast imaging study (a care_plan_items row, a scheduled " +
       "appointment, or a future-dated imaging_studies row, #702) meets a contrast/ " +
@@ -242,18 +296,29 @@ export function buildContrastDataset() {
       "INFORMATIONAL, never prescriptive — it never blocks a study, never advises " +
       "for/against it, and the absence of a flag is NOT clearance. Fully OFFLINE. " +
       "Committed + HUMAN-REVIEWABLE; regenerate with `npm run gen:contrast-safety`.",
-    version: 1,
-    classes,
-    allergyGates,
-    renalGates,
+    citation: [
+      {
+        source: "ACR Manual on Contrast Media (American College of Radiology)",
+        url: "https://www.acr.org/Clinical-Resources/Contrast-Manual",
+        note: "Uncopyrightable clinical facts stated in our own words and cited to the ACR; contrast-agent generic/brand names are public drug nomenclature. Curated subset, not exhaustive.",
+      },
+    ],
+    identity: { keys: ["class"] },
+    meta: {
+      version: 1,
+      allergyGates,
+      renalGates,
+    },
+    entries: classes,
   };
 }
 
 function writeDataset(): void {
   const dataset = buildContrastDataset();
+  fs.mkdirSync(path.dirname(OUT), { recursive: true });
   fs.writeFileSync(OUT, JSON.stringify(dataset, null, 2) + "\n");
   console.log(
-    `Wrote ${dataset.classes.length} classes, ${dataset.allergyGates.length} allergy gates, ${dataset.renalGates.length} renal gates to ${OUT}`
+    `Wrote ${dataset.entries.length} classes, ${dataset.meta!.allergyGates.length} allergy gates, ${dataset.meta!.renalGates.length} renal gates to ${OUT}`
   );
   console.log("Review the table for plausibility before committing.");
 }
