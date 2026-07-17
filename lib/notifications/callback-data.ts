@@ -536,3 +536,103 @@ export function foodOptInCloseText(enable: boolean): string {
     ? "Food logging enabled 🍽️ — tap your foods at your reminder times."
     : "No food logging — you can turn it on later in Settings → Profile.";
 }
+
+// ---- Symptom quick-log (#859 item 5) --------------------------------------------
+//
+// `/symptom` renders a grid of the profile's ranked symptoms; tapping one edits the
+// message to a severity picker; tapping a severity logs it. The slug is the greedy
+// TAIL of every token (it can carry underscores but never a colon — resolveSymptomKey
+// normalizes), so the ids/severity parse cleanly ahead of it.
+
+export interface SymptomPickCallback {
+  profileId: number;
+  slug: string;
+}
+
+// Parse a "symp:<profileId>:<slug>" token. Malformed → null.
+export function parseSymptomPickCallback(
+  data: unknown
+): SymptomPickCallback | null {
+  if (typeof data !== "string" || !data.startsWith("symp:")) return null;
+  const rest = data.slice("symp:".length);
+  const colon = rest.indexOf(":");
+  if (colon <= 0) return null;
+  const profileId = Number(rest.slice(0, colon));
+  const slug = rest.slice(colon + 1);
+  if (!profileId || !slug) return null;
+  return { profileId, slug };
+}
+
+export interface SymptomSeverityCallback {
+  profileId: number;
+  severity: number;
+  slug: string;
+}
+
+// Parse a "symsev:<profileId>:<severity>:<slug>" token (severity 1..4). Malformed → null.
+export function parseSymptomSeverityCallback(
+  data: unknown
+): SymptomSeverityCallback | null {
+  if (typeof data !== "string" || !data.startsWith("symsev:")) return null;
+  const rest = data.slice("symsev:".length);
+  const m = /^(\d+):([1-4]):(.+)$/.exec(rest);
+  if (!m) return null;
+  const profileId = Number(m[1]);
+  const severity = Number(m[2]);
+  if (!profileId) return null;
+  return { profileId, severity, slug: m[3] };
+}
+
+// The 1..4 severity button labels (mirrors the symptom-log bar's scale).
+export const SYMPTOM_SEVERITY_LABELS: Record<number, string> = {
+  1: "Mild",
+  2: "Moderate",
+  3: "Severe",
+  4: "Very severe",
+};
+
+// ---- Temperature reply quick-log (#859 item 5) ----------------------------------
+//
+// `/temp` sends a prompt whose body carries a "(#temp:<profileId>)" marker; the user
+// REPLIES to it with a reading. The reply handler extracts the profile from the marker
+// (in reply_to_message.text) and the value from the reply body. No server-side pending
+// state — the marker rides the prompt message, so the flow is stateless like every
+// other inbound Telegram flow.
+
+// The marker embedded in a `/temp` prompt body so a reply can be attributed.
+export function tempReplyMarker(profileId: number): string {
+  return `(#temp:${profileId})`;
+}
+
+// Extract the profile id a reply targets from the prompted message text, or null.
+export function parseTempReplyMarker(
+  replyToText: string | null | undefined
+): number | null {
+  if (!replyToText) return null;
+  const m = /\(#temp:(\d+)\)/.exec(replyToText);
+  if (!m) return null;
+  const id = Number(m[1]);
+  return id > 0 ? id : null;
+}
+
+// Parse a temperature reply body ("38.5", "101F", "38,5 c") into a value + unit. An
+// explicit C/F suffix wins; a bare number auto-detects (human body temps never overlap
+// across scales below 45° — °C readings sit ~35–42, °F ~95–108), since a Telegram chat
+// carries no #857 login unit preference. Returns null when there's no parseable number.
+export function parseTempReply(
+  body: string | null | undefined
+): { value: number; unit: "C" | "F" } | null {
+  if (!body) return null;
+  const m = /(-?\d+(?:[.,]\d+)?)\s*(°?\s*[cCfF])?/.exec(body.trim());
+  if (!m) return null;
+  const value = Number(m[1].replace(",", "."));
+  if (!Number.isFinite(value)) return null;
+  const suffix = (m[2] ?? "").replace(/[^cCfF]/g, "").toUpperCase();
+  const unit: "C" | "F" =
+    suffix === "C" || suffix === "F"
+      ? (suffix as "C" | "F")
+      : value < 45
+        ? "C"
+        : "F";
+  return { value, unit };
+}

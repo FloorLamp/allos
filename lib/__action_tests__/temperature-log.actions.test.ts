@@ -54,7 +54,7 @@ describe("logTemperature — canonical write + fever flag", () => {
     const res = await logTemperature(
       fd({ temperature: "39.5", temp_unit: "C", date: DATE, time: "02:15" })
     );
-    expect(res).toEqual({ ok: true, degF: 103.1, flag: "high" });
+    expect(res).toEqual({ ok: true, degF: 103.1, flag: "high", redFlag: null });
 
     const rows = tempRows(profile.id);
     expect(rows).toHaveLength(1);
@@ -83,7 +83,7 @@ describe("logTemperature — canonical write + fever flag", () => {
     const res = await logTemperature(
       fd({ temperature: "98.6", temp_unit: "F", date: DATE })
     );
-    expect(res).toEqual({ ok: true, degF: 98.6, flag: null });
+    expect(res).toEqual({ ok: true, degF: 98.6, flag: null, redFlag: null });
     const rows = tempRows(profile.id);
     expect(rows).toHaveLength(1);
     expect(rows[0].value_num).toBe(98.6);

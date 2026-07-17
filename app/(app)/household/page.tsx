@@ -21,6 +21,8 @@ import {
 import { getActiveSituations, getUnitPrefs } from "@/lib/settings";
 import { currentEpisodeForProfile } from "@/lib/illness-episode";
 import { householdSickLine } from "@/lib/illness-episode-format";
+import { schoolReturnStatusFor } from "@/lib/school-return-data";
+import { schoolReturnCompactClause } from "@/lib/school-return";
 import {
   goalHighlights,
   supplementAdherenceToday,
@@ -131,7 +133,14 @@ export default async function HouseholdPage() {
       // same assembly the dashboard illness hero (#858) formats over.
       sick: (() => {
         const ep = currentEpisodeForProfile(pid);
-        return ep ? householdSickLine(profile.name, ep, temperatureUnit) : null;
+        if (!ep) return null;
+        const sr = schoolReturnStatusFor(pid, ep);
+        return householdSickLine(
+          profile.name,
+          ep,
+          temperatureUnit,
+          sr ? schoolReturnCompactClause(sr) : null
+        );
       })(),
     };
   });

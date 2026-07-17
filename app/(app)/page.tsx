@@ -69,6 +69,8 @@ import {
   orderIllnessCockpits,
   type AssembledEpisode,
 } from "@/lib/illness-episode-format";
+import { schoolReturnStatusFor } from "@/lib/school-return-data";
+import { schoolReturnCompactClause } from "@/lib/school-return";
 import { disambiguateProfileNames } from "@/lib/profile-disambiguation";
 import WidgetEmpty from "@/components/dashboard/WidgetEmpty";
 import WeightTrendWidget from "@/components/dashboard/WeightTrendWidget";
@@ -248,7 +250,11 @@ export default async function Dashboard() {
     compactLine: householdSickLine(
       nameFor(c.avatar),
       c.episode,
-      units.temperatureUnit
+      units.temperatureUnit,
+      (() => {
+        const sr = schoolReturnStatusFor(c.profileId, c.episode);
+        return sr ? schoolReturnCompactClause(sr) : null;
+      })()
     ),
     body: (
       <IllnessCockpitBody

@@ -160,3 +160,33 @@ export function prnDefaultsFor(item: {
   }
   return null;
 }
+
+// The fever-reducing (antipyretic) ingredient slugs in the curated PRN dataset
+// (issue #859 item 2, the school-return countdown). Ibuprofen / acetaminophen /
+// aspirin / naproxen are antipyretic analgesics; diphenhydramine (an antihistamine)
+// is NOT — it does not mask a fever, so it never resets the fever-free clock. There
+// is no explicit "antipyretic" field in prn-defaults.json (the #798 dataset predates
+// this need), so the class is derived from the curated slug set here — the ONE place
+// that judgment lives, so the countdown gather and any future surface agree.
+export const ANTIPYRETIC_SLUGS: ReadonlySet<string> = new Set([
+  "ibuprofen",
+  "acetaminophen",
+  "aspirin",
+  "naproxen",
+]);
+
+// Whether a matched PRN entry is a fever reducer.
+export function isAntipyreticEntry(entry: PrnDefaultEntry | null): boolean {
+  return entry != null && ANTIPYRETIC_SLUGS.has(entry.slug);
+}
+
+// Whether an intake item is a fever reducer — the item resolves to an antipyretic
+// ingredient in the curated dataset. Reuses prnDefaultsFor's RxCUI-authoritative /
+// name-fallback match, so an "Advil"/"Children's Tylenol" row classifies correctly.
+export function isAntipyreticIntakeItem(item: {
+  name: string;
+  rxcui: string | null;
+  rxcuiIngredients?: string[] | null;
+}): boolean {
+  return isAntipyreticEntry(prnDefaultsFor(item));
+}

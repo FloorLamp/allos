@@ -24,6 +24,8 @@ import {
   setProfileSetting,
 } from "../settings";
 import { situationHistoryResolver } from "../trend-annotations";
+import { currentEpisodeForProfile } from "../illness-episode";
+import { episodeHeadline } from "../illness-episode-format";
 import { dispatch } from "./index";
 import {
   buildDigest,
@@ -217,8 +219,14 @@ export function gatherDigestInput(
     }[]
   ).map((d) => d.source || d.doc_type || d.filename);
 
+  // An open illness episode leads the digest (#859 item 5) — the SAME assembly the
+  // hero/household line format over (currentEpisodeForProfile → episodeHeadline).
+  const openEp = currentEpisodeForProfile(profileId);
+  const openEpisodeLine = openEp ? episodeHeadline(openEp) : null;
+
   return {
     profileName,
+    openEpisodeLine,
     doseCount,
     intakeKinds,
     goalsDue,

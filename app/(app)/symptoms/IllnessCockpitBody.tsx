@@ -24,6 +24,10 @@ import SymptomLogBar from "./SymptomLogBar";
 import SymptomMedQuickAdd from "./SymptomMedQuickAdd";
 import QuickLogPrnControl from "@/components/dashboard/QuickLogPrnControl";
 import CockpitEndEpisode from "@/components/dashboard/CockpitEndEpisode";
+import StaleEpisodeNudge from "@/components/illness/StaleEpisodeNudge";
+import { staleEpisodeNudgeFor } from "@/lib/stale-episode-data";
+import { schoolReturnStatusFor } from "@/lib/school-return-data";
+import { formatSchoolReturnLine } from "@/lib/school-return";
 
 // The full illness-cockpit BODY for one patient (issue #858) — the expanded content the
 // hero shell (IllnessHero) reveals under the named header. It is the SAME machinery the
@@ -55,6 +59,16 @@ export default function IllnessCockpitBody({
   // The write target the bar/control/end button post — only for a household member's
   // cockpit; the acting profile's own cockpit omits it (active-profile write path).
   const target = crossProfile ? profileId : undefined;
+
+  // Item 2: the school-return countdown (when a fever has been logged this episode) +
+  // Item 1: the suggest-only stale nudge (this open episode gone quiet) — both format
+  // over the ONE gathers (#221), shown on the cockpit alongside the episode page.
+  const schoolReturn = schoolReturnStatusFor(profileId, episode);
+  const staleNudge = staleEpisodeNudgeFor(profileId);
+  const showStaleNudge =
+    staleNudge != null && staleNudge.episodeId === episode.id
+      ? staleNudge
+      : null;
 
   const prnMeds = getPrnMedicationsForQuickLog(profileId);
   const now = new Date();
@@ -99,6 +113,24 @@ export default function IllnessCockpitBody({
         temperatureUnit={temperatureUnit}
         profileId={target}
       />
+
+      {schoolReturn && (
+        <p
+          data-testid="school-return-line"
+          className="rounded-lg border border-black/10 bg-white/60 p-2.5 text-xs text-slate-600 dark:border-white/10 dark:bg-ink-900/40 dark:text-slate-300"
+        >
+          {formatSchoolReturnLine(schoolReturn, temperatureUnit)}
+        </p>
+      )}
+
+      {showStaleNudge && (
+        <StaleEpisodeNudge
+          episodeId={showStaleNudge.episodeId}
+          profileId={target}
+          lastActivityDate={showStaleNudge.lastActivityDate}
+          quietDays={showStaleNudge.quietDays}
+        />
+      )}
 
       {prnMeds.length > 0 && (
         <div data-testid="cockpit-prn">

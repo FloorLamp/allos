@@ -6,6 +6,8 @@ import { today } from "@/lib/db";
 import { zonedDateParts } from "@/lib/date";
 import { getTimezone } from "@/lib/settings";
 import { logTemperatureCore } from "@/lib/temperature-log";
+import { inlineTempRedFlagNote } from "@/lib/temp-red-flag";
+import { profileAgeMonths } from "@/lib/settings";
 import {
   logSymptomCore,
   setSymptomSeverityCore,
@@ -219,7 +221,7 @@ export async function deleteCustomSymptom(
 // "HH:MM" for a backfilled reading. Temperature surfaces on the dashboard, Timeline,
 // Trends, and the biomarkers browser, so all are revalidated.
 export type TemperatureLogResult =
-  | { ok: true; degF: number; flag: string | null }
+  | { ok: true; degF: number; flag: string | null; redFlag?: string | null }
   | { ok: false; error: string };
 
 export async function logTemperature(
@@ -254,7 +256,13 @@ export async function logTemperature(
   revalidatePath("/timeline");
   revalidatePath("/trends");
   revalidatePath("/biomarkers");
-  return { ok: true, degF: outcome.degF, flag: outcome.flag };
+  // Single-reading red flag (#859 item 3): surface the source's cited instruction
+  // inline at the moment of logging, age-banded. Null when the reading crosses none.
+  const redFlag = inlineTempRedFlagNote(
+    outcome.degF,
+    profileAgeMonths(profileId, date)
+  );
+  return { ok: true, degF: outcome.degF, flag: outcome.flag, redFlag };
 }
 
 // Symptom→situation bridge (issue #799, direction A): activate the built-in "Illness"

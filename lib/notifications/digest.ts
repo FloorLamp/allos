@@ -62,6 +62,10 @@ export function dedupeFlaggedByAnalyte(
 
 export interface DigestInput {
   profileName: string;
+  // An OPEN illness episode's one-line headline (issue #859 item 5), preformatted from
+  // the SAME assembly the hero/household line use (episodeHeadline) — no second engine.
+  // Null when the profile isn't currently sick. When present the digest LEADS with it.
+  openEpisodeLine?: string | null;
   // Today
   doseCount: number; // supplement/medication doses scheduled today
   // The distinct kinds among the profile's scheduled/adhered intake items,
@@ -115,6 +119,15 @@ export function buildDigest(input: DigestInput): DigestModel | null {
   const kinds = input.intakeKinds ?? [];
   const noun = intakeWindowNoun(kinds);
   const itemNoun = intakeItemNoun(kinds);
+
+  // Illness: an open episode LEADS the digest (issue #859 item 5) instead of
+  // business-as-usual coaching copy. One line, from the shared episode assembly.
+  if (input.openEpisodeLine) {
+    sections.push({
+      heading: "Illness",
+      lines: [`🤒 ${input.openEpisodeLine}`],
+    });
+  }
 
   // Today: what's on deck.
   const todayLines: string[] = [];

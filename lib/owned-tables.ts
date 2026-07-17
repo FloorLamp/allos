@@ -105,6 +105,11 @@ export const OWNED_TABLES = [
   // FKs INTO it, but deleteProfile runs with foreign_keys OFF so the OWNED_TABLES
   // delete order is immaterial there.
   "illness_episodes",
+  // Symptom photos (#859 item 4): dated photos attached to a symptom-day (rash
+  // progression). Directly owned; membership in an episode is DERIVED by date-range
+  // (no FK to illness_episodes). deleteProfile clears the rows; its on-disk files are
+  // unlinked separately (path-contained under data/uploads/symptom-photos/<profileId>/).
+  "symptom_photos",
 ] as const;
 
 export type OwnedTable = (typeof OWNED_TABLES)[number];

@@ -13,7 +13,10 @@
 import { db, writeTx } from "./db";
 import { shiftDateStr } from "./date";
 import { episodeConditionExternalId } from "./illness-episode-format";
-import { getEpisodeRow } from "./illness-episode-store";
+import {
+  getEpisodeRow,
+  updateEpisodeBoundaries,
+} from "./illness-episode-store";
 import { getActiveSituations, setActiveSituations } from "./settings";
 import { normalizeSituationName } from "./situations";
 
@@ -91,6 +94,40 @@ export function endEpisodeCore(
     (s) => normalizeSituationName(s).toLowerCase() !== target
   );
   setActiveSituations(profileId, next);
+  return { kind: "ended" };
+}
+
+// End an open episode BACKDATED to its last active day (issue #859 item 1, the stale
+// nudge's one-tap close). Two steps, reusing the shipped #856 machinery — no new close
+// path:
+//   1. Deactivate the illness situation via the ONE toggle path (setActiveSituations),
+//      which closes the open row through syncOpenIllnessEpisode and keeps
+//      situations.active coherent ("never two truths").
+//   2. Correct the row's exclusive end to `lastActiveDay` + 1 (the first inactive day)
+//      with the plain row edit (updateEpisodeBoundaries), so the closed episode reads
+//      as having ended when it actually went quiet, not today.
+// Derived membership follows the new [start, end) automatically. Idempotent: an
+// already-closed episode is a no-op; a missing one reports missing.
+export function endEpisodeAsOfCore(
+  profileId: number,
+  episodeId: number,
+  lastActiveDay: string
+): EndEpisodeOutcome {
+  const row = getEpisodeRow(profileId, episodeId);
+  if (!row) return { kind: "missing" };
+  if (row.ended_at != null) return { kind: "already" };
+  const target = normalizeSituationName(row.situation).toLowerCase();
+  const next = getActiveSituations(profileId).filter(
+    (s) => normalizeSituationName(s).toLowerCase() !== target
+  );
+  setActiveSituations(profileId, next);
+  // Exclusive end = the first inactive day = last active day + 1.
+  updateEpisodeBoundaries(
+    profileId,
+    episodeId,
+    row.started_at,
+    shiftDateStr(lastActiveDay, 1)
+  );
   return { kind: "ended" };
 }
 

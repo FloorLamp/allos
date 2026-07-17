@@ -47,6 +47,15 @@ const MEDICAL_UPLOAD_ROOT = path.resolve(
   "medical"
 );
 
+// Symptom photos (#859 item 4) live under their own per-profile root; deleting a
+// profile unlinks its photo files too (path-contained, same posture as medical files).
+const SYMPTOM_PHOTO_UPLOAD_ROOT = path.resolve(
+  process.cwd(),
+  "data",
+  "uploads",
+  "symptom-photos"
+);
+
 // Best-effort unlink of files that resolve to inside `root`. A path pointing
 // outside the root (hostile/corrupt stored_path) is skipped, never followed.
 // Failures are logged and swallowed — the DB rows are already gone by this point.
@@ -171,6 +180,17 @@ export async function deleteProfile(formData: FormData): Promise<FamilyResult> {
       .all(id) as { stored_path: string }[]
   ).map((r) => r.stored_path);
 
+  // Symptom-photo file paths (#859 item 4), collected before the OWNED_TABLES sweep
+  // deletes their rows.
+  const photoPaths = (
+    db
+      .prepare(
+        `SELECT stored_path FROM symptom_photos
+          WHERE profile_id = ? AND stored_path IS NOT NULL AND stored_path != ''`
+      )
+      .all(id) as { stored_path: string }[]
+  ).map((r) => r.stored_path);
+
   // Disable foreign_keys for the whole subtree sweep (issue #729). The app
   // connection runs foreign_keys = ON, and OWNED_TABLES lists medical_documents
   // BEFORE its FK children (conditions/encounters/procedures/family_history/
@@ -251,6 +271,7 @@ export async function deleteProfile(formData: FormData): Promise<FamilyResult> {
 
   // Best-effort file cleanup after the DB change is durable.
   deleteFilesUnderRoot(MEDICAL_UPLOAD_ROOT, docPaths);
+  deleteFilesUnderRoot(SYMPTOM_PHOTO_UPLOAD_ROOT, photoPaths);
   if (prof.photo_path) deleteFilesUnderRoot(PHOTO_ROOT, [prof.photo_path]);
 
   // Sweep the same files from the OFF-VOLUME uploads mirror (#625) so a deleted

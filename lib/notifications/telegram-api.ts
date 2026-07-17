@@ -55,6 +55,9 @@ export interface TelegramMessage {
   message_id?: number;
   chat?: { id?: number | string };
   text?: string;
+  // The message this one replies to (Telegram populates it for a reply). Used by the
+  // #859 temperature reply quick-log to attribute a "38.5" reply to its /temp prompt.
+  reply_to_message?: { text?: string };
 }
 
 export interface TelegramUpdate {

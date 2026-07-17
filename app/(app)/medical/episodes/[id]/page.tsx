@@ -25,6 +25,12 @@ import EpisodeControls from "@/components/illness/EpisodeControls";
 import EpisodeLogPanel from "@/components/illness/EpisodeLogPanel";
 import EpisodeEditor from "@/components/illness/EpisodeEditor";
 import EpisodeInRangeEvents from "@/components/illness/EpisodeInRangeEvents";
+import StaleEpisodeNudge from "@/components/illness/StaleEpisodeNudge";
+import SymptomPhotoStrip from "@/components/illness/SymptomPhotoStrip";
+import { getSymptomPhotosInRange } from "@/lib/symptom-photo-write";
+import { staleEpisodeNudgeFor } from "@/lib/stale-episode-data";
+import { schoolReturnStatusFor } from "@/lib/school-return-data";
+import { formatSchoolReturnLine } from "@/lib/school-return";
 
 export const dynamic = "force-dynamic";
 
@@ -51,6 +57,28 @@ export default async function EpisodePage(props: {
   const assembled = assembleIllnessEpisode(profile.id, episode);
   const promoted = assembled.conditions.some((c) => c.fromEpisode);
   const canWrite = access === "write";
+
+  // Item 1: the SUGGEST-ONLY stale nudge, shown only when THIS episode is the current
+  // open one AND it has gone quiet. Item 2: the school-return countdown, when a fever
+  // has been logged in this (open) episode. Both format over the ONE gathers (#221).
+  const staleNudge = canWrite ? staleEpisodeNudgeFor(profile.id) : null;
+  const showStaleNudge =
+    staleNudge?.episodeId === episodeId ? staleNudge : null;
+  const schoolReturn = assembled.ongoing
+    ? schoolReturnStatusFor(profile.id, assembled)
+    : null;
+
+  // Item 4: symptom photos attached in the episode window (rash progression). Read
+  // through a dedicated gather — NOT part of assembleIllnessEpisode / the share payload
+  // (the PHI default-exclude).
+  const photos =
+    assembled.firstDay && assembled.lastActiveDay
+      ? getSymptomPhotosInRange(
+          profile.id,
+          assembled.firstDay,
+          assembled.lastActiveDay
+        )
+      : [];
   const inRangeEvents = getEpisodeInRangeEvents(
     profile.id,
     assembled.firstDay,
@@ -99,6 +127,21 @@ export default async function EpisodePage(props: {
         generatedAt={new Date().toISOString()}
         temperatureUnit={temperatureUnit}
       />
+      {schoolReturn && (
+        <p
+          data-testid="school-return-line"
+          className="mt-3 rounded-xl border border-black/10 bg-white/70 p-3 text-sm text-slate-600 dark:border-white/10 dark:bg-ink-900/50 dark:text-slate-300"
+        >
+          {formatSchoolReturnLine(schoolReturn, temperatureUnit)}
+        </p>
+      )}
+      {showStaleNudge && (
+        <StaleEpisodeNudge
+          episodeId={showStaleNudge.episodeId}
+          lastActivityDate={showStaleNudge.lastActivityDate}
+          quietDays={showStaleNudge.quietDays}
+        />
+      )}
       {comparison && <EpisodeComparison comparison={comparison} />}
       <EpisodeInRangeEvents events={inRangeEvents} />
       {canWrite && (
@@ -123,6 +166,18 @@ export default async function EpisodePage(props: {
         <div className="mt-5">
           <QuickLogPrnWidget meds={prnMeds} tz={getTimezone(profile.id)} />
         </div>
+      )}
+      {(photos.length > 0 || canWrite) && (
+        <SymptomPhotoStrip
+          photos={photos.map((p) => ({
+            id: p.id,
+            date: p.date,
+            symptom: p.symptom,
+            caption: p.caption,
+          }))}
+          uploadDate={logDate}
+          canWrite={canWrite}
+        />
       )}
       {canWrite && (
         <EpisodeEditor
