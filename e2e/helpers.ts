@@ -95,6 +95,38 @@ export async function settledClick(
   ]);
 }
 
+// Set files on a file `<input>` and await the Server-Action POST the resulting
+// change fires — the settledClick idiom for an upload input (which has no click to
+// drive). A hidden camera/file input's `onChange` submits a Server Action (upload
+// + `revalidatePath`/`router.refresh()`); we arm the POST wait BEFORE
+// `setInputFiles` (so a fast upload can't resolve in the gap), then await it, so
+// the follow-up `expect(...)` runs against the durably-applied strip rather than a
+// bare timed count poll. WORKS when the change definitely fires exactly one
+// same-origin POST (the upload). Mirrors settledClick for inputs.
+export async function settledUpload(
+  page: Page,
+  input: Locator,
+  files: Parameters<Locator["setInputFiles"]>[0],
+  opts: { timeout?: number } = {}
+): Promise<void> {
+  const timeout = opts.timeout ?? 20_000;
+  const origin = new URL(page.url()).origin;
+  await Promise.all([
+    page.waitForResponse(
+      (resp) => {
+        if (resp.request().method() !== "POST") return false;
+        try {
+          return new URL(resp.url()).origin === origin;
+        } catch {
+          return false;
+        }
+      },
+      { timeout }
+    ),
+    input.setInputFiles(files),
+  ]);
+}
+
 // Follow a Next.js <Link> reliably, retrying the click until the client router
 // actually commits the navigation.
 //

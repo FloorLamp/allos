@@ -26,7 +26,10 @@ export default async function WorkoutHeatmapSection() {
         </p>
 
         {data.totalSessions === 0 ? (
-          <EmptyState message="No workouts logged in the last 12 months yet. Log a session on the Training page to start filling in your calendar." />
+          <EmptyState
+            message="No workouts logged in the last 12 months yet. Log a session to start filling in your calendar."
+            action={{ href: "/training?tab=log", label: "Go to Log" }}
+          />
         ) : (
           <WorkoutHeatmapView data={data} />
         )}

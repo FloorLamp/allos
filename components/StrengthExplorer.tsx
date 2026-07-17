@@ -56,7 +56,10 @@ export default function StrengthExplorer({
 
   if (exercises.length === 0) {
     return (
-      <EmptyState message="No strength data yet. Log a workout with weight and reps to see analysis and benchmarks." />
+      <EmptyState
+        message="No strength data yet. Log a workout with weight and reps to see analysis and benchmarks."
+        action={{ href: "/training?tab=log", label: "Go to Log" }}
+      />
     );
   }
 

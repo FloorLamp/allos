@@ -37,7 +37,13 @@ export default async function TrainingZonesSection() {
         </p>
 
         {!model ? (
-          <EmptyState message="Set your age (or a max-HR override) in Settings → Profile to draw your heart-rate zones." />
+          <EmptyState
+            message="Set your age (or a max-HR override) in Settings → Profile to draw your heart-rate zones."
+            action={{
+              href: "/settings/profile",
+              label: "Go to Settings → Profile",
+            }}
+          />
         ) : (
           <>
             <ZoneMinutesCard

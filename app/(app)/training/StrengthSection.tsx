@@ -66,7 +66,10 @@ export default async function StrengthSection() {
             Total training volume ({wu} lifted per session)
           </h3>
           {volume.length === 0 ? (
-            <EmptyState message="No strength sessions logged yet. Log a lift to see your volume trend." />
+            <EmptyState
+              message="No strength sessions logged yet. Log a lift to see your volume trend."
+              action={{ href: "/training?tab=log", label: "Go to Log" }}
+            />
           ) : (
             <LineChartCard
               data={volume}

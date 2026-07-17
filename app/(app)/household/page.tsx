@@ -152,7 +152,18 @@ export default async function HouseholdPage() {
         subtitle="Everyone at a glance — confirm what's due, or tap a card to open that profile."
       />
       {cards.length === 0 ? (
-        <EmptyState message="No profiles to show." />
+        <EmptyState
+          message={
+            login.role === "admin"
+              ? "No profiles to show. Create the people you track in Family settings."
+              : "No profiles to show. Ask an admin to grant you access to the profiles you care for."
+          }
+          action={
+            login.role === "admin"
+              ? { href: "/settings/family", label: "Go to Family settings" }
+              : undefined
+          }
+        />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {cards.map((data) => (

@@ -20,6 +20,7 @@ import {
   type ImmunizationFilter,
 } from "@/lib/immunization-status";
 import { PageHeader, EmptyState } from "@/components/ui";
+import { dataSectionHref } from "@/lib/hrefs";
 import { Notice } from "@/components/Notice";
 import { parseSortColumn, parseSortDir, sortRows } from "@/lib/table-sort";
 import SortableHeader from "@/components/SortableHeader";
@@ -378,7 +379,13 @@ export default async function ImmunizationsPage(props: {
             </summary>
             <div className="mt-3">
               {records.length === 0 ? (
-                <EmptyState message="No immunizations recorded yet. Add one, or import a MyChart export." />
+                <EmptyState
+                  message="No immunizations recorded yet. Add one with the form, or import a MyChart export."
+                  action={{
+                    href: dataSectionHref("import"),
+                    label: "Go to Import",
+                  }}
+                />
               ) : (
                 <ImmunizationHistory items={records} defaultDate={now} />
               )}

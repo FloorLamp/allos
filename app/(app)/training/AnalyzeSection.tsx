@@ -85,7 +85,10 @@ export default async function AnalyzeSection({
 
   if (strength.length === 0 && cardio.length === 0 && sports.length === 0) {
     return (
-      <EmptyState message="No training data yet. Log an activity to analyze progress over time." />
+      <EmptyState
+        message="No training data yet. Log an activity to analyze progress over time."
+        action={{ href: "/training?tab=log", label: "Go to Log" }}
+      />
     );
   }
 
