@@ -37,6 +37,20 @@ const DEMO_PORT = Number(process.env.E2E_DEMO_PORT ?? 3101);
 const DEMO_DB_PATH =
   process.env.ALLOS_DEMO_DB_PATH ?? "./e2e/.data/e2e-demo.db";
 
+// The persisted AI activity log (lib/ai-log.ts) is `<cwd>/data/logs/ai.jsonl` —
+// NOT under e2e/.data and NOT affected by ALLOS_DB_PATH, so the DB reset above
+// leaves it alone. AI-adjacent specs (ai-narrative/ai-settings) append offline AI
+// events even without an ANTHROPIC_API_KEY, and those persist across invocations
+// in the SAME workspace. That's harmless when playwright runs once per job, but
+// the #889 changed-specs/infra lanes make it run up to THREE times per job: the
+// LAST run's ai-logs-access (alphabetically before ai-narrative, so clean on the
+// first invocation) then sees a prior invocation's events and its "No AI usage
+// recorded" empty-state assertion fails deterministically. Both servers boot from
+// the same cwd and write the same file, so each webServer reset wipes it (before
+// its `next start`, so it always precedes readiness → no test can race the rm).
+// Wiping it here fixes local multi-run pollution too (previously hand-wiped).
+const AI_LOG_PATH = "./data/logs/ai.jsonl";
+
 // Local uses `next dev` (compiles on demand — no prior build needed); CI runs an
 // explicit `next build` step first, then `next start` for a production-like run.
 const startCmd = process.env.CI
@@ -94,7 +108,7 @@ export default defineConfig({
   // lib/db, which bootstraps the admin login from ADMIN_USERNAME/ADMIN_PASSWORD.
   webServer: [
     {
-      command: `rm -f "${DB_PATH}" "${DB_PATH}-shm" "${DB_PATH}-wal" && tsx scripts/seed.ts && tsx e2e/seed-events.ts && ${startCmd}`,
+      command: `rm -f "${DB_PATH}" "${DB_PATH}-shm" "${DB_PATH}-wal" "${AI_LOG_PATH}" && tsx scripts/seed.ts && tsx e2e/seed-events.ts && ${startCmd}`,
       url: `http://localhost:${PORT}/login`,
       reuseExistingServer: !process.env.CI,
       timeout: 240_000,
@@ -108,7 +122,7 @@ export default defineConfig({
     // Demo instance (#181): same seed + image, booted with ALLOS_DEMO_MODE=1 so the
     // seed also creates the read-only demo login. Isolated DB + port.
     {
-      command: `rm -f "${DEMO_DB_PATH}" "${DEMO_DB_PATH}-shm" "${DEMO_DB_PATH}-wal" && tsx scripts/seed.ts && ${demoStartCmd}`,
+      command: `rm -f "${DEMO_DB_PATH}" "${DEMO_DB_PATH}-shm" "${DEMO_DB_PATH}-wal" "${AI_LOG_PATH}" && tsx scripts/seed.ts && ${demoStartCmd}`,
       url: `http://localhost:${DEMO_PORT}/login`,
       reuseExistingServer: !process.env.CI,
       timeout: 240_000,
