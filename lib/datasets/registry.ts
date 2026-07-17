@@ -16,6 +16,10 @@ import {
   allergenFamilyStrategy,
 } from "./allergen-cross-reactivity";
 import { biomarkerDescriptionsDataset } from "./biomarker-descriptions";
+import {
+  bpPercentilesDataset,
+  bpPercentileKeyStrategy,
+} from "./bp-percentiles";
 import { contrastDataset, contrastClassStrategy } from "./contrast-safety";
 import { driDataset, driNutrientStrategy } from "./dri";
 import {
@@ -81,6 +85,13 @@ export const DATASETS: RegisteredDataset[] = [
       unknown
     >,
     strategy: nameStrategy,
+  },
+  {
+    dataset: bpPercentilesDataset as unknown as LoadedDataset<
+      Record<string, unknown>,
+      unknown
+    >,
+    strategy: bpPercentileKeyStrategy,
   },
   {
     dataset: contrastDataset as unknown as LoadedDataset<

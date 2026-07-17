@@ -1,7 +1,10 @@
 // Pre-generate the baked pediatric blood-pressure percentile dataset
-// (lib/bp-percentiles.json) used to interpret a CHILD's blood pressure by AGE, SEX,
-// and HEIGHT PERCENTILE — the AAP 2017 normative tables — instead of the fixed
-// adult thresholds, which mis-classify children (issue #150).
+// (lib/datasets/data/bp-percentiles.json) used to interpret a CHILD's blood pressure by
+// AGE, SEX, and HEIGHT PERCENTILE — the AAP 2017 normative tables — instead of the fixed
+// adult thresholds, which mis-classify children (issue #150). As of issue #860 Track B it
+// is a curated-dataset FRAMEWORK envelope (id/citation/identity/entries + meta) consumed
+// via lib/datasets/bp-percentiles.ts; lib/bp-percentiles.ts is the pure interpretation
+// over its entries.
 //
 // Mirrors the gen-growth-charts.ts / gen-fitness-norms.ts pattern: the published
 // reference values are FIXED CONSTANTS embedded here as the source of truth, the
@@ -34,14 +37,23 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { DATASET_SCHEMA, type DatasetEnvelope } from "../lib/datasets/types";
 
-const OUT = path.join(process.cwd(), "lib", "bp-percentiles.json");
+const OUT = path.join(
+  process.cwd(),
+  "lib",
+  "datasets",
+  "data",
+  "bp-percentiles.json"
+);
 
 // Height-percentile columns and BP-percentile rows the AAP tables are indexed by.
 export const HEIGHT_PERCENTILES = [5, 10, 25, 50, 75, 90, 95] as const;
 export const BP_PERCENTILES = [50, 90, 95] as const;
 export const MIN_BP_AGE = 1;
 export const MAX_BP_AGE = 17;
+
+export type BpSex = "male" | "female";
 
 // One normative row: at `age` (whole years) and `pct` (a BP percentile 50/90/95),
 // the systolic and diastolic mmHg values across the seven height-percentile columns
@@ -52,15 +64,29 @@ export interface BpRow {
   sbp: number[];
   dbp: number[];
 }
-export interface BpPercentileDataset {
-  $comment: string;
+
+// One framework ENTRY: a normative row plus the `sex` it belongs to and a composite
+// `key` (`<sex>:<age>:<pct>`) as its identity. The pure lookup (lib/bp-percentiles.ts)
+// rebuilds the per-sex BpRow[] tables from these entries.
+export interface BpPercentileEntry extends BpRow {
+  key: string;
+  sex: BpSex;
+}
+
+// Dataset-level metadata that conditions lookups but isn't per-entry: the citation, the
+// height/BP percentile grids, and the covered age window. (The framework's `meta` slot.)
+export interface BpPercentilesMeta {
   source: string;
   heightPercentiles: number[];
   bpPercentiles: number[];
   minAge: number;
   maxAge: number;
-  sexes: { male: BpRow[]; female: BpRow[] };
 }
+
+export type BpPercentileDataset = DatasetEnvelope<
+  BpPercentileEntry,
+  BpPercentilesMeta
+>;
 
 // ── AAP 2017 normative BP tables (Flynn 2017), verbatim ─────────────────────────
 // Columns: age  bp%  <7 systolic mmHg by height pct>  <7 diastolic mmHg by height
@@ -195,35 +221,65 @@ export function parseBpTable(block: string): BpRow[] {
   return rows;
 }
 
-// Pure builder: assemble the dataset from the embedded tables. The committed
-// lib/bp-percentiles.json is a FIXED POINT of this (guarded by the dataset test).
+// Flatten one sex's parsed BpRow[] into framework entries with a composite identity key.
+function entriesForSex(sex: BpSex, rows: BpRow[]): BpPercentileEntry[] {
+  return rows.map((r) => ({
+    key: `${sex}:${r.age}:${r.pct}`,
+    sex,
+    age: r.age,
+    pct: r.pct,
+    sbp: r.sbp,
+    dbp: r.dbp,
+  }));
+}
+
+// Pure builder: assemble the framework envelope from the embedded AAP tables. The
+// committed lib/datasets/data/bp-percentiles.json is a FIXED POINT of this (guarded by
+// the dataset test). The mmHg values are copied VERBATIM — only the envelope wrapping
+// (and the per-row identity key) is new. Entries are emitted male-then-female, in age /
+// percentile order, for a stable, reviewable diff.
 export function buildBpPercentiles(): BpPercentileDataset {
+  const entries: BpPercentileEntry[] = [
+    ...entriesForSex("male", parseBpTable(BOYS)),
+    ...entriesForSex("female", parseBpTable(GIRLS)),
+  ];
   return {
-    $comment:
+    $schema: DATASET_SCHEMA,
+    id: "bp-percentiles",
+    title: "Pediatric blood-pressure percentiles (AAP 2017)",
+    description:
       "Baked pediatric blood-pressure percentile dataset (issue #150): the AAP 2017 " +
       "(Flynn et al., Pediatrics 2017) normative 50th/90th/95th systolic & diastolic " +
       "BP by age (1-17 y), sex, and height percentile. Used to classify a child's BP " +
       "(Normal / Elevated / Stage 1 / Stage 2) by percentile instead of adult " +
       "thresholds; see lib/bp-percentiles.ts. Committed + HUMAN-REVIEWABLE; regenerate " +
       "with `npm run gen:bp-percentiles`. INFORMATIONAL reference data, NOT medical advice.",
-    source:
-      "AAP 2017 Clinical Practice Guideline (Flynn et al., Pediatrics 2017;140:e20171904), Tables 3 & 4.",
-    heightPercentiles: [...HEIGHT_PERCENTILES],
-    bpPercentiles: [...BP_PERCENTILES],
-    minAge: MIN_BP_AGE,
-    maxAge: MAX_BP_AGE,
-    sexes: {
-      male: parseBpTable(BOYS),
-      female: parseBpTable(GIRLS),
+    citation: [
+      {
+        source:
+          "AAP 2017 Clinical Practice Guideline (Flynn et al., Pediatrics 2017;140:e20171904), Tables 3 & 4.",
+        note: "Public normative reference values (factual data, not copyrightable expression). Diastolic uses Korotkoff phase 5. INFORMATIONAL, not medical advice.",
+      },
+    ],
+    identity: { keys: ["key"] },
+    meta: {
+      source:
+        "AAP 2017 Clinical Practice Guideline (Flynn et al., Pediatrics 2017;140:e20171904), Tables 3 & 4.",
+      heightPercentiles: [...HEIGHT_PERCENTILES],
+      bpPercentiles: [...BP_PERCENTILES],
+      minAge: MIN_BP_AGE,
+      maxAge: MAX_BP_AGE,
     },
+    entries,
   };
 }
 
 function writeDataset(): void {
   const dataset = buildBpPercentiles();
   fs.writeFileSync(OUT, JSON.stringify(dataset, null, 2) + "\n");
-  const n = dataset.sexes.male.length + dataset.sexes.female.length;
-  console.log(`Wrote ${n} pediatric BP normative rows to ${OUT}`);
+  console.log(
+    `Wrote ${dataset.entries.length} pediatric BP normative rows to ${OUT}`
+  );
   console.log(
     "Review the values against AAP 2017 Tables 3 & 4 before committing."
   );
