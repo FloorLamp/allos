@@ -29,7 +29,10 @@ import {
   illnessCareItems,
 } from "@/lib/illness-care-findings";
 import { collectUpcoming, dismissFinding } from "@/lib/queries";
-import { dedupeKeyHasKnownPrefix } from "@/lib/rule-finding-prefixes";
+import {
+  dedupeKeyHasKnownPrefix,
+  tierForDedupeKey,
+} from "@/lib/rule-finding-prefixes";
 import { ILLNESS_CARE_PREFIX } from "@/lib/illness-care";
 
 function newProfile(name: string): number {
@@ -92,6 +95,8 @@ describe("illness-care builder — duration variant (#448 fixture)", () => {
     // Guardable against the known-prefix registry.
     expect(dedupeKeyHasKnownPrefix(dur[0].dedupeKey)).toBe(true);
     expect(dur[0].dedupeKey.startsWith(ILLNESS_CARE_PREFIX)).toBe(true);
+    // #860 Track A — illness-care is a CARE-tier (push/hero) builder, registered so.
+    expect(tierForDedupeKey(dur[0].dedupeKey)).toBe("care");
 
     // And it reaches the CARE surfaces: an Upcoming item banded "today" (→ hero),
     // self-contained detail (source + disclaimer), same dedupeKey.

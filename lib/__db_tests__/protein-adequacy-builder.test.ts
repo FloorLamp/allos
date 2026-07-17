@@ -11,7 +11,10 @@ import {
   collectCoachingFindings,
 } from "@/lib/rule-findings";
 import { getProteinAdequacy } from "@/lib/queries";
-import { dedupeKeyHasKnownPrefix } from "@/lib/rule-finding-prefixes";
+import {
+  dedupeKeyHasKnownPrefix,
+  tierForDedupeKey,
+} from "@/lib/rule-finding-prefixes";
 import {
   PROTEIN_ADEQUACY_PREFIX,
   proteinAdequacySignalKey,
@@ -70,6 +73,8 @@ describe("buildProteinAdequacyFindings (#767)", () => {
     expect(f.dedupeKey).toBe(proteinAdequacySignalKey());
     expect(f.dedupeKey.startsWith(PROTEIN_ADEQUACY_PREFIX)).toBe(true);
     expect(dedupeKeyHasKnownPrefix(f.dedupeKey)).toBe(true);
+    // #860 Track A — registered coaching tier (never a push/hero).
+    expect(tierForDedupeKey(f.dedupeKey)).toBe("coaching");
     // Coaching tier: a calm info tone, floor-caveated, never a push/hero.
     expect(f.tone).toBe("info");
     expect(f.detail).toMatch(/floor/i);

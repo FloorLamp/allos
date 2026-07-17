@@ -18,7 +18,10 @@ import {
   conditionReviewItems,
 } from "@/lib/condition-suggestion-findings";
 import { collectUpcoming, dismissFinding } from "@/lib/queries";
-import { dedupeKeyHasKnownPrefix } from "@/lib/rule-finding-prefixes";
+import {
+  dedupeKeyHasKnownPrefix,
+  tierForDedupeKey,
+} from "@/lib/rule-finding-prefixes";
 import { CONDITION_REVIEW_PREFIX } from "@/lib/condition-suggestions";
 
 function newProfile(name: string): number {
@@ -144,6 +147,8 @@ describe("condition-suggestion builder (#685, #448 fixture)", () => {
     for (const i of items) {
       expect(i.key.startsWith(CONDITION_REVIEW_PREFIX)).toBe(true);
       expect(dedupeKeyHasKnownPrefix(i.key)).toBe(true);
+      // #860 Track A — condition-review is a CARE-tier builder (push/hero).
+      expect(tierForDedupeKey(i.key)).toBe("care");
     }
   });
 

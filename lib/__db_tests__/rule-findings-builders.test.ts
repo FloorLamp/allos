@@ -58,7 +58,11 @@ import {
 import { activeFindings } from "@/lib/findings";
 import { projectGoal, type GoalProjection } from "@/lib/trend-projection";
 import { PACE_SLACK_DAYS, GOAL_PACE_WINDOW_DAYS } from "@/lib/goal-pacing";
-import { dedupeKeyHasKnownPrefix } from "@/lib/rule-finding-prefixes";
+import {
+  dedupeKeyHasKnownPrefix,
+  tierForDedupeKey,
+  declaredReasonCodesFor,
+} from "@/lib/rule-finding-prefixes";
 
 // A fresh profile per test — cross-domain rows are inserted directly (modeled on
 // lib/__db_tests__/fixtures.ts) so each fixture is self-contained.
@@ -239,6 +243,8 @@ describe("buildMuscleVolumeFindings — below-band shortfall (#742)", () => {
       muscleVolumeSignalKey("side-delts", anchor.slice(0, 7))
     );
     expect(f.tone).toBe("info"); // calm coaching tier (#449)
+    // #860 Track A — registered coaching tier.
+    expect(tierForDedupeKey(f.dedupeKey)).toBe("coaching");
     expect(f.detail).toContain("Side delts");
     expect(f.detail).toContain("8"); // the band floor is named
 
@@ -847,7 +853,7 @@ describe("rule-findings builders — dedupeKey prefix registry (#448)", () => {
        VALUES (?, 'food_group', 'fatty_fish', 2)`
     ).run(profileId);
 
-    const keys = [
+    const findings = [
       ...buildAdherencePatternFindings(profileId, anchor),
       ...buildTrainingObservationFindings(profileId, anchor),
       ...buildMuscleVolumeFindings(profileId, anchor),
@@ -855,16 +861,31 @@ describe("rule-findings builders — dedupeKey prefix registry (#448)", () => {
       ...buildBodyHygieneFindings(profileId, anchor, "kg"),
       ...buildFoodSuggestionFindings(profileId),
       ...buildFoodHabitFindings(profileId),
-    ].map((f) => f.dedupeKey);
+    ];
+    const keys = findings.map((f) => f.dedupeKey);
 
     // At least one finding fired in each domain, and EVERY key parses against the
     // known prefix registry (so a page's prefix-guarded dismiss action can match it).
     expect(keys.length).toBeGreaterThan(0);
     expect(keys.some((k) => k.startsWith(ADHERENCE_PREFIX))).toBe(true);
-    for (const k of keys) {
+    for (const f of findings) {
+      const k = f.dedupeKey;
       expect(dedupeKeyHasKnownPrefix(k), `unguardable dedupeKey: ${k}`).toBe(
         true
       );
+      // #860 Track A — tier binding: these are all coaching-tier builders, so every
+      // key must resolve to the "coaching" tier in the registry. A builder registered
+      // under the wrong tier (or unregistered) fails here.
+      expect(tierForDedupeKey(k), `wrong/absent tier: ${k}`).toBe("coaching");
+      // Reason-source binding: any #656 Reason a builder attaches must have its code
+      // declared for this prefix (these builders declare none, so must carry none).
+      const declared = declaredReasonCodesFor(k) ?? [];
+      for (const r of f.reasons ?? []) {
+        expect(
+          declared as readonly string[],
+          `undeclared reason "${r.code}" on ${k}`
+        ).toContain(r.code);
+      }
     }
   });
 });
@@ -926,6 +947,10 @@ describe("collectCoachingFindings — the #449 unified rollup", () => {
       expect(dedupeKeyHasKnownPrefix(k), `unguardable dedupeKey: ${k}`).toBe(
         true
       );
+      // #860 Track A — tier binding: everything collectCoachingFindings aggregates is
+      // coaching tier by definition (#449). A builder added to the rollup but
+      // registered `care` (or unregistered) fails CI here.
+      expect(tierForDedupeKey(k), `not coaching-tier: ${k}`).toBe("coaching");
     }
   });
 });
@@ -951,6 +976,8 @@ describe("buildOralHealthFindings — diabetes↔periodontitis note (#706)", () 
     expect(findings[0].dedupeKey).toBe(periodontalObservationKey());
     expect(findings[0].tone).toBe("info");
     expect(dedupeKeyHasKnownPrefix(findings[0].dedupeKey)).toBe(true);
+    // #860 Track A — registered coaching tier.
+    expect(tierForDedupeKey(findings[0].dedupeKey)).toBe("coaching");
     // Coaching tier: it flows through the unified rollup (never a push, never hero).
     const rolled = collectCoachingFindings(
       profileId,

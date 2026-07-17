@@ -16,7 +16,10 @@ import {
   tempRedFlagItems,
 } from "@/lib/temp-red-flag-findings";
 import { collectUpcoming, dismissFinding } from "@/lib/queries";
-import { dedupeKeyHasKnownPrefix } from "@/lib/rule-finding-prefixes";
+import {
+  dedupeKeyHasKnownPrefix,
+  tierForDedupeKey,
+} from "@/lib/rule-finding-prefixes";
 import { TEMP_RED_FLAG_PREFIX } from "@/lib/temp-red-flag";
 
 // #448 findings-builder fixture for the single-reading temperature red-flag builder
@@ -75,6 +78,8 @@ describe("temp-red-flag builder — infant fever (#448 fixture)", () => {
     );
     expect(dedupeKeyHasKnownPrefix(findings[0].dedupeKey)).toBe(true);
     expect(findings[0].dedupeKey.startsWith(TEMP_RED_FLAG_PREFIX)).toBe(true);
+    // #860 Track A — temp red-flag is a CARE-tier (push/hero) builder, registered so.
+    expect(tierForDedupeKey(findings[0].dedupeKey)).toBe("care");
 
     // Care surface: an Upcoming item banded "today" (→ hero), same dedupeKey.
     const items = tempRedFlagItems(p, today(p));
