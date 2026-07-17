@@ -73,12 +73,23 @@ export class DatasetError extends Error {
 // `normalize` canonicalizes BOTH an entry's stored key value and an incoming query
 // so they compare equal (case-folding for names, slugifying, digit-only for an
 // RxCUI, …). A strategy returning "" for a value means "not indexable by this
-// strategy" and the matcher skips it. Name + slug ship today; RxCUI / family
-// strategies are a documented future seam — a dataset that needs one supplies its
-// own MatchStrategy, no framework change required.
+// strategy" and the matcher skips it. Name + slug ship today.
+//
+// MULTI-VALUE (issue #860 wave 2): a single entry can index under SEVERAL keys — a
+// drug's synonyms + brand aliases, an RxCUI set, a sorted drug-drug PAIR, a
+// `gene|allele` composite. A strategy expresses that by implementing the optional
+// `normalizeMany(raw): string[]` — the SET of normalized keys a raw value expands to
+// (an array field, a delimited scalar, a composite pair). When present it is
+// authoritative: the matcher indexes an entry under EVERY key it yields and resolves a
+// query if ANY of the query's expanded keys hits. `normalize` stays required (the
+// single-key fallback, and what a `normalizeMany`-less strategy uses). The REFUSAL
+// GATE is unchanged — an expansion that yields no non-empty key resolves to null,
+// never a guess. See `multiValueStrategy` / `pairStrategy` / `compositeStrategy` and
+// the `sortedPairKey` / `compositeKey` / `pairKeysAcross` key builders in matcher.ts.
 export interface MatchStrategy {
   key: string;
   normalize(raw: unknown): string;
+  normalizeMany?(raw: unknown): string[];
 }
 
 // The resolved-or-refused lookup surface built over a loaded dataset. `match`

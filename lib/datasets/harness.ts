@@ -8,12 +8,17 @@
 //                        (the dataset can actually be looked up).
 //   - refusalGate      — a subject the dataset does NOT contain resolves to null,
 //                        never a guess (the safety property).
+//   - noKeyCollisions  — no two entries index under the same normalized key. For a
+//                        single-value strategy this is implied by identityResolves; for
+//                        a MULTI-VALUE one (synonyms/aliases/pairs, #860 wave 2) it's the
+//                        distinct safety check that a shared alias/pair doesn't silently
+//                        make one entry shadow another. Same coverage, more keys.
 //
 // These return a { ok, problems } result rather than calling a test framework's
 // expect(), so they're pure and usable both from vitest (assert ok === true) and from
 // the linter's aggregate scan. No DB, no network.
 
-import { createMatcher } from "./matcher";
+import { createMatcher, expand } from "./matcher";
 import type { LoadedDataset, MatchStrategy } from "./types";
 
 export interface HarnessResult {
@@ -95,8 +100,40 @@ export function refusalGate<E, M>(
   return result(problems);
 }
 
-// Run all three over a dataset + its primary strategy; aggregate the problems. Used
-// by the linter to check the whole registry in one pass.
+// No two entries index under the same normalized key. `identityResolves` catches a
+// collision on an entry's FIRST-hit key; for a multi-value strategy a shared alias/pair
+// on a NON-first key can still resolve each entry to itself while silently shadowing the
+// other — this walks every expanded key across the whole dataset and flags any key two
+// entries produce (the FIRST owner is reported, mirroring the matcher's first-wins). For
+// single-value strategies it's equivalent to the identityResolves collision check.
+export function noKeyCollisions<E, M>(
+  dataset: LoadedDataset<E, M>,
+  strategy: MatchStrategy
+): HarnessResult {
+  const problems: string[] = [];
+  const owner = new Map<string, number>();
+  dataset.entries.forEach((entry, i) => {
+    for (const k of expand(
+      strategy,
+      (entry as Record<string, unknown>)[strategy.key]
+    )) {
+      const prev = owner.get(k);
+      if (prev === undefined) {
+        owner.set(k, i);
+      } else {
+        problems.push(
+          `${dataset.id}: entry[${prev}] and entry[${i}] both index key ${JSON.stringify(
+            k
+          )} (identity collision)`
+        );
+      }
+    }
+  });
+  return result(problems);
+}
+
+// Run all four over a dataset + its primary strategy; aggregate the problems. Used by
+// the linter to check the whole registry in one pass.
 export function runHarness<E, M>(
   dataset: LoadedDataset<E, M>,
   strategy: MatchStrategy
@@ -105,6 +142,7 @@ export function runHarness<E, M>(
     ...citationPresent(dataset).problems,
     ...identityResolves(dataset, strategy).problems,
     ...refusalGate(dataset, strategy).problems,
+    ...noKeyCollisions(dataset, strategy).problems,
   ];
   return result(problems);
 }

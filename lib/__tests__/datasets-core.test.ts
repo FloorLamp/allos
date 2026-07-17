@@ -8,9 +8,17 @@ import {
   slugStrategy,
   fieldStrategy,
   rxcuiStrategyStub,
+  expand,
+  multiValueStrategy,
+  compositeKey,
+  sortedPairKey,
+  pairKeysAcross,
+  pairStrategy,
+  compositeStrategy,
   citationPresent,
   identityResolves,
   refusalGate,
+  noKeyCollisions,
   runHarness,
   type DatasetEnvelope,
 } from "@/lib/datasets";
@@ -139,6 +147,200 @@ describe("matcher strategies + refusal gate", () => {
     expect(rxcuiStrategyStub().normalize("RxCUI:1234")).toBe("1234");
     expect(rxcuiStrategyStub().normalize(5678)).toBe("5678");
     expect(rxcuiStrategyStub().normalize(null)).toBe("");
+  });
+});
+
+// --- Multi-value + composite machinery (issue #860 wave 2) ----------------------
+
+// A drug-ish entry carrying several identity aliases (generic + brands + a CUI set).
+interface Drug {
+  aliases: string[];
+  cuis: number[];
+  label: string;
+}
+
+function drugEnvelope(): DatasetEnvelope<Drug> {
+  return {
+    $schema: DATASET_SCHEMA,
+    id: "drugs",
+    title: "Test drugs",
+    citation: [{ source: "A cited compendium" }],
+    identity: { keys: ["aliases", "cuis"] },
+    entries: [
+      {
+        aliases: ["Acetaminophen", "Tylenol", "Paracetamol"],
+        cuis: [161, 1234],
+        label: "acetaminophen",
+      },
+      {
+        aliases: ["Ibuprofen", "Advil", "Motrin"],
+        cuis: [5640],
+        label: "ibuprofen",
+      },
+    ],
+  };
+}
+
+describe("expand()", () => {
+  it("falls back to a single normalized key for a single-value strategy", () => {
+    expect(expand(nameStrategy, "Fatty Fish")).toEqual(["fatty fish"]);
+    expect(expand(nameStrategy, "  ")).toEqual([]);
+    expect(expand(nameStrategy, 123)).toEqual([]);
+  });
+
+  it("yields every key for a multi-value strategy, empties filtered", () => {
+    const s = multiValueStrategy("aliases");
+    expect(expand(s, ["Tylenol", "", "Paracetamol"])).toEqual([
+      "tylenol",
+      "paracetamol",
+    ]);
+  });
+});
+
+describe("multiValueStrategy", () => {
+  const ds = loadDataset<Drug>(drugEnvelope());
+
+  it("indexes one entry under every alias and resolves any of them", () => {
+    const m = createMatcher(ds, multiValueStrategy("aliases"));
+    expect(m.match("Tylenol")?.label).toBe("acetaminophen");
+    expect(m.match("paracetamol")?.label).toBe("acetaminophen");
+    expect(m.match("ACETAMINOPHEN")?.label).toBe("acetaminophen");
+    expect(m.match("Advil")?.label).toBe("ibuprofen");
+    expect(m.has("Motrin")).toBe(true);
+  });
+
+  it("refuses an alias no entry carries (the refusal gate holds)", () => {
+    const m = createMatcher(ds, multiValueStrategy("aliases"));
+    expect(m.match("Aspirin")).toBeNull();
+    expect(m.match("")).toBeNull();
+  });
+
+  it("supports a custom per-element normalizer (an RxCUI digit fold)", () => {
+    const digits = rxcuiStrategyStub().normalize;
+    const m = createMatcher(ds, multiValueStrategy("cuis", digits));
+    expect(m.match(161)?.label).toBe("acetaminophen");
+    expect(m.match("RxCUI:1234")?.label).toBe("acetaminophen");
+    expect(m.match(5640)?.label).toBe("ibuprofen");
+    expect(m.match(9999)).toBeNull();
+  });
+
+  it("resolves the whole alias array to the entry (identityResolves shape)", () => {
+    const m = createMatcher(ds, multiValueStrategy("aliases"));
+    expect(m.match(["Acetaminophen", "Tylenol", "Paracetamol"])?.label).toBe(
+      "acetaminophen"
+    );
+  });
+});
+
+describe("composite + pair key builders", () => {
+  it("compositeKey folds parts and joins in the given (ordered) slot order", () => {
+    expect(compositeKey(["CYP2C19", "*2"])).toBe("cyp2c19|*2");
+    expect(compositeKey(["CYP2D6", "Codeine"])).toBe("cyp2d6|codeine");
+    // A missing part refuses (empty key).
+    expect(compositeKey(["CYP2C19", ""])).toBe("");
+    expect(compositeKey(["CYP2C19", "  "])).toBe("");
+  });
+
+  it("sortedPairKey is order-independent (drug-drug symmetry)", () => {
+    expect(sortedPairKey("Warfarin", "Aspirin")).toBe("aspirin|warfarin");
+    expect(sortedPairKey("Aspirin", "Warfarin")).toBe("aspirin|warfarin");
+    expect(sortedPairKey("Aspirin", "")).toBe("");
+  });
+
+  it("pairKeysAcross builds the sorted cross product of two concept sets", () => {
+    const keys = pairKeysAcross(["warfarin", "coumadin"], ["aspirin", "asa"]);
+    expect(keys.sort()).toEqual([
+      "asa|coumadin",
+      "asa|warfarin",
+      "aspirin|coumadin",
+      "aspirin|warfarin",
+    ]);
+    // A query pair from EITHER side resolves to a member key.
+    expect(keys).toContain(sortedPairKey("aspirin", "warfarin"));
+    expect(keys).toContain(sortedPairKey("coumadin", "asa"));
+  });
+});
+
+describe("pairStrategy (unordered pair identity)", () => {
+  interface Interaction {
+    pair: [string, string];
+    severity: string;
+  }
+  const ds = loadDataset<Interaction>({
+    $schema: DATASET_SCHEMA,
+    id: "interactions",
+    title: "Test interactions",
+    citation: [{ source: "A cited interaction table" }],
+    identity: { keys: ["pair"] },
+    entries: [
+      { pair: ["Warfarin", "Aspirin"], severity: "major" },
+      { pair: ["Sildenafil", "Nitroglycerin"], severity: "contraindicated" },
+    ],
+  });
+
+  it("resolves a pair queried in EITHER order to the same rule", () => {
+    const m = createMatcher(ds, pairStrategy("pair"));
+    expect(m.match(["Warfarin", "Aspirin"])?.severity).toBe("major");
+    expect(m.match(["Aspirin", "Warfarin"])?.severity).toBe("major");
+    expect(m.match(["nitroglycerin", "sildenafil"])?.severity).toBe(
+      "contraindicated"
+    );
+  });
+
+  it("refuses an unlisted pair and a malformed query", () => {
+    const m = createMatcher(ds, pairStrategy("pair"));
+    expect(m.match(["Warfarin", "Ibuprofen"])).toBeNull();
+    expect(m.match(["Warfarin"])).toBeNull();
+    expect(m.match("Warfarin")).toBeNull();
+  });
+});
+
+describe("compositeStrategy (ordered gene|allele / gene|drug)", () => {
+  interface PgxRule {
+    combo: [string, string];
+    note: string;
+  }
+  const ds = loadDataset<PgxRule>({
+    $schema: DATASET_SCHEMA,
+    id: "pgx",
+    title: "Test PGx",
+    citation: [{ source: "A cited PGx guideline" }],
+    identity: { keys: ["combo"] },
+    entries: [
+      { combo: ["CYP2C19", "*2"], note: "poor metabolizer allele" },
+      { combo: ["CYP2D6", "Codeine"], note: "avoid" },
+    ],
+  });
+
+  it("resolves an ordered composite and preserves slot order", () => {
+    const m = createMatcher(ds, compositeStrategy("combo"));
+    expect(m.match(["CYP2C19", "*2"])?.note).toBe("poor metabolizer allele");
+    expect(m.match(["cyp2d6", "codeine"])?.note).toBe("avoid");
+    // Order matters (unlike a pair) — the swapped composite is a different key.
+    expect(m.match(["*2", "CYP2C19"])).toBeNull();
+    expect(m.match(["CYP2C19", "*17"])).toBeNull();
+  });
+});
+
+describe("noKeyCollisions harness", () => {
+  it("passes a multi-value dataset with disjoint aliases", () => {
+    const ds = loadDataset<Drug>(drugEnvelope());
+    expect(noKeyCollisions(ds, multiValueStrategy("aliases")).ok).toBe(true);
+    expect(runHarness(ds, multiValueStrategy("aliases")).ok).toBe(true);
+  });
+
+  it("flags a shared alias two entries both index (silent shadowing)", () => {
+    const e = drugEnvelope();
+    // Give ibuprofen a stray "Tylenol" alias on a NON-first key — it still resolves to
+    // itself, but it shadows acetaminophen on that key. identityResolves alone misses
+    // this; noKeyCollisions catches it.
+    e.entries[1].aliases = ["Ibuprofen", "Tylenol"];
+    const ds = loadDataset<Drug>(e);
+    const r = noKeyCollisions(ds, multiValueStrategy("aliases"));
+    expect(r.ok).toBe(false);
+    expect(r.problems[0]).toMatch(/both index key "tylenol"/);
+    // And runHarness surfaces it too.
+    expect(runHarness(ds, multiValueStrategy("aliases")).ok).toBe(false);
   });
 });
 
