@@ -27,6 +27,8 @@ let profileId: number;
 let mislabeledId: number; // MCHC 33 g/L, stated range 31-37 (really g/dL)
 let genuineLowId: number; // MCHC 20 g/dL, genuinely low
 let noRangeId: number; // MCHC 33 g/L, no stated range → no signal
+let reportRangeOnlyId: number; // MCHC 35.8 g/L: normal per report (31-37), just
+// above the tight canonical ceiling (35.4) — the real-export row #761 first missed
 
 function rowOf(id: number): {
   unit: string | null;
@@ -79,6 +81,11 @@ beforeAll(() => {
   genuineLowId = insertMchc(20, "g/dL", "31.6-35.4", null);
   // Correctly labeled, in range, no stated range → never a mislabel candidate.
   noRangeId = insertMchc(33, "g/dL", null, null);
+  // The real-export row: 35.8 g/L, stated range 31-37. Relabeled to g/dL it is
+  // 35.8 — normal per the report but 0.4 above the canonical ceiling (35.4), so the
+  // corroboration must accept the report's own range or this is missed and a false
+  // 'low' (35.8 g/L → 3.58 g/dL) is derived.
+  reportRangeOnlyId = insertMchc(35.8, "g/L", "31.0-37.0", null);
 });
 
 describe("unit-mislabel cross-check (issue #761)", () => {
@@ -96,17 +103,19 @@ describe("unit-mislabel cross-check (issue #761)", () => {
     reconcileFlags(profileId);
     // The mislabel suppression leaves the extractor's (no) flag; NOT a false 'low'.
     expect(rowOf(mislabeledId).flag).toBeNull();
+    // The real-export 35.8 g/L row is suppressed the same way — corroborated by the
+    // report's own 31-37 range even though 35.8 is just outside the canonical band.
+    expect(rowOf(reportRangeOnlyId).flag).toBeNull();
     // The genuinely-low reading still flags 'low'.
     expect(rowOf(genuineLowId).flag).toBe("low");
     // The correct in-range reading is unflagged.
     expect(rowOf(noRangeId).flag).toBeNull();
   });
 
-  it("surfaces exactly the mislabeled row as a Review card", () => {
+  it("surfaces both mislabeled rows as Review cards", () => {
     const cards = getUnitMislabelReviews(profileId);
-    expect(cards).toHaveLength(1);
-    expect(cards[0]).toMatchObject({
-      id: mislabeledId,
+    expect(cards).toHaveLength(2);
+    expect(cards.find((c) => c.id === mislabeledId)).toMatchObject({
       name: "MCHC",
       value: 33,
       statedUnit: "g/L",
@@ -114,6 +123,18 @@ describe("unit-mislabel cross-check (issue #761)", () => {
       statedRange: "31-37",
       factor: 10,
     });
+    // The real-export row surfaces too — corroborated by its own stated range.
+    expect(cards.find((c) => c.id === reportRangeOnlyId)).toMatchObject({
+      value: 35.8,
+      statedUnit: "g/L",
+      correctedUnit: "g/dL",
+      statedRange: "31.0-37.0",
+      factor: 10,
+    });
+    // Dismiss the real-export row now so the Apply/undo/Dismiss lifecycle below
+    // reasons about the single mislabeledId card as it did before this row existed.
+    dismissUnitMislabel(profileId, reportRangeOnlyId);
+    expect(getUnitMislabelReviews(profileId)).toHaveLength(1);
   });
 
   it("Apply corrects the unit to g/dL, sets the edit-lock, and re-derives Normal", () => {
