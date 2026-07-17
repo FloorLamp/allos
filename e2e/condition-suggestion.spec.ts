@@ -13,22 +13,34 @@ import { E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
 const HIV_ITEM = "upcoming-item-condition-review:name:hiv";
 
+// A generous per-assertion budget: this spec runs after a Server-Action-heavy
+// setup (delete-reset → confirm → revalidate) and its findings are recomputed
+// server-side on each navigation, so a slow CI runner can push a server-rendered
+// item/row past Playwright's 5s expect default (the #920 CI double-fail). Every
+// wait below is auto-retrying, so a wider ceiling only helps a slow box — it never
+// slows the happy path.
+const WAIT = 15_000;
+
 // Remove any "HIV" condition currently on the problem list (RecordTable trash →
 // confirm dialog). No-op when the list is clean, so it's a safe repeat-reset.
 async function removeHivCondition(page: Page): Promise<void> {
   await page.goto("/conditions");
-  const row = page.getByRole("row").filter({ hasText: "HIV" });
-  while ((await row.count()) > 0) {
-    await row.first().getByRole("button", { name: "Delete" }).click();
+  // Re-query the HIV rows each iteration (lazy locator) so a click never targets a
+  // row detached by the prior delete's revalidate.
+  const hivRows = () => page.getByRole("row").filter({ hasText: "HIV" });
+  while ((await hivRows().count()) > 0) {
+    // Open the row's confirm dialog and WAIT for it to mount before driving its
+    // confirm — a raw click on a not-yet-ready dialog can miss on a slow runner.
+    const trash = hivRows().first().getByRole("button", { name: "Delete" });
+    await expect(trash).toBeVisible({ timeout: WAIT });
+    await trash.click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible({ timeout: WAIT });
     await settledClick(
       page,
-      page
-        .getByRole("dialog")
-        .getByRole("button", { name: "Delete", exact: true })
+      dialog.getByRole("button", { name: "Delete", exact: true })
     );
-    await expect(page.getByRole("row").filter({ hasText: "HIV" })).toHaveCount(
-      0
-    );
+    await expect(hivRows()).toHaveCount(0, { timeout: WAIT });
   }
 }
 
@@ -47,8 +59,10 @@ test.describe("condition-suggestion review (#685)", () => {
       // The suggestion surfaces on Upcoming as a condition-review item with the confirm.
       await page.goto("/upcoming");
       const item = page.getByTestId(HIV_ITEM);
-      await expect(item).toBeVisible();
-      await expect(item).toContainText("Add HIV to conditions?");
+      await expect(item).toBeVisible({ timeout: WAIT });
+      await expect(item).toContainText("Add HIV to conditions?", {
+        timeout: WAIT,
+      });
 
       // Confirm it — the Server Action creates the Condition idempotently.
       await settledClick(
@@ -56,15 +70,27 @@ test.describe("condition-suggestion review (#685)", () => {
         item.getByRole("button", { name: "Add to conditions" })
       );
 
+      // Wait for the confirm's revalidation to land IN PLACE: the suggestion
+      // self-clears from Upcoming (the condition is now on the problem list, so the
+      // finding recomputes away). This is the durable-write gate — asserting it
+      // BEFORE navigating away is what makes /conditions race-free. `goto` renders
+      // the target page ONCE; if the write landed only AFTER that render, a
+      // subsequent toHaveCount just re-polls stale DOM forever (the #920 flake:
+      // "received 0", 34 polls). Waiting for the in-place clear proves the row is
+      // committed before we read it.
+      await expect(item).toHaveCount(0, { timeout: WAIT });
+
       // It now lives on the problem list...
       await page.goto("/conditions");
       await expect(
         page.getByRole("row").filter({ hasText: "HIV" })
-      ).toHaveCount(1);
+      ).toHaveCount(1, { timeout: WAIT });
 
-      // ...and the suggestion self-clears from Upcoming (deduped by concept).
+      // ...and stays cleared from Upcoming on a fresh load (deduped by concept).
       await page.goto("/upcoming");
-      await expect(page.getByTestId(HIV_ITEM)).toHaveCount(0);
+      await expect(page.getByTestId(HIV_ITEM)).toHaveCount(0, {
+        timeout: WAIT,
+      });
     } finally {
       // Reset so the next run/repeat starts from a clean problem list.
       await removeHivCondition(page);

@@ -24,7 +24,10 @@ export default function SportExplorer({ sports }: { sports: SportStat[] }) {
 
   if (sports.length === 0) {
     return (
-      <EmptyState message="No sport logged yet. Log a tennis match, pickup game, or climb to see a summary." />
+      <EmptyState
+        message="No sport logged yet. Log a tennis match, pickup game, or climb to see a summary."
+        action={{ href: "/training?tab=log", label: "Go to Log" }}
+      />
     );
   }
 

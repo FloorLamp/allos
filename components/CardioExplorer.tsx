@@ -32,7 +32,10 @@ export default function CardioExplorer({
 
   if (cardio.length === 0) {
     return (
-      <EmptyState message="No cardio logged yet. Log a run, ride, or swim to see trends and records." />
+      <EmptyState
+        message="No cardio logged yet. Log a run, ride, or swim to see trends and records."
+        action={{ href: "/training?tab=log", label: "Go to Log" }}
+      />
     );
   }
 

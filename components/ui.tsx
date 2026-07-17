@@ -57,10 +57,27 @@ export function StatCard({
   return href ? <Link href={href}>{inner}</Link> : inner;
 }
 
-export function EmptyState({ message }: { message: string }) {
+// The dashed "nothing here yet" panel. `action` is an optional typed link
+// (#812): when the copy names a destination ("Log an activity…", "…in Settings →
+// Profile"), pass the link instead of leaving the user to navigate by hand — the
+// href is `AppRoute`, so a dead pathname is a `tsc` error (#285).
+export function EmptyState({
+  message,
+  action,
+}: {
+  message: string;
+  action?: { href: AppRoute; label: string };
+}) {
   return (
     <div className="rounded-xl border border-dashed border-black/10 bg-white p-10 text-center text-sm text-slate-500 dark:border-white/10 dark:bg-ink-900 dark:text-slate-400">
       {message}
+      {action && (
+        <div className="mt-4">
+          <Link href={action.href} className="btn btn-sm">
+            {action.label} →
+          </Link>
+        </div>
+      )}
     </div>
   );
 }

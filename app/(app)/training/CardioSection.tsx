@@ -49,7 +49,10 @@ export default async function CardioSection() {
   return (
     <section>
       {cardio.length === 0 ? (
-        <EmptyState message="No cardio logged yet. Log a run, ride, or swim to see trends and records." />
+        <EmptyState
+          message="No cardio logged yet. Log a run, ride, or swim to see trends and records."
+          action={{ href: "/training?tab=log", label: "Go to Log" }}
+        />
       ) : (
         <>
           {/* Recent cardio PRs beside the weekly-volume chart (2 columns when

@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { loginAs } from "./nav";
+import { followLink } from "./helpers";
 import {
   E2E_LOGIN_EMPTY_TRAINING,
   E2E_MEMBER_PASSWORD,
@@ -92,6 +93,36 @@ test.describe("Training Log first-run empty state (#809)", () => {
     await expect(mobileLog).toBeVisible();
     await mobileLog.click();
     await expect(page.getByPlaceholder(/What did you do/)).toBeVisible();
+
+    await page.close();
+  });
+
+  // #812: an EmptyState that names a destination now links to it. The Analyze tab's
+  // "No training data yet. Log an activity…" empty state carries a typed action link
+  // to the Log tab. Same activity-free fixture — a representative of the whole sweep.
+  test("the Analyze empty state links to the Log tab", async ({ browser }) => {
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_EMPTY_TRAINING,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    test.slow();
+
+    await page.goto("/training?tab=analyze");
+    await expect(
+      page.getByText("No training data yet. Log an activity", { exact: false })
+    ).toBeVisible();
+
+    // Follow the empty state's action link — it lands on the Log tab.
+    await followLink(
+      page,
+      page.getByRole("link", { name: /Go to Log/ }),
+      /\/training\?tab=log/
+    );
+    await expect(
+      page.getByText("No activities logged yet. Log your first workout", {
+        exact: false,
+      })
+    ).toBeVisible();
 
     await page.close();
   });
