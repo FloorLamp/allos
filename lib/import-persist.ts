@@ -111,6 +111,26 @@ export function clearImportedDocumentRows(
            SELECT id FROM encounters WHERE profile_id = ? AND document_id = ?
          )`
   ).run(profileId, profileId, docId);
+  // Row-ops side-state (#700): a follow-up (a manual care_plan_item) may link an
+  // imaging study THIS document imported as its SOURCE finding, or a resolution may
+  // cite it. imaging_studies carries no ON DELETE, so NULL those follow-up links
+  // FIRST — otherwise deleting the study (in the footprint loop) would trip the
+  // care_plan_items source/resolved FKs. A manual follow-up is preserved, just
+  // de-linked (source_kind cleared so it degrades to a generic care-plan item).
+  db.prepare(
+    `UPDATE care_plan_items SET source_kind = NULL, source_imaging_study_id = NULL
+       WHERE profile_id = ?
+         AND source_imaging_study_id IN (
+           SELECT id FROM imaging_studies WHERE profile_id = ? AND document_id = ?
+         )`
+  ).run(profileId, profileId, docId);
+  db.prepare(
+    `UPDATE care_plan_items SET resolved_by_imaging_study_id = NULL
+       WHERE profile_id = ?
+         AND resolved_by_imaging_study_id IN (
+           SELECT id FROM imaging_studies WHERE profile_id = ? AND document_id = ?
+         )`
+  ).run(profileId, profileId, docId);
   for (const t of IMPORT_FOOTPRINT_TABLES) {
     db.prepare(
       `DELETE FROM ${t.table} WHERE ${t.key} = ? AND ${footprintScope(t)}`
@@ -169,6 +189,27 @@ export function moveImportedDocumentRows(
       `UPDATE appointments SET encounter_id = NULL
          WHERE profile_id = ? AND encounter_id IS NOT NULL
            AND encounter_id NOT IN (SELECT id FROM encounters WHERE profile_id = ?)`
+    ).run(pid, pid);
+  }
+  // Row-ops side-state (#700): a follow-up's source/resolving imaging link must never
+  // cross profiles. A reassign can move an imported imaging study but not a MANUAL
+  // follow-up that links it (or vice-versa) — re-enforce same-profile on BOTH
+  // affected profiles: NULL any care_plan_items link whose imaging study no longer
+  // lives in that follow-up's profile (mirrors the appointment→encounter re-enforce).
+  for (const pid of [srcProfileId, destProfileId]) {
+    db.prepare(
+      `UPDATE care_plan_items SET source_kind = NULL, source_imaging_study_id = NULL
+         WHERE profile_id = ? AND source_imaging_study_id IS NOT NULL
+           AND source_imaging_study_id NOT IN (
+             SELECT id FROM imaging_studies WHERE profile_id = ?
+           )`
+    ).run(pid, pid);
+    db.prepare(
+      `UPDATE care_plan_items SET resolved_by_imaging_study_id = NULL
+         WHERE profile_id = ? AND resolved_by_imaging_study_id IS NOT NULL
+           AND resolved_by_imaging_study_id NOT IN (
+             SELECT id FROM imaging_studies WHERE profile_id = ?
+           )`
     ).run(pid, pid);
   }
 }

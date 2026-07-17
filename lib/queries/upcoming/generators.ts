@@ -14,7 +14,7 @@ import { shiftDateStr } from "../../date";
 import { isTrainingRestricted } from "../../age-gate";
 import {
   signalKey,
-  isSuppressed,
+  isItemHiddenBySuppression,
   type SuppressionRecord,
 } from "../../upcoming-suppress";
 import { isDueOn, timeBucket } from "../../supplement-schedule";
@@ -121,6 +121,7 @@ import { getFindingSuppressions } from "./suppressions";
 import { illnessCareItems } from "../../illness-care-findings";
 import { conditionReviewItems } from "../../condition-suggestion-findings";
 import { tempRedFlagItems } from "../../temp-red-flag-findings";
+import { followUpItems } from "../../followup-findings";
 
 // Biomarker categories a retest nudge makes sense for. Vitals/scans/prescriptions
 // aren't "labs to redraw", and genomics never go stale (handled by
@@ -685,7 +686,13 @@ function trainingItems(profileId: number): UpcomingItem[] {
 // colonoscopy and a catalog "colorectal screening due" can both appear; the issue
 // punts that to a follow-up.
 function carePlanItems(profileId: number): UpcomingItem[] {
-  return carePlanUpcomingItems(getCarePlanItems(profileId));
+  // Exclude LINKED follow-ups (source_kind set, #700) — those are surfaced by the
+  // dedicated care-tier followUpItems builder (legible + resolution-aware), so the
+  // generic careplan generator handles only the plain planned-care lines. Without
+  // this filter a tracked follow-up would double-surface (careplan + followup).
+  return carePlanUpcomingItems(
+    getCarePlanItems(profileId).filter((c) => c.source_kind == null)
+  );
 }
 
 // Mark a care-plan item completed (issue #84) — the write behind the Upcoming
@@ -725,6 +732,7 @@ const rawUpcoming = cache(function rawUpcoming(
     ...contrastItems(profileId, today),
     ...appointmentItems(profileId),
     ...carePlanItems(profileId),
+    ...followUpItems(profileId, today),
     ...preventiveItems(profileId, today),
     ...immunizationItems(profileId, today),
     ...biomarkerItems(profileId, today),
@@ -733,14 +741,17 @@ const rawUpcoming = cache(function rawUpcoming(
   ];
 });
 
-// Whether an item is currently hidden by a snooze/dismiss row in `map`.
+// Whether an item is currently hidden by a snooze/dismiss row in `map`. Routes
+// through the shared persistence-aware dispatcher (isItemHiddenBySuppression) so a
+// care-persistent item (an overdue #700 follow-up) resists an indefinite dismiss but
+// still honors a live snooze — the ONE decision the "snoozed & dismissed" complement
+// below shares.
 function isItemSuppressed(
   map: Map<string, SuppressionRecord>,
   item: UpcomingItem,
   today: string
 ): boolean {
-  const rec = map.get(signalKey(item));
-  return rec != null && isSuppressed(rec, today);
+  return isItemHiddenBySuppression(item, map.get(signalKey(item)), today);
 }
 
 // Aggregate every forward-looking due-signal for the active profile into a flat
@@ -811,7 +822,10 @@ export function collectSuppressedUpcoming(
   const out: SuppressedUpcoming[] = [];
   for (const item of rawUpcoming(profileId, today)) {
     const rec = map.get(signalKey(item));
-    if (rec && isSuppressed(rec, today)) {
+    // Same persistence-aware decision as the live filter, so a care-persistent
+    // follow-up whose only suppression is a resisted dismiss is NOT listed here as
+    // "dismissed" (it's live); a snoozed one still is (restorable).
+    if (rec && isItemHiddenBySuppression(item, rec, today)) {
       out.push({
         item,
         signalKey: signalKey(item),

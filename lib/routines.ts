@@ -17,7 +17,10 @@
 import { db, writeTx, today } from "./db";
 import { regionForExercise, type MuscleRegion } from "./lifts";
 import { getProfileSetting, setProfileSetting } from "./settings";
-import { sessionCreditsDay } from "./workout-recommendation";
+import {
+  resolveTodayRoutineDayIndex,
+  sessionCreditsDay,
+} from "./workout-recommendation";
 import { parseComponents } from "./types/training";
 import {
   effectiveCycleStart,
@@ -427,10 +430,13 @@ export function creditRoutineSession(
   session: { regions: MuscleRegion[]; hasCardio: boolean }
 ): boolean {
   const routine = getActiveRoutine(profileId);
-  if (!routine || routine.days.length === 0) return false;
+  if (!routine) return false;
 
-  const n = routine.days.length;
-  const idx = ((routine.position % n) + n) % n;
+  // Same cursor→today's-day computation the recommendation core uses to show the
+  // session (#831) — so a logged session can't advance past a different day than
+  // the one the user was shown and trained.
+  const idx = resolveTodayRoutineDayIndex(routine);
+  if (idx === null) return false;
   const day = routine.days[idx];
   if (!sessionCreditsDay(session, day.focus)) return false;
 

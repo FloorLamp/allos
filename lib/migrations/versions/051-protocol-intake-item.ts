@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Migration } from "../runner";
 
-// Migration 050 (issue #660): a direct link from a protocol to the intake ITEM
+// Migration 051 (issue #660): a direct link from a protocol to the intake ITEM
 // (supplement or medication) it studies — the creatine case, the app's own example.
 // Until now the only path from a protocol to its intervention supplement was
 // INDIRECT (activating a situation that happened to surface a situational item), so
@@ -39,7 +39,7 @@ export function up(db: Database.Database): void {
 }
 
 export const migration: Migration = {
-  id: 50,
-  name: "050-protocol-intake-item",
+  id: 51,
+  name: "051-protocol-intake-item",
   up,
 };
