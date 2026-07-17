@@ -9,6 +9,13 @@ import { normalizeSeverity, SEVERITY_LABELS } from "../../medication-history";
 import { parsePrescription } from "../../prescription-parse";
 import { profileAgeMonths } from "../../settings";
 import { getLatestBodyMetricDated } from "../metrics";
+import { getEpisodeRow } from "../../illness-episode-store";
+import { shiftDateStr } from "../../date";
+import {
+  episodeMedChecklist,
+  type EpisodeMedInput,
+  type EpisodeMedSuggestion,
+} from "../../episode-med-reconcile";
 import type { PediatricFormContext } from "../../prn-dosing";
 import type { MedicationCourse, MedicationSideEffect } from "../../types";
 
@@ -28,6 +35,87 @@ export function getPediatricFormContext(
     weightDate: latestWeight?.date ?? null,
     today: todayStr,
   };
+}
+
+// ---- Episode-end medication reconciliation (issue #880) ----
+
+// The episode-associated ACTIVE medications for the end-episode reconciliation checklist.
+// Gathers each active med's identity (PRN? Rx?), created date, and 'taken' administration
+// dates, then hands them to the pure episodeMedChecklist against the episode's [start,
+// endInclusive] window. Association is DERIVED (no FKs, the house pattern): created during
+// the range, or PRN used entirely within it. The checklist is SUGGEST-ONLY (#560) — Rx
+// courses are listed unchecked. The range's end is the episode's last active day for a
+// closed row, else today (the episode being ended now). Every read is profile-scoped
+// (direct profile_id, or a JOIN to intake_items). Returns [] for a missing episode.
+export function getEpisodeMedReconciliation(
+  profileId: number,
+  episodeId: number
+): EpisodeMedSuggestion[] {
+  const row = getEpisodeRow(profileId, episodeId);
+  if (!row) return [];
+  const start = row.started_at;
+  const endInclusive = row.ended_at
+    ? shiftDateStr(row.ended_at, -1)
+    : today(profileId);
+
+  const meds = db
+    .prepare(
+      `SELECT id, name, as_needed, rx, date(created_at) AS created_on
+         FROM intake_items
+        WHERE profile_id = ? AND kind = 'medication' AND active = 1`
+    )
+    .all(profileId) as {
+    id: number;
+    name: string;
+    as_needed: number;
+    rx: number;
+    created_on: string;
+  }[];
+  if (meds.length === 0) return [];
+
+  const adminRows = db
+    .prepare(
+      `SELECT l.item_id AS item_id, l.date AS date
+         FROM intake_item_logs l
+         JOIN intake_items ii ON ii.id = l.item_id
+        WHERE ii.profile_id = ? AND ii.kind = 'medication' AND ii.active = 1
+          AND l.status = 'taken'`
+    )
+    .all(profileId) as { item_id: number; date: string }[];
+  const datesByItem = new Map<number, string[]>();
+  for (const r of adminRows) {
+    const arr = datesByItem.get(r.item_id) ?? [];
+    arr.push(r.date);
+    datesByItem.set(r.item_id, arr);
+  }
+
+  const inputs: EpisodeMedInput[] = meds.map((m) => ({
+    itemId: m.id,
+    name: m.name,
+    asNeeded: m.as_needed === 1,
+    rx: m.rx === 1,
+    hasOpenCourse: true, // active=1 upholds the "active ⇔ open course" invariant
+    createdOn: m.created_on,
+    administrationDates: datesByItem.get(m.id) ?? [],
+  }));
+  return episodeMedChecklist(inputs, { start, endInclusive });
+}
+
+// The most recent 'taken' administration DATE per medication for the profile, for the
+// dormant-PRN sweep (#880 item 3). Scoped through the parent intake_items JOIN.
+export function getLastAdministrationDateByItem(
+  profileId: number
+): Map<number, string> {
+  const rows = db
+    .prepare(
+      `SELECT l.item_id AS item_id, MAX(l.date) AS last_date
+         FROM intake_item_logs l
+         JOIN intake_items ii ON ii.id = l.item_id
+        WHERE ii.profile_id = ? AND l.status = 'taken'
+        GROUP BY l.item_id`
+    )
+    .all(profileId) as { item_id: number; last_date: string }[];
+  return new Map(rows.map((r) => [r.item_id, r.last_date]));
 }
 
 // ---- Medication history / lifecycle ----

@@ -239,6 +239,10 @@ export type MedStopReason =
   | "switched"
   | "provider_discontinued"
   | "cost"
+  // The episode-end reconciliation (issue #880): a course closed because the illness it
+  // was taken for resolved (the 2am ibuprofen retired when the flu ends). stop_reason is
+  // unconstrained TEXT, so appending here needs no migration.
+  | "illness_resolved"
   | "other";
 
 // One episode of taking a medication (a child of intake_items). started_on is the

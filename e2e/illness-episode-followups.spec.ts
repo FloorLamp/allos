@@ -33,8 +33,9 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     await expect(page.getByTestId("symptom-log-bar")).toBeVisible();
     await expect(page.getByTestId("episode-fever-chart")).toBeVisible();
 
-    // The "Feeling better" end action is offered on an open episode (item 2 UI).
-    await expect(page.getByTestId("episode-end-form")).toBeVisible();
+    // The "Feeling better" end action is offered on an open episode (item 2 UI; the
+    // reconciliation trigger since #880).
+    await expect(page.getByTestId("episode-end")).toBeVisible();
 
     // Log a symptom at a severity from the episode page — the SHARED SymptomLogBar now
     // uses the #857 active-first layout, so add via the picker then raise (the same

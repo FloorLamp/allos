@@ -5,6 +5,7 @@ import MedicationsTodayPanel from "./MedicationsTodayPanel";
 import MedicationRow from "./MedicationRow";
 import MedicationListActions from "./MedicationListActions";
 import RecordsBridge from "./RecordsBridge";
+import DormantPrnSweep from "./DormantPrnSweep";
 import MedicationForm from "@/components/MedicationForm";
 import QuickAddMedication from "@/components/QuickAddMedication";
 import IntakeWarnings from "@/components/IntakeWarnings";
@@ -125,6 +126,13 @@ export default async function MedicationsPage() {
         <RecordsBridge
           suggestions={data.bridge}
           dismissed={data.dismissedBridge}
+        />
+
+        {/* 4b. Dormant-PRN sweep (#880) — suggest-only "move to past" for active PRN meds
+            with no dose in 90+ days; the existing-backlog cleanup. */}
+        <DormantPrnSweep
+          suggestions={data.dormantPrn}
+          dismissed={data.dismissedDormantPrn}
         />
       </div>
 

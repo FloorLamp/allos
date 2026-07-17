@@ -20,6 +20,7 @@ import {
   refillSupply,
 } from "@/lib/queries";
 import { MED_BRIDGE_PREFIX } from "@/lib/medication-record-match";
+import { DORMANT_PRN_PREFIX } from "@/lib/dormant-prn";
 import { createMedicationShareLink } from "@/lib/share-links-db";
 import { expiresAtFor } from "@/lib/share-links";
 import { recordAudit } from "@/lib/audit";
@@ -293,6 +294,39 @@ export async function dismissMedicationRecord(
     return formError("Couldn't dismiss that suggestion.");
   }
   dismissFinding(profile.id, dedupeKey);
+  revalidatePath("/medications");
+  return formOk();
+}
+
+// Dismiss a dormant-PRN sweep suggestion (issue #880 item 3, #203 id-keyed hygiene):
+// silence one "no doses in 90+ days" card through the shared findings-suppression bus.
+// Guarded to the dormant-prn namespace so it can only ever silence one of those keys. The
+// key is `dormant-prn:<itemId>`; integer ids never recycle, so it can't mis-suppress a
+// later med.
+export async function dismissDormantPrn(
+  formData: FormData
+): Promise<FormResult> {
+  const { profile } = await requireWriteAccess();
+  const dedupeKey = String(formData.get("dedupe_key") ?? "").trim();
+  if (!dedupeKey.startsWith(DORMANT_PRN_PREFIX)) {
+    return formError("Couldn't dismiss that suggestion.");
+  }
+  dismissFinding(profile.id, dedupeKey);
+  revalidatePath("/medications");
+  return formOk();
+}
+
+// Restore a dismissed dormant-PRN suggestion (the undoable-delete spirit, suggest-only).
+// Guarded to the dormant-prn namespace.
+export async function restoreDormantPrn(
+  formData: FormData
+): Promise<FormResult> {
+  const { profile } = await requireWriteAccess();
+  const dedupeKey = String(formData.get("dedupe_key") ?? "").trim();
+  if (!dedupeKey.startsWith(DORMANT_PRN_PREFIX)) {
+    return formError("Couldn't restore that suggestion.");
+  }
+  restoreFinding(profile.id, dedupeKey);
   revalidatePath("/medications");
   return formOk();
 }

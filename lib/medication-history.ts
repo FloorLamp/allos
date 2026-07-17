@@ -46,6 +46,7 @@ export const STOP_REASONS: MedStopReason[] = [
   "switched",
   "provider_discontinued",
   "cost",
+  "illness_resolved",
   "other",
 ];
 
@@ -56,6 +57,7 @@ export const STOP_REASON_LABELS: Record<MedStopReason, string> = {
   switched: "Switched medication",
   provider_discontinued: "Provider discontinued",
   cost: "Cost",
+  illness_resolved: "Illness resolved",
   other: "Other",
 };
 

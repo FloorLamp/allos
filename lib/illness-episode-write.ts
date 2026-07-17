@@ -10,13 +10,14 @@
 // insert uses OR IGNORE against the (profile_id, external_id) partial-unique index, the
 // same idempotent-promotion pattern as promoteMedicationSideEffect.
 
-import { db, writeTx } from "./db";
+import { db, writeTx, today } from "./db";
 import { shiftDateStr } from "./date";
 import { episodeConditionExternalId } from "./illness-episode-format";
 import {
   getEpisodeRow,
   updateEpisodeBoundaries,
 } from "./illness-episode-store";
+import { stopMedicationCourses } from "./queries/intake/medications";
 import { getActiveSituations, setActiveSituations } from "./settings";
 import { normalizeSituationName } from "./situations";
 
@@ -129,6 +130,50 @@ export function endEpisodeAsOfCore(
     shiftDateStr(lastActiveDay, 1)
   );
   return { kind: "ended" };
+}
+
+export interface EndEpisodeWithMedsOutcome {
+  kind: "ended" | "already" | "missing";
+  stoppedItemIds: number[];
+}
+
+// End an episode AND close the courses of the selected episode-associated meds in ONE
+// atomic writeTx (issue #880). SUGGEST-ONLY (#560): the CALLER (the Server Action) has
+// already intersected `medItemIds` with the derived associated set
+// (getEpisodeMedReconciliation), so a forged id can't close an unrelated chronic med;
+// stopMedicationCourses independently re-verifies ownership+kind. `lastActiveDay` routes
+// the backdated stale-nudge end (endEpisodeAsOfCore, #859); absent → the "feeling better"
+// end (endEpisodeCore). Selected courses close with the new `illness_resolved` reason as
+// of the episode's end day, so the med's history reads "used during: <this illness>".
+// Nested writeTx is a SAVEPOINT (#468), so the episode close and every course close commit
+// or roll back together. An empty `medItemIds` just ends the episode (the no-meds path).
+export function endEpisodeWithMedReconciliation(
+  profileId: number,
+  episodeId: number,
+  medItemIds: number[],
+  lastActiveDay?: string | null
+): EndEpisodeWithMedsOutcome {
+  return writeTx(() => {
+    const row = getEpisodeRow(profileId, episodeId);
+    if (!row) return { kind: "missing", stoppedItemIds: [] };
+    if (row.ended_at != null) return { kind: "already", stoppedItemIds: [] };
+    const ended = lastActiveDay
+      ? endEpisodeAsOfCore(profileId, episodeId, lastActiveDay)
+      : endEpisodeCore(profileId, episodeId);
+    if (ended.kind !== "ended") return { kind: ended.kind, stoppedItemIds: [] };
+    // Close the selected courses as of the episode's end day (the last active day for a
+    // backdated end, else today — the day it stopped being taken for the illness).
+    const stopDate = lastActiveDay ?? today(profileId);
+    const stopped: number[] = [];
+    for (const itemId of medItemIds) {
+      stopMedicationCourses(profileId, itemId, {
+        date: stopDate,
+        reason: "illness_resolved",
+      });
+      stopped.push(itemId);
+    }
+    return { kind: "ended", stoppedItemIds: stopped };
+  });
 }
 
 // Undo a promotion: delete ONLY the episode-sourced condition this created (matched by

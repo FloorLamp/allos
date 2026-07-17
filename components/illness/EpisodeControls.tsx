@@ -12,12 +12,13 @@ import {
 import ModalShell from "@/components/ModalShell";
 import { NOTICE_TONE } from "@/components/Notice";
 import SubmitButton from "@/components/SubmitButton";
+import EndEpisodeReconcile from "@/components/illness/EndEpisodeReconcile";
+import type { EpisodeMedSuggestion } from "@/lib/episode-med-reconcile";
 import { SHARE_TTL_OPTIONS } from "@/lib/share-links";
 import {
   createEpisodeShareLinkAction,
   promoteEpisodeToConditionAction,
   unpromoteEpisodeConditionAction,
-  endEpisodeAction,
 } from "@/app/(app)/medical/episodes/actions";
 
 // Print + Share + End + Promote-to-condition controls for the episode detail page.
@@ -30,6 +31,7 @@ export default function EpisodeControls({
   promoted,
   canWrite,
   profileId,
+  medReconciliation,
 }: {
   episodeId: number;
   ongoing: boolean;
@@ -40,6 +42,9 @@ export default function EpisodeControls({
   // gates on THAT profile (requireProfileWriteAccess). Absent on the acting profile's own
   // page — the action then uses the active profile (requireWriteAccess).
   profileId?: number;
+  // The episode-associated meds for the end-episode reconciliation checklist (issue #880).
+  // Empty → "Feeling better" ends directly; non-empty → the checklist opens on end.
+  medReconciliation: EpisodeMedSuggestion[];
 }) {
   const [open, setOpen] = useState(false);
   const [createdUrl, setCreatedUrl] = useState<string | null>(null);
@@ -66,9 +71,6 @@ export default function EpisodeControls({
   }
   async function onUnpromote(fd: FormData) {
     await unpromoteEpisodeConditionAction(fd);
-  }
-  async function onEnd(fd: FormData) {
-    await endEpisodeAction(fd);
   }
 
   async function copy() {
@@ -100,19 +102,19 @@ export default function EpisodeControls({
         </button>
       )}
 
-      {/* Item 2: end the episode from the page ("Feeling better") — deactivates the
-          situation + stamps the end through the ONE toggle write core. */}
+      {/* Item 2: end the episode from the page ("Feeling better"). Routes through the
+          shared reconciliation (issue #880): when episode-associated meds exist, ending
+          opens the suggest-only checklist; otherwise it ends directly. */}
       {canWrite && ongoing && (
-        <form action={onEnd} data-testid="episode-end-form">
-          <input type="hidden" name="episodeId" value={episodeId} />
-          {profileId != null && (
-            <input type="hidden" name="profileId" value={profileId} />
-          )}
-          <SubmitButton className="btn-ghost" pendingLabel="Ending…">
-            <IconMoodCheck className="h-4 w-4" stroke={1.75} />
-            Feeling better
-          </SubmitButton>
-        </form>
+        <EndEpisodeReconcile
+          episodeId={episodeId}
+          profileId={profileId}
+          meds={medReconciliation}
+          triggerLabel="Feeling better"
+          triggerTestId="episode-end"
+          triggerClassName="btn-ghost"
+          icon={<IconMoodCheck className="h-4 w-4" stroke={1.75} />}
+        />
       )}
 
       {canWrite &&
