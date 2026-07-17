@@ -25,6 +25,25 @@ describe("sameUnit", () => {
     expect(sameUnit("beats/min", "bpm")).toBe(true);
   });
 
+  it("collapses the #918 lab-spelling synonyms (silent no-flag class)", () => {
+    // Volume-percent is percent (hematocrit spelling).
+    expect(sameUnit("Vol%", "%")).toBe(true);
+    // Respiratory-rate "breaths/min" folds onto "/min".
+    expect(sameUnit("breaths/min", "/min")).toBe(true);
+    // Microscopy "cell(s)/HPF" carries no more than a bare "/HPF".
+    expect(sameUnit("cell/HPF", "/HPF")).toBe(true);
+    expect(sameUnit("cells/HPF", "/HPF")).toBe(true);
+    // micro-U/mL is the hormone spelling of micro-IU/mL (TSH labeled "uU/mL").
+    expect(sameUnit("uU/mL", "uIU/mL")).toBe(true);
+    expect(sameUnit("uU/mL", "mIU/L")).toBe(true);
+    // …but the fix must NOT collapse the bare enzyme U ≠ IU split (#759).
+    expect(sameUnit("U/L", "IU/L")).toBe(false);
+    expect(sameUnit("U/mL", "IU/mL")).toBe(false);
+    // …nor create false merges.
+    expect(sameUnit("Vol%", "mg/dL")).toBe(false);
+    expect(sameUnit("/HPF", "/uL")).toBe(false);
+  });
+
   it("reports genuinely different units as not matching", () => {
     expect(sameUnit("mg/dL", "mmol/L")).toBe(false);
     expect(sameUnit("mg/dL", "mg/L")).toBe(false);

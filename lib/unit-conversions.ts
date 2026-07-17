@@ -56,9 +56,19 @@ function normalizeUnitText(u: string): string {
   // eGFR is always normalized per 1.73 m² body-surface-area, so "mL/min" is just
   // shorthand for "mL/min/1.73m²" — drop the suffix to collapse the spellings.
   s = s.replace(/\/1\.73m2$/, "");
-  // Heart-rate "per minute" synonyms all mean the same thing: bpm == beats/min
-  // == /min (canonical unit is "bpm").
-  if (s === "bpm" || s === "beats/min" || s === "beats/minute") return "/min";
+  // "Per minute" synonyms all mean the same thing: bpm == beats/min == /min (heart
+  // rate), and breaths/min == /min (respiratory rate). Analyte identity is carried
+  // by the canonical name, not the unit, so folding both rate families onto "/min"
+  // is safe — it only lets a value corroborate against its own analyte's range.
+  if (
+    s === "bpm" ||
+    s === "beats/min" ||
+    s === "beats/minute" ||
+    s === "breaths/min" ||
+    s === "breaths/minute" ||
+    s === "breath/min"
+  )
+    return "/min";
   return s;
 }
 
@@ -151,6 +161,18 @@ function parseCountConc(unit: string): number | null {
 function aliasUnitTokens(s: string): string {
   s = s.replace(/\bgms?\b/gi, "g");
   s = s.replace(/\bcu?mm\b/gi, "uL");
+  // Volume-percent (a hematocrit spelling) is just percent.
+  s = s.replace(/^vol%$/i, "%");
+  // Microscopy "per high-power field": a bare-count numerator ("cell"/"cells")
+  // carries no more information than a plain "/HPF", so fold them together — they
+  // otherwise compare unequal and a urine-sediment count silently fails to
+  // corroborate (#918).
+  s = s.replace(/^cells?\/hpf$/i, "/hpf");
+  // micro-U per mL/L is the hormone spelling of micro-IU (TSH, insulin): "U" and
+  // "IU" are used interchangeably at this scale. Scoped to the MICRO-prefixed form
+  // (the leading "uu") so it can never touch the bare enzyme "U/L" ≠ "IU/L" split
+  // (#759), which requires an un-prefixed U (#918).
+  s = s.replace(/^uu\/(ml|l)$/i, "uiu/$1");
   s = s.replace(/^([^/%]+)%$/, (m, num) => {
     const t = parseToken(num);
     return t && t.dim === "mass" ? `${num}/dL` : m;

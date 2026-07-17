@@ -302,13 +302,27 @@ describe("canonical aliases (synonym/abbreviation drift)", () => {
       // AI-extraction spellings audited in #918.
       ["Absolute Neutrophil Count", "Neutrophils, Absolute"],
       ["Thyroid Stimulating Hormone (TSH)", "TSH"],
+      ["Prostate Specific Antigen (PSA)", "PSA"],
       ["Micronutrient, Vitamin B12", "Vitamin B12"],
       ["25-OH Vitamin D3", "Vitamin D, 25-Hydroxy"],
-      ["PSA, Free %", "Prostate Specific Antigen (PSA), Free %"],
     ];
     for (const [spelling, canonical] of expectations) {
       expect(snapCanonicalName(spelling, index)).toBe(canonical);
     }
+  });
+
+  it("does NOT alias the free-PSA percent (it would swallow the free-absolute assay)", () => {
+    // normalizeCanonicalKey strips "%", so "PSA, Free %" and "PSA, Free" share the
+    // key {free, psa}. An alias for the percent would also capture the distinct
+    // free-ABSOLUTE assay (ng/mL) and mis-group it. Both stay unresolved (surfaced by
+    // the debugger) rather than one confidently mis-routed — the audit found the
+    // absolute present alongside the percent (#918).
+    expect(snapCanonicalName("PSA, Free", index)).not.toBe(
+      "Prostate Specific Antigen (PSA), Free %"
+    );
+    expect(snapCanonicalName("PSA, Free %", index)).not.toBe(
+      "Prostate Specific Antigen (PSA), Free %"
+    );
   });
 
   it("routes the differential ABSOLUTE-count spellings to cells/uL entries, not the % ones", () => {
