@@ -9,6 +9,7 @@ import {
   snapCanonicalName,
   distinguishVitaminDIsoform,
 } from "../canonical-name";
+import { unitAwareCanonical } from "../canonical-unit-guard";
 import { CATEGORIES, FLAGS } from "./constants";
 import type {
   ExtractedPrescription,
@@ -190,8 +191,18 @@ export function normalizeResults(
     // Recover the D2/D3 vitamin-D isoform from the verbatim lab name first (the
     // model tends to drop it and collapse both metabolites onto one series),
     // then snap onto a matching vocabulary entry when one exists.
-    const canonicalName = snapCanonicalName(
+    const snapped = snapCanonicalName(
       distinguishVitaminDIsoform(str(r?.canonical_name) ?? name, name),
+      canonicalIndex
+    );
+    // The unit is the arbiter: if the snapped entry's unit contradicts the reading's
+    // unit, the name resolved onto the wrong quantity (a "%" onto a "cells/uL" entry,
+    // or the reverse). Re-resolve to the same-analyte sibling whose unit fits, rather
+    // than mis-grouping the reading and silently denying it a range (#918 §1).
+    const canonicalName = unitAwareCanonical(
+      snapped,
+      name,
+      str(r?.unit),
       canonicalIndex
     );
     out.push({
