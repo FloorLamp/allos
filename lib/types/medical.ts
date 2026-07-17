@@ -105,6 +105,11 @@ export interface MedicalRecord {
   // analyte across documents/labs. Assigned by the AI at extraction/backfill,
   // editable per record; falls back to `name` when absent.
   canonical_name: string | null;
+  // The reading's LOINC when the source carried one (migration 034). Optional: the
+  // column is nullable and legacy rows predate it. Selected by the `SELECT *`
+  // record queries, so it rides along wherever a MedicalRecord is read — which is
+  // what lets the retest/staleness path reach the qualitative class hint (#910).
+  loinc?: string | null;
   // 1 when this is the most recent reading in its biomarker group; only set by
   // queries that select it (e.g. the biomarkers table). Absent otherwise.
   is_latest?: number;

@@ -1044,6 +1044,21 @@
       "abbreviation": "HbF",
       "full_name": "Fetal Hemoglobin",
       "description": "Hemoglobin F is the fetal form of hemoglobin, dominant at birth and normally falling to very low levels in adults. Persistently high adult levels can occur in hereditary persistence of fetal hemoglobin and in some thalassemias and hemoglobinopathies."
+    },
+    {
+      "name": "ABO Blood Group",
+      "full_name": "ABO Blood Group",
+      "description": "The ABO group classifies blood as type A, B, AB, or O based on the antigens carried on red blood cells. It is fixed for life and, with the Rh factor, determines which blood a person can safely receive in a transfusion."
+    },
+    {
+      "name": "Rh Type",
+      "full_name": "Rh(D) Factor",
+      "description": "The Rh factor records whether red blood cells carry the Rh(D) antigen — positive if present, negative if absent. It is fixed for life and pairs with the ABO group to give the full blood type; it also matters in pregnancy, where an Rh-negative parent carrying an Rh-positive fetus may need Rh immune globulin."
+    },
+    {
+      "name": "Blood Type",
+      "full_name": "Blood Type (ABO + Rh)",
+      "description": "The full blood type combines the ABO group (A, B, AB, or O) with the Rh factor (positive or negative) — for example O positive. It is fixed for life and determines which blood can be safely transfused."
     }
   ]
 }

@@ -576,6 +576,10 @@ function biomarkerItems(profileId: number, today: string): UpcomingItem[] {
         value: r.value,
         notes: r.notes,
         reference: r.reference_range,
+        // Carry the LOINC too (#910): an immutable attribute whose printed name the
+        // regexes miss — Epic's "ABORh Interpretation" blood type — is exempted by
+        // its code instead of being nudged yearly for a value that cannot change.
+        loinc: r.loinc,
       })
     )
       continue;

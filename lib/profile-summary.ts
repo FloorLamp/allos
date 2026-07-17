@@ -215,9 +215,20 @@ const MAX_VITALS = 16;
 // Normalize the ABO group from a stored value string to one of A/B/AB/O, or null.
 // Tolerant of surrounding text ("Blood Group A", "Type O") and case; checks AB
 // before A/B so "AB" isn't read as "A".
+//
+// A standalone DIGIT ZERO is read as the letter O. That is not a guess: "0" is the
+// standard notation for group O across much of Europe (a German report prints "0 Rh
+// positiv"), and it is also the obvious failure mode of an AI/OCR pass over an
+// O — the two glyphs are near-identical. Either way, in a value that has already
+// been identified as a blood group, a lone "0" can only mean O; there is no ABO
+// group named zero. Bounded to a STANDALONE zero so a number is never mangled: the
+// guards exclude an adjacent digit, letter, or decimal separator, so "10", "1:100",
+// and "0.5" all keep their zero and resolve to no group.
 export function normalizeAbo(value: string | null | undefined): string | null {
   if (!value) return null;
-  const v = value.toUpperCase();
+  const v = value
+    .toUpperCase()
+    .replace(/(^|[^0-9A-Z.,])0(?=[^0-9A-Z.,]|$)/g, "$1O");
   if (/\bAB\b/.test(v) || /(^|[^A-Z])AB([^A-Z]|$)/.test(v)) return "AB";
   const hasA = /\bA\b/.test(v) || /(^|[^A-Z])A([^A-Z]|$)/.test(v);
   const hasB = /\bB\b/.test(v) || /(^|[^A-Z])B([^A-Z]|$)/.test(v);
@@ -250,6 +261,69 @@ export function resolveBloodType(
   if (!group) return null;
   const rh = normalizeRh(rhValue);
   return rh ? `${group}${rh}` : group;
+}
+
+// A reading whose NAME marks it as carrying blood-group information. Deliberately
+// broader than the qualitative classifier's IMMUTABLE_ATTRIBUTE regex, which keys on
+// `\babo\b` and so misses Epic's real-world "ABORh Interpretation" (no word boundary
+// between ABO and Rh) — the exact naming that leaves an imported blood type
+// unrecognized today.
+//
+// The name gate is what makes the loose value parsing below safe: normalizeAbo reads
+// a bare "A"/"B"/"O" as a group, which would be reckless against arbitrary analytes
+// but is correct once the row is known to be about blood grouping.
+const BLOOD_GROUP_NAME =
+  /\babo\b|abo\s*rh|aborh|blood\s*(?:type|group)|rh\s*(?:type|factor)|rh\s*\(?d\)?\b/i;
+
+// A minimal reading shape — what every import path already has on a record.
+export interface BloodGroupReading {
+  name: string;
+  canonical?: string | null;
+  value: string | null;
+}
+
+// The two INDEPENDENT halves of a blood group, each null when the document doesn't
+// carry it.
+export interface BloodGroupParts {
+  abo: string | null; // "A" | "B" | "AB" | "O"
+  rh: "+" | "-" | null;
+}
+
+// Read the blood-group halves out of a document's readings.
+//
+// Handles BOTH real-world shapes in one pass, with no special-casing:
+//   • two rows — "ABO Blood Group" = "O" plus "Rh Type" = "RH(D) POSITIVE";
+//   • one COMBINED row — Epic's "ABORh Interpretation" = "O Positive", which answers
+//     both halves at once: it becomes the source for the ABO and the Rh alike, and
+//     each normalizer reads its own half back out of the same string.
+//
+// Returns the halves SEPARATELY rather than a composed type, because they arrive
+// separately: a document may carry only the ABO group (Rh not drawn, or not
+// reported) and a later one completes it. Keeping them apart is what lets the caller
+// store each half on its own, so successive imports accumulate instead of an
+// incomplete result being dropped on the floor.
+export function bloodGroupPartsFromReadings(
+  readings: readonly BloodGroupReading[]
+): BloodGroupParts {
+  let aboSource: string | null = null;
+  let rhSource: string | null = null;
+  for (const r of readings) {
+    if (!BLOOD_GROUP_NAME.test(`${r.canonical ?? ""} ${r.name ?? ""}`))
+      continue;
+    if (aboSource === null && normalizeAbo(r.value)) aboSource = r.value;
+    if (rhSource === null && normalizeRh(r.value)) rhSource = r.value;
+  }
+  return { abo: normalizeAbo(aboSource), rh: normalizeRh(rhSource) };
+}
+
+// Resolve a printable blood type from a document's readings, or null when none of
+// them carries an ABO group. The group alone still resolves ("O" with unknown Rh
+// renders "O"); an Rh factor alone is meaningless — matching resolveBloodType.
+export function bloodTypeFromReadings(
+  readings: readonly BloodGroupReading[]
+): string | null {
+  const { abo, rh } = bloodGroupPartsFromReadings(readings);
+  return abo ? resolveBloodType(abo, rh) : null;
 }
 
 // BMI from weight (kg) and height (cm), rounded to one decimal. Null unless both

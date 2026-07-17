@@ -445,6 +445,7 @@ export default async function BiomarkerDetailPage(props: {
       value: latest.value,
       notes: latest.notes,
       reference: latest.reference_range,
+      loinc: latest.loinc,
     }
   );
   const ageDays = daysBetween(latest.date, today(profile.id));

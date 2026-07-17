@@ -3,6 +3,7 @@ import { db, writeTx } from "./db";
 import { documentSource, undeferredBodyMetrics } from "./body-metric-extract";
 import {
   adoptProfileFromExtraction,
+  adoptBloodTypeFromRecords,
   adoptSmokingStatusFromImport,
   type ProfileAdoption,
 } from "./settings";
@@ -1147,9 +1148,17 @@ export function applyImportFollowups(
     demographics: PersistInput["demographics"];
     canonicalNames: string[];
     insertedRecordIds: number[];
+    // The document's readings, so a blood type can be adopted off a lab row — it is
+    // not document metadata like sex/birthdate, so it can't ride `demographics`.
+    // Optional: a caller with nothing to offer just adopts no blood type.
+    records?: PersistInput["records"];
   }
 ): ProfileAdoption {
   const adopted = adoptProfileFromExtraction(profileId, opts.demographics);
+  // Blood type rides the same adopt-if-unset seam as the demographics above, so both
+  // import paths behave identically.
+  adopted.bloodType = adoptBloodTypeFromRecords(profileId, opts.records);
+  if (adopted.bloodType) adopted.changed = true;
   addCanonicalNames(opts.canonicalNames);
   if (adopted.sexAdopted) reconcileFlags(profileId);
   else reconcileFlags(profileId, opts.insertedRecordIds);

@@ -718,7 +718,14 @@ async function persistExtractionResult(
         demographics: input.demographics,
         canonicalNames: input.canonicalNamesToRegister,
         insertedRecordIds: insertedIds,
+        records: input.records,
       });
+      if (adopted.bloodType) {
+        log.info("adopted blood type from document", {
+          docId,
+          bloodType: adopted.bloodType,
+        });
+      }
       if (adopted.sexAdopted) {
         log.info("adopted user sex from document", {
           docId,
