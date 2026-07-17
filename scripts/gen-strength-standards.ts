@@ -1,14 +1,17 @@
 // Pre-generate the baked bodyweight-band strength-standards dataset
-// (lib/strength-standards.json) used to turn an estimated 1RM into COACHING
-// CONTEXT ("your squat is at the intermediate standard for your bodyweight") on
-// the exercise-detail surfaces and the strength healthspan pillar — issue #152.
+// (lib/datasets/data/strength-standards.json) used to turn an estimated 1RM into
+// COACHING CONTEXT ("your squat is at the intermediate standard for your bodyweight")
+// on the exercise-detail surfaces and the strength healthspan pillar — issue #152. As
+// of issue #860 Track B it is a curated-dataset FRAMEWORK envelope
+// (id/citation/identity/entries) consumed via lib/datasets/strength-standards.ts;
+// lib/strength-standards.ts is the pure lookup over its entries.
 //
-// Mirrors the gen-fitness-norms.ts / gen-canonical-biomarkers.ts pattern: the
-// committed JSON is the SOURCE OF TRUTH, HUMAN-REVIEWABLE, and a FIXED POINT of
-// buildStrengthStandards() (guarded by lib/__tests__/strength-standards-dataset.test.ts
-// so the generator and the committed file can't silently diverge). No API key —
-// the table is DERIVED FROM A DOCUMENTED FORMULA, so generation is fully
-// deterministic:
+// Mirrors the gen-fitness-norms.ts / gen-canonical-biomarkers.ts pattern: the curated
+// anchor ratios + allometric formula below are the SOURCE OF TRUTH, HUMAN-REVIEWABLE,
+// and the committed JSON is a FIXED POINT of buildStrengthStandards() (guarded by
+// lib/__tests__/strength-standards-dataset.test.ts so the generator and the committed
+// file can't silently diverge). No API key — the table is DERIVED FROM A DOCUMENTED
+// FORMULA, so generation is fully deterministic:
 //
 //   npm run gen:strength-standards
 //
@@ -50,8 +53,15 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { DATASET_SCHEMA, type DatasetEnvelope } from "../lib/datasets/types";
 
-const OUT = path.join(process.cwd(), "lib", "strength-standards.json");
+const OUT = path.join(
+  process.cwd(),
+  "lib",
+  "datasets",
+  "data",
+  "strength-standards.json"
+);
 
 // The five ascending strength levels every lift×sex band carries a threshold for.
 export const STRENGTH_LEVELS = [
@@ -80,10 +90,16 @@ export interface LiftStandards {
   source: string;
   sexes: { male: SexStandards; female: SexStandards };
 }
-export interface StrengthStandardsDataset {
-  $comment: string;
-  lifts: Record<string, LiftStandards>;
+
+// One framework ENTRY: a lift with its identity `name` (the canonical exercise name —
+// must match the lib/lifts.ts keys / lib/strength.ts byte-for-byte) plus its
+// unit/bodyweight flag/per-lift `source` and the male/female band tables. The pure
+// lookup (lib/strength-standards.ts) rebuilds a name→LiftStandards map from these.
+export interface StrengthStandardEntry extends LiftStandards {
+  name: string;
 }
+
+export type StrengthStandardsDataset = DatasetEnvelope<StrengthStandardEntry>;
 
 // Reference bodyweight-ratio anchors (1RM ÷ bodyweight) at the reference
 // bodyweight for each sex, per level. novice/intermediate/advanced/elite reuse
@@ -202,13 +218,14 @@ function sexStandards(
   };
 }
 
-// Pure builder: assemble the dataset from the anchor ratios + allometric scaling.
-// The committed lib/strength-standards.json is a FIXED POINT of this (guarded by
-// the dataset drift test).
+// Pure builder: assemble the framework envelope from the anchor ratios + allometric
+// scaling. The committed lib/datasets/data/strength-standards.json is a FIXED POINT of
+// this (guarded by the dataset drift test). Entries are emitted in the curated lift
+// order for a stable, reviewable diff.
 export function buildStrengthStandards(): StrengthStandardsDataset {
-  const lifts: Record<string, LiftStandards> = {};
-  for (const [name, spec] of Object.entries(LIFTS)) {
-    lifts[name] = {
+  const entries: StrengthStandardEntry[] = Object.entries(LIFTS).map(
+    ([name, spec]) => ({
+      name,
       unit: "kg",
       bodyweight: spec.bodyweight ?? false,
       source:
@@ -218,25 +235,37 @@ export function buildStrengthStandards(): StrengthStandardsDataset {
         male: sexStandards(spec.male, "male"),
         female: sexStandards(spec.female, "female"),
       },
-    };
-  }
+    })
+  );
   return {
-    $comment:
+    $schema: DATASET_SCHEMA,
+    id: "strength-standards",
+    title: "Bodyweight-band strength standards",
+    description:
       "Baked bodyweight-band strength-standards dataset (issue #152) for COACHING " +
       "CONTEXT on estimated 1RM. Thresholds are DERIVED (no proprietary tables): " +
       "lib/strength.ts anchor ratios scaled by bodyweight^(2/3) (Lietzke 1956, the " +
       "cross-sectional-area law). Committed + HUMAN-REVIEWABLE; regenerate with " +
       "`npm run gen:strength-standards`. INFORMATIONAL reference standards, NOT " +
       "measurements or medical/coaching advice.",
-    lifts,
+    citation: [
+      {
+        source:
+          "Derived thresholds — lib/strength.ts blended strength-standard anchor " +
+          "ratios scaled allometrically by bodyweight^(2/3) (Lietzke MH, Science " +
+          "1956;124:486, the cross-sectional-area law).",
+        note: "No proprietary charts vendored; every threshold is computed from a documented open formula. Each lift additionally carries its own per-lift `source`. INFORMATIONAL, not measurements or coaching advice.",
+      },
+    ],
+    identity: { keys: ["name"] },
+    entries,
   };
 }
 
 function writeDataset(): void {
   const dataset = buildStrengthStandards();
   fs.writeFileSync(OUT, JSON.stringify(dataset, null, 2) + "\n");
-  const n = Object.keys(dataset.lifts).length;
-  console.log(`Wrote ${n} lift standard tables to ${OUT}`);
+  console.log(`Wrote ${dataset.entries.length} lift standard tables to ${OUT}`);
   console.log("Review the thresholds for plausibility before committing.");
 }
 

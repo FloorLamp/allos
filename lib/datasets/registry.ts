@@ -46,6 +46,10 @@ import { pgxDataset, pgxGuidanceStrategy } from "./pgx";
 import { prnDefaultsDataset, prnDefaultSlugStrategy } from "./prn-defaults";
 import { screeningsDataset, screeningKeyStrategy } from "./screenings";
 import {
+  strengthStandardsDataset,
+  strengthStandardNameStrategy,
+} from "./strength-standards";
+import {
   tempRedFlagsDataset,
   tempRedFlagKeyStrategy,
 } from "./temperature-red-flags";
@@ -174,6 +178,13 @@ export const DATASETS: RegisteredDataset[] = [
       unknown
     >,
     strategy: screeningKeyStrategy,
+  },
+  {
+    dataset: strengthStandardsDataset as unknown as LoadedDataset<
+      Record<string, unknown>,
+      unknown
+    >,
+    strategy: strengthStandardNameStrategy,
   },
   {
     dataset: tempRedFlagsDataset as unknown as LoadedDataset<

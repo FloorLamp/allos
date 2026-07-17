@@ -1,7 +1,22 @@
 {
-  "$comment": "Baked bodyweight-band strength-standards dataset (issue #152) for COACHING CONTEXT on estimated 1RM. Thresholds are DERIVED (no proprietary tables): lib/strength.ts anchor ratios scaled by bodyweight^(2/3) (Lietzke 1956, the cross-sectional-area law). Committed + HUMAN-REVIEWABLE; regenerate with `npm run gen:strength-standards`. INFORMATIONAL reference standards, NOT measurements or medical/coaching advice.",
-  "lifts": {
-    "Bench Press": {
+  "$schema": "allos-dataset/v1",
+  "id": "strength-standards",
+  "title": "Bodyweight-band strength standards",
+  "description": "Baked bodyweight-band strength-standards dataset (issue #152) for COACHING CONTEXT on estimated 1RM. Thresholds are DERIVED (no proprietary tables): lib/strength.ts anchor ratios scaled by bodyweight^(2/3) (Lietzke 1956, the cross-sectional-area law). Committed + HUMAN-REVIEWABLE; regenerate with `npm run gen:strength-standards`. INFORMATIONAL reference standards, NOT measurements or medical/coaching advice.",
+  "citation": [
+    {
+      "source": "Derived thresholds — lib/strength.ts blended strength-standard anchor ratios scaled allometrically by bodyweight^(2/3) (Lietzke MH, Science 1956;124:486, the cross-sectional-area law).",
+      "note": "No proprietary charts vendored; every threshold is computed from a documented open formula. Each lift additionally carries its own per-lift `source`. INFORMATIONAL, not measurements or coaching advice."
+    }
+  ],
+  "identity": {
+    "keys": [
+      "name"
+    ]
+  },
+  "entries": [
+    {
+      "name": "Bench Press",
       "unit": "kg",
       "bodyweight": false,
       "source": "Derived: lib/strength.ts anchor ratios scaled allometrically by bodyweight^(2/3) (Lietzke 1956). See scripts/gen-strength-standards.ts.",
@@ -220,7 +235,8 @@
         }
       }
     },
-    "Overhead Press": {
+    {
+      "name": "Overhead Press",
       "unit": "kg",
       "bodyweight": false,
       "source": "Derived: lib/strength.ts anchor ratios scaled allometrically by bodyweight^(2/3) (Lietzke 1956). See scripts/gen-strength-standards.ts.",
@@ -439,7 +455,8 @@
         }
       }
     },
-    "Back Squat": {
+    {
+      "name": "Back Squat",
       "unit": "kg",
       "bodyweight": false,
       "source": "Derived: lib/strength.ts anchor ratios scaled allometrically by bodyweight^(2/3) (Lietzke 1956). See scripts/gen-strength-standards.ts.",
@@ -658,7 +675,8 @@
         }
       }
     },
-    "Deadlift": {
+    {
+      "name": "Deadlift",
       "unit": "kg",
       "bodyweight": false,
       "source": "Derived: lib/strength.ts anchor ratios scaled allometrically by bodyweight^(2/3) (Lietzke 1956). See scripts/gen-strength-standards.ts.",
@@ -877,7 +895,8 @@
         }
       }
     },
-    "Pull Up": {
+    {
+      "name": "Pull Up",
       "unit": "kg",
       "bodyweight": true,
       "source": "Derived: lib/strength.ts anchor ratios scaled allometrically by bodyweight^(2/3) (Lietzke 1956). See scripts/gen-strength-standards.ts.",
@@ -1096,7 +1115,8 @@
         }
       }
     },
-    "Front Squat": {
+    {
+      "name": "Front Squat",
       "unit": "kg",
       "bodyweight": false,
       "source": "Derived: lib/strength.ts anchor ratios scaled allometrically by bodyweight^(2/3) (Lietzke 1956). See scripts/gen-strength-standards.ts.",
@@ -1315,7 +1335,8 @@
         }
       }
     },
-    "Incline Bench Press": {
+    {
+      "name": "Incline Bench Press",
       "unit": "kg",
       "bodyweight": false,
       "source": "Derived: lib/strength.ts anchor ratios scaled allometrically by bodyweight^(2/3) (Lietzke 1956). See scripts/gen-strength-standards.ts.",
@@ -1534,7 +1555,8 @@
         }
       }
     },
-    "Chin Up": {
+    {
+      "name": "Chin Up",
       "unit": "kg",
       "bodyweight": true,
       "source": "Derived: lib/strength.ts anchor ratios scaled allometrically by bodyweight^(2/3) (Lietzke 1956). See scripts/gen-strength-standards.ts.",
@@ -1753,5 +1775,5 @@
         }
       }
     }
-  }
+  ]
 }
