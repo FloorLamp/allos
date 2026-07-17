@@ -1,7 +1,10 @@
-// Pre-generate the baked age/sex fitness-norm dataset (lib/fitness-norms.json) used
-// to turn a raw fitness measurement into PERCENTILE CONTEXT ("82nd percentile for
-// your age") and the inverse FITNESS AGE (the age whose 50th-percentile value
-// matches the measurement) — issue #158.
+// Pre-generate the baked age/sex fitness-norm dataset
+// (lib/datasets/data/fitness-norms.json) used to turn a raw fitness measurement into
+// PERCENTILE CONTEXT ("82nd percentile for your age") and the inverse FITNESS AGE (the
+// age whose 50th-percentile value matches the measurement) — issue #158. As of issue
+// #860 Track B it is a curated-dataset FRAMEWORK envelope (id/citation/identity/entries)
+// consumed via lib/datasets/fitness-norms.ts; lib/fitness-norms.ts is the pure lookup
+// over its entries.
 //
 // Four markers, each an independent, well-published longevity / frailty predictor:
 //   • VO2 Max                 (mL/kg/min) — cardiorespiratory fitness
@@ -10,10 +13,11 @@
 //   • Single-Leg Balance      (seconds)   — postural control / fall risk
 //
 // Mirrors the gen-canonical-biomarkers.ts / gen-mets.ts / gen-growth-charts.ts
-// pattern: the committed JSON is the SOURCE OF TRUTH, HUMAN-REVIEWABLE, and a FIXED
-// POINT of buildFitnessNorms() (guarded by lib/__tests__/fitness-norms-dataset.test.ts
-// so the generator and the committed file can't silently diverge). No API key — the
-// values are curated PUBLIC normative tables, so generation is fully deterministic:
+// pattern: the curated PUBLIC normative tables below are the SOURCE OF TRUTH,
+// HUMAN-REVIEWABLE, and the committed JSON is a FIXED POINT of buildFitnessNorms()
+// (guarded by lib/__tests__/fitness-norms-dataset.test.ts so the generator and the
+// committed file can't silently diverge). No API key — the values are curated PUBLIC
+// normative tables, so generation is fully deterministic:
 //
 //   npm run gen:fitness-norms
 //
@@ -49,8 +53,15 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { DATASET_SCHEMA, type DatasetEnvelope } from "../lib/datasets/types";
 
-const OUT = path.join(process.cwd(), "lib", "fitness-norms.json");
+const OUT = path.join(
+  process.cwd(),
+  "lib",
+  "datasets",
+  "data",
+  "fitness-norms.json"
+);
 
 // One age band: the norm values at percentile positions `percentiles[i]`, anchored
 // at a representative `age` (a decade band's midpoint). The lookup interpolates the
@@ -70,10 +81,16 @@ export interface MarkerNorms {
   source: string;
   sexes: { male: SexNorms; female: SexNorms };
 }
-export interface FitnessNormsDataset {
-  $comment: string;
-  markers: Record<string, MarkerNorms>;
+
+// One framework ENTRY: a marker with its identity `name` (the canonical biomarker name
+// — must match the canonical_biomarkers rows / vitals-input names byte-for-byte) plus
+// its unit/direction/per-marker `source` citation and the male/female band tables. The
+// pure lookup (lib/fitness-norms.ts) rebuilds a name→MarkerNorms map from these entries.
+export interface FitnessNormEntry extends MarkerNorms {
+  name: string;
 }
+
+export type FitnessNormsDataset = DatasetEnvelope<FitnessNormEntry>;
 
 // ── VO2 Max (mL/kg/min) — FRIEND registry, treadmill ────────────────────────────
 // Percentiles 10..90 by ten, at decade midpoints 25/35/45/55/65/75.
@@ -154,11 +171,13 @@ const BALANCE_BANDS: NormBand[] = [
   { age: 85, values: [3, 6, 12] },
 ];
 
-// Pure builder: assemble the dataset from the curated tables. The committed
-// lib/fitness-norms.json is a FIXED POINT of this (guarded by the dataset test).
+// Pure builder: assemble the framework envelope from the curated tables. The committed
+// lib/datasets/data/fitness-norms.json is a FIXED POINT of this (guarded by the dataset
+// test). Entries are emitted in the curated marker order for a stable, reviewable diff.
 export function buildFitnessNorms(): FitnessNormsDataset {
-  const markers: Record<string, MarkerNorms> = {
-    "VO2 Max": {
+  const entries: FitnessNormEntry[] = [
+    {
+      name: "VO2 Max",
       unit: "mL/kg/min",
       direction: "higher_better",
       source:
@@ -168,7 +187,8 @@ export function buildFitnessNorms(): FitnessNormsDataset {
         female: { percentiles: VO2_PCTS, bands: VO2_FEMALE },
       },
     },
-    "Grip Strength": {
+    {
+      name: "Grip Strength",
       unit: "kg",
       direction: "higher_better",
       source:
@@ -178,7 +198,8 @@ export function buildFitnessNorms(): FitnessNormsDataset {
         female: { percentiles: GRIP_PCTS, bands: GRIP_FEMALE },
       },
     },
-    "30-Second Chair Stand": {
+    {
+      name: "30-Second Chair Stand",
       unit: "reps",
       direction: "higher_better",
       source:
@@ -188,7 +209,8 @@ export function buildFitnessNorms(): FitnessNormsDataset {
         female: { percentiles: CHAIR_PCTS, bands: CHAIR_FEMALE },
       },
     },
-    "Single-Leg Balance": {
+    {
+      name: "Single-Leg Balance",
       unit: "seconds",
       direction: "higher_better",
       source:
@@ -198,25 +220,39 @@ export function buildFitnessNorms(): FitnessNormsDataset {
         female: { percentiles: BALANCE_PCTS, bands: BALANCE_BANDS },
       },
     },
-  };
+  ];
 
   return {
-    $comment:
+    $schema: DATASET_SCHEMA,
+    id: "fitness-norms",
+    title: "Age/sex fitness reference norms",
+    description:
       "Baked age/sex fitness-norm dataset (issue #158) for PERCENTILE context and " +
       "FITNESS AGE on VO2 Max, grip strength, 30-second chair stand, and single-leg " +
       "balance. Published aggregate norms (FRIEND registry; Dodds 2014; Rikli & Jones; " +
-      "Springer 2007) — see scripts/gen-fitness-norms.ts for citations. Committed + " +
-      "HUMAN-REVIEWABLE; regenerate with `npm run gen:fitness-norms`. INFORMATIONAL " +
-      "population reference standards, NOT measurements or medical advice.",
-    markers,
+      "Springer 2007) — see the per-marker `source` and scripts/gen-fitness-norms.ts " +
+      "for citations. Committed + HUMAN-REVIEWABLE; regenerate with " +
+      "`npm run gen:fitness-norms`. INFORMATIONAL population reference standards, NOT " +
+      "measurements or medical advice.",
+    citation: [
+      {
+        source:
+          "VO2 Max — FRIEND registry (Kaminsky et al., Mayo Clin Proc 2015); Grip " +
+          "Strength — Dodds et al., PLoS ONE 2014; 30-Second Chair Stand — Rikli & " +
+          "Jones Senior Fitness Test norms; Single-Leg Balance — Springer et al., " +
+          "J Geriatr Phys Ther 2007.",
+        note: "Published aggregate reference standards, rounded from the cited tables; each marker additionally carries its own per-marker `source`. INFORMATIONAL, not measurements or medical advice.",
+      },
+    ],
+    identity: { keys: ["name"] },
+    entries,
   };
 }
 
 function writeDataset(): void {
   const dataset = buildFitnessNorms();
   fs.writeFileSync(OUT, JSON.stringify(dataset, null, 2) + "\n");
-  const n = Object.keys(dataset.markers).length;
-  console.log(`Wrote ${n} fitness-norm markers to ${OUT}`);
+  console.log(`Wrote ${dataset.entries.length} fitness-norm markers to ${OUT}`);
   console.log(
     "Review the norm values against the cited tables before committing."
   );
