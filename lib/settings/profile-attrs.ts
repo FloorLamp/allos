@@ -3,6 +3,10 @@ import { ageFromBirthdate, ageMonthsFrom } from "../date";
 import type { Sex, ReproductiveStatus } from "../types";
 import { normalizeBloodType } from "../emergency-card";
 import {
+  bloodTypeFromReadings,
+  type BloodGroupReading,
+} from "../profile-summary";
+import {
   parsePackYears,
   parseQuitYear,
   parseSmokingStatus,
@@ -395,7 +399,36 @@ export interface ProfileAdoption {
   age: number | null; // an age fallback that was adopted (for caller logging)
   fullName: string | null; // a full name that was adopted (for caller logging)
   homeAdopted: boolean; // a coarse home location was adopted from the patient ZIP
+  bloodType: string | null; // a blood type that was adopted (for caller logging)
   changed: boolean; // any profile field was written
+}
+
+// Backfill the profile's blood type from a document's READINGS, never overwriting
+// one the user set. The metadata-driven adoption below can't do this: a blood type
+// isn't document metadata like sex or birthdate — it arrives as a lab row.
+//
+// Without this a blood type only reaches the emergency card / passport / FHIR export
+// if the user types it in by hand: the derived path (profile-summary-load) looks up
+// two records canonically named "ABO Blood Group" and "Rh Type", which nothing maps
+// a LOINC onto, so a real imported row (Epic's combined "ABORh Interpretation")
+// resolves to nothing and the card reads "Unknown" with the record sitting in the DB.
+// Adopting at import time settles it once instead of re-deriving per read.
+//
+// Adopt-if-unset, like every other field here: the manual value already takes
+// precedence when the summary is built, so this can only ever fill a blank.
+// Idempotent — a reprocess re-adopts the same value or no-ops.
+export function adoptBloodTypeFromRecords(
+  profileId: number,
+  readings: readonly BloodGroupReading[] | null | undefined
+): string | null {
+  if (!readings?.length) return null;
+  if (getBloodType(profileId) !== null) return null; // never overwrite the user
+  const resolved = bloodTypeFromReadings(readings);
+  if (!resolved) return null;
+  // Route through setBloodType so the stored value is canonicalized ("A POSITIVE"
+  // → "A+") exactly as a hand-entered one is; it no-ops on an unrecognized string.
+  setBloodType(profileId, resolved);
+  return getBloodType(profileId);
 }
 
 // Backfill the user's profile (sex, birthdate/age, full name) from an extracted
@@ -419,6 +452,7 @@ export function adoptProfileFromExtraction(
     age: null,
     fullName: null,
     homeAdopted: false,
+    bloodType: null,
     changed: false,
   };
   if (!meta) return out;

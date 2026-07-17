@@ -100,6 +100,7 @@ export function persistHealthRecordDoc(
       demographics: input.demographics,
       canonicalNames: input.canonicalNamesToRegister,
       insertedRecordIds: outcome.insertedRecordIds,
+      records: input.records,
     });
     adoptedBirthdate = adopted.birthdate;
     adoptedSex = adopted.sexAdopted;

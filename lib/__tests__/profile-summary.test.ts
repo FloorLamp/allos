@@ -3,6 +3,7 @@ import {
   normalizeAbo,
   normalizeRh,
   resolveBloodType,
+  bloodTypeFromReadings,
   computeBmi,
   mergeVitals,
   medicationStartDate,
@@ -100,6 +101,85 @@ describe("resolveBloodType", () => {
   it("is null when the ABO group is missing (Rh alone is meaningless)", () => {
     expect(resolveBloodType(null, "Positive")).toBeNull();
     expect(resolveBloodType("", "")).toBeNull();
+  });
+});
+
+describe("bloodTypeFromReadings", () => {
+  const reading = (name: string, value: string | null, canonical?: string) => ({
+    name,
+    canonical: canonical ?? name,
+    value,
+  });
+
+  it("reads the two-row form (separate ABO + Rh records)", () => {
+    expect(
+      bloodTypeFromReadings([
+        reading("ABO Blood Group", "A"),
+        reading("Rh Type", "POSITIVE"),
+      ])
+    ).toBe("A+");
+  });
+
+  // Epic's real shape: ONE row carrying both halves. This is the case the
+  // canonical-name lookup misses entirely today, leaving the card "Unknown".
+  it("reads the COMBINED one-row form (ABORh Interpretation)", () => {
+    expect(
+      bloodTypeFromReadings([reading("ABORh Interpretation", "A POSITIVE")])
+    ).toBe("A+");
+    expect(bloodTypeFromReadings([reading("Blood Type", "O NEGATIVE")])).toBe(
+      "O-"
+    );
+  });
+
+  it("resolves the group alone when no Rh is on file", () => {
+    expect(bloodTypeFromReadings([reading("ABO Blood Group", "O")])).toBe("O");
+  });
+
+  it("is null for an Rh factor alone, or no blood-group rows at all", () => {
+    expect(bloodTypeFromReadings([reading("Rh Type", "POSITIVE")])).toBeNull();
+    expect(bloodTypeFromReadings([])).toBeNull();
+    expect(
+      bloodTypeFromReadings([reading("Sodium", "140"), reading("ALT", "22")])
+    ).toBeNull();
+  });
+
+  // The name gate is what makes the loose ABO value parsing safe — a bare "A"/"B"/
+  // "O" in an unrelated analyte's value must never be read as a blood group.
+  it("ignores non-blood-group analytes even when their value looks like a group", () => {
+    expect(
+      bloodTypeFromReadings([
+        reading("Hepatitis B Surface Antigen", "A POSITIVE"),
+        reading("Vitamin A", "O"),
+      ])
+    ).toBeNull();
+  });
+
+  it("matches on the canonical name when the printed name is uninformative", () => {
+    expect(
+      bloodTypeFromReadings([
+        { name: "Result", canonical: "ABO Blood Group", value: "B" },
+      ])
+    ).toBe("B");
+  });
+
+  // Straight out of a real export: "N. gonorrhoeae" CONTAINS the letters "rh". A
+  // looser gate would read its "Negative" as the Rh factor and flip a real blood
+  // type — and since first-match wins, record ORDER would decide. Pinned with the
+  // decoy first, which is the order the real document happens to use.
+  it("is not fooled by 'rh' inside an unrelated analyte name", () => {
+    expect(
+      bloodTypeFromReadings([
+        reading("N. gonorrhoeae Amplification", "Negative"),
+        reading("ABORh Interpretation", "O Positive"),
+      ])
+    ).toBe("O+");
+    expect(
+      bloodTypeFromReadings([
+        reading("N. gonorrhoeae Amplification", "Negative"),
+        reading("Cirrhosis Panel", "Negative"),
+        reading("Diarrhea Pathogen Panel", "Negative"),
+      ])
+    ).toBeNull();
   });
 });
 

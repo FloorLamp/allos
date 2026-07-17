@@ -252,6 +252,49 @@ export function resolveBloodType(
   return rh ? `${group}${rh}` : group;
 }
 
+// A reading whose NAME marks it as carrying blood-group information. Deliberately
+// broader than the qualitative classifier's IMMUTABLE_ATTRIBUTE regex, which keys on
+// `\babo\b` and so misses Epic's real-world "ABORh Interpretation" (no word boundary
+// between ABO and Rh) — the exact naming that leaves an imported blood type
+// unrecognized today.
+//
+// The name gate is what makes the loose value parsing below safe: normalizeAbo reads
+// a bare "A"/"B"/"O" as a group, which would be reckless against arbitrary analytes
+// but is correct once the row is known to be about blood grouping.
+const BLOOD_GROUP_NAME =
+  /\babo\b|abo\s*rh|aborh|blood\s*(?:type|group)|rh\s*(?:type|factor)|rh\s*\(?d\)?\b/i;
+
+// A minimal reading shape — what every import path already has on a record.
+export interface BloodGroupReading {
+  name: string;
+  canonical?: string | null;
+  value: string | null;
+}
+
+// Resolve a printable blood type from a document's readings, or null when none of
+// them carries one.
+//
+// Handles BOTH real-world shapes in one pass, with no special-casing:
+//   • two rows — "ABO Blood Group" = "A" plus "Rh Type" = "POSITIVE";
+//   • one COMBINED row — Epic's "ABORh Interpretation" = "A POSITIVE", which answers
+//     both halves at once: it becomes the source for the ABO and the Rh alike, and
+//     each normalizer reads its own half back out of the same string.
+// An ABO group alone still resolves ("O" with unknown Rh renders "O"); an Rh factor
+// alone is meaningless and yields null — matching resolveBloodType.
+export function bloodTypeFromReadings(
+  readings: readonly BloodGroupReading[]
+): string | null {
+  let aboSource: string | null = null;
+  let rhSource: string | null = null;
+  for (const r of readings) {
+    if (!BLOOD_GROUP_NAME.test(`${r.canonical ?? ""} ${r.name ?? ""}`))
+      continue;
+    if (aboSource === null && normalizeAbo(r.value)) aboSource = r.value;
+    if (rhSource === null && normalizeRh(r.value)) rhSource = r.value;
+  }
+  return aboSource ? resolveBloodType(aboSource, rhSource) : null;
+}
+
 // BMI from weight (kg) and height (cm), rounded to one decimal. Null unless both
 // are present and height is a positive, plausible value.
 export function computeBmi(
