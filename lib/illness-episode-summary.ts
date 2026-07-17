@@ -7,6 +7,7 @@
 
 import { listEpisodeRows, episodeRowToDerived } from "./illness-episode-store";
 import { assembleIllnessEpisode } from "./illness-episode";
+import { getConditions } from "./queries/clinical";
 
 export interface EpisodeIndexEntry {
   id: number;
@@ -31,10 +32,16 @@ export interface EpisodeIndexEntry {
 export function summarizeEpisodesForProfile(
   profileId: number
 ): EpisodeIndexEntry[] {
+  // The condition list is profile-invariant across episodes — fetch it ONCE and pass
+  // it into every assembly rather than re-running its full-table window subquery per
+  // episode (#886). The per-episode symptom/temperature/PRN queries genuinely vary by
+  // the episode's date window and stay inside the assembly.
+  const conditions = getConditions(profileId);
   return listEpisodeRows(profileId).map((row) => {
     const assembled = assembleIllnessEpisode(
       profileId,
-      episodeRowToDerived(row)
+      episodeRowToDerived(row),
+      conditions
     );
     const promoted = assembled.conditions.find((c) => c.fromEpisode) ?? null;
     return {

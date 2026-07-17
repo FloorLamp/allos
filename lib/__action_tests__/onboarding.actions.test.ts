@@ -315,4 +315,37 @@ describe("onboarding actions", () => {
     expect(getDashboardLayout(profile.id)?.order).not.toContain("goals-habits");
     expect(getDashboardLayout(profile.id)?.order).toContain("recent-labs");
   });
+
+  it("revisiting a completed step keeps the profile complete (#887)", async () => {
+    const login = createLogin({ username: "onboarding-revisit" });
+    const profile = createTestProfile("Finished Person", login.id);
+    actAs(login, profile);
+    const completedAt = "2026-06-01T12:00:00.000Z";
+    setOnboardingState(profile.id, {
+      ...initialOnboardingState(),
+      status: "complete",
+      profilePath: "self",
+      focuses: ["fitness", "metrics-labs"],
+      basicsComplete: true,
+      dataReviewed: true,
+      layoutReviewed: true,
+      notificationsReviewed: true,
+      startedAt: "2026-05-31T09:00:00.000Z",
+      completedAt,
+    });
+
+    // The user navigates back into the wizard and re-submits step 2 with the SAME
+    // focuses. Before #887 this reverted status → in_progress and cleared completedAt,
+    // resurfacing the "Finish setting up" card. Completion must stay put.
+    const focuses = new FormData();
+    focuses.append("focus", "fitness");
+    focuses.append("focus", "metrics-labs");
+    await redirected(saveOnboardingFocuses(focuses));
+
+    expect(getOnboardingState(profile.id)).toMatchObject({
+      status: "complete",
+      completedAt,
+      focuses: ["fitness", "metrics-labs"],
+    });
+  });
 });

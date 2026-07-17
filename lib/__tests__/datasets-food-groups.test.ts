@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   foodGroupsDataset,
   foodGroupBySlug,
+  canonicalFoodGroup,
   FOOD_GROUPS,
 } from "@/lib/datasets/food-groups";
 import {
@@ -47,5 +48,18 @@ describe("food-groups dataset on the curated-dataset framework", () => {
     expect(fatty!.name).toBe("Fatty fish");
     expect(fatty!.tier).toBe("encourage");
     expect(FOOD_GROUPS.length).toBeGreaterThanOrEqual(20);
+  });
+
+  it("canonicalFoodGroup returns the catalog slug for case/punctuation variants (#883)", () => {
+    // The value the write paths persist — always the canonical slug, never the raw input.
+    expect(canonicalFoodGroup("leafy_greens")).toBe("leafy_greens");
+    expect(canonicalFoodGroup("Leafy_Greens")).toBe("leafy_greens");
+    expect(canonicalFoodGroup("leafy-greens")).toBe("leafy_greens");
+    expect(canonicalFoodGroup("  leafy_greens  ")).toBe("leafy_greens");
+  });
+
+  it("canonicalFoodGroup refuses an unknown group with null (the refusal gate)", () => {
+    expect(canonicalFoodGroup("__no_such_group__")).toBeNull();
+    expect(canonicalFoodGroup("")).toBeNull();
   });
 });

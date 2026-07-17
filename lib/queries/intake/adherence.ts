@@ -355,6 +355,65 @@ export function getAdministrationsForItemOnDate(
   }[];
 }
 
+// Batched form of getAdministrationsForItemOnDate for the medications Today panel
+// (#885): the day's PRN administrations for a SET of items in one query, grouped into a
+// Map<itemId, admins[]>, so the card builder derives each PRN med's day-summary in JS
+// instead of issuing one query per PRN item (an N+1 over the append-only, un-purged
+// intake_item_logs ledger). Same per-item ordering (most-recent intake first) and same
+// profile-scoping via the parent item as the single-item version. Empty ids → empty map.
+export function getAdministrationsForItemsOnDate(
+  profileId: number,
+  itemIds: number[],
+  date: string
+): Map<
+  number,
+  {
+    id: number;
+    given_at: string | null;
+    taken_at: string;
+    amount: string | null;
+  }[]
+> {
+  const out = new Map<
+    number,
+    {
+      id: number;
+      given_at: string | null;
+      taken_at: string;
+      amount: string | null;
+    }[]
+  >();
+  if (itemIds.length === 0) return out;
+  const placeholders = itemIds.map(() => "?").join(", ");
+  const rows = db
+    .prepare(
+      `SELECT l.item_id, l.id, l.given_at, l.taken_at, l.amount
+         FROM intake_item_logs l
+         JOIN intake_items s ON s.id = l.item_id
+        WHERE s.profile_id = ? AND l.item_id IN (${placeholders}) AND l.date = ?
+          AND l.status = 'taken'
+        ORDER BY COALESCE(l.given_at, l.taken_at) DESC, l.id DESC`
+    )
+    .all(profileId, ...itemIds, date) as {
+    item_id: number;
+    id: number;
+    given_at: string | null;
+    taken_at: string;
+    amount: string | null;
+  }[];
+  for (const r of rows) {
+    const arr = out.get(r.item_id) ?? [];
+    arr.push({
+      id: r.id,
+      given_at: r.given_at,
+      taken_at: r.taken_at,
+      amount: r.amount,
+    });
+    out.set(r.item_id, arr);
+  }
+  return out;
+}
+
 // PRN administration history for the med's OWN detail page (#851 item 13): every
 // administration on/after `sinceDate`, most recent first, so the page can answer "how
 // often last month" — the card alone shows only TODAY. Profile-scoped via the parent

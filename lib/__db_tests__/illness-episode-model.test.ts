@@ -12,11 +12,14 @@ import {
   episodeForProfileDate,
   assembleIllnessEpisode,
 } from "@/lib/illness-episode";
+import { summarizeEpisodesForProfile } from "@/lib/illness-episode-summary";
 import { episodesForSituation, episodeForDate } from "@/lib/symptom-episode";
 import {
   getOpenEpisodeRow,
   listEpisodeRows,
+  episodeRowToDerived,
 } from "@/lib/illness-episode-store";
+import { getConditions } from "@/lib/queries";
 import {
   resolveSituationId,
   setProfileSetting,
@@ -142,5 +145,67 @@ describe("toggle opens/closes rows in one write path (#856 item 0)", () => {
     const p = newProfile("non-illness");
     setActiveSituations(p, ["Travel"]);
     expect(listEpisodeRows(p).length).toBe(0);
+  });
+});
+
+describe("summarizeEpisodesForProfile hoists getConditions once (#886)", () => {
+  it("produces summaries identical to per-episode assembly over a multi-episode fixture", () => {
+    const p = newProfile("multi-episode");
+    // Three historical episodes (two closed + one open).
+    const events: SituationEvent[] = [
+      { date: "2026-01-05", situation: "Illness", change: "start" },
+      { date: "2026-01-12", situation: "Illness", change: "stop" },
+      { date: "2026-03-01", situation: "Illness", change: "start" },
+      { date: "2026-03-06", situation: "Illness", change: "stop" },
+      { date: "2026-06-01", situation: "Illness", change: "start" },
+    ];
+    seedLog(p, true, events);
+    backfillIllnessEpisodes(db);
+
+    // A few conditions: one whose onset falls inside the second episode's window, and a
+    // couple outside — enough that the per-episode filter has real work, and the batched
+    // getConditions must return the same set the per-episode call would.
+    const insCond = db.prepare(
+      `INSERT INTO conditions (profile_id, name, status, onset_date)
+       VALUES (?, ?, ?, ?)`
+    );
+    insCond.run(p, "Sinusitis", "active", "2026-03-03");
+    insCond.run(p, "Seasonal allergies", "active", "2025-11-01");
+    insCond.run(p, "Bronchitis", "resolved", "2026-01-08");
+
+    // A temperature reading inside the second episode's window so an assembly carries a
+    // real maxTempF (canonical_name matches VITAL_CANONICAL.temperature.canonical).
+    db.prepare(
+      `INSERT INTO medical_records (profile_id, category, name, canonical_name, date, value_num)
+       VALUES (?, 'vitals', 'Temperature', 'Body Temperature', '2026-03-03', 101.2)`
+    ).run(p);
+
+    // Reference: the OLD behavior — assemble each row WITHOUT a preset condition list
+    // (each call fetches getConditions itself). The hoisted path must match it exactly.
+    const reference = listEpisodeRows(p).map((row) => {
+      const assembled = assembleIllnessEpisode(p, episodeRowToDerived(row));
+      const promoted = assembled.conditions.find((c) => c.fromEpisode) ?? null;
+      return {
+        id: row.id,
+        situation: assembled.situation,
+        start: assembled.start,
+        end: assembled.end,
+        ongoing: assembled.ongoing,
+        firstDay: assembled.firstDay,
+        lastActiveDay: assembled.lastActiveDay,
+        dayCount: assembled.dayCount,
+        maxTempF: assembled.maxTempF,
+        symptomLabels: assembled.symptoms.map((s) => s.label),
+        distinctSymptomCount: assembled.distinctSymptomCount,
+        totalAdministrations: assembled.totalAdministrations,
+        outcome: row.outcome,
+        promotedConditionName: promoted ? promoted.name : null,
+      };
+    });
+
+    expect(summarizeEpisodesForProfile(p)).toEqual(reference);
+    // Sanity: the fixture actually produced multiple episodes and saw the conditions.
+    expect(reference.length).toBeGreaterThanOrEqual(3);
+    expect(getConditions(p).length).toBe(3);
   });
 });

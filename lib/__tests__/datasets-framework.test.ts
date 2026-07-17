@@ -15,9 +15,12 @@ import {
 //
 // HONEST SCOPE (read before extending): this guard enforces the framework contract
 // ONLY for (a) the JSON files under lib/datasets/data/ and (b) the datasets listed in
-// lib/datasets/registry.ts — which today is `mets` alone, the proof migration. It
-// DELIBERATELY does NOT scan the ~21 not-yet-migrated curated datasets under
-// lib/*.json (canonical-biomarkers, dri, drug-interactions, …): those keep their
+// lib/datasets/registry.ts — today the 14 datasets migrated in #860 Track B waves 1–2
+// (mets, food-groups, dri, drug-interactions, pgx, contrast-safety, illness-thresholds,
+// prn-defaults, medication-descriptions, biomarker-descriptions, icd10-common,
+// nutrient-food-map, screenings, temperature-red-flags). It DELIBERATELY does NOT scan
+// the remaining not-yet-migrated curated datasets still under lib/*.json (canonical-
+// biomarkers is deferred; symptoms is a documented non-candidate): those keep their
 // bespoke shape until each is migrated in its own small PR, at which point it moves
 // under lib/datasets/data/ and joins the registry, and this guard starts covering it.
 // So: dropping a NEW dataset JSON under lib/datasets/data/ without a citation/identity

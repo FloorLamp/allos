@@ -23,7 +23,7 @@ import {
   getPgxWarnings,
   getGenomicVariants,
   getFindingSuppressions,
-  getAdministrationsForItemOnDate,
+  getAdministrationsForItemsOnDate,
   getPediatricFormContext,
   getPrnMedicationsForQuickLog,
   getMedicalRecords,
@@ -218,7 +218,18 @@ export function loadMedicationsData(profileId: number): MedicationsData {
 
   // Per-PRN-med day summary + redose-window line (#797/#798), profile-tz aware and
   // formatted by the SAME redoseCardLabel/administrationDayLabel the dashboard uses.
+  // Batch the day's administrations for every PRN med in ONE query (#885) rather than
+  // one query per PRN item inside the card-builder loop — an N+1 over the un-purged
+  // intake_item_logs ledger. Per-item derivation stays in JS below.
   const nowInstant = new Date();
+  const prnMedIds = supplements
+    .filter((s) => s.kind === "medication" && s.as_needed === 1)
+    .map((s) => s.id);
+  const adminsByItem = getAdministrationsForItemsOnDate(
+    profileId,
+    prnMedIds,
+    todayStr
+  );
   const prnInfoFor = (
     s: Supplement
   ): {
@@ -228,7 +239,7 @@ export function loadMedicationsData(profileId: number): MedicationsData {
   } => {
     if (s.as_needed !== 1)
       return { label: null, administrations: [], redoseLine: null };
-    const admins = getAdministrationsForItemOnDate(profileId, s.id, todayStr);
+    const admins = adminsByItem.get(s.id) ?? [];
     const administrations = admins.map((a) => ({
       id: a.id,
       label: formatGivenAtClock(tz, a.given_at ?? a.taken_at),
