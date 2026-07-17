@@ -1,0 +1,234 @@
+{
+  "$schema": "allos-dataset/v1",
+  "id": "allergen-cross-reactivity",
+  "title": "Allergen cross-reactivity families",
+  "description": "Baked allergen cross-reactivity families (issue #153) — well-established, clinically static cross-reaction clusters (birch-OAS, latex-fruit, crustacean tropomyosin, finned-fish parvalbumin, mammalian-milk caseins, tree-nut and legume clusters). Backs informational cross-reaction notes and the #691 allergy safety belt. INFORMATIONAL, never diagnostic — cross-reactivity does not mean a reaction is certain. Each family carries a peer-reviewed literature citation. Committed + HUMAN-REVIEWABLE; regenerate with `npm run gen:allergen-cross-reactivity`.",
+  "citation": [
+    {
+      "source": "Published allergy literature — pollen-food (Werfel 2015), latex-fruit (Blanco 1994), shellfish tropomyosin (Lopata 2010), fish parvalbumin (Sharp & Lopata 2014), mammalian-milk caseins (Restani 1999), tree-nut (Goetz 2005), and peanut–lupin (Moneret-Vautrin 1999) cross-reactivity.",
+      "note": "Generic clinical reference data (not patient data, not medical advice); each family additionally carries its own peer-reviewed `citation`."
+    }
+  ],
+  "identity": {
+    "keys": [
+      "id"
+    ]
+  },
+  "entries": [
+    {
+      "id": "birch-oas",
+      "name": "Birch pollen (oral allergy syndrome)",
+      "label": "oral allergy syndrome, birch pollen (PR-10)",
+      "citation": "Werfel T, et al. Position paper: Pollen-food syndrome. Allergy 2015;70:1079-1090.",
+      "members": [
+        "birch",
+        "apple",
+        "pear",
+        "peach",
+        "cherry",
+        "plum",
+        "apricot",
+        "nectarine",
+        "hazelnut",
+        "almond",
+        "carrot",
+        "celery",
+        "kiwi",
+        "soybean"
+      ],
+      "aliases": {
+        "soybean": [
+          "soy",
+          "soya"
+        ]
+      }
+    },
+    {
+      "id": "ragweed-oas",
+      "name": "Ragweed pollen (oral allergy syndrome)",
+      "label": "oral allergy syndrome, ragweed pollen",
+      "citation": "Enberg RN, et al. Ragweed-melon association. Ann Allergy 1987;58:59-63.",
+      "members": [
+        "ragweed",
+        "melon",
+        "cantaloupe",
+        "honeydew",
+        "watermelon",
+        "banana",
+        "cucumber",
+        "zucchini"
+      ]
+    },
+    {
+      "id": "mugwort-spice",
+      "name": "Mugwort pollen (celery-spice syndrome)",
+      "label": "celery-mugwort-spice syndrome",
+      "citation": "Wuthrich B, et al. Celery-carrot-mugwort-spice syndrome. Int Arch Allergy Immunol 1990;93:399-404.",
+      "members": [
+        "mugwort",
+        "celery",
+        "carrot",
+        "fennel",
+        "parsley",
+        "coriander",
+        "cumin",
+        "caraway"
+      ]
+    },
+    {
+      "id": "latex-fruit",
+      "name": "Latex-fruit syndrome",
+      "label": "latex-fruit syndrome (latex commonly cross-reacts with fruit)",
+      "citation": "Blanco C, et al. Latex-fruit syndrome. Ann Allergy Asthma Immunol 1994;73:309-314.",
+      "members": [
+        "latex",
+        "banana",
+        "avocado",
+        "kiwi",
+        "chestnut",
+        "papaya",
+        "fig"
+      ]
+    },
+    {
+      "id": "crustacean",
+      "name": "Crustacean shellfish group",
+      "label": "crustacean shellfish (shared tropomyosin)",
+      "citation": "Lopata AL, et al. Shellfish allergy. Clin Exp Allergy 2010;40:850-858.",
+      "members": [
+        "shrimp",
+        "prawn",
+        "crab",
+        "lobster",
+        "crawfish",
+        "crayfish",
+        "langoustine",
+        "krill"
+      ],
+      "aliases": {
+        "shrimp": [
+          "shrimps"
+        ],
+        "prawn": [
+          "prawns"
+        ]
+      }
+    },
+    {
+      "id": "mollusk",
+      "name": "Mollusk shellfish group",
+      "label": "mollusk shellfish (shared tropomyosin)",
+      "citation": "Lopata AL, et al. Shellfish allergy. Clin Exp Allergy 2010;40:850-858.",
+      "members": [
+        "clam",
+        "mussel",
+        "oyster",
+        "scallop",
+        "squid",
+        "octopus",
+        "snail",
+        "abalone"
+      ]
+    },
+    {
+      "id": "tree-nut-cashew-pistachio",
+      "name": "Cashew / pistachio tree-nut cluster",
+      "label": "cashew-pistachio tree-nut cluster",
+      "citation": "Goetz DW, et al. Cashew-pistachio and walnut-pecan tree nut cross-reactivity. Ann Allergy Asthma Immunol 2005;95:45-52.",
+      "members": [
+        "cashew",
+        "pistachio"
+      ]
+    },
+    {
+      "id": "tree-nut-walnut-pecan",
+      "name": "Walnut / pecan tree-nut cluster",
+      "label": "walnut-pecan tree-nut cluster",
+      "citation": "Goetz DW, et al. Cashew-pistachio and walnut-pecan tree nut cross-reactivity. Ann Allergy Asthma Immunol 2005;95:45-52.",
+      "members": [
+        "walnut",
+        "pecan"
+      ]
+    },
+    {
+      "id": "mammalian-milk",
+      "name": "Mammalian milk group",
+      "label": "mammalian milk (cow, goat, sheep share caseins)",
+      "citation": "Restani P, et al. Cross-reactivity between milk proteins from different animal species. Clin Exp Allergy 1999;29:997-1004.",
+      "members": [
+        "cow's milk",
+        "goat's milk",
+        "sheep's milk",
+        "buffalo milk"
+      ],
+      "aliases": {
+        "cow's milk": [
+          "milk",
+          "cow milk",
+          "dairy",
+          "cows milk"
+        ],
+        "goat's milk": [
+          "goat milk",
+          "goats milk"
+        ],
+        "sheep's milk": [
+          "sheep milk",
+          "sheeps milk",
+          "ewe milk"
+        ]
+      }
+    },
+    {
+      "id": "finned-fish",
+      "name": "Finned fish group (parvalbumin)",
+      "label": "finned fish (shared parvalbumin)",
+      "citation": "Sharp MF, Lopata AL. Fish allergy: in review. Clin Rev Allergy Immunol 2014;46:258-271.",
+      "members": [
+        "salmon",
+        "cod",
+        "tuna",
+        "halibut",
+        "mackerel",
+        "herring",
+        "sardine",
+        "anchovy",
+        "trout",
+        "tilapia",
+        "bass",
+        "pollock",
+        "haddock",
+        "sole"
+      ],
+      "aliases": {
+        "sardine": [
+          "pilchard"
+        ],
+        "pollock": [
+          "pollack"
+        ]
+      }
+    },
+    {
+      "id": "peanut-lupin",
+      "name": "Peanut / lupin legume group",
+      "label": "peanut and lupin (cross-reacting legumes)",
+      "citation": "Moneret-Vautrin DA, et al. Cross-allergenicity of peanut and lupine. Allergy 1999;54:643-645.",
+      "members": [
+        "peanut",
+        "lupin"
+      ],
+      "aliases": {
+        "peanut": [
+          "groundnut",
+          "arachis"
+        ],
+        "lupin": [
+          "lupine",
+          "lupini",
+          "lupin bean"
+        ]
+      }
+    }
+  ]
+}

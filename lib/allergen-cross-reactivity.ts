@@ -5,7 +5,8 @@
 // syndrome); natural rubber latex with banana / avocado / kiwi (latex-fruit
 // syndrome); crustacean shellfish share tropomyosin; cashew↔pistachio and
 // walnut↔pecan cluster; cow / goat / sheep milk share caseins. This module reads
-// the curated dataset in `allergen-cross-reactivity.json` and, given a profile's
+// the curated framework dataset lib/datasets/data/allergen-cross-reactivity.json
+// (via lib/datasets/allergen-cross-reactivity) and, given a profile's
 // allergens/sensitizations (canonical names — the same strings the allergies view
 // carries, produced by lib/allergy-ige.ts), surfaces INFORMATIONAL cross-reaction
 // notes.
@@ -14,17 +15,19 @@
 // cross-reacts with" / "commonly associated with", never a diagnosis. A single
 // pure matcher backs every surface (the Allergies page and the passport allergy
 // view), per the one-question-one-computation rule.
+//
+// The families live in the curated-dataset FRAMEWORK envelope (issue #860 Track B):
+// lib/datasets/data/allergen-cross-reactivity.json, generated from the hand-maintained
+// scripts/allergen-cross-reactivity.source.json and consumed via
+// lib/datasets/allergen-cross-reactivity.ts. This module is the DOMAIN matcher over its
+// entries (resolving a profile's allergens to families by member/alias form-overlap).
 
-import dataset from "./allergen-cross-reactivity.json";
+import {
+  CROSS_REACTIVITY_FAMILIES,
+  type CrossReactivityFamily,
+} from "./datasets/allergen-cross-reactivity";
 
-export interface CrossReactivityFamily {
-  id: string;
-  name: string;
-  label: string;
-  citation: string;
-  members: string[];
-  aliases?: Record<string, string[]>;
-}
+export type { CrossReactivityFamily } from "./datasets/allergen-cross-reactivity";
 
 export interface CrossReactivityMatch {
   familyId: string;
@@ -39,7 +42,7 @@ export interface CrossReactivityMatch {
   note: string;
 }
 
-const FAMILIES = (dataset as { families: CrossReactivityFamily[] }).families;
+const FAMILIES: CrossReactivityFamily[] = CROSS_REACTIVITY_FAMILIES;
 
 export function crossReactivityFamilies(): readonly CrossReactivityFamily[] {
   return FAMILIES;
