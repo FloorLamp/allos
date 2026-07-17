@@ -31,36 +31,25 @@
 // it, and the ABSENCE of a flag is NOT clearance (a curated subset; an unparsed study
 // carries no flag). Fully OFFLINE — no study text/allergy/condition leaves the box.
 
-import data from "./contrast-safety.json";
+import {
+  CONTRAST_CLASSES,
+  CONTRAST_ALLERGY_GATES,
+  CONTRAST_RENAL_GATES,
+  type ContrastClassEntry,
+  type ContrastAllergyGate,
+  type ContrastRenalGate,
+} from "./datasets/contrast-safety";
 import { conditionsToRiskFactors } from "./risk-stratification";
 
 export type ContrastClass = "iodinated" | "gadolinium";
 export type ContrastGate = "allergy" | "renal";
 export type ContrastStudySource = "careplan" | "appointment" | "imaging";
-type RenalLevel = "any" | "advanced";
 
-interface RawClass {
-  class: ContrastClass;
-  label: string;
-  modalities: string[];
-  agents: string[];
-}
-interface RawAllergyGate {
-  class: ContrastClass;
-  allergens: string[];
-  note: string;
-  source: string;
-}
-interface RawRenalGate {
-  class: ContrastClass;
-  level: RenalLevel;
-  note: string;
-  source: string;
-}
-
-const CLASSES = data.classes as RawClass[];
-const ALLERGY_GATES = data.allergyGates as RawAllergyGate[];
-const RENAL_GATES = data.renalGates as RawRenalGate[];
+// The contrast classes + the two per-class gate tables, from the framework-loaded
+// dataset (lib/datasets/contrast-safety.ts). Class-enum identity; behavior unchanged.
+const CLASSES: ContrastClassEntry[] = CONTRAST_CLASSES;
+const ALLERGY_GATES: ContrastAllergyGate[] = CONTRAST_ALLERGY_GATES;
+const RENAL_GATES: ContrastRenalGate[] = CONTRAST_RENAL_GATES;
 
 const CLASS_LABEL: Record<ContrastClass, string> = Object.fromEntries(
   CLASSES.map((c) => [c.class, c.label])

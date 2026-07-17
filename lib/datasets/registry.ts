@@ -12,6 +12,7 @@
 // Each migrates in its own small PR.
 
 import { biomarkerDescriptionsDataset } from "./biomarker-descriptions";
+import { contrastDataset, contrastClassStrategy } from "./contrast-safety";
 import { driDataset, driNutrientStrategy } from "./dri";
 import {
   drugInteractionsDataset,
@@ -54,6 +55,13 @@ export const DATASETS: RegisteredDataset[] = [
       unknown
     >,
     strategy: nameStrategy,
+  },
+  {
+    dataset: contrastDataset as unknown as LoadedDataset<
+      Record<string, unknown>,
+      unknown
+    >,
+    strategy: contrastClassStrategy,
   },
   {
     dataset: driDataset as unknown as LoadedDataset<
