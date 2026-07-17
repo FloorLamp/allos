@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   recommendNextWorkout,
   resolveRoutineSession,
+  resolveTodayRoutineDayIndex,
   sessionCreditsDay,
   type ActiveRoutineInput,
   type NextWorkoutInput,
@@ -73,6 +74,55 @@ function ppl(position: number): ActiveRoutineInput {
     ],
   };
 }
+
+describe("resolveTodayRoutineDayIndex — the ONE cursor→today's-day computation (#831)", () => {
+  it("reads the cursor modulo the day count", () => {
+    expect(resolveTodayRoutineDayIndex({ position: 0, days: [1, 2, 3] })).toBe(
+      0
+    );
+    expect(resolveTodayRoutineDayIndex({ position: 1, days: [1, 2, 3] })).toBe(
+      1
+    );
+    expect(resolveTodayRoutineDayIndex({ position: 2, days: [1, 2, 3] })).toBe(
+      2
+    );
+  });
+
+  it("normalizes an overflowed or negative cursor into [0, n)", () => {
+    expect(resolveTodayRoutineDayIndex({ position: 3, days: [1, 2, 3] })).toBe(
+      0
+    );
+    expect(resolveTodayRoutineDayIndex({ position: 7, days: [1, 2, 3] })).toBe(
+      1
+    );
+    expect(resolveTodayRoutineDayIndex({ position: -1, days: [1, 2, 3] })).toBe(
+      2
+    );
+    expect(resolveTodayRoutineDayIndex({ position: -4, days: [1, 2, 3] })).toBe(
+      2
+    );
+  });
+
+  it("returns null for a routine with no days", () => {
+    expect(resolveTodayRoutineDayIndex({ position: 5, days: [] })).toBeNull();
+  });
+
+  // Cross-path pin (#831): the recommendation core (resolveRoutineSession) and the
+  // crediting write path (creditRoutineSession, lib/routines.ts) are both formatters
+  // over this ONE index function, so they can never disagree about "today's day".
+  // Here we pin the recommendation path: whatever day resolveRoutineSession shows is
+  // exactly days[resolveTodayRoutineDayIndex(routine)] — the same slice the write
+  // path advances the cursor past.
+  it("resolveRoutineSession selects days[resolveTodayRoutineDayIndex]", () => {
+    for (const position of [0, 1, 2, 3, 4, 7, -1, -3]) {
+      const routine = ppl(position);
+      const idx = resolveTodayRoutineDayIndex(routine)!;
+      const shown = resolveRoutineSession(routine, input())!;
+      expect(shown.dayId).toBe(routine.days[idx].id);
+      expect(shown.label).toBe(routine.days[idx].label);
+    }
+  });
+});
 
 describe("resolveRoutineSession — today's-day resolution + slot filling", () => {
   it("resolves the day at the rotation cursor", () => {

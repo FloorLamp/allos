@@ -520,6 +520,23 @@ function rankExercises(
 
 // ---- Routine-aware path (#740) ----
 
+// The rotation cursor → TODAY'S routine day INDEX. ONE computation (#831) shared by
+// the recommendation core (resolveRoutineSession, below) and the crediting write
+// path (creditRoutineSession, lib/routines.ts) so the day the UI shows as "today"
+// and the day a logged session advances the cursor past can never disagree — the
+// "one question, one computation" rule (#221/#222/#223). A routine is a SEQUENCE not
+// a calendar, so the cursor is read modulo the day count and a possibly-negative or
+// overflowed value is normalized into [0, n). Returns null when the routine has no
+// days. Pure (index math over a day count) so both call sites are formatters over it.
+export function resolveTodayRoutineDayIndex(routine: {
+  position: number;
+  days: readonly unknown[];
+}): number | null {
+  const n = routine.days.length;
+  if (n === 0) return null;
+  return ((routine.position % n) + n) % n;
+}
+
 // Resolve TODAY'S routine day from the rotation cursor, filling each slot with the
 // first candidate the user can actually do (equipment de-rank — a no-op when the
 // registry is empty, so a gym user / cold start gets the first listed candidate)
@@ -530,10 +547,8 @@ export function resolveRoutineSession(
   routine: ActiveRoutineInput,
   input: NextWorkoutInput
 ): RoutineSession | null {
-  const n = routine.days.length;
-  if (n === 0) return null;
-  // Normalize a possibly-negative or overflowed cursor into [0, n).
-  const idx = ((routine.position % n) + n) % n;
+  const idx = resolveTodayRoutineDayIndex(routine);
+  if (idx === null) return null;
   const day = routine.days[idx];
   const isCardioDay = day.focus.length === 0;
 
