@@ -36,6 +36,7 @@ import {
 } from "./upcoming";
 import type { CoachingTone, Recommendation, PR, CardioPR } from "./coaching";
 import type { AppRoute } from "./hrefs";
+import type { Reason } from "./reasons";
 import type { TrendItem } from "./trends-digest";
 import type { WeightUnit, DistanceUnit } from "./settings";
 import { fmtWeight, fmtDistance, fmtKmh } from "./units";
@@ -67,6 +68,11 @@ export interface Finding {
   supersedes?: string;
   title: string;
   detail?: string | null;
+  // Structured, first-class reasons (issue #656) carried ALONGSIDE `detail` — the
+  // "why" the deciding engine knows, as DATA a compact surface can render (top
+  // reason) without re-deriving from the flattened `detail`. Ordered most-
+  // explanatory-first. Empty/absent for findings with no structured reason.
+  reasons?: Reason[];
   tone?: FindingTone;
   // Optional supporting evidence (the number/hint behind the finding) for surfaces
   // that show a rationale line; opaque to the envelope.
@@ -160,6 +166,9 @@ export function upcomingToFinding(item: UpcomingItem): Finding {
     dedupeKey: item.key,
     title: item.title,
     detail: item.detail ?? null,
+    // Carry the structured reasons across the bus unchanged (issue #656), so a
+    // Finding consumer sees the SAME "why" the UpcomingItem does.
+    reasons: item.reasons,
     actionHref: item.href,
     dueDate: item.dueDate,
     band: item.band,

@@ -66,6 +66,15 @@ import {
   getActiveSituations,
 } from "../../settings";
 import type { UpcomingItem } from "../../upcoming";
+import {
+  type Reason,
+  riskReasonsFrom,
+  flaggedReason,
+  situationReason,
+  concatReasons,
+  plainRiskReasons,
+} from "../../reasons";
+import { isFlaggedForRetest } from "../../biomarker-retest-copy";
 import type { MedicalRecord } from "../../types";
 import { pickNextAppointment } from "../../household";
 import {
@@ -146,11 +155,20 @@ function doseItems(profileId: number, today: string): UpcomingItem[] {
     ]
       .filter(Boolean)
       .join(" · ");
+    // A situational item is due specifically BECAUSE its situation is active (the
+    // gate isDueOn just applied) — carry that as a structured reason (issue #656
+    // item 5) so the same "due because Illness is active" explanation the medicine
+    // page shows as a bare tag can reach the digest / a reminder, not only the row.
+    const reasons: Reason[] =
+      supp.condition === "situational" && supp.situation
+        ? [situationReason(supp.situation)]
+        : [];
     items.push({
       key: `dose:${dose.id}`,
       domain: "dose",
       title: supp.name,
       detail: detail || null,
+      reasons: reasons.length ? reasons : undefined,
       href: intakeHref(supp.kind),
       dueDate: null, // scheduled for today
       // Bucket label as the due-text ("Morning" / "Evening" / "Before sleep"…):
@@ -373,7 +391,7 @@ function immunizationItems(profileId: number, today: string): UpcomingItem[] {
           a.status === "overdue" ? ("overdue" as const) : ("today" as const),
         dueText: a.status === "overdue" ? "Overdue" : "Due",
       };
-      const { priority, reasons } = immunizationPriorityFor(
+      const { priority, reasons, sourced } = immunizationPriorityFor(
         a.code,
         riskFactors
       );
@@ -381,6 +399,8 @@ function immunizationItems(profileId: number, today: string): UpcomingItem[] {
         item.priority = priority;
         const suffix = reasons.join(", ");
         item.detail = item.detail ? `${item.detail} · ${suffix}` : suffix;
+        // Carry the SAME cited reasons structurally (issue #656) — detail unchanged.
+        item.reasons = riskReasonsFrom(sourced);
       }
       return item;
     });
@@ -440,6 +460,11 @@ function preventiveItems(profileId: number, today: string): UpcomingItem[] {
       const suffix = reasons.join(", ");
       if (suffix)
         item.detail = item.detail ? `${item.detail} · ${suffix}` : suffix;
+      // Carry the SAME merged reasons structurally (issue #656). The preventive
+      // assessor pre-merges these as plain strings (the visit/hereditary-cadence
+      // lines aren't sourced through it yet), so these are text-only reasons —
+      // detail unchanged. Threading `source` through the assessor is a follow-up.
+      if (reasons.length) item.reasons = plainRiskReasons(reasons);
     }
     return item;
   });
@@ -568,6 +593,13 @@ function biomarkerItems(profileId: number, today: string): UpcomingItem[] {
         flag: r.flag,
         reasons: mod.reasons,
       }),
+      // The SAME reasons the detail flattens, carried structurally (issue #656): the
+      // cited risk lines lead (they explain "why sooner"), then the flag status when
+      // the stale reading was out-of-range/non-optimal. `detail` is unchanged.
+      reasons: concatReasons(
+        riskReasonsFrom(mod.sourced),
+        isFlaggedForRetest(r.flag) ? [flaggedReason(r.flag)] : []
+      ),
       href: biomarkerViewHref(r.canonical_name, r.name),
       dueDate: shiftDateStr(effectiveDate, interval),
       priority,

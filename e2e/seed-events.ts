@@ -62,6 +62,8 @@ import {
   COCARE_PARENT_PROFILE,
   E2E_LOGIN_CONDREV,
   CONDITION_REVIEW_PROFILE,
+  E2E_LOGIN_REASON,
+  REASON_MODEL_PROFILE,
 } from "./fixture-logins";
 import { adoptTemplate, activateRoutine } from "../lib/routines";
 
@@ -2425,4 +2427,37 @@ db.prepare(
 seedMemberLogin(E2E_LOGIN_CONDREV, condReviewId);
 console.log(
   `e2e: seeded condition-suggestion fixture — profile ${condReviewId} (#685)`
+);
+
+// REASON_MODEL (#656 item 4): a dedicated adult profile with a family history of
+// heart disease AND a fresh out-of-range LDL. The lipid analyte is risk-elevated for
+// this profile (family-cardiovascular factor), so the biomarker-flag item on
+// /upcoming gains its "why-for-this-profile" line ("Family history of heart
+// disease") — the surface proof for the shared reason model. Read-only; isolated so
+// it never changes a shared profile's flagged-lipid set. Idempotent: clear the LDL
+// + family row first so a reused server re-seeds cleanly.
+const reasonModelId = fixtureProfileId(REASON_MODEL_PROFILE);
+db.prepare(
+  `INSERT OR IGNORE INTO profile_settings (profile_id, key, value) VALUES (?, 'sex', 'male')`
+).run(reasonModelId);
+db.prepare(
+  `INSERT OR IGNORE INTO profile_settings (profile_id, key, value) VALUES (?, 'birthdate', '1980-01-01')`
+).run(reasonModelId);
+db.prepare(
+  `DELETE FROM medical_records WHERE profile_id = ? AND canonical_name = 'LDL Cholesterol'`
+).run(reasonModelId);
+db.prepare(
+  `DELETE FROM family_history WHERE profile_id = ? AND condition = 'Coronary artery disease'`
+).run(reasonModelId);
+db.prepare(
+  `INSERT INTO family_history (profile_id, relation, condition) VALUES (?, 'parent', 'Coronary artery disease')`
+).run(reasonModelId);
+db.prepare(
+  `INSERT INTO medical_records
+     (profile_id, date, category, name, canonical_name, value, unit, reference_range, flag)
+   VALUES (?, date('now'), 'lab', 'LDL Cholesterol', 'LDL Cholesterol', '190', 'mg/dL', '<100', 'high')`
+).run(reasonModelId);
+seedMemberLogin(E2E_LOGIN_REASON, reasonModelId, "read");
+console.log(
+  `e2e: seeded reason-model fixture — profile ${reasonModelId} (#656)`
 );

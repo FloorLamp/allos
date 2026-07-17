@@ -570,20 +570,34 @@ function ruleMatchesAnalyte(rule: RiskRule, canonicalName: string): boolean {
   return false;
 }
 
+// A single calm reason line PLUS its informational citation — the structured,
+// citation-carrying form of the `reasons: string[]` lines (issue #656). The digest/
+// hero/flag surfaces carry these as `Reason`s (code `risk-elevated`) so the "why
+// sooner" travels as data, not a flattened string. `reasons` stays the text-only
+// projection every existing consumer already reads; `sourced` is the parallel
+// carrier, same order.
+export interface SourcedReason {
+  text: string;
+  source: string;
+}
+
 // The combined modulation applied to a retest item. `multiplier` is the TIGHTEST
 // matched multiplier (min — the most cautious cadence wins); `priority` is the
 // highest matched weight (0 when nothing matched); `reasons` are the unique calm
-// lines, ordered by descending priority then insertion.
+// lines, ordered by descending priority then insertion; `sourced` is the SAME lines
+// paired with their citation (issue #656), same order.
 export interface RetestModulation {
   multiplier: number;
   priority: number;
   reasons: string[];
+  sourced: SourcedReason[];
 }
 
 export const NO_MODULATION: RetestModulation = {
   multiplier: 1,
   priority: 0,
   reasons: [],
+  sourced: [],
 };
 
 export function retestModulationFor(
@@ -597,23 +611,30 @@ export function retestModulationFor(
   const multiplier = Math.min(...matched.map((r) => r.cadenceMultiplier));
   const priority = Math.max(...matched.map((r) => r.priority));
   const reasons = uniqueReasons(matched);
-  return { multiplier, priority, reasons };
+  return {
+    multiplier,
+    priority,
+    reasons,
+    sourced: uniqueReasonsSourced(matched),
+  };
 }
 
 // The priority + reasons a screening rule earns from the active factors (no
 // cadence side — the screening catalog interval is unchanged; this only ranks and
-// explains). priority 0 with no reasons when nothing matched.
+// explains). priority 0 with no reasons when nothing matched. `sourced` is the
+// citation-carrying twin of `reasons` (issue #656), same order.
 export function screeningPriorityFor(
   ruleKey: string,
   factors: ReadonlySet<RiskFactor>
-): { priority: number; reasons: string[] } {
+): { priority: number; reasons: string[]; sourced: SourcedReason[] } {
   const matched = RISK_RULES.filter(
     (r) => factors.has(r.factor) && r.screeningRules?.includes(ruleKey)
   );
-  if (matched.length === 0) return { priority: 0, reasons: [] };
+  if (matched.length === 0) return { priority: 0, reasons: [], sourced: [] };
   return {
     priority: Math.max(...matched.map((r) => r.priority)),
     reasons: uniqueReasons(matched),
+    sourced: uniqueReasonsSourced(matched),
   };
 }
 
@@ -637,6 +658,7 @@ export function visitModulationFor(
     multiplier: Math.min(...matched.map((r) => r.cadenceMultiplier)),
     priority: Math.max(...matched.map((r) => r.priority)),
     reasons: uniqueReasons(matched),
+    sourced: uniqueReasonsSourced(matched),
   };
 }
 
@@ -660,24 +682,27 @@ export function screeningModulationFor(
     multiplier: Math.min(...matched.map((r) => r.cadenceMultiplier)),
     priority: Math.max(...matched.map((r) => r.priority)),
     reasons: uniqueReasons(matched),
+    sourced: uniqueReasonsSourced(matched),
   };
 }
 
 // The priority + reasons a vaccine earns from the active factors (issue #553).
 // Mirrors screeningPriorityFor: no cadence side — this only ranks a due/overdue
 // vaccine up within its band and explains WHY in a calm line. priority 0 with no
-// reasons when nothing matched. `code` is a catalog vaccine code (VaccineEntry.code).
+// reasons when nothing matched. `sourced` is the citation-carrying twin of `reasons`
+// (issue #656). `code` is a catalog vaccine code (VaccineEntry.code).
 export function immunizationPriorityFor(
   code: string,
   factors: ReadonlySet<RiskFactor>
-): { priority: number; reasons: string[] } {
+): { priority: number; reasons: string[]; sourced: SourcedReason[] } {
   const matched = RISK_RULES.filter(
     (r) => factors.has(r.factor) && r.immunizationCodes?.includes(code)
   );
-  if (matched.length === 0) return { priority: 0, reasons: [] };
+  if (matched.length === 0) return { priority: 0, reasons: [], sourced: [] };
   return {
     priority: Math.max(...matched.map((r) => r.priority)),
     reasons: uniqueReasons(matched),
+    sourced: uniqueReasonsSourced(matched),
   };
 }
 
@@ -688,6 +713,22 @@ function uniqueReasons(rules: RiskRule[]): string[] {
     if (!seen.has(r.reason)) {
       seen.add(r.reason);
       out.push(r.reason);
+    }
+  }
+  return out;
+}
+
+// The citation-carrying twin of uniqueReasons (issue #656): the SAME dedup (by
+// reason text) and SAME order (descending priority, then insertion), each line
+// paired with its rule's informational `source`. Kept parallel so `reasons` and
+// `sourced` never drift in content or order.
+function uniqueReasonsSourced(rules: RiskRule[]): SourcedReason[] {
+  const seen = new Set<string>();
+  const out: SourcedReason[] = [];
+  for (const r of [...rules].sort((a, b) => b.priority - a.priority)) {
+    if (!seen.has(r.reason)) {
+      seen.add(r.reason);
+      out.push({ text: r.reason, source: r.source });
     }
   }
   return out;
