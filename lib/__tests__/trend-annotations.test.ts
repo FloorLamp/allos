@@ -364,8 +364,18 @@ describe("buildProtocolWindows (issue #660)", () => {
   it("maps rows to windows, defaulting a blank name and dropping bad dates", () => {
     const out = buildProtocolWindows(protocols, {});
     expect(out).toEqual([
-      { start: "2026-03-01", end: "2026-04-15", label: "Creatine", kind: "protocol" },
-      { start: "2026-05-01", end: null, label: "Sauna block", kind: "protocol" },
+      {
+        start: "2026-03-01",
+        end: "2026-04-15",
+        label: "Creatine",
+        kind: "protocol",
+      },
+      {
+        start: "2026-05-01",
+        end: null,
+        label: "Sauna block",
+        kind: "protocol",
+      },
       { start: "2026-06-01", end: null, label: "Protocol", kind: "protocol" },
     ]);
   });

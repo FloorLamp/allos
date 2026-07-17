@@ -18,10 +18,7 @@ import { daysBetweenDateStr } from "./date";
 import type { DateRange } from "./timeline-format";
 
 export type AnnotationKind =
-  | "medication"
-  | "appointment"
-  | "situation"
-  | "protocol";
+  "medication" | "appointment" | "situation" | "protocol";
 
 // A positioned marker: an ISO date, a short human label, and the source kind that
 // drives its color + the per-type toggle.

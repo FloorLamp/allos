@@ -496,7 +496,8 @@ export function getActiveProtocolSummaries(
       );
       const primary = comparison.outcomes[0] ?? null;
       // Inclusive elapsed days: a protocol started today reads "1 day in".
-      const daysElapsed = (daysBetweenDateStr(protocol.start_date, today) ?? 0) + 1;
+      const daysElapsed =
+        (daysBetweenDateStr(protocol.start_date, today) ?? 0) + 1;
       return {
         id: protocol.id,
         name: protocol.name,
@@ -508,7 +509,10 @@ export function getActiveProtocolSummaries(
                 count: adherenceProgress.count,
                 perWeek: practice.perWeek,
                 met: adherenceProgress.met,
-                label: protocolPracticeLabel(practice.scopeKind, practice.value),
+                label: protocolPracticeLabel(
+                  practice.scopeKind,
+                  practice.value
+                ),
               }
             : null,
         primaryOutcome: primary
