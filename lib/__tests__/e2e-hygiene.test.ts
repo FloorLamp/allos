@@ -5,8 +5,11 @@ import { fileURLToPath } from "node:url";
 
 // Static hygiene guard for the e2e suite (issue #868, fix a) — the #448 /
 // telegram-chokepoint source-scan pattern applied to Playwright specs. It reads
-// e2e/*.spec.ts as TEXT (no browser, no DB, so it stays "pure" in the vitest
-// sense) and freezes TODAY's count of two settle anti-patterns per spec file:
+// every e2e/*.ts source (specs AND the shared driver/helper modules, e.g.
+// symptom-helpers.ts — issue #868 phase 2 widened the scan past *.spec.ts so a
+// settle anti-pattern can't hide in a helper the specs import) as TEXT (no
+// browser, no DB, so it stays "pure" in the vitest sense) and freezes TODAY's
+// count of two settle anti-patterns per file:
 //
 //   (i)  waitForLoadState("networkidle") — a readiness gate that settles on a
 //        quiet page but NOT one with a long-poll/SSE/streaming request, and waits
@@ -16,7 +19,7 @@ import { fileURLToPath } from "node:url";
 //        too short (flakes under CI contention) or too long (slows the suite).
 //
 // Existing offenders are grandfathered via a per-file allowlist (file → count);
-// a NEW occurrence, or a NEW spec file introducing either, exceeds its allowed
+// a NEW occurrence, or a NEW file introducing either, exceeds its allowed
 // count (0 when absent) and FAILS. Reducing a count below its frozen value also
 // fails — with a message telling you to lower the allowlist — so the allowlist
 // only ever shrinks as offenders are migrated (the same immutable-manifest
@@ -36,9 +39,15 @@ import { fileURLToPath } from "node:url";
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const E2E_DIR = path.join(REPO, "e2e");
 
-// The blessed interaction module OWNS networkidle/timeout usage (followLink's
-// internal settle), so it is never scanned — only spec files are.
-const NETWORKIDLE_RE = /waitForLoadState\(\s*["']networkidle["']\s*\)/g;
+// The blessed interaction module (e2e/helpers.ts) OWNS networkidle/timeout usage
+// (followLink's internal settle, plus prose mentions of both patterns in its
+// decision-tree header), so it is never scanned — every OTHER e2e/*.ts is.
+const SCAN_EXCLUDE = new Set(["helpers.ts"]);
+// Match `waitForLoadState("networkidle"` regardless of a trailing options arg —
+// symptom-helpers.ts's `idleSettle` passes `{ timeout }`, so an `…\)`-anchored
+// regex silently MISSED it (the second half of the phase-2 "known gap": the guard
+// couldn't see helper files AND couldn't see the options-arg form).
+const NETWORKIDLE_RE = /waitForLoadState\(\s*["']networkidle["']/g;
 const WAITFORTIMEOUT_RE = /\.waitForTimeout\(/g;
 
 // Frozen offenders as of #868 (per-file counts). Migrate an entry to
@@ -46,6 +55,17 @@ const WAITFORTIMEOUT_RE = /\.waitForTimeout\(/g;
 // drops out entirely. New files must not appear.
 const NETWORKIDLE_ALLOW: Record<string, number> = {
   "providers.spec.ts": 1,
+  // symptom-helpers.ts's `idleSettle` is the #861 surface-PARAMETERIZED settle:
+  // the dashboard mount of the SymptomLogBar drains its optimistic POST + trailing
+  // router.refresh() via networkidle before a dependent reload, while the episode
+  // page (whose long-lived requests never let networkidle settle) passes noSettle.
+  // Replacing it with settledClick's waitForResponse idiom means arming the
+  // response wait BEFORE the conditional tap inside each driver's toPass loop — a
+  // restructure of the shared optimistic-tap driver that the concurrent #859
+  // (illness round 3, touching the symptom specs/driver) would collide with. The
+  // widened scan now SEES this call (it couldn't before phase 2); frozen here so
+  // no NEW helper-file networkidle hides, migration deferred to after #859 lands.
+  "symptom-helpers.ts": 1,
 };
 
 const WAITFORTIMEOUT_ALLOW: Record<string, number> = {
@@ -60,7 +80,7 @@ const WAITFORTIMEOUT_ALLOW: Record<string, number> = {
 function specFiles(): { name: string; text: string }[] {
   return fs
     .readdirSync(E2E_DIR)
-    .filter((f) => f.endsWith(".spec.ts"))
+    .filter((f) => f.endsWith(".ts") && !SCAN_EXCLUDE.has(f))
     .map((name) => ({
       name,
       text: fs.readFileSync(path.join(E2E_DIR, name), "utf8"),
@@ -113,7 +133,7 @@ function checkPattern(
 }
 
 describe("e2e suite hygiene guard (issue #868)", () => {
-  it('no NEW waitForLoadState("networkidle") in a spec (use e2e/helpers.ts)', () => {
+  it('no NEW waitForLoadState("networkidle") in an e2e/*.ts (use e2e/helpers.ts)', () => {
     checkPattern(
       'waitForLoadState("networkidle")',
       NETWORKIDLE_RE,
@@ -121,7 +141,7 @@ describe("e2e suite hygiene guard (issue #868)", () => {
     );
   });
 
-  it("no NEW waitForTimeout(...) in a spec (use e2e/helpers.ts or a real expect)", () => {
+  it("no NEW waitForTimeout(...) in an e2e/*.ts (use e2e/helpers.ts or a real expect)", () => {
     checkPattern(
       "waitForTimeout(...)",
       WAITFORTIMEOUT_RE,

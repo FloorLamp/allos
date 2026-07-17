@@ -41,9 +41,15 @@ order-dependent. The recurring reds fall into four classes:
 ## Fix (a) — the hygiene guard
 
 `lib/__tests__/e2e-hygiene.test.ts` is a pure source-scan (the #448 /
-telegram-chokepoint linter-with-teeth pattern) over `e2e/*.spec.ts`. It freezes
-**today's** count of two mechanically-detectable settle anti-patterns per file and
-fails a NEW one:
+telegram-chokepoint linter-with-teeth pattern) over **every `e2e/*.ts`** — specs
+AND the shared driver/helper modules they import (`symptom-helpers.ts`, `nav.ts`,
+…), excluding only the blessed `e2e/helpers.ts`. Phase 2 widened the scan past
+`*.spec.ts` after `symptom-helpers.ts`'s `idleSettle` (#861) proved a settle
+anti-pattern can hide in an imported helper the spec-only scan never read; the
+same pass broadened the networkidle matcher to catch the
+`waitForLoadState("networkidle", { timeout })` options-arg form the old
+`…)`-anchored regex silently missed. It freezes **today's** count of two
+mechanically-detectable settle anti-patterns per file and fails a NEW one:
 
 - `waitForLoadState("networkidle")` — replace with `e2e/helpers.ts`.
 - `waitForTimeout(...)` — replace with `settledClick`/`followLink` or a real
