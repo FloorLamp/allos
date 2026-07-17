@@ -1166,6 +1166,54 @@ describe("restRecommendation", () => {
     );
     expect(rest?.id).toBe("rest-overtraining");
   });
+
+  // ---- Tense (#921): "rest today" is stale once today's session happened. ----
+  const poorSleep = { lastNightMin: 300, baselineMin: 300 }; // below the floor
+
+  it("tense (a): no session today keeps the original 'today' phrasing", () => {
+    const rest = restRecommendation(
+      input({ sleep: poorSleep, trainingDates: [] }),
+      th
+    );
+    expect(rest?.title).toBe("Rest or take it easy today");
+    expect(rest?.detail).toContain("consider a rest or light day");
+  });
+
+  it("tense (b): a session already logged today reframes to the next session", () => {
+    const rest = restRecommendation(
+      input({ sleep: poorSleep, trainingDates: [TODAY] }),
+      th
+    );
+    expect(rest?.title).toBe("Make your next session an easy one");
+    expect(rest?.detail).toContain("make your next session an easy one");
+    // Reason core and id/tone are untouched — only the framing shifts.
+    expect(rest?.id).toBe("rest-sleep");
+    expect(rest?.tone).toBe("caution");
+    expect(rest?.detail).toContain("last night");
+  });
+
+  it("tense (c): a live session softens the card without contradicting it", () => {
+    const rest = restRecommendation(
+      input({ sleep: poorSleep, trainingDates: [TODAY], workoutActive: true }),
+      th
+    );
+    expect(rest?.title).toBe("Take it easy — make your next session light");
+    expect(rest?.detail).toContain("you're training now");
+    expect(rest?.id).toBe("rest-sleep");
+  });
+
+  it("tense: active wins over a same-day logged session", () => {
+    // A live session is also in trainingDates; active must take precedence.
+    const rest = restRecommendation(
+      input({
+        sleep: poorSleep,
+        trainingDates: consecutiveDates(TODAY, 4),
+        workoutActive: true,
+      }),
+      th
+    );
+    expect(rest?.title).toBe("Take it easy — make your next session light");
+  });
 });
 
 describe("recommendCoaching", () => {

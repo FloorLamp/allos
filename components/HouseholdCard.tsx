@@ -8,6 +8,7 @@ import {
   IconCalendarEvent,
   IconCheck,
   IconVirus,
+  IconBarbell,
 } from "@tabler/icons-react";
 import Avatar from "@/components/Avatar";
 import type { AvatarProfile } from "@/components/Avatar";
@@ -53,6 +54,9 @@ export interface HouseholdCardData {
   // A one-line "sick day N · 101.3°F" chip when this profile has an OPEN illness
   // episode (issue #801), else null — the household mirror of the dashboard card.
   sick: string | null;
+  // A compact "mid-workout · N min" chip while this profile is in a live session
+  // (#921), else null. Live-only and unlinked (no cross-profile activity route).
+  presence: string | null;
 }
 
 function TrendArrow({ trend, unit }: { trend: WeightTrend; unit: WeightUnit }) {
@@ -216,6 +220,7 @@ export default function HouseholdCard({ data }: { data: HouseholdCardData }) {
     oorBiomarkers,
     goals,
     sick,
+    presence,
   } = data;
 
   return (
@@ -253,6 +258,20 @@ export default function HouseholdCard({ data }: { data: HouseholdCardData }) {
         >
           <IconVirus className="h-3.5 w-3.5" stroke={1.75} aria-hidden="true" />
           {sick}
+        </div>
+      )}
+
+      {presence && (
+        <div
+          data-testid="household-presence-chip"
+          className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+        >
+          <IconBarbell
+            className="h-3.5 w-3.5"
+            stroke={1.75}
+            aria-hidden="true"
+          />
+          {presence}
         </div>
       )}
 

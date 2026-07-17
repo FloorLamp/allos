@@ -9,16 +9,24 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
+import { usePathname } from "next/navigation";
 import { useHistoryBackClose } from "./useHistoryBackClose";
 import type { UnitPrefs } from "@/lib/settings";
 import type { ActivitySuggestions, ExerciseHistoryMap } from "@/lib/queries";
 import type { FormDeloadContext } from "@/lib/routines";
 import type { PlateauFormHint } from "@/lib/rule-findings";
 import type { Equipment } from "@/lib/types";
+import type { WorkoutPresence } from "@/lib/workout-presence";
 import ActivityOverlay from "./ActivityOverlay";
 import ActivityForm, { type ActivityEditData } from "./ActivityForm";
+import WorkoutDock from "./WorkoutDock";
 import { buildRepeatPrefill, todayStr } from "./activity-form/model";
 import { useTimezone } from "./TimezoneProvider";
+
+// The training route hosts the inline docked editor (JournalView registers a dock
+// column), so the app-wide bottom bar is suppressed there — the session is already
+// visible in the page column. Everywhere else the minimized bar carries it.
+const JOURNAL_ROUTE = "/training";
 
 interface ActivityEditorApi {
   openCreate: () => void;
@@ -75,6 +83,9 @@ export default function ActivityEditorProvider({
   restricted = false,
   deloadContext,
   plateauHints = [],
+  presence,
+  liveEditData = null,
+  liveStartEpochMs = null,
   children,
 }: {
   units: UnitPrefs;
@@ -95,10 +106,27 @@ export default function ActivityEditorProvider({
   // is in its deload week (+ which lifts to shave), and the active plateau hints.
   deloadContext: FormDeloadContext;
   plateauHints?: PlateauFormHint[];
+  // Derived workout presence for the acting profile (#921), gathered server-side —
+  // the source that HYDRATES the minimized dock on a fresh load / another device, so
+  // an in-progress session is never invisible after a reload.
+  presence?: WorkoutPresence;
+  // The active session's editor data, for reopening the live editor from the dock.
+  liveEditData?: ActivityEditData | null;
+  // The active session's start instant (epoch ms), so the dock ticks elapsed off the
+  // real start after a reload (client rest-timer state is honestly lost there).
+  liveStartEpochMs?: number | null;
   children: React.ReactNode;
 }) {
   const tz = useTimezone();
+  const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  // Minimized-but-MOUNTED: the live overlay collapses to the bottom bar without
+  // unmounting ActivityForm, so the running rest timer + elapsed clock survive
+  // (unmounting would silently kill them — the #921 regression this fixes). The form
+  // stays mounted (rendered hidden); the bar is the affordance to restore it.
+  const [minimized, setMinimized] = useState(false);
+  // The mounted live session's start instant (epoch ms) for the minimized bar.
+  const [liveStartEpoch, setLiveStartEpoch] = useState<number | null>(null);
   const [editData, setEditData] = useState<ActivityEditData | null>(null);
   // Whether the currently-open editor is in live workout mode (issue #340).
   const [live, setLive] = useState(false);
@@ -139,6 +167,8 @@ export default function ActivityEditorProvider({
         setEditData(null);
         setPrefill(null);
         setLive(false);
+        setLiveStartEpoch(null);
+        setMinimized(false);
         setDocked(dockElRef.current != null);
         setOpen(true);
       },
@@ -148,6 +178,8 @@ export default function ActivityEditorProvider({
         setEditData(null);
         setPrefill(null);
         setLive(true);
+        setLiveStartEpoch(Date.now());
+        setMinimized(false);
         // Live mode is a focused, full-attention flow — never dock it into the
         // journal's side column; use the overlay so it reads as its own screen.
         setDocked(false);
@@ -160,6 +192,8 @@ export default function ActivityEditorProvider({
         setEditData(null);
         setPrefill(prefillData);
         setLive(true);
+        setLiveStartEpoch(Date.now());
+        setMinimized(false);
         setRepeatNonce((n) => n + 1);
         // Live mode is its own focused screen — never dock it into a page column.
         setDocked(false);
@@ -169,6 +203,8 @@ export default function ActivityEditorProvider({
         setEditData(data);
         setPrefill(null);
         setLive(false);
+        setLiveStartEpoch(null);
+        setMinimized(false);
         setDocked(dockElRef.current != null);
         setOpen(true);
       },
@@ -176,6 +212,8 @@ export default function ActivityEditorProvider({
         setEditData(null);
         setPrefill(buildRepeatPrefill(data, todayStr(tz)));
         setLive(false);
+        setLiveStartEpoch(null);
+        setMinimized(false);
         setRepeatNonce((n) => n + 1);
         setDocked(dockElRef.current != null);
         setOpen(true);
@@ -185,12 +223,17 @@ export default function ActivityEditorProvider({
         setEditData(null);
         setPrefill(buildRepeatPrefill(lastActivity, todayStr(tz)));
         setLive(false);
+        setLiveStartEpoch(null);
+        setMinimized(false);
         setRepeatNonce((n) => n + 1);
         setDocked(dockElRef.current != null);
         setOpen(true);
       },
       hasLastActivity: lastActivity != null,
-      close: () => setOpen(false),
+      close: () => {
+        setMinimized(false);
+        setOpen(false);
+      },
       open,
       editData,
       registerDock,
@@ -198,9 +241,41 @@ export default function ActivityEditorProvider({
     [open, editData, registerDock, tz, lastActivity, restricted]
   );
 
+  // Resume the acting profile's active session in the live editor from the dock —
+  // hydrated from the persisted #451 draft (getActivityEditData). Docks into the
+  // journal column when one is present, else the overlay.
+  const resumeLive = useCallback(() => {
+    if (!liveEditData) return;
+    setEditData(liveEditData);
+    setPrefill(null);
+    setLive(true);
+    setLiveStartEpoch(liveStartEpochMs ?? Date.now());
+    setMinimized(false);
+    setDocked(dockElRef.current != null);
+    setOpen(true);
+  }, [liveEditData, liveStartEpochMs]);
+
+  // Collapse the live overlay to the bar WITHOUT unmounting the form.
+  const minimizeLive = useCallback(() => setMinimized(true), []);
+
   // The editor renders into the dock only when it was opened with one present
   // (see `docked`) and that dock is still mounted; otherwise it's the overlay.
   const showDock = docked && dockEl != null;
+
+  const onJournal = pathname === JOURNAL_ROUTE;
+  const hydrationActive =
+    !open && presence?.state === "active" && liveEditData != null;
+  // The bar shows for a client-minimized live session (mounted, hidden) anywhere,
+  // and for a fresh-load active session everywhere except the journal route (where
+  // the editor docks inline instead). A docked-open editor never shows the bar.
+  const showBar = (minimized && !showDock) || (hydrationActive && !onJournal);
+  // Elapsed baseline + copy for the bar: the mounted session's own start when
+  // minimized, else the server-hydrated start.
+  const barStartEpoch = minimized
+    ? (liveStartEpoch ?? liveStartEpochMs ?? Date.now())
+    : (liveStartEpochMs ?? Date.now());
+  const barLabel =
+    (minimized ? editData?.title : null) || presence?.title || "Resume";
 
   // On mobile the overlay reads as its own page (full-screen below sm), so hold
   // a history entry while it's open: the phone's back button/gesture closes the
@@ -261,9 +336,31 @@ export default function ActivityEditorProvider({
             live={live}
             deloadContext={deloadContext}
             plateauHints={plateauHints}
-            onClose={() => setOpen(false)}
+            // While minimized the overlay stays MOUNTED but hidden — the running
+            // rest timer + elapsed clock keep ticking; the bar restores it.
+            hidden={minimized}
+            // A live session gets the explicit minimize chevron (collapse without
+            // unmounting). The backdrop/Done still fully close; a still-active
+            // session then re-hydrates the bar from presence, so it's never lost.
+            onMinimize={live ? minimizeLive : undefined}
+            onClose={() => {
+              setMinimized(false);
+              setOpen(false);
+            }}
           />
         ))}
+      {/* Spacer so the fixed bottom bar never overlaps the last of the page
+          content — the layout "gains bottom padding while the dock is present". */}
+      {showBar && <div className="h-20 shrink-0" aria-hidden="true" />}
+      {showBar && (
+        <WorkoutDock
+          label={barLabel}
+          startEpochMs={barStartEpoch}
+          live={minimized ? live : true}
+          stale={presence?.stale ?? false}
+          onOpen={minimized ? () => setMinimized(false) : resumeLive}
+        />
+      )}
     </Ctx.Provider>
   );
 }

@@ -13,6 +13,7 @@ import {
   getSleepSignal,
   getStrengthByExercise,
   getVolumeByDate,
+  getWorkoutPresence,
 } from "@/lib/queries";
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
@@ -139,6 +140,9 @@ export default async function OverviewSection() {
     // so this overview card holds the gap nags during an open episode exactly like the
     // dashboard coaching widget — never a second, drifting derivation (#221).
     illness: getIllnessCoachingContext(profile.id, todayStr),
+    // Rest-card tense (#921): soften "rest today" to next-session framing while a
+    // session is live, matching the dashboard/Telegram surfaces (one computation).
+    workoutActive: getWorkoutPresence(profile.id).state === "active",
     weightUnit: wu,
   };
   const [nextWorkout] = recommendCoaching(coachingInput);

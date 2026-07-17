@@ -8,6 +8,7 @@ import {
   getStrengthByExercise,
 } from "./training";
 import { getDayLoadInputs, getIntensitySignal } from "./zones";
+import { getWorkoutPresence } from "./presence";
 import { loadingDates } from "../training-zones";
 import {
   nextRestEpisode,
@@ -147,6 +148,10 @@ export function gatherCoachingInput(
     restingHr: getRestingHrSignal(profileId),
     restEpisode: getRestEpisode(profileId),
     intensity: getIntensitySignal(profileId),
+    // Derived workout presence (#921) → the rest card's TENSE only. `active` softens
+    // "rest today" to next-session framing so the advice never contradicts a session
+    // the user is in the middle of. One computation, read here so every surface agrees.
+    workoutActive: getWorkoutPresence(profileId).state === "active",
     weightUnit,
   };
 }

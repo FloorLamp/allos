@@ -30,6 +30,8 @@ import {
   getImportReviewCount,
   getRecentActivityEquipmentIds,
   getMostRecentActivityEditData,
+  getActivityEditData,
+  getWorkoutPresence,
   profileHasIntakeItems,
 } from "@/lib/queries";
 import { getTimelineDates } from "@/lib/timeline";
@@ -106,6 +108,20 @@ export default async function AppLayout({
   const plateauHints = restricted
     ? []
     : buildActivePlateauHints(profile.id, now);
+  // Derived workout presence (#921) for the app-wide minimized dock: on a fresh load
+  // (or another device) the dock hydrates from this gather + the persisted #451 draft
+  // instead of client memory. Acting-profile-scoped; skipped for a restricted profile
+  // (no live workout mode). `liveStartEpochMs` places the elapsed clock off the real
+  // session start.
+  const presence = restricted ? undefined : getWorkoutPresence(profile.id);
+  const liveEditData =
+    presence?.state === "active" && presence.activityId != null
+      ? getActivityEditData(profile.id, presence.activityId)
+      : null;
+  const liveStartEpochMs =
+    presence?.state === "active"
+      ? Date.now() - presence.sinceMin * 60_000
+      : null;
   const version = getAppVersion();
   // Gates any admin-only nav entries in both surfaces.
   const isAdmin = login.role === "admin";
@@ -151,6 +167,9 @@ export default async function AppLayout({
               restricted={restricted}
               deloadContext={deloadContext}
               plateauHints={plateauHints}
+              presence={presence}
+              liveEditData={liveEditData}
+              liveStartEpochMs={liveStartEpochMs}
             >
               <div className="flex min-h-screen">
                 <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col gap-4 overflow-y-auto border-r border-black/10 bg-white/70 p-4 backdrop-blur-xl md:flex print:hidden dark:border-white/5 dark:bg-ink-950/70">

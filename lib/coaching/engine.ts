@@ -217,6 +217,12 @@ export interface CoachingInput {
   // ease-back rec replaces them for a short ramp. Absent/null ⇒ normal coaching (the
   // prior behavior). It alters what FIRES, never the recovery/safety advice itself.
   illness?: IllnessCoachingContext | null;
+  // Whether the profile is CURRENTLY mid-workout per derived presence (#921). Used
+  // ONLY to pick the rest recommendation's TENSE — while a session is live the card
+  // softens to next-session framing instead of contradicting reality by saying
+  // "rest today". Never changes whether rest fires or its trigger logic. Absent ⇒
+  // false (the prior "today" phrasing when no session has happened yet).
+  workoutActive?: boolean;
   weightUnit?: WeightUnit; // for the next-set target text; default "kg"
   thresholds?: Partial<CoachingThresholds>;
 }
@@ -329,11 +335,58 @@ function hoursText(min: number): string {
 // The rest/light recommendation when a strong recovery signal fires, else null.
 // Reasons are checked in salience order (sleep → resting HR → overtraining); the
 // first hit names the recommendation, so it always states an actual reason.
+// The rest recommendation's TENSE (#921): saying "rest today" is stale advice once
+// today's session already happened (or is happening). Phrasing only — the trigger
+// logic/thresholds/episode continuity are untouched, and "today" stays byte-for-byte
+// the prior copy so nothing downstream shifts when no session has occurred.
+//   • "today"  — no session logged today yet: the original advice.
+//   • "next"   — today's session already happened: frame the NEXT session.
+//   • "active" — a session is live right now: don't contradict it; frame the next.
+type RestTense = "today" | "next" | "active";
+
+function restTitle(tense: RestTense): string {
+  switch (tense) {
+    case "active":
+      return "Take it easy — make your next session light";
+    case "next":
+      return "Make your next session an easy one";
+    default:
+      return "Rest or take it easy today";
+  }
+}
+
+// Compose a rest rec's detail from its reason core and the tense. `todayTail` is the
+// exact prior trailing clause, preserved verbatim for the "today" tense; the other
+// tenses swap in next-session framing.
+function restRec(
+  id: string,
+  reasonCore: string,
+  todayTail: string,
+  tense: RestTense
+): Recommendation {
+  const detail =
+    tense === "today"
+      ? `${reasonCore}${todayTail}`
+      : tense === "next"
+        ? `${reasonCore} — make your next session an easy one to recover.`
+        : `${reasonCore} — you're training now; make your next session a light one.`;
+  return { id, kind: "rest", title: restTitle(tense), detail, tone: "caution" };
+}
+
 export function restRecommendation(
   input: CoachingInput,
   th: CoachingThresholds
 ): Recommendation | null {
   const { sleep, restingHr, trainingDates, today } = input;
+  // Tense selection (#921): a live session wins (active), else a session already
+  // logged today reframes to the next session, else the original "today" advice.
+  // An active session has been auto-saved, so it's also in trainingDates — check
+  // active FIRST.
+  const restTense: RestTense = input.workoutActive
+    ? "active"
+    : trainingDates.includes(today)
+      ? "next"
+      : "today";
   // The two schedule-derived triggers (overtraining streak, weekly load) key on
   // LOADING days — hard sessions that accumulate fatigue — not every logged
   // activity, so a light recovery day breaks the streak instead of extending it
@@ -358,18 +411,21 @@ export function restRecommendation(
       sleep.lastNightMin <= sleep.baselineMin - effDeficit;
     const belowFloor = sleep.lastNightMin < th.sleepFloorMin;
     if (belowBaseline || belowFloor) {
-      const detail = belowBaseline
-        ? `You slept ${hoursText(sleep.lastNightMin)} last night, below your ~${hoursText(
-            sleep.baselineMin
-          )} average — consider a rest or light day.`
-        : `You slept ${hoursText(sleep.lastNightMin)} last night — consider a rest or light day to recover.`;
-      return {
-        id: "rest-sleep",
-        kind: "rest",
-        title: "Rest or take it easy today",
-        detail,
-        tone: "caution",
-      };
+      return belowBaseline
+        ? restRec(
+            "rest-sleep",
+            `You slept ${hoursText(sleep.lastNightMin)} last night, below your ~${hoursText(
+              sleep.baselineMin
+            )} average`,
+            " — consider a rest or light day.",
+            restTense
+          )
+        : restRec(
+            "rest-sleep",
+            `You slept ${hoursText(sleep.lastNightMin)} last night`,
+            " — consider a rest or light day to recover.",
+            restTense
+          );
     }
   }
 
@@ -390,17 +446,14 @@ export function restRecommendation(
     restingHr.baseline > 0 &&
     restingHr.recent >= restingHr.baseline + effRhrJump
   ) {
-    return {
-      id: "rest-rhr",
-      kind: "rest",
-      title: "Rest or take it easy today",
-      detail: `Your resting heart rate is ${Math.round(
+    return restRec(
+      "rest-rhr",
+      `Your resting heart rate is ${Math.round(
         restingHr.recent
-      )} bpm, up from your ~${Math.round(
-        restingHr.baseline
-      )} bpm baseline — an easier day will help you recover.`,
-      tone: "caution",
-    };
+      )} bpm, up from your ~${Math.round(restingHr.baseline)} bpm baseline`,
+      " — an easier day will help you recover.",
+      restTense
+    );
   }
 
   // Overtraining — consecutive LOADING days, or a heavy trailing window of them.
@@ -411,13 +464,12 @@ export function restRecommendation(
   // been removed; the weekly recap's movement-based streak is a separate signal.)
   const streak = currentStreak(today, loadDates);
   if (streak >= th.overtrainingConsecutiveDays) {
-    return {
-      id: "rest-overtraining",
-      kind: "rest",
-      title: "Rest or take it easy today",
-      detail: `You've trained ${streak} days in a row — a rest or light day will help you recover and keep progressing.`,
-      tone: "caution",
-    };
+    return restRec(
+      "rest-overtraining",
+      `You've trained ${streak} days in a row`,
+      " — a rest or light day will help you recover and keep progressing.",
+      restTense
+    );
   }
   const active = activeDaysInWindow(
     loadDates,
@@ -425,13 +477,12 @@ export function restRecommendation(
     th.overtrainingWindowDays
   );
   if (active >= th.overtrainingWindowActiveDays) {
-    return {
-      id: "rest-load",
-      kind: "rest",
-      title: "Rest or take it easy today",
-      detail: `You've trained ${active} of the last ${th.overtrainingWindowDays} days — consider a rest or light day.`,
-      tone: "caution",
-    };
+    return restRec(
+      "rest-load",
+      `You've trained ${active} of the last ${th.overtrainingWindowDays} days`,
+      " — consider a rest or light day.",
+      restTense
+    );
   }
   return null;
 }

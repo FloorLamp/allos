@@ -16,6 +16,7 @@ import {
   getSupplementDoses,
   getTakenDoseIds,
   getBodyMetricDailySeries,
+  getWorkoutPresence,
   collectHouseholdRollup,
 } from "@/lib/queries";
 import { getActiveSituations, getUnitPrefs } from "@/lib/settings";
@@ -29,6 +30,7 @@ import {
   weightTrend,
 } from "@/lib/household";
 import { fmtWeight } from "@/lib/units";
+import { householdPresenceChip } from "@/lib/workout-presence";
 import { formatRelativeDate } from "@/lib/format-date";
 import { PageHeader, EmptyState } from "@/components/ui";
 import HouseholdCard, {
@@ -142,6 +144,11 @@ export default async function HouseholdPage() {
           sr ? schoolReturnCompactClause(sr) : null
         );
       })(),
+      // Derived workout presence (#921), grants-scoped like the sick chip: a compact
+      // live-only "mid-workout · N min" glance. Unlinked (journalActivityHref anchors
+      // the viewer's OWN log, so a cross-profile link would land on a dead anchor,
+      // #879) — a plain chip, not a button.
+      presence: householdPresenceChip(getWorkoutPresence(pid)),
     };
   });
 
