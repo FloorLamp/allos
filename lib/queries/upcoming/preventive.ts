@@ -19,6 +19,7 @@ import {
   isCompletedStatus,
   type InferenceRecord,
 } from "../../preventive-inference";
+import { inferScreeningResultSatisfactions } from "../../preventive-screening-result";
 import {
   getUserSex,
   profileAgeMonths,
@@ -26,7 +27,11 @@ import {
 } from "../../settings";
 import { resolveSmoking } from "../../smoking";
 import { getAppointments } from "../appointments";
-import { getMedicalRecords, getEncounters } from "../medical";
+import {
+  getMedicalRecords,
+  getEncounters,
+  getCurrentQualitativeResults,
+} from "../medical";
 import {
   hasImportedSmokingHistory,
   getCarePlanItems,
@@ -133,7 +138,18 @@ export function getInferredPreventiveSatisfactions(
     });
   }
 
-  return inferPreventiveSatisfactions(records);
+  // Qualitative SCREENING RESULTS → screenings (issue #686): a result the shared
+  // classifier (#549) recognizes, keyed by CONCEPT, satisfies its screening rule as
+  // of its date — the screening counterpart of titerImmuneStatus. Catches results the
+  // name/code inference above misses (an HPV result carrying only a LOINC → cervical
+  // screening; HIV / hepatitis-B, which have no concept-map entry at all). The one
+  // assessor takes the newest satisfaction per rule, so this merges cleanly with the
+  // name/code + manual streams and never double-counts.
+  const screeningResults = inferScreeningResultSatisfactions(
+    getCurrentQualitativeResults(profileId)
+  );
+
+  return [...inferPreventiveSatisfactions(records), ...screeningResults];
 }
 
 // The manual declined / not-applicable overrides for a profile. Each drops its
