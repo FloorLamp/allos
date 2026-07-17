@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { followLink } from "./helpers";
 
 // Import detail — tabbed per-category records browser (issue #271). The e2e seed
 // (e2e/seed-events.ts) plants document 908 with produced rows across several
@@ -86,8 +87,8 @@ test.describe("Import detail: tabbed records browser", () => {
     await expect(item).toContainText("E2E annual physical");
     const link = item.getByRole("link");
     await expect(link).toHaveAttribute("href", /^\/encounters\/\d+$/);
-    await link.click();
-    await expect(page).toHaveURL(/\/encounters\/\d+$/);
+    // Nav anchor → followLink rides out the pre-hydration swallow (#889 sweep).
+    await followLink(page, link, /\/encounters\/\d+$/);
     await expect(page.getByText("E2E annual physical")).toBeVisible();
   });
 

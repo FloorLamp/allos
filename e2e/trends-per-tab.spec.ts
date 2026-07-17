@@ -79,17 +79,24 @@ test("clicking a tab switches which section is rendered (#105)", async ({
   await expect(insightsTab).toHaveJSProperty("tagName", "A");
   await expect(insightsTab).toHaveAttribute("href", /tab=insights/);
 
-  // Click Insights → its form appears and the URL reflects the tab. Each tab is
-  // a real <a href> (#830), so the click navigates natively even pre-hydration —
-  // no toPass() retry needed.
-  await page.getByRole("tab", { name: "Insights" }).click();
-  await expect(page).toHaveURL(/tab=insights/);
+  // Click Insights → its form appears and the URL reflects the tab. Each tab is a
+  // real NavTabs Next <Link>; a click landing in the pre-hydration window can
+  // still have its router.push dropped (#830/#889), so followLink retries the tab
+  // click until the URL commits — the whole nav-anchor class goes through it.
+  await followLink(
+    page,
+    page.getByRole("tab", { name: "Insights" }),
+    /tab=insights/
+  );
   await expect(page.getByText(INSIGHTS_MARKER)).toBeVisible();
   await expect(page.getByText(FITNESS_MARKER)).toHaveCount(0);
 
   // Click Fitness → its content replaces the Insights form.
-  await page.getByRole("tab", { name: "Fitness" }).click();
-  await expect(page).toHaveURL(/tab=fitness/);
+  await followLink(
+    page,
+    page.getByRole("tab", { name: "Fitness" }),
+    /tab=fitness/
+  );
   await expect(page.getByText(FITNESS_MARKER)).toBeVisible();
   await expect(page.getByText(INSIGHTS_MARKER)).toHaveCount(0);
 });

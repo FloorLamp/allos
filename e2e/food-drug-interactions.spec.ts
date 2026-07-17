@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { followLink } from "./helpers";
 
 // Food–drug interaction guidance (issue #154). The seed gives profile 1 a synthetic
 // active Simvastatin (rxcui-keyed) — a CYP3A4 statin — so the medication's detail page
@@ -21,15 +22,12 @@ async function openMedDetail(
     .filter({ hasText: name })
     .first()
     .getByTestId("medication-row-link");
-  await expect(link).toBeVisible();
-  // Ride out the hydration window (#730): if the first tap lands before the row
-  // hydrates it may not navigate, so retry until the detail page shows.
-  await expect(async () => {
-    await link.click();
-    await expect(page.getByTestId("medication-detail")).toBeVisible({
-      timeout: 2000,
-    });
-  }).toPass();
+  // Ride out the pre-hydration swallow (#500/#730/#830) with the blessed
+  // followLink (#868/#889) instead of a hand-rolled click+assert toPass loop —
+  // the row link is a Next <Link>, and a raw tap in the hydration window never
+  // advances the URL (this file's retries=0 flake floor).
+  await followLink(page, link, /\/medications\/\d+/);
+  await expect(page.getByTestId("medication-detail")).toBeVisible();
 }
 
 test("shows the seeded Simvastatin grapefruit food-drug guidance on the detail page", async ({
