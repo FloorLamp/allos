@@ -316,6 +316,10 @@ export async function saveNotificationPrefs(formData: FormData) {
     workoutEnabled:
       formData.get("workout_enabled") === "on" ||
       formData.get("workout_enabled") === "1",
+    // Post-workout recap line (#924): default on.
+    workoutRecapEnabled:
+      formData.get("workout_recap_enabled") === "on" ||
+      formData.get("workout_recap_enabled") === "1",
     // Morning digest: "" / "off" → off.
     digestHour: hour("digest_hour"),
     // Weekly recap (#32): weekday 0-6, "" / "off" → off.

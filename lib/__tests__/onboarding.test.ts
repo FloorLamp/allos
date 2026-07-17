@@ -223,6 +223,7 @@ describe("onboarding notification schedule", () => {
   const schedule = {
     supplementHours: { Morning: 8, Midday: 13, Evening: 20, Bedtime: 22 },
     workoutEnabled: true,
+    workoutRecapEnabled: true,
     digestHour: null,
     weeklyRecapDay: null,
     weeklyRecapHour: 9,

@@ -260,7 +260,12 @@ describe("sessionRecap — PR flags (lastSessionPR semantics)", () => {
             exercise: "Pull-up",
             baseKg: 80,
             sets: [
-              { weight_kg: 0, reps: 8, weight_kg_right: null, reps_right: null },
+              {
+                weight_kg: 0,
+                reps: 8,
+                weight_kg_right: null,
+                reps_right: null,
+              },
             ],
           },
         ],
@@ -294,7 +299,12 @@ describe("sessionRecap — vs-last delta", () => {
             exercise: "Bench press",
             baseKg: 0,
             sets: [
-              { weight_kg: 60, reps: 5, weight_kg_right: null, reps_right: null },
+              {
+                weight_kg: 60,
+                reps: 5,
+                weight_kg_right: null,
+                reps_right: null,
+              },
             ],
           },
         ],
@@ -366,7 +376,9 @@ describe("sessionRecap — RPE aggregation", () => {
         durationMin: 40,
         intensity: null,
         bodyweightKg: 0,
-        exercises: [{ exercise: "Bench press", sets: [{ weightKg: 60, reps: 5 }] }],
+        exercises: [
+          { exercise: "Bench press", sets: [{ weightKg: 60, reps: 5 }] },
+        ],
       },
       NO_HISTORY
     );
@@ -411,9 +423,26 @@ describe("two input paths yield the same recap (#221 no-drift)", () => {
     // (target 5), 1 overhead working set. Weights in kg on both sides so no
     // unit-rounding difference can creep in.
     const flat: ActivitySetPayload[] = [
-      payloadSet({ exercise: "Bench press", weight: 40, reps: 8, warmup: true }),
-      payloadSet({ exercise: "Bench press", weight: 65, reps: 5, targetReps: 5, rpe: 8 }),
-      payloadSet({ exercise: "Bench press", weight: 65, reps: 6, targetReps: 5, rpe: 9 }),
+      payloadSet({
+        exercise: "Bench press",
+        weight: 40,
+        reps: 8,
+        warmup: true,
+      }),
+      payloadSet({
+        exercise: "Bench press",
+        weight: 65,
+        reps: 5,
+        targetReps: 5,
+        rpe: 8,
+      }),
+      payloadSet({
+        exercise: "Bench press",
+        weight: 65,
+        reps: 6,
+        targetReps: 5,
+        rpe: 9,
+      }),
       payloadSet({ exercise: "Overhead press", weight: 42.5, reps: 6 }),
     ];
     const clientSession = recapSessionFromPayload(
@@ -429,10 +458,35 @@ describe("two input paths yield the same recap (#221 no-drift)", () => {
 
     const serverSession = recapSessionFromEditData(
       editData([
-        editSet({ exercise: "Bench press", set_number: 1, weight_kg: 40, reps: 8, warmup: 1 }),
-        editSet({ exercise: "Bench press", set_number: 2, weight_kg: 65, reps: 5, target_reps: 5, rpe: 8 }),
-        editSet({ exercise: "Bench press", set_number: 3, weight_kg: 65, reps: 6, target_reps: 5, rpe: 9 }),
-        editSet({ exercise: "Overhead press", set_number: 4, weight_kg: 42.5, reps: 6 }),
+        editSet({
+          exercise: "Bench press",
+          set_number: 1,
+          weight_kg: 40,
+          reps: 8,
+          warmup: 1,
+        }),
+        editSet({
+          exercise: "Bench press",
+          set_number: 2,
+          weight_kg: 65,
+          reps: 5,
+          target_reps: 5,
+          rpe: 8,
+        }),
+        editSet({
+          exercise: "Bench press",
+          set_number: 3,
+          weight_kg: 65,
+          reps: 6,
+          target_reps: 5,
+          rpe: 9,
+        }),
+        editSet({
+          exercise: "Overhead press",
+          set_number: 4,
+          weight_kg: 42.5,
+          reps: 6,
+        }),
       ]),
       { bodyweightKg: 0 }
     );
@@ -481,7 +535,12 @@ describe("formatRecapLine", () => {
               exercise: "Bench press",
               baseKg: 0,
               sets: [
-                { weight_kg: 60, reps: 5, weight_kg_right: null, reps_right: null },
+                {
+                  weight_kg: 60,
+                  reps: 5,
+                  weight_kg_right: null,
+                  reps_right: null,
+                },
               ],
             },
           ],
@@ -501,7 +560,9 @@ describe("formatRecapLine", () => {
         durationMin: null,
         intensity: null,
         bodyweightKg: 0,
-        exercises: [{ exercise: "Bench press", sets: [{ weightKg: 60, reps: 5 }] }],
+        exercises: [
+          { exercise: "Bench press", sets: [{ weightKg: 60, reps: 5 }] },
+        ],
       },
       NO_HISTORY
     );
@@ -518,11 +579,18 @@ describe("formatRecapLine", () => {
             date: "2026-07-10",
             exercise: "Bench press",
             baseKg: 0,
-            sets: [{ weight_kg: 60, reps: 5, weight_kg_right: null, reps_right: null }],
+            sets: [
+              {
+                weight_kg: 60,
+                reps: 5,
+                weight_kg_right: null,
+                reps_right: null,
+              },
+            ],
           },
         ],
       },
-      "squat": {
+      squat: {
         bodyweight: false,
         sessions: [
           {
@@ -530,7 +598,14 @@ describe("formatRecapLine", () => {
             date: "2026-07-10",
             exercise: "Squat",
             baseKg: 0,
-            sets: [{ weight_kg: 100, reps: 5, weight_kg_right: null, reps_right: null }],
+            sets: [
+              {
+                weight_kg: 100,
+                reps: 5,
+                weight_kg_right: null,
+                reps_right: null,
+              },
+            ],
           },
         ],
       },

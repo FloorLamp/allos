@@ -188,7 +188,10 @@ function currentSides(
     if (s.reps != null)
       out.push({ weightKg: baseKg + (s.weightKg ?? 0), reps: s.reps });
     if (s.repsRight != null)
-      out.push({ weightKg: baseKg + (s.weightKgRight ?? 0), reps: s.repsRight });
+      out.push({
+        weightKg: baseKg + (s.weightKgRight ?? 0),
+        reps: s.repsRight,
+      });
   }
   return out;
 }
@@ -203,7 +206,10 @@ function historySides(
     if (s.reps != null)
       out.push({ weightKg: baseKg + (s.weight_kg ?? 0), reps: s.reps });
     if (s.reps_right != null)
-      out.push({ weightKg: baseKg + (s.weight_kg_right ?? 0), reps: s.reps_right });
+      out.push({
+        weightKg: baseKg + (s.weight_kg_right ?? 0),
+        reps: s.reps_right,
+      });
   }
   return out;
 }
@@ -226,7 +232,9 @@ export function sessionRecap(
     const baseKg = bodyweight ? session.bodyweightKg : 0;
 
     const summary = summarizeExercise(ex.sets.map(toSetRow), "kg");
-    const workingSets = ex.sets.filter((s) => !s.warmup && hasContent(s)).length;
+    const workingSets = ex.sets.filter(
+      (s) => !s.warmup && hasContent(s)
+    ).length;
 
     for (const s of ex.sets) {
       if (!s.warmup && s.rpe != null) rpes.push(s.rpe);
@@ -254,7 +262,8 @@ export function sessionRecap(
       }
       if (priorBestE1rm >= 0) {
         e1rmPR = curBest.e1rm > priorBestE1rm;
-        weightPR = !bodyweight && curBest.topKg > 0 && curBest.topKg > priorTopKg;
+        weightPR =
+          !bodyweight && curBest.topKg > 0 && curBest.topKg > priorTopKg;
       }
     }
 
@@ -300,7 +309,9 @@ export function sessionRecap(
     totalWorkingSets: lines.reduce((a, l) => a + l.workingSets, 0),
     totalVolumeKg: lines.reduce((a, l) => a + l.volumeKg, 0),
     targetRollup,
-    prExercises: lines.filter((l) => l.e1rmPR || l.weightPR).map((l) => l.exercise),
+    prExercises: lines
+      .filter((l) => l.e1rmPR || l.weightPR)
+      .map((l) => l.exercise),
     avgRpe,
   };
 }
@@ -413,6 +424,7 @@ export function formatRecapLine(recap: Recap): string {
   else if (recap.prExercises.length > 1)
     segs.push(`${recap.prExercises.length} PRs`);
   if (recap.targetRollup === "all-hit") segs.push("all targets hit");
-  else if (recap.targetRollup === "some-missed") segs.push("some targets missed");
+  else if (recap.targetRollup === "some-missed")
+    segs.push("some targets missed");
   return segs.join(" · ");
 }

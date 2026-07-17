@@ -267,6 +267,11 @@ export interface NotifySchedule {
     Bedtime: number | null;
   };
   workoutEnabled: boolean;
+  // Post-workout session recap line (#924): whether the finish-triggered nudge
+  // OPENS with the recap one-liner ("Push day done · 47 min · …"). On by default;
+  // gates only the recap LINE — the due post-workout supplement section still
+  // sends on its own dueness.
+  workoutRecapEnabled: boolean;
   // Morning digest: the hour (0-23, this profile's timezone) to send
   // the once-a-day summary, or null = off. Off by default.
   digestHour: number | null;
@@ -333,6 +338,9 @@ export function getNotifySchedule(profileId: number): NotifySchedule {
     },
     workoutEnabled:
       (getProfileSetting(profileId, "notify_workout_enabled") ?? "1") === "1",
+    // Post-workout recap line on unless explicitly disabled (#924).
+    workoutRecapEnabled:
+      (getProfileSetting(profileId, "notify_workout_recap") ?? "1") === "1",
     // Off by default (fallback null) — the digest is opt-in.
     digestHour: parseHour(
       getProfileSetting(profileId, "notify_digest_hour"),
@@ -384,6 +392,11 @@ export function setNotifySchedule(
     profileId,
     "notify_workout_enabled",
     sched.workoutEnabled ? "1" : "0"
+  );
+  setProfileSetting(
+    profileId,
+    "notify_workout_recap",
+    sched.workoutRecapEnabled ? "1" : "0"
   );
   setProfileSetting(
     profileId,

@@ -36,6 +36,9 @@ export default function ProfileNotificationSettings({
   const [foodEnabled, setFoodEnabled] = useState(foodTelegramEnabled);
   const [suppHours, setSuppHours] = useState(schedule.supplementHours);
   const [workoutEnabled, setWorkoutEnabled] = useState(schedule.workoutEnabled);
+  const [workoutRecapEnabled, setWorkoutRecapEnabled] = useState(
+    schedule.workoutRecapEnabled
+  );
   const [digestHour, setDigestHour] = useState(schedule.digestHour);
   const [recapDay, setRecapDay] = useState(schedule.weeklyRecapDay);
   const [recapHour, setRecapHour] = useState(schedule.weeklyRecapHour ?? 9);
@@ -78,6 +81,7 @@ export default function ProfileNotificationSettings({
       suppHours.Bedtime == null ? "" : String(suppHours.Bedtime)
     );
     fd.set("workout_enabled", workoutEnabled ? "1" : "0");
+    fd.set("workout_recap_enabled", workoutRecapEnabled ? "1" : "0");
     fd.set("digest_hour", digestHour == null ? "" : String(digestHour));
     fd.set("recap_day", recapDay == null ? "" : String(recapDay));
     fd.set("recap_hour", String(recapHour));
@@ -233,6 +237,24 @@ export default function ProfileNotificationSettings({
             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
               Sent on the usual training schedule — {workoutSummary} — when
               behind on the weekly routine.
+            </p>
+
+            {/* Post-workout recap (#924) — the finish-triggered nudge opens with
+                a one-line session recap ("Push day done · 47 min · 14 sets · Bench
+                PR · all targets hit") before any due post-workout supplement. */}
+            <label className="mt-3 flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
+              <input
+                type="checkbox"
+                checked={workoutRecapEnabled}
+                onChange={(e) => setWorkoutRecapEnabled(e.target.checked)}
+                className="h-4 w-4 accent-brand-600"
+                data-testid="workout-recap-enabled"
+              />
+              Post-workout recap
+            </label>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              When you finish a session, lead the nudge with a one-line recap —
+              duration, working sets, PRs, and whether you hit your targets.
             </p>
           </div>
 
