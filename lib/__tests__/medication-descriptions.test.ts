@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import medsJson from "@/lib/medication-descriptions.json";
+import medsJson from "@/scripts/medication-descriptions.source.json";
 import {
   getMedicationInfo,
   normalizeMedName,

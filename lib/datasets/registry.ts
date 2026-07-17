@@ -15,6 +15,10 @@ import { biomarkerDescriptionsDataset } from "./biomarker-descriptions";
 import { driDataset, driNutrientStrategy } from "./dri";
 import { foodGroupsDataset } from "./food-groups";
 import { icd10Dataset, icd10CodeStrategy } from "./icd10-common";
+import {
+  medicationDescriptionsDataset,
+  medDescriptionsStrategy,
+} from "./medication-descriptions";
 import { metsDataset } from "./mets";
 import {
   nutrientFoodMapDataset,
@@ -66,6 +70,13 @@ export const DATASETS: RegisteredDataset[] = [
       unknown
     >,
     strategy: icd10CodeStrategy,
+  },
+  {
+    dataset: medicationDescriptionsDataset as unknown as LoadedDataset<
+      Record<string, unknown>,
+      unknown
+    >,
+    strategy: medDescriptionsStrategy,
   },
   {
     dataset: metsDataset as unknown as LoadedDataset<
