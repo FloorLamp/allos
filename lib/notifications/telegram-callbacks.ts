@@ -29,6 +29,13 @@ import {
 import { getProfileNameById } from "../profile-summary-load";
 import { administrationOutcomeText } from "../administration-format";
 import { logFoodServingCore } from "../food-log-write";
+import { logSymptomCore } from "../symptom-log-write";
+import { logTemperatureCore } from "../temperature-log";
+import { getSymptomLogOrder } from "../queries";
+import { symptomLabel, SYMPTOMS } from "../symptoms";
+import { profileAgeMonths } from "../settings";
+import { inlineTempRedFlagNote } from "../temp-red-flag";
+import { fmtTemp } from "../units";
 import { preventiveRuleByKey } from "../preventive-catalog";
 import { preventiveSignalKey } from "../preventive-upcoming";
 import { refillSignalKey } from "../refill-nudge";
@@ -59,7 +66,15 @@ import {
   parseRefillCallback,
   parseSkipCallback,
   parseTakeCallback,
+  parseSymptomPickCallback,
+  parseSymptomSeverityCallback,
+  parseTempReply,
+  parseTempReplyMarker,
+  tempReplyMarker,
+  SYMPTOM_SEVERITY_LABELS,
   type PrnLogCallback,
+  type SymptomPickCallback,
+  type SymptomSeverityCallback,
   preventiveAnswerText,
   preventiveCloseText,
   refillAnswerText,
@@ -159,6 +174,19 @@ export async function handleCallbackQuery(
     return;
   }
 
+  // Symptom quick-log (#859 item 5): a "<symptom>" button opens a severity picker;
+  // a severity button logs the symptom-day.
+  const symPick = parseSymptomPickCallback(cq.data);
+  if (symPick) {
+    await handleSymptomPick(cq, symPick);
+    return;
+  }
+  const symSev = parseSymptomSeverityCallback(cq.data);
+  if (symSev) {
+    await handleSymptomSeverity(cq, symSev);
+    return;
+  }
+
   // Unknown/malformed token: ack so the client stops the spinner, do nothing.
   await answerCallbackQuery(cq.id);
 }
@@ -242,6 +270,223 @@ async function handlePrnLogTap(
   const outcome = logAdministration(profileId, token.itemId);
   const name = getIntakeItemName(profileId, token.itemId) ?? "medication";
   await answerCallbackQuery(cq.id, administrationOutcomeText(outcome, name));
+}
+
+// The profile's top symptoms for the quick-log grid: its recency-ranked logged
+// symptoms, falling back to a handful of common curated symptoms for a profile that
+// hasn't logged any yet. Capped so the grid stays tappable.
+const SYMPTOM_GRID_CAP = 8;
+function symptomGridKeys(profileId: number): string[] {
+  const ranked = getSymptomLogOrder(profileId).slice(0, SYMPTOM_GRID_CAP);
+  if (ranked.length > 0) return ranked;
+  return SYMPTOMS.slice(0, SYMPTOM_GRID_CAP).map((s) => s.slug);
+}
+
+// `/symptom` command (#859 item 5): list the chat's profiles' ranked symptoms, each a
+// one-tap button that opens a severity picker. A multi-profile chat prefixes buttons
+// with the profile name; the callback token carries the profile id (re-checked on tap).
+export async function handleSymptomCommand(
+  message: TelegramMessage
+): Promise<void> {
+  const text = (message.text ?? "").trim();
+  if (!/^\/symptoms?(@\w+)?(\s|$)/i.test(text)) return;
+  const chatId = message.chat?.id;
+  if (chatId == null) return;
+
+  const profileIds = getProfilesByTelegramChatId(String(chatId));
+  if (profileIds.length === 0) {
+    await sendTelegramMessage(chatId, {
+      title: "Log a symptom",
+      body: "This chat isn't linked to a profile yet — enable Telegram in Settings → Profile.",
+    });
+    return;
+  }
+
+  const multi = profileIds.length > 1;
+  const actions: NotificationAction[] = [];
+  for (const pid of profileIds) {
+    const prefix = multi ? `${getProfileNameById(pid) ?? "Profile"}: ` : "";
+    for (const slug of symptomGridKeys(pid)) {
+      actions.push({
+        label: `${prefix}${symptomLabel(slug)}`,
+        data: `symp:${pid}:${slug}`,
+      });
+    }
+  }
+
+  await sendTelegramMessage(chatId, {
+    title: "Log a symptom",
+    body: "Tap a symptom, then choose how bad it is:",
+    actions,
+  });
+}
+
+// A symptom button tap: replace the grid with a severity picker for the chosen symptom.
+async function handleSymptomPick(
+  cq: TelegramCallbackQuery,
+  token: SymptomPickCallback
+): Promise<void> {
+  const chatId = cq.message?.chat?.id;
+  const messageId = cq.message?.message_id;
+  const profileId =
+    chatId != null
+      ? resolveTapProfile(token, getProfilesByTelegramChatId(String(chatId)))
+      : null;
+  if (profileId == null || chatId == null || messageId == null) {
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
+    return;
+  }
+  const label = symptomLabel(token.slug);
+  const actions: NotificationAction[] = [1, 2, 3, 4].map((sev) => ({
+    label: SYMPTOM_SEVERITY_LABELS[sev],
+    data: `symsev:${profileId}:${sev}:${token.slug}`,
+    row: "sev",
+  }));
+  await rebuildMessage(profileId, chatId, messageId, {
+    title: `Log a symptom: ${label}`,
+    body: "How bad is it?",
+    actions,
+  });
+  await answerCallbackQuery(cq.id);
+}
+
+// A severity button tap: log the symptom-day and answer from the typed outcome (never
+// an unconditional confirm — the markDoseTaken contract). Closes the picker on success.
+async function handleSymptomSeverity(
+  cq: TelegramCallbackQuery,
+  token: SymptomSeverityCallback
+): Promise<void> {
+  const chatId = cq.message?.chat?.id;
+  const messageId = cq.message?.message_id;
+  const profileId =
+    chatId != null
+      ? resolveTapProfile(token, getProfilesByTelegramChatId(String(chatId)))
+      : null;
+  if (profileId == null || chatId == null || messageId == null) {
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
+    return;
+  }
+  const outcome = logSymptomCore(
+    profileId,
+    token.slug,
+    token.severity,
+    today(profileId)
+  );
+  if (outcome.kind === "invalid") {
+    await answerCallbackQuery(cq.id, "Couldn't log that symptom.");
+    return;
+  }
+  const label = symptomLabel(outcome.symptom);
+  const sevLabel =
+    SYMPTOM_SEVERITY_LABELS[outcome.severity] ?? String(outcome.severity);
+  await answerCallbackQuery(
+    cq.id,
+    `Logged: ${label} (${sevLabel.toLowerCase()})`
+  );
+  await closeMessage(chatId, messageId, `✅ Logged ${label} — ${sevLabel}.`);
+}
+
+// `/temp` command (#859 item 5): prompt the chat to REPLY with a reading. The prompt
+// body carries a "(#temp:<profileId>)" marker per profile, so the reply
+// (handleTempReply) attributes without any server-side pending state. A multi-profile
+// chat gets one named prompt each.
+export async function handleTempCommand(
+  message: TelegramMessage
+): Promise<void> {
+  const text = (message.text ?? "").trim();
+  if (!/^\/temp(erature)?(@\w+)?(\s|$)/i.test(text)) return;
+  const chatId = message.chat?.id;
+  if (chatId == null) return;
+
+  const profileIds = getProfilesByTelegramChatId(String(chatId));
+  if (profileIds.length === 0) {
+    await sendTelegramMessage(chatId, {
+      title: "Log a temperature",
+      body: "This chat isn't linked to a profile yet — enable Telegram in Settings → Profile.",
+    });
+    return;
+  }
+
+  const multi = profileIds.length > 1;
+  for (const pid of profileIds) {
+    const who = multi ? `${getProfileNameById(pid) ?? "Profile"}'s ` : "";
+    await sendTelegramMessage(chatId, {
+      title: "Log a temperature",
+      body:
+        `Reply to this message with ${who}temperature — e.g. 38.5, or 101F ` +
+        `(add C or F to be explicit). ${tempReplyMarker(pid)}`,
+    });
+  }
+}
+
+// A reply to a `/temp` prompt (#859 item 5): resolve the profile from the prompt's
+// marker, parse the value + unit from the reply body, log it, and answer honestly from
+// the typed TemperatureLogOutcome — with the single-reading red-flag note when the
+// reading crosses one. Returns whether the message was a temp reply (so the message
+// dispatcher can stop). Never unconditionally confirms.
+export async function handleTempReply(
+  message: TelegramMessage
+): Promise<boolean> {
+  const chatId = message.chat?.id;
+  const replyText = message.reply_to_message?.text;
+  const markedProfile = parseTempReplyMarker(replyText);
+  if (chatId == null || markedProfile == null) return false;
+
+  // Only honor the marker when the profile is actually reachable from this chat.
+  const profileIds = getProfilesByTelegramChatId(String(chatId));
+  if (!profileIds.includes(markedProfile)) {
+    await sendTelegramMessage(chatId, {
+      title: "Temperature not logged",
+      body: "That profile isn't linked to this chat anymore.",
+    });
+    return true;
+  }
+
+  const parsed = parseTempReply(message.text);
+  if (!parsed) {
+    await sendTelegramMessage(chatId, {
+      title: "Temperature not logged",
+      body: "Couldn't read a temperature there — reply with a number like 38.5 or 101F.",
+    });
+    return true;
+  }
+
+  const date = today(markedProfile);
+  const outcome = logTemperatureCore(
+    markedProfile,
+    parsed.value,
+    parsed.unit,
+    date
+  );
+  if (outcome.kind === "invalid") {
+    await sendTelegramMessage(chatId, {
+      title: "Temperature not logged",
+      body: outcome.error,
+    });
+    return true;
+  }
+  const redFlag = inlineTempRedFlagNote(
+    outcome.degF,
+    profileAgeMonths(markedProfile, date)
+  );
+  const feverNote = outcome.flag === "high" ? " — fever" : "";
+  await sendTelegramMessage(chatId, {
+    title: `Temperature logged: ${fmtTemp(outcome.degF, parsed.unit)}${feverNote}`,
+    body: redFlag ?? "Logged.",
+  });
+  return true;
+}
+
+// The ONE inbound text-message dispatcher (webhook + poller both call this): a reply to
+// a temp prompt first, then the slash commands. Keeps routing in one place so both
+// transports behave identically.
+export async function handleIncomingMessage(
+  message: TelegramMessage
+): Promise<void> {
+  if (await handleTempReply(message)) return;
+  await handleSymptomCommand(message);
+  await handleTempCommand(message);
+  await handleDoseCommand(message);
 }
 
 // Drop the tapped button's WHOLE row and, when it was the last row, replace the

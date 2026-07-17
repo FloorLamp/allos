@@ -164,6 +164,11 @@ export default function SymptomLogBar({
         }`,
         { tone: res.flag === "high" ? "error" : undefined }
       );
+      // Single-reading red flag (#859 item 3): the source's own cited instruction,
+      // shown as a distinct, longer-lived error toast at the moment of logging.
+      if (res.redFlag) {
+        toast(res.redFlag, { tone: "error" });
+      }
       startTransition(() => router.refresh());
     } else {
       setTempError(res.error);

@@ -235,7 +235,12 @@ export function episodeLastDoseClause(ep: AssembledEpisode): string | null {
 export function householdSickLine(
   name: string,
   ep: AssembledEpisode,
-  tempUnit: TemperatureUnit = "F"
+  tempUnit: TemperatureUnit = "F",
+  // Optional precomputed compact clause appended last (issue #859 item 2 — the
+  // school-return "fever-free 18h/24h" clause). The caller computes it from the ONE
+  // school-return gather (schoolReturnCompactClause) so the household line, hero, and
+  // episode page never disagree (#221). Null/omitted keeps the line unchanged.
+  extraClause: string | null = null
 ): string {
   const parts: string[] = [name];
   const day = episodeDayNumber(ep.start, ep.lastActiveDay ?? ep.asOf);
@@ -248,6 +253,7 @@ export function householdSickLine(
   }
   const lastDose = episodeLastDoseClause(ep);
   if (lastDose) parts.push(lastDose);
+  if (extraClause) parts.push(extraClause);
   return parts.join(" · ");
 }
 
@@ -280,4 +286,62 @@ export function isOpenEpisode(ep: AssembledEpisode): boolean {
       ep.temperatures.length > 0 ||
       ep.totalAdministrations > 0)
   );
+}
+
+// One administration for the Emergency Card's active-episode section (issue #859
+// item 6): the med name, its profile-local clock, and the snapshotted amount.
+export interface EmergencyEpisodeAdministration {
+  name: string;
+  time: string | null;
+  amount: string | null;
+}
+
+// The Emergency Card's conditional active-episode section — the ER intake answer to
+// "what have they taken today?". Present only while an episode is OPEN.
+export interface EmergencyEpisodeSection {
+  situation: string;
+  dayNumber: number | null;
+  // "Illness · day 4" — the episode headline for a first responder.
+  headline: string;
+  // TODAY's administrations (the asOf day) with clock + amount, oldest first.
+  todaysAdministrations: EmergencyEpisodeAdministration[];
+  // The latest temperature, preformatted in the viewer's unit ("101.3 °F"), or null.
+  latestTemp: string | null;
+}
+
+// Build the Emergency Card active-episode section from the ONE assembly (#221), or
+// null when the episode is closed (the card renders nothing then). `tempUnit` renders
+// the temperature in the viewer's preference (storage is canonical °F). Pure — the
+// server gather passes an assembled OPEN episode; the printable/offline card formats
+// over the result unchanged.
+export function emergencyEpisodeSection(
+  ep: AssembledEpisode,
+  tempUnit: TemperatureUnit = "F"
+): EmergencyEpisodeSection | null {
+  if (!ep.ongoing) return null;
+  const dayNumber = episodeDayNumber(ep.start, ep.lastActiveDay ?? ep.asOf);
+  const headline =
+    dayNumber != null ? `${ep.situation} · day ${dayNumber}` : ep.situation;
+  const todaysAdministrations: EmergencyEpisodeAdministration[] = [];
+  for (const med of ep.medications) {
+    for (const a of med.administrations) {
+      if (a.date === ep.asOf) {
+        todaysAdministrations.push({
+          name: med.name,
+          time: a.time,
+          amount: a.amount,
+        });
+      }
+    }
+  }
+  todaysAdministrations.sort((a, b) =>
+    (a.time ?? "").localeCompare(b.time ?? "")
+  );
+  return {
+    situation: ep.situation,
+    dayNumber,
+    headline,
+    todaysAdministrations,
+    latestTemp: ep.latestTemp ? fmtTemp(ep.latestTemp.degF, tempUnit) : null,
+  };
 }

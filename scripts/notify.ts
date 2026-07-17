@@ -45,13 +45,14 @@ import {
 import { getUpdates, telegramChannel } from "../lib/notifications/telegram";
 import {
   handleCallbackQuery,
-  handleDoseCommand,
+  handleIncomingMessage,
 } from "../lib/notifications/telegram-callbacks";
 import { runEscalations } from "../lib/notifications/escalate";
 import { runRedoseNotices } from "../lib/notifications/redose";
 import { runRefills } from "../lib/notifications/refill";
 import { runPreventive } from "../lib/notifications/preventive";
 import { runIllnessCare } from "../lib/notifications/illness-care";
+import { runTempRedFlag } from "../lib/notifications/temp-red-flag";
 import { runDigest } from "../lib/notifications/digest-data";
 import { runUpcomingDigest } from "../lib/notifications/upcoming-digest-data";
 import { runWeeklyRecap } from "../lib/notifications/weekly-recap-data";
@@ -169,7 +170,7 @@ async function poll(): Promise<never> {
       for (const u of updates) {
         try {
           if (u.callback_query) await handleCallbackQuery(u.callback_query);
-          else if (u.message) await handleDoseCommand(u.message);
+          else if (u.message) await handleIncomingMessage(u.message);
         } catch (e) {
           // One bad tap must not wedge the queue — log, ack via offset, move on.
           log.error("poll: handling update failed", {
@@ -437,6 +438,27 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
       else setProfileSetting(profile.id, "notify_illnesscare_assessed", date);
     } catch (e) {
       log.error("illness-care check failed", {
+        profile: profile.id,
+        err: e instanceof Error ? e : String(e),
+      });
+      anyFailed = true;
+    }
+  }
+
+  // Single-reading temperature red flags (#859 item 3) — a sibling care-tier,
+  // bus-gated nudge assessed once per profile-local DAY, same discipline as
+  // illness-care above. Its own assessed marker so a red-flag failure retries
+  // independently of the duration/trajectory check.
+  if (
+    waking &&
+    getProfileSetting(profile.id, "notify_tempredflag_assessed") !== date
+  ) {
+    try {
+      const trf = await runTempRedFlag(profile.id, profile.name, date);
+      if (trf.failed) anyFailed = true;
+      else setProfileSetting(profile.id, "notify_tempredflag_assessed", date);
+    } catch (e) {
+      log.error("temp-red-flag check failed", {
         profile: profile.id,
         err: e instanceof Error ? e : String(e),
       });

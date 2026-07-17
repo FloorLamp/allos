@@ -4,6 +4,7 @@ import {
   IconStethoscope,
   IconDroplet,
   IconPhone,
+  IconActivityHeartbeat,
 } from "@tabler/icons-react";
 import { isEmergencyCardEmpty, type EmergencyCard } from "@/lib/emergency-card";
 
@@ -103,6 +104,57 @@ export default function EmergencyCardView({ card }: { card: EmergencyCard }) {
           )}
         </div>
       </div>
+
+      {card.activeEpisode && (
+        <Section
+          title={`Active Illness — ${card.activeEpisode.headline}`}
+          icon={IconActivityHeartbeat}
+          accent="text-rose-600 dark:text-rose-400"
+          testid="emergency-active-episode"
+        >
+          <div className="space-y-1.5 text-sm print:text-black">
+            {card.activeEpisode.latestTemp && (
+              <p>
+                <span className="font-semibold text-slate-900 dark:text-slate-100 print:text-black">
+                  Latest temp:
+                </span>{" "}
+                {card.activeEpisode.latestTemp}
+              </p>
+            )}
+            <p className="font-semibold text-slate-900 dark:text-slate-100 print:text-black">
+              Today&rsquo;s medications
+            </p>
+            {card.activeEpisode.todaysAdministrations.length === 0 ? (
+              <p className="text-slate-500 dark:text-slate-400 print:text-black">
+                None logged today
+              </p>
+            ) : (
+              <ul className="space-y-1">
+                {card.activeEpisode.todaysAdministrations.map((a, i) => (
+                  <li
+                    key={i}
+                    className="flex flex-wrap items-baseline gap-x-2 print:text-black"
+                  >
+                    <span className="font-medium text-slate-900 dark:text-slate-100 print:text-black">
+                      {a.name}
+                    </span>
+                    {a.amount && (
+                      <span className="text-slate-600 dark:text-slate-300 print:text-black">
+                        {a.amount}
+                      </span>
+                    )}
+                    {a.time && (
+                      <span className="text-slate-500 dark:text-slate-400 print:text-black">
+                        {a.time}
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </Section>
+      )}
 
       {empty && (
         <p

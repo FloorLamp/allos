@@ -1,0 +1,34 @@
+{
+  "$schema": "allos-dataset/v1",
+  "id": "temperature-red-flags",
+  "title": "Single-reading fever red flags, age-banded",
+  "description": "Baked, human-reviewable table of the two AAP-grade SINGLE-READING fever red flags (issue #859 item 3): any fever in an infant under 3 months, and a very high fever (104°F / 40°C) at any age. Each entry renders the SOURCE's own 'contact a clinician' instruction verbatim (the #798/#805 refusal posture — cite, never generate a computed judgment). SINGLE readings only, NO symptom combinations (the #805 non-goal holds). Age bands appear ONLY as the source publishes them. INFORMATIONAL for personal/household tracking, NOT clinical software or medical advice.",
+  "citation": [
+    {
+      "source": "American Academy of Pediatrics (AAP) — fever guidance",
+      "url": "https://www.healthychildren.org/English/health-issues/conditions/fever/Pages/default.aspx",
+      "note": "Public AAP fever guidance: a rectal temperature of 100.4°F (38°C) or higher in an infant under 3 months warrants prompt clinician contact; a very high fever warrants clinician contact at any age. Simplified for personal tracking, not clinical guidance."
+    }
+  ],
+  "identity": {
+    "keys": ["key"]
+  },
+  "entries": [
+    {
+      "key": "infant_fever",
+      "label": "Fever in an infant under 3 months",
+      "minTempF": 100.4,
+      "maxAgeMonths": 3,
+      "line": "any fever in an infant younger than 3 months (100.4°F / 38°C or higher) is a reason to contact a clinician now",
+      "source": "American Academy of Pediatrics (AAP) — fever in infants younger than 3 months (rectal temperature 100.4°F / 38°C or higher)."
+    },
+    {
+      "key": "hyperpyrexia",
+      "label": "Very high fever (104°F or higher)",
+      "minTempF": 104,
+      "maxAgeMonths": null,
+      "line": "a temperature of 104°F (40°C) or higher at any age is a reason to contact a clinician now",
+      "source": "American Academy of Pediatrics (AAP) — very high fever guidance (104°F / 40°C or higher)."
+    }
+  ]
+}

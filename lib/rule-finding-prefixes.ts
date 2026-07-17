@@ -21,6 +21,7 @@ import { SUN_EXPOSURE_PREFIX } from "./sun-exposure";
 import { ORAL_HEALTH_PREFIX } from "./oral-health-observation";
 import { PROTEIN_ADEQUACY_PREFIX } from "./protein";
 import { ILLNESS_CARE_PREFIX } from "./illness-care";
+import { TEMP_RED_FLAG_PREFIX } from "./temp-red-flag";
 
 // Every namespace the rule-findings builders (buildTrainingObservationFindings,
 // buildBodyHygieneFindings, buildGoalPacingFindings, buildAdherencePatternFindings,
@@ -42,6 +43,7 @@ export const RULE_FINDING_PREFIXES: readonly string[] = [
   ORAL_HEALTH_PREFIX,
   PROTEIN_ADEQUACY_PREFIX,
   ILLNESS_CARE_PREFIX,
+  TEMP_RED_FLAG_PREFIX,
 ];
 
 // Whether a finding's dedupeKey belongs to a known builder namespace (so a page

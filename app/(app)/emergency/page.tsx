@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { IconSettings } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
-import { getEmergencyCardEnabled } from "@/lib/settings";
+import { getEmergencyCardEnabled, getUnitPrefs } from "@/lib/settings";
 import { getEmergencyCard } from "@/lib/emergency-card-load";
 import { PageHeader } from "@/components/ui";
 import EmergencyCardView from "@/components/EmergencyCardView";
@@ -17,9 +17,16 @@ import EmergencyPrintButton from "@/components/EmergencyPrintButton";
 export const dynamic = "force-dynamic";
 
 export default async function EmergencyCardPage() {
-  const { profile } = await requireSession();
+  const { login, profile } = await requireSession();
   const enabled = getEmergencyCardEnabled(profile.id);
-  const card = enabled ? getEmergencyCard(profile.id, profile.name) : null;
+  const card = enabled
+    ? getEmergencyCard(
+        profile.id,
+        profile.name,
+        new Date().toISOString(),
+        getUnitPrefs(login.id).temperatureUnit
+      )
+    : null;
 
   return (
     <div>

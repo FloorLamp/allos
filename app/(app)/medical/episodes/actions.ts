@@ -19,7 +19,13 @@ import {
   promoteEpisodeToConditionCore,
   unpromoteEpisodeConditionCore,
   endEpisodeCore,
+  endEpisodeAsOfCore,
 } from "@/lib/illness-episode-write";
+import { ackStaleNudge } from "@/lib/stale-episode-data";
+import {
+  attachSymptomPhotoCore,
+  deleteSymptomPhotoCore,
+} from "@/lib/symptom-photo-write";
 
 // Illness-episode Server Actions (issues #801/#856). Each is gated by requireWriteAccess()
 // and operates ONLY on the session's active profile — the episode is addressed by its
@@ -206,5 +212,97 @@ export async function endEpisodeAction(
   revalidatePath("/medical/episodes/[id]", "page");
   revalidatePath("/");
   revalidatePath("/nutrition");
+  return { ok: true };
+}
+
+// End a STALE open episode BACKDATED to its last active day (issue #859 item 1, the
+// stale-nudge's one-tap close). SUGGEST-ONLY: the caregiver initiated it; nothing ever
+// auto-closes (#560). Cross-profile gated like endEpisodeAction; the last active day is
+// the nudge's computed date (validated). The episode is profile-scoped by id in the
+// core, so a forged id from another profile is dropped even past the gate.
+export async function endStaleEpisodeAction(
+  formData: FormData
+): Promise<EpisodeActionResult> {
+  const target = Number(formData.get("profileId"));
+  let profileId: number;
+  if (Number.isInteger(target) && target > 0) {
+    await requireProfileWriteAccess(target);
+    profileId = target;
+  } else {
+    profileId = (await requireWriteAccess()).profile.id;
+  }
+  const id = parseEpisodeId(formData);
+  const lastActiveDay = parseDateOrNull(formData.get("lastActiveDay"));
+  if (!id || !lastActiveDay)
+    return { ok: false, error: "That episode is no longer available." };
+  const outcome = endEpisodeAsOfCore(profileId, id, lastActiveDay);
+  if (outcome.kind === "missing")
+    return { ok: false, error: "That episode is no longer available." };
+  revalidatePath("/medical/episodes/[id]", "page");
+  revalidatePath("/");
+  revalidatePath("/nutrition");
+  return { ok: true };
+}
+
+// Attach a symptom photo to a day (issue #859 item 4). Active-profile scoped
+// (requireWriteAccess) — rides the existing upload posture (per-profile dirs, sha256
+// dedup, image sniff). Answers from the core's typed outcome; never leaks internals.
+export async function uploadSymptomPhotoAction(
+  formData: FormData
+): Promise<EpisodeActionResult> {
+  const { profile } = await requireWriteAccess();
+  const file = formData.get("photo");
+  if (!(file instanceof File) || file.size === 0)
+    return { ok: false, error: "Choose a photo to attach." };
+  const date = parseDateOrNull(formData.get("date"));
+  if (!date) return { ok: false, error: "Enter a valid date." };
+  const symptom = String(formData.get("symptom") ?? "").trim() || null;
+  const caption = String(formData.get("caption") ?? "").trim() || null;
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const outcome = attachSymptomPhotoCore(
+    profile.id,
+    date,
+    buffer,
+    file.name,
+    symptom,
+    caption
+  );
+  if (outcome.kind === "invalid") return { ok: false, error: outcome.error };
+  revalidatePath("/medical/episodes/[id]", "page");
+  return { ok: true };
+}
+
+// Delete a symptom photo (row + on-disk file). Active-profile scoped.
+export async function deleteSymptomPhotoAction(
+  formData: FormData
+): Promise<EpisodeActionResult> {
+  const { profile } = await requireWriteAccess();
+  const id = Number(formData.get("photoId"));
+  if (!Number.isInteger(id) || id <= 0)
+    return { ok: false, error: "That photo is no longer available." };
+  deleteSymptomPhotoCore(profile.id, id);
+  revalidatePath("/medical/episodes/[id]", "page");
+  return { ok: true };
+}
+
+// Dismiss the stale-episode nudge for THIS open episode ("keep it open") — remembers
+// the episode id so the suggest-only nudge doesn't nag daily (issue #859 item 1).
+// Cross-profile gated. Never changes the episode; only the per-episode ack marker.
+export async function dismissStaleNudgeAction(
+  formData: FormData
+): Promise<EpisodeActionResult> {
+  const target = Number(formData.get("profileId"));
+  let profileId: number;
+  if (Number.isInteger(target) && target > 0) {
+    await requireProfileWriteAccess(target);
+    profileId = target;
+  } else {
+    profileId = (await requireWriteAccess()).profile.id;
+  }
+  const id = parseEpisodeId(formData);
+  if (!id) return { ok: false, error: "That episode is no longer available." };
+  ackStaleNudge(profileId, id);
+  revalidatePath("/medical/episodes/[id]", "page");
+  revalidatePath("/");
   return { ok: true };
 }

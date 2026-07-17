@@ -1,4 +1,5 @@
 import type { Sex } from "./types";
+import type { EmergencyEpisodeSection } from "./illness-episode-format";
 
 // Pure assembly + (de)serialization for the offline Emergency Card (issue #42).
 // The card is a deliberately terse, printable snapshot of the facts a stranger or
@@ -44,6 +45,11 @@ export interface EmergencyCard {
   medications: EmergencyCardMedication[];
   conditions: EmergencyCardCondition[];
   contact: EmergencyContact | null;
+  // The active-illness-episode section (issue #859 item 6) — present ONLY while an
+  // episode is open (the ER "what have they taken today?" answer), else null. A
+  // formatter over the ONE assembly (emergencyEpisodeSection), so it can't disagree
+  // with the episode page.
+  activeEpisode?: EmergencyEpisodeSection | null;
   // ISO timestamp the snapshot was assembled — drives the "as of" staleness note
   // so a reader knows how fresh the offline copy is.
   generatedAt: string;
@@ -66,6 +72,8 @@ export interface EmergencyCardInput {
     phone: string | null;
     relation: string | null;
   } | null;
+  // The active-episode section, when an episode is open, else null (issue #859 item 6).
+  activeEpisode?: EmergencyEpisodeSection | null;
   generatedAt: string;
 }
 
@@ -139,6 +147,7 @@ export function buildEmergencyCard(input: EmergencyCardInput): EmergencyCard {
     medications,
     conditions,
     contact,
+    activeEpisode: input.activeEpisode ?? null,
     generatedAt: input.generatedAt,
   };
 }
@@ -152,7 +161,8 @@ export function isEmergencyCardEmpty(card: EmergencyCard): boolean {
     card.medications.length === 0 &&
     card.conditions.length === 0 &&
     !card.bloodType &&
-    !card.contact
+    !card.contact &&
+    !card.activeEpisode
   );
 }
 
