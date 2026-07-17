@@ -3,8 +3,8 @@
 // assembleIllnessEpisode GATHERS DB state (symptom series, temperature/fever curve,
 // PRN administrations, bridged conditions) and hands it to the pure formatters, so it
 // carries a DB-tier fixture asserting the END-TO-END assembled output — the pure tier
-// can't see the SQL gather. Also exercises the cross-profile "Sick in the household"
-// access path (grants-scoped) and the promote-to-condition write core + undo.
+// can't see the SQL gather. Also exercises the cross-profile illness-hero access path
+// (grants-scoped, #858) and the promote-to-condition write core + undo.
 //
 // Deterministic: :memory:-backed temp DB via setup.ts; fixed dates; no network.
 
@@ -15,6 +15,7 @@ import { logSymptomCore } from "@/lib/symptom-log-write";
 import {
   assembleIllnessEpisode,
   currentEpisodeForProfile,
+  openEpisodeForProfile,
 } from "@/lib/illness-episode";
 import {
   episodeHeadline,
@@ -332,9 +333,9 @@ describe("currentEpisodeForProfile + household access", () => {
     const sick = newProfile("household-sick");
     makeCurrentlySick(sick);
     const other = newProfile("household-other");
-    // The widget iterates getAccessibleProfiles() (grants-scoped: admins=all,
-    // members=grants) — the SAME reach the Household page uses. Assert that reach
-    // over the underlying login_profiles JOIN (auth itself is mocked in this tier).
+    // The illness hero (#858) iterates getAccessibleProfiles() (grants-scoped:
+    // admins=all, members=grants) — the SAME reach the Household page uses. Assert that
+    // reach over the underlying login_profiles JOIN (auth itself is mocked in this tier).
     const memberReach = (loginId: number) =>
       (
         db
@@ -366,5 +367,37 @@ describe("currentEpisodeForProfile + household access", () => {
     // that CAN reach `sick` — e.g. an admin — sees its open episode from any active
     // profile).
     expect(currentEpisodeForProfile(sick)).not.toBeNull();
+  });
+});
+
+// ── openEpisodeForProfile: the illness-hero ACTIVE cockpit key (#858) ──
+describe("openEpisodeForProfile", () => {
+  it("returns the assembled open episode even before any signal is logged (door-A)", () => {
+    // Just an open illness_episodes row (situation activated), NO symptom/temp/dose —
+    // the #843 "I'm feeling sick" tap. currentEpisodeForProfile stays null (no signal),
+    // but openEpisodeForProfile resolves it so the hero cockpit surfaces immediately.
+    const p = newProfile("just-activated");
+    const start = shiftDateStr(today(p), 0);
+    db.prepare(
+      `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
+       VALUES (?, 'Illness', ?, NULL)`
+    ).run(p, start);
+    expect(currentEpisodeForProfile(p)).toBeNull();
+    const ep = openEpisodeForProfile(p);
+    expect(ep).not.toBeNull();
+    expect(ep!.ongoing).toBe(true);
+    expect(ep!.distinctSymptomCount).toBe(0);
+  });
+
+  it("is null with no open episode row, and null once the episode is closed", () => {
+    const well = newProfile("no-episode");
+    expect(openEpisodeForProfile(well)).toBeNull();
+
+    const closed = newProfile("closed-episode");
+    db.prepare(
+      `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
+       VALUES (?, 'Illness', '2026-05-01', '2026-05-06')`
+    ).run(closed);
+    expect(openEpisodeForProfile(closed)).toBeNull();
   });
 });

@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireWriteAccess } from "@/lib/auth";
+import { requireWriteAccess, requireProfileWriteAccess } from "@/lib/auth";
 import { expiresAtFor } from "@/lib/share-links";
 import { createEpisodeShareLink } from "@/lib/share-links-db";
 import { recordAudit } from "@/lib/audit";
@@ -185,10 +185,22 @@ export async function mergeEpisodesAction(
 export async function endEpisodeAction(
   formData: FormData
 ): Promise<EpisodeActionResult> {
-  const { profile } = await requireWriteAccess();
+  // Cross-profile gating (issue #858): a caregiver ends a household member's episode
+  // ("feeling better") from the hero cockpit without switching. An explicit `profileId`
+  // gates on the TARGET (requireProfileWriteAccess, the #31 gate); absent, the active
+  // profile is used (requireWriteAccess). endEpisodeCore is profile-scoped by episode id,
+  // so a forged id from another profile is dropped even past the gate.
+  const target = Number(formData.get("profileId"));
+  let profileId: number;
+  if (Number.isInteger(target) && target > 0) {
+    await requireProfileWriteAccess(target);
+    profileId = target;
+  } else {
+    profileId = (await requireWriteAccess()).profile.id;
+  }
   const id = parseEpisodeId(formData);
   if (!id) return { ok: false, error: "That episode is no longer available." };
-  const outcome = endEpisodeCore(profile.id, id);
+  const outcome = endEpisodeCore(profileId, id);
   if (outcome.kind === "missing")
     return { ok: false, error: "That episode is no longer available." };
   revalidatePath("/medical/episodes/[id]", "page");

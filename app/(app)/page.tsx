@@ -44,6 +44,7 @@ import { formatLongDate, daysRemainingLabel } from "@/lib/format-date";
 import { recentLabHighlights } from "@/lib/recent-labs";
 import { getWeeklyRecap } from "@/lib/notifications/weekly-recap-data";
 import { resolveWidgetList } from "@/lib/dashboard-widgets";
+import { getIllnessHeroUi } from "@/lib/settings";
 import { onboardingNeedsSetup } from "@/lib/onboarding";
 import { getOnboardingDataPresence } from "@/lib/onboarding-data";
 import { PageHeader } from "@/components/ui";
@@ -54,11 +55,20 @@ import NeedsAttentionHero from "@/components/dashboard/NeedsAttentionHero";
 import HouseholdStrip, {
   type HouseholdStripEntry,
 } from "@/components/dashboard/HouseholdStrip";
-import SickHouseholdWidget, {
-  type SickHouseholdEntry,
-} from "@/components/dashboard/SickHouseholdWidget";
-import { currentEpisodeForProfile } from "@/lib/illness-episode";
-import { householdSickLine } from "@/lib/illness-episode-format";
+import IllnessHero, {
+  type HeroCockpit,
+} from "@/components/dashboard/IllnessHero";
+import IllnessCockpitBody from "./symptoms/IllnessCockpitBody";
+import {
+  currentEpisodeForProfile,
+  openEpisodeForProfile,
+} from "@/lib/illness-episode";
+import {
+  householdSickLine,
+  episodeHeadline,
+  orderIllnessCockpits,
+  type AssembledEpisode,
+} from "@/lib/illness-episode-format";
 import { disambiguateProfileNames } from "@/lib/profile-disambiguation";
 import WidgetEmpty from "@/components/dashboard/WidgetEmpty";
 import WeightTrendWidget from "@/components/dashboard/WeightTrendWidget";
@@ -74,13 +84,12 @@ import NextAppointmentWidget, {
 } from "@/components/dashboard/NextAppointmentWidget";
 import HealthspanPillarsWidget from "@/components/dashboard/HealthspanPillarsWidget";
 import QuickLogPrnWidget from "@/components/dashboard/QuickLogPrnWidget";
-import SymptomLogCard from "./symptoms/SymptomLogCard";
 import FeelingSickCard from "@/components/dashboard/FeelingSickCard";
 import { hasActiveIllnessSituation } from "@/lib/settings/profile-attrs";
 import OnboardingResumeCard from "@/components/dashboard/OnboardingResumeCard";
 import OnboardingChecklist from "@/components/dashboard/OnboardingChecklist";
 import ProfileOrientationCard from "@/components/dashboard/ProfileOrientationCard";
-import { saveDashboardLayout } from "./actions";
+import { saveDashboardLayout, saveIllnessHeroState } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -181,26 +190,76 @@ export default async function Dashboard() {
   const eligible = new Set(list.map((w) => w.def.id));
   const has = (id: string) => eligible.has(id);
 
-  // sick-household (#801): every OTHER accessible profile with an OPEN illness episode,
-  // over the SAME assembly the timeline/detail/share surfaces use. Grants-scoped upstream
-  // (accessible = getAccessibleProfiles), and shown regardless of the viewer's active
-  // profile — the active profile's own episode is already the symptom card. The page's
-  // `available` gate hides the widget when this list is empty.
-  const sickAssembled = has("sick-household")
-    ? accessible
-        .filter((p) => p.id !== profile.id)
-        .map((p) => ({ p, ep: currentEpisodeForProfile(p.id) }))
-        .filter((x) => x.ep !== null)
-    : [];
-  const sickNames = disambiguateProfileNames(sickAssembled.map((x) => x.p));
-  const sickHousehold: SickHouseholdEntry[] = sickAssembled.map((x) => ({
-    profile: x.p,
-    line: householdSickLine(
-      sickNames.get(x.p.id) ?? x.p.name,
-      x.ep!,
+  // Illness hero (issue #858): every accessible OPEN illness episode as a per-patient
+  // cockpit, over the SAME #801 assembly the timeline/detail/share surfaces use (one
+  // question, one computation). The acting profile's own episode is the FULL cockpit at
+  // hero position (keyed on an OPEN episode row — hasActiveIllnessSituation — so it appears
+  // the instant the #843 door-A "I'm feeling sick" tap activates Illness, before the first
+  // symptom); every OTHER accessible profile's open episode (signal-gated
+  // currentEpisodeForProfile, so a not-yet-symptomatic member stays off the list) is a
+  // compact accordion line that expands in place. Grants-scoped upstream (accessible =
+  // getAccessibleProfiles). Replaces the former sick-household widget (folded in, #858).
+  const activeSick = hasActiveIllnessSituation(profile.id);
+  const activeEpisode = activeSick ? openEpisodeForProfile(profile.id) : null;
+  const otherSick = accessible
+    .filter((p) => p.id !== profile.id)
+    .map((p) => ({ p, ep: currentEpisodeForProfile(p.id) }))
+    .filter(
+      (x): x is { p: (typeof accessible)[number]; ep: AssembledEpisode } =>
+        x.ep !== null
+    );
+
+  // Disambiguate every cockpit patient's name together (#531/#534 on-element identity).
+  const heroProfiles = [
+    ...(activeEpisode ? [profile] : []),
+    ...otherSick.map((x) => x.p),
+  ];
+  const heroNames = disambiguateProfileNames(heroProfiles);
+  const nameFor = (p: { id: number; name: string }) =>
+    heroNames.get(p.id) ?? p.name;
+
+  const orderedCockpits = orderIllnessCockpits([
+    ...(activeEpisode
+      ? [
+          {
+            profileId: profile.id,
+            isActive: true,
+            start: activeEpisode.start,
+            avatar: profile,
+            episode: activeEpisode,
+          },
+        ]
+      : []),
+    ...otherSick.map((x) => ({
+      profileId: x.p.id,
+      isActive: false,
+      start: x.ep.start,
+      avatar: x.p,
+      episode: x.ep,
+    })),
+  ]);
+
+  const heroCockpits: HeroCockpit[] = orderedCockpits.map((c) => ({
+    profileId: c.profileId,
+    profile: c.avatar,
+    displayName: nameFor(c.avatar),
+    isActive: c.isActive,
+    headline: episodeHeadline(c.episode),
+    compactLine: householdSickLine(
+      nameFor(c.avatar),
+      c.episode,
       units.temperatureUnit
     ),
+    body: (
+      <IllnessCockpitBody
+        profileId={c.profileId}
+        loginId={login.id}
+        episode={c.episode}
+        crossProfile={!c.isActive}
+      />
+    ),
   }));
+  const heroUi = getIllnessHeroUi(profile.id);
 
   // weight-trend: the deduped one-source-per-day series (getBodyMetricDailySeries,
   // #14/#395) — NOT raw all-source rows, which double back the line on a two-device
@@ -316,12 +375,13 @@ export default async function Dashboard() {
     ? getPrnMedicationsForQuickLog(profile.id)
     : [];
 
-  // symptom-log (#799/#843): the Symptoms widget is ALWAYS available (door A) — while an
-  // illness-type situation is active it renders the full one-tap symptom card; otherwise
-  // it renders the calm "Feeling sick?" front door whose single tap activates Illness and
-  // reveals the card on the next render. Hideable from Customize like any other widget.
-  const illnessActive =
-    has("symptom-log") && hasActiveIllnessSituation(profile.id);
+  // symptom-log (#799/#843/#858): the Symptoms widget slot is now the INACTIVE-state home
+  // ONLY. When the acting profile's illness is active its FULL cockpit has jumped to the
+  // illness hero above the grid (activeSick), so the widget slot renders NOTHING here — no
+  // duplicate symptom card. Otherwise it is the calm "Feeling sick?" front door (door A)
+  // whose single tap activates Illness and surfaces the cockpit in the hero on the next
+  // render. Hideable from Customize like any other widget.
+  const showFeelingSick = has("symptom-log") && !activeSick;
 
   // Data-aware empty set (issue #171): a data-aware widget whose domain has no data
   // yet renders an onboarding CTA instead of a blank card. Computed from the same
@@ -422,13 +482,9 @@ export default async function Dashboard() {
           <QuickLogPrnWidget meds={prnMeds} tz={getTimezone(profile.id)} />
         );
       case "symptom-log":
-        return illnessActive ? (
-          <SymptomLogCard profileId={profile.id} loginId={login.id} />
-        ) : (
-          <FeelingSickCard />
-        );
-      case "sick-household":
-        return <SickHouseholdWidget entries={sickHousehold} />;
+        // Front door only (#858): the active cockpit lives in the illness hero, so this
+        // renders nothing while the hero is up (available=false below), else the door.
+        return activeSick ? null : <FeelingSickCard />;
       default:
         return null;
     }
@@ -445,7 +501,9 @@ export default async function Dashboard() {
       (def.id !== "next-appointment" || hasScheduledAppt) &&
       (def.id !== "coaching-observations" || coachingObservations.length > 0) &&
       (def.id !== "weekly-recap" || weeklyRecap !== null) &&
-      (def.id !== "sick-household" || sickHousehold.length > 0),
+      // symptom-log is the inactive-state front door only: while the acting profile's
+      // cockpit is in the illness hero (activeSick) the slot renders nothing (#858).
+      (def.id !== "symptom-log" || showFeelingSick),
     node:
       def.dataAware && emptyIds.has(def.id)
         ? emptyNode(def.id)
@@ -457,6 +515,16 @@ export default async function Dashboard() {
       <PageHeader
         title="Dashboard"
         subtitle={`Today is ${formatLongDate(on)} — here's your health at a glance.`}
+      />
+      {/* Illness hero (#858): pinned above the customizable grid AND above Needs
+          attention, so an open episode's cockpit is the FIRST content block (the 7am
+          feverish-kid case; the mobile acceptance requires it lead). Composes with the
+          Needs-attention hero below — both render; no other widget is reordered/dimmed. */}
+      <IllnessHero
+        cockpits={heroCockpits}
+        initialCollapsedActive={heroUi.collapsedActive}
+        initialOpenOtherId={heroUi.openOtherId}
+        saveState={saveIllnessHeroState}
       />
       <div className="mb-6">
         <NeedsAttentionHero items={attention} today={on} />

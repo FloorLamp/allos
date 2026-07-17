@@ -56,6 +56,7 @@ export default function SymptomLogBar({
   suggestActivateIllness,
   showTemperature = false,
   temperatureUnit = "F",
+  profileId,
 }: {
   // Primary date (YYYY-MM-DD). On the dashboard this is today; on the Timeline it's the
   // selected day.
@@ -85,6 +86,11 @@ export default function SymptomLogBar({
   // The viewer's login temperature-unit preference (#857) — seeds the entry unit and the
   // fever toast. Canonical storage stays °F; this only changes display. Default "F".
   temperatureUnit?: TemperatureUnit;
+  // The profile this bar writes to (issue #858). Set ONLY on the illness-hero cockpit,
+  // where a caregiver logs for a household member without switching — every action posts
+  // this so the server gates on the TARGET (requireProfileWriteAccess). Absent on the
+  // default dashboard/Timeline mounts, which write the session's active profile.
+  profileId?: number;
 }) {
   const hasToggle = !!altDate;
   const [mode, setMode] = useState<"primary" | "alt">("primary");
@@ -147,7 +153,7 @@ export default function SymptomLogBar({
     // The reading is "now" for today (the card's primary date), never the alt day.
     fd.set("date", date);
     if (tempTime.trim() !== "") fd.set("time", tempTime);
-    const res = await logTemperature(fd);
+    const res = await logTemperature(withTarget(fd));
     setTempPending(false);
     if (res.ok) {
       setTempValue("");
@@ -167,6 +173,14 @@ export default function SymptomLogBar({
 
   const severities = severitiesByDate[activeDate] ?? {};
   const notes = notesByDate[activeDate] ?? {};
+
+  // Stamp the cross-profile target (issue #858) onto every write, when this bar is a
+  // hero cockpit for a non-active profile. A no-op on the default mounts (profileId
+  // undefined), which write the session's active profile.
+  const withTarget = (fd: FormData): FormData => {
+    if (profileId != null) fd.set("profileId", String(profileId));
+    return fd;
+  };
 
   // The full universe of rows (curated catalog + any custom keys already logged, either
   // day). Labels/icons only — order comes from `orderedKeys`.
@@ -243,7 +257,7 @@ export default function SymptomLogBar({
     fd.set("symptom", key);
     fd.set("severity", String(severity));
     fd.set("date", activeDate);
-    const res = await logSymptom(fd);
+    const res = await logSymptom(withTarget(fd));
     if (res.ok) setSeverity(key, res.severity);
     else {
       setSeverity(key, prev);
@@ -265,7 +279,7 @@ export default function SymptomLogBar({
     fd.set("symptom", key);
     fd.set("severity", String(severity));
     fd.set("date", activeDate);
-    const res = await lowerSymptom(fd);
+    const res = await lowerSymptom(withTarget(fd));
     if (res.ok) setSeverity(key, res.severity);
     else {
       setSeverity(key, prev);
@@ -282,7 +296,7 @@ export default function SymptomLogBar({
     fd.set("symptom", key);
     fd.set("date", activeDate);
     fd.set("note", value);
-    const res = await setSymptomNote(fd);
+    const res = await setSymptomNote(withTarget(fd));
     if (!res.ok) {
       setNote(key, prev);
       toast(res.error || "Couldn't save that note.", { tone: "error" });
@@ -299,7 +313,7 @@ export default function SymptomLogBar({
     const fd = new FormData();
     fd.set("symptom", key);
     fd.set("date", activeDate);
-    const res = await removeSymptom(fd);
+    const res = await removeSymptom(withTarget(fd));
     if (!res.ok) {
       setSeverity(key, prev);
       if (prevNote) setNote(key, prevNote);

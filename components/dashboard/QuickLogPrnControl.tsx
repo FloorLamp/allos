@@ -20,6 +20,7 @@ export default function QuickLogPrnControl({
   dayLabel,
   redoseLine = null,
   linkToDetail = false,
+  profileId,
 }: {
   itemId: number;
   name: string;
@@ -31,6 +32,10 @@ export default function QuickLogPrnControl({
   // Both hosts — the Medications Today panel (#851 item 10) and the dashboard quick-log
   // widget — pass this now; it stays a prop only so a future non-linking host can opt out.
   linkToDetail?: boolean;
+  // The profile this dose is logged for (issue #858). Set on the illness-hero cockpit so
+  // a caregiver logs a household member's PRN dose without switching — the action gates on
+  // the TARGET (requireProfileWriteAccess). Absent on the dashboard/medications mounts.
+  profileId?: number;
 }) {
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
@@ -45,6 +50,7 @@ export default function QuickLogPrnControl({
     fd.set("id", String(itemId));
     fd.set("offset", offset);
     if (customTime) fd.set("time", customTime);
+    if (profileId != null) fd.set("profileId", String(profileId));
     try {
       const res = await logMedicationAdministration(fd);
       if (res.ok) {

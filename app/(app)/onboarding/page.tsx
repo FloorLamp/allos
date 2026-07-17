@@ -58,7 +58,6 @@ const ONBOARDING_WIDGET_DESCRIPTIONS: Record<string, string> = {
   "goals-habits": "Goals and weekly habits.",
   "symptom-log": "Quick symptom logging when someone is unwell.",
   "weekly-recap": "A seven-day progress summary.",
-  "sick-household": "Open illness episodes across accessible profiles.",
 };
 
 const ONBOARDING_STEP_LABELS = [

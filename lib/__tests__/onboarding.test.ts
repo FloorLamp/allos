@@ -293,7 +293,6 @@ describe("onboarding dashboard layout", () => {
     expect(layout.hidden).toContain("recent-labs");
     expect(layout.hidden).not.toContain("coaching");
     expect(layout.hidden).not.toContain("symptom-log");
-    expect(layout.hidden).not.toContain("sick-household");
     expect(layout.hidden).toContain("quick-log-prn");
     expect(layout.order).toContain("recent-labs");
   });
@@ -310,7 +309,7 @@ describe("onboarding dashboard layout", () => {
     const explore = onboardingDashboardLayout(["explore"]);
     expect(explore.hidden).toEqual(["weekly-recap"]);
     expect(explore.order).toEqual(
-      expect.arrayContaining(["quick-log-prn", "symptom-log", "sick-household"])
+      expect.arrayContaining(["quick-log-prn", "symptom-log"])
     );
   });
 

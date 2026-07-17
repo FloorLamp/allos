@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireWriteAccess } from "@/lib/auth";
-import { setDashboardLayout } from "@/lib/settings";
+import { setDashboardLayout, setIllnessHeroUi } from "@/lib/settings";
 import { today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { snoozeUntil } from "@/lib/upcoming";
@@ -17,6 +17,22 @@ export async function saveDashboardLayout(order: string[], hidden: string[]) {
   const { profile } = await requireWriteAccess();
   setDashboardLayout(profile.id, { order, hidden });
   revalidatePath("/");
+}
+
+// Persist the acting profile's illness-hero collapse/expand state (issue #858): whether
+// its own cockpit is collapsed to the one-line headline and which OTHER accessible
+// profile's accordion is expanded. A per-viewer UI preference (like the dashboard
+// layout), so it's gated on the active profile's write access and stored under it. No
+// revalidation — the client already reflects the toggle; this only survives a reload.
+export async function saveIllnessHeroState(
+  collapsedActive: boolean,
+  openOtherId: number | null
+) {
+  const { profile } = await requireWriteAccess();
+  setIllnessHeroUi(profile.id, {
+    collapsedActive: collapsedActive === true,
+    openOtherId: typeof openOtherId === "number" ? openOtherId : null,
+  });
 }
 
 // "Not today" on the dashboard Coaching widget (findings bus, #39): snooze the top

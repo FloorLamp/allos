@@ -50,6 +50,16 @@ import {
   ORIENTATION_PROFILE,
   SOURCE_COMPARE_PROFILE,
   STRAVA_REAUTH_PROFILE,
+  E2E_LOGIN_SICK_SELF,
+  SICK_SELF_PROFILE,
+  E2E_LOGIN_SICK_COLLAPSE,
+  SICK_COLLAPSE_PROFILE,
+  E2E_LOGIN_CARE,
+  CARE_PARENT_PROFILE,
+  SICK_KID_A_PROFILE,
+  SICK_KID_B_PROFILE,
+  E2E_LOGIN_COCARE,
+  COCARE_PARENT_PROFILE,
 } from "./fixture-logins";
 import { adoptTemplate, activateRoutine } from "../lib/routines";
 
@@ -2252,4 +2262,150 @@ db.prepare(
 ).run(PROFILE_ID);
 console.log(
   `e2e: seeded a never-satisfiable Glutes 5x/week frequency target on profile ${PROFILE_ID} for pace-tone.spec (#780)`
+);
+
+// ── Illness hero fixtures (#858) ──────────────────────────────────────────────
+// Dedicated logins/profiles for the illness hero so its mutations (collapse state, a
+// cross-profile dose/temp) never touch the shared admin session (profile 1's live
+// episode) — repeat-safe under CI's --repeat-each=3. The DB is reset each webServer
+// boot, so these inserts don't accumulate across boots; the episode row is DELETE'd
+// first for a reused dev server.
+function seedSickEpisode(
+  profileId: number,
+  opts: { activateSituation?: boolean; prnMed?: boolean } = {}
+): void {
+  const on = today(profileId);
+  const start = shiftDateStr(on, -2);
+  const yesterday = shiftDateStr(on, -1);
+
+  if (opts.activateSituation) {
+    // The built-in illness-type situation, ACTIVE — so hasActiveIllnessSituation() keys
+    // this profile's OWN full cockpit to the hero. Idempotent for a reused dev server.
+    const existing = db
+      .prepare(
+        "SELECT id FROM situations WHERE profile_id = ? AND name = 'Illness'"
+      )
+      .get(profileId) as { id: number } | undefined;
+    const sitId =
+      existing?.id ??
+      Number(
+        db
+          .prepare(
+            "INSERT INTO situations (profile_id, name, active, illness_type) VALUES (?, 'Illness', 1, 1)"
+          )
+          .run(profileId).lastInsertRowid
+      );
+    db.prepare(
+      "UPDATE situations SET active = 1, illness_type = 1 WHERE id = ?"
+    ).run(sitId);
+  }
+
+  // The open episode ROW (#856) — identity for the cockpit; membership stays derived.
+  db.prepare("DELETE FROM illness_episodes WHERE profile_id = ?").run(
+    profileId
+  );
+  db.prepare(
+    `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
+     VALUES (?, 'Illness', ?, NULL)`
+  ).run(profileId, start);
+
+  // Symptoms (worst-severity upsert like the runtime core) + a small fever curve.
+  const seedSym = db.prepare(
+    `INSERT INTO symptom_logs (profile_id, date, symptom, severity, note)
+     VALUES (?, ?, ?, ?, NULL)
+     ON CONFLICT (profile_id, date, symptom)
+     DO UPDATE SET severity = MAX(symptom_logs.severity, excluded.severity)`
+  );
+  seedSym.run(profileId, yesterday, "cough", 2);
+  seedSym.run(profileId, on, "cough", 2);
+  seedSym.run(profileId, on, "fever", 3);
+
+  const tId = Number(
+    db
+      .prepare(
+        `INSERT INTO medical_records
+           (profile_id, date, category, name, value, value_num, unit,
+            canonical_name, source, notes)
+         VALUES (?, ?, 'vitals', 'Body Temperature', ?, ?, 'degF',
+                 'Body Temperature', 'manual', ?)`
+      )
+      // An early clock time so a "now" reading a caregiver logs later in the day always
+      // outranks it as the LATEST temp (the multi-sick cross-profile-temp spec asserts the
+      // logged value shows in the accordion line).
+      .run(profileId, on, "101.3", 101.3, "00:05").lastInsertRowid
+  );
+  reconcileFlags(profileId, [tId]);
+
+  if (opts.prnMed) {
+    // A PRN med with confirmed interval/max (so the cockpit redose line computes) but NO
+    // prior administration — the co-caregiver dose the spec logs is the FIRST, so its
+    // "last ibuprofen …" clause appears on the other caregiver's hero only after it.
+    const has = db
+      .prepare(
+        "SELECT id FROM intake_items WHERE profile_id = ? AND name = 'Ibuprofen' AND as_needed = 1"
+      )
+      .get(profileId) as { id: number } | undefined;
+    if (!has) {
+      const medId = Number(
+        db
+          .prepare(
+            `INSERT INTO intake_items
+               (profile_id, name, active, kind, condition, priority, as_needed,
+                quantity_on_hand, qty_per_dose, min_interval_hours, max_daily_count)
+             VALUES (?, 'Ibuprofen', 1, 'medication', 'daily', 'high', 1, 20, 1, 6, 4)`
+          )
+          .run(profileId).lastInsertRowid
+      );
+      // A PRN med needs a dose row — logAdministration resolves the loggable dose through
+      // it (the item form guarantees one at runtime; the seed must mirror that).
+      db.prepare(
+        `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+         VALUES (?, '400 mg', 'any', 'any', 0)`
+      ).run(medId);
+    }
+  }
+}
+
+function grantProfile(
+  loginId: number,
+  profileId: number,
+  access: "read" | "write" = "write"
+): void {
+  db.prepare(
+    `INSERT INTO login_profiles (login_id, profile_id, access) VALUES (?, ?, ?)
+       ON CONFLICT(login_id, profile_id) DO UPDATE SET access = excluded.access`
+  ).run(loginId, profileId, access);
+}
+
+// Base (well) caregiver profiles FIRST so they carry the lowest ids among each
+// caregiver's grants — createSession picks accessibleProfiles[0] (lowest id) as the
+// active profile, so each caregiver lands acting as their OWN well profile (not a kid).
+const careParentId = fixtureProfileId(CARE_PARENT_PROFILE);
+const coCareParentId = fixtureProfileId(COCARE_PARENT_PROFILE);
+const sickKidAId = fixtureProfileId(SICK_KID_A_PROFILE);
+const sickKidBId = fixtureProfileId(SICK_KID_B_PROFILE);
+const sickSelfId = fixtureProfileId(SICK_SELF_PROFILE);
+const sickCollapseId = fixtureProfileId(SICK_COLLAPSE_PROFILE);
+
+seedSickEpisode(sickSelfId, { activateSituation: true });
+seedSickEpisode(sickCollapseId, { activateSituation: true });
+seedSickEpisode(sickKidAId, { prnMed: true });
+seedSickEpisode(sickKidBId, {});
+
+// SICK_SELF: sole (active) profile is sick → its own FULL cockpit at hero position.
+seedMemberLogin(E2E_LOGIN_SICK_SELF, sickSelfId);
+// SICK_COLLAPSE: a separate sick-solo login for the collapse-persistence test.
+seedMemberLogin(E2E_LOGIN_SICK_COLLAPSE, sickCollapseId);
+
+// CARE: acts as the well Care Parent, granted both sick kids → two accordion cockpits.
+const careLoginId = seedMemberLogin(E2E_LOGIN_CARE, careParentId);
+grantProfile(careLoginId, sickKidAId);
+grantProfile(careLoginId, sickKidBId);
+
+// COCARE: a second caregiver granted Kid A (shared with CARE) → the co-caregiver case.
+const coCareLoginId = seedMemberLogin(E2E_LOGIN_COCARE, coCareParentId);
+grantProfile(coCareLoginId, sickKidAId);
+
+console.log(
+  `e2e: seeded illness-hero fixtures — sick self ${sickSelfId}, sick kids ${sickKidAId}/${sickKidBId}, caregivers ${careLoginId}/${coCareLoginId} (#858)`
 );

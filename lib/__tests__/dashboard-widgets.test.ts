@@ -57,6 +57,8 @@ describe("resolveWidgets / resolveWidgetList", () => {
       "low-supply",
       "active-goals",
       "weekly-routine",
+      // Folded into the illness hero (#858) — a stored layout naming it stays valid.
+      "sick-household",
     ];
     const list = resolveWidgetList(
       { order: [...retired, "weight-trend"], hidden: retired },
@@ -66,6 +68,18 @@ describe("resolveWidgets / resolveWidgetList", () => {
       expect.arrayContaining(retired)
     );
     expect(list.map((w) => w.def.id)).toContain("goals-habits");
+  });
+
+  it("the folded sick-household widget is gone from the registry (#858)", () => {
+    // The illness hero replaced it; a stored layout that still lists it is dropped
+    // defensively (above), and it must not reappear as a customizable widget.
+    expect(DASHBOARD_WIDGETS.map((w) => w.id)).not.toContain("sick-household");
+    const list = resolveWidgetList(
+      { order: ["sick-household", "weight-trend"], hidden: [] },
+      false
+    );
+    expect(list.map((w) => w.def.id)).not.toContain("sick-household");
+    expect(list.map((w) => w.def.id)).toContain("weight-trend");
   });
 
   it("registry widget missing from stored order → appended honoring defaultOn", () => {

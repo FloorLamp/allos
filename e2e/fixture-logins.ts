@@ -118,3 +118,36 @@ export const ONBOARDING_CAREGIVER_PROFILE = "Caregiver Onboarding Person (e2e)";
 // the distinct, dismissible existing-profile orientation on the Dashboard.
 export const E2E_LOGIN_ORIENTATION = "e2e_orientation";
 export const ORIENTATION_PROFILE = "Existing Profile (e2e)";
+
+// ── Illness hero fixtures (#858) ──────────────────────────────────────────────
+// The illness hero moved the sick-day cockpit OFF the customizable grid (the former
+// symptom-log widget) and above it, and gained cross-profile logging + collapse
+// persistence. These dedicated logins isolate the mutations (collapse state, a
+// cross-profile dose/temp) from the shared admin session so the illness-hero spec is
+// repeat-safe under --repeat-each=3.
+
+// A member whose SOLE (therefore active) profile is currently sick — its own FULL
+// cockpit renders at hero position. Used for the active-cockpit / mobile-first /
+// collapse-persistence tests, which mutate ONLY this profile (never profile 1, whose
+// seeded episode the other illness specs depend on staying live + expanded).
+export const E2E_LOGIN_SICK_SELF = "e2e_sick_self";
+export const SICK_SELF_PROFILE = "Sick Self (e2e)";
+
+// A SECOND sick-solo login dedicated to the collapse-PERSISTENCE test, which mutates the
+// stored hero collapse state — kept apart from SICK_SELF (whose read-only active-cockpit /
+// mobile-first tests assert the default EXPANDED state) so the two never contend.
+export const E2E_LOGIN_SICK_COLLAPSE = "e2e_sick_collapse";
+export const SICK_COLLAPSE_PROFILE = "Sick Collapse (e2e)";
+
+// A caregiver granted their OWN well base profile plus two currently-sick children
+// (Kid A owns a PRN med for the dose path). Acting as the well base profile, both kids
+// render as compact accordion cockpits — the multi-sick / cross-profile-temp case.
+export const E2E_LOGIN_CARE = "e2e_care";
+export const CARE_PARENT_PROFILE = "Care Parent (e2e)";
+export const SICK_KID_A_PROFILE = "Sick Kid A (e2e)";
+export const SICK_KID_B_PROFILE = "Sick Kid B (e2e)";
+
+// A SECOND caregiver granted their own well base profile plus Sick Kid A (shared with
+// CARE) — the co-caregiver case: a dose CARE logs for Kid A shows on this login's hero.
+export const E2E_LOGIN_COCARE = "e2e_cocare";
+export const COCARE_PARENT_PROFILE = "Co Parent (e2e)";

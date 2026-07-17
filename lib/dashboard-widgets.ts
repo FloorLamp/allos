@@ -224,18 +224,13 @@ export const DASHBOARD_WIDGETS: WidgetDef[] = [
     fitness: true,
     span: "half",
   },
-  {
-    id: "sick-household",
-    label: "Sick in the household",
-    description:
-      "Anyone you can reach who has an open illness episode — shown regardless of which profile you're acting as. Appears only when someone is sick.",
-    // On by default; the page's `available` gate hides it unless an accessible profile
-    // has an OPEN episode (like next-appointment / symptom-log's has-data gate), so a
-    // healthy household never sees it. Not fitness-gated: illness matters for everyone.
-    defaultOn: true,
-    fitness: false,
-    span: "half",
-  },
+  // The former `sick-household` widget was FOLDED into the illness hero (issue #858):
+  // every accessible open episode now renders at hero altitude (a full cockpit for the
+  // acting profile, a compact accordion line for household members), so a second widget
+  // saying the same thing was a drift seam. A stored layout that still names
+  // `sick-household` in its order/hidden lists is dropped by resolveWidgetList's
+  // defensive merge (unknown ids are filtered — see the registry test), so old layouts
+  // stay valid without a migration (#203-adjacent cleanup).
 ];
 
 const WIDGETS_BY_ID = new Map(DASHBOARD_WIDGETS.map((w) => [w.id, w]));

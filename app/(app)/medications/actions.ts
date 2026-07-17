@@ -1,5 +1,5 @@
 "use server";
-import { requireWriteAccess } from "@/lib/auth";
+import { requireWriteAccess, requireProfileWriteAccess } from "@/lib/auth";
 
 import { revalidatePath } from "next/cache";
 import { db, today } from "@/lib/db";
@@ -203,16 +203,27 @@ function resolveGivenAt(
 export async function logMedicationAdministration(
   formData: FormData
 ): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
+  // Cross-profile gating (issue #858): the illness-hero cockpit logs a PRN dose for a
+  // household member without switching — an explicit `profileId` gates on the TARGET via
+  // requireProfileWriteAccess (the #31 cross-profile gate); absent, the active profile is
+  // used (requireWriteAccess). The dashboard/medications mounts send no profileId.
+  const target = Number(formData.get("profileId"));
+  let profileId: number;
+  if (Number.isInteger(target) && target > 0) {
+    await requireProfileWriteAccess(target);
+    profileId = target;
+  } else {
+    profileId = (await requireWriteAccess()).profile.id;
+  }
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that medication.");
   const given = resolveGivenAt(
-    profile.id,
+    profileId,
     String(formData.get("offset") ?? "now"),
     strOrNull(formData.get("time"))
   );
   if (given === "invalid") return formError("Enter a valid time.");
-  const outcome = logAdministration(profile.id, id, given);
+  const outcome = logAdministration(profileId, id, given);
   revalidatePath("/medications");
   revalidatePath("/nutrition");
   revalidatePath("/");

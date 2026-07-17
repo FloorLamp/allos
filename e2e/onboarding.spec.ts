@@ -7,6 +7,23 @@ import {
   E2E_MEMBER_PASSWORD,
 } from "./fixture-logins";
 
+// Onboarding is a stateful, one-way setup WIZARD: the very first step flips the seeded
+// fixture profile's onboarding state not_started→in_progress (later completing it /
+// dismissing the existing-profile orientation), so the dashboard no longer auto-redirects
+// to /onboarding on a SECOND run against the same seeded DB — and there is no per-run
+// reset (a fresh admin-created profile has NULL state, which also doesn't auto-redirect).
+// These tests are deterministic on a fresh fixture but inherently NOT repeat-safe; #814
+// authored them before #868's changed-spec --repeat-each lane existed. Under repeat-each
+// we therefore run each ONCE (repeatEachIndex 0 — the real coverage, matching the full
+// single-run suite) and skip the extra repeats. #858 only re-points one folded-widget
+// assertion (the caregiver dashboard step) below; it changes no onboarding behavior.
+test.beforeEach(({}, testInfo) => {
+  test.skip(
+    testInfo.repeatEachIndex > 0,
+    "onboarding wizard mutates its seeded fixture on the first step; not repeat-safe without a per-run state reset"
+  );
+});
+
 // Goal-based onboarding (#719): an isolated, empty profile renders every outcome
 // branch, then moves through the metrics path from minimum facts → one real
 // baseline record → a personalized dashboard. The profile/login fixture is dedicated
@@ -401,7 +418,10 @@ test("a caregiver profile path ends with household-oriented next steps", async (
     await expect(page).toHaveURL(/\/onboarding\?step=5/);
     await expect(dashboard.getByLabel("Next appointment")).toBeChecked();
     await expect(dashboard.getByLabel("Recent labs")).toBeChecked();
-    await expect(dashboard.getByLabel("Sick in the household")).toBeChecked();
+    // The former "Sick in the household" widget folded into the pinned illness hero
+    // (#858), which isn't a pickable card; the surviving illness/household-oriented
+    // widget in the caregiver preset is the "Symptoms" front door (contextual).
+    await expect(dashboard.getByLabel("Symptoms")).toBeChecked();
     await expect(
       dashboard.getByTestId("onboarding-dashboard-preview")
     ).toContainText("Next appointment");
