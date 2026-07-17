@@ -4,8 +4,9 @@
 // that item — e.g. "grapefruit × a statin", "vitamin-K foods × warfarin", "dairy/
 // minerals × a tetracycline or levothyroxine", "alcohol × metronidazole". Unlike
 // drug–drug detection this needs NO second medication to fire; it's a per-item
-// guidance line. No DB, no network — the facts live in the committed, hand-
-// maintained lib/food-drug-interactions.json (public-domain FDA/NIH sourcing).
+// guidance line. No DB, no network — the facts live in the committed
+// lib/datasets/data/food-drug-interactions.json (public-domain FDA/NIH sourcing),
+// generated from the hand-maintained scripts/food-drug-interactions.source.json.
 //
 // ONE computation, three formatters (AGENTS.md "one question, one computation"):
 // the /medicine row line, the create/edit item-form notice, and the dose-reminder
@@ -20,32 +21,23 @@
 // never "stop taking X"; absence of an entry does NOT mean a food is safe with a
 // drug.
 
-import data from "./food-drug-interactions.json";
+// The facts live in the curated-dataset FRAMEWORK envelope (issue #860 Track B):
+// lib/datasets/data/food-drug-interactions.json, generated from the hand-maintained
+// scripts/food-drug-interactions.source.json and consumed via
+// lib/datasets/food-drug-interactions.ts. This module is the DOMAIN matcher over its
+// entries (resolving an item to entries by RxCUI / synonym — a many-to-one lookup that
+// is domain logic, distinct from the entry's slug identity).
+import {
+  FOOD_DRUG_INTERACTIONS,
+  type FoodDrugEntry,
+} from "./datasets/food-drug-interactions";
 import { type Severity, SEVERITY_RANK, itemRxcuis } from "./drug-interactions";
-import { meetsMinLifeStage, meetsMinAge, type LifeStage } from "./life-stage";
+import { meetsMinLifeStage, meetsMinAge } from "./life-stage";
 
 export type { Severity };
 export { SEVERITY_RANK, SEVERITY_LABEL } from "./drug-interactions";
 
-interface RawFoodInteraction {
-  key: string;
-  drugLabel: string;
-  rxcuis: string[];
-  synonyms: string[];
-  food: string;
-  severity: Severity;
-  advice: string;
-  mechanism: string;
-  source: string;
-  // Optional age gate (issue #851 item 4): the minimum life stage / age for which the
-  // guidance applies. The alcohol rules gate to "adult" so a child's medication card
-  // never carries "limit alcohol". Absent ⇒ applies to every age. The gate follows the
-  // lib/life-stage null-age policy (hide ONLY on a positive under-age match).
-  minLifeStage?: LifeStage;
-  minAge?: number;
-}
-
-const ENTRIES = data.interactions as RawFoodInteraction[];
+const ENTRIES: FoodDrugEntry[] = FOOD_DRUG_INTERACTIONS;
 
 // One matched food–drug guidance for an item. `key` is the entry id (a stable React
 // key + identity); an item can match several entries (e.g. warfarin → vitamin K AND

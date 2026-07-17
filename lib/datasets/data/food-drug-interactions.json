@@ -1,12 +1,29 @@
 {
-  "$comment": "Baked FOOD–DRUG interaction dataset (issue #154, extends #144). Per-ITEM food guidance — unlike the drug–drug checker (lib/drug-interactions.json) each entry fires off a SINGLE item (a medication or supplement), needing no second drug. HAND-MAINTAINED (a few dozen canonical, high-severity pairs cover the ground — no generator, mirroring the supplement-catalog style); keep it human-reviewable and cited. Facts from PUBLIC-DOMAIN sources: FDA Structured Product Labeling / DailyMed (the label's drug-interactions / patient-counseling sections are a public-domain U.S. Government work), NIH MedlinePlus / NLM, and RxNorm ingredient CUIs (public-domain NLM vocabulary). No copyrighted commercial database (Micromedex/Lexicomp/FDB/Multum) is vendored. Each entry is keyed on RxNorm ingredient CUIs (authoritative) with a normalized name/synonym fallback, mirroring lib/drug-interactions.json. INFORMATIONAL, never prescriptive — 'discuss with your prescriber or pharmacist'; absence of an entry does NOT mean a food is safe with a drug.",
-  "version": 1,
-  "severities": ["major", "moderate", "minor"],
-  "interactions": [
+  "$schema": "allos-dataset/v1",
+  "id": "food-drug-interactions",
+  "title": "Food–drug interaction guidance",
+  "description": "Baked per-item food–drug guidance (issue #154, extends #144) — the food note shown on a medication/supplement card and dose reminder. CURATED HIGH-VALUE SUBSET, not exhaustive; facts from public-domain FDA/DailyMed labeling, NIH MedlinePlus/NLM, and RxNorm ingredient concepts (all public domain). INFORMATIONAL, never prescriptive — absence of an entry does NOT mean a food is safe with a drug. Committed + HUMAN-REVIEWABLE; regenerate with `npm run gen:food-drug-interactions`.",
+  "citation": [
+    {
+      "source": "FDA Structured Product Labeling / DailyMed drug-interaction and patient-counseling sections; NIH MedlinePlus / NLM; RxNorm (NLM) ingredient concepts.",
+      "url": "https://dailymed.nlm.nih.gov",
+      "note": "All public-domain / public U.S. references; each rule additionally carries its own per-rule `source`. Curated high-value subset, not exhaustive."
+    }
+  ],
+  "identity": {
+    "keys": [
+      "key"
+    ]
+  },
+  "entries": [
     {
       "key": "grapefruit-statin",
       "drugLabel": "Statins (simvastatin, lovastatin, atorvastatin)",
-      "rxcuis": ["36567", "6472", "83367"],
+      "rxcuis": [
+        "36567",
+        "6472",
+        "83367"
+      ],
       "synonyms": [
         "simvastatin",
         "zocor",
@@ -63,8 +80,14 @@
     {
       "key": "vitamin-k-warfarin",
       "drugLabel": "Warfarin",
-      "rxcuis": ["11289"],
-      "synonyms": ["warfarin", "coumadin", "jantoven"],
+      "rxcuis": [
+        "11289"
+      ],
+      "synonyms": [
+        "warfarin",
+        "coumadin",
+        "jantoven"
+      ],
       "food": "Vitamin K–rich foods (leafy greens)",
       "severity": "moderate",
       "advice": "Keep vitamin K intake steady — don't suddenly increase leafy greens (kale, spinach, broccoli); big swings change how well warfarin works.",
@@ -74,8 +97,14 @@
     {
       "key": "alcohol-warfarin",
       "drugLabel": "Warfarin",
-      "rxcuis": ["11289"],
-      "synonyms": ["warfarin", "coumadin", "jantoven"],
+      "rxcuis": [
+        "11289"
+      ],
+      "synonyms": [
+        "warfarin",
+        "coumadin",
+        "jantoven"
+      ],
       "food": "Alcohol",
       "severity": "moderate",
       "advice": "Limit alcohol — it can unpredictably raise or lower warfarin's effect and add to bleeding risk.",
@@ -86,7 +115,9 @@
     {
       "key": "dairy-levothyroxine",
       "drugLabel": "Levothyroxine",
-      "rxcuis": ["10582"],
+      "rxcuis": [
+        "10582"
+      ],
       "synonyms": [
         "levothyroxine",
         "synthroid",
@@ -104,7 +135,11 @@
     {
       "key": "dairy-tetracycline",
       "drugLabel": "Tetracyclines (doxycycline, tetracycline, minocycline)",
-      "rxcuis": ["3640", "10395", "6960"],
+      "rxcuis": [
+        "3640",
+        "10395",
+        "6960"
+      ],
       "synonyms": [
         "doxycycline",
         "vibramycin",
@@ -123,7 +158,10 @@
     {
       "key": "dairy-fluoroquinolone",
       "drugLabel": "Fluoroquinolones (ciprofloxacin, levofloxacin)",
-      "rxcuis": ["2551", "82122"],
+      "rxcuis": [
+        "2551",
+        "82122"
+      ],
       "synonyms": [
         "ciprofloxacin",
         "cipro",
@@ -141,8 +179,15 @@
     {
       "key": "alcohol-metronidazole",
       "drugLabel": "Metronidazole / tinidazole",
-      "rxcuis": ["6922"],
-      "synonyms": ["metronidazole", "flagyl", "tinidazole", "tindamax"],
+      "rxcuis": [
+        "6922"
+      ],
+      "synonyms": [
+        "metronidazole",
+        "flagyl",
+        "tinidazole",
+        "tindamax"
+      ],
       "food": "Alcohol",
       "severity": "major",
       "advice": "Avoid all alcohol during treatment and for 3 days after — the combination causes flushing, nausea, vomiting, and a racing heartbeat.",
@@ -153,7 +198,12 @@
     {
       "key": "tyramine-maoi",
       "drugLabel": "MAO inhibitors (phenelzine, tranylcypromine, selegiline)",
-      "rxcuis": ["8123", "10734", "36117", "6011"],
+      "rxcuis": [
+        "8123",
+        "10734",
+        "36117",
+        "6011"
+      ],
       "synonyms": [
         "phenelzine",
         "nardil",
@@ -173,7 +223,12 @@
     {
       "key": "potassium-ace-arb",
       "drugLabel": "ACE inhibitors / ARBs (lisinopril, losartan, …)",
-      "rxcuis": ["29046", "3827", "52175", "83515"],
+      "rxcuis": [
+        "29046",
+        "3827",
+        "52175",
+        "83515"
+      ],
       "synonyms": [
         "lisinopril",
         "prinivil",
@@ -202,7 +257,11 @@
     {
       "key": "potassium-diuretic",
       "drugLabel": "Potassium-sparing diuretics (spironolactone, triamterene)",
-      "rxcuis": ["10763", "644", "9997"],
+      "rxcuis": [
+        "10763",
+        "644",
+        "9997"
+      ],
       "synonyms": [
         "spironolactone",
         "aldactone",
@@ -223,8 +282,14 @@
     {
       "key": "alcohol-acetaminophen",
       "drugLabel": "Acetaminophen",
-      "rxcuis": ["161"],
-      "synonyms": ["acetaminophen", "tylenol", "paracetamol"],
+      "rxcuis": [
+        "161"
+      ],
+      "synonyms": [
+        "acetaminophen",
+        "tylenol",
+        "paracetamol"
+      ],
       "food": "Alcohol",
       "severity": "moderate",
       "advice": "Avoid regular or heavy alcohol — combined with acetaminophen it raises the risk of liver damage. Stay within the daily acetaminophen limit.",

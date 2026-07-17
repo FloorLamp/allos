@@ -24,7 +24,7 @@
 // situation tags checked against the profile's conditions + risk-stratification), and
 // an `allergyAlternative` for the allergen case (a fish allergy strikes fatty fish and
 // the alternative surfaces instead). Medication conflicts are checked separately by
-// inverting lib/food-drug-interactions.json (same dataset, second consumer).
+// inverting lib/datasets/data/food-drug-interactions.json (same dataset, second consumer).
 //
 // Anti-drift: the committed lib/nutrient-food-map.json is a FIXED POINT of
 // buildNutrientFoodMap() and every biomarker name / food-group slug it references is
@@ -55,7 +55,7 @@ export interface FoodSource {
   foodGroup: string | null;
   // Serving-level guidance in the shape dietary evidence actually takes.
   serving: string;
-  // The lib/food-drug-interactions.json entry keys this food PARTICIPATES in — the
+  // The lib/datasets/data/food-drug-interactions.json entry keys this food PARTICIPATES in — the
   // INVERSE index (#577): "before recommending food Y, check the stack against it."
   // When a stack medication matches one of these keys, the suggestion carries that
   // rule's advice as a medication safety note (never dropped silently). Absent/empty

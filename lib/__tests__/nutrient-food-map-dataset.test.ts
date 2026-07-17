@@ -11,13 +11,13 @@ import {
   foodSourcesForDriNutrient,
 } from "@/lib/food-suggest";
 import canonicalSeed from "@/lib/canonical-biomarkers.json";
-import foodDrug from "@/lib/food-drug-interactions.json";
+import { FOOD_DRUG_INTERACTIONS } from "@/lib/datasets/food-drug-interactions";
 import dri from "@/lib/datasets/data/dri.json";
 
 // Anti-drift pins for the baked biomarker→food map (issue #577): the committed
 // lib/nutrient-food-map.json must be a FIXED POINT of the generator; every biomarker
 // name it references must resolve to a canonical biomarker; every food–drug entry key
-// it references must exist in lib/food-drug-interactions.json. Pure — no DB/network.
+// it references must exist in lib/datasets/data/food-drug-interactions.json. Pure — no DB/network.
 // (The food_group slug cross-reference into lib/food-groups.json is pinned in #579's
 // dataset test, once that file exists.)
 
@@ -29,11 +29,7 @@ const CANONICAL_NAMES = new Set(
     (b) => b.name.toLowerCase()
   )
 );
-const DRUG_KEYS = new Set(
-  ((foodDrug as { interactions?: { key: string }[] }).interactions ?? []).map(
-    (e) => e.key
-  )
-);
+const DRUG_KEYS = new Set(FOOD_DRUG_INTERACTIONS.map((e) => e.key));
 
 describe("nutrient-food-map.json dataset", () => {
   it("is a fixed point of buildNutrientFoodMap() (regenerate with `npm run gen:nutrient-food-map`)", () => {
