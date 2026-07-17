@@ -38,7 +38,7 @@ function resetHouseholdDose(): void {
     db.pragma("busy_timeout = 5000");
     db.prepare(
       `DELETE FROM intake_item_logs
-        WHERE supplement_id IN (
+        WHERE item_id IN (
           SELECT id FROM intake_items WHERE name = ? AND profile_id = ?
         )`
     ).run(HOUSEHOLD_DUE_DOSE, Number(SEEDED_PROFILE_2));
