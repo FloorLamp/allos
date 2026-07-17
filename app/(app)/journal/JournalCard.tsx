@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { IconCheck, IconAlertTriangle } from "@tabler/icons-react";
 import { useActivityEditor } from "@/components/ActivityEditorProvider";
@@ -8,8 +8,11 @@ import { ActivityTypeIcon } from "@/components/ui";
 import ActivityProvenance from "@/components/ActivityProvenance";
 import NotesText from "@/components/NotesText";
 import RouteMap from "@/components/RouteMap";
+import MuscleAnatomy from "@/components/MuscleAnatomy";
 import type { ActivityEditData } from "@/components/ActivityForm";
 import type { UnitPrefs } from "@/lib/settings";
+import { musclesWorked } from "@/lib/muscle-coverage";
+import { muscleLabel } from "@/lib/lifts";
 import { SET_STATUS_TITLES } from "@/lib/journal-format";
 import { activityComponentSportNames } from "@/lib/activity-icon";
 import { zonePresentation } from "@/lib/training-zones";
@@ -134,6 +137,27 @@ export default function JournalCard({
   const notesCanExpand = (activity.notes?.length ?? 0) > 120;
   const hasSupportingDetails = metrics.length > 0 || !!gear;
   const hasRouteCompanion = hasSupportingDetails || parts.length > 0;
+
+  // Per-session muscle figure (#789): the union of muscles this session's sets
+  // worked, keyed through the ONE `musclesWorked` attribution (#221/#482) over
+  // this activity's own exercise_sets — never a second grouping. Custom/untagged
+  // lifts contribute nothing, so a session of only those resolves to an empty set
+  // and the whole block degrades to nothing (matching coverage behavior elsewhere).
+  const workedMuscles = useMemo(() => {
+    const sets = activity.sets ?? [];
+    if (sets.length === 0) return [];
+    return [
+      ...musclesWorked(
+        sets.map((s) => ({ exercise: s.exercise, date: activity.date }))
+      ),
+    ];
+  }, [activity.sets, activity.date]);
+  // The accompanying text list (never color-only): worked muscle labels, ordered
+  // deterministically so the figure layers on top of a permanent readable list.
+  const workedLabels = useMemo(
+    () => workedMuscles.map(muscleLabel).sort((a, b) => a.localeCompare(b)),
+    [workedMuscles]
+  );
 
   return (
     <div
@@ -441,6 +465,26 @@ export default function JournalCard({
               className="h-auto w-full rounded-md border border-black/10 bg-slate-50 text-brand-600 dark:border-white/10 dark:bg-ink-900 dark:text-brand-400"
             />
           )}
+        </div>
+      )}
+
+      {/* Per-session muscle figure (#789): only when the session resolves to ≥1
+          tagged catalog lift — a session of only custom/untagged lifts renders
+          nothing (no empty figure). The text list always accompanies the figure. */}
+      {workedMuscles.length > 0 && (
+        <div
+          data-testid="session-muscles"
+          className="mt-3 border-t border-black/5 pt-3 dark:border-white/10"
+        >
+          <h4 className="section-label">Muscles worked</h4>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+            {workedLabels.join(", ")}
+          </p>
+          <MuscleAnatomy
+            mode="session"
+            worked={workedMuscles}
+            className="mt-2 w-full max-w-[15rem]"
+          />
         </div>
       )}
 

@@ -47,6 +47,47 @@ test("per-exercise anatomy renders in the detail panel guide section (#737)", as
   );
 });
 
+test("per-session anatomy renders on a strength session's journal card, absent for a custom-only session (#789)", async ({
+  page,
+}) => {
+  // /training defaults to the Log tab, which renders the journal feed. The seeded
+  // "Push day" strength session (Bench Press, Overhead Press, Lateral Raise,
+  // Tricep Pushdown — all catalog lifts) resolves to tagged muscles, so its card
+  // carries the per-session figure. Multiple weeks exist; the newest is on page one.
+  await page.goto("/training");
+
+  const pushCard = page.locator(".card", { hasText: "Push day" }).first();
+  await expect(pushCard).toBeVisible();
+
+  const session = pushCard.getByTestId("session-muscles");
+  await expect(session).toBeVisible();
+  // The accompanying TEXT list (never color-only) names the worked muscles.
+  await expect(session).toContainText("Chest");
+
+  const figure = session.getByTestId("muscle-anatomy");
+  await expect(figure).toBeVisible();
+  await expect(figure).toHaveAttribute("data-mode", "session");
+  // Bench Press works the chest; the figure marks it as worked this session.
+  await expect(figure.locator('[data-muscle="chest"]')).toHaveAttribute(
+    "data-state",
+    "worked"
+  );
+  // A muscle no Push-day lift touches stays neutral.
+  await expect(figure.locator('[data-muscle="calves"]')).toHaveAttribute(
+    "data-state",
+    "none"
+  );
+
+  // The custom-only strength session (its only lift is a made-up, non-catalog
+  // name) resolves to no tagged muscles, so its card renders NO session figure —
+  // the gate degrades to nothing rather than an empty diagram.
+  const customCard = page
+    .locator(".card", { hasText: "Custom-only lift day (e2e)" })
+    .first();
+  await expect(customCard).toBeVisible();
+  await expect(customCard.getByTestId("session-muscles")).toHaveCount(0);
+});
+
 test("coverage anatomy renders beside the list on Training → Overview (#737)", async ({
   page,
 }) => {
