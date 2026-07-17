@@ -420,7 +420,9 @@ export function buildWeeklyRecap(input: RecapInput): WeeklyRecap {
   // A week with nothing else to lead with but a logged illness leads with recovery,
   // so the headline names the episode instead of reading as an empty/failed week.
   if (headParts.length === 0 && illnessDays > 0)
-    headParts.push(`recovering — sick ${illnessDays} day${illnessDays === 1 ? "" : "s"}`);
+    headParts.push(
+      `recovering — sick ${illnessDays} day${illnessDays === 1 ? "" : "s"}`
+    );
   const headline = headParts.join(", ");
 
   return { start: win.start, end: win.end, headline, lines, isEmpty };

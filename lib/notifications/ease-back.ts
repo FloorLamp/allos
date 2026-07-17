@@ -19,7 +19,11 @@ import {
   illnessCoachingMode,
   type CoachingInput,
 } from "../coaching";
-import { getProfileSetting, setProfileSetting, getPublicUrl } from "../settings";
+import {
+  getProfileSetting,
+  setProfileSetting,
+  getPublicUrl,
+} from "../settings";
 import { dispatch } from "./index";
 import type { NotificationAction, NotificationMessage } from "./types";
 import { createLogger } from "../log";

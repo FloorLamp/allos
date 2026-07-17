@@ -143,7 +143,9 @@ export function buildDigest(input: DigestInput): DigestModel | null {
   }
   // Situation-activation mention (#662 item 1): the SAME "N situational items now
   // active" line the situations bar renders, via the one shared formatter.
-  const situationLine = situationActivationLine(input.situationalActiveCount ?? 0);
+  const situationLine = situationActivationLine(
+    input.situationalActiveCount ?? 0
+  );
   if (situationLine) todayLines.push(`🧭 ${situationLine}`);
   for (const g of input.goalsDue) {
     todayLines.push(`🎯 ${g.label}: ${g.count}/${g.perWeek} this week`);

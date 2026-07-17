@@ -139,6 +139,15 @@ export const SICK_SELF_PROFILE = "Sick Self (e2e)";
 export const E2E_LOGIN_SICK_COLLAPSE = "e2e_sick_collapse";
 export const SICK_COLLAPSE_PROFILE = "Sick Collapse (e2e)";
 
+// Situation-aware coaching (#837 / #662 item 1): a dedicated sick profile WITH training
+// history (so coaching has gap nags to HOLD, not the empty state) and one situational
+// supplement tied to the active Illness situation (so the situations-bar activation
+// acknowledgment has a count). Read-only in its specs — the dashboard coaching widget's
+// HELD note + the "1 situational item now active" line — so it's repeat-safe and never
+// touches the other sick fixtures' expected cockpit state.
+export const E2E_LOGIN_SITCOACH = "e2e_sitcoach";
+export const SITCOACH_PROFILE = "Situation Coaching (e2e)";
+
 // A caregiver granted their OWN well base profile plus two currently-sick children
 // (Kid A owns a PRN med for the dose path). Acting as the well base profile, both kids
 // render as compact accordion cockpits — the multi-sick / cross-profile-temp case.
