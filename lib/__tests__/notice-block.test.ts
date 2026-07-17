@@ -98,7 +98,7 @@ describe("notice-block primitive guard (issue #794 cluster 4)", () => {
     expect(
       offenders,
       `Use the <Notice> primitive (or NOTICE_TONE / FindingCard) instead of ` +
-        `hand-rolling "border-{amber,rose,emerald}-{200,300} bg-{tone}-50 …". A ` +
+        `hand-rolling "border-{tone}-{200,300} bg-{tone}-50 …". A ` +
         `genuinely non-notice one-off (toggle/chip/toast) gets an ALLOWLIST entry ` +
         `with justification:\n${offenders.join("\n")}`
     ).toEqual([]);
@@ -146,10 +146,13 @@ describe("notice-block primitive guard (issue #794 cluster 4)", () => {
       "utf8"
     );
     const union = src.match(/export type NoticeTone\s*=([^;]+);/);
-    expect(union, "NoticeTone union not found in components/Notice.tsx").not.toBe(
-      null
+    expect(
+      union,
+      "NoticeTone union not found in components/Notice.tsx"
+    ).not.toBe(null);
+    const tones = Array.from(union![1].matchAll(/"([a-z]+)"/g)).map(
+      (m) => m[1]
     );
-    const tones = Array.from(union![1].matchAll(/"([a-z]+)"/g)).map((m) => m[1]);
     expect(tones.length).toBeGreaterThanOrEqual(6);
     const toneRe = new RegExp(`^${TONE}$`);
     const uncovered = tones.filter((t) => !toneRe.test(t));
