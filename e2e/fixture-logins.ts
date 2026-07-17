@@ -197,3 +197,13 @@ export const REASON_MODEL_PROFILE = "Reason Model (e2e)";
 // a surprise dock/chip that races neighbor specs.
 export const E2E_LOGIN_PRESENCE = "e2e_presence";
 export const PRESENCE_PROFILE = "Workout Presence (e2e)";
+
+// A dedicated ADULT profile for the Settings IA / notification-matrix spec (#928).
+// Isolated on purpose: the matrix spec MUTATES notification prefs (enables Home
+// Assistant, toggles per-kind cells) and asserts the safety-kind all-channels-off
+// warning — which requires a CONFIGURED channel. Doing that on profile 1 (or any
+// shared fixture) would race the home-assistant-notify / quiet-hours / preventive
+// specs that also touch profile-1 notification state under --repeat-each. No
+// birthdate → adult → the full Notifications tab + matrix render.
+export const E2E_LOGIN_NOTIF = "e2e_notif";
+export const NOTIF_PROFILE = "Notif Matrix (e2e)";
