@@ -205,3 +205,51 @@ export function setDashboardLayout(
   };
   setProfileSetting(profileId, "dashboard_layout", JSON.stringify(normalized));
 }
+
+// Per-viewer illness-hero UI state (issue #858): whether the acting profile's own
+// cockpit is collapsed to its one-line headline, and which OTHER accessible profile's
+// accordion cockpit is expanded (one at a time). Stored per acting profile in the same
+// key/value store as the dashboard layout (a sibling UI-state blob, kept out of the
+// order/hidden layout so the registry's defensive merge stays focused). The hero is
+// COLLAPSIBLE, never hideable — this only remembers open/closed, never removes a cockpit
+// while an episode is open. Read defensively: a malformed blob falls back to defaults.
+export interface IllnessHeroUiState {
+  collapsedActive: boolean;
+  openOtherId: number | null;
+}
+
+export function getIllnessHeroUi(profileId: number): IllnessHeroUiState {
+  const fallback: IllnessHeroUiState = {
+    collapsedActive: false,
+    openOtherId: null,
+  };
+  const v = getProfileSetting(profileId, "illness_hero_ui");
+  if (!v) return fallback;
+  try {
+    const parsed = JSON.parse(v);
+    if (!parsed || typeof parsed !== "object") return fallback;
+    const openOtherId =
+      typeof parsed.openOtherId === "number" &&
+      Number.isInteger(parsed.openOtherId)
+        ? parsed.openOtherId
+        : null;
+    return { collapsedActive: parsed.collapsedActive === true, openOtherId };
+  } catch {
+    return fallback;
+  }
+}
+
+export function setIllnessHeroUi(
+  profileId: number,
+  state: IllnessHeroUiState
+): void {
+  const normalized: IllnessHeroUiState = {
+    collapsedActive: state.collapsedActive === true,
+    openOtherId:
+      typeof state.openOtherId === "number" &&
+      Number.isInteger(state.openOtherId)
+        ? state.openOtherId
+        : null,
+  };
+  setProfileSetting(profileId, "illness_hero_ui", JSON.stringify(normalized));
+}

@@ -20,10 +20,11 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     page,
   }) => {
     test.slow();
-    // Reach the open episode via the dashboard Symptoms card's "Episode" link.
+    // Reach the open episode via the illness hero cockpit's "Full episode" link (#858 —
+    // the active profile's cockpit sits at hero position, expanded by default).
     await page.goto("/");
     const episodeLink = page
-      .getByRole("link", { name: "Episode", exact: true })
+      .getByRole("link", { name: "Full episode", exact: true })
       .first();
     await followLink(page, episodeLink, /\/medical\/episodes\/\d+/);
 

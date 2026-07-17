@@ -91,6 +91,34 @@ vi.mock("@/lib/auth", async () => {
       }
       return s;
     },
+    // Faithful to the cross-profile write gate (issue #31): resolves the session, then
+    // asserts the caller can REACH the target profile AND holds WRITE on it — accessible
+    // set first (a member's grant), then accessForProfile (ungranted members default to
+    // 'write', so it must never be consulted alone). Prod redirects on failure; here we
+    // throw loudly. Admins pass (implicit all-write). Backs the #858 cross-profile
+    // illness-hero writes (log a household member's symptom/temp/dose without switching).
+    requireProfileWriteAccess: (profileId: number) => {
+      const s = getActingSession();
+      if (isDemoRestricted(isDemoMode(), s.login.role)) {
+        throw new Error("requireProfileWriteAccess: blocked in demo mode");
+      }
+      if (s.login.role !== "admin") {
+        const grant = db
+          .prepare(
+            "SELECT access FROM login_profiles WHERE login_id = ? AND profile_id = ?"
+          )
+          .get(s.login.id, profileId) as { access: string | null } | undefined;
+        if (!grant) {
+          throw new Error(
+            "requireProfileWriteAccess: target profile not accessible"
+          );
+        }
+        if (grant.access === "read") {
+          throw new Error("requireProfileWriteAccess: read-only on target");
+        }
+      }
+      return s;
+    },
     requireAdmin: () => getActingSession(),
     // Session-teardown helpers some login-scoped actions call after their write
     // (change-own-password evicts other devices; the revoke actions delegate

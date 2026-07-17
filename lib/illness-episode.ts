@@ -283,6 +283,22 @@ export function currentEpisodeForProfile(
   return isOpenEpisode(assembled) ? assembled : null;
 }
 
+// The profile's open episode ROW (containing today), assembled — WITHOUT the
+// has-a-signal gate, so the illness hero's ACTIVE cockpit (issue #858) appears the
+// instant the illness situation is activated, before the first symptom/temp is logged
+// (the #843 door-A flow, which needs the logging surface visible immediately). An open
+// row exists whenever the situation is active (syncOpenIllnessEpisode opens it), so this
+// keys the acting profile's full cockpit; the cross-profile accordion still uses the
+// signal-gated currentEpisodeForProfile to keep a not-yet-symptomatic member off the
+// household list. Null when no open episode row covers today.
+export function openEpisodeForProfile(
+  profileId: number
+): AssembledEpisode | null {
+  const ep = episodeForProfileDate(profileId, today(profileId));
+  if (!ep || ep.end != null) return null;
+  return assembleIllnessEpisode(profileId, ep);
+}
+
 // All of a profile's illness episodes, most-recent first — what the timeline lists a
 // card per and the episodes index (#856 item 9) rows over. Each carries its stored row
 // id + [start, end). The DB (idx_illness_episodes_profile) provides the ordering, so

@@ -202,12 +202,36 @@ export function episodeIsWorsening(ep: AssembledEpisode): boolean {
   return false;
 }
 
-// The cross-profile chip line: "Mia · sick day 3 · 101.3 °F · worsening ↑". `name` is
-// the profile's (disambiguated) name; temp/day/worsening clauses drop out when absent.
-// The temperature renders in the VIEWER's login unit preference (#857) via fmtTemp —
-// storage is canonical °F; `tempUnit` defaults to °F for callers without a pref. The
-// "worsening ↑" marker is a visibility-only trend arrow (episodeIsWorsening) — no
-// medical claim (issue #805).
+// The most-recent PRN administration across the episode's meds, as a "last ibuprofen
+// 4:02pm" clause — the co-caregiver coordination signal on the household accordion line
+// (issue #858). Derived from the SAME #801 assembly the cockpit's PRN control formats
+// over (one question, one computation, #221) — never a second dose query. The clock
+// comes straight from the administration point; when it's unknown the clause degrades
+// to "last ibuprofen". Null when nothing was administered this episode.
+export function episodeLastDoseClause(ep: AssembledEpisode): string | null {
+  let best: { name: string; date: string; time: string | null } | null = null;
+  for (const med of ep.medications) {
+    for (const a of med.administrations) {
+      // Order by (date, time); a timed reading outranks an untimed one on the same day.
+      const better =
+        best == null ||
+        a.date > best.date ||
+        (a.date === best.date && (a.time ?? "") > (best.time ?? ""));
+      if (better) best = { name: med.name, date: a.date, time: a.time };
+    }
+  }
+  if (!best) return null;
+  const name = best.name.toLowerCase();
+  return best.time ? `last ${name} ${best.time}` : `last ${name}`;
+}
+
+// The cross-profile accordion line: "Mia · sick day 3 · 101.3 °F · worsening ↑ · last
+// ibuprofen 4:02pm". `name` is the profile's (disambiguated) name; every clause drops
+// out when its data is absent. The temperature renders in the VIEWER's login unit
+// preference (#857) via fmtTemp — storage is canonical °F; `tempUnit` defaults to °F for
+// callers without a pref. The "worsening ↑" marker is a visibility-only trend arrow
+// (episodeIsWorsening) — no medical claim (issue #805). The last-dose clause (#858) is
+// the passive co-caregiver double-dose guard: both parents' dashboards show it.
 export function householdSickLine(
   name: string,
   ep: AssembledEpisode,
@@ -222,7 +246,29 @@ export function householdSickLine(
   if (episodeIsWorsening(ep)) {
     parts.push("worsening ↑");
   }
+  const lastDose = episodeLastDoseClause(ep);
+  if (lastDose) parts.push(lastDose);
   return parts.join(" · ");
+}
+
+// Order the illness-hero cockpits (issue #858): the acting profile's own open episode
+// first (it's the full cockpit at hero position), then every other accessible profile's
+// open episode by episode start (earliest first — longest-running patient leads), with a
+// stable profileId tie-break. Pure so the ordering is unit-tested independent of the DB
+// gather that fills each cockpit.
+export function orderIllnessCockpits<
+  T extends { profileId: number; isActive: boolean; start: string | null },
+>(cockpits: readonly T[]): T[] {
+  return [...cockpits].sort((a, b) => {
+    if (a.isActive !== b.isActive) return a.isActive ? -1 : 1;
+    // A known start outranks a before-log null start; then earliest start first.
+    const an = a.start == null;
+    const bn = b.start == null;
+    if (an !== bn) return an ? 1 : -1;
+    if (a.start != null && b.start != null && a.start !== b.start)
+      return a.start < b.start ? -1 : 1;
+    return a.profileId - b.profileId;
+  });
 }
 
 // Whether an episode should surface as "currently sick" on cross-profile cards — an

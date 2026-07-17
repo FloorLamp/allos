@@ -1,6 +1,6 @@
 "use server";
 
-import { requireWriteAccess } from "@/lib/auth";
+import { requireWriteAccess, requireProfileWriteAccess } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { today } from "@/lib/db";
 import { zonedDateParts } from "@/lib/date";
@@ -48,17 +48,34 @@ function revalidateSymptoms(): void {
   revalidatePath("/timeline");
 }
 
+// Cross-profile write gating for the illness hero (issue #858). The hero lets a caregiver
+// log for a household member WITHOUT switching, so the bar may post an explicit
+// `profileId`: when present the write is gated by requireProfileWriteAccess(target) — the
+// #31 cross-profile gate that asserts the target is reachable AND write; when absent the
+// write hits the session's ACTIVE profile via requireWriteAccess(). The default
+// dashboard/Timeline symptom mounts send no profileId and are unaffected. The gate is
+// inlined in EACH action (never a shared helper) so the write-access scanner
+// (lib/__tests__/actions-write-access.test.ts) sees a literal requireWriteAccess() in
+// every action body; the write cores stay auth-blind profileId-first (#319).
+
 // Log (tap) a symptom at a severity — keeps the day's WORST severity (a tap only raises).
 export async function logSymptom(
   formData: FormData
 ): Promise<SymptomLogResult> {
-  const { profile } = await requireWriteAccess();
+  const target = Number(formData.get("profileId"));
+  let profileId: number;
+  if (Number.isInteger(target) && target > 0) {
+    await requireProfileWriteAccess(target);
+    profileId = target;
+  } else {
+    profileId = (await requireWriteAccess()).profile.id;
+  }
   const symptom = String(formData.get("symptom") ?? "");
   const outcome = logSymptomCore(
-    profile.id,
+    profileId,
     symptom,
     parseSeverity(formData),
-    parseDate(formData, profile.id),
+    parseDate(formData, profileId),
     String(formData.get("note") ?? "")
   );
   if (outcome.kind === "invalid")
@@ -92,13 +109,20 @@ export async function editSymptom(
 export async function lowerSymptom(
   formData: FormData
 ): Promise<SymptomLogResult> {
-  const { profile } = await requireWriteAccess();
+  const target = Number(formData.get("profileId"));
+  let profileId: number;
+  if (Number.isInteger(target) && target > 0) {
+    await requireProfileWriteAccess(target);
+    profileId = target;
+  } else {
+    profileId = (await requireWriteAccess()).profile.id;
+  }
   const symptom = String(formData.get("symptom") ?? "");
   const outcome = lowerSymptomSeverityCore(
-    profile.id,
+    profileId,
     symptom,
     parseSeverity(formData),
-    parseDate(formData, profile.id)
+    parseDate(formData, profileId)
   );
   if (outcome.kind === "invalid")
     return { ok: false, error: "Couldn't lower that symptom." };
@@ -111,12 +135,19 @@ export async function lowerSymptom(
 export async function setSymptomNote(
   formData: FormData
 ): Promise<SymptomLogResult> {
-  const { profile } = await requireWriteAccess();
+  const target = Number(formData.get("profileId"));
+  let profileId: number;
+  if (Number.isInteger(target) && target > 0) {
+    await requireProfileWriteAccess(target);
+    profileId = target;
+  } else {
+    profileId = (await requireWriteAccess()).profile.id;
+  }
   const symptom = String(formData.get("symptom") ?? "");
   const outcome = setSymptomNoteCore(
-    profile.id,
+    profileId,
     symptom,
-    parseDate(formData, profile.id),
+    parseDate(formData, profileId),
     String(formData.get("note") ?? "")
   );
   if (outcome.kind === "invalid")
@@ -129,12 +160,19 @@ export async function setSymptomNote(
 export async function removeSymptom(
   formData: FormData
 ): Promise<SymptomLogResult> {
-  const { profile } = await requireWriteAccess();
+  const target = Number(formData.get("profileId"));
+  let profileId: number;
+  if (Number.isInteger(target) && target > 0) {
+    await requireProfileWriteAccess(target);
+    profileId = target;
+  } else {
+    profileId = (await requireWriteAccess()).profile.id;
+  }
   const symptom = String(formData.get("symptom") ?? "");
   const outcome = removeSymptomCore(
-    profile.id,
+    profileId,
     symptom,
-    parseDate(formData, profile.id)
+    parseDate(formData, profileId)
   );
   if (outcome.kind === "invalid")
     return { ok: false, error: "Couldn't find that symptom." };
@@ -187,18 +225,25 @@ export type TemperatureLogResult =
 export async function logTemperature(
   formData: FormData
 ): Promise<TemperatureLogResult> {
-  const { profile } = await requireWriteAccess();
+  const target = Number(formData.get("profileId"));
+  let profileId: number;
+  if (Number.isInteger(target) && target > 0) {
+    await requireProfileWriteAccess(target);
+    profileId = target;
+  } else {
+    profileId = (await requireWriteAccess()).profile.id;
+  }
   const rawValue = Number(formData.get("temperature"));
   const unit = String(formData.get("temp_unit") ?? "F");
-  const date = parseDate(formData, profile.id);
+  const date = parseDate(formData, profileId);
   // Prefer an explicit "HH:MM" (a backfilled reading); otherwise stamp the reading with
   // the profile-local clock time of "now" (thermometer-to-phone in one step).
   const providedTime = String(formData.get("time") ?? "").trim();
   const time = /^\d{2}:\d{2}$/.test(providedTime)
     ? providedTime
-    : zonedDateParts(getTimezone(profile.id), new Date()).hhmm;
+    : zonedDateParts(getTimezone(profileId), new Date()).hhmm;
   const outcome = logTemperatureCore(
-    profile.id,
+    profileId,
     Number.isFinite(rawValue) ? rawValue : null,
     unit,
     date,

@@ -534,8 +534,10 @@ const ONBOARDING_DEFAULT_WIDGETS = ONBOARDING_WIDGETS.filter(
 ).map((widget) => widget.id);
 
 // These cards self-hide until their context exists, so leaving them enabled does
-// not clutter a new dashboard and ensures a later illness becomes discoverable.
-const CONTEXTUAL_ONBOARDING_WIDGETS = ["symptom-log", "sick-household"];
+// not clutter a new dashboard and ensures a later illness becomes discoverable. (The
+// former `sick-household` contextual widget folded into the illness hero — #858 — which
+// is pinned above the grid and so never part of a saved layout.)
+const CONTEXTUAL_ONBOARDING_WIDGETS = ["symptom-log"];
 
 const FOCUS_WIDGETS: Record<OnboardingFocus, readonly string[]> = {
   "medical-records": ["recent-labs", "next-appointment", "healthspan-pillars"],

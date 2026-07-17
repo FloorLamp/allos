@@ -5,9 +5,12 @@ import {
   feverTrendLabel,
   episodeHeadline,
   householdSickLine,
+  episodeLastDoseClause,
+  orderIllnessCockpits,
   isOpenEpisode,
   episodeConditionExternalId,
   type AssembledEpisode,
+  type EpisodeMedication,
   type TemperaturePoint,
 } from "../illness-episode-format";
 
@@ -134,6 +137,51 @@ describe("episodeHeadline", () => {
   });
 });
 
+// A PRN med with administration points (date/time/amount), for the last-dose clause.
+function med(
+  name: string,
+  admins: { date: string; time: string | null }[]
+): EpisodeMedication {
+  return {
+    itemId: 1,
+    name,
+    count: admins.length,
+    administrations: admins.map((a) => ({ ...a, amount: null })),
+  };
+}
+
+describe("episodeLastDoseClause", () => {
+  it("is null when nothing was administered", () => {
+    expect(episodeLastDoseClause(ep())).toBeNull();
+  });
+  it("formats the most-recent administration, lowercasing the med name", () => {
+    const e = ep({
+      medications: [
+        med("Ibuprofen", [
+          { date: "2026-06-02", time: "2:00pm" },
+          { date: "2026-06-03", time: "4:02pm" },
+        ]),
+      ],
+    });
+    expect(episodeLastDoseClause(e)).toBe("last ibuprofen 4:02pm");
+  });
+  it("picks the globally latest administration across meds", () => {
+    const e = ep({
+      medications: [
+        med("Ibuprofen", [{ date: "2026-06-03", time: "1:00pm" }]),
+        med("Tylenol", [{ date: "2026-06-03", time: "6:30pm" }]),
+      ],
+    });
+    expect(episodeLastDoseClause(e)).toBe("last tylenol 6:30pm");
+  });
+  it("degrades to just the name when the clock is unknown", () => {
+    const e = ep({
+      medications: [med("Ibuprofen", [{ date: "2026-06-03", time: null }])],
+    });
+    expect(episodeLastDoseClause(e)).toBe("last ibuprofen");
+  });
+});
+
 describe("householdSickLine", () => {
   it("prefixes the name and appends the latest temp", () => {
     const e = ep({ latestTemp: temp(101.3, "high") });
@@ -142,6 +190,40 @@ describe("householdSickLine", () => {
   it("drops the day clause when the start is unknown", () => {
     const e = ep({ start: null, latestTemp: null });
     expect(householdSickLine("Mia", e)).toBe("Mia · sick");
+  });
+  it("appends the last-dose clause (the co-caregiver double-dose guard, #858)", () => {
+    const e = ep({
+      latestTemp: temp(101.3, "high"),
+      medications: [med("Ibuprofen", [{ date: "2026-06-03", time: "4:02pm" }])],
+    });
+    expect(householdSickLine("Mia", e)).toBe(
+      "Mia · sick day 4 · 101.3 °F · last ibuprofen 4:02pm"
+    );
+  });
+});
+
+describe("orderIllnessCockpits", () => {
+  it("puts the acting profile's cockpit first regardless of its start", () => {
+    const ordered = orderIllnessCockpits([
+      { profileId: 2, isActive: false, start: "2026-06-01" },
+      { profileId: 1, isActive: true, start: "2026-06-05" },
+    ]);
+    expect(ordered.map((c) => c.profileId)).toEqual([1, 2]);
+  });
+  it("orders other profiles by episode start (earliest first), then profileId", () => {
+    const ordered = orderIllnessCockpits([
+      { profileId: 5, isActive: false, start: "2026-06-03" },
+      { profileId: 3, isActive: false, start: "2026-06-01" },
+      { profileId: 4, isActive: false, start: "2026-06-01" },
+    ]);
+    expect(ordered.map((c) => c.profileId)).toEqual([3, 4, 5]);
+  });
+  it("sorts a null (before-log) start after known starts", () => {
+    const ordered = orderIllnessCockpits([
+      { profileId: 7, isActive: false, start: null },
+      { profileId: 6, isActive: false, start: "2026-06-02" },
+    ]);
+    expect(ordered.map((c) => c.profileId)).toEqual([6, 7]);
   });
 });
 

@@ -37,10 +37,11 @@ test.describe("Illness-episode view (#801)", () => {
   }) => {
     test.slow();
 
-    // Open the episode detail via the dashboard symptom card's "Episode" link.
+    // Open the episode detail via the illness hero cockpit's "Full episode" link (#858 —
+    // the active profile's cockpit is at hero position, expanded by default).
     await page.goto("/");
     const episodeLink = page
-      .getByRole("link", { name: "Episode", exact: true })
+      .getByRole("link", { name: "Full episode", exact: true })
       .first();
     await followLink(page, episodeLink, /\/medical\/episodes\/\d+/);
 
@@ -86,7 +87,7 @@ test.describe("Illness-episode view (#801)", () => {
     );
   });
 
-  test("a granted member sees the 'Sick in the household' card from a NON-sick active profile", async ({
+  test("a granted member sees the sick profile's illness-hero accordion from a NON-sick active profile (#858)", async ({
     page,
     browser,
   }) => {
@@ -100,8 +101,8 @@ test.describe("Illness-episode view (#801)", () => {
     const member = await loginAs(browser, creds);
 
     // Act as profile 2 ("Riley (child)" — scripts/seed.ts owns id 2; seed-events'
-    // "Sam Rivers" insert is a documented no-op) — NOT the sick one — so the card
-    // is the only place the sick profile surfaces.
+    // "Sam Rivers" insert is a documented no-op) — NOT the sick one — so the illness
+    // hero's accordion is the only place the sick profile (id 1) surfaces.
     // Retry-click through the hydration window (#730): loginAs returns as soon as
     // the URL leaves /login, so an immediate click on the client-state menu trigger
     // can be a dead pre-hydration click — the popover never opens and the profile
@@ -119,9 +120,12 @@ test.describe("Illness-episode view (#801)", () => {
     );
 
     await member.goto("/");
-    const card = member.getByTestId("sick-household");
-    await expect(card).toBeVisible();
-    await expect(card).toContainText(/sick/i);
+    // Profile 1 (sick) renders as a compact accordion cockpit in the illness hero,
+    // regardless of which profile the member is acting as.
+    await expect(member.getByTestId("illness-hero")).toBeVisible();
+    const cockpit = member.getByTestId("illness-cockpit-1");
+    await expect(cockpit).toBeVisible();
+    await expect(cockpit).toContainText(/sick/i);
 
     await member.context().close();
   });
