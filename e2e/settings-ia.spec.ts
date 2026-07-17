@@ -50,9 +50,18 @@ test.describe("Settings IA (#928) — admin", () => {
     await expect(page.getByTestId("anchor-identity")).toBeVisible();
     await expect(page.getByTestId("anchor-coaching")).toBeVisible();
 
-    // Jumping updates the location hash and reveals the target section.
+    // Jumping scrolls the target section to the top of the viewport (robust to
+    // hash/scroll timing — asserts the actual effect, not the URL mechanics).
     await page.getByTestId("anchor-training").click();
-    await expect(page).toHaveURL(/#training$/);
+    await expect
+      .poll(
+        async () => {
+          const box = await page.locator("#training").boundingBox();
+          return box ? box.y : 99999;
+        },
+        { timeout: 10_000 }
+      )
+      .toBeLessThan(200);
     await expect(
       page.locator("#training").getByRole("heading", { name: "Training" })
     ).toBeVisible();
