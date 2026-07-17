@@ -634,7 +634,11 @@ export default async function ImportDetailPage(props: {
           <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
             Actions
           </h2>
-          <ImportDetailActions id={doc.id} filename={doc.filename} />
+          <ImportDetailActions
+            id={doc.id}
+            filename={doc.filename}
+            hasRaw={!!doc.raw_extraction}
+          />
           <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
             Reprocessing previews the diff before re-running extraction and
             replacing this document’s imported records. Deleting removes the

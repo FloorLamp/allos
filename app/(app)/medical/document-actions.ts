@@ -36,10 +36,12 @@ import {
   ingestMedicalUpload,
   reprocessAllForProfile,
   reprocessDocumentById,
+  reprocessFromRawById,
   previewReprocessById,
   computeReprocessAllCost,
   UPLOAD_DIR,
   type ReprocessResult,
+  type ReprocessFromRawResult,
   type PreviewReprocessResult,
 } from "@/lib/medical-pipeline";
 import type { ReprocessCost } from "@/lib/reprocess-cost";
@@ -85,6 +87,18 @@ export async function reprocessDocument(formData: FormData) {
   const id = Number(formData.get("id"));
   if (!id) return;
   reprocessDocumentById(login.id, profile.id, id);
+}
+
+// Re-import a document from its SAVED extraction — no AI call, no quota (#903).
+// Unlike reprocessDocument this is awaited: with no model call there's nothing
+// slow to background, so the caller gets the real outcome straight back.
+export async function reprocessDocumentFromRaw(
+  formData: FormData
+): Promise<ReprocessFromRawResult> {
+  const { login, profile } = await requireWriteAccess();
+  const id = Number(formData.get("id"));
+  if (!id) return { status: "skipped", message: "Unknown document." };
+  return reprocessFromRawById(login.id, profile.id, id);
 }
 
 // Preview what a reprocess would change: re-extract to an in-memory shape, diff it

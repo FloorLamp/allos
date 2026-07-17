@@ -18,6 +18,12 @@ import { revalidatePath } from "next/cache";
 import { db, today, writeTx } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
 import { extractMedicalDocument, isSupportedFile } from "@/lib/medical-extract";
+import type { ExtractionResult } from "@/lib/medical-extract";
+import {
+  resultFromExtractionInput,
+  unwrapExtractionInput,
+  looksLikeExtractionInput,
+} from "@/lib/medical-extract";
 import {
   MAX_AI_BYTES,
   MAX_HEALTH_BYTES,
@@ -581,16 +587,77 @@ export async function runExtraction(
   // no reader (falls back to kg/km, matching the pre-#632 behavior).
   loginId?: number
 ): Promise<"done" | "failed" | "skipped"> {
+  let result: ExtractionResult;
   try {
     // Pass the known canonical vocabulary so the model reuses existing names
     // (cross-document consistency from the very first document).
-    const result = await extractMedicalDocument(
+    //
+    // Inside the try on purpose: getCanonicalVocabulary() is a synchronous DB read
+    // that can throw (SQLITE_BUSY), and callers do NOT all handle a rejection —
+    // reprocessDocumentById's catch only knows QueueFullError, and reprocessOne
+    // rethrows into reprocessAllForProfile's untried loop. A throw escaping here
+    // would leave the row stuck 'processing' with its charged unit unrefunded, and
+    // abort a bulk reprocess mid-way. This function must always resolve to a status.
+    result = await extractMedicalDocument(
       buffer,
       mime,
       filename,
       getCanonicalVocabulary()
     );
+  } catch (err) {
+    return failCrashed(profileId, docId, filename, charged, err);
+  }
+  return persistExtractionResult(
+    profileId,
+    docId,
+    result,
+    filename,
+    charged,
+    loginId
+  );
+}
 
+// The crash path: mark the document 'failed' and hand back a charged unit. Shared
+// by the extract call and the persist tail so a throw anywhere in a run has ONE
+// terminal outcome — a document must never be left mid-flight on 'processing', and
+// a crash is transient from the quota's view (#135 item 3).
+function failCrashed(
+  profileId: number,
+  docId: number,
+  filename: string,
+  charged: boolean,
+  err: unknown
+): "failed" {
+  log.error("import/runner crashed", { docId, filename, err });
+  db.prepare(
+    "UPDATE medical_documents SET extraction_status = 'failed', extraction_error = ? WHERE id = ? AND profile_id = ?"
+  ).run(`Extraction crashed: ${errMsg(err)}`, docId, profileId);
+  if (charged) refundAiUsage(profileId, "extraction");
+  return "failed";
+}
+
+// Apply an ExtractionResult to its document: honor the status, reduce a successful
+// one to the shared persist shape, write it through the one persist core, and run
+// the post-commit follow-ups.
+//
+// Split out of runExtraction (#903) so the AI path and the re-import of a stored
+// raw_extraction (reprocessFromRawById) share ONE tail — the delete-set, the doc
+// finalize, and the follow-ups can't drift between "extracted just now" and
+// "re-normalized from what we saved", exactly as the CCD and AI paths already
+// share persistDocumentImport.
+//
+// `charged` says whether the caller consumed a daily AI unit for this run: a
+// transient failure refunds it (#135 item 3). The raw path is never charged (no
+// model call), so it passes false and nothing is refunded.
+async function persistExtractionResult(
+  profileId: number,
+  docId: number,
+  result: ExtractionResult,
+  filename: string,
+  charged: boolean,
+  loginId?: number
+): Promise<"done" | "failed" | "skipped"> {
+  try {
     if (result.status === "done") {
       log.info("importing extracted records", {
         docId,
@@ -702,13 +769,8 @@ export async function runExtraction(
     }
     return "done";
   } catch (err) {
-    log.error("import/runner crashed", { docId, filename, err });
-    db.prepare(
-      "UPDATE medical_documents SET extraction_status = 'failed', extraction_error = ? WHERE id = ? AND profile_id = ?"
-    ).run(`Extraction crashed: ${errMsg(err)}`, docId, profileId);
-    // A crash mid-run is transient from the quota's view — refund (#135 item 3).
-    if (charged) refundAiUsage(profileId, "extraction");
-    return "failed";
+    // A crash mid-run marks the row and refunds a charged unit (#135 item 3).
+    return failCrashed(profileId, docId, filename, charged, err);
   }
 }
 
@@ -988,6 +1050,120 @@ export function reprocessDocumentById(
   // Return now with the document marked 'processing' so the page swaps the
   // reprocess button for a spinner instead of blocking on the AI call.
   revalidateAfterReprocess();
+}
+
+export interface ReprocessFromRawResult {
+  status: "done" | "skipped" | "failed";
+  message: string;
+}
+
+// Re-import a document from its STORED raw extraction (#903): re-run the
+// normalize + persist half of the pipeline against the model output already saved
+// on the row — NO model call, no API key required, no daily-quota unit consumed.
+//
+// This is the right tool whenever the bug was in OUR parsing rather than in the
+// model's answer. #902 is the motivating case: a payload the model nested under an
+// envelope key imported as ZERO records, and the only recovery was paying for a
+// full re-extraction — which is slower, costs a unit, and can return different
+// data. The saved extraction is the same answer; it just needed parsing correctly.
+//
+// Unlike the AI reprocess this runs INLINE and is awaited: with no model call
+// there's nothing slow to background, so the caller gets the real outcome instead
+// of a 'processing' spinner. Documents imported deterministically (CCD/XDM/SHC/
+// FHIR) carry no raw_extraction — they have nothing to replay and report 'skipped'.
+export async function reprocessFromRawById(
+  loginId: number,
+  profileId: number,
+  id: number
+): Promise<ReprocessFromRawResult> {
+  const d = db
+    .prepare(
+      "SELECT filename, raw_extraction, model FROM medical_documents WHERE id = ? AND profile_id = ?"
+    )
+    .get(id, profileId) as
+    | { filename: string; raw_extraction: string | null; model: string | null }
+    | undefined;
+  if (!d) return { status: "skipped", message: "Unknown document." };
+  const raw = (d.raw_extraction ?? "").trim();
+  if (!raw)
+    return {
+      status: "skipped",
+      message:
+        "No saved AI extraction for this document — re-extract it instead. (Health records import deterministically and have none.)",
+    };
+  // Claim the row so this can't race a concurrent reprocess — the same atomic
+  // claim the AI paths use (#324).
+  if (!claimDocumentForExtraction(profileId, id))
+    return {
+      status: "skipped",
+      message: "This document is already processing — try again in a moment.",
+    };
+
+  // A stored extraction that can't be parsed/recognized leaves the existing rows
+  // ALONE (same discipline as a failed re-extraction: never destroy data on a
+  // failure) and records why on the row.
+  const fail = (reason: string, message: string): ReprocessFromRawResult => {
+    db.prepare(
+      "UPDATE medical_documents SET extraction_status = 'failed', extraction_error = ? WHERE id = ? AND profile_id = ?"
+    ).run(reason, id, profileId);
+    revalidateAfterReprocess();
+    return { status: "failed", message };
+  };
+
+  let input: unknown;
+  try {
+    input = unwrapExtractionInput(JSON.parse(raw));
+  } catch (err) {
+    log.error("raw reprocess: saved extraction is not valid JSON", { id, err });
+    return fail(
+      `Saved extraction is not valid JSON: ${errMsg(err)}`,
+      "The saved extraction could not be parsed — re-extract this document."
+    );
+  }
+  if (!looksLikeExtractionInput(input))
+    return fail(
+      "Saved extraction is in an unrecognized shape.",
+      "The saved extraction is in an unrecognized shape — re-extract this document."
+    );
+
+  // Everything past the CLAIM runs inside a try: the row is now 'processing', and a
+  // throw escaping here would wedge it there — unreachable by this path (the claim
+  // would fail) AND excluded from reprocessAllForProfile (which skips 'processing'),
+  // leaving only the reaper to clear it. getCanonicalVocabulary() is a synchronous
+  // DB read that can throw (SQLITE_BUSY), so this is a live surface, not a
+  // formality. Every exit from here must be terminal.
+  try {
+    // Preserve the ORIGINAL model attribution read off the row: this is a replay of
+    // that model's answer, not a fresh run of the current one.
+    const result = resultFromExtractionInput(
+      input,
+      getCanonicalVocabulary(),
+      d.model ?? ""
+    );
+    const status = await withAiLogContext({ loginId, profileId }, () =>
+      persistExtractionResult(profileId, id, result, d.filename, false, loginId)
+    );
+    cleanupOrphanBiomarkerKeyedState(profileId);
+    revalidateAfterReprocess();
+    if (status !== "done")
+      return {
+        status: "failed",
+        message:
+          "Re-import from the saved extraction failed — see the document.",
+      };
+    return {
+      status: "done",
+      message: `Re-imported ${result.results.length} record(s) from the saved extraction — no AI call.`,
+    };
+  } catch (err) {
+    log.error("raw reprocess crashed", { id, err });
+    // Never charged (no model call), so nothing to refund — just leave the row in a
+    // terminal state with the reason on it.
+    return fail(
+      `Re-import from the saved extraction crashed: ${errMsg(err)}`,
+      "Re-import from the saved extraction failed — see the document."
+    );
+  }
 }
 
 // Re-extract a stored document to an in-memory PersistInput WITHOUT writing

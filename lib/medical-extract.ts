@@ -7,7 +7,10 @@
 export {
   describeError,
   extractMedicalDocument,
+  resultFromExtractionInput,
+  clinicalCountOf,
 } from "./medical-extract/extract";
+export type { ExtractionSuccess } from "./medical-extract/extract";
 export {
   normalizeSex,
   normalizeBirthdate,

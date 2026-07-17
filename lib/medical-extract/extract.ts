@@ -49,6 +49,76 @@ export function describeError(err: unknown): string {
   return err instanceof Error ? err.message : "AI request failed.";
 }
 
+// The successful arm of the union — what a parsed tool input reduces to.
+export type ExtractionSuccess = Extract<ExtractionResult, { status: "done" }>;
+
+// Turn a model tool input into the ExtractionResult payload: normalize every
+// domain + the patient metadata, and record the input verbatim as `raw`.
+//
+// Shared by the two paths that produce a result from the SAME shape — the live AI
+// extraction (below) and the re-import of a document's STORED raw_extraction
+// (reprocessFromRawById, lib/medical-pipeline) — so re-normalizing a saved
+// extraction can never drift from how it was parsed the first time. Deliberately
+// free of API concerns (token usage, stop_reason, AI-log events): those belong to
+// the live call, not to a replay of its output.
+//
+// The caller is responsible for unwrapping + shape-guarding the input first
+// (unwrapExtractionInput / looksLikeExtractionInput); this assumes a payload.
+export function resultFromExtractionInput(
+  input: any,
+  knownCanonical: string[],
+  model: string
+): ExtractionSuccess {
+  const results = normalizeResults(input, knownCanonical);
+  const immunizations = normalizeImmunizations(input);
+  const clinical = normalizeClinicalDomains(input);
+  const meta: ExtractionMeta = {
+    document_type:
+      typeof input?.document_type === "string" ? input.document_type : null,
+    source: typeof input?.source === "string" ? input.source : null,
+    patient_name:
+      typeof input?.patient_name === "string" ? input.patient_name : null,
+    patient_sex: normalizeSex(input?.patient_sex),
+    patient_birthdate: normalizeBirthdate(input?.patient_birthdate),
+    patient_age: normalizeAge(input?.patient_age),
+    document_date:
+      typeof input?.document_date === "string" ? input.document_date : null,
+  };
+  return {
+    status: "done",
+    meta,
+    results,
+    immunizations,
+    conditions: clinical.conditions,
+    allergies: clinical.allergies,
+    procedures: clinical.procedures,
+    encounters: clinical.encounters,
+    familyHistory: clinical.familyHistory,
+    carePlanItems: clinical.carePlanItems,
+    careGoals: clinical.careGoals,
+    genomicVariants: clinical.genomicVariants,
+    imagingStudies: clinical.imagingStudies,
+    drops: clinical.drops,
+    model,
+    raw: JSON.stringify(input),
+  };
+}
+
+// How many clinical-domain rows a result carries (logging / detail lines).
+export function clinicalCountOf(r: ExtractionSuccess): number {
+  return (
+    r.conditions.length +
+    r.allergies.length +
+    r.procedures.length +
+    r.encounters.length +
+    r.familyHistory.length +
+    r.carePlanItems.length +
+    r.careGoals.length +
+    (r.genomicVariants?.length ?? 0) +
+    (r.imagingStudies?.length ?? 0)
+  );
+}
+
 export async function extractMedicalDocument(
   buffer: Buffer,
   mime: string,
@@ -211,39 +281,21 @@ export async function extractMedicalDocument(
       };
     }
 
-    const results = normalizeResults(input, knownCanonical);
-    const immunizations = normalizeImmunizations(input);
-    const clinical = normalizeClinicalDomains(input);
-    const meta: ExtractionMeta = {
-      document_type:
-        typeof input?.document_type === "string" ? input.document_type : null,
-      source: typeof input?.source === "string" ? input.source : null,
-      patient_name:
-        typeof input?.patient_name === "string" ? input.patient_name : null,
-      patient_sex: normalizeSex(input?.patient_sex),
-      patient_birthdate: normalizeBirthdate(input?.patient_birthdate),
-      patient_age: normalizeAge(input?.patient_age),
-      document_date:
-        typeof input?.document_date === "string" ? input.document_date : null,
-    };
+    // Normalize through the SHARED builder, so a later re-import of this
+    // document's stored raw_extraction parses identically (#903). The truncation
+    // and shape checks above already ran — this point is reached only with a
+    // complete, recognized payload.
+    const result = resultFromExtractionInput(input, knownCanonical, MODEL);
+    const results = result.results;
 
-    const clinicalCount =
-      clinical.conditions.length +
-      clinical.allergies.length +
-      clinical.procedures.length +
-      clinical.encounters.length +
-      clinical.familyHistory.length +
-      clinical.carePlanItems.length +
-      clinical.careGoals.length +
-      clinical.genomicVariants.length +
-      clinical.imagingStudies.length;
+    const clinicalCount = clinicalCountOf(result);
 
     log.info("extraction done", {
       filename,
       secs,
       results: results.length,
       clinical: clinicalCount,
-      dropped: clinical.drops.length,
+      dropped: result.drops.length,
       usage: msg.usage
         ? { in: msg.usage.input_tokens, out: msg.usage.output_tokens }
         : undefined,
@@ -261,24 +313,7 @@ export async function extractMedicalDocument(
           (LOG_PROMPTS ? `\nresponse: ${JSON.stringify(input)}` : "")
       ),
     });
-    return {
-      status: "done",
-      meta,
-      results,
-      immunizations,
-      conditions: clinical.conditions,
-      allergies: clinical.allergies,
-      procedures: clinical.procedures,
-      encounters: clinical.encounters,
-      familyHistory: clinical.familyHistory,
-      carePlanItems: clinical.carePlanItems,
-      careGoals: clinical.careGoals,
-      genomicVariants: clinical.genomicVariants,
-      imagingStudies: clinical.imagingStudies,
-      drops: clinical.drops,
-      model: MODEL,
-      raw: JSON.stringify(input),
-    };
+    return result;
   } catch (err) {
     const secs = ((Date.now() - startedAt) / 1000).toFixed(1);
     const message = describeError(err);
