@@ -216,6 +216,14 @@ export const LOINC_TO_CANONICAL: Record<string, string> = {
   // name path recognize it ("Blood Type" matches IMMUTABLE_ATTRIBUTE), alongside
   // the LOINC `identity` class below (#910).
   "19057-9": "Blood Type", // ABO+Rh group
+  // When a lab reports the halves as SEPARATE coded rows instead of the combined
+  // interpretation, each routes to its own canonical entry so the two accumulate
+  // into a whole type (getBloodTypeParts). Without these, a separate-row report
+  // relied on the printed name matching BLOOD_GROUP_NAME — true for tidy names,
+  // but a standard LOINC with an odd label would be missed.
+  "883-9": "ABO Blood Group", // ABO group [Type] in Blood
+  "10331-7": "Rh Type", // Rh [Type] in Blood
+  "1305-5": "Rh Type", // Rh [Type] in Blood by Immune stain
   // ── Toxic / trace metals ────────────────────────────────────────────────────
   // Blood lead. Canonical "Lead" is ug/dL; venous (confirmatory) and capillary
   // (pediatric screening) specimens share the unit and interpretation threshold, so
@@ -411,6 +419,10 @@ const QUALITATIVE_CLASS_BY_LOINC: Record<string, QualitativeLoincClass> = {
   // never-stale exemption ("retest overdue" nudged yearly for a value that cannot
   // change). The LOINC settles it regardless of how the source spells the name.
   "19057-9": "identity", // ABO+Rh group ("ABORh Interpretation")
+  // The same halves reported as separate coded rows are equally immutable.
+  "883-9": "identity", // ABO group [Type] in Blood
+  "10331-7": "identity", // Rh [Type] in Blood
+  "1305-5": "identity", // Rh [Type] in Blood by Immune stain
 };
 
 // The qualitative class for a LOINC, or null when unknown (→ name-regex fallback).

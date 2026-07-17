@@ -140,6 +140,13 @@ describe("canonicalBiomarkerForLoinc — CBC + CMP lab mappings", () => {
   // identity attribute the name regexes miss (no word boundary in "ABORh").
   it("classifies the ABO+Rh blood group as an immutable identity attribute", () => {
     expect(qualitativeClassForLoinc("19057-9")).toBe("identity");
+    // The halves reported as separate coded rows are equally immutable, and route
+    // to their own canonical entries so a two-row report accumulates into a type.
+    for (const code of ["883-9", "10331-7", "1305-5"])
+      expect(qualitativeClassForLoinc(code)).toBe("identity");
+    expect(canonicalBiomarkerForLoinc("883-9")).toBe("ABO Blood Group");
+    expect(canonicalBiomarkerForLoinc("10331-7")).toBe("Rh Type");
+    expect(canonicalBiomarkerForLoinc("1305-5")).toBe("Rh Type");
   });
 
   // #687: the NIPT trisomy screens carry the low/high-risk axis; fetal fraction is
