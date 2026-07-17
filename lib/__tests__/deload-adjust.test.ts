@@ -4,6 +4,8 @@
 import { describe, it, expect } from "vitest";
 import {
   deloadAdjust,
+  deloadFormSuggestion,
+  suggestNextSet,
   DELOAD_LOAD_FACTOR,
   DELOAD_SET_REDUCTION,
   DELOAD_MIN_SETS,
@@ -101,5 +103,56 @@ describe("deloadAdjust — bodyweight / loadless / cold start", () => {
     });
     expect(out.nextSet).toBeNull();
     expect(out.sets).toBe(2);
+  });
+});
+
+// #923 — the activity form's deload-aware next-set suggestion routes through the SAME
+// deloadAdjust the Training-overview session card uses, so the two surfaces can never
+// disagree about the deload load. The form has no slot set-count, so it consumes ONLY
+// the load half (deloadFormSuggestion passes sets: 0); this pins that its result equals
+// the card's `nextSet` for the same seed regardless of the card's set count.
+describe("deloadFormSuggestion — no drift vs the session card (#923)", () => {
+  // Build a concrete progression from a realistic seed, the way both surfaces do.
+  const seed = {
+    exercise: "Bench Press",
+    bodyweight: false,
+    lastSessionBest: { weightKg: 100, reps: 6, targetReps: null, toFailure: false },
+    lastSessionSets: [
+      { weightKg: 100, reps: 6, targetReps: null, toFailure: false },
+      { weightKg: 100, reps: 6, targetReps: null, toFailure: false },
+      { weightKg: 100, reps: 6, targetReps: null, toFailure: false },
+    ],
+  };
+
+  it("form suggestion equals the card's deload-adjusted load for the same seed", () => {
+    const base = suggestNextSet(seed, "kg");
+    // The card's value: deloadAdjust with the slot's real set count.
+    for (const cardSets of [1, 2, 3, 4, 5]) {
+      const card = deloadAdjust({
+        exercise: seed.exercise,
+        sets: cardSets,
+        nextSet: base,
+      }).nextSet;
+      const form = deloadFormSuggestion(base, seed.exercise, true);
+      expect(form).toEqual(card);
+    }
+  });
+
+  it("shaves the load ~10% and carries the shared rationale", () => {
+    const base = suggestNextSet(seed, "kg"); // holds 100 kg, builds a rep
+    const form = deloadFormSuggestion(base, seed.exercise, true)!;
+    expect(base!.weightKg).toBe(100);
+    expect(form.weightKg).toBe(90); // 100 * 0.9, plate-rounded to 2.5 kg
+    expect(form.rationale).toBe("Deload week — ~10% lighter to recover");
+    expect(form.reps).toBe(base!.reps); // only the load half changes
+  });
+
+  it("off a deload week (or non-routine lift) returns the plain progression", () => {
+    const base = suggestNextSet(seed, "kg");
+    expect(deloadFormSuggestion(base, seed.exercise, false)).toBe(base);
+  });
+
+  it("passes a null suggestion through", () => {
+    expect(deloadFormSuggestion(null, "Bench Press", true)).toBeNull();
   });
 });

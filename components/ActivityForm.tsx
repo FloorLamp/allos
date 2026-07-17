@@ -20,6 +20,8 @@ import {
   exerciseHistoryKey,
 } from "@/lib/lifts";
 import type { ActivitySuggestions, ExerciseHistoryMap } from "@/lib/queries";
+import type { FormDeloadContext } from "@/lib/routines";
+import type { PlateauFormHint } from "@/lib/rule-findings";
 import {
   compositeRollup,
   inferFreeTextType,
@@ -58,6 +60,8 @@ import {
   blankPart,
   partIntent,
   groupEditSets,
+  repeatSessionFill,
+  type RepeatSourceSet,
   setComplete,
   setPartial,
   todayStr,
@@ -111,6 +115,8 @@ export default function ActivityForm({
   editData,
   prefill = null,
   live = false,
+  deloadContext,
+  plateauHints = [],
   onClose,
   stickyFooter = false,
 }: {
@@ -134,6 +140,11 @@ export default function ActivityForm({
   // presentation flag over the same form state (no second engine); "Finish"
   // collapses it back to the plain editor. Ignored in edit mode.
   live?: boolean;
+  // Deload/plateau inputs for the strength editor (#923). `deloadContext` shaves the
+  // next-set suggestion for a routine lift on a deload week (through the shared
+  // deloadAdjust); `plateauHints` renders the calm inline plateau hint.
+  deloadContext: FormDeloadContext;
+  plateauHints?: PlateauFormHint[];
   onClose: () => void;
   // In the overlay the (often taller-than-viewport) form scrolls, so the action
   // row pins to the bottom of the screen and gains a Done button — otherwise
@@ -799,6 +810,19 @@ export default function ActivityForm({
     )
       updatePart(pi, { targetReps: String(ns.targetReps) });
   }
+  // "Repeat last session" fill (#923): replace the (pristine) part's sets with a literal
+  // repeat of a prior session — weights/reps/holds, warmup flags (#338) and per-side
+  // values (#335) mapped through the pure repeatSessionFill. Explicit user action fills a
+  // form the user then edits/saves (never an auto-write), gated on partUntouched in the
+  // set editor so it can't clobber in-progress entry. `perSide` follows the source
+  // session so a per-side repeat tracks sides exactly as it was logged.
+  function fillFromSession(pi: number, sessionSets: RepeatSourceSet[]) {
+    const { sets, perSide } = repeatSessionFill(sessionSets, units.weightUnit);
+    if (sets.length === 0) return;
+    setParts((prev) =>
+      prev.map((part, idx) => (idx === pi ? { ...part, sets, perSide } : part))
+    );
+  }
   // Fill the suggested next set for a per-side lift (#335): each side is seeded
   // from its OWN progression (left off left history, right off right), so the
   // weaker side is never loaded off the stronger one. Into the untouched last
@@ -1266,6 +1290,8 @@ export default function ActivityForm({
                     units={units}
                     isEdit={isEdit}
                     history={history}
+                    deloadContext={deloadContext}
+                    plateauHints={plateauHints}
                     currentActivityId={editData?.id ?? createdId}
                     editedDate={editData?.date ?? null}
                     equipmentList={equipmentList}
@@ -1284,6 +1310,9 @@ export default function ActivityForm({
                     onApplySuggestion={(ns) => applySuggestion(pi, ns)}
                     onApplyPerSideSuggestion={(left, right) =>
                       applyPerSideSuggestion(pi, left, right)
+                    }
+                    onFillFromSession={(sessionSets) =>
+                      fillFromSession(pi, sessionSets)
                     }
                     onPlateFromSuggestion={(weightKg) =>
                       plateFromSuggestion(pi, weightKg)

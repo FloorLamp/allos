@@ -33,6 +33,9 @@ import {
   profileHasIntakeItems,
 } from "@/lib/queries";
 import { getTimelineDates } from "@/lib/timeline";
+import { getFormDeloadContext } from "@/lib/routines";
+import { buildActivePlateauHints } from "@/lib/rule-findings";
+import { today } from "@/lib/db";
 
 // Authenticated app shell. requireSession() is the authoritative gate for the
 // entire (app) route group — it redirects to /login when there's no live
@@ -92,6 +95,15 @@ export default async function AppLayout({
   const lastActivity = restricted
     ? null
     : getMostRecentActivityEditData(profile.id);
+  // The strength editor's two deload/plateau inputs (#923), skipped for a restricted
+  // profile (no training surface). `deloadContext` shaves the next-set suggestion on a
+  // routine deload week; `plateauHints` renders the calm inline plateau hint. Both read
+  // the SAME gathers the Training-watch / session-card surfaces use, so nothing drifts.
+  const now = today(profile.id);
+  const deloadContext = restricted
+    ? { isDeloadWeek: false, routineKeys: [] }
+    : getFormDeloadContext(profile.id, now);
+  const plateauHints = restricted ? [] : buildActivePlateauHints(profile.id, now);
   const version = getAppVersion();
   // Gates any admin-only nav entries in both surfaces.
   const isAdmin = login.role === "admin";
@@ -135,6 +147,8 @@ export default async function AppLayout({
               bodyweightKg={bodyweightKg}
               lastActivity={lastActivity}
               restricted={restricted}
+              deloadContext={deloadContext}
+              plateauHints={plateauHints}
             >
               <div className="flex min-h-screen">
                 <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col gap-4 overflow-y-auto border-r border-black/10 bg-white/70 p-4 backdrop-blur-xl md:flex print:hidden dark:border-white/5 dark:bg-ink-950/70">

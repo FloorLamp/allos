@@ -3,6 +3,8 @@
 import { createPortal } from "react-dom";
 import type { UnitPrefs } from "@/lib/settings";
 import type { ActivitySuggestions, ExerciseHistoryMap } from "@/lib/queries";
+import type { FormDeloadContext } from "@/lib/routines";
+import type { PlateauFormHint } from "@/lib/rule-findings";
 import type { Equipment } from "@/lib/types";
 import ActivityForm, { type ActivityEditData } from "./ActivityForm";
 import { useLockBodyScroll } from "./useLockBodyScroll";
@@ -20,6 +22,8 @@ export default function ActivityOverlay({
   editData,
   prefill = null,
   live = false,
+  deloadContext,
+  plateauHints = [],
   onClose,
 }: {
   units: UnitPrefs;
@@ -31,6 +35,8 @@ export default function ActivityOverlay({
   editData: ActivityEditData | null;
   prefill?: ActivityEditData | null;
   live?: boolean;
+  deloadContext: FormDeloadContext;
+  plateauHints?: PlateauFormHint[];
   onClose: () => void;
 }) {
   // Mounted only while open, so the page behind is locked for exactly that span.
@@ -57,6 +63,8 @@ export default function ActivityOverlay({
           editData={editData}
           prefill={prefill}
           live={live}
+          deloadContext={deloadContext}
+          plateauHints={plateauHints}
           onClose={onClose}
           stickyFooter
         />

@@ -24,6 +24,7 @@ import {
 } from "@/lib/journal-format";
 import {
   suggestNextSet,
+  deloadFormSuggestion,
   sessionBestSet,
   sessionWorkSets,
   sideSets,
@@ -32,6 +33,9 @@ import {
   weightIncrementLb,
   type NextSet,
 } from "@/lib/coaching";
+import type { FormDeloadContext } from "@/lib/routines";
+import type { PlateauFormHint } from "@/lib/rule-findings";
+import { dismissTrainingObservation } from "@/app/(app)/training/actions";
 import { pickSeedSessions } from "@/lib/exercise-window";
 import { stepRpe, fmtRpe, rpeSummaryText } from "@/lib/rpe";
 import {
@@ -46,6 +50,7 @@ import {
   IconAlertTriangle,
   IconCheck,
   IconInfoCircle,
+  IconTrendingDown,
 } from "@tabler/icons-react";
 import { getExerciseGuide } from "@/lib/exercise-guides";
 import ModalShell from "@/components/ModalShell";
@@ -62,6 +67,7 @@ import {
   chipCls,
   type PartEntry,
   type SetEntry,
+  type RepeatSourceSet,
   type PartFault,
 } from "./model";
 
@@ -171,6 +177,8 @@ export default function StrengthSets({
   units,
   isEdit,
   history,
+  deloadContext,
+  plateauHints,
   currentActivityId,
   editedDate,
   equipmentList,
@@ -186,6 +194,7 @@ export default function StrengthSets({
   onUpdatePartName,
   onApplySuggestion,
   onApplyPerSideSuggestion,
+  onFillFromSession,
   onPlateFromSuggestion,
   onPlateTarget,
 }: {
@@ -194,6 +203,10 @@ export default function StrengthSets({
   units: UnitPrefs;
   isEdit: boolean;
   history: ExerciseHistoryMap;
+  // Deload/plateau inputs (#923): whether the active routine is in its deload week
+  // (+ which lifts to shave), and the active plateau hints keyed by exerciseHistoryKey.
+  deloadContext: FormDeloadContext;
+  plateauHints: PlateauFormHint[];
   // The session the form is saving (edit row id, or the auto-saved create row
   // once it exists, else null) — always excluded from its own "Recent" list.
   currentActivityId: number | null;
@@ -217,6 +230,8 @@ export default function StrengthSets({
     left: NextSet | null,
     right: NextSet | null
   ) => void;
+  // Replace this (pristine) part's sets with a literal repeat of a prior session (#923).
+  onFillFromSession: (sets: RepeatSourceSet[]) => void;
   // Open the plate builder seeded with the suggestion's weight, loading it into
   // set 1's weight field (the suggestion → plate deep-link, #335).
   onPlateFromSuggestion: (weightKg: number) => void;
@@ -228,6 +243,11 @@ export default function StrengthSets({
   // doesn't render. The overlay reuses the SAME guide section the exercise detail
   // panel embeds — one guide component, never a second exercise surface.
   const [guideOpen, setGuideOpen] = useState(false);
+  // Plateau hints dismissed in this session (#923) — an optimistic local hide so the
+  // inline hint vanishes on tap while the shared-bus write persists it everywhere else.
+  const [dismissedPlateaus, setDismissedPlateaus] = useState<Set<string>>(
+    () => new Set()
+  );
   const guide = getExerciseGuide(p.name);
   // Recent attempts as a reference — shown when logging fresh AND while editing
   // (issue #188). The current session is always excluded (`currentActivityId`),
@@ -264,6 +284,16 @@ export default function StrengthSets({
   const seed = hist && past?.length ? pickSeedSessions(past, p.name) : [];
   const seedSets = seed.flatMap((s) => s.sets);
   const seedBase = seed[0]?.baseKg ?? 0;
+  // Deload-week shave (#923): a lift that resolves (variant-collapsed via
+  // exerciseHistoryKey) to a slot in the active routine gets its next-set LOAD pulled
+  // ~10% during the routine's deload week — through the SAME deloadAdjust every deload
+  // surface reads, so the form and the Training-overview card can't disagree (#221/#741).
+  // A non-routine accessory keeps its normal progression (the cycle is the routine's
+  // property, not a profile-wide state), and off a deload week routineKeys is empty.
+  const deload =
+    deloadContext.isDeloadWeek &&
+    p.name.trim() !== "" &&
+    deloadContext.routineKeys.includes(exerciseHistoryKey(p.name));
   // Build a next-set suggestion from a set list (one shared computation, so a
   // per-side left/right suggestion progresses each side by the SAME rule as the
   // bilateral one — #335). A weighted lift whose newest session carries only
@@ -274,7 +304,7 @@ export default function StrengthSets({
     if (!hist) return null;
     const best = sessionBestSet(sets, seedBase);
     if (!(best && (hist.bodyweight || best.weightKg > 0))) return null;
-    return suggestNextSet(
+    const base = suggestNextSet(
       {
         exercise: p.name,
         bodyweight: hist.bodyweight,
@@ -283,6 +313,10 @@ export default function StrengthSets({
       },
       units.weightUnit
     );
+    // On a deload week for a routine lift, replace the progression with the deload-
+    // adjusted load (#923) — carried by the Use button, the set-1 ghost + focus-fill, and
+    // the plate-builder seed alike, since they all read this one `suggestion`.
+    return deloadFormSuggestion(base, p.name, deload);
   };
   // Bilateral parts get one suggestion; per-side parts get an independent
   // suggestion per side (#335) — sessionBestSet already treats each side as its
@@ -298,6 +332,29 @@ export default function StrengthSets({
     p.perSide && seedSets.length
       ? buildSuggestion(sideSets(seedSets, "right"))
       : null;
+  // The active plateau finding for this lift, if any (#923) — matched by the canonical
+  // exerciseHistoryKey so a typed variant finds its merged plateau. It yields to the
+  // deload rationale on a deload week (the plateau→deload cross-link already de-dupes this
+  // advice at the findings layer, lib/rule-findings), and to an in-session dismissal.
+  const plateauHint =
+    p.name.trim() !== ""
+      ? (plateauHints.find(
+          (h) => h.exerciseKey === exerciseHistoryKey(p.name)
+        ) ?? null)
+      : null;
+  const showPlateauHint =
+    plateauHint != null &&
+    !deload &&
+    !dismissedPlateaus.has(plateauHint.dedupeKey);
+  function dismissPlateau(dedupeKey: string) {
+    // Optimistic local hide, then persist through the SAME action + dedupeKey the
+    // Training-watch card uses (#435/#436) — so a dismissal here silences the plateau on
+    // Training → Overview + the dashboard rollup too, and a dismissal there silences this.
+    setDismissedPlateaus((prev) => new Set(prev).add(dedupeKey));
+    const fd = new FormData();
+    fd.set("dedupe_key", dedupeKey);
+    void dismissTrainingObservation(fd);
+  }
   const timed = isTimed(p.name);
   // A "content" fault means no set counts yet: flag the effort input (reps or
   // hold), and the weight too where a set needs one (not bodyweight/timed).
@@ -628,15 +685,20 @@ export default function StrengthSets({
           className="mt-2 rounded-md border border-black/10 bg-white px-2.5 py-1.5 text-xs dark:border-white/10 dark:bg-ink-900"
         >
           <div className="section-label">Recent</div>
+          {/* Each row is a "repeat this session" fill path (#923) while the part is
+              pristine (same partUntouched gate as the ghosts, so a tap can never clobber
+              in-progress entry) — the newest row is the primary "repeat last session"
+              gesture, but every recent session is a tap away (a light/off last day makes
+              the one before it useful). Once anything is typed the rows revert to plain
+              read-only reference. */}
           <ul className="mt-0.5 space-y-0.5">
-            {recent.map((sess, i) => (
-              <li
-                key={i}
-                className="flex justify-between gap-3 text-slate-600 dark:text-slate-300"
-              >
+            {recent.map((sess, i) => {
+              const dateEl = (
                 <span className="shrink-0 text-slate-500 dark:text-slate-400">
                   {formatLongDate(sess.date)}
                 </span>
+              );
+              const metrics = (
                 <span className="flex items-center gap-1 tabular-nums">
                   {summarizeExercise(sess.sets, units.weightUnit).text}
                   {/* Logged RPE for the session, shown when present (#743). */}
@@ -656,8 +718,34 @@ export default function StrengthSets({
                     </span>
                   )}
                 </span>
-              </li>
-            ))}
+              );
+              return (
+                <li key={i}>
+                  {partUntouched ? (
+                    <button
+                      type="button"
+                      data-testid="recent-session-fill"
+                      onClick={() => onFillFromSession(sess.sets)}
+                      title="Fill the set editor with this session"
+                      className="-mx-1 flex w-full items-center justify-between gap-3 rounded px-1 py-0.5 text-left text-slate-600 transition hover:bg-brand-50 hover:text-brand-700 dark:text-slate-300 dark:hover:bg-brand-950/40 dark:hover:text-brand-300"
+                    >
+                      {dateEl}
+                      <span className="flex items-center gap-2">
+                        {metrics}
+                        <span className="shrink-0 rounded border border-brand-300 px-1.5 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide text-brand-600 dark:border-brand-800 dark:text-brand-400">
+                          Fill
+                        </span>
+                      </span>
+                    </button>
+                  ) : (
+                    <div className="flex items-center justify-between gap-3 text-slate-600 dark:text-slate-300">
+                      {dateEl}
+                      {metrics}
+                    </div>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         </div>
       )}
@@ -667,7 +755,10 @@ export default function StrengthSets({
           shown as ghost placeholders on set 1 (#335) — this card keeps the
           rationale and the explicit Use / plate actions. */}
       {suggestion && (
-        <div className="mt-2 rounded-md border border-brand-200 bg-brand-50/60 px-2.5 py-1.5 text-xs dark:border-brand-900 dark:bg-brand-950/40">
+        <div
+          data-testid="next-set-card"
+          className="mt-2 rounded-md border border-brand-200 bg-brand-50/60 px-2.5 py-1.5 text-xs dark:border-brand-900 dark:bg-brand-950/40"
+        >
           <div className="flex items-center justify-between gap-2">
             <span className="font-medium text-brand-600 dark:text-brand-400">
               Next set
@@ -740,6 +831,32 @@ export default function StrengthSets({
           <p className="mt-0.5 text-slate-500 dark:text-slate-400">
             {(suggestionLeft ?? suggestionRight)!.rationale}
           </p>
+        </div>
+      )}
+      {/* Inline plateau hint (#923): a calm one-liner when this lift has an active
+          (undismissed) plateau finding, at the point of load selection. Reuses the SAME
+          plateau computation/dedupeKey as the Training-watch card — dismissing it here
+          silences that surface too (and vice versa). Never blocks the fill paths; yields
+          to the deload rationale on a deload week. */}
+      {showPlateauHint && plateauHint && (
+        <div
+          data-testid="plateau-hint"
+          className="mt-2 flex items-start justify-between gap-2 rounded-md border border-slate-200 bg-slate-50/70 px-2.5 py-1.5 text-xs dark:border-ink-750 dark:bg-ink-850/40"
+        >
+          <span className="flex items-start gap-1.5 text-slate-600 dark:text-slate-300">
+            <IconTrendingDown className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+            <span>Flat ~6 weeks — consider a deload or a variation.</span>
+          </span>
+          <button
+            type="button"
+            onClick={() => dismissPlateau(plateauHint.dedupeKey)}
+            data-testid="plateau-hint-dismiss"
+            aria-label="Dismiss plateau hint"
+            title="Dismiss"
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-200 hover:text-slate-600 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-300"
+          >
+            <IconX className="h-3.5 w-3.5" stroke={2} />
+          </button>
         </div>
       )}
       {/* One options row: the per-side toggle (unilateral lifts) and the

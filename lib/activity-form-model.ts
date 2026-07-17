@@ -172,6 +172,54 @@ export function buildRoutineSessionPrefill(
   };
 }
 
+// One stored set of a prior session, as the "repeat last session" fill reads it
+// (#923). A structural subset of the history query's RecentSession sets, so the pure
+// mapper below stays decoupled from lib/queries (and its DB import) and unit-testable.
+export interface RepeatSourceSet {
+  set_number: number;
+  weight_kg: number | null;
+  reps: number | null;
+  weight_kg_right: number | null;
+  reps_right: number | null;
+  duration_sec: number | null;
+  duration_sec_right: number | null;
+  warmup: number | null;
+}
+
+// Map a prior session's stored sets to editable set rows for the "repeat last session"
+// fill path (#923): a LITERAL repeat of that session's work. Weights are rendered in the
+// login's display unit, reps/holds preserved, warmup flags (#338) and per-side values
+// (#335) carried across; `perSide` is true when ANY set carried a right side, so the
+// filled part tracks sides exactly as the source did. RPE and declared intent are NOT
+// carried — a repeat re-enters the WORK, not the plan (target reps live on the part, and
+// RPE is logged fresh per set, #743). Ordered by set_number. Pure, so it's unit-tested.
+export function repeatSessionFill(
+  sets: RepeatSourceSet[],
+  unit: UnitPrefs["weightUnit"]
+): { sets: SetEntry[]; perSide: boolean } {
+  const perSide = sets.some(
+    (s) => s.weight_kg_right != null || s.reps_right != null
+  );
+  const out = [...sets]
+    .sort((a, b) => a.set_number - b.set_number)
+    .map((s) => ({
+      weight:
+        s.weight_kg != null ? String(round(kgTo(s.weight_kg, unit), 1)) : "",
+      reps: s.reps != null ? String(s.reps) : "",
+      weightRight:
+        s.weight_kg_right != null
+          ? String(round(kgTo(s.weight_kg_right, unit), 1))
+          : "",
+      repsRight: s.reps_right != null ? String(s.reps_right) : "",
+      duration: s.duration_sec != null ? formatSeconds(s.duration_sec) : "",
+      durationRight:
+        s.duration_sec_right != null ? formatSeconds(s.duration_sec_right) : "",
+      warmup: !!s.warmup,
+      rpe: null as number | null,
+    }));
+  return { sets: out, perSide };
+}
+
 export interface SetEntry {
   weight: string;
   reps: string;
