@@ -19,6 +19,7 @@ import {
   ingestMedicalUpload,
   computeReprocessAllCost,
   reprocessAllForProfile,
+  reprocessFromRawById,
 } from "@/lib/medical-pipeline";
 import { seedActor } from "@/lib/__action_tests__/harness";
 
@@ -164,5 +165,127 @@ describe("medical-pipeline: reprocess read helpers", () => {
     const res = await reprocessAllForProfile(login.id, profile.id);
     expect(res.status).toBe("done");
     expect(res.message).toBe("No uploaded documents to reprocess.");
+  });
+});
+
+// #903: re-import a document from the extraction already saved on its row — the
+// normalize + persist half re-run with NO model call. These run with no AI key
+// configured, which is itself part of the contract: a raw re-import must not need
+// one. SYNTHETIC payloads only.
+describe("medical-pipeline: reprocessFromRawById (no AI call)", () => {
+  const FLAT = {
+    document_type: "lab report",
+    document_date: "2024-03-02",
+    results: [
+      {
+        category: "lab",
+        name: "Sodium",
+        canonical_name: "Sodium",
+        value: "140",
+        value_num: 140,
+        unit: "mmol/L",
+      },
+      {
+        category: "lab",
+        name: "Potassium",
+        canonical_name: "Potassium",
+        value: "4.1",
+        value_num: 4.1,
+        unit: "mmol/L",
+      },
+    ],
+  };
+
+  function seedDoc(profileId: number, raw: string | null) {
+    return Number(
+      db
+        .prepare(
+          `INSERT INTO medical_documents
+             (filename, stored_path, mime_type, extraction_status, raw_extraction, model, profile_id)
+           VALUES ('labs.pdf', '', 'application/pdf', 'done', ?, 'some-model', ?)`
+        )
+        .run(raw, profileId).lastInsertRowid
+    );
+  }
+  const recordCount = (profileId: number) =>
+    (
+      db
+        .prepare(
+          "SELECT COUNT(*) AS c FROM medical_records WHERE profile_id = ?"
+        )
+        .get(profileId) as { c: number }
+    ).c;
+
+  it("re-imports the records from a saved flat extraction", async () => {
+    const { login, profile } = seedActor();
+    const id = seedDoc(profile.id, JSON.stringify(FLAT));
+    expect(recordCount(profile.id)).toBe(0);
+
+    const res = await reprocessFromRawById(login.id, profile.id, id);
+
+    expect(res.status).toBe("done");
+    expect(res.message).toMatch(/2 record\(s\)/);
+    expect(recordCount(profile.id)).toBe(2);
+  });
+
+  // The motivating case (#902): the document was imported as a silent ZERO because
+  // the model wrapped its payload. The saved extraction was fine all along — a raw
+  // re-import recovers it without paying for a re-extraction.
+  it("recovers a document whose saved extraction is wrapped in an envelope key", async () => {
+    const { login, profile } = seedActor();
+    const id = seedDoc(profile.id, JSON.stringify({ document_data: FLAT }));
+
+    const res = await reprocessFromRawById(login.id, profile.id, id);
+
+    expect(res.status).toBe("done");
+    expect(recordCount(profile.id)).toBe(2);
+  });
+
+  it("preserves the ORIGINAL model attribution (a replay, not a fresh run)", async () => {
+    const { login, profile } = seedActor();
+    const id = seedDoc(profile.id, JSON.stringify(FLAT));
+    await reprocessFromRawById(login.id, profile.id, id);
+    const row = db
+      .prepare("SELECT model FROM medical_documents WHERE id = ?")
+      .get(id) as { model: string | null };
+    expect(row.model).toBe("some-model");
+  });
+
+  it("skips a document with no saved extraction (e.g. a health record)", async () => {
+    const { login, profile } = seedActor();
+    const id = seedDoc(profile.id, null);
+    const res = await reprocessFromRawById(login.id, profile.id, id);
+    expect(res.status).toBe("skipped");
+    expect(res.message).toMatch(/no saved ai extraction/i);
+  });
+
+  it("fails WITHOUT destroying existing rows when the saved extraction is unusable", async () => {
+    const { login, profile } = seedActor();
+    // Import once so the document owns rows...
+    const id = seedDoc(profile.id, JSON.stringify(FLAT));
+    await reprocessFromRawById(login.id, profile.id, id);
+    expect(recordCount(profile.id)).toBe(2);
+
+    // ...then corrupt the saved extraction and re-import: the failure must leave
+    // the previously imported rows alone (never destroy data on a failure).
+    db.prepare(
+      "UPDATE medical_documents SET raw_extraction = ? WHERE id = ?"
+    ).run("{not json", id);
+    const res = await reprocessFromRawById(login.id, profile.id, id);
+    expect(res.status).toBe("failed");
+    expect(recordCount(profile.id)).toBe(2);
+    const row = db
+      .prepare("SELECT extraction_status FROM medical_documents WHERE id = ?")
+      .get(id) as { extraction_status: string };
+    expect(row.extraction_status).toBe("failed");
+  });
+
+  it("fails on a saved extraction whose shape is unrecognized", async () => {
+    const { login, profile } = seedActor();
+    const id = seedDoc(profile.id, JSON.stringify({ nothing: "useful" }));
+    const res = await reprocessFromRawById(login.id, profile.id, id);
+    expect(res.status).toBe("failed");
+    expect(res.message).toMatch(/unrecognized shape/i);
+    expect(recordCount(profile.id)).toBe(0);
   });
 });
