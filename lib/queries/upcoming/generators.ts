@@ -110,6 +110,7 @@ import { getCarePlanItems } from "../clinical";
 import { assessProfilePreventive } from "./preventive";
 import { getFindingSuppressions } from "./suppressions";
 import { illnessCareItems } from "../../illness-care-findings";
+import { conditionReviewItems } from "../../condition-suggestion-findings";
 import { tempRedFlagItems } from "../../temp-red-flag-findings";
 
 // Biomarker categories a retest nudge makes sense for. Vitals/scans/prescriptions
@@ -685,6 +686,7 @@ const rawUpcoming = cache(function rawUpcoming(
     ...refillItems(profileId, today),
     ...dietaryLimitItems(profileId, today),
     ...illnessCareItems(profileId, today),
+    ...conditionReviewItems(profileId),
     ...tempRedFlagItems(profileId, today),
     ...interactionItems(profileId),
     ...pgxItems(profileId),

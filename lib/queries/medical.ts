@@ -369,6 +369,42 @@ export function getCurrentFlaggedBiomarkers(
     .all(...args) as CurrentFlaggedReading[];
 }
 
+// The CURRENT qualitative (value_num IS NULL) lab/biomarker readings — one per
+// biomarker family, newest-first — with the name/value/notes/reference/loinc the
+// shared classifier (#549) reads. Feeds the condition-suggestion builder (#685):
+// unlike getCurrentFlaggedBiomarkers this does NOT pre-filter on the stored `flag`,
+// because #549 established the extractor's qualitative flag is untrusted — a positive
+// infection the extractor left unflagged must still be caught. Reuses the SAME
+// DEDUP+LATEST CTE machinery so it agrees with every other current-reading surface.
+export interface CurrentQualitativeReading {
+  id: number;
+  name: string;
+  value: string | null;
+  notes: string | null;
+  reference: string | null;
+  loinc: string | null;
+  date: string;
+}
+
+export function getCurrentQualitativeResults(
+  profileId: number
+): CurrentQualitativeReading[] {
+  return db
+    .prepare(
+      `WITH ${DEDUP_IDS_CTE},
+            ${LATEST_IDS_CTE}
+       SELECT id,
+              COALESCE(NULLIF(TRIM(canonical_name), ''), name) AS name,
+              value, notes, reference_range AS reference, loinc, date
+         FROM medical_records
+        WHERE profile_id = ? AND ${LATEST_IN_GROUP}
+          AND category IN ('lab', 'biomarker')
+          AND value_num IS NULL
+        ORDER BY date DESC, id ASC`
+    )
+    .all(profileId, profileId, profileId) as CurrentQualitativeReading[];
+}
+
 export function getMedicalDocuments(profileId: number): MedicalDocument[] {
   return db
     .prepare(

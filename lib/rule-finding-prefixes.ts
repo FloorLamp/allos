@@ -22,13 +22,14 @@ import { ORAL_HEALTH_PREFIX } from "./oral-health-observation";
 import { PROTEIN_ADEQUACY_PREFIX } from "./protein";
 import { ILLNESS_CARE_PREFIX } from "./illness-care";
 import { TEMP_RED_FLAG_PREFIX } from "./temp-red-flag";
+import { CONDITION_REVIEW_PREFIX } from "./condition-suggestions";
 
 // Every namespace the rule-findings builders (buildTrainingObservationFindings,
 // buildBodyHygieneFindings, buildGoalPacingFindings, buildAdherencePatternFindings,
 // buildFoodSuggestionFindings, buildFoodHabitFindings, buildSunExposureFindings,
 // buildOralHealthFindings, buildProteinAdequacyFindings, buildMuscleVolumeFindings) key
-// their dedupeKeys under, PLUS the care-tier illness-care builder (#805,
-// buildIllnessCareFindings — the one push/care member here, not a coaching builder).
+// their dedupeKeys under, PLUS the care-tier builders (#805 buildIllnessCareFindings
+// and #685 conditionReviewItems — push/care members here, NOT coaching builders).
 // Order is irrelevant; membership is what's guarded.
 export const RULE_FINDING_PREFIXES: readonly string[] = [
   TRAINING_OBS_PREFIX,
@@ -44,6 +45,9 @@ export const RULE_FINDING_PREFIXES: readonly string[] = [
   PROTEIN_ADEQUACY_PREFIX,
   ILLNESS_CARE_PREFIX,
   TEMP_RED_FLAG_PREFIX,
+  // Condition-suggestion review items (#685) — a care-tier, suggest-only builder
+  // (conditionReviewItems), like illness-care not part of collectCoachingFindings.
+  CONDITION_REVIEW_PREFIX,
 ];
 
 // Whether a finding's dedupeKey belongs to a known builder namespace (so a page

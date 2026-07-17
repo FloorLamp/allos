@@ -151,3 +151,12 @@ export const SICK_KID_B_PROFILE = "Sick Kid B (e2e)";
 // CARE) — the co-caregiver case: a dose CARE logs for Kid A shows on this login's hero.
 export const E2E_LOGIN_COCARE = "e2e_cocare";
 export const COCARE_PARENT_PROFILE = "Co Parent (e2e)";
+
+// A member whose SOLE (active) profile carries a positive infection lab result
+// ("HIV Antibody: Reactive") that is NOT on its problem list, so the condition-
+// suggestion review item (#685) surfaces on Upcoming with an "Add to conditions"
+// confirm. Dedicated + isolated on purpose — the confirm/dismiss flow MUTATES the
+// problem list, and the spec self-heals (removes the condition at the start) so it's
+// repeat-safe without touching any shared-seed profile.
+export const E2E_LOGIN_CONDREV = "e2e_condrev";
+export const CONDITION_REVIEW_PROFILE = "Condition Review (e2e)";

@@ -60,6 +60,8 @@ import {
   SICK_KID_B_PROFILE,
   E2E_LOGIN_COCARE,
   COCARE_PARENT_PROFILE,
+  E2E_LOGIN_CONDREV,
+  CONDITION_REVIEW_PROFILE,
 } from "./fixture-logins";
 import { adoptTemplate, activateRoutine } from "../lib/routines";
 
@@ -2408,4 +2410,19 @@ grantProfile(coCareLoginId, sickKidAId);
 
 console.log(
   `e2e: seeded illness-hero fixtures — sick self ${sickSelfId}, sick kids ${sickKidAId}/${sickKidBId}, caregivers ${careLoginId}/${coCareLoginId} (#858)`
+);
+
+// CONDITION_REVIEW (#685): a dedicated profile carrying a positive infection lab
+// result NOT on its problem list, so the condition-suggestion review item surfaces on
+// Upcoming with the "Add to conditions" confirm. Isolated on purpose — the spec drives
+// a confirm/dismiss flow that mutates the problem list, and self-heals per run.
+const condReviewId = fixtureProfileId(CONDITION_REVIEW_PROFILE);
+db.prepare(
+  `INSERT INTO medical_records
+     (profile_id, date, category, name, canonical_name, value, loinc)
+   VALUES (?, date('now'), 'lab', 'HIV 1/2 Antibody', 'HIV 1/2 Antibody', 'Reactive', '56888-1')`
+).run(condReviewId);
+seedMemberLogin(E2E_LOGIN_CONDREV, condReviewId);
+console.log(
+  `e2e: seeded condition-suggestion fixture — profile ${condReviewId} (#685)`
 );
