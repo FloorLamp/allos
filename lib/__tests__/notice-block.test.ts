@@ -4,8 +4,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 // Static guard for the tinted notice/alert-block primitive (issue #794 cluster 4 +
-// 8b). The warning/notice block — a bordered, tinted `bg-{amber,rose,emerald}-50`
-// message container — used to be hand-rolled ~15 times with drifting borders
+// 8b). The warning/notice block — a bordered, tinted
+// `bg-{amber,rose,slate,emerald,sky,violet}-50` message container — used to be
+// hand-rolled ~15 times with drifting borders
 // (-200 vs -300), radii (rounded-lg vs -xl vs -2xl), and three dark-mode bg
 // treatments (dark:bg-amber-950 vs /40 vs /50), plus low-contrast -600 text on the
 // -50 tint (amber-600 = 3.07:1, fails WCAG AA). It now lives in ONE tone map,
@@ -34,9 +35,14 @@ const ALLOWLIST = new Map<string, string>([
 // The hand-rolled alert-block signature: a bordered tint — a `border-{tone}-{200,300}`
 // AND a SOLID `bg-{tone}-50` (word-boundaried so `bg-amber-500` and the softer
 // `bg-amber-50/60` finding-list tints don't count, and `:`/`-` prefixes exclude
-// `hover:bg-`/`dark:bg-`) — for tones amber|rose|emerald, in either order within one
-// className string.
-const TONE = "(?:amber|rose|emerald)";
+// `hover:bg-`/`dark:bg-`) — for every tone in NOTICE_TONE, in either order within one
+// className string. The tone list MUST cover the whole tone map — the last test in
+// this file re-derives NOTICE_TONE's keys from the source and fails if TONE misses
+// one (#833: the guard used to list only amber|rose|emerald, silently exempting a
+// hand-rolled slate/sky/violet block). The softer `bg-{tone}-50/60` structural tints
+// (slate/sky chrome in TrajectoryFindings/FindingsList) are excluded by SOLID_BG's
+// trailing-slash lookahead, so widening the tone set adds no false positives.
+const TONE = "(?:amber|rose|slate|emerald|sky|violet)";
 const BORDER = new RegExp(`border-${TONE}-(?:200|300)\\b`);
 const SOLID_BG = new RegExp(`(?<![:\\w-])bg-${TONE}-50(?![/\\w])`);
 
@@ -92,7 +98,7 @@ describe("notice-block primitive guard (issue #794 cluster 4)", () => {
     expect(
       offenders,
       `Use the <Notice> primitive (or NOTICE_TONE / FindingCard) instead of ` +
-        `hand-rolling "border-{amber,rose,emerald}-{200,300} bg-{tone}-50 …". A ` +
+        `hand-rolling "border-{tone}-{200,300} bg-{tone}-50 …". A ` +
         `genuinely non-notice one-off (toggle/chip/toast) gets an ALLOWLIST entry ` +
         `with justification:\n${offenders.join("\n")}`
     ).toEqual([]);
@@ -126,5 +132,35 @@ describe("notice-block primitive guard (issue #794 cluster 4)", () => {
     );
     expect(/export const NOTICE_TONE\b/.test(src)).toBe(true);
     expect(/export function Notice\b/.test(src)).toBe(true);
+  });
+
+  // Enumerate-and-verify (mirrors the telegram-chokepoint guard's discipline): the
+  // TONE regex above must cover EVERY tone the primitive defines, or a hand-rolled
+  // block in an uncovered tone slips past silently (#833). We re-derive the tone set
+  // from NOTICE_TONE's own key type (the `NoticeTone` union — Record<NoticeTone,…>
+  // forces the object keys to match it) so adding a tone to Notice.tsx without
+  // widening TONE fails the build here.
+  it("the TONE guard covers every tone in NOTICE_TONE (no tone can silently escape)", () => {
+    const src = fs.readFileSync(
+      path.join(REPO, "components/Notice.tsx"),
+      "utf8"
+    );
+    const union = src.match(/export type NoticeTone\s*=([^;]+);/);
+    expect(
+      union,
+      "NoticeTone union not found in components/Notice.tsx"
+    ).not.toBe(null);
+    const tones = Array.from(union![1].matchAll(/"([a-z]+)"/g)).map(
+      (m) => m[1]
+    );
+    expect(tones.length).toBeGreaterThanOrEqual(6);
+    const toneRe = new RegExp(`^${TONE}$`);
+    const uncovered = tones.filter((t) => !toneRe.test(t));
+    expect(
+      uncovered,
+      `These NOTICE_TONE tones are NOT matched by the guard's TONE regex, so a ` +
+        `hand-rolled "border-{tone}-{200,300} bg-{tone}-50" block in that tone ` +
+        `would slip past this guard. Add them to TONE:\n${uncovered.join(", ")}`
+    ).toEqual([]);
   });
 });

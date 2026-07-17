@@ -10,6 +10,7 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
+import { nextTrapFocusIndex } from "@/lib/focus-trap";
 
 // App-wide confirmation dialog, replacing native window.confirm(). Mounted once
 // in the root layout; any client component calls `useConfirm()` to get an async
@@ -108,18 +109,17 @@ function ConfirmModal({
             'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
           )
         ).filter((el) => !el.hasAttribute("disabled"));
-        if (focusables.length === 0) return;
-        const first = focusables[0];
-        const last = focusables[focusables.length - 1];
         const active = document.activeElement as HTMLElement | null;
-        if (e.shiftKey) {
-          if (active === first || !root.contains(active)) {
-            e.preventDefault();
-            last.focus();
-          }
-        } else if (active === last || !root.contains(active)) {
+        // Pure wrap decision (#832) — component owns the DOM, lib owns the branches.
+        const target = nextTrapFocusIndex(
+          focusables.length,
+          active ? focusables.indexOf(active) : -1,
+          !!active && root.contains(active),
+          e.shiftKey
+        );
+        if (target !== null) {
           e.preventDefault();
-          first.focus();
+          focusables[target].focus();
         }
       }
     };
