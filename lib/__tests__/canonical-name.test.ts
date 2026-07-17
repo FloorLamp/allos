@@ -368,6 +368,37 @@ describe("canonical aliases (synonym/abbreviation drift)", () => {
     );
   });
 
+  it("routes the curated urinalysis + immunoglobulin gaps (#918), keeping urine apart from serum", () => {
+    // Immunoglobulin abbreviations snap onto the full canonical entries.
+    expect(snapCanonicalName("IgG", index)).toBe("Immunoglobulin G");
+    expect(snapCanonicalName("IgA", index)).toBe("Immunoglobulin A");
+    expect(snapCanonicalName("IgM", index)).toBe("Immunoglobulin M");
+    expect(snapCanonicalName("IgG4", index)).toBe(
+      "Immunoglobulin G Subclass 4"
+    );
+    // Urine dipstick entries resolve from "Urine X" / "X, Urine" by word order…
+    expect(snapCanonicalName("Urine Glucose", index)).toBe("Glucose, Urine");
+    expect(snapCanonicalName("Urine Protein", index)).toBe("Protein, Urine");
+    // …and STAY APART from their serum namesakes — the §2 trap. A bare "Glucose"
+    // is serum, never the urine entry, and vice versa.
+    expect(snapCanonicalName("Glucose", index)).toBe("Glucose");
+    expect(snapCanonicalName("Glucose, Urine", index)).not.toBe("Glucose");
+    // The always-urine pads are specimen-qualified to match the extractor's spelling
+    // ("Nitrite, Urine", not bare "Nitrite"); a bare or "Occult Blood" form still
+    // routes there.
+    expect(snapCanonicalName("Nitrite, Urine", index)).toBe("Nitrite, Urine");
+    expect(snapCanonicalName("Leukocyte Esterase, Urine", index)).toBe(
+      "Leukocyte Esterase, Urine"
+    );
+    expect(snapCanonicalName("Urobilinogen, Urine", index)).toBe(
+      "Urobilinogen, Urine"
+    );
+    expect(snapCanonicalName("Nitrite", index)).toBe("Nitrite, Urine");
+    expect(snapCanonicalName("Occult Blood, Urine", index)).toBe(
+      "Blood, Urine"
+    );
+  });
+
   it("every alias targets a REAL dataset entry and shadows no distinct analyte", () => {
     for (const [alias, canonical] of canonicalAliases()) {
       // Target is a real seeded canonical name.
