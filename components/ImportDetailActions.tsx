@@ -101,7 +101,11 @@ export default function ImportDetailActions({
 
   return (
     <div className="space-y-4">
-      <ReprocessDiffPanel id={id} filename={filename} disabled={deleting} />
+      <ReprocessDiffPanel
+        id={id}
+        filename={filename}
+        disabled={deleting || reimporting}
+      />
       {hasRaw && (
         <div className="flex flex-wrap items-center gap-3">
           <button
@@ -125,7 +129,7 @@ export default function ImportDetailActions({
       <button
         type="button"
         onClick={onDelete}
-        disabled={deleting}
+        disabled={deleting || reimporting}
         className="btn-ghost inline-flex items-center gap-1.5 text-sm text-rose-600 hover:text-rose-700 disabled:opacity-50 dark:text-rose-400"
       >
         <IconTrash className="h-4 w-4" />

@@ -21,6 +21,7 @@ import {
   reprocessAllForProfile,
   reprocessFromRawById,
 } from "@/lib/medical-pipeline";
+import { getAiUsageCount } from "@/lib/ai-usage";
 import { seedActor } from "@/lib/__action_tests__/harness";
 
 function docRows(profileId: number) {
@@ -287,5 +288,69 @@ describe("medical-pipeline: reprocessFromRawById (no AI call)", () => {
     expect(res.status).toBe("failed");
     expect(res.message).toMatch(/unrecognized shape/i);
     expect(recordCount(profile.id)).toBe(0);
+  });
+
+  // The feature REPLACES a document's records — running it twice must not
+  // duplicate them. Every other test here imports from zero rows, so a regression
+  // that double-inserted (2 -> 4) would otherwise sail through this whole file.
+  it("is idempotent: re-importing twice replaces rather than duplicates", async () => {
+    const { login, profile } = seedActor();
+    const id = seedDoc(profile.id, JSON.stringify(FLAT));
+
+    await reprocessFromRawById(login.id, profile.id, id);
+    expect(recordCount(profile.id)).toBe(2);
+
+    const again = await reprocessFromRawById(login.id, profile.id, id);
+    expect(again.status).toBe("done");
+    expect(recordCount(profile.id)).toBe(2);
+  });
+
+  // The headline claim of the whole feature: no model call, so no quota moves —
+  // neither consumed on success nor (wrongly) refunded on failure, which would
+  // inflate the user's daily allowance.
+  it("consumes no AI quota on success, and refunds none on failure", async () => {
+    const { login, profile } = seedActor();
+    const before = getAiUsageCount(profile.id, "extraction");
+
+    const ok = seedDoc(profile.id, JSON.stringify(FLAT));
+    await reprocessFromRawById(login.id, profile.id, ok);
+    expect(getAiUsageCount(profile.id, "extraction")).toBe(before);
+
+    const bad = seedDoc(profile.id, "{not json");
+    await reprocessFromRawById(login.id, profile.id, bad);
+    expect(getAiUsageCount(profile.id, "extraction")).toBe(before);
+  });
+
+  // The atomic claim (#324): a document already in flight is not re-imported
+  // underneath the run that owns it.
+  it("skips a document that is already processing (the atomic claim)", async () => {
+    const { login, profile } = seedActor();
+    const id = seedDoc(profile.id, JSON.stringify(FLAT));
+    db.prepare(
+      "UPDATE medical_documents SET extraction_status = 'processing' WHERE id = ?"
+    ).run(id);
+
+    const res = await reprocessFromRawById(login.id, profile.id, id);
+
+    expect(res.status).toBe("skipped");
+    expect(res.message).toMatch(/already processing/i);
+    expect(recordCount(profile.id)).toBe(0);
+  });
+
+  it("is profile-scoped: another profile cannot re-import this document", async () => {
+    const { profile } = seedActor();
+    const other = seedActor();
+    const id = seedDoc(profile.id, JSON.stringify(FLAT));
+
+    const res = await reprocessFromRawById(
+      other.login.id,
+      other.profile.id,
+      id
+    );
+
+    expect(res.status).toBe("skipped");
+    expect(res.message).toMatch(/unknown document/i);
+    expect(recordCount(profile.id)).toBe(0);
+    expect(recordCount(other.profile.id)).toBe(0);
   });
 });
