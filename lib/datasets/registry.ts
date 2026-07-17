@@ -18,6 +18,10 @@ import {
   drugInteractionsDataset,
   drugInteractionPairStrategy,
 } from "./drug-interactions";
+import {
+  foodDrugInteractionsDataset,
+  foodDrugKeyStrategy,
+} from "./food-drug-interactions";
 import { foodGroupsDataset } from "./food-groups";
 import { icd10Dataset, icd10CodeStrategy } from "./icd10-common";
 import {
@@ -81,6 +85,13 @@ export const DATASETS: RegisteredDataset[] = [
       unknown
     >,
     strategy: drugInteractionPairStrategy,
+  },
+  {
+    dataset: foodDrugInteractionsDataset as unknown as LoadedDataset<
+      Record<string, unknown>,
+      unknown
+    >,
+    strategy: foodDrugKeyStrategy,
   },
   {
     dataset: foodGroupsDataset as unknown as LoadedDataset<

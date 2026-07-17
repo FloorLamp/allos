@@ -110,10 +110,9 @@ describe("foodHabitInteractions (#661)", () => {
 
 describe("FOOD_GROUP_INTERACTION_KEYS anti-drift (#661)", () => {
   it("every mapped slug is a real food group and every key a real interaction entry", async () => {
-    const data = (await import("@/lib/food-drug-interactions.json")).default;
-    const entryKeys = new Set(
-      (data.interactions as { key: string }[]).map((e) => e.key)
-    );
+    const { FOOD_DRUG_INTERACTIONS } =
+      await import("@/lib/datasets/food-drug-interactions");
+    const entryKeys = new Set(FOOD_DRUG_INTERACTIONS.map((e) => e.key));
     for (const [slug, keys] of Object.entries(FOOD_GROUP_INTERACTION_KEYS)) {
       expect(isValidFoodGroup(slug), `unknown food group: ${slug}`).toBe(true);
       for (const k of keys) {

@@ -34,6 +34,7 @@
     "gen:strength-standards": "tsx scripts/gen-strength-standards.ts",
     "gen:icd10": "tsx scripts/gen-icd10.ts",
     "gen:interactions": "tsx scripts/gen-drug-interactions.ts",
+    "gen:food-drug-interactions": "tsx scripts/gen-food-drug-interactions.ts",
     "gen:pgx": "tsx scripts/gen-pgx.ts",
     "gen:contrast-safety": "tsx scripts/gen-contrast-safety.ts",
     "gen:screenings": "tsx scripts/gen-screenings.ts",

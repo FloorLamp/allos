@@ -14,7 +14,7 @@
 //   • Allergies — allergenConflict (lib/supplement-safety.ts): direct + cross-reactive
 //     matching. A fish allergy strikes fatty fish and the entry's alternative surfaces
 //     instead.
-//   • Medications — the INVERSE of lib/food-drug-interactions.json: each food declares
+//   • Medications — the INVERSE of lib/datasets/data/food-drug-interactions.json: each food declares
 //     the interaction-entry keys it participates in (`foodDrugKeys`); a stack med that
 //     matches one attaches that rule's advice as a note (a warfarin profile's leafy-
 //     greens suggestion carries the consistency-matters vitamin-K note — never dropped
@@ -474,7 +474,7 @@ export function nutrientFoodMapGroupSlugs(): string[] {
 }
 
 // All food–drug interaction keys the map references (for the anti-drift test — every
-// one must resolve to an entry in lib/food-drug-interactions.json).
+// one must resolve to an entry in lib/datasets/data/food-drug-interactions.json).
 export function nutrientFoodMapDrugKeys(): string[] {
   const keys = new Set<string>();
   for (const e of ENTRIES)
