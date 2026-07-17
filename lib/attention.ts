@@ -49,6 +49,7 @@ import {
 } from "./hrefs";
 import { biomarkerFlagTitle, biomarkerFlagDetail } from "./biomarker-flag-copy";
 import { flagLabel, isOutOfRange } from "./reference-range";
+import { type Reason, concatReasons, flaggedReason } from "./reasons";
 import type { DigestFlaggedBiomarker } from "./notifications/digest";
 import type { IntegrationId } from "./types";
 
@@ -59,13 +60,21 @@ export interface AttentionIntegration {
   detail: string | null;
 }
 
+// A newly-flagged biomarker plus its optional risk-layer reasons (issue #656 item
+// 4). The reasons ride the input (not a separate map) so buildAttentionModel stays
+// a plain fan-out and the gather owns the one risk computation.
+export type FlaggedBiomarkerInput = DigestFlaggedBiomarker & {
+  riskReasons?: Reason[];
+};
+
 export interface AttentionInput {
   // The date-scheduled due-signals, already snooze/dismiss-filtered (collectUpcoming
   // does the filtering).
   upcoming: UpcomingItem[];
   // Newly-flagged out-of-range biomarkers, already suppression-filtered (same read
-  // as the digest).
-  flaggedBiomarkers: DigestFlaggedBiomarker[];
+  // as the digest). Each MAY carry the risk-layer "why this profile" reasons (issue
+  // #656 item 4), computed by the gather so the flag item explains its elevation.
+  flaggedBiomarkers: FlaggedBiomarkerInput[];
   // Currently-failing integration providers.
   integrations: AttentionIntegration[];
   // Count of unresolved review-inbox pairs (duplicates/conflicts).
@@ -83,13 +92,29 @@ export interface AttentionInput {
 // non-optimal one within the group (#517-style priority). Exported so the query
 // layer can rebuild the same item for the page's "Snoozed & dismissed" restore
 // section (a flag dismissed on either surface stays restorable).
-export function buildFlaggedItem(b: DigestFlaggedBiomarker): UpcomingItem {
+// `riskReasons` are the risk-layer "why THIS profile" reasons for the flagged
+// analyte (issue #656 item 4) — computed by the gather (collectAttentionModel) via
+// retestModulationFor over the same factors the retest generator uses, so a flagged
+// LDL for a family-cardiac-history profile explains itself. Empty for an analyte
+// with no risk elevation (the plain flag line).
+export function buildFlaggedItem(
+  b: DigestFlaggedBiomarker,
+  riskReasons: readonly Reason[] = []
+): UpcomingItem {
   return {
     key: biomarkerFlagDismissalKey(b.name),
     domain: "biomarker-flag",
     signalGroup: "flagged",
     title: biomarkerFlagTitle(b.name),
-    detail: biomarkerFlagDetail(b.flag, b.value),
+    detail: biomarkerFlagDetail(
+      b.flag,
+      b.value,
+      riskReasons.map((r) => r.text)
+    ),
+    // The flag itself PLUS the cited risk reasons, carried structurally (issue
+    // #656) so the elevation is explained, not just ordered. The flag leads (it's
+    // the finding); the "why this profile" risk lines follow.
+    reasons: concatReasons([flaggedReason(b.flag)], [...riskReasons]),
     // #283 bug 5: link the CANONICAL name (not the raw display name) — the view
     // page resolves ?name= as canonical. Shared with biomarkerItems via the helper.
     href: biomarkerViewHref(b.canonicalName, b.name),
@@ -145,7 +170,8 @@ function reviewToItem(count: number): UpcomingItem | null {
 // shared compareWithinBand), so this just concatenates deterministically.
 export function buildAttentionModel(input: AttentionInput): UpcomingItem[] {
   const items: UpcomingItem[] = [...input.upcoming];
-  for (const b of input.flaggedBiomarkers) items.push(buildFlaggedItem(b));
+  for (const b of input.flaggedBiomarkers)
+    items.push(buildFlaggedItem(b, b.riskReasons ?? []));
   for (const i of input.integrations) items.push(integrationToItem(i));
   const review = reviewToItem(input.reviewCount);
   if (review) items.push(review);

@@ -6,6 +6,7 @@
 // it's unit-tested in lib/__tests__ and the page stays a thin composition.
 
 import type { AppRoute } from "./hrefs";
+import type { Reason } from "./reasons";
 import { daysBetweenDateStr, shiftDateStr } from "./date";
 import { daysRemainingLabel } from "./format-date";
 import { compareSortHint } from "./dose-order";
@@ -124,6 +125,13 @@ export interface UpcomingItem {
   title: string;
   // Optional secondary context line (dosage, last-tested date, progress…).
   detail?: string | null;
+  // Structured, first-class reasons (issue #656) — the "why" the deciding engine
+  // knows, carried as DATA ALONGSIDE `detail` (which stays the flattened display
+  // string for back-compat). A compact surface (the Telegram digest) renders the
+  // top reason; the page/hero render the full `detail`. Ordered most-explanatory-
+  // first (the cited risk line leads), so primaryReason() picks the right lead.
+  // Empty/absent for the many items with no structured reason.
+  reasons?: Reason[];
   href: AppRoute;
   // Due date as YYYY-MM-DD. Null means "due now / no specific calendar date"
   // (e.g. a scheduled dose, or a status-driven signal), which bands and sorts as

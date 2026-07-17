@@ -23,11 +23,21 @@ export function biomarkerFlagTitle(name: string): string {
 // The detail line for a flag item: the reading's status and value, so the row
 // explains WHY it needs a look ("Flagged low — 55 mg/dL"). Value is optional (some
 // qualitative flags carry no numeric value).
+//
+// `whyLines` are the risk-layer "why THIS profile" reasons (issue #656 item 4):
+// when the flagged analyte is risk-elevated for this profile (family history of
+// heart disease → a flagged LDL), the elevation was previously invisible on the
+// flag item — only a numeric priority bump. Appended here as a calm trailing clause
+// so a flagged lipid explains "Flagged low — 35 · Family history of heart disease".
+// Empty/absent ⇒ the plain status+value line, unchanged.
 export function biomarkerFlagDetail(
   flag: MedicalFlag | string | null | undefined,
-  value: string | null | undefined
+  value: string | null | undefined,
+  whyLines?: readonly string[]
 ): string {
   const status = flagLabel(flag).toLowerCase();
   const v = value?.trim();
-  return v ? `Flagged ${status} — ${v}` : `Flagged ${status}`;
+  const base = v ? `Flagged ${status} — ${v}` : `Flagged ${status}`;
+  const why = (whyLines ?? []).filter(Boolean);
+  return why.length ? `${base} · ${why.join(", ")}` : base;
 }

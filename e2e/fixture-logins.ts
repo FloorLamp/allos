@@ -160,3 +160,11 @@ export const COCARE_PARENT_PROFILE = "Co Parent (e2e)";
 // repeat-safe without touching any shared-seed profile.
 export const E2E_LOGIN_CONDREV = "e2e_condrev";
 export const CONDITION_REVIEW_PROFILE = "Condition Review (e2e)";
+
+// A dedicated ADULT profile carrying a family history of heart disease AND a fresh
+// out-of-range LDL (issue #656 item 4), so the biomarker-flag item on /upcoming
+// gains its risk-layer "why-for-this-profile" line ("Family history of heart
+// disease"). Read-only; isolated on purpose — a risk-elevated flagged lipid on a
+// SHARED profile would change its hero/Upcoming flag set and race neighbor specs.
+export const E2E_LOGIN_REASON = "e2e_reason";
+export const REASON_MODEL_PROFILE = "Reason Model (e2e)";

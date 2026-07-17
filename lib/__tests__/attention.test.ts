@@ -4,6 +4,7 @@ import {
   attentionCardItems,
   attentionCountLabel,
   buildAttentionModel,
+  buildFlaggedItem,
   cardBandForItem,
   groupAttentionForCard,
   groupAttentionForPage,
@@ -93,6 +94,39 @@ describe("buildAttentionModel — the one item builder (issue #524)", () => {
     expect(item.href).toBe("/biomarkers/view?name=HDL%20Cholesterol");
     expect(item.dueText).toBe("Low");
     expect(item.suppressible).toBe(true);
+    // No risk reasons passed ⇒ plain flag line + a single flagged reason.
+    expect(item.reasons).toEqual([{ code: "biomarker-flagged", text: "Low" }]);
+  });
+
+  it("a risk-elevated flagged biomarker gains a why-for-this-profile line and carries the reasons (issue #656 item 4)", () => {
+    const item = buildFlaggedItem(
+      {
+        name: "LDL Cholesterol",
+        canonicalName: "LDL Cholesterol",
+        value: "190",
+        flag: "high",
+      },
+      [
+        {
+          code: "risk-elevated",
+          text: "Family history of heart disease",
+          source: "ACC/AHA (informational)",
+        },
+      ]
+    );
+    // The why-line renders after the status+value clause (detail preserved, extended).
+    expect(item.detail).toBe(
+      "Flagged high — 190 · Family history of heart disease"
+    );
+    // Structured reasons: the flag leads, the cited risk reason follows.
+    expect(item.reasons).toEqual([
+      { code: "biomarker-flagged", text: "High" },
+      {
+        code: "risk-elevated",
+        text: "Family history of heart disease",
+        source: "ACC/AHA (informational)",
+      },
+    ]);
   });
 
   it("an uncanonicalized flag falls back to the biomarkers list (no series link)", () => {

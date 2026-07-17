@@ -7,7 +7,8 @@
 // renderUpcomingDigestMessage turns that model into the Telegram message. The
 // title always names the profile — a chat may be shared by several profiles.
 
-import type { BandGroup, UpcomingDomain } from "../upcoming";
+import type { BandGroup, UpcomingDomain, UpcomingItem } from "../upcoming";
+import { primaryReason } from "../reasons";
 import type { NotificationMessage } from "./types";
 
 // Singular noun per domain; the summary pluralizes with a trailing "s". "lab"
@@ -64,12 +65,58 @@ const DOMAIN_SEQ: UpcomingDomain[] = [
   "training",
 ];
 
+// A surfaced "why" for a high-priority item (issue #656 item 3): the item's title
+// plus its TOP reason text, so the push says WHY the important thing matters instead
+// of only counting it. The reason is the SAME primaryReason() the page/hero carry on
+// the item — one computation, proven by the shared-fixture pin.
+export interface DigestHighlight {
+  title: string;
+  reason: string;
+}
+
 export interface UpcomingDigestModel {
   title: string;
   // One compact line per non-empty band, e.g. "Today: 2 doses, 1 appointment".
   lines: string[];
+  // Up to MAX_HIGHLIGHTS "why" lines for the most important items carrying a
+  // structured reason (issue #656). Empty when nothing due carries a reason — the
+  // digest then reads exactly as before (counts only).
+  highlights: DigestHighlight[];
   // Total items across all bands (drives the title count).
   total: number;
+}
+
+// Keep the push compact: at most a few "why" lines beyond the per-band counts.
+const MAX_HIGHLIGHTS = 3;
+
+// The high-priority items' top reasons (issue #656 item 3). Scans the banded set in
+// urgency order (Overdue → Today → …, each already within-band sorted so the higher-
+// priority item leads), keeps items that carry a structured reason, prefers higher
+// `priority`, de-dupes by title, and caps the list. The reason shown is
+// primaryReason(item) — the SAME lead reason the page/hero render, never re-derived.
+export function digestHighlights(groups: BandGroup[]): DigestHighlight[] {
+  const candidates: { item: UpcomingItem; order: number }[] = [];
+  let order = 0;
+  for (const g of groups) {
+    for (const item of g.items) {
+      if (primaryReason(item.reasons))
+        candidates.push({ item, order: order++ });
+    }
+  }
+  // Stable sort: higher priority first, then the natural urgency order above.
+  candidates.sort(
+    (a, b) =>
+      (b.item.priority ?? 0) - (a.item.priority ?? 0) || a.order - b.order
+  );
+  const out: DigestHighlight[] = [];
+  const seen = new Set<string>();
+  for (const { item } of candidates) {
+    if (out.length >= MAX_HIGHLIGHTS) break;
+    if (seen.has(item.title)) continue;
+    seen.add(item.title);
+    out.push({ title: item.title, reason: primaryReason(item.reasons)!.text });
+  }
+  return out;
 }
 
 function pluralize(noun: string, count: number): string {
@@ -103,14 +150,22 @@ export function buildUpcomingDigest(
   return {
     title: `🔔 Due soon${who}`,
     lines,
+    highlights: digestHighlights(nonEmpty),
     total,
   };
 }
 
-// Render the model to a channel-agnostic NotificationMessage. One band per line;
-// the title (bolded by the Telegram renderer) names the profile.
+// Render the model to a channel-agnostic NotificationMessage. The band count lines
+// first, then (issue #656) a blank line + the high-priority "why" lines so the push
+// explains WHY the important items matter, not only how many are due.
 export function renderUpcomingDigestMessage(
   model: UpcomingDigestModel
 ): NotificationMessage {
-  return { title: model.title, body: model.lines.join("\n"), kind: "upcoming" };
+  const parts = [model.lines.join("\n")];
+  if (model.highlights.length) {
+    parts.push(
+      model.highlights.map((h) => `⚑ ${h.title} — ${h.reason}`).join("\n")
+    );
+  }
+  return { title: model.title, body: parts.join("\n\n"), kind: "upcoming" };
 }

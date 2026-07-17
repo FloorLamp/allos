@@ -19,9 +19,14 @@ import {
   type AttentionIntegration,
 } from "../attention";
 import { getNewlyFlaggedBiomarkers } from "../notifications/digest-data";
+import type { DigestFlaggedBiomarker } from "../notifications/digest";
 import { getIntegration } from "../integrations/registry";
 import { biomarkerFlagDismissalKey } from "../dismissal-keys";
 import { isSuppressed } from "../upcoming-suppress";
+import { retestModulationFor } from "../risk-stratification";
+import { riskReasonsFrom, type Reason } from "../reasons";
+import { getRiskFactors } from "./upcoming/risk";
+import type { RiskFactor } from "../risk-stratification";
 import type { IntegrationId } from "../types";
 import type { UpcomingItem } from "../upcoming";
 import {
@@ -68,6 +73,19 @@ function flaggedInWindow(profileId: number) {
   return getNewlyFlaggedBiomarkers(profileId, flaggedAttentionSince());
 }
 
+// The risk-layer "why THIS profile" reasons for a flagged analyte (issue #656 item
+// 4): the SAME retestModulationFor over the SAME risk factors the retest generator
+// uses (biomarkerItems), keyed on the reading's canonical-preferred name — so a
+// flagged LDL for a family-cardiac-history profile carries "Family history of heart
+// disease" on the flag item, identical to its retest twin. Empty when not elevated.
+function flaggedRiskReasons(
+  b: DigestFlaggedBiomarker,
+  factors: ReadonlySet<RiskFactor>
+): Reason[] {
+  const name = b.canonicalName?.trim() || b.name;
+  return riskReasonsFrom(retestModulationFor(name, factors).sourced);
+}
+
 // The full, unified attention model for one profile (issue #524). Reuses
 // collectUpcoming (already snooze/dismiss-filtered), the SAME newly-flagged read
 // the Telegram digest uses (over the stable window), the failing-integration
@@ -81,10 +99,15 @@ export function collectAttentionModel(
   today: string
 ): UpcomingItem[] {
   const suppressions = getFindingSuppressions(profileId);
-  const flaggedBiomarkers = flaggedInWindow(profileId).filter((b) => {
-    const rec = suppressions.get(biomarkerFlagDismissalKey(b.name));
-    return rec == null || !isSuppressed(rec, today);
-  });
+  const factors = getRiskFactors(profileId);
+  const flaggedBiomarkers = flaggedInWindow(profileId)
+    .filter((b) => {
+      const rec = suppressions.get(biomarkerFlagDismissalKey(b.name));
+      return rec == null || !isSuppressed(rec, today);
+    })
+    // Attach the risk-layer reasons (issue #656 item 4) so the flag item explains
+    // its elevation — one risk computation, shared with the retest generator.
+    .map((b) => ({ ...b, riskReasons: flaggedRiskReasons(b, factors) }));
   return buildAttentionModel({
     upcoming: collectUpcoming(profileId, today),
     flaggedBiomarkers,
@@ -120,12 +143,13 @@ export function collectSuppressedAttention(
 ): SuppressedUpcoming[] {
   const out = collectSuppressedUpcoming(profileId, today);
   const suppressions = getFindingSuppressions(profileId);
+  const factors = getRiskFactors(profileId);
   for (const b of flaggedInWindow(profileId)) {
     const key = biomarkerFlagDismissalKey(b.name);
     const rec = suppressions.get(key);
     if (rec && isSuppressed(rec, today)) {
       out.push({
-        item: buildFlaggedItem(b),
+        item: buildFlaggedItem(b, flaggedRiskReasons(b, factors)),
         signalKey: key,
         snoozeUntil: rec.snooze_until,
         dismissedAt: rec.dismissed_at,

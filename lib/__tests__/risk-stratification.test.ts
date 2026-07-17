@@ -175,10 +175,10 @@ describe("screeningPriorityFor", () => {
         "colorectal_cancer",
         new Set(["family-cardiovascular"])
       )
-    ).toEqual({ priority: 0, reasons: [] });
+    ).toEqual({ priority: 0, reasons: [], sourced: [] });
     expect(
       screeningPriorityFor("lipid_screening", new Set<RiskFactor>())
-    ).toEqual({ priority: 0, reasons: [] });
+    ).toEqual({ priority: 0, reasons: [], sourced: [] });
   });
 });
 
@@ -208,6 +208,7 @@ describe("immunizationPriorityFor (issue #553)", () => {
     expect(immunizationPriorityFor("tdap", f)).toEqual({
       priority: 2,
       reasons: ["Pregnancy"],
+      sourced: [{ text: "Pregnancy", source: "ACIP / ACOG (informational)" }],
     });
     expect(immunizationPriorityFor("influenza", f).priority).toBe(2);
   });
@@ -228,9 +229,9 @@ describe("immunizationPriorityFor (issue #553)", () => {
   it("is neutral for an unrelated vaccine or no matching factor", () => {
     expect(
       immunizationPriorityFor("zoster", new Set<RiskFactor>(["pregnant"]))
-    ).toEqual({ priority: 0, reasons: [] });
+    ).toEqual({ priority: 0, reasons: [], sourced: [] });
     expect(immunizationPriorityFor("influenza", new Set<RiskFactor>())).toEqual(
-      { priority: 0, reasons: [] }
+      { priority: 0, reasons: [], sourced: [] }
     );
   });
 
@@ -243,6 +244,7 @@ describe("immunizationPriorityFor (issue #553)", () => {
     expect(screeningPriorityFor("lipid_screening", hcw)).toEqual({
       priority: 0,
       reasons: [],
+      sourced: [],
     });
   });
 });
@@ -347,6 +349,7 @@ describe("visitModulationFor (Substrate 3, #707)", () => {
     expect(screeningPriorityFor("vision_exam", f)).toEqual({
       priority: 0,
       reasons: [],
+      sourced: [],
     });
   });
 });
@@ -519,7 +522,7 @@ describe("screeningModulationFor (#711)", () => {
         "mammography",
         new Set<RiskFactor>(["hereditary-breast-cancer"])
       )
-    ).toEqual({ priority: 0, reasons: [] });
+    ).toEqual({ priority: 0, reasons: [], sourced: [] });
   });
 });
 
