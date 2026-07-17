@@ -160,27 +160,38 @@ test.describe("Settings IA (#928) — member + matrix", () => {
       ).toBeVisible();
       await expect(member.getByTestId("matrix-cell-push-food")).toHaveCount(0);
 
-      // Toggling a Telegram kind off persists across a reload (tier-correct action).
+      // Toggling a Telegram kind persists across a reload (tier-correct action).
+      // State-relative + self-restoring so it's repeat-each safe (the fixture DB
+      // persists across the 3 repeats).
       const tgRefill = member.getByTestId("matrix-cell-telegram-refill");
-      await expect(tgRefill).toBeChecked();
+      const wasChecked = await tgRefill.isChecked();
       await settledClick(member, tgRefill);
       await member.reload();
       await expect(
         member.getByTestId("matrix-cell-telegram-refill")
-      ).not.toBeChecked();
+      ).toBeChecked({ checked: !wasChecked });
+      // Restore the fixture (leave the column as we found it).
+      await settledClick(
+        member,
+        member.getByTestId("matrix-cell-telegram-refill")
+      );
 
       // Configure Home Assistant so the profile has one CONFIGURED channel, then
       // turn a SAFETY kind (dose) off on it — with no other channel configured, the
       // row warns (warn, never block).
       const ha = member.getByTestId("ha-settings");
-      await member.getByTestId("ha-enable").check();
+      const haEnable = member.getByTestId("ha-enable");
+      if (!(await haEnable.isChecked())) await haEnable.check();
       await member
         .getByTestId("ha-webhook-url")
         .fill("http://homeassistant.local:8123/api/webhook/allos-notif");
+      // Saving the HA card resets its per-kind grid to all-on, so dose starts ON.
       await settledClick(member, member.getByTestId("ha-save"));
       await member.reload();
 
-      // No safety warning yet — dose is delivered by HA.
+      // Baseline: with HA configured and dose ON, no safety warning.
+      const haDose = member.getByTestId("matrix-cell-ha-dose");
+      if (!(await haDose.isChecked())) await settledClick(member, haDose);
       await expect(
         member.getByTestId("matrix-safety-warning-dose")
       ).toHaveCount(0);
@@ -189,6 +200,11 @@ test.describe("Settings IA (#928) — member + matrix", () => {
       await expect(
         member.getByTestId("matrix-safety-warning-dose")
       ).toBeVisible();
+      // Restore: dose back on, warning clears (leave clean for the next repeat).
+      await settledClick(member, member.getByTestId("matrix-cell-ha-dose"));
+      await expect(
+        member.getByTestId("matrix-safety-warning-dose")
+      ).toHaveCount(0);
       // ha card still rendered (sanity — the section didn't collapse).
       await expect(ha).toBeVisible();
     } finally {

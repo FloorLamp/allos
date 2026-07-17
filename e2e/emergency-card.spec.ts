@@ -31,6 +31,14 @@ test("emergency card: opt-in, render, offline copy, and logout clears it (#42)",
   //    "Saved" indicator so the write has landed before we read the card.
   await page.goto("/medical/background");
   const toggle = page.getByTestId("emergency-toggle");
+  // Repeat-each safe: a prior iteration may have left profile 1 opted in (the
+  // server flag persists across the shared fixture DB), so reset to the default-off
+  // precondition before exercising the opt-in flow.
+  if (await toggle.isChecked()) {
+    await toggle.uncheck();
+    await expect(page.getByLabel("Saved").first()).toBeVisible();
+    await page.reload();
+  }
   await expect(toggle).not.toBeChecked();
   await toggle.check();
   await expect(page.getByLabel("Saved").first()).toBeVisible();
