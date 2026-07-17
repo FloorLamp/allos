@@ -12,6 +12,17 @@
 // drug CUI or by an identity-family collapse supplies its own MatchStrategy (its
 // `normalize` doing the digit-extraction or family fold); the matcher and harness need
 // no change. See rxcuiStrategyStub below for the seam's shape.
+//
+// MULTI-VALUE + COMPOSITE (issue #860 wave 2). Some datasets identify an entry by MORE
+// than one key: a medication carries synonyms + brand aliases, a drug-drug interaction
+// is keyed by an unordered PAIR of concepts, a PGx rule by a `gene|allele` composite.
+// A strategy expresses this with the optional `normalizeMany(raw): string[]` (the SET
+// of keys a raw value expands to). The matcher indexes an entry under every key it
+// yields and resolves a query if ANY of the query's keys hits. `expand()` is the one
+// place that honours it (falling back to `[normalize(raw)]` for single-key strategies),
+// and `multiValueStrategy` / `pairStrategy` / `compositeStrategy` + the `sortedPairKey`
+// / `compositeKey` / `pairKeysAcross` key builders below are the reusable pieces the
+// drug/PGx/medication datasets adopt. All pure.
 
 import type { DatasetMatcher, LoadedDataset, MatchStrategy } from "./types";
 
@@ -67,12 +78,27 @@ export function rxcuiStrategyStub(key = "rxcui"): MatchStrategy {
   };
 }
 
+// Expand a raw value to the SET of non-empty normalized keys it indexes/resolves under.
+// The ONE place a strategy's optional `normalizeMany` is honoured: with it, its keys
+// (empties filtered); without it, the single `[normalize(raw)]` (empty filtered). Every
+// matcher/harness path goes through here so single- and multi-value strategies share
+// one code path. Pure.
+export function expand(strategy: MatchStrategy, raw: unknown): string[] {
+  if (strategy.normalizeMany) {
+    return strategy.normalizeMany(raw).filter((k) => k !== "");
+  }
+  const norm = strategy.normalize(raw);
+  return norm === "" ? [] : [norm];
+}
+
 // Build a matcher over a loaded dataset with a given strategy. `strategy.key` must be
 // one of the dataset's declared identity keys (the loader already guaranteed every
-// entry carries it). On a normalized-key COLLISION (two entries fold to the same key)
-// the FIRST entry wins and later ones are dropped from the index — deterministic and
-// order-stable; a dataset that can't tolerate collisions asserts uniqueness in its own
-// test (the harness exposes the raw keys for that).
+// entry carries it). Each entry is indexed under EVERY key `expand()` yields for its
+// identity value (one key for a single-value strategy, several for a multi-value one).
+// On a normalized-key COLLISION (two entries yield the same key) the FIRST entry wins
+// and the later one is dropped for that key — deterministic and order-stable; a dataset
+// that can't tolerate collisions asserts uniqueness in its own test (the harness's
+// `noKeyCollisions` does exactly that).
 export function createMatcher<E, M = undefined>(
   dataset: LoadedDataset<E, M>,
   strategy: MatchStrategy
@@ -85,25 +111,148 @@ export function createMatcher<E, M = undefined>(
   }
   const index = new Map<string, E>();
   for (const entry of dataset.entries) {
-    const norm = strategy.normalize(
+    for (const norm of expand(
+      strategy,
       (entry as Record<string, unknown>)[strategy.key]
-    );
-    if (norm === "") continue;
-    if (!index.has(norm)) index.set(norm, entry);
+    )) {
+      if (!index.has(norm)) index.set(norm, entry);
+    }
   }
   return {
     strategy,
     match(query) {
-      const norm = strategy.normalize(query);
-      if (norm === "") return null;
-      return index.get(norm) ?? null;
+      for (const norm of expand(strategy, query)) {
+        const hit = index.get(norm);
+        if (hit !== undefined) return hit;
+      }
+      return null;
     },
     has(query) {
-      const norm = strategy.normalize(query);
-      return norm !== "" && index.has(norm);
+      for (const norm of expand(strategy, query)) {
+        if (index.has(norm)) return true;
+      }
+      return false;
     },
     keys() {
       return [...index.keys()];
     },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Multi-value + composite key builders and strategy factories (issue #860 wave 2).
+// ---------------------------------------------------------------------------
+
+// The default per-element fold: trim + lowercase (the nameStrategy fold). Datasets pass
+// their own (e.g. the rxcui digit-extract) when the members aren't plain names.
+const foldName = nameStrategy.normalize;
+
+// A multi-value strategy: one entry field holds SEVERAL identity values — an array
+// (synonyms, brand names, an RxCUI set) or a scalar (indexed as one). `normalizeMany`
+// folds each element with `normalizeOne` (default: name-fold), dropping empties and
+// de-duplicating. One entry is then found under any of its aliases; an alias no entry
+// carries still refuses (null). `normalizeOne` lets a CUI-set strategy pass the digit
+// extractor, a synonym strategy the name fold.
+export function multiValueStrategy(
+  key: string,
+  normalizeOne: (raw: unknown) => string = foldName
+): MatchStrategy {
+  const many = (raw: unknown): string[] => {
+    const values = Array.isArray(raw) ? raw : [raw];
+    const out: string[] = [];
+    for (const v of values) {
+      const n = normalizeOne(v);
+      if (n !== "" && !out.includes(n)) out.push(n);
+    }
+    return out;
+  };
+  return {
+    key,
+    normalize: (raw) => many(raw)[0] ?? "",
+    normalizeMany: many,
+  };
+}
+
+// An ORDERED composite key: fold each part and join with "|" in the GIVEN order (slot
+// order matters — `gene|allele`, `gene|drug`). Any part that folds to "" makes the
+// whole key "" (refuse — a composite is only valid with all parts present). Pure.
+export function compositeKey(
+  parts: unknown[],
+  normalizeOne: (raw: unknown) => string = foldName
+): string {
+  const norm = parts.map((p) => normalizeOne(p));
+  if (norm.some((n) => n === "")) return "";
+  return norm.join("|");
+}
+
+// An UNORDERED pair key: fold both members and join the two SORTED, so `(a,b)` and
+// `(b,a)` produce the same key (drug-drug interactions are symmetric). Either member
+// folding to "" makes the key "" (refuse). Pure.
+export function sortedPairKey(
+  a: unknown,
+  b: unknown,
+  normalizeOne: (raw: unknown) => string = foldName
+): string {
+  const na = normalizeOne(a);
+  const nb = normalizeOne(b);
+  if (na === "" || nb === "") return "";
+  return [na, nb].sort().join("|");
+}
+
+// The CROSS-PRODUCT of two concept SETS as sorted pair keys — the drug-drug case where
+// each side is a set of equivalent concepts (an ingredient's RxCUI set + synonyms). All
+// sorted pairs across the two sets, de-duplicated, empties dropped. A query drug's
+// concept set matches the rule if any of its cross keys hits. Pure.
+export function pairKeysAcross(
+  setA: unknown[],
+  setB: unknown[],
+  normalizeOne: (raw: unknown) => string = foldName
+): string[] {
+  const out: string[] = [];
+  for (const a of setA) {
+    for (const b of setB) {
+      const k = sortedPairKey(a, b, normalizeOne);
+      if (k !== "" && !out.includes(k)) out.push(k);
+    }
+  }
+  return out;
+}
+
+// A strategy whose entry field is a 2-element `[a, b]` array identified by an unordered
+// sorted pair key. A query is likewise a 2-element array (either order). Non-pair /
+// short arrays refuse (empty expansion). For SET-vs-SET pairs use a custom strategy
+// over `pairKeysAcross`; this covers the scalar-member case.
+export function pairStrategy(
+  key: string,
+  normalizeOne: (raw: unknown) => string = foldName
+): MatchStrategy {
+  const many = (raw: unknown): string[] => {
+    if (!Array.isArray(raw) || raw.length < 2) return [];
+    const k = sortedPairKey(raw[0], raw[1], normalizeOne);
+    return k === "" ? [] : [k];
+  };
+  return {
+    key,
+    normalize: (raw) => many(raw)[0] ?? "",
+    normalizeMany: many,
+  };
+}
+
+// A strategy whose entry field is an ORDERED N-element array identified by one composite
+// key (`gene|allele`, `gene|drug`). A query is the same ordered array. Empty arrays or a
+// part that folds to "" refuse. Slot order is preserved (NOT sorted — unlike pairs).
+export function compositeStrategy(
+  key: string,
+  normalizeOne: (raw: unknown) => string = foldName
+): MatchStrategy {
+  const many = (raw: unknown): string[] => {
+    if (!Array.isArray(raw) || raw.length === 0) return [];
+    const k = compositeKey(raw, normalizeOne);
+    return k === "" ? [] : [k];
+  };
+  return {
+    key,
+    normalize: (raw) => many(raw)[0] ?? "",
+    normalizeMany: many,
   };
 }

@@ -49,16 +49,16 @@ stored as a single JSON file under `lib/datasets/data/`:
 
 ## The pieces (`lib/datasets/`)
 
-| File          | Role                                                                                                                                                                                                |
-| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `types.ts`    | `DatasetEnvelope` / `Citation` / `IdentityDescriptor` / `MatchStrategy` / `DatasetMatcher`, the `DATASET_SCHEMA` marker, `DatasetError`.                                                            |
-| `loader.ts`   | `loadDataset(raw)` — the ONE validator. Enforces the whole contract and throws `DatasetError` otherwise (missing citation, no identity key, an entry lacking its identity, …).                      |
-| `matcher.ts`  | `createMatcher(dataset, strategy)` + shipped strategies `nameStrategy` / `slugStrategy` / `fieldStrategy(key)`, plus `rxcuiStrategyStub` (the future seam). Builds a resolve-or-refuse index.       |
-| `harness.ts`  | Reusable assertions `citationPresent` / `identityResolves` / `refusalGate` / `runHarness`, returning `{ ok, problems }` so both per-dataset tests and the linter share one definition of "correct". |
-| `registry.ts` | `DATASETS` — the list of framework-migrated datasets (dataset + primary strategy).                                                                                                                  |
-| `index.ts`    | The public barrel — what a migration imports.                                                                                                                                                       |
-| `mets.ts`     | The proof dataset's per-dataset module — **the reference to copy** for the next migration.                                                                                                          |
-| `data/*.json` | The committed envelope JSONs.                                                                                                                                                                       |
+| File          | Role                                                                                                                                                                                                                                                                                                                                                                            |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `types.ts`    | `DatasetEnvelope` / `Citation` / `IdentityDescriptor` / `MatchStrategy` / `DatasetMatcher`, the `DATASET_SCHEMA` marker, `DatasetError`.                                                                                                                                                                                                                                        |
+| `loader.ts`   | `loadDataset(raw)` — the ONE validator. Enforces the whole contract and throws `DatasetError` otherwise (missing citation, no identity key, an entry lacking its identity, …).                                                                                                                                                                                                  |
+| `matcher.ts`  | `createMatcher(dataset, strategy)` + shipped strategies `nameStrategy` / `slugStrategy` / `fieldStrategy(key)`, plus the multi-value/composite factories `multiValueStrategy` / `pairStrategy` / `compositeStrategy` and the `sortedPairKey` / `compositeKey` / `pairKeysAcross` / `expand` builders (#860 wave 2), plus `rxcuiStrategyStub`. Builds a resolve-or-refuse index. |
+| `harness.ts`  | Reusable assertions `citationPresent` / `identityResolves` / `refusalGate` / `runHarness`, returning `{ ok, problems }` so both per-dataset tests and the linter share one definition of "correct".                                                                                                                                                                             |
+| `registry.ts` | `DATASETS` — the list of framework-migrated datasets (dataset + primary strategy).                                                                                                                                                                                                                                                                                              |
+| `index.ts`    | The public barrel — what a migration imports.                                                                                                                                                                                                                                                                                                                                   |
+| `mets.ts`     | The proof dataset's per-dataset module — **the reference to copy** for the next migration.                                                                                                                                                                                                                                                                                      |
+| `data/*.json` | The committed envelope JSONs.                                                                                                                                                                                                                                                                                                                                                   |
 
 ## The matcher + the refusal gate
 
@@ -68,12 +68,36 @@ normalized index once; `match(query)` returns the entry or **null**. That null i
 **refusal gate** — an absent subject yields no result, never a nearest-neighbour guess;
 a curated dataset must not fabricate an answer for a subject it doesn't cover.
 
-`name` and `slug` strategies ship today. **RxCUI** (drug-concept code) and **family**
-(identity-family collapse, the `biomarkerFamily()` pattern) are a documented **future
-seam**: a dataset that resolves by those supplies its own `MatchStrategy` — the matcher
-and harness consume it unchanged. `rxcuiStrategyStub` pins the seam's shape. A finite-
-preimage SQL realization (the #394 pattern), if such a dataset needs one, is that
-dataset's concern, not the framework's.
+`name` and `slug` strategies ship today. **Family** (identity-family collapse, the
+`biomarkerFamily()` pattern) stays a documented **future seam**: a dataset that resolves
+by it supplies its own `MatchStrategy` — the matcher and harness consume it unchanged.
+`rxcuiStrategyStub` pins the digit-fold shape. A finite-preimage SQL realization (the
+#394 pattern), if a dataset needs one, is that dataset's concern, not the framework's.
+
+### Multi-value + composite identity (#860 wave 2)
+
+Some subjects carry **more than one** identity key. A strategy expresses that with the
+optional `normalizeMany(raw): string[]` — the SET of keys a raw value expands to. When
+present it is authoritative: `createMatcher` indexes an entry under **every** key, and
+`match` resolves a query if **any** of its keys hits. `expand(strategy, raw)` is the one
+place that honours it (falling back to `[normalize(raw)]` otherwise), so single- and
+multi-value strategies share one path and the refusal gate is unchanged (an expansion
+with no non-empty key resolves to null). The reusable pieces:
+
+- **`multiValueStrategy(key, normalizeOne?)`** — one field holds several aliases (drug
+  synonyms + brand names, an RxCUI set). Pass a custom `normalizeOne` (e.g. the
+  `rxcuiStrategyStub` digit fold) when the members aren't plain names.
+- **`sortedPairKey(a, b)` / `pairStrategy(key)`** — an **unordered** pair identity
+  (drug-drug interactions are symmetric: `(a,b)` and `(b,a)` are the same rule).
+- **`compositeKey(parts)` / `compositeStrategy(key)`** — an **ordered** composite
+  (`gene|allele`, `gene|drug` — slot order matters, unlike a pair).
+- **`pairKeysAcross(setA, setB)`** — the sorted cross-product of two concept SETS, for
+  the drug-drug case where each side is a set of equivalent concepts (RxCUIs + synonyms).
+
+The harness gains **`noKeyCollisions`** (folded into `runHarness`): `identityResolves`
+catches a collision on an entry's first-hit key, but a shared alias/pair on a non-first
+key can still resolve each entry to itself while silently shadowing the other — this
+walks every expanded key and flags any two entries that produce the same one.
 
 ## The linter (`lib/__tests__/datasets-framework.test.ts`)
 
