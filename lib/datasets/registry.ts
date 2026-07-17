@@ -28,6 +28,7 @@ import {
   foodDrugKeyStrategy,
 } from "./food-drug-interactions";
 import { foodGroupsDataset } from "./food-groups";
+import { growthChartsDataset, growthChartNameStrategy } from "./growth-charts";
 import { icd10Dataset, icd10CodeStrategy } from "./icd10-common";
 import {
   illnessThresholdsDataset,
@@ -122,6 +123,13 @@ export const DATASETS: RegisteredDataset[] = [
       unknown
     >,
     strategy: slugStrategy,
+  },
+  {
+    dataset: growthChartsDataset as unknown as LoadedDataset<
+      Record<string, unknown>,
+      unknown
+    >,
+    strategy: growthChartNameStrategy,
   },
   {
     dataset: icd10Dataset as unknown as LoadedDataset<
