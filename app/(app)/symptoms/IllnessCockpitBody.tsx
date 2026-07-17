@@ -9,6 +9,7 @@ import {
   getCustomSymptomNames,
   getPrnMedicationsForQuickLog,
   getPediatricFormContext,
+  getEpisodeMedReconciliation,
   type PrnMedForQuickLog,
 } from "@/lib/queries";
 import { redoseWindowStatus } from "@/lib/prn-redose";
@@ -70,6 +71,14 @@ export default function IllnessCockpitBody({
       ? staleNudge
       : null;
 
+  // Episode-end medication reconciliation (issue #880): the episode-associated meds the
+  // "Feeling better" / stale-end checklist offers to close, shared with the episode page
+  // via the ONE gather.
+  const medReconciliation =
+    episode.id != null
+      ? getEpisodeMedReconciliation(profileId, episode.id)
+      : [];
+
   const prnMeds = getPrnMedicationsForQuickLog(profileId);
   const now = new Date();
   // The redose status line (#798) via the SHARED pure window math + formatter — the
@@ -129,6 +138,7 @@ export default function IllnessCockpitBody({
           profileId={target}
           lastActivityDate={showStaleNudge.lastActivityDate}
           quietDays={showStaleNudge.quietDays}
+          medReconciliation={medReconciliation}
         />
       )}
 
@@ -162,7 +172,11 @@ export default function IllnessCockpitBody({
 
       <div className="flex flex-wrap items-center gap-2">
         {episode.id != null && (
-          <CockpitEndEpisode episodeId={episode.id} profileId={target} />
+          <CockpitEndEpisode
+            episodeId={episode.id}
+            profileId={target}
+            meds={medReconciliation}
+          />
         )}
         {episode.id != null && (
           <Link

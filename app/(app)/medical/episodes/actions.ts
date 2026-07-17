@@ -24,7 +24,9 @@ import {
   unpromoteEpisodeConditionCore,
   endEpisodeCore,
   endEpisodeAsOfCore,
+  endEpisodeWithMedReconciliation,
 } from "@/lib/illness-episode-write";
+import { getEpisodeMedReconciliation } from "@/lib/queries";
 import { ackStaleNudge } from "@/lib/stale-episode-data";
 import {
   attachSymptomPhotoCore,
@@ -287,6 +289,60 @@ export async function endStaleEpisodeAction(
   revalidatePath("/medical/episodes/[id]", "page");
   revalidatePath("/");
   revalidatePath("/nutrition");
+  return { ok: true };
+}
+
+// Parse the selected medication ids the end-episode reconciliation checklist posts (a
+// comma-separated list). Non-numeric/empty entries are dropped.
+function parseMedItemIds(v: FormDataEntryValue | null): number[] {
+  return String(v ?? "")
+    .split(",")
+    .map((s) => Number(s.trim()))
+    .filter((n) => Number.isInteger(n) && n > 0);
+}
+
+// End an episode AND, in the SAME writeTx, close the courses of the selected episode-
+// associated meds (issue #880) — the reconciliation checklist's confirm. SUGGEST-ONLY
+// (#560): the checklist only lists DERIVED-associated meds, and this re-derives that set
+// server-side (getEpisodeMedReconciliation) and INTERSECTS the posted ids with it, so a
+// tampered id can never close an unrelated chronic med. `lastActiveDay` (present on the
+// stale-nudge #859 path) routes the backdated end; absent → the "feeling better" end.
+// Cross-profile gated like endEpisodeAction. Selected courses close with the new
+// `illness_resolved` reason. An empty selection just ends the episode.
+export async function endEpisodeWithMedsAction(
+  formData: FormData
+): Promise<EpisodeActionResult> {
+  const target = Number(formData.get("profileId"));
+  let profileId: number;
+  if (Number.isInteger(target) && target > 0) {
+    await requireProfileWriteAccess(target);
+    profileId = target;
+  } else {
+    profileId = (await requireWriteAccess()).profile.id;
+  }
+  const id = parseEpisodeId(formData);
+  if (!id) return { ok: false, error: "That episode is no longer available." };
+  const lastActiveDay = parseDateOrNull(formData.get("lastActiveDay"));
+  // Intersect the posted selection with the DERIVED associated set — the suggest-only
+  // safety line: only meds the reconciliation actually proposes can be closed here.
+  const allowed = new Set(
+    getEpisodeMedReconciliation(profileId, id).map((s) => s.itemId)
+  );
+  const toStop = parseMedItemIds(formData.get("medItemIds")).filter((x) =>
+    allowed.has(x)
+  );
+  const outcome = endEpisodeWithMedReconciliation(
+    profileId,
+    id,
+    toStop,
+    lastActiveDay
+  );
+  if (outcome.kind === "missing")
+    return { ok: false, error: "That episode is no longer available." };
+  revalidatePath("/medical/episodes/[id]", "page");
+  revalidatePath("/");
+  revalidatePath("/nutrition");
+  revalidatePath("/medications");
   return { ok: true };
 }
 

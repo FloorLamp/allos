@@ -4,27 +4,30 @@ import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { IconClockQuestion } from "@tabler/icons-react";
 import { useToast } from "@/components/Toast";
-import {
-  endStaleEpisodeAction,
-  dismissStaleNudgeAction,
-} from "@/app/(app)/medical/episodes/actions";
+import EndEpisodeReconcile from "@/components/illness/EndEpisodeReconcile";
+import type { EpisodeMedSuggestion } from "@/lib/episode-med-reconcile";
+import { dismissStaleNudgeAction } from "@/app/(app)/medical/episodes/actions";
 
 // The SUGGEST-ONLY stale-open-episode nudge (issue #859 item 1). Shown on the episode
 // page + hero cockpit when an open episode has gone quiet for N days. Offers a one-tap
 // BACKDATED end (as of the last activity day) or a "Keep open" dismissal — it NEVER
 // auto-closes (#560). Carries the episode id AND, for a household member's cockpit, the
-// target profileId so the actions gate on THAT profile (requireProfileWriteAccess). Both
-// buttons answer from the action's typed outcome — never an unconditional confirm.
+// target profileId so the actions gate on THAT profile (requireProfileWriteAccess). The
+// backdated end routes through the shared EndEpisodeReconcile (#880), so it too offers the
+// episode-end med checklist; "Keep open" answers from the action's typed outcome.
 export default function StaleEpisodeNudge({
   episodeId,
   profileId,
   lastActivityDate,
   quietDays,
+  medReconciliation = [],
 }: {
   episodeId: number;
   profileId?: number;
   lastActivityDate: string;
   quietDays: number;
+  // Episode-associated meds for the end-episode reconciliation checklist (issue #880).
+  medReconciliation?: EpisodeMedSuggestion[];
 }) {
   const [pending, start] = useTransition();
   const router = useRouter();
@@ -52,27 +55,16 @@ export default function StaleEpisodeNudge({
         </span>
       </p>
       <div className="mt-2 flex flex-wrap gap-2">
-        <button
-          type="button"
-          data-testid="stale-episode-end"
-          disabled={pending}
-          onClick={() =>
-            start(async () => {
-              const fd = withTarget(new FormData());
-              fd.set("lastActiveDay", lastActivityDate);
-              const res = await endStaleEpisodeAction(fd);
-              if (!res.ok) {
-                toast(res.error, { tone: "error" });
-                return;
-              }
-              toast(`Episode ended as of ${lastActivityDate}.`);
-              router.refresh();
-            })
-          }
-          className="badge cursor-pointer border border-amber-500/40 bg-white text-amber-700 hover:bg-amber-50 disabled:opacity-50 dark:bg-ink-900 dark:text-amber-300"
-        >
-          {pending ? "Ending…" : `End as of ${lastActivityDate}`}
-        </button>
+        <EndEpisodeReconcile
+          episodeId={episodeId}
+          profileId={profileId}
+          meds={medReconciliation}
+          lastActiveDay={lastActivityDate}
+          triggerLabel={`End as of ${lastActivityDate}`}
+          triggerTestId="stale-episode-end"
+          triggerClassName="badge cursor-pointer border border-amber-500/40 bg-white text-amber-700 hover:bg-amber-50 disabled:opacity-50 dark:bg-ink-900 dark:text-amber-300"
+          successMessage={`Episode ended as of ${lastActivityDate}.`}
+        />
         <button
           type="button"
           data-testid="stale-episode-dismiss"

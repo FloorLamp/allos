@@ -84,6 +84,12 @@ import {
   medBridgeDismissalKey,
   type TrackedMedLike,
 } from "@/lib/medication-record-match";
+import { getLastAdministrationDateByItem } from "@/lib/queries";
+import {
+  dormantPrnCandidates,
+  type DormantPrnInput,
+  type DormantPrnSuggestion,
+} from "@/lib/dormant-prn";
 
 // One imported prescription record with no matched tracked med, surfaced by the
 // "From your records" bridge as a suggest-only "Track this" (#560/#817).
@@ -148,6 +154,11 @@ export interface MedicationsData {
   // "dismissed (N)" disclosure with restore, so a mis-tap is recoverable while the
   // suggest-only contract holds. Empty when nothing's been dismissed.
   dismissedBridge: BridgeSuggestion[];
+  // Dormant-PRN sweep (issue #880 item 3): active PRN meds with no dose in 90+ days,
+  // offered as suggest-only "move to past" — the existing-backlog cleanup episode-end only
+  // catches going forward. `dismissedDormantPrn` mirrors the bridge's recoverable list.
+  dormantPrn: DormantPrnSuggestion[];
+  dismissedDormantPrn: DormantPrnSuggestion[];
   byId: Map<number, MedCardData>;
 }
 
@@ -413,6 +424,28 @@ export function loadMedicationsData(profileId: number): MedicationsData {
   // Dismissed suggestions surfaced (recoverable) in the #852 item 6 disclosure.
   const dismissedBridge = allBridge.filter(isDismissed);
 
+  // Dormant-PRN sweep (#880 item 3): active PRN meds with no dose in 90+ days. Anchored on
+  // the last 'taken' administration (or creation, if never dosed) via the ONE gather, then
+  // filtered by the same #203 bus dismissals (id-keyed) as the bridge.
+  const lastAdminByItem = getLastAdministrationDateByItem(profileId);
+  const dormantInputs: DormantPrnInput[] = supplements
+    .filter((s) => s.kind === "medication")
+    .map((s) => ({
+      itemId: s.id,
+      name: s.name,
+      asNeeded: s.as_needed === 1,
+      active: !!s.active,
+      lastAdministration: lastAdminByItem.get(s.id) ?? null,
+      createdOn: s.created_at.slice(0, 10),
+    }));
+  const allDormant = dormantPrnCandidates(dormantInputs, todayStr);
+  const isDormantDismissed = (d: DormantPrnSuggestion) => {
+    const rec = suppressions.get(d.dedupeKey);
+    return !!(rec && isSuppressed(rec, todayStr));
+  };
+  const dormantPrn = allDormant.filter((d) => !isDormantDismissed(d));
+  const dismissedDormantPrn = allDormant.filter(isDormantDismissed);
+
   return {
     todayStr,
     tz,
@@ -433,6 +466,8 @@ export function loadMedicationsData(profileId: number): MedicationsData {
     prnToday,
     bridge,
     dismissedBridge,
+    dormantPrn,
+    dismissedDormantPrn,
     byId,
   };
 }

@@ -17,6 +17,7 @@ import {
   getSymptomLogOrder,
   getCustomSymptomNames,
   getPrnMedicationsForQuickLog,
+  getEpisodeMedReconciliation,
 } from "@/lib/queries";
 import { getTimezone, getUnitPrefs } from "@/lib/settings";
 import QuickLogPrnWidget from "@/components/dashboard/QuickLogPrnWidget";
@@ -142,6 +143,15 @@ export default async function EpisodePage(props: {
       ? getPrnMedicationsForQuickLog(profileId)
       : [];
 
+  // Episode-end medication reconciliation (issue #880): the episode-associated meds the
+  // "Feeling better" / stale-end checklist offers to close. Only for an open episode a
+  // writer can end. The SAME gather the confirm action re-derives to validate the
+  // selection server-side (one computation).
+  const medReconciliation =
+    assembled.ongoing && canWrite
+      ? getEpisodeMedReconciliation(profileId, episodeId)
+      : [];
+
   // The logging bar anchors to today for an open episode; for a closed one it anchors to
   // the last active day, or a ?logDay= inside the range (backfill mode — item 11).
   const rangeStart = assembled.firstDay;
@@ -171,6 +181,7 @@ export default async function EpisodePage(props: {
           promoted={promoted}
           canWrite={canWrite}
           profileId={target}
+          medReconciliation={medReconciliation}
         />
       </div>
       <EpisodeSummary
@@ -194,6 +205,7 @@ export default async function EpisodePage(props: {
           profileId={target}
           lastActivityDate={showStaleNudge.lastActivityDate}
           quietDays={showStaleNudge.quietDays}
+          medReconciliation={medReconciliation}
         />
       )}
       {comparison && <EpisodeComparison comparison={comparison} />}
