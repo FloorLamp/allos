@@ -861,6 +861,44 @@ describe("isDurableImmunePositive + isBiomarkerStale (#516)", () => {
   it("without the immunity context, behavior is unchanged", () => {
     expect(isBiomarkerStale("2021-01-01", "lab", "2024-01-01", 365)).toBe(true);
   });
+
+  // #910 §2 — the retest-nudge half. A blood type can never change, so it must
+  // never go stale; but the exemption is driven by the classifier's `immutable`,
+  // which the name regex can't reach for "ABORh Interpretation". Threading the
+  // LOINC through the immunity context is what restores it.
+  it("an ABO+Rh blood type is never stale once its LOINC is carried (#910)", () => {
+    const row = { name: "ABORh Interpretation", value: "A POSITIVE" };
+    // Name alone: no verdict, no exemption — nudged "retest overdue" every year
+    // for a value that cannot change. The bug.
+    expect(isBiomarkerStale("2021-01-01", "lab", "2024-01-01", 365, row)).toBe(
+      true
+    );
+    // With the LOINC: recognized as an immutable identity attribute → never stale.
+    expect(
+      isBiomarkerStale("2021-01-01", "lab", "2024-01-01", 365, {
+        ...row,
+        loinc: "19057-9",
+      })
+    ).toBe(false);
+    // A recognized NAME already worked and still does (no regression).
+    expect(
+      isBiomarkerStale("2021-01-01", "lab", "2024-01-01", 365, {
+        name: "ABO Blood Group",
+        value: "A",
+      })
+    ).toBe(false);
+  });
+
+  it("a LOINC-less mutable analyte is unaffected by the new hint", () => {
+    // Guards the threading: an ordinary lab with no LOINC keeps its clock.
+    expect(
+      isBiomarkerStale("2021-01-01", "lab", "2024-01-01", 365, {
+        name: "Sodium",
+        value: "140",
+        loinc: null,
+      })
+    ).toBe(true);
+  });
 });
 
 describe("biomarkerAxisDomain", () => {
@@ -1157,6 +1195,34 @@ describe("classifyQualitativeResult — LOINC-hinted class (#684)", () => {
       qc: true,
     });
   });
+
+  // #910: Epic reports the blood type as ONE combined "ABORh Interpretation" row.
+  // The name path's IMMUTABLE_ATTRIBUTE regex keys on `\babo\b`, which does NOT
+  // match "ABORh" (no word boundary), so a recorded blood type got no verdict at
+  // all — the extractor's guessed "abnormal" stood and it missed the never-stale
+  // exemption. The LOINC settles it regardless of the source's spelling.
+  it("treats an ABO+Rh group as an immutable identity attribute by LOINC (#910)", () => {
+    // Name alone: the regex misses it entirely — this is the gap.
+    expect(
+      classifyQualitativeResult("ABORh Interpretation", "A POSITIVE")
+    ).toBeNull();
+    // With the LOINC it lands on the SAME verdict the name path gives "Blood Type".
+    expect(
+      classifyQualitativeResult(
+        "ABORh Interpretation",
+        "A POSITIVE",
+        null,
+        null,
+        "19057-9"
+      )
+    ).toEqual({ presence: "positive", polarity: "neutral", immutable: true });
+    // …which is exactly what the recognized name resolves to.
+    expect(classifyQualitativeResult("Blood Type", "A POSITIVE")).toEqual({
+      presence: "positive",
+      polarity: "neutral",
+      immutable: true,
+    });
+  });
 });
 
 describe("classifyQualitativeResult — screening/risk class (#687)", () => {
@@ -1299,6 +1365,44 @@ describe("qualitativeFlagResolution — LOINC hint (#684)", () => {
         "25514-1"
       )
     ).toBe("immune");
+  });
+
+  // #910 §1 — the mis-flag half. "A POSITIVE" contains "POSITIVE", so the
+  // extractor stamps a blood type "abnormal" and it reaches the attention hero and
+  // the Telegram push. The name regex can't see "ABORh", so nothing cleared it.
+  it("clears the blunt 'abnormal' the extractor stamped on a blood type (#910)", () => {
+    // Without the LOINC: no verdict, so the wrong flag stands — the bug.
+    expect(
+      qualitativeFlagResolution(
+        "ABORh Interpretation",
+        "A POSITIVE",
+        null,
+        null,
+        "abnormal"
+      )
+    ).toBeUndefined();
+    // With it: neutral polarity clears the out-of-range flag to normal.
+    expect(
+      qualitativeFlagResolution(
+        "ABORh Interpretation",
+        "A POSITIVE",
+        null,
+        null,
+        "abnormal",
+        "19057-9"
+      )
+    ).toBeNull();
+    // An already-neutral flag is left alone (never churn a correct row).
+    expect(
+      qualitativeFlagResolution(
+        "ABORh Interpretation",
+        "A POSITIVE",
+        null,
+        null,
+        null,
+        "19057-9"
+      )
+    ).toBeUndefined();
   });
 });
 

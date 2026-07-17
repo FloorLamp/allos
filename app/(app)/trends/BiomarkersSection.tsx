@@ -183,6 +183,7 @@ export default async function BiomarkersSection({
                       value: r.value,
                       notes: r.notes,
                       reference: r.reference_range,
+                      loinc: r.loinc,
                     });
                   const ageDays = daysBetween(r.date, now);
                   const relative =

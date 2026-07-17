@@ -880,6 +880,11 @@ export interface ImmunityResult {
   value?: string | null;
   notes?: string | null;
   reference?: string | null;
+  // The reading's stored LOINC, when known — lets the staleness check reach the
+  // classifier's deterministic class hint instead of only its name regexes (#910).
+  // Without it an immutable attribute whose name the regex misses (Epic's "ABORh
+  // Interpretation") keeps getting retest-nudged for a value that cannot change.
+  loinc?: string | null;
 }
 
 // Qualitative result vocabulary. A negative/equivocal titer legitimately warrants
@@ -1123,6 +1128,14 @@ export function classifyQualitativeResult(
         immutable: false,
         qc: true,
       };
+    case "identity":
+      // An immutable identity attribute — a blood type / genotype. Same verdict the
+      // name path gives "Blood Type"/"ABO Blood Group" (#548), but resolved from the
+      // LOINC so a source that spells it "ABORh Interpretation" — which the
+      // `\babo\b` regex can't match — is judged identically (#910): never abnormal,
+      // never stale. The presence is carried through only for display; polarity is
+      // what stops the flag.
+      return { presence, polarity: "neutral", immutable: true };
     default:
       break; // unknown LOINC → name-based resolution below
   }
@@ -1245,7 +1258,10 @@ export function isBiomarkerStale(
       immunity.name,
       immunity.value,
       immunity.notes,
-      immunity.reference
+      immunity.reference,
+      // The LOINC hint, so the exemption below survives a name the regexes miss
+      // (#910). Callers that don't carry one fall back to name-based recognition.
+      immunity.loinc
     );
     if (c?.immutable) return false; // immutable attribute — never stale (#548 §2)
     if (c?.qc) return false; // QC metric (fetal fraction) — never nudged (#687)

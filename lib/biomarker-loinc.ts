@@ -347,10 +347,15 @@ export function isNonAnalyteLoinc(loinc: string | null | undefined): boolean {
 //                  high-risk screen flags like an infection-positive.
 //   • qc         — a run-quality metric (fetal fraction), NOT a health signal (#687):
 //                  never flags, never ranges, never nudges.
-// Codes are drawn from real Epic exports (the three patient XDM packages). Only
-// classes whose polarity is unambiguous are listed; immutable attributes (blood
-// type, genotype) stay name-regex driven where that already works.
-export type QualitativeLoincClass = "infection" | "immunity" | "screen" | "qc";
+//   • identity   — an IMMUTABLE identity attribute (blood type, genotype): never
+//                  abnormal, never stale. Named for the immutability on purpose —
+//                  it drives the retest exemption, so a MUTABLE neutral attribute
+//                  (urinalysis colour, morphology pattern) must NOT be listed here
+//                  or it would silently stop going stale.
+// Codes are drawn from real Epic exports (the patient XDM packages). Only classes
+// whose polarity is unambiguous are listed.
+export type QualitativeLoincClass =
+  "infection" | "immunity" | "screen" | "qc" | "identity";
 
 const QUALITATIVE_CLASS_BY_LOINC: Record<string, QualitativeLoincClass> = {
   // Infection / active-disease markers (positive = bad).
@@ -390,6 +395,14 @@ const QUALITATIVE_CLASS_BY_LOINC: Record<string, QualitativeLoincClass> = {
   "75983-7": "screen", // Trisomy 21 (Down)
   // Fetal fraction is a QC metric of the NIPT draw, not a risk call (#687).
   "75605-6": "qc", // Fetal fraction of cell-free DNA
+  // Immutable identity attributes (#910). Epic reports the blood type as ONE
+  // combined "ABORh Interpretation" row, and the name path's IMMUTABLE_ATTRIBUTE
+  // regex keys on `\babo\b` — which does NOT match "ABORh" (no word boundary), so a
+  // recorded blood type got no verdict at all: the extractor's guessed "abnormal"
+  // stood (a blood type on the attention hero / Telegram push) and it missed the
+  // never-stale exemption ("retest overdue" nudged yearly for a value that cannot
+  // change). The LOINC settles it regardless of how the source spells the name.
+  "19057-9": "identity", // ABO+Rh group ("ABORh Interpretation")
 };
 
 // The qualitative class for a LOINC, or null when unknown (→ name-regex fallback).

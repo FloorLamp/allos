@@ -136,6 +136,12 @@ describe("canonicalBiomarkerForLoinc — CBC + CMP lab mappings", () => {
       expect(qualitativeClassForLoinc(code)).toBe("infection");
   });
 
+  // #910: the ABO+Rh group — Epic's "ABORh Interpretation" — is an immutable
+  // identity attribute the name regexes miss (no word boundary in "ABORh").
+  it("classifies the ABO+Rh blood group as an immutable identity attribute", () => {
+    expect(qualitativeClassForLoinc("19057-9")).toBe("identity");
+  });
+
   // #687: the NIPT trisomy screens carry the low/high-risk axis; fetal fraction is
   // a QC metric split OUT of the screen class into its own `qc` class.
   it("classifies NIPT trisomy screens as screen and fetal fraction as qc", () => {
