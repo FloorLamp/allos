@@ -99,7 +99,10 @@ describe("followup core — care-tier persistence contract", () => {
 
   it("an OVERDUE follow-up RESISTS an indefinite dismiss", () => {
     expect(overduePolicy).toBe("snooze-only");
-    const dismissed = { snooze_until: null, dismissed_at: "2026-07-01T00:00:00Z" };
+    const dismissed = {
+      snooze_until: null,
+      dismissed_at: "2026-07-01T00:00:00Z",
+    };
     // The blanket dismiss must NOT hide the overdue safety follow-up.
     expect(isFollowUpHidden(overduePolicy, dismissed, TODAY)).toBe(false);
   });
@@ -116,12 +119,18 @@ describe("followup core — care-tier persistence contract", () => {
     const upcoming = followUpSuppressionPolicy(
       followUpState("2026-09-01", TODAY, false)
     );
-    const dismissed = { snooze_until: null, dismissed_at: "2026-07-01T00:00:00Z" };
+    const dismissed = {
+      snooze_until: null,
+      dismissed_at: "2026-07-01T00:00:00Z",
+    };
     expect(isFollowUpHidden(upcoming, dismissed, TODAY)).toBe(true);
   });
 
   it("the shared item dispatcher enforces the same contract via carePersistent", () => {
-    const dismissed = { snooze_until: null, dismissed_at: "2026-07-01T00:00:00Z" };
+    const dismissed = {
+      snooze_until: null,
+      dismissed_at: "2026-07-01T00:00:00Z",
+    };
     // carePersistent item resists the dismiss…
     expect(
       isItemHiddenBySuppression({ carePersistent: true }, dismissed, TODAY)
@@ -169,7 +178,9 @@ describe("imaging adapter", () => {
       "Follow-up CT"
     );
     expect(
-      imagingFollowUpTitle(study({ id: 1, modality: "ct", body_region: "Chest" }))
+      imagingFollowUpTitle(
+        study({ id: 1, modality: "ct", body_region: "Chest" })
+      )
     ).toBe("Follow-up CT chest");
   });
 
@@ -219,9 +230,9 @@ describe("imaging adapter", () => {
     const source = study({ id: 1, modality: "ct", study_date: "2026-01-01" });
     const a = study({ id: 2, modality: "ct", study_date: "2026-06-01" });
     const b = study({ id: 3, modality: "ct", study_date: "2027-06-01" });
-    expect(findResolvingImagingStudy(source, followUp, [source, a, b])?.id).toBe(
-      3
-    );
+    expect(
+      findResolvingImagingStudy(source, followUp, [source, a, b])?.id
+    ).toBe(3);
   });
 
   it("imagingResolvingLabel is compact and dated", () => {

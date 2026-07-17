@@ -75,7 +75,11 @@ export function findResolvingImagingStudy(
     if (c.id === source.id) continue;
     if (!c.study_date || c.study_date <= source.study_date) continue;
     if (!sameImagingKind(source, c)) continue;
-    if (!best || c.study_date > best.study_date! || (c.study_date === best.study_date! && c.id > best.id))
+    if (
+      !best ||
+      c.study_date > best.study_date! ||
+      (c.study_date === best.study_date! && c.id > best.id)
+    )
       best = c;
   }
   return best;
@@ -90,7 +94,10 @@ export function imagingResolvingLabel(study: ImagingStudy): string {
 
 // The imaging adapter instance the builder consumes. One object satisfying the
 // generic FollowUpAdapter<Source, Candidate> contract — the seam a new domain copies.
-export const imagingFollowUpAdapter: FollowUpAdapter<ImagingStudy, ImagingStudy> = {
+export const imagingFollowUpAdapter: FollowUpAdapter<
+  ImagingStudy,
+  ImagingStudy
+> = {
   kind: IMAGING_FOLLOWUP_KIND,
   describeSource: imagingSourceLabel,
   followUpTitle: imagingFollowUpTitle,

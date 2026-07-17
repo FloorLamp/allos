@@ -37,9 +37,7 @@ const RESOLUTIONS: readonly FollowUpResolution[] = [
 // Coerce a submitted/stored value onto the closed resolution set, or null when it
 // isn't one — validated in code (like the imaging modality/laterality enums), so a
 // tampered form or an off-vocabulary stored value can never assert a bad outcome.
-export function normalizeResolution(
-  raw: unknown
-): FollowUpResolution | null {
+export function normalizeResolution(raw: unknown): FollowUpResolution | null {
   const v = String(raw ?? "")
     .trim()
     .toLowerCase();

@@ -25,7 +25,11 @@ export default function FollowUpResolveControls({
       className="flex shrink-0 items-center gap-1"
     >
       <input type="hidden" name="care_plan_item_id" value={carePlanItemId} />
-      <input type="hidden" name="resolving_study_id" value={resolvingRecordId} />
+      <input
+        type="hidden"
+        name="resolving_study_id"
+        value={resolvingRecordId}
+      />
       {(
         [
           ["resolved", "Resolved"],

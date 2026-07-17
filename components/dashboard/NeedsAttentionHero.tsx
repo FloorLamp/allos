@@ -141,14 +141,16 @@ function Row({
             </SubmitButton>
           </form>
         )}
-        {item.doseId == null && item.followUpResolve == null && item.actionLabel && (
-          <Link
-            href={item.href}
-            className="shrink-0 rounded-lg border border-black/10 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"
-          >
-            {item.actionLabel}
-          </Link>
-        )}
+        {item.doseId == null &&
+          item.followUpResolve == null &&
+          item.actionLabel && (
+            <Link
+              href={item.href}
+              className="shrink-0 rounded-lg border border-black/10 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"
+            >
+              {item.actionLabel}
+            </Link>
+          )}
         {/* Finding follow-up resolution offer (issue #700): confirm-first outcome
         buttons, identical to the Upcoming page's. */}
         {item.followUpResolve != null && (

@@ -79,7 +79,9 @@ describe("followUpItems builder (#700)", () => {
     expect(items).toHaveLength(1);
     const it = items[0];
     expect(it.domain).toBe("followup");
-    expect(it.key).toBe(`${FOLLOWUP_PREFIX}${(res as { carePlanItemId: number }).carePlanItemId}`);
+    expect(it.key).toBe(
+      `${FOLLOWUP_PREFIX}${(res as { carePlanItemId: number }).carePlanItemId}`
+    );
     expect(dedupeKeyHasKnownPrefix(it.key)).toBe(true);
     expect(it.title).toBe("Follow-up CT chest");
     // The #656 reason carries the WHY, naming the source finding.
@@ -91,9 +93,7 @@ describe("followUpItems builder (#700)", () => {
     expect(it.followUpResolve).toBeUndefined();
 
     // It rides collectUpcoming (reaches Upcoming/hero).
-    expect(
-      collectUpcoming(p, now).some((u) => u.key === it.key)
-    ).toBe(true);
+    expect(collectUpcoming(p, now).some((u) => u.key === it.key)).toBe(true);
   });
 
   it("idempotent per source study — a second track returns the existing one", () => {

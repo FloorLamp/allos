@@ -7,7 +7,10 @@
 
 import { db, writeTx } from "./db";
 import { shiftDateStr } from "./date";
-import { imagingFollowUpTitle, IMAGING_FOLLOWUP_KIND } from "./followup-imaging";
+import {
+  imagingFollowUpTitle,
+  IMAGING_FOLLOWUP_KIND,
+} from "./followup-imaging";
 import { normalizeResolution } from "./followup";
 import type { ImagingStudy } from "./types";
 
@@ -51,9 +54,9 @@ export function trackImagingFollowUpCore(
             AND source_imaging_study_id = ? AND resolution IS NULL`
       )
       .get(profileId, IMAGING_FOLLOWUP_KIND, imagingStudyId) as
-      | { id: number }
-      | undefined;
-    if (existing) return { kind: "exists" as const, carePlanItemId: existing.id };
+      { id: number } | undefined;
+    if (existing)
+      return { kind: "exists" as const, carePlanItemId: existing.id };
 
     const interval =
       Number.isFinite(intervalDays) && intervalDays > 0

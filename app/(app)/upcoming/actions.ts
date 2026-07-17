@@ -97,9 +97,7 @@ export async function overridePreventive(
 // and the resolving study under profile_id, so a tampered id can't resolve another
 // profile's row. A resolving_study_id of 0/empty records the outcome without pinning
 // a study.
-export async function resolveFollowUp(
-  formData: FormData
-): Promise<FormResult> {
+export async function resolveFollowUp(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const carePlanItemId = Number(formData.get("care_plan_item_id"));
   const resolution = String(formData.get("resolution") ?? "");

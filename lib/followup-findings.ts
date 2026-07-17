@@ -46,7 +46,10 @@ const FOLLOWUP_HREF: AppRoute = "/imaging";
 // UpcomingItem per follow-up in its current state (resolvable > overdue > upcoming).
 // Not suppression-filtered here — the shared filter (collectUpcoming) applies the
 // care-tier persistence policy via the item's carePersistent flag.
-export function followUpItems(profileId: number, today: string): UpcomingItem[] {
+export function followUpItems(
+  profileId: number,
+  today: string
+): UpcomingItem[] {
   const carePlan = getCarePlanItems(profileId);
   const linked = carePlan.filter(
     (c) =>

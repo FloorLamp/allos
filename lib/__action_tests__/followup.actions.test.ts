@@ -16,13 +16,7 @@ import {
   deleteImagingStudy,
 } from "@/app/(app)/imaging/actions";
 import { resolveFollowUp } from "@/app/(app)/upcoming/actions";
-import {
-  seedActor,
-  createLogin,
-  createProfile,
-  actAs,
-  fd,
-} from "./harness";
+import { seedActor, createLogin, createProfile, actAs, fd } from "./harness";
 
 const revalidate = vi.mocked(revalidatePath);
 beforeEach(() => revalidate.mockClear());
