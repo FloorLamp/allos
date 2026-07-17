@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import Database from "better-sqlite3";
+import { followLink } from "./helpers";
 
 // Provider registry pages + duplicate merge (issue #275). The seed plants two
 // near-duplicate rows for the same clinician — "Dr. Anita Patel" (NPI) and the
@@ -59,11 +60,10 @@ test.describe("Providers registry", () => {
     page,
   }) => {
     await page.goto("/providers");
-    // ProvidersIndex is a client component (search + type filter); wait for the
-    // network to settle so it has hydrated before we click a row's <Link> —
-    // clicking pre-hydration swallows the client navigation (the URL never
-    // changes), which flaked the detail-link click below.
-    await page.waitForLoadState("networkidle");
+    // ProvidersIndex is a client component (search + type filter). Clicking a
+    // row's <Link> pre-hydration swallows the client navigation (the URL never
+    // changes) — handled below by followLink, which retries the click until the
+    // router commits (the blessed replacement for the old networkidle gate).
     const list = page.getByTestId("provider-list");
     await expect(list).toBeVisible();
     await expect(
@@ -90,8 +90,7 @@ test.describe("Providers registry", () => {
     // Link handler and left the page on /providers (flaky nav).
     const questRow = list.getByRole("link", { name: /Quest Diagnostics/ });
     await expect(questRow).toHaveCount(1);
-    await questRow.click();
-    await expect(page).toHaveURL(/\/providers\/\d+$/);
+    await followLink(page, questRow, /\/providers\/\d+$/);
     await expect(page.getByTestId("provider-detail")).toBeVisible();
   });
 

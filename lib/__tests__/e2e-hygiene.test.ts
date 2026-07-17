@@ -54,7 +54,6 @@ const WAITFORTIMEOUT_RE = /\.waitForTimeout\(/g;
 // e2e/helpers.ts and LOWER its number here in the same PR; a fully-migrated file
 // drops out entirely. New files must not appear.
 const NETWORKIDLE_ALLOW: Record<string, number> = {
-  "providers.spec.ts": 1,
   // symptom-helpers.ts's `idleSettle` is the #861 surface-PARAMETERIZED settle:
   // the dashboard mount of the SymptomLogBar drains its optimistic POST + trailing
   // router.refresh() via networkidle before a dependent reload, while the episode
@@ -69,10 +68,23 @@ const NETWORKIDLE_ALLOW: Record<string, number> = {
 };
 
 const WAITFORTIMEOUT_ALLOW: Record<string, number> = {
-  // Both prove the ABSENCE of an effect (no autosave/edit-lock fires within the
-  // 700ms window; a toast auto-dismisses after its lifetime) — a legitimate use
-  // a settledClick/expect cannot express. Kept, but frozen so no NEW sleep hides
-  // among them.
+  // IRREDUCIBLE bounded absence-of-effect proofs — the ONE sanctioned waitForTimeout
+  // (docs/internals/e2e-hygiene.md, "Bounded absence-of-effect wait"). Each probes a
+  // KNOWN product time window and asserts that within it NOTHING happened; there is
+  // no positive event to await instead, because the thing being proven is the
+  // NON-occurrence of a timer-driven effect.
+  //   • journal-provenance (2): opening an imported/manual activity row must NOT
+  //     auto-fill calories, dirty the form, and trip the 700ms autosave/edit-lock.
+  //     The wait lets a REGRESSED build's autosave fire before we assert not-"edited";
+  //     close too early and a real bug passes green. No awaitable event substitutes
+  //     for "the 700ms debounce elapsed with no POST."
+  //   • profile-switch-toasts (3): after a profile switch, the ExtractionToaster/
+  //     ImportJobsToaster must NOT replay the new profile's terminal history as ghost
+  //     toasts. The wait spans the toasters' 6s idle poll cadence (+margin) so a
+  //     regressed build WOULD have toasted. The poll is a Server Action POST (posts to
+  //     the current route, indistinguishable from any other POST), so a waitForResponse
+  //     gate can't reliably pick out "the toaster polled" — matching a generic POST
+  //     would reintroduce the very race the wait rules out. Frozen at the poll cadence.
   "journal-provenance.spec.ts": 2,
   "profile-switch-toasts.spec.ts": 3,
 };

@@ -53,8 +53,37 @@ mechanically-detectable settle anti-patterns per file and fails a NEW one:
 
 - `waitForLoadState("networkidle")` — replace with `e2e/helpers.ts`.
 - `waitForTimeout(...)` — replace with `settledClick`/`followLink` or a real
-  auto-retrying `expect`. (The one legitimate use — proving the ABSENCE of an
-  effect, e.g. "no autosave fired within the 700ms window" — stays, allowlisted.)
+  auto-retrying `expect`. (The one legitimate use — the **bounded
+  absence-of-effect wait** below — stays, allowlisted.)
+
+#### The bounded absence-of-effect wait (the one sanctioned `waitForTimeout`)
+
+A `waitForTimeout` is legitimate **only** to prove that within a KNOWN product time
+window NOTHING happened — the non-occurrence of a timer-driven effect, which has no
+positive event to await in its place. The two frozen cases:
+
+- **Debounce-window proof** (`journal-provenance.spec.ts`, ×2): opening an activity
+  row must NOT auto-fill calories, dirty the form, and trip the 700ms autosave.
+  Waiting ~900ms lets a REGRESSED build's autosave fire before we assert
+  not-`edited`; closing earlier lets a real bug pass green. Nothing to await —
+  "the debounce elapsed with no POST" is exactly the absence being proven.
+- **Poll-cadence proof** (`profile-switch-toasts.spec.ts`, ×3): after a profile
+  switch, the doc/import toasters must NOT replay the new profile's terminal history
+  as ghost toasts. Waiting past the 6s idle poll cadence lets a regressed build
+  toast. The poll is a Server Action POST to the current route (indistinguishable
+  from any other POST), so a `waitForResponse` gate can't reliably pick out "the
+  toaster polled" — matching a generic POST would reintroduce the very race the wait
+  rules out.
+
+**The distinction from the banned use:** a settle `waitForTimeout` waits for a
+POSITIVE effect to LAND (an interaction took hold) — replace it with `settledClick`
+/ `followLink` / a retrying `expect`, which await the effect itself. An
+absence-of-effect `waitForTimeout` waits for a window to PASS with nothing in it —
+there is no effect to await, so the bounded wait is the honest expression. Prefer,
+where possible, the **positive-action-then-negative-assert** form (perform an
+awaited action guaranteed to land AFTER the window, then assert the absence) — but
+when no such action exists (both cases above), the bounded wait stays, frozen at
+the product window it probes.
 
 The allowlist is per-file COUNTS (not line numbers), so it survives ordinary
 edits, and it is **immutable-downward**: reducing a file's count below its frozen
