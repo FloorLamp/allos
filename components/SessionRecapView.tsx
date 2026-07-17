@@ -71,7 +71,7 @@ export default function SessionRecapView({
                 </span>
                 {(ex.e1rmPR || ex.weightPR) && (
                   <span
-                    className="inline-flex items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[11px] font-semibold text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+                    className="inline-flex items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
                     title="Personal record this session"
                     data-testid="recap-pr"
                   >

@@ -11,7 +11,12 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { db, today } from "@/lib/db";
-import { setProfileHomeAssistant, getProfileSetting } from "@/lib/settings";
+import {
+  setProfileHomeAssistant,
+  getProfileSetting,
+  getNotifySchedule,
+  setNotifySchedule,
+} from "@/lib/settings";
 import { utcSqlString } from "@/lib/date";
 import {
   runPostWorkoutFinish,
@@ -183,5 +188,102 @@ describe("runPostWorkoutFinish orchestrator", () => {
     expect(
       getProfileSetting(p, postWorkoutFinishMarkerKey(activityId))
     ).toBeUndefined();
+  });
+});
+
+// The recap-led composition (#924): the finish nudge OPENS with the session recap
+// line, then the due post-workout supplement section. The recap line is gated by
+// the per-profile workout-recap toggle; either alone still sends.
+function addWorkingSets(activityId: number, exercise: string): void {
+  db.prepare(
+    `INSERT INTO exercise_sets (activity_id, exercise, set_number, weight_kg, reps, target_reps)
+       VALUES (?, ?, 1, 60, 5, 5), (?, ?, 2, 60, 5, 5)`
+  ).run(activityId, exercise, activityId, exercise);
+}
+
+// Parse the JSON body POSTed to the (fake) HA webhook.
+function lastPayload(fetchMock: ReturnType<typeof vi.fn>): {
+  title: string;
+  body: string;
+  kind: string;
+} {
+  const init = fetchMock.mock.calls[fetchMock.mock.calls.length - 1][1] as {
+    body: string;
+  };
+  return JSON.parse(init.body);
+}
+
+describe("recap-led finish nudge composition (#924)", () => {
+  it("leads the dose nudge with the recap line when the toggle is on", async () => {
+    const p = newProfile("RecapLead");
+    seedPostWorkoutSupp(p);
+    const date = today(p);
+    const activityId = seedManualFinished(p, date, 20);
+    addWorkingSets(activityId, "Bench Press");
+    configureHA(p);
+    const fetchMock = stubFetch();
+
+    const r = await runPostWorkoutFinish(p, NOW);
+    expect(r.failed).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const payload = lastPayload(fetchMock);
+    // Recap line leads; the dose section (Creatine) follows.
+    expect(payload.body.startsWith("Push day done")).toBe(true);
+    expect(payload.body).toContain("Creatine (test)");
+    expect(payload.body).toContain("2 sets");
+    // Combined message keeps the SAFETY-tier dose kind.
+    expect(payload.kind).toBe("dose");
+  });
+
+  it("strips the recap line when the workout-recap toggle is off — dose section only", async () => {
+    const p = newProfile("RecapOff");
+    seedPostWorkoutSupp(p);
+    const date = today(p);
+    const activityId = seedManualFinished(p, date, 20);
+    addWorkingSets(activityId, "Bench Press");
+    setNotifySchedule(p, {
+      ...getNotifySchedule(p),
+      workoutRecapEnabled: false,
+    });
+    configureHA(p);
+    const fetchMock = stubFetch();
+
+    await runPostWorkoutFinish(p, NOW);
+    const payload = lastPayload(fetchMock);
+    expect(payload.body.startsWith("Push day done")).toBe(false);
+    expect(payload.body).toContain("Creatine (test)");
+  });
+
+  it("sends a recap-only nudge (no pending doses) as a workout-recap message", async () => {
+    const p = newProfile("RecapOnly");
+    // No post_workout supplement at all → no dose section.
+    const date = today(p);
+    const activityId = seedManualFinished(p, date, 20);
+    addWorkingSets(activityId, "Bench Press");
+    configureHA(p);
+    const fetchMock = stubFetch();
+
+    const r = await runPostWorkoutFinish(p, NOW);
+    expect(r.failed).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const payload = lastPayload(fetchMock);
+    expect(payload.kind).toBe("workout-recap");
+    expect(payload.body.startsWith("Push day done")).toBe(true);
+    // Burns the one-shot (a recap-only finish still fires once).
+    expect(getProfileSetting(p, postWorkoutFinishMarkerKey(activityId))).toBe(
+      date
+    );
+  });
+
+  it("sends nothing when a pure-cardio-style finish has no working sets and no doses", async () => {
+    const p = newProfile("RecapNoWork");
+    const date = today(p);
+    seedManualFinished(p, date, 20); // no exercise sets, no supplement
+    configureHA(p);
+    const fetchMock = stubFetch();
+
+    const r = await runPostWorkoutFinish(p, NOW);
+    expect(r.failed).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
