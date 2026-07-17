@@ -32,6 +32,7 @@ export default function EpisodeLogPanel({
   temperatureUnit,
   rangeStart,
   rangeEnd,
+  profileId,
 }: {
   episodeId: number;
   ongoing: boolean;
@@ -48,6 +49,10 @@ export default function EpisodeLogPanel({
   temperatureUnit?: TemperatureUnit;
   rangeStart: string | null;
   rangeEnd: string | null;
+  // The cross-profile write target (issue #879) — passed straight to SymptomLogBar so a
+  // caregiver logs a household member's symptoms/temperature from THEIR episode page
+  // without switching. Absent on the acting profile's own page.
+  profileId?: number;
 }) {
   const router = useRouter();
 
@@ -88,6 +93,7 @@ export default function EpisodeLogPanel({
         suggestActivateIllness={false}
         showTemperature
         temperatureUnit={temperatureUnit}
+        profileId={profileId}
       />
     </div>
   );

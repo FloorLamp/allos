@@ -58,6 +58,25 @@ export function getEpisodeRow(
   );
 }
 
+// Resolve an episode by id across a SET of profile ids — the viewer's ACCESSIBLE set
+// (issue #879). Returns the owning profile id + row, or null when no accessible profile
+// owns it. This is how the [id] page reads a household member's episode WITHOUT
+// switching the acting profile: it tries each accessible profile's scoped getEpisodeRow,
+// so every query stays profile-scoped (no unscoped illness_episodes read) and the grants
+// boundary is untouched — an UNGRANTED profile is simply absent from `profileIds`, so its
+// episode 404s, exactly like guessing another profile's id under the old active-only
+// scope. Auth-blind (takes ids, never imports lib/auth); the page supplies the set.
+export function resolveEpisodeAcrossProfiles(
+  profileIds: number[],
+  id: number
+): { profileId: number; row: IllnessEpisodeRow } | null {
+  for (const pid of profileIds) {
+    const row = getEpisodeRow(pid, id);
+    if (row) return { profileId: pid, row };
+  }
+  return null;
+}
+
 // The episode row CONTAINING `date`, tightest (most-recently-started) first — the row
 // analogue of the old episodeForDate derivation. A row covers `date` when its inclusive
 // start is on-or-before it (null start = since before the log) and its exclusive end is

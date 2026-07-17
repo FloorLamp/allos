@@ -19,6 +19,7 @@ export default function EpisodeEditor({
   endedAt,
   note,
   outcome,
+  profileId,
 }: {
   episodeId: number;
   ongoing: boolean;
@@ -26,6 +27,10 @@ export default function EpisodeEditor({
   endedAt: string | null;
   note: string | null;
   outcome: string | null;
+  // The cross-profile write target (issue #879) — set on a household member's episode page
+  // so editEpisodeAction gates on THAT profile (requireProfileWriteAccess). Absent on the
+  // acting profile's own page.
+  profileId?: number;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -63,6 +68,9 @@ export default function EpisodeEditor({
       data-testid="episode-editor"
     >
       <input type="hidden" name="episodeId" value={episodeId} />
+      {profileId != null && (
+        <input type="hidden" name="profileId" value={profileId} />
+      )}
       <h2 className="section-label">Edit episode</h2>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>

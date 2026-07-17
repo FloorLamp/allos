@@ -25,10 +25,15 @@ export default function SymptomPhotoStrip({
   photos,
   uploadDate,
   canWrite,
+  profileId,
 }: {
   photos: SymptomPhotoView[];
   uploadDate: string;
   canWrite: boolean;
+  // The cross-profile write target (issue #879) — set on a household member's episode
+  // page so the upload/delete gate on THAT profile (requireProfileWriteAccess). Absent on
+  // the acting profile's own page.
+  profileId?: number;
 }) {
   const [pending, start] = useTransition();
   const router = useRouter();
@@ -43,6 +48,7 @@ export default function SymptomPhotoStrip({
       fd.set("photo", file);
       fd.set("date", uploadDate);
       if (caption.trim()) fd.set("caption", caption.trim());
+      if (profileId != null) fd.set("profileId", String(profileId));
       const res = await uploadSymptomPhotoAction(fd);
       if (fileRef.current) fileRef.current.value = "";
       if (!res.ok) {
@@ -95,6 +101,8 @@ export default function SymptomPhotoStrip({
                       start(async () => {
                         const fd = new FormData();
                         fd.set("photoId", String(p.id));
+                        if (profileId != null)
+                          fd.set("profileId", String(profileId));
                         const res = await deleteSymptomPhotoAction(fd);
                         if (!res.ok) {
                           toast(res.error, { tone: "error" });

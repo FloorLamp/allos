@@ -18,9 +18,14 @@ import { parseUtcSql } from "@/lib/date";
 export default function QuickLogPrnWidget({
   meds,
   tz,
+  profileId,
 }: {
   meds: PrnMedForQuickLog[];
   tz: string;
+  // The cross-profile write target (issue #879) — when this widget hosts a household
+  // member's episode page, each PRN log posts it so the action gates on THAT profile
+  // (requireProfileWriteAccess). Absent on the dashboard/active-profile mounts.
+  profileId?: number;
 }) {
   const now = new Date();
   // The redose status line (#798), when the med has confirmed interval/max and
@@ -64,6 +69,7 @@ export default function QuickLogPrnWidget({
             )}
             redoseLine={redoseLineFor(m)}
             linkToDetail
+            profileId={profileId}
           />
         ))}
       </div>

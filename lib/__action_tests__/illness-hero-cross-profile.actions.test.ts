@@ -11,10 +11,16 @@ import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
 import { logSymptom, logTemperature } from "@/app/(app)/symptoms/actions";
 import { logMedicationAdministration } from "@/app/(app)/medications/actions";
-import { endEpisodeAction } from "@/app/(app)/medical/episodes/actions";
+import {
+  endEpisodeAction,
+  editEpisodeAction,
+  promoteEpisodeToConditionAction,
+  createEpisodeShareLinkAction,
+} from "@/app/(app)/medical/episodes/actions";
 import { logSymptomCore } from "@/lib/symptom-log-write";
 import { resolveSituationId } from "@/lib/settings";
-import { getOpenEpisodeRow } from "@/lib/illness-episode-store";
+import { getEpisodeRow, getOpenEpisodeRow } from "@/lib/illness-episode-store";
+import { getShareLinkByToken } from "@/lib/share-links-db";
 import { shiftDateStr } from "@/lib/date";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 
@@ -191,5 +197,99 @@ describe("cross-profile end-episode (#858)", () => {
       endEpisodeAction(fd({ episodeId, profileId: stranger.id }))
     ).rejects.toThrow(/not accessible/);
     expect(getOpenEpisodeRow(stranger.id, "Illness")).not.toBeNull();
+  });
+});
+
+// The cross-profile EPISODE-PAGE writes (#879): the caregiver opens a household member's
+// full episode page from the hero link and edits/promotes/shares it WITHOUT switching.
+// Each posts the target `profileId`; the gate is the #31 cross-profile gate.
+describe("cross-profile episode edit (#879)", () => {
+  it("edits a granted member's episode note/outcome without switching", async () => {
+    const { kid } = household();
+    const episodeId = makeSick(kid.id);
+    const res = await editEpisodeAction(
+      fd({
+        episodeId,
+        profileId: kid.id,
+        note: "pediatrician said rest",
+        outcome: "self-resolved",
+      })
+    );
+    expect(res.ok).toBe(true);
+    const row = getEpisodeRow(kid.id, episodeId)!;
+    expect(row.note).toBe("pediatrician said rest");
+    expect(row.outcome).toBe("self-resolved");
+  });
+
+  it("refuses editing an ungranted profile's episode", async () => {
+    const { stranger } = household();
+    const episodeId = makeSick(stranger.id);
+    await expect(
+      editEpisodeAction(fd({ episodeId, profileId: stranger.id, note: "x" }))
+    ).rejects.toThrow(/not accessible/);
+    expect(getEpisodeRow(stranger.id, episodeId)!.note).toBeNull();
+  });
+
+  it("refuses editing on a read-only grant", async () => {
+    const { readonly } = household();
+    const episodeId = makeSick(readonly.id);
+    await expect(
+      editEpisodeAction(fd({ episodeId, profileId: readonly.id, note: "x" }))
+    ).rejects.toThrow(/read-only/);
+    expect(getEpisodeRow(readonly.id, episodeId)!.note).toBeNull();
+  });
+});
+
+describe("cross-profile promote-to-condition (#879)", () => {
+  function conditionCount(profileId: number): number {
+    return (
+      db
+        .prepare("SELECT COUNT(*) AS c FROM conditions WHERE profile_id = ?")
+        .get(profileId) as { c: number }
+    ).c;
+  }
+
+  it("promotes a granted member's episode to a condition", async () => {
+    const { kid } = household();
+    const episodeId = makeSick(kid.id);
+    const res = await promoteEpisodeToConditionAction(
+      fd({ episodeId, profileId: kid.id })
+    );
+    expect(res.ok).toBe(true);
+    expect(conditionCount(kid.id)).toBe(1);
+  });
+
+  it("refuses promoting an ungranted profile's episode", async () => {
+    const { stranger } = household();
+    const episodeId = makeSick(stranger.id);
+    await expect(
+      promoteEpisodeToConditionAction(fd({ episodeId, profileId: stranger.id }))
+    ).rejects.toThrow(/not accessible/);
+    expect(conditionCount(stranger.id)).toBe(0);
+  });
+});
+
+describe("cross-profile episode share link (#879, write-gated)", () => {
+  it("mints a share link for a granted (write) member's episode", async () => {
+    const { kid } = household();
+    const episodeId = makeSick(kid.id);
+    const res = await createEpisodeShareLinkAction(
+      fd({ episodeId, profileId: kid.id, ttl: "7d" })
+    );
+    expect(res.ok).toBe(true);
+    const token = res.ok ? res.path.replace("/share/", "") : "";
+    const link = getShareLinkByToken(token);
+    expect(link).not.toBeNull();
+    expect(link!.profile_id).toBe(kid.id);
+  });
+
+  it("refuses minting a share link on a read-only grant (conservative default)", async () => {
+    const { readonly } = household();
+    const episodeId = makeSick(readonly.id);
+    await expect(
+      createEpisodeShareLinkAction(
+        fd({ episodeId, profileId: readonly.id, ttl: "7d" })
+      )
+    ).rejects.toThrow(/read-only/);
   });
 });

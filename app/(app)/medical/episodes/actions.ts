@@ -1,7 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireWriteAccess, requireProfileWriteAccess } from "@/lib/auth";
+import {
+  requireWriteAccess,
+  requireProfileWriteAccess,
+  type CurrentSession,
+} from "@/lib/auth";
 import { expiresAtFor } from "@/lib/share-links";
 import { createEpisodeShareLink } from "@/lib/share-links-db";
 import { recordAudit } from "@/lib/audit";
@@ -27,10 +31,15 @@ import {
   deleteSymptomPhotoCore,
 } from "@/lib/symptom-photo-write";
 
-// Illness-episode Server Actions (issues #801/#856). Each is gated by requireWriteAccess()
-// and operates ONLY on the session's active profile — the episode is addressed by its
-// STABLE ROW id (#856), scoped to the profile in getEpisodeRow, so there is no profile_id
-// input to tamper with (the same posture as the passport share actions).
+// Illness-episode Server Actions (issues #801/#856/#879). An action either operates on the
+// session's ACTIVE profile (requireWriteAccess) or, when the cross-profile episode page /
+// hero posts an explicit `profileId`, on that TARGET profile (requireProfileWriteAccess,
+// the #31 gate that asserts the target is reachable AND write). The gate is INLINED in each
+// action — never a shared helper — so the write-access scanner
+// (lib/__tests__/actions-write-access.test.ts) sees a literal requireWriteAccess() in every
+// body; the write cores stay auth-blind profileId-first (#319). Every episode is addressed
+// by its STABLE ROW id (#856) and re-fetched scoped to the RESOLVED profile, so a forged id
+// from another profile is dropped even past the gate.
 
 export type EpisodeShareResult =
   { ok: true; path: string } | { ok: false; error: string };
@@ -45,18 +54,33 @@ function parseEpisodeId(formData: FormData): number | null {
 // Mint a revocable share link for the episode, re-anchored to its stable id (#856). The
 // link also stores the situation + start anchor so a pre-#856 resolver path (and a
 // merged-away id) still resolves it; the range re-derives at view time.
+//
+// Cross-profile (issue #879): CREATING a share link for a household member's episode gates
+// on WRITE for that profile — the conservative default, since a share token exposes the
+// summary to anyone with the link. READING the printable summary is read-tier (the page
+// renders for a view-only grant); minting the outbound link is not.
 export async function createEpisodeShareLinkAction(
   formData: FormData
 ): Promise<EpisodeShareResult> {
-  const { login, profile } = await requireWriteAccess();
+  const target = Number(formData.get("profileId"));
+  let session: CurrentSession;
+  let profileId: number;
+  if (Number.isInteger(target) && target > 0) {
+    session = await requireProfileWriteAccess(target);
+    profileId = target;
+  } else {
+    session = await requireWriteAccess();
+    profileId = session.profile.id;
+  }
+  const { login } = session;
   const id = parseEpisodeId(formData);
-  const row = id ? getEpisodeRow(profile.id, id) : null;
+  const row = id ? getEpisodeRow(profileId, id) : null;
   if (!row) return { ok: false, error: "That episode is no longer available." };
 
   const ttl = String(formData.get("ttl") ?? "");
   const expiresAt = expiresAtFor(ttl, new Date());
   const { id: linkId, token } = createEpisodeShareLink(
-    profile.id,
+    profileId,
     login.id,
     row.situation,
     row.started_at,
@@ -65,7 +89,7 @@ export async function createEpisodeShareLinkAction(
   );
   recordAudit({
     loginId: login.id,
-    profileId: profile.id,
+    profileId,
     action: AUDIT_ACTIONS.shareLinkCreate,
     target: String(linkId),
   });
@@ -74,16 +98,24 @@ export async function createEpisodeShareLinkAction(
 }
 
 // Promote the episode to a durable Condition (onset/resolved from the range). Idempotent.
+// Cross-profile gated (issue #879): an explicit `profileId` acts on that member's episode.
 export async function promoteEpisodeToConditionAction(
   formData: FormData
 ): Promise<EpisodeActionResult> {
-  const { profile } = await requireWriteAccess();
+  const target = Number(formData.get("profileId"));
+  let profileId: number;
+  if (Number.isInteger(target) && target > 0) {
+    await requireProfileWriteAccess(target);
+    profileId = target;
+  } else {
+    profileId = (await requireWriteAccess()).profile.id;
+  }
   const id = parseEpisodeId(formData);
-  const row = id ? getEpisodeRow(profile.id, id) : null;
+  const row = id ? getEpisodeRow(profileId, id) : null;
   if (!row) return { ok: false, error: "That episode is no longer available." };
 
   const outcome = promoteEpisodeToConditionCore(
-    profile.id,
+    profileId,
     row.situation,
     row.started_at,
     row.ended_at
@@ -95,16 +127,23 @@ export async function promoteEpisodeToConditionAction(
   return { ok: true };
 }
 
-// Undo the promotion (delete only the episode-sourced condition).
+// Undo the promotion (delete only the episode-sourced condition). Cross-profile gated.
 export async function unpromoteEpisodeConditionAction(
   formData: FormData
 ): Promise<EpisodeActionResult> {
-  const { profile } = await requireWriteAccess();
+  const target = Number(formData.get("profileId"));
+  let profileId: number;
+  if (Number.isInteger(target) && target > 0) {
+    await requireProfileWriteAccess(target);
+    profileId = target;
+  } else {
+    profileId = (await requireWriteAccess()).profile.id;
+  }
   const id = parseEpisodeId(formData);
-  const row = id ? getEpisodeRow(profile.id, id) : null;
+  const row = id ? getEpisodeRow(profileId, id) : null;
   if (!row) return { ok: false, error: "That episode is no longer available." };
 
-  unpromoteEpisodeConditionCore(profile.id, row.situation, row.started_at);
+  unpromoteEpisodeConditionCore(profileId, row.situation, row.started_at);
   revalidatePath("/medical/episodes/[id]", "page");
   revalidatePath("/conditions");
   return { ok: true };
@@ -122,9 +161,16 @@ function parseDateOrNull(v: FormDataEntryValue | null): string | null {
 export async function editEpisodeAction(
   formData: FormData
 ): Promise<EpisodeActionResult> {
-  const { profile } = await requireWriteAccess();
+  const target = Number(formData.get("profileId"));
+  let profileId: number;
+  if (Number.isInteger(target) && target > 0) {
+    await requireProfileWriteAccess(target);
+    profileId = target;
+  } else {
+    profileId = (await requireWriteAccess()).profile.id;
+  }
   const id = parseEpisodeId(formData);
-  const row = id ? getEpisodeRow(profile.id, id) : null;
+  const row = id ? getEpisodeRow(profileId, id) : null;
   if (!row) return { ok: false, error: "That episode is no longer available." };
 
   const startedAt = parseDateOrNull(formData.get("startedAt"));
@@ -136,9 +182,9 @@ export async function editEpisodeAction(
   if (endedAt != null && startedAt != null && endedAt <= startedAt)
     return { ok: false, error: "The end date must be after the start date." };
 
-  updateEpisodeBoundaries(profile.id, id!, startedAt, endedAt);
-  setEpisodeNote(profile.id, id!, String(formData.get("note") ?? ""));
-  setEpisodeOutcome(profile.id, id!, String(formData.get("outcome") ?? ""));
+  updateEpisodeBoundaries(profileId, id!, startedAt, endedAt);
+  setEpisodeNote(profileId, id!, String(formData.get("note") ?? ""));
+  setEpisodeOutcome(profileId, id!, String(formData.get("outcome") ?? ""));
   revalidatePath("/medical/episodes/[id]", "page");
   revalidatePath("/medical/episodes");
   return { ok: true };
@@ -244,13 +290,21 @@ export async function endStaleEpisodeAction(
   return { ok: true };
 }
 
-// Attach a symptom photo to a day (issue #859 item 4). Active-profile scoped
-// (requireWriteAccess) — rides the existing upload posture (per-profile dirs, sha256
-// dedup, image sniff). Answers from the core's typed outcome; never leaks internals.
+// Attach a symptom photo to a day (issue #859 item 4). Rides the existing upload posture
+// (per-profile dirs, sha256 dedup, image sniff). Cross-profile gated (issue #879): an
+// explicit `profileId` attaches to that member's episode. Answers from the core's typed
+// outcome; never leaks internals.
 export async function uploadSymptomPhotoAction(
   formData: FormData
 ): Promise<EpisodeActionResult> {
-  const { profile } = await requireWriteAccess();
+  const target = Number(formData.get("profileId"));
+  let profileId: number;
+  if (Number.isInteger(target) && target > 0) {
+    await requireProfileWriteAccess(target);
+    profileId = target;
+  } else {
+    profileId = (await requireWriteAccess()).profile.id;
+  }
   const file = formData.get("photo");
   if (!(file instanceof File) || file.size === 0)
     return { ok: false, error: "Choose a photo to attach." };
@@ -260,7 +314,7 @@ export async function uploadSymptomPhotoAction(
   const caption = String(formData.get("caption") ?? "").trim() || null;
   const buffer = Buffer.from(await file.arrayBuffer());
   const outcome = attachSymptomPhotoCore(
-    profile.id,
+    profileId,
     date,
     buffer,
     file.name,
@@ -272,15 +326,23 @@ export async function uploadSymptomPhotoAction(
   return { ok: true };
 }
 
-// Delete a symptom photo (row + on-disk file). Active-profile scoped.
+// Delete a symptom photo (row + on-disk file). Cross-profile gated (issue #879); the core
+// is profile-scoped by id, so a forged photo id from another profile is dropped.
 export async function deleteSymptomPhotoAction(
   formData: FormData
 ): Promise<EpisodeActionResult> {
-  const { profile } = await requireWriteAccess();
+  const target = Number(formData.get("profileId"));
+  let profileId: number;
+  if (Number.isInteger(target) && target > 0) {
+    await requireProfileWriteAccess(target);
+    profileId = target;
+  } else {
+    profileId = (await requireWriteAccess()).profile.id;
+  }
   const id = Number(formData.get("photoId"));
   if (!Number.isInteger(id) || id <= 0)
     return { ok: false, error: "That photo is no longer available." };
-  deleteSymptomPhotoCore(profile.id, id);
+  deleteSymptomPhotoCore(profileId, id);
   revalidatePath("/medical/episodes/[id]", "page");
   return { ok: true };
 }
