@@ -94,11 +94,17 @@ const CANONICAL_ALIASES: [string, string][] = [
   // Prostate (unqualified PSA = total; the Free % entry stays distinct)
   ["Prostate Specific Antigen", "PSA"],
   ["Prostate-Specific Antigen", "PSA"],
+  ["Prostate Specific Antigen (PSA)", "PSA"],
   ["Prostate Specific Antigen, Total", "PSA"],
   ["PSA, Total", "PSA"],
-  // The free-fraction PERCENT (distinct from total PSA and from a free-absolute
-  // assay). "PSA, Free %", "Free PSA %", "% Free PSA" all fold to the same key.
-  ["PSA, Free %", "Prostate Specific Antigen (PSA), Free %"],
+  // NOTE: no alias for the free-fraction PERCENT. normalizeCanonicalKey strips "%",
+  // so "PSA, Free %" (the % ratio) and "PSA, Free" (the distinct free-ABSOLUTE assay,
+  // ng/mL) collapse to the SAME key {free, psa} — an alias would capture both and
+  // mis-group the absolute onto the % entry (the unit guard can't rescue it: the two
+  // share no stem sibling). Since the free-absolute assay isn't curated yet (a #918
+  // §3b gap), leaving both unresolved and surfaced is safer than a confident
+  // mis-grouping; resolving them properly needs the curated absolute entry + the unit
+  // guard, tracked separately.
   // Lipids / apolipoprotein
   ["Apolipoprotein B", "ApoB"],
   ["Apo B", "ApoB"],
