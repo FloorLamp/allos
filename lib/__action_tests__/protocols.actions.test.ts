@@ -37,6 +37,7 @@ function protocolForm(fields: {
   situation?: string;
   outcome_keys?: string[];
   equipment_id?: number | "";
+  intake_item_id?: number | "";
   practice_type?: string;
   practice_per_week?: number | string;
 }): FormData {
@@ -50,11 +51,25 @@ function protocolForm(fields: {
   for (const k of fields.outcome_keys ?? []) form.append("outcome_keys", k);
   if (fields.equipment_id != null)
     form.set("equipment_id", String(fields.equipment_id));
+  if (fields.intake_item_id != null)
+    form.set("intake_item_id", String(fields.intake_item_id));
   if (fields.practice_type != null)
     form.set("practice_type", fields.practice_type);
   if (fields.practice_per_week != null)
     form.set("practice_per_week", String(fields.practice_per_week));
   return form;
+}
+
+// A minimal intake item for the intervention-link tests.
+function seedIntakeItem(profileId: number, name = "Creatine"): number {
+  return Number(
+    db
+      .prepare(
+        `INSERT INTO intake_items (profile_id, name, active, kind, condition, priority)
+         VALUES (?, ?, 1, 'supplement', 'daily', 'low')`
+      )
+      .run(profileId, name).lastInsertRowid
+  );
 }
 
 describe("createProtocol", () => {
@@ -85,6 +100,42 @@ describe("createProtocol", () => {
     // Situation activated via the shared situations wiring.
     expect(getActiveSituations(profile.id)).toContain("Creatine loading");
     expect(revalidate).toHaveBeenCalledWith("/protocols");
+  });
+});
+
+describe("intervention intake-item link (issue #660)", () => {
+  it("stores a valid intake_item_id on create and clears it on update", async () => {
+    const { profile } = seedActor();
+    const itemId = seedIntakeItem(profile.id);
+    await createProtocol(
+      protocolForm({
+        name: "Creatine 5 g/day",
+        start_date: "2026-05-01",
+        intake_item_id: itemId,
+      })
+    );
+    const p = getProtocols(profile.id)[0];
+    expect(p.intake_item_id).toBe(itemId);
+
+    // Editing with no intake_item_id (empty) unlinks it.
+    await updateProtocol(
+      protocolForm({ id: p.id, name: p.name, intake_item_id: "" })
+    );
+    expect(getProtocols(profile.id)[0].intake_item_id).toBeNull();
+  });
+
+  it("nulls a leaked/foreign intake_item_id rather than writing a dangling FK", async () => {
+    const { profile } = seedActor();
+    const other = createProfile("Other");
+    const foreignItem = seedIntakeItem(other.id);
+    await createProtocol(
+      protocolForm({
+        name: "Bad link",
+        start_date: "2026-05-01",
+        intake_item_id: foreignItem,
+      })
+    );
+    expect(getProtocols(profile.id)[0].intake_item_id).toBeNull();
   });
 });
 

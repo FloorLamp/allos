@@ -13,8 +13,13 @@ import {
   getProtocols,
   getProtocol,
   getProtocolComparison,
+  getProtocolWindows,
+  getProtocolWindowsForOutcome,
+  getActiveProtocolSummaries,
+  getProtocolIntakeItem,
   situationUsedByOtherProtocol,
 } from "@/lib/queries";
+import { captureDelete } from "@/lib/undo-delete-db";
 
 function newProfile(name: string): number {
   return Number(
@@ -159,5 +164,95 @@ describe("protocol comparison seam", () => {
     expect(o.intervention.mean).toBe(110);
     expect(o.meanDelta).toBe(-20);
     expect(o.betterness).toBe("better"); // LDL is lower_better
+  });
+});
+
+describe("protocol chart windows (issue #660)", () => {
+  it("returns every protocol as a window and narrows to a targeting outcome", () => {
+    const profile = newProfile("Proto Windows");
+    insertProtocol(profile, {
+      name: "Creatine",
+      start: "2026-03-01",
+      end: null,
+      keys: ["metric:weight"],
+    });
+    insertProtocol(profile, {
+      name: "Statin",
+      start: "2026-01-01",
+      end: "2026-02-01",
+      keys: ["biomarker:LDL Cholesterol"],
+    });
+
+    const all = getProtocolWindows(profile);
+    expect(all.map((w) => w.name).sort()).toEqual(["Creatine", "Statin"]);
+    const ongoing = all.find((w) => w.name === "Creatine")!;
+    expect(ongoing.endDate).toBeNull();
+
+    // Only the protocol declaring the LDL outcome shows on the LDL chart.
+    const ldl = getProtocolWindowsForOutcome(
+      profile,
+      "biomarker:LDL Cholesterol"
+    );
+    expect(ldl.map((w) => w.name)).toEqual(["Statin"]);
+    expect(getProtocolWindowsForOutcome(profile, "metric:weight")).toHaveLength(
+      1
+    );
+  });
+});
+
+describe("getActiveProtocolSummaries (issue #660)", () => {
+  it("summarizes ongoing protocols only, with days elapsed + the primary outcome", () => {
+    const profile = newProfile("Proto Widget");
+    insertProtocol(profile, {
+      name: "Ongoing creatine",
+      start: "2026-05-01",
+      end: null,
+      keys: ["metric:weight"],
+    });
+    insertProtocol(profile, {
+      name: "Ended block",
+      start: "2026-01-01",
+      end: "2026-02-01",
+      keys: ["metric:weight"],
+    });
+
+    const out = getActiveProtocolSummaries(profile, "2026-05-10", "kg");
+    // Only the ongoing one.
+    expect(out.map((p) => p.name)).toEqual(["Ongoing creatine"]);
+    // Inclusive elapsed days: May 1 → May 10 = 10 days in.
+    expect(out[0].daysElapsed).toBe(10);
+    expect(out[0].primaryOutcome?.label).toBe("Body weight");
+    // No practice link → null adherence.
+    expect(out[0].adherence).toBeNull();
+    expect(out[0].href).toBe(`/protocols/${getProtocols(profile)[0].id}`);
+  });
+});
+
+describe("intake-item link delete null-out (issue #660)", () => {
+  it("nulls protocols.intake_item_id when the linked item is deleted", () => {
+    const profile = newProfile("Proto Intake");
+    const itemId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items (profile_id, name, active, kind, condition, priority)
+           VALUES (?, 'Creatine', 1, 'supplement', 'daily', 'low')`
+        )
+        .run(profile).lastInsertRowid
+    );
+    const protoId = Number(
+      db
+        .prepare(
+          `INSERT INTO protocols (profile_id, name, start_date, intake_item_id)
+           VALUES (?, 'Creatine trial', '2026-05-01', ?)`
+        )
+        .run(profile, itemId).lastInsertRowid
+    );
+    expect(getProtocol(profile, protoId)!.intake_item_id).toBe(itemId);
+    expect(getProtocolIntakeItem(profile, itemId)?.name).toBe("Creatine");
+
+    // Deleting the intake item must NOT throw on the protocols FK, and must null
+    // the protocol's intervention link (row-ops null-out rule).
+    captureDelete("intake-item", profile, itemId);
+    expect(getProtocol(profile, protoId)!.intake_item_id).toBeNull();
   });
 });
