@@ -1,6 +1,8 @@
 // Pre-generate the baked drug-/supplement-interaction dataset
-// (lib/drug-interactions.json), used to flag when two ACTIVE items in a profile's
-// supplement + medication stack are known to interact (issue #144).
+// (lib/datasets/data/drug-interactions.json), used to flag when two ACTIVE items in a
+// profile's supplement + medication stack are known to interact (issue #144). As of
+// issue #860 Track B (wave 2) it is a curated-dataset FRAMEWORK envelope
+// (id/citation/identity/entries + meta) consumed via lib/datasets/drug-interactions.ts.
 //
 // SOURCING / LICENSE
 // ------------------
@@ -34,16 +36,24 @@
 //
 //   npm run gen:interactions
 //
-// The committed lib/drug-interactions.json is a FIXED POINT of
+// The committed lib/datasets/data/drug-interactions.json is a FIXED POINT of
 // buildDrugInteractionsDataset() (guarded by lib/__tests__/drug-interactions-dataset
-// .test.ts) so the generator and the file can't silently diverge. lib/drug-interactions
-// .json is in .prettierignore — prettier reformatting would break the fixed-point
-// string compare.
+// .test.ts) so the generator and the file can't silently diverge. The framework
+// envelope is emitted with `JSON.stringify(dataset, null, 2)`, which matches Prettier's
+// JSON formatting, so no .prettierignore entry is needed.
 
 import fs from "node:fs";
 import path from "node:path";
+import { DATASET_SCHEMA, type DatasetEnvelope } from "../lib/datasets/types";
+import { sortedPairKey } from "../lib/datasets/matcher";
 
-const OUT = path.join(process.cwd(), "lib", "drug-interactions.json");
+const OUT = path.join(
+  process.cwd(),
+  "lib",
+  "datasets",
+  "data",
+  "drug-interactions.json"
+);
 
 export type Severity = "major" | "moderate" | "minor";
 
@@ -1164,13 +1174,27 @@ const INTERACTIONS: RawInteraction[] = [
   },
 ];
 
-export interface DrugInteractionsDataset {
-  $comment: string;
+// One framework entry: an interaction rule. `a`/`b` are the canonical (sorted)
+// concept keys the detector reads; `pair` is the same two keys as the framework's
+// unordered-pair IDENTITY (so the harness resolves a rule by its concept pair and no
+// two rules collide on a pair). The detector still iterates `a`/`b`; `pair` is the
+// dataset identity handle.
+export interface InteractionEntry extends RawInteraction {
+  pair: [string, string];
+}
+
+// Dataset-level metadata that ISN'T a per-rule row: the schema version, the severity
+// vocabulary, and the concept vocabulary the detector resolves items against.
+export interface InteractionsMeta {
   version: number;
   severities: Severity[];
   concepts: RawConcept[];
-  interactions: RawInteraction[];
 }
+
+export type DrugInteractionsDataset = DatasetEnvelope<
+  InteractionEntry,
+  InteractionsMeta
+>;
 
 const SEVERITIES: Severity[] = ["major", "moderate", "minor"];
 
@@ -1219,7 +1243,7 @@ export function buildDrugInteractionsDataset(): DrugInteractionsDataset {
 
   // Interactions reference existing keys, a != b, no duplicate unordered pair.
   const seenPairs = new Set<string>();
-  const interactions = [...INTERACTIONS]
+  const interactions: InteractionEntry[] = [...INTERACTIONS]
     .map((it) => {
       if (!keys.has(it.a))
         throw new Error(`gen-drug-interactions: unknown concept ${it.a}`);
@@ -1236,42 +1260,61 @@ export function buildDrugInteractionsDataset(): DrugInteractionsDataset {
           `gen-drug-interactions: ${it.a}/${it.b} missing mechanism or source`
         );
       // Store the pair in a canonical (sorted) order so the diff is stable and the
-      // matcher never needs to try both orders.
+      // matcher never needs to try both orders. `sortedPairKey` is the framework's
+      // unordered-pair key builder — the SAME machinery the pair identity uses.
       const [a, b] = [it.a, it.b].sort();
-      const pair = `${a}|${b}`;
-      if (seenPairs.has(pair))
-        throw new Error(`gen-drug-interactions: duplicate pair ${pair}`);
-      seenPairs.add(pair);
+      const pairKey = sortedPairKey(a, b);
+      if (seenPairs.has(pairKey))
+        throw new Error(`gen-drug-interactions: duplicate pair ${pairKey}`);
+      seenPairs.add(pairKey);
       return {
         a,
         b,
         severity: it.severity,
         mechanism: it.mechanism.trim(),
         source: it.source.trim(),
+        pair: [a, b] as [string, string],
       };
     })
     .sort((x, y) => x.a.localeCompare(y.a) || x.b.localeCompare(y.b));
 
   return {
-    $comment:
+    $schema: DATASET_SCHEMA,
+    id: "drug-interactions",
+    title: "Drug/supplement interaction pairs",
+    description:
       "Baked drug-/supplement-interaction dataset (issue #144) — flags known " +
       "interactions between two ACTIVE items in a profile's supplement + medication " +
       "stack. CURATED HIGH-VALUE SUBSET, not exhaustive; facts from public-domain " +
       "FDA/DailyMed labeling, NIH MedlinePlus/ODS/NCCIH, RxNorm (all public domain). " +
       "INFORMATIONAL, never prescriptive — absence of a flag does NOT mean safe. " +
       "Committed + HUMAN-REVIEWABLE; regenerate with `npm run gen:interactions`.",
-    version: 1,
-    severities: SEVERITIES,
-    concepts,
-    interactions,
+    citation: [
+      {
+        source:
+          "FDA Structured Product Labeling / DailyMed drug-interaction sections; " +
+          "NIH MedlinePlus, Office of Dietary Supplements, and NCCIH herb–drug " +
+          "summaries; RxNorm (NLM) ingredient concepts.",
+        url: "https://dailymed.nlm.nih.gov",
+        note: "All public-domain / public U.S. references; each rule additionally carries its own per-rule `source`. Curated high-value subset, not exhaustive.",
+      },
+    ],
+    identity: { keys: ["pair"] },
+    meta: {
+      version: 1,
+      severities: SEVERITIES,
+      concepts,
+    },
+    entries: interactions,
   };
 }
 
 function writeDataset(): void {
   const dataset = buildDrugInteractionsDataset();
+  fs.mkdirSync(path.dirname(OUT), { recursive: true });
   fs.writeFileSync(OUT, JSON.stringify(dataset, null, 2) + "\n");
   console.log(
-    `Wrote ${dataset.concepts.length} concepts and ${dataset.interactions.length} interactions to ${OUT}`
+    `Wrote ${dataset.meta!.concepts.length} concepts and ${dataset.entries.length} interactions to ${OUT}`
   );
   console.log("Review the pairs for plausibility before committing.");
 }

@@ -6,7 +6,7 @@
 // the whole feature ever sends off-box: a drug/supplement NAME (approximateTerm)
 // or a confirmed RxCUI CODE (the ingredient decomposition below) to NLM's public
 // RxNav service. No PHI, no identifiers — just the term/code. The bundled
-// interaction dataset (lib/drug-interactions.json) is fully offline; if this lookup
+// interaction dataset (lib/datasets/data/drug-interactions.json) is fully offline; if this lookup
 // is unreachable or disabled, the item simply has no RxCUI and matches by name only
 // (graceful degradation, mirroring the AI layer). The user CONFIRMS the mapping on
 // the item's edit form, so a wrong approximate match is never silently trusted.

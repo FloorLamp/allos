@@ -1,0 +1,1372 @@
+{
+  "$schema": "allos-dataset/v1",
+  "id": "drug-interactions",
+  "title": "Drug/supplement interaction pairs",
+  "description": "Baked drug-/supplement-interaction dataset (issue #144) — flags known interactions between two ACTIVE items in a profile's supplement + medication stack. CURATED HIGH-VALUE SUBSET, not exhaustive; facts from public-domain FDA/DailyMed labeling, NIH MedlinePlus/ODS/NCCIH, RxNorm (all public domain). INFORMATIONAL, never prescriptive — absence of a flag does NOT mean safe. Committed + HUMAN-REVIEWABLE; regenerate with `npm run gen:interactions`.",
+  "citation": [
+    {
+      "source": "FDA Structured Product Labeling / DailyMed drug-interaction sections; NIH MedlinePlus, Office of Dietary Supplements, and NCCIH herb–drug summaries; RxNorm (NLM) ingredient concepts.",
+      "url": "https://dailymed.nlm.nih.gov",
+      "note": "All public-domain / public U.S. references; each rule additionally carries its own per-rule `source`. Curated high-value subset, not exhaustive."
+    }
+  ],
+  "identity": {
+    "keys": [
+      "pair"
+    ]
+  },
+  "meta": {
+    "version": 1,
+    "severities": [
+      "major",
+      "moderate",
+      "minor"
+    ],
+    "concepts": [
+      {
+        "key": "ace_arb",
+        "label": "ACE inhibitors / ARBs (lisinopril, losartan, …)",
+        "rxcuis": [
+          "29046",
+          "3827",
+          "52175",
+          "83515"
+        ],
+        "synonyms": [
+          "altace",
+          "benazepril",
+          "cozaar",
+          "diovan",
+          "enalapril",
+          "entresto",
+          "hyzaar",
+          "lisinopril",
+          "losartan",
+          "lotensin",
+          "lotrel",
+          "prinivil",
+          "prinzide",
+          "ramipril",
+          "valsartan",
+          "vaseretic",
+          "vasotec",
+          "zestoretic",
+          "zestril"
+        ]
+      },
+      {
+        "key": "acetaminophen",
+        "label": "Acetaminophen (paracetamol)",
+        "rxcuis": [
+          "161"
+        ],
+        "synonyms": [
+          "acetaminophen",
+          "apap",
+          "paracetamol",
+          "tylenol"
+        ]
+      },
+      {
+        "key": "allopurinol",
+        "label": "Allopurinol",
+        "rxcuis": [
+          "519"
+        ],
+        "synonyms": [
+          "allopurinol",
+          "aloprim",
+          "zyloprim"
+        ]
+      },
+      {
+        "key": "aspirin",
+        "label": "Aspirin",
+        "rxcuis": [
+          "1191"
+        ],
+        "synonyms": [
+          "acetylsalicylic acid",
+          "asa",
+          "aspirin",
+          "bayer",
+          "ecotrin"
+        ]
+      },
+      {
+        "key": "atorvastatin",
+        "label": "Atorvastatin",
+        "rxcuis": [
+          "83367"
+        ],
+        "synonyms": [
+          "atorvastatin",
+          "caduet",
+          "lipitor"
+        ]
+      },
+      {
+        "key": "azathioprine",
+        "label": "Azathioprine",
+        "rxcuis": [
+          "1256"
+        ],
+        "synonyms": [
+          "azasan",
+          "azathioprine",
+          "imuran"
+        ]
+      },
+      {
+        "key": "azole_antifungal",
+        "label": "Azole antifungals (ketoconazole, itraconazole, fluconazole)",
+        "rxcuis": [
+          "28031",
+          "4450",
+          "6135"
+        ],
+        "synonyms": [
+          "diflucan",
+          "fluconazole",
+          "itraconazole",
+          "ketoconazole",
+          "posaconazole",
+          "sporanox",
+          "voriconazole"
+        ]
+      },
+      {
+        "key": "benzodiazepine",
+        "label": "Benzodiazepines (alprazolam, diazepam, lorazepam)",
+        "rxcuis": [
+          "2598",
+          "3322",
+          "596",
+          "6470"
+        ],
+        "synonyms": [
+          "alprazolam",
+          "ativan",
+          "clonazepam",
+          "diazepam",
+          "klonopin",
+          "lorazepam",
+          "temazepam",
+          "valium",
+          "xanax"
+        ]
+      },
+      {
+        "key": "calcium",
+        "label": "Calcium",
+        "rxcuis": [],
+        "synonyms": [
+          "calcium",
+          "calcium carbonate",
+          "calcium citrate",
+          "coral calcium"
+        ]
+      },
+      {
+        "key": "clopidogrel",
+        "label": "Clopidogrel",
+        "rxcuis": [
+          "32968"
+        ],
+        "synonyms": [
+          "clopidogrel",
+          "plavix"
+        ]
+      },
+      {
+        "key": "coq10",
+        "label": "Coenzyme Q10",
+        "rxcuis": [],
+        "synonyms": [
+          "coenzyme q10",
+          "coq10",
+          "ubiquinol",
+          "ubiquinone"
+        ]
+      },
+      {
+        "key": "digoxin",
+        "label": "Digoxin",
+        "rxcuis": [
+          "3407"
+        ],
+        "synonyms": [
+          "digoxin",
+          "lanoxin"
+        ]
+      },
+      {
+        "key": "doac",
+        "label": "Direct oral anticoagulants (apixaban, rivaroxaban, dabigatran)",
+        "rxcuis": [
+          "1037045",
+          "1114195",
+          "1364430"
+        ],
+        "synonyms": [
+          "apixaban",
+          "dabigatran",
+          "edoxaban",
+          "eliquis",
+          "pradaxa",
+          "rivaroxaban",
+          "savaysa",
+          "xarelto"
+        ]
+      },
+      {
+        "key": "fish_oil",
+        "label": "Fish oil / omega-3",
+        "rxcuis": [],
+        "synonyms": [
+          "cod liver oil",
+          "dha",
+          "epa",
+          "fish oil",
+          "krill oil",
+          "omega 3"
+        ]
+      },
+      {
+        "key": "five_htp",
+        "label": "5-HTP",
+        "rxcuis": [],
+        "synonyms": [
+          "5 htp",
+          "5 hydroxytryptophan",
+          "griffonia"
+        ]
+      },
+      {
+        "key": "garlic",
+        "label": "Garlic (concentrated)",
+        "rxcuis": [],
+        "synonyms": [
+          "aged garlic extract",
+          "allium sativum",
+          "garlic"
+        ]
+      },
+      {
+        "key": "gemfibrozil",
+        "label": "Gemfibrozil",
+        "rxcuis": [
+          "4719"
+        ],
+        "synonyms": [
+          "gemfibrozil",
+          "lopid"
+        ]
+      },
+      {
+        "key": "ginkgo",
+        "label": "Ginkgo biloba",
+        "rxcuis": [],
+        "synonyms": [
+          "ginkgo",
+          "ginkgo biloba"
+        ]
+      },
+      {
+        "key": "iron",
+        "label": "Iron",
+        "rxcuis": [],
+        "synonyms": [
+          "ferrous fumarate",
+          "ferrous gluconate",
+          "ferrous sulfate",
+          "iron",
+          "iron bisglycinate"
+        ]
+      },
+      {
+        "key": "levothyroxine",
+        "label": "Levothyroxine",
+        "rxcuis": [
+          "10582"
+        ],
+        "synonyms": [
+          "euthyrox",
+          "levothyroxine",
+          "levoxyl",
+          "synthroid",
+          "thyroxine",
+          "unithroid"
+        ]
+      },
+      {
+        "key": "lithium",
+        "label": "Lithium",
+        "rxcuis": [
+          "6448"
+        ],
+        "synonyms": [
+          "eskalith",
+          "lithium",
+          "lithobid"
+        ]
+      },
+      {
+        "key": "loop_thiazide_diuretic",
+        "label": "Loop / thiazide diuretics (furosemide, hydrochlorothiazide, …)",
+        "rxcuis": [
+          "4603",
+          "5487"
+        ],
+        "synonyms": [
+          "bumetanide",
+          "bumex",
+          "chlorthalidone",
+          "furosemide",
+          "hctz",
+          "hydrochlorothiazide",
+          "indapamide",
+          "lasix",
+          "loop diuretic",
+          "metolazone",
+          "thiazide",
+          "torsemide"
+        ]
+      },
+      {
+        "key": "macrolide",
+        "label": "Macrolide antibiotics (clarithromycin, erythromycin)",
+        "rxcuis": [
+          "21212",
+          "4053"
+        ],
+        "synonyms": [
+          "biaxin",
+          "clarithromycin",
+          "ery tab",
+          "erythromycin",
+          "macrolide"
+        ]
+      },
+      {
+        "key": "magnesium",
+        "label": "Magnesium",
+        "rxcuis": [],
+        "synonyms": [
+          "magnesium",
+          "magnesium citrate",
+          "magnesium glycinate",
+          "magnesium oxide"
+        ]
+      },
+      {
+        "key": "maoi",
+        "label": "MAO inhibitors (phenelzine, tranylcypromine, selegiline)",
+        "rxcuis": [
+          "10734",
+          "36117",
+          "6011",
+          "8123"
+        ],
+        "synonyms": [
+          "emsam",
+          "isocarboxazid",
+          "linezolid",
+          "maoi",
+          "marplan",
+          "nardil",
+          "parnate",
+          "phenelzine",
+          "selegiline",
+          "tranylcypromine"
+        ]
+      },
+      {
+        "key": "metformin",
+        "label": "Metformin",
+        "rxcuis": [
+          "6809"
+        ],
+        "synonyms": [
+          "fortamet",
+          "glucophage",
+          "glucovance",
+          "janumet",
+          "metformin"
+        ]
+      },
+      {
+        "key": "methotrexate",
+        "label": "Methotrexate",
+        "rxcuis": [
+          "6851"
+        ],
+        "synonyms": [
+          "methotrexate",
+          "mtx",
+          "otrexup",
+          "rasuvo",
+          "trexall"
+        ]
+      },
+      {
+        "key": "nitrate",
+        "label": "Nitrates (nitroglycerin, isosorbide)",
+        "rxcuis": [
+          "24947",
+          "7417"
+        ],
+        "synonyms": [
+          "imdur",
+          "isordil",
+          "isosorbide",
+          "nitrate",
+          "nitroglycerin",
+          "nitrostat"
+        ]
+      },
+      {
+        "key": "nondihydro_ccb",
+        "label": "Non-dihydropyridine calcium-channel blockers (verapamil, diltiazem)",
+        "rxcuis": [
+          "11170",
+          "3443"
+        ],
+        "synonyms": [
+          "calan",
+          "cardizem",
+          "cartia",
+          "diltiazem",
+          "isoptin",
+          "tiazac",
+          "verapamil",
+          "verelan"
+        ]
+      },
+      {
+        "key": "nsaid",
+        "label": "NSAIDs (ibuprofen, naproxen, diclofenac, …)",
+        "rxcuis": [
+          "140587",
+          "3355",
+          "35827",
+          "41493",
+          "5640",
+          "5781",
+          "7258"
+        ],
+        "synonyms": [
+          "advil",
+          "aleve",
+          "celebrex",
+          "celecoxib",
+          "diclofenac",
+          "ibuprofen",
+          "indomethacin",
+          "ketorolac",
+          "meloxicam",
+          "mobic",
+          "motrin",
+          "naprosyn",
+          "naproxen",
+          "nsaid",
+          "toradol",
+          "treximet",
+          "voltaren"
+        ]
+      },
+      {
+        "key": "ophthalmic_timolol",
+        "label": "Ophthalmic beta-blocker (timolol eye drops)",
+        "rxcuis": [],
+        "synonyms": [
+          "betagan",
+          "betaxolol ophthalmic",
+          "betimol",
+          "betoptic",
+          "combigan",
+          "cosopt",
+          "istalol",
+          "levobunolol",
+          "timolol",
+          "timolol eye drops",
+          "timolol ophthalmic",
+          "timoptic"
+        ]
+      },
+      {
+        "key": "opioid",
+        "label": "Opioids (oxycodone, hydrocodone, morphine, …)",
+        "rxcuis": [
+          "4337",
+          "5489",
+          "7052",
+          "7804"
+        ],
+        "synonyms": [
+          "codeine",
+          "dilaudid",
+          "fentanyl",
+          "hydrocodone",
+          "hydromorphone",
+          "morphine",
+          "ms contin",
+          "norco",
+          "oxycodone",
+          "oxycontin",
+          "percocet",
+          "vicodin"
+        ]
+      },
+      {
+        "key": "oral_contraceptive",
+        "label": "Oral contraceptives",
+        "rxcuis": [],
+        "synonyms": [
+          "birth control",
+          "drospirenone",
+          "ethinyl estradiol",
+          "levonorgestrel",
+          "norethindrone",
+          "oral contraceptive"
+        ]
+      },
+      {
+        "key": "pde5_inhibitor",
+        "label": "PDE5 inhibitors (sildenafil, tadalafil)",
+        "rxcuis": [
+          "136411",
+          "358263"
+        ],
+        "synonyms": [
+          "cialis",
+          "levitra",
+          "revatio",
+          "sildenafil",
+          "tadalafil",
+          "vardenafil",
+          "viagra"
+        ]
+      },
+      {
+        "key": "potassium",
+        "label": "Potassium",
+        "rxcuis": [],
+        "synonyms": [
+          "klor con",
+          "potassium",
+          "potassium chloride",
+          "potassium citrate"
+        ]
+      },
+      {
+        "key": "potassium_sparing_diuretic",
+        "label": "Potassium-sparing diuretics (spironolactone, triamterene)",
+        "rxcuis": [
+          "10763",
+          "644",
+          "9997"
+        ],
+        "synonyms": [
+          "aldactazide",
+          "aldactone",
+          "amiloride",
+          "dyazide",
+          "eplerenone",
+          "inspra",
+          "maxzide",
+          "spironolactone",
+          "triamterene"
+        ]
+      },
+      {
+        "key": "ppi",
+        "label": "Proton-pump inhibitors (omeprazole, esomeprazole, …)",
+        "rxcuis": [
+          "283742",
+          "40790",
+          "7646"
+        ],
+        "synonyms": [
+          "esomeprazole",
+          "lansoprazole",
+          "nexium",
+          "omeprazole",
+          "pantoprazole",
+          "prevacid",
+          "prilosec",
+          "protonix"
+        ]
+      },
+      {
+        "key": "sam_e",
+        "label": "SAM-e",
+        "rxcuis": [],
+        "synonyms": [
+          "ademetionine",
+          "s adenosylmethionine",
+          "sam e"
+        ]
+      },
+      {
+        "key": "snri",
+        "label": "SNRIs (venlafaxine, duloxetine)",
+        "rxcuis": [
+          "15996",
+          "39786",
+          "72625"
+        ],
+        "synonyms": [
+          "cymbalta",
+          "desvenlafaxine",
+          "duloxetine",
+          "effexor",
+          "pristiq",
+          "snri",
+          "venlafaxine"
+        ]
+      },
+      {
+        "key": "ssri",
+        "label": "SSRIs (sertraline, fluoxetine, citalopram, …)",
+        "rxcuis": [
+          "2556",
+          "321988",
+          "32937",
+          "36437",
+          "42355",
+          "4493"
+        ],
+        "synonyms": [
+          "celexa",
+          "citalopram",
+          "escitalopram",
+          "fluoxetine",
+          "fluvoxamine",
+          "lexapro",
+          "luvox",
+          "paroxetine",
+          "paxil",
+          "prozac",
+          "sertraline",
+          "ssri",
+          "zoloft"
+        ]
+      },
+      {
+        "key": "st_johns_wort",
+        "label": "St. John's Wort",
+        "rxcuis": [],
+        "synonyms": [
+          "hypericum",
+          "hypericum perforatum",
+          "st john s wort",
+          "st johns wort"
+        ]
+      },
+      {
+        "key": "statin",
+        "label": "Statins strongly affected by CYP3A4 (simvastatin, lovastatin)",
+        "rxcuis": [
+          "36567",
+          "6472"
+        ],
+        "synonyms": [
+          "lovastatin",
+          "mevacor",
+          "simvastatin",
+          "vytorin",
+          "zocor"
+        ]
+      },
+      {
+        "key": "sulfonylurea",
+        "label": "Sulfonylureas (glipizide, glyburide, …)",
+        "rxcuis": [
+          "25789",
+          "4821"
+        ],
+        "synonyms": [
+          "amaryl",
+          "glimepiride",
+          "glipizide",
+          "glucotrol",
+          "glucovance",
+          "glyburide"
+        ]
+      },
+      {
+        "key": "systemic_beta_blocker",
+        "label": "Beta-blockers (systemic: metoprolol, atenolol, propranolol, …)",
+        "rxcuis": [
+          "10600",
+          "1202",
+          "19484",
+          "20352",
+          "6185",
+          "6918",
+          "7226",
+          "8787"
+        ],
+        "synonyms": [
+          "atenolol",
+          "bisoprolol",
+          "bystolic",
+          "carvedilol",
+          "coreg",
+          "corgard",
+          "inderal",
+          "labetalol",
+          "lopressor",
+          "metoprolol",
+          "nadolol",
+          "nebivolol",
+          "propranolol",
+          "sotalol",
+          "tenormin",
+          "toprol",
+          "zebeta"
+        ]
+      },
+      {
+        "key": "tramadol",
+        "label": "Tramadol",
+        "rxcuis": [
+          "10689"
+        ],
+        "synonyms": [
+          "conzip",
+          "tramadol",
+          "ultram"
+        ]
+      },
+      {
+        "key": "triptan",
+        "label": "Triptans (sumatriptan, rizatriptan, …)",
+        "rxcuis": [
+          "36960",
+          "37418"
+        ],
+        "synonyms": [
+          "eletriptan",
+          "imitrex",
+          "maxalt",
+          "relpax",
+          "rizatriptan",
+          "sumatriptan",
+          "treximet",
+          "triptan"
+        ]
+      },
+      {
+        "key": "vitamin_e",
+        "label": "Vitamin E",
+        "rxcuis": [],
+        "synonyms": [
+          "alpha tocopherol",
+          "d alpha tocopherol",
+          "tocopherol",
+          "vitamin e"
+        ]
+      },
+      {
+        "key": "vitamin_k",
+        "label": "Vitamin K",
+        "rxcuis": [],
+        "synonyms": [
+          "menaquinone",
+          "mk 7",
+          "phytonadione",
+          "vitamin k",
+          "vitamin k1",
+          "vitamin k2"
+        ]
+      },
+      {
+        "key": "warfarin",
+        "label": "Warfarin",
+        "rxcuis": [
+          "11289"
+        ],
+        "synonyms": [
+          "coumadin",
+          "jantoven",
+          "warfarin"
+        ]
+      },
+      {
+        "key": "zinc",
+        "label": "Zinc",
+        "rxcuis": [],
+        "synonyms": [
+          "zinc",
+          "zinc gluconate",
+          "zinc picolinate"
+        ]
+      }
+    ]
+  },
+  "entries": [
+    {
+      "a": "ace_arb",
+      "b": "lithium",
+      "severity": "moderate",
+      "mechanism": "ACE inhibitors/ARBs reduce renal lithium clearance and can raise lithium into a toxic range.",
+      "source": "FDA lithium prescribing information (DailyMed)",
+      "pair": [
+        "ace_arb",
+        "lithium"
+      ]
+    },
+    {
+      "a": "ace_arb",
+      "b": "nsaid",
+      "severity": "moderate",
+      "mechanism": "NSAIDs blunt the antihypertensive effect and, with an ACE/ARB, can impair kidney function and raise potassium (the 'triple whammy' with a diuretic).",
+      "source": "NIH MedlinePlus; FDA NSAID labeling",
+      "pair": [
+        "ace_arb",
+        "nsaid"
+      ]
+    },
+    {
+      "a": "ace_arb",
+      "b": "potassium",
+      "severity": "moderate",
+      "mechanism": "Potassium supplements plus an ACE inhibitor/ARB can raise serum potassium into a dangerous range.",
+      "source": "FDA ACE inhibitor prescribing information (DailyMed)",
+      "pair": [
+        "ace_arb",
+        "potassium"
+      ]
+    },
+    {
+      "a": "ace_arb",
+      "b": "potassium_sparing_diuretic",
+      "severity": "major",
+      "mechanism": "Both raise serum potassium; together they can cause dangerous hyperkalemia and arrhythmia.",
+      "source": "FDA lisinopril & spironolactone labeling (DailyMed)",
+      "pair": [
+        "ace_arb",
+        "potassium_sparing_diuretic"
+      ]
+    },
+    {
+      "a": "acetaminophen",
+      "b": "warfarin",
+      "severity": "moderate",
+      "mechanism": "Regular (chronic or high-dose) acetaminophen can raise the INR and increase bleeding risk with warfarin; occasional single doses are lower-risk.",
+      "source": "FDA warfarin prescribing information (DailyMed); NIH MedlinePlus",
+      "pair": [
+        "acetaminophen",
+        "warfarin"
+      ]
+    },
+    {
+      "a": "allopurinol",
+      "b": "azathioprine",
+      "severity": "major",
+      "mechanism": "Allopurinol blocks xanthine-oxidase breakdown of azathioprine, raising its active metabolites and the risk of severe bone-marrow suppression; the azathioprine dose must be sharply reduced or the pair avoided.",
+      "source": "FDA azathioprine prescribing information (DailyMed)",
+      "pair": [
+        "allopurinol",
+        "azathioprine"
+      ]
+    },
+    {
+      "a": "aspirin",
+      "b": "nsaid",
+      "severity": "moderate",
+      "mechanism": "Ibuprofen and other NSAIDs can block aspirin's cardioprotective antiplatelet effect and add GI-bleeding risk.",
+      "source": "FDA aspirin/ibuprofen labeling (DailyMed)",
+      "pair": [
+        "aspirin",
+        "nsaid"
+      ]
+    },
+    {
+      "a": "aspirin",
+      "b": "warfarin",
+      "severity": "major",
+      "mechanism": "Aspirin's antiplatelet effect plus warfarin's anticoagulation markedly increases bleeding risk; combined use should be clinician-directed.",
+      "source": "FDA warfarin prescribing information (DailyMed)",
+      "pair": [
+        "aspirin",
+        "warfarin"
+      ]
+    },
+    {
+      "a": "atorvastatin",
+      "b": "azole_antifungal",
+      "severity": "moderate",
+      "mechanism": "Azole antifungals inhibit CYP3A4 and raise atorvastatin levels, increasing myopathy risk — but less than with simvastatin/lovastatin.",
+      "source": "FDA atorvastatin prescribing information (DailyMed)",
+      "pair": [
+        "atorvastatin",
+        "azole_antifungal"
+      ]
+    },
+    {
+      "a": "atorvastatin",
+      "b": "gemfibrozil",
+      "severity": "major",
+      "mechanism": "Gemfibrozil raises atorvastatin exposure and adds its own myopathy risk, increasing the chance of muscle injury/rhabdomyolysis.",
+      "source": "FDA atorvastatin & gemfibrozil prescribing information (DailyMed)",
+      "pair": [
+        "atorvastatin",
+        "gemfibrozil"
+      ]
+    },
+    {
+      "a": "atorvastatin",
+      "b": "macrolide",
+      "severity": "moderate",
+      "mechanism": "Clarithromycin/erythromycin inhibit CYP3A4 and raise atorvastatin levels, increasing myopathy risk — but less than with simvastatin/lovastatin.",
+      "source": "FDA atorvastatin prescribing information (DailyMed)",
+      "pair": [
+        "atorvastatin",
+        "macrolide"
+      ]
+    },
+    {
+      "a": "azole_antifungal",
+      "b": "statin",
+      "severity": "major",
+      "mechanism": "Azole antifungals inhibit CYP3A4, increasing statin levels and the risk of muscle injury (rhabdomyolysis).",
+      "source": "FDA simvastatin prescribing information (DailyMed)",
+      "pair": [
+        "azole_antifungal",
+        "statin"
+      ]
+    },
+    {
+      "a": "benzodiazepine",
+      "b": "opioid",
+      "severity": "major",
+      "mechanism": "Opioids plus benzodiazepines cause additive sedation and respiratory depression — a leading cause of overdose (FDA boxed warning).",
+      "source": "FDA opioid + benzodiazepine boxed warning",
+      "pair": [
+        "benzodiazepine",
+        "opioid"
+      ]
+    },
+    {
+      "a": "calcium",
+      "b": "iron",
+      "severity": "minor",
+      "mechanism": "Calcium reduces non-heme iron absorption; separate the two if iron repletion is the goal.",
+      "source": "NIH Office of Dietary Supplements — Iron fact sheet",
+      "pair": [
+        "calcium",
+        "iron"
+      ]
+    },
+    {
+      "a": "calcium",
+      "b": "levothyroxine",
+      "severity": "moderate",
+      "mechanism": "Calcium binds levothyroxine in the gut and reduces its absorption; separate doses by ≥4 hours.",
+      "source": "FDA levothyroxine prescribing information (DailyMed)",
+      "pair": [
+        "calcium",
+        "levothyroxine"
+      ]
+    },
+    {
+      "a": "clopidogrel",
+      "b": "nsaid",
+      "severity": "moderate",
+      "mechanism": "Adding an NSAID to clopidogrel compounds antiplatelet effect and GI-mucosal injury, raising bleeding risk.",
+      "source": "FDA clopidogrel prescribing information (DailyMed)",
+      "pair": [
+        "clopidogrel",
+        "nsaid"
+      ]
+    },
+    {
+      "a": "clopidogrel",
+      "b": "ppi",
+      "severity": "moderate",
+      "mechanism": "Some PPIs (esp. omeprazole/esomeprazole) inhibit CYP2C19 and can reduce clopidogrel's antiplatelet activation.",
+      "source": "FDA clopidogrel Drug Safety Communication",
+      "pair": [
+        "clopidogrel",
+        "ppi"
+      ]
+    },
+    {
+      "a": "coq10",
+      "b": "warfarin",
+      "severity": "minor",
+      "mechanism": "CoQ10 is structurally similar to vitamin K and may modestly reduce warfarin's effect (lower INR) in some people.",
+      "source": "NIH MedlinePlus — Coenzyme Q10",
+      "pair": [
+        "coq10",
+        "warfarin"
+      ]
+    },
+    {
+      "a": "digoxin",
+      "b": "loop_thiazide_diuretic",
+      "severity": "moderate",
+      "mechanism": "Loop and thiazide diuretics can lower potassium and magnesium, which increases the risk of digoxin toxicity and arrhythmia.",
+      "source": "FDA digoxin prescribing information (DailyMed)",
+      "pair": [
+        "digoxin",
+        "loop_thiazide_diuretic"
+      ]
+    },
+    {
+      "a": "digoxin",
+      "b": "macrolide",
+      "severity": "moderate",
+      "mechanism": "Clarithromycin/erythromycin raise digoxin levels, increasing the risk of digoxin toxicity (nausea, arrhythmia).",
+      "source": "FDA digoxin prescribing information (DailyMed)",
+      "pair": [
+        "digoxin",
+        "macrolide"
+      ]
+    },
+    {
+      "a": "doac",
+      "b": "nsaid",
+      "severity": "major",
+      "mechanism": "NSAIDs add antiplatelet and GI-injury effects to a direct oral anticoagulant, increasing serious bleeding risk.",
+      "source": "FDA apixaban/rivaroxaban prescribing information (DailyMed)",
+      "pair": [
+        "doac",
+        "nsaid"
+      ]
+    },
+    {
+      "a": "fish_oil",
+      "b": "warfarin",
+      "severity": "moderate",
+      "mechanism": "High-dose omega-3 fatty acids have a mild antiplatelet effect that can add to warfarin's bleeding risk.",
+      "source": "NIH Office of Dietary Supplements — Omega-3 fact sheet",
+      "pair": [
+        "fish_oil",
+        "warfarin"
+      ]
+    },
+    {
+      "a": "five_htp",
+      "b": "ssri",
+      "severity": "moderate",
+      "mechanism": "5-HTP is a serotonin precursor; adding it to an SSRI can raise serotonin levels and serotonin-syndrome risk.",
+      "source": "NIH MedlinePlus — 5-HTP",
+      "pair": [
+        "five_htp",
+        "ssri"
+      ]
+    },
+    {
+      "a": "garlic",
+      "b": "warfarin",
+      "severity": "moderate",
+      "mechanism": "Concentrated garlic supplements have antiplatelet activity that may increase bleeding risk with warfarin.",
+      "source": "NCCIH Garlic herb-drug interaction summary",
+      "pair": [
+        "garlic",
+        "warfarin"
+      ]
+    },
+    {
+      "a": "gemfibrozil",
+      "b": "statin",
+      "severity": "major",
+      "mechanism": "Gemfibrozil raises statin exposure and independently causes myopathy, sharply increasing rhabdomyolysis risk (gemfibrozil + simvastatin is contraindicated).",
+      "source": "FDA simvastatin & gemfibrozil prescribing information (DailyMed)",
+      "pair": [
+        "gemfibrozil",
+        "statin"
+      ]
+    },
+    {
+      "a": "ginkgo",
+      "b": "warfarin",
+      "severity": "moderate",
+      "mechanism": "Ginkgo can inhibit platelet-activating factor, adding to bleeding risk with anticoagulants.",
+      "source": "NCCIH Ginkgo herb-drug interaction summary",
+      "pair": [
+        "ginkgo",
+        "warfarin"
+      ]
+    },
+    {
+      "a": "iron",
+      "b": "levothyroxine",
+      "severity": "moderate",
+      "mechanism": "Iron binds levothyroxine and reduces its absorption; separate doses by ≥4 hours.",
+      "source": "FDA levothyroxine prescribing information (DailyMed)",
+      "pair": [
+        "iron",
+        "levothyroxine"
+      ]
+    },
+    {
+      "a": "levothyroxine",
+      "b": "magnesium",
+      "severity": "minor",
+      "mechanism": "Magnesium (and other polyvalent cations) can reduce levothyroxine absorption; separate the doses.",
+      "source": "FDA levothyroxine prescribing information (DailyMed)",
+      "pair": [
+        "levothyroxine",
+        "magnesium"
+      ]
+    },
+    {
+      "a": "levothyroxine",
+      "b": "ppi",
+      "severity": "minor",
+      "mechanism": "PPIs raise gastric pH and may reduce levothyroxine absorption, sometimes requiring a dose review.",
+      "source": "NIH MedlinePlus — Levothyroxine",
+      "pair": [
+        "levothyroxine",
+        "ppi"
+      ]
+    },
+    {
+      "a": "lithium",
+      "b": "nsaid",
+      "severity": "moderate",
+      "mechanism": "NSAIDs reduce renal lithium clearance, raising lithium levels toward a toxic range.",
+      "source": "FDA lithium prescribing information (DailyMed)",
+      "pair": [
+        "lithium",
+        "nsaid"
+      ]
+    },
+    {
+      "a": "macrolide",
+      "b": "statin",
+      "severity": "major",
+      "mechanism": "Clarithromycin/erythromycin inhibit CYP3A4, raising levels of simvastatin/lovastatin and the risk of myopathy/rhabdomyolysis.",
+      "source": "FDA simvastatin prescribing information (DailyMed)",
+      "pair": [
+        "macrolide",
+        "statin"
+      ]
+    },
+    {
+      "a": "maoi",
+      "b": "snri",
+      "severity": "major",
+      "mechanism": "SNRI + MAO inhibitor can precipitate life-threatening serotonin syndrome; contraindicated without a washout.",
+      "source": "FDA SNRI prescribing information (DailyMed)",
+      "pair": [
+        "maoi",
+        "snri"
+      ]
+    },
+    {
+      "a": "maoi",
+      "b": "ssri",
+      "severity": "major",
+      "mechanism": "Combining an SSRI with an MAO inhibitor can cause life-threatening serotonin syndrome; a washout period is required.",
+      "source": "FDA SSRI & MAOI prescribing information (DailyMed)",
+      "pair": [
+        "maoi",
+        "ssri"
+      ]
+    },
+    {
+      "a": "maoi",
+      "b": "tramadol",
+      "severity": "major",
+      "mechanism": "Tramadol with an MAO inhibitor risks serotonin syndrome and seizures; the combination is contraindicated.",
+      "source": "FDA tramadol prescribing information (DailyMed)",
+      "pair": [
+        "maoi",
+        "tramadol"
+      ]
+    },
+    {
+      "a": "methotrexate",
+      "b": "nsaid",
+      "severity": "major",
+      "mechanism": "NSAIDs reduce renal clearance of methotrexate, raising its levels and the risk of serious toxicity.",
+      "source": "FDA methotrexate prescribing information (DailyMed)",
+      "pair": [
+        "methotrexate",
+        "nsaid"
+      ]
+    },
+    {
+      "a": "methotrexate",
+      "b": "ppi",
+      "severity": "moderate",
+      "mechanism": "PPIs can reduce renal elimination of high-dose methotrexate, increasing exposure and toxicity risk.",
+      "source": "FDA methotrexate prescribing information (DailyMed)",
+      "pair": [
+        "methotrexate",
+        "ppi"
+      ]
+    },
+    {
+      "a": "nitrate",
+      "b": "pde5_inhibitor",
+      "severity": "major",
+      "mechanism": "PDE5 inhibitors plus nitrates cause profound, potentially life-threatening hypotension; the combination is contraindicated.",
+      "source": "FDA sildenafil prescribing information (DailyMed)",
+      "pair": [
+        "nitrate",
+        "pde5_inhibitor"
+      ]
+    },
+    {
+      "a": "nondihydro_ccb",
+      "b": "ophthalmic_timolol",
+      "severity": "major",
+      "mechanism": "Systemically absorbed ophthalmic timolol plus verapamil or diltiazem compounds AV-nodal suppression, risking serious bradycardia, AV block, or hypotension.",
+      "source": "FDA timolol ophthalmic solution prescribing information (DailyMed)",
+      "pair": [
+        "nondihydro_ccb",
+        "ophthalmic_timolol"
+      ]
+    },
+    {
+      "a": "nsaid",
+      "b": "ssri",
+      "severity": "moderate",
+      "mechanism": "SSRIs impair platelet aggregation and NSAIDs injure the GI mucosa, so together they raise the risk of upper-GI bleeding.",
+      "source": "NIH MedlinePlus; FDA SSRI prescribing information (DailyMed)",
+      "pair": [
+        "nsaid",
+        "ssri"
+      ]
+    },
+    {
+      "a": "nsaid",
+      "b": "warfarin",
+      "severity": "major",
+      "mechanism": "NSAIDs add antiplatelet and GI-mucosal injury on top of anticoagulation, sharply raising the risk of serious (especially GI) bleeding.",
+      "source": "FDA warfarin & ibuprofen prescribing information (DailyMed)",
+      "pair": [
+        "nsaid",
+        "warfarin"
+      ]
+    },
+    {
+      "a": "ophthalmic_timolol",
+      "b": "systemic_beta_blocker",
+      "severity": "moderate",
+      "mechanism": "Ophthalmic timolol is absorbed systemically and adds to an oral beta-blocker's effect, so the two together can cause additive bradycardia, hypotension, and bronchospasm.",
+      "source": "FDA timolol ophthalmic solution prescribing information (DailyMed)",
+      "pair": [
+        "ophthalmic_timolol",
+        "systemic_beta_blocker"
+      ]
+    },
+    {
+      "a": "oral_contraceptive",
+      "b": "st_johns_wort",
+      "severity": "major",
+      "mechanism": "St. John's Wort induces CYP3A4 and lowers contraceptive hormone levels, risking breakthrough bleeding and unintended pregnancy.",
+      "source": "NCCIH St. John's Wort herb-drug interaction summary",
+      "pair": [
+        "oral_contraceptive",
+        "st_johns_wort"
+      ]
+    },
+    {
+      "a": "sam_e",
+      "b": "ssri",
+      "severity": "moderate",
+      "mechanism": "SAM-e may have serotonergic activity that can add to an SSRI, with a theoretical serotonin-syndrome risk.",
+      "source": "NIH MedlinePlus — SAMe",
+      "pair": [
+        "sam_e",
+        "ssri"
+      ]
+    },
+    {
+      "a": "snri",
+      "b": "tramadol",
+      "severity": "moderate",
+      "mechanism": "Additive serotonergic effect plus tramadol's seizure-threshold lowering raises serotonin-syndrome and seizure risk.",
+      "source": "FDA tramadol prescribing information (DailyMed)",
+      "pair": [
+        "snri",
+        "tramadol"
+      ]
+    },
+    {
+      "a": "ssri",
+      "b": "st_johns_wort",
+      "severity": "major",
+      "mechanism": "St. John's Wort is serotonergic; combined with an SSRI it can cause serotonin syndrome.",
+      "source": "NCCIH St. John's Wort herb-drug interaction summary",
+      "pair": [
+        "ssri",
+        "st_johns_wort"
+      ]
+    },
+    {
+      "a": "ssri",
+      "b": "tramadol",
+      "severity": "moderate",
+      "mechanism": "Both raise serotonin and tramadol lowers the seizure threshold, so the combination increases serotonin-syndrome and seizure risk.",
+      "source": "FDA tramadol prescribing information (DailyMed)",
+      "pair": [
+        "ssri",
+        "tramadol"
+      ]
+    },
+    {
+      "a": "ssri",
+      "b": "triptan",
+      "severity": "moderate",
+      "mechanism": "Adding a triptan to an SSRI can raise serotonin levels and, rarely, cause serotonin syndrome.",
+      "source": "FDA triptan labeling; FDA serotonin-syndrome advisory",
+      "pair": [
+        "ssri",
+        "triptan"
+      ]
+    },
+    {
+      "a": "ssri",
+      "b": "warfarin",
+      "severity": "moderate",
+      "mechanism": "SSRIs impair platelet aggregation and can raise the INR, increasing bleeding risk when combined with warfarin.",
+      "source": "NIH MedlinePlus; FDA SSRI labeling",
+      "pair": [
+        "ssri",
+        "warfarin"
+      ]
+    },
+    {
+      "a": "st_johns_wort",
+      "b": "warfarin",
+      "severity": "major",
+      "mechanism": "St. John's Wort induces CYP metabolism of warfarin, reducing its anticoagulant effect and the INR (risk of clot).",
+      "source": "NCCIH St. John's Wort herb-drug interaction summary",
+      "pair": [
+        "st_johns_wort",
+        "warfarin"
+      ]
+    },
+    {
+      "a": "vitamin_e",
+      "b": "warfarin",
+      "severity": "moderate",
+      "mechanism": "High-dose vitamin E can inhibit platelet aggregation and antagonize vitamin K, potentially increasing bleeding risk.",
+      "source": "NIH Office of Dietary Supplements — Vitamin E fact sheet",
+      "pair": [
+        "vitamin_e",
+        "warfarin"
+      ]
+    },
+    {
+      "a": "vitamin_k",
+      "b": "warfarin",
+      "severity": "moderate",
+      "mechanism": "Vitamin K directly antagonizes warfarin, reducing its anticoagulant effect and lowering the INR; keep intake consistent.",
+      "source": "FDA warfarin prescribing information (DailyMed)",
+      "pair": [
+        "vitamin_k",
+        "warfarin"
+      ]
+    }
+  ]
+}
