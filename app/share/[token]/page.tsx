@@ -17,6 +17,8 @@ import {
 } from "@/lib/illness-episode";
 import EpisodeSummary from "@/components/illness/EpisodeSummary";
 import PrintButton from "@/components/illness/PrintButton";
+import MedicationListView from "@/components/medications/MedicationListView";
+import { getCurrentMedicationList } from "@/app/(app)/medications/med-data";
 
 // A human opening a shared passport hits this a handful of times; 30 requests/min
 // per token is far above that while capping a client scraping this PHI-bearing,
@@ -95,6 +97,28 @@ export default async function SharePage(props: {
         <EpisodeSummary
           episode={assembled}
           generatedAt={new Date().toISOString()}
+        />
+      </div>
+    );
+  }
+
+  // Current-medication-list share (issue #852 item 4): the "bring your medication list"
+  // artifact, tokenized. Re-derives the CURRENT list at view time (getCurrentMedicationList
+  // — the SAME gather the print page and medications page use), so a shared link stays
+  // live. Renders the same MedicationListView the print page does (one computation).
+  if (link.kind === "medications") {
+    const medName = getProfileNameById(link.profile_id) ?? "Profile";
+    const rows = getCurrentMedicationList(link.profile_id);
+    return (
+      <div className="mx-auto min-h-screen max-w-3xl px-4 py-6 sm:py-10">
+        <div className="mb-4 flex items-center justify-end">
+          <PrintButton />
+        </div>
+        <MedicationListView
+          title="Current medications"
+          personName={medName}
+          generatedAt={new Date().toISOString()}
+          rows={rows}
         />
       </div>
     );

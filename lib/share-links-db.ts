@@ -14,11 +14,13 @@ import { hashShareToken } from "./share-token";
 export interface ShareLinkRow {
   id: number;
   profile_id: number;
-  // 'passport' (the pre-existing behavior) or 'episode' (issue #801). The row shape
-  // is shared; only the resolver differs — passport reads `fields`, an episode link
-  // reads `episode_id` (#856, the stable anchor) with `episode_situation` +
-  // `episode_anchor` as a graceful fallback, and re-derives the range at view time.
-  kind: "passport" | "episode";
+  // 'passport' (the pre-existing behavior), 'episode' (issue #801), or 'medications'
+  // (issue #852: the current-medication list). The row shape is shared; only the
+  // resolver differs — passport reads `fields`, an episode link reads `episode_id`
+  // (#856, the stable anchor) with `episode_situation` + `episode_anchor` as a graceful
+  // fallback, and a medications link re-derives the CURRENT med list at view time (so a
+  // shared list stays live). `fields` is '[]' for episode/medications links.
+  kind: "passport" | "episode" | "medications";
   fields: string; // JSON array (parse with parseShareFields) — '[]' for episode links
   episode_id: number | null; // #856: the stable episode row id (kind='episode')
   episode_situation: string | null; // set for kind='episode' (fallback resolver)
@@ -87,6 +89,26 @@ export function createEpisodeShareLink(
       expiresAtISO,
       createdBy
     );
+  return { id: Number(info.lastInsertRowid), token };
+}
+
+// Create a CURRENT-MEDICATION-LIST share link (issue #852 item 4), returning the RAW
+// token once. Like the episode link it stores no `fields` ('[]') and re-derives its
+// content (the current med list) at view time, so a shared list stays live. Rides the
+// same profile_share_links table / token machinery.
+export function createMedicationShareLink(
+  profileId: number,
+  createdBy: number | null,
+  expiresAtISO: string
+): { id: number; token: string } {
+  const token = crypto.randomBytes(32).toString("hex");
+  const info = db
+    .prepare(
+      `INSERT INTO profile_share_links
+         (profile_id, token_hash, kind, fields, expires_at, created_by)
+       VALUES (?, ?, 'medications', '[]', ?, ?)`
+    )
+    .run(profileId, hashShareToken(token), expiresAtISO, createdBy);
   return { id: Number(info.lastInsertRowid), token };
 }
 

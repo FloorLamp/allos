@@ -10,6 +10,8 @@ import {
   parseQuantityOnHand,
   refillBasisLabel,
   resolveOnHandWrite,
+  resolveRefillWrite,
+  runOutDateStr,
   selectLowSupplyItems,
   unitsPerDay,
   type DoseRate,
@@ -317,5 +319,32 @@ describe("resolveOnHandWrite (issue #467 compare-and-set)", () => {
     expect(resolveOnHandWrite(60, null, null)).toBe(60);
     // Untracked and untouched (null == null): keep current (still null).
     expect(resolveOnHandWrite(null, null, null)).toBeNull();
+  });
+});
+
+describe("resolveRefillWrite (#852 item 3 — CAS increment)", () => {
+  it("adds the fill size to the CURRENT (lock-read) value, preserving a concurrent decrement", () => {
+    // Loaded at 5, a dose confirm decremented it to 4 concurrently; a refill of 30 must
+    // land on the CURRENT 4 → 34, NOT clobber back to 5 + 30 = 35.
+    expect(resolveRefillWrite(4, 30)).toBe(34);
+    // No concurrent change: plain add.
+    expect(resolveRefillWrite(5, 30)).toBe(35);
+  });
+
+  it("is a no-op on a non-positive fill and null on an untracked item", () => {
+    expect(resolveRefillWrite(4, 0)).toBe(4);
+    expect(resolveRefillWrite(4, -5)).toBe(4);
+    expect(resolveRefillWrite(null, 30)).toBeNull();
+  });
+});
+
+describe("runOutDateStr (#852 item 3 — projected run-out date)", () => {
+  it("shifts today forward by the whole days of supply left", () => {
+    expect(runOutDateStr("2024-07-16", 19)).toBe("2024-08-04");
+    expect(runOutDateStr("2024-07-16", 0)).toBe("2024-07-16");
+  });
+
+  it("is null when days-left can't be estimated", () => {
+    expect(runOutDateStr("2024-07-16", null)).toBeNull();
   });
 });

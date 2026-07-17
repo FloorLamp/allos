@@ -44,6 +44,7 @@ import {
   type SummaryVital,
 } from "./profile-summary";
 import type { MedicationCourse } from "./types";
+import { medicationDoseDetail } from "./medication-list";
 import type { MedicalRecord } from "./types";
 
 // Server-side gathering for the profile passport: it runs the
@@ -140,11 +141,12 @@ export function getProfileSummary(
     .filter((s) => s.active && s.kind === "medication")
     .map((s) => {
       medSeen.add(cleanMedicationName(s.name).toLowerCase());
-      const strength = [...new Set(medDoseAmounts.get(s.id) ?? [])].join(", ");
-      const detail =
-        [strength, s.as_needed === 1 ? "as needed" : null]
-          .filter(Boolean)
-          .join(" · ") || null;
+      // Shared with the #852 med-list dose column (medicationDoseDetail) so the
+      // Emergency Card / passport and the printable list can't drift on dose text.
+      const detail = medicationDoseDetail(
+        medDoseAmounts.get(s.id) ?? [],
+        s.as_needed === 1
+      );
       return {
         name: s.name,
         detail,

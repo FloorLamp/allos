@@ -16,8 +16,14 @@ import {
   deleteAdministrationLog,
   createMedicationFromRecord,
   dismissFinding,
+  restoreFinding,
+  refillSupply,
 } from "@/lib/queries";
 import { MED_BRIDGE_PREFIX } from "@/lib/medication-record-match";
+import { createMedicationShareLink } from "@/lib/share-links-db";
+import { expiresAtFor } from "@/lib/share-links";
+import { recordAudit } from "@/lib/audit";
+import { AUDIT_ACTIONS } from "@/lib/audit-actions";
 import { getTimezone } from "@/lib/settings";
 import { zonedWallTimeToUtc } from "@/lib/date";
 import {
@@ -276,6 +282,91 @@ export async function dismissMedicationRecord(
     return formError("Couldn't dismiss that suggestion.");
   }
   dismissFinding(profile.id, dedupeKey);
+  revalidatePath("/medications");
+  return formOk();
+}
+
+export type MedShareResult =
+  { ok: true; path: string } | { ok: false; error: string };
+
+// Mint a tokenized current-medication-list share link (#852 item 4), the #801
+// episode-summary precedent applied to the med list. Returns the one-time /share path;
+// the raw token is never stored (only its hash). requireWriteAccess gates it; the link
+// is audited by its id (never the token). The med list IS the shared content by design
+// here (owner opted in), served through the same token-auth + public-path allowlist.
+export async function createMedicationShareLinkAction(
+  formData: FormData
+): Promise<MedShareResult> {
+  const { login, profile } = await requireWriteAccess();
+  const ttl = String(formData.get("ttl") ?? "");
+  const expiresAt = expiresAtFor(ttl, new Date());
+  const { id: linkId, token } = createMedicationShareLink(
+    profile.id,
+    login.id,
+    expiresAt
+  );
+  recordAudit({
+    loginId: login.id,
+    profileId: profile.id,
+    action: AUDIT_ACTIONS.shareLinkCreate,
+    target: String(linkId),
+  });
+  revalidatePath("/medications");
+  return { ok: true, path: `/share/${token}` };
+}
+
+// One-tap "Refilled" (#852 item 3): add a fill's worth of units back to a med's on-hand
+// supply and remember the fill size for next time. The auth gate lives here; the
+// auth-blind core (refillSupply) does the compare-and-set increment under the write lock
+// so a concurrent dose decrement isn't clobbered (#467). `fill_size` is optional — the
+// remembered last-fill size is used when it's absent (the one-tap case). A successful
+// refill clears the low-supply episode marker so a later drop re-fires a fresh nudge
+// (issue #325 parity with restart).
+export async function refillMedication(
+  formData: FormData
+): Promise<FormResult> {
+  const { profile } = await requireWriteAccess();
+  const id = Number(formData.get("id"));
+  if (!id) return formError("Couldn't find that medication.");
+  const raw = formData.get("fill_size");
+  const hasFill = raw != null && String(raw).trim() !== "";
+  const fillSize = hasFill ? Number(raw) : null;
+  if (fillSize != null && (!Number.isFinite(fillSize) || fillSize <= 0)) {
+    return formError("Enter a valid fill size.");
+  }
+  const outcome = refillSupply(profile.id, id, fillSize);
+  switch (outcome.kind) {
+    case "refilled":
+      deleteProfileSetting(profile.id, refillMarkerKey(id));
+      revalidatePath("/medications");
+      revalidatePath("/nutrition");
+      revalidatePath("/");
+      return formOk();
+    case "needs-size":
+      return formError("How many units did you refill? Enter the fill size.");
+    case "untracked":
+      return formError("Turn on refill tracking to record a refill.");
+    case "stale-item":
+    default:
+      return formError(
+        "Couldn't record that refill — it may have been removed."
+      );
+  }
+}
+
+// Restore a dismissed records-bridge suggestion (#852 item 6): drop its suppression so
+// the "From your records" suggestion reappears — the undoable-delete spirit applied to
+// suggestions, keeping the suggest-only contract. Guarded to the med-bridge namespace so
+// it can only ever un-dismiss one of those keys.
+export async function restoreMedicationRecord(
+  formData: FormData
+): Promise<FormResult> {
+  const { profile } = await requireWriteAccess();
+  const dedupeKey = String(formData.get("dedupe_key") ?? "").trim();
+  if (!dedupeKey.startsWith(MED_BRIDGE_PREFIX)) {
+    return formError("Couldn't restore that suggestion.");
+  }
+  restoreFinding(profile.id, dedupeKey);
   revalidatePath("/medications");
   return formOk();
 }

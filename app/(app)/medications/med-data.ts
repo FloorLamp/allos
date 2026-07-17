@@ -43,6 +43,11 @@ import {
   partitionMedications,
   type MedicationWithHistory,
 } from "@/lib/medication-history";
+import { medicationStartDate } from "@/lib/profile-summary";
+import {
+  buildMedicationList,
+  type MedicationListRow,
+} from "@/lib/medication-list";
 import { today } from "@/lib/db";
 import { parseRxcuiIngredients } from "@/lib/rxnorm";
 import { isTrainingRestricted } from "@/lib/age-gate";
@@ -70,6 +75,10 @@ import {
   type AdherenceDot,
 } from "@/lib/supplement-adherence";
 import type { DoseRate } from "@/lib/refill";
+import {
+  buildAdherenceCalendar,
+  type AdherenceCalendarModel,
+} from "@/lib/adherence-calendar";
 import {
   unmatchedPrescriptionRecords,
   medBridgeDismissalKey,
@@ -108,6 +117,9 @@ export interface MedCardData {
 export interface MedicationsData {
   todayStr: string;
   tz: string;
+  // The profile's local wall clock (HH:MM) at load, so the Today panel can flag a
+  // past-bucket unresolved dose in the profile's timezone (#852 item 1).
+  nowHhmm: string;
   trainingRestricted: boolean;
   // The profile's age in whole years (issue #851 item 4), threaded to FoodGuidance so a
   // child never sees an age-gated food note (alcohol → adult). Null when unknown.
@@ -132,6 +144,10 @@ export interface MedicationsData {
     redoseLine: string | null;
   }[];
   bridge: BridgeSuggestion[];
+  // Bridge suggestions the user has dismissed (#852 item 6): surfaced in a collapsed
+  // "dismissed (N)" disclosure with restore, so a mis-tap is recoverable while the
+  // suggest-only contract holds. Empty when nothing's been dismissed.
+  dismissedBridge: BridgeSuggestion[];
   byId: Map<number, MedCardData>;
 }
 
@@ -365,28 +381,31 @@ export function loadMedicationsData(profileId: number): MedicationsData {
     sort: "date",
     dir: "desc",
   });
-  const bridge: BridgeSuggestion[] = unmatchedPrescriptionRecords(
+  const allBridge: BridgeSuggestion[] = unmatchedPrescriptionRecords(
     prescriptionRecords,
     trackedMeds
-  )
-    .map((r) => {
-      const dedupeKey = medBridgeDismissalKey(r);
-      return {
-        recordId: r.id,
-        name: r.canonical_name?.trim() || r.name,
-        detail: [r.value, r.unit].filter(Boolean).join(" ") || null,
-        date: r.date,
-        dedupeKey,
-      };
-    })
-    .filter((s) => {
-      const rec = suppressions.get(s.dedupeKey);
-      return !(rec && isSuppressed(rec, todayStr));
-    });
+  ).map((r) => {
+    const dedupeKey = medBridgeDismissalKey(r);
+    return {
+      recordId: r.id,
+      name: r.canonical_name?.trim() || r.name,
+      detail: [r.value, r.unit].filter(Boolean).join(" ") || null,
+      date: r.date,
+      dedupeKey,
+    };
+  });
+  const isDismissed = (s: BridgeSuggestion) => {
+    const rec = suppressions.get(s.dedupeKey);
+    return !!(rec && isSuppressed(rec, todayStr));
+  };
+  const bridge = allBridge.filter((s) => !isDismissed(s));
+  // Dismissed suggestions surfaced (recoverable) in the #852 item 6 disclosure.
+  const dismissedBridge = allBridge.filter(isDismissed);
 
   return {
     todayStr,
     tz,
+    nowHhmm: hhmm,
     trainingRestricted,
     age: getUserAge(profileId),
     taken,
@@ -402,6 +421,80 @@ export function loadMedicationsData(profileId: number): MedicationsData {
     past: pastData,
     prnToday,
     bridge,
+    dismissedBridge,
     byId,
   };
+}
+
+// The current-medication list rows (#852 item 4) — the ONE assembly the printable list
+// and the tokenized /share view both format over (buildMedicationList is the pure
+// engine; this maps the already-gathered Current cards into its input). "Current" is
+// the medications page's Current set (active, structured meds); prescriber + start date
+// + schedule come straight off the card data, no second DB pass.
+export function medicationListFromCards(
+  cards: MedCardData[]
+): MedicationListRow[] {
+  return buildMedicationList(
+    cards.map((c) => ({
+      id: c.med.id,
+      name: c.med.name,
+      brand: c.med.brand,
+      product: c.med.product,
+      asNeeded: c.med.as_needed === 1,
+      rx: c.med.rx === 1,
+      prescriber: c.med.prescriber,
+      doseAmounts: c.doses.map((d) => d.amount).filter((a): a is string => !!a),
+      timesOfDay: c.doses.map((d) => d.time_of_day),
+      startedOn: medicationStartDate(c.courses, c.med.created_at),
+    }))
+  );
+}
+
+// Load the current-medication list for a profile (print / share). Reuses the ONE
+// loadMedicationsData gather so the artifact can't disagree with the medications page.
+export function getCurrentMedicationList(
+  profileId: number
+): MedicationListRow[] {
+  return medicationListFromCards(loadMedicationsData(profileId).current);
+}
+
+// The number of days the detail-page month adherence calendar spans (#852 item 5) — a
+// five-week window so a full month is always visible.
+export const ADHERENCE_MONTH_DAYS = 35;
+
+// Month adherence calendar for one medication (#852 item 5) — the SAME
+// supplementAdherenceStrip computation the 14-day strip uses, over a longer window,
+// laid out on a Sun→Sat grid by the pure buildAdherenceCalendar. No new model. Returns
+// an empty grid for an unknown/foreign id.
+export function getMedicationAdherenceCalendar(
+  profileId: number,
+  itemId: number,
+  days: number = ADHERENCE_MONTH_DAYS
+): AdherenceCalendarModel {
+  const med = getSupplements(profileId).find(
+    (s) => s.id === itemId && s.kind === "medication"
+  );
+  if (!med) return buildAdherenceCalendar([]);
+  const doseIds = getSupplementDoses(profileId)
+    .filter((d) => d.item_id === itemId)
+    .map((d) => d.id);
+  const todayStr = today(profileId);
+  const dates = lastNDates(todayStr, days);
+  const workoutDays = new Set(getActivityDates(profileId));
+  const situationsOn = situationHistoryResolver(
+    new Set(getActiveSituations(profileId)),
+    getSituationEvents(profileId)
+  );
+  const takenByDose = indexTakenByDose(
+    getSupplementLogsInRange(profileId, days)
+  );
+  const strip = supplementAdherenceStrip(
+    med,
+    doseIds,
+    dates,
+    workoutDays,
+    situationsOn,
+    takenByDose
+  );
+  return buildAdherenceCalendar(strip);
 }

@@ -6,7 +6,7 @@
 // singleton (deleteAdministrationLog / restoreAdministrationLog), asserting the
 // derived redose arming state, the over-max finding input, and supply all round-trip.
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { db, today } from "@/lib/db";
 import {
   logAdministration,
@@ -77,6 +77,20 @@ function logThree(profileId: number, itemId: number) {
 }
 
 describe("deleteAdministrationLog / restoreAdministrationLog — window + supply round-trip", () => {
+  // Freeze the clock at a fixed mid-day. logThree logs administrations at now − 30/20/10
+  // minutes; run in the 00:00–00:30 window those relative times straddle midnight and land
+  // on YESTERDAY's profile-local date, while the assertions query today() — so countToday
+  // reads 0 (a time-of-day flake, unrelated to supply accounting). Freezing now() and
+  // today() to the same mid-day instant makes the fixture deterministic regardless of when
+  // CI runs; the delete/restore round-trip assertions below are unchanged.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-06-15T12:00:00Z"));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("delete drops the derived count/over-max and re-credits supply; restore re-applies", () => {
     const { profileId, itemId } = seedPrnMed({
       maxDailyCount: 2,

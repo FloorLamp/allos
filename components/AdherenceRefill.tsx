@@ -7,8 +7,10 @@ import {
   daysOfSupplyForItem,
   isLowSupply,
   refillBasisLabel,
+  runOutDateStr,
   type DoseRate,
 } from "@/lib/refill";
+import { formatMonthDay } from "@/lib/format-date";
 
 // The refill "≈N days of supply left" badge (#38/#301), shared by the supplement
 // ROW and the medication CARD so both surface the same estimate identically
@@ -21,11 +23,16 @@ export function RefillBadge({
   qtyPerDose,
   refillRate,
   doseCount,
+  todayStr,
 }: {
   quantityOnHand: number | null;
   qtyPerDose: number;
   refillRate: DoseRate | null;
   doseCount: number;
+  // When provided (#852 item 3), the badge also shows the projected run-out DATE
+  // ("runs out ~Aug 3") — a date is what you tell the pharmacy. Omitted on surfaces
+  // (supplement rows) that keep the compact days-left form.
+  todayStr?: string;
 }) {
   const daysLeft = daysOfSupplyForItem(
     quantityOnHand,
@@ -36,6 +43,7 @@ export function RefillBadge({
   if (daysLeft === null) return null;
   const lowSupply = isLowSupply(daysLeft);
   const refillBasis = refillBasisLabel(refillRate?.basis ?? "schedule");
+  const runOut = todayStr ? runOutDateStr(todayStr, daysLeft) : null;
   return (
     <span
       data-testid="refill-days-left"
@@ -44,9 +52,22 @@ export function RefillBadge({
           ? "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
           : "bg-slate-100 text-slate-500 dark:bg-ink-800 dark:text-slate-400"
       }`}
-      title={`Estimated days of supply remaining — ${refillBasis}`}
+      title={
+        runOut
+          ? `Runs out around ${formatMonthDay(runOut)} — ${refillBasis}`
+          : `Estimated days of supply remaining — ${refillBasis}`
+      }
     >
       {lowSupply ? "Low · " : ""}≈{daysLeft} day{daysLeft === 1 ? "" : "s"} left
+      {/* The projected run-out DATE alongside the days-left duration (#852 item 3) —
+          a date is what you tell the pharmacy. Shown only where todayStr is threaded
+          (the medication row + card); the supplement row keeps the compact form. */}
+      {runOut && (
+        <span data-testid="refill-run-out">
+          {" "}
+          · runs out ~{formatMonthDay(runOut)}
+        </span>
+      )}
       <span className="ml-1 font-normal opacity-70">· {refillBasis}</span>
     </span>
   );

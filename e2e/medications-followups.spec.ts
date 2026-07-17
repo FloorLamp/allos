@@ -120,19 +120,22 @@ test("scheduled and PRN rows share the one Today-row primitive (#851 item 10)", 
 test("PRN administration removes with an Undo toast that restores it (#851 item 11)", async ({
   page,
 }) => {
+  // Open the seeded PRN med's clinical-record detail page via a DIRECT goto to its href
+  // (not a Link click): on the heavier list page a client-side transition to the detail
+  // can be interrupted/reverted under load, detaching the administration chips mid-click
+  // (the settle race the coordinator flagged). A full navigation lands on a settled page.
   await page.goto("/medications");
-
-  // Open the seeded PRN med's clinical-record detail page (ride the hydration window).
   const link = page
     .getByTestId("medication-row")
     .filter({ hasText: PRN_MED })
     .getByTestId("medication-row-link");
-  const detail = page.getByTestId("medication-detail");
-  await expect(async () => {
-    await link.click();
-    await expect(detail).toBeVisible({ timeout: 2000 });
-  }).toPass();
+  await expect(link).toBeVisible();
+  const href = await link.getAttribute("href");
+  expect(href).toMatch(/\/medications\/\d+/);
+  await page.goto(href!);
 
+  const detail = page.getByTestId("medication-detail");
+  await expect(detail).toBeVisible();
   const chips = detail.getByTestId("prn-administration-chip");
   await expect(chips.first()).toBeVisible();
   // Capture the count dynamically so a CI retry (persisted DB) still balances.
@@ -159,11 +162,12 @@ test("detail page shows past-administration history (#851 item 13)", async ({
     .getByTestId("medication-row")
     .filter({ hasText: PRN_MED })
     .getByTestId("medication-row-link");
+  await expect(link).toBeVisible();
+  const href = await link.getAttribute("href");
+  expect(href).toMatch(/\/medications\/\d+/);
+  await page.goto(href!);
   const detail = page.getByTestId("medication-detail");
-  await expect(async () => {
-    await link.click();
-    await expect(detail).toBeVisible({ timeout: 2000 });
-  }).toPass();
+  await expect(detail).toBeVisible();
 
   // The seeded PRN med has administrations logged today, so the "Recent doses" roll-up
   // renders inside the (detail-open) History disclosure.

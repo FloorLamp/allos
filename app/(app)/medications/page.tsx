@@ -3,6 +3,7 @@ import { getProviderNames } from "@/lib/queries";
 import { loadMedicationsData } from "./med-data";
 import MedicationsTodayPanel from "./MedicationsTodayPanel";
 import MedicationRow from "./MedicationRow";
+import MedicationListActions from "./MedicationListActions";
 import RecordsBridge from "./RecordsBridge";
 import MedicationForm from "@/components/MedicationForm";
 import QuickAddMedication from "@/components/QuickAddMedication";
@@ -53,6 +54,7 @@ export default async function MedicationsPage() {
           prnToday={data.prnToday}
           taken={data.taken}
           skipped={data.skipped}
+          nowHhmm={data.nowHhmm}
         />
 
         {/* 2. Safety strip — interaction + PGx warnings (also on Supplements). */}
@@ -68,9 +70,13 @@ export default async function MedicationsPage() {
             {/* 3. Current medications — scannable rows. */}
             {data.current.length > 0 && (
               <section>
-                <h2 className="mb-2 section-label text-rose-600 dark:text-rose-400">
-                  Current
-                </h2>
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                  <h2 className="section-label text-rose-600 dark:text-rose-400">
+                    Current
+                  </h2>
+                  {/* Print / share the current-medication list (#852 item 4). */}
+                  <MedicationListActions />
+                </div>
                 <div className="space-y-3">
                   {data.current.map((m) => (
                     <MedicationRow
@@ -82,6 +88,7 @@ export default async function MedicationsPage() {
                       strip={m.strip}
                       refillRate={m.refillRate}
                       prnRedoseLine={m.prnRedoseLine}
+                      todayStr={data.todayStr}
                     />
                   ))}
                 </div>
@@ -105,6 +112,7 @@ export default async function MedicationsPage() {
                       strip={m.strip}
                       refillRate={m.refillRate}
                       prnRedoseLine={m.prnRedoseLine}
+                      todayStr={data.todayStr}
                     />
                   ))}
                 </div>
@@ -113,8 +121,11 @@ export default async function MedicationsPage() {
           </>
         )}
 
-        {/* 4. From your records — suggest-only prescription bridge. */}
-        <RecordsBridge suggestions={data.bridge} />
+        {/* 4. From your records — suggest-only prescription bridge (+ dismissed list). */}
+        <RecordsBridge
+          suggestions={data.bridge}
+          dismissed={data.dismissedBridge}
+        />
       </div>
 
       {/* 6a. OTC quick-add (#843) — the common case (an OTC PRN med) in ~three fields:

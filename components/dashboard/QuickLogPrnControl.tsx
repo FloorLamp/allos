@@ -27,8 +27,9 @@ export default function QuickLogPrnControl({
   // The redose-window status line (#798), or null when the med has no confirmed
   // interval/max. Informational — window state + running count, never permissive.
   redoseLine?: string | null;
-  // On the Medications Today panel (#851 item 10) the name links to the med's detail
-  // page, matching the scheduled row; the dashboard widget keeps it plain text.
+  // The name links to the med's detail page (#852 item 2), matching the scheduled row.
+  // Both hosts — the Medications Today panel (#851 item 10) and the dashboard quick-log
+  // widget — pass this now; it stays a prop only so a future non-linking host can opt out.
   linkToDetail?: boolean;
 }) {
   const [busy, setBusy] = useState(false);

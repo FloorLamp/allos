@@ -25,6 +25,17 @@ export function formatLongDate(iso: string): string {
   return d.toLocaleDateString(undefined, opts);
 }
 
+// Short "Month Day" label (e.g. "Aug 3") for compact contexts like the refill
+// run-out chip (#852 item 3). ISO YYYY-MM-DD in, parsed as local midnight so the day
+// doesn't shift; the year is appended only when it isn't the current calendar year.
+export function formatMonthDay(iso: string): string {
+  const d = new Date(iso + "T00:00:00");
+  if (Number.isNaN(d.getTime())) return iso;
+  const opts: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
+  if (d.getFullYear() !== new Date().getFullYear()) opts.year = "numeric";
+  return d.toLocaleDateString(undefined, opts);
+}
+
 // A human "time since" label: Today / Yesterday / N days|weeks|months|years ago.
 // Day math is calendar-based against `todayStr` (the app's configured today), so
 // it's timezone-independent; defaults to the process-local date for compatibility.
