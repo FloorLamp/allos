@@ -128,7 +128,7 @@ export default async function HouseholdPage() {
       oorBiomarkers,
       goals: goalHighlights(goals, goalProgress, day, 2),
       // An open illness episode surfaces as a "sick day N" chip (issue #801) — the
-      // same assembly the dashboard "Sick in the household" card formats over.
+      // same assembly the dashboard illness hero (#858) formats over.
       sick: (() => {
         const ep = currentEpisodeForProfile(pid);
         return ep ? householdSickLine(profile.name, ep, temperatureUnit) : null;

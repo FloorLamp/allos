@@ -6,7 +6,7 @@ import { loginAs, followLink } from "./nav";
 // ibuprofen administrations (#797). These specs drive the surfaces that tell that story:
 //   1. the Timeline episode card + its detail page (over the shared assembly);
 //   2. the tokenized /share link rendering the summary anonymously;
-//   3. the "Sick in the household" cross-profile card for a granted member.
+//   3. the illness hero's cross-profile accordion (#858) for a granted member.
 // All format over the SAME assembleIllnessEpisode — no second engine (#221).
 
 test.describe("Illness-episode view (#801)", () => {
