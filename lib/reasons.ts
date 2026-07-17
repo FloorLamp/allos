@@ -36,7 +36,13 @@ export type ReasonCode =
   // A tracked follow-up exists BECAUSE of a source finding (issue #700): the "why"
   // that turns a bare "follow up in 12 months" into "for the 6 mm RLL nodule
   // (2026-03)". Self-evident from the linked record, so no citation source.
-  | "followup-source";
+  | "followup-source"
+  // A coaching nudge is intentionally HELD by context, not because there's nothing
+  // to say (issue #837): an open flagged-illness episode pauses the routine-gap /
+  // pace nags so a sick week isn't nagged to train. The "why it's quiet" line the
+  // dashboard coaching card shows ("Held — illness episode open"). No source (it's a
+  // fact about the app's own tracked situation, not a citation).
+  | "coaching-held";
 
 export interface Reason {
   // Stable machine key — the closed union above.
@@ -94,6 +100,13 @@ export function situationReason(situation: string): Reason {
     code: "situation-active",
     text: `Due because ${situation} is active`,
   };
+}
+
+// A "coaching is paused by context" reason (issue #837) — the "why it's quiet"
+// line the held coaching card carries so a silenced surface can explain itself
+// ("Held — illness episode open"). No source (it's the app's own tracked state).
+export function coachingHeldReason(text: string): Reason {
+  return { code: "coaching-held", text };
 }
 
 // A "this follow-up is for a source finding" reason (issue #700) — the legibility

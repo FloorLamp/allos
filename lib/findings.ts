@@ -184,6 +184,9 @@ export function recommendationToFinding(rec: Recommendation): Finding {
     dedupeKey: coachingDedupeKey(rec.id),
     title: rec.title,
     detail: rec.detail,
+    // Carry the structured reasons across the bus (issue #656/#837) so a coaching
+    // Finding surfaces the SAME "why it's quiet" the recommendation knows.
+    reasons: rec.reasons,
     tone: rec.tone,
     actionHref: rec.actionHref,
     actionLabel: rec.actionLabel,

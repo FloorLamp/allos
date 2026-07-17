@@ -49,8 +49,12 @@ import {
   getTimezone,
 } from "@/lib/settings";
 import { situationHistoryResolver } from "@/lib/trend-annotations";
-import { suggestedSituationsFromConditions } from "@/lib/situations";
 import {
+  suggestedSituationsFromConditions,
+  situationActivationLine,
+} from "@/lib/situations";
+import {
+  countSituationalDue,
   isDueOn,
   isPostWorkoutReady,
   timeBucket,
@@ -464,6 +468,18 @@ export default async function SupplementsTab() {
           );
         })}
       </div>
+
+      {/* Situation-activation acknowledgment (#662 item 1): a one-line confirmation
+          that toggling a situation changed the shape of the due dose list, counted
+          from the SAME dueness computation the list uses (never a second count). */}
+      {situationActivationLine(countSituationalDue(supplements, ctx)) && (
+        <p
+          className="-mt-2 mb-4 text-xs text-slate-500 dark:text-slate-400"
+          data-testid="situation-activation"
+        >
+          {situationActivationLine(countSituationalDue(supplements, ctx))}
+        </p>
+      )}
 
       {/* Condition bridge (#560 part 2): suggest a clinical situation implied by an
           active illness/injury condition, so it isn't a second manual toggle. */}

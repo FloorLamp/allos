@@ -8,7 +8,7 @@
 // boundaries follow the configured app timezone (via gatherCoachingInput).
 
 import { frequencyScopeLabel } from "../goals";
-import { recommendCoaching } from "../coaching";
+import { illnessCoachingMode, recommendCoaching } from "../coaching";
 import { recommendNextWorkout } from "../workout-recommendation";
 import { isWorkoutNudgeSuppressed } from "../workout-nudge";
 import { gatherCoachingInput } from "../queries";
@@ -29,6 +29,15 @@ export function recommendWorkout(
   // One gather, one core — the dashboard, the overview, and this reminder all
   // read the same computation, so they can't drift.
   const input = gathered ?? gatherCoachingInput(profileId, "kg", "km");
+
+  // Situation-aware hold (issue #837): the workout-reminder slot goes QUIET during an
+  // open flagged-illness episode and through the post-close ease-back ramp — a fever
+  // week needs no "time to train" ping. Returning null holds it out of BOTH the send
+  // and the daily `notify_last_workout` marker, so the normal lifecycle resumes when
+  // the ramp ends. The one-shot ease-back nudge is a separate slot (runEaseBack).
+  if (illnessCoachingMode(input.illness, input.today).mode !== "normal")
+    return null;
+
   const nw = recommendNextWorkout(input);
 
   // Route through the shared findings-suppression bus (#227/#245): the nudge is

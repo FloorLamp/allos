@@ -17,6 +17,7 @@
 // so the active-situation set and the open row never disagree ("never two truths").
 
 import { db, writeTx } from "./db";
+import { shiftDateStr } from "./date";
 import { normalizeSituationName } from "./situations";
 import type { IllnessEpisode } from "./symptom-episode";
 
@@ -116,6 +117,60 @@ export function getOpenEpisodeRow(
       )
       .get(profileId, norm) as IllnessEpisodeRow | undefined) ?? null
   );
+}
+
+// The profile's most-recently CLOSED episode row (ended_at set), by exclusive-end
+// descending — the ease-back ramp's anchor (issue #837). Null when no closed episode
+// exists. Every row here is a flagged-illness episode (syncOpenIllnessEpisode only
+// opens rows for illness-type situations), so no extra filtering is needed.
+export function mostRecentClosedEpisodeRow(
+  profileId: number
+): IllnessEpisodeRow | null {
+  return (
+    (db
+      .prepare(
+        `SELECT ${COLS} FROM illness_episodes
+          WHERE profile_id = ? AND ended_at IS NOT NULL
+          ORDER BY ended_at DESC, id DESC
+          LIMIT 1`
+      )
+      .get(profileId) as IllnessEpisodeRow | undefined) ?? null
+  );
+}
+
+// The count of DISTINCT days within [start, end] (inclusive) that fell inside a
+// flagged-illness episode — the weekly recap's "sick N days this week" honesty line
+// (issue #837), so a sick week reads as a sick week, not a failed one. Loads the
+// episodes overlapping the window ([start,end) semantics: started_at ≤ end, ended_at
+// > start or open) and counts the covered days in JS (the window is ≤ ~31 days, and
+// overlapping episodes are de-duplicated by the day set).
+export function illnessDaysInWindow(
+  profileId: number,
+  start: string,
+  end: string
+): number {
+  const rows = db
+    .prepare(
+      `SELECT started_at, ended_at FROM illness_episodes
+        WHERE profile_id = ?
+          AND (started_at IS NULL OR started_at <= ?)
+          AND (ended_at IS NULL OR ended_at > ?)`
+    )
+    .all(profileId, end, start) as {
+    started_at: string | null;
+    ended_at: string | null;
+  }[];
+  if (rows.length === 0) return 0;
+  let covered = 0;
+  for (let d = start; d <= end; d = shiftDateStr(d, 1)) {
+    const inEpisode = rows.some(
+      (r) =>
+        (r.started_at == null || r.started_at <= d) &&
+        (r.ended_at == null || d < r.ended_at)
+    );
+    if (inEpisode) covered++;
+  }
+  return covered;
 }
 
 // All of a profile's episode rows, most-recent first (a known start outranks a

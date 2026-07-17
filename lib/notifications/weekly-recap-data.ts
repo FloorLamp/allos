@@ -51,6 +51,7 @@ import {
   setProfileSetting,
 } from "../settings";
 import { situationHistoryResolver } from "../trend-annotations";
+import { illnessDaysInWindow } from "../illness-episode-store";
 import type { WeightUnit } from "../settings";
 import { dispatch } from "./index";
 import { createLogger } from "../log";
@@ -239,6 +240,9 @@ export function gatherRecapInput(
     streak: flexibleStreak(td, activityDates),
     strictStreak: currentStreak(td, activityDates),
     goalsCompleted,
+    // Sick days within the window (issue #837) — the recovery-context honesty line,
+    // from the SAME illness_episodes rows the illness surfaces use (one derivation).
+    illnessDays: illnessDaysInWindow(profileId, win.start, win.end),
     // Zone 2 aerobic-base minutes over the SAME window (win is a days-1 inclusive
     // range, #190) — null when no HR zone model exists (line then omitted).
     zone2Min: getZone2MinutesInWindow(profileId, win.start, win.end),

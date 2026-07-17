@@ -16,7 +16,7 @@ import {
   getFrequencyTargetProgress,
   getCurrentFlaggedBiomarkers,
 } from "../queries";
-import { isDueOn } from "../supplement-schedule";
+import { countSituationalDue, isDueOn } from "../supplement-schedule";
 import {
   getActiveSituations,
   getSituationEvents,
@@ -224,10 +224,20 @@ export function gatherDigestInput(
   const openEp = currentEpisodeForProfile(profileId);
   const openEpisodeLine = openEp ? episodeHeadline(openEp) : null;
 
+  // Situation-activation mention (#662 item 1): count situational items due today
+  // because their situation is active, via the SAME dueness computation the dose
+  // list uses (countSituationalDue → isDueOn). The situational branch ignores the
+  // workout fields, so a minimal ctx (today's active set) is sufficient.
+  const situationalActiveCount = countSituationalDue(active, {
+    isWorkoutDay: false,
+    activeSituations: situationsOn(td),
+  });
+
   return {
     profileName,
     openEpisodeLine,
     doseCount,
+    situationalActiveCount,
     intakeKinds,
     goalsDue,
     activities,
