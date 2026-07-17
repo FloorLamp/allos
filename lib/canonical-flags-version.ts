@@ -23,7 +23,12 @@ import canonicalSeed from "./canonical-biomarkers.json";
 // extractor left null/normal, instead of leaving it displayed as "Normal". Existing
 // unflagged infection-positive rows must re-reconcile once so they reach the attention
 // hero.
-export const FLAG_LOGIC_VERSION = 6;
+// v7: screening/risk class (#687) — classifyQualitativeResult now resolves a
+// prenatal/genetic screen (NIPT trisomy) to a low/high-risk verdict, so a HIGH-risk
+// screen the extractor left null/normal is promoted to "abnormal" (like an infection-
+// positive) and a LOW-risk screen's blunt "abnormal" is cleared. Existing stored
+// screen rows must re-reconcile once so the boot pass corrects those frozen flags.
+export const FLAG_LOGIC_VERSION = 7;
 
 // The canonical fields that can change a record's derived flag: the reference and
 // optimal ranges (incl. sex-specific and age-banded variants), the unit +

@@ -26,6 +26,7 @@ import {
   referenceStatus,
   retestIntervalDays,
   SCALE_AXIS_PAD_FRACTION,
+  screeningRisk,
   selectAgeBand,
   selectStatusRange,
 } from "@/lib/reference-range";
@@ -1111,8 +1112,9 @@ describe("classifyQualitativeResult — LOINC-hinted class (#684)", () => {
     ).toEqual({ presence: "positive", polarity: "good", immutable: false });
   });
 
-  it("leaves a genetic-risk SCREEN unclassified (the risk axis is #687)", () => {
-    // NIPT trisomy 21 (75983-7): no positive/negative polarity yet → null.
+  it("classifies a genetic-risk SCREEN by LOINC on the low/high-risk axis (#687)", () => {
+    // NIPT trisomy 21 (75983-7): high-risk carries polarity "bad" like an infection-
+    // positive, with the risk axis distinct from presence (presence stays neutral).
     expect(
       classifyQualitativeResult(
         "Trisomy 21",
@@ -1121,7 +1123,125 @@ describe("classifyQualitativeResult — LOINC-hinted class (#684)", () => {
         null,
         "75983-7"
       )
+    ).toEqual({
+      presence: "neutral",
+      polarity: "bad",
+      immutable: false,
+      risk: "high_risk",
+    });
+    // Low risk is reassuring (polarity good, never flags).
+    expect(
+      classifyQualitativeResult("Trisomy 18", "Low Risk", null, null, "75558-7")
+    ).toEqual({
+      presence: "neutral",
+      polarity: "good",
+      immutable: false,
+      risk: "low_risk",
+    });
+  });
+
+  it("treats fetal fraction as a QC metric by LOINC — never flags/nudges (#687)", () => {
+    // Fetal fraction (75605-6) is a run-quality metric, not a risk call.
+    expect(
+      classifyQualitativeResult(
+        "Fetal Fraction",
+        "8.2 %",
+        null,
+        null,
+        "75605-6"
+      )
+    ).toEqual({
+      presence: "neutral",
+      polarity: "neutral",
+      immutable: false,
+      qc: true,
+    });
+  });
+});
+
+describe("classifyQualitativeResult — screening/risk class (#687)", () => {
+  it("resolves the low/high/indeterminate risk axis by NAME", () => {
+    expect(classifyQualitativeResult("Trisomy 21 (NIPT)", "High Risk")).toEqual(
+      {
+        presence: "neutral",
+        polarity: "bad",
+        immutable: false,
+        risk: "high_risk",
+      }
+    );
+    expect(classifyQualitativeResult("Trisomy 13, Patau", "Low Risk")).toEqual({
+      presence: "neutral",
+      polarity: "good",
+      immutable: false,
+      risk: "low_risk",
+    });
+    expect(classifyQualitativeResult("Trisomy 18 Screen", "No Call")).toEqual({
+      presence: "neutral",
+      polarity: "neutral",
+      immutable: false,
+      risk: "indeterminate",
+    });
+    // "Screen Positive" phrasing also reads high-risk.
+    expect(
+      classifyQualitativeResult("Aneuploidy Screen", "Screen Positive")?.risk
+    ).toBe("high_risk");
+    // A screen name with no recognizable risk value defers (null) — no fabrication.
+    expect(classifyQualitativeResult("Trisomy 21", "See report")).toBeNull();
+  });
+
+  it("a HIGH-risk screen flags like an infection-positive; LOW-risk never flags", () => {
+    // High-risk left "normal" by the extractor is promoted to abnormal (#629 parity).
+    expect(
+      qualitativeFlagResolution(
+        "Trisomy 21 (NIPT)",
+        "High Risk",
+        null,
+        null,
+        "normal"
+      )
+    ).toBe("abnormal");
+    // Low-risk is reassuring: a blunt "abnormal" the extractor guessed is cleared.
+    expect(
+      qualitativeFlagResolution(
+        "Trisomy 18",
+        "Low Risk",
+        null,
+        null,
+        "abnormal"
+      )
     ).toBeNull();
+    // Indeterminate is neutral-but-visible: never abnormal.
+    expect(
+      qualitativeFlagResolution(
+        "Trisomy 13",
+        "Indeterminate",
+        null,
+        null,
+        "abnormal"
+      )
+    ).toBeNull();
+  });
+
+  it("a fetal-fraction QC metric is exempt from staleness (never nudged)", () => {
+    // A blood type / genotype is already exempt; fetal fraction joins them (#687).
+    expect(
+      isBiomarkerStale("2020-01-01", "lab", "2024-01-01", 365, {
+        name: "Fetal Fraction",
+        value: "8.2 %",
+      })
+    ).toBe(false);
+    // A generic uncurated lab of the same age still goes stale (control).
+    expect(isBiomarkerStale("2020-01-01", "lab", "2024-01-01", 365)).toBe(true);
+  });
+
+  it("screeningRisk reads indeterminate/low before high (shared vocabulary)", () => {
+    expect(screeningRisk("No Call")).toBe("indeterminate");
+    expect(screeningRisk("Not Detected")).toBe("low_risk");
+    expect(screeningRisk("No Aneuploidy Detected")).toBe("low_risk");
+    expect(screeningRisk("High Risk")).toBe("high_risk");
+    expect(screeningRisk("Aneuploidy Detected")).toBe("high_risk");
+    expect(screeningRisk("")).toBeNull();
+    expect(screeningRisk("see report")).toBeNull();
   });
 });
 

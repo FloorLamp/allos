@@ -135,6 +135,14 @@ describe("canonicalBiomarkerForLoinc — CBC + CMP lab mappings", () => {
     for (const code of ["80382-5", "80383-3", "94558-4"])
       expect(qualitativeClassForLoinc(code)).toBe("infection");
   });
+
+  // #687: the NIPT trisomy screens carry the low/high-risk axis; fetal fraction is
+  // a QC metric split OUT of the screen class into its own `qc` class.
+  it("classifies NIPT trisomy screens as screen and fetal fraction as qc", () => {
+    for (const code of ["73824-5", "75558-7", "75983-7"])
+      expect(qualitativeClassForLoinc(code)).toBe("screen");
+    expect(qualitativeClassForLoinc("75605-6")).toBe("qc");
+  });
 });
 
 describe("CBC differential — the two report forms map to unit-matched entries", () => {

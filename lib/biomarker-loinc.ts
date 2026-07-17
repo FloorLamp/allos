@@ -342,13 +342,15 @@ export function isNonAnalyteLoinc(loinc: string | null | undefined): boolean {
 // carries a known LOINC, the class comes from here instead of the name.
 //   • infection  — a POSITIVE is bad (antigen/NAAT/culture/HPV/STI). Keep flagging.
 //   • immunity   — a durable-immunity IgG titer; an immune-POSITIVE is good (#516).
-//   • screen     — a prenatal/genetic risk screen (NIPT). No positive/negative
-//                  polarity — the risk axis is deferred to #687; treated as
-//                  unrecognized here so nothing is mis-flagged in the meantime.
+//   • screen     — a prenatal/genetic risk screen (NIPT trisomy). Carries a
+//                  low/high-risk axis (#687), NOT presence positive/negative; a
+//                  high-risk screen flags like an infection-positive.
+//   • qc         — a run-quality metric (fetal fraction), NOT a health signal (#687):
+//                  never flags, never ranges, never nudges.
 // Codes are drawn from real Epic exports (the three patient XDM packages). Only
 // classes whose polarity is unambiguous are listed; immutable attributes (blood
 // type, genotype) stay name-regex driven where that already works.
-export type QualitativeLoincClass = "infection" | "immunity" | "screen";
+export type QualitativeLoincClass = "infection" | "immunity" | "screen" | "qc";
 
 const QUALITATIVE_CLASS_BY_LOINC: Record<string, QualitativeLoincClass> = {
   // Infection / active-disease markers (positive = bad).
@@ -382,11 +384,12 @@ const QUALITATIVE_CLASS_BY_LOINC: Record<string, QualitativeLoincClass> = {
   "5334-8": "immunity", // Rubella antibody (IgG)
   "5403-1": "immunity", // Varicella zoster virus antibody (IgG)
   "8046-5": "immunity", // Varicella zoster antibody IgG
-  // Prenatal / genetic risk screens (risk axis deferred to #687).
+  // Prenatal / genetic risk screens (low/high-risk axis, #687).
   "73824-5": "screen", // Trisomy 13 (Patau)
   "75558-7": "screen", // Trisomy 18 (Edwards)
   "75983-7": "screen", // Trisomy 21 (Down)
-  "75605-6": "screen", // Fetal fraction
+  // Fetal fraction is a QC metric of the NIPT draw, not a risk call (#687).
+  "75605-6": "qc", // Fetal fraction of cell-free DNA
 };
 
 // The qualitative class for a LOINC, or null when unknown (→ name-regex fallback).
