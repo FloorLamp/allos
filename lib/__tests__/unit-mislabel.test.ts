@@ -55,6 +55,30 @@ describe("detectUnitMislabel", () => {
     expect(hit).toEqual({ factor: 10, corrected: { unit: "g/dL", value: 33 } });
   });
 
+  it("fires when the corrected value is in the REPORT's range but just outside the canonical one (#761 real-export miss)", () => {
+    // From a real export: MCHC 35.8 g/L, stated range 31.0–37.0. Relabeled to g/dL
+    // the value is 35.8 — normal per the report (∈ 31–37) but 0.4 ABOVE our tight
+    // canonical ceiling (35.4). The corroboration must accept the report's own
+    // range, or the detector misses its own motivating case and the false 'low'
+    // (35.8 g/L → 3.58 g/dL) is never suppressed.
+    const hit = detectUnitMislabel("31.0-37.0", "g/L", 35.8, mchc());
+    expect(hit).toEqual({
+      factor: 10,
+      corrected: { unit: "g/dL", value: 35.8 },
+    });
+    // And the flag path suppresses the false 'low' end to end.
+    expect(reconciledFlag(null, 35.8, "g/L", mchc())).toBe("low"); // without the range
+    expect(
+      reconciledFlag(null, 35.8, "g/L", mchc(), null, null, null, "31.0-37.0")
+    ).toBe(undefined); // with it → declines
+  });
+
+  it("does NOT fire when the relabeled value is out of BOTH ranges (a real low, not a mislabel)", () => {
+    // 3.3 g/L relabels to 3.3 g/dL — out of the canonical range AND the report's
+    // 31–37. Nothing corroborates the correction, so it stays a genuine reading.
+    expect(detectUnitMislabel("31-37", "g/L", 3.3, mchc())).toBeNull();
+  });
+
   it("fires on a one-sided stated range that is a clean decade off", () => {
     // A one-sided upper bound '<37' (really the g/dL upper) labeled g/L: value 33
     // g/L → 3.3 (low), the single bound is a clean 10× off, corrected lands in range.
