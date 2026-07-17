@@ -35,6 +35,11 @@ const DOMAIN_NOUN: Record<UpcomingDomain, string> = {
   goal: "goal",
   training: "training target",
   careplan: "care-plan item",
+  // A finding follow-up (#700). Care-tier on the hero/Upcoming (an overdue one
+  // escalates there + resists dismiss), but the Telegram digest push is deliberately
+  // scoped OUT for v1 (like condition-review) — omitted from DOMAIN_SEQ, so it's
+  // never counted here even though the noun exists. A push is a follow-up decision.
+  followup: "finding follow-up",
   // The unified model's "something's off" signals (issue #524) never reach this
   // digest — it groups collectUpcoming, which is date-scheduled due-signals only —
   // but the exhaustive Record needs an entry. DOMAIN_SEQ omits them, so they're

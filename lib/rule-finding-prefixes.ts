@@ -23,6 +23,7 @@ import { PROTEIN_ADEQUACY_PREFIX } from "./protein";
 import { ILLNESS_CARE_PREFIX } from "./illness-care";
 import { TEMP_RED_FLAG_PREFIX } from "./temp-red-flag";
 import { CONDITION_REVIEW_PREFIX } from "./condition-suggestions";
+import { FOLLOWUP_PREFIX } from "./followup";
 
 // Every namespace the rule-findings builders (buildTrainingObservationFindings,
 // buildBodyHygieneFindings, buildGoalPacingFindings, buildAdherencePatternFindings,
@@ -48,6 +49,9 @@ export const RULE_FINDING_PREFIXES: readonly string[] = [
   // Condition-suggestion review items (#685) — a care-tier, suggest-only builder
   // (conditionReviewItems), like illness-care not part of collectCoachingFindings.
   CONDITION_REVIEW_PREFIX,
+  // Finding follow-up chain items (#700) — a care-tier builder (followUpItems),
+  // like illness-care/condition-review a push/care member, NOT a coaching builder.
+  FOLLOWUP_PREFIX,
 ];
 
 // Whether a finding's dedupeKey belongs to a known builder namespace (so a page

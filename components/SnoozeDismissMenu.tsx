@@ -27,10 +27,17 @@ export default function SnoozeDismissMenu({
   signalKey,
   snoozeAction,
   dismissAction,
+  snoozeOnly = false,
 }: {
   signalKey: string;
   snoozeAction: (formData: FormData) => Promise<void>;
   dismissAction: (formData: FormData) => Promise<void>;
+  // Care-tier persistence (#700 ask 5): an OVERDUE safety follow-up resists an
+  // indefinite dismiss — it can still be time-boxed-snoozed, but the Dismiss option
+  // is omitted (the filter would ignore a dismiss for it anyway; hiding it here keeps
+  // the affordance honest). `dismissAction` is still required so the caller can pass
+  // one uniform prop set.
+  snoozeOnly?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   return (
@@ -55,20 +62,22 @@ export default function SnoozeDismissMenu({
               </button>
             </form>
           ))}
-          <form
-            action={(fd) => runAction(dismissAction, fd, "Dismissed")}
-            className="border-t border-black/5 dark:border-white/5"
-          >
-            <input type="hidden" name="signal_key" value={signalKey} />
-            <button
-              type="submit"
-              role="menuitem"
-              className={`${MENU_ITEM} flex items-center gap-1.5`}
+          {!snoozeOnly && (
+            <form
+              action={(fd) => runAction(dismissAction, fd, "Dismissed")}
+              className="border-t border-black/5 dark:border-white/5"
             >
-              <IconEyeOff className="h-3.5 w-3.5" stroke={1.75} />
-              Dismiss
-            </button>
-          </form>
+              <input type="hidden" name="signal_key" value={signalKey} />
+              <button
+                type="submit"
+                role="menuitem"
+                className={`${MENU_ITEM} flex items-center gap-1.5`}
+              >
+                <IconEyeOff className="h-3.5 w-3.5" stroke={1.75} />
+                Dismiss
+              </button>
+            </form>
+          )}
         </>
       )}
     </OverflowMenu>

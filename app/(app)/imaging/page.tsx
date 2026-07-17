@@ -1,5 +1,5 @@
 import { requireSession } from "@/lib/auth";
-import { getImagingStudies } from "@/lib/queries";
+import { getImagingStudies, getImagingStudyFollowUps } from "@/lib/queries";
 import { PageHeader } from "@/components/ui";
 import ImagingStudyForm from "./ImagingStudyForm";
 import ImagingStudyList from "./ImagingStudyList";
@@ -17,6 +17,7 @@ export const dynamic = "force-dynamic";
 export default async function ImagingPage() {
   const { profile } = await requireSession();
   const studies = getImagingStudies(profile.id);
+  const followUps = getImagingStudyFollowUps(profile.id);
 
   return (
     <div>
@@ -27,7 +28,7 @@ export default async function ImagingPage() {
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="min-w-0 space-y-4 lg:col-span-2">
-          <ImagingStudyList items={studies} />
+          <ImagingStudyList items={studies} followUps={followUps} />
         </div>
 
         <div className="min-w-0 space-y-4">
