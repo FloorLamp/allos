@@ -225,11 +225,10 @@ test("percent-strength medication resolves its 'What is this?' explainer (#272)"
     .getByTestId("medication-row-link");
   await expect(link).toBeVisible();
   const detail = page.getByTestId("medication-detail");
-  // Ride out the hydration window (#730): retry the navigation until detail shows.
-  await expect(async () => {
-    await link.click();
-    await expect(detail).toBeVisible({ timeout: 2000 });
-  }).toPass();
+  // Navigate past the pre-hydration swallow (#730/#500) with the blessed followLink
+  // (#868) instead of a hand-rolled click-until-detail-shows toPass loop.
+  await followLink(page, link, /\/medications\/\d+/);
+  await expect(detail).toBeVisible();
   // The explainer disclosure is a client toggle — retry the expand to ride out the
   // hydration window (#730), then assert the description landed.
   await expect(async () => {

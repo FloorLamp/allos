@@ -1,4 +1,5 @@
 import { test, expect, type Page, type Locator } from "@playwright/test";
+import { followLink } from "./helpers";
 
 // #852 Medications UX round 2: the time-aware Today panel (item 1), PRN→detail links in
 // both hosts (item 2), the one-tap "Refilled" action + run-out date (item 3), the
@@ -100,11 +101,9 @@ test("item 4: printable list renders current meds and the share link opens the s
   await page.goto("/medications");
   const printLink = page.getByTestId("medication-print-link");
   const print = page.getByTestId("medication-print");
-  // Ride out the hydration window (#730): retry the navigation until the print page shows.
-  await expect(async () => {
-    await printLink.click();
-    await expect(print).toBeVisible({ timeout: 2000 });
-  }).toPass();
+  // Navigate past the pre-hydration swallow (#730/#500) with the blessed followLink (#868).
+  await followLink(page, printLink, /\/medications\/print/);
+  await expect(print).toBeVisible();
   const list = print.getByTestId("medication-list-view");
   await expect(list).toContainText("Adherence Refill Med (e2e)");
   await expect(list).toContainText("Dr. Test Provider"); // prescriber column
