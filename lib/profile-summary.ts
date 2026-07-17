@@ -271,19 +271,29 @@ export interface BloodGroupReading {
   value: string | null;
 }
 
-// Resolve a printable blood type from a document's readings, or null when none of
-// them carries one.
+// The two INDEPENDENT halves of a blood group, each null when the document doesn't
+// carry it.
+export interface BloodGroupParts {
+  abo: string | null; // "A" | "B" | "AB" | "O"
+  rh: "+" | "-" | null;
+}
+
+// Read the blood-group halves out of a document's readings.
 //
 // Handles BOTH real-world shapes in one pass, with no special-casing:
-//   • two rows — "ABO Blood Group" = "A" plus "Rh Type" = "POSITIVE";
-//   • one COMBINED row — Epic's "ABORh Interpretation" = "A POSITIVE", which answers
+//   • two rows — "ABO Blood Group" = "O" plus "Rh Type" = "RH(D) POSITIVE";
+//   • one COMBINED row — Epic's "ABORh Interpretation" = "O Positive", which answers
 //     both halves at once: it becomes the source for the ABO and the Rh alike, and
 //     each normalizer reads its own half back out of the same string.
-// An ABO group alone still resolves ("O" with unknown Rh renders "O"); an Rh factor
-// alone is meaningless and yields null — matching resolveBloodType.
-export function bloodTypeFromReadings(
+//
+// Returns the halves SEPARATELY rather than a composed type, because they arrive
+// separately: a document may carry only the ABO group (Rh not drawn, or not
+// reported) and a later one completes it. Keeping them apart is what lets the caller
+// store each half on its own, so successive imports accumulate instead of an
+// incomplete result being dropped on the floor.
+export function bloodGroupPartsFromReadings(
   readings: readonly BloodGroupReading[]
-): string | null {
+): BloodGroupParts {
   let aboSource: string | null = null;
   let rhSource: string | null = null;
   for (const r of readings) {
@@ -292,7 +302,17 @@ export function bloodTypeFromReadings(
     if (aboSource === null && normalizeAbo(r.value)) aboSource = r.value;
     if (rhSource === null && normalizeRh(r.value)) rhSource = r.value;
   }
-  return aboSource ? resolveBloodType(aboSource, rhSource) : null;
+  return { abo: normalizeAbo(aboSource), rh: normalizeRh(rhSource) };
+}
+
+// Resolve a printable blood type from a document's readings, or null when none of
+// them carries an ABO group. The group alone still resolves ("O" with unknown Rh
+// renders "O"); an Rh factor alone is meaningless — matching resolveBloodType.
+export function bloodTypeFromReadings(
+  readings: readonly BloodGroupReading[]
+): string | null {
+  const { abo, rh } = bloodGroupPartsFromReadings(readings);
+  return abo ? resolveBloodType(abo, rh) : null;
 }
 
 // BMI from weight (kg) and height (cm), rounded to one decimal. Null unless both

@@ -969,6 +969,52 @@ export const CURATED_LABS: Biomarker[] = [
     direction: "higher_better",
     note: "Unipedal stance time, eyes open (seconds; typically capped at 45 s). A postural-control / fall-risk measure; interpreted by age/sex percentile (Springer et al. 2007), not a fixed cutoff.",
   },
+
+  // ── Blood group (immutable identity attributes) ─────────────────────────────
+  // Qualitative, like LDL Pattern: a group/factor, not a measurement — no unit and
+  // no reference band, so nothing can flag them. Curated because the sources name
+  // them inconsistently and, without an entry here, a real blood-group reading has
+  // no canonical identity to stack under: the AI emits canonical_name "ABO Blood
+  // Group"/"Rh Type" (which resolved to nothing), and Epic reports ONE combined
+  // "ABORh Interpretation" row (LOINC 19057-9 → "Blood Type").
+  //
+  // All three names are ALSO recognized by the qualitative classifier's
+  // IMMUTABLE_ATTRIBUTE regex, so canonicalizing a reading here is what makes its
+  // "never abnormal, never stale" verdict reachable by name as well as by LOINC.
+  // No retest cadence on purpose — a blood group cannot change.
+  {
+    name: "ABO Blood Group",
+    category: "lab",
+    unit: null,
+    ref_low: null,
+    ref_high: null,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    note: "ABO group (A, B, AB, or O). An immutable identity attribute — never flagged, never retested.",
+  },
+  {
+    name: "Rh Type",
+    category: "lab",
+    unit: null,
+    ref_low: null,
+    ref_high: null,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    note: "Rh(D) factor (positive or negative). An immutable identity attribute — never flagged, never retested.",
+  },
+  {
+    name: "Blood Type",
+    category: "lab",
+    unit: null,
+    ref_low: null,
+    ref_high: null,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    note: 'Combined ABO group + Rh factor as one result (e.g. "O Positive"), the form many EHRs report. An immutable identity attribute — never flagged, never retested.',
+  },
 ];
 
 // Curated per-analyte retest cadences, in DAYS, keyed by exact canonical name

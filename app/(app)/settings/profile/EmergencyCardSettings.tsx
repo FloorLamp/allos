@@ -33,6 +33,13 @@ export default function EmergencyCardSettings({
   const formRef = useRef<HTMLDivElement>(null);
   useFlushOnHide(formRef);
 
+  // The stored type can be a PARTIAL group ("O") when an import knew the ABO but not
+  // yet the Rh — which is not one of the eight selectable types. Keep the dropdown
+  // on a value it can actually represent, and surface the partial beneath it.
+  const isSelectable = (BLOOD_TYPES as readonly string[]).includes(bloodType);
+  const selectable = isSelectable ? bloodType : "";
+  const partialGroup = !isSelectable && bloodType ? bloodType : null;
+
   function save(next: {
     enabled: boolean;
     bloodType: string;
@@ -103,7 +110,7 @@ export default function EmergencyCardSettings({
       <div className="border-t border-black/5 pt-5 dark:border-white/5">
         <label className="label">Blood type</label>
         <select
-          value={bloodType}
+          value={selectable}
           onChange={(e) => {
             const v = e.target.value;
             setBloodType(v);
@@ -118,6 +125,16 @@ export default function EmergencyCardSettings({
             </option>
           ))}
         </select>
+        {partialGroup ? (
+          // An import can know the ABO group before the Rh factor ("O"), which is
+          // not one of the eight selectable types — say so rather than letting the
+          // dropdown read "Unknown" while the emergency card shows the group.
+          <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+            Imported from your records: <strong>{partialGroup}</strong> — Rh
+            factor still unknown. Pick your full type above, or it will fill in
+            when a record reports it.
+          </p>
+        ) : null}
         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           Overrides any blood type derived from lab records.
         </p>

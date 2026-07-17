@@ -14,7 +14,10 @@
 import { describe, it, expect } from "vitest";
 import { db } from "@/lib/db";
 import { getBloodType, setBloodType } from "@/lib/settings";
-import { adoptBloodTypeFromRecords } from "@/lib/settings/profile-attrs";
+import {
+  adoptBloodTypeFromRecords,
+  getBloodTypeParts,
+} from "@/lib/settings/profile-attrs";
 
 function newProfile(name: string): number {
   return Number(
@@ -100,6 +103,107 @@ describe("adoptBloodTypeFromRecords", () => {
         reading("Hepatitis B Surface Antigen", "A POSITIVE"),
       ])
     ).toBeNull();
+    expect(getBloodType(p)).toBeNull();
+  });
+});
+
+// The halves are stored apart precisely so PARTIAL results accumulate. Held as one
+// composed string, "O" was not a member of BLOOD_TYPES, so normalizeBloodType
+// rejected it and an ABO-only import silently stored NOTHING.
+describe("adoptBloodTypeFromRecords — partial results accumulate across imports", () => {
+  it("adopts an ABO-only document, then a later Rh completes it", () => {
+    const p = newProfile("bt-partial-abo-first");
+
+    // Document 1: the group only (Rh not drawn / not reported).
+    expect(
+      adoptBloodTypeFromRecords(p, [reading("ABO Blood Group", "O")])
+    ).toBe("O");
+    expect(getBloodTypeParts(p)).toEqual({ abo: "O", rh: null });
+    // Renders as the group alone until the factor is known — never dropped.
+    expect(getBloodType(p)).toBe("O");
+
+    // Document 2, later: the Rh factor completes it, without a re-draw.
+    expect(
+      adoptBloodTypeFromRecords(p, [reading("Rh Type", "RH(D) POSITIVE")])
+    ).toBe("O+");
+    expect(getBloodTypeParts(p)).toEqual({ abo: "O", rh: "+" });
+    expect(getBloodType(p)).toBe("O+");
+  });
+
+  it("adopts an Rh-only document first, then the group completes it", () => {
+    const p = newProfile("bt-partial-rh-first");
+
+    // An Rh factor alone is meaningless to DISPLAY, so nothing renders yet…
+    expect(
+      adoptBloodTypeFromRecords(p, [reading("Rh Type", "NEGATIVE")])
+    ).toBeNull();
+    expect(getBloodType(p)).toBeNull();
+    // …but it IS kept, so the group's arrival completes the type.
+    expect(getBloodTypeParts(p)).toEqual({ abo: null, rh: "-" });
+
+    expect(
+      adoptBloodTypeFromRecords(p, [reading("ABO Blood Group", "AB")])
+    ).toBe("AB-");
+    expect(getBloodType(p)).toBe("AB-");
+  });
+
+  it("a later import never overwrites a half already on file", () => {
+    const p = newProfile("bt-partial-no-clobber");
+    // The user set a full type by hand.
+    setBloodType(p, "O-");
+    expect(getBloodTypeParts(p)).toEqual({ abo: "O", rh: "-" });
+
+    // A document disagreeing on BOTH halves changes neither.
+    expect(
+      adoptBloodTypeFromRecords(p, [
+        reading("ABORh Interpretation", "A POSITIVE"),
+      ])
+    ).toBeNull();
+    expect(getBloodType(p)).toBe("O-");
+  });
+
+  it("fills only the missing half when the user set just the group", () => {
+    const p = newProfile("bt-partial-half-manual");
+    setBloodType(p, "B"); // group only, Rh unknown
+    expect(getBloodTypeParts(p)).toEqual({ abo: "B", rh: null });
+
+    // The document's group is ignored (already set); only the Rh is taken.
+    expect(
+      adoptBloodTypeFromRecords(p, [
+        reading("ABORh Interpretation", "A POSITIVE"),
+      ])
+    ).toBe("B+");
+    expect(getBloodTypeParts(p)).toEqual({ abo: "B", rh: "+" });
+  });
+});
+
+describe("blood type storage round-trip", () => {
+  it("splits a set value into halves and composes it back", () => {
+    const p = newProfile("bt-round-trip");
+    setBloodType(p, "AB+");
+    expect(getBloodTypeParts(p)).toEqual({ abo: "AB", rh: "+" });
+    expect(getBloodType(p)).toBe("AB+");
+
+    // Stored as two discrete profile_settings rows.
+    const keys = db
+      .prepare(
+        "SELECT key, value FROM profile_settings WHERE profile_id = ? AND key LIKE 'blood_type%' ORDER BY key"
+      )
+      .all(p) as { key: string; value: string }[];
+    expect(keys).toEqual([
+      { key: "blood_type_abo", value: "AB" },
+      { key: "blood_type_rh", value: "+" },
+    ]);
+  });
+
+  it("accepts a printable or partial value, and clears both halves on null/blank", () => {
+    const p = newProfile("bt-set-forms");
+    setBloodType(p, "O Positive"); // an imported-style string
+    expect(getBloodType(p)).toBe("O+");
+    setBloodType(p, "A"); // group only — no longer rejected
+    expect(getBloodTypeParts(p)).toEqual({ abo: "A", rh: null });
+    setBloodType(p, ""); // the "Unknown" option
+    expect(getBloodTypeParts(p)).toEqual({ abo: null, rh: null });
     expect(getBloodType(p)).toBeNull();
   });
 });

@@ -208,6 +208,14 @@ export const LOINC_TO_CANONICAL: Record<string, string> = {
   "4552-6": "Hemoglobin A2", // Hemoglobin A2/Hemoglobin.total in Blood (%)
   "32682-7": "Hemoglobin F", // Hemoglobin F/Hemoglobin.total in Blood (%)
 
+  // ── Blood group ─────────────────────────────────────────────────────────────
+  // The COMBINED ABO+Rh result Epic reports as one "ABORh Interpretation" row
+  // ("O Positive"). It carries both halves, so it routes to the combined canonical
+  // entry rather than the ABO-only one — mapping it to "ABO Blood Group" would
+  // quietly drop the Rh factor. Canonicalizing it also makes the classifier's
+  // name path recognize it ("Blood Type" matches IMMUTABLE_ATTRIBUTE), alongside
+  // the LOINC `identity` class below (#910).
+  "19057-9": "Blood Type", // ABO+Rh group
   // ── Toxic / trace metals ────────────────────────────────────────────────────
   // Blood lead. Canonical "Lead" is ug/dL; venous (confirmatory) and capillary
   // (pediatric screening) specimens share the unit and interpretation threshold, so

@@ -1,9 +1,12 @@
 import { db, today, writeTx } from "../db";
 import { ageFromBirthdate, ageMonthsFrom } from "../date";
 import type { Sex, ReproductiveStatus } from "../types";
-import { normalizeBloodType } from "../emergency-card";
 import {
-  bloodTypeFromReadings,
+  bloodGroupPartsFromReadings,
+  normalizeAbo,
+  normalizeRh,
+  resolveBloodType,
+  type BloodGroupParts,
   type BloodGroupReading,
 } from "../profile-summary";
 import {
@@ -416,19 +419,35 @@ export interface ProfileAdoption {
 //
 // Adopt-if-unset, like every other field here: the manual value already takes
 // precedence when the summary is built, so this can only ever fill a blank.
-// Idempotent — a reprocess re-adopts the same value or no-ops.
+// Idempotent — a reprocess re-adopts the same halves or no-ops.
+//
+// Each HALF is adopted on its own, which is the whole point of storing them apart:
+// a document carrying only the ABO group fills the group and leaves the Rh blank
+// for a later one to complete, instead of an incomplete result being dropped. The
+// Rh is adopted even with no group yet on file — it is meaningless to DISPLAY
+// alone (getBloodType stays null), but keeping it means the group's arrival
+// completes the type rather than starting over.
+//
+// Returns the resulting printable type when anything was adopted, else null.
 export function adoptBloodTypeFromRecords(
   profileId: number,
   readings: readonly BloodGroupReading[] | null | undefined
 ): string | null {
   if (!readings?.length) return null;
-  if (getBloodType(profileId) !== null) return null; // never overwrite the user
-  const resolved = bloodTypeFromReadings(readings);
-  if (!resolved) return null;
-  // Route through setBloodType so the stored value is canonicalized ("A POSITIVE"
-  // → "A+") exactly as a hand-entered one is; it no-ops on an unrecognized string.
-  setBloodType(profileId, resolved);
-  return getBloodType(profileId);
+  const found = bloodGroupPartsFromReadings(readings);
+  if (!found.abo && !found.rh) return null;
+  const current = getBloodTypeParts(profileId);
+  let adopted = false;
+  // Never overwrite a half already on file — the user's or an earlier import's.
+  if (found.abo && !current.abo) {
+    setProfileSetting(profileId, BLOOD_ABO_KEY, found.abo);
+    adopted = true;
+  }
+  if (found.rh && !current.rh) {
+    setProfileSetting(profileId, BLOOD_RH_KEY, found.rh);
+    adopted = true;
+  }
+  return adopted ? getBloodType(profileId) : null;
 }
 
 // Backfill the user's profile (sex, birthdate/age, full name) from an extracted
@@ -511,21 +530,52 @@ export function setEmergencyCardEnabled(
   setProfileSetting(profileId, "emergency_card_offline", enabled ? "1" : "0");
 }
 
-// A manually-entered blood type for the profile (e.g. "O+"). The emergency card
-// prefers this over one derived from lab records (ABO/Rh), since most people know
-// their type without a lab on file. Stored canonicalized (see normalizeBloodType);
-// null clears it. Kept in profile_settings like the other per-person facts.
-export function getBloodType(profileId: number): string | null {
-  return getProfileSetting(profileId, "blood_type") ?? null;
+// ---- Blood group ----
+// The profile's blood type, stored as its two INDEPENDENT halves: the ABO group
+// ("A"/"B"/"AB"/"O") and the Rh factor ("+"/"-"). Migration 035 split the single
+// legacy `blood_type` key into these.
+//
+// It is two keys because the halves genuinely arrive apart. A document may report
+// only the ABO group (Rh not drawn, or not reported) and a later one completes it —
+// and a lab reports "Rh Type" as its own row. Held as one composed string, a partial
+// result had nowhere to live: "O" isn't a member of BLOOD_TYPES, so normalizeBloodType
+// rejected it and an ABO-only import silently stored NOTHING. Split, each half is
+// kept the moment it's known and the next import fills the other.
+const BLOOD_ABO_KEY = "blood_type_abo";
+const BLOOD_RH_KEY = "blood_type_rh";
+
+// The stored halves, each null when unknown.
+export function getBloodTypeParts(profileId: number): BloodGroupParts {
+  const abo = normalizeAbo(getProfileSetting(profileId, BLOOD_ABO_KEY));
+  const rh = normalizeRh(getProfileSetting(profileId, BLOOD_RH_KEY));
+  return { abo, rh };
 }
 
+// The printable blood type ("O+", or "O" while the Rh is still unknown), or null
+// when no ABO group is on file. Unchanged contract for every reader (emergency
+// card, passport, export): an Rh factor alone stays meaningless, exactly as
+// resolveBloodType has always treated it.
+export function getBloodType(profileId: number): string | null {
+  const { abo, rh } = getBloodTypeParts(profileId);
+  return abo ? resolveBloodType(abo, rh) : null;
+}
+
+// Set the blood type from a printable value ("O+", "O Positive", or a bare "O").
+// Splits it into the two stored halves; a value with no recognizable ABO group
+// clears BOTH (the Settings → Profile "Unknown" option sends an empty string).
+// Parsed with the same normalizers the readings path uses, so a hand-entered value
+// and an imported one canonicalize identically.
 export function setBloodType(profileId: number, value: string | null): void {
-  const v = normalizeBloodType(value);
-  if (!v) {
-    deleteProfileSetting(profileId, "blood_type");
+  const abo = normalizeAbo(value);
+  if (!abo) {
+    deleteProfileSetting(profileId, BLOOD_ABO_KEY);
+    deleteProfileSetting(profileId, BLOOD_RH_KEY);
     return;
   }
-  setProfileSetting(profileId, "blood_type", v);
+  setProfileSetting(profileId, BLOOD_ABO_KEY, abo);
+  const rh = normalizeRh(value);
+  if (rh) setProfileSetting(profileId, BLOOD_RH_KEY, rh);
+  else deleteProfileSetting(profileId, BLOOD_RH_KEY);
 }
 
 // The profile's emergency contact — the person a first responder should call.
