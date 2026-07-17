@@ -4,6 +4,7 @@ import {
   CartesianGrid,
   Line,
   LineChart,
+  ReferenceArea,
   ReferenceLine,
   ResponsiveContainer,
   Tooltip,
@@ -25,7 +26,9 @@ import {
   ANNOTATION_KIND_META,
   snapAnnotationsToDates,
   type TrendAnnotation,
+  type TrendWindow,
 } from "@/lib/trend-annotations";
+import { protocolWindowEpochs } from "@/lib/chart-windows";
 
 // Dual-series overlay for the Trends Compare tab. Plots two
 // date-aligned series on one time axis so correlation is eyeball-able. Axis
@@ -47,6 +50,7 @@ export default function CompareChart({
   unitB,
   normalized,
   annotations,
+  windows,
 }: {
   data: { date: string; a: number | null; b: number | null }[];
   labelA: string;
@@ -59,11 +63,20 @@ export default function CompareChart({
   // Event annotations, pre-filtered to the enabled kinds by
   // the parent; drawn as vertical reference lines snapped to the nearest charted date.
   annotations?: TrendAnnotation[];
+  // Protocol intervention windows (issue #660), pre-filtered to the enabled kinds;
+  // drawn as shaded reference areas positioned by epoch on the time axis.
+  windows?: TrendWindow[];
 }) {
   const c = useChartColors();
   const snapped = annotations?.length
     ? snapAnnotationsToDates(
         annotations,
+        data.map((d) => d.date)
+      )
+    : [];
+  const windowAreas = windows?.length
+    ? protocolWindowEpochs(
+        windows,
         data.map((d) => d.date)
       )
     : [];
@@ -152,6 +165,27 @@ export default function CompareChart({
             labelStyle={{ color: c.tooltipText }}
             itemStyle={{ color: c.tooltipText }}
           />
+          {windowAreas.map((w, i) => {
+            const color = ANNOTATION_KIND_META.protocol.color;
+            return (
+              <ReferenceArea
+                key={`win-${w.x1}-${w.x2}-${i}`}
+                yAxisId="left"
+                x1={w.x1}
+                x2={w.x2}
+                fill={color}
+                fillOpacity={0.08}
+                stroke={color}
+                strokeOpacity={0.3}
+                label={{
+                  value: w.label,
+                  position: "insideTopLeft",
+                  fontSize: 9,
+                  fill: color,
+                }}
+              />
+            );
+          })}
           {snapped.map((a, i) => (
             <ReferenceLine
               key={`ann-${a.kind}-${a.date}-${i}`}

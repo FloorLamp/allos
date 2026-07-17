@@ -5,6 +5,7 @@ import {
   Line,
   LineChart,
   ReferenceArea,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -23,6 +24,12 @@ import {
   timeAxisDomain,
   timeAxisTicks,
 } from "@/lib/chart-time-axis";
+import {
+  ANNOTATION_KIND_META,
+  type TrendAnnotation,
+  type TrendWindow,
+} from "@/lib/trend-annotations";
+import { protocolWindowEpochs } from "@/lib/chart-windows";
 
 export interface BiomarkerBands {
   refLow?: number | null;
@@ -47,10 +54,20 @@ export default function BiomarkerChart({
   data,
   unit = "",
   bands,
+  annotations,
+  windows,
 }: {
   data: ChartPoint[];
   unit?: string;
   bands: BiomarkerBands;
+  // Event annotations (medication start/stop, appointments, situation changes),
+  // pre-filtered to the enabled kinds by the parent. Drawn as vertical reference
+  // lines on the time axis — the per-analyte chart previously had none (issue #660,
+  // the "did the statin move my LDL" gap).
+  annotations?: TrendAnnotation[];
+  // Protocol windows targeting THIS analyte (issue #660): a shaded [start, end]
+  // region so the intervention that measures this biomarker is visible on its chart.
+  windows?: TrendWindow[];
 }) {
   const c = useChartColors();
   if (data.length === 0) {
@@ -87,6 +104,10 @@ export default function BiomarkerChart({
   const xDomain = timeAxisDomain(data.map((d) => d.date));
   const xTicks = timeAxisTicks(xDomain);
   const withYear = spansYearBoundary(xDomain);
+  const dates = data.map((d) => d.date);
+  const windowAreas = windows?.length
+    ? protocolWindowEpochs(windows, dates)
+    : [];
 
   // Hollow dot for bounded readings ("<0.10"), solid for exact ones.
   const renderDot = (props: {
@@ -167,6 +188,44 @@ export default function BiomarkerChart({
             />
           ) : null}
 
+          {/* Protocol intervention windows (issue #660), shaded by epoch. Drawn
+              over the bands but under the value line. */}
+          {windowAreas.map((w, i) => {
+            const color = ANNOTATION_KIND_META.protocol.color;
+            return (
+              <ReferenceArea
+                key={`win-${w.x1}-${w.x2}-${i}`}
+                x1={w.x1}
+                x2={w.x2}
+                fill={color}
+                fillOpacity={0.08}
+                stroke={color}
+                strokeOpacity={0.3}
+                label={{
+                  value: w.label,
+                  position: "insideTopLeft",
+                  fontSize: 9,
+                  fill: color,
+                }}
+              />
+            );
+          })}
+          {/* Event annotations (medication/appointment/situation) as vertical lines. */}
+          {(annotations ?? []).map((a, i) => (
+            <ReferenceLine
+              key={`ann-${a.kind}-${a.date}-${i}`}
+              x={dateToEpoch(a.date)}
+              stroke={ANNOTATION_KIND_META[a.kind].color}
+              strokeDasharray="3 3"
+              strokeOpacity={0.85}
+              label={{
+                value: a.label,
+                position: "top",
+                fontSize: 9,
+                fill: ANNOTATION_KIND_META[a.kind].color,
+              }}
+            />
+          ))}
           <Tooltip
             formatter={(v, _name, item) => [
               `${(item?.payload as ChartPoint | undefined)?.bound ?? ""}${fmt(Number(v))}`,

@@ -4,6 +4,7 @@ import {
   CartesianGrid,
   Line,
   LineChart,
+  ReferenceArea,
   ReferenceLine,
   ResponsiveContainer,
   Tooltip,
@@ -17,7 +18,9 @@ import { roundChartValue } from "@/lib/chart-format";
 import {
   ANNOTATION_KIND_META,
   snapAnnotationsToDates,
+  snapWindowsToDates,
   type TrendAnnotation,
+  type TrendWindow,
 } from "@/lib/trend-annotations";
 
 // A full ISO date (YYYY-MM-DD) — distinguishes date series (which get the
@@ -35,6 +38,7 @@ export default function LineChartCard({
   labelFormatter,
   heightClass = "h-64",
   annotations,
+  windows,
   referenceValue,
   decimals,
   yDomain,
@@ -64,6 +68,11 @@ export default function LineChartCard({
   // the parent. Drawn as vertical reference lines, snapped to the nearest charted
   // date (recharts positions a category-axis ReferenceLine only on an actual point).
   annotations?: TrendAnnotation[];
+  // Protocol intervention windows (issue #660), pre-filtered to the enabled kinds by
+  // the parent. Drawn as a shaded ReferenceArea from start to end, snapped to the
+  // charted category dates (recharts positions a category-axis area only on real
+  // points).
+  windows?: TrendWindow[];
   // A horizontal target line (e.g. a goal's target value, in this chart's unit).
   referenceValue?: { value: number; label?: string; color?: string } | null;
 }) {
@@ -82,6 +91,12 @@ export default function LineChartCard({
   const snapped = annotations?.length
     ? snapAnnotationsToDates(
         annotations,
+        data.map((d) => d.date)
+      )
+    : [];
+  const snappedWindows = windows?.length
+    ? snapWindowsToDates(
+        windows,
         data.map((d) => d.date)
       )
     : [];
@@ -129,6 +144,26 @@ export default function LineChartCard({
             labelStyle={{ color: c.tooltipText }}
             itemStyle={{ color: c.tooltipText }}
           />
+          {snappedWindows.map((w, i) => {
+            const color = ANNOTATION_KIND_META[w.kind].color;
+            return (
+              <ReferenceArea
+                key={`win-${w.start}-${w.end}-${i}`}
+                x1={w.start}
+                x2={w.end}
+                fill={color}
+                fillOpacity={0.08}
+                stroke={color}
+                strokeOpacity={0.3}
+                label={{
+                  value: w.label,
+                  position: "insideTopLeft",
+                  fontSize: 9,
+                  fill: color,
+                }}
+              />
+            );
+          })}
           {referenceValue != null && (
             <ReferenceLine
               y={referenceValue.value}

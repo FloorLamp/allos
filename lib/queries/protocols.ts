@@ -31,6 +31,7 @@ import {
   type OutcomeSeries,
   type ProtocolComparison,
 } from "../protocol-compare";
+import type { ProtocolWindowInput } from "../trend-annotations";
 import { getUsedCanonicalNames } from "./medical";
 
 interface ProtocolRow {
@@ -109,6 +110,34 @@ export function getFrequencyTargetProtocolNames(
     if (!out.has(r.frequency_target_id)) out.set(r.frequency_target_id, r.name);
   }
   return out;
+}
+
+// Every protocol as a chart-window input (name + start/end) for the trend
+// annotations (issue #660). Ongoing protocols carry endDate null. Profile-scoped;
+// no unit boundary (windows are date-only).
+export function getProtocolWindows(profileId: number): ProtocolWindowInput[] {
+  return getProtocols(profileId).map((p) => ({
+    name: p.name,
+    startDate: p.start_date,
+    endDate: p.end_date,
+  }));
+}
+
+// The windows of protocols that DECLARE a given outcome key as something they
+// measure (issue #660): an outcome biomarker's own detail chart shades only the
+// protocols targeting it, not every protocol the profile runs. `outcomeKey` is a
+// namespaced metric key (e.g. "biomarker:LDL Cholesterol"). Profile-scoped.
+export function getProtocolWindowsForOutcome(
+  profileId: number,
+  outcomeKey: string
+): ProtocolWindowInput[] {
+  return getProtocols(profileId)
+    .filter((p) => p.outcomeKeys.includes(outcomeKey))
+    .map((p) => ({
+      name: p.name,
+      startDate: p.start_date,
+      endDate: p.end_date,
+    }));
 }
 
 // A single protocol by id, scoped to the profile so a guessed id from another

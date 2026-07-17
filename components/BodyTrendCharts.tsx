@@ -8,6 +8,7 @@ import {
   filterAnnotationsByKind,
   type AnnotationKind,
   type TrendAnnotation,
+  type TrendWindow,
 } from "@/lib/trend-annotations";
 
 // One body-composition trend chart's props (weight / body-fat / resting-HR),
@@ -35,17 +36,23 @@ export interface BodyChartSpec {
 export default function BodyTrendCharts({
   charts,
   annotations,
+  windows = [],
 }: {
   charts: BodyChartSpec[];
   annotations: TrendAnnotation[];
+  // Protocol intervention windows (issue #660), shaded across every chart via the
+  // same toggle bar as the point annotations.
+  windows?: TrendWindow[];
 }) {
-  const presentKinds = annotationKindsPresent(annotations);
+  const presentKinds = annotationKindsPresent(annotations, windows);
   const [enabled, setEnabled] = useState<Record<AnnotationKind, boolean>>({
     medication: true,
     appointment: true,
     situation: true,
+    protocol: true,
   });
   const shown = filterAnnotationsByKind(annotations, enabled);
+  const shownWindows = enabled.protocol ? windows : [];
 
   return (
     <div className="space-y-4">
@@ -69,6 +76,7 @@ export default function BodyTrendCharts({
               unit={chart.unit}
               color={chart.color}
               annotations={shown}
+              windows={shownWindows}
               referenceValue={chart.referenceValue ?? null}
             />
             {chart.projectionNote && (

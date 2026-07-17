@@ -48,9 +48,11 @@ import { today } from "@/lib/db";
 import { requireSession } from "@/lib/auth";
 import { PageHeader, EmptyState, MedicalValue } from "@/components/ui";
 import { Notice } from "@/components/Notice";
-import BiomarkerChart, {
-  type BiomarkerBands,
-} from "@/components/BiomarkerChart";
+import { type BiomarkerBands } from "@/components/BiomarkerChart";
+import BiomarkerTrendChart from "@/components/BiomarkerTrendChart";
+import { getProtocolWindowsForOutcome } from "@/lib/queries";
+import { buildProtocolWindows } from "@/lib/trend-annotations";
+import { buildTrendAnnotations } from "@/lib/trends-series";
 import StarButton from "@/components/StarButton";
 import ScrollFade from "@/components/ScrollFade";
 import {
@@ -302,6 +304,19 @@ export default async function BiomarkerDetailPage(props: {
   }
   const unchartedCount = plottable.length - chartPoints.length;
   const hasBounded = chartPoints.some((p) => p.bound);
+
+  // Life-event annotations + the targeting protocol's intervention window for THIS
+  // analyte (issue #660). The detail chart previously drew no markers, so a
+  // med-start → LDL-drop had nowhere to read. Full history (open range) — the
+  // chart's epoch axis clips anything outside the plotted extent; the client
+  // BiomarkerTrendChart owns the per-type toggle. Protocol windows are narrowed to
+  // the protocols that DECLARE this biomarker as an outcome (not every protocol).
+  const openRange = { from: undefined, to: undefined };
+  const chartAnnotations = buildTrendAnnotations(profile.id, openRange);
+  const protocolWindows = buildProtocolWindows(
+    getProtocolWindowsForOutcome(profile.id, `biomarker:${canonical}`),
+    openRange
+  );
 
   const refRange = cb ? formatRange(ref.low, ref.high, cb.unit) : null;
   const optimalRange = cb ? formatRange(opt.low, opt.high, cb.unit) : null;
@@ -640,10 +655,12 @@ export default async function BiomarkerDetailPage(props: {
             <EmptyState message="No numeric readings to chart (qualitative biomarker)." />
           )
         ) : (
-          <BiomarkerChart
+          <BiomarkerTrendChart
             data={chartPoints}
             unit={chartUnit ?? ""}
             bands={bands}
+            annotations={chartAnnotations}
+            windows={protocolWindows}
           />
         )}
         {unchartedCount > 0 && (
